@@ -6,7 +6,16 @@ import { labelOrCode } from '../../../core/utils/i18nLabel'
 
 // Scopo: etichetta del tipo sorgente (config.sorgenti.codice_interno) per
 // tappe/chip lineage. Firma (t, te) di useI18n come dashAreaLabel/dashFaseLabel.
-export function lineageTipoLabel(t, te, codice) {
+//
+// ⛔ NON E' PIU' ESPORTATA, dal 2026-08-29, ed e' una scelta: dal momento in cui
+// anche l'ultimo consumatore esterno (`LineageFrontieraChip`) e' passato a
+// `lineageDocumentoLabel`, questa e' rimasta l'unica porta da cui si puo'
+// rientrare nel difetto che il progetto ha gia' pagato due volte — etichettare
+// «Fattura» una nota di credito. Un'etichetta di DOCUMENTO si chiede sempre
+// alla funzione qui sotto; questa resta il suo ramo di ripiego, non una
+// seconda strada. Chi avesse davvero bisogno del solo tipo la riesporti
+// scrivendo perche'.
+function lineageTipoLabel(t, te, codice) {
   return labelOrCode(t, te, `vendite.lineage.tipo_${String(codice ?? '').toLowerCase()}`, codice)
 }
 

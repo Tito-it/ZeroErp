@@ -232,12 +232,12 @@ class PreventiviRepository(
         # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
         # Senza id, righe con stessa data/numero (es. revisioni) possono
         # comparire duplicate o sparire fra pagine consecutive.
-        # Decodifica frontiera_tipo_id -> codice_interno per il chip transito FE
-        # (mai id numerici verso il FE, memoria feedback_no_hardcoded_ids).
+        # ⭐ Il chip transito legge `frontiera_tipo_codice_interno` dalla vista
+        # (20260829-02): mai id numerici verso il FE, e mai una decodifica
+        # ricopiata per lista (memoria feedback_no_hardcoded_ids).
         data_sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
             FROM vendite.vw_preventivi_lista v
-            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s

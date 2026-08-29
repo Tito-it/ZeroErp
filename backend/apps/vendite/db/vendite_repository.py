@@ -3426,7 +3426,22 @@ class VenditeRepository:
         sql = """
             SELECT
                 l.tipo_id,
-                s.codice_interno            AS tipo_codice,
+                -- ⭐ Il CODICE del tipo lo porta la vista (20260829-02): fino a
+                -- ieri il grafo esponeva solo l'id e ogni consumatore lo
+                -- traduceva da se' con lo stesso join a config.sorgenti —
+                -- UNDICI volte nel backend, e una di quelle undici era stata
+                -- gia' dimenticata (lista resi, 25/08: colonna a catalogo, dato
+                -- a database, niente a video e nessun errore).
+                -- ⚠️ E qui c'era una `JOIN` (INNER) a config.sorgenti: la
+                -- garanzia che il tipo esista non e' sparita insieme al join,
+                -- si e' SPOSTATA — `vw_documento_lineage` legge
+                -- `FROM vw_documento_lineage_nodi`, e la vista nodi costruisce
+                -- ogni suo ramo con una `JOIN sorgenti` interna. Un nodo senza
+                -- sorgente attiva non esiste proprio, quindi la colonna non e'
+                -- mai NULL ed e' lecito il `str()` sul lato Python. E' una
+                -- garanzia STRUTTURALE (una join interna in una definizione di
+                -- vista), non un'osservazione sui dati di oggi.
+                l.tipo_codice_interno       AS tipo_codice,
                 l.uid,
                 l.codice,
                 l.stato_codice_interno,
@@ -3438,7 +3453,7 @@ class VenditeRepository:
                 l.pratica_numero,
                 l.n_pratiche,
                 l.frontiera_tipo_id,
-                sf.codice_interno           AS frontiera_tipo_codice,
+                l.frontiera_tipo_codice_interno AS frontiera_tipo_codice,
                 l.frontiera_uid,
                 l.frontiera_codice,
                 l.frontiera_stato_codice_interno,
@@ -3448,22 +3463,30 @@ class VenditeRepository:
                 l.is_transitato,
                 l.n_sorgenti,
                 l.root_codice,
-                l.natura_doc_codice,
-                -- ⚠️ La natura della FRONTIERA si legge dal SUO nodo, non da
-                -- questa riga: la summary porta solo la natura del documento
-                -- stesso. E serve davvero — la frontiera PUO' essere una nota
-                -- di credito (arco G dalla commessa, che non e' un ramo di
-                -- ritorno): misurato il 2026-08-21, e' gia' la frontiera
-                -- dell'ordine 240 e della commessa 322. Senza questa colonna
-                -- il pannello la etichetta «Fattura». Stesso JOIN alla vista
-                -- nodi del traversal qui sotto.
-                nfr.natura_doc_codice          AS frontiera_natura_doc_codice
+                l.natura_doc_codice_interno AS natura_doc_codice,
+                -- ⭐ La natura della FRONTIERA la porta LA VISTA, dal
+                -- changeSet 20260828-22. Fino ad allora la summary non ce
+                -- l'aveva e questo repository se la ricavava da solo, con un
+                -- LEFT JOIN a vw_documento_lineage_nodi sulla chiave del nodo
+                -- di frontiera. Erano DUE SEDI per la stessa regola, e la
+                -- seconda ricalcolava dall'esterno una frontiera che la CTE
+                -- della vista risolve col tie-break su pipeline_rank: finche'
+                -- coincidevano non lo diceva nessuno, ma il giorno in cui la
+                -- regola della frontiera cambia in un posto solo il pannello e
+                -- le liste direbbero due cose diverse sullo STESSO documento,
+                -- e nessuna delle due darebbe errore. Tolta la copia, non
+                -- scelta la migliore.
+                -- ⚠️ Serve davvero, e non e' un caso limite: la frontiera PUO'
+                -- essere una nota di credito (arco G dalla commessa, che non
+                -- e' un ramo di ritorno) — misurato il 2026-08-21, e' gia' la
+                -- frontiera dell'ordine 240 e della commessa 322. Senza, il
+                -- pannello la etichetta «Fattura».
+                -- ⛔ NULL non vuol dire «non lo so» ma «la frontiera non e' un
+                -- documento fiscale»: la natura e' un asse diverso dal tipo ed
+                -- esiste solo per le fatture.
+                l.frontiera_natura_doc_codice_interno
+                                            AS frontiera_natura_doc_codice
             FROM vendite.vw_documento_lineage l
-            JOIN config.sorgenti s ON s.id = l.tipo_id
-            LEFT JOIN config.sorgenti sf ON sf.id = l.frontiera_tipo_id
-            LEFT JOIN vendite.vw_documento_lineage_nodi nfr
-                   ON nfr.tipo_id = l.frontiera_tipo_id
-                  AND nfr.uid = l.frontiera_uid
             WHERE l.tipo_id = %s
               AND l.uid = %s
         """
@@ -3542,8 +3565,8 @@ class VenditeRepository:
                 -- La natura dei due estremi: distingue una nota di credito da
                 -- una fattura quando la tappa e' la seconda di fila sotto lo
                 -- stesso tipo documento (arco N).
-                p.from_natura_doc_codice,
-                p.to_natura_doc_codice
+                p.from_natura_doc_codice_interno AS from_natura_doc_codice,
+                p.to_natura_doc_codice_interno   AS to_natura_doc_codice
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id

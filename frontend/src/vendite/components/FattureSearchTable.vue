@@ -273,9 +273,9 @@ onMounted(() => {
              a essere di segno opposto. -->
         <template #cell-natura_doc_descrizione="{ data }">
           <Tag
-            v-if="data.natura_doc_codice"
-            :value="data.natura_doc_descrizione || data.natura_doc_codice"
-            :severity="naturaDocSeverity(data.natura_doc_codice)"
+            v-if="data.natura_doc_codice_interno"
+            :value="data.natura_doc_descrizione || data.natura_doc_codice_interno"
+            :severity="naturaDocSeverity(data.natura_doc_codice_interno)"
           />
           <span v-else>—</span>
         </template>
