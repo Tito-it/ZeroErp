@@ -16,7 +16,7 @@
 -- Copre:
 --   * happy path       : categoria BA + campi cliente aggiornati insieme.
 --   * delta semantics   : solo le chiavi presenti cambiano; le altre restano.
---   * ATOMICITA'        : se l'UPDATE clienti fallisce (iva_id inesistente),
+--   * ATOMICITA'        : se l'UPDATE clienti fallisce (FK inesistente),
 --                         anche la scrittura della categoria sul BA viene
 --                         annullata (o tutto o niente). E' il cuore del fix:
 --                         prova che non resta piu' lo stato parziale.
@@ -127,14 +127,15 @@ WITH ins AS (
 )
 SELECT id INTO TEMP TABLE tmp_billing_account FROM ins;
 
--- 5) Cliente (stato PR, iva 22%)
+-- 5) Cliente (stato PR)
+-- ⚠️ rev 2026-08-29: via `iva_id` dalla fixture — la colonna non esiste piu' su
+--   anagrafiche.clienti (changeSet 20260829-17).
 WITH ins AS (
     INSERT INTO anagrafiche.clienti (
-        soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, iva_id, billing_account_id
+        soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, billing_account_id
     )
     SELECT sr.id, i.id,
            (SELECT id FROM config.stati_cliente WHERE codice_interno = 'PR' LIMIT 1),
-           (SELECT id FROM config.iva WHERE codice = '22' LIMIT 1),
            ba.id
     FROM tmp_soggetto_ruolo sr, tmp_istanza i, tmp_billing_account ba
     RETURNING id
@@ -157,7 +158,7 @@ CREATE TEMP TABLE r_happy AS
 SELECT * FROM anagrafiche.fn_update_cliente(
     (SELECT id FROM tmp_cliente),
     (SELECT cat_c2 FROM k),
-    '{"garanzia_importo": 150, "codice_commessa": "TESTCOMM"}'::jsonb
+    '{"garanzia_importo": 150, "servizio_da_fatturare": false}'::jsonb
 );
 
 SELECT is((SELECT categoria_aggiornata FROM r_happy), TRUE,
@@ -174,18 +175,18 @@ SELECT is(
     150::numeric,
     'Happy: garanzia_importo persistito = 150');
 SELECT is(
-    (SELECT codice_commessa FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
-    'TESTCOMM',
-    'Happy: codice_commessa persistito = TESTCOMM');
+    (SELECT servizio_da_fatturare FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
+    FALSE,
+    'Happy: servizio_da_fatturare persistito = false');
 
 -- =========================================================
--- DELTA: solo codice_commessa; categoria non toccata, garanzia invariata
+-- DELTA: solo servizio_da_fatturare; categoria non toccata, garanzia invariata
 -- =========================================================
 CREATE TEMP TABLE r_delta AS
 SELECT * FROM anagrafiche.fn_update_cliente(
     (SELECT id FROM tmp_cliente),
     NULL,
-    '{"codice_commessa": "AAA"}'::jsonb
+    '{"servizio_da_fatturare": true}'::jsonb
 );
 
 SELECT is((SELECT categoria_aggiornata FROM r_delta), FALSE,
@@ -193,28 +194,33 @@ SELECT is((SELECT categoria_aggiornata FROM r_delta), FALSE,
 SELECT is((SELECT campi_aggiornati FROM r_delta), TRUE,
           'Delta: campi_aggiornati = TRUE');
 SELECT is(
-    (SELECT codice_commessa FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
-    'AAA',
-    'Delta: codice_commessa aggiornato = AAA');
+    (SELECT servizio_da_fatturare FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
+    TRUE,
+    'Delta: servizio_da_fatturare aggiornato = true');
 SELECT is(
     (SELECT garanzia_importo FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
     150::numeric,
     'Delta: garanzia_importo INVARIATO = 150 (chiave assente)');
 
 -- =========================================================
--- ATOMICITA' (il cuore del fix): iva_id inesistente fa fallire l'UPDATE
+-- ATOMICITA' (il cuore del fix): una FK inesistente fa fallire l'UPDATE
 -- clienti; la categoria BA (passata C1) NON deve restare scritta.
--- NULL::text, NULL::text => "solleva una qualsiasi eccezione" (non fissiamo
--- SQLSTATE: potrebbe essere FK 23503 o il codice del guard iva-attivo).
+-- ⚠️ rev 2026-08-29: il veicolo era `iva_id`, colonna che non esiste piu'
+--   (changeSet 20260829-17). La PROPRIETA' provata e' la stessa — o tutto o
+--   niente — e si prova con un'altra chiave scrivibile che ha una FK:
+--   `modalita_pagamento_id`. Cambia il veicolo, non il test.
+-- ⚠️ SQLSTATE esplicito 23503: qui la FK e' l'unica strada per fallire, quindi
+--   si puo' essere precisi. Prima si passava NULL perche' l'errore poteva
+--   arrivare da due parti (FK o guard iva-attivo) e non si sapeva quale.
 -- =========================================================
 SELECT throws_ok(
     $$ SELECT * FROM anagrafiche.fn_update_cliente(
            (SELECT id FROM tmp_cliente),
            (SELECT cat_c1 FROM k),
-           '{"iva_id": 999999}'::jsonb) $$,
+           '{"modalita_pagamento_id": 999999}'::jsonb) $$,
+    '23503',
     NULL::text,
-    NULL::text,
-    'Atomicita'': iva_id inesistente fa fallire l''intera chiamata');
+    'Atomicita'': una FK inesistente fa fallire l''intera chiamata');
 
 SELECT is(
     (SELECT categoria_cliente_id FROM anagrafiche.billing_account
@@ -222,8 +228,8 @@ SELECT is(
     (SELECT cat_c2 FROM k),
     'Atomicita'': categoria BA ANCORA C2 (la scrittura C1 e'' stata annullata)');
 SELECT is(
-    (SELECT codice_commessa FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
-    'AAA',
+    (SELECT servizio_da_fatturare FROM anagrafiche.clienti WHERE id = (SELECT id FROM tmp_cliente)),
+    TRUE,
     'Atomicita'': cliente invariato (nessuna scrittura parziale)');
 
 -- =========================================================

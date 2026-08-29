@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I0 (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente, D8 —
+# prima meta': la SEDE. `split_payment` e `cliente_pa` salgono da
+# anagrafiche.clienti (una riga PER FORNITURA) ad anagrafiche.soggetti.
+#
+# ⭐ LA RAGIONE E' SUL MODELLO: un ente E' o NON E' una Pubblica Amministrazione,
+#   e non lo e' per il gas e non per l'acqua. La scissione dei pagamenti discende
+#   dalla natura della controparte, cioe' dalla sua partita IVA — che sta su
+#   anagrafiche.soggetti, insieme a `partita_iva`, `codice_fiscale` e
+#   `id_fiscale_univoco_cf_piva`.
+#
+# ⛔ COSA AMMETTE IL MODELLO OGGI, e non e' una misura: anagrafiche.clienti ha
+#   UNIQUE (istanza_utility_id), quindi un soggetto con tre forniture ha TRE
+#   righe cliente — e nulla impedisce che dichiarino tre valori DIVERSI di
+#   split_payment per la stessa partita IVA. Non serve contarle: la struttura
+#   ammette la contraddizione, e tanto basta.
+#
+# ⚠️ NON entrano nel risolutore IVA, ed e' la D4: la scissione dei pagamenti non
+#   cambia l'ALIQUOTA, cambia CHI VERSA l'imposta all'erario — in fattura
+#   elettronica e' l'EsigibilitaIVA, non una natura. Confonderli farebbe nascere
+#   codici IVA fasulli a catalogo, e un codice fasullo se lo porta dietro ogni
+#   documento emesso.
+#
+# ⭐ IL BINARIO D'ARRIVO ESISTE GIA' e non va costruito: vendite.fatture_righe ha
+#   gia' le colonne `esigibilita` e `split_payment`, e
+#   vendite.fatture_riepiloghi_iva raggruppa gia' per (iva_id, natura_id,
+#   esigibilita, split_payment) — lo fa fn_ricalcola_riepilogo_iva_fattura.
+#   Manca SOLO l'anello che le riempie, che e' I5.
+#
+# ⚠️ STESSO TIPO DELL'ORIGINE, non un boolean: `character(1)` con default 'N' e
+#   CHECK su ('S','N'), come su anagrafiche.clienti. Cambiare tipo nello stesso
+#   passo in cui si cambia sede mescola due modifiche, e il travaso non sarebbe
+#   piu' una copia. La normalizzazione a boolean, se si vorra', e' uno slice suo.
+#
+# ⭐ IL TRAVASO USA bool_or, e la scelta va motivata: quando le righe cliente
+#   dello stesso soggetto dissentono, vince 'S'. E' fail-closed nel senso giusto
+#   — lo split payment e' un obbligo di legge quando si applica, e dimenticarlo
+#   e' un errore fiscale, mentre applicarlo di piu' e' un errore visibile e
+#   correggibile a mano. ⚠️ Ed e' un travaso UNA TANTUM: dopo, la sede e' il
+#   soggetto e nessuno riallinea piu' niente.
+#
+# ⚠️ QUESTO CHANGESET E' ADDITIVO E NON TOGLIE NIENTE. La rimozione delle due
+#   colonne da anagrafiche.clienti — insieme al DROP di clienti.iva_id (D7-bis)
+#   e all'adeguamento di anagrafiche.fn_update_cliente — e' la seconda meta' di
+#   I0 ed e' GATED sul backend, che oggi quelle chiavi le scrive. La richiesta al
+#   BE e' scritta nel brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260829-14-alter-soggetti-add-split-payment-cliente-pa-mctit.yaml
+
+  - changeSet:
+      id: 20260829-14-alter-soggetti-add-split-payment-cliente-pa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.soggetti: split_payment e cliente_pa. Salgono da
+        anagrafiche.clienti, che è una riga per fornitura e ammette che lo stesso
+        soggetto dichiari valori diversi per la stessa partita IVA. Additivo: la
+        rimozione da clienti è la seconda metà di I0, gated sul backend.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: soggetti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti
+                ADD COLUMN IF NOT EXISTS split_payment CHARACTER(1) NOT NULL DEFAULT 'N',
+                ADD COLUMN IF NOT EXISTS cliente_pa    CHARACTER(1) NOT NULL DEFAULT 'N';
+
+              ALTER TABLE anagrafiche.soggetti
+                DROP CONSTRAINT IF EXISTS chk_soggetti_split_payment;
+              ALTER TABLE anagrafiche.soggetti
+                ADD CONSTRAINT chk_soggetti_split_payment CHECK (split_payment IN ('S', 'N'));
+
+              ALTER TABLE anagrafiche.soggetti
+                DROP CONSTRAINT IF EXISTS chk_soggetti_cliente_pa;
+              ALTER TABLE anagrafiche.soggetti
+                ADD CONSTRAINT chk_soggetti_cliente_pa CHECK (cliente_pa IN ('S', 'N'));
+
+              COMMENT ON COLUMN anagrafiche.soggetti.split_payment IS
+                  'S = le operazioni verso questa controparte sono in scissione dei pagamenti. '
+                  '⚠️ NON è un codice IVA e NON entra nel risolutore: non cambia l''aliquota, '
+                  'cambia CHI VERSA l''imposta all''erario — in fattura elettronica è '
+                  'l''EsigibilitaIVA. Sta sul SOGGETTO perché discende dalla partita IVA, non '
+                  'dalla fornitura: prima viveva su anagrafiche.clienti, che ha UNIQUE per '
+                  'istanza_utility e quindi ammetteva tre valori diversi per lo stesso soggetto. '
+                  'Destinazione: vendite.fatture_righe.split_payment e il raggruppamento di '
+                  'vendite.fatture_riepiloghi_iva, che esistono già. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D8 / I0.';
+
+              COMMENT ON COLUMN anagrafiche.soggetti.cliente_pa IS
+                  'S = la controparte è una Pubblica Amministrazione. Proprietà dell''ENTE, non '
+                  'della singola fornitura: un ente non è una PA per il gas e non per l''acqua. '
+                  '⚠️ Come split_payment resta FUORI dal risolutore IVA (D4). '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D8 / I0.';
+
+              -- Travaso UNA TANTUM dalle righe cliente. Dopo, la sede è il
+              -- soggetto e nessuno riallinea più niente.
+              -- ⚠️ bool_or e non "l'ultimo che passa": quando le righe cliente
+              --   dello stesso soggetto dissentono vince 'S', che è la direzione
+              --   sicura — lo split payment è un obbligo quando si applica, e
+              --   ometterlo è un errore fiscale, mentre applicarlo in più è un
+              --   errore visibile e correggibile a mano.
+              -- ⚠️ Il join passa da soggetti_ruoli: clienti punta al RUOLO
+              --   (soggetto_ruolo_id), non direttamente al soggetto.
+              UPDATE anagrafiche.soggetti s
+                 SET split_payment = agg.split_payment,
+                     cliente_pa    = agg.cliente_pa
+                FROM (
+                    SELECT sr.soggetto_id,
+                           CASE WHEN bool_or(c.split_payment = 'S') THEN 'S' ELSE 'N' END AS split_payment,
+                           CASE WHEN bool_or(c.cliente_pa    = 'S') THEN 'S' ELSE 'N' END AS cliente_pa
+                      FROM anagrafiche.clienti c
+                      JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
+                     GROUP BY sr.soggetto_id
+                ) agg
+               WHERE s.id = agg.soggetto_id
+                 AND (s.split_payment IS DISTINCT FROM agg.split_payment
+                   OR s.cliente_pa    IS DISTINCT FROM agg.cliente_pa);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti
+                DROP CONSTRAINT IF EXISTS chk_soggetti_cliente_pa;
+              ALTER TABLE anagrafiche.soggetti
+                DROP CONSTRAINT IF EXISTS chk_soggetti_split_payment;
+              ALTER TABLE anagrafiche.soggetti
+                DROP COLUMN IF EXISTS cliente_pa,
+                DROP COLUMN IF EXISTS split_payment;

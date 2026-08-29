@@ -97,9 +97,10 @@ SELECT
     (SELECT sp.id FROM config.stati_pdp sp
      WHERE sp.codice_interno = 'DISP') AS stato_pdp_disp_id,
     (SELECT sp.id FROM config.stati_pdp sp
-     WHERE sp.codice_interno = 'ATT') AS stato_pdp_att_id,
-    (SELECT iv.id FROM config.iva iv
-     WHERE iv.codice = '22' LIMIT 1) AS iva_id;
+     -- rev 2026-08-29: via il codice IVA da questa configurazione e dalla
+     --   fixture. La colonna omonima non esiste piu' su anagrafiche.clienti
+     --   (changeSet 20260829-17): l'aliquota la decide la merce, non il cliente.
+     WHERE sp.codice_interno = 'ATT') AS stato_pdp_att_id;
 
 CREATE TEMP TABLE tmp_dis_pdp AS
 SELECT p.id AS pdp_id,
@@ -127,7 +128,6 @@ SELECT ok(
         AND stato_ch_id IS NOT NULL
         AND stato_pdp_disp_id IS NOT NULL
         AND stato_pdp_att_id IS NOT NULL
-        AND iva_id IS NOT NULL
      FROM tmp_dis_cfg)
     AND (SELECT pdp_id IS NOT NULL FROM tmp_dis_pdp)
     AND (SELECT soggetto_id IS NOT NULL
@@ -184,7 +184,6 @@ DECLARE
     v_pdp_id bigint;
     v_indirizzo_id bigint;
     v_stato_at_id integer;
-    v_iva_id integer;
     v_d0 date;
     v_istanza_id bigint;
     v_ba_id bigint;
@@ -198,8 +197,8 @@ BEGIN
       INTO v_pdp_id, v_indirizzo_id, v_utility_id
       FROM tmp_dis_pdp;
 
-    SELECT stato_at_id, iva_id
-      INTO v_stato_at_id, v_iva_id
+    SELECT stato_at_id
+      INTO v_stato_at_id
       FROM tmp_dis_cfg;
 
     SELECT d0 INTO v_d0 FROM tmp_dis_base;
@@ -231,12 +230,12 @@ BEGIN
     INSERT INTO anagrafiche.clienti (
         soggetto_ruolo_id, istanza_utility_id,
         stato_cliente_id, data_attivazione,
-        billing_account_id, iva_id,
+        billing_account_id,
         pdp_id, codice_cliente_importato
     ) VALUES (
         v_soggetto_ruolo_id, v_istanza_id,
         v_stato_at_id, v_d0,
-        v_ba_id, v_iva_id,
+        v_ba_id,
         v_pdp_id, 'TST-DIS-CLI-01'
     ) RETURNING id INTO v_cliente_id;
 

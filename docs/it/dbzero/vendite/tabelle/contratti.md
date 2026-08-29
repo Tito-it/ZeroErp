@@ -41,6 +41,9 @@
 | is_draft_snapshot | boolean | NO | false |
 | partecipa_overlap_snapshot | boolean | YES |  |
 | fatturazione_immediata | boolean | NO | false |
+| codice_cig | character varying | YES |  |
+| codice_cup | character varying | YES |  |
+| codice_commessa | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

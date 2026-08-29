@@ -20,6 +20,9 @@ AS $function$
 --   proporre cio' che il database rifiuta, ne' viceversa.
 --   Mirror di vendite.trgfn_ordini_guard_transizione (Regola 1).
 --   Brief: brief-db-vie-uscita-operatore §6.2, §7.4 punto 3.
+--   rev 2026-08-29: Regola 2, l'aliquota sulle righe che entrano
+--   nel riepilogo IVA (brief-db-be-iva-risolutore-e-regime-cliente,
+--   I9).
 --
 -- Cosa NON fa, per scelta:
 --   - l'annullamento ha il suo guard dedicato
@@ -28,10 +31,14 @@ AS $function$
 --   - la regola "documento senza righe" vive ancora nella porta
 --     vendite.fn_cambia_stato_preventivo e un UPDATE diretto la
 --     aggira: e' un'asimmetria dichiarata, non una dimenticanza.
+--     ⚠️ La Regola 2 NON la imita: una regola che protegge un
+--     numero fiscale non puo' dipendere da quale porta ha usato
+--     il chiamante.
 DECLARE
     v_codice_da config.stati_doc_preventivi.codice_interno%TYPE;
     v_codice_a  config.stati_doc_preventivi.codice_interno%TYPE;
     v_ammessa   boolean := false;
+    v_motivi    jsonb;
 BEGIN
     -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
     IF NEW.stato_doc_preventivo_id IS NOT DISTINCT FROM OLD.stato_doc_preventivo_id THEN
@@ -45,7 +52,7 @@ BEGIN
       FROM config.stati_doc_preventivi
      WHERE id IN (OLD.stato_doc_preventivo_id, NEW.stato_doc_preventivo_id);
 
-    -- Regola unica: la transizione deve esistere ed essere attiva.
+    -- Regola 1: la transizione deve esistere ed essere attiva.
     SELECT EXISTS (
         SELECT 1
           FROM config.transizioni_stati_preventivi t
@@ -71,12 +78,53 @@ BEGIN
         );
     END IF;
 
+    -- Regola 2 (rev 2026-08-29): una riga che entra nel riepilogo
+    -- IVA deve portare un'aliquota. La regola vive nella funzione
+    -- pura, la STESSA che fn_available_actions_preventivo usa per
+    -- spegnere il bottone: qui si solleva soltanto, col codice del
+    -- PRIMO motivo.
+    --
+    -- ⚠️ Il predicato e' sulla DESTINAZIONE e non su una coppia
+    --   cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e' una
+    --   lettura del seed. Cosi' una strada nuova verso EMESSO
+    --   nasce gia' coperta.
+    --
+    -- ⛔ Nel VARIADIC va la DESCRIZIONE della riga e non un numero:
+    --   vendite.preventivi_righe NON HA riga_nr, e la colonna
+    --   `ordine` ha default 0 — «la riga 0» non aiuterebbe nessuno.
+    --   L'id viaggia nel context, che e' il canale di chi diagnostica.
+    -- ⛔ E nessuna chiave `campo`: il codice e' CONFLITTO_STATO, non
+    --   DATO_ERRATO — la richiesta e' «porta il preventivo a
+    --   EMESSO», e non c'e' un campo di QUELLA richiesta da accendere.
+    IF v_codice_a = 'EMESSO' THEN
+        v_motivi := script.fn_check_preventivo_emettibile(NEW.id);
+
+        IF jsonb_array_length(v_motivi) > 0 THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME::text,
+                v_motivi -> 0 ->> 'codice',
+                jsonb_build_object(
+                    'preventivo_id', NEW.id,
+                    'numero',        NEW.numero,
+                    'stato_da',      v_codice_da,
+                    'stato_a',       v_codice_a,
+                    'riga_id',       (v_motivi -> 0 -> 'dettaglio' ->> 'riga_id')::bigint,
+                    'motivi',        v_motivi
+                ),
+                NEW.tx_id,
+                coalesce(NEW.numero, NEW.id::text),
+                coalesce(v_motivi -> 0 -> 'dettaglio' ->> 'descrizione', 'senza descrizione')
+            );
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione()
-IS 'Trigger function: rende vincolante per il database la matrice config.transizioni_stati_preventivi, come gia'' avviene per ordine, DDT, commessa, reso, contratto e offerta. Legge la matrice (nessun grafo hardcodato), quindi condivide la sorgente con fn_available_actions_preventivo: la UI non puo'' proporre cio'' che il database rifiuta. Non valuta l''ammissibilita'' dell''annullamento, che ha il guard dedicato trgfn_preventivi_guard_annullamento. Creata 2026-08-05 (brief-db-vie-uscita-operatore §6.2, §7.4 punto 3).';
+IS 'Trigger function: enforcement del grafo transizioni del preventivo (matrice config.transizioni_stati_preventivi) e, dal 2026-08-29, controlli sull''EMISSIONE delegati a script.fn_check_preventivo_emettibile — la stessa funzione letta da fn_available_actions_preventivo, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 2, una riga attiva con quantita e prezzo deve portare un''aliquota, altrimenti il preventivo non si emette. Chiude il difetto silenzioso gemello di DDT e ordine: fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi la riga senza aliquota finisce in preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ NEL TRIGGER e non nella porta: il commento di questo stesso corpo dichiara che la regola «documento senza righe» vive in vendite.fn_cambia_stato_preventivo e che un UPDATE diretto la aggira — e'' la descrizione di una debolezza, non un modello da imitare. Una regola che protegge un numero fiscale non puo'' dipendere da quale porta ha usato il chiamante. ⚠️ Il predicato e'' sulla DESTINAZIONE (v_codice_a = ''EMESSO'') e non su una coppia cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e'' una lettura del seed, e una strada nuova verso EMESSO nasce gia'' coperta. ⛔ Nel VARIADIC va la DESCRIZIONE della riga: preventivi_righe non ha riga_nr e la colonna `ordine` ha default 0. ⛔ Non e'' un NOT NULL di colonna: preventivi_righe.iva_id e'' nullable e la bozza deve restare libera. ℹ️ Il guard dell''annullamento resta trgfn_preventivi_guard_annullamento.';
 ```
 
 ---

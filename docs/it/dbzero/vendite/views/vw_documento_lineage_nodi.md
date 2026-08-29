@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lineage documenti vendite: dimensione nodo condivisa (una riga per documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e fn_documento_lineage. security_invoker=on. ⭐ rev 2026-08-20: il nodo porta anche natura_doc_codice_interno/natura_doc_descrizione (da config.nature_doc_fiscale.codice_interno/descrizione). Serve perche' il grafo e' nato quando FATTURA era una cosa sola: due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano indistinguibili, stesso tipo e stesso stato, con `codice` NULL finche' non numerati. La natura e' un ASSE DIVERSO dal tipo documento (il tipo dice da quale tabella viene il nodo, la natura che cosa e' fiscalmente) ed esiste solo per le fatture: negli altri sette rami e' NULL, ed e' corretto. LEFT JOIN sulla natura perche' natura_doc_id e' nullable: con un JOIN una fattura senza natura sparirebbe dal grafo.
+> Lineage documenti vendite: dimensione nodo condivisa (una riga per documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e fn_documento_lineage. security_invoker=on. ⭐ rev 2026-08-29 — il `codice` del nodo FATTURA e' il NUMERO DOCUMENTO, non piu' il contatore nudo: lo compone la sede unica vendite.fn_numero_documento_fattura («numero - serie», senza anno). Prima usciva «1», che non e' sbagliato ma e' AMBIGUO — nello stesso anno possono esistere una fattura 1 e una nota di credito 1, e in lista erano indistinguibili. Per gli altri sei rami `numero` E' gia' il numero parlante (DDT0000031); per la fattura e' un bigint e l'identita' sta in tre colonne nullable. ⚠️ La funzione e' IMMUTABLE e prende i valori, quindi e' inlineata qui: non e' una lettura per riga. ⭐ rev 2026-08-20: il nodo porta anche natura_doc_codice_interno/natura_doc_descrizione (da config.nature_doc_fiscale.codice_interno/descrizione). Serve perche' il grafo e' nato quando FATTURA era una cosa sola: due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano indistinguibili, stesso tipo e stesso stato, con `codice` NULL finche' non numerati. La natura e' un ASSE DIVERSO dal tipo documento (il tipo dice da quale tabella viene il nodo, la natura che cosa e' fiscalmente) ed esiste solo per le fatture: negli altri sette rami e' NULL, ed e' corretto. LEFT JOIN sulla natura perche' natura_doc_id e' nullable: con un JOIN una fattura senza natura sparirebbe dal grafo.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -92,7 +92,7 @@ UNION ALL
 UNION ALL
  SELECT s.id AS tipo_id,
     (f.id)::text AS uid,
-    (f.numero)::text AS codice,
+    (vendite.fn_numero_documento_fattura(f.numero, f.serie))::text AS codice,
     st.codice_interno AS stato_codice_interno,
     st.codice AS stato_codice,
     st.descrizione AS stato_descrizione,

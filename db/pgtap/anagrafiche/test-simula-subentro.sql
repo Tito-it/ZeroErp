@@ -288,7 +288,11 @@ SELECT * FROM ins_ba;
 WITH ins_cli AS (
   INSERT INTO anagrafiche.clienti (
     soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, data_attivazione,
-    billing_account_id, codice_cliente_importato, iva_id
+    -- ⚠️ rev 2026-08-29: via `iva_id` — la colonna non esiste piu' su
+    --   anagrafiche.clienti (changeSet 20260829-17): l'aliquota la decide
+    --   la merce, non il cliente. La temp table tmp_iva resta, perche' la
+    --   sua asserzione fa parte del plan e verifica ancora config.iva.
+    billing_account_id, codice_cliente_importato
   )
   SELECT
     sr.soggetto_ruolo_id,
@@ -296,9 +300,8 @@ WITH ins_cli AS (
     st.id,
     DATE '2085-11-01',
     ba.id,
-    'TST-CLI-CAT-SUB-001-' || (SELECT sfx FROM tmp_run_sfx),
-    iv.id
-  FROM tmp_sr_1 sr, tmp_iu1 iu, tmp_stato_at st, tmp_ba1 ba, tmp_iva iv
+    'TST-CLI-CAT-SUB-001-' || (SELECT sfx FROM tmp_run_sfx)
+  FROM tmp_sr_1 sr, tmp_iu1 iu, tmp_stato_at st, tmp_ba1 ba
   RETURNING id
 )
 SELECT * INTO TEMP TABLE tmp_cli1 FROM ins_cli;
@@ -397,7 +400,11 @@ SELECT is(
 WITH ins_cli AS (
   INSERT INTO anagrafiche.clienti (
     soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, data_attivazione,
-    billing_account_id, codice_cliente_importato, iva_id
+    -- ⚠️ rev 2026-08-29: via `iva_id` — la colonna non esiste piu' su
+    --   anagrafiche.clienti (changeSet 20260829-17): l'aliquota la decide
+    --   la merce, non il cliente. La temp table tmp_iva resta, perche' la
+    --   sua asserzione fa parte del plan e verifica ancora config.iva.
+    billing_account_id, codice_cliente_importato
   )
   SELECT
     sr.soggetto_ruolo_id,
@@ -405,9 +412,8 @@ WITH ins_cli AS (
     st.id,
     DATE '2085-11-10',
     ba.id,
-    'TST-CLI-CAT-SUB-002-' || (SELECT sfx FROM tmp_run_sfx),
-    iv.id
-  FROM tmp_sr_2 sr, tmp_iu2 iu, tmp_stato_at st, tmp_ba2 ba, tmp_iva iv
+    'TST-CLI-CAT-SUB-002-' || (SELECT sfx FROM tmp_run_sfx)
+  FROM tmp_sr_2 sr, tmp_iu2 iu, tmp_stato_at st, tmp_ba2 ba
   RETURNING id
 )
 SELECT * INTO TEMP TABLE tmp_cli2 FROM ins_cli;

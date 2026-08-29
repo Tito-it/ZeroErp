@@ -314,21 +314,17 @@ FROM ins_ba;
 -- =========================================================
 -- 1) Primo cliente per il PDP (istanza base) → parent_istanza_id NULL
 -- =========================================================
-WITH iva AS (
-    -- prendi un codice IVA valido (es. 22%)
-    SELECT id
-    FROM config.iva
-    WHERE codice = '22' -- adatta al tuo codice reale
-    LIMIT 1
-), ins_cli AS (
+-- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   l'aliquota la decide la merce, non il cliente.
+WITH ins_cli AS (
     INSERT INTO anagrafiche.clienti (
             soggetto_ruolo_id,
             istanza_utility_id,
             stato_cliente_id,
             data_attivazione,
             billing_account_id,
-            codice_cliente_importato,
-            iva_id
+            codice_cliente_importato
         )
     SELECT sr.soggetto_ruolo_id,
         iu.id,
@@ -338,13 +334,11 @@ WITH iva AS (
         (
             SELECT cli_1_code
             FROM tmp_test_keys
-        ),
-        iv.id
+        )
     FROM tmp_sr_1 sr,
         tmp_iu_base iu,
         tmp_stato_attivo sc_at,
-        tmp_ba_1 ba,
-        iva iv
+        tmp_ba_1 ba
     RETURNING id,
         istanza_utility_id
 )
@@ -483,21 +477,17 @@ SELECT is(
     );
 ----------------------------------------------------------
 -- 2.3) Cliente 2 ATTIVO per istanza 2
-WITH iva AS (
-    -- prendi un codice IVA valido (es. 22%)
-    SELECT id
-    FROM config.iva
-    WHERE codice = '22' -- adatta al tuo codice reale
-    LIMIT 1
-), ins_cli2 AS (
+-- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   l'aliquota la decide la merce, non il cliente.
+WITH ins_cli2 AS (
     INSERT INTO anagrafiche.clienti (
             soggetto_ruolo_id,
             istanza_utility_id,
             stato_cliente_id,
             data_attivazione,
             billing_account_id,
-            codice_cliente_importato,
-            iva_id
+            codice_cliente_importato
         )
     SELECT sr.soggetto_ruolo_id,
         iu2.id,
@@ -507,13 +497,11 @@ WITH iva AS (
         (
             SELECT cli_2_code
             FROM tmp_test_keys
-        ),
-        iv.id
+        )
     FROM tmp_sr_2 sr,
         tmp_iu_2 iu2,
         tmp_stato_attivo sc_at,
-        tmp_ba_2 ba2,
-        iva iv
+        tmp_ba_2 ba2
     RETURNING id,
         istanza_utility_id
 )
@@ -653,13 +641,10 @@ SELECT is(
         'Cliente precedente impostato a stato CH dopo subentro'
     );
 -- 3.3) Cliente 3 ANNULLATO (stato = AN) → deve essere escluso dalla catena
-WITH iva AS (
-    -- prendi un codice IVA valido (es. 22%)
-    SELECT id
-    FROM config.iva
-    WHERE codice = '22' -- adatta al tuo codice reale
-    LIMIT 1
-), ins_cli3 AS (
+-- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   l'aliquota la decide la merce, non il cliente.
+WITH ins_cli3 AS (
     INSERT INTO anagrafiche.clienti (
             soggetto_ruolo_id,
             istanza_utility_id,
@@ -667,8 +652,7 @@ WITH iva AS (
             data_attivazione,
             data_chiusura,
             billing_account_id,
-            codice_cliente_importato,
-            iva_id
+            codice_cliente_importato
         )
     SELECT sr.soggetto_ruolo_id,
         iu3.id,
@@ -679,13 +663,11 @@ WITH iva AS (
         (
             SELECT cli_3_code
             FROM tmp_test_keys
-        ),
-        iv.id
+        )
     FROM tmp_sr_1 sr,
         tmp_iu_3 iu3,
         tmp_stato_annullato sc_an,
-        tmp_ba_3 ba3,
-        iva iv
+        tmp_ba_3 ba3
     RETURNING id,
         istanza_utility_id
 )
@@ -823,21 +805,17 @@ SET CONSTRAINTS ALL IMMEDIATE;
  );
  */
 -- 4.4) Cliente 4 ATTIVO per istanza 4 (data più recente)
-WITH iva AS (
-    -- prendi un codice IVA valido (es. 22%)
-    SELECT id
-    FROM config.iva
-    WHERE codice = '22' -- adatta al tuo codice reale
-    LIMIT 1
-), ins_cli4 AS (
+-- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   l'aliquota la decide la merce, non il cliente.
+WITH ins_cli4 AS (
     INSERT INTO anagrafiche.clienti (
             soggetto_ruolo_id,
             istanza_utility_id,
             stato_cliente_id,
             data_attivazione,
             billing_account_id,
-            codice_cliente_importato,
-            iva_id
+            codice_cliente_importato
         )
     SELECT sr.soggetto_ruolo_id,
         iu4.id,
@@ -847,13 +825,11 @@ WITH iva AS (
         (
             SELECT cli_4_code
             FROM tmp_test_keys
-        ),
-        iv.id
+        )
     FROM tmp_sr_2 sr,
         tmp_iu_4 iu4,
         tmp_stato_attivo sc_at,
-        tmp_ba_4 ba4,
-        iva iv
+        tmp_ba_4 ba4
     RETURNING id,
         istanza_utility_id
 )

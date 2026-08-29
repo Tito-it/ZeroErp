@@ -276,7 +276,9 @@ WITH ins AS (
         data_attivazione,
         billing_account_id,
         codice_cliente_importato,
-        iva_id,
+        -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
+        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
     )
@@ -287,12 +289,10 @@ WITH ins AS (
         dt.d0,
         ba.id,
         tc.cli1,
-        iv.id,
         p.id,
         NULL::integer
     FROM tmp_sr_test sr,
          tmp_stato_attivo st,
-         tmp_iva iv,
          tmp_date_base dt,
          tmp_codes tc,
          anagrafiche.istanze_utilities iu,
@@ -337,7 +337,9 @@ SELECT throws_ok(
         data_attivazione,
         billing_account_id,
         codice_cliente_importato,
-        iva_id,
+        -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
+        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
     )
@@ -348,12 +350,10 @@ SELECT throws_ok(
         (dt.d0 + 1),
         ba.id,
         tc.cli2,
-        iv.id,
         NULL::bigint,
         NULL::integer
     FROM tmp_sr_test sr,
          tmp_stato_attivo st,
-         tmp_iva iv,
          tmp_date_base dt,
          tmp_codes tc,
          anagrafiche.istanze_utilities iu,
@@ -385,7 +385,9 @@ SELECT throws_ok(
         data_attivazione,
         billing_account_id,
         codice_cliente_importato,
-        iva_id,
+        -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
+        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
     )
@@ -396,12 +398,10 @@ SELECT throws_ok(
         (dt.d0 + 2),
         ba.id,
         tc.cli3,
-        iv.id,
         p.id,
         NULL::integer
     FROM tmp_sr_test sr,
          tmp_stato_attivo st,
-         tmp_iva iv,
          tmp_date_base dt,
          tmp_codes tc,
          anagrafiche.istanze_utilities iu,
@@ -427,7 +427,9 @@ WITH ins AS (
         data_attivazione,
         billing_account_id,
         codice_cliente_importato,
-        iva_id,
+        -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
+        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
     )
@@ -438,12 +440,10 @@ WITH ins AS (
         (dt.d0 + 3),
         ba.id,
         tc.cli4,
-        iv.id,
         NULL::bigint,
         NULL::integer
     FROM tmp_sr_test sr,
          tmp_stato_attivo st,
-         tmp_iva iv,
          tmp_date_base dt,
          tmp_codes tc,
          anagrafiche.istanze_utilities iu,
