@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# I PRIVILEGI RUNTIME sulle tabelle nuove, senza i quali non esistono.
+#
+# ── ⛔ PERCHE' SERVE UN CHANGESET, e non e' burocrazia ──────────────────
+#
+#   I grant runtime generici (`90_end/ci_apply/20260205-41`) girano SOLO nel
+#   contesto `ci_apply`. Fuori CI — cioe' su ogni database di sviluppo — il
+#   ruolo applicativo NON riceve nessun privilegio sulle tabelle nuove. E' la
+#   stessa causa sistemica di `20260608-12`, `20260615-12` e `20260722-06`, tre
+#   sanatorie gia' pagate.
+#
+#   ⚠️ E il sintomo e' il piu' fuorviante che ci sia: `information_schema` e'
+#   FILTRATA PER PRIVILEGI, quindi a `zeroerp_app` le tabelle risultano
+#   *inesistenti*, non *inaccessibili*. Chi indaga conclude che la DDL non e'
+#   passata. Solo `pg_catalog` mostra la verita'.
+#
+#   ⭐ E qui si vedrebbe subito, perche' il pgTAP gira come `zeroerp_app` dal
+#   2026-08-07: senza questo file i test dei titoli sarebbero rossi per un
+#   permesso, e il rosso non direbbe che e' un permesso.
+#
+# ── ℹ️ IL PERIMETRO: chi scrive cosa ───────────────────────────────────
+#
+#   * `config.tipi_titolo_iva` -> **sola lettura**. E' un vocabolario a seed
+#     Liquibase: il backend lo legge per riempire una tendina, non lo scrive.
+#     Se un giorno servisse un CRUD di catalogo, allargare e' una riga qui —
+#     restringere dopo e' molto piu' scomodo;
+#   * le tre tabelle di `anagrafiche` -> **DML completa**: i titoli si
+#     registrano, si correggono e si spengono dall'applicazione, e il registro
+#     dei movimenti lo scrive la primitiva di consumo (che e' `SECURITY INVOKER`,
+#     quindi scrive con i privilegi di chi la chiama).
+#
+#   ⚠️ La RLS resta il cancello vero: un `GRANT` dice *se* si puo' toccare la
+#   tabella, la policy dice *quali righe*. I due non si sostituiscono.
+#
+# ── ⚠️ E LE SEQUENCE, che e' l'errore che si scopre al primo INSERT ────
+#
+#   Le tre PK sono `IDENTITY`: senza `USAGE` sulla loro sequence l'INSERT
+#   fallisce con «permission denied for sequence», che non nomina la tabella.
+#   Il nome della sequence lo genera PostgreSQL, quindi si risolve a runtime con
+#   `pg_get_serial_sequence` invece di scriverlo a mano.
+#
+# ── ℹ️ Le due funzioni ─────────────────────────────────────────────────
+#
+#   `fn_consuma_plafond_titolo_iva` la chiamera' il backend (o la madre della
+#   fattura) alla transizione a DEFINITIVA; `fn_check_titolo_iva_ambito` e' pura
+#   e serve anche a una diagnostica lato applicazione. Entrambe `SECURITY
+#   INVOKER`: l'EXECUTE non aggira niente, apre solo la porta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260829-34-grant-titoli-iva-app-mctit.yaml
+
+  - changeSet:
+      id: 20260829-34-grant-titoli-iva-app
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        GRANT runtime al ruolo applicativo sulle tabelle dei titoli IVA: SELECT sul
+        vocabolario config.tipi_titolo_iva (seed Liquibase, il BE non lo scrive), DML
+        completa sulle tre tabelle di anagrafiche, USAGE sulle loro sequence identity,
+        EXECUTE sulle due funzioni. Senza, fuori CI il ruolo applicativo non ha nessun
+        privilegio sulle tabelle nuove - i grant generici girano solo nel contesto
+        ci_apply - e il pgTAP, che gira come zeroerp_app, sarebbe rosso per un permesso
+        senza dire che e' un permesso.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva
+            - tableExists:
+                schemaName: config
+                tableName: tipi_titolo_iva
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_tbl      text;
+                v_seq      text;
+                -- Sola lettura: vocabolario a seed Liquibase.
+                v_ro_tables text[] := ARRAY[
+                  'config.tipi_titolo_iva'
+                ];
+                -- DML completa: i titoli si registrano dall'applicazione, e il
+                -- registro dei movimenti lo scrive la primitiva di consumo, che
+                -- e' SECURITY INVOKER.
+                v_rw_tables text[] := ARRAY[
+                  'anagrafiche.soggetti_titoli_iva',
+                  'anagrafiche.soggetti_titoli_iva_ambiti',
+                  'anagrafiche.soggetti_titoli_iva_movimenti'
+                ];
+              BEGIN
+                -- Se il ruolo non esiste (bootstrap incompleto) non si blocca la
+                -- pipeline: un grant mancante e' un problema, un migrate fermo
+                -- ne e' uno peggiore.
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant titoli IVA.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA anagrafiche TO %I', v_app_role);
+                EXECUTE format('GRANT USAGE ON SCHEMA config TO %I', v_app_role);
+
+                FOREACH v_tbl IN ARRAY v_ro_tables LOOP
+                  EXECUTE format('GRANT SELECT ON TABLE %s TO %I', v_tbl, v_app_role);
+                END LOOP;
+
+                FOREACH v_tbl IN ARRAY v_rw_tables LOOP
+                  EXECUTE format(
+                    'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I',
+                    v_tbl, v_app_role);
+                END LOOP;
+
+                -- ⚠️ Le PK sono IDENTITY: senza USAGE sulla sequence l'INSERT
+                --    fallisce con «permission denied for sequence», che non
+                --    nomina la tabella. Il nome lo genera PostgreSQL, quindi si
+                --    risolve a runtime invece di scriverlo a mano.
+                FOREACH v_tbl IN ARRAY v_rw_tables LOOP
+                  v_seq := pg_get_serial_sequence(v_tbl, 'id');
+                  IF v_seq IS NOT NULL THEN
+                    EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I',
+                                   v_seq, v_app_role);
+                  END IF;
+                END LOOP;
+
+                -- Anche la sequence del vocabolario: il seed forza gli id e il
+                -- resync la riallinea, ma un eventuale CRUD di catalogo la
+                -- userebbe. GRANT di sola SELECT/USAGE, coerente col SELECT
+                -- sulla tabella.
+                v_seq := pg_get_serial_sequence('config.tipi_titolo_iva', 'id');
+                IF v_seq IS NOT NULL THEN
+                  EXECUTE format('GRANT SELECT ON SEQUENCE %s TO %I', v_seq, v_app_role);
+                END IF;
+
+                EXECUTE format(
+                  'GRANT EXECUTE ON FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva(bigint, bigint, numeric, date, bigint, uuid) TO %I',
+                  v_app_role);
+                EXECUTE format(
+                  'GRANT EXECUTE ON FUNCTION anagrafiche.fn_check_titolo_iva_ambito(bigint) TO %I',
+                  v_app_role);
+              END;
+              $$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_tbl      text;
+                v_tables   text[] := ARRAY[
+                  'config.tipi_titolo_iva',
+                  'anagrafiche.soggetti_titoli_iva',
+                  'anagrafiche.soggetti_titoli_iva_ambiti',
+                  'anagrafiche.soggetti_titoli_iva_movimenti'
+                ];
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RETURN;
+                END IF;
+                FOREACH v_tbl IN ARRAY v_tables LOOP
+                  EXECUTE format('REVOKE ALL ON TABLE %s FROM %I', v_tbl, v_app_role);
+                END LOOP;
+              END;
+              $$;

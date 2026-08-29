@@ -277,7 +277,7 @@ WITH ins AS (
         billing_account_id,
         codice_cliente_importato,
         -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
-        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   anagrafiche.clienti (changeSet 20260829-22). tmp_iva resta:
         --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
@@ -338,7 +338,7 @@ SELECT throws_ok(
         billing_account_id,
         codice_cliente_importato,
         -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
-        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   anagrafiche.clienti (changeSet 20260829-22). tmp_iva resta:
         --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
@@ -386,7 +386,7 @@ SELECT throws_ok(
         billing_account_id,
         codice_cliente_importato,
         -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
-        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   anagrafiche.clienti (changeSet 20260829-22). tmp_iva resta:
         --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id
@@ -428,7 +428,7 @@ WITH ins AS (
         billing_account_id,
         codice_cliente_importato,
         -- ⚠️ rev 2026-08-29: via `iva_id` — non esiste piu' su
-        --   anagrafiche.clienti (changeSet 20260829-17). tmp_iva resta:
+        --   anagrafiche.clienti (changeSet 20260829-22). tmp_iva resta:
         --   la sua asserzione fa parte del plan.
         pdp_id,
         utility_id

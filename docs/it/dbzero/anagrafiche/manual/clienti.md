@@ -42,12 +42,30 @@ Il significato funzionale e' identico (FK verso `config.utilities.id`) e ora anc
 ### 🚩 Regole di Validazione Condizionale
 
 
-1. **Cliente PA (`cliente_pa`)**
-   Valori ammessi: `S` (Pubblica Amministrazione), `N` (Privato).
-2. **Split payment (`split_payment`)**
-   Valori ammessi: `S`, `N`.
-3. **Servizio da fatturare (`servizio_da_fatturare`)**
+1. **Servizio da fatturare (`servizio_da_fatturare`)**
    Valori ammessi: `true`, `false`.
+
+> ⛔ **rev 2026-08-29 — `cliente_pa`, `split_payment` e `iva_id` NON sono piu' qui**,
+> e nemmeno `codice_cig` / `codice_cup` / `codice_commessa` (changeSet `20260829-22`).
+>
+> ⭐ **Non erano un gruppo solo**, ed e' il motivo per cui se ne sono andate in tre
+> direzioni diverse: stavano tutte su `clienti` perche' questa e' l'unica tabella «per
+> fornitura» (`UNIQUE uq_clienti_istanza_utility`), ma rispondono a **tre domande con tre
+> padroni**:
+>
+> * `cliente_pa` e `split_payment` → [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti).
+>   Un ente **e'** o **non e'** una PA: non lo e' per il gas e non per l'acqua. Qui una riga
+>   per fornitura ammetteva che lo stesso soggetto dichiarasse valori diversi;
+> * i tre codici → [vendite.contratti](/dbzero/vendite/tabelle/contratti). Un CIG identifica
+>   una **gara**: una PA con tre contratti ha tre CIG, e su una riga per fornitura ne entrava
+>   uno solo — ripetuto su tutte le forniture dello stesso contratto e incapace di tenerne
+>   due sulla stessa;
+> * `iva_id` → **nessuna sede nuova**: il suo lavoro e' di altri tre (l'articolo, il tipo
+>   d'uso della fornitura, il titolo documentato del soggetto). Era `NOT NULL` e il backend
+>   la riempiva con un parametro di sistema, quindi ogni cliente portava un codice IVA **che
+>   nessuno aveva scelto**.
+>
+> Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, I0-B / I8-B.
 
 ---
 

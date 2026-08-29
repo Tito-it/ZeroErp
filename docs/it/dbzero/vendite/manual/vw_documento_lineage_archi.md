@@ -52,7 +52,8 @@ sono risolti per `codice_interno` (§6d), mai id letterali.
 * **Destinazione arco**: `to_tipo_id`, `to_uid`, `to_codice`
 * **Stato del target** (dal nodo): `to_stato_codice_interno`, `to_fase`, `to_is_abortito`
 * **`ruolo`**: `ROOT`/`COLLEGATO` dove esiste (archi da `commesse_sorgenti`), altrimenti NULL
-* **`arco`**: lettera diagnostica `A`..`H`, `R`, `N`, `S`, `T` — **dodici** dal 2026-08-28
+* **`arco`**: lettera diagnostica `A`..`H`, `R`, `N`, `S`, `T`, `U` — **tredici** dal
+  2026-08-29 (`U` = DDT → Commessa, la quarta sorgente di commessa)
 
 > ⭐ **Il vocabolario delle lettere è CHIUSO, e il presidio è un cricchetto.**
 > `db/pgtap/vendite/test-documento-lineage-v1.sql` asserisce

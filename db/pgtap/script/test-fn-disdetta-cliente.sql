@@ -99,7 +99,7 @@ SELECT
     (SELECT sp.id FROM config.stati_pdp sp
      -- rev 2026-08-29: via il codice IVA da questa configurazione e dalla
      --   fixture. La colonna omonima non esiste piu' su anagrafiche.clienti
-     --   (changeSet 20260829-17): l'aliquota la decide la merce, non il cliente.
+     --   (changeSet 20260829-22): l'aliquota la decide la merce, non il cliente.
      WHERE sp.codice_interno = 'ATT') AS stato_pdp_att_id;
 
 CREATE TEMP TABLE tmp_dis_pdp AS

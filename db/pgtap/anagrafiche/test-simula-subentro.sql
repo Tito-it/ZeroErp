@@ -289,7 +289,7 @@ WITH ins_cli AS (
   INSERT INTO anagrafiche.clienti (
     soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, data_attivazione,
     -- ⚠️ rev 2026-08-29: via `iva_id` — la colonna non esiste piu' su
-    --   anagrafiche.clienti (changeSet 20260829-17): l'aliquota la decide
+    --   anagrafiche.clienti (changeSet 20260829-22): l'aliquota la decide
     --   la merce, non il cliente. La temp table tmp_iva resta, perche' la
     --   sua asserzione fa parte del plan e verifica ancora config.iva.
     billing_account_id, codice_cliente_importato
@@ -401,7 +401,7 @@ WITH ins_cli AS (
   INSERT INTO anagrafiche.clienti (
     soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, data_attivazione,
     -- ⚠️ rev 2026-08-29: via `iva_id` — la colonna non esiste piu' su
-    --   anagrafiche.clienti (changeSet 20260829-17): l'aliquota la decide
+    --   anagrafiche.clienti (changeSet 20260829-22): l'aliquota la decide
     --   la merce, non il cliente. La temp table tmp_iva resta, perche' la
     --   sua asserzione fa parte del plan e verifica ancora config.iva.
     billing_account_id, codice_cliente_importato

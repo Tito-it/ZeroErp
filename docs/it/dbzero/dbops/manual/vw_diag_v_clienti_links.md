@@ -24,7 +24,6 @@ La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che es
 * **Istanza utility** (`anagrafiche.istanze_utilities`)
 * **Utility** (`config.utilities`)
 * **Tipo ruolo** (`config.tipi_ruoli`)
-* **IVA** (`config.iva`)
 
 e fornisce, in coda, una serie di **flag di coerenza** per verificare che il `billing_account` associato al cliente (se presente) sia **allineato** con:
 
@@ -63,7 +62,6 @@ con join **LEFT** (tolleranti a NULL) verso:
 * `anagrafiche.istanze_utilities iu` (da `c.istanza_utility_id`)
 * `config.utilities u` (da `c.utility_id`)
 * `config.tipi_ruoli tr` (da `sr.tipo_ruolo_id`)
-* `config.iva iv` (da `c.iva_id`)
 
 ✅ Scelta intenzionale: i LEFT JOIN permettono di evidenziare dati mancanti (es. cliente senza billing account, o riferimenti non risolti).
 
@@ -110,16 +108,19 @@ con join **LEFT** (tolleranti a NULL) verso:
 | `utility_codice_interno` | `u.codice_interno` | Codice interno utility |
 | `utility_descrizione`    | `u.descrizione`    | Descrizione utility    |
 
-#### 5) Ruolo e IVA
+#### 5) Ruolo
 
 | Colonna                     | Origine          | Descrizione          |
 | --------------------------- | ---------------- | -------------------- |
 | `tipo_ruolo_id`             | `tr.id`          | ID tipo ruolo        |
 | `tipo_ruolo_codice_interno` | `tr.codice`      | Codice interno ruolo |
 | `tipo_ruolo_descrizione`    | `tr.descrizione` | Descrizione ruolo    |
-| `iva_id`                    | `iv.id`          | ID IVA               |
-| `iva_codice`                | `iv.codice`      | Codice IVA           |
-| `iva_descrizione`           | `iv.descrizione` | Descrizione IVA      |
+
+> ⛔ **rev 2026-08-29 — il blocco IVA è USCITO da questa vista.**
+> `anagrafiche.clienti.iva_id` non esiste più (changeSet `20260829-22`): l'aliquota
+> la decide la merce, e il regime del soggetto passa da un titolo documentato.
+> Non è stato sostituito, perché non rispondeva alla domanda di questa vista.
+> Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, I0-B.
 
 ---
 
