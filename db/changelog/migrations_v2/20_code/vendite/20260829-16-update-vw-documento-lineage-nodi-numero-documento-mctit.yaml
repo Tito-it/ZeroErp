@@ -1,0 +1,223 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL NODO FATTURA SMETTE DI MOSTRARE IL CONTATORE NUDO.
+#
+# -- COSA CAMBIA -----------------------------------------------------
+#   Il `codice` del nodo FATTURA passa da `(f.numero)::text` — il contatore —
+#   a vendite.fn_numero_documento_fattura(f.numero, f.serie), la sede unica
+#   creata dal 20260829-15: «numero - serie», senza anno.
+#   Nessun'altra riga della vista cambia.
+#
+# -- ⛔ COSA QUESTO NON RISOLVE, E VA DETTO ---------------------------
+#   Il §3.6 era nato accoppiato a un difetto piu' grave: la colonna «Transito»
+#   scriveva «→ Fattura 1» sopra un ACCREDITO, cioe' la parola sbagliata.
+#   Quello l'ha gia' tolto la voce 3 (natura della frontiera): oggi il chip
+#   dice «→ Nota di credito 1». Qui resta un numero INCOMPLETO, non
+#   un'informazione falsa — ed e' il motivo per cui questo changeSet arriva
+#   dopo e non prima.
+#   ⚠️ Sul documento che ha aperto la voce non cambia NIENTE: la nota di
+#   credito del reso 24 ha la serie vuota, quindi col formato nuovo resta «1».
+#   Se qualcuno collauda proprio quel caso e non vede differenze, e' corretto
+#   cosi'.
+#
+# -- ⚠️ PERCHE' BASTA UN CREATE OR REPLACE ---------------------------
+#   Cambia il VALORE di una colonna, non il suo nome ne' il suo tipo: il cast
+#   a text resta al suo posto proprio per quello. Quindi niente teardown del
+#   grafo come nel 20260829-02 — e i due dipendenti (vw_documento_lineage_archi
+#   e vw_documento_lineage) non vanno toccati.
+#   ⛔ Il cast NON e' decorativo: toglierlo cambierebbe il tipo risolto della
+#   UNION e il CREATE OR REPLACE fallirebbe.
+#
+# -- ⚠️ E CHI ALTRO LO VEDE ------------------------------------------
+#   Il `codice` del nodo risale: vw_documento_lineage lo espone come
+#   `frontiera_codice`, le sette liste lo portano avanti, e il chip «Transito»
+#   e le tappe del pannello «Passaggi» lo rendono. Nessuno di loro va toccato:
+#   e' lo stesso nome, con dentro un valore migliore.
+#   ⛔ Nessun consumatore CONFRONTA quel valore — e' un'etichetta, non una
+#   chiave: la chiave del nodo e' (tipo_id, uid). Verificato prima di
+#   cambiarlo, perche' se qualcuno ci facesse un `=` questo changeSet lo
+#   romperebbe in silenzio.
+#
+# Dipendenze: 20260829-15 (la sede unica, verificata in precondizione).
+# Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §3.6 / §3.6-ter
+# Origine: testo dello YAML 20260829-02, col solo ramo FATTURA modificato.
+# Verifica: db/pgtap/vendite/test-fn-numero-documento-fattura.sql
+#           db/pgtap/vendite/test-documento-lineage-v1.sql (test 47)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-16-update-vw-documento-lineage-nodi-numero-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260829-16-update-vw-documento-lineage-nodi-numero-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il `codice` del nodo FATTURA diventa il numero documento composto dalla sede unica
+        (20260829-15) invece del contatore nudo: prima usciva «1», che non e' sbagliato ma e'
+        ambiguo, perche' nello stesso anno possono esistere una fattura 1 e una nota di credito 1.
+        Basta un CREATE OR REPLACE - cambia il valore, non nome ne' tipo della colonna - quindi
+        niente teardown e i due dipendenti non si toccano. ⚠️ Sul reso 24 non cambia niente: quella
+        nota ha la serie vuota e resta «1».
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_nodi
+            # ⛔ «20260829-15 prima di questo»: senza la sede unica il corpo non si
+            #    crea, e l'errore direbbe «funzione inesistente» invece di «hai
+            #    saltato un changeSet».
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_numero_documento_fattura'
+                     AND p.pronargs = 2
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
+              WITH (security_invoker=on) AS
+              -- ⭐ rev 2026-08-20: il nodo porta anche la NATURA del documento.
+              --    Il grafo e' nato quando FATTURA era una cosa sola. Da quando la natura
+              --    esiste (config.nature_doc_fiscale) due nodi FATTURA della stessa commessa
+              --    — la fattura e la nota di credito che la rettifica — sono INDISTINGUIBILI
+              --    a video: stesso tipo, stesso stato, e `codice` NULL finche' non sono
+              --    numerati. Chi guarda i «Passaggi» vede due volte «Fattura · EMESSA».
+              --    ⚠️ La natura NON e' il tipo documento: il tipo dice da quale tabella
+              --    viene il nodo, la natura che cosa e' fiscalmente. Sono due assi, e il
+              --    secondo esiste solo per le fatture: per tutti gli altri nodi qui e' NULL,
+              --    ed e' corretto che lo sia.
+              --    Nomi allineati a quelli che il backend gia' usa altrove
+              --    (natura_doc_codice_interno / natura_doc_descrizione, da codice_interno):
+              --    un vocabolario solo fra DB e applicazione.
+              SELECT s.id AS tipo_id, (p.uid)::text AS uid, p.numero AS codice,
+                     st.codice_interno AS stato_codice_interno,
+                     st.codice          AS stato_codice,
+                     st.descrizione     AS stato_descrizione,
+                     st.fase, st.is_abortito,
+                     1::smallint AS pipeline_rank,
+                     NULL::varchar AS natura_doc_codice_interno,
+                     NULL::varchar AS natura_doc_descrizione,
+                     s.codice_interno AS tipo_codice_interno
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_preventivi st ON st.id = p.stato_doc_preventivo_id
+              UNION ALL
+              SELECT s.id, (oc.uid)::text, oc.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_offerte st ON st.id = oc.stato_doc_offerta_id
+              UNION ALL
+              SELECT s.id, (o.id)::text, o.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.ordini o
+                JOIN config.sorgenti s ON s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ordini st ON st.id = o.stato_doc_ordine_id
+              UNION ALL
+              SELECT s.id, (c.id)::text, c.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.contratti c
+                JOIN config.sorgenti s ON s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_contratti st ON st.id = c.stato_doc_contratto_id
+              UNION ALL
+              SELECT s.id, (d.id)::text, d.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     3::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ddt st ON st.id = d.stato_doc_ddt_id
+              UNION ALL
+              -- ⭐ L'UNICO ramo che valorizza la natura: qui vive la distinzione fra una
+              --    fattura e una nota di credito. LEFT JOIN e non JOIN: `natura_doc_id` e'
+              --    nullable e una fattura storica puo' non averla — con il JOIN quel
+              --    documento sparirebbe dal grafo, che e' molto peggio di una natura vuota.
+              -- ⭐ rev 2026-08-29: il `codice` del nodo FATTURA non e' piu' il contatore
+              --   nudo ma il numero DOCUMENTO, composto dalla sede unica
+              --   vendite.fn_numero_documento_fattura (numero - serie, senza anno).
+              --   Prima qui usciva `1`, che non e' sbagliato ma e' AMBIGUO: nello stesso
+              --   anno possono esistere una fattura 1 e una nota di credito 1, e sulle
+              --   liste erano indistinguibili. Per gli altri sei rami `numero` E' gia' il
+              --   numero parlante (DDT0000031), per la fattura e' un bigint.
+              --   ⚠️ La funzione e' IMMUTABLE e prende i VALORI: viene inlineata qui, non
+              --   e' una lettura per riga.
+              --   ⛔ Il cast a text resta e non e' decorativo: e' quello che tiene il tipo
+              --   della colonna `codice` della UNION identico a prima, e senza CREATE OR
+              --   REPLACE fallirebbe (una vista non cambia il tipo di una colonna).
+              SELECT s.id, (f.id)::text,
+                     (vendite.fn_numero_documento_fattura(f.numero, f.serie))::text,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     5::smallint, nd.codice_interno, nd.descrizione,
+                     s.codice_interno
+                FROM vendite.fatture f
+                JOIN config.sorgenti s ON s.codice_interno = 'FATTURA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_fiscale st ON st.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.nature_doc_fiscale nd ON nd.id = f.natura_doc_id
+              UNION ALL
+              SELECT s.id, (cm.id)::text, cm.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     4::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.commesse cm
+                JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+                LEFT JOIN vendite.stati_commessa st ON st.id = cm.stato_commessa_id
+              UNION ALL
+              SELECT s.id, (r.id)::text, r.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     0::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_reso st ON st.id = r.stato_doc_reso_id;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_nodi IS
+                  'Lineage documenti vendite: dimensione nodo condivisa (una riga per '
+                  'documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, '
+                  'stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break '
+                  'frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e '
+                  'fn_documento_lineage. security_invoker=on. '
+                  '⭐ rev 2026-08-29 — il `codice` del nodo FATTURA e'' il NUMERO DOCUMENTO, non piu'' il contatore nudo: lo compone la sede unica vendite.fn_numero_documento_fattura («numero - serie», senza anno). Prima usciva «1», che non e'' sbagliato ma e'' AMBIGUO — nello stesso anno possono esistere una fattura 1 e una nota di credito 1, e in lista erano indistinguibili. Per gli altri sei rami `numero` E'' gia'' il numero parlante (DDT0000031); per la fattura e'' un bigint e l''identita'' sta in tre colonne nullable. '
+                  '⚠️ La funzione e'' IMMUTABLE e prende i valori, quindi e'' inlineata qui: non e'' una lettura per riga. '
+                  '⭐ rev 2026-08-20: il nodo porta anche natura_doc_codice_interno/natura_doc_descrizione '
+                  '(da config.nature_doc_fiscale.codice_interno/descrizione). Serve perche'' il grafo '
+                  'e'' nato quando FATTURA era una cosa sola: due nodi FATTURA della stessa commessa — '
+                  'la fattura e la nota di credito che la rettifica — erano indistinguibili, stesso tipo '
+                  'e stesso stato, con `codice` NULL finche'' non numerati. La natura e'' un ASSE DIVERSO '
+                  'dal tipo documento (il tipo dice da quale tabella viene il nodo, la natura che cosa e'' '
+                  'fiscalmente) ed esiste solo per le fatture: negli altri sette rami e'' NULL, ed e'' '
+                  'corretto. LEFT JOIN sulla natura perche'' natura_doc_id e'' nullable: con un JOIN una '
+                  'fattura senza natura sparirebbe dal grafo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Ripristino non automatizzato: si riapplica il 20260829-02, che
+              --    porta la versione col contatore nudo. E' un CREATE OR REPLACE,
+              --    quindi non serve toccare i dipendenti.
+              -- ⛔ Tornare indietro rimette a video un «1» ambiguo: non da' nessun
+              --    errore, e nessuno se ne accorgerebbe se non guardando la lista.
+              SELECT 1;
