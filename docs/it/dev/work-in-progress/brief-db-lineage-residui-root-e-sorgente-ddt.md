@@ -55,13 +55,14 @@
 | **3** | La colonna «Transito» **chiama «Fattura» una nota di credito**, e mostra il numero **nudo** (`1`): la natura e il codice parlante non escono dalla summary | 🔴 dice la parola sbagliata | **ogni** operatore che guarda la lista resi o la lista ordini |
 | **4** | La **descrizione** di `vw_documento_lineage_archi` non nomina l'arco **`T`**, che esiste dal 2026-08-28 — e la doc **manuale** sulla stessa pagina dice «dodici lettere». Le due si contraddicono | 🟠 doc che dice il falso su un vocabolario dichiarato **chiuso** | chi apre la doc della vista per sapere quali archi esistono |
 
-**Stato al 2026-08-29 — tutte applicate.**
+**Stato al 2026-08-29 — ✅ TUTTE APPLICATE.**
 
 | # | changeSet | presidio | esito |
 | --- | --- | --- | --- |
 | **1** | `20260828-24` (`rango_origine`) + `20260828-25` (la `inc` lo legge) | pgTAP **41**, **43**, **44** | ✅ nessun lavoro BE/FE: la regola vive nella vista |
 | **2** | `20260828-24` (arco **`U`**, DDT → Commessa) | pgTAP **13**, **42** | ✅ misurato il 29/08: le due commesse hanno `n_sorgenti = 1` e root `DDT0000030` / `DDT0010839` |
-| **3** | `20260828-22` + **`20260829-01`** (la colonna sulle **sette** viste di lista) | pgTAP **7**, **40**, **31..37** | ✅ BE/FE in `dd562af68`. ⛔ La metà «numero nudo» (§3.6) resta aperta |
+| **3** | `20260828-22` + **`20260829-01`** (la colonna sulle **sette** viste di lista) | pgTAP **7**, **40**, **31..37** | ✅ BE/FE in `dd562af68` |
+| **3.6** | **`20260829-15`** (la sede unica del numero documento) + **`20260829-16`** (il nodo la legge) | `test-fn-numero-documento-fattura.sql` (10) + pgTAP **47** | ✅ applicati 11:07. A video: `1` (nota) e `101 - VX2` (fattura), che prima erano indistinguibili |
 | **4** | `20260828-23` (`COMMENT` che nomina `T`) | la doc auto-gen | ✅ |
 | **3-ter** | **`20260829-02`** — `tipo_codice_interno` nel grafo + suffisso `_interno` canonico | pgTAP **40..46** | ✅ non era nel brief: nasce dal §3-ter, sotto |
 
@@ -569,9 +570,9 @@ sopra, cioè proprio la nota di credito del §3.1.
 
 #### 3.6-ter ✅ La forma, decisa da Tid il 2026-08-29
 
-> **`numero - serie`, senza anno.** In prosa: *«fattura n. 1 - VX2 del
-> 21/08/2026»* — il numero e la serie compongono il codice, **la data resta un
-> dato a sé** e sta accanto, non dentro.
+> **`numero - serie`, senza anno.** In prosa: *«fattura n. 1 - VX2»* — il numero
+> e la serie compongono il codice, e basta. **La data resta un dato a sé**: sta
+> fuori dal codice, non dentro e nemmeno appesa in coda.
 
 | caso | cosa esce |
 | --- | --- |
@@ -617,6 +618,102 @@ deliberatamente diversa (§3.6-bis).
 con l'etichetta umana sembra economia e non lo è: sono due contratti con due
 committenti diversi, e il giorno che uno dei due cambia si scopre di averli
 legati. Va dichiarata **deliberatamente diversa**, non fusa.
+
+#### 3.6-quater ✅ Il BE restituisce il §3.6 come richiesta al team DB — 2026-08-29
+
+> ✅ **FATTA E APPLICATA il 2026-08-29 alle 11:07** — `20260829-15` (la sede
+> unica) e `20260829-16` (il nodo che la legge). Presidio nuovo:
+> `test-fn-numero-documento-fattura.sql`, 10 test. Le quattro suite del cantiere
+> girano verdi come `zeroerp_app` (10 · 47 · 47 · 8) e il guardrail §6c è verde.
+> Dettaglio al §3.6-quinquies.
+
+Chiusa la voce 3 (`dd562af68`), il team BE ha **riconsegnato** il §3.6 al team
+DB, e la richiesta coincide con la decisione già scritta al §3.6-ter: *una sola
+sede in DB che compone `numero - serie` accanto alla fattura, e il nodo del grafo
+che la legge al posto di `fatture.numero`; le composizioni esistenti si riportano
+su quella — ⛔ tranne quella SDI.*
+
+⭐ **Non è una proposta nuova: è il §3.6-ter restituito come lavoro.** Vale la
+pena notarlo perché è il segno che il giro si è chiuso — la decisione era di Tid,
+il pezzo che faceva danno l'ha tolto il BE, e ciò che resta torna a chi possiede
+l'oggetto.
+
+**Le due affermazioni del BE, verificate sul DB il 2026-08-29:**
+
+| affermazione | verifica |
+| --- | --- |
+| *«il danno vero l'ha già tolto la voce 3»* | ✅ le sette tabelle FE leggono `frontiera_natura_doc_codice_interno`: il chip dice `→ Nota di credito`, non più `→ Fattura` |
+| *«sul reso 24 il formato nuovo non cambia niente»* | ✅ la sua nota di credito è `anno 2026 · serie NULL · numero 1` → col formato `numero - serie` resta **`1`** |
+
+⚠️ **E due misure che confermano che la tabella dei casi del §3.6-ter non è
+teorica** — fatti datati, non ragioni: al 2026-08-29 su 22 fatture **5** hanno
+serie vuota o NULL e **4** non sono ancora numerate. Cioè **entrambi** i rami
+delicati della decisione (nessun trattino orfano; NULL quando non numerata) sono
+percorsi già oggi, e una composizione ingenua li sbaglierebbe tutti e due:
+`serie || ' - ' || numero` su serie NULL non dà `1`, dà **NULL**.
+
+⭐ **Il che dice anche perché «è corto» è vero**: cambiare
+`vw_documento_lineage_nodi.codice` da `f.numero::text` a una composizione non
+tocca né nome né tipo della colonna, quindi è un `CREATE OR REPLACE` e **non** un
+teardown come il `20260829-02`. Il lavoro vero non è il nodo: è la **sede unica**
+e la bonifica delle forme esistenti.
+
+#### 3.6-quinquies ✅ La sede unica, e cosa è costata davvero
+
+**`vendite.fn_numero_documento_fattura(p_numero, p_serie)`** — `20260829-15`.
+Il nodo la legge nel `20260829-16`.
+
+| caso | risultato | letto sul DB dopo l'apply |
+| --- | --- | --- |
+| `103 \| serie VX2` | `103 - VX2` | ✅ |
+| `1 \| serie vuota` (la NC del reso 24) | **`1`** | ✅ invariato, come previsto |
+| non numerata | `NULL` | ✅ |
+
+⭐ **Ed è qui che si vede a cosa serviva**: prima la nota di credito e la fattura
+qui sopra erano **tutte e due `1`**. Non era un numero sbagliato, era un numero
+che non distingueva.
+
+**Le tre scelte, e la ragione di ciascuna.**
+
+* **Prende i VALORI, non l'id della fattura.** Una `fn(p_fattura_id)` sarebbe
+  `STABLE` e farebbe una lettura per riga dentro una vista che gira su tutte le
+  fatture. Prendendo i due valori è **pura** (`IMMUTABLE`, `LANGUAGE sql`),
+  quindi il pianificatore la **inlinea** e il costo sparisce — ⭐ e si testa
+  senza **nessuna** fixture, che è il motivo per cui il suo presidio è di 10
+  test scritti in dieci minuti.
+* **NON è `STRICT`**, ed è la scelta che regge metà della regola: `STRICT`
+  tornerebbe `NULL` appena un parametro è `NULL`, cioè proprio nel caso della
+  serie assente, dove il risultato giusto è il numero da solo.
+* **`NULL` e non stringa vuota** quando il documento non è numerato: `''` è un
+  valore, e un chip che riceve `''` disegna una casella vuota invece di usare la
+  sua fallback (`vendite.lineage.non_numerato`).
+
+⚠️ **La bonifica delle composizioni esistenti è costata ZERO, e non perché sia
+stata saltata.** Misurato il 2026-08-29 su viste e funzioni vive: in tutto il
+database esiste **una sola** altra composizione di `serie` con `numero`, ed è
+quella di `fn_prepare_sdi_payload` — cioè proprio quella che la decisione
+**esclude**. Le altre quattro composizioni vivono nel **frontend**
+(`FatturaDrawer`, `LottoDrawer`, `FondiFatturaDaDecidereTab`,
+`DashboardCompetenzaView`): sono perimetro BE/FE e restano una **richiesta**,
+non un lavoro fatto qui.
+
+⭐ **Il che ribalta una frase del §3.6**, e va detto: *«se si compone nel nodo,
+quella diventa la settima forma in giro per il progetto»*. Falso, misurato: in
+DB non ce n'erano sei, ce n'era **una**, ed è dichiaratamente diversa. Il costo
+temuto era nel numero delle sedi da bonificare, e il numero era sbagliato.
+
+⚠️ **E la divisione dei presidi è deliberata**, dichiarata dopo averla provata
+per mutazione: il test **47** di `test-documento-lineage-v1.sql` verifica che il
+nodo **chiami** la sede unica, non che il formato sia giusto — confronta il nodo
+con la stessa funzione, quindi i due lati si muovono insieme. Aggiungendo
+`STRICT` alla funzione, o togliendole il ramo della serie vuota, il 47 resta
+**verde** e diventa rosso il file della funzione (2 e 3 asserzioni). Due domande
+diverse, due sedi diverse — che è poi la stessa ragione per cui la sede unica
+esiste.
+
+⛔ **Cosa resta, ed è fuori dal DB**: i quattro punti del frontend che compongono
+ancora a modo loro, e la scelta se `vw_fatture_lista` debba esporre il numero
+composto accanto alle tre colonne che già espone. Richiesta al team BE/FE.
 
 ---
 
@@ -765,6 +862,40 @@ disegnare, e non lo segnala nessuno.
 ⚠️ **Trovate ri-eseguendo l'SQL estratto dai file sul database vero**, non dalla
 suite ([[feedback_rinomina_db_binding_mockato]]).
 
+### 3-ter.5 ⚠️ ATTENZIONE BE/FE — il nome fedele si ferma al bordo Python
+
+> Rilevato il **2026-08-29** verificando il fast-forward di `Tito-dev`
+> (commit `dd562af68`). **Non è un difetto del DB**: lato database il guardrail
+> §6c è verde e i tre presidi passano. È una cosa che il team BE deve *sapere di
+> avere*, e decidere.
+
+Dopo il `20260829-02` il progetto ha **due convenzioni per lo stesso valore**,
+a seconda di quale endpoint lo serve:
+
+| consumatore | cosa espone al frontend |
+| --- | --- |
+| i **sette** repository di lista + le sette tabelle FE | `frontiera_tipo_codice_interno` / `frontiera_natura_doc_codice_interno` — **fedele, end-to-end** |
+| `vendite_repository.get_lineage_nodo` (drawer «Passaggi») | legge la colonna fedele e la **ri-aliasa al nome vecchio**: `l.frontiera_tipo_codice_interno AS frontiera_tipo_codice` |
+
+⛔ **Perché non è una pignoleria.** Il guardrail CI
+(`scripts/sql/check_naming_stato_codice.sql`) scansiona **solo** viste, matview e
+funzioni del DB: un `AS frontiera_tipo_codice` scritto in Python è invisibile.
+Quindi la ri-aliasatura non fa rosso e non farà rosso mai — è **esattamente la
+sede** in cui le dieci decodifiche originali sono sopravvissute per mesi
+([[reference_alias_codice_interno_e_il_guardrail_ci]]).
+
+⚠️ **E il costo è quello che il team BE stesso aveva nominato**, un piano più su:
+*«due attributi dello stesso nodo, due convenzioni diverse»* era l'argomento con
+cui il §3-ter è nato. Ora lo stesso attributo ha due nomi a seconda che arrivi da
+una lista o dal drawer, e il payload del pannello continua a chiamare `*_codice`
+un valore che è `codice_interno` — che il FE usa per la chiave i18n e per
+instradare, cioè come **logica**.
+
+⭐ **Non c'è niente da fare lato DB, ed è il punto**: `fn_documento_lineage`
+espone `from/to_natura_doc_codice_interno` e **nessun** codice del tipo. Il nome
+vecchio **nasce e muore in Python**. Chiuderlo è una riga in quel repository più
+la prop del drawer — perimetro BE/FE, decisione loro.
+
 ---
 
 ## 4. Cosa NON è di questo brief
@@ -773,9 +904,42 @@ suite ([[feedback_rinomina_db_binding_mockato]]).
 * Il BE/FE della lista resi: **fatto** il 2026-08-26 (§5 DB-F.4 del brief madre).
 * Il raggruppamento `MAN:<commessa>` e l'ipotesi «una nota per reso»: §4 del
   brief madre, decisione presa e da non riaprire senza motivo.
-* `fn_accredita_riga_reso` che passa `sorgente => NULL` **senza dirlo**: il
-  valore è giusto, manca il commento di due righe. Voce minore del §7 madre,
-  non merita un cantiere: si chiude alla prossima modifica di quella funzione.
+* ✅ `fn_accredita_riga_reso` che passa `sorgente => NULL` **senza dirlo**:
+  **chiusa il 2026-08-29**, `20260829-17`. *(Testo superato: «si chiude alla
+  prossima modifica di quella funzione» — non è arrivata, e la voce si è
+  trascinata per tre cantieri. Alla fine è stata chiusa da sola, perché un
+  cantiere che si dichiara chiuso «tranne una» non è chiuso.)* Dettaglio al
+  §4-bis.
+
+### 4-bis ✅ Il `sorgente => NULL` adesso dice perché — `20260829-17`
+
+⛔ **Zero cambi di comportamento, ed è dimostrato e non affermato**: la
+definizione della funzione **tolti i commenti** è identica prima e dopo —
+**16 673 byte** in tutti e due i casi — e le righe di commento sono **27 in
+più**. Nove suite pgTAP che toccano quella funzione restano verdi
+(8 · 8 · 47 · 7 · 14 · 8 · 14 · 23 · 11).
+
+**Cosa dicono adesso quelle righe**, e tutti e tre i fatti sono verificati sul
+DB il 2026-08-29:
+
+1. una **RETTIFICA non nasce da un documento**: nasce *contro* una commessa. Il
+   reso c'è, e viaggia nel **segmento** (`DDT:<uid>:R:<riga>#RET:<n>`), ma non è
+   la sua sorgente;
+2. il `CHECK chk_commesse_attivita_sorgente_pair` impone la coppia **tutta-NULL
+   o tutta-piena** — quindi valorizzarne *una* solleva, e valorizzarle
+   **entrambe** col DDT **non solleva affatto**;
+3. `fn_build_gruppo_fatturabile_key(NULL, NULL, 999)` → **`MAN:999`**. Il gruppo
+   di una rettifica **non è il DDT**, ed è corretto: il gruppo è l'unità
+   dell'*emissione mirata*, non del documento.
+
+⭐ **Il punto 2 è la ragione per cui la voce meritava di essere chiusa**, e non
+si vedeva finché non la si scriveva: la «riparazione» che verrebbe naturale a
+chi legge due NULL nudi — mettere il DDT — è proprio quella che **non produce
+nessun errore** e sposta la rettifica nel gruppo della merce, in silenzio.
+
+⚠️ **E il commento sta DENTRO il corpo, non nel `COMMENT ON FUNCTION`**: la
+pagina della funzione la legge chi cerca la funzione, non chi sta già scorrendo
+i suoi trenta parametri — che è esattamente dove il difetto abita.
 
 ---
 
@@ -973,6 +1137,48 @@ e il nodo che la legge.
 rilegge — su un documento che quella voce l'aveva appena diagnosticata negli
 altri. *La riga di stato di un cantiere vivo invecchia più in fretta di
 qualunque `COMMENT`, e non ha nessuna doc auto-gen che la rigeneri.*
+
+### 2026-08-29 · ✅ Il §3.6 chiude, e con lui il perimetro DB
+
+**Applicati alle 11:07**: `20260829-15` (la sede unica
+`vendite.fn_numero_documento_fattura`) e `20260829-16` (il nodo la legge).
+Letto sul DB dopo l'apply: `1` per la nota di credito e `101 - VX2` per la
+fattura — **prima erano indistinguibili**. Quattro suite verdi come
+`zeroerp_app` (10 · 47 · 47 · 8) e guardrail §6c verde.
+
+⭐ **La misura che ha ridimensionato il lavoro**: la «bonifica delle
+composizioni esistenti» è costata **zero**, e non perché sia stata saltata. In
+tutto il database esisteva **una sola** altra composizione di `serie` con
+`numero` — quella SDI, cioè proprio quella che la decisione esclude. Il §3.6
+ne temeva sei («la settima forma in giro per il progetto»): il numero era
+sbagliato, e il costo temuto stava tutto lì.
+
+---
+
+## 6. ✅ Stato di chiusura — lato DB, 2026-08-29
+
+**Il perimetro DB di questo cantiere è CHIUSO, senza «tranne».** Nove changeSet
+(`20260828-22` … `-25`, `20260829-01`, `-02`, `-15`, `-16`, `-17`), tutti
+presidiati.
+
+⭐ **Anche la voce minore del §4 è stata chiusa**, e non perché fosse importante:
+perché *«si chiude alla prossima modifica di quella funzione»* è una scadenza che
+non arriva mai — quella voce si era già trascinata per **tre** cantieri. Un
+cantiere chiuso «tranne una» è un cantiere aperto con una lista più corta.
+
+⚠️ **Cosa resta, e non è del team DB** — elencato qui perché un cantiere che si
+dichiara chiuso deve dire *sopra cosa* si chiude:
+
+| voce | dove sta | perché non è DB |
+| --- | --- | --- |
+| i **quattro** punti del frontend che compongono ancora il numero fattura a modo loro (§3.6-quinquies) | `FatturaDrawer`, `LottoDrawer`, `FondiFatturaDaDecidereTab`, `DashboardCompetenzaView` | è il consumatore che sceglie se leggere la sede unica |
+| se `vw_fatture_lista` debba esporre il numero **composto** accanto alle tre colonne che già espone | decisione BE/FE | nessuno l'ha chiesto: si aggiunge quando serve, non «per completezza» |
+| il nome fedele che **si ferma al bordo Python** (§3-ter.5) | `get_lineage_nodo` ri-aliasa a `frontiera_tipo_codice` | il guardrail non ci arriva, ma è codice loro |
+| il gemello **`ATTIVITA_CONSUMI`** (§2.4-ter) | — | prima di un arco servirebbe un **nodo**: è un cantiere suo, non un residuo di questo |
+
+
+⛔ **Nessuna di queste è un residuo nascosto**: sono tutte dichiarate, con la
+loro sede. È la differenza fra un cantiere chiuso e un cantiere abbandonato.
 
 ---
 

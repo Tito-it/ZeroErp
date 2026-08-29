@@ -12,7 +12,7 @@
 --   I 2 spot-check sui casi reali §5 (PRV0000185, commessa 186) sono protetti da
 --   skip() quando i dati non sono presenti (es. CI su DB fresco).
 --
--- Indice test (1..46):
+-- Indice test (1..47):
 --    1) vw_documento_lineage_nodi esiste
 --    2) vw_documento_lineage_archi esiste
 --    3) vw_documento_lineage esiste
@@ -99,6 +99,11 @@
 --      IMMUTABILE su cui si fa logica (linee-guida-sql §6c).
 --   45) nodi/summary: tipo_codice_interno E' il codice_interno di tipo_id
 --   46) summary: frontiera_tipo_codice_interno idem, sul nodo di frontiera
+--   ⭐ 47 — IL NUMERO DOCUMENTO, aggiunto il 2026-08-29 (changeSet 20260829-16):
+--      il `codice` del nodo FATTURA non e' piu' il contatore nudo ma il numero
+--      documento composto dalla sede unica fn_numero_documento_fattura.
+--   47) nodi: il codice di un nodo FATTURA E' quello della sede unica —
+--       nessun ramo se lo ricompone per conto suo
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -117,7 +122,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(46);
+SELECT plan(47);
 
 -- ---- 1..4: esistenza oggetti ---------------------------------------------
 SELECT has_view('vendite', 'vw_documento_lineage_nodi',  'vw_documento_lineage_nodi esiste');
@@ -689,6 +694,43 @@ SELECT is(
       WHERE s.frontiera_tipo_id IS NOT NULL
         AND s.frontiera_tipo_codice_interno IS DISTINCT FROM so.codice_interno),
     0, '46) summary: frontiera_tipo_codice_interno e'' il codice_interno della frontiera');
+
+-- ⭐ 47 — IL NODO LEGGE LA SEDE UNICA, e non una copia della regola.
+--    La composizione del numero documento vive in
+--    vendite.fn_numero_documento_fattura (20260829-15). Qui si pretende che il
+--    `codice` del nodo FATTURA sia ESATTAMENTE quello che la sede unica
+--    produce sulla stessa riga.
+-- ⛔ L'ERRORE CHE PRENDE e' il piu' probabile di tutti su questa vista: che
+--    qualcuno, dovendo toccare il ramo FATTURA, ricomponga la regola a mano
+--    invece di chiamare la funzione. Non darebbe nessun errore — darebbe un
+--    formato leggermente diverso, e a quel punto le sedi tornerebbero due.
+--    Il test 5 (columns_are) non lo vedrebbe: il nome della colonna e il tipo
+--    non cambiano.
+-- ⛔ COSA QUESTO TEST NON PRENDE, e va detto invece di lasciarlo credere.
+--    NON verifica che il FORMATO sia giusto: confronta il nodo con la STESSA
+--    funzione, quindi i due lati si muovono insieme. Provato per mutazione il
+--    2026-08-29 — aggiungendo STRICT alla funzione, o togliendole il ramo
+--    della serie vuota, questo test resta VERDE mentre
+--    test-fn-numero-documento-fattura.sql diventa rosso (2 e 3 asserzioni).
+-- ⭐ Ed e' la divisione dei compiti voluta: la CORRETTEZZA della regola sta
+--    nel file della funzione, qui sta solo che il nodo la CHIAMI invece di
+--    ricopiarla. Due domande diverse, due sedi diverse — che e' poi la stessa
+--    ragione per cui la sede unica esiste.
+-- ⚠️ La forma e' quella dei presidi «riga per riga» di questo file: si conta
+--    quante righe DISSENTONO, e si pretende zero. Seed-agnostico — su un DB
+--    senza fatture conta zero e asserisce zero, e non nomina nessun documento.
+-- ⚠️ IS DISTINCT FROM e non <>: il codice e' NULL su ogni fattura non ancora
+--    numerata (4 su 22 il 2026-08-29), e con <> quelle righe non entrerebbero
+--    MAI nel conteggio — il test resterebbe verde anche se il ramo tornasse a
+--    mostrare il contatore nudo su tutte le altre.
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.vw_documento_lineage_nodi n
+       JOIN config.sorgenti s ON s.id = n.tipo_id AND s.codice_interno = 'FATTURA'
+       JOIN vendite.fatture f ON f.id::text = n.uid
+      WHERE n.codice IS DISTINCT FROM
+            vendite.fn_numero_documento_fattura(f.numero, f.serie)::varchar),
+    0, '47) nodi: il codice di un nodo FATTURA e'' quello della sede unica');
 
 SELECT * FROM finish();
 ROLLBACK;

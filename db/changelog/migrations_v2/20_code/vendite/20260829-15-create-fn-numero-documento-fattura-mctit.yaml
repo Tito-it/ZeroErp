@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SEDE UNICA DEL NUMERO DOCUMENTO DI UNA FATTURA.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Per DDT, ordine, reso e preventivo la colonna `numero` E' gia' il numero
+#   parlante: un varchar del tipo DDT0000031. Per la fattura `numero` e' un
+#   BIGINT, cioe' un contatore, e l'identita' sono TRE colonne — anno, serie,
+#   numero — tutte e tre nullable finche' il documento non e' numerato.
+#   Non esisteva in DB nessuna sede che dicesse come si compongono: ogni
+#   consumatore se lo inventava, e il grafo mostrava il contatore nudo.
+#   ⛔ Il `1` a video non e' sbagliato: e' AMBIGUO. Nello stesso anno possono
+#   esistere una fattura 1 e una nota di credito 1, e in lista sono
+#   indistinguibili.
+#
+# -- LA FORMA, decisa da Tid il 2026-08-29 ---------------------------
+#   `numero - serie`, senza anno. In prosa: «fattura n. 1 - VX2».
+#     fattura   2026 | VX2   | 103  ->  '103 - VX2'
+#     nota      2026 | vuota | 1    ->  '1'     (nessun trattino orfano)
+#     non numerata (tutte NULL)     ->  NULL    (il consumatore usa la sua
+#                                                fallback: sul chip lineage e'
+#                                                vendite.lineage.non_numerato)
+#   ⛔ L'ANNO ESCE DI PROPOSITO: la regola dichiarata e' «accanto c'e' sempre
+#   la data», e ripetere l'anno dentro il codice lo direbbe due volte.
+#   Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §3.6-ter.
+#
+# -- ⚠️ I DUE RAMI CHE SEMBRANO DI NICCHIA E NON LO SONO -------------
+#   Serie vuota e documento non numerato non sono casi limite: sono i due modi
+#   in cui una composizione ingenua sbaglia in SILENZIO.
+#     · `p_numero::text || ' - ' || p_serie` con serie NULL non da' '1':
+#       da' NULL, perche' la concatenazione con NULL annulla tutto. Il numero
+#       SPARISCE, e non c'e' nessun errore.
+#     · con serie stringa vuota da' '1 - ', un trattino orfano a video.
+#   ⭐ E' esattamente il motivo per cui la sede dev'essere UNA: non perche' le
+#   composizioni fossero tante, ma perche' la regola ha due rami che chi la
+#   riscrive a mano non ha ragione di ricordare.
+#   ⚠️ Sul DB di sviluppo del 2026-08-29 entrambi i rami sono percorsi (5
+#   fatture su 22 senza serie, 4 non numerate) — fatto datato, non la ragione:
+#   la regola varrebbe anche a zero occorrenze.
+#
+# -- ⚠️ PERCHE' PRENDE I VALORI E NON L'ID DELLA FATTURA -------------
+#   Una `fn(p_fattura_id)` sarebbe STABLE e farebbe una lettura per riga: in
+#   una vista che gira su tutte le fatture e' un accesso per riga per una
+#   stringa. Prendendo i due valori la funzione e' PURA — IMMUTABLE, LANGUAGE
+#   sql — quindi il pianificatore la INLINEA nella select list e il costo
+#   sparisce. Ed e' testabile senza nessuna fixture.
+#
+# -- ⚠️ NON e' STRICT, ed e' una scelta -----------------------------
+#   STRICT restituirebbe NULL appena UN parametro e' NULL, cioe' proprio nel
+#   caso della serie vuota, dove il risultato giusto e' il numero da solo.
+#   Un `STRICT` messo per abitudine spegnerebbe meta' della regola.
+#
+# -- ⛔ COSA QUESTA FUNZIONE NON DEVE DIVENTARE ----------------------
+#   NON va usata per la stringa SDI. fn_prepare_sdi_payload compone
+#   `COALESCE(anno) || COALESCE(serie) || COALESCE(numero)` SENZA separatore
+#   (2026VX2103) ed e' una stringa per una MACCHINA. Misurato il 2026-08-29:
+#   e' l'unica altra composizione viva in tutto il database. Unificarle sembra
+#   economia e non lo e': sono due contratti con due committenti diversi, e il
+#   giorno che uno cambia si scopre di averli legati. Resta deliberatamente
+#   diversa.
+#
+# Dipendenze: nessuna (funzione pura su due colonne di vendite.fatture).
+# Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §3.6 / §3.6-ter
+# Verifica: db/pgtap/vendite/test-fn-numero-documento-fattura.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-15-create-fn-numero-documento-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260829-15-create-fn-numero-documento-fattura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La sede UNICA che compone il numero documento di una fattura: `numero - serie`, senza
+        anno, deciso il 2026-08-29. Per le altre sei sorgenti `numero` e' gia' parlante; per la
+        fattura e' un bigint e l'identita' sta in tre colonne nullable. Pura e IMMUTABLE cosi' il
+        pianificatore la inlinea; NON strict, perche' serie NULL deve dare il numero da solo e non
+        NULL. Non tocca la composizione SDI, che e' una stringa per una macchina.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            # ⚠️ La firma usa %TYPE su queste due colonne: se cambiassero nome, la
+            #    funzione non si creerebbe con un errore poco parlante. Meglio dirlo.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite' AND table_name = 'fatture'
+                     AND column_name IN ('numero', 'serie')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_numero_documento_fattura(
+                  p_numero vendite.fatture.numero%TYPE,
+                  p_serie  vendite.fatture.serie%TYPE
+              )
+              RETURNS character varying
+              LANGUAGE sql
+              IMMUTABLE
+              AS $function$
+                  -- ⭐ I TRE CASI, in ordine di precedenza. L'ordine e' la regola:
+                  --   il «non numerato» viene PRIMA di tutto, perche' senza numero
+                  --   non c'e' niente da comporre — nemmeno con una serie valorizzata.
+                  SELECT CASE
+                      -- 1. non ancora numerata: NULL, e il consumatore usa la fallback
+                      --    che ha gia' (sul chip lineage: vendite.lineage.non_numerato).
+                      --    ⛔ NON si restituisce la stringa vuota: '' e' un valore, e
+                      --    un chip che riceve '' disegna una casella vuota invece di
+                      --    dire «non numerato».
+                      WHEN p_numero IS NULL THEN NULL
+
+                      -- 2. serie assente: il numero DA SOLO, senza trattino orfano.
+                      --    ⚠️ btrim + COALESCE perche' i due modi di «non avere serie»
+                      --    sono NULL e stringa vuota, e vanno trattati uguale: il primo
+                      --    e' il documento mai serializzato, il secondo il documento
+                      --    serializzato a vuoto. A video sono la stessa cosa.
+                      WHEN COALESCE(btrim(p_serie), '') = '' THEN p_numero::text
+
+                      -- 3. il caso pieno.
+                      ELSE p_numero::text || ' - ' || btrim(p_serie)
+                  END::character varying;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_numero_documento_fattura(
+                  vendite.fatture.numero%TYPE, vendite.fatture.serie%TYPE) IS
+                  'Sede UNICA del numero documento parlante di una fattura: «numero - serie», '
+                  'senza anno. Nasce il 2026-08-29 perche'' per DDT, ordine, reso e preventivo la '
+                  'colonna numero E'' gia'' il numero parlante (un varchar tipo DDT0000031), '
+                  'mentre per la fattura numero e'' un BIGINT — un contatore — e l''identita'' '
+                  'sta in TRE colonne nullable (anno, serie, numero). Senza una sede, ogni '
+                  'consumatore se la inventava e il grafo mostrava il contatore nudo: un «1» che '
+                  'non e'' sbagliato, e'' AMBIGUO, perche'' nello stesso anno possono esistere una '
+                  'fattura 1 e una nota di credito 1. '
+                  '⛔ L''ANNO E'' FUORI DI PROPOSITO: la regola dichiarata e'' «accanto c''e'' '
+                  'sempre la data», e ripetere l''anno dentro il codice lo direbbe due volte. '
+                  '⚠️ I TRE CASI, ed e'' tutta la funzione: numero NULL -> NULL (non numerata, il '
+                  'consumatore usa la sua fallback — NON la stringa vuota, che un chip '
+                  'disegnerebbe come casella vuota); serie NULL o vuota -> il numero da solo, '
+                  'senza trattino orfano; altrimenti «numero - serie». '
+                  '⛔ NON e'' STRICT, ed e'' la scelta che regge meta'' della regola: STRICT '
+                  'tornerebbe NULL appena un parametro e'' NULL, cioe'' proprio nel caso della '
+                  'serie assente, dove il risultato giusto e'' il numero. E una composizione '
+                  'scritta a mano sbaglia in silenzio: numero::text || '' - '' || serie con serie '
+                  'NULL non da'' «1», da'' NULL — il numero sparisce senza nessun errore. '
+                  '⭐ E'' questa la ragione per cui la sede dev''essere UNA: non perche'' le '
+                  'composizioni fossero tante, ma perche'' la regola ha due rami che chi la '
+                  'riscrive non ha ragione di ricordare. '
+                  '⚠️ PURA (IMMUTABLE, LANGUAGE sql) e prende i VALORI, non l''id: cosi'' il '
+                  'pianificatore la inlinea nella select list di una vista invece di fare una '
+                  'lettura per riga, ed e'' testabile senza nessuna fixture. '
+                  '⛔ NON usarla per la stringa SDI: fn_prepare_sdi_payload compone anno||serie|| '
+                  'numero SENZA separatore (2026VX2103) ed e'' una stringa per una MACCHINA. '
+                  'Misurato il 2026-08-29: e'' l''unica altra composizione viva in tutto il DB, e '
+                  'resta deliberatamente diversa — sono due contratti con due committenti, e il '
+                  'giorno che uno cambia si scoprirebbe di averli legati.';
+
+              -- Il ruolo applicativo e il batch la leggono dalle viste che la usano.
+              -- ⚠️ Su una funzione PUBLIC ha EXECUTE per default: questi GRANT non
+              --    aggiungono un permesso, lo rendono ESPLICITO — cosi' un domani un
+              --    REVOKE ... FROM PUBLIC non spegne il grafo senza che si veda perche'.
+              GRANT EXECUTE ON FUNCTION vendite.fn_numero_documento_fattura(
+                  vendite.fatture.numero%TYPE, vendite.fatture.serie%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_numero_documento_fattura(
+                  vendite.fatture.numero%TYPE, vendite.fatture.serie%TYPE) TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il DROP e' possibile solo se nessuna vista la usa gia': il
+              --    20260829-16 la mette dentro vw_documento_lineage_nodi, e da li'
+              --    in poi va annullato PRIMA quello.
+              DROP FUNCTION IF EXISTS vendite.fn_numero_documento_fattura(bigint, character varying);
