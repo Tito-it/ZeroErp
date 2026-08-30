@@ -275,8 +275,24 @@ CREATE TEMP TABLE tmp_scoperte AS
 SELECT 'vendite.attivita_consumi'::text AS tab,
        (SELECT count(*) FROM vendite.attivita_consumi) AS righe
 UNION ALL
+-- ⭐ SI CONTA SOLO CIO' CHE L'ECCEZIONE DIFENDE (rev 2026-08-30).
+--   L'eccezione SCOPERTA_NOTA riguarda le righe FIGLIE DI UNA FATTURA: e' la
+--   pulizia della fattura che questo file presidia. Una FORZATURA manuale ha
+--   `fattura_id IS NULL` — glielo impone chk_stiva_movimenti_documento — quindi
+--   non e' figlia di nessuna fattura e non ha niente a che vedere con questo
+--   presidio.
+-- ⛔ Senza il filtro, la PRIMA forzatura salvata da un operatore faceva
+--   diventare rossa questa asserzione: un rosso in un file che parla di
+--   fatture, per un motivo che nessuno avrebbe collegato al cantiere dei titoli
+--   IVA. Il registro si e' popolato con il brief-db-titoli-iva-movimenti-annullo,
+--   e la creazione della forzatura esiste gia' lato backend.
+-- ⚠️ Il presidio NON si indebolisce: resta vivo per il caso vero — il giorno in
+--   cui I4 scrivera' i movimenti FATTURA/NOTA_CREDITO, che figlie lo sono
+--   davvero, e allora la categoria dell'eccezione andra' decisa come la sua
+--   nota gia' dice.
 SELECT 'anagrafiche.soggetti_titoli_iva_movimenti'::text,
-       (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti);
+       (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti
+         WHERE fattura_id IS NOT NULL);
 
 SELECT is(
   (SELECT count(*) FROM tmp_scoperte WHERE righe > 0),
