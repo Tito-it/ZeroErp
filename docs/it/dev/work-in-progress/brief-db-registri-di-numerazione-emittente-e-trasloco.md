@@ -3,7 +3,7 @@
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** È il cantiere che nasce dalle decisioni del 2026-08-30 registrate in
-> [brief-db-numerazione-commessa-e-periodicita-sistema-codici](brief-db-numerazione-commessa-e-periodicita-sistema-codici.md).
+> [analisi-db-numerazione-documenti-e-due-motori](analisi-db-numerazione-documenti-e-due-motori.md).
 > Quel documento è l'**analisi** e resta la sede delle ragioni; questo è il
 > **piano**. Chi vuole sapere *perché*, torna là.
 >
@@ -48,6 +48,7 @@ spendere un cantiere per **allargare** il difetto che l'altro chiude.
 | Momento | **invariato** per tutti: DDT `EMESSO`, resi `CONFERMATO`, ordini `INSERT`, commessa `INSERT` |
 | Preventivi, contratti, offerte | ⛔ **fuori dal cantiere**: non si toccano |
 | Nome della tabella | **resta** `registri_fatturazione`; il debito è dichiarato |
+| Cambio emittente del BA | ⛔ **bloccato quando anche un solo documento del BA è già NUMERATO** su un registro — non più solo fatture e commesse (§3.7) |
 
 ---
 
@@ -148,7 +149,8 @@ fallirebbe; il trigger presidia il futuro e lascia stare la storia.
 
 | # | Cosa | Note |
 | --- | --- | --- |
-| **C2-1** | `famiglia_documento text NOT NULL DEFAULT 'FATTURA'` su `registri_fatturazione`, `CHECK IN ('FATTURA','DDT','ORDINE','COMMESSA','RESO')` | ⭐ Il default vale solo per il pregresso: le righe esistenti **sono** registri di fatturazione |
+| **C2-0** | `vendite.famiglie_documento` — il **catalogo delle famiglie**: `codice_interno`, `schema_tabella`, `nome_tabella`, `colonna_numero`, `colonna_billing_account`, `attivo` | ⭐ È ciò che rende derivabile il presidio del §3.7 invece che copiabile. Stessa forma di `config.sistema_codici` |
+| **C2-1** | `famiglia_documento` su `registri_fatturazione`, `NOT NULL DEFAULT 'FATTURA'`, **FK** verso `famiglie_documento` | ⭐ Il default vale solo per il pregresso: le righe esistenti **sono** registri di fatturazione. ⭐ FK e non `CHECK`: il vocabolario è un dato, e una famiglia nuova non deve richiedere un `ALTER` |
 | **C2-2** | `CHECK` condizionato: `limite_emissione_giorni`, `limite_emissione_giorno_mese` e una `politica_data_documento` diversa da quella neutra sono ammessi **solo** con `famiglia = 'FATTURA'` | ⛔ Per vincolo, non per abitudine: sono regole della fattura differita, e su un DDT non vogliono dire niente |
 | **C2-3** | `UNIQUE (famiglia_documento, emittente_soggetto_ruolo_id, utility_id)` — nella forma che ammette `utility_id` nullo | ⭐ È ciò che rende deterministica la risoluzione del §3.2: *un* registro per famiglia, emittente e utility |
 
@@ -233,11 +235,98 @@ ragione per cui non collidono con i vecchi.
 * la commessa che **non nasce** senza registro: `throws_ok` con SQLSTATE;
 * il DDT creato a dicembre ed emesso a gennaio: l'anno è **quello
   dell'emissione**, non quello dell'`INSERT`;
+* **la storia allargata (§3.7)**: un BA con un solo **DDT numerato** non si sposta
+  più; lo stesso BA con un DDT **in bozza** si sposta ancora. ⭐ Sono due test
+  gemelli, e senza il secondo il primo non distingue «blocca il numerato» da
+  «blocca tutto»;
 * ⚠️ **cosa i pgTAP non possono provare**: che il cancello stia *sotto* il lock —
   pgTAP è mono-sessione. Si presidia in **review**, come già scritto per
   `fn_get_next_progressivo`.
 
-### 3.7 La guida
+### 3.7 ✅ La «storia» che blocca il cambio emittente del BA si allarga
+
+> ✅ **DECISO (Tid, 2026-08-30). La regola, in una riga:**
+> **lo spostamento di un billing account si blocca quando anche un solo documento
+> del BA è già NUMERATO su un registro.**
+
+**Perché entra in questo cantiere e non è un «già che ci siamo».** Oggi
+`anagrafiche.fn_get_storia_emittente_ba` conta **fatture e commesse**, e dichiara
+nel proprio corpo perché ordini e DDT restano fuori: *«il loro emittente ha un
+guard che lo ricontrolla col BA a ogni scrittura, quindi non è una copia
+stantia»*. ⛔ **È il trasloco a renderlo falso**: da qui in poi un DDT o un ordine
+numerato porta un `registro_id` congelato, e un registro appartiene a **un**
+emittente. Un numero non si riscrive: è esattamente ciò che quella funzione
+chiama «storia». Se il conteggio non si allarga, il guard ammetterà uno
+spostamento che lascia **orfano un documento numerato** — lo stesso difetto muto
+che quel guard esiste per impedire, in un punto nuovo.
+
+| # | Cosa | Note |
+| --- | --- | --- |
+| **C2-16** | `fn_get_storia_emittente_ba` **deriva** dal catalogo invece di elencare: per ogni famiglia attiva, esiste un documento di quel BA con il numero valorizzato? | ⛔ **Solo i numerati**: una bozza non ha congelato niente. ⚠️ Cambia il `RETURNS TABLE` → serve **`DROP`**. ⭐ `EXISTS` per il guard, `count` solo per il messaggio |
+| **C2-18** | Guard sul catalogo: schema, tabella e colonne dichiarate **devono esistere** (`pg_attribute`) | ⛔ Senza, una riga sbagliata rompe il guard del BA a runtime invece che al deploy |
+| **C2-17** | `script.fn_check_ba_cambio_emittente` e il messaggio d'errore | Il conteggio nel messaggio deve dire **quale specie** di documento blocca, o l'operatore non sa dove guardare |
+
+⚠️ **Il restringimento è reale e va detto prima**: l'ordine si numera
+all'`INSERT`, quindi «ordine numerato» = «ordine», e **il primo ordine chiude la
+finestra di correzione** del suo BA. È coerente — quel numero viene dal registro
+di quell'emittente — ma la finestra si stringe parecchio. ⭐ È il prezzo della
+regola generale, ed è il verso giusto: la finestra esiste per correggere un
+cliente *nato* sbagliato, cioè prima che produca documenti.
+
+#### ⭐⭐ Il presidio sta nel CATALOGO, non in un elenco — decisione di Tid, 2026-08-30
+
+*(Superata la versione precedente di questo paragrafo, che diceva «la regola si
+scrive in cinque `SELECT`, e serve un pgTAP che verifichi che l'elenco copra tutte
+le famiglie». Era il rimedio sbagliato: presidiare una copia invece di non farla.)*
+
+> **Ogni famiglia che ha un registro è per costruzione per-emittente, quindi è
+> candidata a bloccare lo spostamento del BA.** Il conteggio non si scrive: **si
+> deriva dal catalogo delle famiglie.**
+
+Ne discende una tabellina di vocabolario, e `famiglia_documento` diventa una **FK**
+invece di un `CHECK`:
+
+```
+vendite.famiglie_documento
+  codice_interno            -- FATTURA | DDT | ORDINE | COMMESSA | RESO
+  schema_tabella, nome_tabella
+  colonna_numero            -- 'numero' … e per la commessa 'codice'
+  colonna_billing_account   -- dove sta il BA su quella tabella
+  attivo
+```
+
+⭐ **È la stessa forma che `config.sistema_codici` usa già** per dire dove vive un
+codice (`schema_tabella` / `nome_tabella` / `nome_colonna`): non si inventa un
+meccanismo, si riusa quello che il progetto ha già.
+
+⭐ **E il presidio sparisce perché sparisce la divergenza.** Con il conteggio
+derivato dal catalogo, il **sesto** documento entra nella regola **il giorno in
+cui si registra la sua famiglia** — non c'è nessun elenco parallelo che possa
+restare indietro, quindi non c'è niente da tenere allineato. È lo stesso principio
+della primitiva di pulizia che scopre le figlie da `pg_constraint`.
+
+**Le cautele, dichiarate:**
+
+* ⚠️ **SQL dinamico dentro un guard.** Gli identificatori vengono dal catalogo:
+  vanno passati con `%I`, e la funzione resta `SECURITY DEFINER`. ⛔ Una riga di
+  catalogo sbagliata romperebbe il guard **a runtime** invece che al deploy ⇒
+  serve un guard sul catalogo stesso, che verifichi su `pg_attribute` che schema,
+  tabella e colonne esistano davvero. ⭐ Anche questo è già scritto altrove:
+  `script.trgfn_config_sistema_codici_sync_gen_codice` fa esattamente questo
+  controllo;
+* ⭐ **`EXISTS` sul percorso felice, `count` solo nel ramo d'errore.** Al guard
+  serve sapere **se** c'è storia, non quanta; il conteggio serve solo al messaggio,
+  cioè quando si è già deciso di rifiutare. È lo stesso schema di
+  `fn_get_next_progressivo`, dove il bersaglio si compone solo dopo il rifiuto.
+  Senza, si passa da 2 `count` a 5-6 su **ogni** movimento;
+* ⚠️ **Il BA è nullable su tre delle cinque tabelle** — verificato: `NOT NULL` su
+  `fatture` e `commesse`, **nullable** su `ddt`, `ordini` e `resi`. Il predicato
+  derivato deve reggere il `NULL` senza contarlo;
+* ⚠️ **La colonna del numero non si chiama uguale ovunque**: `numero` per quattro,
+  **`codice`** per la commessa. È esattamente il motivo per cui va dichiarata nel
+  catalogo e non dedotta.
+
+### 3.8 La guida
 
 | # | Cosa |
 | --- | --- |
@@ -248,9 +337,9 @@ ragione per cui non collidono con i vecchi.
 
 ## 4. L'ordine, e cosa non entra
 
-**Ordine obbligato:** C1 tutto → C2-1/2/3 (il modello) → C2-4/5 (la risoluzione)
-→ C2-12 (i dati) → C2-6/7 (il motore) → C2-8..11 (i documenti, uno alla volta) →
-C2-13 → i presidi → la guida.
+**Ordine obbligato:** C1 tutto → C2-0 (il catalogo) → C2-1/2/3 (il modello) → C2-4/5 (la risoluzione) → C2-12 (i
+dati) → C2-6/7 (il motore) → C2-8..11 (i documenti, uno alla volta) → C2-13 →
+**C2-16/17/18** (la storia del cambio emittente, §3.7) → i presidi → la guida.
 
 ⚠️ **I documenti si traslocano uno alla volta**, non tutti in un changeSet: se
 qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nello
@@ -286,3 +375,26 @@ qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nell
    l'emittente che sceglie male. Il vincolo va messo **in questo cantiere**.
 5. ⚠️ **`ordine` a `usa_sequenza = f`** può accendere il campo numero in una
    maschera che usa `useCodiceField`. Da verificare prima di applicare.
+6. ⭐⭐ **Il trasloco tocca la definizione di «storia» del cambio emittente del BA.**
+   ✅ **Deciso e portato nel piano al §3.7** — qui resta il ragionamento.
+   `anagrafiche.fn_get_storia_emittente_ba` conta **fatture e commesse** e
+   dichiara nel proprio corpo perché **ordini e DDT non si contano**: *«il loro
+   emittente ha un guard che lo ricontrolla col BA a ogni scrittura, quindi non è
+   una copia stantia»*.
+   ⛔ **Dopo il trasloco quell'argomento si indebolisce proprio per i documenti
+   numerati**: un DDT o un ordine numerato porta un `registro_id` **congelato**, e
+   un registro appartiene a **un** emittente (§2). Un numero non si riscrive mai —
+   è la definizione stessa di ciò che quella funzione chiama «storia».
+   ✅ **Deciso da Tid il 2026-08-30: sì — il DDT numerato blocca lo spostamento del
+   BA**, come una fattura. ⚠️ **Solo il numerato**: un DDT in bozza non ha congelato
+   niente.
+   ⚠️ **Sull'ordine la stessa regola pesa di più**, perché l'ordine si numera
+   all'`INSERT`: «ordine numerato» = «ordine», quindi il primo ordine chiude la
+   finestra di correzione del suo BA. È coerente (quel numero viene dal registro di
+   quell'emittente), ma è un restringimento vero e va detto prima.
+   ⇒ Resta da decidere nel cantiere solo questo: se contare gli ordini insieme ai DDT. Se non ci entra, il guard continuerà ad ammettere
+   uno spostamento di BA che lascia orfano anche un documento numerato — lo stesso
+   difetto muto che quel guard esiste per impedire, in un punto nuovo.
+   ⚠️ E il conteggio va fatto **`SECURITY DEFINER`** come l'esistente: sotto RLS la
+   storia di un altro emittente è invisibile, e il guard concluderebbe «non c'è
+   storia» proprio nel caso da bloccare.

@@ -189,7 +189,58 @@ Ogni schermata di elenco segue questo schema fisso:
 └─────────────────────────────────────────────────────────┘
 ```
 
+### ⛔ Regola zero della lista — `<ListaConfigurabile>`, non `DataTable` grezza
+
+> **Una lista si monta con `<ListaConfigurabile codice="...">`. Importare
+> `primevue/datatable` in una view è l'ECCEZIONE, e va motivata.**
+
+⚠️ **Questa regola non era scritta da nessuna parte fino al 2026-08-30**, e si
+vede nei numeri: i file con `DataTable` grezza erano scesi a **48** il 03-08 e
+sono **risaliti a 57** il 30-08. Nel frattempo questo stesso documento spiegava
+*come* configurare una `DataTable` (poco più sotto) senza dire prima di non
+scriverla: chi legge in buona fede trova le istruzioni per fare la cosa
+sbagliata.
+
+**Cosa si guadagna**, e vale anche se non si cambierà mai libreria:
+
+* colonne, ordine, larghezze, visibilità e permessi arrivano dal **catalogo**
+  (`ui.lista_colonna`, risolto da `ui.fn_resolve_lista_config`) invece che da
+  `<Column>` scritte a mano;
+* l'operatore può **personalizzare** le colonne, e la preferenza è sua;
+* ritiro dinamico, export, azioni di utility e paginazione arrivano **gratis**;
+* il file della view smette di nominare PrimeVue — e il giorno di un cambio
+  libreria si tocca **un** building block invece di N view.
+
+**Come si fa, e non serve aspettare nessuno:** la lista ha bisogno del suo
+`codice` — una riga in `ui.lista_definizione` più N righe in `ui.lista_colonna`.
+⭐ È **dato, non DDL**: si crea dall'amministrazione in-app (`ListaDefinizionePanel`,
+`ListaColonnaPanel`), oppure con `scripts/gen_seed_lista.py`. Nessun brief,
+nessun blocco.
+
+**Le eccezioni legittime — le uniche:**
+
+| Caso | Cosa si usa |
+| --- | --- |
+| **Righe di un documento** dentro il suo master (righe ordine, componenti BoM…) | `RigheMasterDetailTable` / `SearchDetailTable`, **non** il BB |
+| Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
+
+⛔ **Non sono eccezioni**: «è una lista piccola», «è solo per l'admin», «tanto
+non la guarda nessuno», «faccio prima». Una lista che nessuno guarda non è una
+lista senza problemi: è una lista che nessuno ha ancora aperto.
+
+**Come si verifica**, prima di dire che una view è finita:
+
+```bash
+grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue | wc -l
+```
+
+Se il numero **sale** dopo il tuo lavoro, hai aggiunto una lista fuori standard.
+
 ### Regole fisse
+
+> ℹ️ Le regole qui sotto valgono **dentro** `<ListaConfigurabile>` (che le
+> applica da sé) e nelle due eccezioni sopra. ⛔ Non sono un invito a montare una
+> `DataTable` a mano: quella decisione la prende la regola zero.
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
 - **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25.

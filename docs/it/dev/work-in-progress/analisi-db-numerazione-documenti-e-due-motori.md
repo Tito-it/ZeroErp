@@ -1,4 +1,12 @@
-# Brief DB — il codice commessa diventa leggibile, e il sistema codici impara il periodo
+# Analisi DB — la numerazione dei documenti, e i due motori che la fanno
+
+> ⚠️ **Rinominato il 2026-08-30.** Si chiamava
+> `brief-db-numerazione-commessa-e-periodicita-sistema-codici.md`, e quel nome era
+> diventato falso due volte: la **periodicità nel sistema codici** non si fa più
+> (§6, superato) e il contenuto ha smesso da giorni di parlare solo della commessa.
+> ⭐ Ed è **analisi**, non brief di cantiere: le decisioni stanno qui con i loro
+> argomenti, l'esecuzione sta nel piano
+> ([brief-db-registri-di-numerazione-emittente-e-trasloco](brief-db-registri-di-numerazione-emittente-e-trasloco.md)).
 
 > **Destinatario:** team DB (`dev/db-tid`). Con due code al BE e una al FE (§10).
 >
@@ -693,7 +701,26 @@ anno** sul contatore nuovo. Le `preCondition` vanno messe.
    trascina a ogni revisione della funzione.
 3. ⛔ **L'unicità probabilistica** del §2b: si chiude con questo cantiere, e va
    nominata perché è il modello a essere sbagliato, non il valore.
-4. ⚠️ **`ddt.anno` e `ordini.anno` nascono da `CURRENT_DATE`** dentro i trigger
+4. ⛔ **`pratiche.pratiche.codice` non ha nessuna unicità.** Verificato sui
+   vincoli e sugli indici: né `UNIQUE` né indice. È un codice **generato da un
+   contatore** e appoggiato al nulla — l'immagine speculare del difetto della
+   commessa (§2b): là un'unicità probabilistica sotto un vincolo deterministico,
+   qui una generazione deterministica **senza** vincolo. Finché genera solo la
+   sequenza regge; una riga scritta a mano, o una sequenza risincronizzata, passa
+   in silenzio. ⚠️ E la colonna è pure `nullable`.
+5. ⚠️ **Il `COMMENT` di `anagrafiche.emittenti_fiscali_billing_account` non dichiara
+   la cardinalità.** Dice *«Associazione billing_account -> emittente fiscale
+   (ruolo). Prevede un default globale»*, ed è **la prima riga che si legge** nella
+   doc auto-gen. La regola — *un BA ha **esattamente un** emittente* — è scritta
+   correttamente altrove (guida `soggetti-e-ruoli-anagrafici` §5a-bis, e la manuale
+   di `fn_check_ba_coppia_emittente_omogenea`), ma non lì.
+   ⛔ E il nome della tabella ha la forma di una **junction table N:N**, quindi chi
+   non legge la cardinalità la **deduce sbagliata**: è successo due volte il
+   2026-08-30, in questa stessa sessione.
+   ⇒ Un `COMMENT` che dica la cardinalità in prima riga — *«un billing account ha
+   esattamente un emittente: `UNIQUE (billing_account_id)`; la riga senza BA è il
+   gestore globale»* — costa un changeSet e chiude una lettura sbagliata ricorrente.
+6. ⚠️ **`ddt.anno` e `ordini.anno` nascono da `CURRENT_DATE`** dentro i trigger
    `normalize`, all'`INSERT`. Sono due difetti in uno: la data non è quella
    dell'azienda (`script.fn_data_operativa()` esiste apposta), e l'anno è quello
    della **creazione** mentre il numero — quando arriverà dai registri — porterà
@@ -1311,6 +1338,98 @@ la guida serve esattamente a far sì che la prossima tappa non debba ridiscutere
 il criterio. ⭐ Il che rende la guida **più** utile, non meno: è l'unico posto in
 cui resterà scritto perché tre documenti stanno da una parte e quattro
 dall'altra.
+
+### 12.6-ter ⭐ «Le tabelle di oggi sono predisposte a una numerazione per emittente?»
+
+*(Domanda di Tid, 2026-08-30 — e non è sul passaggio di adesso: è **se un domani
+si volesse**, quelle tabelle reggerebbero?)*
+
+Servono **due** cose, e vanno guardate separatamente: un **emittente sulla riga**
+(o non c'è niente su cui scomporre il contatore) e una **chiave** che possa
+accogliere la dimensione. Verificato tabella per tabella:
+
+| Tabella | Emittente sulla riga | Chiave del codice | Predisposta? |
+| --- | --- | --- | --- |
+| `anagrafiche.soggetti` | ⛔ no | `uq_soggetto_codice`, globale | ⛔ **no — e va bene così** |
+| `anagrafiche.billing_account` | ✅ **sì, uno solo** — `emittenti_fiscali_billing_account` ha `UNIQUE (billing_account_id)`, più una riga di **default globale** | `uq_billing_account_codice`, globale | 🟡 **sul dato sì; ma c'è un motivo di modello per non farlo** (sotto) |
+| `anagrafiche.istanze_utilities` | ⛔ no | globale | ⛔ no |
+| `anagrafiche.fornitori` | ⛔ no | globale | ⛔ no |
+| `anagrafiche.vettori` | ⛔ no | globale | ⛔ no |
+| `pratiche.pratiche` | ✅ `emittente_fiscale_id` `NOT NULL` | ⛔ **nessuna**: non c'è né UNIQUE né indice su `codice` | metà — e con un difetto suo (§9) |
+| `vendite.fatturazione_lotti` | ✅ `emittente_soggetto_ruolo_id` `NOT NULL` | UNIQUE sulla **stringa nuda** | ✅ **caso commessa** |
+| `vendite.preventivi` | ✅ | `(numero, rev)`, stringa nuda | ✅ caso commessa |
+| `vendite.contratti` | ✅ | `(numero)` | ✅ caso commessa |
+| `vendite.offerte_commerciali` | ✅ | `(codice)` | ✅ caso commessa |
+| `vendite.ordini` · `ddt` · `resi` | ✅ | `(anno[, serie], numero)`, **parziale** | ✅✅ **pieni**: hanno già anno, serie e la colonna nullable |
+
+#### ⭐ La risposta, e cade esattamente sulla riga già tracciata
+
+**Soggetti, fornitori, vettori e istanze non sono predisposti — e non è un
+debito, è che la domanda non si applica a loro.** Non **appartengono** a un
+emittente: sono condivisi. Numerarli per emittente vorrebbe dire o **due codici
+per la stessa entità**, o un codice che non la identifica più.
+
+⚠️ **Il billing account è un caso a sé, e va corretto quanto era scritto qui il
+2026-08-30**: *«la relazione è molti-a-molti, quindi il suo emittente non
+esiste»*. **È falso.** `emittenti_fiscali_billing_account` ha
+`UNIQUE (billing_account_id)`: **un BA ha un solo emittente**, più una riga di
+default globale (`billing_account_id IS NULL`, presidiata da
+`uq_emittenti_fiscali_ba_default`) che fa da fallback. È esattamente ciò che
+`anagrafiche.fn_get_emittente_fiscale_id(billing_account_id)` restituisce — la
+funzione che la commessa **già usa** per derivare il proprio emittente.
+
+⛔ **Ma per il BA resta una ragione per non metterlo nel codice, ed è diversa da
+quella degli altri anagrafici.** ⚠️ *(E qui va corretta anche la prima versione di
+questa riga, che diceva «l'emittente di un BA può cambiare» — troppo larga.)*
+
+**La regola vera, verificata il 2026-08-30**, sta in
+`dbzero/anagrafiche/manual/emittenti_fiscali_billing_account.md` §«Quando questo
+legame si può ancora cambiare», ed è testualmente *«non è "non si può", è "fino a
+quando"»*:
+
+| Il cliente ha… | Cambiare emittente |
+| --- | --- |
+| nessuna fattura e nessuna commessa | ✅ **si può** — è la **finestra di correzione** |
+| almeno una fattura o una commessa | ⛔ respinto, col conteggio nel messaggio |
+
+⭐ **E la finestra non è un residuo: è il motivo per cui la regola non è un
+divieto secco.** Il legame nasce **da solo** con l'emittente dell'operatore che
+crea il cliente (`trgfn_billing_account_link_ef`), quindi un cliente può
+**nascere sbagliato**; se fosse immutabile, quell'errore non si correggerebbe più.
+
+⛔ **Ed è esattamente per questo che la sigla nel codice del BA non va.** Il
+`codice` si assegna all'`INSERT`, cioè **all'inizio della finestra**: la sigla
+sarebbe falsa proprio nei casi che la finestra esiste per correggere — un cliente
+nato sotto l'emittente sbagliato si corregge, ma il suo codice no (⛔ non si
+rinumera, F4, e comunque quel codice è già citato). L'argomento è **più forte** di
+quello approssimativo che c'era scritto prima, non più debole.
+
+⭐ Per la **commessa** la trappola non morde, e ora si vede perché: una commessa
+**è** storia — la sua sola esistenza chiude la finestra del suo BA. L'emittente
+che le sta sotto non si sposta più per definizione.
+⭐ Per la **commessa** la stessa trappola non morde: una commessa nasce e muore
+con il suo emittente, che è nella sua chiave di riuso e non si sposta. **Il
+discrimine non è «ha un emittente», è «l'emittente è stabile per tutta la vita
+della riga»** — ed è la formulazione più precisa del criterio.
+
+**I documenti sono predisposti tutti sul dato** — l'emittente `NOT NULL` ce
+l'hanno tutti e sette — e si dividono in due sulla **chiave**:
+
+* **`ordini`, `ddt`, `resi`**: predisposti **pieni**. Hanno già `anno`, `serie` e
+  la colonna del numero nullable, con la `UNIQUE` parziale. È la stessa struttura
+  della fattura, e il §12.2 dice che il difetto è che **il generatore non la
+  sfrutta**;
+* **`preventivi`, `contratti`, `offerte`, `fatturazione_lotti`**: hanno il dato,
+  non hanno la chiave — l'unicità è sulla **stringa nuda**. ⭐ Il che li mette
+  esattamente nel **caso della commessa**, e quindi la strada per loro **è già
+  percorsa e scritta**: la sigla dell'emittente entra nel codice, la `UNIQUE`
+  resta intatta (decisione «A», §4/D-3). Il giorno in cui servisse, non c'è niente
+  da riprogettare: c'è da ripetere.
+
+⚠️ **La riga anagrafiche/documenti non è quindi una convenzione che abbiamo
+scelto: è già scritta nelle tabelle.** Chi ha l'emittente sulla riga è un
+documento; chi non ce l'ha è un'anagrafica. Ed è un argomento in più per il
+criterio della guida (§12.6-bis).
 
 ### 12.7 Perimetro, e il quadro al 2026-08-30
 
