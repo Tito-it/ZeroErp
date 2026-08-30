@@ -1,5 +1,13 @@
 # Catalogo Building Block — Frontend
 
+> ⛔ **Regola zero del catalogo: una lista si monta con `<ListaConfigurabile>`**,
+> non con una `DataTable` grezza. Le uniche eccezioni sono le **righe di un
+> documento** dentro il suo master (`RigheMasterDetailTable` /
+> `SearchDetailTable`) e una tabella di **anteprima** in un dialog, non paginata.
+> La configurazione della lista è **dato, non DDL**: si crea in-app o con
+> `scripts/gen_seed_lista.py`, senza aspettare nessuno.
+> Regola per esteso: `frontend-standards.md` §«Regola zero della lista».
+
 > Inventario dei componenti riutilizzabili nel frontend Vue.
 > Prima di implementare logica nuova, verificare se esiste già un building block adatto.
 >
