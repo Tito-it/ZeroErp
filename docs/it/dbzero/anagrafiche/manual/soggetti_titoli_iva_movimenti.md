@@ -100,6 +100,101 @@ non si cancella: **si spegne**.
 
 ---
 
+## ⛔ Il registro è «solo aggiunte», e dal 2026-08-31 lo impone il database
+
+Una riga scritta **non si modifica e non si cancella**:
+[`trgfn_stiva_movimenti_append_only`](/dbzero/anagrafiche/funzioni/trgfn_stiva_movimenti_append_only)
+rifiuta `UPDATE` e `DELETE` con `E_TITOLO_IVA_MOVIMENTO_IMMUTABILE`.
+
+⚠️ **Prima era una promessa, non una regola.** Il disegno di `D5` poggiava su
+«il registro resta append-only», ma nel database non c'era nulla che lo
+imponesse: il backend non cancellava perché era scritto in un brief. Decisione di
+Tid del 2026-08-30.
+
+⛔ **Si vietano entrambe le operazioni, e la metà che sembra meno grave è la
+peggiore.** Un `UPDATE` riscrive la storia **in silenzio**: l'accumulatore
+ricalcola e il totale resta «giusto», quindi nessuno vede che un importo è
+cambiato. Un `DELETE` almeno lascia un buco.
+
+⚠️ **Conseguenza da conoscere**: di
+[`trgfn_soggetti_titoli_iva_movimenti_accumulatore`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore)
+gira ormai **solo il ramo `INSERT`**; gli altri due, e il trigger di storico, sono
+irraggiungibili. Restano dove sono come difesa in profondità, ed è dichiarato nel
+loro manuale.
+
+📌 **La pulizia della fattura, un giorno, dovrà passare.** Oggi non tocca questa
+tabella — è un'eccezione dichiarata nel presidio di copertura, con l'alibi «zero
+righe con una fattura» — ma con `I5` servirà decidere: o un'apertura dichiarata,
+o (preferibile) **stornare invece di cancellare**, cioè lo stesso meccanismo
+dell'annullo qui sotto. Sta scritto nel corpo del guard.
+
+---
+
+## ⭐ Annullare una forzatura: una riga in più, non un flag
+
+Una forzatura sbagliata **non si cancella e non si spegne**: si annulla scrivendo
+una **seconda riga `FORZATURA` di segno opposto**, collegata alla prima da
+`annulla_movimento_id`.
+
+| | |
+| --- | --- |
+| **Chi la scrive** | [`fn_annulla_movimento_titolo_iva(movimento, motivo)`](/dbzero/anagrafiche/funzioni/fn_annulla_movimento_titolo_iva) — il chiamante passa **quale riga** e **perché**; importo e titolo li **deriva** il database |
+| **Chi decide se si può** | [`script.fn_check_annullo_movimento_titolo_iva`](/dbzero/script/funzioni/fn_check_annullo_movimento_titolo_iva) — la stessa che spegne il pulsante nel read-side |
+| **Chi presidia la riga scritta** | [`trgfn_stiva_movimenti_guard_annullo`](/dbzero/anagrafiche/funzioni/trgfn_stiva_movimenti_guard_annullo) |
+| **Dove si vede** | [`vw_stiva_movimenti_dettaglio`](/dbzero/anagrafiche/views/vw_stiva_movimenti_dettaglio) |
+
+⭐ **Perché una riga e non un flag `annullato`**, ed è lo stesso ragionamento che
+ha prodotto il registro:
+
+1. il registro resta **append-only** — un flag sarebbe di nuovo un valore
+   sovrascritto sopra a un altro;
+2. ⭐ **l'accumulatore non si tocca**: somma **senza filtri**, quindi un
+   contro-movimento riporta `imponibile_utilizzato` al valore giusto da sé. Un
+   flag imporrebbe un `WHERE NOT annullato`, cioè mettere le mani nel cuore di
+   `I7` per un caso di correzione;
+3. la **data dell'annullo** è essa stessa un'informazione — *quando* qualcuno si è
+   accorto dell'errore. Un flag la perde, una riga la porta in `data_movimento`;
+4. la traccia è più forte: si vedono **entrambe** le righe, l'errore e la
+   correzione, ognuna col suo motivo.
+
+### I vincoli, e cosa impedisce ciascuno
+
+| Vincolo | Cosa impedisce |
+| --- | --- |
+| `fk_soggetti_titoli_iva_movimenti_annulla` | un collegamento a un movimento che non esiste. ⚠️ `ON DELETE NO ACTION`: una `SET NULL` messa «per sicurezza» svuoterebbe il legame in silenzio |
+| `chk_stiva_movimenti_auto_annullo` | una riga che annulla **sé stessa**. ⭐ È uno dei pochi casi in cui il `CHECK` è la sede giusta: confronta due colonne della **stessa** riga |
+| `uq_stiva_movimenti_annulla` (unique parziale) | il **doppio annullo** della stessa riga |
+| il guard | movimento non `FORZATURA`, **titolo diverso**, **importo non opposto**, già annullato, o esso stesso un annullo |
+
+⛔ **Profondo uno: un annullo non si annulla** (decisione di Tid, 2026-08-30). Se
+la forzatura serve ancora, se ne scrive una **nuova** col suo motivo — il registro
+si legge come un racconto dritto invece che come una catena da risalire.
+
+> ⛔ **Il controllo sul TITOLO è il più importante dei cinque**, e non si vede.
+> Un annullo collegato a un movimento di un **altro** titolo decurterebbe il
+> plafond sbagliato e lascerebbe gonfiato quello della forzatura — **senza
+> sollevare niente**, perché l'accumulatore somma *per titolo* e del collegamento
+> non sa nulla. Si vedrebbe solo guardando due plafond insieme. Nel dato reale
+> quel «altro titolo» è di **un altro cliente**.
+>
+> ⛔ **E quello sull'IMPORTO è ciò che rende vera la promessa.** Senza, il
+> database ammetterebbe un «annullo» di 100 su una forzatura di 250, e
+> `imponibile_utilizzato` **non tornerebbe** al valore precedente — cioè proprio
+> la cosa per cui l'annullo esiste.
+
+### ⚠️ Un annullo si può rifiutare, e per un motivo che sorprende
+
+Annullare **riduce** l'usato, quindi di norma passa. Ma se nel frattempo le note
+di credito hanno superato le fatture, togliere la forzatura porterebbe la somma
+**sotto zero** — e il conto sotto zero non è ammesso.
+
+⭐ Per questo il motivo `PLAFOND_NEGATIVO` è **fra quelli che spengono il
+pulsante**, non fra gli errori: l'operatore lo scopre guardando, non premendo.
+
+Cantiere: `brief-db-titoli-iva-movimenti-annullo.md`.
+
+---
+
 ### Il conto non può andare sotto zero — e il tetto non si controlla qui
 
 L'accumulatore rifiuta una somma negativa: nessuna lettura del dominio la ammette.
