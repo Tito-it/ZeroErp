@@ -7,8 +7,9 @@
 //        del `LottoDrawer` e dal registry `documentoDrawers` (tappe Passaggi,
 //        drill-down cruscotti); domani ricerca universale, portale.
 //        SOLA LETTURA per costruzione: la fattura è prodotta dalla pipeline e
-//        oltre EMESSA le righe sono congelate a DB
-//        (`trgfn_fatture_righe_guard_congelamento`). Le azioni di processo
+//        oltre la soglia di congelamento le righe sono congelate a DB
+//        (`trgfn_fattura_satellite_guard_congelamento`; la soglia è un dato,
+//        `config.stati_doc_fiscale.congela_fiscale`). Le azioni di processo
 //        (emissione, numerazione, ristampa massiva) restano nel cockpit.
 //        I dati arrivano dagli STESSI lettori che alimentano il contesto del
 //        PDF: ciò che si vede qui è ciò che finisce nel documento fiscale.
