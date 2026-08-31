@@ -736,6 +736,53 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(scritta["iva_id"], 9)
         self.assertEqual(scritta["meta"]["iva_origine"], "TITOLO")
 
+    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora `iva_id`
+    #        deve vederlo IGNORATO: a decidere e' il risolutore.
+    # ⚠️ Il valore non viene RESPINTO ma SCARTATO, e senza questo caso la
+    #        chiusura sarebbe invisibile: la suite e' restata verde quando e'
+    #        stata fatta, perche' nessun presidio copriva «il payload vince».
+    # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
+    #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
+    #        errori sono best-effort — cioe' la riga si salverebbe anche quando
+    #        l'IVA non e' determinabile.
+    def test_i6_iva_del_payload_ignorata(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "emittente_fiscale_id": 3, "data": "2026-08-31",
+            "billing_account_id": 100, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 10}
+        self.MockIva.return_value = (9, {"iva_origine": "TITOLO"})
+
+        gestisci_riga(1, {"articolo_id": "uuid-art-1", "iva_id": 999})
+
+        self.assertIsNone(self.MockIva.call_args.kwargs["payload_iva_id"])
+        self.assertEqual(self.mock_repo.create_riga.call_args.kwargs["iva_id"], 9)
+
+    # Scopo: ⛔ `I6` sull'AGGIORNAMENTO: la chiave e' fuori dalla tupla inline,
+    #        quindi un `iva_id` nel payload non raggiunge il repository.
+    # ⚠️ Qui NON si ri-risolve, ed e' corretto: `articolo_id` non e' aggiornabile
+    #        su una riga, quindi non c'e' niente che possa spostare la risposta.
+    def test_i6_iva_non_aggiornabile(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        self.mock_repo.update_riga.return_value = {"id": 10}
+
+        aggiorna_riga(1, 10, {"descrizione": "nuova", "iva_id": 999})
+
+        # ⛔ I campi arrivano come **kwargs sparsi** (`update_riga(id, **campi)`),
+        #    non dentro una chiave `update_fields`: la prima stesura di questo
+        #    test guardava li' dentro, trovava un dizionario vuoto e passava
+        #    SEMPRE — un presidio vacuo, verde anche rimettendo la chiave.
+        campi = self.mock_repo.update_riga.call_args.kwargs
+        self.assertIn("descrizione", campi)          # il test ha davvero morso
+        self.assertNotIn("iva_id", campi)
+
     # Scopo: Verifica guard riga su stato EMESSO.
     def test_gestisci_riga_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import gestisci_riga

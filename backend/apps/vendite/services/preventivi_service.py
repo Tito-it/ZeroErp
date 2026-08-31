@@ -943,11 +943,14 @@ def gestisci_riga(
     # `factor_to_base` dalla mappa UoM. Il BE non deriva piu' nulla e NON invia
     # `quantita` (colonna derivata, calcolata dal DB). Allineato a contratti/offerte.
     # ⭐ L'IVA DI RIGA VIENE DALLA SEDE UNICA (I3, 2026-08-31).
-    # ⚠️ Il payload VINCE finche' `I6` non chiude la casella (opzione B).
+    # ⛔ `payload_iva_id=None` da `I6`: la casella e' chiusa, quindi non c'e'
+    #    piu' nessuna scelta manuale da rispettare e la risoluzione e'
+    #    AUTORITATIVA — i suoi errori PASSANO. Meglio fermarsi che scrivere
+    #    un'aliquota inventata su un documento che diventera' fiscale.
     iva_id_riga, iva_meta = _risolvi_iva_riga(
         testata,
         articolo_id=str(articolo_id),
-        payload_iva_id=payload.get("iva_id"),
+        payload_iva_id=None,
         auth_user_id=auth_user_id,
     )
     if iva_meta:
@@ -1109,10 +1112,18 @@ def aggiorna_riga(
     update_fields: dict[str, Any] = {}
     # `quantita` (base) e' derivata dal trigger e non e' aggiornabile dal client:
     # la sorgente e' `qta_operativa`.
+    # ⛔ `iva_id` NON C'E' PIU' (`I6`, 2026-08-31): l'aliquota la decide il
+    #    risolutore e la casella a video e' spenta.
+    # ⚠️ E non si ri-risolve in UPDATE, ed e' corretto: `articolo_id` non e' in
+    #    questo elenco — l'articolo di una riga non si cambia — quindi non c'e'
+    #    niente, qui, che possa spostare la risposta.
+    # ⚠️ Questa e' una TUPLA INLINE e non una `frozenset` come sugli altri due
+    #    domini: chi cerca «la whitelist di riga dei preventivi» per nome non la
+    #    trova.
     for key in (
         "descrizione", "qta_operativa", "uom_operativa_id",
         "factor_to_base", "prezzo_unitario", "sconto_percentuale",
-        "iva_id", "ordine", "meta",
+        "ordine", "meta",
     ):
         if key in payload:
             update_fields[key] = payload[key]

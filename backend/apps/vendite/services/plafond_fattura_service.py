@@ -310,19 +310,22 @@ class PlafondFatturaService:
             riga_id=int(riga["id"]),
             qta=qta_coperta,
             iva_id=parte_titolo.get("iva_id"),
-            # ⭐ Il perche' della quantita' non tonda, scritto SULLA RIGA: a
-            #    video l'operatore vedra' «6,3492» dove aveva venduto 10, e
-            #    senza questa traccia sembra un errore di caricamento.
-            meta={**_meta_parte(meta_base, parte_titolo),
-                  "plafond_spezzatura": "CAPOFILA"},
+            # ⛔ NIENTE marcatore «e' una spezzatura» nel `meta`, ed e' una
+            #    correzione: ce l'avevo messo per spiegare la quantita' non
+            #    tonda, ma quel fatto lo dice gia' `riga_capofila_id` — ed e'
+            #    da li' che `vw_fattura_righe_esposte` deriva
+            #    `tipo_riga = 'PARTE_PLAFOND'`. Due sorgenti per lo stesso
+            #    fatto sono due sorgenti che divergono: basta un `UPDATE` sulla
+            #    colonna senza il `meta` (o viceversa) e la riga si racconta in
+            #    due modi, senza che niente sollevi.
+            meta=_meta_parte(meta_base, parte_titolo),
         )
         self.repository.insert_parte_plafond(
             riga_capofila_id=int(riga["id"]),
             riga_nr=self.repository.get_next_fattura_riga_nr(fattura_id),
             qta=qta_residua,
             iva_id=parte_ordinaria.get("iva_id"),
-            meta={**_meta_parte(meta_base, parte_ordinaria),
-                  "plafond_spezzatura": "PARTE"},
+            meta=_meta_parte(meta_base, parte_ordinaria),
         )
 
 

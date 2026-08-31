@@ -551,6 +551,44 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         self.assertEqual(scritta["meta"]["origine_import"], "XYZ")
         self.assertEqual(scritta["meta"]["iva_origine"], "TITOLO")
 
+
+    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora
+    #        `iva_id` nel payload deve vederlo IGNORATO: a decidere l'aliquota
+    #        e' il risolutore, e la scelta manuale non esiste piu'.
+    # ⚠️ E il valore non viene RESPINTO, viene SCARTATO: una chiave fuori
+    #        whitelist non solleva. Senza questo caso la rimozione della chiave
+    #        sarebbe invisibile — la suite e' restata verde quando e' stata
+    #        fatta, perche' nessun presidio copriva «il payload vince».
+    # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
+    #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
+    #        errori sono best-effort — cioe' una riga si salverebbe anche
+    #        quando l'IVA non e' determinabile.
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_i6_iva_del_payload_ignorata(self, repo_cls, pricing_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = False
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 31}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
+
+        ddt_service.gestisci_riga(7, {
+            "articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10",
+            "iva_id": 999,
+        })
+
+        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
+        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
+        #    allora `payload_iva_id` tornerebbe 999.
+        self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
+        self.assertNotIn("iva_id", ddt_service._CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ddt_service._UPDATE_KEYS_RIGA)
+        self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
+
+
     @patch(_PRICING)
     @patch(_REPO)
     def test_riga_semplice_senza_prezzo_si_salva(self, repo_cls, pricing_cls) -> None:
