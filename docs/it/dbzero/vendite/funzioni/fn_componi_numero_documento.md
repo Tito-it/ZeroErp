@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_componi_numero_documento.md" %}
 # ⚙️ Funzione `fn_componi_numero_documento`
 
 ```sql

@@ -131,11 +131,16 @@ creazione**:
 
 * **Serie / Numero / Anno** costituiscono la chiave logica per la numerazione manuale o automatica.  
   L’indice univoco `uq_ordini_v_anno_serie_numero` assicura l’unicità solo se `numero IS NOT NULL`.
-* **Generazione numero**: il trigger `trgfn_ordini_gen_codice` (BEFORE INSERT)
-  assegna `numero` via `script.fn_generate_codice('ordine')` se NULL/vuoto →
-  **valorizzato già all'INSERT, anche in BOZZA** (in pratica mai NULL; l'indice
-  parziale `WHERE numero IS NOT NULL` è difensivo). La colonna è poi **immutabile**
-  (lock colonne su `numero`).  
+* **Generazione numero**: il trigger
+  [`trgfn_ordini_gen_numero`](/dbzero/vendite/manual/trgfn_ordini_gen_numero)
+  (BEFORE INSERT) assegna `numero` se NULL/vuoto → **valorizzato già all'INSERT,
+  anche in BOZZA** (in pratica mai NULL; l'indice parziale
+  `WHERE numero IS NOT NULL` è difensivo). La colonna è poi **immutabile**
+  (lock colonne su `numero`).
+  ⚠️ **rev 2026-08-31**: il numero non viene più da `script.fn_generate_codice`
+  né dalla sequenza generica. Viene dal **motore dei registri** — contatore per
+  azienda e per anno — e la sua **forma** (prefisso, suffisso, cifre) dal
+  registro stesso. Il vecchio trigger `trgfn_ordini_gen_codice` non esiste più.  
 * **UID** (`uuid`) – identificatore universale per import/export o sincronizzazione API.
 
 > *Gli ordini possono essere generati anche da sistemi esterni (CRM, portali clienti, configuratori) e successivamente importati nel gestionale tramite `sorgente_tipo_id` + `sorgente_uid`.*
@@ -256,7 +261,7 @@ la provenienza è tracciata da una coppia di colonne tipizzate dedicate:
 ### Regole di gestione
 
 1. **Creazione** – ammessi solo stati iniziali (*bozza*).
-2. **Numerazione** – assegnata dal trigger `trgfn_ordini_gen_codice` all'INSERT (anche in BOZZA) se `numero` è NULL; immutabile dopo (lock colonne).
+2. **Numerazione** – assegnata dal trigger `trgfn_ordini_gen_numero` all'INSERT (anche in BOZZA) se `numero` è NULL; immutabile dopo (lock colonne).
 3. **Cancellazione** – vietata se ordine gia` confermato o collegato a DDT/fatture (vincolo logico).
 4. **Cambio valuta** – ammesso solo finche` non esistono righe evase.
 5. **Sorgente esterna** – se popolata, blocca rinumerazione automatica e update su `serie/numero`.  

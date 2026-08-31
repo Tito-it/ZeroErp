@@ -9,7 +9,8 @@
 --  1) Riferimenti minimi presenti
 --  2) D-0: una sola soglia del minimo non si salva
 --  3) D-2: importo zero rifiutato dal CHECK (sorgente a totale zero)
---  4) D-2: stato fuori vocabolario rifiutato dal CHECK
+--  4) D-2/D-22: stato fuori vocabolario rifiutato dal GUARD (non piu' dal CHECK)
+--  4-bis) D-2: ...e il CHECK resta la rete strutturale, con quattro valori
 --  5) D-3a: fondo di segno opposto al totale della sorgente rifiutato
 --  6) D-3a: fondo piu' grande della sorgente rifiutato
 --  7) ⭐ Banda: fondo NEGATIVO su sorgente a credito AMMESSO
@@ -47,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(29);
+SELECT plan(30);
 
 -- ============================================================
 -- 0) Riferimenti
@@ -241,6 +242,19 @@ SELECT throws_ok(
     'D-2: importo zero rifiutato dal CHECK (su sorgente a totale zero, dove il guard non arriva prima)'
   );
 
+-- 🔴 RISCRITTO IL 2026-08-31 (D-22): a rifiutare non e' piu' il CHECK.
+--   Dal changeSet 20260831-61 il guard di transizione e' montato anche in
+--   BEFORE INSERT, e un BEFORE ROW scatta PRIMA che i CHECK di tabella siano
+--   valutati: adesso parla lui, con P0001 e con una frase che nomina i due
+--   stati di nascita ammessi. ⚠️ Il presidio non e' sparito ne' si e' spostato
+--   di significato — si e' spostato di SEDE, ed e' esattamente la specie di
+--   cambio che un `throws_ok` senza SQLSTATE non avrebbe fatto vedere: sarebbe
+--   restato verde raccontando una cosa falsa.
+-- ⛔ Il CHECK resta, e non e' ridondante: presidia le strade che il trigger non
+--   percorre (un COPY con i trigger spenti, un DISABLE TRIGGER). Che ci sia
+--   ancora, e con tutti e quattro i valori, lo dice l'asserzione subito dopo —
+--   senza, spegnere il vincolo passerebbe inosservato perche' a fermare
+--   l'INSERT basterebbe il guard.
 SELECT throws_ok(
     format($$
       INSERT INTO vendite.fatture_fondi_fattura_source (
@@ -252,9 +266,20 @@ SELECT throws_ok(
              r.emittente_soggetto_ruolo_id, r.valuta_id
         FROM tmp_refs_ffg r;
     $$, (SELECT id FROM tmp_src_pos)),
-    '23514',
+    'P0001',
     NULL,
-    'D-2: stato fuori vocabolario rifiutato dal CHECK'
+    'D-2/D-22: stato fuori vocabolario rifiutato — dal 2026-08-31 dal GUARD, non piu'' dal CHECK'
+  );
+
+SELECT ok(
+    (SELECT pg_get_constraintdef(c.oid) LIKE '%DISPONIBILE%'
+        AND pg_get_constraintdef(c.oid) LIKE '%ASSEGNATO%'
+        AND pg_get_constraintdef(c.oid) LIKE '%ANNULLATO%'
+        AND pg_get_constraintdef(c.oid) LIKE '%ESEGUITO%'
+       FROM pg_constraint c
+      WHERE c.conname = 'chk_fondi_source_stato'
+        AND c.conrelid = 'vendite.fatture_fondi_fattura_source'::regclass),
+    'D-2: ...e il CHECK resta la rete strutturale, con tutti e quattro i valori'
   );
 
 -- ============================================================

@@ -4,7 +4,7 @@
 >
 > **Prerequisiti:** nessuno. Le parti tecniche stanno in fondo a ogni capitolo.
 >
-> **Stato:** aggiornata al **31-08-2026**, dopo il trasloco di DDT, ordini, resi e commesse sui registri. Descrive **come funziona oggi**, non come funzionava prima.
+> **Stato:** aggiornata al **31-08-2026 (sera)**, dopo che i quattro documenti traslocati hanno portato sui registri anche la **forma** del numero, e non più solo il contatore. Descrive **come funziona oggi**, non come funzionava prima.
 
 ---
 
@@ -33,24 +33,31 @@ Per questo in ZeroErp ci sono **due meccanismi**, non uno.
 ### 2.1 Il **catalogo dei formati** — `config.sistema_codici`
 
 È una tabella di configurazione che dice, per ogni tipo di codice, **che aspetto
-ha**: un prefisso, un separatore, quante cifre.
+ha** — prefisso, separatore, quante cifre — e che per ognuno **fa anche il
+conteggio**: tiene un contatore che avanza di uno a ogni riga nuova e assegna il
+codice **nel momento in cui la riga viene creata**.
 
 ```
 prefisso = BAC     separatore = /     cifre = 7      →     BAC/0001234
 ```
 
-Per la maggior parte dei codici fa anche **il conteggio**: tiene un contatore che
-avanza di uno a ogni riga nuova, e assegna il codice **nel momento in cui la riga
-viene creata**.
+**Chi lo usa, oggi** — clienti, soggetti, fornitori, vettori, istanze di utility,
+pratiche, preventivi, contratti, offerte commerciali, lotti di fatturazione.
+Dieci voci, e nessun documento di vendita.
 
-**Chi lo usa così, oggi** — clienti, soggetti, fornitori, vettori, istanze di
-utility, pratiche, preventivi, contratti, offerte commerciali, lotti di
-fatturazione.
+⭐ **Dal 31 agosto 2026 questa tabella descrive solo cose che genera davvero.**
+Fino a quel giorno conteneva anche le righe di documenti di trasporto, ordini,
+resi e commesse: righe che non contavano più niente da mesi, ma che restavano
+visibili nel pannello di configurazione con un prefisso che **nessuno leggeva
+più**. Un amministratore che lo cambiava non otteneva alcun effetto, e non aveva
+modo di accorgersene.
 
 ### 2.2 Il **motore dei registri** — `vendite.registri_fatturazione`
 
 Un **registro** è un sezionale di numerazione: appartiene a **una** azienda
-emittente, tiene il proprio contatore, e sa ripartire da 1 a ogni Capodanno.
+emittente, tiene il proprio contatore, sa ripartire da 1 a ogni Capodanno e —
+dal 31 agosto 2026 — porta anche la **forma** del numero che produce: prefisso,
+suffisso e quante cifre.
 
 **Chi lo usa, oggi** — fatture, documenti di trasporto, ordini, commesse, resi.
 
@@ -70,32 +77,56 @@ mettere insieme **tre** cose diverse, e non è detto che vengano dallo stesso po
 
 | | Che cos'è | Chi la fornisce |
 | --- | --- | --- |
-| **Il formato** | prefisso, separatore, quante cifre | `config.sistema_codici` — ⚠️ tranne la fattura, che non ha formato: il suo numero è il progressivo nudo |
-| **Il contatore** | chi tiene il conto e fino a quanto è arrivato | il sistema codici **oppure** il registro |
-| **Il momento** | quando il numero viene consegnato | dipende dal documento |
+| **Il formato** | prefisso, suffisso, quante cifre | il **registro**, per i cinque documenti; il catalogo dei formati per tutto il resto |
+| **Il contatore** | chi tiene il conto e fino a quanto è arrivato | il registro **oppure** il catalogo dei formati |
+| **Il momento** | quando il numero viene consegnato | dipende dal documento, e non si centralizza |
 
-⭐ **È la scoperta che ha reso semplice il lavoro di agosto 2026:** i quattro
-documenti traslocati **hanno cambiato solo il contatore** — una delle tre cose. Il
-formato continuano a prenderlo da dove lo prendevano prima, e il momento è rimasto
-quello di sempre. Ecco perché un cambiamento che sembrava grosso è costato poco.
+### ⚠️ Il trasloco è avvenuto in **due tempi**, e conviene saperlo
 
-Nel catalogo dei formati questa distinzione si legge in una casella:
-`usa_sequenza`. Se è **sì**, quel codice usa anche il contatore del sistema codici;
-se è **no**, il formato viene da lì ma il conteggio lo fa qualcun altro.
+Chi ha letto questa guida in una versione precedente ci ha trovato scritto che i
+quattro documenti *«hanno cambiato solo il contatore»*. Era vero, ma **solo per
+mezza giornata**:
+
+1. **la mattina** del 31 agosto 2026 si è spostato il **contatore**, lasciando la
+   forma nel catalogo dei formati;
+2. **la sera** si è spostata anche la **forma** — ed è stato spostandola che si è
+   visto perché doveva muoversi: finché la forma restava di là, quelle quattro
+   righe dovevano restarci anche loro, e restavano **monche**.
+
+⭐ È il caso tipico in cui un lavoro fatto a metà non si vede finché non lo si
+guarda da vicino. Le righe non davano errore: davano confusione, che è più
+difficile da notare e più lunga da smaltire.
+
+### La forma ha un **default** e un **effettivo**
+
+È la distinzione che regge tutto il capitolo, e vale la pena tenerla a mente:
+
+```
+famiglie_documento     →  il DEFAULT   (com'è fatto quel TIPO di documento)
+registri_fatturazione  →  l'EFFETTIVO  (com'è fatto QUESTO sezionale)
+```
+
+Tutti i documenti di trasporto hanno 7 cifre: questa è una proprietà del **tipo di
+documento**, e sta nel catalogo delle famiglie. Un singolo sezionale può però
+volere un prefisso suo — è per quello che esistono i sezionali — e allora il
+valore che conta è quello scritto sul **registro**.
+
+⭐ Un registro nuovo **nasce copiando il default della sua famiglia**, e da quel
+momento vive di vita propria. Nessuno deve ricordarsi di riempirlo.
 
 ---
 
 ## 4. Come nasce oggi ogni identificativo
 
-*(fotografia al 31-08-2026)*
+*(fotografia al 31-08-2026, sera)*
 
 | Documento / entità | Formato | Contatore | Quando riceve il numero |
 | --- | --- | --- | --- |
 | **Fattura** | *nessuno* (vedi sotto) | **registro** | all'emissione |
-| **DDT** | catalogo formati | **registro** | quando passa a *emesso* |
-| **Ordine** | catalogo formati | **registro** | alla creazione |
-| **Reso** | catalogo formati | **registro** | quando passa a *confermato* |
-| **Commessa** | catalogo formati | **registro** | alla creazione |
+| **DDT** | **registro** | **registro** | quando passa a *emesso* |
+| **Ordine** | **registro** | **registro** | alla creazione |
+| **Reso** | **registro** | **registro** | quando passa a *confermato* |
+| **Commessa** | **registro** | **registro** | alla creazione |
 | Preventivo, contratto, offerta | catalogo formati | catalogo formati | alla creazione |
 | Lotto di fatturazione | catalogo formati | catalogo formati | alla creazione |
 | Cliente, soggetto, fornitore, vettore, istanza, pratica | catalogo formati | catalogo formati | alla creazione |
@@ -110,13 +141,13 @@ si vede solo guardando le colonne:
   su un documento stampato la compone chi stampa, non il database;
 * **DDT, ordini e resi** tengono anno e serie in campi propri, ma nel campo «numero»
   scrivono una stringa **già formattata** con prefisso e cifre di riempimento (per
-  esempio `DDT0000123`), presa dal catalogo dei formati;
+  esempio `DDT0000123`), presa dal registro;
 * **la commessa tiene tutto dentro un campo solo**, il codice, perché non ha campi
   separati per anno e registro: `CMM-ACME-2026-000000001`.
 
 ⚠️ Ne discende una cosa pratica: **chi scrive codice che confronta o ordina i numeri
 non può trattarli tutti allo stesso modo.** Ed è la ragione per cui il controllo
-automatico descritto al §7 non elenca i documenti ma li legge da un catalogo: le
+automatico descritto al §8 non elenca i documenti ma li legge da un catalogo: le
 regole sono tre, non una.
 
 ⚠️ **Il momento non è un dettaglio.** Un documento che riceve il numero *alla
@@ -127,9 +158,40 @@ cui la fattura si numera solo all'emissione.
 
 ---
 
-## 5. Le scelte fatte, e perché
+## 5. Un solo posto che compone il numero
 
-### 5.1 Ogni azienda ha la sua numerazione, e la garanzia sta nella chiave
+Fino al 31 agosto 2026 i quattro documenti traslocati facevano **gli stessi sei
+passi**, ciascuno per conto proprio: trovare il registro, ricavare l'anno dalla
+data, chiedere il progressivo, leggere il formato, comporre la stringa, scrivere
+le colonne. Quattro copie della stessa cosa.
+
+⛔ **Il difetto di quattro copie non è la lunghezza: è che si può correggerne
+tre.** Una modifica al modo di comporre il numero andava fatta in quattro posti, e
+chi ne dimenticava uno otteneva un documento formattato diversamente dagli altri —
+che **nessun controllo respinge**, perché è un numero valido, solo diverso.
+
+⭐ Oggi i sei passi stanno in una funzione sola, e i quattro generatori conservano
+l'unica cosa che li distingue davvero: **il momento**. Il documento di trasporto
+numera all'emissione, il reso alla conferma, ordine e commessa alla creazione —
+quello resta scritto ciascuno a casa propria, perché è la sola cosa che non hanno
+in comune.
+
+### ⭐ Il guadagno che non si vedeva: provare la composizione
+
+La parte che compone la stringa è ora una funzione **pura**: riceve dei valori e
+restituisce una stringa, senza leggere niente.
+
+Prima, per verificare che un numero venisse formattato bene, bisognava
+**fabbricare un documento intero** — un documento di trasporto con le sue righe,
+il suo indirizzo, la sua causale e la sua transizione di stato. Oggi si scrive una
+riga di prova con i valori che si vogliono. Il costo di verificare un caso in più è
+passato da venti righe a una.
+
+---
+
+## 6. Le scelte fatte, e perché
+
+### 6.1 Ogni azienda ha la sua numerazione, e la garanzia sta nella chiave
 
 Se due aziende emittenti condividessero lo stesso registro, succederebbe una cosa
 che **non dà nessun errore**: il contatore è uno solo, quindi i numeri escono tutti
@@ -141,7 +203,7 @@ questo è esattamente ciò che un controllo fiscale guarda.
 il registro entra nella chiave di identità del documento. Così due aziende possono
 avere entrambe il documento numero 1 dello stesso anno, senza pestarsi i piedi.
 
-### 5.2 L'anno viene dalla data del documento
+### 6.2 L'anno viene dalla data del documento
 
 Non dalla data in cui qualcuno preme il pulsante. Un documento **datato** dicembre
 prende un numero del contatore di dicembre anche se viene emesso a gennaio.
@@ -151,7 +213,7 @@ documenti l'anno lo scriveva un automatismo **alla creazione**, leggendo la data
 quel giorno, mentre il contatore usava la data del documento. Due nozioni di «anno»
 sulla stessa riga — e il controllo di unicità usava la prima.
 
-### 5.3 Il numero non torna indietro nel tempo — **solo per le fatture**
+### 6.3 Il numero non torna indietro nel tempo — **solo per le fatture**
 
 Sulle fatture c'è un cancello: non si dà un numero a un documento con data
 anteriore all'ultimo già numerato sullo stesso sezionale. È una regola fiscale, e
@@ -162,7 +224,7 @@ trasporto per la spedizione di ieri, inserito stamattina dopo che ne è già usc
 uno con la data di oggi, è un caso d'uso normale. Applicare lì lo stesso cancello lo
 avrebbe reso impossibile.
 
-### 5.4 Il codice della commessa contiene la sigla dell'azienda
+### 6.4 Il codice della commessa contiene la sigla dell'azienda
 
 La commessa non ha un campo «registro» da mostrare: la sua identità è la stringa
 stessa. Quindi la stringa deve bastare a distinguere due aziende, e la sigla ci
@@ -171,10 +233,10 @@ entra dentro:
 ```
 CMM-ACME-2026-000000001
  │    │     │      │
- │    │     │      └─ progressivo, riparte da 1 ogni anno
+ │    │     │      └─ progressivo, riparte da 1 ogni anno — NOVE cifre
  │    │     └──────── anno
  │    └────────────── sigla dell'azienda emittente
- └─────────────────── prefisso fisso
+ └─────────────────── prefisso, che arriva dal registro
 ```
 
 ⚠️ Ne discende un vincolo sulla **sigla**: solo lettere maiuscole e cifre, da 2 a 10
@@ -182,7 +244,20 @@ caratteri, **niente trattino**. Il trattino è il separatore: se comparisse dent
 sigla, il codice smetterebbe di essere leggibile e nessuno saprebbe più dove finisce
 l'azienda e dove comincia l'anno.
 
-### 5.5 I numeri già assegnati non si rifanno
+⭐ **La commessa è l'unica delle quattro a usare nove cifre**, ed è per questo che è
+stata la sola a rivelare un difetto altrimenti invisibile — se ne parla al §9.
+
+### 6.5 Il separatore non è più un campo a sé
+
+Prima il formato aveva un campo «separatore» accanto al prefisso. Oggi non c'è più:
+**se serve un separatore, si scrive dentro il prefisso** (`CMM-`).
+
+⭐ Non è una semplificazione estetica. Con due campi distinti, un prefisso vuoto
+lasciava il separatore **orfano in testa** — `-ACME-2026-000000001` — e chi spezzava
+quel codice sul trattino si ritrovava un primo pezzo vuoto. Un caso speciale che la
+commessa aveva e gli altri no, sparito insieme al campo.
+
+### 6.6 I numeri già assegnati non si rifanno
 
 Nessuna rinumerazione del pregresso, per nessun documento. I documenti numerati
 prima di agosto 2026 non hanno il registro e in alcuni casi nemmeno l'anno: **è
@@ -190,9 +265,30 @@ storia**, e resta com'è. Non collidono con i nuovi perché **la forma è divers
 ed è l'unica cosa che li separa, quindi chi cambia il formato dei numeri nuovi sta
 toccando anche la ragione per cui non collidono con i vecchi.
 
+### 6.7 ⛔ I contatori sono stati allineati al massimo già emesso
+
+Il giorno del trasloco è successa una cosa che merita un paragrafo suo: i contatori
+dei registri partivano da zero, mentre i documenti vecchi erano arrivati per esempio
+a `ORD0040688`. Il primo ordine nuovo ha ricevuto `ORD0000001` — **un numero già
+usato anni prima**, con la stessa identica forma.
+
+⛔ E il controllo di unicità non se n'è accorto, per una ragione che vale la pena
+capire: le righe vecchie non hanno un registro, le nuove sì, e **due righe che
+differiscono per un campo vuoto contro un campo pieno non collidono mai**. Il
+vincolo c'era, e taceva.
+
+⭐ La riparazione ha portato ogni contatore **almeno** al massimo progressivo già
+emesso dalla stessa azienda in quell'anno, ed è scritta come **regola** e non come
+elenco: vale anche per il prossimo contatore che nascesse indietro.
+
+⚠️ **Ne resta una conseguenza da conoscere:** un contatore non torna mai indietro,
+quindi allinearlo lascia dei buchi nella progressione — i numeri fra l'ultimo
+davvero emesso e il massimo storico. È il prezzo accettato, ed è molto più basso di
+un numero doppio.
+
 ---
 
-## 6. Quando un numeratore deve **traslocare** sui registri
+## 7. Quando un numeratore deve **traslocare** sui registri
 
 Il criterio in una frase:
 
@@ -216,12 +312,19 @@ campanelli suona**, il numeratore è nel posto sbagliato:
 **più serie**, la serie è una dimensione del contatore e nel catalogo dei formati
 non c'è.
 
-La checklist operativa del trasloco sta nella scheda tecnica di
+### ⛔ E il trasloco si finisce, non si lascia a metà
+
+La lezione del 31 agosto 2026, in una riga: **spostare un numeratore vuol dire
+spostare il contatore E la forma.** Fermarsi al contatore lascia una riga monca in
+una tabella di configurazione, con dei campi che nessuno legge più e che qualcuno
+prima o poi proverà a cambiare.
+
+La checklist operativa aggiornata sta nella scheda tecnica di
 [`config.sistema_codici`](/dbzero/config/manual/sistema_codici).
 
 ---
 
-## 7. ⛔ Un'idea valutata e **scartata**: la colonna che rappresenta l'unicità
+## 8. ⛔ Un'idea valutata e **scartata**: la colonna che rappresenta l'unicità
 
 *(valutata il 31-08-2026)*
 
@@ -243,7 +346,8 @@ ha scritto la riga* non è più un controllo del database, ma una regola nel
 programma, con tutte le fragilità che si era appena finito di togliere.
 ⭐ E soprattutto: **l'unicità per azienda esiste già**. È il registro. «La mia
 azienda vuole la sua numerazione» oggi si traduce in: il mio registro, il mio
-contatore, il mio anno, la mia serie.
+contatore, il mio anno, la mia serie — e da fine agosto anche il mio prefisso e il
+mio suffisso.
 
 **2. L'uniformità sarebbe stata solo nel nome.** Le tabelle non hanno le stesse
 colonne — i resi non hanno la serie, la commessa ha solo il codice. Sotto un nome
@@ -273,11 +377,53 @@ tabella. La colonna tornerebbe sul tavolo solo se quell'identità dovesse essere
 
 ---
 
-## 8. Dove guardare
+## 9. ⚠️ Un difetto trovato il giorno stesso, e cosa insegna
+
+*(31-08-2026, sera)*
+
+Tolte le quattro righe dal catalogo dei formati, la funzione che compone i numeri
+**continuava a cercarle lì** per sapere quante cifre usare. Non trovandole più, si
+appoggiava al valore di ripiego: **sette cifre**.
+
+| | quante cifre vuole | quante ne otteneva |
+| --- | --- | --- |
+| DDT, ordine, reso | 7 | 7 — **giusto per caso** |
+| Commessa | 9 | **7** |
+
+⛔ Nessun errore, nessun vincolo violato: solo una commessa con un codice più corto
+— `CMM-ACME-2026-0000007` invece di `CMM-ACME-2026-000000007`. E la forma è proprio
+ciò che, secondo il §6.6, tiene separati i codici nuovi da quelli vecchi.
+
+**Tre cose che questo caso insegna, e che valgono ben oltre la numerazione:**
+
+1. ⛔ **Prima di cancellare una fonte si censiscono i suoi lettori.** I controlli
+   messi a protezione della cancellazione verificavano che la **sede nuova** fosse
+   piena — i registri col prefisso, le famiglie coi default — e **nessuno chiedeva
+   chi leggesse ancora quella vecchia**. È l'inventario giusto della metà sbagliata.
+2. ⚠️ **Il valore di ripiego che coincide col valore giusto nasconde il difetto.**
+   Tre famiglie su quattro passavano, perché il ripiego valeva esattamente quanto
+   dovevano avere. Il caso che ha parlato è stato l'unico diverso — e il difetto era
+   lì da ore.
+3. ⚠️ **Le descrizioni superate non sono rumore: sono prove false.** Quattro
+   descrizioni nel database dicevano ancora che la lunghezza «resta nel catalogo dei
+   formati». Chi indagava le leggeva per prime e ne concludeva che quel pezzo era
+   già a posto.
+
+⭐ Il presidio che ne è nato non guarda un documento: guarda il **codice**, e
+pretende che nessuna funzione dell'area vendite legga più il catalogo dei formati.
+Copre da sola anche il generatore che qualcuno scrivesse domani.
+
+---
+
+## 10. Dove guardare
 
 * [`config.sistema_codici`](/dbzero/config/manual/sistema_codici) — il catalogo dei
   formati, con la checklist del trasloco
 * [`vendite.registri_fatturazione`](/dbzero/vendite/manual/registri_fatturazione) —
-  i registri di numerazione
+  i registri di numerazione, con prefisso, suffisso e lunghezza
 * [`vendite.famiglie_documento`](/dbzero/vendite/manual/famiglie_documento) — quali
-  documenti si numerano su un registro, e dove vivono
+  documenti si numerano su un registro, dove vivono e **con quale forma nascono**
+* [`vendite.fn_assegna_numero_documento`](/dbzero/vendite/manual/fn_assegna_numero_documento) —
+  i sei passi, in una sede sola
+* [`vendite.fn_componi_numero_documento`](/dbzero/vendite/manual/fn_componi_numero_documento) —
+  la composizione della stringa, pura e verificabile in una riga

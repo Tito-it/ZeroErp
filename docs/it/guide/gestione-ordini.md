@@ -30,7 +30,7 @@
 > * [vendite.fn_ordine_riga_componenti_init](/dbzero/vendite/funzioni/fn_ordine_riga_componenti_init) / [vendite.fn_ordine_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ordine_riga_componenti_preview) — componenti BoM (creazione / anteprima)
 > * [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.fn_ricalcola_totali_ordine](/dbzero/vendite/funzioni/fn_ricalcola_totali_ordine) — totali di testata e riepilogo IVA per aliquota
-> * [vendite.trgfn_ordini_gen_codice](/dbzero/vendite/funzioni/trgfn_ordini_gen_codice) — numero ordine auto-generato e immutabile
+> * [vendite.trgfn_ordini_gen_numero](/dbzero/vendite/funzioni/trgfn_ordini_gen_numero) — numero ordine auto-generato e immutabile
 > * [vendite.trgfn_ordini_default_emittente](/dbzero/vendite/funzioni/trgfn_ordini_default_emittente) / [vendite.trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba) — emittente fiscale di default e coerenza con il cliente
 >
 > **Vedi anche** — API e service backend:
@@ -79,7 +79,7 @@ Caratteristiche di base:
 - una volta confermato viene **spinto in commessa** (push), che lo collega alla
   fatturazione
 
-Il numero documento è auto-generato (trigger `trgfn_ordini_gen_codice`) ed è
+Il numero documento è auto-generato (trigger `trgfn_ordini_gen_numero`) ed è
 **immutabile**: viene assegnato già alla nascita della bozza e non si modifica più.
 
 > **Differenza chiave con preventivo/offerta.** L'ordine **non ha revisioni** e

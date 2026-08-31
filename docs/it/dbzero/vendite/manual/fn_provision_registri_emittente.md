@@ -39,6 +39,25 @@ un tipo di documento che allora non esisteva.
 
 ---
 
+### 🔄 rev 2026-08-31 (sera) — i registri nascono già **formattati**
+
+Un registro creato qui non nasce nudo: prende prefisso e numero di cifre dal
+**default della sua famiglia** (`vendite.famiglie_documento`), che per la commessa
+significa `CMM-` e nove cifre.
+
+⛔ **Non è un abbellimento.** Dal 31 agosto 2026 i generatori leggono la forma
+**solo** dal registro: un registro creato senza prefisso produce numeri **nudi**,
+senza alcun errore. E questo è il punto in cui nascono i registri di ogni emittente
+nuovo — cioè il momento in cui nessuno guarda.
+
+⚠️ **La fonte è il catalogo delle famiglie, non quello dei formati**, e la
+distinzione è costata un passo del cantiere: finché questa funzione leggeva da
+`config.sistema_codici`, togliere di là le quattro righe l'avrebbe lasciata **senza
+fonte**. Oggi legge dalla stessa tabella da cui legge la bonifica dei registri
+monchi, così nascita e riparazione non possono raccontare due forme diverse.
+
+---
+
 ### Ripetibile senza danni
 
 Chiamarla due volte non crea doppioni e non tocca niente: guarda cosa manca e

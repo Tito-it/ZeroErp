@@ -81,7 +81,7 @@ trigger anti-typo `trg_ui_lista_colonna_a10_valida_campo_sorgente`):
 | Codice billing account (alias legittimo) | **`ba_codice`** |
 | Codice interno stato (severity Tag FE) | **`stato_codice_interno`** |
 
-`numero` è esposto **nudo** (sempre valorizzato dal trigger `trgfn_ordini_gen_codice`
+`numero` è esposto **nudo** (sempre valorizzato dal trigger `trgfn_ordini_gen_numero`
 all'INSERT, anche in BOZZA → nessun fallback).
 
 ---

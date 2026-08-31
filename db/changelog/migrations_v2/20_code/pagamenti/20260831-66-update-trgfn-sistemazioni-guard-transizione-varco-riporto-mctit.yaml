@@ -1,0 +1,353 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `D-25` (1 di 2) — IL VARCO `CONFERMATA -> ANNULLATA`, SOLO SUL RIPORTO
+# Brief: brief-db-fondo-fattura-ricalcolo-e-governo, §9.6 (G-4), §9.8 (G-5).
+# ⚠️ E' l'UNICO passo di questo cantiere fuori da `vendite`.
+#
+# -- IL FATTO DA CUI DISCENDE ------------------------------------------
+#
+#   Dal 2026-08-22 `pagamenti.fn_conferma_sistemazione`, ramo `RIPORTO`, crea un
+#   fondo `ASSEGNATO` in `vendite`. Le altre due destinazioni lasciano una
+#   DISTINTA, e per una distinta sbagliata il rimedio esiste gia' — la
+#   correzione guidata (S6). Per il riporto no:
+#
+#     RIMBORSO · COMPENSAZIONE  ->  distinta   ->  correzione guidata  ✅
+#     RIPORTO                   ->  fondo      ->  niente              🔴
+#
+#   ⭐ *Una sistemazione nuova non e' la contropartita di un riporto sbagliato*:
+#   la sistemazione pretende un'eccedenza, e quel riporto l'eccedenza l'ha gia'
+#   consumata. Si puo' creare un atto che muove denaro e non lo si puo' disfare:
+#   e' un'asimmetria del MODELLO, e un'asimmetria si chiude per intero.
+#
+# -- ⚠️ IL VARCO E' CHIRURGICO SU TRE ASSI -----------------------------
+#
+#   1. **lo stato**: solo `CONFERMATA -> ANNULLATA`. Da `ANNULLATA` non si esce,
+#      e verso qualunque altro stato non si va;
+#   2. **la destinazione**: solo `RIPORTO` (G-5). Gli altri due restano terminali
+#      com'erano — ⛔ *due strade per disfare lo stesso fatto e' il modo in cui
+#      due meccanismi cominciano a divergere: la prima volta fanno la stessa
+#      cosa, alla prima regola nuova no, e nessuno sa piu' quale sia quella
+#      giusta*;
+#   3. **le colonne**: il guard oggi *«rifiuta OGNI update e non solo quelli di
+#      stato»*, e **deve continuare a farlo**. Passano solo le colonne dell'esito
+#      — `stato`, `motivo`, `data_esecuzione`, `user_esecuzione`,
+#      `fondo_source_id`, `meta` — piu' le tecniche di audit. Importo, documenti,
+#      cliente ed emittente restano immutabili.
+#
+#   ⚠️ Il confronto e' su `to_jsonb(NEW) - <chiavi ammesse>` contro l'omologo di
+#   `OLD`: elencare le colonne VIETATE una per una vorrebbe dire che una colonna
+#   NUOVA nascerebbe modificabile in silenzio. Elencando quelle ammesse, una
+#   colonna nuova nasce **chiusa**.
+#
+# -- PERCHE' `fondo_source_id` E `data_esecuzione` DEVONO POTER CAMBIARE -
+#
+#   Non e' una concessione: e' quello che i vincoli GIA' scritti pretendono.
+#     * `fk_sistemazioni_fondo_source` e' `NO ACTION`, quindi finche' l'atto
+#       punta il fondo il fondo non si cancella. Il puntatore va staccato;
+#     * `chk_sistemazioni_eseguita` dice che fuori da `CONFERMATA` devono essere
+#       NULL `data_esecuzione`, `contabile_id` e `fondo_source_id`. ⛔ Si azzerano
+#       INSIEME o si sposta a meta' un dato composito.
+#
+#   ⚠️ Cosi' il registro perde *quando* l'atto era stato eseguito. La memoria non
+#   si butta: `fn_annulla_sistemazione` (changeSet 20260831-67) la scrive in
+#   `meta`, che nessun CHECK vincola — ed e' il motivo per cui `meta` e' fra le
+#   chiavi ammesse. ⛔ Allargare `chk_sistemazioni_eseguita` sarebbe stata
+#   l'altra strada, ed e' scartata: indebolire un vincolo per non perdere una
+#   data significa ammettere per sempre un atto ANNULLATO che dichiara di essere
+#   stato eseguito.
+#
+# -- ⭐ E IL RIFIUTO SUGLI ALTRI DUE NOMINA L'ALTERNATIVA ---------------
+#
+#   Con il varco ristretto, chi prova ad annullare un `RIMBORSO` confermato
+#   riceverebbe `E_SISTEMAZIONE_IMMUTABILE` — **e non basta**. Non lo dice questo
+#   changeSet: lo dice il COMMENT di questo stesso guard, che si autocritica
+#   proprio su questo — *«"non puo' passare da CONFERMATA a BOZZA" e' vero ma non
+#   aiuta chi sta provando a correggere un importo gia' eseguito»*.
+#
+#   Quindi nasce `E_SISTEMAZIONE_ANNULLO_NON_AMMESSO`, e la frase nomina la
+#   correzione guidata. ⛔ Non si e' riusato `E_SISTEMAZIONE_IMMUTABILE`: il
+#   criterio di AGENTS.md e' «chi puo' rimediare», qui e' la stessa persona ma
+#   con un rimedio DIVERSO, e cambiare la frase del codice esistente la
+#   renderebbe falsa su tutti gli altri rifiuti che passano di li' (un importo
+#   modificato, un atto gia' annullato).
+#
+#   ⛔ E la sede resta UNA: il controllo non si sposta dentro
+#   `fn_annulla_sistemazione`, che di proposito *«NON ricontrolla lo stato»* —
+#   due sedi per la stessa regola sono due sedi che prima o poi divergono.
+#
+# Dipendenze: nessuna DDL. Codici: E_SISTEMAZIONE_ANNULLO_NON_AMMESSO (80_data,
+#             stesso lotto).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260831-66-update-trgfn-sistemazioni-guard-transizione-varco-riporto-mctit.yaml
+
+  - changeSet:
+      id: 20260831-66-update-trgfn-sistemazioni-guard-transizione-varco-riporto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-25 (1 di 2): pagamenti.trgfn_sistemazioni_guard_transizione apre CONFERMATA ->
+        ANNULLATA sul SOLO ramo RIPORTO (G-4/G-5, Tid 2026-08-29). ⚠️ Varco chirurgico su tre
+        assi: solo quella transizione, solo destinazione = 'RIPORTO' (RIMBORSO e COMPENSAZIONE
+        restano terminali perche' lasciano una distinta e per quella il rimedio e' gia' la
+        correzione guidata), e solo le colonne dell'esito — stato, motivo, data_esecuzione,
+        user_esecuzione, fondo_source_id, meta piu' le tecniche. Il confronto elenca le colonne
+        AMMESSE e non quelle vietate, cosi' una colonna nuova nasce chiusa. ⭐ Il rifiuto
+        sull'annullamento degli altri due nomina l'ALTERNATIVA con
+        E_SISTEMAZIONE_ANNULLO_NON_AMMESSO invece di dire «immutabile»: e' l'autocritica gia'
+        scritta nel COMMENT di questo guard. brief-db-fondo-fattura-ricalcolo-e-governo §9.6, §9.8.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'trgfn_sistemazioni_guard_transizione'
+            # ⚠️ Il varco azzera fondo_source_id e data_esecuzione perche' e' il
+            #    CHECK a pretenderlo: se quel vincolo cambiasse forma, questo
+            #    changeSet starebbe risolvendo un problema che non esiste piu'.
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'chk_sistemazioni_eseguita'
+                     AND conrelid = 'pagamenti.sistemazioni'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⭐ Le colonne che il varco lascia cambiare. Si elencano le
+                  --   AMMESSE e non le vietate: cosi' una colonna nuova sulla
+                  --   tabella nasce CHIUSA invece di diventare modificabile in
+                  --   silenzio.
+                  v_ammesse   text[] := ARRAY[
+                      'stato', 'motivo', 'data_esecuzione', 'user_esecuzione',
+                      'fondo_source_id', 'meta',
+                      -- tecniche: le scrivono i trigger di audit e di tx_id
+                      'data_update', 'user_update', 'tx_id'];
+                  v_varco     boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il percorso dell'atto, che e' cortissimo:
+                  --     BOZZA -> CONFERMATA | ANNULLATA.
+                  --   ⭐ Con UN varco, e uno solo: CONFERMATA -> ANNULLATA sul
+                  --   ramo RIPORTO, perche' quello e' l'unico che non lascia
+                  --   dietro una distinta e quindi l'unico senza contropartita.
+                  --
+                  -- ⛔ Nessuna tabella-matrice, di proposito: due passaggi
+                  --   sarebbero due righe che nessuno interroga, e le azioni
+                  --   del frontend sono i due verbi stessi. Chi cerca la regola
+                  --   nei dati non la trova: e' qui, e per questo il codice
+                  --   errore la nomina per esteso.
+                  -- =========================================================
+
+                  IF TG_OP = 'INSERT' THEN
+                      -- ⭐ Un atto non nasce gia' fatto: nasce come DECISIONE, e
+                      --   diventa un fatto quando qualcuno lo conferma.
+                      IF NEW.stato <> 'BOZZA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_sistemazioni_guard_transizione',
+                              'E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA',
+                              jsonb_build_object(
+                                  'detail', 'una sistemazione nasce in BOZZA',
+                                  'campo',  'stato',
+                                  'stato_richiesto', NEW.stato
+                              ),
+                              NULL::uuid,
+                              'BOZZA', NEW.stato::text
+                          );
+                      END IF;
+
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── UPDATE ──────────────────────────────────────────────
+                  -- ⭐ Su un atto TERMINALE si rifiuta OGNI modifica, non solo
+                  --   quelle che cambiano stato: un atto confermato ha generato
+                  --   un documento, e se il registro potesse cambiare sotto
+                  --   racconterebbe una cosa e il documento un'altra.
+                  IF OLD.stato IN ('CONFERMATA', 'ANNULLATA') THEN
+
+                      -- ── IL VARCO (G-4 · G-5, Tid 2026-08-29) ───────────
+                      -- Tre assi, e devono valere tutti e tre insieme:
+                      --   1. la transizione: solo CONFERMATA -> ANNULLATA;
+                      --   2. la destinazione: solo RIPORTO — gli altri due
+                      --      lasciano una DISTINTA, e per quella il rimedio
+                      --      esiste gia' (correzione guidata, S6);
+                      --   3. le colonne: solo quelle dell'esito.
+                      -- ⚠️ Il puntatore al fondo DEVE uscire azzerato: la FK
+                      --   fk_sistemazioni_fondo_source e' NO ACTION, quindi
+                      --   finche' l'atto lo punta il fondo non si cancella. E
+                      --   con lui cadono data_esecuzione e user_esecuzione,
+                      --   perche' chk_sistemazioni_eseguita li vuole tutti NULL
+                      --   fuori da CONFERMATA: sono un dato COMPOSITO, e si
+                      --   sposta intero o non si sposta.
+                      v_varco :=
+                              OLD.stato        =  'CONFERMATA'
+                          AND OLD.destinazione =  'RIPORTO'
+                          AND NEW.stato        =  'ANNULLATA'
+                          AND NEW.fondo_source_id IS NULL
+                          AND (to_jsonb(NEW) - v_ammesse)
+                              IS NOT DISTINCT FROM
+                              (to_jsonb(OLD) - v_ammesse);
+
+                      IF NOT v_varco THEN
+                          -- ⭐ Il gesto «annulla» su un atto che lascia una
+                          --   distinta NON e' semplicemente vietato: ha
+                          --   un'altra strada, e il rifiuto deve nominarla.
+                          --   «Questo atto e' immutabile» e' vero e non aiuta —
+                          --   e' l'autocritica scritta nel COMMENT di questo
+                          --   stesso guard.
+                          IF OLD.stato        =  'CONFERMATA'
+                             AND NEW.stato    =  'ANNULLATA'
+                             AND OLD.destinazione IN ('RIMBORSO', 'COMPENSAZIONE')
+                          THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  'pagamenti.trgfn_sistemazioni_guard_transizione',
+                                  'E_SISTEMAZIONE_ANNULLO_NON_AMMESSO',
+                                  jsonb_build_object(
+                                      'detail', 'un atto che ha prodotto una distinta si corregge sulla distinta',
+                                      'sistemazione_id', OLD.id,
+                                      'destinazione',    OLD.destinazione,
+                                      'stato',           OLD.stato
+                                  ),
+                                  NULL::uuid,
+                                  OLD.id::text, lower(OLD.destinazione::text)
+                              );
+                          END IF;
+
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_sistemazioni_guard_transizione',
+                              'E_SISTEMAZIONE_IMMUTABILE',
+                              jsonb_build_object(
+                                  'detail', 'atto terminale: nessuna modifica ammessa',
+                                  'sistemazione_id', OLD.id,
+                                  'stato', OLD.stato
+                              ),
+                              NULL::uuid,
+                              OLD.id::text, OLD.stato::text
+                          );
+                      END IF;
+
+                      -- Il varco e' passato: l'atto scende ad ANNULLATA, e la
+                      -- matrice qui sotto non ha altro da dire.
+                      RETURN NEW;
+                  END IF;
+
+                  -- Da BOZZA si va a CONFERMATA o ad ANNULLATA, e basta.
+                  IF NEW.stato IS DISTINCT FROM OLD.stato
+                     AND NEW.stato NOT IN ('CONFERMATA', 'ANNULLATA')
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_sistemazioni_guard_transizione',
+                          'E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'detail', 'passaggio di stato non previsto',
+                              'campo',  'stato',
+                              'sistemazione_id', OLD.id,
+                              'stato_da', OLD.stato,
+                              'stato_a',  NEW.stato
+                          ),
+                          NULL::uuid,
+                          OLD.stato::text, NEW.stato::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()
+              IS 'Il percorso dell''atto di sistemazione: nasce in BOZZA, e da li'' va a CONFERMATA (diventa un fatto: genera la contabile o il fondo) oppure ad ANNULLATA. ⭐ rev 2026-08-31 (D-25 di brief-db-fondo-fattura-ricalcolo-e-governo §9.6 e §9.8, decisioni G-4 e G-5 di Tid): si apre UN varco, CONFERMATA -> ANNULLATA sul solo ramo RIPORTO. Perche'' proprio quello: le altre due destinazioni lasciano dietro una DISTINTA e per una distinta sbagliata il rimedio esiste gia'' — la correzione guidata (S6) — mentre il RIPORTO lascia un FONDO in vendite, e per quello non c''era niente. Una sistemazione NUOVA non e'' la contropartita di un riporto sbagliato: la sistemazione pretende un''eccedenza, e quel riporto l''ha gia'' consumata. ⚠️ Il varco e'' chirurgico su TRE assi — la transizione (solo quella), la destinazione (solo RIPORTO: aprire anche agli altri due darebbe DUE strade per disfare lo stesso fatto, ed e'' il modo in cui due meccanismi cominciano a divergere) e le COLONNE, perche'' su un atto terminale si rifiuta ogni modifica e non solo quelle di stato. Passano solo stato, motivo, data_esecuzione, user_esecuzione, fondo_source_id, meta e le tecniche di audit: il confronto elenca le colonne AMMESSE e non le vietate, cosi'' una colonna nuova sulla tabella nasce CHIUSA invece di diventare modificabile in silenzio. ⚠️ fondo_source_id deve uscire azzerato perche'' fk_sistemazioni_fondo_source e'' NO ACTION e finche'' l''atto punta il fondo il fondo non si cancella; con lui cadono data_esecuzione e user_esecuzione, che chk_sistemazioni_eseguita vuole NULL fuori da CONFERMATA — sono un dato composito e si sposta intero. La memoria di quando l''atto era stato eseguito la conserva fn_annulla_sistemazione dentro meta, che nessun CHECK vincola: allargare il CHECK sarebbe stata l''altra strada, ed e'' scartata perche'' ammetterebbe per sempre un atto ANNULLATO che dichiara di essere stato eseguito. ⭐ E il rifiuto dell''annullamento su RIMBORSO/COMPENSAZIONE NOMINA L''ALTERNATIVA con E_SISTEMAZIONE_ANNULLO_NON_AMMESSO invece di dire «immutabile»: e'' l''autocritica che questo COMMENT portava gia'' — «non puo'' passare da CONFERMATA a BOZZA» e'' vero ma non aiuta chi sta provando a correggere un importo gia'' eseguito. ⛔ Nessuna tabella-matrice, di proposito: le azioni del frontend sono i verbi stessi, e chi cerca la regola nei dati non la trova — e'' qui. ⛔ E la sede resta una sola: fn_annulla_sistemazione continua a NON ricontrollare lo stato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il ripristino richiude il varco: da CONFERMATA non si esce piu'.
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  IF TG_OP = 'INSERT' THEN
+                      IF NEW.stato <> 'BOZZA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_sistemazioni_guard_transizione',
+                              'E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA',
+                              jsonb_build_object(
+                                  'detail', 'una sistemazione nasce in BOZZA',
+                                  'campo',  'stato',
+                                  'stato_richiesto', NEW.stato
+                              ),
+                              NULL::uuid,
+                              'BOZZA', NEW.stato::text
+                          );
+                      END IF;
+
+                      RETURN NEW;
+                  END IF;
+
+                  IF OLD.stato IN ('CONFERMATA', 'ANNULLATA') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_sistemazioni_guard_transizione',
+                          'E_SISTEMAZIONE_IMMUTABILE',
+                          jsonb_build_object(
+                              'detail', 'atto terminale: nessuna modifica ammessa',
+                              'sistemazione_id', OLD.id,
+                              'stato', OLD.stato
+                          ),
+                          NULL::uuid,
+                          OLD.id::text, OLD.stato::text
+                      );
+                  END IF;
+
+                  IF NEW.stato IS DISTINCT FROM OLD.stato
+                     AND NEW.stato NOT IN ('CONFERMATA', 'ANNULLATA')
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_sistemazioni_guard_transizione',
+                          'E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'detail', 'passaggio di stato non previsto',
+                              'campo',  'stato',
+                              'sistemazione_id', OLD.id,
+                              'stato_da', OLD.stato,
+                              'stato_a',  NEW.stato
+                          ),
+                          NULL::uuid,
+                          OLD.stato::text, NEW.stato::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;

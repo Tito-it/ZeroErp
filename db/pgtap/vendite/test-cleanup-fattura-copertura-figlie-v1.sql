@@ -211,11 +211,25 @@ SELECT DISTINCT c.conrelid::regclass::text AS tab
 
 -- Il corpo della pulizia: la primitiva PIU la funzione dei fondi, che la
 -- primitiva chiama. Sono due oggetti ma una catena sola.
+-- ⚠️ L'ELENCO DELLE FUNZIONI E' IL PERIMETRO DEL PRESIDIO, e va esteso ogni
+--   volta che un pezzo della pulizia si SPOSTA. Il test 3 cerca il nome di
+--   ogni figlia GESTITA dentro questo testo: una tabella cancellata da una
+--   funzione non elencata risulterebbe «non nominata», cioe' un rosso per il
+--   motivo sbagliato — e, se un giorno la si togliesse dall'inventario per
+--   farlo tacere, un verde per il motivo sbagliato.
+-- ⭐ rev 2026-08-31: entra vendite.fn_cancella_fondo_fattura. Dal changeSet
+--   20260831-65 fn_reset_fondi_fattura non cancella piu' inline: il criterio
+--   sta in fn_check_fondo_cancellabile e i tre DELETE nell'ordine imposto dalla
+--   FK stanno li'. Senza questa riga il file diventava rosso su
+--   pagamenti.vendite_contabili_righe — ed e' il presidio che ha funzionato,
+--   non un difetto: la pulizia era davvero cambiata di sede.
 CREATE TEMP TABLE tmp_corpo AS
 SELECT string_agg(pg_get_functiondef(p.oid), E'\n') AS src
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
  WHERE n.nspname = 'vendite'
-   AND p.proname IN ('fn_cleanup_fatture_by_ids', 'fn_reset_fondi_fattura');
+   AND p.proname IN ('fn_cleanup_fatture_by_ids',
+                     'fn_reset_fondi_fattura',
+                     'fn_cancella_fondo_fattura');
 
 -- ============================================================
 -- 1) La domanda che questo file esiste per porre

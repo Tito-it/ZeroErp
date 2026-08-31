@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ordini_gen_numero.md" %}
 # ⚙️ Funzione `trgfn_ordini_gen_numero`
 
 ```sql
@@ -20,8 +21,9 @@ BEGIN
     -- =========================================================
     -- Scopo:
     --   Assegnare ordini.numero all'INSERT, prendendolo dal
-    --   MOTORE DEI REGISTRI invece che dalla sequenza generica
-    --   di config.sistema_codici.
+    --   MOTORE DEI REGISTRI. Fino al 2026-08-31 il numero veniva
+    --   dalla sequenza generica del catalogo dei formati, la cui
+    --   riga 'ordine' e' uscita col changeSet 20260831-53.
     --
     -- ⭐ Il MOMENTO non cambia: nessuno stato da guardare,
     --   l'ordine nasce numerato. ⛔ E i buchi da bozza scartata
@@ -77,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ordini_gen_numero()
-IS 'Assegna il numero all''ordine alla creazione, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ Il PREFISSO e il SUFFISSO vengono dal REGISTRO e non piu'' da config.sistema_codici, che conserva la sola LUNGHEZZA: il formato si divide per RUOLO — la lunghezza e'' del tipo documento, prefisso e suffisso sono il nome del sezionale. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4.';
+IS 'Assegna il numero all''ordine alla creazione, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ IL FORMATO VIENE TUTTO DAL REGISTRO — prefisso, suffisso e lunghezza, in una lettura sola — e i DEFAULT con cui un registro nasce stanno in vendite.famiglie_documento. ⛔ config.sistema_codici NON C''ENTRA PIU'': il 20260831-53 ne ha tolto le righe di ddt, ordine, reso e commessa. ⚠️ Fino al 20260831-54 questa descrizione diceva che il catalogo dei formati «conserva la sola LUNGHEZZA»: era vero fino al 53, e nel frattempo la funzione centrale continuava a leggerla da li'' — zero righe, lunghezza NULL, 7 cifre a tutti (giusto per caso qui, sbagliato sulla commessa). Corretto dal 20260831-55. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4 e P-16.';
 ```
 
 ---

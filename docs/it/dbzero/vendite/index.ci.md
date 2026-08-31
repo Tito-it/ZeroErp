@@ -100,6 +100,7 @@
 - [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — (latest review 15-08-2026)
 - [fn_applica_fondi_lotto](manual/fn_applica_fondi_lotto.md) — (latest review 15-08-2026)
 - [fn_approva_commessa_attivita](manual/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
+- [fn_assegna_numero_documento](manual/fn_assegna_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_assign_numero_fattura](manual/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 - [fn_batch_upsert_commessa_attivita](manual/fn_batch_upsert_commessa_attivita.md) — (latest review 15-04-2026)
 - [fn_build_fattura_key](manual/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
@@ -108,7 +109,9 @@
 - [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_preventivo](manual/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
+- [fn_cancella_fondo_fattura](manual/fn_cancella_fondo_fattura.md) — (latest review 31-08-2026)
 - [fn_check_ddt_riga_richiede_prezzo](manual/fn_check_ddt_riga_richiede_prezzo.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice C)
+- [fn_check_fondo_cancellabile](manual/fn_check_fondo_cancellabile.md) — (latest review 31-08-2026)
 - [fn_check_fondo_fattura_capiente](manual/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
@@ -116,6 +119,7 @@
 - [fn_close_commessa_push_run](manual/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
+- [fn_componi_numero_documento](manual/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](manual/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratto_riga_componenti_init](manual/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](manual/fn_contratto_riga_componenti_preview.md)
@@ -229,7 +233,7 @@
 - [fn_ricalcola_totali_ordine](manual/fn_ricalcola_totali_ordine.md) — (latest review 05-06-2026)
 - [fn_ricalcola_totali_preventivo](manual/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
 - [fn_riporta_attivita_da_emettere](manual/fn_riporta_attivita_da_emettere.md) — (latest review 26-08-2026)
-- [fn_riporta_lotto_a_draft](manual/fn_riporta_lotto_a_draft.md) — (latest review 03-08-2026)  
+- [fn_riporta_lotto_a_draft](manual/fn_riporta_lotto_a_draft.md) — (latest review 31-08-2026)  
 - [fn_ritira_commessa_attivita_da_sorgente](manual/fn_ritira_commessa_attivita_da_sorgente.md) — (latest review 26-08-2026)
 - [fn_saldo_sorgente_fondo](manual/fn_saldo_sorgente_fondo.md) — (latest review 15-08-2026)
 - [fn_select_attivita_fatturabili](manual/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
@@ -276,7 +280,7 @@
 - [trgfn_contratti_sync_is_abortito_snapshot](manual/trgfn_contratti_sync_is_abortito_snapshot.md) — (rev 2026-08-21 — funzione rev 2026-06-02)
 - [trgfn_contratti_utilities_guard_tipo_classe](manual/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_default_emittente](manual/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
-- [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
+- [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
 - [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
 - [trgfn_ddt_guard_causale_immutabile](manual/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
 - [trgfn_ddt_guard_emittente_ba](manual/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
@@ -323,6 +327,7 @@
 - [trgfn_offerte_commerciali_revisione](manual/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
 - [trgfn_ordini_default_emittente](manual/trgfn_ordini_default_emittente.md) — (rev 2026-06-01)
 - [trgfn_ordini_ful_guard_consistenza](manual/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
+- [trgfn_ordini_gen_numero](manual/trgfn_ordini_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_ordini_guard_emittente_ba](manual/trgfn_ordini_guard_emittente_ba.md) — (rev 2026-06-01)
 - [trgfn_ordini_guard_transizione](manual/trgfn_ordini_guard_transizione.md) — (rev 2026-06-05)
 - [trgfn_ordini_normalize](manual/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` normalizza i campi minimi dell’ordine **in fase di creazione**: completa anno/data quando il `numero` è presente ed eredita il `fatturazione_trigger` dal billing account.
@@ -343,7 +348,7 @@
 - [trgfn_preventivi_righe_set_natura_vendita](manual/trgfn_preventivi_righe_set_natura_vendita.md) — (rev 2026-08-21 — MODALITÀ A, brief preventivi-ordini D9)
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_resi_accrediti_guard](manual/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
-- [trgfn_resi_gen_numero](manual/trgfn_resi_gen_numero.md) — (rev 2026-07-13)
+- [trgfn_resi_gen_numero](manual/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_resi_guard_ddt_consegnato](manual/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_emittente_ba](manual/trgfn_resi_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_transizione](manual/trgfn_resi_guard_transizione.md) — (rev 2026-07-13)
@@ -412,6 +417,3 @@
 - [vw_stato_sorgente_ordine](manual/vw_stato_sorgente_ordine.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_ordine` è il **resolver del dominio ORDINE (di vendita)** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni ordine di vendita — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_ordini` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_preventivo](manual/vw_stato_sorgente_preventivo.md) — (latest review 01-07-2026) `vendite.vw_stato_sorgente_preventivo` è il **resolver del dominio PREVENTIVI** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni preventivo — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_preventivi` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_reso](manual/vw_stato_sorgente_reso.md) — (latest review 2026-07-18)
-
-## 📘 Altri contenuti manuali
-- [trgfn_ordini_gen_codice](manual/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.

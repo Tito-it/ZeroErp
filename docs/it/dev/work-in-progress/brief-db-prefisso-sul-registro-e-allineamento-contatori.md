@@ -141,6 +141,8 @@ tabella?»* — la decisione è giusta, e ha tre conseguenze obbligate.
 | **P-12** | Il provisioning legge i default **dalle famiglie** | `20_code/…/-52` |
 | **P-13** | ⛔ Escono le quattro righe da `config.sistema_codici` (+ CSV) | `80_data/…/-53` |
 | **P-14** | Backfill dei registri rimasti senza forma | `00_schema/…/-54` |
+| **P-15** | ⛔ **La lunghezza si legge DAVVERO dal registro** — il difetto del P-10 | `20_code/vendite/20260831-55` |
+| **P-16** | I quattro generatori smettono di nominare il catalogo | `20_code/vendite/20260831-56` |
 
 ### ⭐⭐ La sede unica, e come ci si è arrivati
 
@@ -229,9 +231,77 @@ colonne sono `varchar(8)`.
 ⚠️ Sulla commessa il separatore **fra i pezzi del corpo** resta, ed è del
 dominio: `<sigla>-<anno>-`.
 
+### ⛔⛔ P-15 — il difetto che il P-10 diceva di aver risolto
+
+*(misurato il 2026-08-31, sera, rileggendo la documentazione)*
+
+Il changeSet `20260831-50` si intitola **«il formato viene TUTTO dal registro»** e
+dichiara *«una lettura sola al posto di due»*. ⚠️ Ha cambiato l'**ancoraggio
+`%TYPE`** della variabile e ha lasciato la **query** dov'era:
+
+```sql
+SELECT sc.lunghezza_numero INTO v_len
+  FROM config.sistema_codici sc
+ WHERE sc.codice_interno = lower(p_famiglia_documento);
+```
+
+Poi il `-53` ha cancellato proprio quelle quattro righe. ⇒ Zero righe, `v_len`
+resta vuota, e il ripiego della composizione dà **7 cifre a tutti**:
+
+| | cifre volute | cifre ottenute |
+| --- | --- | --- |
+| DDT, ordine, reso | 7 | 7 — **giusto per caso** |
+| **Commessa** | **9** | **7** |
+
+```
+CMM-ACME-2026-0000007      ← quello che usciva
+CMM-ACME-2026-000000007    ← quello che deve uscire
+```
+
+⛔ Nessun errore, nessun vincolo violato. E tocca **proprio la forma**, che è
+l'unica cosa che separa i codici nuovi dal pregresso (§5, «i numeri già assegnati
+non si rifanno»).
+
+#### ⛔ La causa, e non è nei dati
+
+Le tre `preCondition` del `-53` verificavano che la **sede nuova** fosse popolata —
+registri con prefisso e lunghezza, famiglie coi default — e **nessuna chiedeva chi
+leggesse ancora quella vecchia**. Era l'inventario giusto della metà sbagliata.
+
+⭐ **La regola che ne esce, e vale ben oltre questo cantiere:** prima di cancellare
+una fonte si fa il **censimento dei suoi lettori** — `pg_proc.prosrc` e i file
+pgTAP — non solo l'inventario del sostituto.
+
+#### ⚠️ Le tre cose che hanno tenuto il difetto nascosto
+
+1. **il ripiego coincideva col valore giusto** per tre famiglie su quattro: solo la
+   commessa, con le sue 9 cifre, era diversa;
+2. **il presidio provava la funzione pura passandole `9` a mano**, quindi non
+   chiedeva mai *da dove* venga il 9. È il ramo verificato da un percorso che non
+   lo attraversa;
+3. ⚠️ **quattro `COMMENT` dicevano che era già a posto.** Un commento superato non
+   è rumore: è una **prova falsa a favore dell'ipotesi sbagliata**, ed è la ragione
+   del P-16.
+
+#### ⚠️ E i tre pgTAP erano ROSSI, non verdi
+
+Tre asserzioni costruivano l'attesa leggendo `config.sistema_codici`: tolte le
+righe, il join non trovava niente e l'asserzione diventava **indefinita**. Il file
+falliva 3 test su 10.
+
+⛔ **Erano stati dichiarati verdi da una corsa fatta PRIMA del `-53`.** La regola
+è la stessa di sempre, applicata ai test: *la suite si rimisura dopo l'ultimo
+changeSet*, non dopo il penultimo.
+
+⭐ Le tre attese ora si costruiscono dal **registro che ha numerato quel
+documento**, che è la fonte vera — e sul caso commessa l'asserzione è diventata
+quella che ha inchiodato il difetto.
+
+---
+
 ## 4. I presidi — scritti e verdi il 2026-08-31
 
-`db/pgtap/vendite/test-numero-prefisso-registro-v1.sql`, plan 6.
+#### `db/pgtap/vendite/test-numero-prefisso-registro-v1.sql`, plan 6
 
 | # | Cosa | |
 | --- | --- | --- |
@@ -247,6 +317,26 @@ composizione stava in quattro trigger e per provarla bisognava **fabbricare un
 documento** — DDT, riga, indirizzo, causale, transizione di stato. Ora è una
 funzione pura: **sei casi in una tabella di `VALUES`**. Il costo di provare un
 caso in più è passato da venti righe di fixture a **una riga**.
+
+#### `db/pgtap/vendite/test-documenti-numerazione-trasloco-v1.sql`, plan 11 *(era 10)*
+
+| # | Cosa | |
+| --- | --- | --- |
+| 3 | La forma del numero DDT è quella del **registro** che l'ha numerato | riscritto |
+| 5 | ⭐⭐ Il codice commessa ha la forma del registro — **nove cifre** | riscritto, ed è quello che ha trovato il P-15 |
+| 9 | La forma del numero reso è quella del **registro** | riscritto |
+| 10 | ⛔ **Nessuna funzione di `vendite` LEGGE più il catalogo dei formati** | nuovo |
+
+⭐ **Il test 10 è il presidio di CLASSE**, ed è l'unico degli undici che non guarda
+un documento: guarda il **codice**. Deriva da `pg_proc`, quindi copre da sola anche
+il generatore che qualcuno scrivesse domani.
+
+⚠️ **Cerca la LETTURA (`FROM config.sistema_codici`), non la parola** — e la prima
+stesura sbagliava proprio qui. Vietare la parola sembrava più severo, ma è una
+regola che nessuno può rispettare: le correzioni del P-15 e del P-16 **devono**
+poter dire da dove veniva prima la lunghezza, o si perde l'unica spiegazione del
+perché la commessa aveva sette cifre. ⇒ Un presidio che vieta di raccontare la
+storia si paga in chiarezza, e viene aggirato scrivendo commenti più vaghi.
 
 ### ⛔ P-8 — il difetto trovato scrivendo il test, non girando
 
@@ -304,3 +394,54 @@ senza prefisso sparisce con lui.
 l'unico dei cinque la cui **identità è la stringa nuda** — `uq_commesse_codice`
 guarda quella, non una quadrupla di colonne. È la stessa ragione per cui la sigla
 dell'emittente ha un vincolo di forma che vieta il trattino.
+
+---
+
+## 6. La revisione documentale del 2026-08-31 (sera)
+
+Richiesta di Tid: *«aggiorna la guida della numerazione con queste ultime novità,
+inoltre ricerca incongruenze nei documenti dopo quest'ultimo aggiornamento ai
+numeratori»*. È da questa rilettura che è uscito il **P-15**: la ricerca di
+incongruenze nei documenti ha trovato un difetto nel **codice**.
+
+### 6.1 Che cosa è stato corretto
+
+| Documento | Cosa diceva di falso |
+| --- | --- |
+| `guide/numerazione-documenti-e-codici.md` | il formato dei quattro documenti veniva dal catalogo dei formati; la commessa aveva un «prefisso fisso» |
+| `dbzero/config/manual/sistema_codici.md` | ⛔ *«questa tabella non ha perso niente nel trasloco»*; e la checklist si fermava al passo 5, *«la riga resta»* |
+| `guide/automazione-db.md` §8 | portava «numero fattura» come esempio del framework che **non** la genera |
+| `dbzero/vendite/manual/trgfn_ddt_gen_numero_emesso.md` | formato da `sistema_codici` + sequenza `ddt_numero_seq` |
+| `dbzero/vendite/manual/trgfn_resi_gen_numero.md` | idem, con `resi_numero_seq` |
+| `dbzero/vendite/manual/trgfn_ordini_gen_codice.md` | ⛔ **descriveva un oggetto che non esiste più** — file rimosso |
+| 5 documenti che linkavano `trgfn_ordini_gen_codice` | nome morto dal trasloco della mattina |
+
+### 6.2 Che cosa è stato aggiunto
+
+* `registri_fatturazione` — la revisione su prefisso, suffisso, lunghezza, la
+  divisione default/effettivo e l'allineamento dei contatori;
+* `famiglie_documento` — le due colonne di default, con la ragione per cui
+  esistono;
+* `fn_provision_registri_emittente` — i registri nascono già formattati;
+* **schede nuove**: `fn_assegna_numero_documento`, `fn_componi_numero_documento`,
+  `trgfn_ordini_gen_numero`.
+
+### 6.3 ⚠️ Residui dichiarati, non corretti
+
+1. **Quattro sequenze orfane** — `vendite.ddt_numero_seq` (a 25 786),
+   `ordini_numero_seq` (40 689), `resi_numero_seq` (13 055) e `fatture_numero_seq`.
+   Verificato il 2026-08-31: **nessuna funzione le nomina, nessuna colonna le usa
+   come default, nessuna è di proprietà di una colonna.** Il contatore vero è
+   `vendite.registri_fatturazione_progressivi`.
+   ⚠️ È una trappola *quieta*: chi le trova con quei valori alti può concluderne
+   che siano ancora il contatore. ⛔ Non si cancellano di slancio — la fattura ha
+   lasciato la sua nel febbraio 2026 e nessuno l'ha tolta — ma **la rimozione va
+   decisa**, non dimenticata.
+2. **`vendite.fn_push_preventivo_a_ordine`** porta nel corpo un commento che cita
+   `trgfn_ordini_gen_codice`, funzione che non esiste più (changeSet `20260824-02`,
+   applicato). Non produce nulla di sbagliato: manda a cercare un nome morto.
+   Costa una riscrittura di quella funzione, e non la vale da sola — si fa alla
+   prossima occasione in cui la si tocca.
+3. **`docs/it/dbzero/vendite/index.ci.md`** elenca ancora il file rimosso: è
+   auto-generato scansionando `manual/`, quindi si allinea alla prossima
+   generazione. ⛔ Non si edita a mano.

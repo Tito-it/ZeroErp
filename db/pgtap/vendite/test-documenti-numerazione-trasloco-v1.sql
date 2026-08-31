@@ -7,19 +7,21 @@
 --   vendite.trgfn_ddt_gen_numero_emesso        (20260831-08)
 --   vendite.trgfn_ordini_gen_numero            (20260831-13)
 --   vendite.fn_get_or_create_commessa          (20260831-16)
+--   vendite.fn_assegna_numero_documento        (20260831-55 — la lunghezza dal registro)
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6
 -- ------------------------------------------------------------
--- Elenco test (plan 10):
+-- Elenco test (plan 11):
 -- 0) ⚠️ Precondizioni: la fixture non mente
 -- 1) Il DDT emesso prende il registro DEL PROPRIO emittente
 -- 2) ⭐⭐ L'ANNO SEGUE LA DATA DEL DOCUMENTO, non quella dell'INSERT
--- 3) La forma del numero DDT e' quella del catalogo dei formati
+-- 3) La forma del numero DDT e' quella del REGISTRO che l'ha numerato
 -- 4) L'ordine si numera all'INSERT, sul registro del proprio emittente
--- 5) ⭐ Il codice commessa e' CMM-<sigla>-<anno>-<9 cifre>
+-- 5) ⭐⭐ Il codice commessa ha la forma del registro — NOVE cifre
 -- 6) ⭐ ...e la sigla dentro il codice e' QUELLA dell'emittente, non un'altra
 -- 7) ⛔ Senza registro COMMESSA la commessa NON NASCE, e lo dice
 -- 8) ⭐ Il RESO confermato prende numero, registro RESO e anno
--- 9) La forma del numero reso e' quella del catalogo dei formati
+-- 9) La forma del numero reso e' quella del REGISTRO che l'ha numerato
+-- 10) ⛔ Nessuna funzione di `vendite` LEGGE piu' il catalogo dei formati
 --
 -- Scopo:
 --   ⭐⭐ IL TEST 2 E' IL PIU' IMPORTANTE DEL FILE, e presidia una trappola
@@ -76,7 +78,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- =========================================================
 -- Riferimenti — ogni scelta col suo ORDER BY
@@ -257,14 +259,19 @@ SELECT is(
 -- ⚠️ Si asserisce la FORMA, non il numero: il progressivo dipende da quanti
 --   documenti quel registro ha gia' emesso, e un test che lo fissasse
 --   misurerebbe la popolazione invece della regola.
+-- ⛔ L'attesa si costruisce dal REGISTRO CHE HA NUMERATO QUESTO DOCUMENTO, non
+--   da un catalogo a parte. Fino al 2026-08-31 veniva da config.sistema_codici:
+--   quando il 20260831-53 ne ha tolto le righe, il CROSS JOIN ha smesso di
+--   trovarne una e l'asserzione e' diventata NULL — cioe' rossa per il motivo
+--   sbagliato, dopo aver taciuto sul motivo giusto.
 SELECT ok(
-    (SELECT d.numero ~ ('^' || COALESCE(sc.prefisso, '') || COALESCE(sc.separatore, '')
-                             || '[0-9]{' || sc.lunghezza_numero || '}$')
+    (SELECT d.numero ~ ('^' || COALESCE(reg.prefisso, '')
+                             || '[0-9]{' || reg.lunghezza_numero || '}'
+                             || COALESCE(reg.suffisso, '') || '$')
        FROM vendite.ddt d
-       CROSS JOIN config.sistema_codici sc
-      WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt)
-        AND sc.codice_interno = 'ddt'),
-    '3) Il numero DDT ha la forma dichiarata in config.sistema_codici');
+       JOIN vendite.registri_fatturazione reg ON reg.id = d.registro_id
+      WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt)),
+    '3) Il numero DDT ha la forma del REGISTRO che l''ha numerato');
 
 -- =========================================================
 -- 4) L'ORDINE — si numera all'INSERT, sul proprio registro
@@ -325,16 +332,31 @@ SELECT vendite.fn_get_or_create_commessa(
 
 -- ⭐ Quattro pezzi: prefisso, sigla, anno, progressivo a lunghezza fissa.
 --   ⛔ E' esattamente cio' che il vecchio `CMM-<timestamp>-<md5>` non aveva.
+-- ⭐⭐ QUESTA E' L'ASSERZIONE CHE HA TROVATO IL DIFETTO DEL 20260831-55, ed e'
+--   il motivo per cui l'attesa deve venire dal REGISTRO: la commessa e' l'unica
+--   delle quattro famiglie a volere NOVE cifre, quindi e' l'unica su cui un
+--   ripiego a 7 si vede. Le altre tre passavano lo stesso — il valore di
+--   ripiego coincideva col loro — e questo e' il genere di caso che decide se
+--   un presidio serve davvero.
+-- ⚠️ La commessa NON ha una colonna `registro_id`: la sua identita' e' la
+--   stringa nuda, e il registro si ritrova dall'emittente, come fa il
+--   generatore.
+-- ⚠️ Il trattino FRA i pezzi (sigla-anno-) e' del dominio commessa e si scrive
+--   qui; quello davanti al prefisso non esiste piu', sta DENTRO `CMM-`.
 SELECT ok(
-    (SELECT c.codice ~ ('^' || COALESCE(sc.prefisso, 'CMM') || COALESCE(sc.separatore, '-')
-                             || '[A-Z0-9]{2,10}' || COALESCE(sc.separatore, '-')
-                             || '[0-9]{4}' || COALESCE(sc.separatore, '-')
-                             || '[0-9]{' || COALESCE(sc.lunghezza_numero, 9) || '}$')
+    (SELECT c.codice ~ ('^' || COALESCE(reg.prefisso, '')
+                             || '[A-Z0-9]{2,10}-'
+                             || '[0-9]{4}-'
+                             || '[0-9]{' || reg.lunghezza_numero || '}'
+                             || COALESCE(reg.suffisso, '') || '$')
        FROM vendite.commesse c
-       CROSS JOIN config.sistema_codici sc
-      WHERE c.id = (SELECT commessa_id FROM tmp_num_cmm)
-        AND sc.codice_interno = 'commessa'),
-    '5) Il codice commessa e'' CMM-<sigla>-<anno>-<progressivo a lunghezza fissa>');
+       JOIN vendite.registri_fatturazione reg
+         ON reg.emittente_soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+        AND reg.famiglia_documento = 'COMMESSA'
+        AND reg.utility_id IS NULL
+        AND reg.attivo
+      WHERE c.id = (SELECT commessa_id FROM tmp_num_cmm)),
+    '5) Il codice commessa ha la forma del REGISTRO: CMM-<sigla>-<anno>-<cifre>');
 
 -- ⭐ Non e' un doppione del 5: qui si guarda CHE COSA c'e' nel secondo pezzo.
 --   Un generatore che ci mettesse una costante passerebbe il 5 e non questo.
@@ -470,14 +492,45 @@ SELECT is(
 -- ⚠️ Si asserisce la FORMA, non il numero: il progressivo dipende da quanti
 --   documenti quel registro ha gia'' emesso, e fissarlo misurerebbe la
 --   popolazione invece della regola.
+-- ⛔ L'attesa viene dal REGISTRO che ha numerato questo reso: stessa correzione
+--   del test 3, e stessa ragione.
 SELECT ok(
-    (SELECT re.numero ~ ('^' || COALESCE(sc.prefisso, '') || COALESCE(sc.separatore, '')
-                              || '[0-9]{' || sc.lunghezza_numero || '}$')
+    (SELECT re.numero ~ ('^' || COALESCE(reg.prefisso, '')
+                              || '[0-9]{' || reg.lunghezza_numero || '}'
+                              || COALESCE(reg.suffisso, '') || '$')
        FROM vendite.resi re
-       CROSS JOIN config.sistema_codici sc
-      WHERE re.id = (SELECT reso_id FROM tmp_num_reso)
-        AND sc.codice_interno = 'reso'),
-    '9) Il numero reso ha la forma dichiarata in config.sistema_codici');
+       JOIN vendite.registri_fatturazione reg ON reg.id = re.registro_id
+      WHERE re.id = (SELECT reso_id FROM tmp_num_reso)),
+    '9) Il numero reso ha la forma del REGISTRO che l''ha numerato');
+
+-- =========================================================
+-- 10) ⛔ IL PRESIDIO DI CLASSE — nessuno legge piu' il catalogo
+-- =========================================================
+-- ⭐ E' il test che sarebbe servito il 2026-08-31, ed e' l'unico dei dieci che
+--   non guarda un documento: guarda il CODICE. Il 20260831-53 ha cancellato
+--   quattro righe di config.sistema_codici, e nessuna delle sue preCondition
+--   chiedeva CHI LE LEGGE ANCORA — verificavano solo che la sede nuova fosse
+--   popolata. vendite.fn_assegna_numero_documento continuava a leggerle: zero
+--   righe, lunghezza NULL, sette cifre a tutti — giusto per caso su DDT,
+--   ordini e resi, e sbagliato sulla commessa, che ne vuole nove.
+-- ⚠️ SI CERCA LA LETTURA (`FROM config.sistema_codici`), NON LA PAROLA, e la
+--   prima stesura sbagliava proprio qui. Cercare la parola sembrava piu'
+--   severo — «una funzione che NOMINA una tabella vuota manda chi indaga nella
+--   direzione sbagliata» — ma e' una regola che nessuno puo' rispettare: le
+--   correzioni del 20260831-55/56 DEVONO poter dire da dove veniva prima la
+--   lunghezza, o si perde l'unica spiegazione del perche' la commessa aveva
+--   sette cifre. ⇒ Un presidio che vieta di raccontare la storia viene
+--   aggirato scrivendo commenti piu' vaghi: si sarebbe pagato in chiarezza.
+-- ⭐ Deriva dal catalogo di sistema, quindi copre da sola anche il generatore
+--   che qualcuno scrivesse domani.
+SELECT is(
+    (SELECT COALESCE(string_agg(p.proname, ', ' ORDER BY p.proname), '')
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'vendite'
+        AND p.prosrc ~ 'FROM\s+config\.sistema_codici'),
+    '',
+    '10) Nessuna funzione di `vendite` LEGGE piu'' il catalogo dei formati');
 
 SELECT * FROM finish();
 ROLLBACK;

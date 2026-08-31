@@ -67,7 +67,7 @@ vendite.fn_push_preventivo_a_ordine(
 * Firma estesa a **5 parametri** con `DROP FUNCTION` + `CREATE` (aggiungere un
   parametro cambia la firma). `p_flusso_id` ultimo con `DEFAULT NULL` → i
   chiamanti esistenti (3-4 argomenti) restano validi.
-* Numero/serie/anno dell'ordine generati dal trigger `trgfn_ordini_gen_codice`;
+* Numero/serie/anno dell'ordine generati dal trigger `trgfn_ordini_gen_numero`;
   audit/tx_id/validità dai trigger esistenti.
 * **Follow-up BE**: rimuovere la chiamata separata
   `transiziona_a_evaso_se_smistato` dal percorso ordine-standalone (ora
