@@ -249,6 +249,36 @@ class SoggettoTitoloIvaMovimentiView(DomainAPIView):
         )
 
 
+class SoggettoTitoloIvaMovimentoAnnullaView(DomainAPIView):
+    """POST annulla un movimento del registro con un contro-movimento."""
+    area_funzionale = _AREA
+    model_permission = _MODEL
+
+    @extend_schema(
+        request=inline_serializer(name="TitoloIvaMovimentoAnnullaReq", fields={
+            "motivo": serializers.CharField(),
+        }),
+        responses={200: inline_serializer(
+            name="TitoloIvaMovimentoAnnullaResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Annulla una forzatura scrivendo il contro-movimento (`Q7`).
+    # ⛔ `annulla` come ultimo segmento, e NON un `DELETE`: l'azione non
+    #    cancella niente — aggiunge una riga. Il verbo nomina cio' che e', ed e'
+    #    la grammatica URL delle azioni di dominio.
+    # ⚠️ Nessun `tipo_movimento` nel serializer: si annullano SOLO forzature, e
+    #    a dirlo e' la check a DB — che risponde con il motivo, non con un 500.
+    def post(
+        self, request: Request, soggetto_id: str, titolo_id: int, movimento_id: int,
+    ) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: TitoliIvaService().annulla_movimento(
+                soggetto_id, titolo_id, movimento_id, p,
+            ),
+        )
+
+
 # =================================================================
 # Presidio: i titoli con il plafond sfondato (Q4)
 # =================================================================

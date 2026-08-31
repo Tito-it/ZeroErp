@@ -75,6 +75,7 @@ from apps.anagrafiche.api.views_titoli_iva import (
     SoggettoTitoloIvaAmbitiView,
     SoggettoTitoloIvaAmbitoDetailView,
     SoggettoTitoloIvaMovimentiView,
+    SoggettoTitoloIvaMovimentoAnnullaView,
     TitoliIvaSfondatiView,
 )
 from apps.anagrafiche.api.views_conti_bancari import (
@@ -199,6 +200,9 @@ urlpatterns = [
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/", SoggettoTitoloIvaAmbitiView.as_view(), name="anagrafiche-titoli-iva-ambiti"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/<int:ambito_id>/", SoggettoTitoloIvaAmbitoDetailView.as_view(), name="anagrafiche-titoli-iva-ambiti-detail"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/movimenti/", SoggettoTitoloIvaMovimentiView.as_view(), name="anagrafiche-titoli-iva-movimenti"),
+    # ⭐ Il verbo come ultimo segmento, e non un DELETE: annullare NON cancella,
+    #    aggiunge il contro-movimento che dice quale riga corregge (Q7).
+    path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/movimenti/<int:movimento_id>/annulla/", SoggettoTitoloIvaMovimentoAnnullaView.as_view(), name="anagrafiche-titoli-iva-movimento-annulla"),
     path("soggetti/<str:soggetto_id>/conti-bancari/", SoggettoContiBancariView.as_view(), name="anagrafiche-soggetti-conti-bancari"),
     path("soggetti/<str:soggetto_id>/conti-bancari/<int:cb_id>/", SoggettoContiBancariDetailView.as_view(), name="anagrafiche-soggetti-conti-bancari-detail"),
     # Conti bancari — lookup

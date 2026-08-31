@@ -4589,6 +4589,7 @@
       "ambito_ristretto": "Only some goods",
       "ambito_tutto": "All goods",
       "ambito_vuoto": "No goods listed.",
+      "annulla_movimento": "Cancel movement",
       "annullo_blocco": {
         "e_un_annullo": "This is already a cancellation, and a cancellation cannot be cancelled: if the adjustment is still needed, record a new one with its reason.",
         "gia_annullato": "This movement has already been cancelled.",
@@ -4596,6 +4597,7 @@
         "non_trovato": "The movement does not exist.",
         "plafond_negativo": "Cancelling it would take the used allowance below zero: credit notes have exceeded invoices on this title."
       },
+      "annullo_hint": "Cancelling does not delete: it records an opposite movement pointing to this one. Both stay visible, and the used allowance returns to its previous value.",
       "avviso_ambito_incompleto": "This title is restricted but lists no goods, so it applies to nothing. Add at least one entry, or make it valid for all goods.",
       "col_data": "Date",
       "col_documento": "Document",
@@ -4638,6 +4640,7 @@
       "mov_forzatura": "Manual entry",
       "mov_manuale": "manual",
       "mov_nota_credito": "Credit note",
+      "movimento_annullato": "Movement cancelled",
       "registra_forzatura": "Record the adjustment",
       "registro_vuoto": "No movement recorded.",
       "section_ambito": "Which goods it applies to",

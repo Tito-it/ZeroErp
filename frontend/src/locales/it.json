@@ -4589,6 +4589,7 @@
       "ambito_ristretto": "Solo alcune merci",
       "ambito_tutto": "Tutte le merci",
       "ambito_vuoto": "Nessuna merce indicata.",
+      "annulla_movimento": "Annulla movimento",
       "annullo_blocco": {
         "e_un_annullo": "È già un annullo, e un annullo non si annulla: se la forzatura serve ancora, se ne registra una nuova con il suo motivo.",
         "gia_annullato": "Questo movimento è già stato annullato.",
@@ -4596,6 +4597,7 @@
         "non_trovato": "Il movimento non esiste.",
         "plafond_negativo": "Annullarlo porterebbe il plafond utilizzato sotto zero: nel frattempo le note di credito hanno superato le fatture su questo titolo."
       },
+      "annullo_hint": "L'annullo non cancella: registra un movimento di segno opposto che punta a questo. Restano visibili entrambi, e il plafond utilizzato torna al valore di prima.",
       "avviso_ambito_incompleto": "Questo titolo è ristretto ma non indica nessuna merce: così non si applica a niente. Aggiungi almeno una voce, oppure rendilo valido per tutte le merci.",
       "col_data": "Data",
       "col_documento": "Documento",
@@ -4638,6 +4640,7 @@
       "mov_forzatura": "Forzatura",
       "mov_manuale": "manuale",
       "mov_nota_credito": "Nota di credito",
+      "movimento_annullato": "Movimento annullato",
       "registra_forzatura": "Registra la rettifica",
       "registro_vuoto": "Nessun movimento registrato.",
       "section_ambito": "Su quali merci si applica",

@@ -23,6 +23,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
@@ -34,6 +35,7 @@ import {
   updateSoggettoTitoloIva,
   createTitoloIvaAmbito,
   deleteTitoloIvaAmbito,
+  annullaTitoloIvaMovimento,
   createTitoloIvaForzatura,
 } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
@@ -58,7 +60,7 @@ import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const { confirmDelete } = useConfirmAction()
@@ -311,9 +313,50 @@ function descriviAmbito(r) {
 }
 
 // === Registro movimenti (D5) e forzatura manuale (Q3) ===
+
+// Scopo: la frase che spiega perche' l'annullo e' spento.
+// ⛔ Viaggia la CHIAVE, non il testo: il messaggio e' multilingua e vive nei
+//    locales. `labelOrCode` mostra il codice grezzo se la chiave manca — il
+//    vocabolario dei motivi e' del DB e puo' crescere.
+function motivoAnnullo(riga) {
+  return labelOrCode(t, te, riga.annullo_blocco_reason_key, riga.annullo_blocco_codice)
+}
+
+// Scopo: apre il dialog dell'annullo sulla riga scelta (Q7).
+// ⚠️ Il motivo si chiede PRIMA: e' la traccia del perche', ed e' quello che
+//    rende il registro leggibile a distanza di mesi. Non lo si lascia scoprire
+//    dal rifiuto del `CHECK`.
+function onAnnullaMovimento(riga) {
+  annullo.value = { movimento_id: riga.id, motivo: '' }
+  annulloVisible.value = true
+}
+
+const annulloValido = computed(() => !!annullo.value.motivo?.trim())
+
+// Scopo: scrive il CONTRO-MOVIMENTO. Non e' una delete e non e' un update:
+//        e' una riga nuova che punta a quella annullata, e l'accumulatore
+//        torna al valore giusto da solo (Q7).
+async function onSalvaAnnullo() {
+  const res = await execute(
+    () => annullaTitoloIvaMovimento(
+      props.soggettoId, props.titoloId, annullo.value.movimento_id,
+      { motivo: annullo.value.motivo.trim() },
+    ),
+    { successMessage: t('anagrafiche.titoli_iva.movimento_annullato') },
+  )
+  // ⚠️ `!== null` e non `if (res)`: un esito legittimamente falsy non e' un
+  //    fallimento — e' la regola `feedback_drawer_result_check`.
+  if (res === null) return
+  annulloVisible.value = false
+  await ricaricaDettaglio()
+}
+
 const movimenti = computed(() => detail.value?.movimenti || [])
 const forzaturaVisible = ref(false)
 const forzatura = ref(nuovaForzatura())
+
+const annulloVisible = ref(false)
+const annullo = ref({ movimento_id: null, motivo: '' })
 
 function nuovaForzatura() {
   return { imponibile: null, data_movimento: new Date(), motivo: '' }
@@ -557,6 +600,23 @@ const onClose = useDrawerClose(emit)
             <template #body="{ data }">{{ descriviDocumento(data) }}</template>
           </Column>
           <Column field="motivo" :header="t('anagrafiche.titoli_iva.col_motivo')" />
+          <!-- ⭐ L'ANNULLO (Q7), col motivo quando e' spento. Il pulsante non
+               sparisce: resta e SPIEGA — un pulsante grigio che non dice perche'
+               e' indistinguibile da un bug.
+               ⛔ Il motivo arriva dalla vista, e lo produce la STESSA check che
+               la madre interroga per rifiutare: tooltip e rifiuto non possono
+               divergere. -->
+          <Column v-if="!isReadonly" style="width: 4rem">
+            <template #body="{ data }">
+              <span class="app-action-tooltip-wrap"
+                v-tooltip.top="data.annullo_blocco_codice ? motivoAnnullo(data) : t('anagrafiche.titoli_iva.annulla_movimento')">
+                <Button :icon="MANAGE_ICONS.UNDO" text severity="danger" size="small"
+                  :disabled="!!data.annullo_blocco_codice"
+                  :aria-label="t('anagrafiche.titoli_iva.annulla_movimento')"
+                  @click="onAnnullaMovimento(data)" />
+              </span>
+            </template>
+          </Column>
           <template #empty>{{ t('anagrafiche.titoli_iva.registro_vuoto') }}</template>
         </DataTable>
 
@@ -578,6 +638,22 @@ const onClose = useDrawerClose(emit)
         @save="onSave" @cancel="onClose" />
       <FormFooter v-else close-only @cancel="onClose" />
     </div>
+
+    <!-- L'annullo di una forzatura (Q7): un contro-movimento, non una delete. -->
+    <AppDialog
+      v-model:visible="annulloVisible"
+      :header="t('anagrafiche.titoli_iva.annulla_movimento')"
+      width="md" :loading="loading" :save-disabled="!annulloValido"
+      :save-label="t('anagrafiche.titoli_iva.annulla_movimento')"
+      @save="onSalvaAnnullo" @cancel="annulloVisible = false">
+      <p class="text-color-secondary" style="font-size: 0.85rem;">
+        {{ t('anagrafiche.titoli_iva.annullo_hint') }}
+      </p>
+      <div class="form-field">
+        <label>{{ t('anagrafiche.titoli_iva.col_motivo') }} *</label>
+        <Textarea v-model="annullo.motivo" rows="2" class="w-full" />
+      </div>
+    </AppDialog>
 
     <!-- Forzatura manuale del plafond (Q3 + D5). -->
     <AppDialog
