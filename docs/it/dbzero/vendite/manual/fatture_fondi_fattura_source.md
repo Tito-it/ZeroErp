@@ -144,7 +144,7 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 
 ### ✅ I presidi, e da dove vengono (applicati il 2026-08-15)
 
-Piano completo: [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.
+Piano completo: [brief-db-fondo-fattura…](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §8.
 
 | Prima | Adesso | Chi lo fa |
 | --- | --- | --- |

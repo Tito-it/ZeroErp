@@ -312,7 +312,7 @@ ma senza passare dalla pipeline lotto.
 > 🔴 **Questa sezione è un design del 2026-02 mai eseguito, e tre delle sue righe
 > sono state decise diversamente.** Resta scritta perché è la storia del
 > ragionamento, non perché sia ancora valida. **La versione viva è
-> [brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.**
+> [brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.**
 >
 > | Qui si diceva | Decisione presa |
 > |---|---|

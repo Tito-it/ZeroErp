@@ -15,7 +15,7 @@
 >
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)
 >
-> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §9.5, §9.6-b, §9.7 — passo D-21
+> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §9.5, §9.6-b, §9.7 — passo D-21
 
 ---
 

@@ -42,7 +42,7 @@ in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in
 
 ### ✅ I due presidi, applicati il 2026-08-15
 
-Piano: [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2.
+Piano: [brief-db-fondo-fattura…](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2.
 
 **1. La chiave sorgente ↔ figlia è passata da cinque elementi a nove** (D-4).
 

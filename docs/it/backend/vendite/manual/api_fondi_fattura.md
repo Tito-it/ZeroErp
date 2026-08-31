@@ -195,7 +195,7 @@ proprio.
 > ⭐ Qui la policy è più semplice che sugli altri satelliti: `emittente_soggetto_ruolo_id`
 > e `billing_account_id` sono **in colonna e NOT NULL**, quindi niente delega a
 > `fn_scope_*_via_fattura`. Dettaglio in
-> [brief-db-fondo-fattura-ricalcolo-e-governo.md](../../../dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md)
+> [brief-db-fondo-fattura-ricalcolo-e-governo.md](../../../dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md)
 > §9.9. ✅ **APPLICATA il 2026-08-31** (changeSet `20260831-62`): verificato sul
 > catalogo vivo — `relrowsecurity = true` e le **due** policy sulla tabella.
 > ⛔ La frase qui sopra («non ha RLS») **non è più vera**: il ramo

@@ -654,12 +654,14 @@ Da un punto di vista tecnico:
 | `fattura_figlia_id`           | BIGINT, FK  |    si    | Fattura che utilizza il fondo                                       |
 | `tipo_fondo_fattura_id`       | BIGINT, FK  |    no    | Tipo di fondo                                                       |
 | `importo`                     | NUMERIC     |    no    | Importo del fondo                                                   |
-| `stato`                       | VARCHAR     |    no    | Stato: `DISPONIBILE`, `ASSEGNATO`, `ANNULLATO`                      |
+| `stato`                       | VARCHAR     |    no    | Stato: `DISPONIBILE`, `ASSEGNATO`, `ESEGUITO`, `ANNULLATO` — **quattro**, dal 21-08-2026 |
 | `billing_account_id`          | BIGINT, FK  |    no    | Billing account (denormalizzato dalla sorgente)                     |
 | `utility_id`                  | INTEGER, FK |    no    | Utility (denormalizzata dalla sorgente)                             |
 | `tipo_doc_fiscale_id`         | BIGINT, FK  |    no    | Tipo documento fiscale                                              |
 | `emittente_soggetto_ruolo_id` | BIGINT, FK  |    no    | Emittente (soggetto con ruolo)                                      |
 | `valuta_id`                   | BIGINT, FK  |    no    | Valuta                                                              |
+| `origine`                     | VARCHAR     |    no    | `AUTOMATICA` (il giro notturno) o `MANUALE` (una persona, oggi via riporto di una sistemazione) |
+| `motivo`                      | TEXT        |    si    | **Obbligatorio** se `origine = 'MANUALE'` o se `stato = 'ANNULLATO'`: un atto deciso a mano, o disfatto, deve dire perche' |
 | `data_assegnazione`           | TIMESTAMPTZ |    si    | Data di assegnazione alla fattura figlia                            |
 | `user_assegnazione`           | TEXT        |    si    | Utente che ha effettuato l'assegnazione                             |
 | `attivo`                      | BOOLEAN     |    no    | Flag attivo (default: true)                                         |
@@ -696,17 +698,49 @@ il giro successivo ne fa una nuova sul residuo di adesso — e **non tocca** que
 > lotto in bozza), **non una reazione ai pagamenti**: nessun incasso riapre o
 > chiude un fondo da solo.
 >
-> ✅ ~~**Due cose stanno per cambiare**~~ — **la prima e' fatta** (15-08-2026):
-> il fondo di una fattura definitiva **non si ricalcola piu**, la generazione e
-> create-only e l'importo dell'atto e immutabile. La seconda e ancora aperta.
-> (piano — [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8):
+> ✅ ~~**Due cose stanno per cambiare**~~ — **entrambe sono fatte**, e il
+> cantiere che le ha portate e' chiuso
+> ([brief-db-fondo-fattura…](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo)):
 >
 > * ~~oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
->   giri di fatturazione successivi. Diventera fisso~~ → **fatto**: una fattura
->   definitiva ha un fondo definitivo;
-> * oggi il passaggio ad `ANNULLATO` per "documento sorgente gia saldato"
->   avviene **da solo**. Sparira: se nel frattempo la fattura di origine e stata
->   pagata, il fondo semplicemente **non viene applicato** e resta da guardare.
+>   giri successivi. Diventera fisso~~ → ✅ **fatto il 15-08-2026**: una fattura
+>   definitiva ha un fondo definitivo, la generazione e create-only e l'importo
+>   dell'atto e immutabile;
+> * ~~oggi il passaggio ad `ANNULLATO` per "documento sorgente gia saldato"
+>   avviene **da solo**. Sparira~~ → ✅ **fatto**: verificato sul corpo vivo di
+>   `fn_genera_fondi_fattura_source`, che non scrive piu `ANNULLATO` in nessun
+>   ramo. Se nel frattempo la fattura di origine e stata pagata, il fondo
+>   semplicemente **non viene applicato** e **resta da guardare** — ed e' proprio
+>   l'elenco del paragrafo qui sotto.
+
+### ⭐ Chi decide su un fondo, e come — dal 31-08-2026
+
+Il giro automatico non sana niente: quando si ferma, **lascia la riga a una
+persona**. Le righe che aspettano una decisione stanno in
+**Vendite → Tool fatturazione → «Fondi da decidere»**, con quattro motivi.
+
+| Il gesto | Dove | Che cosa fa |
+| --- | --- | --- |
+| **Cancellare l'atto** | il kebab sulla riga dell'elenco, solo sul motivo `NON_PIU_CAPIENTE` | toglie un atto che non e' mai diventato un fatto. ⛔ Si **cancella**, non si annulla: un atto mai eseguito non lascia una riga di registro, lascia il posto vuoto che aveva prima |
+| **Disfare un riporto sbagliato** | il drawer della **sistemazione**, non l'elenco dei fondi | si annulla la **sistemazione** che ha deciso il riporto, e il fondo cade con lei. ⚠️ Provando dall'elenco dei fondi il sistema rifiuta e **nomina questa strada** |
+
+> ⛔ **Non ogni fondo si cancella**, e il motivo lo dice il sistema: se il denaro
+> si e' gia' mosso (atto eseguito, riga registrata, distinta chiusa) o se la
+> fattura che ha ricevuto il fondo e' ormai un documento fiscale definitivo, il
+> gesto viene rifiutato con la sua ragione.
+>
+> ⚠️ **Il gesto e' irreversibile e ha un permesso suo** (`governa_fondo_fattura`,
+> azione «pericolosa»): non basta l'accesso all'area vendite. E **cancellare
+> riapre la generazione automatica** — il giro successivo puo' riproporre un
+> fondo nuovo, letto sul residuo di quel momento.
+
+> ⭐ **Un fondo puo' nascere anche da `pagamenti`.** Quando un'eccedenza viene
+> sistemata con destinazione **riporto**, e' il processo delle sistemazioni a
+> creare l'atto, con `origine = 'MANUALE'` e il motivo di chi ha deciso. E' la
+> ragione per cui esistono le due colonne `origine` e `motivo`.
+
+> 🔒 **La tabella ha la row security** dal 31-08-2026: un operatore vede e tocca
+> solo i fondi del proprio emittente e dei propri billing account.
 
 Documentazione dettagliata: [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)
 

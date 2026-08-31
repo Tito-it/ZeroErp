@@ -49,7 +49,7 @@ applicando le regole di arrotondamento definite per **emittente/utility**.
   massimo** la seconda condizione è vera per tutti e **ogni** fattura sopra il
   minimo diventa «di minimo». Una configurazione incompleta oggi non chiude:
   **spalanca**. È previsto un vincolo «entrambe o nessuna»
-  ([piano](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-0).
+  ([piano](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-0).
 * Esegue la sincronizzazione contabile dei fondi assegnati alla fattura
   (`fn_sync_contabili_fondo_fattura`).
 
