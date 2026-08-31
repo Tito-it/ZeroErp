@@ -136,6 +136,30 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
 
   -- ── CASCADE_DB: ci pensa la FK, e va bene cosi ─────────────────────
   ('vendite.fatture_indirizzi',            'CASCADE_DB',    'snapshot indirizzi: muore col documento e si rigenera al rilancio'),
+  -- ⭐ rev 2026-08-31 (changeSet 20260831-25): il satellite dei riferimenti
+  --   dell atto. Questo file ne ha fatto il nome il giorno stesso, ed e
+  --   esattamente il lavoro per cui esiste.
+  --
+  -- ⚠️ CASCADE_DB E UNA DECISIONE, non il modo di far tornare il verde: il
+  --   blocco DatiContratto e uno snapshot di QUELLA fattura - numero, data e i
+  --   tre codici congelati il giorno dell emissione - e senza il documento non
+  --   ha nessun oggetto. Non e come pagamenti.vendite_movimenti, dove il
+  --   rifiuto E la funzionalita: qui non c e niente da proteggere, c e una
+  --   copia da buttare insieme all originale. E si rigenera al rilancio, come
+  --   fatture_indirizzi qui sopra, dalla stessa scrittura che rifa le righe.
+  --
+  -- ⛔ E LA TABELLA HA UNA FIGLIA SUA - vendite.fatture_righe, via
+  --   fk_fatture_righe_fattura_atto - che NESSUNO DEI DUE INVENTARI GUARDA:
+  --   il primo elenca le figlie di vendite.fatture, il secondo quelle di
+  --   vendite.fatture_righe, e le figlie di fatture_atti sono un terzo livello
+  --   che non esiste. Oggi non e un buco: quell unica figlia e vendite.fatture_righe,
+  --   che e gia classificata al primo livello e muore PRIMA (la pulizia la
+  --   cancella esplicitamente, e in una DELETE sulla testata la NO ACTION si
+  --   verifica a fine istruzione, quando entrambe le cascate sono passate -
+  --   provato in test-fatture-atti-v1 caso 10).
+  --   ⚠️ Ma e un DEBITO DICHIARATO, non una svista: il giorno che a fatture_atti
+  --   si aggiungesse una seconda figlia, nessun presidio ne farebbe il nome.
+  ('vendite.fatture_atti',                 'CASCADE_DB',    'snapshot dei riferimenti dell atto (numero, data, CIG, CUP, commessa) congelato all emissione: senza il documento non ha oggetto, e si rigenera al rilancio dalla stessa scrittura che rifa le righe. ⚠️ Ha una figlia sua - fatture_righe via fk_fatture_righe_fattura_atto - che nessuno dei due inventari guarda, perche il terzo livello non esiste: oggi non e un buco (quella figlia e gia classificata al primo livello e muore prima), ma e un debito dichiarato'),
   ('vendite.fatture_rettifiche',           'CASCADE_DB',    'rettifiche del documento: senza il documento non hanno oggetto'),
   ('vendite.fatture_scadenze',             'CASCADE_DB',    'piano rate: si rigenera dal termine al rilancio'),
   ('vendite.fatture_stampa_coda',          'CASCADE_DB',    'outbox di stampa: una stampa di un documento che non esiste piu non ha senso'),
@@ -344,6 +368,27 @@ INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
    'l accredito del reso punta alla riga accreditata: e il documento che prova quanto e stato reso'),
   ('fk_fatture_righe_riga_rettificata',            'vendite.fatture_righe',        'BLOCCO_VOLUTO',
    'auto-riferimento: la riga di nota di credito punta alla riga rettificata. ⚠️ Blocca SOLO se la riga che rettifica sta FUORI dall insieme cancellato: se muoiono insieme la NO ACTION e soddisfatta a fine istruzione, ed e il caso normale della nota di credito nello stesso lotto'),
+  -- ⭐ rev 2026-08-31 (changeSet 20260831-30): il secondo auto-riferimento di
+  --   questa tabella. E la riga di sopra e il suo gemello per FORMA, non per
+  --   comportamento - vale la pena leggerli insieme.
+  --
+  -- ⚠️ PERCHE BLOCCO_VOLUTO e non CASCADE_DB, che sarebbe la risposta comoda:
+  --   la NO ACTION qui e VOLUTA. Cancellare una capofila lasciando vive le sue
+  --   parti spezzerebbe la lettura «capofila -> parti» a meta, e chi somma gli
+  --   importi partendo dall attivita fatturabile prenderebbe righe orfane che
+  --   non sa piu ricondurre a niente. Il rifiuto E la risposta giusta.
+  --
+  -- ⭐ E SUL PERCORSO DELLA PULIZIA NON SCATTA MAI, ma non per fortuna: per
+  --   COSTRUZIONE. La FK e COMPOSITA su (riga_capofila_id, fattura_id), quindi
+  --   capofila e parti stanno per forza sulla STESSA fattura - e la pulizia le
+  --   cancella con un DELETE solo, dove la NO ACTION e soddisfatta a fine
+  --   istruzione. E la differenza con la riga sopra: li il caso «fuori
+  --   dall insieme» esiste (una nota di credito di un altro lotto), qui no.
+  --   Stessa posizione di pagamenti.sistemazioni al primo livello: il blocco e
+  --   irraggiungibile oggi, e il giorno che il percorso cambiasse sarebbe la
+  --   risposta giusta comunque.
+  ('fk_fatture_righe_riga_capofila',               'vendite.fatture_righe',        'BLOCCO_VOLUTO',
+   'auto-riferimento: la parte di una riga spezzata dal plafond punta alla sua capofila. NO ACTION voluta - cancellare la capofila lasciando vive le parti spezzerebbe a meta la lettura «capofila -> parti», e chi somma gli importi partendo dall attivita troverebbe righe orfane. ⭐ Sul percorso della pulizia non scatta MAI per COSTRUZIONE, non per fortuna: la FK e composita su (riga_capofila_id, fattura_id), quindi le due righe stanno sempre sulla stessa fattura e muoiono nello stesso DELETE, dove la NO ACTION e soddisfatta a fine istruzione. ⚠️ E la differenza con fk_fatture_righe_riga_rettificata, che ha la stessa forma: li il caso «la riga sta fuori dall insieme cancellato» esiste davvero (una nota di credito di un altro lotto), qui il modello non lo ammette'),
 
   -- ── SCOPERTA_NOTA: eccezione a tempo, la prima di questo inventario ─
   -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2): e la SECONDA chiave esterna della

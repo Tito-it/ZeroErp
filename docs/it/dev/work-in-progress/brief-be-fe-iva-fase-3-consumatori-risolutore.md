@@ -26,7 +26,7 @@
 > **Correlati:**
 > [fn_resolve_iva_riga](/dbzero/vendite/funzioni/fn_resolve_iva_riga) ·
 > [fn_resolve_iva_riga_it](/dbzero/vendite/funzioni/fn_resolve_iva_riga_it) ·
-> [brief-db-fatture-atti-riferimenti-contratto.md](brief-db-fatture-atti-riferimenti-contratto.md) (figlio, gate di `F3`) ·
+> [brief-db-fatture-atti-riferimenti-contratto.md](../work-done/brief-db-fatture-atti-riferimenti-contratto.md) (figlio, gate di `F3`) ·
 > [brief-be-fe-titoli-iva-soggetto.md](brief-be-fe-titoli-iva-soggetto.md) (Fase 2)
 
 ---
@@ -79,6 +79,15 @@ sono debito già maturato o conseguenze dirette di `D33`/`D28`:
 | **`F0`** | i **cinque codici errore** senza policy | il cancello è rosso **adesso** |
 | **`F5`** | `congela_fiscale` esposto nelle capability | conseguenza di `D33`, decisione `P7` |
 | **`F6`** | `DEFAULT_IVA_ID` alla chiave naturale | conseguenza di `D28`, decisione `P8` |
+| **`F3-c`** | ⛔ le righe di fattura sono ordinate per **UUID** articolo | decisione di Tid del 31/08, trovata chiudendo `F3-a` |
+
+⚠️ **`F6` non è più «solo seed», e non è più prima del DB**: il team DB ha
+trovato che `parameters.csv` non è riscrivibile (mina `DEFAULT_UTILITY`, già
+esplosa il 25/08) e la voce è scesa **in fondo** all'ordine di lavoro DB, dietro
+un passo di `20_code` che nessuno aveva chiesto. Il lettore BE —
+`catalogo_service.py`, il form-defaults dell'articolo — si adegua **quando il
+seed è cambiato**, non prima. Dettaglio in
+[brief-db-default-iva-chiave-naturale.md](../work-done/brief-db-default-iva-chiave-naturale.md) §2-bis.
 
 ⛔ **Fuori**: il generatore XML FatturaPA, la lista dei «titoli sfondati» (residuo
 dichiarato di `I7`), `T3-b` del piano Fase 2 (gated su un altro brief DB).
@@ -155,7 +164,7 @@ blocco `DatiContratto` è ripetibile `0..N` e ogni occorrenza porta
 `RiferimentoNumeroLinea`. Non è testata e non è una colonna di riga: sono N
 blocchi agganciati alle loro righe.
 
-📌 Brief al team DB: [brief-db-fatture-atti-riferimenti-contratto.md](brief-db-fatture-atti-riferimenti-contratto.md). ⛔ **`F3` è gated su quello.**
+📌 Brief al team DB: [brief-db-fatture-atti-riferimenti-contratto.md](../work-done/brief-db-fatture-atti-riferimenti-contratto.md). ⛔ **`F3` è gated su quello.**
 
 ### `P5` — il plafond si consuma alla **DEFINITIVA**, e la pulizia non si tocca
 
@@ -409,7 +418,30 @@ altrimenti l'operatore legge due righe scollegate con quantità strane.
 
 ## 4. Le slice
 
-### 4.1 `F0` — 🔴 i cinque codici errore senza policy
+### 4.1 `F0` — 🔴 i codici errore senza policy — ⛔ **sono UNDICI, non cinque**
+
+> ⭐ **AGGIORNAMENTO 2026-08-31 (2), verificato su `46fbf56ab`: il gate è
+> caduto, e il conto è cambiato.** Il quinto codice —
+> `E_FATTURA_REGISTRO_EMITTENTE_INCOERENTE` — **è in git**. E con lui sono
+> arrivati **altri tre** codici dello stesso cantiere, che questa sezione non
+> nominava:
+>
+> | Codice | Classe | id msg | changeSet |
+> | --- | --- | --- | --- |
+> | `E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO` | `DATO_ERRATO` | 1030 | `20260831-06` |
+> | `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` | `TECNICO` | 1031 | `20260831-18` |
+> | `E_EMITTENTE_CODICE_FORMA_NON_VALIDA` | `DATO_ERRATO` | 1032 | `20260831-23` |
+>
+> ⇒ **La corsa unica di `genera_error_policies` va fatta su undici**, e i
+> ripieghi in `error_messages_fallback.py` sono **undici**, senza segnaposto.
+> ⚠️ Rigenerare contandone cinque o nove non fallisce subito: il `--check`
+> confronta **carattere per carattere**, quindi il rosso arriva in CI il giorno
+> dopo, su una PR che con l'IVA non c'entra niente.
+>
+> ⛔ **E ne mancherà un dodicesimo**: il guard anti-catena della colonna
+> capofila (voce 5 dell'ordine di lavoro DB) conierà un codice `TECNICO` suo.
+> Se `F0` parte prima che quella voce sia applicata, la corsa andrà rifatta.
+> Il prossimo id messaggio libero è **1033**.
 
 Il cancello è rosso **adesso**: `genera_error_policies --check` risponde
 *«DIVERGE dal catalogo»* (verificato il 2026-08-30).
@@ -618,6 +650,7 @@ le due strade tornano a divergere.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (3) | ⭐ **Il team DB ha ri-verificato l'ordine di lavoro su `46fbf56ab` e quattro cose di questo piano sono cambiate.** `F0` non è più gated ma **conta undici codici, non cinque** (tre ne sono arrivati il 31/08 dal cantiere registri, e un dodicesimo arriverà col guard della capofila). `F3-b` ha la sua forma: colonna `riga_capofila_id`, «stessa fattura» come **vincolo** e non come guard, «niente catene» come trigger con un codice `TECNICO` nuovo. ⛔ E la riga del brief DB che diceva *«per la vista la forma del kit non si inventa»* **era sbagliata**: il kit **aggrega**, e aggregare le due parti produrrebbe un solo `DettaglioLinee` — forma decisa: **due righe sorelle**, mai `livello 1`. `F6` è scesa in fondo all'ordine DB (mina `parameters.csv`). ⭐ Nata `F3-c` da una frase di Tid — *«negli elenchi organizzare per codice articolo»* — che ha scoperchiato un difetto vivo: le righe di fattura sono ordinate per **UUID** |
 | 2026-08-31 (2) | ⭐ Domanda di Tid: *«hai cose da fare in Fase 3 a prescindere dal DB?»*. Controllando voce per voce sono venute fuori **tre** cose: `F3` ha due metà e solo una aspettava il DB (la **group key** è puro Python — fatta, `F3-a`); i due cataloghi BB che il piano chiedeva **non erano stati compilati**; e ⛔ la spezzatura di `N3` era bloccata su una colonna di `fatture_righe` che **nessuno aveva mai chiesto** al team DB, ora voce 5 dell'elenco. ⚠️ Trovato anche che gli smoke di `F2-a` e `F2-d` non erano stati salvati come file: uno smoke che non sta nel repo non è un presidio |
 | 2026-08-31 | Piano scritto su richiesta di Tid, dopo la chiusura DB di Fase 2, Fase 3 e delle decisioni `D33`/`D34`. Nove decisioni prese nello scambio (§2). ⭐ **`P1` si è rivelata un ramo già scritto nel DB** (`p_imponibile IS NULL`): la regola «non spezzare le righe sul documento» non richiede una riga di codice DB. ⛔ Due difetti vivi trovati verificando invece di assumere: il **cancello dei codici errore è rosso** con un quinto codice applicato al DB e non in git, e **`contratto_id` non è nella group key** delle righe di fattura — due attività di contratti diversi collassano oggi nella stessa riga. Quattro decisioni restano aperte (§3), e `N3` — a chi puntano le attività quando la riga di fattura si spezza — è il punto duro del piano |
 
@@ -763,7 +796,7 @@ descrive **quattro passi** e ne nomina proprio questo parametro. I primi due
 registry `config.parameter_fk_surrogate`) sono **seed DB**.
 
 📌 Brief passato al team DB:
-[brief-db-default-iva-chiave-naturale.md](brief-db-default-iva-chiave-naturale.md).
+[brief-db-default-iva-chiave-naturale.md](../work-done/brief-db-default-iva-chiave-naturale.md).
 Il lettore BE — uno solo, il form-defaults dell'articolo — si adegua **nello
 stesso giro**, non prima.
 
@@ -916,6 +949,64 @@ con un contratto. Uno smoke che avesse *cercato* l'attività con l'atto sarebbe
 passato a vuoto — verde per sottrazione, che è il difetto che questo cantiere
 insegue da giorni.
 
+### 🆕 `F3-c` — ⛔ le righe di fattura sono ordinate per **UUID**
+
+> **Decisione di Tid, 2026-08-31**: *«negli elenchi dovremmo sempre organizzare
+> per codice articolo»*. ⭐ **Non è un'aggiunta: è la correzione di un difetto
+> vivo**, trovato guardando la chiave di ordinamento mentre si chiudeva `F3-a`.
+
+Le righe di fattura sono già ordinate «per articolo». Ma con questa chiave —
+`_chiave_ordinamento` in `apps/vendite/services/fatture_righe_service.py`:
+
+```python
+str(g.group_key["articolo_id"] or ""),   # ← l'UUID dell'articolo
+```
+
+⛔ È l'**UUID**. Per il computer è un ordinamento perfettamente deterministico e
+stabile; per una persona che guarda la fattura è **rumore casuale**. Due
+articoli della stessa famiglia finiscono agli antipodi del documento, e non
+c'è nemmeno un ordine sbagliato da criticare: non c'è proprio un ordine
+leggibile.
+
+⚠️ **Il commento sopra quella funzione dichiara lo scopo per metà**: dice che la
+chiave esiste per rendere `riga_nr` **stabile fra due rigenerazioni**. Vero, e
+la stabilità va tenuta. Ma un ordinamento serve anche a **essere letto**, e su
+questo l'UUID vale zero. Sostituirlo con il `codice` articolo tiene la prima
+proprietà e recupera la seconda.
+
+**La richiesta.**
+
+1. in `_chiave_ordinamento`, l'UUID lascia il posto al **`codice`** articolo;
+2. ⚠️ **il dato oggi non arriva**: `AttivitaDaFatturare`
+   (`apps/vendite/db/pipeline_repository.py`) porta `articolo_descrizione` ma
+   **non** il codice — la query prende `art.descrizione` e basta. Va aggiunto
+   `art.codice` alla `SELECT` e il campo alla dataclass. Se non lo si dice, chi
+   implementa trova il dato mancante e ripiega sulla **descrizione**, che è
+   un'altra cosa.
+
+⚠️ **`codice` e non `codice_interno`, di proposito.** Per convenzione di
+progetto `codice` è l'etichetta che l'utente può cambiare e `codice_interno` è
+la chiave immutabile. Qui l'ordinamento serve **a chi legge il documento**, e
+chi legge vede il `codice`. La conseguenza è che se qualcuno rinomina un
+articolo fra due rigenerazioni dello stesso lotto in bozza, l'ordine delle righe
+cambia. ⭐ **È corretto che cambi** — il documento riflette i codici di adesso —
+e non tocca nulla di già emesso, dove le righe esistono col loro `riga_nr`.
+**Va scritto proprio perché** il prossimo lettore, vedendo *«la chiave deve
+essere stabile»*, potrebbe tornare all'UUID credendo di riparare qualcosa.
+
+ℹ️ Le righe **senza articolo** (rettifiche, oneri) restano dove sono oggi:
+chiave vuota, quindi in testa. Il comportamento non cambia.
+
+⭐ **E si sposa con `F3-b`**: le due parti di una riga spezzata hanno lo stesso
+articolo, quindi con l'ordinamento per codice escono già adiacenti da sole.
+L'`ordinamento` uguale alla capofila resta comunque necessario — è quello che le
+tiene attaccate anche quando in mezzo c'è un'altra riga dello stesso articolo a
+prezzo diverso — ma non lavora contro l'ordine generale: lo rifinisce.
+
+📌 **Perimetro dichiarato**: la decisione riguarda le **righe dei documenti**
+(fattura per ora, e la stessa regola dove vale — DDT, ordini, preventivi), non
+le liste di navigazione, che hanno le loro colonne ordinabili configurabili.
+
 ### ⛔ `F3-b` — la spezzatura: gated su un prerequisito **mai chiesto**
 
 `N3` sceglie `(a')` — le due parti sono **due `fatture_righe` in relazione
@@ -927,12 +1018,47 @@ esiste**, e non era in nessuno dei quattro brief passati al team DB.
 ⇒ Il lavoro risultava bloccato su `brief-db-fatture-atti`, ma in realtà era
 bloccato **anche** su una richiesta che nessuno aveva formulato. È ora la
 **voce 5** di
-[brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md).
+[brief-db-richieste-aperte-dal-backend.md](../work-done/brief-db-richieste-aperte-dal-backend.md).
 
 ⚠️ **Riusare le colonne del kit sarebbe la scorciatoia sbagliata**: `kit_key`
 dice *«queste righe vengono dallo stesso kit venduto»*. Una riga spezzata dal
 plafond non viene da nessun kit, e marcarla così farebbe leggere a
 `vw_fattura_righe_esposte` — che le aggrega — un fatto che non è vero.
+
+#### ✅ La forma decisa dal team DB (2026-08-31), e cosa deve sapere il BE
+
+Il team DB ha preso le due decisioni che mancavano. Non si ri-discutono qui:
+questa è la parte che cambia il codice del backend.
+
+**1. Il legame è `vendite.fatture_righe.riga_capofila_id`** — nullable, `NULL`
+sulla capofila, valorizzata sulle parti successive. Con **due** invarianti
+imposte in modi diversi:
+
+* **«stessa fattura» è un VINCOLO**, non un guard: FK composita
+  `(riga_capofila_id, fattura_id) → fatture_righe(id, fattura_id)`. ⇒ Il BE non
+  può sbagliarlo nemmeno per errore, e non deve verificarlo lui;
+* **«niente catene» è un TRIGGER** — una parte deve puntare a una riga che ha
+  `riga_capofila_id` a `NULL`. ⇒ **Solleverà un codice `TECNICO` nuovo**
+  (`F0` lo dovrà includere): il BE deve scrivere sempre *capofila → parti*, mai
+  *parte → parte*.
+
+**2. ⛔ La vista NON aggrega le due parti, e la riga del brief DB che diceva
+«la forma del kit non si inventa» era sbagliata.** Aggregare produrrebbe **un
+solo `DettaglioLinee`**, cioè cancellerebbe la ragione per cui la riga si
+spezza.
+
+✅ **Forma decisa: due righe sorelle.** In `vw_fattura_righe_esposte` le due
+parti escono **entrambe con il loro imponibile**, entrambe a `livello 0`, con lo
+stesso `ordinamento` (quello della capofila) e un `tipo_riga` nuovo sulla
+seconda.
+⛔ **Scartato `livello 1`**, che nella vista significa *«riga descrittiva, senza
+importo»* — i componenti di kit escono infatti con `imponibile` a `NULL`. ⚠️ Il
+codice che fa *«salta il livello 1, è solo descrizione»* esiste **perché è la
+regola della vista**: su una fattura spezzata perderebbe la seconda parte senza
+nessun errore, con un totale semplicemente più basso.
+
+⇒ **Per il FE**: le due righe vanno rese riconoscibili come una sola origine a
+partire dal `tipo_riga`, non da un'indentazione.
 
 ### ✅ I due cataloghi, che il piano chiedeva e non erano stati fatti
 

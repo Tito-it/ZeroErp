@@ -1,8 +1,25 @@
 # Brief DB — `fn_create_contratto` non whitelista i tre riferimenti dell'atto
 
+> ## ✅ CHIUSO — 2026-08-31
+>
+> **DB fatto e APPLICATO**: changeSet `20260831-24`, whitelist estesa ai tre
+> riferimenti dell'atto. Presidio nei casi **13-15** di
+> `db/pgtap/vendite/test-fn-create-contratto-v1.sql` — aggiunti al file
+> esistente, come fu per `fatturazione_immediata`.
+>
+> ⭐ **Il caso 13 rilegge i tre valori dalla riga**, ed è l'unico che
+> discrimina: provato contro la funzione vecchia diventa `not ok`. Asserire che
+> la `INSERT` riesce non prova niente — la funzione non solleva, **scarta**.
+>
+> ⛔ **Resta il BE, ed è la slice `S3-b` del §5**: tre righe in
+> `contratti_service.py` più il `v-if="isEdit"` che cade in `ContrattoDrawer.vue`.
+> Il segnalibro `test_create_contratto_non_mappa_ancora_i_codici_atto` **ora si
+> può invertire**: finché non lo si fa, l'operatore vede i tre campi solo in
+> modifica, e in creazione non li ha.
+
 > **Destinatario:** team DB (`dev/db-tid`). **Voce unica**, e sblocca la slice
 > `S3-b` del piano
-> [brief-be-fe-iva-risolutore-e-regime-cliente.md](brief-be-fe-iva-risolutore-e-regime-cliente.md).
+> [brief-be-fe-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-be-fe-iva-risolutore-e-regime-cliente.md).
 >
 > 📌 **La richiesta operativa è raccolta con le altre** in
 > [brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md):
@@ -16,7 +33,9 @@
 >
 > **Stato.** 2026-08-29 — verificato sulla doc auto-generata
 > ([fn_create_contratto](/dbzero/vendite/funzioni/fn_create_contratto)), non sui
-> dati. Nessun file scritto lato DB.
+> dati.
+>
+> 🔨 **FATTA e APPLICATA il 2026-08-31** — changeSet `20260831-24`.
 
 ---
 
@@ -132,4 +151,6 @@ ed è il segnalibro che dice dove riprendere.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (2) | 🔨 **FATTA e APPLICATA**: changeSet `20260831-24`. Corpo dalla doc auto-gen, firma con `%TYPE` dall'ultimo YAML, `COMMENT` con la rev nuova. ⭐ Presidio nei casi **13-15** di `test-fn-create-contratto-v1` — aggiunti al file esistente, come fu per `fatturazione_immediata`, e non in uno nuovo. Il caso 13 **rilegge i tre valori dalla riga**: provato contro la funzione vecchia diventa `not ok`, che e' l'unica prova che discrimina (la funzione non solleva, scarta). ⭐ Il caso 15 fissa la differenza che il brief chiedeva di conoscere: le tre chiavi sono nullable, quindi un `null` esplicito passa e NON e' un 23502 come per `fatturazione_immediata`. ⇒ Il segnalibro lato BE — `test_create_contratto_non_mappa_ancora_i_codici_atto` — ora **si puo' invertire** |
+| 2026-08-31 | ✅ **Ri-verificato su `46fbf56ab`: la whitelist non contiene ancora le tre chiavi**, e la voce resta valida parola per parola. ⭐ Controllato anche che non esistano revisioni intermedie della funzione — `20_code/vendite` ha due soli file `*create-contratto*` (`20260707-12`, `20260727-40`) e il corpo del `20260727-40` è **identico** alla doc auto-generata: le due sorgenti sono allineate, quindi il changeSet nuovo non rischia di regredire niente. ⇒ È la **prima** voce dell'ordine di lavoro se se ne fa una sola: costa ancora minuti, a differenza della `DEFAULT_IVA` |
 | 2026-08-29 | Brief nato costruendo `I8` lato BE/FE. La metà PATCH è stata fatta senza dipendenze (passa da `_UPDATE_WRITE_COLS`, che è Python); la metà CREATE si è fermata qui. ⭐ Il difetto è **identico** a quello di `fatturazione_immediata` del 2026-07-27, sulla stessa funzione, ed è documentato nel commento che gli sta accanto |

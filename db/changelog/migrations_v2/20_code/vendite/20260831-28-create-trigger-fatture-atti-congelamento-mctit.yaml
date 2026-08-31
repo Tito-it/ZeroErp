@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il congelamento fiscale morde anche su `vendite.fatture_atti`
+#   brief-db-fatture-atti-riferimenti-contratto §3.3 punto 1 (voce 4 dell'ordine
+#   di lavoro brief-db-richieste-aperte-dal-backend)
+#
+# ── ⭐ NESSUNA FUNZIONE NUOVA, E NESSUN CODICE ERRORE NUOVO ──────────
+#
+#   `vendite.trgfn_fattura_satellite_guard_congelamento` e' gia' PARAMETRICA:
+#   `TG_ARGV[0]` e' la colonna FK verso la fattura, `TG_ARGV[1]` il codice
+#   errore (opzionale, aggiunto da `D34` col 20260830-08). Qui basta il primo
+#   argomento, e il codice resta quello generico dei satelliti,
+#   `E_FATTURA_SATELLITE_CONGELATO`, che e' gia' a catalogo.
+#
+#   ⇒ Una funzione, N montaggi: e' il motivo per cui quella guardia e' stata
+#   resa parametrica, e questo e' il montaggio che la ripaga.
+#
+# ── ⛔ PERCHE' NON E' OPZIONALE ───────────────────────────────────────
+#
+#   Un satellite di fattura non protetto dal congelamento e' un BUCO nella
+#   soglia unica appena costruita da `D33`: da quando `congela_fiscale` e' vero
+#   il documento e' uno snapshot fiscale, e i suoi satelliti non si toccano piu'
+#   — ne' in scrittura ne' in cancellazione. Se `fatture_atti` restasse fuori,
+#   si potrebbe cambiare il CIG di una fattura gia' definitiva senza che niente
+#   protesti, e il documento stampato non corrisponderebbe piu' al documento
+#   trasmesso.
+#
+# ── ⚠️ IL NOME DEL TRIGGER, e la conseguenza sull'ordine ─────────────
+#
+#   `trg_fatture_atti_a10_guard_congelamento_ins_upd_dlt` — stessa forma di
+#   quello su `fatture_righe`. I BEFORE ROW scattano in ORDINE ALFABETICO: su
+#   questa tabella oggi non c'e' nessun altro `a10`, ma il nome va scelto ora
+#   sapendo che un guard futuro si posizionera' rispetto a questo.
+#
+# ── ⚠️ CONSEGUENZA SUL MOMENTO IN CUI IL BACKEND SCRIVE ──────────────
+#
+#   La guardia legge lo stato VIVO della fattura al momento della scrittura. In
+#   una transazione che porta prima `stato = DEFINITIVA` e POI scrive gli atti,
+#   il guard vede `congela_fiscale = t` e RIFIUTA. La sequenza obbligata e'
+#   quindi: risolvi -> scrivi righe e atti (fattura ancora EMESSA) -> consuma il
+#   plafond -> porta a DEFINITIVA. E' la stessa nota gia' scritta per la riga
+#   capofila.
+#
+# ── ℹ️ IL BYPASS DI MANUTENZIONE C'E' GIA', E VIENE GRATIS ───────────
+#
+#   La guardia esce in testa se la GUC `zeroerp.maintenance_reset_lotto_draft`
+#   e' accesa — e' cio' che permette a `fn_cleanup_fatture_by_ids` di
+#   attraversarla per il reset lotto. Montandola qui, il reset continua a
+#   funzionare senza modifiche alla pulizia.
+#
+# ── 📌 COSA NON SI MONTA, DICHIARATO ─────────────────────────────────
+#
+#   `vendite.fatture_riepiloghi_iva` resta l'unico satellite senza questo
+#   guard, e il COMMENT della funzione lo nomina gia' come caso futuro. Non si
+#   monta qui perche' tocca il ricalcolo del riepilogo, che ha una sua soglia da
+#   verificare prima: e' una voce a se', non una dimenticanza.
+#
+# Dipendenze: 20260831-25 (la tabella), 20260830-08 (la guardia parametrica col
+#             codice errore in TG_ARGV[1]).
+# Verifica: db/pgtap/vendite/test-fatture-atti-v1.sql — e il presidio che conta
+#           e' la scrittura RIFIUTATA su una fattura oltre la soglia, provata
+#           anche SENZA il trigger montato per vederla passare (altrimenti non
+#           si sta verificando il montaggio, ma la soglia).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-28-create-trigger-fatture-atti-congelamento-mctit.yaml
+
+  - changeSet:
+      id: 20260831-28-create-trigger-fatture-atti-congelamento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_fattura_satellite_guard_congelamento su
+        vendite.fatture_atti con TG_ARGV = ('fattura_id'). ⭐ Nessuna funzione
+        nuova e nessun codice errore nuovo: la guardia e' parametrica da D34 e il
+        codice resta quello generico dei satelliti, E_FATTURA_SATELLITE_CONGELATO.
+        Un satellite di fattura non protetto dal congelamento e' un buco nella
+        soglia unica costruita da D33: si potrebbe cambiare il CIG di una fattura
+        gia' definitiva senza che niente protesti, e il documento stampato non
+        corrisponderebbe piu' a quello trasmesso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_atti
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_fattura_satellite_guard_congelamento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_atti_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_atti;
+
+              -- ⭐ Un solo argomento: il codice errore resta quello generico dei
+              --    satelliti (E_FATTURA_SATELLITE_CONGELATO). TG_ARGV[1] fuori
+              --    range da' NULL, e il COALESCE dentro la guardia lo gestisce —
+              --    e' il comportamento previsto da D34, non un caso limite.
+              CREATE TRIGGER trg_fatture_atti_a10_guard_congelamento_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.fatture_atti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento(
+                      'fattura_id');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_atti_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_atti;

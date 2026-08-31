@@ -1,0 +1,247 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `trgfn_fatture_righe_guard_riga_capofila` — «NIENTE CATENE»
+#   voce 5 di brief-db-richieste-aperte-dal-backend (N3, decisione D)
+#
+# ── COSA PRESIDIA, E PERCHE' NON PUO' ESSERE UN VINCOLO ─────────────
+#
+#   La colonna `riga_capofila_id` (20260831-30) regge due invarianti. Una — «la
+#   parte e la sua capofila stanno sulla stessa fattura» — e' gia' un VINCOLO,
+#   la FK composita, e non ha bisogno di codice.
+#
+#   L'altra, «niente catene», qui non ce la fa: per verificarla bisogna
+#   guardare la riga PUNTATA e vedere se lei a sua volta punta a qualcuno.
+#   Nessun vincolo di PostgreSQL sa fare questa domanda — un CHECK vede solo la
+#   riga che sta scrivendo.
+#
+# ── ⭐ DUE RAMI, E IL SECONDO E' QUELLO CHE SI DIMENTICA ────────────
+#
+#   Una catena si crea in DUE modi, ed e' la ragione per cui questo file
+#   verifica due cose invece di una:
+#
+#     1) IN AVANTI — la riga si aggancia a una riga che e' GIA' una parte;
+#     2) ⭐ ALL'INDIETRO — una riga che HA GIA' delle parti viene agganciata a
+#        una terza. Il primo controllo non lo vede: la riga puntata e' una
+#        capofila legittima, e la catena nasce dall'altro capo.
+#
+#   Presidiare solo il primo darebbe un guard che sembra funzionare e lascia
+#   passare meta' dei modi di romperlo.
+#
+# ── ⚠️ PERCHE' `SECURITY INVOKER` E NON `DEFINER`, ED E' UNA DECISIONE ─
+#
+#   La regola di casa dice che un guard che legge sotto RLS va in
+#   `SECURITY DEFINER`, perche' altrimenti non distingue «non lo vedo» da «e' di
+#   un altro». ⭐ Qui non serve, e il motivo e' strutturale: `vendite.fatture_righe`
+#   HA la RLS (scope derivato dalla fattura), ma la FK composita garantisce che
+#   capofila e parte stiano sulla STESSA fattura — quindi hanno lo stesso
+#   perimetro, e chi puo' scrivere la parte vede per forza la capofila.
+#
+#   ⚠️ E il caso «non la vedo» non resta scoperto: se la riga indicata sta su
+#   un'altra fattura la `SELECT` non la trova, questa funzione esce senza dire
+#   niente, e a parlare e' la FK composita con un `23503`. E' l'errore giusto —
+#   il problema non e' la catena, e' il documento sbagliato — quindi il silenzio
+#   qui non e' una svista: e' la divisione del lavoro fra i due presidi.
+#
+# ── ⚠️ IL NOME DEL TRIGGER PORTA L'ORDINE ──────────────────────────
+#
+#   `trg_fatture_righe_a10_guard_riga_capofila_ins_upd`. I `BEFORE ROW` di
+#   PostgreSQL scattano in ORDINE ALFABETICO, e su questa tabella c'e' gia'
+#   `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt`: con `guard_riga_…`
+#   il nuovo scatta DOPO. ⇒ Su una fattura congelata a parlare e' il messaggio
+#   giusto («la riga non e' piu' modificabile»), non uno sulla capofila.
+#   ⛔ Rinominarlo e' un cambio di comportamento travestito da pulizia.
+#
+#   ⚠️ Nessun `UPDATE OF riga_capofila_id`: la catena si crea anche modificando
+#   la riga PUNTATA, e un trigger ristretto alla colonna non scatterebbe.
+#
+# ── IL CODICE ERRORE ────────────────────────────────────────────────
+#
+#   `E_FATTURA_RIGA_CAPOFILA_INCOERENTE`, classe **TECNICO** — quel legame non
+#   lo digita nessuno in un form, lo scrive l'orchestrazione del backend che
+#   spezza la riga. ⇒ Niente chiave `campo` nel contesto: su un 500 non c'e'
+#   nessun campo da accendere, e niente `bersaglio`, che si mette solo sugli
+#   errori rimediabili.
+#   ⛔ Non si e' riusato `E_PARAMETRO_INVALIDO`: e' un debito dichiarato (D11 di
+#   brief-db-be-classe-codici-errore), non una sede.
+#   ⭐ Un codice solo per i due rami, col MOTIVO come valore — stessa forma di
+#   `E_TITOLO_IVA_ANNULLO_NON_AMMESSO`: la frase e' la stessa, cambia il perche',
+#   e due codici direbbero al backend che sono due problemi diversi mentre e'
+#   la stessa invariante rotta da due lati.
+#
+# Dipendenze: 20260831-30 (la colonna), seed di E_FATTURA_RIGA_CAPOFILA_INCOERENTE
+#             in codici_errore.csv / messaggi_errore.csv (id messaggio 1033).
+# Verifica: db/pgtap/vendite/test-fatture-righe-capofila-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-31-create-trgfn-fatture-righe-guard-capofila-mctit.yaml
+
+  - changeSet:
+      id: 20260831-31-create-trgfn-fatture-righe-guard-capofila
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.trgfn_fatture_righe_guard_riga_capofila: «niente catene» sulla
+        relazione capofila/parti. ⭐ Due rami e non uno: in avanti (la riga si
+        aggancia a una riga che e' gia' una parte) e ALL'INDIETRO (una riga che ha
+        gia' delle parti viene agganciata a una terza) — il primo controllo non
+        vede il secondo, e presidiarne uno solo darebbe un guard che sembra
+        funzionare. E' un trigger e non un vincolo perche' bisogna guardare la riga
+        PUNTATA, e nessun CHECK sa farlo. ⚠️ SECURITY INVOKER e' una decisione: la
+        FK composita garantisce stesso perimetro fra capofila e parte, quindi chi
+        scrive vede sempre la capofila; il caso «sta su un'altra fattura» lo prende
+        la FK con un 23503, che e' l'errore giusto. Il trigger si chiama
+        guard_riga_capofila per scattare DOPO guard_congelamento (ordine alfabetico
+        dei BEFORE ROW). Errore: E_FATTURA_RIGA_CAPOFILA_INCOERENTE (TECNICO).
+      # ⛔ NIENTE preCondition sul SEED del codice errore, ed e' una lezione
+      #   pagata: la prima stesura di questo file ne aveva una
+      #   (`SELECT count(*) FROM config.codici_errore WHERE codice = ...`) e ha
+      #   fatto FALLIRE IL MIGRATE con «Expected '1' got '0'».
+      #   ⚠️ La fase `20_code` gira PRIMA di `80_data`: quando questo changeSet
+      #   viene valutato, la riga di `codici_errore.csv` non e' ancora stata
+      #   caricata. Una preCondition su un seed, da qui, non puo' che essere
+      #   falsa la prima volta.
+      #   ⭐ E non serve: `script.fn_log_and_raise_error` risolve il codice a
+      #   RUNTIME, non alla creazione della funzione. Quando qualcuno riuscira'
+      #   a far scattare questo guard, `80_data` sara' passato da un pezzo. Che
+      #   il codice sia davvero a catalogo lo verifica il pgTAP, che gira dopo
+      #   tutto il migrate — ed e' la sede giusta.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: fatture_righe
+            columnName: riga_capofila_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_guard_riga_capofila()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS
+              $BODY$
+              -- Scopo: «niente catene» sulla relazione capofila/parti di
+              --        vendite.fatture_righe. Una parte deve puntare a una riga
+              --        che ha riga_capofila_id NULL, e una riga che ha gia'
+              --        delle parti non puo' diventare a sua volta una parte.
+              -- Uso:   BEFORE INSERT OR UPDATE FOR EACH ROW
+              -- ⚠️ Il DELETE non serve: cancellare una capofila con delle parti
+              --    e' gia' impedito dalla FK (NO ACTION), e cancellare una parte
+              --    non crea nessuna catena.
+              DECLARE
+                  -- ⚠️ %TYPE anche qui: la colonna e' bigint oggi, e una
+                  --    variabile ancorata non va riletta il giorno che cambia.
+                  v_capofila_di_capofila vendite.fatture_righe.riga_capofila_id%TYPE;
+                  v_trovata              boolean;
+                  v_ha_parti             boolean;
+                  v_motivo               text;
+              BEGIN
+                  -- Riga ordinaria: non e' una parte, non c'e' niente da dire.
+                  -- ⭐ E' il caso della quasi totalita' delle righe: si esce
+                  --    prima di leggere qualunque cosa.
+                  IF NEW.riga_capofila_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── RAMO 1: in avanti — la capofila indicata e' gia' una parte?
+                  SELECT true, r.riga_capofila_id
+                    INTO v_trovata, v_capofila_di_capofila
+                    FROM vendite.fatture_righe r
+                   WHERE r.id = NEW.riga_capofila_id;
+
+                  -- ⚠️ NON trovata: NON e' compito di questa funzione. O la riga
+                  --    non esiste, o sta su un'altra fattura e la RLS non la
+                  --    mostra — in entrambi i casi a parlare e' la FK composita
+                  --    fk_fatture_righe_riga_capofila, con un 23503 che dice la
+                  --    cosa giusta («documento sbagliato», non «catena»).
+                  -- ⛔ Sollevare qui darebbe all'operatore il messaggio sbagliato
+                  --    per il problema che ha davvero.
+                  IF NOT COALESCE(v_trovata, false) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_capofila_di_capofila IS NOT NULL THEN
+                      v_motivo := format(
+                          'la riga %s indicata come capofila e'' a sua volta una parte della riga %s',
+                          NEW.riga_capofila_id, v_capofila_di_capofila);
+                  ELSE
+                      -- ── RAMO 2: all'indietro — questa riga ha gia' delle parti?
+                      -- ⭐ E' il ramo che si dimentica. La riga puntata e' una
+                      --    capofila legittima, quindi il ramo 1 tace: la catena
+                      --    nasce dall'altro capo, perche' e' QUESTA riga ad avere
+                      --    gia' dei figli che diventerebbero nipoti.
+                      -- ⚠️ Su INSERT non puo' essere vero (la riga non esiste
+                      --    ancora e nessuno la punta), ma il controllo NON si
+                      --    restringe a TG_OP = 'UPDATE': un ramo che si spegne da
+                      --    solo su INSERT non costa niente, e la condizione
+                      --    esplicita sarebbe una cosa in piu' da rileggere.
+                      SELECT EXISTS (SELECT 1 FROM vendite.fatture_righe f
+                                      WHERE f.riga_capofila_id = NEW.id)
+                        INTO v_ha_parti;
+
+                      IF v_ha_parti THEN
+                          v_motivo := format(
+                              'la riga %s ha gia'' delle parti proprie e non puo'' diventare a sua volta una parte',
+                              NEW.id);
+                      END IF;
+                  END IF;
+
+                  IF v_motivo IS NOT NULL THEN
+                      -- ⚠️ TECNICO: niente chiave `campo` (non c'e' nessun campo
+                      --    da accendere su un 500) e niente `bersaglio` (si mette
+                      --    solo sugli errori rimediabili dall'operatore).
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_fatture_righe_guard_riga_capofila',
+                          'E_FATTURA_RIGA_CAPOFILA_INCOERENTE',
+                          jsonb_build_object(
+                              'operazione',       TG_OP,
+                              'fattura_id',       NEW.fattura_id,
+                              'riga_id',          NEW.id,
+                              'riga_capofila_id', NEW.riga_capofila_id),
+                          NEW.tx_id,
+                          NEW.id::text, v_motivo
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_righe_guard_riga_capofila()
+              IS 'Guard (BEFORE INSERT OR UPDATE su vendite.fatture_righe): la relazione capofila/parti resta a UN SOLO SALTO. ⭐ Presidia DUE rami, e il secondo e'' quello che si dimentica: (1) IN AVANTI, la riga si aggancia a una riga che e'' gia'' una parte; (2) ALL''INDIETRO, una riga che HA GIA'' delle parti viene agganciata a una terza — li'' il primo controllo tace, perche'' la riga puntata e'' una capofila legittima e la catena nasce dall''altro capo. ⛔ Serve perche'' il difetto e'' MUTO: se «capofila -> parti» smette di essere una lettura a un salto, chi somma gli importi di un''attivita'' attraversando attivita_fatturabili.fattura_riga_id prende meta'' valore e non fallisce. E'' un trigger e non un vincolo perche'' bisogna guardare la riga PUNTATA, e nessun CHECK sa farlo — l''altra invariante della stessa colonna, «stessa fattura», e'' invece la FK composita fk_fatture_righe_riga_capofila e non ha bisogno di codice. ⚠️ SECURITY INVOKER E'' UNA DECISIONE, non una dimenticanza: vendite.fatture_righe ha la RLS, ma la FK composita garantisce che capofila e parte stiano sulla STESSA fattura, quindi hanno lo stesso perimetro e chi scrive la parte vede per forza la capofila. Se la riga indicata non si trova questa funzione ESCE IN SILENZIO di proposito: significa che sta su un altro documento, e a parlare dev''essere la FK con un 23503 — l''errore giusto per quel problema. ⚠️ Nessun UPDATE OF riga_capofila_id: la catena si crea anche modificando la riga puntata. Errore: E_FATTURA_RIGA_CAPOFILA_INCOERENTE (TECNICO, un codice solo per i due rami col motivo come valore). brief-db-richieste-aperte-dal-backend voce 5 (N3, decisione D).';
+
+              -- ⚠️ Il nome porta l'ORDINE: i BEFORE ROW scattano in ordine
+              --    alfabetico, e `guard_riga_capofila` viene DOPO
+              --    `guard_congelamento`. Su una fattura congelata deve parlare
+              --    quello, non questo.
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_guard_riga_capofila_ins_upd
+                  ON vendite.fatture_righe;
+
+              CREATE TRIGGER trg_fatture_righe_a10_guard_riga_capofila_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.fatture_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_righe_guard_riga_capofila();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_guard_riga_capofila_ins_upd
+                  ON vendite.fatture_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_righe_guard_riga_capofila();

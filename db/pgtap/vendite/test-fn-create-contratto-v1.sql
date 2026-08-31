@@ -20,6 +20,20 @@
 --                            instradamento `fatturazione_immediata` e' accettata
 --                            dal p_testata; assente -> DEFAULT false; null ->
 --                            errore, mai un silenzio.
+--   * WHITELIST atto       : (13-15, changeset 20260831-24) i TRE riferimenti
+--                            dell'atto — CIG, CUP, commessa — sono accettati dal
+--                            p_testata e RILETTI dalla riga; assenti -> NULL;
+--                            null esplicito -> NULL, senza errore.
+--
+-- ⚠️ I casi 13-15 si aggiungono QUI e non in un file nuovo: e' lo stesso
+--    difetto dei casi 10-12, sulla stessa funzione, e la copertura di
+--    fn_create_contratto sta in un posto solo. Il precedente e' quello.
+--
+-- ⛔ E il caso 13 e' l'UNICO che discrimina: la funzione **non solleva** su una
+--    chiave fuori whitelist, la **scarta**. Asserire che la chiamata riesce non
+--    prova niente — riesce anche con la versione vecchia. Bisogna RILEGGERE il
+--    valore. Controprova di mutazione: rilanciare il caso 13 contro la funzione
+--    senza le tre stringhe in v_testata_allowed e vederlo diventare rosso.
 --
 -- Nota sul numero: `script.fn_generate_codice` usa una SEQUENCE (nextval), che
 -- per definizione NON fa rollback. Quindi un fallimento lascia un "buco" nella
@@ -48,7 +62,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(15);
 
 -- =========================================================
 -- Precondizione: coppia (istanza_utility, utility) SENZA precontrattuali
@@ -248,6 +262,86 @@ SELECT throws_ok(
     '23502',
     NULL::text,
     'C4) create con fatturazione_immediata=null: errore NOT NULL, mai un silenzio');
+
+-- =========================================================
+-- WHITELIST dei TRE RIFERIMENTI DELL'ATTO (changeset 20260831-24)
+-- Piano: brief-db-fn-create-contratto-codici-atto §4.
+--
+-- ⛔ IL TEST CHE DISCRIMINA E' IL 13, E NON E' «LA CHIAMATA RIESCE».
+--    La funzione non solleva su una chiave fuori whitelist: la SCARTA
+--    (`WHERE key = ANY(v_testata_allowed)`). Con la versione vecchia la
+--    create andava a buon fine, restituiva un id, e i tre codici finivano
+--    nel nulla — 200 al backend, nessun errore a video, CIG perso.
+--    ⇒ L'unica asserzione che distingue le due versioni e' quella che
+--    RILEGGE i valori dalla riga. E' la stessa forma di controprova gia'
+--    usata su I9 e I10: rilanciarla contro la funzione precedente e vederla
+--    diventare rossa.
+-- =========================================================
+
+CREATE TEMP TABLE r4 AS
+SELECT * FROM vendite.fn_create_contratto(
+    jsonb_build_object(
+        'billing_account_id',   (SELECT billing_account_id FROM tmp_ba),
+        'emittente_fiscale_id', (SELECT emittente_fiscale_id FROM tmp_ba),
+        'istanza_utility_id',   (SELECT istanza_utility_id FROM tmp_ba),
+        'utility_id',           (SELECT utility_id FROM tmp_ba),
+        'codice_cig',           'PGTAPCIG01',
+        'codice_cup',           'PGTAPCUP01',
+        'codice_commessa',      'PGTAP-COMMESSA-01'
+    ),
+    NULL
+);
+
+-- 13) I TRE INSIEME, riletti dalla riga.
+-- ⚠️ Si asseriscono in UN colpo solo, con una riga composita: i tre nascono e
+--    si compilano insieme perche' nominano lo stesso atto (D9), e tre
+--    asserzioni separate lascerebbero passare una whitelist che ne ha accolti
+--    due su tre con un rosso solo su una riga — meno leggibile e non piu'
+--    informativo.
+SELECT is(
+    (SELECT ROW(c.codice_cig, c.codice_cup, c.codice_commessa)::text
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r4)),
+    ROW('PGTAPCIG01', 'PGTAPCUP01', 'PGTAP-COMMESSA-01')::text,
+    '13) create con i tre codici dell''atto: TUTTI E TRE riletti dalla riga '
+    '(con la whitelist vecchia sarebbero NULL, senza nessun errore)');
+
+-- 14) NON-REGRESSIONE: la create senza le chiavi non inventa niente.
+-- Riusa r1 (happy no-utility, payload privo dei tre codici): e' il caso
+-- «chiamata esistente non toccata dalla modifica», cioe' la stragrande
+-- maggioranza dei contratti, che con un atto non c'entrano nulla.
+SELECT ok(
+    (SELECT c.codice_cig IS NULL AND c.codice_cup IS NULL
+        AND c.codice_commessa IS NULL
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r1)),
+    '14) create senza le chiavi dell''atto: i tre restano NULL');
+
+-- 15) ⭐ LA SEMANTICA DEL NULL NON E' LA STESSA DEL CASO 12, ED E' VOLUTO.
+--    `fatturazione_immediata` e' NOT NULL: chiave = null -> 23502 (caso 12).
+--    I tre codici dell'atto sono NULLABLE: un null e' un VALORE LEGITTIMO e
+--    significa «non c'e' un CIG». Il backend puo' mandarli sempre, senza
+--    doversi ricordare di ometterli — ed e' la differenza che questo caso
+--    esiste per fissare, perche' altrimenti il prossimo lettore applicherebbe
+--    ai tre la regola scritta accanto per il flag.
+CREATE TEMP TABLE r5 AS
+SELECT * FROM vendite.fn_create_contratto(
+    jsonb_build_object(
+        'billing_account_id',   (SELECT billing_account_id FROM tmp_ba),
+        'emittente_fiscale_id', (SELECT emittente_fiscale_id FROM tmp_ba),
+        'istanza_utility_id',   (SELECT istanza_utility_id FROM tmp_ba),
+        'utility_id',           (SELECT utility_id FROM tmp_ba),
+        'codice_cig',           null,
+        'codice_cup',           null,
+        'codice_commessa',      null
+    ),
+    NULL
+);
+
+SELECT ok(
+    (SELECT c.codice_cig IS NULL AND c.codice_cup IS NULL
+        AND c.codice_commessa IS NULL
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r5)),
+    '15) create con i tre codici a null: nessun errore e colonne NULL '
+    '(nullable, a differenza di fatturazione_immediata del caso 12)');
 
 SELECT * FROM finish();
 
