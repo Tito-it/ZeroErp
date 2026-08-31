@@ -12,7 +12,7 @@
 > • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture) — ⚠️ è lei a portare la RLS
 >
-> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.3 R-3
+> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §8.3 R-3
 
 ---
 

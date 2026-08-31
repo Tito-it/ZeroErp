@@ -55,9 +55,11 @@ import {
 import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import {
+  DESTINAZIONE_CON_FONDO,
   DESTINAZIONI_CON_DESTINATARIO,
   SEVERITY_CHI_E_IN_CREDITO,
   STATO_SISTEMAZIONE_BOZZA,
+  STATO_SISTEMAZIONE_CONFERMATA,
 } from '../vocabolari'
 import ConfermaSistemazioneDialog from './ConfermaSistemazioneDialog.vue'
 
@@ -196,9 +198,21 @@ async function onAnnulla() {
     { successMessage: t('pagamenti.sistemazioni.annullata') },
   )
   if (esito === null) return
+  // ⭐ Se l'atto era CONFERMATO il denaro si e' MOSSO ALL'INDIETRO: il fondo e'
+  //    stato cancellato e l'eccedenza e' tornata al suo posto, quindi il numero
+  //    in testata — che arriva dalla riga di elenco caricata all'apertura — e'
+  //    vecchio. Stessa scelta gia' fatta dopo la conferma: si chiude, e chi
+  //    vuole sistemare il resto riapre dalla lista e vede il residuo vero.
+  // ⚠️ Scartare una BOZZA invece NON chiude: li' il denaro non si era mosso.
+  const eraConfermata =
+    attoDaAnnullare.value?.stato === STATO_SISTEMAZIONE_CONFERMATA
   annullaVisible.value = false
-  await caricaAtti()
   emit('cambiata')
+  if (eraConfermata) {
+    emit('update:visible', false)
+    return
+  }
+  await caricaAtti()
 }
 
 // ⛔ Dopo una CONFERMA il drawer si chiude, e non e' pigrizia: il denaro si e'
@@ -214,26 +228,46 @@ async function dopoConferma() {
   emit('update:visible', false)
 }
 
-// ⚠️ I verbi valgono SOLO sugli atti in BOZZA: CONFERMATA e ANNULLATA sono
-//    terminali, e il guard del database rifiuta ogni update su un atto
-//    terminale.
-// ⭐ Ma qui si DISABILITA col motivo, non si nasconde: e' la regola del progetto
-//    — il permesso nasconde, lo STATO disabilita e spiega. Uno stato puo'
+// ⚠️ CONFERMARE vale SOLO su un atto in BOZZA. ⭐ ANNULLARE no, e dal
+//    2026-08-31 non piu': il varco `CONFERMATA -> ANNULLATA` e' aperto per il
+//    solo `RIPORTO` (D-25), perche' e' l'unica destinazione che lascia dietro
+//    un FONDO — e un fondo si disfa solo da qui. Rimborso e compensazione
+//    lasciano una distinta, che si corregge con la correzione guidata.
+// ⭐ Qui si DISABILITA col motivo, non si nasconde: e' la regola del progetto —
+//    il permesso nasconde, lo STATO disabilita e spiega. Uno stato puo'
 //    cambiare, e un'azione sparita non dice a nessuno perche' non c'e'.
 //    ⛔ In sola lettura invece si nasconde: li' non e' lo stato, e' il permesso.
 function buildRowActions(atto) {
   if (isReadonly.value) return []
-  const terminale = atto.stato !== STATO_SISTEMAZIONE_BOZZA
-  const motivo = terminale
-    ? t('pagamenti.sistemazioni.gia_terminale', { stato: atto.stato })
-    : undefined
+  const bozza = atto.stato === STATO_SISTEMAZIONE_BOZZA
+  const motivoTerminale = t('pagamenti.sistemazioni.gia_terminale', {
+    stato: atto.stato,
+  })
+  // ⛔ IL FRONTEND NON RICALCOLA LA REGOLA, e qui e' la scelta che conta.
+  //    Questa condizione apre il gesto sui casi in cui ha SENSO — un riporto
+  //    confermato — e si ferma li'. Se poi quel fondo sia gia' finito su una
+  //    fattura emessa, o lo trattenga qualcos'altro, lo sa solo il database:
+  //    il predicato `fn_check_fondo_cancellabile` ha SEI motivi, e riscriverne
+  //    anche uno solo qui sarebbe una seconda copia che diverge al primo
+  //    cambio. Si prova, e si LEGGE IL RIFIUTO — che arriva col suo messaggio
+  //    e la sua soluzione.
+  const confermata = atto.stato === STATO_SISTEMAZIONE_CONFERMATA
+  const annullabile =
+    bozza || (confermata && atto.destinazione === DESTINAZIONE_CON_FONDO)
+  // ⭐ Due ragioni diverse, due frasi diverse. Su rimborso e compensazione il
+  //    rifiuto NOMINA L'ALTERNATIVA — e' la stessa scelta fatta a database su
+  //    `E_SISTEMAZIONE_ANNULLO_NON_AMMESSO`: «questo atto e' immutabile» e'
+  //    vero e non aiuta chi sta provando a correggere un importo.
+  const spiegazioneAnnullo = confermata
+    ? t('pagamenti.sistemazioni.annullo_solo_riporto')
+    : t('pagamenti.sistemazioni.annullo_gia_annullata')
   return [
     {
       key: 'conferma',
       label: t('pagamenti.sistemazioni.conferma_azione'),
       icon: MANAGE_ICONS.CONFIRM,
-      disabled: terminale,
-      tooltip: motivo,
+      disabled: !bozza,
+      tooltip: bozza ? undefined : motivoTerminale,
       command: () => apriConferma(atto),
     },
     {
@@ -241,8 +275,8 @@ function buildRowActions(atto) {
       label: t('pagamenti.sistemazioni.annulla_azione'),
       icon: MANAGE_ICONS.CANCEL,
       severity: 'danger',
-      disabled: terminale,
-      tooltip: motivo,
+      disabled: !annullabile,
+      tooltip: annullabile ? undefined : spiegazioneAnnullo,
       command: () => apriAnnullo(atto),
     },
   ]

@@ -15,11 +15,18 @@
 // cui il presidio dei seed contava 47 liste e il registro delle liste MONTATE
 // ne contava 46: la differenza era esattamente questa.
 //
-// ⚠️ SOLA LETTURA, e non è una fase del lavoro: la vista PRESENTA e non sana.
-// Nessuna di queste righe ha un gemello automatico che la corregge — sanarle
-// vorrebbe dire muovere denaro senza che nessuno l'abbia deciso. Le azioni
-// (emettere il fondo, correggere l'utility, annullare l'atto) vivono dove
-// vivono già: sul documento. Da qui ci si arriva col click sulla riga.
+// ⚠️ LA VISTA PRESENTA E NON SANA. Nessuna di queste righe ha un gemello
+// automatico che la corregge — sanarle vorrebbe dire muovere denaro senza che
+// nessuno l'abbia deciso. Le azioni che RISOLVONO (emettere il fondo,
+// correggere l'utility) vivono dove vivono già: sul documento, e da qui ci si
+// arriva col click sulla riga.
+//
+// ⭐ UN'ECCEZIONE, dal 2026-08-31 (FE-1/FE-2, brief fondo fattura §9.3): il
+// motivo `NON_PIU_CAPIENTE` ha un gesto suo — CANCELLARE l'atto — e non lo si
+// può fare sul documento, perché l'atto non è il documento. ⛔ Non contraddice
+// la riga sopra: quell'atto non ha mai mosso denaro, quindi cancellarlo non è
+// «sanare», è togliere una proposta che nessuno ha accettato. E lo chiede una
+// persona, riga per riga, con un permesso `pericolosa` davanti.
 //
 // 📌 Coda di lavoro, non lista storica: nessun floor temporale di default
 // (vedi lo store) — l'arretrato è il motivo per cui si apre questa pagina.
@@ -29,17 +36,22 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 
 import ExportDialog from '../../core/components/ExportDialog.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
+import { MANAGE_ICONS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
+import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { motivoFondoDaDecidereSeverity } from '../../core/utils/severity'
 import FatturaDrawer from './FatturaDrawer.vue'
-import { exportFondiFatturaDaDecidere } from '../api/fondiFattura'
+import { cancellaFondoFattura, exportFondiFatturaDaDecidere } from '../api/fondiFattura'
 import { useFondiFatturaDaDecidereStore } from '../stores/fondiFatturaDaDecidere'
 
 // Vocabolario CHIUSO dei motivi (quattro letterali nei rami della UNION della
@@ -56,6 +68,8 @@ const MOTIVI = [
 
 const { t, te } = useI18n()
 const notify = useNotify()
+const { confirmAction } = useConfirmAction()
+const isReadonly = useInjectReadonly()
 const store = useFondiFatturaDaDecidereStore()
 
 const {
@@ -127,6 +141,90 @@ function apriFattura(event) {
   if (!id) return
   fatturaDrawerId.value = id
   fatturaDrawerVisible.value = true
+}
+
+// ── FE-2: il gesto sulla riga ──
+//
+// ⛔ IL KEBAB SI DISEGNA SOLO SU `NON_PIU_CAPIENTE`, ed è la regola che conta.
+//    Gli altri tre motivi non hanno un ATTO: l'atto non esiste ancora
+//    (`PROPOSTA_SENZA_ATTO`, `UTILITY_NON_ATTRIBUIBILE`) oppure esiste ma il
+//    problema è il documento, non l'atto (`IMPORTO_NON_CORRISPONDENTE`).
+//    Un menu che si apre a zero voci è un difetto già trovato e corretto dal
+//    cantiere accanto: promette un gesto che non c'è.
+// ⚠️ La condizione è `fondo_source_id != null` e NON il solo motivo: è il dato
+//    che serve alla chiamata, ed è quello a dover esserci. Legare il gesto al
+//    motivo e poi passare un id nullo darebbe un 404 al posto di un pulsante
+//    assente.
+const cancellazioneInCorso = ref(null)
+
+// Scopo: costruisce le voci del kebab per una riga.
+// ⚠️ Il cancello VERO è il backend (`post_permission = governa_fondo_fattura`,
+//    azione `pericolosa`): qui si evita solo di PROPORRE ciò che verrebbe
+//    rifiutato. `RowActionsMenu` nasconde da sé la voce se il permesso manca —
+//    è `auth.isActionAllowed` a deciderlo, non questa funzione.
+// ⛔ E NON si ricalcola qui se quel fondo sia cancellabile: il predicato
+//    `fn_check_fondo_cancellabile` ha SEI motivi, e una copia nel frontend
+//    diverge al primo cambio. Si prova, e si LEGGE IL RIFIUTO — che arriva col
+//    suo messaggio e la sua soluzione.
+function buildRowActions(data) {
+  // ⛔ In sola lettura si NASCONDE, e non si disabilita: lì non è lo stato del
+  //    dato, è il permesso — e un permesso non si spiega all'operatore.
+  // ⚠️ Gating ESPLICITO e non `hideWhenReadonly`: quella proprietà la legge
+  //    `DrawerActionsBar`, non `RowActionsMenu`, e qui sarebbe stata ignorata
+  //    in silenzio — cioè un kebab attivo su una pagina in sola lettura.
+  if (isReadonly.value) return []
+  if (data.fondo_source_id == null) return []
+  return [
+    {
+      key: 'cancella',
+      label: t('vendite.fondi_fattura_da_decidere.cancella_azione'),
+      icon: MANAGE_ICONS.DELETE,
+      severity: 'danger',
+      action: 'governa_fondo_fattura',
+      disabled: cancellazioneInCorso.value === data.fondo_source_id,
+      command: () => chiediCancellazione(data),
+    },
+  ]
+}
+
+// Scopo: conferma ROSSA prima di cancellare — il gesto è irreversibile e la
+//        tabella degli atti non è storicizzata: dopo, quella riga non c'è più.
+// ⚠️ `confirmAction` destrutturato e callback `onAccept` (non `accept`).
+function chiediCancellazione(data) {
+  confirmAction({
+    title: t('vendite.fondi_fattura_da_decidere.cancella_titolo'),
+    message: t('vendite.fondi_fattura_da_decidere.cancella_messaggio', {
+      // ⚠️ Mai un numero inline: `formatCurrency` è la sede unica, e porta da
+      //    sé il placeholder «—» se l'importo mancasse. Scriverlo grezzo
+      //    darebbe «8.00» a un operatore che su ogni altra schermata legge
+      //    «8,00 €» — e in un dialogo che chiede di cancellare del denaro.
+      importo: formatCurrency(data.importo_atto),
+      // Il numero del documento se c'è, altrimenti il suo id: la frase deve
+      // dire QUALE fattura, e un id è meglio di uno spazio vuoto.
+      numero: data.numero ?? data.fattura_sorgente_id,
+    }),
+    danger: true,
+    acceptLabel: t('vendite.fondi_fattura_da_decidere.cancella_azione'),
+    onAccept: () => eseguiCancellazione(data),
+  })
+}
+
+// Scopo: chiama il DELETE e ricarica. ⚠️ `try/catch` e non `useApiHandler`:
+//        qui si chiama direttamente il client axios e serve il messaggio del
+//        database — `extractApiError` porta a video il codice tradotto
+//        (`E_FONDO_NON_CANCELLABILE`, `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE`, …)
+//        con la sua soluzione, che è l'unica cosa utile in caso di rifiuto.
+async function eseguiCancellazione(data) {
+  cancellazioneInCorso.value = data.fondo_source_id
+  try {
+    await cancellaFondoFattura(data.fondo_source_id)
+    notify.success(t('vendite.fondi_fattura_da_decidere.cancellato'))
+    await load()
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  } finally {
+    cancellazioneInCorso.value = null
+  }
 }
 
 // Scopo: carica la lista con toast d'errore (fail-visible: lo store propaga).
@@ -205,6 +303,15 @@ onMounted(load)
       <template #cell-origine="{ data }">
         <span v-if="data.origine">{{ data.origine }}</span>
         <span v-else class="app-cella-vuota">—</span>
+      </template>
+
+      <!-- ⚠️ LO SLOT SI CHIAMA `actions`, non `azioni`: col nome sbagliato la
+           colonna non viene resa e NON c'è nessun errore. E si rende solo
+           perché il catalogo dichiara la colonna `azioni` con
+           `tipo_colonna = 'azione'` (seed del 2026-08-31): servono ENTRAMBI,
+           e mancandone uno non si vede niente. -->
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
       </template>
 
       <template #empty>

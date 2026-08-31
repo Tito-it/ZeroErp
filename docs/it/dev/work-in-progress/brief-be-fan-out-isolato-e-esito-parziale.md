@@ -99,6 +99,52 @@
 >
 > ---
 >
+> ## 📋 STATO DI SVILUPPO AL 2026-08-31, sera — zero codice aperto
+>
+> **Non resta niente da scrivere.** Le tre voci vive sono **validazioni a
+> video**, e ognuna ha ora il suo copione:
+>
+> | Voce | Copione | Stato |
+> | --- | --- | --- |
+> | **V1** · esito parziale del pull (metà pipeline) | [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md) | 🔴 23 caselle su 24 — il prerequisito `RESUME_TASK` è già spuntato |
+> | **V2** · DL-23 ramo `CONFERMATO` | [collaudo-in-app-v2-dl23-e-area-resi.md](collaudo-in-app-v2-dl23-e-area-resi.md) · prova **A** | 🔴 il soggetto va costruito |
+> | **V2** · area RESI delle card | stesso documento · prove **B1/B2** | 🔴 B1 si guarda; B2 vuole un reso ricostruito |
+>
+> ⭐ **Il lavoro di sviluppo di questa giornata**, tutto nato dal push DB e
+> nessuno chiesto dal brief: `etichetta_key` nel giornale (BE + i **tre** punti
+> FE che rendono + le sei chiavi i18n), provato con chiamata reale sul lotto
+> 6260. Dettaglio nel blocco «CODA DI DB-R2» qui sopra. **1839 test verdi**,
+> lint pulito.
+>
+> ### 🔎 Documenti incongruenti trovati su questa attività (2026-08-31)
+>
+> Cercati apposta, su richiesta di Tid. Tutti e tre dicevano **«4 aree»** dove
+> le aree misurate sono cinque: è lo stesso residuo, lasciato indietro
+> dall'ingresso di **DDT** (2026-07-18, DL-21) e dei due rami **RESI**
+> (`20260718-14`, DL-24).
+>
+> | Dove | Cosa diceva | Esito |
+> | --- | --- | --- |
+> | [api_dashboard_aperto.md](../../backend/vendite/manual/api_dashboard_aperto.md) | *«union 4 aree documento»* — e **due righe sopra** lo stesso file dichiara «5 aree sempre presenti» | ✅ **corretto**: contraddiceva sé stesso |
+> | idem, riga sulla RLS | *«RLS invoker sulle 4 aree documento»* | ✅ **corretto a 5** |
+> | [api_dashboard_backlog.md](../../backend/vendite/manual/api_dashboard_backlog.md) | *«RLS invoker sulle 4 aree documentali»* | ✅ **il numero è stato tolto**, non aggiornato: cambia a ogni area nuova e la frase non ne ha bisogno |
+>
+> ⭐ **Misurato, non dedotto**: `pg_class.relrowsecurity` dice che hanno la RLS
+> **tutte e sette** — `preventivi`, `ordini`, `offerte_commerciali`, `contratti`,
+> `ddt`, `resi` **e `commesse`**. Il «4» non era una semplificazione: era un
+> numero vero nel 2026-07 che nessuno ha più riletto.
+>
+> 🔵 **Una quarta, che NON ho toccato perché è del DB** — il `COMMENT` di
+> `vendite.vw_dash_aperto_documenti` dichiara *«stock dei documenti … delle
+> **4 aree** (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE)»*, ma la vista
+> restituisce **cinque** aree: misurato il 2026-08-31 col contesto operatore,
+> `CONTRATTI 15 · DDT 4 · OFFERTE 2 · ORDINI 60 · PREVENTIVI 76`. ⚠️ È la vista
+> stessa a smentire il proprio commento — e siccome quel commento è la fonte
+> della doc auto-generata, l'errore si propaga a chi legge `dbzero`. Voce per il
+> blocco «AL TEAM DB».
+>
+> ---
+>
 > ## 🔎 Stato al 2026-08-31, sera — le tre voci verificate sui dati
 >
 > Le tre cose aperte qui sopra sono state **portate davanti al database**, una
@@ -190,7 +236,65 @@
 >
 > ---
 >
+> ## 📌 CODA DI DB-R2 — il fatto arriva a video con un nome (BE+FE, 2026-08-31)
+>
+> `LOTTO_RIAPERTO` ha portato a galla un difetto che **non era suo** e che
+> riguardava tutti e sei i codici evento: il catalogo dichiara un indirizzo i18n
+> (`config.eventi_dominio.etichetta_key`) che **non leggeva nessuno**. La vista
+> non lo esponeva, il backend non lo selezionava, e le sei chiavi
+> `config.eventi_dominio.*` non esistevano nei `locales`. La scheda **Storia**
+> rende `cosa` verbatim, e per le righe `EVENT_LOG` `cosa` **è il codice**: la
+> riga nuova sarebbe comparsa a video come `LOTTO_RIAPERTO`.
+>
+> ⚠️ **Non era una regressione del push**: era un contratto *emesso, trasportato
+> e non consumato* — la stessa forma di `ui_action`, e la ragione per cui
+> [api.md](../api.md) prescrive di **verificare che il client la legga** prima di
+> dichiarare fatta una capability. L'evento nuovo l'ha solo reso visibile.
+>
+> **Chiuso lo stesso giorno**, tre pezzi:
+>
+> * **BE** — `_list_giornale` porta `etichetta_key` con un `LEFT JOIN` su
+>   `config.eventi_dominio` ristretto a `registro = 'EVENT_LOG'` (sugli altri tre
+>   registri `cosa` è già una frase, non un codice). ⚠️ Il JOIN sta nella SELECT
+>   finale e **non** nella CTE `tutte`, che alimenta anche i conteggi: oggi non
+>   potrebbe moltiplicare (`codice` è la PK), ma la posizione lo rende vero per
+>   costruzione e non per coincidenza con un indice. ⛔ Nessun filtro su
+>   `obsoleto_dal`: il diario è append-only e le righe vecchie devono restare
+>   leggibili. Un lettore solo, quindi **entrambi** gli endpoint — fattura e
+>   lotto — l'hanno preso in un colpo;
+> * **FE** — i **tre** punti che rendono, trovati cercandoli e non deducendoli
+>   ([[feedback_bb_legge_non_trasporta]]): la colonna della scheda Storia del
+>   **lotto**, quella della **fattura**, e il banner dell'**errore vivo** in
+>   testata alla fattura — che è una riga dello stesso giornale, e senza il terzo
+>   punto lo stesso fatto avrebbe avuto due nomi a due centimetri di distanza.
+>   Tutti e tre con il BB `labelOrCode`, ripiego fail-visible sul codice grezzo;
+> * **i18n** — le sei chiavi in `it.json` e `en.json`.
+>
+> ✅ **Provato sul database vero, non solo compilato** — 1839 test verdi e lint
+> pulito non dicono niente su una `SELECT`. Chiamata reale al lettore sul lotto
+> **6260**: la riga `EVENT_LOG` `PIPELINE_ERROR` esce con
+> `config.eventi_dominio.pipeline_error`, e le righe `FATTURA_LOG` / `LOTTO_LOG`
+> / `TASK_RUN` con `None`, come il ramo prevede.
+>
+> ⛔ **E una misura intermedia era falsa, salvata da un controllo strutturale.**
+> `SELECT count(*) FROM vendite.event_log` rispondeva **0**, e stavo per
+> leggerlo come «il diario è vuoto». `vendite.event_log` **ha la RLS**: senza i
+> cinque GUC dell'identità quello zero è **fail-closed**, non un dato. Col
+> contesto completo le righe ci sono ([[feedback_rls_conteggio_zero_non_e_un_dato]]).
+>
+> ---
+>
 > ## 📌 AL TEAM DB — residui da vedere (2026-08-31)
+>
+> 🔵 **DB-R3 · il `COMMENT` di `vw_dash_aperto_documenti` dichiara 4 aree, la
+> vista ne restituisce 5** (aperta il 2026-08-31). Il commento dice *«stock dei
+> documenti … delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE)»*;
+> misurato col contesto operatore: `CONTRATTI 15 · DDT 4 · OFFERTE 2 · ORDINI 60
+> · PREVENTIVI 76`. L'area **DDT** è entrata il 2026-07-18 (DL-21) e il commento
+> non l'ha seguita. ⚠️ Non è un dettaglio di prosa: quel `COMMENT` è la **fonte**
+> della pagina `dbzero` auto-generata, quindi l'errore si propaga a chiunque
+> legga la doc invece della vista. I due doc API gemelli avevano lo stesso
+> residuo e sono già corretti (vedi il blocco «documenti incongruenti» in testa).
 >
 > ✅ **Entrambe chiuse in giornata**: DB-R1 corretta nella scheda manuale, DB-R2
 > decisa da Tid («sì, si registra»), scritta e **applicata** — changeSet

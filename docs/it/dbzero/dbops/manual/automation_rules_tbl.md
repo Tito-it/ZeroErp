@@ -98,7 +98,9 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 ### Interazione con le altre tabelle
 
 * **`automation_overrides_cols`** → risolve nomi di colonne non standard: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`.
-* **`automation_fk_exclusions`** → *(storicamente)* escludeva specifiche coppie *parent/child* dalla regola `ATTIVO`. ⚠️ **Filtro attualmente NON applicato**: disattivato deliberatamente in `20260113-01` (commento "non più utilizzato") e non re-introdotto nel rewrite `20260408-06`. La tabella esiste ma è **inerte**: `fn_run_automations_attivo` non la consulta. (Riabilitarlo è possibile ma richiede di re-inserire il filtro `NOT EXISTS` nel cursor FK — vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`.)
+* ~~**`automation_fk_exclusions`**~~ ⛔ **NON ESISTE PIÙ.** *(Storicamente)* escludeva specifiche coppie *parent/child* dalla regola `ATTIVO`. Il filtro era stato disattivato in `20260113-01` (commento "non più utilizzato") e non re-introdotto nel rewrite `20260408-06`; la **tabella** è stata poi **droppata** il 2026-01-01 da `20260101-01-drop-attivo-legacy-objects`.
+  ⚠️ **Rettifica del 2026-08-31**: questa riga diceva *«la tabella esiste ma è inerte»* — falso, e la differenza conta. «Inerte» invita a riempirla; «non esiste» dice che il meccanismo va **ricostruito**. Qualcuno ci si è appoggiato per proporre una soluzione, deducendo l'esistenza della tabella dalla presenza del suo vecchio CSV di seed (poi cancellato).
+  ⇒ Oggi **non c'è nessun meccanismo di esclusione FK**: per ritirare configurazione senza toccare il guard si usa `obsoleto_dal`, o si restringe l'`automation_scope`.
 * **`automation_cleanup_exclusions`** → esclude tabelle dal cleanup (rule_type CLEANUP_*).
 
 ---

@@ -26,6 +26,7 @@
 //    sta gia' dicendo da quale emittente viene.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
@@ -81,7 +82,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:visible'])
-const { t } = useI18n()
+const { t, te } = useI18n()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -571,7 +572,12 @@ function onNoteSaved(total) {
                `app-escape` si vedrebbe e non si potrebbe cliccare (memoria
                `feedback_app_escape_pannelli_processo`). -->
           <Message v-if="erroreVivo" severity="error" :closable="false" class="app-mb-1">
-            <div class="app-giornale-cosa">{{ erroreVivo.cosa }}</div>
+            <!-- ⚠️ E' una riga del giornale come quelle della scheda Storia:
+                 si decodifica allo stesso modo, o lo stesso fatto avrebbe due
+                 nomi diversi a due centimetri di distanza. -->
+            <div class="app-giornale-cosa">
+              {{ labelOrCode(t, te, erroreVivo.etichetta_key, erroreVivo.cosa) }}
+            </div>
             <Button
               class="app-escape"
               link
@@ -797,8 +803,13 @@ function onNoteSaved(total) {
               </template>
             </Column>
             <Column field="cosa" :header="t('vendite.fatture.col_giornale_cosa')">
+              <!-- ⭐ Il FATTO, tradotto quando il catalogo lo dichiara — stessa
+                   decodifica della scheda Storia del lotto, stesso ripiego
+                   fail-visible sul codice grezzo. -->
               <template #body="{ data }">
-                <span class="app-giornale-cosa">{{ data.cosa }}</span>
+                <span class="app-giornale-cosa">
+                  {{ labelOrCode(t, te, data.etichetta_key, data.cosa) }}
+                </span>
               </template>
             </Column>
             <Column :header="t('vendite.fatture.col_giornale_chi')" style="width: 130px;">

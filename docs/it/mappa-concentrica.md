@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: **10 agosto 2026** — **Anello 0+1: la classe dei codici errore.** Il significato di un errore torna **a catalogo** (`config.codici_errore`, 690 voci, con la sua `classe` da un vocabolario di 10): status HTTP e `ui_action` si **derivano**, il dizionario Python è **generato**, il codice viaggia in un **campo strutturato** dell'eccezione, e i **due registri del debito sono a zero**. **Anello 0**: il **pgTAP gira come l'applicazione** — le policy RLS sono esercitate a ogni corsa — ed **entra in CI** con una baseline sua; presidio dei riferimenti morti in CI. **Anello 3 (vendite)**: chiusi i **satelliti della fattura** (piano rate, snapshot intestazione/indirizzi, drawer di consultazione, note), **emissione mirata** per gruppo fatturabile e **ritorno del lotto a DRAFT**. **Anello 2**: la **ristampa fedele** è il terzo percorso di stampa. **Anello 1 (`ui`)**: il rapporto delle liste è **invertito** (40 file sul building block, registro 43/43) — ma il piano PrimeVue 5 è ora una **decisione di licenza**, non tecnica. **Anello 3 (`pagamenti`)**: si apre il cantiere delle **contabili di pagamento**. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
+*Ultimo aggiornamento: **30 agosto 2026** — venti giorni in **nove temi**. **Anello 3 (vendite)**: la **nota di credito** chiude il ramo morto degli accrediti e la genealogia si chiude con l'arco reso→NC; la **data del documento** smette di essere un effetto collaterale (numerazione governata dal registro, limite di emissione, registro visibile in lista) e il 30 si decide il **trasloco sui registri**; il **lavoro rimasto indietro** ha un verbo («Riporta da emettere») e «Rendi definitive» torna sulla lista Lotti. **Anello 1+3**: l'**IVA ha un risolutore** e i **titoli IVA del soggetto** hanno una sede — lato DB chiuso, consumatori applicativi dopo. **Anello 3 (`pagamenti`)**: il **posting esiste** (contabile, saldo rata, sistemazioni, RLS sui canali di incasso) — ⛔ ma è provato il *percorso*, mai l'*esito*: zero righe, collaudo aperto. **Anello 0**: l'errore porta un **bersaglio** e la riga di `event_log` dice *per chi*; i presidi pgTAP escono dal ramo cieco e il debito passa **da 86/442 a 19/551**. **Anello 1 (`ui`)**: la regola della lista si è spostata dove si legge — ⚠️ e il numero che era risalito (48 → 57) conta i **file con `DataTable` grezza**, non le liste: sono quasi tutti drawer e dialog. Dettaglio per tema nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
 > *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
@@ -102,6 +102,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 - **Coda lavori generica** (`dbops.coda_lavori`): esecuzione asincrona di job per qualsiasi dominio — accodamento transazionale nella stessa transazione che genera il lavoro, worker che drena, idempotenza. Fondazione async dell'ERP: primo consumatore il giro fatturazione on-demand. Guida: [gestione-code-di-lavoro.md](guide/gestione-code-di-lavoro.md)
 - **Errore di dominio come contratto** (agosto 2026): il codice viaggia in un **campo strutturato** dell'eccezione (`SQLSTATE P0001` + `CONSTRAINT`), letto in **un solo punto** lato backend. Il suo **significato** — la `classe` — sta a catalogo in Anello 1; status HTTP e `ui_action` si derivano. Due registri del debito (`dbops.codici_errore_senza_policy`, `dbops.messaggi_errore_codici_legacy`) restano **a zero righe**, come presidio di ciò che arriverà
 - **Presidio dei riferimenti morti** (agosto 2026): un riferimento a un oggetto DB che non esiste più non arriva al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate`
+- **Il bersaglio dell'errore**: oltre a *cosa* è successo, un errore dichiara **su quale entità** — una coordinata che il backend porta nell'envelope (`targets`) e il frontend trasforma in un gesto («vai lì»). Convenzione unica su tutti e tre i canali di `fn_log_and_raise_error`, presidiata in CI (`dbops.vw_bersagli_non_dichiarati` vuota)
 - **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - **Audit sessioni**: login/refresh JWT tracciati in `dbops.sessioni_utente` con IP, user_agent, request_id (19 test)
 - **Request logging**: ogni request `/api/*` registrata in `dbops.request_log` con metodo, path, status, durata
@@ -132,7 +133,7 @@ applicativo**, non l'owner. **Le policy RLS sono esercitate a ogni corsa.**
 | Eccezioni | 29 file marcati `owner`, ognuno **con la ragione scritta** |
 | In CI | sempre sulle PR verso `main`; sui push a `Tito-dev` solo se toccano `db/` o `scripts/`. Baseline **separata**: il DB della CI è ricostruito da zero, quello di sviluppo ha dati veri — i rossi sono **popolazioni diverse** |
 | Preambolo obbligatorio | `BEGIN`, riga di contesto, `SET CONSTRAINTS ALL IMMEDIATE` — presidiato da un cancello. Senza, un file diventa **verde per sottrazione** |
-| Debito noto | **86 rossi** su **442 file**. È un registro che deve calare, non una lista di eccezioni |
+| Debito noto | **19 rossi** su **551 file** (era 86 su 442 al 10 agosto). È un registro che deve calare, non una lista di eccezioni |
 
 ### Stabilita'
 
@@ -146,8 +147,8 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 | Componente     | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                |
 | -------------- | ---------- | --------- | --------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `config`       | App Django | Operativo | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali; impostazioni parametri multi-scope; **catalogo dei codici errore** (`codici_errore` 690 voci + `classi_errore` 10) — il **significato** di un errore è un dato di riferimento, lo status HTTP no |
-| `anagrafiche`  | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali, billing account                                           |
+| `config`       | App Django | Operativo | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali; impostazioni parametri multi-scope; **catalogo dei codici errore** (`classi_errore` 10 classi; 831 righe nel seed al 30-08, erano 690 il 10-08) — il **significato** di un errore è un dato di riferimento, lo status HTTP no; **nature del documento fiscale** (`nature_doc_fiscale`) e **tipi di titolo IVA** (`tipi_titolo_iva`) |
+| `anagrafiche`  | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali, billing account; **titoli IVA del soggetto** (`soggetti_titoli_iva` + ambiti + registro movimenti **append-only**, dove anche l'annullo di una forzatura è un movimento) — è da qui, e non da un default sul cliente, che il soggetto influenza l'IVA |
 | `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
 | `ui`           | App Django | Operativo | Operativo | Operativo | Metadato di presentazione: liste configurabili + **dashboard home** (catalogo widget, composizione, preferenza utente), preset per profilo/emittente/sistema. Di servizio. **Due famiglie di consumatori reali**: liste (clienti/fornitori/contratti…) e home a card KPI (`fn_resolve_dashboard_config`). |
@@ -173,7 +174,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | Catalogo — Unita' di Misura     | Operativo  | Lista, drawer CRUD, conversioni UoM, lookup generico whitelist                                                                                                          |
 | Impostazioni Parametri          | Operativo  | Lista multi-scope (default/emittente/gruppo/utente), drawer override con selettore scope (Personale/Emittente) per admin, `PARAMETER_SCOPE` come unica fonte di verita' |
 | UI — Liste (DB/BE)              | Operativo  | Schema ui (changeset atterrati): catalogo colonne, preset sistema/profilo/EF, preferenze utente. App Django `ui` con repository, servizi (incl. admin + export) ed endpoint REST.                       |
-| UI — Liste (Frontend)           | Operativo  | `ListaConfigurabile.vue`, `ListaColonneModal.vue`, `useListaConfig` + viste admin. ⭐ **Il rapporto è invertito** (agosto 2026): da 14 liste sullo standard contro 71 con `DataTable` grezza a **40 file sul building block**, registro del presidio **43/43**. I **4 file rimasti sono fermi per decisione** (cassetti senza endpoint paginato), non per debito |
+| UI — Liste (Frontend)           | Operativo  | `ListaConfigurabile.vue`, `ListaColonneModal.vue`, `useListaConfig` + viste admin: **53 file montano il building block**. ⚠️ **Il contatore del presidio conta i file con `DataTable` grezza, non le liste**, e al 30-08 dice **57** (48 il 3 agosto). Classificati: **26 drawer/dialog**, 15 pannelli o tab annidati, **6 sono i wrapper stessi**, 5 `*SearchTable` di dominio e **5 view di lista**. Le prime due categorie sono l'**eccezione ammessa** da `AGENTS.md`, non debito. La **regola zero della lista** è stata spostata in cima ad `AGENTS.md` (30-08), dove si legge a inizio sessione |
 | UI — Dashboard home             | Operativo  | Card KPI configurabili: catalogo widget + composizione per profilo/emittente + preferenza utente (`ui.fn_resolve_dashboard_config`), filtro sui permessi dell'operatore, drawer di personalizzazione. Validata in-app (luglio 2026). |
 
 ### Cosa fornisce agli anelli esterni
@@ -281,10 +282,10 @@ secondo.
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                                                                                                                   |
 | ------------- | ---------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, **resi**, fatture, pipeline fatturazione (**batch automatico a corsie + cockpit di azione dalle tre lenti**), lotti, commesse multi-sorgente (quantità immutabili + **porta oneri**), **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), stampa PDF di 6 domini via `documenti` (fatture con **stampa massiva a coda**) |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, **resi**, fatture e **note di credito**, pipeline fatturazione (**batch automatico a corsie + cockpit di azione dalle tre lenti**), lotti, commesse multi-sorgente (quantità immutabili + **porta oneri**), **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), stampa PDF di 6 domini via `documenti` (fatture con **stampa massiva a coda**), **numerazione governata dal registro** |
 | `acquisti`    | App Django | Parziale  | Stub      | ⚠️ **Modello disegnato, non in esercizio** (misurato 21-08-2026): ordini, righe, DDT, indirizzi e ponte di fulfillment esistono con vincoli e trigger, ma **tutte le tabelle sono a 0 righe** — nessun documento di acquisto è mai stato creato. La struttura è lo **specchio** del ciclo vendite; ⚠️ la simmetria dei nomi non garantisce quella delle colonne (il progetto ha già pagato un `sorgente_uid` che significava due cose diverse). Doc concettuale completata 21-08-2026 |
 | `magazzino`   | App Django | Parziale  | Stub      | ⚠️ **Modello disegnato, non in esercizio** (misurato 21-08-2026): ledger movimenti, costo medio, inventari, rettifiche, trasferimenti, prenotazioni, ubicazioni e asset esistono con vincoli e trigger, ma **tutte le tabelle operative sono a 0 righe**; popolati solo i due vocabolari da seed (`ambito_causale` 6, `causali` 10). 🔴 Il dominio era **privo di qualunque pgTAP**, e il CHECK `chk_mag_movimenti_da_destinazione_distinti` rendeva inseribili **solo i trasferimenti** (corretto da `20260821-10`, presidiato dal primo test della tabella). ⚠️ Resta aperto: `causali.segno` non è legato al segno di `movimenti.qta`, e `vw_giacenza` somma senza guardarlo. Doc concettuale completata 21-08-2026 |
-| `pagamenti`   | App Django | Parziale  | Stub      | ⚠️ **Modello disegnato, non in esercizio** (rimisurato 10-08-2026): 10 tabelle con vincoli e trigger e **cataloghi già seminati** (stati contabile/riga, centri), ma **transazionali a 0 righe** e **nessuna funzione che scriva `vendite_movimenti`** — il *posting* è documentato e non implementato. Cantiere aperto con le decisioni portanti prese |
+| `pagamenti`   | App Django | Parziale  | Parziale  | ⭐ **Il posting esiste** (agosto 2026): registrazione della contabile, saldo della rata, guard di transizione e di capienza, **sistemazione delle eccedenze**, distinta di correzione, RLS sui canali di incasso (`enti_incasso` non ne aveva: l'IBAN di ogni emittente era visibile a tutti). Era la misura di apertura del cantiere — *nessuna funzione, in tutto il database, scriveva `vendite_movimenti`*. ⛔ **Provato il percorso, mai l'esito**: lo schema ha ancora 0 righe transazionali e il **collaudo in-app è aperto** |
 | `contabilita` | App Django | Operativo | Stub      | Piano conti, registrazioni, partite                                                                                                                                           |
 | `storico`     | App Django | Operativo | Stub      | Audit temporale, storicizzazione                                                                                                                                              |
 
@@ -326,6 +327,10 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Runtime task tracing                    | Operativo                                                                     |
 | Satelliti della fattura                 | Operativo — **cantiere chiuso su tutte le fasi** (agosto 2026): **piano rate** (`fatture_scadenze`, generato nello step EMESSA dopo il ricalcolo IVA, idempotente, con snapshot del termine in testata), snapshot di **intestazione** e **indirizzi**, **drawer di consultazione** in un round-trip sugli stessi lettori del PDF, **note fattura** (6° dominio del BB note), ritiro del generatore di righe SQL |
 | Emissione mirata + ritorno a DRAFT      | Operativo — il giro accetta un perimetro ristretto ai **gruppi fatturabili** (stesso verbo, assente = giro di massa invariato); il lotto può **tornare a DRAFT** per rifare un giro andato storto (agosto 2026) |
+| Il lavoro che non torna indietro        | Operativo — le tre porte di reset (elimina fattura, riporta il lotto a DRAFT, annulla il lotto) non disfano più una riga già accreditata: era una violazione di chiave esterna **a metà lavoro**, ora è un rifiuto motivato. Il lavoro rimasto indietro ha un verbo, **«Riporta da emettere»**, con la card spezzata in due per non promettere una fattura che non c'è (agosto 2026) |
+| Nota di credito sui resi                | Operativo — il **ramo economico** dei resi: il reso portava indietro merce e motivo e nessun valore. Righe di accredito (`resi_righe_accrediti`), nature del documento fiscale a catalogo, DB+BE+FE chiusi e **collaudo in-app superato** (agosto 2026) |
+| Numerazione: data documento e registro  | Operativo — la data e la sequenza di un documento fiscale sono una **decisione del registro**, non un effetto del giro: **limite di emissione** (il documento nasce già conforme invece di scoprirsi non più trasmissibile) e **registro + data prevista visibili in lista**, prima di generare. ⭐ Decisione del 30-08: la commessa passa sul **motore dei registri**, e la periodicità dentro `config.sistema_codici` **non si fa più** |
+| IVA di riga: risolutore a due stadi     | Operativo (DB) — l'IVA la decideva l'articolo e nessun altro, e il regime fiscale del cliente era scritto e **letto da nessuno**. Ora c'è un risolutore, e l'influenza del soggetto passa **sempre da un titolo registrato e documentato** (Anello 1, `anagrafiche`), mai da un default sul cliente. Al 30-08 il lato DB è chiuso; i consumatori applicativi vengono dopo |
 | Builder XML SDI                         | In corso (payload pronto, generazione XML da fare). ⚠️ Il blocco **`2.4 DatiPagamento`** non è generato: `fn_prepare_sdi_payload` non nomina né le scadenze né il blocco |
 | Persistenza esito SDI                   | Da fare                                                                       |
 | Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente, snapshot pricing v5 nel push, capability azioni stato **con motivo**, pull→`attivita_fatturabili` agganciata agli step DRAFT, **guard di uscita** (niente chiusura/annullo con righe ancora fatturabili), RLS scope emittente anche in scrittura |
@@ -335,7 +340,7 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | DDT di vendita                          | Operativo — documento di trasporto: evasione ordine→DDT (1:N, residuo per riga append-only) o standalone, stati data-driven `DRAFT→EMESSO→SPEDITO→CONSEGNATO` (+RESO/ANNULLATO), numero all'emissione, righe con prezzo opzionale (solo-trasporto), push a commessa (sorgente `DDT_VENDITA`), emittente memorizzato + RLS (§15), stampa PDF (5° dominio documenti), riepilogo IVA, export lista (luglio 2026) |
 | Resi di vendita                         | Operativo — documento di rientro merce nato dal DDT, **senza valori economici** (ramo nota di credito rinviato): conferma (riapre il residuo ordine, flip DDT→RESO se totale), annullo come storno, **ri-consegna** (`fn_genera_ddt_riconsegna`, parziale e multipla), **rinuncia** con reso DEFINITIVO, due code di lavoro (da accreditare / da ri-consegnare), azioni data-driven (luglio 2026) |
 | Fatturazione DDT/resi a contatore       | Operativo — **contatore di merce** per riga d'ordine (spedito − reso) al posto del flag logistico `riapre_residuo`: chiusi due bug di doppia fatturazione, lenti Situazione aperta/Backlog estese a DDT e resi, coda accrediti con quantità (DL-19..28, luglio 2026) |
-| Lineage documenti (genealogia)          | Operativo — `vw_documento_lineage_nodi`/`archi` + `fn_documento_lineage`; pannello «Passaggi» nei 6 drawer documento e colonne pratica/fase/transito nelle 5 liste (luglio 2026) |
+| Lineage documenti (genealogia)          | Operativo — `vw_documento_lineage_nodi`/`archi` + `fn_documento_lineage`; pannello «Passaggi» nei drawer documento e colonne pratica/fase/transito nelle liste. ⭐ **Il grafo non si ferma più sul reso** (agosto 2026): l'arco reso→nota di credito chiude i due rami di ritorno — la merce che torna e il valore che torna — e con lui sono caduti i residui del `root` che dipendeva dagli id, della commessa senza origine e della nota di credito che in lista si chiamava «Fattura» |
 | Indirizzi documento (UX v2)             | Operativo — building block cross-dominio sui 5 domini vendite (preventivi/offerte/contratti/ordini/DDT): sezione inline + drawer gestione, snapshot indirizzo di consegna congelato all'emissione, auto-assegnazione default (luglio 2026) |
 | Pratica PREVENTIVI (integrazione pratiche) | Operativo — handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, gate EVASO (giugno 2026) |
 | Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
@@ -388,7 +393,10 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 | Cosa | Dove sta | Stato |
 | --- | --- | --- |
-| **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | Decisioni portanti prese (10-08). Slice 1 = **posting + stati + correzione**. Ordine deciso: incassi → `2.4 DatiPagamento` → SDI |
+| **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) · [DB](dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) · [BE/FE](dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | **Posting, abbinamento e sistemazioni scritti** (agosto). ⛔ Resta il [collaudo in-app](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md): dello schema è provato il *percorso*, mai l'*esito* — zero righe |
+| **Numerazione: il trasloco sui registri** | [analisi due motori](dev/work-done/analisi-db-numerazione-documenti-e-due-motori.md) | Decisioni prese il 30-08 (la commessa va sui registri; niente periodicità nel sistema codici), piano scritto. Perimetro secco: **cambia solo l'algoritmo di assegnazione del numero** |
+| **Fondo fattura — ricalcolo e governo** | [brief-db-fondo-fattura…](dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md) | Cantiere **aperto**, con il suo piano in §8: la finestra non la apre il primo incasso, la apre il primo che scrive righe contabili |
+| **Fan-out isolato / esito parziale** | [brief-be-fan-out…](dev/work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) | Codice eseguito; ciò che resta sono **collaudi a video**, raccolti in §13 |
 | **Fatturazione elettronica SDI** | payload pronto | Builder XML + persistenza esito. Dipende dal blocco `2.4`, che dipende dalle rate: ora esistono |
 | **Liste configurabili / PrimeVue** | [piano-migrazione-primevue-5.md](dev/work-in-progress/piano-migrazione-primevue-5.md) | Disaccoppiamento **chiuso**; l'upgrade è fermo su una **decisione di licenza** (vedi Anello 1) |
 | **Diagnostica di produzione senza accesso al DB** | [analisi-diagnostica…](dev/work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md) | Analisi aperta: comporre le fondamenta già esistenti, non fondarne di nuove |
@@ -396,20 +404,13 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ### 🎯 Previsti — decisi ma non aperti
 
-- **Nota di credito**: il ramo economico dei resi. Il reso oggi porta quantità e
-  motivo, **nessun valore**; la NC attribuibile alla merce è la slice successiva
 - **Secondo consumatore di `pratiche`** (Fase F, candidata assistenza/CRM): è ciò
   che promuove le sue astrazioni da *proposte* a *contratti* (manifesto §7)
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico
 - **Permessi v3** — sotto-oggetti padre/figlio (v2 a livello oggetto è operativa)
 - **Autenticazione 2FA + provider esterni**
-- **Fondo fattura — ripensare il meccanismo**:
-  [brief-db-fondo-fattura…](dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md).
-  ⚠️ ~~Non urgente oggi, lo diventa col primo incasso reale~~ — **rimisurato il
-  2026-08-15: la finestra non la apre il primo incasso**, la apre il primo che
-  scrive righe contabili (il fondo si genera sulla *differenza* fra due saldi, e
-  il secondo termine non dipende dai movimenti). Il brief ha ora il suo **piano
-  in §8**, e la Fase A va applicata prima di quel momento
+- **CRUD dei registri di numerazione**: `vendite.registri_fatturazione` non ha
+  né rotta né maschera — per farne uno a mano serve una migrazione
 - **Upload file allegati pratiche** (storage filesystem/object storage)
 
 ### 🧭 Decisioni aperte — non sono lavori
@@ -425,9 +426,19 @@ operativo può prenderle al posto di una persona.
 
 ### 🧹 Debito dichiarato — deve calare, e si misura
 
-- **pgTAP**: **86 rossi noti** su 442 file. ⚠️ Un file che fallisce nel *fixture*
-  non esegue nessuna asserzione: la sua copertura vale **zero**, non «parziale»,
-  ed è un'area che *sembra* coperta
+- **pgTAP**: **19 rossi noti** su 551 file (erano 86 su 442 il 10 agosto).
+  ⚠️ Un file che fallisce nel *fixture* non esegue nessuna asserzione: la sua
+  copertura vale **zero**, non «parziale», ed è un'area che *sembra* coperta
+- **`DataTable` grezze**: **57 file** al 30-08, erano 48 il 3 agosto.
+  ⚠️ **Il contatore non misura le liste**: 41 dei 57 sono drawer, dialog e
+  pannelli annidati — l'eccezione che `AGENTS.md` ammette — e 6 sono i wrapper
+  stessi. Il debito vero sta nelle **5 view di lista** e nelle 5 `*SearchTable`
+  di dominio che non passano dal building block. ⛔ Il presidio a un numero solo
+  non sa distinguerli: finché resta così, misura la crescita del frontend più
+  del debito
+- **Collaudi in-app aperti**: il giro incassi (`pagamenti` a zero righe),
+  l'esito parziale del pull da commessa, le due voci residue dell'area RESI.
+  ⚠️ Di quei percorsi è provato il *cammino*, mai l'*esito*
 - **Debito documentale**: le 8 guide dei satelliti fattura; `pagamenti.sepa_mandati`
   senza `manual` e fuori dall'elenco della sua guida
 - **Test UI reali** su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori
@@ -561,4 +572,4 @@ Sono già successe. Riconoscerle costa meno che disfarle.
 
 ---
 
-*Mappa Concentrica — ZeroERP (10 agosto 2026)*
+*Mappa Concentrica — ZeroERP (30 agosto 2026)*

@@ -616,3 +616,4 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 616,53,sistemazioni_confermate,Atti confermati,Decisioni confermate il cui documento non e' ancora registrato,sistemazioni_confermate,informazione,numeric,,150,90,center,Sistemazioni,4,f,f,t,f,f,t,2026-08-25 00:00:00,mctit,pagamenti.eccedenze.col_sistemazioni_confermate,72
 617,53,residuo,Residuo,"Residuo col suo segno: e' il verso, non il valore",residuo,informazione,numeric,currency_eur,130,100,right,Importi,3,f,f,t,f,f,t,2026-08-25 00:00:00,mctit,pagamenti.eccedenze.col_residuo,65
 618,53,totale_a_pagare,Totale documento,Totale del documento,totale_a_pagare,informazione,numeric,currency_eur,140,110,right,Importi,3,f,f,t,f,f,t,2026-08-25 00:00:00,mctit,pagamenti.eccedenze.col_totale_a_pagare,60
+619,44,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-08-31 00:00:00,mctit,common.col_azioni,100

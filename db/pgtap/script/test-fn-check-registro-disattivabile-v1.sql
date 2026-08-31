@@ -20,11 +20,14 @@
 -- 6) ⭐⭐ STRUTTURALE: la check copre TUTTI i guard montati
 --
 -- Scopo:
---   ⛔ Su vendite.registri_fatturazione i guard di disattivazione sono TRE, e
---   il secondo e' quello che sorprende: un registro che ha numerato anche UN
---   SOLO documento ha una riga di contatore viva, quindi non si spegne piu'.
---   Il cestino e' percio' quasi sempre indisponibile — e senza un motivo a
---   video l'operatore lo scopre premendo.
+--   ⛔ Su vendite.registri_fatturazione i guard di disattivazione sono SEI, ed
+--   erano TRE fino al 2026-08-31: col trasloco vendite.ddt, ordini e resi hanno
+--   guadagnato `registro_id`, e l'automazione ha montato il guard DA SOLA a
+--   partire dalla FK — al migrate, senza annunciarlo.
+--   ⚠️ Quello che sorprende resta il contatore: un registro che ha numerato
+--   anche UN SOLO documento ha una riga di progressivi viva, quindi non si
+--   spegne piu'. Il cestino e' percio' quasi sempre indisponibile — e senza un
+--   motivo a video l'operatore lo scopre premendo.
 --
 --   ⭐ IL TEST 2 SERVE QUANTO IL 4: senza il gemello positivo, una check che
 --   rispondesse «bloccato» SEMPRE passerebbe il 3 e il 4 esattamente come
@@ -158,7 +161,7 @@ SELECT is(
         AND n.nspname = 'vendite'
         AND c.relname = 'registri_fatturazione'
         AND pg_get_triggerdef(t.oid) LIKE '%prevent_deactivate_if_children%'),
-    'fatture,registri_fatturazione_progressivi,tipi_doc_fiscale_registri',
+    'ddt,fatture,ordini,registri_fatturazione_progressivi,resi,tipi_doc_fiscale_registri',
     '6) I guard di disattivazione montati sono esattamente quelli che la check copre');
 
 SELECT * FROM finish();

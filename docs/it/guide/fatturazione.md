@@ -552,14 +552,23 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 > ⭐ **Dal 21-08-2026** `fn_reset_fondi_fattura` **cancella** l'atto di fondo che
 > non è stato eseguito, invece di riaprirlo: un atto mai eseguito è una
 > *proposta*, e il giro successivo ne fa una nuova letta sul residuo di adesso.
-> Restano fuori **due** casi, entrambi segnalati nel diario della fattura
-> (`vendite.fatture_log`) e nessuno dei due bloccante — il reset riesce
-> comunque, quindi il log va **letto**, non dato per pulito:
+> Restano fuori **quattro** casi — erano due fino al 31-08-2026 — tutti
+> segnalati nel diario della fattura (`vendite.fatture_log`) e **nessuno
+> bloccante**: il reset riesce comunque, quindi il log va **letto**, non dato per
+> pulito.
 >
 > | Che cosa trova | Che cosa fa | Avviso |
 > | --- | --- | --- |
 > | il trasferimento è **già stato registrato** (l'atto è `ESEGUITO`) | non lo tocca | `W_FONDO_ESEGUITO_NON_RESETTABILE` |
 > | la riga sta in una distinta contabile **chiusa** (denaro mai registrato) | marca l'atto `ANNULLATO` con la ragione sul dato | `W_FONDO_MINIMO_NON_RIPRISTINABILE` |
+> | ⭐ la fattura che ha **ricevuto** il fondo ha superato la soglia di congelamento fiscale | non lo tocca: cancellarlo cambierebbe un documento ormai definitivo | `W_FONDO_FIGLIA_CONGELATA` |
+> | ⭐ l'atto è nato da una **sistemazione**, che lo trattiene | lo salta: si disfa annullando quella sistemazione, non da qui | `W_FONDO_TRATTENUTO_DA_SISTEMAZIONE` |
+>
+> ⭐ **E i quattro motivi non sono scritti dentro il reset**: stanno in
+> `vendite.fn_check_fondo_cancellabile`, il predicato che il reset e il gesto
+> manuale dell'operatore **condividono**. È il motivo per cui le due strade non
+> possono divergere: *un fondo che il reset non tocca è lo stesso fondo che una
+> persona non può cancellare, e per la stessa ragione.*
 >
 > ⚠️ I due **non dicono la stessa cosa**, e fino al 21-08-2026 il messaggio del
 > secondo diceva «già postato» — cioè proprio ciò che nel suo caso *non* era

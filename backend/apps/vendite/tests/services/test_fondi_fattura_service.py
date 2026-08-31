@@ -20,13 +20,21 @@ Indice test eseguiti:
 11) FondiFatturaDaDecidereServiceTests.test_offset_dalla_pagina
 11-bis) FondiFatturaDaDecidereServiceTests.test_export_salta_la_paginazione
 11-ter) FondiFatturaDaDecidereServiceTests.test_export_max_rows_non_positivo
+11-quater) CancellaFondoFatturaServiceTests.test_ok_conteggi_dalla_madre
+11-quinquies) CancellaFondoFatturaServiceTests.test_id_non_valido_rifiutato
+11-sexies) CancellaFondoFatturaServiceTests.test_codice_del_db_arriva_intero
+11-septies) CancellaFondoFatturaServiceTests.test_codice_nuovo_non_previsto_passa_lo_stesso
+11-octies) CancellaFondoFatturaRepositoryTests.test_canale_di_sistema_rifiutato
 12) FondiFatturaVocabolarioTests.test_configurazione_incompleta_non_e_un_motivo
 13) FondiFatturaVistaGuardrailTests.test_motivi_misurati_dalla_vista_viva (e2e, opt-in)
+14) CancellaFondoFatturaBindingTests.test_binding_reale_su_id_inesistente (e2e, opt-in)
 """
 
 import re
 from unittest import TestCase
 from unittest.mock import patch
+
+from django.db import DatabaseError
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto
@@ -266,4 +274,143 @@ class FondiFatturaVistaGuardrailTests(TestCase):
             "FONDI_DA_DECIDERE_MOTIVI (vendite_repository) alla vista — una "
             "riga con motivo non in tupla e' visibile nel totale ma non "
             "filtrabile (400 sul filtro)",
+        )
+
+
+# ══════════════════════════════════════════════════════════════════
+#  BE-4 — la cancellazione dell'atto (D-21)
+#  brief-db-fondo-fattura-ricalcolo-e-governo §9.3
+# ══════════════════════════════════════════════════════════════════
+
+
+class CancellaFondoFatturaServiceTests(TestCase):
+    # Scopo: il service non ricalcola niente — inoltra l'id e restituisce i
+    #        contatori della madre DB, piu' lo stato del gesto.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "cancella_fondo_fattura",
+        return_value={"deleted_righe": 1, "deleted_fondi": 1, "deleted_source": 1},
+    )
+    def test_ok_conteggi_dalla_madre(self, mock_repo):
+        data = vendite_service.fn_cancella_fondo_fattura(fondo_source_id=7)
+        self.assertEqual(data["status"], "deleted")
+        self.assertEqual(data["fondo_source_id"], 7)
+        self.assertEqual(data["deleted_source"], 1)
+        mock_repo.assert_called_once_with(7)
+
+    # Scopo: un id non positivo si ferma PRIMA del database. Non e' pedanteria:
+    #        la madre solleverebbe comunque (`E_VENDITE_CHIAMATA_NON_VALIDA`,
+    #        TECNICO), ma un errore di chiamante non deve arrivare a video come
+    #        un guasto tecnico del database.
+    def test_id_non_valido_rifiutato(self):
+        # ⚠️ `True` c'e' perche' in Python `isinstance(True, int)` e' VERO:
+        #    senza il guard esplicito sarebbe finito al database come booleano.
+        for valore in (0, -1, None, "7", True, 1.0):
+            with self.subTest(valore=valore):
+                with self.assertRaises(ServiceError) as ctx:
+                    vendite_service.fn_cancella_fondo_fattura(fondo_source_id=valore)
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: ⭐ il CONTRATTO di questo endpoint. Il codice che il database
+    #        dichiara deve arrivare all'operatore COM'E' — non appiattito sul
+    #        fallback — perche' e' cio' che distingue «il denaro si e' mosso»
+    #        da «lo trattiene una sistemazione», che hanno due rimedi diversi.
+    #        ⚠️ Si prova su OGNI ramo dichiarato, non su uno solo: un codice non
+    #        tradotto non da' un errore educato, da' il messaggio sbagliato.
+    def test_codice_del_db_arriva_intero(self):
+        rami = [
+            "E_FONDO_NON_TROVATO",
+            "E_FONDO_NON_CANCELLABILE",
+            "E_FONDO_FIGLIA_CONGELATA",
+            "E_FONDO_TRATTENUTO_DA_SISTEMAZIONE",
+        ]
+        for codice in rami:
+            with self.subTest(codice=codice):
+                with patch.object(
+                    vendite_service.VenditeRepository,
+                    "cancella_fondo_fattura",
+                    side_effect=DatabaseError(f"{codice}: il database ha rifiutato."),
+                ):
+                    with self.assertRaises(ServiceError) as ctx:
+                        vendite_service.fn_cancella_fondo_fattura(fondo_source_id=7)
+                self.assertEqual(ctx.exception.code, codice)
+
+    # Scopo: ⭐ la ragione per cui qui NON c'e' un elenco locale di codici
+    #        ammessi. Il predicato ha gia' avuto sei motivi dove il piano ne
+    #        prevedeva quattro: un codice che il backend non conosce deve
+    #        passare lo stesso, o il giorno che il team DB ne conia uno
+    #        l'operatore leggerebbe un messaggio generico al posto del suo.
+    def test_codice_nuovo_non_previsto_passa_lo_stesso(self):
+        with patch.object(
+            vendite_service.VenditeRepository,
+            "cancella_fondo_fattura",
+            side_effect=DatabaseError("E_FONDO_MOTIVO_CHE_NON_ESISTE_ANCORA: nuovo."),
+        ):
+            with self.assertRaises(ServiceError) as ctx:
+                vendite_service.fn_cancella_fondo_fattura(fondo_source_id=7)
+        self.assertEqual(ctx.exception.code, "E_FONDO_MOTIVO_CHE_NON_ESISTE_ANCORA")
+
+
+class CancellaFondoFatturaRepositoryTests(TestCase):
+    # Scopo: 🔴 il guard di canale, ed e' il presidio che pesa di piu' di tutto
+    #        questo passo. La madre e' SECURITY INVOKER e si appoggia alla row
+    #        security accesa da D-20: su un ruolo BYPASSRLS il perimetro
+    #        emittente sparisce, e qui non si LEGGEREBBE l'atto di un altro
+    #        emittente — lo si CANCELLEREBBE. Un conteggio non lo troverebbe:
+    #        l'operazione riuscirebbe.
+    @patch("apps.vendite.db.vendite_repository.connection_role_bypasses_rls",
+           return_value=True)
+    def test_canale_di_sistema_rifiutato(self, _mock_bypass):
+        from apps.vendite.db.vendite_repository import VenditeRepository
+
+        with self.assertRaises(ServiceError) as ctx:
+            VenditeRepository().cancella_fondo_fattura(7)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+
+class CancellaFondoFatturaBindingTests(TestCase):
+    """Il binding con la madre DB, provato con una CHIAMATA VERA (e2e, opt-in).
+
+    ⭐ Perche' esiste, quando i test sopra girano su mock: un mock non vede la
+    FIRMA. Se `fn_cancella_fondo_fattura` cambiasse nome, numero di parametri o
+    colonne di ritorno, tutti i test mockati resterebbero verdi e l'endpoint
+    sarebbe rotto in produzione — e' la memoria
+    `feedback_rinomina_db_binding_mockato`, gia' pagata su questo progetto.
+    ⛔ L'id e' inesistente di proposito: prova la firma e la traduzione senza
+    toccare un solo dato.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        richiedi_db_provvisto()
+
+    # Scopo: la madre risponde, e risponde con il codice giusto tradotto in
+    #        ServiceError. Prova in un colpo: firma, tipo dei parametri, nomi
+    #        delle colonne di ritorno, `fn_log_and_raise_error` e la catena di
+    #        traduzione fino al codice di dominio.
+    def test_binding_reale_su_id_inesistente(self):
+        from django.db import connection
+
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT to_regprocedure("
+                "'vendite.fn_cancella_fondo_fattura(bigint)') IS NOT NULL"
+            )
+            row = cur.fetchone()
+            assert row is not None
+            self.assertTrue(
+                row[0],
+                "vendite.fn_cancella_fondo_fattura(bigint) assente sullo schema "
+                "provvisto: D-21 non applicato o firma cambiata (difetto, non "
+                "condizione d'ambiente)",
+            )
+
+        with self.assertRaises(ServiceError) as ctx:
+            vendite_service.fn_cancella_fondo_fattura(fondo_source_id=999_999_999)
+        self.assertEqual(
+            ctx.exception.code,
+            "E_FONDO_NON_TROVATO",
+            "il codice del database non arriva intero al service: rotta la "
+            "catena fn_log_and_raise_error -> translate_db_errors",
         )
