@@ -68,6 +68,17 @@ esplicita di Tid — è l'unico file fuori dal perimetro DB toccato in questa
 sessione. Lato DB non c'era niente da fare: i sei `reason_key` erano già emessi
 correttamente.
 
+⭐ **Da dove è arrivata la segnalazione, e vale la pena scriverlo**: non da qui.
+L'ha trovata il cantiere **fondo fattura**
+([brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md),
+chiuso e archiviato il 2026-08-31), lanciando `check_i18n_keys.py` dopo un lavoro
+suo che con i registri non c'entrava nulla — e l'ha segnalata **dichiarando che
+non era del proprio perimetro**. ⚠️ *Un cancello che gira su tutto il repo trova
+difetti di chiunque: il valore sta nel non archiviarli come «non miei». I due
+cantieri si sono toccati due volte nella stessa serata — qui e sul seed della
+colonna `azioni` della lista 44 — e fino a questo momento nessuno dei due
+documenti nominava l'altro.*
+
 ### B · `automation_fk_exclusions.csv` — un seme senza terreno
 
 ✅ **FATTO il 2026-08-31.** `dbops.automation_fk_exclusions` **non esiste**

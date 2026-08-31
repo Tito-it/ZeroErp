@@ -12,7 +12,7 @@
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale) — colonna `congela_fiscale`
 > • [vendite.trgfn_fattura_satellite_guard_congelamento](/dbzero/vendite/funzioni/trgfn_fattura_satellite_guard_congelamento) — la stessa soglia, sugli altri satelliti
 >
-> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §9.5-a, §9.7-b — passo D-21
+> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §9.5-a, §9.7-b — passo D-21
 
 ---
 

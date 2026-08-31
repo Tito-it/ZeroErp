@@ -11,7 +11,7 @@
 >
 > • [vendite.fn_genera_fondi_fattura_lotto](/dbzero/vendite/funzioni/fn_genera_fondi_fattura_lotto)
 >
-> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.3 R-3
+> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §8.3 R-3
 
 ---
 

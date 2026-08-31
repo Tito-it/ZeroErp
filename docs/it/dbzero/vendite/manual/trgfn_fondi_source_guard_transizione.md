@@ -18,7 +18,7 @@
 > • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura) — → `ANNULLATO` quando la sorgente non è più capiente
 > • `pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito` — `ASSEGNATO` → **`ESEGUITO`**, quando la riga contabile del fondo viene registrata
 >
-> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-7
+> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-7
 
 ---
 
