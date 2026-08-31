@@ -16,6 +16,7 @@ from django.db import connection
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
     extract_paginated,
+    jsonb_out,
     row_to_dict,
     rows_to_list,
     sql_order_direction,
@@ -356,6 +357,25 @@ class EmittentiFiscaliBillingAccountRepository:
                    m.data_update,
                    blocco.reason               AS rimozione_blocco_reason,
                    blocco.reason_key           AS rimozione_blocco_reason_key,
+                   -- ⭐ L'ELENCO PER FAMIGLIA, cioe' lo stesso grado di
+                   --    dettaglio del RIFIUTO: il tooltip diceva «ha documenti
+                   --    numerati» e il 409 diceva «Fattura: 3, DDT: 1», e chi
+                   --    si fermava al tooltip non sapeva DOVE guardare.
+                   -- ⛔ Viaggia il DATO, non la frase: la compone il frontend
+                   --    dai `locales` (api.md §12.5.4). La `descrizione` di
+                   --    catalogo viaggia con l'elemento perche' e' il RIPIEGO
+                   --    del client su una famiglia che non ha ancora la sua
+                   --    chiave i18n: il vocabolario e' aperto.
+                   -- ⭐ Non costa niente: la LATERAL gia' gira e il `dettaglio`
+                   --    e' gia' composto (i conteggi si pagano solo nel ramo
+                   --    d'errore). Qui si smette di buttarlo via.
+                   -- ⚠️ NULL sulla riga del gestore globale, bloccata dal
+                   --    SINGLETON e non dalla storia: li' il `dettaglio` non ha
+                   --    questa chiave e il client ricade sulla frase secca.
+                   -- ⚠️ Niente graffe nei commenti di questo SQL: e' un
+                   --    f-string, e una parentesi graffa viene valutata come
+                   --    espressione Python.
+                   blocco.storia               AS rimozione_blocco_storia,
                    COUNT(*) OVER ()            AS total_count
               FROM anagrafiche.emittenti_fiscali_billing_account m
               LEFT JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id
@@ -392,7 +412,8 @@ class EmittentiFiscaliBillingAccountRepository:
               --    tutta la query: non questo pezzo.
               LEFT JOIN LATERAL (
                   SELECT motivo.value ->> 'reason'     AS reason,
-                         motivo.value ->> 'reason_key' AS reason_key
+                         motivo.value ->> 'reason_key' AS reason_key,
+                         motivo.value -> 'dettaglio' -> 'storia' AS storia
                     FROM jsonb_array_elements(
                              script.fn_check_ba_cambio_emittente(
                                  m.billing_account_id,
@@ -423,7 +444,18 @@ class EmittentiFiscaliBillingAccountRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return extract_paginated(cursor)
+            rows, total = extract_paginated(cursor)
+        # ⚠️ `jsonb_out` e non il valore grezzo: fuori dall'ORM psycopg 3
+        #    consegna i jsonb come `str`, e un array servito come stringa
+        #    arriverebbe al client come `"[{\"famiglia\": ...}]"` — che nel
+        #    template non fallisce, si limita a non iterare. E' la regola del
+        #    catalogo BB («da usare in OGNI lettura raw di colonne jsonb»).
+        # ⭐ NULL resta NULL: sulla riga del gestore globale non c'e' storia, e
+        #    `[]` direbbe «nessun documento» invece di «questa domanda non si
+        #    applica».
+        for row in rows:
+            row["rimozione_blocco_storia"] = jsonb_out(row["rimozione_blocco_storia"])
+        return rows, total
 
     # Scopo: Inserisce un mapping BA per l'emittente.
     #        Se billing_account_id e' None, crea il default globale (is_default=true).

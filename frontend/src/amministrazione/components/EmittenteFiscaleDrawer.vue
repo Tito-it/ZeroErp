@@ -9,9 +9,10 @@ import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, FIELD_LENGTH } from '../../core/constants'
 import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
+import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -180,6 +181,21 @@ watch(() => form.value.bollo_auto, (v) => {
   if (!v) form.value.bollo_soglia = null
 })
 
+// ⭐ LA FORMA DELLA SIGLA, e lo specchio di un vincolo che il DB ha davvero:
+//    `chk_emittenti_fiscali_codice_forma` + il guard che da' la frase
+//    (`anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma`, 2026-08-31).
+// ⛔ I due numeri NON si scrivono qui: vengono da `FIELD_LENGTH`, che e' gia'
+//    la sede dei vincoli di lunghezza campo (`IBAN_MAX`). Servono in tre punti
+//    — regex, `maxlength` e la frase dell'hint — e tre letterali si allineano a
+//    mano finche' qualcuno se ne dimentica.
+// ⚠️ Perche' cosi' corta: dal 2026-08-31 la sigla sta DENTRO il codice commessa
+//    — `CMM-<sigla>-<anno>-<9 cifre>` — che si legge separando sui trattini. E
+//    il `codice` e' IMMUTABILE dopo la create: una sigla sbagliata non si
+//    corregge piu'.
+const CODICE_EMITTENTE_RE = new RegExp(
+  `^[A-Z0-9]{${FIELD_LENGTH.EMITTENTE_CODICE_MIN},${FIELD_LENGTH.EMITTENTE_CODICE_MAX}}$`
+)
+
 // In EDIT non c'e' piu' un campo obbligatorio da validare (`descrizione` era
 // l'unico): i restanti sono opzionali o hanno default, quindi il salvataggio e'
 // sempre ammesso. In CREATE restano soggetto con P.IVA e codice.
@@ -187,7 +203,7 @@ const canSave = computed(() => {
   if (isEdit.value) return true
   return !!soggettoSelezionato.value
       && soggettoHasPartitaIva.value
-      && form.value.codice.trim().length > 0
+      && CODICE_EMITTENTE_RE.test(form.value.codice.trim())
 })
 
 async function save() {
@@ -295,15 +311,30 @@ function close() {
           <template v-if="isEdit || (soggettoSelezionato && soggettoHasPartitaIva)">
             <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
 
+            <!-- ⚠️ Il maiuscolo si ALZA, il trattino si RIFIUTA: e' la stessa
+                 asimmetria del guard DB. `normalizeUpperNoSpaces` porta `acme`
+                 a `ACME` (forma canonica, non un requisito da conoscere),
+                 mentre `blockNonAlphanumeric` non lascia nemmeno digitare il
+                 `-` invece di toglierlo dopo — togliere caratteri a un
+                 identificatore appena scritto e' una cosa che chi lo scrive
+                 deve sapere. -->
             <div class="form-field">
               <label>{{ t('amministrazione.emittenti_fiscali.field_codice') }} *</label>
               <InputText
                 v-model="form.codice"
                 :disabled="isEdit"
-                maxlength="40"
+                :maxlength="FIELD_LENGTH.EMITTENTE_CODICE_MAX"
                 class="w-full"
                 :invalid="campiErrati.includes('codice')"
+                @keypress="blockNonAlphanumeric"
+                @input="normalizeUpperNoSpaces(form, 'codice')"
               />
+              <small v-if="!isEdit" class="app-field-hint">
+                {{ t('amministrazione.emittenti_fiscali.field_codice_hint', {
+                  min: FIELD_LENGTH.EMITTENTE_CODICE_MIN,
+                  max: FIELD_LENGTH.EMITTENTE_CODICE_MAX,
+                }) }}
+              </small>
             </div>
 
             <!-- Nessun campo "descrizione": la denominazione dell'emittente e'

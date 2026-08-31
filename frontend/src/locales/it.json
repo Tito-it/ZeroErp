@@ -1094,6 +1094,7 @@
       "metodo_down": "Sempre verso il basso (DOWN)",
       "field_soggetto": "Soggetto",
       "field_codice": "Codice",
+      "field_codice_hint": "Sigla dell'azienda che emette: da {min} a {max} caratteri, solo lettere maiuscole e cifre. Entra nel codice delle commesse (CMM-SIGLA-anno-numero) e non e' piu' modificabile dopo il salvataggio.",
       "field_attivo": "Attivo",
       "field_regime_fiscale_rf": "Regime fiscale (RF)",
       "regime_fiscale_rf_hint": "Codice regime fiscale RF del tracciato FE/SdI (es. RF01, RF19).",
@@ -1120,7 +1121,8 @@
       "ba_default_exists": "Esiste gia' il default globale per questo emittente.",
       "ba_added": "Mapping aggiunto.",
       "ba_blocco": {
-        "con_storia": "Il cliente ha gia' fatture o commesse con questo emittente: togliere il mapping lo sposterebbe, e quei documenti resterebbero senza il cliente a cui appartengono.",
+        "con_storia": "Il cliente ha gia' documenti numerati con questo emittente: togliere il mapping lo sposterebbe, e quei documenti resterebbero senza il cliente a cui appartengono.",
+        "elenco": "Documenti che bloccano — {elenco}.",
         "default_singleton": "Un gestore globale deve sempre esistere, e ce n'e' uno solo: questa riga non si puo' togliere."
       },
       "ba_default_added": "Default globale creato.",
@@ -2213,6 +2215,13 @@
         "componenti_prezzo_pendente": "Componenti con prezzo in attesa di valorizzazione.",
         "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati."
       }
+    },
+    "famiglie_documento": {
+      "FATTURA": "Fatture",
+      "DDT": "DDT",
+      "ORDINE": "Ordini",
+      "COMMESSA": "Commesse",
+      "RESO": "Resi"
     },
     "fatturazione": {
       "esiti_titolo": "Esiti fatturazione",

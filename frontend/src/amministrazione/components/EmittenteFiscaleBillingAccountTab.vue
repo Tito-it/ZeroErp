@@ -125,29 +125,79 @@ function removeMapping(row) {
   })
 }
 
+// Scopo: il nome leggibile di una famiglia di documento (Fattura, DDT, …).
+// ⚠️ Vocabolario APERTO: le famiglie stanno in `vendite.famiglie_documento` e
+//    una nuova arriva con un seed, non con un rilascio del frontend. Quindi
+//    `labelOrCode` con ripiego sulla `descrizione` che il database manda
+//    accanto al codice: una famiglia senza chiave i18n si vede col suo nome di
+//    catalogo, non sparisce e non mostra il path della chiave.
+function nomeFamiglia(voce) {
+  const codice = String(voce?.famiglia ?? '')
+  return labelOrCode(
+    t, te,
+    `vendite.famiglie_documento.${codice}`,
+    voce?.descrizione || codice,
+  )
+}
+
 // Scopo: azioni di riga mapping BA (rimozione con conferma), nascoste in readonly.
 //
 // ⭐ IL MOTIVO ARRIVA DAL DATABASE, non si ricalcola qui. Un billing account
-//    che ha gia' fatture o commesse non cambia piu' emittente, e togliere il
-//    suo mapping lo farebbe ricadere sul gestore globale: e' un cambio di
-//    emittente, e viene rifiutato. Fino al 2026-08-27 il cestino era acceso
-//    lo stesso e l'operatore lo scopriva premendo — dopo aver confermato un
-//    dialog. Ora la riga porta `can_remove` e il motivo del primo blocco,
-//    prodotti da `script.fn_check_ba_cambio_emittente`: la STESSA funzione
-//    che la madre chiama per rifiutare, quindi tooltip ed errore non possono
-//    divergere (`linee-guida-sql` 12.5).
+//    che ha gia' un documento NUMERATO su un registro non cambia piu'
+//    emittente, e togliere il suo mapping lo farebbe ricadere sul gestore
+//    globale: e' un cambio di emittente, e viene rifiutato. Fino al 2026-08-27
+//    il cestino era acceso lo stesso e l'operatore lo scopriva premendo — dopo
+//    aver confermato un dialog. Ora la riga porta `can_remove` e il motivo del
+//    primo blocco, prodotti da `script.fn_check_ba_cambio_emittente`: la STESSA
+//    funzione che la madre chiama per rifiutare, quindi tooltip ed errore non
+//    possono divergere (`linee-guida-sql` 12.5).
+// ⚠️ «Numerato», non «fatture o commesse»: dal 2026-08-31 DDT, ordini, resi e
+//    commesse prendono il numero dagli stessi registri delle fatture, e la
+//    storia si deriva da `vendite.famiglie_documento`. Una frase che ne nomina
+//    due manderebbe a cercare fatture a un cliente bloccato da un DDT.
 // ⛔ Permesso => nascondi, stato => disabilita col motivo (12.1): qui e' uno
 //    stato — la storia del cliente puo' solo crescere, ma il mapping resta a
 //    video con la sua spiegazione invece di sparire senza dire niente.
 // ⚠️ Il campo si chiama `tooltip`, non `motivo`: RowActionsMenu legge solo
 //    quello, e da li' ricava sia il tooltip inline sia la riga sotto la voce
 //    nel kebab.
+
 // Scopo: il motivo del blocco in testo leggibile — chiave i18n se c'e',
 //        altrimenti il codice macchina. Stesso ripiego di `useDrawerActions`.
+//
+// ⭐ E QUANDO IL DATABASE MANDA L'ELENCO, IL TOOLTIP DICE QUANTO DICE IL
+//    RIFIUTO. Fino al 2026-08-31 il tooltip diceva «ha documenti numerati» e
+//    il 409 diceva «Fattura: 3, DDT: 1»: due gradi di dettaglio sulla stessa
+//    condizione, e chi si fermava al tooltip non sapeva DOVE guardare. Ora
+//    `rimozione_blocco_storia` porta le stesse righe da cui il DB compone la
+//    frase del rifiuto, e le due superfici raccontano lo stesso fatto.
+// ⛔ Il testo NON viaggia nel payload: viaggia il DATO (`{famiglia,
+//    descrizione, n}`) e la frase si compone qui dai `locales` — e' la regola
+//    di api.md §12.5.4, ed e' il motivo per cui questa funzione esiste invece
+//    di stampare una stringa gia' pronta.
+// ⚠️ L'elenco e' un'AGGIUNTA, non una sostituzione: la frase del motivo resta
+//    la prima cosa che si legge. Senza `storia` — la riga del gestore globale,
+//    il cui blocco e' il singleton e non la storia — si degrada da se' alla
+//    sola frase, che li' e' la risposta completa.
 function motivoBlocco(data) {
   const chiave = data.rimozione_blocco_reason_key
   const codice = data.rimozione_blocco_reason || ''
-  return chiave ? labelOrCode(t, te, chiave, codice) : codice
+  const frase = chiave ? labelOrCode(t, te, chiave, codice) : codice
+  // ⚠️ `Array.isArray` e non `?.length`: se un domani il repository smettesse
+  //    di decodificare il jsonb, `storia` sarebbe una STRINGA — che ha una
+  //    `.length` e si lascia iterare a caratteri. Il guard sul tipo e' l'unico
+  //    che distingue «non c'e' storia» da «e' arrivata nella forma sbagliata».
+  const storia = Array.isArray(data.rimozione_blocco_storia)
+    ? data.rimozione_blocco_storia
+    : []
+  if (!storia.length) return frase
+  const elenco = storia.map((v) => `${nomeFamiglia(v)}: ${v?.n ?? '?'}`).join(', ')
+  // ⛔ `filter(Boolean)` e non `${frase} ${elenco}`: concatenare due pezzi a
+  //    mano stampa uno spazio in testa quando il primo manca. E' la stessa
+  //    regola che `shape_indirizzi_context` scrive per i template.
+  return [frase, t('amministrazione.emittenti_fiscali.ba_blocco.elenco', { elenco })]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function buildRowActions(data) {

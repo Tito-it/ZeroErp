@@ -80,7 +80,16 @@ export const BREAKPOINTS = {
 
 // Lunghezze campo standard
 export const FIELD_LENGTH = {
-  IBAN_MAX: 34  // ISO 13616: max 34 caratteri alfanumerici
+  IBAN_MAX: 34,  // ISO 13616: max 34 caratteri alfanumerici
+  // Sigla dell'emittente fiscale: specchio del CHECK DB
+  // `chk_emittenti_fiscali_codice_forma` (`^[A-Z0-9]{2,10}$`, 2026-08-31).
+  // ⚠️ I due numeri stanno QUI e non nel drawer perche' servono in tre punti —
+  // il `maxlength`, la regex di `canSave` e la frase dell'hint — e tre copie di
+  // un vincolo si allineano a mano finche' qualcuno se ne dimentica.
+  // ⛔ Non e' una regola di business duplicata: e' la validazione UX che evita
+  // un giro fino al database. Il rifiuto autorevole resta del DB.
+  EMITTENTE_CODICE_MIN: 2,
+  EMITTENTE_CODICE_MAX: 10
 }
 
 // Enum ruolo applicativo (allineato a config.ruolo_applicativo nel DB).
