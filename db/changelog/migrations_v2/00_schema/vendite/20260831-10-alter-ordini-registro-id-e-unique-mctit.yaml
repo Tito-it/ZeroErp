@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-9 (prima meta') — L'ORDINE PRENDE IL REGISTRO, E LA CHIAVE LO SEGUE
+#   vendite.ordini.registro_id + uq_ordini_v_anno_serie_numero
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9 (§3.4)
+#
+# ── ⛔ LA CONDIZIONE CHE ROMPE, di nuovo ──────────────────────────
+#   Colonna e `UNIQUE` nello stesso changeSet: due registri ORDINE di due
+#   emittenti ripartono entrambi da 1, e senza il registro in chiave il secondo
+#   prende un `23505` al primo ordine dell'anno.
+#
+# ── ⭐ QUI LA CHIAVE FUNZIONAVA DAVVERO, a differenza del DDT ─────
+#   Misurato il 2026-08-31: **96 ordini su 96 numerati, e tutti con `anno`
+#   valorizzato**. La ragione e' l'altra faccia del difetto del DDT:
+#   `trgfn_ordini_normalize` riempie `anno` nel ramo «INSERT con numero gia'
+#   presente», e l'ordine il numero ce l'ha DALL'INSERT — quindi il ramo si
+#   attraversa sempre. Sul DDT lo stesso codice non si attraversa mai da quando
+#   il numero e' passato a EMESSO.
+#   ⇒ Stesso trigger, stesso ramo, due esiti opposti: **cio' che li separa e' il
+#   MOMENTO della numerazione**, non il codice.
+#
+# ── ⚠️ I NUMERI VECCHI E QUELLI NUOVI NON COLLIDONO ──────────────
+#   Il contatore nuovo riparte da 1, e `ORD0000001` con ogni probabilita'
+#   esiste gia' fra i 96. Non collide perche' le righe nuove portano un
+#   `registro_id` e le vecchie no: nella chiave i due valori sono diversi.
+#   ⛔ E' anche l'unica cosa che li separa — chi cambiasse il FORMATO dei numeri
+#   nuovi toccherebbe pure questo.
+#
+# ── ⚠️ `NULLS NOT DISTINCT` ──────────────────────────────────────
+#   Le 96 righe storiche hanno `registro_id` e `serie` NULL: senza quella
+#   clausola smetterebbero di essere confrontate fra loro, cioe' il vincolo
+#   perderebbe sul pregresso quello che oggi fa.
+#
+# ⚠️ `registro_id` NULLABLE: le righe storiche non ne hanno uno, e non glielo
+#   si inventa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-10-alter-ordini-registro-id-e-unique-mctit.yaml
+
+  - changeSet:
+      id: 20260831-10-alter-ordini-registro-id-e-unique
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-9 (prima meta''): vendite.ordini prende registro_id e la UNIQUE lo segue, nello stesso
+        changeSet. ⭐ Qui la chiave funzionava davvero, a differenza del DDT: misurati 96 ordini su
+        96 numerati e tutti con anno valorizzato, perche'' trgfn_ordini_normalize riempie anno nel
+        ramo «INSERT con numero gia'' presente» e l''ordine il numero ce l''ha dall''INSERT — sul
+        DDT lo stesso identico ramo non si attraversa mai da quando il numero e'' passato a EMESSO.
+        Stesso trigger, due esiti opposti: a separarli e'' il MOMENTO della numerazione, non il
+        codice. ⚠️ I numeri nuovi ripartono da 1 e non collidono con i vecchi solo perche'' le righe
+        nuove portano un registro_id e le vecchie no. ⚠️ NULLS NOT DISTINCT: senza, le 96 righe
+        storiche smetterebbero di essere confrontate fra loro. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini
+                columnName: registro_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini
+            columns:
+              - column:
+                  name: registro_id
+                  type: bigint
+                  remarks: >-
+                    Registro di numerazione su cui l'ordine ha preso il numero. NULL sulle righe
+                    nate prima del 2026-08-31, quando il numero veniva da una sequenza unica.
+        - addForeignKeyConstraint:
+            constraintName: fk_ordini_registro
+            baseTableSchemaName: vendite
+            baseTableName: ordini
+            baseColumnNames: registro_id
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_ordini_v_anno_serie_numero;
+
+              CREATE UNIQUE INDEX uq_ordini_v_anno_serie_numero
+                  ON vendite.ordini (registro_id, anno, serie, numero)
+                  NULLS NOT DISTINCT
+                  WHERE numero IS NOT NULL;
+
+              COMMENT ON INDEX vendite.uq_ordini_v_anno_serie_numero
+              IS 'Unicita'' del numero ordine dentro il suo sezionale: (registro, anno, serie, numero) sui soli ordini numerati. ⛔ Il REGISTRO e'' entrato in chiave il 2026-08-31 insieme al passaggio dell''ordine sul motore dei registri, e nello STESSO changeSet della colonna: due registri ORDINE di due emittenti ripartono entrambi da 1, e senza il registro in chiave il secondo emittente avrebbe preso un 23505 al primo ordine dell''anno. ⭐ A differenza del gemello sul DDT, questo indice funzionava gia'': misurati 96 ordini su 96 numerati e tutti con `anno` valorizzato, perche'' vendite.trgfn_ordini_normalize riempie l''anno nel ramo «INSERT con numero gia'' presente» e l''ordine il numero ce l''ha dall''INSERT. Sul DDT lo stesso identico ramo non si attraversa mai da quando la numerazione e'' passata a EMESSO — stesso trigger, due esiti opposti, e a separarli e'' il MOMENTO della numerazione. ⚠️ I numeri nuovi ripartono da 1 e ORD0000001 con ogni probabilita'' esiste gia'' fra i 96: non collidono perche'' le righe nuove portano un registro_id e le vecchie no, ed e'' l''unica cosa che li separa. ⚠️ NULLS NOT DISTINCT: le 96 righe storiche hanno registro e serie NULL, e senza quella clausola smetterebbero di essere confrontate fra loro. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.';
+
+              COMMENT ON COLUMN vendite.ordini.registro_id
+              IS 'Registro di numerazione su cui l''ordine ha preso il numero. ⭐ Dal 2026-08-31 l''ordine si numera sul motore dei registri invece che sulla sequenza generica di config.sistema_codici: il registro e'' quello di famiglia ORDINE del suo emittente, risolto da vendite.fn_get_registro_documento. ⚠️ NULL sulle righe nate prima, e non si inventa: quei numeri vengono da una sequenza unica e restano quelli. ⛔ Entra in uq_ordini_v_anno_serie_numero, ed e'' cio'' che permette a due emittenti di ripartire entrambi da 1 senza collidere — e anche cio'' che tiene separati i numeri nuovi dai vecchi. ℹ️ Il MOMENTO non cambia: l''ordine si numera all''INSERT come prima. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_ordini_v_anno_serie_numero;
+              CREATE UNIQUE INDEX uq_ordini_v_anno_serie_numero
+                  ON vendite.ordini (anno, serie, numero)
+                  WHERE numero IS NOT NULL;
+              ALTER TABLE vendite.ordini DROP CONSTRAINT IF EXISTS fk_ordini_registro;
+              ALTER TABLE vendite.ordini DROP COLUMN IF EXISTS registro_id;

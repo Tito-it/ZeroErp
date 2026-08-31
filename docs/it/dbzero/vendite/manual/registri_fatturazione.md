@@ -12,9 +12,13 @@
 >
 ### 🎯 Scopo Principale
 (latest review 26-01-2026)
-`vendite.registri_fatturazione` definisce i **registri fiscali di emissione**:
-serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura
-si aggancia a un registro, che governa numerazione e perimetro fiscale.
+`vendite.registri_fatturazione` definisce i **sezionali di numerazione**: serie,
+regole di reset, politica della data e collegamento all'emittente fiscale. Ogni
+documento numerato si aggancia a un registro, che ne governa numerazione e
+perimetro.
+
+⛔ **Il nome dice meno di quello che la tabella fa, ed è un debito dichiarato:**
+dal 31 agosto 2026 qui non vivono più solo le fatture. Vedi la sezione in fondo.
 
 ---
 
@@ -100,6 +104,61 @@ una (`COALESCE(f.serie, r.serie_default, '')`), quindi **rinominarlo sposta il
 sezionale**: le righe di `registri_fatturazione_progressivi` restano sulla serie
 vecchia e vanno spostate a mano, o il contatore riparte da zero e il cancello
 resta senza pavimento.
+
+---
+
+### 🔄 rev 2026-08-31 — il registro numera **cinque famiglie**, non solo le fatture
+
+Brief: `brief-db-registri-di-numerazione-emittente-e-trasloco` (**C2**).
+
+#### La colonna `famiglia_documento`
+
+Dice **che specie di documento** questo registro numera: `FATTURA`, `DDT`,
+`ORDINE`, `COMMESSA`, `RESO` — le voci sono quelle di
+[`vendite.famiglie_documento`](/dbzero/vendite/manual/famiglie_documento).
+
+⭐ **Il motore era già neutro.** Documenti di trasporto, ordini, commesse e resi
+avevano ciascuno il proprio contatore, e nessuno dei tre sapeva ripartire a
+Capodanno né distinguere due aziende. Portarli qui non ha richiesto un motore
+nuovo: nel generatore la fattura compariva ormai solo nel ramo dell'errore.
+
+⚠️ **Un registro appartiene a UNA azienda**, e non è una preferenza: è la chiave
+del contatore. Due aziende sullo stesso registro non producono numeri doppi — il
+contatore è uno solo — ma **spezzano l'attribuzione**, e nessuna delle due ha più
+una progressione propria. Nessun errore lo segnala: è il motivo per cui esiste un
+controllo apposta e per cui l'emittente è obbligatorio dal 30 agosto 2026.
+
+#### ⚠️ Il cancello della data vale **solo per le fatture**
+
+Il pavimento di sequenza — *«non numeri un documento con data anteriore
+all'ultimo già numerato»* — è una regola **fiscale** e vive dove c'è il registro
+fiscale.
+
+⛔ Acceso anche altrove sarebbe un rifiuto nuovo, non un modo diverso di dare il
+numero: emesso un documento di trasporto datato oggi, su quel registro **nessuno
+datato prima passerebbe più** — e il documento per la spedizione di ieri, inserito
+stamattina, verrebbe respinto. Lo governa il flag `presidia_data_documento` sul
+catalogo delle famiglie.
+
+⭐ **L'anno invece resta quello della data del documento** per tutti, ed è
+indipendente da quel flag.
+
+#### ⛔ Il debito sul nome, dichiarato
+
+La tabella si chiama `registri_fatturazione` e numera anche merce in uscita e
+ordini. **Il nome non si cambia**, e non per pigrizia: rinominarla significa
+rinominare la tabella dei progressivi, i trigger, le funzioni, le viste, i vincoli
+e le colonne `registro_id` di cinque tabelle di documento.
+
+⭐ È un lavoro che non cambia **nessun** comportamento — cioè esattamente quello
+che non va infilato dentro un cantiere che ne cambia molti, dove un errore di
+rinomina si confonderebbe con un errore di trasloco.
+
+⚠️ **Ne discende una regola di lettura:** chi trova questo nome in giro non deve
+dedurne «fattura». La specie si chiede a `famiglia_documento`, e la funzione che
+risolve il registro di un documento **rifiuta** proprio la famiglia `FATTURA` —
+quella ha una strada sua, che passa dal tipo di documento fiscale e dalla natura
+dell'operazione.
 
 ---
 

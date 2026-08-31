@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-19 (seconda meta') — LA FRASE, E IL MAIUSCOLO ALZATO
+#   anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4
+#
+# ── ⛔ PERCHE' NON BASTA IL `CHECK` ───────────────────────────────
+#   Un `CHECK` violato solleva un `23514` che nomina il VINCOLO, non il
+#   problema: `chk_emittenti_fiscali_codice_forma`. Chi crea un emittente e' una
+#   PERSONA, in una maschera di configurazione, e quella stringa non le dice
+#   ne' cosa ha sbagliato ne' cosa scrivere.
+#   ⇒ Serve un codice a catalogo, che e' la regola del progetto.
+#
+# ── ⭐ IL MAIUSCOLO SI ALZA, NON SI RIFIUTA ───────────────────────
+#   `acme` diventa `ACME`. Il maiuscolo e' una FORMA CANONICA, non un requisito
+#   che l'utente debba conoscere — ed e' la stessa trasformazione con cui il
+#   `20260831-22` ha bonificato il pregresso: la regola di ieri e quella di
+#   domani sono la stessa riga.
+#   ⛔ Il TRATTINO invece si rifiuta e non si toglie in silenzio: `AC-ME` non
+#   diventa `ACME` da solo. Togliere caratteri a un identificatore che una
+#   persona ha appena scritto e' una cosa che deve sapere — e una sigla e' una
+#   scelta, non un campo da correggere di nascosto. ⚠️ La bonifica lo ha fatto,
+#   ma li' l'alternativa era lasciare in giro codici illeggibili per sempre.
+#
+# ── ⚠️ DUE PRESIDI SULLA STESSA REGOLA, E CHI VINCE ───────────────
+#   Il `CHECK` e' la RETE — nessuno lo aggira, nemmeno uno script di
+#   manutenzione; il guard e' la FRASE. Sono deliberatamente ridondanti, e la
+#   regola per chi verra': ⛔ il guard resta IDENTICO o piu' stretto del
+#   `CHECK`. Se dissentono vince il `CHECK`, e il guard diventa una promessa
+#   che il database non mantiene.
+#
+# ── ⚠️ ANCHE `UPDATE OF codice`, benche' il codice sia immutabile ─
+#   Il lock si aggira con un GUC di manutenzione (e questo cantiere lo ha
+#   appena usato). Un guard montato sul solo INSERT lascerebbe la porta di
+#   servizio senza controllo, cioe' proprio la via da cui e' passata la
+#   bonifica.
+#
+# ⛔ Nessuna preCondition sul codice errore: sta in `80_data`, che gira DOPO
+#   `20_code` — la corsa che introduce la riga sarebbe quella che fallisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260831-23-create-trgfn-emittenti-fiscali-guard-codice-forma-mctit.yaml
+
+  - changeSet:
+      id: 20260831-23-create-trgfn-emittenti-fiscali-guard-codice-forma
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-19 (seconda meta''): la frase leggibile sulla forma della sigla, e il maiuscolo alzato
+        invece che rifiutato. ⛔ Il CHECK da solo solleva un 23514 che nomina il vincolo e non il
+        problema, mentre chi crea un emittente e'' una PERSONA in una maschera di configurazione:
+        serve un codice a catalogo. ⭐ `acme` diventa `ACME` — il maiuscolo e'' una forma canonica,
+        non un requisito da conoscere, ed e'' la stessa trasformazione con cui il 20260831-22 ha
+        bonificato il pregresso. ⛔ Il TRATTINO invece si rifiuta e non si toglie in silenzio:
+        togliere caratteri a un identificatore appena scritto e'' una cosa che chi lo scrive deve
+        sapere. ⚠️ Due presidi sulla stessa regola, deliberatamente: il CHECK e'' la rete che
+        nessuno aggira, il guard e'' la frase — e il guard va tenuto IDENTICO o piu'' stretto,
+        perche'' se dissentono vince il CHECK. ⚠️ Montato anche su UPDATE OF codice benche'' il
+        codice sia immutabile: il lock si aggira con un GUC di manutenzione, ed e'' la porta da cui
+        e'' passata la bonifica. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_constraint c
+                    JOIN pg_class     t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND t.relname = 'emittenti_fiscali'
+                     AND c.conname = 'chk_emittenti_fiscali_codice_forma';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La sigla dell'emittente e' fatta di MAIUSCOLE e CIFRE,
+                  --   da 2 a 10 caratteri. Qui si alza il maiuscolo e si
+                  --   solleva la frase; la rete e' il CHECK di tabella.
+                  --
+                  -- ⛔ Perche' serve: quella sigla sta DENTRO il codice
+                  --   commessa (CMM-<sigla>-<anno>-<9 cifre>), che si legge
+                  --   separando sul trattino. Una sigla col trattino dentro
+                  --   rompe la lettura, e il difetto e' MUTO — nessun
+                  --   duplicato, nessun errore, solo codici illeggibili.
+                  -- =========================================================
+
+                  -- ⭐ La FORMA CANONICA si applica, non si pretende: `acme`
+                  --   diventa `ACME`. E' la stessa trasformazione con cui il
+                  --   changeSet 20260831-22 ha bonificato il pregresso.
+                  -- ⚠️ btrim prima di upper: uno spazio in coda non e' una
+                  --   scelta di nessuno.
+                  NEW.codice := upper(btrim(COALESCE(NEW.codice, '')));
+
+                  -- ⛔ Il resto NON si aggiusta in silenzio. Togliere il
+                  --   trattino da `AC-ME` darebbe `ACME`, cioe' un
+                  --   identificatore che la persona non ha scritto — e un
+                  --   identificatore e' una scelta, non un campo da correggere
+                  --   di nascosto.
+                  IF NEW.codice !~ '^[A-Z0-9]{2,10}$' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'trgfn_emittenti_fiscali_guard_codice_forma',
+                          'E_EMITTENTE_CODICE_FORMA_NON_VALIDA',
+                          jsonb_build_object(
+                              'campo',  'codice',
+                              'codice', NEW.codice),
+                          NULL::uuid,
+                          NEW.codice);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma()
+              IS 'Guard BEFORE INSERT / UPDATE OF codice su anagrafiche.emittenti_fiscali: la sigla e'' fatta di MAIUSCOLE e CIFRE, da 2 a 10 caratteri. Alza il maiuscolo e solleva E_EMITTENTE_CODICE_FORMA_NON_VALIDA su tutto il resto. ⛔ PERCHE'' ESISTE: dal 2026-08-31 quella sigla sta DENTRO il codice commessa — CMM-<sigla>-<anno>-<9 cifre> — che si legge separando sul trattino, e una sigla che contiene un trattino produce cinque pezzi invece di quattro. Il difetto sarebbe MUTO: uq_commesse_codice regge, nessun duplicato e nessun errore — cambia solo che quell''emittente ha codici illeggibili PER SEMPRE, perche'' il codice e'' immutabile. ⭐ IL MAIUSCOLO SI ALZA, NON SI RIFIUTA: `acme` diventa `ACME`, perche'' il maiuscolo e'' una forma canonica e non un requisito che l''utente debba conoscere — ed e'' la STESSA trasformazione con cui il changeSet 20260831-22 ha bonificato il pregresso, quindi la regola di ieri e quella di domani sono una riga sola. ⛔ IL TRATTINO INVECE SI RIFIUTA e non si toglie in silenzio: `AC-ME` non diventa `ACME` da solo, perche'' sarebbe un identificatore che la persona non ha scritto — e una sigla e'' una SCELTA, non un campo da correggere di nascosto. ⚠️ La bonifica lo ha fatto, ma li'' l''alternativa era lasciare in giro codici illeggibili per sempre. ⚠️ DUE PRESIDI SULLA STESSA REGOLA, deliberatamente: chk_emittenti_fiscali_codice_forma e'' la RETE — nessuno la aggira, nemmeno uno script di manutenzione col bypass del lock — e questo guard e'' la FRASE. ⛔ Il guard va tenuto IDENTICO o piu'' stretto del CHECK: se dissentono vince il CHECK, e il guard diventa una promessa che il database non mantiene. ⚠️ Montato anche su UPDATE OF codice benche'' il codice sia immutabile (dbops.automation_lock_columns via script.trgfn_lock_columns): quel lock si aggira con il GUC zeroerp.allow_lock_columns_override, ed e'' esattamente la porta da cui e'' passata la bonifica — un guard sul solo INSERT lascerebbe senza controllo la via di servizio. ⛔ Il codice e'' DATO_ERRATO e non TECNICO: la sigla la scrive una persona in una maschera di configurazione, quindi nel contesto ci va la chiave `campo`. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4.';
+
+              -- ⚠️ `a05` e non `a10`: la normalizzazione della forma canonica
+              --   deve avvenire PRIMA degli altri guard di riga, che sui
+              --   BEFORE ROW scattano in ordine alfabetico di nome.
+              CREATE OR REPLACE TRIGGER trg_emittenti_fiscali_a05_guard_codice_forma_ins_upd
+                  BEFORE INSERT OR UPDATE OF codice
+                  ON anagrafiche.emittenti_fiscali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma();
+
+              COMMENT ON TRIGGER trg_emittenti_fiscali_a05_guard_codice_forma_ins_upd
+                  ON anagrafiche.emittenti_fiscali
+              IS 'Alza la sigla a maiuscolo e ne verifica la forma (MAIUSCOLE e cifre, 2..10). ⚠️ Prefisso a05 e non a10: sui BEFORE ROW l''ordine di scatto e'' alfabetico sul nome, e la forma canonica va applicata PRIMA che gli altri guard leggano il valore. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_a05_guard_codice_forma_ins_upd
+                  ON anagrafiche.emittenti_fiscali;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma();

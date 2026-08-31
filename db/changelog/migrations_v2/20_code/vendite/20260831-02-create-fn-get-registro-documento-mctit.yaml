@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-5 — L'INVOLUCRO: chi SCRIVE un documento non prosegue senza registro
+#   vendite.fn_get_registro_documento(famiglia, emittente, utility)
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-5 (§3.2)
+#
+# ── ⭐ LA COPPIA, E PERCHE' NE SERVONO DUE ────────────────────────
+#   Il lettore (C2-4) risponde NULL quando non trova: e' quello che serve a una
+#   vista, che mostra una previsione e non puo' morire su una configurazione
+#   mancante. Qui invece si scrive un documento: un buco di configurazione DEVE
+#   fermare, o il documento nasce senza numero e il difetto si scopre a valle.
+#   E' la stessa coppia gia' in casa due volte — fn_lookup_registro_id /
+#   fn_get_registro_id, fn_get_ba_emittente_sr_id / fn_get_emittente_fiscale_id.
+#
+# ── ⛔ IL RIFIUTO DI `FATTURA`, ED E' LA RIGA CHE VALE ────────────
+#   La fattura NON si risolve di qui: il suo registro dipende da (tipo
+#   documento, natura) e lo sceglie vendite.fn_get_registro_id attraverso
+#   tipi_doc_fiscale_registri. Chiedere qui la fattura darebbe una risposta
+#   PLAUSIBILE e SBAGLIATA — il primo registro di fatturazione dell'emittente,
+#   che per una nota di credito e' il sezionale sbagliato, in silenzio.
+#   ⇒ TECNICO: a questa chiamata non arriva nessuna persona, ci arriva solo un
+#   chiamante scritto male.
+#
+# ── ⚠️ IL FAIL-CLOSED E' NUOVO, E VA SAPUTO ───────────────────────
+#   Da qui in poi un emittente senza registro per la sua famiglia NON EMETTE
+#   quel documento. E' il verso giusto — meglio fermarsi che numerare su un
+#   sezionale altrui — ma prima del trasloco quel documento nasceva comunque.
+#   Il passo C2-12 (una riga di registro per emittente e famiglia) esiste
+#   apposta, e va fatto PRIMA di accendere i generatori nuovi.
+#
+# ℹ️ Nessun codice errore nuovo: E_CONFIG_MANCANTE e
+#   E_VENDITE_CHIAMATA_NON_VALIDA sono gia' a catalogo e sono esattamente i due
+#   che fn_get_registro_id usa per gli stessi due casi. Un codice nuovo qui
+#   sarebbe un sinonimo, e i sinonimi si cercano due volte nei log.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-02-create-fn-get-registro-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260831-02-create-fn-get-registro-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-5: l''INVOLUCRO che solleva. Il lettore C2-4 risponde NULL — serve alle viste, che
+        mostrano una previsione e non possono morire su una configurazione mancante; qui invece si
+        SCRIVE un documento, e un buco deve fermare o il documento nasce senza numero e il difetto
+        si scopre a valle. Stessa coppia gia'' in casa due volte (fn_lookup_registro_id /
+        fn_get_registro_id, fn_get_ba_emittente_sr_id / fn_get_emittente_fiscale_id). ⛔ Rifiuta la
+        famiglia FATTURA, ed e'' la riga che vale: il registro della fattura dipende da (tipo
+        documento, natura) e lo sceglie fn_get_registro_id attraverso tipi_doc_fiscale_registri —
+        chiederla qui darebbe una risposta PLAUSIBILE e SBAGLIATA, cioe'' il primo registro di
+        fatturazione dell''emittente, che per una nota di credito e'' il sezionale sbagliato, in
+        silenzio. TECNICO perche'' a questa chiamata non arriva nessuna persona. ⚠️ Il fail-closed
+        e'' NUOVO: un emittente senza registro per la sua famiglia non emette piu'' quel documento —
+        verso giusto, ma il passo C2-12 va fatto prima di accendere i generatori. ℹ️ Nessun codice
+        errore nuovo: i due usati sono gia'' quelli di fn_get_registro_id per gli stessi due casi, e
+        un sinonimo si cercherebbe due volte nei log. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_lookup_registro_documento';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM config.codici_errore
+                   WHERE codice = 'E_VENDITE_CHIAMATA_NON_VALIDA'
+                     AND obsoleto_dal IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_registro_documento(
+                  p_famiglia_documento          vendite.registri_fatturazione.famiglia_documento%TYPE,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(registro_id vendite.registri_fatturazione.id%TYPE,
+                             serie       vendite.registri_fatturazione.serie_default%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_registro vendite.registri_fatturazione.id%TYPE;
+                  v_serie    vendite.registri_fatturazione.serie_default%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il registro su cui numerare un documento di questa
+                  --   famiglia — e SOLLEVA se non e' risolvibile.
+                  --   E' l'involucro di vendite.fn_lookup_registro_documento:
+                  --   qui passa chi SCRIVE.
+                  -- =========================================================
+
+                  -- ⛔ LA FATTURA NON SI RISOLVE DI QUI.
+                  --   Il suo registro dipende da (tipo documento, natura) e lo
+                  --   sceglie vendite.fn_get_registro_id. Rispondere qui
+                  --   darebbe il PRIMO registro di fatturazione
+                  --   dell'emittente: plausibile, e sbagliato per una nota di
+                  --   credito — in silenzio.
+                  -- ⚠️ TECNICO e non DATO_ERRATO: a questa chiamata non arriva
+                  --   nessuna persona in un form, ci arriva un chiamante
+                  --   scritto male. Niente `campo` nel contesto: su un 500 non
+                  --   c'e' nessun campo da accendere.
+                  IF p_famiglia_documento = 'FATTURA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_registro_documento',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'la famiglia FATTURA si risolve con vendite.fn_get_registro_id (tipo documento + natura)',
+                              'p_famiglia_documento', p_famiglia_documento),
+                          NULL::uuid,
+                          'vendite.fn_get_registro_documento',
+                          'p_famiglia_documento (FATTURA non si risolve di qui)');
+                  END IF;
+
+                  -- Guard di parametro: un emittente nullo non esce da nessuna
+                  -- interfaccia — lo produce solo un chiamante rotto.
+                  IF p_emittente_soggetto_ruolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_registro_documento',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'emittente obbligatorio',
+                              'p_famiglia_documento', p_famiglia_documento),
+                          NULL::uuid,
+                          'vendite.fn_get_registro_documento',
+                          'p_emittente_soggetto_ruolo_id (obbligatorio)');
+                  END IF;
+
+                  SELECT k.registro_id, k.serie
+                    INTO v_registro, v_serie
+                    FROM vendite.fn_lookup_registro_documento(
+                             p_famiglia_documento          => p_famiglia_documento,
+                             p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                             p_utility_id                  => p_utility_id) k;
+
+                  -- ⚠️ FAIL-CLOSED, ed e' nuovo: prima del trasloco il
+                  --   documento nasceva comunque, su un registro qualsiasi.
+                  --   Meglio fermarsi che numerare sul sezionale di un altro.
+                  IF v_registro IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_registro_documento',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object(
+                              'famiglia_documento',           p_famiglia_documento,
+                              'emittente_soggetto_ruolo_id',  p_emittente_soggetto_ruolo_id,
+                              'utility_id',                   p_utility_id),
+                          NULL::uuid,
+                          concat('registro di numerazione non configurato per la famiglia ',
+                                 p_famiglia_documento, ' di questo emittente'));
+                  END IF;
+
+                  RETURN QUERY SELECT v_registro, v_serie;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_registro_documento(vendite.registri_fatturazione.famiglia_documento%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE, vendite.registri_fatturazione.utility_id%TYPE)
+              IS 'Il registro su cui numerare un documento di una data FAMIGLIA (DDT, ORDINE, COMMESSA, RESO) — e SOLLEVA se non e'' risolvibile. E'' l''INVOLUCRO di vendite.fn_lookup_registro_documento, ed e'' la stessa coppia, con la stessa ragione, di vendite.fn_lookup_registro_id / vendite.fn_get_registro_id: chi LEGGE (viste, previsioni) consuma il lettore, che risponde NULL e non fa morire la lista che decora; chi SCRIVE consuma questo, dove un buco di configurazione DEVE fermare — altrimenti il documento nasce senza numero e il difetto si scopre a valle. ⛔ RIFIUTA la famiglia FATTURA, ed e'' la riga che vale: il registro della fattura dipende da (tipo documento, natura) e lo sceglie vendite.fn_get_registro_id attraverso vendite.tipi_doc_fiscale_registri. Rispondere qui darebbe il PRIMO registro di fatturazione dell''emittente — una risposta plausibile e sbagliata, che per una nota di credito e'' il sezionale sbagliato, in silenzio. ⚠️ Il codice e'' TECNICO (E_VENDITE_CHIAMATA_NON_VALIDA) e non DATO_ERRATO: a questa chiamata non arriva nessuna persona in un form, ci arriva un chiamante scritto male — quindi niente chiave `campo` nel contesto, perche'' su un 500 non c''e'' nessun campo da accendere. ⚠️ IL FAIL-CLOSED E'' NUOVO e va saputo: da qui in poi un emittente senza registro per la sua famiglia NON EMETTE quel documento, mentre prima del trasloco il documento nasceva comunque su un registro qualsiasi. E'' il verso giusto, ma il passo C2-12 del piano — una riga di registro per emittente e famiglia — va fatto PRIMA di accendere i generatori nuovi. ℹ️ Nessun codice errore nuovo: E_CONFIG_MANCANTE e E_VENDITE_CHIAMATA_NON_VALIDA sono gia'' a catalogo e sono esattamente i due che fn_get_registro_id usa per gli stessi due casi — un codice nuovo qui sarebbe un sinonimo, e i sinonimi si cercano due volte nei log. ℹ️ VOLATILE per il log dell''errore, a differenza del lettore che e'' STABLE. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_registro_documento(varchar, bigint, integer);

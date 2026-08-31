@@ -106,13 +106,7 @@ CREATE TEMP TABLE tmp_refs_ff AS WITH ba AS (
   ORDER BY b.data_insert DESC NULLS LAST
   LIMIT 1
 )
-SELECT (
-    SELECT id
-    FROM vendite.registri_fatturazione
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
-  ) AS registro_id,
+SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
   ba.id AS billing_account_id,
   ba.utility_id AS utility_id,
   (

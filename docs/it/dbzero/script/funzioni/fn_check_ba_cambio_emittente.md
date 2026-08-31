@@ -16,9 +16,11 @@ CREATE OR REPLACE FUNCTION script.fn_check_ba_cambio_emittente(p_billing_account
 AS $function$
 DECLARE
     v_motivi    jsonb := '[]'::jsonb;
-    v_storia    record;
     v_codice_ba anagrafiche.billing_account.codice%TYPE;
     v_codice_ef anagrafiche.emittenti_fiscali.codice%TYPE;
+    v_storia    jsonb;
+    v_elenco    text;
+    v_totale    bigint;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -34,6 +36,13 @@ BEGIN
     --   {codice, reason, reason_key, dettaglio, valori} — §12.5.1.
     -- ⚠️ L'ordine e' il contratto: la madre solleva il PRIMO.
     --
+    -- ⭐ rev 2026-08-31 (C2-17): la storia non e' piu' «fatture e
+    --   commesse», e' «qualunque documento gia' NUMERATO su un
+    --   registro», derivata da vendite.famiglie_documento. La
+    --   frase deve dire QUALE specie blocca: con cinque famiglie
+    --   nominarne due manderebbe a cercare fatture a un cliente
+    --   bloccato da un DDT.
+    --
     -- ⭐ UNA sola funzione per entrambe le specie di riga (il
     --   mapping specifico e il gestore globale), e non e'
     --   pigrizia: il frontend chiama UNA cosa per riga. Con due
@@ -43,10 +52,7 @@ BEGIN
     -- =========================================================
 
     -- 1) ⭐ LA RIGA DEL GESTORE GLOBALE (billing_account_id NULL).
-    --    Prima tornava `[]` — «non e' il mio caso» — e il cestino
-    --    restava acceso proprio sulla riga che il repository
-    --    tiene IN TESTA (ORDER BY is_default DESC).
-    --    ⛔ Quella riga non si toglie MAI: il singleton di
+    --    Quella riga non si toglie MAI: il singleton di
     --    anagrafiche.trgfn_emittenti_fiscali_default_guard
     --    pretende esattamente un default, e cancellarla porta il
     --    conteggio a zero. La risposta e' INCONDIZIONATA — non
@@ -77,15 +83,16 @@ BEGIN
         RETURN v_motivi;
     END IF;
 
-    SELECT * INTO v_storia
-      FROM anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id);
-
-    -- 3) Nessuna storia: la finestra di correzione e' aperta.
-    IF COALESCE(v_storia.n_fatture, 0) = 0
-       AND COALESCE(v_storia.n_commesse, 0) = 0 THEN
+    -- 3) ⭐ IL PERCORSO FELICE COSTA UN `EXISTS`.
+    --    E' il ramo che la lista dei mapping attraversa a ogni
+    --    caricamento, una volta per riga: qui si esce al PRIMO
+    --    documento trovato, e i conteggi non si pagano.
+    IF NOT anagrafiche.fn_ba_ha_storia_emittente(p_billing_account_id) THEN
         RETURN v_motivi;
     END IF;
 
+    -- ── Da qui in giu' si e' gia' deciso di rifiutare: il
+    --    prezzo dei conteggi si paga per comporre la frase.
     SELECT ba.codice INTO v_codice_ba
       FROM anagrafiche.billing_account ba
      WHERE ba.id = p_billing_account_id;
@@ -96,6 +103,26 @@ BEGIN
       FROM anagrafiche.emittenti_fiscali ef
      WHERE ef.soggetto_ruolo_id = p_emittente_sr_prima;
 
+    -- ⚠️ WITH ORDINALITY e non un ORDER BY sul codice: l'ordine
+    --    e' quello del CATALOGO (la fattura per prima), e senza
+    --    ordinalita' l'ordine di un string_agg su una function
+    --    scan non e' garantito — la stessa frase cambierebbe di
+    --    corsa in corsa.
+    -- ⭐ Le parole dell'elenco sono le descrizioni del catalogo,
+    --    non etichette ricopiate qui: una famiglia in piu' domani
+    --    cambia la frase da se'.
+    SELECT jsonb_agg(jsonb_build_object(
+               'famiglia',    s.famiglia_documento,
+               'descrizione', s.famiglia_descrizione,
+               'n',           s.n_documenti) ORDER BY s.ord),
+           string_agg(s.famiglia_descrizione || ': ' || s.n_documenti::text,
+                      ', ' ORDER BY s.ord),
+           sum(s.n_documenti)
+      INTO v_storia, v_elenco, v_totale
+      FROM anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id)
+           WITH ORDINALITY AS s(famiglia_documento, famiglia_descrizione,
+                                n_documenti, ord);
+
     v_motivi := v_motivi || jsonb_build_object(
         'codice',     'E_BA_EMITTENTE_CON_STORIA',
         'reason',     'BA_CON_STORIA',
@@ -103,22 +130,21 @@ BEGIN
         'dettaglio',  jsonb_build_object(
                           'billing_account_id', p_billing_account_id,
                           'codice',             v_codice_ba,
-                          'n_fatture',          v_storia.n_fatture,
-                          'n_commesse',         v_storia.n_commesse,
+                          'storia',             COALESCE(v_storia, '[]'::jsonb),
+                          'n_documenti',        COALESCE(v_totale, 0),
                           'emittente_sr_prima', p_emittente_sr_prima,
                           'emittente_sr_dopo',  p_emittente_sr_dopo),
         'valori',     jsonb_build_array(
                           COALESCE(v_codice_ba, p_billing_account_id::text),
-                          v_storia.n_fatture::text,
-                          v_storia.n_commesse::text,
-                          COALESCE(v_codice_ef, p_emittente_sr_prima::text)));
+                          COALESCE(v_codice_ef, p_emittente_sr_prima::text),
+                          COALESCE(v_elenco, '')));
 
     RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
-IS 'Pure check (§12.5.1): elenca i motivi che impediscono di togliere o cambiare una riga di anagrafiche.emittenti_fiscali_billing_account. [] = ammesso; altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva. ⭐ rev 2026-08-27 (N7): risponde anche per la RIGA DEL GESTORE GLOBALE (billing_account_id NULL), che prima cadeva su un «non e'' il mio caso» e lasciava il cestino ACCESO — proprio sulla riga che il repository tiene in testa (ORDER BY is_default DESC), cioe'' la prima che l''operatore vede. ⛔ E la causa NON e'' il guard raggio N, come sembrava: a rifiutare quella cancellazione e'' prima di tutto anagrafiche.trgfn_emittenti_fiscali_default_guard, che impone il SINGLETON — quella riga non si toglie MAI, con o senza storia. Per questo NON si e'' scritta la gemella fn_check_* del raggio N: avrebbe prodotto un motivo CONDIZIONALE dove la risposta e'' incondizionata, suggerendo che senza storia la riga si potrebbe togliere — e un tooltip che dichiara una condizione inesistente manda a cercare come soddisfarla. ⚠️ Il motivo del singleton serve alla RIGA, non al raise: chi rifiuta davvero e'' il guard singleton, che compone la propria frase; i `valori` portano il conteggio che RISULTEREBBE (0). ⚠️ Il guard raggio N (anagrafiche.fn_guard_ba_gestore_globale_storia) resta necessario e non e'' coperto da qui: presidia il CAMBIO dell''emittente del gestore globale — un UPDATE, o un DELETE seguito da un INSERT — non la cancellazione secca. ⭐ UNA sola funzione per entrambe le specie di riga: il frontend chiama una cosa per riga, e con due check sarebbe il chiamante a dover dedurre in Python «che tipo di riga e'' questa», cioe'' a ricalcolare fuori sede cio'' che qui e'' un IF. ⛔ IL PREDICATO DEL MAPPING SPECIFICO E'' UNA COPPIA: togliere l''aggancio fa ricadere il billing account sul gestore globale, quindi il cambio esiste solo se l''emittente della riga e'' DIVERSO da quello del default — se coincidono non si sposta nessun documento e la rimozione resta ammessa. ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la RLS. ⚠️ Nessun codice errore nuovo. Piano: brief-db-motivo-rimozione-mapping-ba, N1 e N7.';
+IS 'Pure check (§12.5.1): elenca i motivi che impediscono di togliere o cambiare una riga di anagrafiche.emittenti_fiscali_billing_account. [] = ammesso; altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-17): la storia non e'' piu'' «fatture e commesse» ma «qualunque documento gia'' NUMERATO su un registro», derivata da vendite.famiglie_documento — e la frase deve dirlo. ⛔ Con cinque famiglie, una frase che ne nomina due («ha gia'' 3 fatture e 1 commesse») sarebbe PEGGIO di una che non ne nomina nessuna: manderebbe a cercare fatture a un cliente bloccato da un DDT. I valori diventano tre — cliente, emittente, ELENCO — e l''elenco lo compone il DB, che e'' l''unico posto dove il catalogo e'' gia'' aperto. ⭐ Le parole dell''elenco sono le descrizioni del catalogo e non cinque etichette ricopiate qui: una famiglia in piu'' domani cambia la frase da se'', senza toccare questa funzione. ⚠️ WITH ORDINALITY e non un ORDER BY sul codice: l''ordine e'' quello del catalogo (la fattura per prima), e senza ordinalita'' l''ordine di uno string_agg su una function scan non e'' garantito — la stessa frase cambierebbe di corsa in corsa e un test sulla frase diventerebbe instabile. ⭐ EXISTS PRIMA, CONTEGGI DOPO: il ramo «nessuna storia» e'' quello che la lista dei mapping attraversa a ogni caricamento, una volta per riga, e ora costa un anagrafiche.fn_ba_ha_storia_emittente che esce al primo documento trovato; i conteggi per famiglia si pagano solo quando si e'' gia'' deciso di rifiutare. ⚠️ CAMBIA IL `dettaglio`: spariscono n_fatture e n_commesse, arrivano `storia` (array di {famiglia, descrizione, n}) e `n_documenti` (il totale). Il `reason_key` NON cambia, quindi la traduzione del frontend resta agganciata dov''era. ⛔ IL PREDICATO DEL MAPPING SPECIFICO E'' UNA COPPIA: togliere l''aggancio fa ricadere il billing account sul gestore globale, quindi il cambio esiste solo se l''emittente della riga e'' DIVERSO da quello del default — se coincidono non si sposta nessun documento e la rimozione resta ammessa. ⭐ UNA sola funzione per entrambe le specie di riga: il frontend chiama una cosa per riga, e con due check sarebbe il chiamante a dover dedurre in Python «che tipo di riga e'' questa», cioe'' a ricalcolare fuori sede cio'' che qui e'' un IF. ⚠️ La riga del gestore globale (billing_account_id NULL) risponde col singleton, incondizionatamente, e non con la storia. ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la RLS. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-17; e brief-db-motivo-rimozione-mapping-ba, N1 e N7.';
 ```
 
 ---

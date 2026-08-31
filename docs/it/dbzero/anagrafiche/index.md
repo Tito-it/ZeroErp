@@ -39,6 +39,8 @@
 - [vettori](tabelle/vettori.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni
+- [fn_annulla_movimento_titolo_iva](funzioni/fn_annulla_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
+- [fn_ba_ha_storia_emittente](funzioni/fn_ba_ha_storia_emittente.md) — (latest review 31-08-2026)
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
 - [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
@@ -55,7 +57,7 @@
 - [fn_get_emittente_fiscale_pk](funzioni/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
 - [fn_get_evento_stato_corrente_cliente](funzioni/fn_get_evento_stato_corrente_cliente.md) — (latest review 28-04-2026)
 - [fn_get_or_create_indirizzo_dettaglio](funzioni/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
-- [fn_get_storia_emittente_ba](funzioni/fn_get_storia_emittente_ba.md) — (latest review 26-08-26)
+- [fn_get_storia_emittente_ba](funzioni/fn_get_storia_emittente_ba.md) — (latest review 31-08-2026)
 - [fn_guard_albero_ba_emittente](funzioni/fn_guard_albero_ba_emittente.md) — (latest review 18-08-26)
 - [fn_guard_albero_ba_gestore_globale](funzioni/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
 - [fn_guard_ba_cambio_emittente](funzioni/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
@@ -88,6 +90,7 @@
 - [trgfn_efba_guard_storia_emittente](funzioni/trgfn_efba_guard_storia_emittente.md) — (latest review 26-08-26)
 - [trgfn_emittenti_fiscali_default_bootstrap](funzioni/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](funzioni/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
+- [trgfn_emittenti_fiscali_guard_codice_forma](funzioni/trgfn_emittenti_fiscali_guard_codice_forma.md)
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`** garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un `soggetto_ruolo_id` valido e coerente con il ruolo di **emittente fiscale** (`codice_interno = 'EF'`).
 - [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e' attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene esplicitato nel flusso trigger che la normalizzazione locale non e' necessaria e che l'eventuale generazione del `codice` resta demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_fornitori_gen_codice](funzioni/trgfn_fornitori_gen_codice.md) — (rev 2026-08-21)
@@ -137,6 +140,8 @@
 - [trgfn_soggetti_titoli_iva_guard_coerenza](funzioni/trgfn_soggetti_titoli_iva_guard_coerenza.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_titoli_iva_movimenti_accumulatore](funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — (latest review 29-12-25) La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
+- [trgfn_stiva_movimenti_append_only](funzioni/trgfn_stiva_movimenti_append_only.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
+- [trgfn_stiva_movimenti_guard_annullo](funzioni/trgfn_stiva_movimenti_guard_annullo.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [trgfn_vettori_gen_codice](funzioni/trgfn_vettori_gen_codice.md) — (rev 2026-08-21 — **funzione nata il 2026-08-21**)
 - [trgfn_vettori_guard_ruolo_vettore](funzioni/trgfn_vettori_guard_ruolo_vettore.md) — (rev 2026-08-21)
 - [trgfn_vettori_normalize](funzioni/trgfn_vettori_normalize.md) — (rev 2026-08-21)
@@ -158,3 +163,4 @@
 - [vw_pdp](views/vw_pdp.md) — (rev 2026-08-21)
 - [vw_risorse_umane_dettaglio](views/vw_risorse_umane_dettaglio.md) — (latest review 07-01-26) La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura unificata delle risorse umane con:
 - [vw_soggetti_ruoli_dettaglio](views/vw_soggetti_ruoli_dettaglio.md) — (latest review 20-02-26) La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
+- [vw_stiva_movimenti_dettaglio](views/vw_stiva_movimenti_dettaglio.md) — (rev 2026-08-31 — vista nata il 2026-08-31)

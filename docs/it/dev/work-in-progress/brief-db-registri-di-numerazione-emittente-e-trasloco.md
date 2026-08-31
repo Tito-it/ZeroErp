@@ -7,8 +7,88 @@
 > Quel documento è l'**analisi** e resta la sede delle ragioni; questo è il
 > **piano**. Chi vuole sapere *perché*, torna là.
 >
-> **Stato al 2026-08-30: piano scritto, niente applicato.** Nessun changeSet,
-> nessuna migrazione.
+> **Stato al 2026-08-31 — DDL e codice COMPLETI e applicati; i PRESIDI no.**
+> C1 e C2 non hanno più changeSet da scrivere, la guida (C2-14) e il debito sul
+> nome (C2-15) sono scritti, e la baseline pgTAP non ha regressioni.
+>
+> ⛔ **Ma «nessuna regressione» non è «provato».** Il nuovo motore *gira* in
+> molti test — **33** portano un DDT a `EMESSO`, **75** creano commesse — e la
+> baseline verde dimostra che non esplode, non blocca e non solleva. ⚠️ Nessuno
+> però **guarda il numero che produce**: le asserzioni su `ddt.numero`,
+> `resi.numero` o sul formato `CMM-<sigla>-<anno>-<9 cifre>` sono **zero**.
+> È copertura di esecuzione, non di asserzione.
+>
+> **Restano da scrivere 7 presidi su 10** (§2.3 e §3.6), elencati al §6.
+> Restano fuori dal DB le ricadute **BE/FE**: la nuova arità di
+> `E_BA_EMITTENTE_CON_STORIA` (da 4 a 3 segnaposto) e `ordine` passato a
+> `usa_sequenza = false`.
+>
+> ⚠️ **«Applicato» qui non è una fonte**: le righe segnate ✅ sono *scritte*, e
+> l'apply si chiede a `databasechangelog`, non a questa tabella. Tid ha
+> dichiarato applicati i changeSet fino al `20260831-15`.
+>
+> | | Cosa | Dove |
+> | --- | --- | --- |
+> | ✅ | **C1-4** — codice errore `E_FATTURA_REGISTRO_EMITTENTE_INCOERENTE` (`TECNICO`) + messaggio `it` (id 1026) | append ai due CSV di `80_data/sql/config/` |
+> | ✅ | **C1-3** — `vendite.trgfn_fatture_guard_registro_emittente()` + trigger | `20_code/vendite/20260830-10-…-mctit.yaml` |
+> | ✅ | **C1-1** — bonifica dati | ⭐ **non serve**: la ricognizione del §2.1, eseguita da owner il 2026-08-30, ha dato **zero righe** su entrambe le query |
+> | ✅ | **C1-2** — `emittente_soggetto_ruolo_id` → `NOT NULL` | `00_schema/vendite/20260830-11-…-mctit.yaml` |
+> | ✅ | **C1-5** — la gerarchia di `fn_lookup_registro_id` da 4 livelli a 2 | `20_code/vendite/20260830-12-…-mctit.yaml` |
+> | ✅ | I **presidi pgTAP** del §2.3 | `db/pgtap/vendite/test-fatture-guard-registro-emittente.sql` (plan 6) |
+> | ⚠️ | **11 fixture pgTAP esistenti riparate** | inserivano un registro **senza emittente**: dopo C1-2 fallivano tutte sul `23502` |
+>
+> **Cantiere 2 — il modello è scritto** (niente applicato):
+>
+> | | Cosa | Dove |
+> | --- | --- | --- |
+> | ✅ | **C2-0** — catalogo `vendite.famiglie_documento` | `00_schema/vendite/20260830-13` |
+> | ✅ | **C2-0 (seed)** — le cinque famiglie | `80_data/…/20260830-14` + `sql/vendite/famiglie_documento.csv` |
+> | ✅ | **C2-1/2/3** — `famiglia_documento`, `CHECK` condizionato, `UNIQUE` parziale | `00_schema/vendite/20260830-15` |
+> | ✅ | **C2-1 (coda)** — la FK verso il catalogo | `90_end/20260830-16` — ⛔ in `90_end` perché `80_data` gira **dopo** `00_schema` |
+> | ✅ | **C2-1 (coda)** — riga `dbops.fk_index_policy` | `80_data/…/20260830-17` |
+> | ✅ | **C2-4** — il **lettore** `fn_lookup_registro_documento` | `20_code/vendite/20260831-01` |
+> | ✅ | **C2-5** — l'**involucro** `fn_get_registro_documento` | `20_code/vendite/20260831-02` |
+> | ✅ | **C2-12** — i registri per emittente e famiglia (8 righe) | `80_data/…/20260831-03` |
+> | ✅ | **C2-12-bis** — l'emittente **nuovo o riattivato** li prende da sé | `20_code/vendite/20260831-04` — ⭐ lacuna chiusa per decisione di Tid, benché fuori perimetro |
+> | ✅ | **C2-6 (1ª metà)** — il limite di emissione vale solo per `FATTURA` | `20_code/vendite/20260831-05` — ⛔ **corregge un'affermazione sbagliata** del `20260830-15` |
+> | ✅ | **C2-6/7 (2ª metà)** — il motore agnostico + `E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO` | `20_code/vendite/20260831-06` + append ai CSV |
+> | ✅ | **C2-8** — il **DDT**: `registro_id`, la `UNIQUE` che lo segue, il generatore | `00_schema/vendite/20260831-07` + `20_code/vendite/20260831-08` + `80_data/…/20260831-09` |
+> | ✅ | **C2-9** — gli **ordini**: idem, e `presidia_data_documento` sul catalogo | `00_schema/vendite/20260831-10` e `-11` + `20_code/vendite/20260831-12` e `-13` |
+> | ✅ | **C2-10** — i **resi**: idem, momento `CONFERMATO` | `00_schema/vendite/20260831-14` + `20_code/vendite/20260831-15` |
+> | ✅ | **C2-11** — la **commessa**: `CMM-<sigla>-<anno>-<9 cifre>` al posto di `CMM-<timestamp>-<md5>` | `20_code/vendite/20260831-16` |
+> | ✅ | **C2-13** — le due righe di `sistema_codici` (`ordine` a `usa_sequenza = f`, riga nuova `commessa`) | `80_data/sql/config/sistema_codici.csv` |
+> | ✅ | **C2-16** — la «storia» del BA **derivata** dal catalogo, in due funzioni | `20_code/anagrafiche/20260831-17` |
+> | ✅ | **C2-18** — il guard sul catalogo (`to_regclass` + `pg_attribute`) | `20_code/vendite/20260831-18` + codice errore `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` |
+> | ✅ | **C2-17** — la check e la frase che nomina **quale specie** di documento blocca | `20_code/script/20260831-19` + messaggio `1006` riscritto a **tre** segnaposto |
+> | ✅ | I **presidi pgTAP** del C2-18 | `db/pgtap/vendite/test-famiglie-documento-guard-riferimenti.sql` (plan 7) |
+> | ⛔ | **C2-9 corretto**: il cancello di monotonia vale sulla **sola** `FATTURA` | CSV `famiglie_documento.csv` + `00_schema/vendite/20260831-20` (la frase) |
+> | ✅ | **C2-14** — la guida «quando un numeratore trasloca sui registri» | `dbzero/config/manual/sistema_codici.md` rev 2026-08-31 |
+> | ✅ | **C2-15** — il debito sul nome nelle **quattro** sedi | `00_schema/vendite/20260831-21` + doc manuale + §3.8 di questo brief |
+> | ✅ | **§5.4** — la sigla dell'emittente ha una **forma**, e il pregresso è bonificato | `00_schema/anagrafiche/20260831-22` + `20_code/anagrafiche/20260831-23` + append ai CSV |
+> | ✅ | I **presidi pgTAP** della forma | `db/pgtap/anagrafiche/test-emittenti-fiscali-codice-forma.sql` (plan 8) |
+> | ⚠️ | **2 pgTAP esistenti adeguati** alla forma nuova della storia | `anagrafiche/test-ba-cambio-emittente-storia-v1.sql`, `script/test-search-scope-interno-v1.sql` |
+>
+> ⚠️ **Coda del C1, non prevista dal piano**: il `NOT NULL` ha rotto **11 fixture
+> pgTAP** (inserivano un registro senza emittente) e il guard ne ha scoperte
+> **altre 40** che sceglievano registro ed emittente con **due pescate
+> indipendenti** — che coincidessero era un caso. Riparate tutte, con l'helper
+> `script.fn_pgtap_registro_fattura` (`20_code/script/20260830-18`) al posto di
+> 40 copie della stessa regola. ⭐ Quattro file che sembravano rotti non lo
+> erano: creano la fattura con `fn_get_or_create_fattura_header`, cioè dal
+> percorso applicativo — la prova che il guard morde **solo dove la fixture
+> scavalca la funzione**.
+>
+> ⛔ **Nessuna migrazione viene applicata senza richiesta esplicita**, e
+> «procedi» non è quella richiesta. I changeSet dal `20260831-16` in poi sono
+> scritti ma **non provati**: provarli significa eseguire l'SQL **estratto dallo
+> YAML** in `BEGIN; … ROLLBACK;` sul DB di sviluppo, e serve un via libera.
+>
+> ⛔ **`20260831-17` e `-19` vanno applicati nella STESSA corsa**, e non è
+> pignoleria: il primo cambia il `RETURNS TABLE` della storia, il secondo è
+> l'unico che sa leggerlo. Fra i due, `script.fn_check_ba_cambio_emittente`
+> fallirebbe a runtime — e il primo a scoprirlo sarebbe un operatore che prova a
+> togliere un mapping. Il messaggio a tre segnaposto arriva con `80_data`, cioè
+> nella stessa corsa.
 >
 > ⛔ **Perimetro, e vale per ogni riga di questo piano:**
 > **cambia SOLO l'algoritmo di assegnazione del numero.** Per i documenti che
@@ -119,6 +199,50 @@ nuova.
 e non come `CHECK` sulla tabella**: un `CHECK` verrebbe validato sul pregresso e
 fallirebbe; il trigger presidia il futuro e lascia stare la storia.
 
+> ✅ **ESEGUITE da owner il 2026-08-30: entrambe ZERO righe.** Nessun registro
+> senza emittente, nessun mapping che ci punti ⇒ **C1-1 non serve**.
+> ⚠️ E quello zero **non** è il motivo del `NOT NULL` — il motivo sta sul
+> modello (§11) — dice soltanto che l'`ALTER` passa senza bonifica. Il DB di
+> sviluppo non è ricostruito da zero: su un'altra installazione i registri
+> generici possono esserci, ed è per questo che `20260830-11` porta una
+> **preCondition** che ri-conta i `NULL` e ferma il migrate con un messaggio
+> leggibile invece di far fallire l'`ALTER` a metà.
+
+#### Le due query della ricognizione — ⛔ da eseguire da OWNER
+
+```sql
+-- 1) I registri senza emittente, e CHI ci ha scritto sopra.
+--    Una riga per (registro, emittente che ha fatturato li').
+--    Piu' righe sullo stesso registro = il caso che il DDL non risolve.
+SELECT r.id                                            AS registro_id,
+       r.codice                                        AS registro_codice,
+       r.attivo,
+       f.emittente_soggetto_ruolo_id                   AS emittente,
+       count(f.id)                                     AS n_fatture,
+       count(f.id) FILTER (WHERE f.numero IS NOT NULL) AS n_numerate,
+       min(f.data)                                     AS dal,
+       max(f.data)                                     AS al
+  FROM vendite.registri_fatturazione r
+  LEFT JOIN vendite.fatture f ON f.registro_id = r.id
+ WHERE r.emittente_soggetto_ruolo_id IS NULL
+ GROUP BY r.id, r.codice, r.attivo, f.emittente_soggetto_ruolo_id
+ ORDER BY r.codice, n_fatture DESC;
+
+-- 2) I mapping che puntano a quei registri: sono le righe da duplicare
+--    per emittente quando i registri generici si separano.
+SELECT r.codice AS registro_codice, m.tipo_doc_fiscale_id, m.natura_doc_id, m.serie
+  FROM vendite.tipi_doc_fiscale_registri m
+  JOIN vendite.registri_fatturazione r ON r.id = m.registro_id
+ WHERE r.emittente_soggetto_ruolo_id IS NULL
+ ORDER BY r.codice, m.tipo_doc_fiscale_id, m.natura_doc_id;
+```
+
+⛔ **La prima query va eseguita da OWNER, non dall'utente applicativo.**
+`vendite.fatture` ha la RLS: sotto il perimetro di un operatore il conteggio
+tornerebbe **parziale**, e la bonifica verrebbe pianificata su mezza fotografia —
+proprio nel caso che conta, quello del registro usato da **due** emittenti, dove
+il secondo è per definizione fuori dal perimetro del primo.
+
 ### 2.2 I changeSet
 
 | # | Cosa | Note |
@@ -154,12 +278,36 @@ fallirebbe; il trigger presidia il futuro e lascia stare la storia.
 | **C2-2** | `CHECK` condizionato: `limite_emissione_giorni`, `limite_emissione_giorno_mese` e una `politica_data_documento` diversa da quella neutra sono ammessi **solo** con `famiglia = 'FATTURA'` | ⛔ Per vincolo, non per abitudine: sono regole della fattura differita, e su un DDT non vogliono dire niente |
 | **C2-3** | `UNIQUE (famiglia_documento, emittente_soggetto_ruolo_id, utility_id)` — nella forma che ammette `utility_id` nullo | ⭐ È ciò che rende deterministica la risoluzione del §3.2: *un* registro per famiglia, emittente e utility |
 
-⭐ **E qui il motore lavora già nel verso giusto senza modifiche:** su un
-registro non-`FATTURA` le colonne del limite restano nulle, quindi
-`fn_get_pavimento_emissione` non ha pavimento da dare e
-`fn_get_pavimento_data_documento` risponde «nessun vincolo» — un caso che quella
-funzione **documenta già**. Il cancello di monotonia si spegne da sé dove non
-serve, e resta acceso dove serve.
+⛔ **QUESTO PARAGRAFO ERA SBAGLIATO, ed è stato corretto il 2026-08-31.**
+
+*(Diceva: «su un registro non-`FATTURA` le colonne del limite restano nulle,
+quindi `fn_get_pavimento_emissione` non ha pavimento da dare e
+`fn_get_pavimento_data_documento` risponde "nessun vincolo" — il cancello si
+spegne da sé». **Falso.**)*
+
+`vendite.fn_get_pavimento_emissione` dichiara nel proprio `COMMENT`: *«Torna
+SEMPRE una data, mai NULL: il pavimento generale esiste sempre»* — senza
+override sul registro i giorni si leggono da `config.parameters`. Misurato il
+2026-08-31 su un registro di famiglia `DDT`: pavimento **2026-08-19**, cioè
+**attivo**. Un DDT datato più indietro sarebbe stato rifiutato da una regola che
+riguarda le fatture.
+
+⭐ **La correzione è il changeSet `20260831-05`**: il limite di emissione si
+applica alla sola famiglia `FATTURA`, e la distinzione sta dentro
+`fn_get_pavimento_data_documento` — che è **la sede unica** dei due pavimenti.
+Metterla nel solo cancello lascerebbe la nascita del documento e la targa del
+dialog a proporre un pavimento che poi non si applica: tre risposte diverse alla
+stessa domanda.
+
+⚠️ **Il `CHECK` condizionato del `20260830-15` resta giusto** per la sua ragione
+— su una famiglia non fiscale quelle colonne non devono essere *valorizzabili*.
+Sbagliata era solo la conseguenza che ne traevo. ⛔ E il suo `COMMENT`, già
+applicato, porta ancora la frase sbagliata: non si può riscrivere, e la
+correzione vive nel `COMMENT` di `fn_get_pavimento_data_documento` e qui.
+
+⭐ **La lezione, che vale oltre questo caso**: «la colonna di override è nulla»
+non significa «la regola è spenta». Un default che vive altrove — in
+`config.parameters` — non si vede guardando la tabella.
 
 ⚠️ **Sul registro `ORDINE` deve restare spento anche il pavimento di sequenza**,
 cioè non si scrive `ultima_data`: l'ordine si numera all'`INSERT`, e un ordine in
@@ -209,6 +357,37 @@ lo stato in cui si numera, la colonna, il formato — resta quello di oggi.
 * ⛔ la commessa **non nasce** se il suo emittente non ha un registro `COMMESSA`.
   È fail-closed, cioè il verso giusto, ma è un comportamento **nuovo** e ferma il
   fan-out di fatturazione: va nel collaudo, non nella sorpresa.
+
+#### ⛔ Correzione del 2026-08-31 — il cancello di monotonia vale solo sulla fattura
+
+Il `20260831-11` aveva messo `presidia_data_documento` a `false` sul **solo
+ordine**, motivandolo così: *«ha senso su chi si emette — fattura, DDT, reso: la
+data la sceglie una **persona**, e una sequenza che torna indietro è un difetto»*.
+
+⛔ **L'argomento è rovesciato.** È proprio perché la data la sceglie una persona che
+la **retrodatazione** è un caso d'uso vivo: un DDT per la spedizione di ieri,
+inserito stamattina dopo che ne è già uscito uno datato oggi.
+
+⚠️ **E non è stato dedotto, è stato scoperto girando.** Il pgTAP
+`test-vw-partite-merce-riconsegna-dopo-nc-v1` è diventato rosso: la ri-consegna
+nasce da `fn_genera_ddt_riconsegna(..., p_data)`, e quella data **il backend la
+passa dal corpo della richiesta**. ⛔ La conseguenza non è locale alla fixture:
+`fn_get_pavimento_sequenza` legge `max(ultima_data)` da
+`registri_fatturazione_progressivi`, che è **stato persistente** — emesso un DDT
+con la data di oggi, su quel registro nessun DDT con data anteriore passa più.
+
+✅ **Deciso da Tid il 2026-08-31: il cancello vale sulla sola famiglia `FATTURA`.**
+È una regola fiscale e vive dove c'è il registro fiscale. ⭐ Ed è anche il
+perimetro dichiarato del cantiere: *«cambia SOLO l'algoritmo di assegnazione del
+numero»* — il cancello è un **rifiuto** nuovo, non un algoritmo, e su DDT, resi e
+commessa il generatore di prima della data non sapeva nulla.
+
+⭐ **L'anno non c'entra e non cambia**: resta quello della data documento
+(decisione D-1). Il flag governa il solo pavimento.
+
+⭐ **Il presidio esiste già ed è quello che ha trovato il difetto**: finché
+`test-vw-partite-merce-riconsegna-dopo-nc-v1` resta verde, un DDT retrodatato
+prende il numero.
 
 ### 3.5 I dati
 
@@ -265,6 +444,30 @@ che quel guard esiste per impedire, in un punto nuovo.
 | **C2-16** | `fn_get_storia_emittente_ba` **deriva** dal catalogo invece di elencare: per ogni famiglia attiva, esiste un documento di quel BA con il numero valorizzato? | ⛔ **Solo i numerati**: una bozza non ha congelato niente. ⚠️ Cambia il `RETURNS TABLE` → serve **`DROP`**. ⭐ `EXISTS` per il guard, `count` solo per il messaggio |
 | **C2-18** | Guard sul catalogo: schema, tabella e colonne dichiarate **devono esistere** (`pg_attribute`) | ⛔ Senza, una riga sbagliata rompe il guard del BA a runtime invece che al deploy |
 | **C2-17** | `script.fn_check_ba_cambio_emittente` e il messaggio d'errore | Il conteggio nel messaggio deve dire **quale specie** di documento blocca, o l'operatore non sa dove guardare |
+
+#### ✅ Fatto il 2026-08-31 — e una conseguenza che il piano non aveva scritto
+
+Le tre righe sopra sono scritte (`20260831-17`, `-18`, `-19`). La forma è quella
+decisa: due funzioni — `fn_ba_ha_storia_emittente` (`EXISTS`, esce al primo
+documento) e `fn_get_storia_emittente_ba` (una riga per famiglia, solo dove il
+conteggio è > 0) — più il guard sul catalogo e la frase composta dalle
+`descrizione` del catalogo.
+
+⚠️ **Il perimetro non si è solo allargato: ne è uscita la fattura in BOZZA.** Il
+conteggio vecchio era un `count(*)` **senza condizione sul numero**, quindi una
+fattura in bozza bloccava; «solo i numerati» la lascia passare. È coerente con la
+decisione — *una bozza non ha congelato niente* — ed è il caso per cui la finestra
+di correzione esiste. ⛔ **Ma va detto per intero:** una bozza porta già
+`emittente_soggetto_ruolo_id`, e su `vendite.fatture` **non** c'è un
+`trgfn_*_guard_emittente_ba` che glielo ricontrolli col BA — quindi spostare il BA
+la lascerebbe sull'emittente vecchio. Resta una bozza: si cancella e si rifà, e
+presidiarla costerebbe la finestra di correzione **per intero**.
+
+⚠️ **La firma dell'errore cambia, e il BE lo vede.** `E_BA_EMITTENTE_CON_STORIA`
+passa da **quattro** segnaposto a **tre** (cliente, emittente, elenco), e nel
+`dettaglio` del 409 spariscono `n_fatture` / `n_commesse` in favore di `storia`
+(un array di `{famiglia, descrizione, n}`) e `n_documenti`. ⭐ Il `reason_key`
+**non** cambia: la traduzione del frontend resta agganciata dov'era.
 
 ⚠️ **Il restringimento è reale e va detto prima**: l'ordine si numera
 all'`INSERT`, quindi «ordine numerato» = «ordine», e **il primo ordine chiude la
@@ -333,6 +536,41 @@ della primitiva di pulizia che scopre le figlie da `pg_constraint`.
 | **C2-14** | In `docs/it/dbzero/config/manual/sistema_codici.md`: **quando spostare un numeratore sui registri** — il criterio (*il periodo il generatore se lo calcola da sé; emittente, serie e un momento diverso dall'`INSERT` arrivano dalla riga*), i tre campanelli in parole d'uso, e la **checklist del trasloco** |
 | **C2-15** | Il **debito sul nome** dichiarato nelle quattro sedi: `COMMENT` della tabella, `COMMENT` di `famiglia_documento`, doc manuale, brief |
 
+#### ✅ Fatto il 2026-08-31
+
+**C2-14** — la guida vive in `docs/it/dbzero/config/manual/sistema_codici.md`, rev
+2026-08-31: il criterio in una frase, **tre campanelli** (numerazione per azienda,
+reset a Capodanno, numero che non esce all'inserimento) più il quarto sulla serie,
+il segnale che dice che si sta sbagliando strada, e la **checklist del trasloco**
+in sette passi con la `UNIQUE` al secondo posto.
+
+**C2-15 — il debito sul nome, e questa è la quarta sede.**
+
+> ⛔ **La tabella si chiama `registri_fatturazione` e dal 2026-08-31 numera anche
+> DDT, ordini, commesse e resi. Il nome NON si cambia in questo cantiere.**
+
+Rinominarla significa rinominare `registri_fatturazione_progressivi`, i trigger,
+le funzioni che la interrogano, le viste, i vincoli e le colonne `registro_id`
+sparse su cinque tabelle di documento. ⭐ È un cantiere che **non cambia nessun
+comportamento** — cioè esattamente quello che non si infila dentro uno che ne
+cambia molti, dove un errore di rename si confonderebbe con un errore di trasloco.
+
+⚠️ **La regola di lettura che ne discende**: chi incontra quel nome non deve
+dedurne «fattura». La specie si chiede a `famiglia_documento`, e
+`fn_get_registro_documento` **rifiuta** la famiglia `FATTURA`, che ha una strada
+sua (tipo documento + natura).
+
+Le altre tre sedi: `COMMENT` della tabella (`20260831-21`), `COMMENT` di
+`famiglia_documento` (`20260830-15`), doc manuale
+`dbzero/vendite/manual/registri_fatturazione.md` rev 2026-08-31.
+
+⚠️ **Due imprecisioni del `20260830-15`, corrette nel `20260831-21`** perché quel
+changeSet è applicato e non si riscrive: (a) sosteneva che *«la descrizione della
+tabella dice già registri/serie di NUMERAZIONE, era il nome dell'oggetto a essere
+rimasto indietro»* — mezza verità, perché diceva anche *«per fatture di vendita»*,
+quindi non era solo il nome; (b) rimandava a un **§12.5-bis** di questo brief che
+**non esiste**: la sede è questa, il §3.8.
+
 ---
 
 ## 4. L'ordine, e cosa non entra
@@ -371,8 +609,34 @@ qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nell
 3. ⚠️ **Il pregresso incoerente del cantiere 1**: le fatture di un emittente su un
    registro assegnato a un altro restano lì. Il guard presidia il futuro; la
    storia va **dichiarata**, non ripulita.
-4. ⚠️ **La sigla senza vincolo di forma** rende il codice commessa illeggibile per
-   l'emittente che sceglie male. Il vincolo va messo **in questo cantiere**.
+4. ✅ **RISOLTO il 2026-08-31 — la sigla ha una forma**: `^[A-Z0-9]{2,10}$`,
+   vincolo `chk_emittenti_fiscali_codice_forma` (`20260831-22`) più il guard che
+   dà la frase (`20260831-23`, `E_EMITTENTE_CODICE_FORMA_NON_VALIDA`).
+   ⭐ **Il pregresso si è bonificato**, non si è lasciato fuori: Tid ha deciso il
+   2026-08-31 che le sigle esistenti si possono correggere, quindi il vincolo è
+   **validato** e non `NOT VALID`. Le due righe misurate — `EMI-TEST` →
+   `EMITEST`, `PGTAP-EF-20260126172242554` → `PGTAPEF202` — sono state corrette
+   dalla stessa trasformazione, scritta come **regola** e non come due `UPDATE`
+   puntuali (il DB di sviluppo non è ricostruito da zero: altrove le righe
+   storte saranno altre).
+   ⚠️ **Bonifica e vincolo nello stesso changeSet**, e non per comodità:
+   `00_schema` gira **prima** di `80_data`, quindi una bonifica messa fra i dati
+   arriverebbe *dopo* il vincolo — che fallirebbe sul pregresso, cioè sul caso
+   che la bonifica esiste per togliere.
+   ⭐ **Il codice è immutabile e si è passati dalla porta**: il bypass
+   `zeroerp.allow_lock_columns_override` che `script.trgfn_lock_columns`
+   prevede, `LOCAL` e rimesso a `off` in coda — nessun lock smontato.
+   ⭐ **Il minuscolo si alza, il trattino si rifiuta**: `acme` → `ACME` (forma
+   canonica, ed è la stessa trasformazione della bonifica), mentre `AC-ME` non
+   diventa `ACME` da solo — togliere caratteri a un identificatore appena
+   scritto è una cosa che chi lo scrive deve sapere.
+   ⚠️ **Ricaduta dichiarata**: le commesse già create tengono la sigla vecchia
+   nella stringa (⛔ nessuna rinumerazione del pregresso). Non si rompe niente —
+   l'unicità è sulla stringa intera — ma la discontinuità è visibile.
+   ⚠️ **Una fixture pgTAP riparata**: `test-emittenti-fiscali.sql` generava
+   `PGTAP-EF-<ts>`, che il vincolo non ammette più. Le altre tre che creano
+   emittenti erano già conformi (`PGTAPGRE`, `PGTAP2EF1`) — verificate **prima**
+   di scrivere il vincolo, non dopo.
 5. ⚠️ **`ordine` a `usa_sequenza = f`** può accendere il campo numero in una
    maschera che usa `useCodiceField`. Da verificare prima di applicare.
 6. ⭐⭐ **Il trasloco tocca la definizione di «storia» del cambio emittente del BA.**
@@ -398,3 +662,29 @@ qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nell
    ⚠️ E il conteggio va fatto **`SECURITY DEFINER`** come l'esistente: sotto RLS la
    storia di un altro emittente è invisibile, e il guard concluderebbe «non c'è
    storia» proprio nel caso da bloccare.
+
+
+---
+
+## 6. ⛔ I presidi che mancano — verificato il 2026-08-31
+
+Il DDL e il codice sono applicati e la baseline non regredisce. Questi presidi,
+richiesti dal §2.3 e dal §3.6, **non sono stati scritti**.
+
+| # | Presidio | Da |
+| --- | --- | --- |
+| **P-1** | ⭐ **Due emittenti, stesso anno: due numeri «1» che convivono** | §3.6 — il piano dice *«è il test che prova la condizione che rompe, e va scritto per primo»* |
+| **P-2** | Per **ciascuno** dei quattro: il numero esce dal registro giusto, l'anno è quello della data documento, la forma della stringa è quella attesa | §3.6 |
+| **P-3** | ⭐ **Il reset di Capodanno**, seminando la riga di contatore dell'anno prima | §3.6 — ⚠️ il tempo non si simula: si costruisce il caso |
+| **P-4** | La **commessa che non nasce** senza registro `COMMESSA` — `throws_ok` con SQLSTATE | §3.6 |
+| **P-5** | Il **DDT creato a dicembre ed emesso a gennaio**: l'anno è quello dell'emissione, non dell'`INSERT` | §3.6 |
+| **P-6** | ⭐ **I due gemelli sulla storia allargata**: un BA con un DDT **numerato** non si sposta; lo stesso BA con un DDT **in bozza** sì | §3.7 — ⛔ senza il secondo, il primo non distingue «blocca il numerato» da «blocca tutto» |
+| **P-7** | `fn_lookup_registro_documento` senza registro risponde vuoto, e l'**involucro** solleva — il fail-closed dev'essere **rumoroso** | §2.3 |
+
+✅ **Già coperti:** i quattro del C1 (`test-fatture-guard-registro-emittente.sql`,
+plan 6), il guard sul catalogo (`test-famiglie-documento-guard-riferimenti.sql`,
+plan 7) e la forma della sigla (`test-emittenti-fiscali-codice-forma.sql`,
+plan 8).
+
+⚠️ **Cosa i pgTAP non potranno provare comunque**, ed è già scritto al §3.6: che
+il cancello stia *sotto* il lock — pgTAP è mono-sessione. Si presidia in review.

@@ -379,9 +379,15 @@ SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo
 
 CREATE TEMP TABLE tmp_tiva_fattura AS
 WITH reg AS (
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo, meta)
+  -- ⛔ emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30 (C1-2,
+  --   20260830-11), e dev'essere lo STESSO delle fatture di questo file:
+  --   vendite.trgfn_fatture_guard_registro_emittente rifiuta un documento
+  --   sul registro di un altro emittente (C1-3, 20260830-10).
+  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
+         emittente_soggetto_ruolo_id, meta)
   SELECT left('REGTIVA_' || (SELECT test_scope FROM tmp_tiva_costanti), 16),
          'Registro test titoli IVA', 'ANNUALE', true,
+         (SELECT emittente_soggetto_ruolo_id FROM tmp_tiva_ba),
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_tiva_costanti))
   RETURNING id
 ), ins AS (

@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C1-5 — LA GERARCHIA PERDE I DUE LIVELLI DEL «REGISTRO DI NESSUNO»
+#   vendite.fn_lookup_registro_id: i livelli 2 e 4 se ne vanno
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C1-5 (§2.2)
+#
+# ── ⭐ COSA CAMBIA, E PERCHE' NON CAMBIA NIENTE ─────────────────────
+#   La gerarchia aveva quattro livelli: (utility+emittente), (utility),
+#   (emittente), (nessuno dei due). I livelli 2 e 4 sono quelli che risolvono
+#   sul registro con emittente NULL — il sezionale «di nessuno».
+#   Dal 2026-08-30 quella colonna e' NOT NULL (C1-2): quei due rami non
+#   possono piu' corrispondere a nessuna riga. Toglierli non modifica UN SOLO
+#   risultato: fa dire al codice quello che gia' fa.
+#
+#   ⛔ E per la stessa ragione questo changeSet DEVE venire dopo il NOT NULL.
+#   Applicato prima, toglierebbe l'unica risoluzione che oggi funziona sui
+#   registri generici — cioe' spegnerebbe la fatturazione di chi ci sta sopra.
+#   La preCondition lo impedisce: verifica che la colonna sia gia' NOT NULL.
+#
+# ── ⚠️ IL `WHERE` PERDE IL RAMO, NON SOLO L'`ORDER BY` ──────────────
+#   Il predicato era `(r.emittente IS NULL OR r.emittente = p_emittente)`.
+#   Lasciarlo mentre si potano i livelli dell'ORDER BY renderebbe il WHERE
+#   PIU' LARGO dell'ordinamento: righe ammesse dal filtro e non classificate
+#   dal CASE finirebbero nel ramo ELSE 9, cioe' verrebbero scelte solo in
+#   mancanza d'altro — un quinto livello implicito, che e' esattamente il
+#   fallback che si sta togliendo, riaperto per distrazione.
+#   Ora e' un `=` puro, come sull'emittente delle commesse (20260826-42).
+#
+# ── ℹ️ CHI PASSA `p_emittente_soggetto_ruolo_id` A NULL ─────────────
+#   Il parametro ha DEFAULT NULL e resta tale: la firma NON cambia.
+#   Con NULL il `=` non corrisponde a niente e la funzione risponde
+#   «registro non trovato» — che e' gia' il comportamento di oggi dopo C1-2,
+#   perche' i registri generici non esistono piu'.
+#   ⭐ Ed e' il comportamento VOLUTO, gia' scritto altrove: il COMMENT di
+#   vendite.fn_resolve_registro_documento dice, sulla riga di BA invisibile
+#   sotto RLS, «"non lo so" e' una risposta; "il registro generico" e' una
+#   bugia». Qui la bugia smette di essere disponibile.
+#
+# ── ⛔ FIRMA, RETURNS TABLE E VOLATILITA' INVARIATI ─────────────────
+#   CREATE OR REPLACE basta: nessun DROP, nessun overload. La funzione resta
+#   STABLE perche' finisce nel target list di vw_dash_competenza_attivita, che
+#   e' base di altre quattro viste.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260830-12-update-fn-lookup-registro-id-emittente-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20260830-12-update-fn-lookup-registro-id-emittente-obbligatorio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C1-5: la gerarchia di vendite.fn_lookup_registro_id perde i livelli 2 e 4, quelli che
+        risolvevano sul registro con emittente NULL — il sezionale «di nessuno». ⭐ Non cambia un
+        solo risultato: dopo il NOT NULL di C1-2 quei rami non corrispondono piu'' a nessuna riga,
+        quindi il codice smette di descrivere un caso che non esiste. ⛔ Deve venire DOPO il NOT
+        NULL: applicato prima toglierebbe l''unica risoluzione che funziona sui registri generici,
+        cioe'' spegnerebbe la fatturazione di chi ci sta sopra — la preCondition lo impedisce. ⚠️ Si
+        pota anche il WHERE e non solo l''ORDER BY: lasciare `emittente IS NULL OR ...` renderebbe
+        il filtro piu'' largo dell''ordinamento, e le righe non classificate cadrebbero nell''ELSE 9
+        — un quinto livello implicito, cioe'' lo stesso fallback riaperto per distrazione. ℹ️ Chi
+        passa l''emittente a NULL ottiene «registro non trovato», che e'' gia'' il comportamento
+        dopo C1-2. ⛔ Firma, RETURNS TABLE e volatilita'' INVARIATI: CREATE OR REPLACE basta. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C1-5.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            C1-5 FERMATO: vendite.registri_fatturazione.emittente_soggetto_ruolo_id non e'' ancora
+            NOT NULL. Questo changeSet toglie i due livelli di fallback sul registro «di nessuno» e
+            deve girare DOPO C1-2 (20260830-11), o spegnerebbe la risoluzione del registro per i
+            documenti che oggi ci stanno sopra.
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                    JOIN pg_class c     ON c.oid = a.attrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relname = 'registri_fatturazione'
+                     AND a.attname = 'emittente_soggetto_ruolo_id'
+                     AND a.attnotnull;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_lookup_registro_id(
+                  -- ⚠️ Tipi ANCORATI con %TYPE (linee-guida-sql §5b), firma e
+                  --    RETURNS TABLE comprese. Il %TYPE in firma e' una
+                  --    FOTOGRAFIA: si risolve al CREATE e non si riaggancia —
+                  --    chi cambia una di queste colonne ricrea la funzione.
+                  p_tipo_doc_fiscale_id         vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  p_natura_doc_id               vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE           DEFAULT NULL,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE                  DEFAULT NULL,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(natura_doc_id           config.nature_doc_fiscale.id%TYPE,
+                             registro_id             vendite.registri_fatturazione.id%TYPE,
+                             serie                   vendite.tipi_doc_fiscale_registri.serie%TYPE,
+                             politica_data_documento vendite.registri_fatturazione.politica_data_documento%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_natura_doc_id config.nature_doc_fiscale.id%TYPE;
+                  v_registro_id   vendite.registri_fatturazione.id%TYPE;
+                  v_serie         vendite.tipi_doc_fiscale_registri.serie%TYPE;
+                  v_politica      vendite.registri_fatturazione.politica_data_documento%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   CERCARE il registro di numerazione e la serie, e basta.
+                  --   Chi non trova risponde NULL: qui non si solleva mai.
+                  --
+                  -- ⛔ Il guard di parametro e il raise NON stanno qui: sono
+                  --   in vendite.fn_get_registro_id, che e' l'involucro per
+                  --   chi SCRIVE. Questa funzione serve anche chi LEGGE — le
+                  --   viste della dashboard di competenza — dove un tipo
+                  --   documento nullo e' uno stato ammesso dal CHECK, non un
+                  --   guasto.
+                  -- =========================================================
+
+                  -- Default della natura risolto per chiave naturale, mai un
+                  -- id cablato: l'id e' dettaglio implementativo, il
+                  -- codice_interno e' il contratto (linee-guida-sql §6b).
+                  -- ⚠️ Esce nel risultato: e' cosi' che l'involucro distingue
+                  --    «natura non risolta» da «registro non trovato» senza
+                  --    rifare questo COALESCE per conto proprio.
+                  v_natura_doc_id := COALESCE(
+                      p_natura_doc_id,
+                      config.fn_get_natura_doc_fiscale_id('FATTURA'));
+
+                  -- Ricerca con fallback: tipo_doc+utility+emittente →
+                  -- tipo_doc+emittente.
+                  -- ⭐ rev 2026-08-30 (C1-5): la gerarchia era a QUATTRO
+                  --    livelli e i due che se ne vanno — (utility) e
+                  --    (nessuno dei due) — sono quelli che risolvevano sul
+                  --    registro con emittente NULL, il sezionale «di
+                  --    nessuno». Dal NOT NULL di C1-2 non corrispondono piu'
+                  --    a nessuna riga: toglierli non cambia un risultato, fa
+                  --    dire al codice quello che gia' fa.
+                  -- ⛔ Il WHERE perde il ramo INSIEME all'ORDER BY: un filtro
+                  --    piu' largo dell'ordinamento manderebbe le righe non
+                  --    classificate nell'ELSE 9, cioe' riaprirebbe per
+                  --    distrazione lo stesso fallback che si sta togliendo.
+                  -- ⚠️ Sull'UTILITY il fallback RESTA: quella colonna e'
+                  --    ancora nullable, e un registro «per tutte le utility»
+                  --    e' configurazione legittima.
+                  -- ⚠️ La NATURA e' un filtro ESATTO: non esiste un
+                  --    «registro della natura piu' vicina», e ripiegare sulla
+                  --    fattura emetterebbe una nota di credito nel registro
+                  --    sbagliato, in silenzio.
+                  -- ℹ️ Con p_tipo_doc_fiscale_id, v_natura_doc_id o
+                  --    p_emittente_soggetto_ruolo_id a NULL il predicato non
+                  --    corrisponde a nulla e v_registro_id resta NULL: e' il
+                  --    comportamento voluto, non un caso da intercettare.
+                  --    «Non lo so» e' una risposta; «il registro generico»
+                  --    era una bugia, e da qui non e' piu' disponibile.
+                  -- ⭐ `politica_data_documento` esce da QUI e non da una
+                  --    seconda lettura del chiamante: il JOIN su
+                  --    registri_fatturazione c'e' gia', quindi restituirla
+                  --    non e' lavoro in piu' — e' restituire cio' che si e'
+                  --    gia' letto.
+                  SELECT r.id, m.serie, r.politica_data_documento
+                    INTO v_registro_id, v_serie, v_politica
+                    FROM vendite.tipi_doc_fiscale_registri m
+                    JOIN vendite.registri_fatturazione r ON r.id = m.registro_id
+                   WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                     AND m.natura_doc_id = v_natura_doc_id
+                     AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+                     AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                   ORDER BY
+                       CASE
+                           WHEN r.utility_id = p_utility_id THEN 1
+                           WHEN r.utility_id IS NULL        THEN 2
+                           ELSE 9
+                       END, r.id
+                   LIMIT 1;
+
+                  -- ⚠️ `serie` esce GREZZA (l'override del mapping), non
+                  --    COALESCE-ata sul serie_default del registro: scrivere
+                  --    il default dentro vendite.fatture.serie cambierebbe il
+                  --    valore di una colonna su documenti gia' emessi, dove
+                  --    oggi c'e' NULL. NULL qui continua a voler dire «vale il
+                  --    default del registro», che fn_assign_numero_fattura
+                  --    risolve gia' da se'.
+                  -- ⭐ UNA riga sempre, anche tutta a NULL.
+                  RETURN QUERY SELECT v_natura_doc_id, v_registro_id, v_serie, v_politica;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_lookup_registro_id(vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE, vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE, vendite.registri_fatturazione.utility_id%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE)
+              IS 'CERCA il registro di numerazione e la serie per (tipo documento, natura), con utility ed emittente a raffinare — e NON solleva mai. E'' il lettore puro di cui vendite.fn_get_registro_id e'' l''involucro: stessa coppia, e stessa ragione, di script.fn_get_ba_emittente_sr_id (lettore) e anagrafiche.fn_get_emittente_fiscale_id (involucro che solleva). ⛔ Esiste perche'' le viste della dashboard di competenza mostrano una PREVISIONE del sezionale, e una previsione non puo'' far morire la lista che decora: chk_commesse_attivita_tipo_doc_emittibile pretende il tipo documento SOLO su una riga APPROVATA e NON_EMESSA, quindi su uno stadio DA_APPROVARE il NULL e'' ammesso — e li'' l''involucro solleverebbe, con l''intera lista che risponde 500 e una riga in error_log a ogni tentativo. ⭐ rev 2026-08-30 (brief-db-registri-di-numerazione-emittente-e-trasloco, C1-5): LA GERARCHIA PASSA DA QUATTRO LIVELLI A DUE. Se ne vanno (utility) e (nessuno dei due), cioe'' i due che risolvevano sul registro con emittente NULL — il sezionale «di nessuno». Dal NOT NULL di vendite.registri_fatturazione.emittente_soggetto_ruolo_id (C1-2, 20260830-11) quei rami non corrispondono piu'' a nessuna riga: la potatura non cambia UN SOLO risultato, fa dire al codice quello che gia'' fa. ⛔ E si pota il WHERE INSIEME all''ORDER BY: lasciare `r.emittente_soggetto_ruolo_id IS NULL OR ...` renderebbe il filtro piu'' largo dell''ordinamento, e le righe ammesse ma non classificate dal CASE cadrebbero nell''ELSE 9 — un quinto livello implicito, cioe'' esattamente il fallback che si sta togliendo, riaperto per distrazione. Ora l''emittente si confronta con un `=` PURO, come gia'' fa vendite.fn_get_or_create_commessa dal 20260826-42. ⚠️ Sull''UTILITY il fallback RESTA a due livelli: quella colonna e'' ancora nullable e un registro «per tutte le utility» e'' configurazione legittima. ⚠️ La NATURA resta un filtro ESATTO: non esiste un «registro della natura piu'' vicina», e ripiegare sulla fattura emetterebbe una nota di credito nel registro sbagliato, in silenzio. ℹ️ Chi passa l''emittente a NULL ottiene «registro non trovato» — che e'' gia'' il comportamento dopo C1-2, e che il COMMENT di vendite.fn_resolve_registro_documento aveva gia'' dichiarato preferibile: «non lo so» e'' una risposta, «il registro generico» e'' una bugia. Da qui quella bugia non e'' piu'' disponibile. ⛔ Nessun guard di parametro: un tipo documento nullo non trova e basta. La serie esce GREZZA (NULL = vale il serie_default del registro). ℹ️ STABLE, e onestamente: legge tre tabelle e config.fn_get_natura_doc_fiscale_id, STABLE a sua volta. Serve perche'' la funzione finisce nel target list di vw_dash_competenza_attivita, base di altre quattro viste: da VOLATILE il planner non potrebbe potarla dai consumatori che le colonne nuove non le guardano. ⛔ Firma, RETURNS TABLE e volatilita'' INVARIATE rispetto al 20260826-14.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Il rollback non si scrive «a ritroso»: la revisione
+              --    precedente e' il 20260826-14, e si ripristina da li'.
+              SELECT 'Rollback manuale: ri-applicare 20260826-14-create-fn-lookup-registro-id-mctit.yaml'::text;

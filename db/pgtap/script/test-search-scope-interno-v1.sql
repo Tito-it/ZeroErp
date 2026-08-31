@@ -278,13 +278,16 @@ SELECT sr.id                                       AS soggetto_ruolo_id,
    --   ha emessi, e spostarlo li lascerebbe orfani. Qui lo spostamento e'
    --   solo il MEZZO per costruire il caso — il soggetto del test e' la
    --   ricerca — quindi si sceglie un cliente su cui e' ancora lecito.
-   --   ⚠️ La storia si chiede ad anagrafiche.fn_get_storia_emittente_ba e NON
+   --   ⚠️ La storia si chiede ad anagrafiche.fn_ba_ha_storia_emittente e NON
    --   con un NOT EXISTS scritto qui: quella funzione e' SECURITY DEFINER,
    --   mentre un conteggio diretto girerebbe sotto RLS e risponderebbe
    --   «nessuna storia» per i documenti che non vedo — scegliendo proprio il
    --   cliente su cui il guard poi scatta.
-   AND (SELECT st.n_fatture + st.n_commesse
-          FROM anagrafiche.fn_get_storia_emittente_ba(ba.id) st) = 0
+   --   ⭐ 2026-08-31: la storia non e' piu' «fatture e commesse» — si deriva da
+   --   vendite.famiglie_documento, cioe' da QUALUNQUE documento gia' numerato
+   --   su un registro — e il si'/no lo da' questa funzione, che esce al primo
+   --   che trova invece di contarli tutti.
+   AND NOT anagrafiche.fn_ba_ha_storia_emittente(ba.id)
    -- ⭐ E con UN SOLO billing account, che era una condizione IMPLICITA della
    --   fixture e non era scritta: il test 13 chiede che il soggetto SPARISCA
    --   dalla ricerca, ma la ricerca lo trova attraverso QUALUNQUE suo billing

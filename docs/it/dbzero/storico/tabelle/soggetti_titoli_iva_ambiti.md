@@ -25,5 +25,11 @@
 | ix_soggetti_titoli_iva_ambiti_soggetti_titoli_iva_ambiti_id_fk | `CREATE INDEX ix_soggetti_titoli_iva_ambiti_soggetti_titoli_iva_ambiti_id_fk ON storico.soggetti_titoli_iva_ambiti USING btree (soggetti_titoli_iva_ambiti_id)` |
 | pk_storico_soggetti_titoli_iva_ambiti | `CREATE UNIQUE INDEX pk_storico_soggetti_titoli_iva_ambiti ON storico.soggetti_titoli_iva_ambiti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_soggetti_titoli_iva_ambiti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_titoli_iva_ambiti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

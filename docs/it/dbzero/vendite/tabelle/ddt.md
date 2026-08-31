@@ -44,10 +44,12 @@
 | valuta_id | integer | YES |  |
 | emittente_fiscale_id | bigint | NO |  |
 | fatturazione_immediata | boolean | NO | false |
+| registro_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_ddt_registro | registro_id |
 | FOREIGN KEY | fk_ddt_v_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_ddt_v_billing_account | billing_account_id |
 | FOREIGN KEY | fk_ddt_v_causale_trasporto | causale_trasporto_id |
@@ -69,7 +71,7 @@
 | ix_ddt_vendita_dest_stato_data | `CREATE INDEX ix_ddt_vendita_dest_stato_data ON vendite.ddt USING btree (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data)` |
 | ix_vendite_ddt_stato_doc_ddt_id | `CREATE INDEX ix_vendite_ddt_stato_doc_ddt_id ON vendite.ddt USING btree (stato_doc_ddt_id)` |
 | pk_ddtv | `CREATE UNIQUE INDEX pk_ddtv ON vendite.ddt USING btree (id)` |
-| uq_ddt_v_anno_serie_numero | `CREATE UNIQUE INDEX uq_ddt_v_anno_serie_numero ON vendite.ddt USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |
+| uq_ddt_v_anno_serie_numero | `CREATE UNIQUE INDEX uq_ddt_v_anno_serie_numero ON vendite.ddt USING btree (registro_id, anno, serie, numero) NULLS NOT DISTINCT WHERE (numero IS NOT NULL)` |
 | uq_ddt_vendita_uid | `CREATE UNIQUE INDEX uq_ddt_vendita_uid ON vendite.ddt USING btree (uid)` |
 
 ## 🚨 Trigger
