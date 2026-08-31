@@ -129,9 +129,17 @@ classe ha una data nota (età sconosciuta ≠ 0 giorni).
   data preventivo/ordine, catena emissione offerte, mese esploso contratti,
   competenza commesse). Il timestamp di transito (DL-5) non serve al backlog:
   i suoi elementi non sono ancora transitati.
-- **Scope emittente — interamente DB-side**: RLS invoker sulle 4 aree
-  documentali (post fix V-1 `20260706-15`) + filtro GUC nel resolver commesse.
+- **Scope emittente — interamente DB-side**: RLS invoker sulle aree documentali
+  (post fix V-1 `20260706-15`) + filtro GUC nel resolver commesse.
   Il BE **non** passa alcun `auth_user_id`.
+  📌 *Diceva «4 aree» — residuo del 2026-07-06, prima che entrassero DDT
+  (2026-07-18, DL-21) e i due rami RESI (`20260718-14`, DL-24). Misurato il
+  2026-08-31: `preventivi`, `ordini`, `offerte_commerciali`, `contratti`, `ddt`,
+  `resi` **e `commesse`** hanno tutte `relrowsecurity`. Il numero è stato tolto
+  invece di aggiornato: cambia a ogni area nuova, e la frase non ne ha bisogno.*
+  ⚠️ *Da qui una domanda per il team DB: se anche `commesse` ha la RLS, il
+  «filtro GUC nel resolver commesse» è ancora la difesa che serve o è diventato
+  una seconda cintura? Non la tocco: è una lettura del resolver, non del BE.*
 - Una **sola valutazione della union** per pagina (`_query_paged_view`: CTE
   materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
   SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non

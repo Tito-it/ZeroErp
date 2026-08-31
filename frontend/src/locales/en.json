@@ -3594,7 +3594,11 @@
       "col_atto_data": "Act date",
       "col_tipo_fondo_codice_interno": "Fund type",
       "col_fattura_sorgente_id": "Invoice id",
-      "col_fondo_source_id": "Act id"
+      "col_fondo_source_id": "Act id",
+      "cancella_azione": "Delete the entry",
+      "cancella_titolo": "Delete the invoice-fund entry",
+      "cancella_messaggio": "The {importo} entry on invoice {numero} will be deleted. This cannot be undone: the entry leaves no audit trail, because it never moved any money. The automatic run may propose a new one from the balance at that time.",
+      "cancellato": "Invoice-fund entry deleted."
     },
     "tool_fatturazione": {
       "page_title": "Invoicing tools",
@@ -3854,7 +3858,9 @@
       "annulla_azione": "Discard",
       "annullata": "Decision discarded.",
       "annullo_aiuto": "Required if the decision had none: a decision discarded without a reason cannot be reconstructed.",
-      "gia_terminale": "The decision is already {stato}: there is no way back, a correction is a new settlement.",
+      "gia_terminale": "The decision is already {stato}: it cannot be confirmed twice.",
+      "annullo_gia_annullata": "The decision has already been discarded.",
+      "annullo_solo_riporto": "A confirmed refund or offset cannot be cancelled: correct it with the guided correction on its accounting batch.",
       "stato_bozza": "Draft",
       "stato_confermata": "Confirmed",
       "stato_annullata": "Discarded"
@@ -4371,6 +4377,14 @@
       "preventivo": "Quote",
       "flusso": "Workflow step",
       "definizione_workflow": "Workflow edition"
+    },
+    "eventi_dominio": {
+      "emittibilita_fallita": "Issuability check not passed",
+      "lotto_riaperto": "Batch reopened for rework: documents deleted",
+      "pipeline_completed": "Invoicing run finished",
+      "pipeline_error": "Invoicing run stopped by an error",
+      "pipeline_started": "Invoicing run started",
+      "step_completed": "Step completed"
     }
   },
   "lista_config": {

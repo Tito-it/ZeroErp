@@ -73,13 +73,33 @@ service `get_fattura_giornale` (`apps.vendite.services.vendite_service`) →
         "correlation_id": null,
         "auth_user_id": null,
         "user_insert": "tid",
-        "ritirata": false
+        "ritirata": false,
+        "etichetta_key": null
       }
     ]
   },
   "meta": { "request_id": "…" }
 }
 ```
+
+⭐ **`etichetta_key` — dal 2026-08-31.** L'indirizzo i18n del fatto, da
+`config.eventi_dominio.etichetta_key`, per le sole righe del registro
+**`EVENT_LOG`**: là `cosa` è il **codice** dell'evento, mentre sugli altri tre
+registri è già una frase e il campo è `null`. Si rende con
+`labelOrCode(t, te, etichetta_key, cosa)` — ⚠️ il ripiego è il **codice grezzo**,
+mai il path della chiave, ed è la ragione per cui il campo può restare `null`
+senza che nessuno veda un buco: `event_log` **non ha** una FK verso quel
+catalogo (deliberato: il diario non deve smettere di scrivere per un problema di
+configurazione), quindi un codice non dichiarato è un caso previsto.
+
+🔴 **Perché è arrivato solo ora**: il catalogo dichiarava quell'indirizzo dal
+primo giorno e **non lo leggeva nessuno** — le sei chiavi `config.eventi_dominio.*`
+non esistevano nei `locales` e la vista non le esponeva. Era un contratto
+*emesso, trasportato e non consumato*: la stessa forma di `ui_action`, e la
+ragione per cui [api.md](../../../dev/api.md) prescrive di **verificare che il
+client la legga** prima di dichiarare fatta una capability. Se ne è accorto
+l'arrivo di `LOTTO_RIAPERTO` (2026-08-31), che a video sarebbe comparso come
+codice macchina.
 
 - `400`: `E_VENDITE_VALIDATION` — `fattura_id` non positivo, paginazione fuori limiti
 - `403`: area `vendite` BLOCCATA, oppure oggetto `vendite.fattura` bloccato
