@@ -182,8 +182,16 @@ with transaction.atomic():
     check("la vista blocca l'annullo della riga gia' annullata",
           righe[forzatura_id]["annullo_blocco_codice"] == "GIA_ANNULLATO",
           str(righe[forzatura_id]["annullo_blocco_codice"]))
+    # ⚠️ `RIGA_DI_ANNULLO` e non piu' `E_UN_ANNULLO` (changeSet `20260831-35`):
+    #    quel `reason` portava per caso il prefisso `E_`, e il cancello dei
+    #    codici errore lo leggeva come un CODICE senza policy — rosso su un
+    #    valore che non e' un codice. Il nome nuovo dice cosa E' la riga invece
+    #    di ripetere l'avverbio, cosi' non si confonde col vicino
+    #    `GIA_ANNULLATO`, che dice l'opposto (quella riga e' STATA annullata).
+    # ⛔ Il `reason_key` NON e' cambiato: e' un indirizzo i18n, e il testo a
+    #    video resta quello di prima.
     check("e blocca l'annullo di un annullo",
-          righe[annullo_id]["annullo_blocco_codice"] == "E_UN_ANNULLO",
+          righe[annullo_id]["annullo_blocco_codice"] == "RIGA_DI_ANNULLO",
           str(righe[annullo_id]["annullo_blocco_codice"]))
     # ⚠️ E il rifiuto vero deve arrivare: se la vista dicesse «bloccato» e la
     #    madre lasciasse passare, il tooltip sarebbe una decorazione.

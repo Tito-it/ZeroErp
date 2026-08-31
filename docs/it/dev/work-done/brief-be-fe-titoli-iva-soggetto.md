@@ -1,9 +1,22 @@
 # Piano BE/FE — `I7`: i titoli IVA del soggetto hanno una sede e nessuno la riempie
 
+> ## ✅ CHIUSO — 2026-08-31: la sede si riempie
+>
+> `T1`, `T2`, `T3-a` e `T4` erano verdi dal 2026-08-29; **`T3-b`** — l'annullo
+> della forzatura — si è chiusa il 2026-08-31, ad apply avvenuto della colonna
+> `annulla_movimento_id` (merge `#1438`). Consuntivo nel §8.
+>
+> 📌 **Resta una promessa, e non è di questo piano**: nessuna fattura consuma
+> ancora il plafond. Il registro si popola solo con le **forzature** manuali
+> finché non arriva il task di pipeline `consuma_plafond_lotto` — voce 1 di
+> [brief-db-richieste-aperte-dal-backend-2.md](../work-in-progress/brief-db-richieste-aperte-dal-backend-2.md),
+> e il consumatore è `F3-b2` del
+> [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+
 > **Destinatario:** backend (`dev/backend-tid`) e frontend. ⭐ **Nessuna azione DB
 > in questo piano**, e non è un caso: la Fase 2 ha costruito tutto il lato DB.
 >
-> **Base.** [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md)
+> **Base.** [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md)
 > — `I7` nel suo §5, le decisioni in `D5`, `D10`, `D10-bis`, `D12`, `D13`,
 > `D15-bis`, l'applicato nel suo **§8-ter**. Questo documento non ri-discute
 > niente di tutto ciò: costruisce la metà che il §5 chiama «BE».
@@ -11,9 +24,8 @@
 > **Origine.** Domanda di Tid del 2026-08-29, dopo il push della Fase 2:
 > *«si è sbloccato altro, ci sono attività che puoi fare?»*.
 >
-> **Stato.** 2026-08-29 — ✅ **`T1`, `T2`, `T3-a` e `T4` fatte e verdi**.
-> Resta la sola `T3-b` (l'annullo), **gated** su una colonna DB. Avanzamento
-> nel §8.
+> **Stato.** 2026-08-31 — ✅ **tutte e cinque le slice fatte e verdi**.
+> Avanzamento nel §8.
 >
 > **Correlati:**
 > [soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) ·
@@ -298,11 +310,12 @@ un `AppDialog`. ⭐ Il totale mostrato è `imponibile_utilizzato`, che il trigge
 tiene allineato: il FE **non lo ricalcola** sommando le righe — sarebbe una
 seconda verità.
 
-### `T3-b` — 🟡 L'annullo della forzatura — **gated sul DB**
+### `T3-b` — ✅ L'annullo della forzatura
 
 Il contro-movimento di `Q7`, con il verbo «Annulla» sulla sola riga `FORZATURA`
-non ancora annullata. ⛔ Aspetta la colonna di collegamento: senza, l'annullo si
-potrebbe scrivere ma non si potrebbe **mostrare**, ed è metà del valore.
+non ancora annullata. ⛔ Aspettava la colonna di collegamento: senza, l'annullo
+si sarebbe potuto scrivere ma non **mostrare**, ed è metà del valore.
+✅ Applicata il 2026-08-31; consuntivo nel §8.
 
 ### `T4` — La lista dei titoli sfondati
 

@@ -182,7 +182,7 @@ due, e il secondo indicava il posto sbagliato.
 **Verificato il 2026-08-31**: il codice **non esiste in nessun punto di git** —
 né nei due CSV, né in un changeSet, né in un brief. Esiste **solo sul database
 di sviluppo**. Viene dal cantiere
-[registri di numerazione](../work-in-progress/brief-db-registri-di-numerazione-emittente-e-trasloco.md).
+[registri di numerazione](brief-db-registri-di-numerazione-emittente-e-trasloco.md).
 
 **Cosa blocca.** Il backend non può rigenerare `error_policies_generated.py`.
 `manage.py genera_error_policies --check` gira in CI e confronta il file
@@ -619,8 +619,8 @@ giusto («è congelata»), non quello sulla capofila.
 ⭐ **L'annullo di una forzatura è APPLICATO** (merge `#1438`, 2026-08-31):
 `anagrafiche.soggetti_titoli_iva_movimenti.annulla_movimento_id` c'è, con
 `CHECK`, FK, unique e guard trigger. Il brief
-[brief-db-titoli-iva-movimenti-annullo.md](../work-in-progress/brief-db-titoli-iva-movimenti-annullo.md)
-è chiuso, e sblocca `T3-b` del [piano BE/FE dei titoli](../work-in-progress/brief-be-fe-titoli-iva-soggetto.md).
+[brief-db-titoli-iva-movimenti-annullo.md](brief-db-titoli-iva-movimenti-annullo.md)
+è chiuso, e sblocca `T3-b` del [piano BE/FE dei titoli](brief-be-fe-titoli-iva-soggetto.md).
 
 ---
 

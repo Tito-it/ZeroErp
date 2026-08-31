@@ -16,8 +16,18 @@
 > nuovo anno … abbiamo il sistema codici, non so se sia personalizzabile e nel
 > caso se si possa mettere il programma che determina il calcolo».*
 >
-> **Stato al 2026-08-30: solo analisi, e le decisioni sono PRESE.** Nessun file
-> scritto, nessun changeSet, niente applicato.
+> ✅ **Stato al 2026-08-31 — CHIUSA.** Le decisioni erano prese il 2026-08-30;
+> il 31 il piano è stato eseguito **per intero** (DB, presidi, BE/FE) e le tre
+> code del §10 sono chiuse — una fatta, due **decadute** con la D-3. Restano
+> chiusi anche il §6 e il §7, superati, e il §8, riscritto nel piano.
+>
+> ⭐ **Questo documento resta la sede delle RAGIONI, e per questo non si
+> archivia come un piano**: quando fra un anno qualcuno chiederà «perché la
+> commessa si numera sui registri e non nel sistema codici», la risposta è la
+> D-3 qui dentro, non un changeSet.
+>
+> *(Superata la riga che diceva «Stato al 2026-08-30: solo analisi … nessun file
+> scritto, nessun changeSet, niente applicato». Era vera per un giorno.)*
 >
 > ⛔ **Perimetro, deciso da Tid il 2026-08-30 e valido per tutto il cantiere del
 > trasloco: cambia SOLO l'algoritmo di assegnazione del numero. Per i documenti
@@ -654,8 +664,18 @@ anno** sul contatore nuovo. Le `preCondition` vanno messe.
 
 ---
 
-## 8. 📌 [DA RISCRIVERE] I presidi (pgTAP)
+## 8. ✅ [RISCRITTI ALTROVE] I presidi (pgTAP)
 
+> ✅ **Riscritti e verdi il 2026-08-31**, nel piano e non qui: sette file, 52
+> asserzioni — §6 di
+> [brief-db-registri-di-numerazione-emittente-e-trasloco](brief-db-registri-di-numerazione-emittente-e-trasloco.md).
+> ⭐ Ci sono tutti quelli che questa sezione dichiarava «ancora validi»: la forma
+> del codice, la progressione `N`/`N+1`, il cambio di periodo **seminando** il
+> contatore dell'anno prima, la commessa che non nasce senza registro. Ed è
+> decaduto, come previsto qui sotto, il guard `ANNUALE → NESSUNA`.
+>
+> ---
+>
 > 📌 **Il bersaglio è cambiato con la D-3.** I presidi qui sotto verificavano
 > `script.fn_generate_codice` sul ramo periodico, che non nascerà. Quelli che
 > **restano validi**, spostati sul motore dei registri: la forma del codice
@@ -728,15 +748,27 @@ anno** sul contatore nuovo. Le `preCondition` vanno messe.
 
 ---
 
-## 10. Richieste a BE e FE
+## 10. ✅ Richieste a BE e FE — chiuse il 2026-08-31
 
 *(Perimetro DB: qui si scrivono, non si fanno.)*
 
-| # | Dove | Cosa |
-| --- | --- | --- |
-| **BE-1** | `apps/core/db/lookup_repository.py` → `get_sistema_codici` | esporre `reset_periodicita` nella SELECT |
-| **BE-2** | `apps/vendite/tests/services/test_fatturazione_giro_handler.py:57` | la costante `CMM-20260610175449872-e059eb` diventa un formato che non esiste più |
-| **FE-1** | `frontend/src/core/composables/useCodiceField.js` | ⛔ **L'anteprima diventa falsa.** Il composable compone `prefisso + separatore + lunghezza` per mostrare all'operatore la forma del codice: sul ramo periodico direbbe `CMM-000001` mentre il DB scrive `CMM-2026-000001`. O include il periodo, o l'anteprima non si mostra — una frase che il template afferma e il DB smentisce è peggio di nessuna frase |
+| # | Dove | Cosa | Esito |
+| --- | --- | --- | --- |
+| **BE-1** | `lookup_repository.get_sistema_codici` | esporre `reset_periodicita` nella SELECT | ⛔ **Decade con la D-3**: quella colonna non nasce, il §6 è superato. Niente da fare |
+| **BE-2** | `test_fatturazione_giro_handler.py` | la costante `CMM-20260610175449872-e059eb` diventa un formato che non esiste più | ✅ **Fatto**: la fixture porta ora `CMM-EMITEST-2026-000000108`. ⚠️ Il test passava comunque — lì la stringa è opaca — ma una fixture che mostra una forma che il sistema non produce più **insegna un formato falso a chi la legge** |
+| **FE-1** | `useCodiceField.js` | l'anteprima del codice diventerebbe falsa sul ramo periodico | ⛔ **Decade con la D-3**, per due ragioni indipendenti: il ramo periodico non esiste, e `useCodiceField` ha **un solo consumatore** (`FornitoreDrawer`) — la commessa non ci passa mai |
+
+⭐ **Due code su tre sono decadute, non risolte, e la differenza conta**: non
+sono state «fatte», è cambiato il progetto sotto di loro. La D-3 ha portato la
+commessa sui registri, e `config.sistema_codici` è rimasta **esattamente com'è**
+— quindi tutto ciò che dipendeva da una colonna nuova in quella tabella è caduto
+insieme a lei.
+
+⚠️ **E il perimetro che è rimasto scoperto era un altro, mai scritto qui**: le
+ricadute vere del trasloco sono state la nuova arità di
+`E_BA_EMITTENTE_CON_STORIA`, quattro codici errore senza policy nel backend, e
+la forma della sigla nel drawer dell'emittente. Le elenca il piano, non questa
+analisi — che le aveva mancate perché guardava il motore che *non* si è fatto.
 
 ---
 

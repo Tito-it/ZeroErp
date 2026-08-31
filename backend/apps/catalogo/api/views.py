@@ -321,8 +321,9 @@ class ApiArticoliFormDefaults(DomainAPIView):
         },
     )
     # Scopo: Restituisce i defaults per il form di creazione articolo (Fase 8 — A5).
-    #        Centralizza il consumo dei parametri (oggi: DEFAULT_IVA_ID) e
-    #        ritorna tipi gia' castati al FE.
+    #        Centralizza il consumo dei parametri (oggi: DEFAULT_IVA, che
+    #        porta il `codice_interno` dell'aliquota e non il suo id) e
+    #        ritorna al FE valori gia' risolti.
     def get(self, request: Request) -> JsonResponse:
         from apps.core.api.views_parameters import get_user_context
         from apps.core.services.parameter_service import ParameterService

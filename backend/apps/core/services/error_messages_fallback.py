@@ -339,6 +339,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FATTURA_NON_TROVATA": "Fattura non trovata.",
     "E_FATTURA_REGISTRO_EMITTENTE_INCOERENTE": "La fattura e' su un registro di numerazione che appartiene a un altro emittente: ogni registro e' di un emittente solo, e due partite IVA non possono pescare dalla stessa serie.",
     "E_FATTURA_RETTIFICATA_SENZA_NUMERO": "Numerazione rifiutata: il documento rettifica righe di altri documenti che non risultano ancora numerati. Numerare prima quelli, poi ripetere. Se uno di essi non risulta accessibile e' fuori dal perimetro di chi opera, e va numerato da chi lo gestisce.",
+    "E_FATTURA_RIGA_CAPOFILA_INCOERENTE": "Il legame fra una riga di fattura e la sua capofila non e' coerente: la catena deve restare a un solo passaggio, dalla capofila alle sue parti. E' un'anomalia tecnica del documento, non un dato da correggere a mano.",
     "E_FATTURA_RIGA_CONGELATA": "Lo stato della fattura non consente piu' di modificare le righe.",
     "E_FATTURA_SATELLITE_CONGELATO": "Lo stato della fattura non consente piu' di modificare questi dati.",
     "E_FATTURA_SENZA_RIGHE": "Numerazione fiscale rifiutata: il documento non ha righe.",

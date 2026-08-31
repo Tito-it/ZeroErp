@@ -169,6 +169,17 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # work-done 2026-05-29). Non in _UPDATE_KEYS_TESTATA: snapshot
     # immutabile post-CREATE (simmetrico a preventivi/offerte).
     "valuta_id",
+    # Riferimenti dell'atto (I8/D9), ammessi in CREATE dalla slice S3-b
+    # (2026-08-31), ad apply avvenuto del changeSet `20260831-24` che li ha
+    # aggiunti alla whitelist interna di `vendite.fn_create_contratto`.
+    # ⛔ Prima erano fuori DI PROPOSITO: quella whitelist non RESPINGE una
+    #    chiave che non conosce, la SCARTA — il contratto sarebbe nato, il
+    #    backend avrebbe risposto 200 e il CIG non sarebbe andato da nessuna
+    #    parte. Stesso difetto gia' pagato su `fatturazione_immediata` il
+    #    2026-07-27.
+    # ⭐ Il caso d'uso e' proprio la creazione: un CIG nasce con la gara, cioe'
+    #    PRIMA del contratto.
+    *_CODICI_ATTO,
     "meta",
     # Sub-entita' opzionale: se presente crea la riga utility 1:1 nella
     # stessa transazione. Il service NON permette payload utility senza
@@ -2030,15 +2041,16 @@ class ContrattiService:
             payload, data, "valuta_id", message=_MESSAGE,
         )
         self._apply_fatturazione_immediata(payload, data)
-        # ⛔ I tre riferimenti dell'atto NON si mappano in CREATE, ed e' una
-        #    scelta: la whitelist interna di `vendite.fn_create_contratto`
-        #    (`v_testata_allowed`) non li conosce ancora, quindi li SCARTEREBBE
-        #    IN SILENZIO — il contratto nascerebbe, l'operatore non vedrebbe
-        #    errori e i codici non andrebbero da nessuna parte. E' lo stesso
-        #    difetto gia' costato un giro su `fatturazione_immediata` il
-        #    2026-07-27, documentato in `_CREATE_KEYS_TESTATA`.
-        #    Si aggiungono con la slice S3-b, ad applicazione avvenuta del
-        #    changeSet DB che estende quella whitelist.
+        # ⭐ SLICE S3-b (2026-08-31): i tre riferimenti dell'atto entrano anche
+        #    in CREATE, ora che `20260831-24` li ha messi nella whitelist
+        #    interna di `vendite.fn_create_contratto`.
+        # ⚠️ La chiamata qui NON e' ridondante con la whitelist: i due mapper
+        #    del contratto copiano campo per campo, quindi una chiave ammessa e
+        #    non mappata si perde in silenzio — e' il difetto del 2026-07-27
+        #    (whitelist estesa, mapper no → 200 «contratto salvato» e niente
+        #    persistito). Stesso helper dell'update: validazione di lunghezza e
+        #    normalizzazione del vuoto vivono in un posto solo.
+        self._apply_codici_atto(payload, data)
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:

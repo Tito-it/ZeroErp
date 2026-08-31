@@ -116,6 +116,19 @@ class PipelineStepExecutor:
         # una configurazione girata si fermi PRIMA che il primo task scriva,
         # invece di scoprirsi a documenti numerati.
         "popola_fatture_rettifiche": ("numera_fatture",),
+        # ⛔ Il consumo del plafond va PRIMA della numerazione, e la ragione e'
+        # lo stato: `numera_fatture` porta il documento oltre la soglia di
+        # congelamento, e `trgfn_fattura_satellite_guard_congelamento` legge lo
+        # stato VIVO al momento della scrittura. Con l'ordine invertito la
+        # spezzatura delle righe verrebbe RIFIUTATA — non in silenzio, ma con un
+        # errore che parla d'altro, in un punto dove nessuno lo cerca.
+        # ⚠️ Finche' `consuma_plafond_lotto` non e' nel seed della pipeline
+        # questa riga non fa nulla: il predecessore assente e' una
+        # configurazione valida (puo' vivere in uno step precedente). Sta qui
+        # PRIMA del seed apposta — cosi' il giorno che la configurazione arriva,
+        # se arriva girata si ferma prima di scrivere invece di scoprirsi a
+        # documenti gia' numerati.
+        "numera_fatture": ("consuma_plafond_lotto",),
     }
 
     # Scopo: Inizializza la istanza.
@@ -145,6 +158,7 @@ class PipelineStepExecutor:
             "snapshot_indirizzi_lotto_default": self._handle_snapshot_indirizzi_lotto_task,
             "genera_scadenze_lotto_default": self._handle_genera_scadenze_lotto_task,
             "popola_fatture_rettifiche_default": self._handle_popola_fatture_rettifiche_task,
+            "consuma_plafond_lotto_default": self._handle_consuma_plafond_lotto_task,
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
@@ -1272,6 +1286,57 @@ class PipelineStepExecutor:
     #    gia' numerate e la proiezione delle sane e' committata, quindi il
     #    rilancio (task_policy `RESUME_TASK`) riprende da qui e l'idempotenza
     #    rende innocuo il secondo giro.
+    # Scopo: Task `consuma_plafond_lotto` (step DEFINITIVA, `I4` / `P5`):
+    #        consuma il plafond dei titoli IVA sulle fatture del lotto e spezza
+    #        le righe che il titolo copre solo in parte.
+    #
+    # ⛔ VA PRIMA DI `numera_fatture`, e non e' una preferenza: li' la fattura e'
+    #    ancora `EMESSA`, e il guard di congelamento legge lo stato VIVO. Dopo,
+    #    la spezzatura verrebbe rifiutata. La dipendenza e' dichiarata in
+    #    `_TASK_ORDER_DEPENDENCIES`, cosi' una configurazione girata si ferma
+    #    PRIMA che il primo task scriva.
+    #
+    # ⚠️ NON e' un giro per-fattura come i suoi vicini, ed e' voluto: l'ordine
+    #    fra le fatture (`data documento, numero`) e' parte del requisito, e
+    #    `_run_per_fattura_task` isola gli errori per documento ma non promette
+    #    niente sull'ordine. Il servizio lo impone dal repository.
+    def _handle_consuma_plafond_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        def _action() -> None:
+            from apps.vendite.services.plafond_fattura_service import (
+                PlafondFatturaService,
+            )
+
+            esito = PlafondFatturaService(self.repository).consuma_lotto(lotto_id)
+            # ⚠️ I conteggi sono l'unica traccia del giro: un lotto senza titoli
+            #    IVA scrive zero movimenti, ed e' l'esito CORRETTO — senza
+            #    questa riga sarebbe indistinguibile da un task che non ha
+            #    lavorato affatto.
+            logging.getLogger(__name__).info(
+                "pipeline.consuma_plafond_lotto lotto_id=%s fatture=%s "
+                "righe_spezzate=%s movimenti=%s",
+                lotto_id, esito["fatture"], esito["righe_spezzate"],
+                esito["movimenti"],
+            )
+
+        self._run_validated_task(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            dry_run=dry_run,
+            action=_action,
+        )
+
     def _handle_popola_fatture_rettifiche_task(
         self,
         *,
