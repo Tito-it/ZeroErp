@@ -208,6 +208,17 @@ def normalizza_iva_id(raw: Any, *, error_code: str, function_name: str) -> int |
 #    detto: sui preventivi l'emittente puo' non stare in testata (admin globale
 #    che non l'ha scelto) e si ripiega su quello dell'operatore. Su DDT e ordini
 #    la testata ce l'ha sempre — il trigger normalize lo garantisce NOT NULL.
+# ⛔ `payload_iva_id` E' UN PARAMETRO CHE VALE SEMPRE `None`, dal 2026-08-31
+#    (`I6`): la casella IVA e' chiusa sui tre domini, quindi nessuna riga porta
+#    piu' un'aliquota scelta a mano. Il parametro RESTA, e resta guardato:
+#    `applica_riga_documento` distingue due rami che NON hanno lo stesso peso —
+#    senza valore la risoluzione e' AUTORITATIVA e i suoi errori passano, con un
+#    valore diventa AUDIT best-effort dentro un savepoint, cioe' gli errori si
+#    INGHIOTTONO e a vincere e' il payload.
+# ⇒ Chi un giorno rimettesse una scelta manuale su un documento non otterrebbe
+#    un errore: otterrebbe, in silenzio, una riga che si salva anche quando
+#    l'IVA non e' determinabile. Il guard qui sotto trasforma quel silenzio in
+#    un rifiuto, e costa una riga.
 def make_risolvi_iva_riga(
     *,
     error_code: str,
@@ -218,9 +229,20 @@ def make_risolvi_iva_riga(
         testata: dict[str, Any],
         *,
         articolo_id: str,
-        payload_iva_id: Any,
+        payload_iva_id: Any = None,
         auth_user_id: int | None = None,
     ) -> tuple[int | None, dict[str, Any]]:
+        ErrorManager.require(
+            payload_iva_id is None,
+            code=error_code,
+            message="L'aliquota IVA non si sceglie sulla riga del documento.",
+            detail=(
+                "`I6`: la casella e' chiusa e l'IVA la decide il risolutore. "
+                f"Ricevuto payload_iva_id={payload_iva_id!r}"
+            ),
+            context={"field": "iva_id"},
+            function_name=function_name,
+        )
         # Import locale: il BB del risolutore importa questo modulo? No — ma
         # l'import qui tiene il grafo piatto e non costa nulla a runtime.
         from apps.vendite.services.iva_resolver_service import IvaResolverService

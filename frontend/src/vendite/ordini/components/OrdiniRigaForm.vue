@@ -133,7 +133,13 @@ const canSave = computed(() => {
   if (!f.articolo_id) return false
   if (!f.uom_operativa_id) return false
   if (f.qta_operativa == null || Number(f.qta_operativa) === 0) return false
-  if (!f.iva_id) return false
+  // ⛔ `I6`: l'IVA NON e' piu' un requisito per salvare, e toglierlo e'
+  //    obbligatorio — non un ripulisti. Con la casella spenta e
+  //    l'auto-fill morto, se l'anteprima non risponde il campo resta
+  //    vuoto e la riga non si potrebbe piu' salvare: la creazione si
+  //    bloccherebbe DA SOLA, senza che nulla lo spieghi.
+  //    A rispondere e' comunque il backend al salvataggio; a fermare
+  //    una riga senza aliquota e' il gate all'emissione (`I9`).
   // CREATE su articolo composito: blocca il save finche' la ComponentiDialog
   // non e' stata confermata almeno una volta (componentiPayload valorizzato).
   if (showComponentiDialog.value && componentiPayload.value == null) return false
@@ -160,7 +166,6 @@ function buildRigaPayload() {
     descrizione: f.descrizione || null,
     qta_operativa: f.qta_operativa,
     sconto_percentuale: f.sconto_percentuale,
-    iva_id: f.iva_id,
     uom_operativa_id: f.uom_operativa_id,
   }
   // Articolo composito CREATE: il prezzo padre e' SUM(componenti) — non inviarlo
@@ -237,8 +242,15 @@ async function handleSave() {
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('vendite.ordini.riga_iva') }} *</label>
+        <!-- ⛔ `I6`: LA CASELLA E' CHIUSA, sempre — anche in creazione.
+             L'aliquota la decide il risolutore, e lasciarla modificabile
+             riaprirebbe la seconda risposta alla stessa domanda che tutto
+             questo cantiere e' servito a togliere. Il campo resta a VIDEO, e
+             spento: l'operatore deve poter vedere cosa gli viene applicato.
+             ⚠️ Se serve cambiarla, si cambia sull'ARTICOLO — ed e' quello che
+             dicono ora i messaggi dei gate all'emissione. -->
         <IvaSelect v-model="form.iva_id"
-          :placeholder="t('vendite.ordini.riga_iva')" :disabled="isEdit" />
+          :placeholder="t('vendite.ordini.riga_iva')" disabled />
         <!-- ⭐ IL PERCHE' DI QUEL NUMERO. `I6` sta per togliere all'operatore
              la casella: un'aliquota che non si puo' cambiare E che non viene
              spiegata e' la forma peggiore. La label la compone il composable —

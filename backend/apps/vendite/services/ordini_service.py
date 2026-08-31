@@ -121,14 +121,21 @@ _UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta", "fatturazione_immediata",
 })
+    # ⛔ `iva_id` NON C'E' PIU' (`I6`, 2026-08-31): l'aliquota della riga la
+    # decide il risolutore, e la casella a video e' spenta. Rimetterla qui
+    # riaprirebbe la seconda risposta alla stessa domanda che tutto questo
+    # cantiere e' servito a togliere.
+    # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
+    # vecchio che la manda ancora non riceve un errore — il valore semplicemente
+    # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
 _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
-    "iva_id", "meta",
+    "meta",
 })
 _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
-    "factor_to_base", "prezzo_unitario", "sconto_percentuale", "iva_id", "meta",
+    "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
 })
 
 
@@ -889,7 +896,11 @@ def gestisci_riga(
     # ⚠️ Il payload VINCE finche' `I6` non chiude la casella (opzione B): qui
     # si registra soltanto cosa avrebbe detto il risolutore.
     iva_id_riga, iva_meta = _risolvi_iva_riga(
-        testata, articolo_id=str(articolo_id), payload_iva_id=data.get("iva_id"),
+        # ⛔ `payload_iva_id=None`, e non e' pigrizia: da `I6` la riga NON
+        #    porta piu' un'IVA scelta a mano, quindi la risoluzione e'
+        #    AUTORITATIVA e i suoi errori PASSANO. Meglio fermarsi che scrivere
+        #    un'aliquota inventata su un documento che diventera' fiscale.
+        testata, articolo_id=str(articolo_id), payload_iva_id=None,
     )
     meta_riga = data.get("meta") if isinstance(data.get("meta"), dict) else None
     if iva_meta:

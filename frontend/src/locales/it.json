@@ -2211,7 +2211,7 @@
       "azione_reason": {
         "causale_mancante": "Manca la causale di trasporto: obbligatoria per emettere il DDT.",
         "prezzo_non_risolvibile": "Una o più righe non hanno un prezzo risolvibile (proprio o ereditato dall'ordine) con causale fatturabile.",
-        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA: scegli l'aliquota, oppure togli il prezzo se la merce non si valorizza.",
+        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza.",
         "componenti_prezzo_pendente": "Componenti con prezzo in attesa di valorizzazione.",
         "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati."
       }
@@ -2960,7 +2960,7 @@
       "azione_reason": {
         "ddt_collegati": "L'ordine ha già DDT collegati: la merce è uscita e per farla rientrare si registra un reso.",
         "gia_in_commessa": "L'ordine è già stato inviato a fatturazione: annulla prima le attività in commessa.",
-        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA: scegli l'aliquota, oppure togli il prezzo se la merce non si valorizza."
+        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza."
       },
       "stato_info": {
         "evaso": "L'ordine è evaso: lo stato si ricalcola dai DDT, non si imposta a mano.",
@@ -3178,7 +3178,7 @@
         "ordine_gia_generato": "Il preventivo ha già generato un ordine: annulla prima l'ordine collegato.",
         "gia_in_commessa": "Il preventivo è già stato inviato a fatturazione: annulla prima le attività in commessa.",
         "commessa_gia_emessa": "Alcune righe sono già state fatturate in commessa: stornale dal lato fatturazione, oppure crea una revisione del preventivo.",
-        "iva_mancante": "Una o più righe con quantità hanno un prezzo ma nessuna aliquota IVA: scegli l'aliquota, oppure togli il prezzo se la merce non si valorizza."
+        "iva_mancante": "Una o più righe con quantità hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza."
       },
       "conferma_cambio_stato": "Portare il preventivo nello stato {stato}?",
       "conferma_revisione": "Creare una nuova revisione? La revisione corrente verra' disattivata.",

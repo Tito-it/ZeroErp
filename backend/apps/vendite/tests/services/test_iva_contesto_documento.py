@@ -25,6 +25,7 @@
 # ------------------------------------------------------------
 
 import unittest
+import unittest.mock
 from datetime import date
 from unittest.mock import patch
 
@@ -147,3 +148,43 @@ class CaricaTestataTests(unittest.TestCase):
         self.assertEqual(
             set(mod.TIPI_DOCUMENTO_AMMESSI), set(mod._registry().keys())
         )
+
+
+class PayloadIvaChiusoTests(unittest.TestCase):
+    """`I6`: la riga di documento non porta piu' un'IVA scelta a mano."""
+
+    # Scopo: ⛔ IL SILENZIO CHE DIVENTA RIFIUTO. Dopo `I6` `payload_iva_id` vale
+    #        sempre `None` sui tre domini. Se qualcuno gli passasse di nuovo un
+    #        valore NON otterrebbe un errore: `applica_riga_documento`
+    #        scivolerebbe sul ramo di AUDIT, che e' best-effort dentro un
+    #        savepoint — gli errori si INGHIOTTONO e a vincere e' il payload.
+    #        Cioe' una riga si salverebbe anche quando l'IVA non e'
+    #        determinabile, su un documento che diventera' fiscale.
+    # ⚠️ Il guard non e' ridondante con le whitelist di riga: quelle fermano il
+    #        CLIENT, questo ferma il CHIAMANTE — un service che un giorno
+    #        rileggesse il valore da un'altra strada.
+    def test_un_payload_iva_viene_rifiutato(self):
+        risolvi = mod.make_risolvi_iva_riga(error_code=_COD, function_name=_FN)
+        with self.assertRaises(ServiceError) as c:
+            risolvi({}, articolo_id="art-1", payload_iva_id=22)
+        self.assertEqual(c.exception.code, _COD)
+        self.assertIn("iva_id", (c.exception.context or {}).get("field", ""))
+
+    # Scopo: ⭐ il gemello — senza `payload_iva_id` il guard NON scatta e si
+    #        arriva alla risoluzione. Senza questo caso, un guard che rifiuta
+    #        sempre passerebbe quello sopra e spegnerebbe l'intera scrittura di
+    #        righe sui tre domini.
+    def test_senza_payload_iva_si_prosegue(self):
+        risolvi = mod.make_risolvi_iva_riga(error_code=_COD, function_name=_FN)
+        with unittest.mock.patch(
+            "apps.vendite.services.iva_resolver_service.IvaResolverService"
+        ) as resolver_cls:
+            resolver_cls.return_value.applica_riga_documento.return_value = (9, {})
+            with unittest.mock.patch.object(
+                mod, "contesto_da_testata", return_value={
+                    "emittente_fiscale_id": 3, "billing_account_id": 1,
+                    "utility_id": None, "data_riferimento": date(2026, 1, 1),
+                },
+            ):
+                esito = risolvi({}, articolo_id="art-1")
+        self.assertEqual(esito, (9, {}))

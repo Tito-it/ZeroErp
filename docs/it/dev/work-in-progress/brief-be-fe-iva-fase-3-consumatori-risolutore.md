@@ -559,7 +559,7 @@ Un lettore solo: [catalogo_service.py](../../../../backend/apps/catalogo/service
 È il secondo dei tre passi di [linee-guida-sql §6b](../../linee-guida-sql.md).
 Consuntivo in §9.
 
-### 4.7 `F7` — `I6`: la casella si chiude · ⛔ **per ultima**
+### 4.7 `F7` — `I6`: la casella si chiude · ✅ **fatta il 2026-08-31**
 
 * **BE**: `iva_id` fuori da `_CREATE_KEYS_RIGA` **e** `_UPDATE_KEYS_RIGA` nei tre
   service — ⚠️ in `preventivi_service` è una **tupla inline** (~1078-1080), non
@@ -590,7 +590,7 @@ F3b  I4 · spezzatura della riga   🟢 il DB è pronto (fatture_atti + capofila
 F3b2 I4 · consumo del plafond     ⛔ serve un task di pipeline = SEED DB
                                      (elenco 2, voce 1)
 F4  I5 · SDI                      📌 quando nascerà il builder FatturaPA
-F7  I6 · la casella si chiude     ⛔ dopo F3b
+F7  I6 · la casella si chiude     ✅ 31/08 — P9 soddisfatta (vedi §9)
 ```
 
 ⭐ **Il 2026-08-31 il team DB ha chiuso tutte e cinque le richieste**
@@ -1220,6 +1220,100 @@ task scriva, invece di scoprirsi a documenti già numerati.
 non esiste, quindi uno smoke oggi proverebbe solo il servizio chiamato a mano —
 cioè quello che i test già fanno. Lo smoke va scritto **con** la riga di
 configurazione, ed è il presidio che il brief al DB chiede.
+
+### ✅ `F7` — `I6`: la casella IVA si chiude
+
+⭐ **`P9` letta come soddisfatta, e la ragione sta nel merito della decisione.**
+`P9` diceva «`I3` → `I4` → `I6`, in sequenza» perché *«`I4` è un breaking change
+dichiarato, e collaudarlo mentre le righe di documento cambiano sotto rende
+illeggibile quale dei due ha rotto cosa»*. Quel cambiamento è **finito**: le
+righe di documento (`F2`) e quelle di fattura (`F3-b1`) nascono già con l'IVA
+del risolutore. Ciò che non è in esercizio è il **consumo del plafond**, che
+tocca la spezzatura — non la casella del form. Decisione di Tid.
+
+| File | Cosa |
+| --- | --- |
+| `ddt_service` · `ordini_service` | `iva_id` fuori da `_CREATE_KEYS_RIGA` **e** `_UPDATE_KEYS_RIGA`; `payload_iva_id=None` |
+| `preventivi_service` | idem, ma la whitelist di UPDATE è una **tupla inline** e la CREATE non ne ha affatto: lì l'unico cancello è `payload_iva_id=None` |
+| i tre `*RigaForm.vue` | `<IvaSelect>` **spenta sempre**, `iva_id` fuori dal payload, e ⛔ il `canSave` non lo pretende più |
+| `it.json` · `en.json` | i **tre messaggi dei gate** riscritti (coda di `N4`) |
+
+⛔ **Il `canSave` andava tolto, non era ripulisti.** Con la casella spenta e
+l'auto-fill morto, se l'anteprima non risponde il campo resta vuoto: la riga non
+si sarebbe potuta salvare, e **la creazione si sarebbe bloccata da sola** senza
+che nulla lo spiegasse. È il difetto che il brief madre aveva già nominato.
+
+⛔ **E i tre messaggi dicevano ancora «scegli l'aliquota»** — cioè mandavano
+l'operatore a cercare un campo ormai spento. Ora dicono dove si imposta davvero:
+*«L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la
+riprende.»* È la coda di `N4`, e senza sarebbe stata la forma peggiore: un
+numero che non si può cambiare **e** un messaggio che dice di cambiarlo.
+
+⚠️ **La chiave non viene RESPINTA, viene SCARTATA**: un client vecchio che manda
+ancora `iva_id` non riceve un errore, il valore semplicemente non arriva. È il
+motivo per cui BE e FE vanno **insieme**, come per `F2`.
+
+#### Le prove, e due difetti nei presidi stessi
+
+| Prova | Esito |
+| --- | --- |
+| suite backend intera | ✅ **4255** · build FE ✅ · eslint ✅ · i18n pulito |
+| ⭐ **mutazione**: `iva_id` rimesso nelle whitelist di DDT e ordini | ✅ **2 casi cadono** |
+| ⭐ **mutazione**: `iva_id` rimesso nella tupla di UPDATE dei preventivi | ✅ **1 caso cade** |
+| ⭐ **mutazione**: `payload_iva_id` torna a leggere il payload | ✅ **1 caso cade** (preventivi: lì è l'unico cancello) |
+
+⛔ **Nessun test è caduto quando la chiusura è stata scritta**, e la cosa è
+istruttiva: **nessun presidio copriva «il payload vince»**. La regola dell'opzione
+B era vissuta per tre giorni senza prova. I quattro casi nuovi la chiudono nei
+due versi.
+
+⚠️ **E il primo dei quattro era VACUO**: cercava `iva_id` dentro una chiave
+`update_fields` che non esiste — `update_riga(id, **campi)` passa i campi
+sparsi — quindi trovava un dizionario vuoto e passava **sempre**. Se ne è accorta
+la mutazione, non la corsa verde. Ora asserisce anche che il test ha davvero
+morso (`descrizione` c'è).
+
+### 🔎 Controllo critico del codice di `F7` — 2026-08-31
+
+> Richiesta di Tid a lavoro finito. **Tre rilievi**, tutti corretti, e il primo
+> è la fragilità peggiore del giro.
+
+⛔ **Un silenzio, dove doveva esserci un rifiuto.** Dopo `I6` `payload_iva_id`
+vale sempre `None`. Se un chiamante gli passasse di nuovo un valore **non
+otterrebbe un errore**: `applica_riga_documento` scivolerebbe sul ramo di
+**AUDIT**, che è best-effort dentro un savepoint — gli errori si **inghiottono**
+e a vincere è il payload. Cioè una riga si salverebbe anche quando l'IVA non è
+determinabile, su un documento che diventerà fiscale.
+⇒ `make_risolvi_iva_riga` ora **rifiuta** un `payload_iva_id` valorizzato.
+⚠️ Non è ridondante con le whitelist: quelle fermano il **client**, questo ferma
+il **chiamante** — un service che un giorno rileggesse il valore da un'altra
+strada. Due presidi nuovi, e il gemello positivo perché un guard che rifiuta
+sempre spegnerebbe l'intera scrittura di righe sui tre domini.
+
+⛔ **Una seconda sorgente per lo stesso fatto**, ed era mia: scrivevo
+`meta.plafond_spezzatura = CAPOFILA|PARTE` per spiegare la quantità non tonda.
+Ma quel fatto lo dice già **`riga_capofila_id`**, ed è da lì che
+`vw_fattura_righe_esposte` deriva `tipo_riga = 'PARTE_PLAFOND'`. Basta un
+`UPDATE` sulla colonna senza il `meta` (o viceversa) e la riga si racconta in
+due modi, senza che niente sollevi. **Tolto.**
+
+📌 **Un ramo diventato irraggiungibile, dichiarato invece che nascosto.** Il ramo
+di audit di `applica_riga_documento` oggi non lo percorre nessuno: i suoi test
+provano una strada che nessun chiamante vive, quindi **non difendono niente**.
+Non l'ho tolto — è la decisione `P10-bis` resa in codice, e ritirarla è una
+scelta di Tid, non una pulizia da fare in una revisione.
+
+✅ **E due controlli che non hanno trovato niente**, che vanno detti perché la
+loro assenza è un risultato: nessun altro punto del frontend manda `iva_id` in
+un payload di riga (le occorrenze restanti sono **risposte** dei riepiloghi), e
+non c'è **asimmetria di modello** — `offerte_righe` e `contratti_righe` non
+hanno affatto `iva_id`, quindi il perimetro dei tre domini è completo.
+
+| Prova | Esito |
+| --- | --- |
+| suite backend intera | ✅ **4257** |
+| ⭐ **mutazione**: il guard di `I6` spento · il guard che rifiuta sempre | ✅ **1 caso** e **1 caso** |
+| build FE · eslint su tutto `src/vendite` · i18n · licenze | ✅ |
 
 ### 🔴 Cosa manca davvero: due righe di seed
 

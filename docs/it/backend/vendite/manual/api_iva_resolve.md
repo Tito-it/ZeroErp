@@ -97,7 +97,7 @@ promessa che qualcuno prima o poi prova a leggere.
 | Campo | A cosa serve |
 | --- | --- |
 | `iva_id` | il valore che va nel campo del form |
-| `origine` | ⭐ **il perché**, e non è un lusso: con `I6` la casella IVA si chiude, e un numero che non si può cambiare **e** che non viene spiegato è la forma peggiore. A video diventa l'hint sotto il campo |
+| `origine` | ⭐ **il perché**, e non è un lusso: dal 2026-08-31 (`I6`) la casella IVA è **chiusa**, e un numero che non si può cambiare **e** che non viene spiegato sarebbe la forma peggiore. A video diventa l'hint sotto il campo |
 | `titolo_iva_id` | quale titolo del cliente ha deciso, quando `origine = 'TITOLO'` |
 
 ⚠️ **`origine` ha un vocabolario del DB ed è APERTO** (`ARTICOLO`,

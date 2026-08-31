@@ -2211,7 +2211,7 @@
       "azione_reason": {
         "causale_mancante": "Transport reason is missing: required to issue the DDT.",
         "prezzo_non_risolvibile": "One or more rows have no resolvable price (own or inherited from the order) with an invoiceable reason.",
-        "iva_mancante": "One or more rows have a price but no VAT rate: choose the rate, or remove the price if the goods are not valued.",
+        "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued.",
         "componenti_prezzo_pendente": "Components with price pending valuation.",
         "componenti_non_valorizzati": "Document components not yet valued."
       }
@@ -2960,7 +2960,7 @@
       "azione_reason": {
         "ddt_collegati": "The order already has linked DDTs: the goods are out, and to bring them back you register a return.",
         "gia_in_commessa": "The order has already been sent to invoicing: cancel the job order activities first.",
-        "iva_mancante": "One or more rows have a price but no VAT rate: choose the rate, or remove the price if the goods are not valued."
+        "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued."
       },
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
@@ -3178,7 +3178,7 @@
         "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
         "gia_in_commessa": "The quote has already been sent to invoicing: cancel the job order activities first.",
         "commessa_gia_emessa": "Some lines have already been invoiced through the job order: reverse them on the invoicing side, or create a new revision of the quote.",
-        "iva_mancante": "One or more rows with a quantity have a price but no VAT rate: choose the rate, or remove the price if the goods are not valued."
+        "iva_mancante": "One or more rows with a quantity have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued."
       },
       "conferma_cambio_stato": "Move the quote to status {stato}?",
       "conferma_revisione": "Create a new revision? The current revision will be deactivated.",

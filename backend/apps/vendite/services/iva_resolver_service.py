@@ -337,6 +337,14 @@ class IvaResolverService:
             "soggetto_id": soggetto_id,
         }
 
+        # 📌 DAL 2026-08-31 (`I6`) I TRE DOMINI PASSANO SEMPRE `None`, e
+        #    `make_risolvi_iva_riga` RIFIUTA il resto: il ramo di audit qui
+        #    sotto e' quindi IRRAGGIUNGIBILE dai documenti di vendita.
+        # ⚠️ Non e' stato tolto — e' la decisione `P10-bis` (opzione B) resa in
+        #    codice, e serve al primo chiamante che avesse un override
+        #    legittimo. Ma va saputo: i suoi test provano una strada che oggi
+        #    nessuno percorre, quindi non difendono nessun percorso vivo.
+        #    Il ritiro e' una decisione di Tid, non una pulizia da fare qui.
         if payload_iva_id is None:
             # Autoritativa: se non sa rispondere, meglio fermarsi che scrivere
             # una riga senza IVA fingendo che sia una scelta.
