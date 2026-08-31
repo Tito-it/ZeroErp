@@ -1358,7 +1358,7 @@ service (`E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"`,
 ### 2.3-quater Slice 6 — Il perimetro dei canali, e la correzione guidata
 
 > 📮 **Aperta il 2026-08-28** da una richiesta del backend:
-> [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md).
+> [brief-db-perimetro-canali-e-correzione-guidata.md](../work-done/brief-db-perimetro-canali-e-correzione-guidata.md).
 > Due cose che si consegnano insieme e non sono la stessa: **un difetto di
 > perimetro** trovato dal passo E-4, e la **madre della correzione** (Q-7), che
 > era differita per scelta e adesso è dovuta.
@@ -3382,7 +3382,7 @@ backend.
 
 > 📮 Aperto il **2026-08-28** dalla richiesta del backend. ⛔ Niente scritto e
 > niente applicato: questo è il piano. Le risposte alle sette domande stanno in
-> [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md) §5.
+> [brief-db-perimetro-canali-e-correzione-guidata.md](../work-done/brief-db-perimetro-canali-e-correzione-guidata.md) §5.
 
 **Quattro changeSet, due righe di CSV e due pgTAP.** ⛔ Niente applicato: il
 migrate lo chiede Tid.

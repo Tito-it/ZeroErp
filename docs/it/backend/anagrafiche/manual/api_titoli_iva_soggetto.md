@@ -129,13 +129,18 @@ e l'errore un'altra.
 ## Note di migrazione
 
 - Fase 2 del cantiere IVA:
-  [brief-be-fe-titoli-iva-soggetto.md](../../../dev/work-in-progress/brief-be-fe-titoli-iva-soggetto.md).
+  [brief-be-fe-titoli-iva-soggetto.md](../../../dev/work-done/brief-be-fe-titoli-iva-soggetto.md).
   L'annullo (`T3-b`) è del 2026-08-31.
 - ⚠️ Al 2026-08-31 `anagrafiche.soggetti_titoli_iva` è **vuota**: nessun titolo
   è ancora stato registrato. Uno smoke che *cercasse* il caso passerebbe a
   vuoto — quello in repo
   (`backend/scripts/tests/smoke-titoli-iva-annullo-movimento.py`) lo
   **costruisce**.
-- 📌 Il consumo del plafond dalla fatturazione non è ancora in esercizio: manca
-  il task di pipeline (elenco 2 delle richieste al team DB). Finché non c'è, il
-  registro si popola solo con le **forzature** manuali.
+- ✅ **Dal 2026-08-31 il consumo del plafond dalla fatturazione è in
+  esercizio**: il task `consuma_plafond_lotto` gira in testa allo step
+  DEFINITIVA, prima della numerazione — cioè mentre la fattura è ancora
+  `EMESSA` e il guard di congelamento lascia scrivere. ⇒ Il registro non si
+  popola più solo con le **forzature** manuali: ci arrivano i movimenti delle
+  fatture, e quando il plafond copre solo una quota la riga **si spezza in due**
+  (`vendite.fatture_righe.riga_capofila_id`).
+  Smoke: `backend/scripts/tests/smoke-consuma-plafond-lotto.py`.

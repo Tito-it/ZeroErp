@@ -26,7 +26,7 @@
 
 > **Destinatario:** team DB (`dev/db-tid`). **Voce unica**, e chiude la coda di
 > `D9` / `I8` lasciata aperta dal brief madre
-> [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md)
+> [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md)
 > (§8-nonies, punto 2: *«si porta dietro la colonna `fatture_righe.contratto`»*).
 >
 > 📌 **La richiesta operativa è raccolta con le altre** in

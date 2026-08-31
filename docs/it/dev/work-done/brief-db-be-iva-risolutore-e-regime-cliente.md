@@ -1,5 +1,31 @@
 # Brief DB/BE — l'IVA non ha un risolutore: l'articolo decide da solo, e il regime del cliente è scritto e mai letto
 
+> ## ✅ CHIUSO — 2026-08-31: adesso l'IVA ha un risolutore, e lo chiamano tutti
+>
+> **Undici voci su undici applicate** — `I0`, `I2`, `I3`, `I4`, `I6`, `I7`,
+> `I8`, `I9`, `I10` chiuse; `I5` chiusa per la metà DB. Lo stato di ognuna è
+> nella tabella del §5.
+>
+> Il cantiere è durato dal **2026-08-27** al **2026-08-31** e si è svolto in
+> quattro fasi, ognuna col suo piano — tutti in `work-done`:
+> [Fase 1](../work-done/brief-be-fe-iva-risolutore-e-regime-cliente.md) ·
+> [Fase 2](../work-done/brief-be-fe-titoli-iva-soggetto.md) ·
+> [Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+>
+> ⭐ **La domanda da cui è partito era un'altra**: *«nel caso di omaggio o
+> reverse charge l'IVA non discende più dall'articolo, è giusto che possa essere
+> modificata?»*. Cercando la risposta è emerso che l'IVA la decideva l'articolo
+> **e nessun altro**, e che le colonne del regime fiscale del cliente erano
+> compilate dall'operatore e **lette da nessuno**. Oggi la casella sul documento
+> è chiusa (`I6`) e a rispondere è un risolutore a due stadi che guarda anche i
+> titoli documentati del soggetto.
+>
+> 📌 **Resta UNA coda**: `I5` per la metà **payload SDI**, che aspetta un builder
+> XML FatturaPA che non esiste. Raccolta nell'**item 9** di
+> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md) — ⚠️ messa lì **prima** di
+> chiudere qui, perché un residuo che resta in un documento chiuso è un residuo
+> perso.
+
 > **Destinatario:** team DB (`dev/db-tid`) per le voci 1 e 3, backend per la 2.
 >
 > **Origine.** Domanda di Tid del 2026-08-27, durante il collaudo della prova 9 di

@@ -70,16 +70,34 @@ Compone la catena **istanza → BA → cliente** in **una `transaction.atomic()`
 | `istanza_utility_id` | — | Istanza pre-esistente (flusso pratiche); se assente ne crea una fittizia |
 | `billing_account_id` | — | BA pre-esistente da riusare; se assente lo crea |
 | `indirizzo_dettaglio_id`, `ba_fatturazione_ordini`, `ba_parent_account_id` | — | Dati istanza/BA opzionali |
-| `termine_pagamento_id`, `modalita_pagamento_id`, `iva_id`² | — | Parametri pagamento |
+| `termine_pagamento_id`, `modalita_pagamento_id` | — | Parametri pagamento |
 | `tipo_gg_scadenza_ft`, `nr_giorni_scadenza`³ | — | Scadenza fattura (coppia vincolata, vedi sotto) |
-| `cliente_pa`, `split_payment`, `codice_cig`, `codice_cup`, `codice_commessa` | — | PA / commessa |
 | `servizio_da_fatturare`, `garanzia_tipo`, `garanzia_importo` | — | Servizio / garanzia |
 | `contatto`, `indirizzi` | — | Contatto + indirizzi ruolo inline (opzionali, da drawer) |
 
 ¹ Solo se `billing_account_id` è assente (BA nuovo). Se il BA è pre-esistente la categoria
 è già sul BA e il valore qui è ignorato.
-² `iva_id` è NOT NULL: se non fornito è risolto dal default DB (`DEFAULT_IVA_ID`).
 ³ Vedi **Coppia scadenza** in fondo.
+
+### ⛔ Sei chiavi che il cliente NON accetta più (2026-08-29, cantiere IVA `I0`/`I8`)
+
+Fino a quella data il payload portava anche `iva_id`, `cliente_pa`,
+`split_payment`, `codice_cig`, `codice_cup`, `codice_commessa`. **Non esistono
+più su `anagrafiche.clienti`**: la colonna è stata rimossa e sono salite dove il
+dato appartiene.
+
+| Cosa | Dove sta adesso | Perché |
+| --- | --- | --- |
+| `iva_id` | ⛔ **nessuna sede sul cliente** | L'IVA non appartiene al cliente. La decide il **risolutore** (`vendite.fn_resolve_iva_riga`), che guarda articolo, uso della fornitura e i **titoli documentati** del soggetto |
+| `cliente_pa` · `split_payment` | `anagrafiche.soggetti` | Sono attributi del **soggetto**, non del suo ruolo di cliente: lo stesso soggetto è PA in ogni rapporto |
+| `codice_cig` · `codice_cup` · `codice_commessa` | `vendite.contratti` | Un CIG appartiene all'**atto**, non all'anagrafica: un cliente può avere più contratti, ognuno col suo |
+
+⚠️ **E `iva_id` sul cliente era già un difetto prima di essere spostato**: veniva
+riempito con un default di parametro e **letto da nessuno**. Il campo prometteva
+una scelta che non aveva effetto.
+
+📌 Storia completa: [Fase 1 del cantiere IVA](../../../dev/work-done/brief-be-fe-iva-risolutore-e-regime-cliente.md)
+(slice `S1`, `S2`, `S3`).
 
 **Errori**
 

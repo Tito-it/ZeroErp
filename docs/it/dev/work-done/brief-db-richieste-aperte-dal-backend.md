@@ -16,7 +16,7 @@
 > `E_FATTURA_RIGA_CAPOFILA_INCOERENTE` nato qui), l'ordinamento delle righe di
 > fattura per `codice` articolo invece che per UUID, e le tre chiavi in
 > `_CREATE_KEYS_TESTATA`. Vivono nel piano di
-> [Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
+> [Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md),
 > che è il documento da guardare adesso.
 >
 > ⚠️ **Se arrivano richieste nuove dal backend, NON si riapre questo file**: è
@@ -457,7 +457,7 @@ ragionamento sull'ordine è giusto.
 ## 5. ⭐ `vendite.fatture_righe` — la riga capofila, per la riga che si spezza
 
 📌 **Il ragionamento è già scritto**, e non si ricopia: decisione `N3` del
-[piano BE/FE di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md#n3), §3.
+[piano BE/FE di Fase 3](../work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md#n3), §3.
 
 **Il fatto.** In fattura il risolutore riceve l'imponibile **vero**, quindi può
 tornare **due** parti: la quota che il plafond del titolo copre e il resto. Una
@@ -628,7 +628,7 @@ giusto («è congelata»), non quello sulla capofila.
 
 Questo elenco raccoglie ciò che il **backend chiede al DB**. Ciò che il DB
 chiede al backend non si ricopia qui: sta nel piano di Fase 3
-([brief-be-fe-iva-fase-3-consumatori-risolutore.md](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md)),
+([brief-be-fe-iva-fase-3-consumatori-risolutore.md](brief-be-fe-iva-fase-3-consumatori-risolutore.md)),
 e al 2026-08-31 sono tre:
 
 * ⛔ **`F0` sono UNDICI codici, non cinque né nove** — vedi la voce 1 qui sopra;

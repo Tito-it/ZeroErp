@@ -12,22 +12,25 @@
 > ([elenco 1](../work-done/brief-db-richieste-aperte-dal-backend.md), chiuso il
 > 2026-08-31 con tutte e cinque le voci applicate).
 >
-> **Stato.** 2026-08-31, verificato sul repo dopo il merge `37aaa5ad7` — non
-> ricordato.
+> **Stato.** 2026-08-31 — ⚠️ **una voce su due e' gia' chiusa**: la 1 e'
+> stata applicata in giornata, resta la **2**, che e' del cantiere
+> **registri di numerazione** e non blocca niente. Verificato sul repo e
+> sul database, non ricordato.
 
 ---
 
 ## L'ordine
 
 ```text
-1. task di pipeline «consuma_plafond_lotto»       2 righe di seed   ⛔ blocca I4
+1. task di pipeline «consuma_plafond_lotto»       ✅ FATTO 31/08
 2. fn_check_registro_disattivabile                1 funzione        🟡 non blocca
 ```
 
-⭐ **La prima costa due righe di JSON**, ed è l'ultima cosa che separa il
-registro del plafond costruito in Fase 2 dall'essere usato: finché non c'è,
-`anagrafiche.fn_consuma_plafond_titolo_iva` **non ha nessun chiamante possibile**
-e il plafond non si consuma mai.
+✅ **La prima è FATTA il 2026-08-31**, ed era l'ultima cosa che separava il
+registro del plafond costruito in Fase 2 dall'essere usato: prima
+`anagrafiche.fn_consuma_plafond_titolo_iva` non aveva **nessun chiamante
+possibile**. Ora il task gira, e il plafond si consuma — provato sul database
+vero (§1).
 
 ⚠️ **La seconda NON blocca niente, e va detto**: il CRUD dei registri procede
 senza — sono i suoi ultimi due passi ad aspettarla, non il cantiere. Non è
@@ -36,10 +39,25 @@ invece che dopo.
 
 ---
 
-## 1. ⛔ Manca il task di pipeline che consuma il plafond
+## 1. ~~⛔ Manca il task di pipeline che consuma il plafond~~ ✅ FATTO
+
+> ✅ **CHIUSA il 2026-08-31**, e applicata **come chiesto**: il task è **in
+> testa** allo step DEFINITIVA su **entrambe** le pipeline (4 e 6), e ⭐ **senza
+> chiave `fn`** — nessuna madre SQL, che era il rischio nominato qui sotto.
+> Verificato sul seed **e** sul database vivo.
+>
+> ⇒ Lo smoke che questa voce chiedeva è scritto e verde:
+> `backend/scripts/tests/smoke-consuma-plafond-lotto.py`, **21 controlli** —
+> compreso il gemello «senza titolo non succede niente» e la prova che la vista
+> mostra le due parti come **righe sorelle**.
+>
+> ⭐ **Il plafond si consuma davvero**: 24 pezzi diventano 12 + 12, l'IVA del
+> titolo sulla parte coperta e l'ordinaria sul resto, un movimento nel registro
+> e l'accumulatore che lo vede. Il registro costruito in Fase 2 non è più una
+> promessa.
 
 📌 **Il ragionamento è già scritto**, e non si ricopia: `P5` e `N3` del
-[piano BE/FE di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md),
+[piano BE/FE di Fase 3](../work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
 sezione `F3-b2`.
 
 ### Il fatto

@@ -325,8 +325,23 @@ delle scritture precedenti sopravviva).
 | `DEFAULT_UTILITY` | EXACT | `config.utilities.codice_interno` |
 | `state_code_iso3` (default ISO3 stati) | — (parametro single-shot, no pattern) | `config.stati.code_iso3` (chiave naturale ISO) |
 | `soggetto_default_stato_iso2` | — | `config.stati.code_iso2` |
+| `DEFAULT_IVA` | EXACT | `config.iva.codice_interno` |
 
-**Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile (es. `DEFAULT_IVA_ID` -> `config.iva.id`). Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
+**Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile. Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
+
+> ✅ **`DEFAULT_IVA_ID` era l'esempio di questo debito, ed e' SALDATO** (2026-08-31).
+> I quattro passi sono stati percorsi tutti: `codice_interno` su `config.iva` +
+> lock (`20260829-43`), rinomina del parametro a **`DEFAULT_IVA`** con valore
+> `22` — il codice, non l'id — e riga nel registry. Il lettore BE
+> (form-defaults dell'articolo) risolve ora con
+> `resolve_config_id_by_codice_interno`.
+>
+> ⛔ **E la lezione che quel caso ha lasciato, perche' vale per i prossimi**: il
+> `codice_interno` dell'aliquota ordinaria e' **`22`**, cioe' un numero. Un
+> lettore rimasto indietro che facesse `int()` **non fallirebbe** — otterrebbe
+> l'id 22, che oggi non esiste ma che il modello ammette eccome. ⇒ Dopo una
+> rinomina di questo tipo il gemello negativo non e' opzionale: cercare il
+> **nome vecchio** per nome nudo, e pretendere zero occorrenze.
 
 **Override del principio**: ammessi solo in casi documentati (es. join interni cross-schema con vincoli di performance, FK fisica reale dove il reseed non e' possibile). Va motivato nella migration o nel manuale.
 

@@ -115,7 +115,7 @@
 > prezzo zero.
 >
 > Catena completa e ragioni in
-> [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md).
+> [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md).
 >
 > ## ✅ PREREQUISITO — SODDISFATTO il 2026-08-17
 >
@@ -362,7 +362,7 @@ esattamente questa: *l'inverso richiede più lavoro*.
 
 ⭐ **L'argomento che ha spostato la scelta è arrivato da un'altra decisione**: il
 pannello «situazione merce» va **anche sul DDT**
-([brief dedicato](../work-in-progress/brief-design-situazione-merce-ordine.md) §5.1). Sull'ordine la
+([brief dedicato](brief-design-situazione-merce-ordine.md) §5.1). Sull'ordine la
 merce fuori partita è un'**assenza** — manca un numero che nessuno sa di dover
 cercare. Sul DDT è una **contraddizione visibile**: le righe del documento sono
 lì sotto, e il pannello sopra ne conterebbe solo alcune. Una spedizione mista
@@ -437,7 +437,7 @@ continueranno a raccontare il mondo di prima — ed è il tipo di incoerenza che
 nessun test intercetta, perché ognuno dei due è coerente con sé stesso.
 
 **1. La nota temporanea nel pannello «situazione merce» dell'ordine.**
-[brief-design-situazione-merce-ordine.md](../work-in-progress/brief-design-situazione-merce-ordine.md)
+[brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md)
 §5.3: il pannello mostra «N da accreditare» **con la dichiarazione che
 l'emissione della NC non è ancora disponibile** e che il dato è solo informativo.
 Quella nota è **temporanea per costruzione**: quando la NC esiste va **rimossa**,
@@ -1757,7 +1757,7 @@ esattamente ciò che il brief del BB dichiara di voler impedire.
 
 | Dove | Cosa dice |
 | --- | --- |
-| [brief situazione merce](../work-in-progress/brief-design-situazione-merce-ordine.md) §6 | *«Nessuna azione nel pannello in questa fase: è una lettura. I verbi vivono dove già stanno»* |
+| [brief situazione merce](brief-design-situazione-merce-ordine.md) §6 | *«Nessuna azione nel pannello in questa fase: è una lettura. I verbi vivono dove già stanno»* |
 | questo brief, §9-bis | *«il posto naturale da cui invocare il verbo diventa proprio quel pannello, dove il numero è già davanti agli occhi»* |
 
 ✅ **Decisione: il pannello resta una LETTURA e offre un collegamento alla coda
