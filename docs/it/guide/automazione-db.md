@@ -78,7 +78,9 @@ Le **regole** (`dbops.automation_rules_tbl`) dichiarano quale automazione applic
 Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override permettono di gestire i casi speciali:
 
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
-* `automation_fk_exclusions` — coppie parent/child da escludere per la regola ATTIVO. ⚠️ **Attualmente inerte**: il filtro è stato disattivato in `20260113-01` ("non più utilizzato") e non re-introdotto; `fn_run_automations_attivo` non consulta la tabella. Per ritirare config senza toccare il guard si usa il pattern `obsoleto_dal` (vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`). Riabilitarlo richiede re-inserire il `NOT EXISTS` nel cursor FK
+* ~~`automation_fk_exclusions` — coppie parent/child da escludere per la regola ATTIVO~~ ⛔ **NON ESISTE PIÙ**: la tabella è stata **droppata** il 2026-01-01 da `20260101-01-drop-attivo-legacy-objects`, insieme alle funzioni trigger legacy. Il filtro era già inerte da `20260113-01`, e la tabella l'ha seguito.
+  ⚠️ **Non c'è nessun meccanismo di esclusione FK, e non c'è una tabella vuota da riempire**: per ritirare configurazione senza toccare il guard si usa `obsoleto_dal` (vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`). Rimetterlo in piedi vorrebbe dire ricreare la tabella **e** re-inserire il `NOT EXISTS` nel cursor FK — cioè un cantiere, non una riga di seed.
+  📌 Rettifica del 2026-08-31: fino a oggi questa riga diceva «la tabella esiste ma è inerte», e ci si è appoggiata una proposta di soluzione poi rientrata.
 * `automation_cleanup_exclusions` — tabelle da escludere dal cleanup automatico
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
 
@@ -634,7 +636,7 @@ Se hai un trigger manuale che fa la stessa cosa (es. audit) e il framework ne cr
 **Cosa fare:**
 
 * Se il trigger manuale e obsoleto, rimuovilo e lascia quello del framework
-* Se il trigger manuale ha logica specifica, aggiungi la tabella in `automation_fk_exclusions` o disabilita la regola per quella tabella specifica
+* Se il trigger manuale ha logica specifica, ~~aggiungi la tabella in `automation_fk_exclusions`~~ ⛔ (quella tabella non esiste più) → **disabilita la regola** per quella tabella, o restringi l'`automation_scope`
 
 ### Il dry-run non mostra modifiche attese
 
@@ -674,7 +676,6 @@ flowchart TB
 erDiagram
     automation_rules_tbl ||--o{ automation_scope : "filtrato da"
     automation_rules_tbl ||--o{ automation_overrides_cols : "personalizzato da"
-    automation_rules_tbl ||--o{ automation_fk_exclusions : "escluso da"
     automation_rules_tbl ||--o{ automation_lock_columns : "esteso da"
     automation_rules_tbl ||--o{ automation_cleanup_exclusions : "escluso da"
     automation_scope ||--o{ fk_index_policy : "delimita"
@@ -797,7 +798,6 @@ Questa checklist e pensata per essere usata prima, durante e dopo il rollout del
 
 - [ ] Template rispettano limite **63 char**
 - [ ] Override definiti in `automation_overrides_cols` dove necessario
-- [ ] Esclusioni FK in `automation_fk_exclusions` dove necessario
 - [ ] `existence_strategy` coerente (`BY_NAME` / `BY_FUNCTION` / `BOTH`)
 
 ### CI/CD
@@ -814,7 +814,6 @@ Questa checklist e pensata per essere usata prima, durante e dopo il rollout del
 | [automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)                                 | dbops  | Regole di automazione          |
 | [automation_scope](/dbzero/dbops/tabelle/automation_scope)                                         | dbops  | Ambito schemi/tabelle          |
 | [automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)                       | dbops  | Override colonne non standard  |
-| [automation_fk_exclusions](/dbzero/dbops/tabelle/automation_fk_exclusions)                         | dbops  | Esclusioni FK per ATTIVO       |
 | [automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)                           | dbops  | Colonne extra per LOCK_COLUMNS |
 | [automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions)               | dbops  | Esclusioni cleanup             |
 | [automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block)                           | dbops  | Config DELETE_BLOCK            |

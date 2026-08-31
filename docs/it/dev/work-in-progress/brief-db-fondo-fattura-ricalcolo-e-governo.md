@@ -18,6 +18,12 @@
 > | 6 | **D-25** | 🔴 `pagamenti` | ✅ `20260831-66` (il varco) · `-67` (`fn_annulla_sistemazione` estesa) |
 > | 7 | **D-24** | `db/pgtap` | ✅ tre file nuovi (38 asserzioni) + due esistenti allineati |
 >
+> ➕ **E un ottavo, arrivato dopo**: la **colonna `azioni` della lista 44**, che il
+> team BE ha girato al DB perché metà di FE-1 è un seed del catalogo. ✅ Seminata
+> (due righe in append, nessun changeSet). 🔴 **Ma la sua catena ha un buco in
+> mezzo**: `DELETE /api/v1/vendite/fondi-fattura/{id}/` **non esiste su nessun
+> branch**, contrariamente a quanto la richiesta dava per fatto. **§9.12**.
+>
 > ### ⚠️ Le tre cose da sapere prima di applicare
 >
 > 1. ⛔ **L'ordine di apply è quello dei numeri**, e ha una dipendenza vera:
@@ -3001,10 +3007,101 @@ formula. Oggi il predicato non espone `reason_key`, perché nessuno la legge.
 
 ---
 
+### 9.12 ✅ La colonna `azioni` della lista 44 — seminata, e 🔴 il resto della catena non c'è
+
+> 📮 **Richiesta del team BE, 2026-08-31.** ⛔ **Perché è una voce DB e non FE-1:**
+> metà di FE-1 è un **seed del catalogo**, cioè la stessa specie di D-19 e D-23.
+> *Un passo si assegna per la sede in cui si scrive, non per il consumatore che
+> lo userà.* La richiesta è accolta e **fatta**.
+
+#### (a) Che cosa è stato scritto
+
+Due righe, in append ai CSV che i mirror `loadUpdateData` già leggono — nessun
+changeSet nuovo. `git diff --numstat` dà **`1 0`** su entrambi.
+
+| File | Riga |
+| --- | --- |
+| `80_data/sql/ui/lista_colonna.csv` | `619,44,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,…,common.col_azioni,100` |
+| `80_data/sql/ui/lista_preset_colonna.csv` | `44,619,999,t,f` |
+
+⚠️ **Tre scelte diverse da come la richiesta le descriveva**, e tutte per
+allinearsi a ciò che il catalogo già fa:
+
+* **`ordine_default = 999`** e non un numero in coda alla serie della 44 (che
+  arriva a 160): tutti e **29** i precedenti usano 999 — «in coda» qui è una
+  costante, non un calcolo;
+* **`gruppo_ordine` vuoto** e non `99`: le liste 1/2/3 hanno 99, ma tutte e
+  sedici le colonne della 44 hanno gruppo e gruppo_ordine vuoti. Con 99 sarebbe
+  stata l'unica con un ordinamento di gruppo in una lista **senza gruppi**;
+* **`priorita = 100`**: in `useResponsiveColumns` si ritira per prima la priorità
+  **più bassa**, quindi la colonna delle azioni vuole la più alta.
+
+✅ **Provato in transazione con `ROLLBACK`**: il resolver restituisce **17
+colonne** con `azioni` ultima e **`colonne_nuove = 0`** — il banner DEF-2 resta
+spento, ed è il motivo per cui la riga nel preset non è opzionale. I quattro
+pgTAP che presidiano il seed liste restano verdi identici, compresa l'invariante
+«ogni colonna di un preset appartiene alla stessa lista del preset».
+
+#### (b) 🔴 «Il consumatore è pronto» non è vero, e va corretto qui
+
+La richiesta si chiudeva con *«ℹ️ `DELETE /api/v1/vendite/fondi-fattura/{id}/`
+esiste, è gated su `governa_fondo_fattura` e i suoi rifiuti arrivano tradotti.
+Manca solo la colonna»*. ⚠️ **Tutte e tre le affermazioni sono false**, misurato
+il 2026-08-31 su **cinque** branch dopo un `fetch` — `dev/db-tid`,
+`dev/backend-tid`, `Tito-dev`, `main` e i rispettivi `origin/`:
+
+```text
+git grep "fondi-fattura"  in backend/  → solo /da-decidere/ e /da-decidere/export/  (due GET)
+git grep "governa_fondo_fattura|fn_cancella_fondo_fattura"  in backend/  → 0 occorrenze
+```
+
+⭐ **È la stessa specie di difetto registrato stamattina** su
+`docs/it/backend/vendite/manual/api_fondi_fattura.md`, dove tre affermazioni
+erano false da nove giorni: *il documento che si legge PRIMA di scrivere il
+codice non è quello che qualcuno rilegge quando il progetto cambia.*
+
+#### (c) La catena è a CINQUE anelli, e la colonna è l'ultimo
+
+| | Pezzo | Stato al 2026-08-31 | Se manca, l'anello dopo… |
+| :---: | --- | --- | --- |
+| 1 | `vendite.fn_cancella_fondo_fattura` | scritta (`20260831-64`), **non applicata** | `42883 function does not exist` |
+| 2 | `governa_fondo_fattura` **concessa a un profilo** | seminata, non applicata, **mai concessa** | kebab spento per tutti tranne il super admin |
+| 3 | `DELETE /api/v1/vendite/fondi-fattura/{id}/` (**BE-4**) | 🔴 **non esiste su nessun branch** | `404` |
+| 4 | lo slot `#actions` nel `.vue` (**FE-2**) | non esiste | la colonna **non si vede** |
+| 5 | la colonna a catalogo (**FE-1**, metà DB) | ✅ seminata qui | — |
+
+⛔ **Nessuno dei quattro salti produce un errore che qualcuno legge.** È il motivo
+per cui l'ordine conta più della singola riga.
+
+#### (d) ⭐ Perché il seed è sicuro ADESSO, e il pericolo è il verso opposto
+
+`FondiFatturaDaDecidereTab.vue` monta `<ListaConfigurabile>` con quattro slot
+(`#cell-motivo`, `#cell-stato_atto`, `#cell-origine`, `#empty`) e **non passa
+`#actions`**. Letto il componente invece di dedurlo — `ListaConfigurabile.vue`
+righe 237-238 — le colonne `tipo_colonna = 'azione'` si rendono **solo se** ce
+n'è una a catalogo **e** il caller passa lo slot.
+
+Quindi finché FE-2 non arriva: nessuna cella vuota, nessun header orfano,
+**niente**. La colonna aspetta il suo consumatore in silenzio, ed è il
+comportamento corretto per un gesto non ancora raggiungibile.
+
+> ⛔ **Il pericolo è l'ordine inverso**: aggiungere `#actions` prima che esistano
+> l'endpoint e la concessione. Lì il pulsante c'è, si clicca, e risponde `404`.
+> ⚠️ Chi scriverà FE-2 non lo saprà dal `.vue`: lo sa da qui.
+
+ℹ️ Il pattern per FE-2 è battuto — **25 viste** passano già `#actions` a
+`ListaConfigurabile` — e la regola del kebab la dichiara già il seed della lista:
+si disegna **solo** sul motivo `NON_PIU_CAPIENTE`, perché gli altri tre non hanno
+un atto da cancellare e *«una colonna che apre un menu vuoto è la stessa cosa di
+una riga di elenco che non può accadere»*.
+
+---
+
 ## 10. Registro
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (sera, 2) | ✅ **Accolta la richiesta del team BE: la colonna `azioni` della lista 44 e' SEMINATA** — due righe in append a `ui/lista_colonna.csv` e `ui/lista_preset_colonna.csv`, nessun changeSet nuovo (i mirror `loadUpdateData` esistenti le prendono), `git diff --numstat` = `1 0` su entrambi. ⭐ **Tre scelte diverse da come la richiesta le descriveva**, tutte per allinearsi al catalogo: `ordine_default = 999` (e' la costante che tutti e 29 i precedenti usano per «in coda», non un numero da calcolare), `gruppo_ordine` **vuoto** (con 99 sarebbe stata l'unica colonna con un ordinamento di gruppo in una lista senza gruppi) e `priorita = 100` (in `useResponsiveColumns` si ritira per prima la priorita' piu' BASSA). Provato in transazione: il resolver da' 17 colonne con `azioni` ultima e **`colonne_nuove = 0`**, cioe' il banner DEF-2 resta spento — ed e' la ragione per cui la riga nel preset non e' opzionale; i quattro pgTAP che presidiano il seed liste restano verdi identici. 🔴 **E una correzione alla richiesta, misurata**: la sua chiusa diceva *«il consumatore e' pronto: `DELETE /api/v1/vendite/fondi-fattura/{id}/` esiste, e' gated su `governa_fondo_fattura`, i rifiuti arrivano tradotti — manca solo la colonna»*, e **tutte e tre le affermazioni sono false** — cercato su CINQUE branch dopo un `fetch` (`dev/db-tid`, `dev/backend-tid`, `Tito-dev`, `main` e gli `origin/`): in `backend/` ci sono le sole due GET, e i due nomi non compaiono da nessuna parte. ⭐ *E' la stessa specie del difetto registrato stamattina su `api_fondi_fattura.md`: il documento che si legge PRIMA di scrivere il codice non e' quello che qualcuno rilegge quando il progetto cambia.* ⛔ **La catena e' a CINQUE anelli e la colonna e' l'ULTIMO** (funzione applicata → azione concessa a un profilo → BE-4 → slot `#actions` → colonna), e nessuno dei quattro salti produce un errore che qualcuno legge: `42883`, kebab spento, `404`, colonna invisibile. ⭐ **Il seed pero' e' inerte per costruzione e va bene cosi'**: `ListaConfigurabile` (righe 237-238, letto e non dedotto) rende le colonne `azione` **solo se** ce n'e' una a catalogo **e** il caller passa lo slot — e `FondiFatturaDaDecidereTab.vue` oggi ne passa quattro ma non quello. Niente cella vuota, niente header orfano. ⛔ **Il pericolo e' il verso opposto**: chi aggiungesse `#actions` prima dell'endpoint avrebbe un pulsante che risponde 404, e dal `.vue` non lo saprebbe — lo sa da **§9.12**. 📮 Nessuna riga di `backend/` o `frontend/` toccata: perimetro DB rispettato, la richiesta al BE e' scritta. |
 | 2026-08-31 (sera) | ✅ **SCRITTI TUTTI E SETTE I PASSI DB**, provati e documentati — e ⛔ **non applicati**: nessun `liquibase update`, l'apply lo autorizza Tid. Sette changeSet `20260831-61`…`-67` (il guard di nascita, le due policy RLS, il predicato + la cancellazione + il reset che ci si appoggia, il varco delle sistemazioni e `fn_annulla_sistemazione` estesa), tre CSV di `80_data` (una riga corretta e sette codici nuovi, cinque messaggi, l'azione di processo `governa_fondo_fattura`), tre pgTAP nuovi (38 asserzioni) e due esistenti allineati. Elenco completo e scostamenti in **§9.11**. ⚠️ **I numeri di changeSet sono stati riassegnati due volte**: il primo blocco è stato occupato da un altro cantiere *mentre lo scrivevo* — con cantieri paralleli il numero «libero» scade nel minuto, e si ricontrolla prima di SALVARE. ⭐ **Cinque scostamenti dal piano, e nessuno di gusto**: il predicato ha **sei** motivi e non quattro (`ATTO_NON_TROVATO` nasce con la row security di D-20, `SISTEMAZIONE_ATTIVA` è la FK detta prima che scatti, cioè un 23503 nudo evitato e un reset di lotto che smette di fallire per intero); 🔴 **la soglia di G-3 era stantìa di UN GIORNO** — il brief scriveva `NOT IN ('DRAFT','EMESSA')`, ma dal `20260830-02` la guardia dei satelliti legge `config.stati_doc_fiscale.congela_fiscale`, e riscrivere la lista avrebbe rimesso in circolo la nona copia di una frase appena tolta; l'ordine dentro D-25 è **invertito** rispetto a §9.6-b perché la FK `NO ACTION` non lascia fare altrimenti, e la garanzia «solo se la cancellazione riesce» regge lo stesso **per costruzione** (una funzione, una transazione); **sette** codici errore invece di due; e il varco è chirurgico su **tre** assi e non due — il terzo sono le **colonne**, elencando le AMMESSE e non le vietate, così una colonna nuova nasce chiusa. 🔴 **E cinque cose le ha trovate il COLLAUDO, non il ragionamento**: (1) il predicato fail-closed sulla figlia «senza stato» rendeva rossi **sette** test veri — il modello ammette quella figlia, e la decisione giusta era quella che la guardia dei satelliti prende già; (2) il guard di nascita **oscura il CHECK** (un BEFORE ROW precede i vincoli), quindi un test che asseriva `23514` è stato riscritto su `P0001` e gli si è aggiunta la rete strutturale, o spegnere il vincolo passerebbe inosservato; (3) il presidio di copertura della pulizia aveva un perimetro invecchiato e lo ha **detto**, perché i `DELETE` avevano cambiato sede; (4) ⛔ un mio test **diceva** di presidiare l'asse delle colonne e non lo presidiava — la prova di mutazione lo lasciava verde, e serviva un test in più, non lo stesso scritto meglio; (5) ⛔ e un altro era **verde per il motivo sbagliato**, perché ereditava dal caso precedente una veste `CLIENTE_PORTALE`: l'`INSERT` falliva per il ruolo, non per l'emittente. ⚠️ **Sette mutazioni provate**, e una non ha fatto cadere niente: il ramo «la figlia non si legge» resta **scoperto**, ed è dichiarato nel file invece che nascosto fra i verdi — la FK non lascia costruire un atto che punta una fattura irraggiungibile. 📮 **Restano**: l'apply; l'**assegnazione in-app** di `governa_fondo_fattura` (⚠️ il seed non è la concessione — `registra_distinta` è a catalogo dal 25/08 e ancora chiusa per tutti); il rilancio dei pgTAP **come applicazione** dopo l'apply (qui giravano da owner, quindi la RLS non è stata esercitata se non nel file `rls/`, che se la arma da sé); e due richieste al backend che nascono dai codici — `genera_error_policies` e la frase di ripiego in `error_messages_fallback.py`. |
 | 2026-08-31 | 🔵 **Allineati i punti in cui il documento raccontava un sistema che non c'e' piu' — nessun oggetto DB toccato, nessun codice scritto.** Su richiesta di Tid, che ha separato i 🔴 «documento disallineato» (miei) dai 🔴 «manca un oggetto a DB» (del team, §9.10). ⭐ **Il rilievo piu' grosso era FUORI dal brief**, e il giro del 29/08 non l'aveva visto perche' guardava il brief: `docs/it/backend/vendite/manual/api_fondi_fattura.md` dava BE-4 come i due `POST` dell'atto manuale, in attesa di `fn_crea_fondo_fattura_manuale` / `fn_annulla_fondo_fattura` e — testualmente — *«dopo che `pagamenti` ha un processo rimborsi da cui chiamarla»*: **tutte e tre le affermazioni erano false da nove giorni**, perche' il processo rimborsi e' arrivato il 22/08 e non passa di li'. Riscritta con il perimetro vero (un solo `DELETE`, su D-21, per l'ALTRA popolazione) e annotata anche la scelta RLS ribaltata da G-2. ⚠️ *E' la stessa specie di difetto di D-17 e dei quattro di §9.2-e, ma con un aggravante che vale la pena scrivere: qui a mentire non era il brief — era la **doc di riferimento del backend**, cioe' il documento che uno sviluppatore legge PRIMA di scrivere l'endpoint, e che nessuno rilegge quando cambia il progetto.* Nel brief: **D-12** e `E_FONDO_ANNULLAMENTO_BLOCCATO` marcati superati in loco da G-1 (erano ancora scritti come piano vivo), la **matrice di D-7** completata con gli stati di **nascita** (era incompleta, non sbagliata — §9.2-c/D-22), la testata di **BE-4** in §8.3 allineata a §9.3, e spuntata in **D-20** la meta' «riscrivi la ragione in §8.6», che era gia' fatta. ⛔ **D-19 NON e' stato toccato benche' sembri una correzione di testo**: `codici_errore.csv` e `messaggi_errore.csv` sono **seed del catalogo DB**, non documentazione — restano il passo 1 di §9.10. 🔴 **Nessun altro 🔴 e' calato**: D-19…D-25 verificati di nuovo sul repo il 2026-08-31 e **tutti assenti** (nessuna policy su `fatture_fondi_fattura_source` in `00_schema/`, `fn_cancella_fondo_fattura` nominata dal solo brief, `guard_transizione` ancora solo `BEFORE UPDATE`, `governa_fondo_fattura` fuori da `azioni_processo.csv`, `fn_annulla_sistemazione` che fa un solo `UPDATE` e non tocca il fondo), e con loro BE-4 (solo le due GET a `urls_v1.py`) e FE-1/2/3 📮 **E in testa al documento c'e' ora una nota datata per il team DB**, su richiesta di Tid: i **sette** passi in ordine di lavorazione, con per ciascuno lo schema, che cosa e', **quale sezione leggere** e **la trappola** — piu' le dipendenze (1,2,3,5 indipendenti; D-21 e' il pezzo che 6 e 7 consumano) e cio' che **non** e' del team DB. ⭐ *Serve a far partire il lavoro senza rifare l'analisi*: §1…§8 sono il ragionamento e **non contengono lavoro aperto**, ma sono lunghi abbastanza da sembrare da leggere — e i passi superati sono marcati in loco proprio perche' chi entra adesso non li riscriva. ⚠️ *Un brief che ha ragione ma pretende 2800 righe di lettura prima del primo changeSet e' un brief che rallenta il lavoro che ha progettato.* |
 | 2026-08-29 (notte, 4) | ✅ **G-2 CHIUSA da Tid: la RLS su `fatture_fondi_fattura_source` SI ACCENDE**, e con lei **tutte e cinque le domande sono chiuse**: da qui il cantiere non aspetta piu' nessuna decisione. ⭐ **L'argomento decisivo il 15 agosto non c'era**: quando §8.6 decise «niente RLS» l'unico accesso era **la lista**, protetta dal `JOIN INNER` con `vendite.fatture`; il gesto di D-21 ne apre uno di natura diversa — `DELETE /vendite/fondi-fattura/{id}/` e' un accesso **per id**, e un id non ha nessun JOIN davanti. E' **la stessa forma** del buco che E-4 ha trovato il 28/08 su `GET /conti-incasso/`. ⚠️ Non e' cambiata solo la conclusione: era **la premessa** a essere scaduta, ed e' il difetto piu' insidioso — *una conclusione giusta appoggiata a una premessa scaduta produce la decisione sbagliata al giro dopo, quando la domanda cambia*. 🔴 **E la misura ha trovato piu' di quanto la domanda chiedesse**: guardando QUALI satelliti della fattura hanno le policy viene fuori che `fatture_scadenze`, `fatture_indirizzi`, `fatture_righe` e `fatture_riepiloghi_iva` hanno **entrambe** le famiglie di presidi — congelamento oltre `EMESSA` **e** RLS `ef_whitelist` + `ba_ownership` — e il fondo **non ha ne' l'una ne' l'altra**. ⭐ *Sono la stessa dimenticanza vista da due lati, discussa in due posti diversi (D-6 la prima, §8.6 la seconda) e per questo mai riconosciuta come una sola: due eccezioni ragionevoli prese una alla volta fanno una regola che non vale per un oggetto solo — e quell'oggetto e' l'unico che muove denaro.* ⭐ **E qui la policy e' piu' SEMPLICE che sugli altri satelliti**: `fatture_scadenze` dovette delegare a `fn_scope_ba_ownership_via_fattura` perche' il BA in riga non ce l'ha, mentre qui `emittente_soggetto_ruolo_id` e `billing_account_id` sono **NOT NULL in colonna** — niente JOIN, e soprattutto niente `WITH CHECK` che cerchi il legame che l'`INSERT` sta scrivendo, che e' esattamente l'errore che il team DB ha dovuto correggere su `enti_incasso`. ⚠️ **Tre verifiche dichiarate, non formalita'**: **sei** file pgTAP scrivono su questa tabella e dal 2026-08-07 girano **come l'applicazione** (una fixture che scrive dove l'applicazione non scrive non passa piu' — vanno guardati **prima** dell'apply); il giro notturno gira come `zeroerp_batch_fatturazione` che ha `BYPASSRLS`, quindi non cambia niente — **da verificare, non da dedurre**, perche' rompendosi si vedrebbe solo la mattina dopo; e un **conteggio a zero non e' una prova** su una tabella vuota, valgono solo la misura strutturale e quella su due operatori veri. ⚠️ **Nessun codice scritto**: aggiunte **§9.9** e **§9.10** (l'ordine in cui i sette passi DB passano al team, che sta **qui** e non in un brief a parte — *un brief separato si giustifica quando cambia il soggetto, non chi lavora*), ribaltata la riga di §8.6 e riscritto D-20 |
