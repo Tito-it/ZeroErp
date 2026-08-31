@@ -1,0 +1,235 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `fn_check_parameter_fk_surrogate`: SU UN PARAMETRO IL VUOTO **E'** L'ASSENZA
+#   decisione A di brief-db-richieste-aperte-dal-backend (Tid, 2026-08-31),
+#   voce 3 / brief-db-default-iva-chiave-naturale §2-bis
+#
+# ── ⛔ IL FATTO: `parameters.csv` NON E' RISCRIVIBILE ────────────────
+#
+#   La riga `12,DEFAULT_UTILITY,` ha `default_value` **stringa vuota**. Il
+#   dispatcher esce presto solo su `NULL`; su `''` chiama questa check, che
+#   cerca `''` in `config.utilities.codice_interno`, non lo trova e solleva
+#   `E_PARAMETER_DEFAULT_VALUE_INVALID`.
+#
+#   ⚠️ E il mirror `20250715-01-upsert_parameters` e' `runOnChange: true`:
+#   QUALUNQUE modifica al CSV ne cambia il checksum, lo sveglia, e la
+#   ri-lettura muore su quella riga — fermando il migrate. E' successo il
+#   2026-08-25, ed e' documentato nell'intestazione di `20260826-03`.
+#
+#   ⛔ La via d'uscita ovvia e' chiusa: mettere il token `NULL` nella cella non
+#   si puo', perche' `config.parameters.default_value` e' **NOT NULL**. Quella
+#   riga oggi non puo' contenere ne' `''` ne' `NULL`.
+#
+# ── ⭐ L'ARGOMENTO STA SUL MODELLO, non sul far passare il migrate ───
+#
+#   `config.parameters.default_value` e' `NOT NULL`. E lo e' anche
+#   `config.parameter_overrides.overridden_value`, cioe' l'altro consumatore di
+#   questa funzione — verificato su `information_schema`.
+#
+#   ⇒ **Su entrambe le tabelle il valore non puo' essere NULL**, quindi il ramo
+#   `p_value IS NULL` di questa funzione e' oggi codice IRRAGGIUNGIBILE, e la
+#   regola che dichiara — «assenza di valore = nessun controllo» — non si applica
+#   mai. La stringa vuota e' l'unica forma che «nessun valore» puo' assumere su
+#   un parametro, e la riga `DEFAULT_UTILITY` e' il controesempio che lo mostra:
+#   la sua `description` dice testualmente *«NULL = nessun default»*, cioe'
+#   afferma una cosa che quella colonna non puo' contenere.
+#
+#   Questo changeSet non allarga un cancello: fa dire alla funzione la regola
+#   che gia' voleva dire, sulla forma in cui il dato esiste davvero.
+#
+# ── ⚠️ SOLO LA STRINGA VUOTA, non il bianco ────────────────────────
+#
+#   `p_value = ''` e basta: un valore fatto di spazi NON passa. Un
+#   `codice_interno` non e' mai bianco, quindi `' '` e' un refuso di battitura —
+#   e questa check e' l'unica cosa che lo intercetta. Allargare a `btrim()`
+#   spegnerebbe quel presidio per comodita', e in cambio di niente.
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────
+#
+#   * il ramo «nessun pattern matcha» → `true`, invariato;
+#   * il ramo «pattern matcha e il valore NON esiste» → `false`, invariato. ⛔ E'
+#     la ragione per cui il registry vale qualcosa: se cade quello, il framework
+#     non serve piu' a niente. Il pgTAP lo verifica insieme al ramo nuovo —
+#     provare solo che il vuoto passa vorrebbe dire allargare un cancello senza
+#     controllare che regga ancora.
+#
+# ── ORDINE DEI PASSI, da qui in poi obbligato ──────────────────────
+#
+#   1. QUESTO changeSet (`20_code`);
+#   2. la riga di registry su `DEFAULT_IVA` (append a
+#      `80_data/sql/config/parameter_fk_surrogate.csv`);
+#   3. il rename e il nuovo valore in `80_data/sql/config/parameters.csv`.
+#
+#   ⚠️ Il passo 1 viene PRIMA del 3 per forza: il 3 sveglia il mirror, e il
+#   mirror rilegge `DEFAULT_UTILITY`. Se la check non e' ancora larga, il
+#   migrate si ferma li' — cioe' il difetto che questo file esiste per togliere,
+#   riprodotto. La fase `20_code` gira prima di `80_data`, quindi l'ordine e'
+#   garantito dal changelog e non dalla fortuna.
+#
+# Base: doc auto-gen docs/it/dbzero/script/funzioni/fn_check_parameter_fk_surrogate.md
+#   (corpo vivo). Firma invariata -> CREATE OR REPLACE puro, nessun DROP.
+# Verifica: db/pgtap/config/test-parameter-fk-surrogate-vuoto-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260831-36-update-fn-check-parameter-fk-surrogate-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20260831-36-update-fn-check-parameter-fk-surrogate-vuoto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_check_parameter_fk_surrogate: su un parametro la stringa VUOTA
+        vale come assenza di valore, esattamente come il NULL. ⭐ L'argomento sta
+        sul modello: default_value su config.parameters e overridden_value su
+        config.parameter_overrides sono ENTRAMBE NOT NULL, quindi il ramo
+        `p_value IS NULL` e' oggi codice irraggiungibile e la regola che dichiara
+        non si applica mai — il vuoto e' l'unica forma che «nessun valore» puo'
+        assumere. ⛔ Senza, parameters.csv e' un file INTOCCABILE: la riga
+        DEFAULT_UTILITY ha default_value vuoto, il mirror e' runOnChange, e
+        qualunque modifica al CSV lo sveglia e fa morire il migrate su quella riga
+        (successo il 2026-08-25). ⚠️ Solo la stringa vuota, non il bianco: un
+        valore fatto di spazi resta rifiutato, perche' e' un refuso e questa check
+        e' l'unica cosa che lo intercetta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_check_parameter_fk_surrogate';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_parameter_fk_surrogate(
+                  p_code text,
+                  p_value text
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS
+              $BODY$
+              -- Scopo: check FK-surrogata generico per parametri.
+              -- Cerca un pattern abilitato in config.parameter_fk_surrogate
+              -- che matchi p_code (EXACT prioritario su LIKE), poi verifica
+              -- che p_value esista in <target_schema>.<target_table>.
+              -- <target_column> via SQL dinamico.
+              -- Ritorna true (passa) se: p_value assente, o nessun pattern
+              -- matcha, o lookup trova il valore. Ritorna false solo se
+              -- pattern matcha E valore non esiste.
+              DECLARE
+                  v_target_schema text;
+                  v_target_table  text;
+                  v_target_column text;
+                  v_lookup_sql    text;
+                  v_found         boolean;
+              BEGIN
+                  -- ⭐ rev 2026-08-31: «assente» comprende la STRINGA VUOTA.
+                  --    default_value (config.parameters) e overridden_value
+                  --    (config.parameter_overrides) sono ENTRAMBE NOT NULL,
+                  --    quindi il solo ramo NULL era irraggiungibile da tutti e
+                  --    due i chiamanti: su un parametro il vuoto E' l'unica
+                  --    forma che «nessun valore» puo' assumere.
+                  -- ⚠️ Solo `= ''`, non btrim(): un valore fatto di spazi resta
+                  --    rifiutato. Un codice_interno non e' mai bianco, quindi
+                  --    ' ' e' un refuso, e questa check e' l'unica cosa che lo
+                  --    intercetta — allargare a btrim spegnerebbe quel presidio
+                  --    in cambio di niente.
+                  IF p_value IS NULL OR p_value = '' THEN
+                      RETURN true;
+                  END IF;
+
+                  SELECT pfs.target_schema, pfs.target_table, pfs.target_column
+                    INTO v_target_schema, v_target_table, v_target_column
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.enabled
+                     AND (
+                            (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p_code)
+                         OR (pfs.match_mode = 'LIKE'  AND p_code LIKE pfs.code_pattern)
+                     )
+                   ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
+                   LIMIT 1;
+
+                  IF v_target_schema IS NULL THEN
+                      -- Nessuna regola: code non soggetto a guard.
+                      RETURN true;
+                  END IF;
+
+                  v_lookup_sql := format(
+                      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = $1)',
+                      v_target_schema, v_target_table, v_target_column
+                  );
+                  EXECUTE v_lookup_sql INTO v_found USING p_value;
+                  RETURN v_found;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION script.fn_check_parameter_fk_surrogate(text, text)
+              IS 'Check FK-surrogata generico per parametri. Lookup registry config.parameter_fk_surrogate (EXACT > LIKE), poi lookup dinamico sul target. Ritorna boolean. Usata dai dispatcher config.trgfn_parameters_fk_surrogate_dispatch e config.trgfn_parameter_overrides_fk_surrogate_dispatch. ⭐ rev 2026-08-31: «valore assente» comprende la STRINGA VUOTA e non solo il NULL. L''argomento sta sul modello e non sulla comodita'': config.parameters.default_value e config.parameter_overrides.overridden_value sono ENTRAMBE NOT NULL, quindi il ramo NULL era codice irraggiungibile da tutti e due i chiamanti e la regola che dichiarava — «assenza di valore, nessun controllo» — non si applicava mai; su un parametro il vuoto e'' l''unica forma che «nessun valore» puo'' assumere. ⛔ Senza questa rev, db/changelog/migrations_v2/80_data/sql/config/parameters.csv e'' un file INTOCCABILE: la riga DEFAULT_UTILITY ha default_value vuoto e una riga di registry attiva, il suo mirror e'' runOnChange, e qualunque modifica al CSV lo sveglia e fa morire il migrate su quella riga (successo il 2026-08-25). ⚠️ Solo la stringa vuota, NON il bianco: un valore fatto di spazi resta rifiutato, perche'' un codice_interno non e'' mai bianco e questa check e'' l''unica cosa che intercetta quel refuso. brief-db-default-iva-chiave-naturale §2-bis (decisione A, Tid 2026-08-31).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: torna al solo ramo NULL (stato pre 2026-08-31).
+              -- ⚠️ Con questa versione parameters.csv torna intoccabile.
+              CREATE OR REPLACE FUNCTION script.fn_check_parameter_fk_surrogate(
+                  p_code text,
+                  p_value text
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS
+              $BODY$
+              DECLARE
+                  v_target_schema text;
+                  v_target_table  text;
+                  v_target_column text;
+                  v_lookup_sql    text;
+                  v_found         boolean;
+              BEGIN
+                  IF p_value IS NULL THEN
+                      RETURN true;
+                  END IF;
+
+                  SELECT pfs.target_schema, pfs.target_table, pfs.target_column
+                    INTO v_target_schema, v_target_table, v_target_column
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.enabled
+                     AND (
+                            (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p_code)
+                         OR (pfs.match_mode = 'LIKE'  AND p_code LIKE pfs.code_pattern)
+                     )
+                   ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
+                   LIMIT 1;
+
+                  IF v_target_schema IS NULL THEN
+                      RETURN true;
+                  END IF;
+
+                  v_lookup_sql := format(
+                      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = $1)',
+                      v_target_schema, v_target_table, v_target_column
+                  );
+                  EXECUTE v_lookup_sql INTO v_found USING p_value;
+                  RETURN v_found;
+              END;
+              $BODY$;

@@ -16,7 +16,7 @@
 >
 > **Stato.** 2026-08-29 — ✅ **`S1`, `S2`, `S3-a` e `S4` sono scritte, riviste e
 > verdi**; `S3-b` è **gated** su un changeSet DB, richiesto con
-> [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md).
+> [brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md).
 > Avanzamento nel **§8**, che include la **revisione critica** del 2026-08-29 e i
 > sei difetti che ne sono usciti — fra cui una regressione dura sulla creazione
 > contratto che nessuna delle verifiche automatiche poteva vedere.
@@ -31,7 +31,7 @@
 > cosa scaduta insegna una cosa falsa a chi si fida.
 >
 > **Correlati:**
-> [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md) (figlio, `S3-b`) ·
+> [brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md) (figlio, `S3-b`) ·
 > [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) ·
 > [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) ·
 > [vendite.contratti](/dbzero/vendite/tabelle/contratti) ·
@@ -263,7 +263,7 @@ chiave veniva scartata in silenzio»*. Farlo due volte sarebbe la forma peggiore
 di regressione: quella già documentata accanto al punto in cui si ripete.
 
 📌 **Brief al team DB (`dev/db-tid`), voce unica** — ✅ **scritto il 2026-08-29**:
-[brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md).
+[brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md).
 In sintesi: estendere `v_testata_allowed`
 di `vendite.fn_create_contratto` con `'codice_cig'`, `'codice_cup'`,
 `'codice_commessa'`; changeSet nuovo con numerazione successiva, corpo preso
@@ -602,7 +602,7 @@ i test che parlano col DB prima non giravano).
 ⛔ **Non fatta, ed è una scelta.** `vendite.fn_create_contratto` ha una whitelist
 interna (`v_testata_allowed`) che non conosce i tre codici e li **scarta in
 silenzio**. Brief passato al team DB:
-[brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md).
+[brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md).
 
 Il segnalibro è un test: `test_create_contratto_non_mappa_ancora_i_codici_atto`
 asserisce oggi che le tre chiavi **non** sono in `_CREATE_KEYS_TESTATA`, e **si

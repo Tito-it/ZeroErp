@@ -22,6 +22,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
 | aliquota_iva | numeric | YES |  |
+| tx_id | uuid | YES |  |
+| storicizza | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

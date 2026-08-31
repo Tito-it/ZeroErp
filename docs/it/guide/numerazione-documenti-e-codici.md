@@ -1,0 +1,283 @@
+# Guida – Numerazione dei documenti e codici automatici
+
+> **Destinatari:** chiunque debba capire come nasce un numero o un codice in ZeroErp — sviluppatori database, backend, frontend e analisti funzionali
+>
+> **Prerequisiti:** nessuno. Le parti tecniche stanno in fondo a ogni capitolo.
+>
+> **Stato:** aggiornata al **31-08-2026**, dopo il trasloco di DDT, ordini, resi e commesse sui registri. Descrive **come funziona oggi**, non come funzionava prima.
+
+---
+
+## 1. Il problema, in una pagina
+
+Quasi tutto in un gestionale ha un identificativo: il cliente ha un codice, la
+fattura ha un numero, la commessa ha il suo. Sembrano tutti la stessa cosa, e
+invece si dividono in **due famiglie molto diverse**.
+
+| | Esempio | Che cosa serve garantire |
+| --- | --- | --- |
+| **Un codice** | Il cliente `BAC/0001234` | Che sia **unico**. Basta. |
+| **Un numero di documento** | La fattura numero `123`, anno `2026`, serie `A` | Che sia unico **e** che segua una progressione **per azienda e per anno**, senza salti d'anno e senza mescolarsi con quella di un'altra azienda |
+
+⭐ **Il secondo caso è molto più esigente del primo**, e non per pignoleria: la
+progressione dei numeri di un documento è ciò che, davanti a un controllo, dimostra
+che non ne sono stati nascosti. Un codice cliente non deve dimostrare niente a
+nessuno.
+
+Per questo in ZeroErp ci sono **due meccanismi**, non uno.
+
+---
+
+## 2. Le due aree
+
+### 2.1 Il **catalogo dei formati** — `config.sistema_codici`
+
+È una tabella di configurazione che dice, per ogni tipo di codice, **che aspetto
+ha**: un prefisso, un separatore, quante cifre.
+
+```
+prefisso = BAC     separatore = /     cifre = 7      →     BAC/0001234
+```
+
+Per la maggior parte dei codici fa anche **il conteggio**: tiene un contatore che
+avanza di uno a ogni riga nuova, e assegna il codice **nel momento in cui la riga
+viene creata**.
+
+**Chi lo usa così, oggi** — clienti, soggetti, fornitori, vettori, istanze di
+utility, pratiche, preventivi, contratti, offerte commerciali, lotti di
+fatturazione.
+
+### 2.2 Il **motore dei registri** — `vendite.registri_fatturazione`
+
+Un **registro** è un sezionale di numerazione: appartiene a **una** azienda
+emittente, tiene il proprio contatore, e sa ripartire da 1 a ogni Capodanno.
+
+**Chi lo usa, oggi** — fatture, documenti di trasporto, ordini, commesse, resi.
+
+⚠️ **Il nome della tabella dice meno di quello che fa.** Si chiama
+`registri_fatturazione` perché all'inizio numerava solo le fatture; oggi numera
+cinque famiglie di documento. Il nome non è stato cambiato di proposito: cambiarlo
+significherebbe toccare decine di oggetti collegati senza modificare **nessun**
+comportamento, e non è un lavoro da infilare dentro un altro. Il debito è
+dichiarato, non dimenticato.
+
+---
+
+## 3. Le tre cose che un numero richiede — e chi le fornisce
+
+Qui sta il punto che chiarisce tutto il resto. Assegnare un numero vuol dire
+mettere insieme **tre** cose diverse, e non è detto che vengano dallo stesso posto.
+
+| | Che cos'è | Chi la fornisce |
+| --- | --- | --- |
+| **Il formato** | prefisso, separatore, quante cifre | `config.sistema_codici` — ⚠️ tranne la fattura, che non ha formato: il suo numero è il progressivo nudo |
+| **Il contatore** | chi tiene il conto e fino a quanto è arrivato | il sistema codici **oppure** il registro |
+| **Il momento** | quando il numero viene consegnato | dipende dal documento |
+
+⭐ **È la scoperta che ha reso semplice il lavoro di agosto 2026:** i quattro
+documenti traslocati **hanno cambiato solo il contatore** — una delle tre cose. Il
+formato continuano a prenderlo da dove lo prendevano prima, e il momento è rimasto
+quello di sempre. Ecco perché un cambiamento che sembrava grosso è costato poco.
+
+Nel catalogo dei formati questa distinzione si legge in una casella:
+`usa_sequenza`. Se è **sì**, quel codice usa anche il contatore del sistema codici;
+se è **no**, il formato viene da lì ma il conteggio lo fa qualcun altro.
+
+---
+
+## 4. Come nasce oggi ogni identificativo
+
+*(fotografia al 31-08-2026)*
+
+| Documento / entità | Formato | Contatore | Quando riceve il numero |
+| --- | --- | --- | --- |
+| **Fattura** | *nessuno* (vedi sotto) | **registro** | all'emissione |
+| **DDT** | catalogo formati | **registro** | quando passa a *emesso* |
+| **Ordine** | catalogo formati | **registro** | alla creazione |
+| **Reso** | catalogo formati | **registro** | quando passa a *confermato* |
+| **Commessa** | catalogo formati | **registro** | alla creazione |
+| Preventivo, contratto, offerta | catalogo formati | catalogo formati | alla creazione |
+| Lotto di fatturazione | catalogo formati | catalogo formati | alla creazione |
+| Cliente, soggetto, fornitore, vettore, istanza, pratica | catalogo formati | catalogo formati | alla creazione |
+
+### ⚠️ Tre modi diversi di *scrivere* l'identità, e conviene saperlo
+
+Non tutti i documenti scrivono la propria identità allo stesso modo, e la differenza
+si vede solo guardando le colonne:
+
+* **la fattura la tiene in tre campi separati** — numero, anno, serie — e il campo
+  «numero» contiene il progressivo **nudo**, senza prefissi. La stringa che si legge
+  su un documento stampato la compone chi stampa, non il database;
+* **DDT, ordini e resi** tengono anno e serie in campi propri, ma nel campo «numero»
+  scrivono una stringa **già formattata** con prefisso e cifre di riempimento (per
+  esempio `DDT0000123`), presa dal catalogo dei formati;
+* **la commessa tiene tutto dentro un campo solo**, il codice, perché non ha campi
+  separati per anno e registro: `CMM-ACME-2026-000000001`.
+
+⚠️ Ne discende una cosa pratica: **chi scrive codice che confronta o ordina i numeri
+non può trattarli tutti allo stesso modo.** Ed è la ragione per cui il controllo
+automatico descritto al §7 non elenca i documenti ma li legge da un catalogo: le
+regole sono tre, non una.
+
+⚠️ **Il momento non è un dettaglio.** Un documento che riceve il numero *alla
+creazione* consuma un numero anche se poi viene abbandonato: nella progressione
+restano dei buchi. È accettato e dichiarato — un ordine annullato non obbliga a
+rinumerare gli altri — ma per una fattura sarebbe un problema, ed è il motivo per
+cui la fattura si numera solo all'emissione.
+
+---
+
+## 5. Le scelte fatte, e perché
+
+### 5.1 Ogni azienda ha la sua numerazione, e la garanzia sta nella chiave
+
+Se due aziende emittenti condividessero lo stesso registro, succederebbe una cosa
+che **non dà nessun errore**: il contatore è uno solo, quindi i numeri escono tutti
+diversi e nessun controllo protesta. A saltare non è l'unicità — è
+l'**attribuzione**: nessuna delle due aziende ha più una propria progressione, e
+questo è esattamente ciò che un controllo fiscale guarda.
+
+⭐ La soluzione: **un registro appartiene a una sola azienda**, obbligatoriamente, e
+il registro entra nella chiave di identità del documento. Così due aziende possono
+avere entrambe il documento numero 1 dello stesso anno, senza pestarsi i piedi.
+
+### 5.2 L'anno viene dalla data del documento
+
+Non dalla data in cui qualcuno preme il pulsante. Un documento **datato** dicembre
+prende un numero del contatore di dicembre anche se viene emesso a gennaio.
+
+⚠️ È una distinzione che è già costata un difetto: prima di agosto 2026 su alcuni
+documenti l'anno lo scriveva un automatismo **alla creazione**, leggendo la data di
+quel giorno, mentre il contatore usava la data del documento. Due nozioni di «anno»
+sulla stessa riga — e il controllo di unicità usava la prima.
+
+### 5.3 Il numero non torna indietro nel tempo — **solo per le fatture**
+
+Sulle fatture c'è un cancello: non si dà un numero a un documento con data
+anteriore all'ultimo già numerato sullo stesso sezionale. È una regola fiscale, e
+vive dove c'è il sezionale fiscale.
+
+⛔ Sugli altri documenti **non** si applica, e la ragione è concreta: un documento di
+trasporto per la spedizione di ieri, inserito stamattina dopo che ne è già uscito
+uno con la data di oggi, è un caso d'uso normale. Applicare lì lo stesso cancello lo
+avrebbe reso impossibile.
+
+### 5.4 Il codice della commessa contiene la sigla dell'azienda
+
+La commessa non ha un campo «registro» da mostrare: la sua identità è la stringa
+stessa. Quindi la stringa deve bastare a distinguere due aziende, e la sigla ci
+entra dentro:
+
+```
+CMM-ACME-2026-000000001
+ │    │     │      │
+ │    │     │      └─ progressivo, riparte da 1 ogni anno
+ │    │     └──────── anno
+ │    └────────────── sigla dell'azienda emittente
+ └─────────────────── prefisso fisso
+```
+
+⚠️ Ne discende un vincolo sulla **sigla**: solo lettere maiuscole e cifre, da 2 a 10
+caratteri, **niente trattino**. Il trattino è il separatore: se comparisse dentro la
+sigla, il codice smetterebbe di essere leggibile e nessuno saprebbe più dove finisce
+l'azienda e dove comincia l'anno.
+
+### 5.5 I numeri già assegnati non si rifanno
+
+Nessuna rinumerazione del pregresso, per nessun documento. I documenti numerati
+prima di agosto 2026 non hanno il registro e in alcuni casi nemmeno l'anno: **è
+storia**, e resta com'è. Non collidono con i nuovi perché **la forma è diversa** —
+ed è l'unica cosa che li separa, quindi chi cambia il formato dei numeri nuovi sta
+toccando anche la ragione per cui non collidono con i vecchi.
+
+---
+
+## 6. Quando un numeratore deve **traslocare** sui registri
+
+Il criterio in una frase:
+
+> **Il periodo il generatore se lo calcola da sé; l'azienda, la serie e un momento
+> diverso dalla creazione arrivano dalla riga.**
+
+Chi ha bisogno di una di queste tre cose sta chiedendo i **registri**, non un
+allargamento del catalogo dei formati. In pratica, **se anche uno solo di questi
+campanelli suona**, il numeratore è nel posto sbagliato:
+
+1. *«Ogni azienda deve avere la sua numerazione.»* Il catalogo dei formati non può
+   saperlo: il meccanismo che assegna il codice è **uno per tabella** e non riceve la
+   riga, quindi non sa di chi sia il documento.
+2. *«Il numero deve ripartire da 1 a Capodanno.»* Il contatore del catalogo dei
+   formati **non sa cosa sia un anno**. Non è una configurazione mancante: è il
+   meccanismo a non prevederlo.
+3. *«Il numero non deve uscire alla creazione, ma alla conferma.»* Il catalogo dei
+   formati assegna sempre alla creazione.
+
+⚠️ Un quarto campanello, più sottile: se lo stesso documento deve poter girare su
+**più serie**, la serie è una dimensione del contatore e nel catalogo dei formati
+non c'è.
+
+La checklist operativa del trasloco sta nella scheda tecnica di
+[`config.sistema_codici`](/dbzero/config/manual/sistema_codici).
+
+---
+
+## 7. ⛔ Un'idea valutata e **scartata**: la colonna che rappresenta l'unicità
+
+*(valutata il 31-08-2026)*
+
+**L'idea.** Aggiungere a ogni documento una colonna che rappresenti la sua identità,
+composta automaticamente dai valori delle altre colonne — qualcosa come
+`2581/2026/A/DDT0000123` — così che l'unicità stia in **un posto solo, uguale
+ovunque**, e ogni azienda possa eventualmente definirsela a modo proprio.
+
+L'idea nasceva da un'osservazione **giusta**: le forme di identità oggi sono tre
+diverse su sette documenti, e fino ad agosto 2026 **due di esse non funzionavano
+affatto** senza che nessuno se ne accorgesse.
+
+**Perché è stata scartata.** Tre ragioni, in ordine di peso.
+
+**1. L'unicità non può essere una preferenza dell'azienda.** Se due aziende nella
+stessa installazione avessero regole di identità diverse sulla stessa tabella, il
+controllo dovrebbe valere su entrambe insieme — e un controllo che dipende da *chi
+ha scritto la riga* non è più un controllo del database, ma una regola nel
+programma, con tutte le fragilità che si era appena finito di togliere.
+⭐ E soprattutto: **l'unicità per azienda esiste già**. È il registro. «La mia
+azienda vuole la sua numerazione» oggi si traduce in: il mio registro, il mio
+contatore, il mio anno, la mia serie.
+
+**2. L'uniformità sarebbe stata solo nel nome.** Le tabelle non hanno le stesse
+colonne — i resi non hanno la serie, la commessa ha solo il codice. Sotto un nome
+uguale ovunque ci sarebbero state **sette formule diverse**. È il tipo di uniformità
+che fa più danno di nessuna uniformità: chi legge un nome uguale smette di chiedersi
+cosa c'è sotto, e trova una regola sola dove ce ne sono sette.
+
+**3. Il costo era reale e il guadagno indiretto.** Aggiungere una colonna calcolata
+comporta la **riscrittura completa** di ogni tabella coinvolta; e ogni documento
+nuovo avrebbe dovuto *ricordarsi* di averla — cioè un elenco parallelo da tenere
+allineato, esattamente ciò che si era appena finito di eliminare.
+
+**Che cosa si è fatto al posto suo.** Il bisogno vero dietro l'idea era **accorgersi
+quando una regola di identità smette di funzionare**. Per quello non serve una
+colonna: serve un **controllo automatico** che, per ogni famiglia di documento
+registrata a catalogo, verifichi che l'identità distingua l'azienda e che l'anno sia
+davvero in chiave.
+
+⭐ È stato scritto, e ha una proprietà che la colonna non avrebbe avuto: **non elenca
+i documenti, li legge dal catalogo**. Il giorno in cui si registra una famiglia
+nuova, il controllo la copre da solo.
+
+ℹ️ Resta possibile, se un domani servisse **leggere** l'identità completa in un
+export o in una ricerca trasversale, esporla con una vista — senza toccare nessuna
+tabella. La colonna tornerebbe sul tavolo solo se quell'identità dovesse essere
+**indicizzata**, ed è una ragione che oggi non esiste.
+
+---
+
+## 8. Dove guardare
+
+* [`config.sistema_codici`](/dbzero/config/manual/sistema_codici) — il catalogo dei
+  formati, con la checklist del trasloco
+* [`vendite.registri_fatturazione`](/dbzero/vendite/manual/registri_fatturazione) —
+  i registri di numerazione
+* [`vendite.famiglie_documento`](/dbzero/vendite/manual/famiglie_documento) — quali
+  documenti si numerano su un registro, e dove vivono

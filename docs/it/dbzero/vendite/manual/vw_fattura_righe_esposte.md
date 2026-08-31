@@ -40,7 +40,7 @@ banale: la definizione è già qui.
 
 ---
 
-### Le tre regole
+### Le tre regole del kit
 
 | Caso | Cosa produce |
 |---|---|
@@ -78,12 +78,51 @@ cambia mai al variare dell'esposizione**.
 
 | Colonna | A cosa serve |
 |---|---|
-| `tipo_riga` | `NORMALE` · `KIT_PADRE` · `KIT_COMPONENTE` |
-| `ordinamento` | il `riga_nr` del capogruppo: tiene i componenti insieme al proprio padre |
-| `livello` | `0` padre o riga normale, `1` componente descrittivo |
+| `tipo_riga` | `NORMALE` · `KIT_PADRE` · `KIT_COMPONENTE` · `PARTE_PLAFOND` |
+| `ordinamento` | il `riga_nr` del capogruppo: tiene i componenti insieme al proprio padre, e le parti insieme alla propria capofila |
+| `livello` | `0` padre, riga normale **o parte di plafond**; `1` componente descrittivo |
 | `fatture_righe_id` | la riga sottostante; **`NULL`** sulla riga padre, che è sintetizzata e non esiste come record |
+| `riga_capofila_id` | *(dal 2026-08-31)* la capofila di una riga spezzata dal plafond; vuoto su tutte le altre |
 
 Ordinamento canonico: `ORDER BY ordinamento, livello, riga_nr`.
+
+---
+
+### La quarta regola: la riga spezzata dal plafond
+
+(dal 2026-08-31)
+
+Quando il plafond di una dichiarazione d'intento copre solo una parte di una
+riga, quella riga diventa **due righe di fattura** — è un obbligo del formato
+elettronico, che ammette una sola aliquota e una sola natura per linea.
+
+Qui le due parti escono **entrambe, ognuna con il proprio importo**, allo
+**stesso livello**, con lo **stesso `ordinamento`** (quello della capofila) e con
+`tipo_riga` = `PARTE_PLAFOND` sulla seconda.
+
+⛔ **Non è il trattamento del kit, e la differenza è sostanziale.** Il kit
+*somma* le sue righe in una sola: farlo qui produrrebbe una linea sola nel file
+elettronico, cioè cancellerebbe esattamente la ragione per cui la riga si è
+spezzata.
+
+⛔ **E la parte non scende a `livello 1`.** In questa vista `livello 1` significa
+*«riga descrittiva, senza importo»* — è il patto su cui si regge la regola dei
+componenti di kit, che escono con importo `NULL`. La parte staccata dal plafond
+un importo suo ce l'ha, e nel totale ci deve stare: chi legge la vista saltando
+il livello 1, come la regola gli dice di fare, **perderebbe quel valore senza
+nessun errore**.
+
+⭐ L'`ordinamento` condiviso è ciò che tiene le due parti **adiacenti** anche
+quando fra loro finisce un'altra riga dello stesso articolo a prezzo diverso.
+Senza, l'operatore leggerebbe due righe con quantità strane in punti diversi del
+documento, e niente direbbe che vengono dalla stessa origine.
+
+📌 **Limite dichiarato.** Una riga che è insieme componente di kit *e* parte di
+plafond finisce nei rami del kit, non in questo. Non è un buco — il
+raggruppamento del kit tiene già conto dell'IVA, quindi due trattamenti diversi
+producono due righe padre distinte, che è l'esito corretto — ma lì le due parti
+non si vedono come una sola origine. Il caso non è stato costruito perché oggi
+il backend non spezza i componenti di kit.
 
 ---
 

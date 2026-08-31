@@ -7,21 +7,29 @@
 > Quel documento è l'**analisi** e resta la sede delle ragioni; questo è il
 > **piano**. Chi vuole sapere *perché*, torna là.
 >
-> **Stato al 2026-08-31 — DDL e codice COMPLETI e applicati; i PRESIDI no.**
-> C1 e C2 non hanno più changeSet da scrivere, la guida (C2-14) e il debito sul
-> nome (C2-15) sono scritti, e la baseline pgTAP non ha regressioni.
+> 🎉 **Stato al 2026-08-31 — CANTIERE CHIUSO LATO DB.** C1 e C2 non hanno più
+> changeSet da scrivere, la guida (C2-14) e il debito sul nome (C2-15) sono
+> scritti, il vincolo di forma sulla sigla (§5.4) è chiuso, e **tutti i presidi
+> sono scritti e verdi** (§6).
 >
-> ⛔ **Ma «nessuna regressione» non è «provato».** Il nuovo motore *gira* in
-> molti test — **33** portano un DDT a `EMESSO`, **75** creano commesse — e la
-> baseline verde dimostra che non esplode, non blocca e non solleva. ⚠️ Nessuno
-> però **guarda il numero che produce**: le asserzioni su `ddt.numero`,
-> `resi.numero` o sul formato `CMM-<sigla>-<anno>-<9 cifre>` sono **zero**.
-> È copertura di esecuzione, non di asserzione.
+> *(Superato il paragrafo che stava qui e diceva «i PRESIDI no · restano da
+> scrivere 7 presidi su 10». Era vero il pomeriggio del 2026-08-31 e non lo è
+> più: i sette sono stati scritti in giornata, in tre file, e girano verdi.)*
 >
-> **Restano da scrivere 7 presidi su 10** (§2.3 e §3.6), elencati al §6.
-> Restano fuori dal DB le ricadute **BE/FE**: la nuova arità di
-> `E_BA_EMITTENTE_CON_STORIA` (da 4 a 3 segnaposto) e `ordine` passato a
-> `usa_sequenza = false`.
+> ⭐ **Restava una distinzione che vale la pena conservare**, perché è il motivo
+> per cui i presidi sono stati scritti: *«nessuna regressione» non è «provato»*.
+> Il motore girava già in molti test — **33** portano un DDT a `EMESSO`, **75**
+> creano commesse — e la baseline verde dimostrava che non esplode, non blocca e
+> non solleva. ⚠️ Ma nessuno **guardava il numero prodotto**: le asserzioni su
+> `ddt.numero`, `resi.numero` o sul formato `CMM-<sigla>-<anno>-<9 cifre>` erano
+> **zero**. Copertura di esecuzione, non di asserzione.
+>
+> **Resta fuori dal DB**, ed è tutto:
+>
+> | | Cosa | Per chi |
+> | --- | --- | --- |
+> | ⛔ | `E_BA_EMITTENTE_CON_STORIA` passa da **4 a 3** segnaposto; nel `dettaglio` `n_fatture`/`n_commesse` diventano `storia` (array di `{famiglia, descrizione, n}`) e `n_documenti`. ⭐ Il `reason_key` **non** cambia | **BE** |
+> | ⚠️ | `ordine` passa a `usa_sequenza = false`: è ciò che `useCodiceField` legge come `isAuto`, quindi una maschera potrebbe invitare a digitare il numero | **FE** |
 >
 > ⚠️ **«Applicato» qui non è una fonte**: le righe segnate ✅ sono *scritte*, e
 > l'apply si chiede a `databasechangelog`, non a questa tabella. Tid ha
@@ -656,9 +664,13 @@ qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nell
    all'`INSERT`: «ordine numerato» = «ordine», quindi il primo ordine chiude la
    finestra di correzione del suo BA. È coerente (quel numero viene dal registro di
    quell'emittente), ma è un restringimento vero e va detto prima.
-   ⇒ Resta da decidere nel cantiere solo questo: se contare gli ordini insieme ai DDT. Se non ci entra, il guard continuerà ad ammettere
-   uno spostamento di BA che lascia orfano anche un documento numerato — lo stesso
-   difetto muto che quel guard esiste per impedire, in un punto nuovo.
+   ✅ **DECISO e FATTO**: gli ordini si contano insieme ai DDT — anzi il conteggio
+   non elenca più niente, si **deriva** dal catalogo delle famiglie (§3.7,
+   changeSet `20260831-17`). *(Superata la riga che stava qui: «resta da decidere
+   se contare gli ordini insieme ai DDT».)* Se non ci fossero entrati, il guard
+   avrebbe continuato ad ammettere uno spostamento di BA che lascia orfano un
+   documento numerato — lo stesso difetto muto che quel guard esiste per impedire,
+   in un punto nuovo.
    ⚠️ E il conteggio va fatto **`SECURITY DEFINER`** come l'esistente: sotto RLS la
    storia di un altro emittente è invisibile, e il guard concluderebbe «non c'è
    storia» proprio nel caso da bloccare.
@@ -666,25 +678,141 @@ qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nell
 
 ---
 
-## 6. ⛔ I presidi che mancano — verificato il 2026-08-31
+## 6. I presidi — scritti il 2026-08-31
 
-Il DDL e il codice sono applicati e la baseline non regredisce. Questi presidi,
-richiesti dal §2.3 e dal §3.6, **non sono stati scritti**.
+| # | Presidio | Dove | Stato |
+| --- | --- | --- | --- |
+| **P-1** | ⭐ Due emittenti, stesso anno: due numeri «1» che convivono, e i contatori proseguono indipendenti | `vendite/test-registri-motore-trasloco-v1.sql` (2, 3) | ✅ |
+| **P-3** | ⭐ Il reset di Capodanno, **seminando** il contatore dell'anno prima a 99 — e l'anno prima resta intatto | idem (4, 5) | ✅ |
+| **P-7** | Il lettore tace, l'**involucro** grida; e rifiuta `FATTURA` | idem (6, 7, 8) | ✅ |
+| **P-6** | ⭐ I due gemelli: DDT **in bozza** non blocca, DDT **numerato** sì | `anagrafiche/test-ba-storia-solo-numerati-v1.sql` (2, 5) | ✅ |
+| **P-5** | ⭐⭐ L'anno segue la **data del documento**, non l'`INSERT` — DDT nato a dicembre 2101, emesso con data gennaio 2102 | `vendite/test-documenti-numerazione-trasloco-v1.sql` (2) | ✅ |
+| **P-2** | Registro giusto, anno, forma della stringa | idem — **DDT** (1,2,3), **ordini** (4), **commessa** (5,6) | ⚠️ **parziale** |
+| **P-4** | La commessa che **non nasce** senza registro — `throws_ok` con SQLSTATE | idem (7) | ✅ |
 
-| # | Presidio | Da |
+**Totale: 3 file nuovi, 24 asserzioni — tutti VERDI il 2026-08-31** (eseguiti da
+Tid), più i 3 file già scritti in corso d'opera (C1 plan 6, catalogo plan 7,
+forma sigla plan 8).
+
+#### ⚠️ Quattro difetti che i test hanno trovato, e nessuno era nel codice DB
+
+Vale la pena registrarli: sono tutti nelle **fixture**, e tutti della stessa
+specie — dedurre invece di leggere.
+
+1. ⛔ **`anagrafiche.fn_get_emittente_fiscale_id` restituisce il
+   `soggetto_ruolo_id`, non la PK di `emittenti_fiscali`** (il nome dice
+   «fiscale_id»). Agganciarla a `ef.id` non solleva niente: fa **zero righe**, e
+   `SELECT * INTO` azzera ogni campo — il test muore molto più avanti su un
+   `NOT NULL` che nomina una colonna estranea. Ci si è cascati **due volte**.
+2. ⚠️ **`vendite.ordini.stato_doc_ordine_id` è al singolare**, mentre il
+   catalogo è `config.stati_doc_ordini` al plurale — e sul DDT invece
+   coincidono. L'analogia non regge.
+3. ⚠️ **Il guard «figli prima, padre poi»**: un registro non si spegne finché ha
+   una riga attiva in `registri_fatturazione_progressivi`. Non è un intralcio da
+   aggirare, è il presidio che impedisce di ritirare un sezionale con sotto un
+   contatore vivo.
+4. ⛔ **`uq_registri_fatturazione_famiglia_emittente_utility` NON filtra su
+   `attivo`**: un registro **spento occupa ancora lo slot**. Ne discende un
+   fatto di modello che non era scritto da nessuna parte — **«spegni e rifai»
+   non è una strada per un registro**: per la stessa terna si riattiva quello
+   che c'è. ⭐ Ed è giusto così: se lo slot si liberasse, resterebbero due
+   registri storici della stessa famiglia e nessuno saprebbe quale ha numerato
+   cosa. 📌 **Da valutare**: dichiararlo nel `COMMENT` dell'indice.
+
+⭐ **La lezione di metodo**: ogni fixture vuole la sua asserzione «la fixture non
+mente», e deve **nominare** il campo mancante — un `AND` monolitico dice *che*
+manca qualcosa, non *cosa*, e lascia a indovinare. La forma che funziona è un
+`LATERAL (VALUES ('campo', t.campo IS NULL), …)` con `string_agg` dei soli
+mancanti confrontato con la stringa vuota: il diff di pgTAP stampa i nomi.
+
+### ✅ Il presidio DERIVATO — scritto il 2026-08-31
+
+`vendite/test-identita-documenti-derivata-v1.sql` (plan 5, **verde** il
+2026-08-31). ⭐ **Non elenca le tabelle: le legge da `vendite.famiglie_documento`**
+— quindi la sesta famiglia entra nel presidio il giorno in cui si registra, e
+nessuno deve ricordarsi di aggiungerla.
+
+⭐⭐ **La biforcazione è derivata, non scritta.** L'identità di un documento deve
+distinguere due emittenti, e ci sono due modi legittimi: la chiave porta
+`registro_id` (fatture, DDT, ordini, resi), oppure la tabella quella colonna non
+ce l'ha e l'identità è la **stringa nuda** che porta la sigla dentro di sé
+(commessa). Il test sceglie il ramo guardando `pg_attribute`.
+
+| # | Cosa presidia | Tipo |
 | --- | --- | --- |
-| **P-1** | ⭐ **Due emittenti, stesso anno: due numeri «1» che convivono** | §3.6 — il piano dice *«è il test che prova la condizione che rompe, e va scritto per primo»* |
-| **P-2** | Per **ciascuno** dei quattro: il numero esce dal registro giusto, l'anno è quello della data documento, la forma della stringa è quella attesa | §3.6 |
-| **P-3** | ⭐ **Il reset di Capodanno**, seminando la riga di contatore dell'anno prima | §3.6 — ⚠️ il tempo non si simula: si costruisce il caso |
-| **P-4** | La **commessa che non nasce** senza registro `COMMESSA` — `throws_ok` con SQLSTATE | §3.6 |
-| **P-5** | Il **DDT creato a dicembre ed emesso a gennaio**: l'anno è quello dell'emissione, non dell'`INSERT` | §3.6 |
-| **P-6** | ⭐ **I due gemelli sulla storia allargata**: un BA con un DDT **numerato** non si sposta; lo stesso BA con un DDT **in bozza** sì | §3.7 — ⛔ senza il secondo, il primo non distingue «blocca il numerato» da «blocca tutto» |
-| **P-7** | `fn_lookup_registro_documento` senza registro risponde vuoto, e l'**involucro** solleva — il fail-closed dev'essere **rumoroso** | §2.3 |
+| 1 | Il catalogo non è vuoto e ogni riga punta a una tabella vera | ⭐ gemello anti-muto |
+| 2 | L'identità di ogni famiglia **distingue l'emittente** | ⭐⭐ strutturale |
+| 3 | Dove esiste `anno`, l'unicità lo contiene | ⭐ strutturale |
+| 4 | Chi ha il registro porta **anche l'anno** | ⚠️ dati (complemento) |
+| 5 | Niente `serie_default` dove la `serie` non ha casa | ⛔ derivato |
 
-✅ **Già coperti:** i quattro del C1 (`test-fatture-guard-registro-emittente.sql`,
-plan 6), il guard sul catalogo (`test-famiglie-documento-guard-riferimenti.sql`,
-plan 7) e la forma della sigla (`test-emittenti-fiscali-codice-forma.sql`,
-plan 8).
+⭐ **I test 2 e 3 sono il presidio vero**: guardano la **struttura**, quindi
+valgono a database vuoto, valgono in CI e diventano rossi *prima* che esista il
+primo documento sbagliato. Il 4 guarda i dati ed è solo un complemento — da solo
+sarebbe il classico «test che conta i cattivi e diventa muto» su tabella vuota.
 
-⚠️ **Cosa i pgTAP non potranno provare comunque**, ed è già scritto al §3.6: che
-il cancello stia *sotto* il lock — pgTAP è mono-sessione. Si presidia in review.
+⭐ **E il 5 chiude la lacuna dei RESI** dichiarata più sopra, senza pagare la
+fixture: il vincolo *«un registro `RESO` non deve avere `serie_default`»* è una
+regola di **struttura**, e scritta così non nomina i resi — dice «le famiglie la
+cui tabella non ha la colonna `serie`», quindi vale anche per la prossima.
+
+#### ⚠️ Due correzioni fatte al primo lancio, e nessuna era un difetto del DB
+
+1. ⛔ **Un test l'avevo inventato.** Pretendevo che «dove c'è la colonna `serie`,
+   l'unicità la contiene» — e la fattura lo faceva fallire. Ma la serie *effettiva*
+   è `COALESCE(documento.serie, registro.serie_default, '')`: la colonna è un
+   **override del registro**, non una dimensione autonoma. Con `registro_id` già in
+   chiave, metterci anche la serie è una scelta per-documento, e la chiave della
+   fattura risulta più **stretta**, non più larga. Test **rimosso**, con la ragione
+   scritta nel file perché nessuno lo riscriva.
+2. ⚠️ **Un test segnalava il pregresso**, cioè una decisione: *nessuna
+   rinumerazione, per nessun numeratore*. I documenti numerati prima del trasloco
+   non hanno registro né anno e non li avranno mai — quel test sarebbe stato
+   **rosso per sempre**, e un presidio che nasce rosso non lo guarda più nessuno.
+   Riformulato sulla regola vera: **chi è passato dal motore nuovo porta registro e
+   anno insieme**; chi il registro non ce l'ha è storia, e si riconosce da lì.
+
+⚠️ **Perché non una colonna generata** (idea valutata il 2026-08-31 e scartata):
+le tabelle **non hanno le stesse colonne** — resi non ha `serie`, commesse ha
+solo `codice` — quindi una colonna «uniforme» avrebbe nascosto **sette
+espressioni diverse sotto un nome comune**, dando l'impressione di una regola
+sola dove ce ne sono sette. In più `ADD COLUMN … GENERATED … STORED` riscrive
+l'intera tabella, e ogni documento nuovo avrebbe dovuto *ricordarsi* la colonna
+— cioè un elenco parallelo, esattamente ciò che il catalogo esiste per evitare.
+
+### ✅ La lacuna dei RESI — chiusa il 2026-08-31
+
+*(Superato il paragrafo che stava qui e dichiarava i resi scoperti.)*
+
+`test-documenti-numerazione-trasloco-v1.sql` passa da **plan 8 a plan 10**: il
+reso si crea sul DDT che la fixture costruisce già, si conferma con la **madre**
+`vendite.fn_conferma_reso` — non con un `UPDATE` dello stato, così si prova anche
+che il trigger sia montato — e si verifica che ne escano numero, registro `RESO`
+del proprio emittente, anno dalla data e forma dal catalogo.
+
+⛔ **Spiegando la lacuna è emerso che era peggio del previsto, e vale la pena
+scriverlo.** Non era «manca un test end-to-end»: il buco era coperto **due volte
+male**.
+
+* i presidi **strutturali** guardano la chiave, non il comportamento;
+* il presidio sui **dati** chiede *«chi ha il registro ha anche l'anno»* — e un
+  reso nato **senza** registro, cioè esattamente il sintomo di un generatore
+  rotto, cade nel ramo del **pregresso** e passa.
+
+⇒ Se `trgfn_resi_gen_numero` avesse smesso di funzionare, **nessun test lo
+avrebbe detto**. E si sarebbe rotto in silenzio: il generatore esce in testa se lo
+stato non è `CONFERMATO`, quindi basta che quel codice interno cambi o che il
+trigger si smonti in un rebuild perché il reso resti **senza numero**, senza
+errori e senza rifiuti.
+
+⭐ **La lezione, oltre il caso:** quando un test sui dati ha un ramo di esclusione
+— qui il pregresso — quel ramo è anche il **nascondiglio** del difetto che il test
+cerca. Il rimedio non è togliere l'esclusione (il pregresso è una decisione), è
+provare il caso **dal lato positivo**: non «non ci sono resi rotti», ma «un reso
+confermato adesso riceve il numero».
+
+### ⚠️ Quello che i pgTAP non potranno provare
+
+Che il contatore stia **sotto il lock**, cioè che due sessioni concorrenti non
+prendano lo stesso numero: pgTAP è mono-sessione. Si presidia in **review** sul
+changeSet, come già dichiarato al §3.6.

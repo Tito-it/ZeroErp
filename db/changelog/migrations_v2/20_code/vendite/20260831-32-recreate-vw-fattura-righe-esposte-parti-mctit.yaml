@@ -1,0 +1,283 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vw_fattura_righe_esposte` conosce la riga spezzata — DUE RIGHE SORELLE
+#   decisione B di brief-db-richieste-aperte-dal-backend (Tid, 2026-08-31)
+#
+# ── ⛔ LA FORMA DEL KIT NON SI RIUSA, ED E' IL PUNTO DI TUTTO IL FILE ─
+#
+#   Il brief diceva «la vista conosce gia' la relazione del kit, quindi la forma
+#   non si inventa». ⛔ La seconda meta' di quella frase e' SBAGLIATA, e va
+#   detto qui perche' e' l'errore che si rifarebbe.
+#
+#   La forma del kit AGGREGA: N righe fisiche collassano in una `KIT_PADRE` che
+#   porta il totale, e i componenti scendono a `livello 1` **senza importo**
+#   (`imponibile` a NULL, perche' il loro valore e' gia' nel totale del padre).
+#
+#   Applicata alle due parti di una riga spezzata dal plafond, quella forma
+#   produrrebbe **UN SOLO `DettaglioLinee`** — cioe' cancellerebbe la ragione
+#   per cui la riga si e' spezzata: due trattamenti IVA sullo stesso imponibile
+#   DEVONO essere due linee, per obbligo di formato FatturaPA.
+#
+# ── LA FORMA DECISA: DUE RIGHE SORELLE ──────────────────────────────
+#
+#   Le due parti escono **entrambe con il loro imponibile**, **entrambe a
+#   `livello 0`**, con lo stesso `ordinamento` — quello della capofila — e si
+#   distinguono con un `tipo_riga` nuovo, `PARTE_PLAFOND`, sulle parti.
+#
+#   ⛔ Scartato `livello 1`, che nella vista significa oggi una cosa precisa:
+#   *riga descrittiva, senza importo*. ⚠️ Il codice che fa «salta il livello 1,
+#   e' solo descrizione» ESISTE, perche' e' la regola della vista: su una
+#   fattura spezzata perderebbe la seconda parte **senza nessun errore**, con un
+#   totale semplicemente piu' basso. Riusare un segnale per dire una cosa
+#   contraria e' il modo in cui i difetti muti entrano.
+#
+#   ⭐ `ordinamento` uguale alla capofila e' cio' che tiene le due parti
+#   ATTACCATE anche quando in mezzo c'e' un'altra riga dello stesso articolo a
+#   prezzo diverso. Non basta l'ordinamento generale del documento.
+#
+# ── COSA CAMBIA, IN CONCRETO ────────────────────────────────────────
+#
+#   * il ramo `NORMALE` prende un `LEFT JOIN` alla capofila;
+#   * `tipo_riga` diventa `PARTE_PLAFOND` quando `riga_capofila_id` e'
+#     valorizzata, `NORMALE` altrimenti;
+#   * `ordinamento` diventa il `riga_nr` della capofila quando c'e';
+#   * ⭐ colonna nuova **in coda**, `riga_capofila_id`, cosi' chi consuma puo'
+#     raggruppare senza rifare il join. In coda per forza: `CREATE OR REPLACE
+#     VIEW` ammette solo aggiunte in fondo.
+#
+#   ⚠️ `riga_nr` NON cambia: e' il numero di linea del documento, ed e' cio' che
+#   `RiferimentoNumeroLinea` della FatturaPA indirizza. Le due parti restano due
+#   linee con due numeri, ed e' esattamente quello che serve.
+#
+# ── 📌 IL KIT SPEZZATO — limite dichiarato, non dimenticato ─────────
+#
+#   Una riga che e' insieme componente di kit E parte di plafond cade nei rami
+#   del kit (`kit_key IS NOT NULL`), non in questo. Non e' un buco: il
+#   raggruppamento del kit include gia' `iva_id`, quindi due parti con
+#   trattamenti diversi producono due righe padre distinte — che e' l'esito
+#   corretto, ed e' la regola R13 gia' scritta nel COMMENT della vista.
+#   ⚠️ Resta pero' vero che li' le due parti non si vedono come «una sola
+#   origine»: il caso non e' stato costruito perche' oggi il backend non spezza
+#   i componenti di kit. Va guardato il giorno che lo fara'.
+#
+# ── ⛔ `security_invoker=on` VA RI-SPECIFICATA ──────────────────────
+#
+#   Non e' visibile in `pg_get_viewdef` e PostgreSQL la AZZERA su un
+#   `CREATE OR REPLACE VIEW` che non la ripete. Una vista che perde
+#   `security_invoker` smette di applicare la RLS del chiamante: qui vorrebbe
+#   dire mostrare le righe di fatture di un altro emittente.
+#
+# Dipendenze: 20260831-30 (vendite.fatture_righe.riga_capofila_id).
+# Verifica: db/pgtap/vendite/test-fatture-righe-capofila-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-32-recreate-vw-fattura-righe-esposte-parti-mctit.yaml
+
+  - changeSet:
+      id: 20260831-32-recreate-vw-fattura-righe-esposte-parti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_fattura_righe_esposte conosce la riga spezzata dal plafond: le due parti
+        escono come DUE RIGHE SORELLE — entrambe col loro imponibile, entrambe a
+        livello 0, stesso ordinamento (quello della capofila), e tipo_riga
+        PARTE_PLAFOND sulla parte. ⛔ NON la forma del kit, che AGGREGA: aggregare
+        le due parti produrrebbe un solo DettaglioLinee, cioe' cancellerebbe la
+        ragione della spezzatura (una riga FatturaPA porta una AliquotaIVA e una
+        Natura). ⛔ E non livello 1, che nella vista significa «riga descrittiva
+        senza importo»: il codice che salta il livello 1 esiste, ed e' la regola
+        della vista — perderebbe la seconda parte senza nessun errore. Colonna
+        nuova riga_capofila_id in coda. ⚠️ security_invoker=on ri-specificata: si
+        azzera su un CREATE OR REPLACE che non la ripete.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: riga_capofila_id
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_fattura_righe_esposte
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_fattura_righe_esposte
+              WITH (security_invoker=on) AS
+              WITH kit AS (
+                       SELECT r.fattura_id,
+                          r.kit_key,
+                          r.iva_id,
+                          r.dest_billing_account_id,
+                          r.kit_articolo_padre_id AS articolo_padre_id,
+                          r.kit_descrizione_padre AS descrizione_padre,
+                          min(r.riga_nr) AS riga_nr_padre,
+                          max(r.uom_id) AS uom_id,
+                          avg(r.qta) AS qta_media,
+                          sum(r.imponibile_riga) AS imponibile_totale,
+                          max((r.iva_natura)::text) AS iva_natura
+                         FROM vendite.fatture_righe r
+                        WHERE (r.kit_key IS NOT NULL)
+                        GROUP BY r.fattura_id, r.kit_key, r.iva_id, r.dest_billing_account_id, r.kit_articolo_padre_id, r.kit_descrizione_padre
+                      )
+               SELECT r.fattura_id,
+                  -- ⭐ Un tipo NUOVO, non un livello riusato: `livello 1` in
+                  --    questa vista significa «riga descrittiva senza importo»,
+                  --    e la parte staccata dal plafond un importo suo ce l'ha.
+                  CASE
+                      WHEN (r.riga_capofila_id IS NOT NULL) THEN 'PARTE_PLAFOND'::text
+                      ELSE 'NORMALE'::text
+                  END AS tipo_riga,
+                  r.riga_nr,
+                  -- ⭐ Le due parti restano ATTACCATE anche se fra loro cade
+                  --    un'altra riga: l'ordinamento e' quello della capofila.
+                  COALESCE(cap.riga_nr, r.riga_nr) AS ordinamento,
+                  -- ⛔ livello 0 su ENTRAMBE: sono sorelle, non padre e figlio.
+                  (0)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  -- ⭐ La parte porta il SUO imponibile: e' la differenza con il
+                  --    componente di kit, che esce a NULL perche' il suo valore
+                  --    e' gia' nel totale del padre.
+                  r.imponibile_riga AS imponibile,
+                  r.dest_billing_account_id,
+                  NULL::text AS kit_key,
+                  r.riga_capofila_id
+                 FROM (vendite.fatture_righe r
+                   LEFT JOIN vendite.fatture_righe cap ON ((cap.id = r.riga_capofila_id)))
+                WHERE (r.kit_key IS NULL)
+              UNION ALL
+               SELECT k.fattura_id,
+                  'KIT_PADRE'::text AS tipo_riga,
+                  k.riga_nr_padre AS riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (0)::smallint AS livello,
+                  NULL::bigint AS fatture_righe_id,
+                  k.articolo_padre_id AS articolo_id,
+                  k.descrizione_padre AS descrizione,
+                  k.uom_id,
+                  k.qta_media AS qta,
+                      CASE
+                          WHEN (COALESCE(k.qta_media, (0)::numeric) = (0)::numeric) THEN NULL::numeric
+                          ELSE (k.imponibile_totale / k.qta_media)
+                      END AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  k.iva_id,
+                  k.iva_natura,
+                  k.imponibile_totale AS imponibile,
+                  k.dest_billing_account_id,
+                  k.kit_key,
+                  NULL::bigint AS riga_capofila_id
+                 FROM kit k
+              UNION ALL
+               SELECT r.fattura_id,
+                  'KIT_COMPONENTE'::text AS tipo_riga,
+                  r.riga_nr,
+                  k.riga_nr_padre AS ordinamento,
+                  (1)::smallint AS livello,
+                  r.id AS fatture_righe_id,
+                  r.articolo_id,
+                  r.descrizione,
+                  r.uom_id,
+                  r.qta,
+                  NULL::numeric AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale,
+                  r.iva_id,
+                  r.iva_natura,
+                  NULL::numeric AS imponibile,
+                  r.dest_billing_account_id,
+                  r.kit_key,
+                  -- ℹ️ Un componente di kit spezzato dal plafond cade in questo
+                  --    ramo, non nel primo: la colonna si espone lo stesso, cosi'
+                  --    chi legge non deve dedurre dall'assenza.
+                  r.riga_capofila_id
+                 FROM (vendite.fatture_righe r
+                   JOIN kit k ON (((k.fattura_id = r.fattura_id) AND (k.kit_key = r.kit_key) AND (NOT (k.iva_id IS DISTINCT FROM r.iva_id)) AND (NOT (k.dest_billing_account_id IS DISTINCT FROM r.dest_billing_account_id)))))
+                WHERE ((r.kit_key IS NOT NULL) AND (r.kit_esposto_in_fattura IS TRUE));
+
+              COMMENT ON VIEW vendite.vw_fattura_righe_esposte IS
+                'Rappresentazione del documento per OGNI uscita verso l''esterno: PDF, XML SDI, portale. ⚠️ NON e'' «la vista di stampa»: se il PDF mostrasse il kit raggruppato e l''XML trasmettesse i componenti avremmo due uscite dello stesso documento con dettagli diversi. vendite.fatture_righe resta il DETTAGLIO (tutte le componenti, con articolo/quantita''/prezzo propri), questa vista produce la SINTESI — nessun secondo dato da tenere allineato. Tre regole, dal modello unificato componenti BoM del 2026-05-13: riga non-kit invariata; kit come UNA riga padre che porta il totale; componenti con esposto_in_fattura=TRUE come righe DESCRITTIVE senza importo (NULL, non zero). I componenti non esposti non compaiono: il loro valore e'' gia'' nel totale del padre, quindi il totale del documento non cambia mai al variare dell''esposizione. Convenzioni: quantita'' del padre = MEDIA dei componenti (regge finche'' coeff_qta_snapshot vale 1), riga_nr = il primo dei componenti, prezzo unitario derivato come totale/quantita''. La riga padre e'' costruita per (fattura, kit, IVA, BA destinatario): un kit con aliquote diverse produce due righe padre, che e'' l''esito corretto. Ordinamento: `ordinamento` + `livello` dispongono i componenti sotto il proprio padre. '
+                '⭐ rev 2026-08-31 (decisione B, brief-db-richieste-aperte-dal-backend voce 5): LA VISTA CONOSCE LA RIGA SPEZZATA DAL PLAFOND. Quando il plafond di un titolo IVA copre solo una quota dell''imponibile la riga di fattura si spezza in due — per OBBLIGO DI FORMATO, perche'' una riga FatturaPA porta una sola AliquotaIVA e una sola Natura — e le due parti escono qui come DUE RIGHE SORELLE: entrambe col loro imponibile, entrambe a livello 0, stesso `ordinamento` (quello della capofila, cosi'' restano attaccate anche se fra loro cade un''altra riga), e `tipo_riga` = PARTE_PLAFOND sulla parte. La colonna `riga_capofila_id` e'' esposta in coda perche'' chi consuma possa raggruppare senza rifare il join. '
+                '⛔ NON SI E'' RIUSATA LA FORMA DEL KIT, e non e'' una preferenza: quella AGGREGA, e aggregare le due parti produrrebbe UN SOLO DettaglioLinee, cioe'' cancellerebbe la ragione per cui la riga si e'' spezzata. ⛔ E non si e'' usato `livello 1`, che in questa vista significa «riga descrittiva SENZA importo»: il codice che fa «salta il livello 1» esiste perche'' e'' la regola della vista, e su una fattura spezzata perderebbe la seconda parte senza nessun errore, con un totale semplicemente piu'' basso. ⚠️ `riga_nr` NON cambia: e'' il numero di linea del documento, quello che RiferimentoNumeroLinea indirizza. '
+                '📌 Limite dichiarato: una riga che e'' insieme componente di kit E parte di plafond cade nei rami del kit, dove il raggruppamento include gia'' iva_id e quindi produce due righe padre distinte (regola R13, esito corretto) — ma li'' le due parti non si vedono come una sola origine. Il caso non e'' stato costruito perche'' oggi il backend non spezza i componenti di kit. '
+                'brief-fix-importi-riga-fattura-zero §4.7-bis (D5) + brief-db-richieste-aperte-dal-backend voce 5.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Non basta un CREATE OR REPLACE: la colonna riga_capofila_id
+              --    va TOLTA, e PostgreSQL non lascia rimuovere una colonna da
+              --    una vista con REPLACE. Serve il DROP.
+              -- ⛔ Niente CASCADE: se qualcosa dipendesse dalla vista, il
+              --    rollback deve FERMARSI e dirlo, non portarselo via.
+              DROP VIEW vendite.vw_fattura_righe_esposte;
+
+              CREATE VIEW vendite.vw_fattura_righe_esposte
+              WITH (security_invoker=on) AS
+              WITH kit AS (
+                       SELECT r.fattura_id, r.kit_key, r.iva_id, r.dest_billing_account_id,
+                          r.kit_articolo_padre_id AS articolo_padre_id,
+                          r.kit_descrizione_padre AS descrizione_padre,
+                          min(r.riga_nr) AS riga_nr_padre,
+                          max(r.uom_id) AS uom_id,
+                          avg(r.qta) AS qta_media,
+                          sum(r.imponibile_riga) AS imponibile_totale,
+                          max((r.iva_natura)::text) AS iva_natura
+                         FROM vendite.fatture_righe r
+                        WHERE (r.kit_key IS NOT NULL)
+                        GROUP BY r.fattura_id, r.kit_key, r.iva_id, r.dest_billing_account_id, r.kit_articolo_padre_id, r.kit_descrizione_padre
+                      )
+               SELECT r.fattura_id, 'NORMALE'::text AS tipo_riga, r.riga_nr,
+                  r.riga_nr AS ordinamento, (0)::smallint AS livello,
+                  r.id AS fatture_righe_id, r.articolo_id, r.descrizione, r.uom_id,
+                  r.qta, r.prezzo_unitario, r.sconto_percentuale, r.iva_id, r.iva_natura,
+                  r.imponibile_riga AS imponibile, r.dest_billing_account_id,
+                  NULL::text AS kit_key
+                 FROM vendite.fatture_righe r
+                WHERE (r.kit_key IS NULL)
+              UNION ALL
+               SELECT k.fattura_id, 'KIT_PADRE'::text AS tipo_riga,
+                  k.riga_nr_padre AS riga_nr, k.riga_nr_padre AS ordinamento,
+                  (0)::smallint AS livello, NULL::bigint AS fatture_righe_id,
+                  k.articolo_padre_id AS articolo_id, k.descrizione_padre AS descrizione,
+                  k.uom_id, k.qta_media AS qta,
+                      CASE
+                          WHEN (COALESCE(k.qta_media, (0)::numeric) = (0)::numeric) THEN NULL::numeric
+                          ELSE (k.imponibile_totale / k.qta_media)
+                      END AS prezzo_unitario,
+                  NULL::numeric AS sconto_percentuale, k.iva_id, k.iva_natura,
+                  k.imponibile_totale AS imponibile, k.dest_billing_account_id, k.kit_key
+                 FROM kit k
+              UNION ALL
+               SELECT r.fattura_id, 'KIT_COMPONENTE'::text AS tipo_riga, r.riga_nr,
+                  k.riga_nr_padre AS ordinamento, (1)::smallint AS livello,
+                  r.id AS fatture_righe_id, r.articolo_id, r.descrizione, r.uom_id, r.qta,
+                  NULL::numeric AS prezzo_unitario, NULL::numeric AS sconto_percentuale,
+                  r.iva_id, r.iva_natura, NULL::numeric AS imponibile,
+                  r.dest_billing_account_id, r.kit_key
+                 FROM (vendite.fatture_righe r
+                   JOIN kit k ON (((k.fattura_id = r.fattura_id) AND (k.kit_key = r.kit_key) AND (NOT (k.iva_id IS DISTINCT FROM r.iva_id)) AND (NOT (k.dest_billing_account_id IS DISTINCT FROM r.dest_billing_account_id)))))
+                WHERE ((r.kit_key IS NOT NULL) AND (r.kit_esposto_in_fattura IS TRUE));

@@ -1,0 +1,271 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vendite.fatture_atti` — IL SATELLITE CHE **E'** IL BLOCCO XML
+#   brief-db-fatture-atti-riferimenti-contratto (voce 4 dell'ordine di lavoro
+#   brief-db-richieste-aperte-dal-backend)
+#
+# ── COSA REGISTRA ─────────────────────────────────────────────────────
+#
+#   «Questa fattura si riferisce a QUELL'atto, che il giorno dell'emissione
+#   portava questo numero, questa data e questi tre codici». Una riga per
+#   (fattura, contratto).
+#
+# ── ⛔ PERCHE' NON TRE COLONNE SULLA RIGA, CHE ERA LA STRADA OVVIA ────
+#
+#   CIG, CUP e commessa vivono nel blocco `DatiContratto` della FatturaPA, che
+#   e' ripetibile 0..N e porta `RiferimentoNumeroLinea` — cioe' l'elenco delle
+#   righe a cui quel blocco si riferisce. Una fattura con righe di due contratti
+#   produce DUE blocchi, ognuno con la sua lista di numeri di linea.
+#
+#   ⇒ Non e' «testata» e non e' «una colonna di riga»: sono N blocchi di
+#   documento, ognuno agganciato alle sue righe. Snapshottarli sulla riga
+#   avrebbe richiesto CINQUE colonne (anche numero e data dell'atto), e avrebbe
+#   costretto il generatore XML a ricostruire i blocchi con un GROUP BY su
+#   TESTO: due atti che condividono un codice ma non la data si fondono o si
+#   spezzano a seconda di cosa entra nel raggruppamento, e nessun vincolo se ne
+#   accorge. E' la specie di difetto muto che questo cantiere esiste per togliere.
+#
+#   ⭐ Cosi' invece una riga E' un blocco, `RiferimentoNumeroLinea` e' l'elenco
+#   delle righe che ci puntano, e il generatore diventa una SELECT.
+#   ⭐ E il pattern non e' nuovo: `vendite.fatture_riepiloghi_iva` e' gia'
+#   esattamente questo — un satellite che aggrega righe per produrre un blocco
+#   XML (`DatiRiepilogo`).
+#
+# ── ⛔ PERCHE' LO SNAPSHOT E NON UN JOIN AL CONTRATTO ─────────────────
+#
+#   Un CIG corretto in anagrafica domani NON deve cambiare su una fattura gia'
+#   emessa. `contratto_id` c'e' per il LINEAGE, non per la stampa: chi genera
+#   l'XML legge le colonne snapshottate, sempre. E' la ragione per cui quelle
+#   colonne esistono invece di un JOIN.
+#
+# ── LE SCELTE DI COLONNA, E IL LORO PERCHE' ──────────────────────────
+#
+#   * `contratto_id` NOT NULL. Una riga di questa tabella esiste PERCHE' c'e'
+#     un atto, e oggi un atto e' un contratto: il dato si puo' sempre fornire.
+#     ⛔ E senza il NOT NULL la UNIQUE si sfonda da sola — due righe con
+#     contratto NULL sulla stessa fattura non si toccano, perche' i NULL non
+#     collidono. ⚠️ Gli accordi quadro PA (ordini attuativi con CIG derivato)
+#     sono dichiarati FUORI PERIMETRO dal brief §7: il giorno che un ORDINE
+#     dovesse alimentare questo satellite servira' una sorgente polimorfa
+#     (tipo + uid, come sorgente_tipo_id/sorgente_uid su fatture_righe), che e'
+#     una modifica con un suo disegno — non un nullable messo oggi per un caso
+#     previsto e non esistente;
+#
+#   * `id_documento` e `data_documento` NOT NULL. Sono lo snapshot di
+#     `contratti.numero` e `contratti.data`, che nella sorgente sono ENTRAMBE
+#     NOT NULL: il dato si puo' sempre fornire, quindi il nullable inviterebbe
+#     solo uno snapshot compilato a meta';
+#
+#   * i TRE CODICI nullable, con i tipi identici alla sorgente
+#     (VARCHAR(15)/(15)/(100), da 20260829-13). Un contratto senza CIG e' il
+#     caso ordinario;
+#
+#   * ⛔ NESSUNA colonna `meta`. Non c'e' niente da metterci: questa tabella e'
+#     uno snapshot con una forma fissa, decisa dal formato FatturaPA. Un jsonb
+#     libero su una tabella cosi' e' l'invito a stabilirci dentro una seconda
+#     verita' accanto alle colonne. Se un giorno servira', un ALTER lo aggiunge.
+#
+# ── ⭐ `tx_id` SI', `storicizza` PRESENTE E SPENTO (Tid, 2026-08-31) ───
+#
+#   ⛔ La «convenzione di progetto» che il brief citava NON esiste: fra i cinque
+#   parenti stretti ci sono QUATTRO comportamenti diversi — `fatture` (tx_id /
+#   storico acceso), `fatture_scadenze` (idem), `fatture_righe` (tx_id /
+#   storico SPENTO), `fatture_indirizzi` (tx_id / colonna assente),
+#   `fatture_riepiloghi_iva` (nessuna delle due).
+#
+#   Il criterio e' il CICLO DI VITA. `fatture` e `fatture_scadenze` sono cose
+#   che VIVONO — una testata cambia stato, un piano rate si rinegozia — e
+#   sapere com'erano prima e' informazione vera. Le altre tre sono cose che si
+#   RIFANNO: buttate e ricalcolate a ogni rigenerazione del lotto finche' la
+#   fattura e' in bozza, intoccabili dopo il congelamento. Tenerne la storia
+#   significa riempire una gemella con dieci versioni identiche di un calcolo
+#   intermedio — rumore che nasconde il segnale.
+#
+#   `fatture_atti` sta senza dubbi nel secondo gruppo: e' la faccia «atto»
+#   della stessa scrittura che produce le righe. Il `tx_id` invece serve
+#   davvero, ed e' proprio quel legame che registra.
+#   ⇒ Col flag spento NON serve la riga in `config.storico_set_storicizza`.
+#
+# ── ⚠️ LE TRAPPOLE DI UNA TABELLA NUOVA, tutte gia' pagate dal progetto ─
+#
+#   * indici FK **opt-in**: senza il seed esplicito in `dbops.fk_index_policy`
+#     non ne nasce nessuno. Seed in 80_data (20260831-29);
+#   * i trigger di audit, `tx_id` e storico girano solo in contesto `ci_apply`:
+#     su un migrate manuale li aggancia il job serale del pgagent (21:00). Fra
+#     l'apply e quell'ora la tabella NON compila l'audit e NON timbra il tx_id;
+#   * PK `bigint GENERATED BY DEFAULT AS IDENTITY` (tabella tecnica), non
+#     SERIAL — come `resi_righe_accrediti` e `fatture_riepiloghi_iva`;
+#   * ⛔ nessuna policy RLS sul satellite, e il cancello resta la TESTATA:
+#     `vendite.fatture` ha la RLS, i satelliti no. Chi legge parte dalla
+#     testata, sempre. Stessa forma di `fatture_righe` e
+#     `fatture_riepiloghi_iva`, gia' scritta in `api_fattura_dettaglio.md`.
+#
+# ── ⭐ L'ORDINE DELLE `ON DELETE`, che il brief lasciava aperto ────────
+#
+#   `fatture_atti` -> `vendite.fatture` in **ON DELETE CASCADE**: il blocco e'
+#   uno snapshot di QUELLA fattura e muore con lei (categoria CASCADE_DB
+#   nell'inventario di test-cleanup-fattura-copertura-figlie-v1).
+#   La FK nell'altro verso — `fatture_righe.fattura_atto_id` -> qui — resta in
+#   NO ACTION (20260831-26), e **non esplode**: una NO ACTION si verifica a
+#   FINE ISTRUZIONE, quando entrambe le cascate della DELETE sulla testata sono
+#   gia' passate. Non c'e' nessun istante in cui una riga viva punta a un atto
+#   gia' morto. E sul percorso della pulizia il caso non si pone nemmeno:
+#   fn_cleanup_fatture_by_ids cancella fatture_righe PRIMA di fatture.
+#
+# Dipendenze: vendite.fatture, vendite.contratti.
+# Consumatori: 20260831-26 (la FK sulla riga), 20260831-28 (il guard di
+#              congelamento), 20260831-29 (il seed degli indici FK).
+# Verifica: db/pgtap/vendite/test-fatture-atti-v1.sql +
+#           db/pgtap/vendite/test-cleanup-fattura-copertura-figlie-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-25-create-fatture-atti-mctit.yaml
+
+  - changeSet:
+      id: 20260831-25-create-fatture-atti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.fatture_atti: lo snapshot dei riferimenti dell'atto (numero,
+        data, CIG, CUP, commessa) con una riga per (fattura, contratto). ⭐ Una
+        riga E' un blocco DatiContratto della FatturaPA, che e' ripetibile 0..N e
+        punta le sue righe con RiferimentoNumeroLinea: ne' la testata ne' una
+        colonna di riga reggono una fattura che mescola due contratti. Snapshot e
+        non JOIN perche' un CIG corretto domani in anagrafica non deve cambiare su
+        una fattura gia' emessa; contratto_id c'e' per il lineage, non per la
+        stampa. Modello: fatture_riepiloghi_iva, che e' gia' un satellite-blocco-XML.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: fatture_atti
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatture_atti
+            remarks: >-
+              Snapshot dei riferimenti dell'atto per fattura: una riga per
+              (fattura, contratto), che corrisponde a un blocco DatiContratto
+              della FatturaPA. brief-db-fatture-atti-riferimenti-contratto.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_fatture_atti, nullable: false }
+
+              - column: { name: fattura_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.fatture.id: la fattura a cui il blocco appartiene." }
+              - column: { name: contratto_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.contratti.id: l'atto. E' il CHI, per il lineage — non lo snapshot: chi stampa legge le colonne qui sotto, mai questo puntatore. NOT NULL perche' senza, la UNIQUE si sfonda da sola (i NULL non collidono)." }
+
+              - column: { name: id_documento, type: VARCHAR(30), constraints: { nullable: false }, remarks: "Snapshot di vendite.contratti.numero -> IdDocumento della FatturaPA. NOT NULL: la sorgente lo e', quindi il dato si puo' sempre fornire." }
+              - column: { name: data_documento, type: date, constraints: { nullable: false }, remarks: "Snapshot di vendite.contratti.data -> Data della FatturaPA. NOT NULL per la stessa ragione di id_documento." }
+
+              - column: { name: codice_cig, type: VARCHAR(15), remarks: "Snapshot di vendite.contratti.codice_cig -> CodiceCIG. Nullable: un contratto senza CIG e' il caso ordinario." }
+              - column: { name: codice_cup, type: VARCHAR(15), remarks: "Snapshot di vendite.contratti.codice_cup -> CodiceCUP. Nullable." }
+              - column: { name: codice_commessa, type: VARCHAR(100), remarks: "Snapshot di vendite.contratti.codice_commessa -> CodiceCommessaConvenzione. Nullable." }
+
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: false, constraints: { nullable: false }, remarks: "SPENTO di default, come fatture_righe: questa tabella si RIFA' a ogni rigenerazione del lotto e si congela con la fattura — storicizzarla riempirebbe la gemella di versioni identiche di un calcolo intermedio." }
+              - column: { name: tx_id, type: uuid, remarks: "Timbro della transazione: queste righe nascono insieme alle righe di fattura, ed e' quel legame che il tx_id registra." }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatture_atti
+            columnNames: fattura_id, contratto_id
+            constraintName: uq_fatture_atti_fattura_contratto
+
+        # ⭐ Non impedisce nessun doppione — `id` e' gia' la PK, quindi la coppia
+        #   non puo' ripetersi. Esiste per essere il BERSAGLIO della FK composita
+        #   di 20260831-26, che rende «la riga e il suo atto stanno sulla STESSA
+        #   fattura» un VINCOLO invece di un guard.
+        # ⚠️ Comparira' quindi in dbops.vw_duplicate_indexes come ridondante, ed
+        #   e' voluto: va letto come il prezzo del vincolo, non come una svista.
+        #   La rete c'e' — la seconda guardia di apply_fk_index_policy() rifiuta
+        #   il DROP di un indice che sostiene un constraint.
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatture_atti
+            columnNames: id, fattura_id
+            constraintName: uq_fatture_atti_id_fattura
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_atti
+            baseColumnNames: fattura_id
+            constraintName: fk_fatture_atti_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatture_atti
+            baseColumnNames: contratto_id
+            constraintName: fk_fatture_atti_contratto
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.fatture_atti IS
+                'Snapshot dei RIFERIMENTI DELL''ATTO per fattura: una riga per '
+                '(fattura, contratto). ⭐ UNA RIGA E'' UN BLOCCO `DatiContratto` '
+                'della FatturaPA, non ci assomiglia: quel blocco e'' ripetibile '
+                '0..N dentro DatiGenerali e porta `RiferimentoNumeroLinea`, cioe'' '
+                'l''elenco delle righe a cui si riferisce. Una fattura con righe di '
+                'due contratti produce DUE blocchi, quindi ne'' la testata ne'' una '
+                'colonna di riga reggono il caso. Le righe si agganciano da '
+                'vendite.fatture_righe.fattura_atto_id, e il generatore XML diventa '
+                'una SELECT invece di un GROUP BY su testo — che e'' la forma '
+                'scartata, perche'' due atti con lo stesso codice e date diverse si '
+                'fondono o si spezzano a seconda del raggruppamento e nessun vincolo '
+                'se ne accorge. ⭐ Il pattern non e'' nuovo: vendite.fatture_riepiloghi_iva '
+                'e'' gia'' un satellite che aggrega righe per produrre un blocco XML '
+                '(DatiRiepilogo). ⛔ LE COLONNE SONO UNO SNAPSHOT, NON UN JOIN: un CIG '
+                'corretto domani in anagrafica NON deve cambiare su una fattura gia'' '
+                'emessa. `contratto_id` esiste per il LINEAGE — chi stampa legge '
+                'sempre le colonne snapshottate. ⚠️ Nessuna policy RLS: il cancello e'' '
+                'la TESTATA, come per fatture_righe e fatture_riepiloghi_iva; chi legge '
+                'parte da vendite.fatture, sempre. ⚠️ Protetta dal congelamento fiscale '
+                'da trg_fatture_atti_a10_guard_congelamento_ins_upd_dlt (20260831-28), '
+                'che monta la guardia parametrica dei satelliti. ⭐ storicizza SPENTO di '
+                'default come fatture_righe: questa tabella si RIFA'' a ogni '
+                'rigenerazione del lotto e si congela con la fattura, quindi la sua '
+                'storia sarebbe rumore; il tx_id invece c''e'', perche'' registra che '
+                'queste righe nascono nella stessa scrittura delle righe di fattura. '
+                'brief-db-fatture-atti-riferimenti-contratto.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: fatture_atti

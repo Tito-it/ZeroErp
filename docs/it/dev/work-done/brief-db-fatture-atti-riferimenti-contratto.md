@@ -1,8 +1,32 @@
 # Brief DB — i riferimenti dell'atto in fattura: un satellite, non tre colonne
 
+> ## ✅ CHIUSO — 2026-08-31
+>
+> **DB fatto e APPLICATO**: `20260831-25` (la tabella), `-26` (la FK sulla riga),
+> `-27` (i due satelliti rimasti indietro), `-28` (il guard di congelamento),
+> `-29` (gli indici FK). Presidio: `db/pgtap/vendite/test-fatture-atti-v1.sql`,
+> 11 casi, verdi col runner vero. I quattro presidi del §6 ci sono tutti.
+>
+> ⭐ **Una scelta in più rispetto a questo brief**, e va saputa: la FK dalla riga
+> è **COMPOSITA** su `(fattura_atto_id, fattura_id)`. Così «la riga e il suo atto
+> stanno sulla stessa fattura» è un **vincolo** e non un guard — il difetto che
+> chiude è muto: una riga agganciata all'atto di un'altra fattura non solleva
+> niente, fa solo uscire il `RiferimentoNumeroLinea` vuoto, e il CIG sparisce dal
+> documento.
+>
+> ⚠️ **Debito dichiarato, non svista**: `fatture_atti` ha una figlia sua
+> (`fatture_righe`, via `fk_fatture_righe_fattura_atto`) che **nessuno dei due
+> inventari** di `test-cleanup-fattura-copertura-figlie-v1` guarda — il terzo
+> livello non esiste. Oggi non è un buco (quella figlia è già classificata al
+> primo livello e muore prima); il giorno che a `fatture_atti` si aggiungesse una
+> seconda figlia, nessun presidio ne farebbe il nome.
+>
+> ⛔ **Resta il BE**: la tabella la riempie `I4`, non il database. Finché non lo
+> fa, è una sede vuota — e il generatore XML FatturaPA è fuori perimetro (§7).
+
 > **Destinatario:** team DB (`dev/db-tid`). **Voce unica**, e chiude la coda di
 > `D9` / `I8` lasciata aperta dal brief madre
-> [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md)
+> [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md)
 > (§8-nonies, punto 2: *«si porta dietro la colonna `fatture_righe.contratto`»*).
 >
 > 📌 **La richiesta operativa è raccolta con le altre** in
@@ -17,8 +41,10 @@
 >
 > **Stato.** 2026-08-31 — verificato sulla **struttura** (doc auto-generata di
 > `vendite.fatture_righe`, `vendite.contratti`, `vendite.attivita_fatturabili`;
-> sorgente di `fatture_righe_service.py`). **Nessuna misura sui dati.** Nessun
-> file scritto lato DB.
+> sorgente di `fatture_righe_service.py`). **Nessuna misura sui dati.**
+>
+> 🔨 **COSTRUITO e APPLICATO il 2026-08-31** — changeSet `20260831-25..29`. Le
+> tre risposte del team DB stanno al §3.4.
 >
 > **Correlati:**
 > [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) ·
@@ -103,7 +129,7 @@ Snapshot dei riferimenti dell'atto, **una riga per (fattura, contratto)**.
 | `id_documento` | `NOT NULL` — snapshot di `contratti.numero` (→ `IdDocumento`) |
 | `data_documento` | snapshot di `contratti.data` (→ `Data`) |
 | `codice_cig` · `codice_cup` · `codice_commessa` | nullable, snapshot delle tre colonne del contratto |
-| audit + `tx_id` + `storicizza` | convenzione di progetto |
+| audit + `tx_id` + `storicizza` | ~~convenzione di progetto~~ ⛔ **quella convenzione uniforme non esiste** — vedi §3.4: `tx_id` **sì**, `storicizza` **presente ma `DEFAULT false`** (Tid, 2026-08-31) |
 
 **Vincoli**: `UNIQUE (fattura_id, contratto_id)` — un blocco per atto, per
 fattura.
@@ -132,10 +158,54 @@ Sono quattro, e nessuno è opzionale:
 | **3** | nessuna policy RLS sul satellite, e il cancello resta la **testata** | Stessa forma di `fatture_righe` e `fatture_riepiloghi_iva`: `vendite.fatture` ha la RLS, i satelliti no. Chi legge parte dalla testata, sempre — è la regola già scritta in `api_fattura_dettaglio.md` |
 | **4** | indici FK **non a mano** | Policy di progetto: `dbops.apply_fk_index_policy()` in `90_end`, e le celle si registrano in `dbops.fk_index_policy` |
 
-⚠️ **Sull'ordine delle `ON DELETE`** non mi pronuncio: con due figlie della stessa
+⚠️ ~~**Sull'ordine delle `ON DELETE`** non mi pronuncio: con due figlie della stessa
 fattura che devono morire insieme, e una FK fra loro, l'ordine di cascata è una
 scelta di DDL che è vostra. La segnalo perché è il punto in cui una `DELETE` di
-fattura può esplodere con una violazione grezza a runtime.
+fattura può esplodere con una violazione grezza a runtime.~~
+
+### 3.4 ✅ Le risposte del team DB (2026-08-31) — tre punti chiusi
+
+**a) L'ordine delle `ON DELETE`: non era una domanda aperta.**
+`fatture_atti` → `vendite.fatture` in **`ON DELETE CASCADE`**;
+`fatture_righe.fattura_atto_id` → `fatture_atti` in **`NO ACTION`** (il default).
+⭐ **Non esplode**, e il motivo sta nel *momento* in cui la `NO ACTION` si
+verifica: è controllata **a fine istruzione**, quando entrambe le cascate della
+`DELETE` sulla testata sono già passate — non c'è nessun istante in cui una riga
+viva punta a un atto già morto. E sul percorso della pulizia il caso non si pone
+nemmeno: `fn_cleanup_fatture_by_ids` cancella `fatture_righe` **prima** di
+`fatture`. ⚠️ Va **provato** con un pgTAP (cancellare una fattura che ha insieme
+righe e atti), non dedotto: è l'unica prova che il ragionamento regge.
+
+**b) `tx_id` e `storicizza`: la «convenzione di progetto» non esiste.**
+Verificato sulla doc auto-generata dei cinque parenti stretti — `fatture` (sì /
+acceso), `fatture_scadenze` (sì / acceso), `fatture_righe` (sì / **spento**),
+`fatture_indirizzi` (sì / **la colonna non c'è**), `fatture_riepiloghi_iva`
+(**no** / **la colonna non c'è**): cinque tabelle della stessa famiglia,
+**quattro comportamenti diversi**. È una scelta caso per caso.
+
+✅ **Decisione (Tid, 2026-08-31): `tx_id` sì; `storicizza` presente,
+`NOT NULL DEFAULT false`.** ⭐ Il criterio è il **ciclo di vita**, e spiega la
+tabella da solo: `fatture` e `fatture_scadenze` sono cose che **vivono** e la
+loro storia è informazione vera; le altre tre sono cose che si **rifanno** —
+buttate e ricalcolate a ogni rigenerazione finché la fattura è in bozza,
+intoccabili dopo il congelamento. `fatture_atti` sta senza dubbi nel secondo
+gruppo: è la faccia «atto» della stessa scrittura delle righe. Il `tx_id`
+invece serve davvero, perché è il legame con quella scrittura.
+⇒ Con il flag spento non serve la riga in `config.storico_set_storicizza`.
+
+**c) Si chiudono anche i due buchi vecchi.**
+Dato che si apre la famiglia — e **non è scope creep, è togliere il precedente
+sbagliato** che il prossimo userebbe come modello:
+`vendite.fatture_indirizzi` ← `storicizza`;
+`vendite.fatture_riepiloghi_iva` ← **`tx_id` e `storicizza`**, stesso default.
+⭐ Verificato sicuro: tutti gli scrittori usano `INSERT` con l'**elenco colonne
+esplicito**, e nessuna vista o funzione fa `SELECT *` su quelle tabelle.
+⚠️ La sola presenza di `storicizza` fa nascere **due gemelle vuote** in
+`storico` (l'automazione provisiona dalla colonna, non dal flag — si vede da
+`storico.fatture_righe`, che esiste col flag spento). È il prezzo, messo in conto.
+📌 **Resta fuori, come voce a sé**: `fatture_riepiloghi_iva` è l'unico satellite
+di fattura su cui il **guard di congelamento non è montato** — il `COMMENT` della
+funzione parametrica lo nomina già come caso futuro.
 
 ---
 
@@ -166,9 +236,20 @@ riempire**, cioè la voce 2 del brief madre un'altra volta.
 
 ## 5. Quando
 
-⛔ **Insieme a `I4`, non prima.** La tabella nasce con chi la riempie: costruirla
+> ⛔ **SEZIONE SUPERATA il 2026-08-31**, e va letta sapendo cosa è cambiato sotto.
+> Il «non prima» era giusto quando la metà BE era ancora da fare. **Adesso è
+> fatta**: `contratto_id` è entrato nella chiave di aggregazione delle righe di
+> fattura (`F3-a` del piano di Fase 3, 2026-08-31), quindi non c'è più nessuna
+> sede-che-nessuno-popola da temere — il dato per riempirla esiste già e vive
+> nel `meta` (`group_key.contratto_id`).
+> ⇒ **Adesso è il DB a dover andare per primo**: `I4` è bloccata su questa
+> tabella *e* sulla colonna capofila, ed è così che l'ordine di lavoro
+> [brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md)
+> le mette. La frase originale resta qui sotto, marcata e non cancellata.
+
+~~⛔ **Insieme a `I4`, non prima.** La tabella nasce con chi la riempie: costruirla
 adesso produrrebbe una sede vuota che nessuno popola, che è esattamente il
-difetto da cui questo cantiere è partito.
+difetto da cui questo cantiere è partito.~~
 
 ⚠️ E il generatore XML FatturaPA **non esiste ancora** — verificato: nessun
 modulo in `backend/apps`. Il satellite serve comunque prima del builder (è `I4`
@@ -217,4 +298,6 @@ ricostruire.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (3) | 🔨 **COSTRUITO e APPLICATO**: `20260831-25` (tabella), `-26` (la FK sulla riga), `-27` (i due satelliti vecchi), `-28` (il guard di congelamento), `-29` (indici FK). ⭐ **Una scelta in piu' rispetto al brief**: la FK dalla riga e' **COMPOSITA** su `(fattura_atto_id, fattura_id)`, cosi' «la riga e il suo atto stanno sulla stessa fattura» e' un vincolo e non un guard — il difetto che chiude e' muto (il `RiferimentoNumeroLinea` esce vuoto e il CIG sparisce dal documento, senza errori). Presidio: `test-fatture-atti-v1`, 11 casi, **verde col runner vero**. ⭐ I quattro presidi del §6 ci sono tutti, e ognuno e' stato provato per MUTAZIONE: con la FK semplice cade il caso della fattura altrui; senza il trigger montato cade quello del congelamento. ⚠️ `test-cleanup-fattura-copertura-figlie-v1` **e' diventato rosso e ha fatto il nome della tabella** — classificata `CASCADE_DB`, con la motivazione e il debito dichiarato del terzo livello (le figlie di `fatture_atti` non le guarda nessun inventario) |
+| 2026-08-31 (2) | ✅ Chiusi i tre punti lasciati aperti (§3.4): l'**ordine delle `ON DELETE`**, che non era una domanda — la `NO ACTION` si verifica a fine istruzione, quindi `CASCADE` da `fatture` + `NO ACTION` sulla riga regge; **`tx_id` sì / `storicizza` spento**, dopo aver verificato che la «convenzione di progetto» citata al §3.1 **non esiste** (cinque parenti, quattro comportamenti); e l'estensione ai **due satelliti vecchi**. ⛔ Il §5 «insieme a `I4`, non prima» è **superato**: la metà BE è passata, ora è il DB a dover andare per primo |
 | 2026-08-31 | Brief nato da una domanda di Tid — *«la fattura elettronica lo richiede per riga?»* — che ha rovesciato la scelta «testata» presa poche ore prima. ⭐ La risposta era **già in casa**: il manual di `vendite.contratti`, scritto dal team DB il 2026-08-29, cita `RiferimentoNumeroLinea` e indica la riga. Decisa la forma **(b)**: un satellite che *è* il blocco XML, sul modello di `fatture_riepiloghi_iva`, invece di cinque colonne di riga da riaggregare con un `GROUP BY` su testo. ⛔ Trovato costruendo il brief che **`contratto_id` non è nella chiave di aggregazione delle righe di fattura**: due attività di contratti diversi collassano oggi nella stessa riga, quindi il satellite senza la correzione BE (`I4`) sarebbe una sede non riempibile |

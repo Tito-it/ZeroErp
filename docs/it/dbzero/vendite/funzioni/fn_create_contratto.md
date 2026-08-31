@@ -24,13 +24,21 @@ DECLARE
     -- instradamento, Fase B brief emissione mirata). Va decisa PRIMA
     -- del push in commessa: in create e' il momento naturale, e senza
     -- questa voce la chiave veniva scartata in silenzio.
+    -- rev 2026-08-31: aggiunti i TRE RIFERIMENTI DELL'ATTO — CIG, CUP
+    -- e commessa. Stesso difetto della riga sopra, sulla stessa
+    -- funzione: in PATCH il backend li scriveva gia', in CREATE la
+    -- chiave veniva scartata e il contratto nasceva senza il CIG,
+    -- senza nessun errore. ⚠️ A differenza di fatturazione_immediata
+    -- le tre sono NULLABLE: un null e' un valore legittimo e vuol
+    -- dire «non c'e' un CIG», quindi il BE puo' mandarle sempre.
     v_testata_allowed text[] := ARRAY[
         'billing_account_id', 'emittente_fiscale_id', 'istanza_utility_id',
         'utility_id', 'ambito', 'valido_dal', 'valido_al',
         'parent_contratto_id', 'data', 'listino_id',
         'tipo_variazione_globale', 'valore_variazione_globale',
         'categoria_cliente_id_snapshot', 'valuta_id',
-        'fatturazione_immediata', 'meta'
+        'fatturazione_immediata',
+        'codice_cig', 'codice_cup', 'codice_commessa', 'meta'
     ];
     v_util_allowed text[] := ARRAY[
         'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',
@@ -114,7 +122,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb)
-IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. Il filtro e'' sulla PRESENZA della chiave: chiave assente = DEFAULT false, chiave = null = NOT NULL violation (il BE deve omettere o mandare un booleano, mai null). Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto.';
+IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. rev 2026-08-31: aggiunti ''codice_cig'', ''codice_cup'' e ''codice_commessa'' — i tre riferimenti dell''atto, colonne dal 20260829-13. ⛔ E'' LO STESSO DIFETTO della rev precedente sulla stessa funzione: in PATCH il backend li scriveva gia'', in CREATE la chiave veniva SCARTATA e il contratto nasceva senza il CIG, con un 200 e nessun errore a video. Un CIG nasce con la gara, cioe'' PRIMA del contratto: la creazione e'' il momento naturale per digitarlo. ⚠️ IL FILTRO E'' SULLA PRESENZA DELLA CHIAVE, e la semantica del null NON e'' la stessa su tutte le voci: ''fatturazione_immediata'' e'' NOT NULL con DEFAULT false, quindi chiave assente = DEFAULT e chiave = null = 23502 (il BE deve omettere o mandare un booleano, mai null); i tre codici dell''atto sono NULLABLE, quindi un null e'' un valore legittimo che significa «non c''e'' un CIG» e il BE puo'' mandarli sempre. ⛔ La whitelist resta NON fail-loud (chiave ignota scartata e non respinta): renderla tale cambierebbe il comportamento di TUTTE le chiavi di una madre gia'' in uso dal backend, e resta la proposta §6 di brief-db-fatturazione-immediata-create-contratto. Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto + brief-db-fn-create-contratto-codici-atto.';
 ```
 
 ---
