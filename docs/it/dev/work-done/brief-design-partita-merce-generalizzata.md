@@ -6,11 +6,12 @@
 > Definizione di fatto **12/12**, validata in-app da Tid su `ORD0018586` e
 > `ORD0018585`. Dettaglio e misure nel **§23**.
 >
-> ⛔ **Resta in `work-in-progress/` di proposito** (decisione di Tid, 2026-08-18):
-> la tabella qui sotto è **l'indice della catena**, e due dei quattro cantieri —
-> **nota di credito** e **righe DDT a prezzo zero** — sono ancora da fare.
-> Archiviare l'indice mentre i lavori che indicizza sono aperti è il modo più
-> rapido per perderli. Ragioni per esteso nel §23.4.
+> ✅ **ARCHIVIATO in `work-done/` il 2026-08-31**, alla condizione che il §23.4
+> si era posto da sé: *«quando quello si chiude, questo indice si archivia con
+> lui»*. Il «quello» era l'ultimo cantiere aperto — **righe DDT a prezzo zero**,
+> chiuso e validato in-app il **2026-08-27**. La tabella qui sotto resta
+> **l'indice della catena**: oggi tutte le sue righe sono verdi. Esito e conto
+> dei link nel §23.4.
 >
 > Il testo che segue è quello del **2026-08-17**, quando il perimetro DB era
 > appena chiuso e BE/FE restavano fuori: si legge come il cantiere è andato, non
@@ -41,9 +42,9 @@ uno è indipendente.
 | #     | Cantiere                                        | Brief                                                                              | Perché in questa posizione                                                                                                                     |
 | ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | **Partita generalizzata**                       | **questo**                                                                         | È la nozione su cui gli altri due poggiano. Cambiarla dopo obbliga a rifarli                                                                   |
-| **2** | Pannello «situazione merce» su ordine **e DDT** | [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md) | Legge la partita. Fatto prima, mostrerebbe spedizioni miste con conti parziali **sul DDT**, dove l'incoerenza si vede a occhio                 |
-| **3** | Nota di credito (emissione dell'accredito) — ✅ **CHIUSO 2026-08-26**, in `work-done` | [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md)             | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
-| **—** | Righe DDT a prezzo zero                         | [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md)                 | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28                |
+| **2** | Pannello «situazione merce» su ordine **e DDT** — ✅ **CHIUSO 2026-08-18**, in `work-done` | [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md) | Legge la partita. Fatto prima, mostrerebbe spedizioni miste con conti parziali **sul DDT**, dove l'incoerenza si vede a occhio                 |
+| **3** | Nota di credito (emissione dell'accredito) — ✅ **CHIUSO 2026-08-26**, in `work-done` | [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)             | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
+| **—** | Righe DDT a prezzo zero — ✅ **CHIUSO 2026-08-27**, in `work-done` | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md) | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28                |
 
 ⚠️ **La catena 1 → 2 → 3 non è una preferenza di comodo.** Il punto 3 produce
 documenti fiscali: rifarlo significa riconciliare note di credito già emesse,
@@ -1752,7 +1753,7 @@ allarme è entrato insieme alla generalizzazione.
 |                                            |                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto                                            |
-| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata. ⭐ **PARTITO il 2026-08-18**: analisi critica e piano DB (nove slice) nella PARTE II di [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md). ⚠️ Lì il **NC-3 di questo §19.3 è corretto**: la cintura tiene, ma nel caso ri-consegna **impedisce ciò che deve succedere** — la correzione `20260817-11/-12` ha chiuso il segmento vergine su cui la «riga 9» di luglio contava |
+| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata. ⭐ **PARTITO il 2026-08-18**: analisi critica e piano DB (nove slice) nella PARTE II di [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md). ⚠️ Lì il **NC-3 di questo §19.3 è corretto**: la cintura tiene, ma nel caso ri-consegna **impedisce ciò che deve succedere** — la correzione `20260817-11/-12` ha chiuso il segmento vergine su cui la «riga 9» di luglio contava |
 | **Backend / Frontend**                     | ✅ otto richieste in §19 **tutte fatte** (BE 2026-08-17, FE 2026-08-18)                                                                                                                                |
 
 ### 20.5 Le tre cose che questo cantiere ha insegnato
@@ -2115,7 +2116,7 @@ nuova è **accanto**, non al posto — la stessa forma della raccomandazione del
 
 ✅ **FATTA dal team DB il 2026-08-17** — `20260817-15`, pgTAP 11/11, con tre
 cambi rispetto alla richiesta. Brief chiuso e archiviato:
-[work-done/brief-db-situazione-merce-ordine.md](../work-done/brief-db-situazione-merce-ordine.md).
+[work-done/brief-db-situazione-merce-ordine.md](brief-db-situazione-merce-ordine.md).
 
 🟡 **RIAPERTO il 2026-08-18** — rilievo del perimetro BE: alla vista mancava la
 **soglia sullo stato dell'ordine**, gemella della decisione D1 sul DDT. 60 righe
@@ -2460,7 +2461,13 @@ modello, è solo non gestito dal conto. Se comparirà, la decisione — vietarlo
 spezzare la riga, o contare per quantità invece che per riga — va presa allora,
 con il caso vero davanti.
 
-### 23.4 ⛔ Perché il brief NON va in `work-done/`
+### 23.4 ✅ Perché il brief NON andava in `work-done/` — e perché ora ci va
+
+> ⭐ **Esito, 2026-08-31: archiviato.** Questo paragrafo si era posto da sé una
+> condizione — *«quando quello si chiude, questo indice si archivia con lui»* —
+> e la condizione si è avverata. Il testo che segue resta com'era, con l'esito
+> di ciascuna delle tre ragioni in coda: si legge perché l'indice è rimasto
+> fuori tredici giorni, non solo che è uscito.
 
 1. **È l'indice della catena** (decisione di Tid, 2026-08-18). La tabella in
    testa — «l'ordine con cui eseguire i lavori collegati» — è la roadmap dei
@@ -2470,8 +2477,21 @@ con il caso vero davanti.
    resta **uno**. Il **3 (nota di credito)** è chiuso e archiviato in
    `work-done` — collaudo in-app compreso, 39 spunte su 39. Restano le **righe
    DDT a prezzo zero**, il cui collaudo non è ancora cominciato
-   ([collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)).
+   ([collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md)).
    **Quando quello si chiude, questo indice si archivia con lui.**
+   ✅ **Esito 2026-08-31 — la ragione è caduta.** Il collaudo delle righe DDT a
+   prezzo zero è **chiuso il 2026-08-27**, eseguito in-app da Tid su `dbdev`:
+   9 prove, 8 verdi e la 9ª percorsa a mano. E ha fatto il suo mestiere — ha
+   trovato **cinque difetti che nessun test automatico aveva visto**, due
+   bloccanti per l'operatore. Tre erano di quel perimetro e sono corretti; gli
+   altri due hanno aperto due cantieri propri, **entrambi chiusi anche loro**:
+   [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md)
+   (R-3, chiuso 2026-08-28) e la coppia
+   [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md) +
+   [brief-be-fe-iva-fase-3-consumatori-risolutore.md](brief-be-fe-iva-fase-3-consumatori-risolutore.md)
+   (R-4, chiusi 2026-08-31). Tutte e quattro le righe della tabella in testa
+   sono verdi — compresa la **2**, il pannello situazione merce, chiuso e
+   validato in-app fin dal 2026-08-18 e archiviato **in questo stesso giro**.
 2. ~~**Ha lavoro vivo**: il §23.2 è una richiesta DB presa in carico~~ —
    ✅ **superato**: il §23.2 è chiuso dal 2026-08-18. Non è più una ragione.
 3. I link, che è la ragione **più debole** e va detta col numero giusto:
@@ -2481,6 +2501,35 @@ con il caso vero davanti.
    citazioni **per nome**, non path: un file che cambia cartella conserva il
    nome, quindi non si rompono. Restano 5, tutte correggibili nello stesso
    commit — quindi da sole non deciderebbero niente.
+   🔴 **Esito 2026-08-31 — il conto era sbagliato in tutte e due le metà, e la
+   seconda è la metà che conta.** Contati sul repository al momento dello
+   spostamento:
+   * i link markdown con path erano **10**, non 5: 4 brief in `work-done`, il
+     brief del cantiere 2, il manuale BE
+     ([api_situazione_merce.md](../../backend/vendite/manual/api_situazione_merce.md))
+     e **4 manuali `dbzero`** (`vw_partite_merce`, `vw_af_merce_per_riga`,
+     `vw_situazione_merce_ordine`, `trgfn_resi_righe_guard_origine_coerente`),
+     che il conto del 2026-08-26 non aveva guardato. Tutti e 10 corretti nello
+     stesso commit, più i link **in uscita** dai due file spostati — la
+     direzione che il paragrafo non aveva nemmeno nominato;
+   * ⛔ **e in `db/` NON sono citazioni per nome**: **12 delle 19** portano il
+     path per esteso — 10 changeSet `20_code/vendite` e 2 pgTAP, più la
+     fotografia S0. **Sono rimaste com'erano, ed è deliberato**: quei changeSet
+     sono `runOnChange: true`, quindi cambiare anche solo una riga di commento
+     non è una correzione di documentazione — **è una ri-esecuzione della
+     migrazione**, cioè un `CREATE OR REPLACE` delle viste della partita. Un
+     link che punta a una cartella vecchia è un fastidio; ricreare `vw_partite_merce`
+     per sistemare un commento è un'azione sul database, e non si fa da qui.
+     Se e quando qualcuno vorrà allinearli, è **una richiesta al team DB**, e va
+     accorpata al primo `runOnChange` che tocchi davvero quegli oggetti.
+
+⭐ **La forma dell'errore, ed è la quinta volta** (§18.2-bis, §20.5.3, §23.5):
+il conto dei link è stato preso **cercando il nome del file** e classificando a
+occhio le occorrenze in due famiglie, «con path» e «per nome». La domanda giusta
+non era *quante volte compare il nome* ma **quante volte compare preceduto da una
+cartella** — e a quella domanda si risponde con un pattern che contiene la
+cartella, non con uno che contiene il nome. Lo strumento aveva risposto con
+precisione: 19 occorrenze, esatte. Era la domanda a guardare la cosa sbagliata.
 
 ### 23.5 La quarta cosa imparata, che è la terza volta
 

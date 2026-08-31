@@ -18,10 +18,10 @@
 > introspezionato dalla vista viva per costruirci sopra — nessuna sorpresa fra
 > il DB di sviluppo e il changeSet.
 >
-> **Origine**: [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md)
+> **Origine**: [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)
 > §21.6 — misura del 2026-08-17 sul DB di sviluppo.
 >
-> **Serve a**: [brief-design-situazione-merce-ordine.md](../work-in-progress/brief-design-situazione-merce-ordine.md)
+> **Serve a**: [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md)
 > (cantiere 2, pannello situazione merce). È **l'unico** prerequisito DB che
 > quel cantiere ha: tutto il resto — partite, code, `sospetto_duplicato_ordine`,
 > `NON_MISURABILE` — è già in produzione dal push del 2026-08-17.

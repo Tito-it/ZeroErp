@@ -60,6 +60,85 @@
 > DDT da ordine resta fuori partita** — fatturata ma non accreditabile. Tre
 > opzioni in valutazione da Tid (§7-bis del brief NC).
 >
+> **Stato al 2026-08-31 — due voci sospese si sono sciolte, e restano TRE cose.**
+> Non le ha chiuse questo cantiere: le hanno chiuse i cantieri a valle, e il
+> brief non se n'era accorto.
+>
+> * ✅ **DL-28, metà «blocco parlante»**: ⏸️ dal 2026-08-17 *«finché le righe a
+>   prezzo zero non sono ammesse»*. Sono ammesse dal **2026-08-19** ed
+>   **esercitate in-app il 2026-08-27** — il gate scatta su un documento vero
+>   per la prima volta da quando esiste (§13.2, riquadro DL-28);
+> * 🟡 **area RESI delle card**: era vuota *«per progetto, finché non esiste la
+>   NC»*. La NC è chiusa il **2026-08-26** e le due celle di seed ci sono già —
+>   `MERCE_RESA_GIA_FATTURATA` è `RECUPERABILE` con azione. La voce passa da
+>   **bloccata** a **da guardare**: nessuno l'ha ancora vista a video.
+>
+> * ⭐ **V1, esito parziale**: **validato in-app il 2026-08-26** — su un **terzo**
+>   consumatore di `run_fan_out` che questo brief non sapeva di avere
+>   (`resi_service.accredita_righe_reso`), dalla prova **5** del collaudo nota
+>   di credito. Il **telaio** del BB — isolamento per item, tre stati, motivi
+>   per item — è esercitato in applicazione, non solo dai test (§13.1).
+>
+> 🔴 **Cosa resta aperto.** Di **V1**, la sola metà **pipeline**: che il
+> `task_run` si chiuda in **ERRORE** e che il rilancio **RITENTI** invece di
+> saltare — coperta da tre test mirati, che però girano **su mock**: per la
+> regola zero è un **presidio**, non una prova. ⇒ **Decisione a Tid**: se il
+> presidio basta, V1 si chiude dichiarandolo tale. Di **V2**: il ramo
+> `CONFERMATO` di **DL-23** (nessun soggetto, va costruito) e la verifica
+> dell'area RESI qui sopra.
+>
+> ✅ **E il §14 non lascia più niente**: la sola voce di sviluppo che
+> conteneva — la visibilità del lotto riaperto — è **caduta il 2026-08-31**
+> (il segnale arriva all'API dal 22/08 e il FE lo rende sul verbo; il Tag è
+> stato valutato e **scartato**, perché `riaperto_il` non è uno stato).
+> Le due voci **di documentazione DB** che ne sono uscite stanno nel blocco
+> «AL TEAM DB» qui sopra.
+>
+> ⚠️ **Resta in piedi l'avvertenza del §13.1**: la fattura **2263 non va
+> numerata**, e «Rendi definitive» numera *tutte* le EMESSA del mese.
+>
+> ---
+>
+> ## 📌 AL TEAM DB — residui da vedere (2026-08-31)
+>
+> ⛔ **Non c'è un brief separato per queste voci, di proposito** (decisione di
+> Tid): stanno qui, in testa al documento che le ha trovate. Nessuna è urgente,
+> nessuna richiede una migrazione; sono **documentazione che dice il falso**, ed
+> è la categoria che costa di più — chi la legge non ha modo di accorgersene.
+>
+> **DB-R1 · 🔴 `fn_riporta_lotto_a_draft`: la doc manuale contraddice la
+> funzione viva.** Trovato il 2026-08-31 leggendo
+> [fn_riporta_lotto_a_draft.md](../../dbzero/vendite/manual/fn_riporta_lotto_a_draft.md)
+> per capire cosa significhi «lotto riaperto» (domanda di Tid). Due punti:
+>
+> | Dice la doc (review 03-08-2026) | Fa la funzione oggi |
+> | --- | --- |
+> | *«Le esecuzioni dei task (`fatturazione_lotti_task_runs`) **non vengono toccate**… nessuno le consulta per decidere se rifare un passo»* | le **chiude ad `ANNULLATO`** (changeSet `20260803-12`) |
+> | *«Ritorna una riga con **cinque** contatori»*, poi li elenca | ne ritorna **sei**: c'è anche `annullati_task_run` |
+>
+> ⭐ **E la premessa smentita è quella che regge il ragionamento**, non un
+> dettaglio: la doc motiva il «non si toccano» con *«nessuno li consulta»* —
+> misurato il 2026-08-03 — e il changeSet dello **stesso giorno** dimostra il
+> contrario, col motivo scritto nel corpo della funzione:
+>
+> > *«RD-6: 🔴 i task_run si chiudono ad ANNULLATO, altrimenti
+> > `fn_resolve_lotto_task_execution_mode` li vede COMPLETATO e risponde SKIP:
+> > **il lotto riaperto rilancia a vuoto**.»*
+>
+> ⚠️ Quindi la doc non è solo incompleta: **spiega una scelta con un fatto che
+> è stato confutato**, e chi la legge impara una cosa falsa sul motore
+> dell'esecuzione. È la stessa forma del §14.4 — *una frase che dichiara chiuso
+> ciò che è aperto e una che dichiara aperto ciò che è chiuso costano uguale*.
+>
+> **DB-R2 · 🟡 nessun registro di evento sulla riapertura.** `fn_riporta_lotto_a_draft`
+> non scrive in nessuno dei quattro registri di `script.vw_giornale_entita`
+> (`EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`). Nella scheda **Storia**
+> del lotto la riapertura si legge **solo di rimbalzo**, dai task_run passati ad
+> `ANNULLATO`. ⚠️ Non è un difetto dichiarato — è una **domanda**: se «riportato
+> in lavorazione» meriti una riga propria nel giornale. Chi indaga su un lotto
+> oggi deve dedurla; e l'atto cancella documenti, che è la categoria di gesto
+> che di solito una riga se la merita. **Decisione di Tid, non mia.**
+
 > ℹ️ **Il §14 non sposta questa riga.** È la ricognizione dei residui BE che il
 > team DB aveva consegnato «fuori da questa linea»: riverificati contro il
 > codice, **nessuno dei quattro richiede lavoro BE**. Non toglie né aggiunge
@@ -518,6 +597,62 @@ senza il segnale in-app gira ancora il codice vecchio.
 > saltarla. Restano quindi aperti i punti 2 e 3 della lista qui sopra, e servirà
 > costruire una commessa che fallisca l'emit dopo aver superato la scoperta.
 >
+> ---
+>
+> ⭐ **L'ESITO PARZIALE È STATO VALIDATO IN-APP IL 2026-08-26 — ma su un TERZO
+> consumatore, che questo brief non sapeva di avere** (rilievo di Tid,
+> 2026-08-31: *«sono sicuro di averlo già fatto in un collaudo»* — ed è vero).
+>
+> Il §F5 elencava **due** consumatori di `run_fan_out`. Oggi sono **tre**:
+> `resi_service.accredita_righe_reso` (accredito massivo dalla coda accrediti)
+> lo usa dal cantiere nota di credito, con il commento che ne spiega il perché —
+> *«il savepoint per elemento è esattamente ciò che impedisce a una riga
+> rifiutata di portarsi via le rettifiche di quelle passate prima»*.
+>
+> E la **prova 5** di
+> [collaudo-in-app-nota-credito-resi.md](../work-done/collaudo-in-app-nota-credito-resi.md)
+> (*«L'esito parziale si legge»*, voce F2 del brief NC) lo ha percorso a video,
+> con un rifiuto vero costruito apposta:
+>
+> - ✅ il toast è **arancione**, non rosso, e dice **«X su Y»**;
+> - ✅ si apre l'elenco delle righe **non servite**, con **codice e motivo** per
+>   ciascuna;
+> - ✅ **le righe passate sono passate** — non è stato annullato tutto.
+>
+> ⭐ **Cosa questo chiude, ed è la metà che pesava di più.** Il rischio concreto
+> dell'estrazione a BB era che il **telaio** fosse rotto: isolamento per item,
+> tre stati, motivi per item. Quel telaio è ora **esercitato in applicazione**
+> su un consumatore reale — non dai soli test. La riga 3 della lista qui sopra
+> («le altre commesse devono risultare emesse, il giro non si ferma») è la
+> stessa proprietà, provata.
+>
+> ⚠️ **Cosa NON chiude, e va detto con precisione**: quella prova non passa da
+> un **task_run**. Restano fuori le due cose specifiche della **pipeline** —
+> che lo step si chiuda in **ERRORE** invece che COMPLETATO, e che il rilancio
+> **RITENTI** invece di saltare (SKIP). Che è, letteralmente, il difetto per cui
+> questo cantiere è nato.
+>
+> 📌 **Quelle due sono coperte da test mirati** — `test_pull_attivita_da_commessa_parziale_chiude_task_run_errore`,
+> `test_pull_attivita_da_commessa_tutte_fallite_solleva` (che asserisce
+> `E_PULL_COMMESSA_ALL_FAILED`) e `test_fan_out.py` sul BB — **e i test girano
+> su mock**. Per la regola zero questo è un **presidio**, non una prova: dice
+> che il cablaggio è quello previsto, non che il caso sia mai accaduto in
+> applicazione.
+>
+> ⇒ **Decisione presa da Tid (2026-08-31): si costruisce il caso.** Non per
+> completismo — per il **savepoint**, che è l'unica proprietà del cantiere che
+> nessuna esecuzione reale ha mai attraversato su questo percorso, e la cui
+> rottura sarebbe **silenziosa** (attività perse, nessun errore).
+>
+> 📋 **Il copione è scritto**:
+> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
+> — 5 prove più un prerequisito, con il guasto da iniettare nei dati (ROOT
+> source di **una** commessa portata a `COLLEGATO`, reversibile con l'`UPDATE`
+> speculare) e il ripristino. ⛔ Le `UPDATE` sono **azioni sul database**: le
+> esegue Tid o il team DB, non l'agent.
+>
+> ---
+>
 > ⚠️ **Trovato guardando i dati, e non riguarda questo cantiere.** Le tre
 > attività di agosto sono legate a **tre fatture diverse, tutte EMESSA e tutte
 > senza numero**: 2263, 2457 e la 9691 appena creata. Il verbo «Rendi
@@ -534,16 +669,13 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   order-backed con trigger `SPEDITO`, portalo a `CONSEGNATO`, verifica che risulti ancora
   da pushare. **Fatto il 2026-08-16 su entrambi i rami** — esito e contesto nel riquadro
   in fondo alla sezione.
-- ⏸️ **DL-28 — gate causale**: DDT con causale fatturabile e una riga senza prezzo risolvibile
+- ✅ **DL-28 — gate causale**: DDT con causale fatturabile e una riga senza prezzo risolvibile
   → **blocco parlante** all'emissione, non silenzio. E causale non fatturabile (es.
-  CONTO_VISIONE) → fuori dalle card. **SOSPESO il 2026-08-17**: la metà «blocco parlante»
-  non è provabile perché il caso **non è costruibile** — vedi il riquadro in fondo alla
-  sezione e [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md).
-  ⭐ **Aggiornamento 2026-08-19**: il lato DB è chiuso e applicato; il caso resta
-  non costruibile solo perché il backend non usa ancora il nuovo resolver
-  (richiesta BE-1). ✅ La metà
-  «causale non fatturabile fuori dalle card» è invece **provata**: `DDT0010840`
-  (CONTO_VISIONE, prezzo valorizzato, `SPEDITO`) resta fuori dai pushabili.
+  CONTO_VISIONE) → fuori dalle card. **CHIUSO su entrambe le metà.** La seconda il
+  2026-08-17 (`DDT0010840`, CONTO_VISIONE, prezzo valorizzato, `SPEDITO`: resta fuori
+  dai pushabili); la prima — quella sospesa per due mesi — il **2026-08-27**, esercitata
+  in-app dal collaudo delle righe a prezzo zero. Storia della sospensione e del suo
+  scioglimento nel riquadro in fondo alla sezione.
 - 🟡 **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
   `SPEDITO/CONSEGNATO` → serbatoio mostra il **residuo**; con `CONFERMATO` → mostra il
   **pieno**. **Primo ramo fatto il 2026-08-17** (esito in fondo alla sezione); il ramo
@@ -720,6 +852,27 @@ stato che lo renderebbe eleggibile — e `fn_list_ddt_da_pushare()` **non lo
 restituisce**. La regola «dentro chi fattura, fuori chi no» regge sul lato che
 si può provare.
 
+✅ **PRIMA metà fatta (2026-08-27) — la sospensione è sciolta.** Le righe a
+prezzo zero sono ammesse dal **2026-08-19** (DB slice A-D + BE-A→BE-D + FE-A→FE-E)
+e il **collaudo in-app** le ha portate a video il 27: caricata la riga senza
+prezzo su causale **fatturabile**, il pulsante *Emetti* è **disabilitato** e il
+tooltip **nomina la riga**; forzando, il DDT non passa a EMESSO.
+Copione e verbale in
+[collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)
+(prova **3**, casella **2**), che lo registra così:
+
+> ⭐ *«il gate esiste dal 2026-07-18 e in un anno non è mai scattato su un
+> documento reale — le 271 occorrenze nel diario erano tutte corse di pgTAP.
+> Se lo vedi scattare adesso, DL-28 è finalmente esercitato per intero.»*
+
+⭐ **Cosa lascia scritto questa voce**, ed è il motivo per cui vale la pena
+rileggerla tutta: DL-28 è stato **verde nei test per un anno** mentre la porta
+che presidiava era **murata**. Il gate era corretto, i pgTAP lo esercitavano,
+e nessuna di quelle 271 corse poteva accorgersi che in applicazione il caso non
+era nemmeno **inseribile**. È la regola zero vista dal lato del test: *«il test
+è verde perché i dati di oggi non sanno produrre il caso»* non prova niente —
+ed è servito un collaudo a mano, due mesi dopo, per saperlo.
+
 #### DL-27, ramo «reso in DRAFT» (2026-08-17) — ✅ chiuso
 
 Secondo reso sulla stessa merce, lasciato in **DRAFT**: la coda accrediti
@@ -799,6 +952,23 @@ verificabile ora (resta da confermare che il drill-down si apra: era il difetto
 della whitelist fail-closed); l'area RESI lo diventerà **con la slice NC**, e
 allora basteranno due celle di seed — vedi §6.1 di
 [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
+
+⭐ **Aggiornamento 2026-08-31 — la condizione si è avverata, la voce non è più
+bloccata.** La slice NC è **chiusa il 2026-08-26** (collaudo in-app compreso) e
+**le due celle di seed ci sono già**: in
+`db/changelog/migrations_v2/80_data/sql/config/motivi_fermo.csv` la riga 15 porta
+`MERCE_RESA_GIA_FATTURATA` da `FISIOLOGICO`/azione NULL a **`RECUPERABILE`** con
+azione *«Emetti la nota di credito dalla coda accrediti»*. Il filtro
+`WHERE COALESCE(mf.classe,'ANOMALIA') <> 'FISIOLOGICO'` — l'ultimo della vista,
+quello su cui l'area cadeva — **non la scarta più**.
+
+⚠️ **Ma «sbloccata» non è «verificata», e la differenza qui è tutta.** Nessuno
+ha ancora guardato il Backlog dopo il cambio: il collaudo NC non tocca le due
+lenti. Quindi la voce passa da ⏸️ **bloccata** a 🟡 **da guardare**, ed è una
+delle tre cose ancora aperte del §13. Va vista **con il soggetto che c'è già**
+(`RESO0005122`, accredito dovuto 5), e ciò che si controlla non è solo che
+l'area **compaia**: è che compaia **con l'azione**, perché è l'azione la ragione
+per cui il motivo ha smesso di essere fisiologico.
 
 ### 13.3 Le due cose non-validazione — una chiusa, una aperta
 
@@ -902,6 +1072,48 @@ risale all'API e **il FE non mostra da nessuna parte che un lotto è stato
 riaperto**. È una richiesta di *visibilità*, non un residuo di consumo — e come
 tale va valutata a sé, non ereditata come «funzione DB inutile».
 
+> ✅ **SUPERATO — verificato il 2026-08-31 sul codice, ed erano false tutte e
+> due le metà.** Il paragrafo qui sopra resta perché la sua *forma* era giusta;
+> il suo contenuto no.
+>
+> **1 · Il segnale risale all'API.** `vendite_repository.py` espone
+> `(fl.riaperto_il IS NOT NULL) AS riaperto` in `_LOTTO_SELECT_COLS`, quindi
+> **su lista e dettaglio**, con `riaperto: bool` dichiarato in `types.py`.
+> Entrato con il collaudo NC del **2026-08-22**, due mesi prima che qualcuno
+> rileggesse questo §14.1.
+>
+> **2 · Il FE lo mostra — dove serve, cioè sul GESTO.** Su un lotto riaperto
+> `verbiPipeline` propone **«Rigenera la bozza»** (`pi pi-refresh`) al posto di
+> «Avanza step» (`pi pi-forward`), come **pulsante visibile** nella
+> `DrawerActionsBar` e come voce del kebab di riga. E il dialog di conferma lo
+> dice a parole: *«Il lotto è stato riportato in lavorazione: rieseguire lo step
+> per rigenerare i documenti? Il lotto resta in bozza.»* L'esito è «Bozza
+> rigenerata», non «Pipeline avanzata».
+>
+> ⭐ **E l'icona è diversa di proposito** — dal commento del composable: *«la
+> freccia in avanti su un gesto che non avanza è la stessa bugia
+> dell'etichetta»*.
+>
+> ⛔ **Il Tag di stato è stato VALUTATO E SCARTATO** (2026-08-31), ed è la parte
+> che vale la pena tenere scritta. La proposta era «un Tag *riaperto* in lista e
+> in testata drawer». È sbagliata, e la ragione sta nel ciclo di vita della
+> colonna: **`riaperto_il` non è uno stato, è un segnale di un giro solo** — il
+> runner lo spegne (`azzera_riaperto_il`) appena lo onora. Un Tag prometterebbe
+> **uno stato durevole su una cosa che dura una esecuzione**, e sarebbe una
+> seconda bugia dopo quella che l'etichetta del pulsante ha appena tolto.
+> ⇒ Ciò che l'operatore deve sapere non è *«questo lotto è riaperto»* ma
+> **«la prossima esecuzione RIFÀ invece di avanzare»** — e quello è già scritto
+> sul verbo, che è il posto dove la persona sta guardando quando la cosa conta.
+>
+> ⚠️ **Il residuo onesto, e sta in una riga**: nella finestra fra la riapertura
+> e il primo run, un lotto riaperto e uno mai riaperto sono **identici a
+> riposo** — si distinguono solo aprendo il menu delle azioni. Non conta per chi
+> ha appena premuto il pulsante (ha visto il toast); conta per un **secondo**
+> operatore, o per lo stesso dopo un ricarico di pagina. Se un giorno si vorrà
+> chiudere anche quello, la sede giusta **non è un Tag** ma la riga informativa
+> che la `DrawerActionsBar` già rende (`stato_info_key`), cioè lo stesso canale
+> con cui il DB spiega perché un verbo è spento.
+
 ### 14.2 `terne_pronte` — misura scattata 49 minuti troppo presto
 
 Anche qui il consumo c'è: `commesse_repository.py:1267` lo decodifica con
@@ -933,9 +1145,14 @@ cose da fare, entrambe di registro e non di sviluppo:
 
 - la **memoria del DB va rettificata** sulle due voci `terne_pronte` e
   `riaperto_il`, altrimenti si autoconfermano alla prossima sessione;
-- se la **visibilità FE del lotto riaperto** interessa davvero (§14.1), va
-  aperta come richiesta sua, con il suo perimetro — non lasciata implicita
-  dentro un residuo che nel merito è chiuso.
+- ~~se la **visibilità FE del lotto riaperto** interessa davvero (§14.1), va
+  aperta come richiesta sua, con il suo perimetro~~ — ✅ **CADUTA il
+  2026-08-31**: la visibilità **c'è già** (il verbo cambia nome, icona, conferma
+  ed esito) e il Tag che sembrava mancare è stato **valutato e scartato**,
+  perché `riaperto_il` non è uno stato. Esito e ragione nel riquadro del §14.1.
+  ⇒ **Questa ricognizione non lascia più nessuna voce di sviluppo**, né BE né
+  FE: restano solo le due di registro (la memoria del DB, qui sopra) e le due
+  voci DB di documentazione, in testa al documento.
 
 ⭐ **La lezione, che è la stessa di due volte oggi**: una misura contro il codice
 vale quanto il momento in cui è scattata e il posto in cui ha guardato. Una

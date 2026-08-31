@@ -5,6 +5,11 @@
 > (l'ordine del §3, quello che ha generato il requisito) e su `ORD0018585`
 > (confermato e mai spedito). Vedi §8.
 >
+> ✅ **ARCHIVIATO in `work-done/` il 2026-08-31**, insieme all'indice della
+> catena ([brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)):
+> tutti e quattro i cantieri sono chiusi, l'ultimo — righe DDT a prezzo zero —
+> il 2026-08-27. Nessun residuo aperto su questo perimetro.
+>
 > **Origine**: rilievo in-app di Tid (2026-08-17), dopo aver percorso a mano il
 > giro completo ordine → DDT → fattura → reso a credito → reso per riconsegna:
 > *«a video non si capisce nulla di tutto questo giro… se si vuole avere la
@@ -36,7 +41,7 @@
 > Catena completa e ragioni in
 > [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md).
 >
-> **Rif.**: [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md)
+> **Rif.**: [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
 > (le code che alimentano la lettura) · `brief-design-fatturazione-due-lenti.md`
 > §6-quater DL-24/DL-27.
 

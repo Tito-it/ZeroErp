@@ -51,7 +51,7 @@
 > prezzo zero.
 >
 > Catena completa e ragioni in
-> [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md).
+> [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md).
 >
 > **Rif.**: [brief-design-fatturazione-due-lenti.md](../work-done/brief-design-fatturazione-due-lenti.md)
 > §10 **DL-28** · [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md) §4a ·

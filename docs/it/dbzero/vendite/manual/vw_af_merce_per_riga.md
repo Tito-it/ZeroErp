@@ -13,7 +13,7 @@ Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
 > [vw_contatore_merce](vw_contatore_merce.md)
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md` §9, slice S1
+> Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §9, slice S1
 
 ---
 ### 🎯 Scopo Principale

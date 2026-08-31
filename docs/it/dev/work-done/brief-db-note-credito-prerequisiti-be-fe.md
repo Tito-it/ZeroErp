@@ -1750,8 +1750,8 @@ numerazione.
 
 * Brief principale e piano BE/FE: [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
   — decisioni §21.4, numeratore §21.5, piano §22 → §26
-* Partita generalizzata (cantiere 1): [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md)
-* Pannello situazione merce (cantiere 2): [brief-design-situazione-merce-ordine.md](../work-in-progress/brief-design-situazione-merce-ordine.md)
+* Partita generalizzata (cantiere 1): [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)
+* Pannello situazione merce (cantiere 2): [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md)
 * Perimetro emittente (cantiere **chiuso** il 2026-08-18): [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
 
 ---
