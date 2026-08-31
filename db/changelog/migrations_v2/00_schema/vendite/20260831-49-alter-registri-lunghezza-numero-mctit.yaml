@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-9 — ANCHE LA LUNGHEZZA PASSA SUL REGISTRO
+#   vendite.registri_fatturazione.lunghezza_numero
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-9
+#
+# ── ⛔ L'ULTIMO FILO CHE TENEVA LEGATE LE DUE SEDI ────────────────
+#   Dopo P-2..P-8 il registro governa prefisso e suffisso, ma la LUNGHEZZA si
+#   leggeva ancora da config.sistema_codici. ⚠️ Ne discendeva una cosa che Tid
+#   ha notato per primo: quelle quattro righe restavano in una tabella
+#   EDITABILE DAL PANNELLO DI CONFIGURAZIONE, con un `prefisso` che nessuno
+#   legge piu'. Un amministratore che lo cambia non ottiene NIENTE, e non ha
+#   modo di accorgersene.
+#   ⇒ Spostata anche la lunghezza, quelle righe si possono togliere, e in
+#   config.sistema_codici restano solo i numeratori che quella tabella GENERA
+#   davvero.
+#
+# ── ⚠️ IL CONTRO, DICHIARATO ─────────────────────────────────────
+#   La lunghezza e' una proprieta' del TIPO DOCUMENTO piu' che del sezionale:
+#   tutti i DDT hanno 7 cifre. Metterla sul registro rende configurabili due
+#   registri DDT con lunghezze diverse — piu' potere, e un modo in piu' di
+#   sbagliare.
+#   ⭐ Si accetta lo stesso: il prezzo e' teorico, mentre la confusione delle
+#   righe monche in un pannello di configurazione e' concreta e gia' presente.
+#
+# ── ⭐ `integer` E NON `smallint`, ED E' DELIBERATO ───────────────
+#   E' lo stesso tipo di config.sistema_codici.lunghezza_numero. Cosi' il
+#   parametro `p_lunghezza` della funzione pura, che oggi e' ancorato a QUELLA
+#   colonna e domani a QUESTA, risolve allo stesso tipo — e le funzioni si
+#   possono sostituire con CREATE OR REPLACE senza DROP.
+#
+# ⚠️ `NOT NULL DEFAULT 7`: non c'e' mai un NULL da interpretare, e chi crea un
+#   registro a mano ottiene il valore comune. ⛔ La COMMESSA ne vuole 9, e glielo
+#   danno il seed qui sotto e il provisioning (P-11).
+# ⚠️ Colonna e seed nello stesso changeSet, per la ragione di sempre:
+#   `00_schema` gira PRIMA di `20_code`, e le funzioni la leggeranno subito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-49-alter-registri-lunghezza-numero-mctit.yaml
+
+  - changeSet:
+      id: 20260831-49-alter-registri-lunghezza-numero
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-9: anche la LUNGHEZZA passa sul registro, ed e'' l''ultimo filo che teneva legate le
+        due sedi. ⚠️ Finche'' restava in config.sistema_codici, quelle quattro righe rimanevano in
+        una tabella editabile dal pannello con un `prefisso` che nessuno legge piu'': un
+        amministratore che lo cambia non ottiene niente e non ha modo di accorgersene — l''ha
+        notato Tid. ⇒ Spostata la lunghezza, le righe si possono togliere (P-12). ⚠️ Il contro,
+        dichiarato: la lunghezza e'' del TIPO DOCUMENTO piu'' che del sezionale, e sul registro
+        diventa configurabile per sezionale — piu'' potere e un modo in piu'' di sbagliare; si
+        accetta perche'' il prezzo e'' teorico e la confusione e'' concreta. ⭐ `integer` e non
+        smallint: e'' lo stesso tipo del catalogo, cosi'' il parametro ancorato con %TYPE risolve
+        uguale e le funzioni si sostituiscono con CREATE OR REPLACE. ⚠️ NOT NULL DEFAULT 7, e la
+        commessa prende 9 dal seed. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-9.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: lunghezza_numero
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: registri_fatturazione
+            columns:
+              - column:
+                  name: lunghezza_numero
+                  type: integer
+                  defaultValueNumeric: 7
+                  constraints:
+                    nullable: false
+                  remarks: >-
+                    Cifre della parte numerica prodotta da questo registro (lpad).
+                    Default 7; la commessa ne usa 9.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Il seed si DERIVA dal catalogo dei formati, come per il
+              --   prefisso: la chiave e' la famiglia in minuscolo. Quattro
+              --   costanti scritte a mano sarebbero un elenco parallelo, e
+              --   fra due giorni quel catalogo non ci sara' piu'.
+              UPDATE vendite.registri_fatturazione r
+                 SET lunghezza_numero = sc.lunghezza_numero
+                FROM config.sistema_codici sc
+               WHERE sc.codice_interno = lower(r.famiglia_documento)
+                 AND sc.lunghezza_numero IS NOT NULL;
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.lunghezza_numero
+              IS 'Cifre della parte numerica che questo registro produce (l''argomento di lpad). ⭐ Dal 2026-08-31 la forma del numero e'' governata INTERAMENTE dal registro — prefisso, suffisso e lunghezza — e config.sistema_codici non c''entra piu'' per le famiglie che si numerano qui. ⛔ E'' stato l''ultimo filo da tagliare: finche'' la lunghezza restava nel catalogo, quelle righe dovevano restarci anche loro, con un `prefisso` che nessuno leggeva piu'' in una tabella EDITABILE DAL PANNELLO DI CONFIGURAZIONE — un amministratore che lo cambiava non otteneva niente e non aveva modo di accorgersene. ⚠️ IL CONTRO, DICHIARATO: la lunghezza e'' una proprieta'' del TIPO DOCUMENTO piu'' che del sezionale — tutti i DDT hanno 7 cifre — e qui diventa configurabile per sezionale, cioe'' piu'' potere e un modo in piu'' di sbagliare. Si e'' accettato perche'' quel prezzo e'' teorico, mentre la confusione delle righe monche era concreta e gia'' in circolo. ⭐ Il tipo e'' `integer` e non smallint: e'' lo stesso di config.sistema_codici.lunghezza_numero, cosi'' il parametro p_lunghezza di vendite.fn_componi_numero_documento — ancorato con %TYPE prima a quella colonna e poi a questa — risolve allo stesso tipo, e la funzione si sostituisce con CREATE OR REPLACE senza DROP. ⚠️ NOT NULL DEFAULT 7: non c''e'' mai un NULL da interpretare, e chi crea un registro a mano ottiene il valore comune; la COMMESSA ne vuole 9 e glielo danno il seed e vendite.fn_provision_registri_emittente. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-9.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione DROP COLUMN IF EXISTS lunghezza_numero;

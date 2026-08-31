@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — I CONTATORI SI ALLINEANO AL MASSIMO GIA' EMESSO
+#   vendite.registri_fatturazione_progressivi
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-1
+#
+# ── ⛔ IL DIFETTO: UNA PREMESSA SBAGLIATA, E L'HO SCRITTA IO ──────
+#   Il brief del trasloco diceva: «i contatori ripartono da 1, e non collidono
+#   coi vecchi perche' LA FORMA E' DIVERSA — ed e' l'unica cosa che li separa».
+#   ✅ Per la COMMESSA e' vero: CMM-<sigla>-<anno>-<9 cifre> non somiglia a
+#      CMM-<timestamp>-<md5>.
+#   ✅ Per i PREVENTIVI non si pone: non sono sui registri, usano una sequenza
+#      di database che non riparte mai (verificato: PRV0000202 prosegue).
+#   ⛔ Per ORDINI, DDT e RESI e' FALSO: la forma e' PREFISSO + 7 cifre, prima e
+#      dopo il trasloco. La premessa e' stata scritta una volta e applicata a
+#      tutti e quattro senza verificarla documento per documento.
+#   ⇒ Un ordine creato il 2026-08-31 ha preso ORD0000001, che il pregresso usa
+#     gia'.
+#
+# ── ⚠️ E IL VINCOLO NON SE NE ACCORGE, PER COSTRUZIONE ───────────
+#   uq_ordini_v_anno_serie_numero e' su (registro_id, anno, serie, numero) e le
+#   righe pregresse hanno registro_id NULL. Una riga con registro NULL e una con
+#   registro valorizzato NON COLLIDONO MAI: due documenti con lo stesso numero
+#   convivono, e non c'e' niente da respingere.
+#
+# ── ⭐ LA CURA: IL CONTATORE NON PARTE DA ZERO, PARTE DA DOVE SI ERA
+#   ARRIVATI ────────────────────────────────────────────────────────
+#   Per ogni (registro, anno, serie) si porta `last_numero` almeno al massimo
+#   progressivo gia' emesso dal PREGRESSO di quell'emittente e di quell'anno.
+#   ⭐ GREATEST e mai un'assegnazione secca: la memoria di una sequenza non deve
+#   MAI arretrare, ed e' la stessa regola che il motore applica a ogni giro.
+#
+# ── ⚠️ L'ANNO SI PRENDE DALLA DATA, NON DALLA COLONNA ────────────
+#   Su DDT e resi la colonna `anno` e' NULL su TUTTO il pregresso (misurato nel
+#   cantiere del trasloco: la normalize la riempiva solo sul ramo «INSERT gia'
+#   numerato», che quei documenti non attraversano). Raggruppare per quella
+#   colonna metterebbe tutto il pregresso in un anno inesistente.
+#   ⇒ Si usa EXTRACT(YEAR FROM data), che e' la definizione di «anno del
+#   documento» nel modello nuovo.
+#
+# ⚠️ SI SCRIVE COME REGOLA, NON COME VALORI: il DB di sviluppo non e'
+#   ricostruito da zero, e altrove i massimi sono altri.
+# ⛔ NON tocca i duplicati gia' esistenti: decisione di Tid del 2026-08-31, se
+#   ne parla dopo. Questo changeSet impedisce che se ne creino di NUOVI.
+# ℹ️ `mese = 0`: la chiave del contatore lo porta fisso, perche' l'unica
+#   reset_policy ammessa e' ANNUALE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-39-allinea-progressivi-al-massimo-emesso-mctit.yaml
+
+  - changeSet:
+      id: 20260831-39-allinea-progressivi-al-massimo-emesso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-1: i contatori di ordini, DDT e resi si allineano al massimo progressivo gia'' emesso
+        dal pregresso. ⛔ Ripara una premessa sbagliata del cantiere del trasloco — «i contatori
+        ripartono da 1 e non collidono coi vecchi perche'' la forma e'' diversa»: vero per la
+        commessa, irrilevante per i preventivi (non sono sui registri), FALSO per ordini, DDT e
+        resi, dove la forma e'' rimasta PREFISSO + 7 cifre. ⚠️ E il vincolo non se ne accorge per
+        costruzione: la chiave contiene registro_id e il pregresso ce l''ha NULL, quindi una riga
+        con registro NULL e una con registro valorizzato non collidono mai. ⭐ GREATEST e mai
+        un''assegnazione secca: la memoria di una sequenza non arretra. ⚠️ L''anno si prende da
+        EXTRACT(YEAR FROM data) e non dalla colonna `anno`, che su DDT e resi e'' NULL su tutto il
+        pregresso. ⚠️ Scritto come REGOLA e non come valori: altrove i massimi sono altri.
+        ⛔ Non tocca i duplicati gia'' esistenti (decisione di Tid): impedisce solo che se ne
+        creino di nuovi. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini
+                columnName: registro_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND t.relname = 'registri_fatturazione_progressivi'
+                     AND c.conname = 'uq_regprog_key';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              WITH pregresso AS (
+                  -- ⚠️ Il pregresso si lega al registro attraverso l'EMITTENTE,
+                  --   perche' registro_id ce l'ha NULL: e' esattamente la
+                  --   ragione per cui i due mondi non collidono da soli.
+                  SELECT 'ORDINE'::character varying           AS famiglia,
+                         ef.soggetto_ruolo_id                  AS emittente_sr,
+                         EXTRACT(YEAR FROM o.data)::smallint   AS anno,
+                         COALESCE(o.serie, '')::character varying AS serie,
+                         max(NULLIF(regexp_replace(o.numero::text, '\D', '', 'g'), '')::bigint) AS max_n
+                    FROM vendite.ordini o
+                    JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   WHERE o.numero IS NOT NULL
+                   GROUP BY 1, 2, 3, 4
+
+                  UNION ALL
+
+                  SELECT 'DDT'::character varying,
+                         ef.soggetto_ruolo_id,
+                         EXTRACT(YEAR FROM d.data)::smallint,
+                         COALESCE(d.serie, '')::character varying,
+                         max(NULLIF(regexp_replace(d.numero::text, '\D', '', 'g'), '')::bigint)
+                    FROM vendite.ddt d
+                    JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
+                   WHERE d.numero IS NOT NULL
+                   GROUP BY 1, 2, 3, 4
+
+                  UNION ALL
+
+                  -- ⚠️ Il reso non ha la colonna `serie`: gira sulla serie del
+                  --   registro, che sui registri RESO dev'essere vuota.
+                  SELECT 'RESO'::character varying,
+                         ef.soggetto_ruolo_id,
+                         EXTRACT(YEAR FROM r.data)::smallint,
+                         ''::character varying,
+                         max(NULLIF(regexp_replace(r.numero::text, '\D', '', 'g'), '')::bigint)
+                    FROM vendite.resi r
+                    JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
+                   WHERE r.numero IS NOT NULL
+                   GROUP BY 1, 2, 3, 4
+              ),
+              bersaglio AS (
+                  SELECT reg.id AS registro_id, p.anno, p.serie, p.max_n
+                    FROM pregresso p
+                    JOIN vendite.registri_fatturazione reg
+                      ON reg.emittente_soggetto_ruolo_id = p.emittente_sr
+                     AND reg.famiglia_documento          = p.famiglia
+                     AND reg.utility_id IS NULL
+                   WHERE p.max_n IS NOT NULL
+                     AND p.anno  IS NOT NULL
+              )
+              INSERT INTO vendite.registri_fatturazione_progressivi
+                     (registro_id, anno, mese, serie, last_numero, attivo)
+              SELECT b.registro_id, b.anno, 0, b.serie, b.max_n, true
+                FROM bersaglio b
+              ON CONFLICT (registro_id, anno, mese, serie)
+              DO UPDATE
+                    -- ⭐ GREATEST: se il contatore e' gia' oltre, non arretra.
+                    SET last_numero = GREATEST(
+                            registri_fatturazione_progressivi.last_numero,
+                            EXCLUDED.last_numero);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback non previsto: un contatore non arretra. Le righe di progressivi create qui restano, e sono corrette.'::text;

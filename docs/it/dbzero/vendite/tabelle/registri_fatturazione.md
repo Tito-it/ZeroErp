@@ -28,6 +28,9 @@
 | limite_emissione_giorni | smallint | YES |  |
 | limite_emissione_giorno_mese | smallint | YES |  |
 | famiglia_documento | character varying | NO | 'FATTURA'::character varying |
+| prefisso | character varying | YES |  |
+| suffisso | character varying | YES |  |
+| lunghezza_numero | integer | NO | 7 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -51,6 +54,7 @@
 | pk_regfatt | `CREATE UNIQUE INDEX pk_regfatt ON vendite.registri_fatturazione USING btree (id)` |
 | uq_registri_fatturazione_codice | `CREATE UNIQUE INDEX uq_registri_fatturazione_codice ON vendite.registri_fatturazione USING btree (codice)` |
 | uq_registri_fatturazione_famiglia_emittente_utility | `CREATE UNIQUE INDEX uq_registri_fatturazione_famiglia_emittente_utility ON vendite.registri_fatturazione USING btree (famiglia_documento, emittente_soggetto_ruolo_id, utility_id) NULLS NOT DISTINCT WHERE ((famiglia_documento)::text <> 'FATTURA'::text)` |
+| uq_registri_fatturazione_prefisso_suffisso | `CREATE UNIQUE INDEX uq_registri_fatturazione_prefisso_suffisso ON vendite.registri_fatturazione USING btree (emittente_soggetto_ruolo_id, prefisso, suffisso) NULLS NOT DISTINCT WHERE (((COALESCE(prefisso, ''::character varying))::text <> ''::text) OR ((COALESCE(suffisso, ''::character varying))::text <> ''::text))` |
 | uq_registri_fatturazione_uid | `CREATE UNIQUE INDEX uq_registri_fatturazione_uid ON vendite.registri_fatturazione USING btree (uid)` |
 
 ## 🚨 Trigger

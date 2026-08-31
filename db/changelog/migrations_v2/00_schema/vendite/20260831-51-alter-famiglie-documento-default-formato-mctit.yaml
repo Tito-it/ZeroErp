@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-11 — DA DOVE NASCE UN REGISTRO NUOVO
+#   vendite.famiglie_documento.prefisso_default / .lunghezza_default
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-11
+#
+# ── ⛔ IL NODO, TROVATO SCRIVENDO IL PROVISIONING ────────────────
+#   Il piano prevedeva di togliere da config.sistema_codici le quattro righe dei
+#   documenti traslocati. ⚠️ Ma vendite.fn_provision_registri_emittente derivava
+#   PROPRIO DA LI' il prefisso e la lunghezza dei registri che crea.
+#   ⇒ Togliendo le righe, ogni emittente NUOVO sarebbe nato con prefisso NULL e
+#   lunghezza 7 — e la commessa con 7 cifre invece di 9, in silenzio. Non si
+#   sarebbe visto oggi: si sarebbe visto al primo emittente creato dopo il
+#   rilascio, cioe' quando nessuno guarda.
+#
+# ── ⭐ LA SEDE GIUSTA C'ERA GIA' ─────────────────────────────────
+#   `vendite.famiglie_documento` e' il catalogo che dice cos'e' ogni famiglia e
+#   dove vive. Prefisso e lunghezza sono proprieta' del TIPO DOCUMENTO — tutti i
+#   DDT hanno 7 cifre — quindi e' li' che i loro DEFAULT appartengono.
+#   ⭐ E scioglie il contro dichiarato al P-9: la lunghezza E' del tipo
+#   documento, e sul registro resta come OVERRIDE — che e' esattamente il motivo
+#   per cui un sezionale potrebbe volerla diversa.
+#
+#       famiglie_documento  ->  il DEFAULT  (del tipo documento)
+#       registri_fatturazione ->  l'EFFETTIVO (del sezionale)
+#
+# ── ⚠️ IL SEED SI PRENDE DAL CATALOGO DEI FORMATI FINCHE' C'E' ───
+#   Questo changeSet gira mentre le righe di config.sistema_codici ci sono
+#   ancora: il DELETE e' in `80_data`, che gira dopo `00_schema`. ⭐ E' l'ultima
+#   volta che quel catalogo serve a queste quattro famiglie.
+#
+# ⚠️ Nessun NOT NULL sul prefisso: vuoto resta legittimo e significa «nessun
+#   prefisso», come sul registro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-51-alter-famiglie-documento-default-formato-mctit.yaml
+
+  - changeSet:
+      id: 20260831-51-alter-famiglie-documento-default-formato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-11: da dove nasce un registro nuovo. ⛔ Nodo trovato scrivendo il provisioning: quella
+        funzione derivava prefisso e lunghezza da config.sistema_codici, e togliendo quelle righe
+        ogni emittente NUOVO sarebbe nato con prefisso NULL e lunghezza 7 — la commessa con 7
+        cifre invece di 9, in silenzio, e non oggi ma al primo emittente creato dopo il rilascio.
+        ⭐ La sede giusta c''era gia'': vendite.famiglie_documento e'' il catalogo del TIPO
+        DOCUMENTO, ed e'' li'' che i default appartengono — il registro tiene l''EFFETTIVO, come
+        override. ⭐ Scioglie anche il contro dichiarato al P-9: la lunghezza e'' del tipo
+        documento, e sul registro resta un override. ⚠️ Il seed si prende dal catalogo dei
+        formati finche'' c''e'': il DELETE e'' in 80_data, che gira dopo 00_schema.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-11.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: prefisso_default
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columns:
+              - column:
+                  name: prefisso_default
+                  type: varchar(8)
+                  remarks: >-
+                    Prefisso con cui nasce un registro di questa famiglia. Vuoto = nessun
+                    prefisso. E' un DEFAULT: il valore effettivo vive sul registro.
+              - column:
+                  name: lunghezza_default
+                  type: integer
+                  defaultValueNumeric: 7
+                  constraints:
+                    nullable: false
+                  remarks: >-
+                    Cifre con cui nasce un registro di questa famiglia. La commessa ne usa 9.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Ultima lettura di config.sistema_codici per queste famiglie:
+              --   da qui in avanti la fonte e' questo catalogo. La chiave e'
+              --   sempre la stessa, il nome della famiglia in minuscolo.
+              -- ⚠️ Il prefisso porta il SEPARATORE con se': dal 2026-08-31 non
+              --   e' piu' un campo a se' — e copiarne solo meta' e' il difetto
+              --   che il 20260831-47 ha dovuto correggere.
+              UPDATE vendite.famiglie_documento fd
+                 SET prefisso_default  = sc.prefisso || COALESCE(sc.separatore, ''),
+                     lunghezza_default = COALESCE(sc.lunghezza_numero, 7)
+                FROM config.sistema_codici sc
+               WHERE sc.codice_interno = lower(fd.codice_interno)
+                 AND COALESCE(sc.prefisso, '') <> '';
+
+              COMMENT ON COLUMN vendite.famiglie_documento.prefisso_default
+              IS 'Prefisso con cui NASCE un registro di questa famiglia — separatore compreso, perche'' dal 2026-08-31 il separatore non e'' piu'' un campo a se'' e si scrive dentro il prefisso. ⭐ E'' un DEFAULT, non il valore effettivo: quello vive su vendite.registri_fatturazione.prefisso, e un sezionale puo'' averlo diverso. La divisione e'' netta — QUI il tipo documento, LI'' il sezionale. ⛔ Esiste perche'' senza di essa la rimozione delle quattro righe da config.sistema_codici (20260831-53) avrebbe lasciato vendite.fn_provision_registri_emittente SENZA FONTE: ogni emittente nuovo sarebbe nato con prefisso NULL, e la commessa con 7 cifre invece di 9 — in silenzio, e non subito ma al primo emittente creato dopo il rilascio, cioe'' quando nessuno guarda. ⚠️ Nessun NOT NULL: vuoto e'' legittimo e significa «nessun prefisso», come sul registro. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-11.';
+
+              COMMENT ON COLUMN vendite.famiglie_documento.lunghezza_default
+              IS 'Cifre con cui NASCE un registro di questa famiglia (l''argomento di lpad). ⭐ Sta qui e non solo sul registro perche'' la lunghezza e'' una proprieta'' del TIPO DOCUMENTO: tutti i DDT hanno 7 cifre, la commessa 9. Sul registro resta il valore EFFETTIVO, cioe'' un override — ed e'' il motivo per cui un sezionale puo'' volerla diversa senza che questo default cambi. ⚠️ NOT NULL DEFAULT 7: non c''e'' mai un NULL da interpretare, e una famiglia nuova nasce col valore comune. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento DROP COLUMN IF EXISTS lunghezza_default;
+              ALTER TABLE vendite.famiglie_documento DROP COLUMN IF EXISTS prefisso_default;

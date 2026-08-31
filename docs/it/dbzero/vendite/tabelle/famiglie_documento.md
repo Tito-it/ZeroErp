@@ -23,6 +23,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | presidia_data_documento | boolean | NO | true |
+| prefisso_default | character varying | YES |  |
+| lunghezza_default | integer | NO | 7 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

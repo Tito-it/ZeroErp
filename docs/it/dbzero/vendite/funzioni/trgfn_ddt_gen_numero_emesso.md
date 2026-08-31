@@ -14,15 +14,10 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
 AS $function$
 DECLARE
     v_stato        config.stati_doc_ddt.codice_interno%TYPE;
-    v_prefix       config.sistema_codici.prefisso%TYPE;
-    v_sep          config.sistema_codici.separatore%TYPE;
-    v_len          config.sistema_codici.lunghezza_numero%TYPE;
     v_emittente_sr vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
     v_registro     vendite.registri_fatturazione.id%TYPE;
-    v_serie_reg    vendite.registri_fatturazione.serie_default%TYPE;
-    v_serie        text;
+    v_ass          record;
     v_anno         vendite.ddt.anno%TYPE;
-    v_numero       bigint;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -59,58 +54,39 @@ BEGIN
     -- ⛔ L'INVOLUCRO, non il lettore: qui si SCRIVE, e un
     --   emittente senza registro DDT deve fermare — non emettere
     --   un documento senza sezionale.
-    SELECT k.registro_id, k.serie
-      INTO v_registro, v_serie_reg
-      FROM vendite.fn_get_registro_documento(
+    -- ⭐ I SEI PASSI IN UNA CHIAMATA SOLA. Stavano qui e in altre tre
+    --   funzioni identiche: risolvere il registro, ricavare l'anno,
+    --   chiedere il progressivo, leggere il formato, comporre.
+    --   ⚠️ Una correzione alla composizione andava fatta in QUATTRO
+    --   posti, e chi ne dimenticava uno produceva un documento
+    --   formattato diverso dagli altri — che nessun vincolo respinge.
+    -- ⭐ Qui resta l'unica cosa che distingue davvero questo documento
+    --   dagli altri tre: il MOMENTO, cioe' i guard qui sopra.
+    SELECT * INTO v_ass
+      FROM vendite.fn_assegna_numero_documento(
                p_famiglia_documento          => 'DDT',
                p_emittente_soggetto_ruolo_id => v_emittente_sr,
-               p_utility_id                  => NEW.utility_id) k;
+               p_data                        => NEW.data,
+               p_documento_id                => NEW.id,
+               p_utility_id                  => NEW.utility_id,
+                        p_serie              => NEW.serie,
+               p_corpo                       => NULL) v;
 
-    -- ⚠️ La serie entra nella chiave del contatore E nella
-    --   UNIQUE: si risolve una volta e si usa per entrambe.
-    v_serie := COALESCE(NEW.serie, v_serie_reg, '');
-
-    -- ⛔ L'anno si ricalcola dalla DATA DEL DOCUMENTO, e oggi non
-    --   lo scrive nessuno: trgfn_ddt_normalize lo valorizza solo
-    --   nel ramo «INSERT gia' numerato», che dal 2026-07-09 non
-    --   si attraversa. Qui si riempie per la prima volta la
-    --   colonna che uq_ddt_v_anno_serie_numero pretende.
-    v_anno := vendite.fn_get_anno_registro(NEW.data);
-
-    -- ⭐ Il motore: stesso cancello, stesso lock, stesso
-    --   contatore delle fatture. `p_competenza_mese` NULL — il
-    --   DDT non ha competenza, e il limite di emissione non si
-    --   applica alla sua famiglia (20260831-05).
-    v_numero := vendite.fn_get_next_progressivo(
-                    v_registro, NEW.data, NULL,
-                    v_serie, NEW.id, 'DDT');
-
-    -- Formato data-driven dalla riga sistema_codici 'ddt'
-    -- (usa_sequenza = false: prefisso, separatore e lunghezza
-    -- restano validi, ed e' l'unico ruolo che quel catalogo ha
-    -- qui).
-    SELECT prefisso, separatore, lunghezza_numero
-      INTO v_prefix, v_sep, v_len
-      FROM config.sistema_codici
-     WHERE codice_interno = 'ddt';
-
-    -- ⚠️ Le quattro colonne si scrivono INSIEME: numero, anno,
-    --   serie e registro sono una cosa sola — la chiave del
-    --   documento — e scriverne una senza le altre lascia la
-    --   riga a raccontare un sezionale che non e' il suo.
-    NEW.registro_id := v_registro;
-    NEW.anno        := v_anno;
-    NEW.serie       := NULLIF(v_serie, '');
-    NEW.numero      := COALESCE(v_prefix, 'DDT')
-                    || COALESCE(v_sep, '')
-                    || lpad(v_numero::text, COALESCE(v_len, 7), '0');
+    -- ⚠️ Le colonne si scrivono INSIEME: numero, anno, serie e registro
+    --   sono una cosa sola — la chiave del documento — e scriverne
+    --   una senza le altre lascia la riga a raccontare un sezionale
+    --   che non e' il suo.
+    NEW.registro_id := v_ass.registro_id;
+    NEW.anno        := v_ass.anno;
+    NEW.serie       := NULLIF(v_ass.serie, '');
+    NEW.numero      := v_ass.numero;
 
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
-IS 'Assegna vendite.ddt.numero alla transizione a EMESSO, prendendolo dal MOTORE DEI REGISTRI. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-8): CAMBIA UNA RIGA SU TRE. Il generatore faceva tre cose — leggere il FORMATO da config.sistema_codici (riga ''ddt''), prendere il CONTATORE da nextval(vendite.ddt_numero_seq), comporre la stringa — e cambia solo il contatore, che ora e'' vendite.fn_get_next_progressivo sul registro di famiglia DDT dell''emittente. Formato, composizione e MOMENTO (la transizione a EMESSO, «no buchi da bozze DRAFT scartate») restano quelli di prima: e'' la ragione per cui config.sistema_codici non si tocca — resta il catalogo dei FORMATI, che e'' il ruolo che il DDT gli dava gia''. ⛔ L''ANNO si ricalcola qui dalla data del documento, e prima non lo scriveva NESSUNO: misurati il 2026-08-31 ventotto DDT numerati, tutti con anno NULL, perche'' vendite.trgfn_ddt_normalize lo valorizza nel solo ramo «INSERT con numero gia'' presente» e dal 2026-07-09 (20260709-07) il DDT si numera a EMESSO, cioe'' in UPDATE — quel ramo non si attraversa piu''. Non si sta correggendo una divergenza: si riempie per la prima volta una colonna che uq_ddt_v_anno_serie_numero pretende, ed e'' anche il motivo per cui quell''indice non presidiava niente. ⚠️ Anno, serie, registro e numero si scrivono NELLO STESSO statement, come fa vendite.fn_assign_numero_fattura: sono una cosa sola — la chiave del documento — e l''anno del contatore e l''anno della riga devono essere lo STESSO valore, non due che si somigliano. ⚠️ La SERIE si risolve con COALESCE(NEW.serie, serie del registro, '''') e si riscrive con NULLIF: entra nella chiave del contatore e nella UNIQUE, e un documento numerato su serie_default con la riga a NULL risulterebbe di una serie diversa da quella su cui ha preso il numero. ⚠️ L''EMITTENTE va tradotto: vendite.ddt.emittente_fiscale_id e'' un id di anagrafiche.emittenti_fiscali mentre il registro porta il soggetto_ruolo_id — due convenzioni che convivono nel progetto, con traduzione 1:1 garantita da uq_emittenti_fiscali_ruolo. ⛔ Si usa l''INVOLUCRO vendite.fn_get_registro_documento e non il lettore: qui si SCRIVE, e un emittente senza registro DDT deve fermare invece di emettere un documento senza sezionale. ℹ️ p_competenza_mese e'' NULL: il DDT non ha competenza, e il limite di emissione non si applica alla sua famiglia (20260831-05). ℹ️ vendite.ddt_numero_seq resta dov''e'', ferma: e'' la memoria dei numeri gia'' consumati, e cancellarla toglierebbe l''unico modo di sapere fin dove era arrivata la numerazione vecchia. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-8.';
+IS 'Assegna il numero a il DDT alla transizione a EMESSO, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ Il PREFISSO e il SUFFISSO vengono dal REGISTRO e non piu'' da config.sistema_codici, che conserva la sola LUNGHEZZA: il formato si divide per RUOLO — la lunghezza e'' del tipo documento, prefisso e suffisso sono il nome del sezionale. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4.';
 ```
 
 ---

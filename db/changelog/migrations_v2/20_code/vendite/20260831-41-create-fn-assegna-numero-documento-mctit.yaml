@@ -1,0 +1,241 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — UNA SEDE SOLA PER I SEI PASSI CHE ERANO IN QUATTRO
+#   vendite.fn_componi_numero_documento   (pura, sui VALORI)
+#   vendite.fn_assegna_numero_documento   (i sei passi)
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-3
+#
+# ── ⛔ LA DUPLICAZIONE, MISURATA ──────────────────────────────────
+#   Verificato il 2026-08-31: DDT, ordini, resi e commessa facevano gli STESSI
+#   SEI PASSI, ognuno per conto proprio — risolvere il registro, ricavare
+#   l'anno, chiedere il progressivo, leggere la lunghezza, leggere il prefisso,
+#   comporre.
+#   ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne
+#   dimenticava uno produceva un difetto MUTO: un documento formattato diverso
+#   dagli altri, che nessun vincolo respinge.
+#
+# ── ⭐ DUE LIVELLI, NON UNO ───────────────────────────────────────
+#   1) `fn_componi_numero_documento` — PURA, IMMUTABLE, scritta sui VALORI e
+#      non sugli id. Si prova in una riga di SQL, senza fixture, e ci si puo'
+#      appoggiare un indice se un giorno servisse.
+#   2) `fn_assegna_numero_documento` — i sei passi, con le letture.
+#   ⭐ E' il pattern che il progetto ha gia': la parte che DECIDE si separa dalla
+#   parte che LEGGE, cosi' la prima e' verificabile senza costruire un mondo.
+#
+# ── ⭐ IL `corpo`, E PERCHE' NON E' GENERALIZZAZIONE PREMATURA ────
+#   La composizione e': prefisso || CORPO || cifre || suffisso.
+#   Per DDT, ordini e resi il corpo e' VUOTO. Per la commessa e'
+#   `<sigla>-<anno>-`, perche' il suo codice porta quei due pezzi dentro la
+#   stringa — e' l'unico dei cinque la cui IDENTITA' e' la stringa nuda.
+#   ⚠️ Un parametro che serve a un chiamante solo di solito e' un cattivo segno.
+#   ⭐ Qui no, e la ragione l'ha data Tid il 2026-08-31 chiedendo il SUFFISSO
+#   anche sulla commessa: con prefisso E suffisso condivisi da tutti e quattro,
+#   la forma e' la STESSA — cambia solo cosa sta in mezzo. Il parametro non
+#   generalizza un caso: nomina la parte che varia.
+#
+# ── ⚠️ IL SEPARATORE NON E' PIU' UN CAMPO A SE' ──────────────────
+#   Se serve, si scrive DENTRO il prefisso ('CMM-'). ⭐ Toglie il caso speciale
+#   che la commessa aveva: prefisso vuoto lasciava un separatore ORFANO in testa
+#   (`-ACME-2026-000000001`), che spezzato dava un primo pezzo vuoto.
+#
+# ⚠️ SECURITY DEFINER: legge vendite.registri_fatturazione, e chi la chiama e'
+#   un trigger che gira sotto RLS.
+#
+# ── ⛔ LE FIRME DI COMMENT E DROP USANO ANCHE LORO `%TYPE` ────────
+#   E non e' simmetria estetica: e' successo il 2026-08-31 che il COMMENT
+#   portasse `smallint` dove `config.sistema_codici.lunghezza_numero` e'
+#   `integer`, e il migrate e' fallito con «la funzione non esiste» — un
+#   messaggio che manda a cercare la funzione, non il tipo.
+#   ⭐ Con `%TYPE` la firma NON PUO' divergere dai parametri, perche' e' la
+#   stessa espressione. E' lo stesso motivo per cui i parametri lo usano gia'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-41-create-fn-assegna-numero-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260831-41-create-fn-assegna-numero-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-3: una sede sola per i sei passi che erano in quattro. ⛔ Verificato il 2026-08-31:
+        DDT, ordini, resi e commessa facevano gli STESSI sei passi ognuno per conto proprio —
+        risolvere il registro, ricavare l''anno, chiedere il progressivo, leggere lunghezza e
+        prefisso, comporre. Una correzione andava fatta in quattro posti, e chi ne dimenticava
+        uno produceva un difetto MUTO: un documento formattato diverso, che nessun vincolo
+        respinge. ⭐ Due livelli: fn_componi_numero_documento e'' PURA e IMMUTABLE, scritta sui
+        VALORI e non sugli id — si prova senza fixture; fn_assegna_numero_documento fa le
+        letture. ⭐ Il parametro `corpo` non e'' generalizzazione prematura: con prefisso e
+        suffisso condivisi da tutti e quattro (Tid ha chiesto il suffisso anche sulla commessa)
+        la forma e'' la stessa e cambia solo cosa sta in mezzo — vuoto per tre, <sigla>-<anno>-
+        per la commessa. ⚠️ Il separatore non e'' piu'' un campo a se'': se serve si scrive dentro
+        il prefisso, e sparisce il caso del separatore orfano.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: prefisso
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_registro_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- 1) LA COMPOSIZIONE — pura, sui VALORI
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_componi_numero_documento(
+                  p_prefisso   vendite.registri_fatturazione.prefisso%TYPE,
+                  p_corpo      text,
+                  p_progressivo bigint,
+                  p_lunghezza  config.sistema_codici.lunghezza_numero%TYPE,
+                  p_suffisso   vendite.registri_fatturazione.suffisso%TYPE
+              )
+              RETURNS text
+              LANGUAGE sql
+              IMMUTABLE
+              AS $function$
+                  -- ⭐ Scritta sui VALORI e non sugli id: si prova in una riga
+                  --   di SQL, senza costruire un documento, e resta inlineabile.
+                  -- ⚠️ Il progressivo NULL da' NULL: chi compone senza numero
+                  --   sta sbagliando, e un numero a meta' sarebbe peggio di
+                  --   nessun numero.
+                  SELECT CASE WHEN p_progressivo IS NULL THEN NULL ELSE
+                         COALESCE(p_prefisso, '')
+                      || COALESCE(p_corpo, '')
+                      || lpad(p_progressivo::text, COALESCE(p_lunghezza, 7), '0')
+                      || COALESCE(p_suffisso, '')
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_componi_numero_documento(vendite.registri_fatturazione.prefisso%TYPE, text, bigint, config.sistema_codici.lunghezza_numero%TYPE, vendite.registri_fatturazione.suffisso%TYPE)
+              IS 'Compone il numero di un documento: prefisso || corpo || progressivo con le cifre di riempimento || suffisso. ⭐ PURA e IMMUTABLE, scritta sui VALORI e non sugli id: si verifica in una riga di SQL senza costruire un documento, si inlinea, e ci si potrebbe appoggiare un indice. E'' il pattern che il progetto usa gia'' per le funzioni di composizione. ⭐ Il `corpo` e'' la parte che varia fra le famiglie: VUOTO per DDT, ordini e resi, `<sigla>-<anno>-` per la commessa, il cui codice porta quei due pezzi dentro la stringa perche'' e'' l''unico dei cinque la cui IDENTITA'' e'' la stringa nuda. ⚠️ Un parametro che serve a un chiamante solo di solito e'' un cattivo segno; qui no, e la ragione e'' che dal 2026-08-31 anche la commessa ha prefisso E suffisso dal registro (decisione di Tid) — con quelli condivisi da tutti e quattro la forma e'' la STESSA, e il parametro non generalizza un caso: nomina la parte che varia. ⚠️ Il SEPARATORE non e'' piu'' un campo a se'': se serve si scrive dentro il prefisso (''CMM-''), e cosi'' sparisce il caso speciale della commessa, dove un prefisso vuoto lasciava un separatore ORFANO in testa — `-ACME-2026-000000001`, che spezzato sul trattino dava un primo pezzo vuoto. ⚠️ Progressivo NULL -> NULL: un numero a meta'' sarebbe peggio di nessun numero. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-3.';
+
+              -- =========================================================
+              -- 2) I SEI PASSI — le letture, una volta sola
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_assegna_numero_documento(
+                  p_famiglia_documento vendite.registri_fatturazione.famiglia_documento%TYPE,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                  p_data               vendite.fatture.data%TYPE,
+                  p_documento_id       bigint  DEFAULT NULL,
+                  p_utility_id         vendite.registri_fatturazione.utility_id%TYPE DEFAULT NULL,
+                  p_corpo              text    DEFAULT NULL,
+                  -- ⚠️ La serie del DOCUMENTO, quando ce l'ha: DDT e ordini
+                  --   possono dichiararne una propria, resi e commesse no.
+                  p_serie              vendite.ddt.serie%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  registro_id  vendite.registri_fatturazione.id%TYPE,
+                  anno         vendite.ddt.anno%TYPE,
+                  progressivo  bigint,
+                  numero       text,
+                  -- ⭐ La serie RISOLTA esce, perche' chi ha la colonna deve
+                  --   scriverla: e' la stessa che entra nella chiave del
+                  --   contatore, e risolverla due volte con due COALESCE
+                  --   diversi e' il modo in cui il contatore e la UNIQUE
+                  --   cominciano a guardare sezionali diversi.
+                  serie        vendite.registri_fatturazione.serie_default%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_registro vendite.registri_fatturazione.id%TYPE;
+                  v_serie    vendite.registri_fatturazione.serie_default%TYPE;
+                  v_prefisso vendite.registri_fatturazione.prefisso%TYPE;
+                  v_suffisso vendite.registri_fatturazione.suffisso%TYPE;
+                  v_len      config.sistema_codici.lunghezza_numero%TYPE;
+                  v_anno     vendite.ddt.anno%TYPE;
+                  v_num      bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I SEI PASSI che ogni documento numerato su un registro
+                  --   deve fare, in una sede sola: risolvere il registro,
+                  --   ricavare l'anno, chiedere il progressivo, leggere il
+                  --   formato, comporre.
+                  --
+                  -- ⛔ Prima stavano in QUATTRO funzioni identiche, e una
+                  --   correzione alla composizione andava fatta quattro volte:
+                  --   chi ne dimenticava una produceva un documento formattato
+                  --   diverso dagli altri, che nessun vincolo respinge.
+                  --
+                  -- ⚠️ Cosa NON fa, ed e' deliberato: non decide QUANDO. Il
+                  --   momento e' l'unica cosa che distingue davvero i quattro
+                  --   documenti — DDT a EMESSO, resi a CONFERMATO, ordini e
+                  --   commessa alla creazione — e resta nel trigger di ciascuno.
+                  -- =========================================================
+
+                  -- 1) Il registro. ⛔ L'INVOLUCRO e non il lettore: qui si
+                  --    scrive, e un emittente senza registro deve fermare.
+                  SELECT k.registro_id, k.serie
+                    INTO v_registro, v_serie
+                    FROM vendite.fn_get_registro_documento(
+                             p_famiglia_documento          => p_famiglia_documento,
+                             p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                             p_utility_id                  => p_utility_id) k;
+
+                  -- 2) L'anno, dalla DATA DEL DOCUMENTO.
+                  v_anno := vendite.fn_get_anno_registro(p_data);
+
+                  -- ⚠️ La serie si risolve UNA volta: quella del documento, poi
+                  --   quella del registro, poi vuota. Lo stesso valore va al
+                  --   contatore e torna al chiamante per la colonna.
+                  v_serie := COALESCE(p_serie, v_serie, '');
+
+                  -- 3) Il progressivo, sotto il lock del motore.
+                  v_num := vendite.fn_get_next_progressivo(
+                               v_registro, p_data, NULL,
+                               v_serie, p_documento_id,
+                               p_famiglia_documento);
+
+                  -- 4) Il formato, da DUE sedi divise per RUOLO: la lunghezza e'
+                  --    del tipo documento e sta nel catalogo dei formati, il
+                  --    prefisso e il suffisso sono il nome del sezionale e
+                  --    stanno sul registro.
+                  SELECT sc.lunghezza_numero INTO v_len
+                    FROM config.sistema_codici sc
+                   WHERE sc.codice_interno = lower(p_famiglia_documento);
+
+                  SELECT r.prefisso, r.suffisso
+                    INTO v_prefisso, v_suffisso
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = v_registro;
+
+                  -- 5) La composizione, dalla funzione pura.
+                  RETURN QUERY
+                  SELECT v_registro, v_anno, v_num,
+                         vendite.fn_componi_numero_documento(
+                             v_prefisso, p_corpo, v_num, v_len, v_suffisso),
+                         v_serie;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_assegna_numero_documento(vendite.registri_fatturazione.famiglia_documento%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE, vendite.fatture.data%TYPE, bigint, vendite.registri_fatturazione.utility_id%TYPE, text, vendite.ddt.serie%TYPE)
+              IS 'I SEI PASSI che ogni documento numerato su un registro deve fare, in una sede sola: risolve il registro, ricava l''anno dalla data del documento, chiede il progressivo al motore, legge il formato e compone. Torna (registro_id, anno, progressivo, numero, serie). ⭐ La SERIE risolta esce perche'' chi ha quella colonna deve scriverla: e'' la stessa che entra nella chiave del contatore, e risolverla due volte con due COALESCE diversi e'' il modo in cui il contatore e la UNIQUE cominciano a guardare sezionali diversi. ⛔ Prima stavano in QUATTRO funzioni identiche — vendite.trgfn_ddt_gen_numero_emesso, trgfn_ordini_gen_numero, trgfn_resi_gen_numero e fn_get_or_create_commessa — verificato il 2026-08-31: gli stessi sei passi, ognuno per conto proprio. ⚠️ Una correzione alla composizione andava fatta in quattro posti, e chi ne dimenticava uno produceva un difetto MUTO: un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ TORNA ANCHE `progressivo` e non solo `numero`, ed e'' cio'' che permette alla commessa di usare la stessa funzione: il suo codice porta sigla e anno DENTRO la stringa, quindi passa quei due pezzi come `corpo` — vuoto per gli altri tre. ⚠️ COSA NON FA, ed e'' deliberato: non decide QUANDO. Il momento e'' l''unica cosa che distingue davvero i quattro documenti (DDT a EMESSO, resi a CONFERMATO, ordini e commessa alla creazione) e resta nel trigger di ciascuno — centralizzare anche quello significherebbe mettere in una funzione la sola cosa che non e'' comune. ⭐ Il formato viene da DUE sedi divise per RUOLO: la LUNGHEZZA e'' del tipo documento e resta in config.sistema_codici, PREFISSO e SUFFISSO sono il nome del sezionale e stanno sul registro. ⛔ Usa l''INVOLUCRO fn_get_registro_documento e non il lettore: qui si scrive, e un emittente senza registro deve fermare. ⚠️ SECURITY DEFINER: legge il registro, e chi la chiama e'' un trigger che gira sotto RLS. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_assegna_numero_documento(vendite.registri_fatturazione.famiglia_documento%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE, vendite.fatture.data%TYPE, bigint, vendite.registri_fatturazione.utility_id%TYPE, text, vendite.ddt.serie%TYPE);
+              DROP FUNCTION IF EXISTS vendite.fn_componi_numero_documento(vendite.registri_fatturazione.prefisso%TYPE, text, bigint, config.sistema_codici.lunghezza_numero%TYPE, vendite.registri_fatturazione.suffisso%TYPE);
