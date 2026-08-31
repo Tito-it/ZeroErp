@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-13 — LE QUATTRO RIGHE ESCONO DAL CATALOGO DEI FORMATI
+#   config.sistema_codici: ddt, ordine, reso, commessa
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-13
+#
+# ── ⛔ PERCHE' NON BASTAVA LASCIARLE LI' ─────────────────────────
+#   Dopo il trasloco quelle righe non generavano piu' niente
+#   (`usa_sequenza = false`), ma restavano in una tabella EDITABILE DAL PANNELLO
+#   DI CONFIGURAZIONE con un `prefisso` che nessuno legge piu'.
+#   ⇒ Un amministratore che cambia `ORD` li' dentro non ottiene NIENTE, e non ha
+#   modo di accorgersene. E' confusione gia' in circolo, e l'ha vista Tid.
+#
+# ── ⭐ IL PRECEDENTE E' IN CASA ──────────────────────────────────
+#   `20260209-03-delete-sistema-codici-fatture`: quando la FATTURA passo' ai
+#   registri, la sua riga fu tolta esattamente cosi'. Questo changeSet fa lo
+#   stesso per i quattro documenti che l'hanno seguita.
+#
+# ── ⚠️ L'ORDINE E' PORTANTE, E NON E' UN CASO ───────────────────
+#   Questo changeSet vive in `80_data`, che gira DOPO `00_schema` e `20_code`.
+#   Quando arriva:
+#     * il registro ha gia' prefisso, suffisso e lunghezza (P-2, P-9);
+#     * le famiglie hanno gia' i default (P-11);
+#     * le funzioni leggono gia' dal registro (P-10);
+#     * il provisioning legge gia' dalle famiglie (P-12).
+#   ⛔ Invertire un solo passo lascia qualcuno senza fonte, e il difetto sarebbe
+#   MUTO: numeri nudi o piu' corti, senza errori.
+#
+# ⚠️ Il DELETE fa scattare `script.trgfn_config_sistema_codici_sync_gen_codice`,
+#   che sul ramo DELETE fa `DROP TRIGGER IF EXISTS` e `DROP FUNCTION IF EXISTS`
+#   degli oggetti generati. ⭐ Sono gia' stati smontati quando `usa_sequenza` e'
+#   passato a false: il DROP e' innocuo, ed e' scritto qui perche' nessuno debba
+#   scoprirlo leggendo il trigger.
+# ⚠️ Le righe escono anche dal CSV `80_data/sql/config/sistema_codici.csv`: il
+#   loader e' un `loadUpdateData`, che fa upsert e NON cancella — quindi senza
+#   questo DELETE resterebbero, e senza toglierle dal CSV tornerebbero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260831-53-delete-sistema-codici-documenti-traslocati-mctit.yaml
+
+  - changeSet:
+      id: 20260831-53-delete-sistema-codici-documenti-traslocati
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-13: escono da config.sistema_codici le quattro righe dei documenti traslocati (ddt,
+        ordine, reso, commessa). ⛔ Non generavano piu'' niente da mesi, ma restavano in una
+        tabella editabile dal pannello con un prefisso che nessuno legge: un amministratore che
+        lo cambia non ottiene niente e non ha modo di accorgersene. ⭐ Il precedente e'' in casa —
+        20260209-03 tolse la riga della FATTURA quando passo'' ai registri. ⚠️ L''ordine e''
+        portante: questo changeSet e'' in 80_data e gira DOPO che il registro ha la forma
+        completa, le famiglie hanno i default, le funzioni leggono dal registro e il
+        provisioning dalle famiglie — invertire un passo lascerebbe qualcuno senza fonte, con un
+        difetto muto. ⚠️ Il DELETE fa scattare il sync trigger, che fa DROP degli oggetti
+        generati: gia'' smontati quando usa_sequenza e'' passato a false, quindi innocuo.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-13.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⛔ Nessuna delle quattro deve generare ancora: se una tornasse a
+            #    usa_sequenza = true, cancellarla smonterebbe un generatore vivo.
+            - sqlCheck:
+                expectedResult: 0
+                onFailMessage: >-
+                  Una delle righe ddt/ordine/reso/commessa in config.sistema_codici ha ancora
+                  usa_sequenza = true: cancellarla smonterebbe un generatore VIVO. Portarla a
+                  false prima di rimuoverla.
+                sql: |
+                  SELECT COUNT(*) FROM config.sistema_codici
+                   WHERE codice_interno IN ('ddt', 'ordine', 'reso', 'commessa')
+                     AND usa_sequenza IS TRUE;
+            # ⛔ E i registri devono avere gia' la forma: senza, questo DELETE
+            #    toglierebbe l'unica fonte rimasta.
+            - sqlCheck:
+                expectedResult: 0
+                onFailMessage: >-
+                  Ci sono registri attivi di famiglia non fiscale SENZA prefisso o senza
+                  lunghezza: togliere ora le righe del catalogo dei formati li lascerebbe a
+                  produrre numeri nudi o piu' corti, in silenzio. Il backfill e' il changeSet
+                  20260831-54; per sapere QUALI, la query sta in
+                  scratchpad/diagnosi-53.sql del brief.
+                sql: |
+                  SELECT COUNT(*) FROM vendite.registri_fatturazione r
+                   WHERE r.attivo
+                     AND r.famiglia_documento IN ('DDT', 'ORDINE', 'RESO', 'COMMESSA')
+                     AND (COALESCE(r.prefisso, '') = '' OR r.lunghezza_numero IS NULL);
+            - sqlCheck:
+                expectedResult: 0
+                onFailMessage: >-
+                  Una famiglia attiva non ha il prefisso_default: senza, il provisioning farebbe
+                  nascere i registri del prossimo emittente SENZA prefisso. Il seed e' nel
+                  changeSet 20260831-51.
+                sql: |
+                  SELECT COUNT(*) FROM vendite.famiglie_documento fd
+                   WHERE fd.attivo
+                     AND fd.codice_interno IN ('DDT', 'ORDINE', 'RESO', 'COMMESSA')
+                     AND COALESCE(fd.prefisso_default, '') = '';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.sistema_codici
+               WHERE codice_interno IN ('ddt', 'ordine', 'reso', 'commessa');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback manuale: ri-seminare le quattro righe da un backup del CSV. Nessuno le legge piu'', quindi il rollback serve solo a tornare a uno stato precedente del changelog.'::text;

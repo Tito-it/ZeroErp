@@ -100,6 +100,7 @@
 - [fn_applica_fondi_fattura](funzioni/fn_applica_fondi_fattura.md) — (latest review 15-08-2026)
 - [fn_applica_fondi_lotto](funzioni/fn_applica_fondi_lotto.md) — (latest review 15-08-2026)
 - [fn_approva_commessa_attivita](funzioni/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
+- [fn_assegna_numero_documento](funzioni/fn_assegna_numero_documento.md)
 - [fn_assign_numero_fattura](funzioni/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 - [fn_batch_upsert_commessa_attivita](funzioni/fn_batch_upsert_commessa_attivita.md) — (latest review 15-04-2026)
 - [fn_build_fattura_key](funzioni/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
@@ -117,6 +118,7 @@
 - [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
+- [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratto_riga_componenti_init](funzioni/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)

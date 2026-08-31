@@ -14,14 +14,10 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_resi_gen_numero()
 AS $function$
 DECLARE
     v_stato        config.stati_doc_reso.codice_interno%TYPE;
-    v_prefix       config.sistema_codici.prefisso%TYPE;
-    v_sep          config.sistema_codici.separatore%TYPE;
-    v_len          config.sistema_codici.lunghezza_numero%TYPE;
     v_emittente_sr vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
     v_registro     vendite.registri_fatturazione.id%TYPE;
-    v_serie_reg    vendite.registri_fatturazione.serie_default%TYPE;
+    v_ass          record;
     v_anno         vendite.resi.anno%TYPE;
-    v_numero       bigint;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -54,45 +50,37 @@ BEGIN
 
     -- ⛔ L'involucro: qui si SCRIVE, e un emittente senza
     --   registro RESO deve fermare.
-    SELECT k.registro_id, k.serie
-      INTO v_registro, v_serie_reg
-      FROM vendite.fn_get_registro_documento(
+    -- ⭐ I SEI PASSI IN UNA CHIAMATA SOLA. Stavano qui e in altre tre
+    --   funzioni identiche: risolvere il registro, ricavare l'anno,
+    --   chiedere il progressivo, leggere il formato, comporre.
+    --   ⚠️ Una correzione alla composizione andava fatta in QUATTRO
+    --   posti, e chi ne dimenticava uno produceva un documento
+    --   formattato diverso dagli altri — che nessun vincolo respinge.
+    -- ⭐ Qui resta l'unica cosa che distingue davvero questo documento
+    --   dagli altri tre: il MOMENTO, cioe' i guard qui sopra.
+    SELECT * INTO v_ass
+      FROM vendite.fn_assegna_numero_documento(
                p_famiglia_documento          => 'RESO',
                p_emittente_soggetto_ruolo_id => v_emittente_sr,
-               p_utility_id                  => NEW.utility_id) k;
+               p_data                        => NEW.data,
+               p_documento_id                => NEW.id,
+               p_utility_id                  => NEW.utility_id,
+               p_corpo                       => NULL) v;
 
-    -- ⛔ L'anno dalla DATA DEL DOCUMENTO, e qui si riempie per la
-    --   prima volta: la normalize lo scrive solo sul ramo
-    --   «INSERT gia' numerato», che il reso non attraversa mai.
-    v_anno := vendite.fn_get_anno_registro(NEW.data);
-
-    -- ⚠️ La serie entra nella chiave del contatore ma il reso non
-    --   ha dove scriverla: si usa quella del registro, che sui
-    --   registri RESO dev'essere vuota (vincolo di
-    --   configurazione, 20260831-14).
-    v_numero := vendite.fn_get_next_progressivo(
-                    v_registro, NEW.data, NULL,
-                    COALESCE(v_serie_reg, ''), NEW.id, 'RESO');
-
-    -- Formato data-driven dalla riga sistema_codici 'reso'
-    -- (usa_sequenza = false).
-    SELECT prefisso, separatore, lunghezza_numero
-      INTO v_prefix, v_sep, v_len
-      FROM config.sistema_codici
-     WHERE codice_interno = 'reso';
-
-    NEW.registro_id := v_registro;
-    NEW.anno        := v_anno;
-    NEW.numero      := COALESCE(v_prefix, 'RESO')
-                    || COALESCE(v_sep, '')
-                    || lpad(v_numero::text, COALESCE(v_len, 7), '0');
+    -- ⚠️ Le colonne si scrivono INSIEME: numero, anno e registro
+    --   sono una cosa sola — la chiave del documento — e scriverne
+    --   una senza le altre lascia la riga a raccontare un sezionale
+    --   che non e' il suo.
+    NEW.registro_id := v_ass.registro_id;
+    NEW.anno        := v_ass.anno;
+    NEW.numero      := v_ass.numero;
 
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_gen_numero()
-IS 'Assegna vendite.resi.numero alla transizione a CONFERMATO, prendendolo dal MOTORE DEI REGISTRI. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-10): terza applicazione della stessa forma dopo DDT e ordini — cambia SOLO il contatore, che da nextval(vendite.resi_numero_seq) diventa vendite.fn_get_next_progressivo sul registro di famiglia RESO dell''emittente. Formato (config.sistema_codici riga `reso`, usa_sequenza = false), composizione e MOMENTO restano quelli di prima. ⛔ L''ANNO si riempie qui per la PRIMA volta: misurato il 2026-08-31, `anno` era NULL su tutti e 15 i resi — vendite.trgfn_resi_normalize lo scrive nel solo ramo «INSERT con numero gia'' presente» e il reso si numera a CONFERMATO, cioe'' in UPDATE. E'' anche la ragione per cui uq_resi_anno_numero non presidiava niente. ⚠️ LA SERIE NON HA DOVE ANDARE: vendite.resi non ha quella colonna, mentre il contatore la porta in chiave — si usa quella del registro e non si scrive da nessuna parte, perche'' non c''e'' dove. ⛔ Ne discende un vincolo di CONFIGURAZIONE, scritto anche sull''indice: un registro di famiglia RESO non deve avere serie_default, o il numero girerebbe su una serie che il documento non puo'' raccontare. ⚠️ L''emittente va tradotto (il reso porta l''id di emittenti_fiscali, il registro il soggetto_ruolo). ⛔ Si usa l''INVOLUCRO fn_get_registro_documento e non il lettore: qui si scrive, e un emittente senza registro RESO deve fermare. ℹ️ vendite.resi_numero_seq resta ferma: e'' la memoria dei numeri gia'' consumati. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-10.';
+IS 'Assegna il numero a il reso alla transizione a CONFERMATO, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ Il PREFISSO e il SUFFISSO vengono dal REGISTRO e non piu'' da config.sistema_codici, che conserva la sola LUNGHEZZA: il formato si divide per RUOLO — la lunghezza e'' del tipo documento, prefisso e suffisso sono il nome del sezionale. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4.';
 ```
 
 ---
