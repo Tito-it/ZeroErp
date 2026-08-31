@@ -120,6 +120,59 @@ l'accumulatore e l'annullo delle forzature esistono e sono provati, ma
 **nessuna fattura li tocca**. `fn_consuma_plafond_titolo_iva` ha **zero
 chiamanti** — verificato.
 
+### ⛔ Il prerequisito che questo brief non aveva: il task va REGISTRATO
+
+> **Trovato il 2026-08-31 eseguendo la voce**, prima di scrivere le due righe.
+> ⚠️ È lo stesso schema che il §«Come si decide» racconta, applicato a questo
+> file: un artefatto che sembrava uno, ed è **tre**.
+
+⛔ **Le due righe di JSON, da sole, avrebbero fatto morire lo step a runtime.**
+
+L'executor **non prende l'handler dalla lista**: per ogni task chiama
+`repository.get_task_handler_code(...)` →
+`dbops.fn_get_pipeline_task_implementation(dominio_id, task_code,
+implementation_key)`, e solo con il `handler_code` che ne esce cerca nel proprio
+`handler_registry` Python
+([pipeline_step_executor.py:341](../../../../backend/apps/vendite/services/pipeline_step_executor.py)).
+
+E `consuma_plafond_lotto` **non era a catalogo**. Verificato eseguendo la
+funzione com'è oggi:
+
+```text
+ERRORE: Task non registrato: consuma_plafond_lotto
+```
+
+⇒ Il primo lotto portato a DEFINITIVA si sarebbe fermato sul **primo task**
+dello step — cioè prima di numerare, su entrambe le pipeline. Peggio del non
+fare niente, perché il difetto sarebbe arrivato su un giro di documenti fiscali
+invece che su un `migrate`.
+
+⚠️ **E nessun vincolo lo intercetta**: su `vendite.fatturazione_pipeline` non c'è
+nessun trigger che validi i task contro il registry — i cinque che ci sono
+guardano altro. `processi` è una `jsonb`: un task non registrato è una stringa
+come un'altra, e il `migrate` passa liscio.
+
+⇒ **Le righe sono quattro, non due**: due di catalogo e due di JSON.
+
+| Tabella | Riga | Calco |
+| --- | --- | --- |
+| `dbops.pipeline_task_registry` | `id 22`, dominio `1`, `consuma_plafond_lotto`, attivo | `popola_fatture_rettifiche` (id 21) |
+| `dbops.pipeline_task_registry_impl` | `id 22`, `default` → `consuma_plafond_lotto_default` | idem |
+
+⭐ **Il `handler_code` non è una scelta**: `consuma_plafond_lotto_default` è
+letteralmente la chiave del `handler_registry` lato backend. Un valore diverso
+darebbe `E_TASK_IMPLEMENTATION_NOT_FOUND` — cioè lo stesso guasto, un gradino
+più in là.
+
+📌 **La riga in `fatturazione_pipeline_task_policy` NON è stata messa**, e la
+decisione è quella che il brief lasciava al DB: `popola_fatture_rettifiche` gira
+nelle stesse due pipeline senza averne una, quindi non è obbligatoria. Il task
+non ha bisogno di un `resume_mode` proprio — è idempotente per costruzione,
+perché il movimento di plafond lo scrive `fn_consuma_plafond_titolo_iva` sotto
+lock. Se servirà, si aggiunge senza toccare nient'altro.
+
+---
+
 ### Presidio atteso
 
 ⭐ **Quello che discrimina non è «il task compare nella lista»**: è l'**ordine**.
@@ -295,6 +348,7 @@ aggregazione su codice non eseguito»*.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (4) | 🔨 **Voce 1 FATTA** (la 2 no, per richiesta di Tid). ⛔ **E le righe erano QUATTRO, non due**: trovato eseguendo che l'executor risolve l'handler dal **registry DB** (`fn_get_pipeline_task_implementation`), non dalla lista dei processi — e `consuma_plafond_lotto` non era a catalogo. Le sole due righe di JSON avrebbero fatto morire lo step DEFINITIVA sul primo task, su entrambe le pipeline, con «Task non registrato»: un guasto su un giro di documenti fiscali invece che su un migrate. ⚠️ Nessun vincolo lo intercetta — `processi` è una `jsonb` e il migrate passa liscio. Presidio: `db/pgtap/vendite/test-pipeline-consuma-plafond-seed-v1.sql`, 6 casi, tre mutazioni che cadono ognuna sul caso suo. ⭐ E il test ha corretto **me**: il criterio «ogni step che congela» era sbagliato, perché congela anche INVIATA — quello giusto è il **primo** stato che congela, cioè il passaggio in cui il congelamento avviene. ⛔ Nessuna madre `fn_consuma_plafond_lotto`, nessuna chiave `fn`: il divieto del §«Cosa NON è da fare» è rispettato, e il caso 6 del pgTAP lo presidia |
 | 2026-08-31 (3) | ➕ **Voce 2**: `fn_check_registro_disattivabile`, dal cantiere del CRUD dei registri. ⭐ **Non blocca** — i primi quattro passi di quel brief partono senza — ed è chiesta *prima* di scrivere il codice che ne dipende. ⚠️ La strada alternativa (derivare `can_remove` in Python) è stata **scartata da Tid**: è il grado ⛔ del §12.5 e sarebbe il difetto che il mapping BA ha appena finito di chiudere, per giunta su **tre** guard invece di uno. ⛔ E i `reason` non portano il prefisso `E_`: la regola è costata un changeSet stamattina (`E_UN_ANNULLO` → `RIGA_DI_ANNULLO`, `20260831-35`) |
 | 2026-08-31 (2) | ⛔ **Corretta una frase sbagliata di questo stesso file**, su segnalazione di Tid: diceva che il consumo del plafond non era scrivibile lato BE. Era falso — handler, servizio, repository e 14 test sono BE, e sono stati scritti. Al DB resta **solo** la configurazione. Aggiunta la regola di instradamento (§«Come si decide») e il divieto esplicito di scrivere una madre `fn_consuma_plafond_lotto`, che è la duplicazione che questo cantiere ha già pagato una volta |
 | 2026-08-31 | Elenco nato chiudendo `F3-b1` (la riga di fattura che chiede l'IVA al risolutore) e verificando **dove** possa vivere il consumo del plafond. ⚠️ **È lo stesso schema della voce 5 dell'elenco 1**: un lavoro che sembrava «solo BE» fermo su un prerequisito che nessuno aveva chiesto — lì una colonna, qui due righe di seed. ⭐ La differenza è che stavolta è stato trovato **prima** di scrivere il codice che ne dipende |
