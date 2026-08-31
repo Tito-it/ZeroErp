@@ -202,21 +202,108 @@ Stesso schema già in servizio sul mapping BA: la riga porta `can_remove` +
 `rimozione_blocco_reason` + `..._reason_key`, il motivo arriva dal **database**
 e non si ricalcola nel frontend.
 
-⚠️ **Ma qui manca il pezzo DB**: per il mapping BA il motivo lo produce
-`script.fn_check_ba_cambio_emittente`, che è una `fn_check_*` pura. Per i
-registri **non esiste la gemella**. Due strade, e vanno decise prima di
-scrivere:
+### ✅ DECISO E FATTO — `script.fn_check_registro_disattivabile`
 
-| | Strada | Costo | Effetto |
-| --- | --- | --- | --- |
-| **a** | Una `script.fn_check_registro_disattivabile` che elenca i motivi (fatture, progressivi, mapping) | un changeSet DB — **questo sì è un prerequisito** | Il tooltip dice *quale* figlio blocca, e non può divergere dal rifiuto |
-| **b** | Il BE conta i figli e deriva `can_remove` in Python | zero DB | ⛔ **Regola ricalcolata fuori sede**: il giorno che un quarto guard entra a DB, il tooltip resta indietro e dice «si può» su un gesto che fallisce |
+> ✅ **Deciso da Tid il 2026-08-31** (la `fn_check_*` a DB, non la derivazione in
+> Python) e **applicato lo stesso giorno**: changeSet `20260831-38`.
+>
+> ⚠️ **Verificato sul database vivo, non sullo YAML**: `SECURITY DEFINER` — serve,
+> legge `vendite.fatture` che ha la RLS, e senza contesto emittente la check
+> concluderebbe «si può disattivare» **proprio nel caso da bloccare**. Tre
+> `reason` — `HA_FATTURE`, `HA_PROGRESSIVI`, `HA_MAPPING_TIPO_DOC` — **nessuno
+> col prefisso `E_`**, e **nessun codice errore nuovo**: nomina i due
+> `E_ATTIVO_BLOCK_CHILDREN_*` già a catalogo.
 
-⭐ **La (a) è quella coerente col progetto** (`linee-guida-sql` §12.5.2: il
-motivo lo produce la stessa funzione che il database usa per rifiutare). La (b)
-è il difetto che il cantiere del mapping BA ha appena finito di chiudere.
-⇒ **Decisione a Tid.** Se si sceglie la (a), è l'**unico** prerequisito DB del
-cantiere e va chiesto con un brief suo.
+⛔ **La strada scartata, e perché**: derivare `can_remove` in Python contando i
+figli è il difetto che il cantiere del mapping BA ha appena finito di chiudere —
+fino al 2026-08-27 lì `can_remove` era scritto `True` a mano, ed era una
+promessa falsa. Qui pesa di più, perché i guard sono **tre** (§BE-3): una
+derivazione li ricopia tutti e tre, e al quarto il tooltip dice «si può» su un
+gesto che fallisce.
+
+⭐ **E §12.5.2 offre più della disciplina**: la madre non riscrive il predicato,
+lo **chiama**. Il presidio da scrivere non è «tooltip e rifiuto coincidono» —
+che proverebbe solo l'oggi — ma **«la madre non contiene più il predicato»**.
+
+### ⚠️ Il residuo: il presidio del §12.5.2 NON è raggiunto, e non era raggiungibile
+
+⛔ **Le tre madri non sono guard scritti a mano.** Sono tre istanze della stessa
+automazione generica, ognuna col proprio figlio negli **argomenti del trigger**:
+
+```text
+trg_…_fatture_block_deact_upd        → dbops.trgfn_prevent_deactivate_if_children
+   args = vendite \0 fatture                           \0 registro_id \0 id \0 attivo
+trg_…_registri_fatturazione_prog_…   → dbops.trgfn_prevent_deactivate_if_children
+   args = vendite \0 registri_fatturazione_progressivi \0 registro_id \0 id \0 attivo
+trg_…_tipi_doc_fiscale_registri_…    → dbops.trgfn_prevent_deactivate_if_children
+   args = vendite \0 tipi_doc_fiscale_registri         \0 registro_id \0 id \0 attivo
+```
+
+Una funzione generica che serve **100 tabelle** non può chiamare una check
+specifica. ⇒ Restano **due elenchi paralleli**: i figli stanno nei trigger
+montati, e la check li riscrive a mano.
+
+⚠️ **Il rischio ha un nome preciso**: il giorno che si registra un **quarto**
+figlio (una tabella nuova con `registro_id` + `attivo`), l'automazione monta il
+quarto trigger **da sola** e la check resta a tre. Il cestino sembra acceso,
+l'operatore preme, fallisce — cioè il difetto che questa funzione è nata per
+togliere, spostato di un passo.
+
+⚠️ **Non blocca il CRUD**: la check com'è **funziona**, e il tooltip dirà la cosa
+giusta. Il problema è se resterà giusta fra sei mesi, non se lo è oggi.
+
+### ⭐⭐ E il numero cambia la scala: non è un problema dei registri
+
+Misurato il 2026-08-31 sul database:
+
+| | |
+| --- | ---: |
+| tabelle protette da `trgfn_prevent_deactivate_if_children` | **100** |
+| trigger montati | **363** |
+| `fn_check_*` di disattivazione esistenti | **1** (questa) |
+
+E le più vincolate: `catalogo.articoli` **29** figli, `catalogo.unita_misura`
+**21**, `config.sorgenti` **18**, `anagrafiche.emittenti_fiscali` **17**.
+
+⛔ **A mano non regge.** Una check per tabella significa firmare 99 volte lo
+stesso lavoro, e su `articoli` un elenco di 29 nomi nasce già vecchio. Ogni
+maschera di amministrazione con un pulsante «disattiva» ha **esattamente questo
+problema**, e oggi lo risolve nessuna.
+
+⭐ **La strada giusta è una sola funzione generica** —
+`script.fn_check_disattivabile(schema, tabella, id)` — che **legge i trigger
+montati** su quella tabella invece di elencarne i figli. Quella dei registri
+diventa un involucro di due righe, o sparisce.
+
+⭐ **E non si inventa niente: è il principio che questo cantiere ha già usato due
+volte**, e che il brief del trasloco elogia con parole sue —
+*«ed è **DERIVATA, non elencata**: il sesto documento entra nella regola il
+giorno in cui si registra la sua famiglia, e non esiste nessun elenco parallelo
+che possa restare indietro»* (`fn_get_storia_emittente_ba`, che deriva da
+`famiglie_documento`), e *«è lo stesso principio della primitiva di pulizia che
+scopre le figlie da `pg_constraint`»*. Qui si scoprono da `pg_trigger`.
+
+⚠️ **Il limite, dichiarato**: derivare copre i divieti di *quell'automazione*. Un
+guard di disattivazione scritto a mano non verrebbe visto — ma è un limite che
+ha **anche** l'elenco scritto a mano, con la differenza che oggi l'automazione
+copre tutti e 363 i casi. Il buco è teorico, non attuale.
+
+📌 **Decisione a Tid, e vale un cantiere suo**: non è di questo brief, e non
+blocca i passi 1-4.
+
+### ⚠️ Quale forma copiare — lo stato del pattern, misurato
+
+| Grado | Forma | Dove |
+| --- | --- | --- |
+| ⭐ **pieno** | `reason` **e** `reason_key` viaggiano dal DB; il FE fa `labelOrCode(t, te, riga.reason_key, riga.codice)` | `TitoloIvaDrawer`, `EmittenteFiscaleBillingAccountTab`, azioni di documento (`useDrawerActions`, `useLottoAzioni`) |
+| ⚠️ **parziale** | la `fn_check_*` c'è, ma la vista espone **solo il codice** e il FE **costruisce** l'indirizzo i18n con un template literal | `ResiCodaTable`, `ResoRigheTable` |
+| ⛔ **fuori** | il motivo lo compone il **frontend** da uno stato | `SistemazioneDrawer`, `DistintaDrawer` |
+
+⛔ **Si copia il grado pieno.** Il parziale non è una variante ammessa: è la
+forma **precedente** alla convenzione — verificato sulle viste, `vw_resi_*`
+espongono solo `annullo_blocco_codice`, mentre `vw_stiva_movimenti_dettaglio`
+porta anche `annullo_blocco_reason_key`. Il `reason_key` è un **indirizzo che
+dichiara il database**, non una stringa che il client compone.
 
 ### FE-3 · «Nuovo» deve inciampare PRIMA, non dopo
 
@@ -249,11 +336,21 @@ li porta comunque.
 2. **BE-4** — i progressivi in lettura nel dettaglio
 3. La **configurazione della lista** (dato, in-app)
 4. **FE-1/FE-4** — tab + drawer, campi condizionati alla famiglia
-5. **BE-3/FE-2** — la disattivazione col motivo ⚠️ *gated sulla decisione (a)/(b)*
+5. **BE-3/FE-2** — la disattivazione col motivo ✅ *il prerequisito DB c'è (`20260831-38`)*
 6. **FE-3** — la riattivazione proposta al posto del rifiuto
 
-⭐ **I passi 1-4 non dipendono da nessuna decisione aperta**: si possono fare
-subito. Il 5 aspetta la scelta fra `fn_check_*` a DB e derivazione in Python.
+✅ **Nessun passo è più gated.** Il prerequisito che il 5 aspettava —
+`script.fn_check_registro_disattivabile` — è applicato dal 2026-08-31: si può
+fare tutto, dall'1 al 6.
+
+*(Superata la riga che diceva «il 5 aspetta la scelta fra `fn_check_*` a DB e
+derivazione in Python»: la scelta è stata fatta — la `fn_check_*` — e applicata
+in giornata.)*
+
+⚠️ **Resta aperta una cosa sola, e non è di questo brief**: se la check debba
+**derivare** i figli dai trigger montati invece di elencarli, e soprattutto se
+farlo **una volta per tutte e 100 le tabelle** che hanno lo stesso problema
+(§FE-2, in coda). Non blocca niente qui.
 
 ---
 
