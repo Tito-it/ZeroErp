@@ -669,6 +669,16 @@
     "filtered_by": "Results filtered by: {name}"
   },
   "amministrazione": {
+    "registri_fatturazione": {
+      "disattiva_blocco": {
+        "ha_fatture": "Register {codice} has already issued {quante} invoices: deactivating it would leave those documents without the register that numbered them.",
+        "ha_progressivi": "Register {codice} has {quante} counters still active: while a counter is alive the register can still number, and switching it off would break the sequence. Switch off the counters first.",
+        "ha_mapping_tipo_doc": "Register {codice} is assigned to {quante} document types: remove the assignment first, otherwise those documents would no longer find a register to be created in.",
+        "ha_ordini": "Register {codice} has already numbered {quante} orders: deactivating it would leave those documents without the register that numbered them.",
+        "ha_ddt": "Register {codice} has already numbered {quante} delivery notes: deactivating it would leave those documents without the register that numbered them.",
+        "ha_resi": "Register {codice} has already numbered {quante} returns: deactivating it would leave those documents without the register that numbered them."
+      }
+    },
     "matrici": {
       "tab_utilities_ruoli": "Utilities/Roles",
       "tab_indirizzi_ruoli": "Addresses/Roles",

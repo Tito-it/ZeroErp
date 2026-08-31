@@ -12,31 +12,111 @@
 > ([elenco 1](../work-done/brief-db-richieste-aperte-dal-backend.md), chiuso il
 > 2026-08-31 con tutte e cinque le voci applicate).
 >
-> **Stato.** 2026-08-31 (3) — ⚠️ **la 2 è chiusa, la 1 no.** È l'opposto di come
-> stava scritto qui un'ora fa, e la ragione vale più dell'esito: la voce 1 è
-> applicata **quasi** per intero, ma le manca la riga di `task_policy` che questo
-> documento aveva dichiarato non obbligatoria — sulla base di un «Verificato»
-> mai eseguito. Il cancello BE è **rosso**. Dettaglio al §1.
+> **Stato.** 2026-08-31 (4) — ✅ **entrambe le voci sono chiuse e applicate.**
+> Le due righe di `task_policy` che mancavano alla voce 1 sono state scritte
+> (id 26 e 27) e applicate dal migrate delle 21:47: il cancello BE
+> `test_ogni_task_in_pipeline_ha_una_task_policy` è **verde** — 0 task senza
+> policy, replicato sul database vivo, e le tre soglie di
+> `test_la_misura_non_e_degradata` sono rispettate (27 / 22 / 27 contro 12 / 20 / 20).
+>
+> ✅ **E il residuo della voce 2, che si è avverato in giornata, è già chiuso**:
+> la check copriva 3 figli su 6 per qualche ora — `ordini`, `ddt` e `resi` sono
+> arrivati col cantiere della numerazione — e il changeSet `20260831-71` delle
+> 22:05 la porta a **sei**, allineata ai trigger montati. ⚠️ In fondo al §2 resta
+> scritto **l'errore di metodo** con cui la cosa era stata argomentata: vale più
+> del rilievo.
 > Verificato sul repo **e sul database**, non ricordato.
+
+---
+
+## 🔎 Cosa resta ATTIVO (verificato sul database, 2026-08-31 notte)
+
+> Le **due voci** dell'ordine di lavoro sono chiuse e applicate. Ciò che resta
+> non è più «richiesta del BE»: sono **tre code**, ognuna con un destinatario
+> diverso, più una frase di questo file che dichiara aperto ciò che è chiuso.
+
+| # | Cosa | Di chi | Stato verificato |
+| --- | --- | --- | --- |
+| A | le **sei** `reason_key` di `disattiva_blocco.*` non sono nei locales | **FE** | `it.json` e `en.json`: 0 su 6 |
+| B | `automation_fk_exclusions.csv` è un CSV **senza tabella** | DB | tabella assente, CSV presente |
+| C | `automation_rules_tbl.params`: 3 chiavi con **zero** consumatori | DB | `pg_proc` → 0, 0, 0 |
+| D | §2 dice ancora «la strada giusta è generica, decisione a Tid» | doc | ⛔ **decisa il contrario** in fondo al file |
+
+### A · Il debito i18n è di SEI chiavi, non di tre — e il presidio ne vede solo tre
+
+⛔ **Nessuna** delle sei è nei locales: mancano anche `ha_fatture`,
+`ha_progressivi`, `ha_mapping_tipo_doc`, non solo le tre nuove.
+
+⚠️ **E il presidio su cui questo file si appoggia è cieco proprio sulle tre
+nuove.** `scripts/check_i18n_keys.py` oggi **fallisce** — `[X] 3 CHIAVI EMESSE
+DAL DB e assenti dai locales` — ma le tre che nomina sono le **originali**. Le
+tre di `20260831-71` non le vede, perché il guard estrae le chiavi dal **corpo
+delle funzioni nella doc auto-gen** (`docs/it/dbzero`, non `pg_proc`), e quella
+doc è ferma alle **21:37** mentre il changeSet è delle **22:05**.
+
+⇒ La frase *«vanno aggiunte ai locales, o `check_i18n_keys.py` fallisce»* è vera
+a metà: sulle tre nuove il cancello tacerà **finché la doc non viene
+rigenerata**. Non è un difetto del guard — è la stessa premessa che salta per
+tutti: *la doc auto-gen riflette il vivo solo se è stata rigenerata*.
+
+📌 **Il lavoro è del FE** (locales `it`/`en`), e sta qui come richiesta, non come
+compito del DB. Al DB non resta niente su questa voce: i sei `reason_key` sono
+già emessi correttamente dalla funzione.
+
+### B · `automation_fk_exclusions.csv` — un seme senza terreno
+
+✅ **Confermato misurando**: `dbops.automation_fk_exclusions` **non esiste**
+(droppata da `20260101-01-drop-attivo-legacy-objects`), e
+`80_data/sql/dbops/automation_fk_exclusions.csv` **c'è ancora**.
+
+⚠️ Otto changelog lo nominano, ma sono tutti **storici** — compreso il drop
+stesso e la `legacy/baseline_v2`. Nessun loader vivo lo legge.
+
+⇒ **Va cancellato il file**: è la stessa regola dell'oggetto ritirato che lascia
+la scheda in `manual/` — un moncone resta pubblicizzato, e chi lo trova conclude
+che il meccanismo esista. È già successo, in questo stesso brief.
+
+### C · Tre chiavi di `params` che nessuno legge
+
+✅ **Confermato su `pg_proc`**: `block_if_child_no_attivo`, `cascade_children`,
+`include_no_action` hanno **zero** consumatori, e **una** riga di
+`dbops.automation_rules_tbl` le dichiara.
+
+⇒ O si implementano, o **escono**. Un catalogo che dichiara più di quanto esegue
+prima o poi convince qualcuno a sceglierne una — è il difetto di `reset_policy`,
+già pagato una volta.
+
+### D · Una frase che dichiara aperto ciò che è chiuso
+
+Il riquadro del §2 chiude ancora con: *«La strada giusta non è per tabella ma
+generica … **Decisione a Tid**»*. ⛔ Quella decisione **è stata presa**, ed è
+l'opposto: l'elenco delle figlie **resta scritto a mano**, perché un elenco
+derivato da `pg_trigger` inventerebbe una `reason_key` che nessuno ha tradotto —
+un difetto muto in produzione al posto di un rosso in sviluppo. Ragionamento
+completo in fondo al file.
+
+⚠️ Va letta come **superata**, non come una domanda ancora aperta: è la forma di
+debito documentale che costa di più, perché chi la incontra riapre un cantiere
+già deciso.
 
 ---
 
 ## L'ordine
 
 ```text
-1. task di pipeline «consuma_plafond_lotto»       🟠 QUASI — 2 righe task_policy
+1. task di pipeline «consuma_plafond_lotto»       ✅ FATTO 31/08 (seed + policy 26/27)
 2. fn_check_registro_disattivabile                ✅ FATTO 31/08 (20260831-38)
+   └─ ✅ estesa a SEI guard da 20260831-71 (22:05)
 ```
 
-🟠 **La prima è quasi fatta.** Il task è registrato, ha il suo handler ed è **in
+✅ **La prima è FATTA.** Il task è registrato, ha il suo handler ed è **in
 testa** a entrambe le pipeline: `anagrafiche.fn_consuma_plafond_titolo_iva`, che
 non aveva **nessun chiamante possibile**, ora ce l'ha.
 
-⛔ **Ma mancano le due righe di `fatturazione_pipeline_task_policy`, e il
-cancello BE è ROSSO** — `test_ogni_task_in_pipeline_ha_una_task_policy`. Senza,
-il task gira **cieco**: niente `task_run`, niente resume. La colpa è di questo
-documento, che aveva dichiarato quella riga non obbligatoria sulla base di un
-«Verificato» mai eseguito: la correzione, con il calco esatto, è al §1.
+✅ **E le due righe di `fatturazione_pipeline_task_policy` ci sono** (id 26 e 27,
+scritte e applicate il 2026-08-31 sera), con i valori esatti del calco chiesto
+qui sotto: `annullabile=false`, `RESUME_TASK`, `meta` con lo `scope`. Il cancello
+BE è **verde**.
 
 ✅ **La seconda è FATTA** (`script.fn_check_registro_disattivabile`, changeSet
 `20260831-38`): forma del §12.5.1, `SECURITY DEFINER`, tre `reason` senza
@@ -46,9 +126,9 @@ sono l'automazione generica, quindi i due elenchi possono divergere.
 
 ---
 
-## 1. 🟠 Il task di pipeline che consuma il plafond — quasi fatto
+## 1. ✅ Il task di pipeline che consuma il plafond — FATTO
 
-> 🟠 **APPLICATA il 2026-08-31, ma non chiusa.** Tutto ciò che questa voce
+> ✅ **APPLICATA E CHIUSA il 2026-08-31.** Tutto ciò che questa voce
 > chiedeva è stato fatto **come chiesto**: il task è **in testa** allo step
 > DEFINITIVA su **entrambe** le pipeline (4 e 6), e ⭐ **senza chiave `fn`** —
 > nessuna madre SQL, che era il rischio nominato qui sotto. Verificato sul seed
@@ -244,17 +324,17 @@ non ha bisogno di un `resume_mode` proprio — è idempotente per costruzione,
 perché il movimento di plafond lo scrive `fn_consuma_plafond_titolo_iva` sotto
 lock. Se servirà, si aggiunge senza toccare nient'altro.~~
 
-### ⛔ Rettifica del 2026-08-31, sera — le righe erano SEI
+### ✅ Chiusura del 2026-08-31, sera — le righe erano SEI, e ora ci sono
 
-> **Trovato da un pgTAP, non da una rilettura**: `test-pipeline-processi-invariante-v1.sql`
-> caso 7 — *«ogni (pipeline, task) armato ha la sua task_policy attiva»* —
-> `have: 2, want: 0`. Non era in baseline: rosso nuovo, dello stesso giorno.
-
-⛔ **La premessa del paragrafo qui sopra è falsa.** Diceva che
-`popola_fatture_rettifiche` *«gira nelle stesse due pipeline senza averne una»*.
-Ce l'ha: **id 24 e 25** di `fatturazione_pipeline_task_policy.csv`, per le
-pipeline 4 e 6, dal **2026-08-18**. Il calco su cui la decisione poggiava dice
-l'opposto di quello che le si è fatto dire.
+> ⭐ **Due squadre hanno trovato lo stesso difetto per due strade diverse**, il
+> che è la conferma migliore che si potesse avere. Il BE l'ha visto dal suo
+> cancello (`test_ogni_task_in_pipeline_ha_una_task_policy` — la CORREZIONE qui
+> sopra); il DB dal pgTAP `test-pipeline-processi-invariante-v1.sql`, caso 7,
+> *«ogni (pipeline, task) armato ha la sua task_policy attiva»*: `have: 2,
+> want: 0`, rosso **nuovo**, non in baseline.
+>
+> ⇒ Le due analisi coincidono anche sui **valori**: `annullabile=false`,
+> `RESUME_TASK`, `meta` con lo `scope`. Nessuna delle due ha dovuto cedere.
 
 ⭐ **Ed è la stessa forma dell'errore che questa voce dichiara di aver corretto**:
 poche righe sopra c'è scritto *«le righe erano QUATTRO, non due»*, dopo aver
@@ -329,6 +409,11 @@ zero movimenti scritti. Senza, un task che «gira sempre» passerebbe il primo.
 > (`HA_FATTURE`, `HA_PROGRESSIVI`, `HA_MAPPING_TIPO_DOC`), e **nessun codice
 > errore nuovo**: nomina i due `E_ATTIVO_BLOCK_CHILDREN_*` già a catalogo.
 >
+> ✅ **Il residuo dei «due elenchi paralleli» si è manifestato e chiuso in
+> giornata** (`20260831-71`, sei guard). Quanto segue resta valido come
+> *descrizione del meccanismo*, che non è stato eliminato: la prossima figlia
+> registrata riaprirà lo stesso scarto.
+>
 > ⚠️ **Resta un residuo, e NON blocca il CRUD** — la check funziona e il tooltip
 > dirà la cosa giusta. Il presidio del §12.5.2 (*«la madre non contiene più il
 > predicato»*) però **non è raggiunto, e non era raggiungibile così**: le tre
@@ -341,13 +426,79 @@ zero movimenti scritti. Senza, un task che «gira sempre» passerebbe il primo.
 > monta il trigger da sé e la check resta a tre — tooltip che dice «si può» su un
 > gesto che fallisce.
 >
-> ⭐⭐ **E il numero cambia la scala del problema: 100 tabelle, 363 trigger
+> ⭐⭐ **E il numero cambia la scala del problema: 100 tabelle, 366 trigger
 > montati, UNA sola check di disattivazione** (questa). `catalogo.articoli` ha 29
 > figli, `unita_misura` 21: a mano non regge. ⇒ La strada giusta non è per
 > tabella ma **generica** — una `script.fn_check_disattivabile(schema, tabella,
 > id)` che legge i trigger montati, come `fn_get_storia_emittente_ba` legge il
-> catalogo delle famiglie invece di elencarle. **Decisione a Tid**, e vale un
-> cantiere suo: non è di questo ordine di lavoro.
+> catalogo delle famiglie invece di elencarle. ~~**Decisione a Tid**, e vale un
+> cantiere suo: non è di questo ordine di lavoro.~~
+>
+> ⛔ **DECISA, ed è l'opposto** (in fondo al file): l'elenco delle figlie **resta
+> scritto a mano**. Un elenco derivato da `pg_trigger` emetterebbe una
+> `reason_key` che nessuno ha tradotto — difetto **muto in produzione** invece
+> di un rosso in sviluppo. ⭐ È un elenco parallelo **tenuto da un presidio**, che
+> è un'altra cosa da un elenco parallelo lasciato a sé stesso.
+
+### ✅ Il residuo si è avverato ed è già stato CHIUSO, nella stessa serata
+
+> ⚠️ **Questa sezione è stata riscritta.** La prima stesura conteneva un
+> controesempio **sbagliato**, e il rilievo di Tid l'ha smontato: va tenuto
+> scritto, perché l'errore di metodo vale più del rilievo.
+
+**Il fatto.** Il §2 qui sopra prevedeva *«il giorno che si registra un quarto
+figlio, l'automazione monta il trigger da sé e la check resta a tre»*. È successo
+lo stesso giorno, e i figli nuovi erano **tre**: `ordini`, `ddt` e `resi`,
+traslocati sui registri dal cantiere della numerazione. Per qualche ora la check
+ne ha coperti **3 su 6**.
+
+✅ **Chiuso alle 22:05** dal changeSet
+`20260831-71-update-fn-check-registro-disattivabile-sei-guard`: la check ha ora
+sei `reason` — `HA_FATTURE`, `HA_PROGRESSIVI`, `HA_MAPPING_TIPO_DOC`,
+`HA_ORDINI`, `HA_DDT`, `HA_RESI` — e **copre tutti e sei i trigger montati**,
+verificato incrociando `pg_trigger` con il corpo vivo della funzione.
+
+---
+
+#### ⛔ L'errore di metodo, che è la parte da tenere
+
+**Primo sbaglio — un controesempio NON RAGGIUNGIBILE.** Per mostrare la
+divergenza avevo agganciato un ordine a un registro pulito con un `UPDATE` e
+concluso *«la check dice si-può, il trigger rifiuta»*. ⛔ **Quello stato
+l'applicazione non lo produce**: `trgfn_ordini_gen_numero` — e le gemelle di DDT
+e resi — scrivono `NEW.registro_id` e `NEW.numero` **nello stesso blocco**, ed
+escono in testa se un numero c'è già. Un documento su un registro **ha sempre**
+consumato un progressivo, quindi `HA_PROGRESSIVI` sarebbe scattato comunque.
+*Un controesempio costruito fuori dal modello non è un controesempio: è un dato
+sporco.*
+
+⭐ **La strada giusta c'era, ed era un'altra** — l'asimmetria fra i due rami del
+guard generico:
+
+| Figlio | colonna `attivo` | ramo del guard | la check contava |
+| --- | --- | --- | --- |
+| `registri_fatturazione_progressivi` | **sì** | `_ACTIVE` — solo le righe attive | solo le attive ✅ |
+| `ordini`, `ddt`, `resi`, `fatture` | **no** | `_EXIST` — *«una riga o c'è o non c'è»* | ⛔ non le contava |
+
+⇒ Bastava **spegnere il progressivo** — che è il gesto *«figli prima, padre
+poi»* che la check stessa avalla — perché `HA_PROGRESSIVI` smettesse di
+scattare mentre l'ordine restava lì a bloccare. Quello sì era raggiungibile,
+e non richiedeva nessun `UPDATE` fuori modello.
+
+**Secondo sbaglio — la doc auto-gen letta come «l'oggetto vivo».** I tre
+`reason` li avevo contati su
+`docs/it/dbzero/script/funzioni/fn_check_registro_disattivabile.md`. Quel file
+era stampato alle **21:37**; il changeSet che porta la check a sei è delle
+**22:05**. La regola di casa — *«la definizione corrente si prende dalla doc
+auto-gen, che riflette l'oggetto vivo»* — **presuppone che la doc sia stata
+rigenerata**, e in una giornata con più cantieri che applicano ogni pochi minuti
+quella premessa salta.
+
+⚠️ ⇒ **Su un oggetto toccato oggi, la sorgente è `pg_proc`, non il markdown.**
+La doc resta giusta per capire *perché*; per sapere *cosa fa adesso* si chiede
+al database. Vale come corollario alla regola, non come sua sostituzione.
+
+---
 
 📌 **Il ragionamento è già scritto**, e non si ricopia: §FE-2 del
 [brief BE/FE del CRUD dei registri](brief-be-fe-crud-registri-di-numerazione.md).
@@ -512,3 +663,121 @@ aggregazione su codice non eseguito»*.
 | 2026-08-31 (3) | ➕ **Voce 2**: `fn_check_registro_disattivabile`, dal cantiere del CRUD dei registri. ⭐ **Non blocca** — i primi quattro passi di quel brief partono senza — ed è chiesta *prima* di scrivere il codice che ne dipende. ⚠️ La strada alternativa (derivare `can_remove` in Python) è stata **scartata da Tid**: è il grado ⛔ del §12.5 e sarebbe il difetto che il mapping BA ha appena finito di chiudere, per giunta su **tre** guard invece di uno. ⛔ E i `reason` non portano il prefisso `E_`: la regola è costata un changeSet stamattina (`E_UN_ANNULLO` → `RIGA_DI_ANNULLO`, `20260831-35`) |
 | 2026-08-31 (2) | ⛔ **Corretta una frase sbagliata di questo stesso file**, su segnalazione di Tid: diceva che il consumo del plafond non era scrivibile lato BE. Era falso — handler, servizio, repository e 14 test sono BE, e sono stati scritti. Al DB resta **solo** la configurazione. Aggiunta la regola di instradamento (§«Come si decide») e il divieto esplicito di scrivere una madre `fn_consuma_plafond_lotto`, che è la duplicazione che questo cantiere ha già pagato una volta |
 | 2026-08-31 | Elenco nato chiudendo `F3-b1` (la riga di fattura che chiede l'IVA al risolutore) e verificando **dove** possa vivere il consumo del plafond. ⚠️ **È lo stesso schema della voce 5 dell'elenco 1**: un lavoro che sembrava «solo BE» fermo su un prerequisito che nessuno aveva chiesto — lì una colonna, qui due righe di seed. ⭐ La differenza è che stavolta è stato trovato **prima** di scrivere il codice che ne dipende |
+
+---
+
+## ⚠️ Voce 2 — aggiornamento del 2026-08-31 (sera): i guard erano diventati SEI
+
+`script.fn_check_registro_disattivabile` copriva **tre** figlie; ne sono comparse
+altre tre. Allineata dal changeSet `20_code/script/20260831-71`.
+
+### Come si è visto
+
+⭐ L'ha trovato **il presidio, da solo**. Il test 6 del suo pgTAP era scritto con
+questa frase: *«il giorno che ne compare una quarta, diventa rosso»*. È diventato
+rosso, e ne erano comparse tre.
+
+```
+have: ddt, fatture, ordini, registri_fatturazione_progressivi, resi, tipi_doc_fiscale_registri
+want: fatture, registri_fatturazione_progressivi, tipi_doc_fiscale_registri
+```
+
+⛔ **Nessuno le ha scritte.** Col trasloco della numerazione `vendite.ddt`,
+`ordini` e `resi` hanno guadagnato `registro_id`, e l'automazione monta il guard
+di disattivazione **da sola** a partire dalla FK — al `migrate`, senza annunciarlo.
+
+### ⭐ Cosa cambiava davvero, misurato
+
+Sul registro `DDT-72`, che ha numerato documenti veri:
+
+| | la check diceva | il rifiuto dice |
+| --- | --- | --- |
+| **prima** | `HA_PROGRESSIVI` | *«…righe collegate in `vendite.ddt`»* |
+| **dopo** | `HA_DDT \| HA_PROGRESSIVI` | *«…righe collegate in `vendite.ddt`»* |
+
+⇒ Il tooltip e l'errore nominavano **figlie diverse** sullo stesso registro. Ora
+no, e non per caso: i motivi sono ordinati per **nome della tabella figlia**, che
+è l'ordine alfabetico in cui i `BEFORE ROW` scattano davvero. Il primo motivo è
+quello che il rifiuto nominerebbe.
+
+### ⚠️ Debito verso il FE — tre `reason_key` NUOVE
+
+```
+amministrazione.registri_fatturazione.disattiva_blocco.ha_ddt
+amministrazione.registri_fatturazione.disattiva_blocco.ha_ordini
+amministrazione.registri_fatturazione.disattiva_blocco.ha_resi
+```
+
+Vanno aggiunte ai locales, o `scripts/check_i18n_keys.py` fallisce. ⭐ Ed è il
+motivo per cui l'elenco delle figlie **resta scritto a mano** invece di essere
+derivato da `pg_trigger`: un elenco derivato inventerebbe una chiave che nessuno
+ha tradotto, e la superficie mostrerebbe la chiave nuda — un difetto **muto in
+produzione** al posto di un rosso in sviluppo. È un elenco parallelo *tenuto da un
+presidio*, che è un'altra cosa da un elenco parallelo lasciato a sé stesso.
+
+### ✅ La domanda aperta è stata DECISA — Tid, 2026-08-31 sera
+
+I tre guard nuovi sono `_EXIST`: bloccano sull'**esistenza** dei documenti, perché
+`ddt`, `ordini` e `resi` non hanno la colonna `attivo`. ⇒ Un registro che ha
+numerato anche un solo documento non si può più disattivare.
+
+**Decisione: si accetta il blocco.** La check copre tutti e sei i guard
+(`20260831-71`), e a essere corretta è la documentazione, non il vincolo.
+
+#### ⭐ Perché è la scelta giusta sul MODELLO
+
+⚠️ Il primo argomento che avevo portato — *«costruire l'esclusione costa, tocca
+un'automazione condivisa»* — è stato **ritirato dal ragionamento su richiesta di
+Tid**: è un argomento sullo stato dello sviluppo, e non deve decidere la forma.
+La scelta regge senza, su tre fatti strutturali:
+
+| | |
+| --- | --- |
+| lo slot `UNIQUE` resta occupato anche da spento | non se ne può creare uno sostitutivo |
+| `fn_lookup_registro_documento` pretende `attivo IS TRUE` | il documento non nasce più |
+| `fn_provision_registri_emittente` non crea dove una riga esiste | nessun rimedio automatico |
+
+⇒ Spegnere un registro non fiscale **non è un ritiro: è un blocco senza uscita**.
+L'azienda smette di emettere quel documento e non c'è modo di tornare indietro.
+Un guard che lo impedisce non toglie una capacità utile: **impedisce un autogol**.
+
+⭐ **E il bisogno vero dietro «ritiro e rifaccio» era cambiare la forma del
+numero.** Da ieri sera `prefisso`, `suffisso` e `lunghezza_numero` sono colonne
+del registro e si modificano: la strada che sembrava chiusa era già stata riaperta
+altrove.
+
+#### ⛔ Perché la strada B è stata SCARTATA
+
+Escludere le tre coppie dall'automazione avrebbe riaperto la possibilità di
+compiere quell'azione. ⇒ Si costruisce un meccanismo **per riabilitare un'azione
+che porta a uno stato irrecuperabile**: è la definizione di un foot-gun.
+
+⚠️ E si sarebbe dovuto costruirlo davvero — vedi la correzione qui sotto.
+
+#### ⛔ CORREZIONE — «il meccanismo esiste già ed è vuoto» era FALSO
+
+Avevo proposto la strada B dicendo che bastava riempire
+`80_data/sql/dbops/automation_fk_exclusions.csv`. ⛔ **Dedotto dall'esistenza del
+file, senza guardare la tabella:** `dbops.automation_fk_exclusions` **non esiste**
+— l'ha droppata `20260101-01-drop-attivo-legacy-objects`. Quel CSV è un file
+morto, un seme senza terreno.
+
+⭐ È la stessa lezione del `20260831-55`, applicata all'incontrario: là avevo
+cancellato una fonte senza censire chi la legge, qui ho creduto viva una fonte
+senza chiedere se esistesse. **In entrambi i casi la verifica costava una query.**
+
+#### ⚠️ Due residui trovati mentre si cercava il meccanismo (non corretti)
+
+1. **`automation_fk_exclusions.csv` è un CSV senza tabella.** Chi lo trova
+   conclude — come ho fatto io — che il meccanismo esista. ⛔ Va **cancellato**,
+   ed è la stessa regola dell'oggetto ritirato che lascia il file in `manual/`:
+   un moncone resta pubblicizzato.
+2. **`dbops.automation_rules_tbl.params` dichiara tre chiavi che nessuno legge** —
+   `block_if_child_no_attivo`, `cascade_children`, `include_no_action`. Verificato
+   su `pg_proc.prosrc` il 2026-08-31: zero consumatori. ⚠️ È lo stesso difetto di
+   `reset_policy`, che prometteva tre comportamenti e ne faceva uno: un catalogo
+   che dichiara più di quanto esegue prima o poi convince qualcuno a sceglierne
+   una. ⇒ O si implementano, o **escono**.
+
+⚠️ Entrambi sono fuori dal perimetro di questa richiesta: sono scritti qui perché
+non vadano persi.
