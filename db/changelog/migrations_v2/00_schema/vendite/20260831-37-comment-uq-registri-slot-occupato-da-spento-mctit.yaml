@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN REGISTRO SPENTO OCCUPA ANCORA LO SLOT — dichiarato dove si sbatte
+#   COMMENT su vendite.uq_registri_fatturazione_famiglia_emittente_utility
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §6
+#
+# ── ⛔ IL FATTO, E PERCHE' NON PUO' RESTARE IN UN BRIEF ────────────
+#   L'indice non porta `attivo` nel predicato: un registro spento continua a
+#   occupare lo slot (famiglia, emittente, utility). Ne discende che
+#   «SPEGNI E RIFAI» NON E' UNA STRADA per un registro — si riattiva quello che
+#   c'e' — e chi ci prova prende un `23505` che parla di una riga che non vede
+#   piu'.
+#   ⚠️ Scoperto il 2026-08-31 da un pgTAP che tentava esattamente quella mossa
+#   per costruire una fixture. Era rimasto scritto SOLO nel brief, e il team BE
+#   l'ha segnalato come decisione da non lasciare li': un brief lo legge chi
+#   cerca la storia del cantiere, non chi domani prova a rifare un registro.
+#
+# ── ⭐ ED E' GIUSTO COSI': NON SI "RIPARA" L'INDICE ────────────────
+#   Aggiungere `attivo` al predicato renderebbe possibile avere piu' registri
+#   storici indistinguibili per la stessa chiave logica, e nessuno saprebbe piu'
+#   QUALE HA NUMERATO COSA. Il vincolo e' severo perche' la numerazione e' una
+#   storia che non si riapre.
+#
+# ── ⚠️ LA DISTINZIONE CHE RENDE IL CASO CONFONDIBILE ──────────────
+#   Spegnere resta la mossa GIUSTA quando serve solo a rendere un registro
+#   invisibile a chi LEGGE — vendite.fn_lookup_registro_documento filtra su
+#   `attivo` — senza inserirne un altro al suo posto. E' la differenza fra chi
+#   legge e chi scrive: nella stessa sessione la stessa correzione e' stata
+#   giusta su un test e sbagliata sull'altro.
+#
+# ⚠️ Solo `COMMENT`: nessuna struttura, nessun dato, nessun comportamento.
+# ⛔ Il changeSet 20260830-15, che ha creato l'indice, e' gia' applicato e non
+#   si riscrive: la frase si estende da qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-37-comment-uq-registri-slot-occupato-da-spento-mctit.yaml
+
+  - changeSet:
+      id: 20260831-37-comment-uq-registri-slot-occupato-da-spento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Dichiara nel COMMENT dell''indice un fatto di modello che era scritto solo in un brief:
+        uq_registri_fatturazione_famiglia_emittente_utility NON filtra su `attivo`, quindi un
+        registro SPENTO continua a occupare lo slot (famiglia, emittente, utility) e «spegni e
+        rifai» non e'' una strada — si riattiva quello che c''e''. ⚠️ Scoperto da un pgTAP che
+        tentava quella mossa, e segnalato dal BE come decisione da non lasciare in un brief: un
+        brief lo legge chi cerca la storia del cantiere, non chi domani prova a rifare un
+        registro. ⭐ E il vincolo e'' giusto cosi'': se lo slot si liberasse spegnendo,
+        resterebbero due registri storici della stessa famiglia e nessuno saprebbe quale ha
+        numerato cosa. ⚠️ Spegnere resta corretto per rendere un registro invisibile a chi LEGGE,
+        senza inserirne un altro al suo posto. Solo COMMENT: nessuna struttura, nessun dato.
+        Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relname = 'uq_registri_fatturazione_famiglia_emittente_utility';
+            # ⛔ La frase e'' vera solo finche'' l''indice NON filtra su `attivo`:
+            #    se qualcuno lo cambiasse, questo COMMENT direbbe il falso.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_index i
+                    JOIN pg_class c ON c.oid = i.indexrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relname = 'uq_registri_fatturazione_famiglia_emittente_utility'
+                     AND pg_get_expr(i.indpred, i.indrelid) LIKE '%attivo%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON INDEX vendite.uq_registri_fatturazione_famiglia_emittente_utility
+              IS 'Un registro per (famiglia, emittente, utility) sulle famiglie che NON passano da vendite.tipi_doc_fiscale_registri — DDT, ORDINE, COMMESSA, RESO. Per loro il registro e'' «quello della mia famiglia, del mio emittente, eventualmente della mia utility», e due righe uguali renderebbero la scelta un caso invece di una risoluzione. ⛔ E'' PARZIALE apposta: sulla FATTURA la stessa regola sarebbe SBAGLIATA, perche'' lo stesso emittente puo'' legittimamente avere piu'' registri di fatturazione — la mappa (tipo_doc, natura) → registro esiste per questo, e nota di credito e fattura possono stare su registri diversi. Li'' a decidere e'' la mappa, e un vincolo che lo impedisse romperebbe una configurazione valida. ⚠️ NULLS NOT DISTINCT perche'' utility_id e'' nullable: in SQL due NULL non collidono, e senza quella clausola due registri della stessa famiglia e dello stesso emittente, entrambi «per tutte le utility», passerebbero tutti e due — il vincolo sarebbe vuoto proprio nel caso piu'' comune. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-3. ⛔ E QUESTO INDICE NON FILTRA SU `attivo`, ED E'' UNA COSA DA SAPERE PRIMA: un registro SPENTO continua a OCCUPARE lo slot (famiglia, emittente, utility). Ne discende un fatto di modello che non era scritto da nessuna parte fino al 2026-08-31: «SPEGNI E RIFAI» NON E'' UNA STRADA per un registro — per la stessa terna non si ritira un registro per crearne un altro, si RIATTIVA quello che c''e''. Chi ci prova prende un 23505 che parla di una riga che non vede piu''. ⭐ Ed e'' giusto cosi'', non e'' una svista da correggere aggiungendo `attivo` al predicato: se lo slot si liberasse spegnendo, resterebbero due registri storici della stessa famiglia per lo stesso emittente e nessuno saprebbe piu'' QUALE HA NUMERATO COSA. ⚠️ Lo spegnimento resta invece corretto quando serve solo a rendere un registro invisibile a chi LEGGE (vendite.fn_lookup_registro_documento filtra su `attivo`), senza inserirne un altro al suo posto: e'' la distinzione fra chi legge e chi scrive, e nella stessa sessione la stessa mossa e'' stata giusta su un test e sbagliata sull''altro. ℹ️ Scoperto da un pgTAP che tentava proprio «spegni e rifai» per costruire una fixture; segnalato dal team BE come decisione da non lasciare in un brief. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §6.';
+      rollback:
+        - empty: {}
