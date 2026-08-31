@@ -48,9 +48,15 @@ pulsante, e la madre che rifiuta.
 | --- | --- | --- |
 | 1 | `MOVIMENTO_NON_TROVATO` | il movimento indicato non esiste. ⭐ Qui «non esiste» è davvero «non esiste» — vedi il `SECURITY DEFINER` |
 | 2 | `NON_FORZATURA` | è un `FATTURA` o un `NOTA_CREDITO`: è il riflesso di un documento, e si corregge **dal documento** con una nota di credito (`I4`) |
-| 3 | `E_UN_ANNULLO` | è esso stesso l'annullo di un'altra riga |
+| 3 | `RIGA_DI_ANNULLO` | è esso stesso l'annullo di un'altra riga |
 | 4 | `GIA_ANNULLATO` | esiste già una riga che lo annulla |
 | 5 | `PLAFOND_NEGATIVO` | annullarlo porterebbe l'usato del titolo **sotto zero** |
+
+⚠️ **Il terzo si chiamava `E_UN_ANNULLO` fino al 2026-08-31** (changeSet
+`20260831-35`). Non nasceva come *«E\_ di errore»* ma come **«è un annullo»**, e
+quel prefisso lo faceva leggere come un **codice errore** dal cancello che cerca
+i letterali `E_*` nei corpi delle funzioni — rosso su un valore che un codice
+non è. Regola e caso in [linee-guida-sql §12.5.1](/linee-guida-sql).
 
 ⚠️ **L'ordine è il contratto**: la superficie mostra il **primo** motivo e la madre
 solleva il **primo** codice. Se divergesse, il tooltip direbbe una cosa e l'errore

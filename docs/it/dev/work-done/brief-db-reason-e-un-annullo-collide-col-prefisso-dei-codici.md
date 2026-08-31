@@ -1,5 +1,23 @@
 # Brief DB — il `reason` `E_UN_ANNULLO` collide col prefisso dei codici errore
 
+> ## ✅ CHIUSO il 2026-08-31
+>
+> | Cosa | Dove | Esito |
+> | --- | --- | --- |
+> | il `reason` rinominato in **`RIGA_DI_ANNULLO`** | changeSet `20260831-35`, applicato | ✅ verificato sulla funzione **viva** (`pg_proc`), non sullo YAML |
+> | il `reason_key` **non** toccato | — | ✅ resta `…annullo_blocco.e_un_annullo`: è un indirizzo, e il testo a video non cambia |
+> | la convenzione scritta dove si legge | `linee-guida-sql` §12.5.1 | ✅ con il caso reale e il criterio «si guardano i vicini» |
+> | lo smoke che asseriva il valore vecchio | `smoke-titoli-iva-annullo-movimento.py` | ✅ aggiornato — `scripts/smoke-baseline.sh titoli-iva-annullo-movimento` verde |
+> | la doc manuale della funzione | `dbzero/script/manual/…` | ✅ la tabella dei motivi diceva ancora `E_UN_ANNULLO` |
+> | il cancello | `test_error_codes_db_policy_guardrail` | ✅ **verde**, registro del debito a zero |
+>
+> ⭐ **Il nome scelto è quello proposto** (`RIGA_DI_ANNULLO`) e non
+> `GIA_UN_ANNULLO`: nella stessa funzione vive `GIA_ANNULLATO`, che dice il
+> contrario, e due motivi che differiscono per una parola si leggono male
+> proprio su un pulsante spento.
+>
+> ---
+>
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **In una riga:** `script.fn_check_annullo_movimento_titolo_iva` emette un

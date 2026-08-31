@@ -1,11 +1,29 @@
 # Piano BE/FE — Fase 1 del cantiere IVA (risolutore e regime cliente)
 
+> ## ✅ CHIUSO — 2026-08-31: tutte le slice sono fatte
+>
+> `S1`, `S2`, `S3-a`, `S4` e `S5` erano verdi dal 2026-08-29; **`S3-b` si è
+> chiusa il 2026-08-31**, ad apply avvenuto del changeSet `20260831-24` che ha
+> messo i tre riferimenti dell'atto nella whitelist di
+> `vendite.fn_create_contratto`. Il consuntivo di ognuna sta nel §8.
+>
+> ⛔ **Il cantiere IVA NON è chiuso**: qui finisce la **Fase 1**. Il documento da
+> guardare adesso è il
+> [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md), che è
+> l'unico ancora aperto.
+>
+> ⚠️ **Una deriva trovata chiudendo, e vale più della chiusura**: il §3.4
+> dichiarava «manca» due chiavi i18n che il §8 registrava come **fatte** da due
+> giorni. Una voce chiusa che il documento continua a dichiarare aperta manda a
+> rifare il lavoro — e una seconda scrittura della stessa chiave i18n non
+> darebbe nessun errore.
+
 > **Destinatario:** backend (`dev/backend-tid`) e frontend. Nessuna azione DB in
 > questo piano, **salvo una** — e sta dichiarata nel §3.3, con il brief da
 > passare al team DB.
 >
 > **Base.** Questo documento non ri-discute niente: la fonte è
-> [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md),
+> [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md),
 > le decisioni sono nel suo §D / §D-bis, il processo in quattro fasi nel suo §5.
 > Qui c'è **solo la Fase 1, e solo la metà BE/FE**: la metà DB è chiusa e
 > applicata.
@@ -14,9 +32,18 @@
 > team DB nel §8-bis del brief madre: *«⛔ Richiesta al BACKEND — da fare
 > adesso»*.
 >
-> **Stato.** 2026-08-29 — ✅ **`S1`, `S2`, `S3-a` e `S4` sono scritte, riviste e
-> verdi**; `S3-b` è **gated** su un changeSet DB, richiesto con
-> [brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md).
+> **Stato.** 2026-08-31 — ✅ **tutte le slice sono chiuse.** `S1`, `S2`, `S3-a` e
+> `S4` erano verdi dal 2026-08-29; **`S3-b` è chiusa il 2026-08-31**, ad apply
+> avvenuto del changeSet `20260831-24` richiesto con
+> [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md).
+> I tre riferimenti dell'atto entrano ora in `_CREATE_KEYS_TESTATA` **e** nel
+> mapper `_build_create_data_testata` (la whitelist da sola non basta: i due
+> mapper copiano campo per campo), e nel drawer è caduto il `v-if="isEdit"` che
+> li teneva nascosti in creazione.
+> ⭐ **Il segnalibro ha funzionato**: `test_update_keys_accettate_anche_in_create`
+> era scritto per diventare rosso *il giorno in cui l'eccezione smette di
+> servire*, ed è così che il buco è stato visto — non da una revisione, da un
+> test che si è acceso da solo.
 > Avanzamento nel **§8**, che include la **revisione critica** del 2026-08-29 e i
 > sei difetti che ne sono usciti — fra cui una regressione dura sulla creazione
 > contratto che nessuna delle verifiche automatiche poteva vedere.
@@ -25,13 +52,13 @@
 > suo.** Il 30/08 il team DB ha chiuso Fase 2, Fase 3 e le decisioni `D33`/`D34`:
 > i consumatori del risolutore (`I3`, `I4`, `I5`, `I6`) sono ora **interamente
 > BE/FE** e stanno in
-> [brief-be-fe-iva-fase-3-consumatori-risolutore.md](brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+> [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
 > Qui sono state allineate le **tre affermazioni** che quelle chiusure hanno reso
 > false — il §1 riga `I10`, e i due punti del §6 — perché un piano che dice una
 > cosa scaduta insegna una cosa falsa a chi si fida.
 >
 > **Correlati:**
-> [brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md) (figlio, `S3-b`) ·
+> [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md) (figlio, `S3-b`) ·
 > [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) ·
 > [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) ·
 > [vendite.contratti](/dbzero/vendite/tabelle/contratti) ·
@@ -87,7 +114,7 @@ lati:
 | **`I0`** — `clienti.iva_id` via (`D7-bis`), `split_payment`/`cliente_pa` su `soggetti` (`D8`) | ✅ applicata | 🔴 da fare | **`S1`** (togliere) + **`S2`** (rimettere sul soggetto) |
 | **`I8`** — CIG/CUP/commessa dal cliente al contratto (`D9`) | ✅ applicata | 🔴 da fare | **`S1`** (togliere) + **`S3`** (rimettere sul contratto) |
 | **`I9`** — gate IVA su ordini e preventivi (`R-3`) | ✅ applicata | 🟡 debito dichiarato dal DB: due `reason_key` mancanti | **`S4`** |
-| **`I10`** — `congela_fiscale` (`D15`) | ✅ applicata | ~~⛔ **niente**~~ → 🟡 **uno, dal 2026-08-30** | §6, e ora la slice `F5` del [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
+| **`I10`** — `congela_fiscale` (`D15`) | ✅ applicata | ~~⛔ **niente**~~ → 🟡 **uno, dal 2026-08-30** | §6, e ora la slice `F5` del [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
 
 ⛔ **Cosa NON entra, ed è dichiarato**: `I7` (Fase 2), `I2`/`I3`/`I4`/`I5`
 (Fase 3), `I6` (Fase 4). In particolare `I6` — «l'IVA di riga non si digita» — è
@@ -263,7 +290,7 @@ chiave veniva scartata in silenzio»*. Farlo due volte sarebbe la forma peggiore
 di regressione: quella già documentata accanto al punto in cui si ripete.
 
 📌 **Brief al team DB (`dev/db-tid`), voce unica** — ✅ **scritto il 2026-08-29**:
-[brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md).
+[brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md).
 In sintesi: estendere `v_testata_allowed`
 di `vendite.fn_create_contratto` con `'codice_cig'`, `'codice_cup'`,
 `'codice_commessa'`; changeSet nuovo con numerazione successiva, corpo preso
@@ -337,9 +364,15 @@ evitare.
 
 | Chiave | Stato |
 | --- | --- |
-| `vendite.ddt.azione_reason.iva_mancante` | ✅ c'è, it + en |
-| `vendite.ordini.azione_reason.iva_mancante` | 🔴 **manca** |
-| `vendite.preventivi.azione_reason.iva_mancante` | 🔴 **manca** |
+| `vendite.ddt.azione_reason.iva_mancante` | ✅ c'era già, it + en |
+| `vendite.ordini.azione_reason.iva_mancante` | ✅ **aggiunta** (2026-08-29, §8) |
+| `vendite.preventivi.azione_reason.iva_mancante` | ✅ **aggiunta** (2026-08-29, §8) |
+
+> 🔎 **Questa tabella diceva «manca» fino al 2026-08-31**, e le chiavi c'erano da
+> due giorni: il §8 le registrava, la tabella no. ⚠️ Ed è il tipo di deriva più
+> insidioso — una voce **chiusa** che il documento continua a dichiarare aperta
+> manda a rifare il lavoro, e la seconda scrittura della stessa chiave i18n non
+> darebbe nessun errore.
 
 ⭐ **Il testo esiste già** ed è quello del DDT — *«Una o più righe hanno un prezzo
 ma nessuna aliquota IVA: scegli l'aliquota, oppure togli il prezzo se la merce
@@ -597,17 +630,27 @@ madre: **ci si muove sul percorso, non sull'elenco che qualcun altro ha scritto*
 **4182 test OK** con `ZEROERP_TEST_DB_E2E=1` (24 in più della corsa senza E2E:
 i test che parlano col DB prima non giravano).
 
-### 🟡 `S3-b` — la CREATE, gated sul DB
+### ✅ `S3-b` — la CREATE (2026-08-31)
 
-⛔ **Non fatta, ed è una scelta.** `vendite.fn_create_contratto` ha una whitelist
-interna (`v_testata_allowed`) che non conosce i tre codici e li **scarta in
-silenzio**. Brief passato al team DB:
-[brief-db-fn-create-contratto-codici-atto.md](../work-done/brief-db-fn-create-contratto-codici-atto.md).
+Sbloccata dal changeSet **`20260831-24`**, che ha esteso `v_testata_allowed` di
+`vendite.fn_create_contratto` con `codice_cig`, `codice_cup`, `codice_commessa`
+(brief [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md)).
 
-Il segnalibro è un test: `test_create_contratto_non_mappa_ancora_i_codici_atto`
-asserisce oggi che le tre chiavi **non** sono in `_CREATE_KEYS_TESTATA`, e **si
-inverte** quando il changeSet è applicato. Nel `ContrattoDrawer` la sezione è
-sotto `v-if="isEdit"` per la stessa ragione.
+| | |
+| --- | --- |
+| `contratti_service.py` | le tre chiavi in `_CREATE_KEYS_TESTATA` + `_apply_codici_atto` chiamata anche dal mapper di CREATE |
+| `ContrattoDrawer.vue` | i campi compaiono **anche in creazione** |
+| test | il segnalibro `test_create_contratto_non_mappa_ancora_i_codici_atto` si è **invertito**, come previsto |
+
+⛔ **La whitelist da sola non bastava**, ed è la lezione già pagata il
+2026-07-27 su `fatturazione_immediata`: i due mapper del contratto copiano
+**campo per campo**, quindi una chiave ammessa e non mappata si perde in
+silenzio — `200` a video e il CIG da nessuna parte.
+
+⚠️ **E il 2026-08-31 sono caduti due commenti che dicevano ancora il contrario
+del codice** (*«in CREATE non compaiono ancora … gated sul DB»*), uno dei quali
+duplicava alla lettera il blocco sotto di sé. Un commento che contraddice il
+codice non è rumore: è la prossima persona che riapre una voce già chiusa.
 
 ### 🔎 Revisione critica del codice — 2026-08-29
 
@@ -739,5 +782,5 @@ stringa vuota → NULL, lunghezza eccessiva → errore parlante, `CESSATO` rifiu
 e il segnalibro di `S3-b`.
 | 2026-08-29 (revisione critica) | Su richiesta di Tid, rilettura del codice appena scritto. **Sei rilievi, tutti corretti** (§8). 🔴 Il primo è una **regressione dura**: `ContrattoDrawer.buildPayload()` è spreadato dentro il payload di CREATE, quindi le tre chiavi nuove arrivavano a un endpoint che `validate_allowed_keys` fa **rifiutare per intero** — la creazione contratto sarebbe fallita sempre. ⛔ **Nessuna verifica poteva vederlo**: vive nel giunto fra il payload builder del FE e la whitelist del BE, che nessuno dei due lati collauda da solo. Corretto, e reso visibile con un guardrail BE nuovo che dichiara l'invariante *«ogni chiave di UPDATE dev'essere accettata anche in CREATE»* e la sua unica eccezione, con scadenza a `S3-b`. 🟠 Altri due difetti silenziosi: un validatore che **mutava `request.data`**, e un flag assente che diventava `'N'` **spegnendo** lo split payment — la direzione sbagliata dello stesso errore che il travaso a DB aveva risolto con `bool_or`. 🟡 Poi de-duplicazione dei tre nomi, hardcode FE estratti, un'asserzione morta. ✅ Verificate e cadute due ipotesi: le guard DB su contratto ATTIVO sono `UPDATE OF`-scoped su altre colonne, e il dettaglio soggetto passa dalla proiezione estesa. Suite backend 4158 OK, i18n verde, build FE OK |
 | 2026-08-29 (dopo la Fase 2 DB) | Il team DB applica la **Fase 2** (`I7`: `soggetti_titoli_iva`, ambiti, movimenti, RLS, guard, primitiva di consumo). Cercando cosa si fosse sbloccato lato BE/FE è saltato fuori che il **cancello dei codici errore era rosso**: nove codici che il DB può nominare senza policy — sette di `I7` e ⛔ **due di `I9` che avevo mancato io** in Fase 1, avendo letto il debito *scritto* nel brief (le due `reason_key`) invece della **regola** (`feedback_ripiego_ogni_codice_vivo`: policy **e** ripiego). Chiusa come slice `S5`. ⭐ `fn_create_contratto` **non** è stata estesa: `S3-b` resta gated. |
-| 2026-08-31 | Il team DB chiude **Fase 2, Fase 3 e `D33`/`D34`** (51 changeSet + 9). Questo piano **non viene invalidato** — il suo perimetro era la sola Fase 1 — ma tre sue affermazioni scadono e sono state allineate qui sopra. ⛔ **`S3-b` resta gated**: verificato sulla doc auto-gen che `v_testata_allowed` di `fn_create_contratto` non ha ancora i tre codici. ⛔ E il cancello dei codici errore è **di nuovo rosso** — quattro codici della Fase 3 senza policy, cioè `S5` che si ripete: è la seconda volta che un codice nuovo arriva senza che il suo ripiego venga con lui, e la regola era già in memoria. Chiuso invece il debito di `D34`: i riferimenti alla guardia ritirata erano **quattro** e non tre — il quarto, nel `FatturaDrawer.vue` del frontend, non era nell'elenco del brief madre e si trova solo cercando dal percorso. I consumatori del risolutore passano al [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
+| 2026-08-31 | Il team DB chiude **Fase 2, Fase 3 e `D33`/`D34`** (51 changeSet + 9). Questo piano **non viene invalidato** — il suo perimetro era la sola Fase 1 — ma tre sue affermazioni scadono e sono state allineate qui sopra. ⛔ **`S3-b` resta gated**: verificato sulla doc auto-gen che `v_testata_allowed` di `fn_create_contratto` non ha ancora i tre codici. ⛔ E il cancello dei codici errore è **di nuovo rosso** — quattro codici della Fase 3 senza policy, cioè `S5` che si ripete: è la seconda volta che un codice nuovo arriva senza che il suo ripiego venga con lui, e la regola era già in memoria. Chiuso invece il debito di `D34`: i riferimenti alla guardia ritirata erano **quattro** e non tre — il quarto, nel `FatturaDrawer.vue` del frontend, non era nell'elenco del brief madre e si trova solo cercando dal percorso. I consumatori del risolutore passano al [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
 

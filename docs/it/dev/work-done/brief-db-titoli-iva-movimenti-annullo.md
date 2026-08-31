@@ -39,7 +39,7 @@
 > **Correlati:**
 > [soggetti_titoli_iva_movimenti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_movimenti) ·
 > [trgfn_soggetti_titoli_iva_movimenti_accumulatore](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore) ·
-> [brief-db-be-iva-risolutore-e-regime-cliente §8-ter](brief-db-be-iva-risolutore-e-regime-cliente.md)
+> [brief-db-be-iva-risolutore-e-regime-cliente §8-ter](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md)
 
 ---
 

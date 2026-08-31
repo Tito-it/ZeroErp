@@ -1,4 +1,15 @@
 # Area 'anagrafiche' (Backend)
 
-## Manuale
-- Descrizioni e note operative: cartella `manual/`
+## API
+- [api_categorie_clienti](manual/api_categorie_clienti.md) — Endpoint REST per la gestione delle **categorie cliente** (STANDARD, BASE, SILVER, GOLD, PLATINUM). Le categorie sono contenitori commerciali trasversali che segmentano i billing_account per politica di pricing.
+- [api_categorie_clienti_listini](manual/api_categorie_clienti_listini.md) — CRUD admin per la matrice di pricing **STADIO 2** del resolver listini v5: la combinazione categoria_cliente × utility × emittente_fiscale × classe_utenza? seleziona il listino_id attivo e, opzionalmente, una variazione…
+- [api_clienti](manual/api_clienti.md) — Gestione dei **clienti** (pricing v5 STADIO 2). Un cliente è la catena **istanza utility → billing account (BA) → cliente**: il BA è il ponte commerciale (categoria cliente, fatturazione, valuta), il cliente porta i par…
+- [api_contatti_ruolo](manual/api_contatti_ruolo.md) — Endpoint REST per la gestione dei contatti a livello ruolo con supporto istanza. Implementa la cascata a 3 livelli: istanza specifica, ruolo generico, soggetto (fallback readonly).
+- [api_conti_bancari_ruolo](manual/api_conti_bancari_ruolo.md) — Endpoint REST per la gestione dei conti bancari a livello ruolo con supporto istanza. La lista implementa la cascata a 3 livelli: istanza specifica, ruolo generico, soggetto (fallback readonly).
+- [api_emittenti_fiscali](manual/api_emittenti_fiscali.md) — Endpoint REST per la gestione degli **emittenti fiscali**. L'emittente fiscale e' un ruolo specializzato del soggetto base (pattern soggetti -> soggetti_ruoli -> emittenti_fiscali, relazione 1:1 via soggetto_ruolo_id, c…
+- [api_fornitori](manual/api_fornitori.md) — Endpoint REST per la gestione dei fornitori. Il fornitore e' un ruolo specializzato del soggetto base (pattern soggetti → soggetti_ruoli → fornitori, relazione 1:1 via soggetto_ruolo_id).
+- [api_geo_config](manual/api_geo_config.md) — API per la gestione delle tabelle di configurazione geografica: stati, regioni, province, comuni, toponomastica e codici postali. Ogni entita` segue un pattern uniforme CRUD con lista paginata e, dove previsto, endpoint…
+- [api_indirizzi](manual/api_indirizzi.md) — Gestione degli indirizzi dettaglio: ricerca paginata, creazione, consultazione, aggiornamento e verifica duplicati.
+- [api_indirizzi_ruolo](manual/api_indirizzi_ruolo.md) — Endpoint REST per la gestione degli indirizzi a livello ruolo con supporto istanza. Implementa la cascata a 3 livelli: istanza specifica, ruolo generico, soggetto (fallback readonly).
+- [api_soggetti](manual/api_soggetti.md) — Endpoint REST per la gestione completa dei soggetti anagrafici: persone fisiche (PF), persone giuridiche (PG) ed enti. Copre CRUD soggetti, contatti, indirizzi, ruoli e utility di validazione/generazione codice fiscale.
+- [api_titoli_iva_soggetto](manual/api_titoli_iva_soggetto.md) — Esporre via HTTP il **registro dei titoli IVA di un soggetto** — le condizioni documentate che cambiano il trattamento fiscale delle sue righe (dichiarazioni d'intento, esportatore abituale, split payment, reverse charg…

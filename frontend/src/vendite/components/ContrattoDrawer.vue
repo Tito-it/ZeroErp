@@ -128,11 +128,10 @@ provide(READONLY_KEY, isReadonly)
 //    condizione a se', letta solo dai tre campi, dal footer e da `canSave`.
 // ⛔ In CESSATO/ANNULLATO restano bloccati: li' la regola e' immutabilita'
 //    piena. E i permessi d'area vincono su tutto.
-// 📌 La lista di stati specchia `_CONTRATTO_PATCH_ALLOWED_BY_STATE` del BE, che
-//    resta l'autorita': qui si evita solo di proporre un campo che il BE
-//    rifiuterebbe. In CREATE non compaiono ancora — la whitelist della fn madre
-//    `vendite.fn_create_contratto` non li conosce, e li scarterebbe in silenzio
-//    (slice S3-b del piano, gated sul DB).
+// ⭐ In CREATE compaiono dal 2026-08-31 (slice S3-b): la whitelist interna di
+//    `vendite.fn_create_contratto` li ammette dal changeSet `20260831-24`.
+//    Prima erano spenti perche' quella whitelist non RESPINGE una chiave che
+//    non conosce — la SCARTA, e il CIG sarebbe sparito con un 200 a video.
 // Specchio di `_CONTRATTO_PATCH_ALLOWED_BY_STATE` del BE, che resta l'autorita':
 // qui si evita solo di proporre un campo che il BE rifiuterebbe. Costante con un
 // nome perche' e' l'UNICO punto da riallineare se quella whitelist cambia.
@@ -146,7 +145,15 @@ const CODICI_ATTO_MAX_LEN = { cig: 15, cup: 15, commessa: 100 }
 
 const codiciAttoEditabili = computed(() => {
   if (props.readonly || parentReadonly.value) return false
-  if (!isEdit.value) return false
+  // ⭐ SLICE S3-b (2026-08-31): editabili anche in CREATE. Prima erano spenti
+  //    li' perche' la whitelist di `vendite.fn_create_contratto` non li
+  //    conosceva e li avrebbe SCARTATI in silenzio; il changeSet `20260831-24`
+  //    li ha ammessi. Il caso d'uso e' proprio questo — un CIG nasce con la
+  //    gara, cioe' PRIMA del contratto.
+  // ⚠️ In create `detail` non esiste ancora: il contratto nasce DRAFT, che e'
+  //    gia' nella whitelist degli stati. Interrogare `detail` qui darebbe
+  //    `undefined` e quindi `false`, cioe' il vecchio comportamento.
+  if (!isEdit.value) return true
   return STATI_CODICI_ATTO_EDITABILI.includes(detail.value?.stato_codice_interno)
 })
 
@@ -233,8 +240,8 @@ function defaultForm() {
     parent_contratto_id: null,
     // Categoria cliente snapshot
     categoria_cliente_id_snapshot: null,
-    // Riferimenti dell'atto (I8/D9). In CREATE non sono ancora esposti: la fn
-    // madre DB non li whitelista (slice S3-b).
+    // Riferimenti dell'atto (I8/D9). Esposti anche in CREATE dalla slice S3-b
+    // (2026-08-31): la fn madre DB li whitelista dal changeSet `20260831-24`.
     codice_cig: null,
     codice_cup: null,
     codice_commessa: null,
@@ -507,11 +514,12 @@ function buildPayload() {
     && f.valore_variazione_globale !== '')
     ? String(f.valore_variazione_globale)
     : null
-  // ⛔ Solo in EDIT: in CREATE queste tre chiavi arriverebbero a un endpoint che
-  //    NON le ammette (`_CREATE_KEYS_TESTATA`) e che rifiuta l'intero payload —
-  //    la creazione contratto smetterebbe di funzionare del tutto. Cadono con la
-  //    slice S3-b, quando la whitelist della fn madre DB le accettera'.
-  if (isEdit.value) Object.assign(payload, buildCodiciAttoPayload(f))
+  // ⭐ Anche in CREATE dalla slice S3-b (2026-08-31): `_CREATE_KEYS_TESTATA` le
+  //    ammette, e la whitelist della fn madre DB pure (`20260831-24`).
+  // ⚠️ Le tre chiavi viaggiano SEMPRE, anche a `null`: sono colonne nullable, e
+  //    mandare `null` significa «non compilato» — non e' il caso di
+  //    `fatturazione_immediata`, che e' NOT NULL e dove la chiave va OMESSA.
+  Object.assign(payload, buildCodiciAttoPayload(f))
   return payload
 }
 
@@ -948,11 +956,15 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            FORNITURA, mentre nominano un CONTRATTO — una PA con tre contratti ha
            tre CIG. In fattura elettronica viaggiano nello stesso blocco
            (DatiContratto/DatiOrdineAcquisto), quindi stanno insieme.
-           ⭐ Visibili solo in EDIT: in CREATE la whitelist della fn madre DB non
-           li conosce ancora e li scarterebbe in silenzio (slice S3-b).
+           ⭐ Visibili anche in CREATE dalla slice S3-b (2026-08-31). Prima no:
+           la whitelist della fn madre DB non li conosceva e li avrebbe SCARTATI
+           in silenzio — caselle che invitano a scrivere un valore che il
+           database butta via sono peggio di caselle assenti. Il changeSet
+           `20260831-24` le ha ammesse, e il momento naturale per digitare un
+           CIG e' proprio la creazione: nasce con la gara.
            ⭐ Editabili anche a contratto ATTIVO (Q1): il CIG di una gara arriva
            quando arriva. -->
-      <template v-if="isEdit">
+      <template>
         <h4 class="mt-3">{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
         <div class="form-grid-3col">
           <div class="form-field">

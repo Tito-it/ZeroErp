@@ -7,14 +7,24 @@
 > Quel documento è l'**analisi** e resta la sede delle ragioni; questo è il
 > **piano**. Chi vuole sapere *perché*, torna là.
 >
-> 🎉 **Stato al 2026-08-31 — CANTIERE CHIUSO LATO DB.** C1 e C2 non hanno più
-> changeSet da scrivere, la guida (C2-14) e il debito sul nome (C2-15) sono
-> scritti, il vincolo di forma sulla sigla (§5.4) è chiuso, e **tutti i presidi
-> sono scritti e verdi** (§6).
+> 🎉 **Stato al 2026-08-31 — CANTIERE CHIUSO, DB E BE/FE.** Non resta niente da
+> scrivere: DB, presidi, ricadute applicative e le due code di documentazione.
+> Il dettaglio per lato è nelle tre tabelle qui sotto; l'unica cosa che il
+> cantiere **non** ha chiuso, e lo dichiara, è la concorrenza sotto lock, che
+> pgTAP non sa provare (§6, coda).
 >
-> *(Superato il paragrafo che stava qui e diceva «i PRESIDI no · restano da
-> scrivere 7 presidi su 10». Era vero il pomeriggio del 2026-08-31 e non lo è
-> più: i sette sono stati scritti in giornata, in tre file, e girano verdi.)*
+> ⚠️ **Come si è verificato, e vale più dell'esito**: gli artefatti, non questa
+> tabella — `databasechangelog` per l'apply, `pg_proc`/`pg_class` per il codice e
+> i `COMMENT` vivi, i file pgTAP per i presidi, la suite Django per il BE. Il
+> 2026-08-31 questa testata dichiarava «applicati fino al `20260831-15`» mentre il
+> database era già al `-23`: *una tabella di stato invecchia, un catalogo di
+> sistema no.*
+>
+> *(Superati, in giornata, DUE paragrafi che stavano qui. Il primo diceva «i
+> PRESIDI no · restano da scrivere 7 presidi su 10»: i sette sono stati scritti
+> nel pomeriggio, in tre file, e girano verdi. Il secondo dichiarava il cantiere
+> «CHIUSO LATO DB», ed era vero finché le ricadute BE/FE erano aperte — ora non
+> lo sono più.)*
 >
 > ⭐ **Restava una distinzione che vale la pena conservare**, perché è il motivo
 > per cui i presidi sono stati scritti: *«nessuna regressione» non è «provato»*.
@@ -24,16 +34,28 @@
 > `ddt.numero`, `resi.numero` o sul formato `CMM-<sigla>-<anno>-<9 cifre>` erano
 > **zero**. Copertura di esecuzione, non di asserzione.
 >
-> **Resta fuori dal DB**, ed è tutto:
+> ✅ **Le ricadute BE/FE — chiuse il 2026-08-31:**
 >
-> | | Cosa | Per chi |
+> | | Cosa | Per chi | Esito |
+> | --- | --- | --- | --- |
+> | ✅ | `E_BA_EMITTENTE_CON_STORIA` passa da **4 a 3** segnaposto; nel `dettaglio` `n_fatture`/`n_commesse` diventano `storia` e `n_documenti`. ⭐ Il `reason_key` **non** cambia | **BE** | Il `dettaglio` **non aveva consumatori** (il repository sfila solo `reason`/`reason_key`): nessuna rottura. Riscritto invece il **ripiego**, che diceva «fatture o commesse» ed era diventato falso |
+> | ✅ | `ordine` passa a `usa_sequenza = false`: è ciò che `useCodiceField` legge come `isAuto` | **FE** | ⭐ **Nessuna riga scritta**: `useCodiceField` ha **un solo** consumatore (`FornitoreDrawer`, `anagrafiche.fornitori`), e nei drawer di ordini/DDT/resi un campo `numero` non esiste. Il **rischio 5 del §5** si chiude *verificando*, non correggendo |
+>
+> ⛔ **E quella tabella era INCOMPLETA: tre ricadute non le nominava**, tutte
+> trovate verificando invece di leggere il piano. È il motivo per cui vale la
+> pena scriverle qui.
+>
+> | | Cosa non elencata | Perché era invisibile |
 > | --- | --- | --- |
-> | ⛔ | `E_BA_EMITTENTE_CON_STORIA` passa da **4 a 3** segnaposto; nel `dettaglio` `n_fatture`/`n_commesse` diventano `storia` (array di `{famiglia, descrizione, n}`) e `n_documenti`. ⭐ Il `reason_key` **non** cambia | **BE** |
-> | ⚠️ | `ordine` passa a `usa_sequenza = false`: è ciò che `useCodiceField` legge come `isAuto`, quindi una maschera potrebbe invitare a digitare il numero | **FE** |
+> | ✅ | I **quattro codici errore nuovi** (C1-4, C2-7, C2-18, §5.4) senza classe nel modulo generato né messaggio di ripiego | Un codice a catalogo non arriva al backend da solo: **due cancelli** erano rossi (`genera_error_policies --check` e il guardrail dei codici). Il piano nominava i codici come lavoro DB, e lì finiva |
+> | ✅ | La **sigla dell'emittente** nel drawer: `maxlength` 40 contro la forma `^[A-Z0-9]{2,10}$` | Ricaduta del §5.4, che la tabella BE/FE non elencava perché §5.4 è arrivato dopo |
+> | ✅ | La frase i18n `…ba_blocco.con_storia`, falsa quanto il ripiego BE | Il `reason_key` **non cambiava**, e da lì si è dedotto «il FE non si tocca». Ma la chiave è un **indirizzo**: era il testo all'indirizzo a essere diventato falso |
 >
-> ⚠️ **«Applicato» qui non è una fonte**: le righe segnate ✅ sono *scritte*, e
-> l'apply si chiede a `databasechangelog`, non a questa tabella. Tid ha
-> dichiarato applicati i changeSet fino al `20260831-15`.
+> ⭐ **E una cosa in più, che il piano non chiedeva**: il tooltip del cestino
+> diceva «ha documenti numerati» mentre il 409 elencava «Fattura: 3, DDT: 1» —
+> due gradi di dettaglio sulla stessa condizione. Ora il repository espone la
+> `storia` che la `fn_check_*` già calcolava e buttava via, e la frase la compone
+> il frontend dai `locales` (api.md §12.5.4: viaggia il dato, non il testo).
 >
 > | | Cosa | Dove |
 > | --- | --- | --- |
@@ -687,12 +709,28 @@ qualcosa va storto si sa quale. E ognuno porta con sé la propria `UNIQUE`, nell
 | **P-7** | Il lettore tace, l'**involucro** grida; e rifiuta `FATTURA` | idem (6, 7, 8) | ✅ |
 | **P-6** | ⭐ I due gemelli: DDT **in bozza** non blocca, DDT **numerato** sì | `anagrafiche/test-ba-storia-solo-numerati-v1.sql` (2, 5) | ✅ |
 | **P-5** | ⭐⭐ L'anno segue la **data del documento**, non l'`INSERT` — DDT nato a dicembre 2101, emesso con data gennaio 2102 | `vendite/test-documenti-numerazione-trasloco-v1.sql` (2) | ✅ |
-| **P-2** | Registro giusto, anno, forma della stringa | idem — **DDT** (1,2,3), **ordini** (4), **commessa** (5,6) | ⚠️ **parziale** |
+| **P-2** | Registro giusto, anno, forma della stringa | idem — **DDT** (1,2,3), **ordini** (4), **commessa** (5,6), **resi** (8,9) | ✅ |
 | **P-4** | La commessa che **non nasce** senza registro — `throws_ok` con SQLSTATE | idem (7) | ✅ |
 
-**Totale: 3 file nuovi, 24 asserzioni — tutti VERDI il 2026-08-31** (eseguiti da
-Tid), più i 3 file già scritti in corso d'opera (C1 plan 6, catalogo plan 7,
-forma sigla plan 8).
+**Totale: 4 file nuovi — plan 9 + 7 + 10 + 5 = 31 asserzioni, tutte VERDI il
+2026-08-31** (eseguite da Tid), più i 3 file già scritti in corso d'opera
+(C1 plan 6, catalogo plan 7, forma sigla plan 8). **Sette file, 52 asserzioni.**
+
+*(Superata la riga che diceva «3 file, 24 asserzioni» e marcava `P-2` come
+⚠️ parziale: era vera prima che la lacuna dei resi fosse chiusa — vedi più sotto
+— e il file dei documenti è passato da plan 8 a plan 10.)*
+
+⛔ **E questi numeri non si rileggono da qui: si contano dai file.** Un totale
+scritto a mano in un piano invecchia al primo test aggiunto, ed è esattamente
+com'era invecchiato quello di prima.
+
+⚠️ **Chi li riesegue da una macchina senza `~/.pgpass` NON ottiene un esito
+utile, e va saputo**: dal 2026-08-07 i pgTAP girano come `zeroerp_app` e
+`testpgtap.sh` fa `unset PGPASSWORD` lasciando l'autenticazione al `.pgpass`.
+Senza, ogni file muore su `fe_sendauth: no password supplied` e
+`pgtap-baseline.sh` lo classifica **`ASSERZIONE`** — cioè annuncia regressioni
+che non esistono. Successo il 2026-08-31 sul server backend: dodici falsi rossi,
+riconoscibili dai percorsi corrotti nel report (`db/pgtap//db/pgtap/…`).
 
 #### ⚠️ Quattro difetti che i test hanno trovato, e nessuno era nel codice DB
 
@@ -717,7 +755,22 @@ specie — dedurre invece di leggere.
    non è una strada per un registro**: per la stessa terna si riattiva quello
    che c'è. ⭐ Ed è giusto così: se lo slot si liberasse, resterebbero due
    registri storici della stessa famiglia e nessuno saprebbe quale ha numerato
-   cosa. 📌 **Da valutare**: dichiararlo nel `COMMENT` dell'indice.
+   cosa.
+
+   ✅ **CHIUSO il 2026-08-31 — changeSet `20260831-37`, applicato.** Il
+   `COMMENT` dell'indice ora porta il fatto per intero: che lo slot resta
+   occupato, che «spegni e rifai» non è una strada, che chi ci prova prende un
+   **`23505` che parla di una riga che non vede più**, e che spegnere resta
+   invece corretto quando serve solo a rendere il registro invisibile a chi
+   **legge** (`fn_lookup_registro_documento` filtra su `attivo`).
+   ⭐ **Perché non bastava lasciarlo qui.** Un fatto di modello scritto solo in
+   un brief lo trova chi cerca il brief; questo lo incontra chi guarda
+   l'indice — cioè chi sta per sbatterci. *La sede di una regola è il posto
+   dove la si infrange, non quello dove è stata decisa.*
+   ⛔ E non si è «corretto» aggiungendo `attivo` al predicato, che era la mossa
+   apparentemente ovvia: liberare lo slot lascerebbe due registri storici della
+   stessa famiglia per lo stesso emittente, e nessuno saprebbe più quale ha
+   numerato cosa.
 
 ⭐ **La lezione di metodo**: ogni fixture vuole la sua asserzione «la fixture non
 mente», e deve **nominare** il campo mancante — un `AND` monolitico dice *che*

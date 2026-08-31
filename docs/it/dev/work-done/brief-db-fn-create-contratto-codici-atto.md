@@ -19,7 +19,7 @@
 
 > **Destinatario:** team DB (`dev/db-tid`). **Voce unica**, e sblocca la slice
 > `S3-b` del piano
-> [brief-be-fe-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-be-fe-iva-risolutore-e-regime-cliente.md).
+> [brief-be-fe-iva-risolutore-e-regime-cliente.md](brief-be-fe-iva-risolutore-e-regime-cliente.md).
 >
 > 📌 **La richiesta operativa è raccolta con le altre** in
 > [brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md):

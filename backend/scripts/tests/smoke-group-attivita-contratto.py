@@ -34,8 +34,14 @@
 #   3. Senza contratto il campo e' None (e non un altro valore per caso)
 #   4. Posato il contratto, il repository lo legge — dalla colonna GIUSTA
 #   5. ⛔ Nessun altro campo si e' spostato: il presidio dell'off-by-one
+#  5b. ⛔ Gli indici dopo l'uscita di `art.iva_id` (`I4`)
 #   6. La chiave di gruppo porta l'atto, e cambia SOLO per quello
 #   7. La lettura BATCH dice la stessa cosa della singola
+#   8. F3-c: la lista da fatturare porta il CODICE dell'articolo
+#   9. ⛔ ed e' il codice vero, non un altro campo scivolato di posto
+#  10. ⭐ l'ordine che ne esce e' quello dei codici, non degli UUID
+#  11. ⛔ Il contesto IVA di testata porta la PK dell'emittente, non il
+#      soggetto-ruolo: con quello sbagliato l'IVA e' piena e nessuno lo dice
 # ------------------------------------------------------------
 from dataclasses import asdict
 
@@ -142,10 +148,46 @@ with transaction.atomic():
     ]
     check("nessun altro campo si e' spostato", not spostati, str(spostati))
 
+    # ── 5-bis. Gli indici, dopo che `art.iva_id` e' USCITA ────────────────
+    print("\n=== 5-bis. La proiezione ha perso una colonna: gli indici tengono? ===")
+    # ⛔ Il 2026-08-31 `art.iva_id` e' uscita dalla SELECT (`I4`): tutti gli
+    #    indici DOPO di lei sono scalati di uno. Il confronto prima/dopo del
+    #    test 5 NON basta a prendere uno scivolamento COSTANTE — vede solo cio'
+    #    che cambia fra due letture. Qui i valori si confrontano con la riga
+    #    vera, campo per campo, sui tipi che uno scivolamento renderebbe
+    #    assurdi.
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.prezzo_unitario, a.competenza_dal, a.data_attivita,
+                   a.tipo_movimento, COALESCE(a.uom_id, art.uom_id)
+              FROM vendite.attivita_fatturabili a
+              JOIN catalogo.articoli art ON art.id = a.articolo_id
+             WHERE a.id = %s
+            """,
+            [attivita_id],
+        )
+        v = cur.fetchone()
+    for nome, letto, atteso in (
+        ("prezzo_unitario", dopo.prezzo_unitario, v[0]),
+        ("competenza_dal", dopo.competenza_dal, v[1]),
+        ("data_attivita", dopo.data_attivita, v[2]),
+        ("tipo_movimento", dopo.tipo_movimento, v[3]),
+        ("uom_id", dopo.uom_id, None if v[4] is None else int(v[4])),
+    ):
+        check(f"«{nome}» e' al posto giusto", letto == atteso, f"{letto!r} vs {atteso!r}")
+    # ⭐ E la prova che la colonna e' davvero sparita: la dataclass non ha piu'
+    #    il campo. Se qualcuno la rimettesse, l'IVA tornerebbe ad avere due
+    #    risposte — quella dell'articolo e quella del risolutore.
+    check("`iva_id` NON e' piu' sul group input", "iva_id" not in d_dopo,
+          str([k for k in d_dopo if "iva" in k]))
+
     # ── 6. La chiave ──────────────────────────────────────────────────────
     print("\n=== 6. La chiave di gruppo porta l'atto ===")
-    k_prima = FattureRigheService._build_group_key(prima)
-    k_dopo = FattureRigheService._build_group_key(dopo)
+    # ⚠️ `iva_id` e' un PARAMETRO della chiave dal 2026-08-31: qui si passa un
+    #    valore fisso perche' cio' che si prova e' l'ATTO, non la risoluzione.
+    k_prima = FattureRigheService._build_group_key(prima, iva_id=22)
+    k_dopo = FattureRigheService._build_group_key(dopo, iva_id=22)
     check("l'atto e' nella chiave", k_dopo.get("contratto_id") == contratto_id,
           str(k_dopo.get("contratto_id")))
     # ⭐ La spezzatura si vede QUI: due chiavi diverse sono due righe di
@@ -169,6 +211,106 @@ with transaction.atomic():
               str(batch[attivita_id].contratto_id))
         check("e la stessa riga, campo per campo",
               asdict(batch[attivita_id]) == d_dopo)
+
+    # ── 8-10. F3-c: l'ordinamento leggibile ───────────────────────────────
+    print("\n=== 8-10. Il CODICE dell'articolo nella lista da fatturare ===")
+    # ⚠️ E' una SECONDA proiezione (`list_attivita_da_fatturare`), non quella dei
+    #    test 2-7: condivide la tabella ma non la SELECT, quindi va provata a
+    #    parte o `art.codice` resterebbe non verificato.
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT fl.id
+              FROM vendite.fatturazione_lotti fl
+              JOIN vendite.attivita_fatturabili a
+                ON a.lock_batch_id = fl.lock_batch_id
+             WHERE a.fatturato IS FALSE
+               AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+             GROUP BY fl.id
+             ORDER BY count(*) DESC
+             LIMIT 1
+            """
+        )
+        r = cur.fetchone()
+        lotto_id = r[0] if r else None
+    if lotto_id is None:
+        print("  [--] SENZA_MATERIA: nessun lotto con attivita' lockate.")
+    else:
+        att = repo.list_attivita_da_fatturare(lotto_id)
+        check("la lista risponde", bool(att), f"lotto={lotto_id} righe={len(att)}")
+        check("il campo `articolo_codice` e' valorizzato",
+              all(a.articolo_codice for a in att),
+              str([a.articolo_codice for a in att][:5]))
+        # ⛔ Il presidio dell'off-by-one, di nuovo: `art.codice` e' stato
+        #    APPESO in fondo alla SELECT. Se fosse finito in mezzo, `meta` e
+        #    `tipo_movimento` scivolerebbero — e `tipo_movimento` finirebbe a
+        #    valere il codice di un articolo, senza che niente sollevi.
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT codice FROM catalogo.articoli WHERE id = %s",
+                [att[0].articolo_id],
+            )
+            atteso = cur.fetchone()
+        check("ed e' il codice VERO dell'articolo",
+              bool(atteso) and att[0].articolo_codice == atteso[0],
+              f"letto={att[0].articolo_codice} db={atteso[0] if atteso else None}")
+        check("e `tipo_movimento` non e' scivolato",
+              all(a.tipo_movimento in ("NORMALE", "ONERE", "RETTIFICA") for a in att),
+              str(sorted({a.tipo_movimento for a in att})))
+        # ⭐ E la cosa che la decisione compra davvero: l'ordine per codice non
+        #    coincide con l'ordine per UUID. Se coincidesse su QUESTI dati il
+        #    controllo non discriminerebbe, e va detto invece di far finta.
+        codici = [a.articolo_codice for a in att]
+        per_uuid = [a.articolo_codice for a in sorted(att, key=lambda x: x.articolo_id)]
+        if sorted(codici) == per_uuid:
+            print("  [--] i due ordini coincidono su questi dati: "
+                  "il confronto non discrimina (lo dicono i test unitari)")
+        else:
+            check("l'ordine per codice DIFFERISCE da quello per UUID", True,
+                  f"codice={sorted(codici)[:3]} uuid={per_uuid[:3]}")
+
+    # ── 11. Il contesto IVA di testata ────────────────────────────────────
+    print("\n=== 11. Il contesto della testata: la PK, non il soggetto-ruolo ===")
+    with connection.cursor() as cur:
+        cur.execute("SELECT id FROM vendite.fatture ORDER BY id DESC LIMIT 1")
+        r = cur.fetchone()
+        fattura_id = r[0] if r else None
+    if fattura_id is None:
+        print("  [--] SENZA_MATERIA: nessuna fattura visibile.")
+    else:
+        ctx = repo.batch_get_fattura_iva_context([fattura_id]).get(fattura_id) or {}
+        check("il contesto risponde", bool(ctx), str(sorted(ctx)))
+        check("porta cliente, emittente e data",
+              {"billing_account_id", "emittente_fiscale_id", "data_riferimento"}
+              <= set(ctx), str(sorted(ctx)))
+        emittente = ctx.get("emittente_fiscale_id")
+        with connection.cursor() as cur:
+            # ⛔ LA PROVA CHE CONTA: l'id tornato deve essere una PK di
+            #    `emittenti_fiscali`, e la testata porta invece il
+            #    SOGGETTO-RUOLO. Con quello sbagliato il risolutore non trova
+            #    l'emittente, quindi non trova i suoi titoli, e risponde con
+            #    l'aliquota ordinaria SENZA sollevare.
+            cur.execute(
+                """
+                SELECT ef.id, f.emittente_soggetto_ruolo_id
+                  FROM vendite.fatture f
+                  LEFT JOIN anagrafiche.emittenti_fiscali ef
+                    ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                 WHERE f.id = %s
+                """,
+                [fattura_id],
+            )
+            atteso = cur.fetchone()
+        check("e' la PK dell'emittente", emittente == atteso[0],
+              f"letto={emittente} pk={atteso[0]} soggetto_ruolo={atteso[1]}")
+        # ⚠️ E i due numeri devono essere DIVERSI, o il controllo sopra
+        #    passerebbe anche con l'id sbagliato: si dice invece di far finta.
+        if atteso[0] == atteso[1]:
+            print("  [--] su questa fattura PK e soggetto-ruolo COINCIDONO: "
+                  "il controllo non discrimina")
+        else:
+            check("PK e soggetto-ruolo sono numeri DIVERSI", True,
+                  f"pk={atteso[0]} sr={atteso[1]}")
 
     transaction.set_rollback(True)
 

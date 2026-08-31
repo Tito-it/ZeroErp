@@ -3039,23 +3039,27 @@ class ContrattiCatenaUpdateTests(TestCase):
     #    Quindi ogni chiave accettata in UPDATE dev'essere accettata anche in
     #    CREATE, oppure il drawer deve cancellarla esplicitamente prima di
     #    spedire: altrimenti la creazione contratto smette di funzionare.
-    # ⛔ Oggi l'eccezione e' UNA SOLA e dichiarata: i tre riferimenti dell'atto
-    #    (I8/D9), che la whitelist della fn madre `vendite.fn_create_contratto`
-    #    non conosce ancora — vedi brief-db-fn-create-contratto-codici-atto.md.
-    #    Quando quel changeSet e' applicato, le tre chiavi entrano in
-    #    `_CREATE_KEYS_TESTATA`, questo set torna VUOTO e il `v-if` nel drawer
-    #    cade. Il test e' il segnalibro: si accorge sia di una nuova eccezione
-    #    non dichiarata, sia del momento in cui questa smette di servire.
-    def test_update_keys_accettate_anche_in_create_salvo_eccezioni(self) -> None:
+    # ✅ 2026-08-31 — L'ECCEZIONE E' RIENTRATA, e questo test l'ha segnalato.
+    #    Era dichiarata UNA SOLA: i tre riferimenti dell'atto (I8/D9), che la
+    #    whitelist della fn madre `vendite.fn_create_contratto` non conosceva.
+    #    Il changeSet `20260831-24` li ha ammessi, quindi sono entrati in
+    #    `_CREATE_KEYS_TESTATA` (slice S3-b) e il `v-if` nel drawer e' caduto.
+    #    ⭐ Il segnalibro ha fatto il suo mestiere: e' diventato rosso il giorno
+    #    in cui l'eccezione ha smesso di servire, invece di restare verde su una
+    #    deroga sopravvissuta alla sua ragione.
+    # ⛔ Ora l'invariante e' SECCA e senza deroghe: nessuna chiave puo' stare in
+    #    UPDATE e non in CREATE. Chi ne aggiunge una deve o metterla in
+    #    entrambe, o farla escludere dal drawer — e cambiare questo test
+    #    dichiarando l'eccezione, che e' il gesto che la rende visibile.
+    def test_update_keys_accettate_anche_in_create(self) -> None:
         from apps.vendite.services.contratti_service import (
-            _CODICI_ATTO,
             _CREATE_KEYS_TESTATA,
             _UPDATE_KEYS_TESTATA,
         )
 
-        solo_update = set(_UPDATE_KEYS_TESTATA) - set(_CREATE_KEYS_TESTATA)
+        solo_update = sorted(set(_UPDATE_KEYS_TESTATA) - set(_CREATE_KEYS_TESTATA))
         self.assertEqual(
-            solo_update, set(_CODICI_ATTO),
+            solo_update, [],
             "Chiavi accettate in UPDATE ma non in CREATE. Il drawer spreda il "
             "payload della PATCH dentro quello della create, e la create "
             "rifiuta le chiavi ignote: o si aggiungono a _CREATE_KEYS_TESTATA, "

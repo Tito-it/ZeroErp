@@ -9,8 +9,8 @@
 >
 > **Perché un documento nuovo e non un capitolo del piano di Fase 1.** Perché è
 > la convenzione che il cantiere ha già: la Fase 2 ha avuto il suo
-> ([brief-be-fe-titoli-iva-soggetto.md](brief-be-fe-titoli-iva-soggetto.md)), e
-> il [piano di Fase 1](brief-be-fe-iva-risolutore-e-regime-cliente.md) è chiuso
+> ([brief-be-fe-titoli-iva-soggetto.md](../work-done/brief-be-fe-titoli-iva-soggetto.md)), e
+> il [piano di Fase 1](../work-done/brief-be-fe-iva-risolutore-e-regime-cliente.md) è chiuso
 > salvo una slice gated. Un piano che raccoglie fasi diverse smette di dire cosa
 > è finito.
 >
@@ -27,7 +27,7 @@
 > [fn_resolve_iva_riga](/dbzero/vendite/funzioni/fn_resolve_iva_riga) ·
 > [fn_resolve_iva_riga_it](/dbzero/vendite/funzioni/fn_resolve_iva_riga_it) ·
 > [brief-db-fatture-atti-riferimenti-contratto.md](../work-done/brief-db-fatture-atti-riferimenti-contratto.md) (figlio, gate di `F3`) ·
-> [brief-be-fe-titoli-iva-soggetto.md](brief-be-fe-titoli-iva-soggetto.md) (Fase 2)
+> [brief-be-fe-titoli-iva-soggetto.md](../work-done/brief-be-fe-titoli-iva-soggetto.md) (Fase 2)
 
 ---
 
@@ -553,10 +553,11 @@ sparisce.
 *«l'azione fallirebbe?»*, non a *«è congelato?»*. Oggi danno la stessa risposta e
 per la regola 3 di `D15` non devono appoggiarsi l'una sull'altra.
 
-### 4.6 `F6` — `DEFAULT_IVA_ID` alla chiave naturale (`P8`)
+### 4.6 `F6` — `DEFAULT_IVA_ID` alla chiave naturale (`P8`) · ✅ **fatta**
 
 Un lettore solo: [catalogo_service.py](../../../../backend/apps/catalogo/services/catalogo_service.py) ~1434.
 È il secondo dei tre passi di [linee-guida-sql §6b](../../linee-guida-sql.md).
+Consuntivo in §9.
 
 ### 4.7 `F7` — `I6`: la casella si chiude · ⛔ **per ultima**
 
@@ -578,16 +579,25 @@ voce da anticipare*.
 ## 5. L'ordine
 
 ```text
-F0  i cinque codici errore        ⛔ gated sul seed del 5° (a cura di Tid)
-F5  congela_fiscale               ⭐ indipendente, si può fare subito
-F6  DEFAULT_IVA_ID                ⭐ indipendente, piccola
---- decisioni N1 e N2 ---
-F2  I3 · documento                BE + FE, una slice sola
-F3a I4 · group key contratto      ✅ fatta 31/08 — non aspettava nessuno
-F3b I4 · spezzatura della riga    ⛔ gated su fatture_atti + riga capofila
-F4  I5 · SDI                      📌 quando nascerà il builder
-F7  I6 · la casella si chiude     ⛔ dopo F2 e F3
+F0  i codici errore               ✅ il cancello è VERDE — 31/08
+F5  congela_fiscale               ✅
+F6  DEFAULT_IVA → chiave naturale ✅ 31/08 — ⛔ il BE era ROTTO, non «da fare»
+F2  I3 · documento                ✅ (a·b·c·d)
+F3a I4 · group key contratto      ✅ 31/08 — non aspettava nessuno
+F3c I4 · ordinamento leggibile    ✅ 31/08 — le righe erano ordinate per UUID
+F3b1 I4 · l'IVA dal risolutore    ✅ 31/08 — `art.iva_id` esce dalla proiezione
+F3b  I4 · spezzatura della riga   🟢 il DB è pronto (fatture_atti + capofila)
+F3b2 I4 · consumo del plafond     ⛔ serve un task di pipeline = SEED DB
+                                     (elenco 2, voce 1)
+F4  I5 · SDI                      📌 quando nascerà il builder FatturaPA
+F7  I6 · la casella si chiude     ⛔ dopo F3b
 ```
+
+⭐ **Il 2026-08-31 il team DB ha chiuso tutte e cinque le richieste**
+([elenco](../work-done/brief-db-richieste-aperte-dal-backend.md), ora in
+`work-done`). Da quel momento in Fase 3 **non c'è più niente di gated sul DB**:
+resta `F3b`, che è lavoro nostro, e `F4`, che aspetta un sottosistema che non
+esiste.
 
 ⚠️ **`F2` non si spezza in BE-poi-FE.** Se il BE risolve e il FE continua
 l'auto-fill, per un po' ci sono due risposte alla stessa domanda — cioè il
@@ -651,6 +661,8 @@ le due strade tornano a divergere.
 | Data | Cosa |
 | --- | --- |
 | 2026-08-31 (3) | ⭐ **Il team DB ha ri-verificato l'ordine di lavoro su `46fbf56ab` e quattro cose di questo piano sono cambiate.** `F0` non è più gated ma **conta undici codici, non cinque** (tre ne sono arrivati il 31/08 dal cantiere registri, e un dodicesimo arriverà col guard della capofila). `F3-b` ha la sua forma: colonna `riga_capofila_id`, «stessa fattura» come **vincolo** e non come guard, «niente catene» come trigger con un codice `TECNICO` nuovo. ⛔ E la riga del brief DB che diceva *«per la vista la forma del kit non si inventa»* **era sbagliata**: il kit **aggrega**, e aggregare le due parti produrrebbe un solo `DettaglioLinee` — forma decisa: **due righe sorelle**, mai `livello 1`. `F6` è scesa in fondo all'ordine DB (mina `parameters.csv`). ⭐ Nata `F3-c` da una frase di Tid — *«negli elenchi organizzare per codice articolo»* — che ha scoperchiato un difetto vivo: le righe di fattura sono ordinate per **UUID** |
+| 2026-08-31 (4) | ⭐ **`F3-b1` chiusa**: la riga di fattura chiede l'IVA al risolutore, e `art.iva_id` esce dalla proiezione — era la **nona** risposta autonoma alla stessa domanda, e scavalcava titoli e uso della fornitura. ⛔ Trovato che il **consumo del plafond** non è scrivibile: serve un **task di pipeline**, che è un **seed DB** — nuovo elenco, voce 1. ⚠️ Stesso schema della voce 5, ma stavolta trovato **prima** di scrivere il codice che ne dipende |
+| 2026-08-31 (3) | ⭐ **Il team DB ha chiuso tutte e cinque le richieste** (`69252ebe7`), compresa la voce 5 nata quella mattina. Da lì: `F6` chiusa — e ⛔ **il BE era rotto**, non «da fare»: il seed era passato alla chiave naturale e `catalogo_service` chiedeva ancora `DEFAULT_IVA_ID`, prendendo il ripiego in silenzio; `F3-c` chiusa (le righe erano ordinate per **UUID**); `S3-b` verificata già fatta, meno due commenti che dicevano il contrario del codice. ⇒ **In Fase 3 non resta nulla di gated sul DB**: solo `F3b`, che è lavoro nostro |
 | 2026-08-31 (2) | ⭐ Domanda di Tid: *«hai cose da fare in Fase 3 a prescindere dal DB?»*. Controllando voce per voce sono venute fuori **tre** cose: `F3` ha due metà e solo una aspettava il DB (la **group key** è puro Python — fatta, `F3-a`); i due cataloghi BB che il piano chiedeva **non erano stati compilati**; e ⛔ la spezzatura di `N3` era bloccata su una colonna di `fatture_righe` che **nessuno aveva mai chiesto** al team DB, ora voce 5 dell'elenco. ⚠️ Trovato anche che gli smoke di `F2-a` e `F2-d` non erano stati salvati come file: uno smoke che non sta nel repo non è un presidio |
 | 2026-08-31 | Piano scritto su richiesta di Tid, dopo la chiusura DB di Fase 2, Fase 3 e delle decisioni `D33`/`D34`. Nove decisioni prese nello scambio (§2). ⭐ **`P1` si è rivelata un ramo già scritto nel DB** (`p_imponibile IS NULL`): la regola «non spezzare le righe sul documento» non richiede una riga di codice DB. ⛔ Due difetti vivi trovati verificando invece di assumere: il **cancello dei codici errore è rosso** con un quinto codice applicato al DB e non in git, e **`contratto_id` non è nella group key** delle righe di fattura — due attività di contratti diversi collassano oggi nella stessa riga. Quattro decisioni restano aperte (§3), e `N3` — a chi puntano le attività quando la riga di fattura si spezza — è il punto duro del piano |
 
@@ -787,18 +799,97 @@ soggetto dal BA quando manca, con `BillingAccountRepository.get_soggetto_id`
 split — la domanda fiscale è del **cliente**. Due test nuovi: la derivazione
 avviene, e un soggetto esplicito **non** viene sovrascritto.
 
-### 🟡 `F6` — gated su un prerequisito DB
+### ✅ `F6` — `DEFAULT_IVA`, e il BE era **rotto**, non «da fare»
 
-⛔ **Non è una voce BE**, e il piano la classificava male: `linee-guida-sql §6b`
+⛔ **Non era una voce BE**, e il piano la classificava male: `linee-guida-sql §6b`
 descrive **quattro passi** e ne nomina proprio questo parametro. I primi due
-(`codice_interno` su `config.iva` + lock) sono fatti da `D28`; il terzo
-(rinominare il parametro e cambiarne il valore nel seed) e il quarto (riga nel
-registry `config.parameter_fk_surrogate`) sono **seed DB**.
+(`codice_interno` su `config.iva` + lock) li ha fatti `D28`; il terzo e il
+quarto sono **seed DB**, e il team li ha applicati il 2026-08-31
+([brief](../work-done/brief-db-default-iva-chiave-naturale.md)).
 
-📌 Brief passato al team DB:
-[brief-db-default-iva-chiave-naturale.md](../work-done/brief-db-default-iva-chiave-naturale.md).
-Il lettore BE — uno solo, il form-defaults dell'articolo — si adegua **nello
-stesso giro**, non prima.
+⛔ **Il giro DB è passato e quello BE no**, quindi da quel momento
+`catalogo_service` chiedeva `DEFAULT_IVA_ID` — un parametro che a catalogo **non
+esiste più**. Non falliva: prendeva il ripiego, e il form di creazione articolo
+**smetteva di proporre l'aliquota**, in silenzio.
+
+| File | Cosa |
+| --- | --- |
+| `catalogo/services/catalogo_service.py` | legge `DEFAULT_IVA` e **risolve** l'id con `resolve_config_id_by_codice_interno` (BB che esisteva già) |
+| `catalogo/api/views.py` | il commento che diceva ancora `DEFAULT_IVA_ID` |
+| `catalogo/tests/services/test_catalogo_service.py` | 3 casi → **5** |
+| `core/tests/services/test_parameter_service.py` | il nome-fixture `DEFAULT_IVA_ID` → `PARAM_TEST` |
+
+⛔ **E il punto che rende questa voce diversa da un rename: NON si fa `int()`
+sul valore.** Il `codice_interno` è `22`, cioè **un numero**: un lettore rimasto
+indietro non fallirebbe — otterrebbe l'**id 22**. Verificato sul DB vero:
+
+| | |
+| --- | --- |
+| `config.iva` con `codice_interno = '22'` | ✅ **id 16** — la stessa aliquota di prima, il comportamento a video non cambia |
+| `config.iva` con `id = 22` | ⛔ **non esiste** — oggi. Ma il modello lo ammette eccome, e il giorno che esistesse sarebbe un'aliquota **sbagliata** proposta in silenzio, su un dato che finisce sui documenti fiscali |
+
+⭐ **Il caso che discrimina** è proprio questo, ed è nei test: il lookup dice `7`
+mentre il parametro dice `"22"` — a vincere deve essere il lookup. Un test che
+avesse solo cambiato il nome della chiave sarebbe passato anche sull'`int()`.
+
+⚠️ **Il ripiego resta best-effort ma NON muto**: `None` a video è
+indistinguibile da «non c'è un default configurato», quindi un seed che punta a
+un'aliquota disattivata sparirebbe senza lasciare traccia. Il `logger.warning` è
+l'unico posto in cui quella differenza resta leggibile.
+
+✅ **Il gemello negativo del brief**: `DEFAULT_IVA_ID` cercato per nome nudo in
+`backend/` → restano solo commenti **al passato** («non esiste più», «Leggeva»,
+«fino al 2026-08-31») e una variabile di shell omonima in uno smoke bash, che
+con il parametro non c'entra. Nessun lettore vivo.
+
+### ✅ `F3-c` — le righe di fattura non sono più ordinate per **UUID**
+
+Decisione di Tid: *«negli elenchi dovremmo sempre organizzare per codice
+articolo»*. Non era un'aggiunta — era un difetto vivo, e la chiave diceva
+`str(group_key["articolo_id"])`, cioè l'**UUID**: deterministico per la
+macchina, **rumore** per chi legge la fattura.
+
+| File | Cosa |
+| --- | --- |
+| `db/pipeline_repository.py` | `art.codice` nella `SELECT` di `list_attivita_da_fatturare` (**in fondo**) + campo su `AttivitaDaFatturare` |
+| `services/fatture_righe_service.py` | `_GruppoRiga.articolo_codice`, e l'ordinamento lo usa |
+| test | `test_riga_nr_deterministico` → **3 casi**: l'ordine per codice, la stabilità, e la riga senza codice |
+
+⭐ **I codici di prova sono in ordine INVERSO rispetto agli UUID** (`ART_A` ha
+l'UUID minore e il codice `ZZZ-001`), ed è l'unica forma che discrimina: con
+codici concordi all'ordine degli id **entrambe** le implementazioni passerebbero.
+
+⚠️ **`codice` e non `codice_interno`**: qui l'ordinamento serve a chi **legge il
+documento**, e chi legge vede il `codice`. Ne discende che se qualcuno rinomina
+un articolo fra due rigenerazioni di un lotto in bozza l'ordine cambia — ⭐ ed è
+**corretto** che cambi. Sta scritto accanto alla chiave, o il prossimo lettore
+torna all'UUID credendo di riparare qualcosa.
+
+⭐ **La stabilità fra due rigenerazioni resta**, ed è l'altra metà dello scopo di
+quella chiave: c'è un caso apposta, perché senza, un'implementazione che non
+ordinasse affatto passerebbe il primo.
+
+#### Le prove di `F6` e `F3-c`
+
+| Prova | Esito |
+| --- | --- |
+| suite backend intera | ✅ **4251** |
+| ⭐ **mutazione** su `F3-c` — torna all'UUID · nessun ordinamento | ✅ **1 e 3** casi cadono |
+| ⭐ smoke sul DB vero, esteso ai casi 8-10 | ✅ `art.codice` lega, è il codice **vero**, e `tipo_movimento` **non è scivolato** |
+| ⭐ `DEFAULT_IVA` sul DB vero | ✅ `'22'` → **id 16**; `id 22` → **non esiste** |
+
+ℹ️ **Una cosa che lo smoke dichiara invece di nascondere**: sui dati di oggi
+l'ordine per codice e quello per UUID **coincidono**, quindi lì il confronto non
+discrimina — e lo stampa. A discriminare sono i test unitari, dove il caso è
+costruito.
+
+### ✅ `S3-b` — i tre riferimenti dell'atto anche in CREATE
+
+Sbloccata dal changeSet `20260831-24`. BE e FE erano già stati allineati; qui
+sono caduti **due commenti che dicevano ancora il contrario** del codice
+(*«in CREATE non compaiono ancora … gated sul DB»*), uno dei quali duplicava
+alla lettera il blocco sotto di sé. ⚠️ Un commento che contraddice il codice non
+è rumore: è la prossima persona che riapre una voce già chiusa.
 
 ### ✅ `F2-c` — i tre service chiamano il risolutore
 
@@ -1007,23 +1098,179 @@ prezzo diverso — ma non lavora contro l'ordine generale: lo rifinisce.
 (fattura per ora, e la stessa regola dove vale — DDT, ordini, preventivi), non
 le liste di navigazione, che hanno le loro colonne ordinabili configurabili.
 
-### ⛔ `F3-b` — la spezzatura: gated su un prerequisito **mai chiesto**
+### ✅ `F3-b1` — la riga di fattura chiede l'IVA al risolutore
 
-`N3` sceglie `(a')` — le due parti sono **due `fatture_righe` in relazione
-padre/figlia**. Verificato il 2026-08-31 sulla doc auto-generata: su
-`vendite.fatture_righe` ci sono `kit_key`, `kit_articolo_padre_id`,
-`kit_descrizione_padre` — **e basta**. La colonna che regge quel legame **non
-esiste**, e non era in nessuno dei quattro brief passati al team DB.
+⭐ **La nona copia cade, ed era la più grossa.** Fino al 2026-08-31
+`_GROUP_ATTIVITA_SELECT` leggeva `art.iva_id`: la risposta autonoma alla stessa
+domanda a cui risponde il risolutore, che scavalcava **l'uso della fornitura** e
+**i titoli documentati del cliente**. Su un esportatore abituale scriveva
+l'aliquota piena, in fattura, senza sintomo.
 
-⇒ Il lavoro risultava bloccato su `brief-db-fatture-atti`, ma in realtà era
-bloccato **anche** su una richiesta che nessuno aveva formulato. È ora la
-**voce 5** di
-[brief-db-richieste-aperte-dal-backend.md](../work-done/brief-db-richieste-aperte-dal-backend.md).
+⭐ **E togliendola non si perde niente**: `articoli.iva_id` è lo **stadio A1** del
+risolutore, che la ritorna con `origine = 'ARTICOLO'` (verificato nel corpo di
+`fn_resolve_iva_riga_it`, riga 102). Non è una funzione in più: è la stessa
+risposta, più gli stadi che prima si saltavano.
 
-⚠️ **Riusare le colonne del kit sarebbe la scorciatoia sbagliata**: `kit_key`
-dice *«queste righe vengono dallo stesso kit venduto»*. Una riga spezzata dal
-plafond non viene da nessun kit, e marcarla così farebbe leggere a
-`vw_fattura_righe_esposte` — che le aggrega — un fatto che non è vero.
+| File | Cosa |
+| --- | --- |
+| `db/pipeline_repository.py` | `art.iva_id` **fuori** dalla proiezione e dalla dataclass · nuovo `batch_get_fattura_iva_context` |
+| `services/fatture_righe_service.py` | le **testate prima delle chiavi**, `_risolvi_iva_attivita` con cache, `_build_group_key(row, *, iva_id)` |
+| test | 7 casi nuovi (36-42) |
+| `scripts/tests/smoke-group-attivita-contratto.py` | casi **5-bis** e **11** |
+
+⛔ **`iva_id` è un PARAMETRO della chiave, non un campo della riga**, e non è
+pignoleria di firma: se fosse rimasto sulla dataclass con un default, un
+chiamante distratto avrebbe prodotto righe a IVA `None` **senza nessun errore**.
+Così costruire una chiave senza aver risolto è impossibile.
+
+⚠️ **L'ordine dei passi è diventato un requisito**: le testate si creano **prima**
+delle chiavi, perché il risolutore vuole cliente, emittente e data — tre cose che
+stanno sulla testata. ⭐ Lo scambio non costa niente: quella chiamata dipende solo
+da lotto e attività, mai dalle chiavi.
+
+⛔ **La PK dell'emittente, non il `soggetto_ruolo_id`.** `vendite.fatture` porta
+`emittente_soggetto_ruolo_id`; il risolutore vuole la PK di
+`anagrafiche.emittenti_fiscali`, e si passa da
+`anagrafiche.fn_get_emittente_fiscale_pk`. È la trappola che il progetto ha già
+pagato tre volte, e qui sarebbe stata **muta**. ✅ Provata sul DB vero: **PK 32**
+contro **soggetto-ruolo 72** — due numeri diversi, quindi il controllo
+discrimina.
+
+⭐ **Cache per (fattura, articolo)**, e non è un'ottimizzazione opzionale: la
+risposta dipende da articolo, cliente, emittente e data, e dentro una fattura gli
+ultimi tre sono fissi. Un lotto massivo arriva a **50.000** attività — senza
+cache, 50.000 round-trip.
+
+⚠️ **`risolvi_anteprima`, cioè SENZA imponibile**, ed è deliberato *in questa
+slice*: con l'importo il risolutore può tornare **due parti**, e la riga andrebbe
+spezzata. La spezzatura vive nel giro del lotto, dove il plafond si **consuma**
+(`P5`) — qui una proiezione a due parti sarebbe un numero che invecchia fino alla
+DEFINITIVA.
+
+⛔ **La RETTIFICA non passa dal risolutore**: `N-1`, *«la nota di credito non può
+differire da quanto fatturato»*. L'IVA è quella della riga rettificata, e
+ri-risolvere produrrebbe una gemella con un'aliquota diversa dal documento che
+corregge.
+
+#### Le prove
+
+| Prova | Esito |
+| --- | --- |
+| 7 casi nuovi + i 37 esistenti | ✅ **44** |
+| ⛔ **il presidio più importante del piano** (`P3`): senza emittente ci si **ferma**, e non si scrive nulla | ✅ |
+| ⭐ **mutazione** ×4 — guard `P3` spento · cache senza fattura · rettifica al risolutore · meta senza origine | ✅ **1 caso ciascuna** |
+| ⭐ smoke sul DB vero, casi **5-bis** e **11** | ✅ gli indici tengono dopo l'uscita della colonna; la PK è la PK |
+| suite backend intera | ✅ **4258** |
+
+⛔ **Perché il caso 5-bis è nato**: la proiezione è una tupla letta **per
+indice**, e togliere una colonna in mezzo fa scivolare tutte quelle dopo. Il
+confronto prima/dopo del caso 5 vede solo ciò che **cambia** fra due letture —
+uno scivolamento **costante** gli sfugge. Il 5-bis confronta i valori con la riga
+vera, sui tipi che uno scivolamento renderebbe assurdi.
+
+### 🟡 `F3-b2` — il consumo del plafond: **scritto**, e in attesa di due righe di seed
+
+> ⚠️ **Correzione a una mia frase sbagliata** (Tid, 2026-08-31: *«scusa ma il
+> task pipeline non è BE?»*). **Sì**: l'handler, il servizio, il repository e i
+> test sono BE, e sono stati scritti. A essere del team DB è solo la
+> **configurazione** che dice *quali* task girano in quale step — e lo dice il
+> codice stesso, nel commento di `_TASK_ORDER_DEPENDENCIES`: *«la configurazione
+> la scrive un altro team»*. Avevo scritto «non è scrivibile»: era falso.
+
+| File | Cosa |
+| --- | --- |
+| `services/plafond_fattura_service.py` | **nuovo** — l'ordine, la risoluzione con l'imponibile vero, il consumo, la spezzatura |
+| `db/pipeline_repository.py` | 5 metodi nuovi + `consuma_plafond_lotto` fra i task Python |
+| `services/pipeline_step_executor.py` | il gestore, il registry e la **dipendenza d'ordine** |
+| `tests/services/test_plafond_fattura_service.py` | **nuovo**, 14 casi |
+
+⭐ **L'autorità è la madre che prende il LOCK, non il risolutore.** Il risolutore
+è `STABLE`: proietta il residuo che vede, e fra la proiezione e il lock
+un'altra transazione può aver consumato. La ripartizione buona è quella che
+torna da `fn_consuma_plafond_titolo_iva`. ⚠️ E quando la copertura effettiva è
+**minore** della proiezione, la seconda parte del risolutore può non esserci:
+l'aliquota ordinaria si **richiede alla stessa autorità**, non si deduce — a
+plafond ormai esaurito il risolutore risponde con lo stadio A, che è
+esattamente ciò che serve.
+
+⭐ **La quantità si deriva dall'imponibile** (`imponibile / prezzo effettivo`,
+sconto incluso), che è l'inverso esatto della formula con cui il DB calcola
+`imponibile_riga`. ⛔ E **non passa per l'arrotondamento di riga**: applicarlo
+rimetterebbe la deriva **nel verso sbagliato**, lasciando plafond non consumato
+— cioè riducendo in silenzio un diritto documentato del cliente.
+⭐ **Il centesimo va sulla parte residua, e qui è vero per costruzione**:
+`qta_residua = qta_totale − qta_coperta`, quindi le due parti sommano
+esattamente la riga di partenza comunque cada la divisione.
+
+⭐ **La dipendenza d'ordine è già in guardia**: `numera_fatture` dichiara
+`consuma_plafond_lotto` come predecessore. Finché il task non è nel seed la riga
+non fa nulla — un predecessore assente è una configurazione valida — ma il
+giorno che arriva, se arriva **girata**, lo step si ferma **prima** che il primo
+task scriva, invece di scoprirsi a documenti già numerati.
+
+#### Le prove
+
+| Prova | Esito |
+| --- | --- |
+| 14 casi | ✅ |
+| ⭐ **mutazione** ×5 — ordine per id · centesimo arrotondato · sconto fuori dal divisore · autorità al risolutore · guard `P3` spento | ✅ **1 caso ciascuna** |
+| suite backend intera | ✅ **4248** |
+
+⛔ **Non c'è smoke, ed è dichiarato**: il giro non è invocabile finché il seed
+non esiste, quindi uno smoke oggi proverebbe solo il servizio chiamato a mano —
+cioè quello che i test già fanno. Lo smoke va scritto **con** la riga di
+configurazione, ed è il presidio che il brief al DB chiede.
+
+### 🔴 Cosa manca davvero: due righe di seed
+
+Verificato il 2026-08-31, e non era previsto: il consumo del plafond deve vivere
+in un **task di pipeline nuovo**, nello step DEFINITIVA e **prima** di
+`numera_fatture` (la fattura lì è ancora `EMESSA`, e il guard di congelamento
+legge lo stato **vivo**).
+
+⛔ **Ma i task della pipeline sono un SEED**, non codice:
+`db/changelog/migrations_v2/80_data/sql/vendite/fatturazione_pipeline.csv`.
+Verificato: lo step DEFINITIVA contiene oggi
+`['numera_fatture', 'popola_fatture_rettifiche', 'stampa_documenti_lotto']`, su
+**due** pipeline (massiva e giornaliera).
+
+⇒ ⚠️ **È lo stesso schema della voce 5**: un lavoro che sembrava «solo BE» è
+fermo su un prerequisito che nessuno ha chiesto. L'handler, il servizio e i suoi
+test si possono scrivere per intero — semplicemente **non verrebbero invocati da
+niente** finché il seed non c'è.
+
+📌 Richiesta passata al team DB:
+[brief-db-richieste-aperte-dal-backend-2.md](brief-db-richieste-aperte-dal-backend-2.md),
+voce 1. ⚠️ **File nuovo e non il precedente riaperto**, come quello stesso
+prescrive: *«un ordine di lavoro che si riapre smette di dire cosa è finito»*.
+
+⭐ **Il resto è pronto**: `anagrafiche.fn_consuma_plafond_titolo_iva` esiste,
+prende il **lock** di riga (`D15-bis`) e ritorna già la ripartizione
+(`quota_coperta`, `quota_ordinaria`, `residuo_dopo`, `movimento_id`) — quindi il
+BE non deve calcolarla, deve **ordinare** le fatture (`P5`: `data documento,
+numero`) e scrivere le due parti.
+
+### ⛔ `F3-b` — la spezzatura: il DB è pronto, il resto è nostro
+
+✅ **Applicato il 2026-08-31** (voce 5, `20260831-30`/`31`/`33`), e il team ha
+chiuso anche due decisioni che il brief non aveva posto:
+
+| | |
+| --- | --- |
+| `riga_capofila_id` | nullable, **FK composita** `(riga_capofila_id, fattura_id)` → `(id, fattura_id)` |
+| «stessa fattura» | ⭐ **decisione `D`**: non un guard ma un **vincolo** — il database non lo lascia violare, e con `riga_capofila_id` a `NULL` non si applica affatto |
+| «niente catene» | resta un trigger (`E_FATTURA_RIGA_CAPOFILA_INCOERENTE`, `TECNICO`): nessun vincolo PostgreSQL sa guardare la riga puntata |
+| la vista | ⭐ **decisione `B`**: due righe **sorelle** — `tipo_riga = 'PARTE_PLAFOND'`, **entrambe a `livello 0`**, `ordinamento` della capofila |
+
+⛔ **`livello 1` è stato scartato, e non per estetica**: in
+`vw_fattura_righe_esposte` significa *«riga descrittiva, senza importo»*, e il
+codice che fa «salta il livello 1» **esiste perché è la regola della vista**. Su
+una fattura spezzata perderebbe la seconda parte **senza nessun errore**, con un
+totale semplicemente più basso.
+
+⚠️ E la forma del kit era la strada sbagliata per la ragione opposta: **aggrega**,
+e aggregare le due parti produrrebbe **un solo** `DettaglioLinee` — cioè
+cancellerebbe la ragione per cui la riga si è spezzata.
 
 #### ✅ La forma decisa dal team DB (2026-08-31), e cosa deve sapere il BE
 

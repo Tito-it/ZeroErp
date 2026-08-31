@@ -236,8 +236,8 @@ immutabilita' (Fase 5):
 | **URL** | `/api/v1/catalogo/articoli/form-defaults/` |
 
 Centralizza il consumo dei parametri usati dal FE per pre-compilare il
-form di creazione articolo. Tipi gia' castati: il FE non duplica il cast
-da stringa generico di `/core/parameters/defaults/`.
+form di creazione articolo. Tipi gia' **risolti**: il FE non duplica la
+conversione di `/core/parameters/defaults/`.
 
 #### Risposta (200)
 
@@ -251,11 +251,33 @@ da stringa generico di `/core/parameters/defaults/`.
 
 #### Regole specifiche
 
-- `default_iva_id` casta da `DEFAULT_IVA_ID` (parametro `config.parameters`)
-  a `int`. Se il parametro e' assente o malformato, ritorna `null`
-  (best-effort, no raise: il form mostra senza pre-compile).
+- `default_iva_id` si RISOLVE dal parametro **`DEFAULT_IVA`**
+  (`config.parameters`), che porta il **`codice_interno`** dell'aliquota — non
+  il suo id. Il lookup passa da `resolve_config_id_by_codice_interno` su
+  `config.iva`, che filtra `attivo = true` e matcha sulla colonna **lockata**.
+- ⛔ **NON si fa `int()` sul valore del parametro**, e la ragione e' che non
+  fallirebbe. Il `codice_interno` dell'aliquota ordinaria e' **`22`**, cioe' un
+  numero: un lettore rimasto indietro otterrebbe l'**id 22**, che oggi in
+  `config.iva` non esiste ma che il modello ammette eccome — e il giorno che
+  esistesse sarebbe un'aliquota SBAGLIATA proposta in silenzio, su un dato che
+  finisce sui documenti fiscali. Verificato sul DB: `codice_interno = '22'` da'
+  **id 16**; `id = 22` non esiste.
+- Se il parametro e' assente, vuoto, o punta a un codice inesistente/disattivato,
+  ritorna `null` (best-effort, no raise: il form si apre e l'operatore sceglie a
+  mano). ⚠️ Ma **non muto**: il ripiego scrive un `logger.warning`, perche' a
+  video `null` e' indistinguibile da «non c'e' un default configurato» e un seed
+  che punta a un'aliquota disattivata sparirebbe senza lasciare traccia.
 - Override per utente/gruppo/emittente fiscale applicato dal `ParameterService`
   con il context standard (superuser bypass).
+
+📌 **Il rename e' del 2026-08-31** (`DEFAULT_IVA_ID` → `DEFAULT_IVA`): e' il
+terzo dei quattro passi che `linee-guida-sql §6b` descrive per i parametri che
+stoccano un **id** invece di una chiave naturale — l'id e' soggetto a reseed, la
+chiave naturale e' il contratto cross-ambiente. Il valore e' validato dal
+registry `config.parameter_fk_surrogate`, quindi da quel giorno un codice IVA
+inesistente nel seed viene **rifiutato** invece di restare a marcire.
+⚠️ Il comportamento a video **non cambia**: il form propone la stessa aliquota
+di prima.
 
 ---
 
