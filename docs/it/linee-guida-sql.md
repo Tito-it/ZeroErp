@@ -1574,6 +1574,37 @@ jsonb_build_object(
   'valori',     jsonb_build_array(...))               -- gli argomenti del messaggio
 ```
 
+⛔ **Un `reason` NON porta il prefisso `E_`, che è riservato ai codici a
+catalogo.** Il `codice` e il `reason` stanno nella stessa `jsonb` e si somigliano,
+ma sono cose diverse: il primo è un errore registrato in `config.codici_errore`
+con una policy e un messaggio, il secondo è un **motivo macchina** che il
+frontend usa come chiave di lettura.
+
+⚠️ **È una convenzione presidiata solo per caso, e va rispettata a mano.** Il
+guardrail `apps/core/tests/test_error_codes_db_policy_guardrail.py` cerca i
+letterali `E_*` nei corpi delle funzioni per trovare i codici che il database può
+nominare: un `reason` col prefisso `E_` gli arriva come **codice senza policy**, e
+il test diventa rosso. Non sa distinguerli, e **non gli si insegnerà** — sarebbe
+un'euristica su un letterale dentro un corpo PL/pgSQL, cioè un cancello che
+sbaglia in entrambe le direzioni; dopo due blocchi sbagliati qualcuno lo spegne, e
+un presidio spento è peggio di uno assente.
+
+⚠️ **Il caso reale, perché l'errore è comprensibile.** Il 2026-08-31
+`script.fn_check_annullo_movimento_titolo_iva` emetteva `reason = 'E_UN_ANNULLO'`
+— che non nasceva come *«E_ di errore»* ma come **«è un annullo»**, la frase
+italiana abbreviata. Due grammatiche che si scrivono uguale. Rinominato in
+`RIGA_DI_ANNULLO` (changeSet `20260831-35`).
+
+⭐ **E quando il nome si sceglie, si guardano i vicini.** Nella stessa funzione
+viveva già `GIA_ANNULLATO`, che dice il **contrario** — quella riga *è stata*
+annullata, contro questa riga *è* l'annullo di un'altra. Due motivi che
+differiscono per una parola, su un pulsante spento, si leggono male esattamente
+quando conta: si preferisce dire **cosa è** la riga invece di ripetere l'avverbio.
+
+⚠️ **Il `reason_key` invece è un INDIRIZZO, non un valore**: non si rinomina per
+inseguire il `reason`. Il frontend rende il testo da lì, quindi cambiarlo costa
+due file di `locales` e non compra niente.
+
 #### 12.5.2 ⭐ La madre CHIAMA la check — e questo è il punto
 
 Il §12.2 chiede che il predicato sia *«lo STESSO del guard»*. Per le azioni di

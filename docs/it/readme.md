@@ -236,6 +236,7 @@ sono le sue trappole. **42 guide**, raggruppate per area:
   [indirizzi](./guide/gestione-degli-indirizzi.md) · [contatti](./guide/gestione-dei-contatti.md) ·
   [conti bancari](./guide/gestione-conti-bancari.md) ·
   [istanze utility](./guide/gestione-delle-istanze-utility.md)
+- **Numerazione e codici** — [come nasce un numero o un codice](./guide/numerazione-documenti-e-codici.md)
 - **Incassi e pagamenti** — [modello contabile dei pagamenti](./guide/gestione-dei-pagamenti.md)
   (centri di riscossione, contabili, movimenti, compensazioni, fondi fattura)
 - **Processi e orchestrazione** — [pratiche](./guide/gestione-pratiche.md) e la sua
