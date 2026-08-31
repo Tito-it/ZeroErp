@@ -143,6 +143,27 @@ catalogo delle famiglie.
 ⭐ **L'anno invece resta quello della data del documento** per tutti, ed è
 indipendente da quel flag.
 
+#### ⛔ Un registro spento occupa ancora il suo posto
+
+**«Spegni e rifai» non è una strada per un registro.** Per la stessa combinazione
+di famiglia, azienda e utility non se ne ritira uno per crearne un altro: si
+**riattiva quello che c'è**.
+
+Il motivo è che l'unicità dei registri non guarda l'interruttore acceso/spento:
+una riga spenta continua a occupare il posto. Chi prova a inserirne una nuova
+accanto riceve un errore di duplicato che parla di una riga che non vede più — ed
+è il genere di messaggio che fa perdere mezz'ora.
+
+⭐ **Ed è giusto così, non è una svista.** Se spegnere liberasse il posto,
+resterebbero due registri storici della stessa famiglia per la stessa azienda, e
+nessuno saprebbe più **quale ha numerato cosa**. La numerazione è una storia che
+non si riapre, e il vincolo è severo per quel motivo.
+
+⚠️ **Spegnere resta invece la mossa giusta** quando serve solo a togliere un
+registro dalla circolazione: chi cerca il registro da usare guarda l'interruttore
+e lo salta. La differenza è fra *ritirare* e *sostituire* — la prima si fa
+spegnendo, la seconda no.
+
 #### ⛔ Il debito sul nome, dichiarato
 
 La tabella si chiama `registri_fatturazione` e numera anche merce in uscita e
