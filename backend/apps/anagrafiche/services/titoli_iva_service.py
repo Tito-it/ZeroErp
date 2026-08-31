@@ -318,6 +318,54 @@ class TitoliIvaService:
         )
         return {"id": movimento_id}
 
+    # Scopo: Annulla un movimento del registro — obiettivo, perimetro, esito.
+    #
+    #        Obiettivo: correggere una forzatura sbagliata senza cancellarla,
+    #        scrivendo il contro-movimento che la annulla (`Q7`).
+    #
+    #        Perimetro: il titolo dev'essere di QUESTO soggetto (le rotte sono
+    #        annidate, e senza il check l'id di un titolo altrui sarebbe
+    #        annullabile passando dal soggetto sbagliato) e il movimento
+    #        dev'essere di QUESTO titolo — stessa ragione, un livello sotto.
+    #
+    #        Esito: l'id del contro-movimento creato.
+    #
+    # ⛔ LE PRECONDIZIONI NON SI RICOPIANO QUI. Sono cinque — non trovato, non
+    #    e' una forzatura, e' esso stesso un annullo, gia' annullato, porterebbe
+    #    il plafond sotto zero — e vivono in
+    #    `script.fn_check_annullo_movimento_titolo_iva`, che e' la stessa
+    #    funzione da cui la vista prende il motivo per spegnere il pulsante.
+    #    Riscriverle qui vorrebbe dire che il tooltip e il rifiuto possono
+    #    divergere: e' esattamente il difetto che quella funzione esiste per
+    #    togliere.
+    # ⚠️ Il MOTIVO si chiede qui e non si lascia al `CHECK`: nominare il campo
+    #    vale piu' di uno SQLSTATE, ed e' la traccia del perche' — la stessa
+    #    ragione per cui lo chiede la forzatura che si sta annullando.
+    def annulla_movimento(
+        self, soggetto_id: str, titolo_id: int, movimento_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._require_titolo(soggetto_id, titolo_id)
+
+        movimenti = {int(m["id"]): m for m in self._repo.list_movimenti(titolo_id)}
+        ErrorManager.require(
+            movimento_id in movimenti,
+            code=E_ANAG_NOT_FOUND,
+            message="Movimento non trovato su questo titolo.",
+            detail=f"movimento_id={movimento_id}",
+        )
+
+        motivo = payload.get("motivo")
+        motivo = motivo.strip() if isinstance(motivo, str) else ""
+        ErrorManager.require(
+            bool(motivo),
+            code=E_ANAG_VALIDAZIONE,
+            message="L'annullo richiede un motivo: e' la traccia del perche'.",
+            context={"field": "motivo"},
+        )
+
+        return {"id": self._repo.annulla_movimento(movimento_id, motivo=motivo)}
+
     # =================================================================
     # Helper privati
     # =================================================================

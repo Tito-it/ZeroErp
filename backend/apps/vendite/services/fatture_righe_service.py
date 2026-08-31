@@ -182,6 +182,12 @@ class FattureRigheService:
             "sconto_percentuale": (
                 _to_decimal_str(row.rett_sconto_percentuale) if e_rettifica else None
             ),
+            # ⛔ Fuori dalla rettifica il contratto SPEZZA: due attività di atti
+            # diversi non possono finire nella stessa riga. Sulla rettifica è
+            # `None`, e il perché sta accanto al campo in `GroupAttivitaKey` —
+            # la gemella è identificata dalla riga che rettifica, che è più
+            # specifica del contratto.
+            "contratto_id": None if e_rettifica else row.contratto_id,
         }
 
     # Scopo: Estrae dallo `meta` dell'attività lo snapshot di esposizione kit.
@@ -483,12 +489,20 @@ class FattureRigheService:
             uom_id is None,
             uom_id if uom_id is not None else 0,
             g.kit.key or "",
-            # Ultimo discriminante: due rettifiche di righe di fattura diverse
-            # possono avere articolo, prezzo e uom identici. Senza questo,
-            # l'ordine — e quindi il `riga_nr` — cambierebbe fra due
+            # Discriminante della rettifica: due rettifiche di righe di fattura
+            # diverse possono avere articolo, prezzo e uom identici. Senza
+            # questo, l'ordine — e quindi il `riga_nr` — cambierebbe fra due
             # rigenerazioni dello stesso lotto, che è ciò che tutta questa
             # chiave esiste per impedire.
             g.group_key["fattura_riga_rettificata_id"] or 0,
+            # ⚠️ E lo stesso vale per il contratto, per la stessa ragione: da
+            # quando spezza, due gruppi possono differire SOLO per l'atto — e
+            # due gruppi che l'ordinamento non distingue prendono il `riga_nr`
+            # nell'ordine in cui le attività sono arrivate. Aggiungere una voce
+            # alla chiave di raggruppamento senza aggiungerla a questa rende
+            # instabile la numerazione delle righe, e il sintomo si vede solo
+            # rigenerando lo stesso lotto due volte.
+            g.group_key["contratto_id"] or 0,
         )
 
     # Scopo: R10 — i componenti che confluiscono nella stessa riga padre devono

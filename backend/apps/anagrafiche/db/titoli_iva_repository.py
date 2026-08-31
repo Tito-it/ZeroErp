@@ -133,6 +133,12 @@ _MOVIMENTO_COLS = """
                    m.fattura_id,
                    m.fattura_riga_id,
                    m.motivo,
+                   m.annulla_movimento_id,
+                   m.annullato_da_movimento_id,
+                   m.is_annullo,
+                   m.is_annullato,
+                   m.annullo_blocco_codice,
+                   m.annullo_blocco_reason_key,
                    m.data_insert,
                    m.user_insert"""
 
@@ -331,15 +337,45 @@ class TitoliIvaRepository:
 
     # Scopo: Il registro di un titolo, dal piu' recente.
     def list_movimenti(self, titolo_id: int) -> list[dict[str, Any]]:
+        # ⭐ SI LEGGE LA VISTA, non piu' la tabella (T3-b, 2026-08-31). La vista
+        #    porta tre cose che la tabella non ha e che il frontend non puo'
+        #    ricostruire: il legame dell'annullo nei DUE versi (`is_annullo` /
+        #    `is_annullato`), e il MOTIVO per cui l'annullo e' bloccato.
+        # ⛔ E il motivo lo produce `script.fn_check_annullo_movimento_titolo_iva`,
+        #    cioe' la STESSA funzione che la madre interroga per rifiutare: il
+        #    pulsante spento e il rifiuto non possono divergere.
+        # ⚠️ `security_invoker=on`: la vista si legge con la connessione
+        #    dell'utente, mai da un canale di sistema.
         sql = f"""
             SELECT {_MOVIMENTO_COLS}
-              FROM anagrafiche.soggetti_titoli_iva_movimenti m
+              FROM anagrafiche.vw_stiva_movimenti_dettaglio m
              WHERE m.titolo_iva_id = %s
              ORDER BY m.data_movimento DESC, m.id DESC
         """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [titolo_id])
             return rows_to_list(cursor)
+
+    # Scopo: Annulla un movimento del registro scrivendo il CONTRO-MOVIMENTO.
+    # ⛔ NON e' un UPDATE e non e' un flag, ed e' la decisione `Q7` di Tid:
+    #    «deve rimanere traccia, no delete». L'annullo e' una seconda riga
+    #    `FORZATURA` di segno opposto che punta a quella annullata — cosi' il
+    #    registro resta append-only (il punto di `D5`), l'accumulatore non si
+    #    tocca (fa `SUM` su tutto e il contro-movimento lo riporta da solo al
+    #    valore giusto), e la DATA dell'annullo resta un'informazione.
+    # ⭐ Delega alla madre `fn_annulla_movimento_titolo_iva`: e' lei a
+    #    interrogare la check e a sollevare il codice del PRIMO motivo. Qui non
+    #    si ricopia nessuna precondizione — ricopiarle vorrebbe dire farle
+    #    divergere dal rifiuto vero.
+    def annulla_movimento(self, movimento_id: int, *, motivo: str) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_annulla_movimento_titolo_iva(%s, %s)",
+                [movimento_id, motivo],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
 
     # Scopo: Registra una FORZATURA manuale.
     # ⛔ SOLO forzature, ed e' la decisione Q3: gli altri due tipi (FATTURA,

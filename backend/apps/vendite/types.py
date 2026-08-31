@@ -58,6 +58,26 @@ class GroupAttivitaKey(TypedDict):
     # per la stessa ragione del prezzo: se la chiave prendesse un valore e la
     # INSERT ne scrivesse un altro, le due meta' si annullerebbero in silenzio.
     sconto_percentuale: str | None
+    # ── L'atto ───────────────────────────────────────────────────────────────
+    # ⛔ IL CONTRATTO STA NELLA CHIAVE, e la sua assenza era un difetto vivo:
+    # due attivita' di contratti DIVERSI collassavano nella stessa riga di
+    # fattura. Su quella riga aggregata nessuna domanda per atto ha una
+    # risposta — a partire dal CIG, che la FatturaPA vuole per blocco
+    # `DatiContratto` con `RiferimentoNumeroLinea` a puntare le sue righe.
+    #
+    # ⭐ E non sposta nessun raggruppamento esistente: fuori da un contratto il
+    # valore e' `None` per tutte le attivita', quindi si spezzano SOLO le righe
+    # che oggi mescolano davvero due atti.
+    #
+    # ⚠️ `None` anche su una RETTIFICA, ed e' voluto: l'identita' di una riga di
+    # nota di credito e' la riga di fattura che rettifica — `fattura_riga_
+    # rettificata_id`, che e' strettamente piu' specifico del contratto. Dare
+    # peso anche al contratto dell'attivita' potrebbe spezzare due rettifiche
+    # della STESSA riga, cioe' rompere in silenzio l'invariante «due rettifiche
+    # della stessa riga restano aggregabili». Quando `vendite.fatture_atti`
+    # dara' alla riga di fattura una sede per l'atto, la rettifica lo
+    # copiera' da li' come gia' fa con prezzo, sconto e IVA (N-1).
+    contratto_id: int | None
 
 
 class AnnullaLottoDaDraftResult(TypedDict):

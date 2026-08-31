@@ -29,8 +29,15 @@ Indice test eseguiti:
 27) FattureRigheServiceRettificaTests.test_riga_nr_stabile_fra_due_generazioni
 28) FattureRigheServiceRettificaTests.test_array_nuovi_allineati_agli_altri
 29) FattureRigheServiceRettificaTests.test_puntatore_senza_etichetta_solleva
+30) FattureRigheServiceContrattoTests.test_contratti_diversi_non_si_fondono
+31) FattureRigheServiceContrattoTests.test_stesso_contratto_resta_una_riga
+32) FattureRigheServiceContrattoTests.test_senza_contratto_il_raggruppamento_non_cambia
+33) FattureRigheServiceContrattoTests.test_il_contratto_sopravvive_nel_meta_della_riga
+34) FattureRigheServiceContrattoTests.test_riga_nr_stabile_fra_contratti
+35) FattureRigheServiceContrattoTests.test_rettifiche_della_stessa_riga_non_si_spezzano_per_contratto
 """
 
+import json
 from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
@@ -53,7 +60,7 @@ ART_PADRE = "019e2234-001d-72a4-bae6-308aba680e07"
 class _RepoMock:
     # Scopo: Inizializza la istanza.
     def __init__(self, attivita=None, prezzi=None, fatture=None, iva=None,
-                 rettifiche=None):
+                 rettifiche=None, contratti=None):
         self.insert_calls = 0
         self.batch_insert_and_mark_calls = 0
         self.running_calls = 0
@@ -70,6 +77,10 @@ class _RepoMock:
         # deliberatamente DIVERSI da quelli dell'attivita' nei test, perche' e'
         # l'unico modo di distinguere «li ha copiati» da «ha usato i suoi».
         self._rettifiche = rettifiche or {}
+        # contratto per attivita_id: l'ATTO a cui l'attivita' appartiene.
+        # Assente = `None`, che e' il caso di tutto cio' che nasce fuori da un
+        # contratto ed e' la maggior parte del traffico.
+        self._contratti = contratti or {}
 
     def _make_group_input(self, attivita_id):
         rett = self._rettifiche.get(attivita_id) or {}
@@ -96,6 +107,7 @@ class _RepoMock:
             rett_prezzo_unitario=rett.get("prezzo"),
             rett_sconto_percentuale=rett.get("sconto"),
             rett_iva_id=rett.get("iva"),
+            contratto_id=self._contratti.get(attivita_id),
         )
 
     def _articolo_di(self, attivita_id):
@@ -590,3 +602,107 @@ class FattureRigheServiceRettificaTests(SimpleTestCase):
         atteso = len(repo.last_kwargs["righe_nrs"])
         for chiave in ("righe_sconti", "righe_rettificate"):
             self.assertEqual(len(repo.last_kwargs[chiave]), atteso, chiave)
+
+
+class FattureRigheServiceContrattoTests(SimpleTestCase):
+    """L'ATTO nella chiave di aggregazione (`I4`, brief Fase 3 IVA §4.3)."""
+
+    # Scopo: il difetto vivo che questa voce corregge. Due attività identiche in
+    # TUTTO — articolo, prezzo, uom, IVA, competenza — tranne il contratto
+    # collassavano in una riga sola. Su quella riga aggregata nessuna domanda
+    # per atto ha una risposta: il CIG del primo contratto e quello del secondo
+    # pretenderebbero la stessa riga, e la FatturaPA vuole un blocco
+    # `DatiContratto` per atto.
+    # ⚠️ Il caso NON è di nicchia e non produce nessun errore: la fattura esce,
+    # i totali tornano, e a mancare è solo la distinzione.
+    def test_contratti_diversi_non_si_fondono(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")],
+            contratti={11: 3001, 12: 3002},
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 2)
+        self.assertEqual(sorted(kw["righe_qtas"]), [Decimal("3.0"), Decimal("5.0")])
+
+    # Scopo: ⭐ IL GEMELLO, e senza di lui il test precedente non discrimina —
+    # un'implementazione che spezzasse SEMPRE (per esempio mettendo
+    # `attivita_id` nella chiave) lo passerebbe. Stesso contratto ⇒ una riga
+    # sola, sommata: l'aggregazione resta quella di prima.
+    def test_stesso_contratto_resta_una_riga(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")],
+            contratti={11: 3001, 12: 3001},
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 1)
+        self.assertEqual(kw["righe_qtas"], [Decimal("8.0")])
+
+    # Scopo: la promessa scritta nel brief — «non sposta nessun raggruppamento
+    # esistente». Fuori da un contratto il valore è `None` per tutte le
+    # attività, ed è la maggior parte del traffico: se questo caso si spezzasse,
+    # la voce avrebbe cambiato il comportamento di TUTTE le fatture invece che
+    # delle sole che mescolano due atti.
+    def test_senza_contratto_il_raggruppamento_non_cambia(self):
+        repo = _RepoMock(attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")])
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 1)
+        self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("8.0")])
+
+    # Scopo: ⭐ finché `vendite.fatture_atti` non esiste, `fatture_righe` non ha
+    # una colonna per l'atto — quindi l'unica sede in cui il contratto della
+    # riga sopravvive è lo `meta`, dove la `group_key` finisce per intero. È ciò
+    # che rende la spezzatura RICOSTRUIBILE oggi: senza, si vedrebbero due righe
+    # separate e nessuno saprebbe perché.
+    def test_il_contratto_sopravvive_nel_meta_della_riga(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")],
+            contratti={11: 3001, 12: 3002},
+        )
+        _genera(repo)
+        contratti = sorted(
+            json.loads(m)["group_key"]["contratto_id"]
+            for m in repo.last_kwargs["righe_metas"]
+        )
+        self.assertEqual(contratti, [3001, 3002])
+
+    # Scopo: il `riga_nr` deve restare stabile fra due generazioni dello stesso
+    # lotto anche quando i gruppi differiscono SOLO per il contratto. ⚠️ È il
+    # caso che una voce aggiunta alla sola chiave di raggruppamento, e non
+    # all'ordinamento, romperebbe in silenzio: i due gruppi risulterebbero
+    # equivalenti all'ordinamento e prenderebbero il numero nell'ordine in cui
+    # le attività sono arrivate.
+    def test_riga_nr_stabile_fra_contratti(self):
+        def _ordine(attivita):
+            repo = _RepoMock(attivita=attivita, contratti={11: 3002, 12: 3001})
+            _genera(repo)
+            return [
+                json.loads(m)["group_key"]["contratto_id"]
+                for m in repo.last_kwargs["righe_metas"]
+            ]
+
+        diretto = _ordine([_attivita_base(11, "5.0"), _attivita_base(12, "3.0")])
+        inverso = _ordine([_attivita_base(12, "3.0"), _attivita_base(11, "5.0")])
+        self.assertEqual(diretto, inverso)
+        self.assertEqual(diretto, [3001, 3002])
+
+    # Scopo: ⛔ LA DECISIONE CHE VA PRESIDIATA, e senza questo test si perde.
+    # Su una RETTIFICA il contratto NON entra nella chiave: l'identità di una
+    # riga di nota di credito è la riga di fattura che rettifica, che è
+    # strettamente più specifica. Qui le due attività rettificano la STESSA riga
+    # e dichiarano contratti DIVERSI: devono restare una riga sola, o
+    # l'invariante «due rettifiche della stessa riga restano aggregabili» si
+    # romperebbe in silenzio su un dato incoerente a monte.
+    def test_rettifiche_della_stessa_riga_non_si_spezzano_per_contratto(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_base(11, quantita="-2.0"),
+                _attivita_base(12, quantita="-3.0"),
+            ],
+            rettifiche={11: _rettifica(7001), 12: _rettifica(7001)},
+            contratti={11: 3001, 12: 3002},
+        )
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 1)
+        self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("-5.0")])

@@ -256,6 +256,16 @@ export function createTitoloIvaForzatura(soggettoId, titoloId, payload) {
   return api.post(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/movimenti/`, payload)
 }
 
+// Annulla un movimento con il CONTRO-MOVIMENTO (Q7). ⛔ Non e' una DELETE:
+// l'annullo aggiunge una riga di segno opposto che punta a quella annullata —
+// il registro resta append-only e la traccia resta.
+export function annullaTitoloIvaMovimento(soggettoId, titoloId, movimentoId, payload) {
+  return api.post(
+    `${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/movimenti/${movimentoId}/annulla/`,
+    payload,
+  )
+}
+
 // Presidio cross-soggetto: i titoli il cui consumo ha superato il tetto (Q4).
 export function listTitoliIvaSfondati() {
   return api.get(`${BASE}/titoli-iva/sfondati/`)

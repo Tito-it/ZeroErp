@@ -615,7 +615,57 @@ dettaglio: il BB gestisce già `null`/`undefined` con un placeholder.
 Suite backend **4200 OK** (6 presidi nuovi), smoke end-to-end sul DB vero
 **13/13**, build FE OK, `eslint` pulito, guard i18n verde.
 
-### 🔜 Resta solo `T3-b` — l'annullo della forzatura, gated sulla colonna di
-collegamento richiesta con
-[brief-db-titoli-iva-movimenti-annullo.md](brief-db-titoli-iva-movimenti-annullo.md).
+### ✅ `T3-b` — l'annullo della forzatura (2026-08-31)
+
+Sbloccata dal DB il 2026-08-31 (`annulla_movimento_id` + `CHECK` + FK + unique +
+guard, brief [brief-db-titoli-iva-movimenti-annullo.md](brief-db-titoli-iva-movimenti-annullo.md)),
+e chiusa lo stesso giorno.
+
+| File | Cosa |
+| --- | --- |
+| `titoli_iva_repository.list_movimenti` | ⭐ legge la **vista** `vw_stiva_movimenti_dettaglio` e non più la tabella |
+| `titoli_iva_repository.annulla_movimento` | delega alla madre `fn_annulla_movimento_titolo_iva` |
+| `titoli_iva_service.annulla_movimento` | ownership a due livelli (titolo del soggetto, movimento del titolo) + motivo obbligatorio |
+| `views_titoli_iva` + `urls` | `POST …/movimenti/<id>/annulla/` |
+| `TitoloIvaDrawer.vue` | colonna azione **spenta col motivo** + `AppDialog` |
+| `it.json` · `en.json` | i 5 motivi emessi dal DB + 3 chiavi della UI |
+
+⛔ **Le precondizioni non sono state ricopiate.** Sono cinque e vivono in
+`script.fn_check_annullo_movimento_titolo_iva` — la **stessa** funzione da cui la
+vista prende il motivo per spegnere il pulsante e da cui la madre prende il
+codice per rifiutare. Riscriverle nel service avrebbe significato che tooltip e
+rifiuto possono divergere: è il difetto che quella funzione esiste per togliere.
+
+⚠️ **Il verbo è `annulla`, non una `DELETE`**: l'azione non cancella niente,
+aggiunge una riga. La grammatica URL del progetto vuole che il nome dica cosa
+l'azione **è**.
+
+#### Le prove — `smoke-titoli-iva-annullo-movimento.py`, 7 casi, tutto verde
+
+⭐ **Il caso si COSTRUISCE**: `soggetti_titoli_iva` è vuota, quindi uno smoke che
+cercasse il soggetto sarebbe passato **a vuoto** — verde per sottrazione. Qui
+titolo e forzatura si fabbricano, e alla fine si annulla tutto.
+
+| Prova | Esito |
+| --- | --- |
+| la vista espone le cinque colonne dell'annullo | ✅ |
+| ⭐ sulla forzatura viva l'annullo è **ammesso** (il gemello positivo) | ✅ motivo `None` |
+| il contro-movimento è una **riga nuova**, e l'originale resta | ✅ |
+| ⭐ **l'accumulatore torna a zero DA SOLO** | ✅ — è la ragione per cui `Q7` scartò il flag |
+| la vista blocca già il secondo annullo (`GIA_ANNULLATO`, `E_UN_ANNULLO`) | ✅ |
+| ⚠️ e la **madre rifiuta davvero** | ✅ — senza, il tooltip sarebbe una decorazione |
+
+⭐ **E il codice di dominio arriva intatto al backend**: verificato che
+`E_TITOLO_IVA_ANNULLO_NON_AMMESSO` esce dal campo strutturato dell'eccezione.
+⚠️ Finché `F0` non è applicata quel codice non ha ancora la sua classe, quindi
+risolve come 400 invece che 409 (`CONFLITTO_STATO`): si sana col seed.
+
+⛔ **Un difetto trovato nella fixture dello smoke, e vale la pena scriverlo**: la
+prima versione univa `emittenti_fiscali_billing_account` sulla **PK**
+dell'emittente. Quel ponte lega il **soggetto-ruolo**. È la stessa trappola
+`feedback_emittente_pk_vs_soggetto_ruolo` che questo cantiere ha già nominato tre
+volte — qui il database l'ha respinta con un errore di colonna, ma su una JOIN
+valida avrebbe dato **zero righe** senza dire niente.
+
+### ✅ Il cantiere di Fase 2 è chiuso
 
