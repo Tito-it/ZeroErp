@@ -227,6 +227,16 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_DOCUMENTI_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "highlight_form_fields",  # classe DATO_ERRATO
+    # ⭐ La sigla dell'emittente: campo, non banner. Il default di
+    #    `DATO_ERRATO` esiste perche' «promettere un campo che non esiste e'
+    #    peggio del contrario»; qui il campo esiste, si chiama `codice`, e
+    #    `anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma` lo NOMINA nel
+    #    contesto (`'campo' -> 'codice'`) — non e' una supposizione, e' letto
+    #    dalla funzione che solleva.
+    # ⚠️ E l'operatore ce l'ha davanti: la sigla si scrive a mano nel drawer
+    #    dell'emittente, ed e' immutabile dopo la create — sbagliarla in
+    #    silenzio significa codici commessa illeggibili per sempre.
+    "E_EMITTENTE_CODICE_FORMA_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: la data documento e la sequenza del registro ----------
     # ⭐ `DATO_ERRATO` ha come default il banner, e qui e' il caso opposto: il
     #    dato sbagliato E' un campo che l'operatore ha davanti, nel dialog
@@ -238,6 +248,15 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # ⚠️ Il messaggio porta gia' la data da cui ripartire («…che porta la data
     #    23/08/2026»): campo acceso + frase che dice il valore giusto.
     "E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO": "highlight_form_fields",  # classe DATO_ERRATO
+    # ⭐ Il GEMELLO per i documenti non fiscali (DDT, ordini, resi, commesse),
+    #    che dal 2026-08-31 si numerano sugli stessi registri. Stessa scelta e
+    #    stessa ragione: `vendite.fn_get_next_progressivo` mette
+    #    `'campo' -> 'data_documento'` nel contesto di ENTRAMBI i rami — il
+    #    codice lo sceglie la famiglia, il campo da accendere e' lo stesso.
+    # ⛔ Divergere qui sarebbe la forma peggiore: lo stesso rifiuto, sullo
+    #    stesso campo, che accende l'input su una fattura e mostra un banner su
+    #    un DDT.
+    "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: giri di fatturazione (handler coda lavori) ------------
     "E_FATTURAZIONE_GIRO_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO

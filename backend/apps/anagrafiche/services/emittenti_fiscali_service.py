@@ -280,6 +280,15 @@ class EmittentiFiscaliBillingAccountService:
             #    chiavi sono davvero opzionali (slot/override) e `.get()` e'
             #    la lettura giusta.
             row["can_remove"] = row["rimozione_blocco_reason"] is None
+            # ⭐ `rimozione_blocco_storia` NON si tocca: il repository lo legge
+            #    dal `dettaglio` che `fn_check_ba_cambio_emittente` compone, e
+            #    viaggia fino al client com'e'. Comporre qui la frase
+            #    «Fattura: 3, DDT: 1» sarebbe una traduzione scritta in Python,
+            #    cioe' fuori dai `locales` e non cambiabile da chi traduce.
+            # ⛔ E non si filtrano gli zeri: non ce ne sono. La funzione DB
+            #    emette una riga solo per le famiglie con almeno un documento —
+            #    «nessuna riga» E' la risposta «nessuna storia», ed e' scritto
+            #    nel suo COMMENT.
         return rows, total
 
     # Scopo: Crea un nuovo mapping BA->emittente.

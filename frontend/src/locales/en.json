@@ -1094,6 +1094,7 @@
       "metodo_down": "Always down (DOWN)",
       "field_soggetto": "Subject",
       "field_codice": "Code",
+      "field_codice_hint": "Issuer short code: {min} to {max} characters, uppercase letters and digits only. It becomes part of the job code (CMM-CODE-year-number) and cannot be changed after saving.",
       "field_attivo": "Active",
       "field_regime_fiscale_rf": "Tax regime (RF)",
       "regime_fiscale_rf_hint": "RF tax regime code of the FE/SdI layout (e.g. RF01, RF19).",
@@ -1120,7 +1121,8 @@
       "ba_default_exists": "A global default already exists for this issuer.",
       "ba_added": "Mapping added.",
       "ba_blocco": {
-        "con_storia": "This customer already has invoices or jobs with this issuer: removing the mapping would move it, leaving those documents without the customer they belong to.",
+        "con_storia": "This customer already has numbered documents with this issuer: removing the mapping would move it, leaving those documents without the customer they belong to.",
+        "elenco": "Blocking documents — {elenco}.",
         "default_singleton": "A global default must always exist, and there is exactly one: this row cannot be removed."
       },
       "ba_default_added": "Global default created.",
@@ -2213,6 +2215,13 @@
         "componenti_prezzo_pendente": "Components with price pending valuation.",
         "componenti_non_valorizzati": "Document components not yet valued."
       }
+    },
+    "famiglie_documento": {
+      "FATTURA": "Invoices",
+      "DDT": "Delivery notes",
+      "ORDINE": "Orders",
+      "COMMESSA": "Jobs",
+      "RESO": "Returns"
     },
     "fatturazione": {
       "esiti_titolo": "Invoicing results",
