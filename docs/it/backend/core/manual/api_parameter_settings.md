@@ -1,12 +1,21 @@
 # API Parametri di sistema — Impostazioni (Django)
 
+> ⚠️ **Il parametro dell'IVA di default si chiama `DEFAULT_IVA` dal 2026-08-31**,
+> e porta il **`codice_interno`** dell'aliquota — non il suo id. Si chiamava
+> `DEFAULT_IVA_ID` e valeva `16`.
+> ⛔ **Non si fa `int()` sul suo valore**: il `codice_interno` è `22`, cioè un
+> numero, quindi il cast **non fallirebbe** — darebbe l'**id 22**, che oggi in
+> `config.iva` non esiste ma che il modello ammette eccome. Si risolve col
+> lookup su `config.iva.codice_interno`
+> ([api_catalogo](../../catalogo/manual/api_catalogo.md), form-defaults articolo).
+
 ## Scopo
 
 Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
 
 ## Contesto
 
-I parametri di sistema (`config.parameters`) definiscono valori di configurazione globali (es. `DEFAULT_IVA_ID`, `UI_THEME`). Ogni parametro puo' essere sovrascritto a piu' livelli tramite `config.parameter_overrides`, con catena di priorita':
+I parametri di sistema (`config.parameters`) definiscono valori di configurazione globali (es. `DEFAULT_IVA`, `UI_THEME`). Ogni parametro puo' essere sovrascritto a piu' livelli tramite `config.parameter_overrides`, con catena di priorita':
 
 ```
 utente > gruppo > emittente fiscale > sessione > funzione > default
@@ -32,12 +41,12 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Path: `/api/v1/core/parameters/defaults/`
 - Auth: JWT, `skip_area_check = True`
 - Query param:
-  - `codes` (string, **obbligatorio**) — codici separati da virgola (es. `DEFAULT_IVA_ID,DEFAULT_CURRENCY`), max 20
+  - `codes` (string, **obbligatorio**) — codici separati da virgola (es. `DEFAULT_IVA,DEFAULT_CURRENCY`), max 20
 - Output `200`:
 ```json
 {
   "data": {
-    "DEFAULT_IVA_ID": "22",
+    "DEFAULT_IVA": "22",
     "DEFAULT_CURRENCY": "EUR"
   },
   "meta": { "request_id": "..." }
@@ -64,7 +73,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 {
   "data": [
     {
-      "code": "DEFAULT_IVA_ID",
+      "code": "DEFAULT_IVA",
       "description": "Aliquota IVA predefinita per documenti",
       "default_value": "22",
       "emittente_value": "10",

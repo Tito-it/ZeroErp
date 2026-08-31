@@ -9,7 +9,7 @@
 >
 > ⛔ **Il cantiere IVA NON è chiuso**: qui finisce la **Fase 1**. Il documento da
 > guardare adesso è il
-> [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md), che è
+> [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md), che è
 > l'unico ancora aperto.
 >
 > ⚠️ **Una deriva trovata chiudendo, e vale più della chiusura**: il §3.4
@@ -23,7 +23,7 @@
 > passare al team DB.
 >
 > **Base.** Questo documento non ri-discute niente: la fonte è
-> [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md),
+> [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md),
 > le decisioni sono nel suo §D / §D-bis, il processo in quattro fasi nel suo §5.
 > Qui c'è **solo la Fase 1, e solo la metà BE/FE**: la metà DB è chiusa e
 > applicata.
@@ -52,7 +52,7 @@
 > suo.** Il 30/08 il team DB ha chiuso Fase 2, Fase 3 e le decisioni `D33`/`D34`:
 > i consumatori del risolutore (`I3`, `I4`, `I5`, `I6`) sono ora **interamente
 > BE/FE** e stanno in
-> [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+> [brief-be-fe-iva-fase-3-consumatori-risolutore.md](brief-be-fe-iva-fase-3-consumatori-risolutore.md).
 > Qui sono state allineate le **tre affermazioni** che quelle chiusure hanno reso
 > false — il §1 riga `I10`, e i due punti del §6 — perché un piano che dice una
 > cosa scaduta insegna una cosa falsa a chi si fida.
@@ -114,7 +114,7 @@ lati:
 | **`I0`** — `clienti.iva_id` via (`D7-bis`), `split_payment`/`cliente_pa` su `soggetti` (`D8`) | ✅ applicata | 🔴 da fare | **`S1`** (togliere) + **`S2`** (rimettere sul soggetto) |
 | **`I8`** — CIG/CUP/commessa dal cliente al contratto (`D9`) | ✅ applicata | 🔴 da fare | **`S1`** (togliere) + **`S3`** (rimettere sul contratto) |
 | **`I9`** — gate IVA su ordini e preventivi (`R-3`) | ✅ applicata | 🟡 debito dichiarato dal DB: due `reason_key` mancanti | **`S4`** |
-| **`I10`** — `congela_fiscale` (`D15`) | ✅ applicata | ~~⛔ **niente**~~ → 🟡 **uno, dal 2026-08-30** | §6, e ora la slice `F5` del [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
+| **`I10`** — `congela_fiscale` (`D15`) | ✅ applicata | ~~⛔ **niente**~~ → 🟡 **uno, dal 2026-08-30** | §6, e ora la slice `F5` del [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
 
 ⛔ **Cosa NON entra, ed è dichiarato**: `I7` (Fase 2), `I2`/`I3`/`I4`/`I5`
 (Fase 3), `I6` (Fase 4). In particolare `I6` — «l'IVA di riga non si digita» — è
@@ -782,5 +782,5 @@ stringa vuota → NULL, lunghezza eccessiva → errore parlante, `CESSATO` rifiu
 e il segnalibro di `S3-b`.
 | 2026-08-29 (revisione critica) | Su richiesta di Tid, rilettura del codice appena scritto. **Sei rilievi, tutti corretti** (§8). 🔴 Il primo è una **regressione dura**: `ContrattoDrawer.buildPayload()` è spreadato dentro il payload di CREATE, quindi le tre chiavi nuove arrivavano a un endpoint che `validate_allowed_keys` fa **rifiutare per intero** — la creazione contratto sarebbe fallita sempre. ⛔ **Nessuna verifica poteva vederlo**: vive nel giunto fra il payload builder del FE e la whitelist del BE, che nessuno dei due lati collauda da solo. Corretto, e reso visibile con un guardrail BE nuovo che dichiara l'invariante *«ogni chiave di UPDATE dev'essere accettata anche in CREATE»* e la sua unica eccezione, con scadenza a `S3-b`. 🟠 Altri due difetti silenziosi: un validatore che **mutava `request.data`**, e un flag assente che diventava `'N'` **spegnendo** lo split payment — la direzione sbagliata dello stesso errore che il travaso a DB aveva risolto con `bool_or`. 🟡 Poi de-duplicazione dei tre nomi, hardcode FE estratti, un'asserzione morta. ✅ Verificate e cadute due ipotesi: le guard DB su contratto ATTIVO sono `UPDATE OF`-scoped su altre colonne, e il dettaglio soggetto passa dalla proiezione estesa. Suite backend 4158 OK, i18n verde, build FE OK |
 | 2026-08-29 (dopo la Fase 2 DB) | Il team DB applica la **Fase 2** (`I7`: `soggetti_titoli_iva`, ambiti, movimenti, RLS, guard, primitiva di consumo). Cercando cosa si fosse sbloccato lato BE/FE è saltato fuori che il **cancello dei codici errore era rosso**: nove codici che il DB può nominare senza policy — sette di `I7` e ⛔ **due di `I9` che avevo mancato io** in Fase 1, avendo letto il debito *scritto* nel brief (le due `reason_key`) invece della **regola** (`feedback_ripiego_ogni_codice_vivo`: policy **e** ripiego). Chiusa come slice `S5`. ⭐ `fn_create_contratto` **non** è stata estesa: `S3-b` resta gated. |
-| 2026-08-31 | Il team DB chiude **Fase 2, Fase 3 e `D33`/`D34`** (51 changeSet + 9). Questo piano **non viene invalidato** — il suo perimetro era la sola Fase 1 — ma tre sue affermazioni scadono e sono state allineate qui sopra. ⛔ **`S3-b` resta gated**: verificato sulla doc auto-gen che `v_testata_allowed` di `fn_create_contratto` non ha ancora i tre codici. ⛔ E il cancello dei codici errore è **di nuovo rosso** — quattro codici della Fase 3 senza policy, cioè `S5` che si ripete: è la seconda volta che un codice nuovo arriva senza che il suo ripiego venga con lui, e la regola era già in memoria. Chiuso invece il debito di `D34`: i riferimenti alla guardia ritirata erano **quattro** e non tre — il quarto, nel `FatturaDrawer.vue` del frontend, non era nell'elenco del brief madre e si trova solo cercando dal percorso. I consumatori del risolutore passano al [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
+| 2026-08-31 | Il team DB chiude **Fase 2, Fase 3 e `D33`/`D34`** (51 changeSet + 9). Questo piano **non viene invalidato** — il suo perimetro era la sola Fase 1 — ma tre sue affermazioni scadono e sono state allineate qui sopra. ⛔ **`S3-b` resta gated**: verificato sulla doc auto-gen che `v_testata_allowed` di `fn_create_contratto` non ha ancora i tre codici. ⛔ E il cancello dei codici errore è **di nuovo rosso** — quattro codici della Fase 3 senza policy, cioè `S5` che si ripete: è la seconda volta che un codice nuovo arriva senza che il suo ripiego venga con lui, e la regola era già in memoria. Chiuso invece il debito di `D34`: i riferimenti alla guardia ritirata erano **quattro** e non tre — il quarto, nel `FatturaDrawer.vue` del frontend, non era nell'elenco del brief madre e si trova solo cercando dal percorso. I consumatori del risolutore passano al [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md) |
 

@@ -1,5 +1,14 @@
 # API Parametri di Sistema
 
+> ⚠️ **Il parametro dell'IVA di default si chiama `DEFAULT_IVA` dal 2026-08-31**,
+> e porta il **`codice_interno`** dell'aliquota — non il suo id. Si chiamava
+> `DEFAULT_IVA_ID` e valeva `16`.
+> ⛔ **Non si fa `int()` sul suo valore**: il `codice_interno` è `22`, cioè un
+> numero, quindi il cast **non fallirebbe** — darebbe l'**id 22**, che oggi in
+> `config.iva` non esiste ma che il modello ammette eccome. Si risolve col
+> lookup su `config.iva.codice_interno`
+> ([api_catalogo](../../catalogo/manual/api_catalogo.md), form-defaults articolo).
+
 ## Scopo
 
 Espone la gestione dei parametri di sistema (`config.parameters`) con risoluzione
@@ -45,14 +54,14 @@ Query string:
 
 | Parametro | Tipo   | Obbligatorio | Default | Note |
 |-----------|--------|:------------:|---------|------|
-| `codes`   | string | Si           | —       | Codici parametro separati da virgola (es. `DEFAULT_IVA_ID,DEFAULT_CURRENCY`). Max 20. |
+| `codes`   | string | Si           | —       | Codici parametro separati da virgola (es. `DEFAULT_IVA,DEFAULT_CURRENCY`). Max 20. |
 
 ### Output
 
 ```json
 {
   "data": {
-    "DEFAULT_IVA_ID": "16",
+    "DEFAULT_IVA": "22",
     "DEFAULT_CURRENCY": "EUR"
   },
   "meta": {"request_id": "..."}
@@ -73,9 +82,9 @@ import { fetchParameterDefaults } from '../apiCore'
 import { useParameterDefaults } from '../composables/useParameterDefaults'
 
 // Composable riutilizzabile
-const { defaults, load } = useParameterDefaults(['DEFAULT_IVA_ID'])
+const { defaults, load } = useParameterDefaults(['DEFAULT_IVA'])
 load()
-// defaults.value.DEFAULT_IVA_ID → "16"
+// defaults.value.DEFAULT_IVA → "22"  (codice_interno, NON un id)
 ```
 
 ---
@@ -96,7 +105,7 @@ Nessun parametro. Il contesto utente viene risolto dal JWT.
 {
   "data": [
     {
-      "code": "DEFAULT_IVA_ID",
+      "code": "DEFAULT_IVA",
       "description": "ID IVA di default per creazione clienti",
       "default_value": "16",
       "emittente_value": "10",

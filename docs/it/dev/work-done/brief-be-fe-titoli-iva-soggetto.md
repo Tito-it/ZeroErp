@@ -11,12 +11,12 @@
 > finché non arriva il task di pipeline `consuma_plafond_lotto` — voce 1 di
 > [brief-db-richieste-aperte-dal-backend-2.md](../work-in-progress/brief-db-richieste-aperte-dal-backend-2.md),
 > e il consumatore è `F3-b2` del
-> [piano di Fase 3](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+> [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md).
 
 > **Destinatario:** backend (`dev/backend-tid`) e frontend. ⭐ **Nessuna azione DB
 > in questo piano**, e non è un caso: la Fase 2 ha costruito tutto il lato DB.
 >
-> **Base.** [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md)
+> **Base.** [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md)
 > — `I7` nel suo §5, le decisioni in `D5`, `D10`, `D10-bis`, `D12`, `D13`,
 > `D15-bis`, l'applicato nel suo **§8-ter**. Questo documento non ri-discute
 > niente di tutto ciò: costruisce la metà che il §5 chiama «BE».

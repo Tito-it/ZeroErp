@@ -27,7 +27,7 @@
 | 6 | Alerting e monitoring | P3 | 🔴 non fatto — ma i mattoni ci sono |
 | 7 | `correlation_id` | P0 | 🟡 metà: pipeline sì, push no |
 | 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` nel repo |
-| 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione** — la pipeline ora scrive in `fatture_sdi`, manca il builder XML a valle |
+| 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione** — la pipeline ora scrive in `fatture_sdi`, manca il builder XML a valle. ⚠️ Dal 31/08 raccoglie anche il residuo del cantiere IVA: `EsigibilitaIVA`, `DatiContratto` e le righe **spezzate** dal plafond |
 | 10 | Preview di fatturazione del contratto | — (assorbito, 22/08) | 🔴 non esiste — il dato c'è nel motore, manca chi lo presenta |
 
 ### 🔑 La scoperta trasversale: `event_log` è **write-only**
@@ -420,6 +420,38 @@ Cioè: da oggi si accumulano righe di tentativo per un invio che nessuno effettu
 Non fa danno — il passo è idempotente per tentativo — ma è un dato che cresce
 senza un consumatore, e il ciclo di vita del documento continua a fermarsi a
 INVIATA/SDI come dicono gli item 1 e 2.
+
+### ⚠️ Un residuo che arriva dal cantiere IVA, e che va raccolto QUI (2026-08-31)
+
+Il cantiere IVA si è chiuso lasciando **una sola coda**, ed è di questo item:
+la voce **`I5`** — *esigibilità e split payment nel payload SDI*.
+
+⭐ **La metà DB è FATTA** (`20260829-54`): `vendite.fatture_righe.esigibilita` e
+`split_payment` li riempie un **trigger** dal soggetto cliente, e il backend
+**non li tocca** — deve restare così.
+⛔ **Quel che manca è solo il trasporto**: il blocco `EsigibilitaIVA` della
+FatturaPA, che non ha dove atterrare finché il builder non esiste.
+
+⚠️ **E c'è un secondo blocco che aspetta lo stesso builder**: `DatiContratto`.
+La tabella `vendite.fatture_atti` esiste (`20260831-25..27`) e porta lo
+**snapshot** di numero, data, CIG, CUP e commessa; `fatture_righe.fattura_atto_id`
+aggancia le righe. ⭐ Il blocco è ripetibile `0..N` con
+`RiferimentoNumeroLinea`: per il generatore diventa una `SELECT`, non un
+`GROUP BY` su testo — che è la forma scartata apposta.
+
+📌 **E una terza cosa che il builder deve sapere**: una riga di fattura può
+essere **spezzata** dal plafond di un titolo IVA (`riga_capofila_id`). Sono
+**due `DettaglioLinee`**, per obbligo di formato — una riga FatturaPA porta una
+sola `AliquotaIVA` e una sola `Natura`. La vista
+`vendite.vw_fattura_righe_esposte` le espone già come **righe sorelle**
+(`tipo_riga = 'PARTE_PLAFOND'`, entrambe a livello 0): chi genera l'XML legge
+quella e non deve rifare il ragionamento.
+⛔ Aggregarle produrrebbe **un solo** `DettaglioLinee`, cioè cancellerebbe la
+ragione per cui la riga si è spezzata.
+
+📌 Storia completa nei piani chiusi:
+[Fase 3](../work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md) (`F4`) e
+[brief madre](../work-done/brief-db-be-iva-risolutore-e-regime-cliente.md) (`I5`).
 
 **Due cose già decise**, da non ridiscutere quando si riprenderà:
 

@@ -145,7 +145,7 @@ frase che invecchia.
 
 - Introdotto il 2026-08-31 (`F2-b`, poi allargato a `F2-d` con le coordinate del
   documento). Piano:
-  [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../../../dev/work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+  [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../../../dev/work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
 - Lato FE il consumatore è il building block `useIvaRisolta`
   (`frontend/src/vendite/_shared/righe/useIvaRisolta.js`), estratto alla 3ª
   occorrenza: la chiamata, l'anti-race e la label dell'origine stanno lì, non

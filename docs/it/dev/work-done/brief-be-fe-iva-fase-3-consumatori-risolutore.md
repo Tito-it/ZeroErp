@@ -1,5 +1,30 @@
 # Piano BE/FE — Fase 3 del cantiere IVA: i consumatori del risolutore
 
+> ## ✅ CHIUSO — 2026-08-31: il risolutore ha i suoi consumatori
+>
+> **Tutte le slice sono fatte**: `F0`, `F2` (a·b·c·d), `F3-a`, `F3-b1`, `F3-b2`,
+> `F3-c`, `F5`, `F6`, `F7`. Il consuntivo di ognuna sta nel §9.
+>
+> ⭐ **Cosa è cambiato davvero.** Il 2026-08-31 mattina
+> `grep -rn "fn_resolve_iva_riga" backend/ frontend/` dava **zero occorrenze**:
+> il DB aveva finito e non lo chiamava nessuno. Adesso lo chiamano il form dei
+> tre documenti, il salvataggio delle loro righe e il giro di fatturazione — e
+> il plafond dei titoli **si consuma**, provato sul database vero.
+>
+> ⛔ **`art.iva_id` non è più la risposta di nessuno.** Era la nona sede che
+> rispondeva per conto suo alla domanda «che IVA ha questa riga», e scavalcava
+> l'uso della fornitura e i titoli documentati del cliente: su un esportatore
+> abituale scriveva l'aliquota piena, senza sintomo.
+>
+> 📌 **Resta UNA coda, ed è stata raccolta altrove**: `F4` / `I5` — il blocco
+> `EsigibilitaIVA` nel payload SDI — non ha dove atterrare finché il **builder
+> XML FatturaPA non esiste**. Non è lavoro rimandato: è un sottosistema che non
+> c'è. La coda vive nell'**item 9** di
+> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), insieme agli altri due
+> blocchi che aspettano lo stesso builder (`DatiContratto` e le righe **spezzate**
+> dal plafond). ⚠️ Ci è stata messa apposta **prima** di chiudere qui: un residuo
+> che resta in un documento chiuso è un residuo perso.
+
 > **Destinatario:** backend (`dev/backend-tid`) e frontend.
 >
 > **Base.** [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md)
@@ -587,8 +612,7 @@ F3a I4 · group key contratto      ✅ 31/08 — non aspettava nessuno
 F3c I4 · ordinamento leggibile    ✅ 31/08 — le righe erano ordinate per UUID
 F3b1 I4 · l'IVA dal risolutore    ✅ 31/08 — `art.iva_id` esce dalla proiezione
 F3b  I4 · spezzatura della riga   🟢 il DB è pronto (fatture_atti + capofila)
-F3b2 I4 · consumo del plafond     ⛔ serve un task di pipeline = SEED DB
-                                     (elenco 2, voce 1)
+F3b2 I4 · consumo del plafond     ✅ 31/08 — seed applicato, smoke 21/21
 F4  I5 · SDI                      📌 quando nascerà il builder FatturaPA
 F7  I6 · la casella si chiude     ✅ 31/08 — P9 soddisfatta (vedi §9)
 ```
@@ -1315,7 +1339,44 @@ hanno affatto `iva_id`, quindi il perimetro dei tre domini è completo.
 | ⭐ **mutazione**: il guard di `I6` spento · il guard che rifiuta sempre | ✅ **1 caso** e **1 caso** |
 | build FE · eslint su tutto `src/vendite` · i18n · licenze | ✅ |
 
-### 🔴 Cosa manca davvero: due righe di seed
+### ✅ `F3-b2` — il consumo del plafond è in esercizio (2026-08-31)
+
+Il team DB ha applicato il seed **come chiesto**: `consuma_plafond_lotto` **in
+testa** allo step DEFINITIVA su **entrambe** le pipeline (4 e 6), e ⭐ **senza
+chiave `fn`** — cioè nessuna madre SQL, che era la duplicazione che questo
+cantiere ha già pagato una volta con `fn_generate_fatture_righe`.
+
+⇒ Scritto lo smoke che il brief chiedeva *«con la riga di configurazione»*:
+`backend/scripts/tests/smoke-consuma-plafond-lotto.py`, **21 controlli, tutto
+verde sul DB vero**.
+
+| Cosa prova | Esito |
+| --- | --- |
+| ⭐ **il cablaggio**: il seed nomina il task e il codice sa eseguirlo | ✅ le due metà che possono divergere si conoscono |
+| ⛔ il task **non dichiara una `fn`** | ✅ l'implementazione è Python |
+| ⚠️ sta **prima** di `numera_fatture`, su entrambe | ✅ dopo, il guard di congelamento rifiuterebbe |
+| ⚠️ **il gemello**, e sta PRIMA: senza titolo il giro non tocca niente | ✅ zero righe nuove, zero movimenti |
+| ⭐ la riga **si spezza**: 24 pezzi → 12 + 12 | ✅ |
+| ⭐ le due parti **sommano esattamente** | ✅ 12 + 12 = 24 |
+| ⭐ l'accumulatore ha **visto** il consumo | ✅ 120,00 su un plafond di 120,00 |
+| ⭐ la vista le mostra **sorelle**: `PARTE_PLAFOND`, livello 0, stesso ordinamento, **entrambe con importo** | ✅ |
+
+⭐ **Il caso si è costruito, e due volte contro il modello** — ed entrambe le
+volte il modello aveva ragione:
+
+1. il primo giro **scongelava** una fattura per poterla spezzare: la macchina a
+   stati rifiuta `DEFINITIVA → EMESSA` (`E_LOTTO_PARAMETRO_NON_COERENTE`), e ha
+   fatto bene. Il caso si costruisce su una fattura **già `EMESSA`**, che è
+   anche il momento vero in cui il task gira;
+2. il gemello **spegneva il titolo** dopo averlo usato:
+   `trgfn_prevent_deactivate_if_children` lo rifiuta — figli prima del padre. Il
+   gemello è passato **prima** della costruzione del titolo, ed è anche più
+   onesto: prova lo stato «prima», non uno stato forzato.
+
+⚠️ **E la 2263 è esclusa per nome** nella selezione della fixture: è la fattura
+che non va numerata. Qui non si numera e si annulla tutto, ma non la si tocca.
+
+### 🟢 Cosa manca davvero
 
 Verificato il 2026-08-31, e non era previsto: il consumo del plafond deve vivere
 in un **task di pipeline nuovo**, nello step DEFINITIVA e **prima** di
@@ -1334,7 +1395,7 @@ test si possono scrivere per intero — semplicemente **non verrebbero invocati 
 niente** finché il seed non c'è.
 
 📌 Richiesta passata al team DB:
-[brief-db-richieste-aperte-dal-backend-2.md](brief-db-richieste-aperte-dal-backend-2.md),
+[brief-db-richieste-aperte-dal-backend-2.md](../work-in-progress/brief-db-richieste-aperte-dal-backend-2.md),
 voce 1. ⚠️ **File nuovo e non il precedente riaperto**, come quello stesso
 prescrive: *«un ordine di lavoro che si riapre smette di dire cosa è finito»*.
 

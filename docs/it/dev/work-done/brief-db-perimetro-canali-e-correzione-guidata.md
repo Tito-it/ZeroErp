@@ -1,7 +1,7 @@
 # Brief DB — il perimetro dei canali di incasso, e la madre della correzione guidata
 
 > **Cos'è.** Due richieste al team DB che nascono dal cantiere incassi
-> ([brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md)),
+> ([brief-be-fe-posting-e-abbinamento-rata.md](../work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md)),
 > tenute in un solo documento perché si consegnano insieme ma **non sono la
 > stessa cosa**:
 >
@@ -276,7 +276,7 @@ CREATE FUNCTION pagamenti.fn_crea_distinta_correzione(
 
 > ⭐ **La diagnosi di §1 regge**: `enti_incasso` non ha row security, la tabella
 > porta dato **per emittente**, e la funzione giusta esiste già. Il piano è
-> **§2.3-quater e §6.17** del [piano DB](brief-db-posting-e-abbinamento-rata.md).
+> **§2.3-quater e §6.17** del [piano DB](../work-in-progress/brief-db-posting-e-abbinamento-rata.md).
 > Qui stanno le risposte, e **tre correzioni** che cambiano cosa si scrive.
 
 ### 5.1 🔴 La policy proposta, così com'è, rende la tabella NON SCRIVIBILE
@@ -403,7 +403,7 @@ chiede nessuna modifica di schema oltre alla colonna del legame.
 
 ⛔ **Niente applicato**: il migrate lo chiede Tid. Ma le due richieste sono
 **scritte e provate**, e il piano riga per riga è
-[§2.3-quater e §6.17 del brief DB](brief-db-posting-e-abbinamento-rata.md).
+[§2.3-quater e §6.17 del brief DB](../work-in-progress/brief-db-posting-e-abbinamento-rata.md).
 
 | Richiesta | Esito |
 | --- | --- |

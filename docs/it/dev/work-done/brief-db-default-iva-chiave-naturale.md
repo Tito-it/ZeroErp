@@ -23,7 +23,7 @@
 
 > **Destinatario:** team DB (`dev/db-tid`). **Voce unica**, e sblocca la slice
 > `F6` del piano
-> [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md).
+> [brief-be-fe-iva-fase-3-consumatori-risolutore.md](brief-be-fe-iva-fase-3-consumatori-risolutore.md).
 >
 > 📌 **La richiesta operativa è raccolta con le altre** in
 > [brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md):
@@ -44,7 +44,7 @@
 > **Correlati:**
 > [config.iva](/dbzero/config/tabelle/iva) ·
 > [linee-guida-sql §6b](../../linee-guida-sql.md) ·
-> [brief-db-be-iva-risolutore-e-regime-cliente §D28](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md)
+> [brief-db-be-iva-risolutore-e-regime-cliente §D28](brief-db-be-iva-risolutore-e-regime-cliente.md)
 
 ---
 
