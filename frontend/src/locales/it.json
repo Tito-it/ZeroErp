@@ -669,6 +669,16 @@
     "filtered_by": "Risultati filtrati per: {name}"
   },
   "amministrazione": {
+    "registri_fatturazione": {
+      "disattiva_blocco": {
+        "ha_fatture": "Il registro {codice} ha gia' emesso {quante} fatture: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
+        "ha_progressivi": "Il registro {codice} ha {quante} contatori ancora attivi: finche' un contatore e' vivo il registro puo' numerare, e spegnerlo interromperebbe la sequenza. Si spengono prima i contatori.",
+        "ha_mapping_tipo_doc": "Il registro {codice} e' assegnato a {quante} tipi di documento: si toglie prima l'assegnazione, altrimenti quei documenti non troverebbero piu' un registro dove nascere.",
+        "ha_ordini": "Il registro {codice} ha gia' numerato {quante} ordini: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
+        "ha_ddt": "Il registro {codice} ha gia' numerato {quante} DDT: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
+        "ha_resi": "Il registro {codice} ha gia' numerato {quante} resi: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati."
+      }
+    },
     "matrici": {
       "tab_utilities_ruoli": "Utilities/Ruoli",
       "tab_indirizzi_ruoli": "Indirizzi/Ruoli",

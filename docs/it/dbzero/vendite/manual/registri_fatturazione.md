@@ -161,10 +161,41 @@ resterebbero due registri storici della stessa famiglia per la stessa azienda, e
 nessuno saprebbe più **quale ha numerato cosa**. La numerazione è una storia che
 non si riapre, e il vincolo è severo per quel motivo.
 
-⚠️ **Spegnere resta invece la mossa giusta** quando serve solo a togliere un
-registro dalla circolazione: chi cerca il registro da usare guarda l'interruttore
-e lo salta. La differenza è fra *ritirare* e *sostituire* — la prima si fa
-spegnendo, la seconda no.
+#### ⛔ E un registro che ha già numerato **non si spegne affatto**
+
+*(corretto il 2026-08-31 sera — la frase che stava qui diceva il contrario)*
+
+Questa scheda affermava che *«spegnere resta la mossa giusta quando serve solo a
+togliere un registro dalla circolazione»*. **È falso**, e non per un vincolo
+aggiunto di recente: per come è fatto il modello. Tre cose lo dicono insieme:
+
+| | |
+| --- | --- |
+| lo slot `UNIQUE` resta occupato anche da spento | non se ne può creare uno sostitutivo |
+| il lettore del registro pretende `attivo IS TRUE` | il documento non nasce più |
+| il provisioning non crea dove una riga esiste già | nessun rimedio automatico |
+
+⇒ Spegnere il registro DDT di un'azienda significa **quell'azienda non emette più
+documenti di trasporto, e non c'è modo di tornare indietro.** Non è un ritiro: è
+un blocco senza uscita.
+
+⭐ **Per questo i guard di disattivazione sono la difesa giusta, non un
+impedimento.** Dal 2026-08-31 sono sei — documenti di trasporto, fatture, ordini,
+progressivi, resi, mapping dei tipi documento — e li monta l'automazione da sé a
+partire dalle chiavi esterne. Chi prova a spegnere un registro usato riceve un
+rifiuto; `script.fn_check_registro_disattivabile` lo anticipa, così l'interfaccia
+spegne il cestino **e dice perché**, invece di far scoprire il vincolo premendo.
+
+⚠️ **Il bisogno vero che stava dietro «ritiro e rifaccio» era cambiare la forma
+del numero**, e oggi si fa senza spegnere niente: `prefisso`, `suffisso` e
+`lunghezza_numero` sono colonne di questo registro e si modificano. Ciò che
+cambia da lì in avanti riguarda i documenti nuovi; quelli già numerati restano
+com'erano, che è esattamente il comportamento voluto.
+
+⚠️ **Resta vero il contrario di prima:** l'unico registro che si può spegnere è
+quello che non ha mai numerato niente — cioè quello che nessuno ha bisogno di
+ritirare. La possibilità esiste per correggere una configurazione appena creata
+per sbaglio, non per gestire un ciclo di vita.
 
 #### ⛔ Il debito sul nome, dichiarato
 
