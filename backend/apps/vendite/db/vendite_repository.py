@@ -2760,6 +2760,34 @@ class VenditeRepository:
                 ON ndf.id = f.natura_doc_id
         """
 
+        # ⭐ IL MOTIVO DELL'AZIONE SPENTA, dalla sede che rifiuta (F5,
+        # 2026-08-31). `fn_check_fattura_eliminabile_da_lotto` e' `STABLE` e
+        # PURA — nessun raise di dominio, ritorna `[]` oppure l'array ORDINATO
+        # dei motivi — ed e' nata dichiarando due consumatori: la madre che
+        # solleva, «e il BE, per spiegare invece di far fallire». Il secondo
+        # non esisteva.
+        #
+        # ⚠️ Si prende il PRIMO motivo e non tutti: e' lo stesso che la madre
+        # solleva, quindi il tooltip dice esattamente la frase che l'operatore
+        # leggerebbe tentando. L'ordine dell'array e' contratto della funzione.
+        #
+        # ⛔ La funzione non puo' sollevare da qui: sui suoi due guard di
+        # parametro gli id arrivano da una FK, e i suoi due «non trovato» sono
+        # irraggiungibili perche' la lista fa `INNER JOIN vendite.fatture` —
+        # una fattura fuori scope RLS non produce nemmeno la riga.
+        reset_lateral = """
+            LEFT JOIN LATERAL (
+                SELECT m.value ->> 'reason'     AS reason,
+                       m.value ->> 'reason_key' AS reason_key
+                  FROM jsonb_array_elements(
+                           script.fn_check_fattura_eliminabile_da_lotto(
+                               fllf.lotto_id, fllf.fattura_id)
+                       ) WITH ORDINALITY AS m(value, ord)
+                 ORDER BY m.ord
+                 LIMIT 1
+            ) reset_cap ON TRUE
+        """
+
         # ⭐ LA SEGNALAZIONE ATTACCATA ALLA RIGA (D-6 del brief liste drawer
         # lotto, 2026-08-22). La colonna `stato_esecuzione` dice CHE la fattura
         # e' fallita; da sola non dice perche', e il motivo viveva solo nel
@@ -2848,10 +2876,31 @@ class VenditeRepository:
                 -- anche su un avviso, cioe' direbbe «errore» dove errore non
                 -- c'e'. Stesso ruolo di `natura_doc_codice`, colonna di
                 -- supporto invisibile del seed.
-                err.status              AS errore_livello
+                err.status              AS errore_livello,
+                -- ⭐ LA CAPABILITY DELLA RIGA (F5, 2026-08-31): «questa fattura
+                -- si puo' riportare in lavorazione?» e, se no, PERCHE'.
+                -- ⛔ Il backend TRASPORTA, non deduce: il motivo lo produce
+                -- `script.fn_check_fattura_eliminabile_da_lotto`, cioe' la
+                -- STESSA funzione che `fn_elimina_fattura_da_lotto` usa per
+                -- rifiutare (ne solleva il codice del primo motivo). Cosi'
+                -- tooltip e rifiuto non «coincidono oggi»: non possono
+                -- divergere. Ricalcolare la condizione qui sarebbe la forma in
+                -- cui i due si sfilano in silenzio.
+                -- ⭐ E toglie la NONA copia della soglia di congelamento: il
+                -- frontend aveva la sua `PRE_FISCALI = ['DRAFT','EMESSA']`
+                -- scritta a mano in un template Vue, dove il database non la
+                -- vede. La funzione legge `congela_fiscale` (D33), quindi la
+                -- sede torna a essere una sola.
+                -- ⚠️ Il flag si DERIVA dal motivo (`reason IS NULL`), non si
+                -- calcola a parte: due sorgenti per la stessa risposta sono
+                -- due risposte che prima o poi differiscono.
+                (reset_cap.reason IS NULL) AS can_reset_fattura,
+                reset_cap.reason           AS can_reset_fattura_reason,
+                reset_cap.reason_key       AS can_reset_fattura_reason_key
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {errore_lateral}
+            {reset_lateral}
             {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
@@ -2920,6 +2969,15 @@ class VenditeRepository:
                     # Brief: `brief-db-bersaglio-errore.md` §7-bis (B7).
                     "errore_bersagli": errore_meta.get("bersagli"),
                     "errore_livello": row["errore_livello"],
+                    # ⭐ Capability di riga (F5): permesso => nascondi, stato =>
+                    # disabilita COL MOTIVO. Qui e' sempre il secondo caso, ed
+                    # e' la ragione per cui il motivo viaggia: un pulsante
+                    # grigio che non spiega niente e' indistinguibile da un bug.
+                    # ⛔ Viaggia la CHIAVE i18n, mai il testo: il messaggio e'
+                    # multilingua e vive nei `locales`.
+                    "can_reset_fattura": bool(row["can_reset_fattura"]),
+                    "can_reset_fattura_reason": row["can_reset_fattura_reason"],
+                    "can_reset_fattura_reason_key": row["can_reset_fattura_reason_key"],
                 }
             )
         return result, total_count

@@ -1,3 +1,7 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
 // Scopo: Drawer diagnostico del lotto di fatturazione (cockpit Fase B, B-3/B-4).
 //        Il posto dove si capisce in pochi secondi se un lotto è sano o bloccato
@@ -32,6 +36,7 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -717,23 +722,50 @@ function buildFatturaActions(row) {
       command: () => apriDocumentiFattura(row),
     },
   ]
-  // Perimetro pre-fiscale, cioe' non numerato: DRAFT **o EMESSA**. Vale per la
-  // fattura (allargato dal DB il 2026-08-02, D-T: restringere a DRAFT
-  // nasconderebbe l'azione proprio nel caso che la motiva — la fattura critica
-  // rimasta indietro) **e per il lotto** (slice 6-B del 2026-08-04: il DB ha un
-  // codice dedicato, `E_LOTTO_NON_PRE_FISCALE`, quindi il caso lo considera
-  // raggiungibile). Le due condizioni sono separate a DB e vanno lette
-  // entrambe: guardare solo la riga rimetterebbe in scena il
-  // pulsante-vicolo-cieco che questo cantiere ha appena tolto altrove.
-  // Il presidio vero resta fiscale e sta a DB — qui si evita soltanto di
-  // proporre un'azione destinata a fallire.
-  const PRE_FISCALI = ['DRAFT', 'EMESSA']
-  const fatturaPreFiscale = PRE_FISCALI.includes(row.stato_doc_fiscale_codice)
-  const lottoPreFiscale = PRE_FISCALI.includes(lotto.value?.stato_doc_fiscale_codice)
-  if (!isReadonly.value && canResetFattura.value && fatturaPreFiscale && lottoPreFiscale) {
+  // ⭐ IL PERIMETRO NON SI RICALCOLA PIU' QUI (F5, 2026-08-31). Fino a oggi
+  // questa funzione portava `const PRE_FISCALI = ['DRAFT','EMESSA']` e
+  // confrontava a mano lo stato della riga e quello del lotto: era la NONA
+  // copia della soglia di congelamento, l'ultima rimasta fuori dal database
+  // dopo che `D33` aveva portato le altre sette a leggere
+  // `config.stati_doc_fiscale.congela_fiscale`. Una copia in un template Vue
+  // e' quella che il DB non puo' vedere: il giorno che il confine si sposta,
+  // questa riga non se ne accorge e non fallisce — accende un pulsante che
+  // fallira'.
+  //
+  // Ora il motivo arriva dalla riga (`can_reset_fattura*`), e lo produce
+  // `script.fn_check_fattura_eliminabile_da_lotto`, cioe' la STESSA funzione
+  // che il database usa per RIFIUTARE. Tooltip e rifiuto non «coincidono
+  // oggi»: non possono divergere.
+  //
+  // ⚠️ PERMESSO => NASCONDI, STATO => DISABILITA COL MOTIVO. `canResetFattura`
+  // e' il permesso e continua a nascondere la voce; lo stato invece la lascia
+  // visibile e SPENTA, con il perche' — un pulsante grigio che non spiega
+  // niente e' indistinguibile da un bug.
+  if (!isReadonly.value && canResetFattura.value) {
+    // Fail-closed: capability assente = azione spenta. Su un verbo che
+    // CANCELLA il documento, «non lo so» non puo' voler dire «vai».
+    const resetBloccato = row.can_reset_fattura !== true
     actions.push({
       key: 'elimina',
       label: t('vendite.lotti.azione_reset_fattura'),
+      disabled: resetBloccato,
+      // ⛔ Il testo del motivo non viaggia nel payload: viaggia la CHIAVE, e
+      // il ripiego e' il codice macchina — chiave mancante => si vede il
+      // codice, non un tooltip vuoto.
+      // ⚠️ La chiave puo' NON esserci sul ramo fail-closed (payload vecchio,
+      // capability assente): `labelOrCode` chiamata con `undefined` chiederebbe
+      // a `te()` una chiave che non e' una stringa. Si passa il ripiego
+      // direttamente — che e' il codice macchina, e in ultima istanza la label.
+      tooltip: resetBloccato
+        ? (row.can_reset_fattura_reason_key
+          ? labelOrCode(
+            t,
+            te,
+            row.can_reset_fattura_reason_key,
+            row.can_reset_fattura_reason || t('vendite.lotti.azione_reset_fattura'),
+          )
+          : row.can_reset_fattura_reason || t('vendite.lotti.azione_reset_fattura'))
+        : undefined,
       // ⭐ «Riporta in lavorazione», non «Elimina dal lotto» (rilievo di Tid,
       // 2026-08-21): quel nome descriveva il MECCANISMO e suggeriva uno
       // sgancio — «tolgo il documento dal lotto, poi lo rimetto in un altro» —

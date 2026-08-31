@@ -1,3 +1,13 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: `TypedDict` e alias condivisi del dominio vendite — le righe che i
+#        repository restituiscono e la pipeline si passa. Servono a togliere
+#        le chiavi «magiche» dalle firme e a far vedere al type checker cosa
+#        un payload porta davvero.
+# ------------------------------------------------------------
+
 from datetime import date
 
 from typing import Any, TypeAlias, TypedDict
@@ -196,6 +206,18 @@ class LottoFattureRow(TypedDict):
     # stessi nomi dell'envelope. NULL quando l'errore non ne porta — che e' il
     # caso normale, non un difetto.
     errore_bersagli: list[dict[str, str]] | None
+    # ⭐ CAPABILITY DI RIGA — «questa fattura si puo' riportare in
+    # lavorazione?» (F5, 2026-08-31). Permesso => nascondi, stato =>
+    # disabilita COL MOTIVO: qui e' sempre il secondo caso.
+    # ⛔ La terna e' coerente per costruzione — motivo e chiave si ricavano dal
+    # nome del flag — e il flag si DERIVA dal motivo (`reason IS NULL`), non si
+    # calcola a parte. Il nome dice QUALE verbo blocca: su questa riga puo'
+    # nascerne un secondo, e un `blocco_reason` generico li confonderebbe.
+    # ⚠️ `reason` e' il codice MACCHINA del primo motivo, `reason_key` la
+    # CHIAVE i18n: il testo non viaggia mai nel payload.
+    can_reset_fattura: bool
+    can_reset_fattura_reason: str | None
+    can_reset_fattura_reason_key: str | None
 
 
 class LottoListRow(TypedDict):

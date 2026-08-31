@@ -146,6 +146,22 @@ class TestPreventiviService(unittest.TestCase):
         # warning rumoroso a ogni crea_*. (None, None) = nessuna assegnazione.
         self.mock_repo.get_ancora_indirizzi_documento.return_value = (None, None)
 
+        # ⭐ Risolutore IVA (I3, 2026-08-31): collaboratore nuovo di
+        # `gestisci_riga`. Mockato come il repository, e per la stessa ragione —
+        # senza, questi test aprirebbero una connessione vera e in CI, dove il
+        # DB non c'e', fallirebbero per un motivo che non c'entra con cio' che
+        # verificano.
+        # ⚠️ Il default risponde «nessun `iva_id`, nessun meta»: i casi che qui
+        # non parlano di IVA restano identici a prima.
+        # ⚠️ Si patcha `_risolvi_iva_riga` e non il BB: e' costruito da una
+        #    FACTORY, quindi il service non nomina piu' `IvaResolverService`.
+        self.iva_patcher = patch(
+            "apps.vendite.services.preventivi_service._risolvi_iva_riga"
+        )
+        self.MockIva = self.iva_patcher.start()
+        self.MockIva.return_value = (None, {})
+        self.addCleanup(self.iva_patcher.stop)
+
         # Mock BB anagrafiche usati da crea_preventivo per validator dominio
         # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
         # utility/istanza). Default: coerenza ok, BA → istanza id=100.
@@ -686,13 +702,39 @@ class TestPreventiviService(unittest.TestCase):
     def test_gestisci_riga_ok(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
+        # ⚠️ La testata porta ora anche emittente e data: dal 2026-08-31 la
+        #    creazione riga risolve l'IVA, e senza quei due il risolutore non
+        #    saprebbe rispondere. La proprieta' provata resta la stessa — la
+        #    riga si crea — cambia il veicolo.
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "emittente_fiscale_id": 3, "data": "2026-08-31",
         }
         self.mock_repo.create_riga.return_value = {"id": 10}
         result = gestisci_riga(1, {"articolo_id": "uuid-art-1"})
         self.assertEqual(result["id"], 10)
         self.mock_repo.create_riga.assert_called_once()
+
+    # Scopo: ⭐ IL CABLAGGIO E' VISIBILE. Col risolutore mockato nessun altro
+    #        test si accorgerebbe se qualcuno lo staccasse.
+    def test_gestisci_riga_iva_dal_risolutore(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "emittente_fiscale_id": 3, "data": "2026-08-31",
+            "billing_account_id": 100, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 10}
+        self.MockIva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
+
+        gestisci_riga(1, {"articolo_id": "uuid-art-1"})
+
+        # ⭐ Il cablaggio: la testata arriva al risolutore, il suo esito alla riga.
+        self.assertEqual(self.MockIva.call_args.kwargs["articolo_id"], "uuid-art-1")
+        scritta = self.mock_repo.create_riga.call_args.kwargs
+        self.assertEqual(scritta["iva_id"], 9)
+        self.assertEqual(scritta["meta"]["iva_origine"], "TITOLO")
 
     # Scopo: Verifica guard riga su stato EMESSO.
     def test_gestisci_riga_stato_non_modificabile(self):
@@ -713,7 +755,8 @@ class TestPreventiviService(unittest.TestCase):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
         self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "id": 1, "stato_codice_interno": "DRAFT",
+            "emittente_fiscale_id": 3, "data": "2026-08-31", "uid": "abc",
         }
         self.mock_repo.is_articolo_composito.return_value = True
         self.mock_repo.create_riga.return_value = {"id": 10}

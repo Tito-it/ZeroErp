@@ -25,6 +25,7 @@ from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
@@ -882,6 +883,18 @@ def gestisci_riga(
         # init componenti. Si inserisce con 0 per soddisfare l'eventuale guard.
         prezzo_unitario = prezzo_unitario if prezzo_unitario is not None else "0"
 
+    # ⭐ L'IVA DI RIGA VIENE DALLA SEDE UNICA (I3, 2026-08-31): non piu' copiata
+    # dall'articolo dal frontend, che era una seconda risposta alla stessa
+    # domanda e ignorava uso della fornitura e titoli del cliente.
+    # ⚠️ Il payload VINCE finche' `I6` non chiude la casella (opzione B): qui
+    # si registra soltanto cosa avrebbe detto il risolutore.
+    iva_id_riga, iva_meta = _risolvi_iva_riga(
+        testata, articolo_id=str(articolo_id), payload_iva_id=data.get("iva_id"),
+    )
+    meta_riga = data.get("meta") if isinstance(data.get("meta"), dict) else None
+    if iva_meta:
+        meta_riga = {**(meta_riga or {}), **iva_meta}
+
     with _db_errors("gestisci_riga"), transaction.atomic():
         riga_nr = repo.next_riga_nr(ordine_id)
         created = repo.create_riga(
@@ -895,8 +908,8 @@ def gestisci_riga(
             factor_to_base=data.get("factor_to_base"),
             prezzo_unitario=prezzo_unitario,
             sconto_percentuale=data.get("sconto_percentuale"),
-            iva_id=data.get("iva_id"),
-            meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
+            iva_id=iva_id_riga,
+            meta=meta_riga,
         )
         riga_id = int(created["id"])
 
@@ -1232,6 +1245,23 @@ def _resolve_emittente_sr_id(repo: OrdiniRepository, testata: dict[str, Any]) ->
     )
     assert sr_id is not None
     return int(sr_id)
+
+
+# Scopo: risolve il trattamento IVA di una riga ordine dal contesto della
+#        testata, e ritorna `(iva_id, meta_patch)`.
+# ⭐ Wrapper sottile sul BB `IvaResolverService.applica_riga_documento`: la
+#    regola e' una sola per i tre domini, qui c'e' solo il passaggio dei campi
+#    di testata.
+# ⛔ `emittente_fiscale_id` e' la PK, NON il `soggetto_ruolo_id` del pricing.
+# ⭐ Costruito da una FACTORY e non scritto qui: i tre domini avevano tre copie
+#    identiche a meno del codice errore. Stesso stampo di
+#    `make_db_errors_translator` — i parametri di dominio si fissano una volta,
+#    la regola resta in un posto solo.
+_risolvi_iva_riga = make_risolvi_iva_riga(
+    error_code="E_ORD_VALIDAZIONE",
+    function_name=f"{_FN}._risolvi_iva_riga",
+)
+
 
 
 def _data_riferimento(testata: dict[str, Any]) -> date:

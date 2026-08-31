@@ -1,3 +1,7 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
 // Scopo: Form singola riga ordine — articolo (autocomplete), UoM, quantita',
 // prezzo, sconto, IVA. Pricing stile preventivo gestito lato BE: se il prezzo
@@ -24,6 +28,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
 
 const { t } = useI18n()
 const store = useOrdiniStore()
@@ -34,6 +39,13 @@ const props = defineProps({
   ordineId: { type: Number, required: true },
   riga: { type: Object, default: null },
 })
+const {
+  ivaOrigine,
+  origineLabel: ivaOrigineLabel,
+  risolviPer: risolviIvaPer,
+  reset: resetIva,
+} = useIvaRisolta({ documentoTipo: 'ORDINE', documentoId: () => props.ordineId })
+
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
 const form = ref({
@@ -93,10 +105,19 @@ watch(() => props.riga, (riga) => {
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
   form.value.descrizione = item.descrizione || ''
-  // Auto-fill IVA dall'articolo (sovrascrivibile prima del save).
-  if (item.iva_id != null) {
-    form.value.iva_id = item.iva_id
-  }
+  // ⛔ NIENTE PIU' AUTO-FILL DALL'ARTICOLO. Copiare `articolo.iva_id` era una
+  // SECONDA risposta alla stessa domanda, e sbagliata in due casi che non danno
+  // nessun sintomo: ignora l'uso della fornitura (`config.tipi_utenze`, dove
+  // l'articolo tace) e ignora i titoli documentati del cliente — su un
+  // esportatore abituale proponeva l'aliquota piena.
+  // ⭐ Ora risponde la sede unica (`vendite.fn_resolve_iva_riga`), e il
+  // contesto lo deriva il backend dalla testata del documento: e' la stessa che
+  // leggera' al salvataggio, quindi cio' che si vede e cio' che viene scritto
+  // non possono divergere.
+  // ⚠️ Best-effort: se l'anteprima non risponde il campo resta vuoto e
+  // l'operatore lo compila — che fino a `I6` e' ancora un suo diritto.
+  resetIva()
+  risolviIvaPer(form.value, item.id)
   form.value.uom_operativa_id = null
   form.value.prezzo_unitario = null
   articoloObj.value = item
@@ -218,6 +239,11 @@ async function handleSave() {
         <label>{{ t('vendite.ordini.riga_iva') }} *</label>
         <IvaSelect v-model="form.iva_id"
           :placeholder="t('vendite.ordini.riga_iva')" :disabled="isEdit" />
+        <!-- ⭐ IL PERCHE' DI QUEL NUMERO. `I6` sta per togliere all'operatore
+             la casella: un'aliquota che non si puo' cambiare E che non viene
+             spiegata e' la forma peggiore. La label la compone il composable —
+             qui non si costruisce nessun percorso i18n. -->
+        <small v-if="ivaOrigine" class="app-field-hint">{{ ivaOrigineLabel }}</small>
       </div>
       <div class="form-field" v-if="!isEdit">
         <label>{{ t('vendite.ordini.riga_uom') }} *</label>
