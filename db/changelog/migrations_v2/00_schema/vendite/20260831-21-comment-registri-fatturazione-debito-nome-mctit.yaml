@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-15 — IL DEBITO SUL NOME, DICHIARATO DOVE SI LEGGE
+#   COMMENT su vendite.registri_fatturazione
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-15 (§3.8)
+#
+# ── ⛔ LA DESCRIZIONE DELLA TABELLA ERA RIMASTA INDIETRO ───────────
+#   Diceva: «Registri/serie di numerazione per FATTURE DI VENDITA (per
+#   emittente/brand)». Dal 2026-08-31 quella tabella numera anche DDT, ordini,
+#   commesse e resi: la frase non e' incompleta, e' FALSA per quattro quinti
+#   del contenuto.
+#
+#   ⚠️ E c'e' una seconda imprecisione da correggere, nel `COMMENT` di
+#   `famiglia_documento` (changeSet 20260830-15, gia' applicato): sosteneva che
+#   «la descrizione della tabella dice gia' registri/serie di NUMERAZIONE, era
+#   il nome dell'oggetto a essere rimasto indietro». Meta' vero — diceva
+#   «numerazione», ma anche «per fatture di vendita». Non era solo il nome.
+#   ⛔ Quel changeSet e' applicato e non si riscrive: la correzione vive qui.
+#
+#   ⚠️ Terza: lo stesso `COMMENT` rimanda a «brief … §12.5-bis», un paragrafo
+#   che nel brief NON esiste. Il debito e' ora scritto al §3.8 dello stesso
+#   documento, ed e' quella la sede da citare.
+#
+# ── ⭐ PERCHE' IL NOME NON SI CAMBIA, E NON E' PIGRIZIA ────────────
+#   Rinominare `registri_fatturazione` significa rinominare la tabella dei
+#   progressivi, i trigger, le funzioni che la interrogano, le viste, i vincoli
+#   e le colonne `registro_id` sparse su cinque tabelle di documento. E' un
+#   cantiere suo, che non cambia NESSUN comportamento — cioe' esattamente il
+#   genere di lavoro che non si infila dentro un cantiere che ne cambia molti.
+#   ⭐ Un debito dichiarato in quattro sedi costa una frase; un rename fatto di
+#   fretta in mezzo a un trasloco costa una giornata di ricerca a chi verra'.
+#
+# ⚠️ Solo `COMMENT`: nessuna struttura, nessun dato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-21-comment-registri-fatturazione-debito-nome-mctit.yaml
+
+  - changeSet:
+      id: 20260831-21-comment-registri-fatturazione-debito-nome
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-15: il debito sul nome dichiarato dove si legge. ⛔ La descrizione della tabella era
+        rimasta indietro — diceva «registri/serie di numerazione per FATTURE DI VENDITA», e dal
+        2026-08-31 quella tabella numera anche DDT, ordini, commesse e resi: non incompleta,
+        FALSA per quattro quinti del contenuto. ⚠️ Corregge anche due imprecisioni del
+        20260830-15 (applicato, quindi non riscrivibile): sosteneva che «la descrizione dice
+        gia'' numerazione, era il nome a essere rimasto indietro» — meta'' vero, diceva anche
+        «per fatture di vendita» — e rimandava a un §12.5-bis del brief che non esiste, mentre
+        il debito sta al §3.8. ⭐ Il nome non si cambia, e non e'' pigrizia: rinominare
+        significa rinominare progressivi, trigger, funzioni, viste, vincoli e le colonne
+        registro_id di cinque tabelle di documento — un cantiere che non cambia NESSUN
+        comportamento, cioe'' quello che non si infila dentro un cantiere che ne cambia molti.
+        ⚠️ Solo COMMENT: nessuna struttura, nessun dato. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.registri_fatturazione
+              IS 'Registri (sezionali) di NUMERAZIONE dei documenti di vendita, uno per emittente fiscale e per famiglia di documento: serie, politica della data, regole di reset e contatore in vendite.registri_fatturazione_progressivi. ⛔ IL NOME DICE MENO DI QUELLO CHE LA TABELLA FA, ED E'' UN DEBITO DICHIARATO. Fino al 2026-08-30 qui vivevano i soli sezionali fiscali; dal 2026-08-31 la colonna famiglia_documento distingue FATTURA, DDT, ORDINE, COMMESSA e RESO, e il motore di numerazione e'' lo stesso per tutti — la fattura compare ormai solo nel ramo d''errore di vendite.fn_get_next_progressivo. La descrizione precedente («registri/serie di numerazione per FATTURE DI VENDITA, per emittente/brand») non era incompleta: era falsa per quattro quinti del contenuto. ⚠️ Ne discende anche una correzione al COMMENT di famiglia_documento (changeSet 20260830-15, applicato e quindi non riscrivibile), che sosteneva «la descrizione della tabella dice gia'' registri/serie di NUMERAZIONE, era il nome dell''oggetto a essere rimasto indietro»: meta'' vero — diceva numerazione, ma diceva anche «per fatture di vendita» — e rimandava a un §12.5-bis del brief che non esiste, mentre il debito e'' scritto al §3.8. ⭐ PERCHE'' IL NOME RESTA: rinominare questa tabella significa rinominare vendite.registri_fatturazione_progressivi, i trigger, le funzioni che la interrogano, le viste, i vincoli e le colonne registro_id sparse su cinque tabelle di documento. E'' un cantiere suo, e soprattutto un cantiere che non cambia NESSUN comportamento — cioe'' esattamente il genere di lavoro che non si infila dentro uno che ne cambia molti, dove un errore di rename si confonderebbe con un errore di trasloco. Un debito dichiarato in quattro sedi (questo COMMENT, il COMMENT di famiglia_documento, la doc manuale, il brief §3.8) costa una frase; un rename fatto di fretta costa a chi verra'' dopo. ⚠️ CHI LEGGE QUESTA TABELLA NON DEVE DEDURRE «fattura» DAL NOME: la famiglia si chiede a famiglia_documento, e vendite.fn_get_registro_documento RIFIUTA la famiglia FATTURA proprio perche'' quella ha una strada sua (tipo documento + natura, via vendite.tipi_doc_fiscale_registri). ⚠️ Un registro non e'' una categoria libera: e'' la chiave del contatore, quindi due emittenti non condividono un registro (vendite.trgfn_fatture_guard_registro_emittente lo impedisce sulle fatture, e emittente_soggetto_ruolo_id e'' NOT NULL dal 2026-08-30) e cambiare il serie_default di un registro vivo SPOSTA il sezionale. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-1 e C2-15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON TABLE vendite.registri_fatturazione
+              IS 'Registri/serie di numerazione per fatture di vendita (per emittente/brand).';

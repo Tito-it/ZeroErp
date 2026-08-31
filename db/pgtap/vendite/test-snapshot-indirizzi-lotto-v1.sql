@@ -100,6 +100,7 @@ SELECT
   COALESCE((SELECT st.id FROM config.stati st WHERE st.codice_iso2 = 'IT'),
            (SELECT st.id FROM config.stati st ORDER BY st.id LIMIT 1)) AS stato_id;
 
+
 -- Stesso criterio di test-snapshot-indirizzi-fattura-v1: spazio indirizzi
 -- (ruolo + soggetto) vuoto per i tipi ammessi in ambito FATTURE, cosi' i
 -- conteggi dipendono solo da cio' che inserisce il test.
@@ -139,6 +140,14 @@ SELECT c.*, row_number() OVER (ORDER BY c.billing_account_id) AS rn
  ORDER BY c.billing_account_id
  LIMIT 2;
 
+
+-- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva: era scelto
+--   dalla mappa tipi_doc_fiscale_registri INDIPENDENTEMENTE da chi emette, e dal
+--   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non ammette piu' la
+--   coincidenza. ⚠️ Sta QUI e non accanto a tmp_base_sil: l'emittente nasce con
+--   tmp_ba_sil, ed e' la riga rn = 1 quella che il lotto usa.
+UPDATE tmp_base_sil SET registro_id = script.fn_pgtap_registro_fattura(
+    (SELECT emittente_soggetto_ruolo_id FROM tmp_ba_sil WHERE rn = 1));
 SELECT is(
   (SELECT count(DISTINCT istanza_utility_id)::int FROM tmp_ba_sil), 2,
   '1) fixture: due BA dello stesso ruolo su istanze diverse, spazio indirizzi libero'

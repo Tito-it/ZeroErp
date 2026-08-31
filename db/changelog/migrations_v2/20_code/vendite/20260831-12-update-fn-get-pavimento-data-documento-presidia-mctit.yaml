@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-9 — IL PAVIMENTO DI SEQUENZA RISPETTA `presidia_data_documento`
+#   vendite.fn_get_pavimento_data_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9 (§3.4)
+#
+# ── ⭐ SECONDA REVISIONE IN DUE GIORNI, E LA RAGIONE E' LA STESSA ─
+#   Il 2026-08-31 (20260831-05) questa funzione ha imparato che il LIMITE DI
+#   EMISSIONE vale sulla sola FATTURA. Ora impara che anche il pavimento di
+#   SEQUENZA ha un perimetro: si applica alle famiglie che presidiano la data.
+#   ⭐ Entrambe le volte la distinzione e' finita QUI e non nel cancello, per lo
+#   stesso motivo: questa e' la SEDE UNICA del pavimento, e la usano in tre —
+#   la nascita della data (fn_calcola_data_documento), la targa del dialog
+#   (fn_get_pavimento_lotto) e il cancello (fn_get_next_progressivo). Una
+#   distinzione scritta nel solo cancello lascerebbe gli altri due a proporre e
+#   a mostrare un pavimento che nessuno applica.
+#
+# ── ⛔ CHI NON PRESIDIA, E PERCHE' ────────────────────────────────
+#   L'ORDINE. Si numera all'INSERT — decisione «il momento non cambia» — quindi
+#   il numero esce quando qualcuno crea la riga: un ordine datato 20/08 creato
+#   dopo uno datato 31/08 verrebbe rifiutato, e oggi non lo e'.
+#   ℹ️ La COMMESSA si numera anch'essa all'INSERT ma resta a `true`, e non e'
+#   una svista: la sua data e' quella di CREAZIONE (`fn_data_operativa()`),
+#   quindi e' sempre oggi e il pavimento non puo' morderla. Presidiare le costa
+#   niente, e resta vero se un domani quella data cambiasse natura.
+#
+# ── ⚠️ LA FIRMA NON CAMBIA, di nuovo ─────────────────────────────
+#   La famiglia si legge dal registro, e ora si legge anche il flag: una `JOIN`
+#   in piu' su una tabella di cinque righe, su un percorso che gia' la
+#   interrogava.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-12-update-fn-get-pavimento-data-documento-presidia-mctit.yaml
+
+  - changeSet:
+      id: 20260831-12-update-fn-get-pavimento-data-documento-presidia
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-9: il pavimento di SEQUENZA rispetta vendite.famiglie_documento.presidia_data_documento.
+        ⭐ Seconda revisione in due giorni con la stessa ragione: il 20260831-05 questa funzione ha
+        imparato che il limite di emissione vale sulla sola FATTURA, ora impara che anche il
+        pavimento di sequenza ha un perimetro. Entrambe le distinzioni finiscono QUI e non nel
+        cancello perche'' questa e'' la SEDE UNICA del pavimento, usata da tre chiamanti — nascita
+        della data, targa del dialog, cancello: scritta nel solo cancello, gli altri due
+        proporrebbero e mostrerebbero un pavimento che nessuno applica. ⛔ Non presidia l''ORDINE,
+        che si numera all''INSERT: un ordine datato indietro rispetto all''ultimo creato verrebbe
+        rifiutato, e oggi non lo e''. ℹ️ La COMMESSA si numera anch''essa all''INSERT ma resta a
+        true, e non e'' una svista: la sua data e'' quella di creazione, quindi e'' sempre oggi e il
+        pavimento non puo'' morderla. ⚠️ La firma non cambia: il flag si legge dal registro, con una
+        JOIN su una tabella di cinque righe. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columnName: presidia_data_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_data_documento(
+                  p_registro_id     vendite.registri_fatturazione.id%TYPE,
+                  p_serie           vendite.registri_fatturazione.serie_default%TYPE,
+                  p_competenza_mese vendite.fatture.competenza_mese%TYPE
+              )
+               RETURNS TABLE(pavimento vendite.fatture.data%TYPE, origine text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_seq      vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+                  v_emi      vendite.fatture.data%TYPE;
+                  v_famiglia vendite.registri_fatturazione.famiglia_documento%TYPE;
+                  v_presidia vendite.famiglie_documento.presidia_data_documento%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il pavimento EFFETTIVO della data di un documento — il
+                  --   maggiore fra quello della sequenza e quello del limite
+                  --   di emissione — e QUALE dei due ha vinto.
+                  --
+                  -- Regole:
+                  --   - una sede sola: nascita, targa e cancello leggono qui;
+                  --   - `pavimento` e' sempre il maggiore, mai quello di
+                  --     `origine`;
+                  --   - il pareggio va a SEQUENZA;
+                  --   - ⭐ il LIMITE DI EMISSIONE vale sulla sola FATTURA
+                  --     (20260831-05);
+                  --   - ⭐ il pavimento di SEQUENZA vale sulle famiglie che
+                  --     presidiano la data (20260831-12).
+                  -- =========================================================
+
+                  -- ⭐ Famiglia e flag in una lettura sola: la tabella delle
+                  --   famiglie ha cinque righe e il registro lo si stava gia'
+                  --   interrogando.
+                  SELECT r.famiglia_documento, fd.presidia_data_documento
+                    INTO v_famiglia, v_presidia
+                    FROM vendite.registri_fatturazione r
+                    LEFT JOIN vendite.famiglie_documento fd
+                           ON fd.codice_interno = r.famiglia_documento
+                   WHERE r.id = p_registro_id;
+
+                  -- ⛔ CHI NON PRESIDIA NON HA PAVIMENTO DI SEQUENZA.
+                  --   L'ordine si numera all'INSERT: il numero esce quando
+                  --   qualcuno crea la riga, e rifiutare un ordine datato
+                  --   indietro sarebbe un comportamento nuovo.
+                  -- ⚠️ COALESCE a TRUE: se la famiglia non fosse a catalogo,
+                  --   si presidia — il verso prudente e' quello che rifiuta,
+                  --   non quello che lascia passare.
+                  IF COALESCE(v_presidia, TRUE) THEN
+                      v_seq := vendite.fn_get_pavimento_sequenza(p_registro_id, p_serie);
+                  ELSE
+                      v_seq := NULL;
+                  END IF;
+
+                  -- ⭐ IL LIMITE DI EMISSIONE VALE SULLA SOLA FATTURA, e non
+                  --   si spegne da solo: fn_get_pavimento_emissione «torna
+                  --   SEMPRE una data, mai NULL» e senza override legge i
+                  --   giorni da config.parameters.
+                  IF v_famiglia = 'FATTURA' THEN
+                      v_emi := vendite.fn_get_pavimento_emissione(p_registro_id, p_competenza_mese);
+                  ELSE
+                      v_emi := NULL;
+                  END IF;
+
+                  -- ⚠️ GREATEST IGNORA I NULL (torna NULL solo se lo sono
+                  --    tutti). Nessun COALESCE difensivo.
+                  RETURN QUERY
+                  SELECT GREATEST(v_seq, v_emi),
+                         CASE
+                             WHEN v_seq IS NOT NULL
+                                  AND (v_emi IS NULL OR v_seq >= v_emi) THEN 'SEQUENZA'::text
+                             WHEN v_emi IS NOT NULL                     THEN 'EMISSIONE'::text
+                             ELSE NULL::text
+                         END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_pavimento_data_documento(vendite.registri_fatturazione.id%TYPE, vendite.registri_fatturazione.serie_default%TYPE, vendite.fatture.competenza_mese%TYPE)
+              IS 'Il pavimento EFFETTIVO della data di un documento — il maggiore fra il pavimento della SEQUENZA e quello del LIMITE DI EMISSIONE — e quale dei due ha vinto. ⛔ E'' LA SEDE UNICA: la usano la nascita del documento (fn_calcola_data_documento), la targa del dialog (fn_get_pavimento_lotto) e il cancello (fn_get_next_progressivo). ⭐ DUE PERIMETRI, imparati a due giorni di distanza e finiti entrambi QUI per la stessa ragione. (1) rev 2026-08-31 / 20260831-05: il LIMITE DI EMISSIONE vale sulla sola famiglia FATTURA — risponde a «questo documento e'' ancora emettibile?», che e'' una regola della fattura differita, e ⛔ NON si spegne da solo, perche'' vendite.fn_get_pavimento_emissione «torna SEMPRE una data, mai NULL» e senza override sul registro legge i giorni da config.parameters (misurato: su un registro DDT il pavimento era 2026-08-19, attivo). (2) rev 2026-08-31 / 20260831-12: il pavimento di SEQUENZA vale sulle famiglie con vendite.famiglie_documento.presidia_data_documento = true. Non lo e'' l''ORDINE, che si numera all''INSERT: il numero esce quando qualcuno crea la riga, e rifiutare un ordine datato indietro rispetto all''ultimo creato sarebbe un comportamento NUOVO, fuori dal perimetro del cantiere. ℹ️ La COMMESSA si numera anch''essa all''INSERT ma presidia lo stesso, e non e'' una svista: la sua data e'' quella di CREAZIONE, quindi e'' sempre oggi e il pavimento non puo'' morderla — presidiare le costa niente e resta vero se un domani quella data cambiasse natura. ⚠️ Entrambe le distinzioni stanno QUI e non nel cancello proprio perche'' questa e'' la sede unica: scritte nel solo cancello, la nascita e la targa continuerebbero a proporre e a mostrare un pavimento che nessuno applica — tre risposte diverse alla stessa domanda. ⚠️ La FIRMA non e'' cambiata in nessuna delle due revisioni: famiglia e flag si leggono dal registro, che la funzione gia'' identifica con p_registro_id. ⚠️ COALESCE del flag a TRUE: se una famiglia non fosse a catalogo si presidia comunque — il verso prudente e'' quello che rifiuta, non quello che lascia passare. ⭐ `pavimento` e'' SEMPRE quello EFFETTIVO, mai quello di `origine`. ⚠️ Il PAREGGIO VA A SEQUENZA: a parita'' di data la sua frase puo'' portare un BERSAGLIO. ℹ️ GREATEST ignora i NULL, e sulle famiglie senza pavimenti «entrambi NULL» e'' il caso normale. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-4, rivisto da brief-db-registri-di-numerazione-emittente-e-trasloco C2-6 e C2-9.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback manuale: ri-applicare 20260831-05-update-fn-get-pavimento-data-documento-famiglia-mctit.yaml'::text;

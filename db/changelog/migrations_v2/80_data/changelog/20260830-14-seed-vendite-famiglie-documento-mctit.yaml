@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-0 (seed) — le CINQUE famiglie di documento numerabile
+#   vendite.famiglie_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-0 (§3.1)
+#
+# ⭐ NASCONO TUTTE E CINQUE INSIEME, e non e' un anticipo. Il catalogo esiste
+#   per essere ITERATO: il presidio del cambio emittente del BA e la
+#   risoluzione del registro leggono di qui, e una famiglia mancante non e' una
+#   riga in meno — e' un documento che il presidio non guarda. Seminare la sola
+#   FATTURA avrebbe fatto sembrare le altre quattro un'ipotesi, mentre sono la
+#   decisione del 2026-08-30.
+#
+# ⚠️ LA RIGA CHE PORTA L'INFORMAZIONE E' LA COMMESSA: `colonna_numero = codice`.
+#   E' l'unica delle cinque che non chiama `numero` il proprio numero, ed e' la
+#   ragione per cui quella colonna sta nel catalogo invece di essere dedotta.
+#
+# ⛔ Seminare la famiglia NON crea nessun registro. Finche' un emittente non ha
+#   il proprio registro per quella famiglia, i suoi documenti non nascono —
+#   fail-closed, ed e' il verso giusto: il passo C2-12 esiste apposta.
+#
+# ℹ️ La sede resta il CSV: 80_data/sql/vendite/famiglie_documento.csv. Una
+#   famiglia nuova e' un append, mai un INSERT SQL a parte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260830-14-seed-vendite-famiglie-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260830-14-seed-vendite-famiglie-documento
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Semina le cinque famiglie di documento numerabile: FATTURA, DDT, ORDINE, COMMESSA, RESO.
+        ⭐ Nascono tutte insieme perche'' il catalogo esiste per essere ITERATO — il presidio del
+        cambio emittente del BA e la risoluzione del registro leggono di qui, e una famiglia
+        mancante non e'' una riga in meno ma un documento che il presidio non guarda. ⚠️ La riga che
+        porta l''informazione e'' la COMMESSA: colonna_numero = `codice`, l''unica delle cinque che
+        non chiama `numero` il proprio numero — ed e'' la ragione per cui quella colonna sta nel
+        catalogo invece di essere dedotta. ⛔ Seminare la famiglia non crea nessun registro: finche''
+        un emittente non ha il proprio, i suoi documenti non nascono (fail-closed, passo C2-12).
+        Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-0.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: famiglie_documento
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/famiglie_documento.csv
+            tableName: famiglie_documento
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: colonna_numero, type: STRING }
+              - column: { name: colonna_billing_account, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              # ⭐ Aggiunta il 2026-08-31 (C2-9): false sul solo ORDINE, che si
+              #   numera all'INSERT e per cui il cancello di monotonia sarebbe
+              #   un cambio di comportamento. Il mirror e' runOnChange, quindi
+              #   la colonna nuova entra alla prossima corsa senza un loader in
+              #   piu' — ⚠️ ed e' l'unico caso in cui si tocca un changeSet
+              #   gia' applicato: e' fatto apposta per ri-leggere il CSV.
+              - column: { name: presidia_data_documento, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ La PK e' IDENTITY BY DEFAULT e il CSV forza gli id 1..5: la
+              --   sequenza resta a 1 e la prima famiglia inserita da
+              --   un'interfaccia sbatterebbe sulla PK. Si riallinea, come fanno
+              --   i resync di 90_end per le altre tabelle a seed.
+              SELECT setval(
+                  pg_get_serial_sequence('vendite.famiglie_documento', 'id'),
+                  GREATEST((SELECT COALESCE(MAX(id), 0) FROM vendite.famiglie_documento), 1),
+                  true);

@@ -71,8 +71,7 @@ WITH ba AS (
    ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
    LIMIT 1
 )
-SELECT (SELECT id FROM vendite.registri_fatturazione
-         WHERE attivo IS TRUE ORDER BY data_insert DESC NULLS LAST, id DESC LIMIT 1) AS registro_id,
+SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
        ba.id                                                                        AS billing_account_id,
        ba.utility_id                                                                AS utility_id,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,

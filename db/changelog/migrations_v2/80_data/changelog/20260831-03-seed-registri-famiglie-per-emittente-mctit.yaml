@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-12 — UN REGISTRO PER OGNI EMITTENTE E OGNI FAMIGLIA NON FISCALE
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12 (§3.5)
+#
+# ── ⛔ VA PRIMA DEI GENERATORI, E NON E' UN DETTAGLIO D'ORDINE ─────
+#   Dal C2-5 vendite.fn_get_registro_documento SOLLEVA quando un emittente non
+#   ha il registro della famiglia richiesta: e' fail-closed, ed e' il verso
+#   giusto — meglio fermarsi che numerare sul sezionale di un altro. Ma finche'
+#   questo passo non e' fatto, quel «meglio fermarsi» significa che DDT, ordini,
+#   resi e commesse NON NASCONO. I generatori (C2-8..11) si accendono dopo.
+#
+# ── ⚠️ PERCHE' NON E' UN CSV, e la deroga va argomentata ──────────
+#   La regola di casa e' «il seed di 80_data sta in un CSV». Qui non si puo', e
+#   non per comodita': queste righe DIPENDONO da quali emittenti esistono su
+#   QUELLA macchina. Un CSV fotograferebbe gli emittenti di questo database e
+#   su un'altra installazione creerebbe registri per emittenti che non ci sono
+#   — o, peggio, ne lascerebbe senza. ⭐ Il catalogo delle famiglie, che invece
+#   e' lo stesso ovunque, il CSV ce l'ha (20260830-14): la differenza fra i due
+#   e' esattamente quella fra CATALOGO e DATO DI INSTALLAZIONE.
+#
+# ── ⚠️ IL `codice` USA L'ID E NON LA SIGLA DELL'EMITTENTE ─────────
+#   `registri_fatturazione.codice` e' `varchar(16)` mentre
+#   `emittenti_fiscali.codice` e' `varchar(32)`: un `DDT-<sigla>` puo' non
+#   entrarci, e troncarlo su una colonna UNIQUE trasforma due emittenti con
+#   sigla simile in una collisione. ⛔ Un codice che tronca e' peggio di uno
+#   meno parlante: la parte parlante sta nella `descrizione`, che spazio ne ha.
+#
+# ── ℹ️ UN REGISTRO PER TUTTE LE UTILITY ───────────────────────────
+#   `utility_id` resta NULL: e' il secondo livello del fallback di
+#   fn_lookup_registro_documento, cioe' «vale per tutte». Chi un domani vorra'
+#   separare per utility aggiunge una riga piu' specifica, e la risoluzione la
+#   preferisce da se' senza toccare questa.
+#
+# ── ⛔ COSA QUESTO PASSO NON FA, ed e' una lacuna DICHIARATA ──────
+#   Non provvede all'emittente FUTURO. Un emittente creato domani non avra' i
+#   suoi registri, e i suoi DDT non nasceranno finche' qualcuno non li
+#   configura — fail-closed e rumoroso, ma e' un attrito nuovo.
+#   ⚠️ Il posto dove chiuderla esiste gia' ed e'
+#   anagrafiche.trgfn_emittenti_fiscali_default_bootstrap, che al nuovo
+#   emittente le cose gliele provvede: estenderlo e' pero' FUORI dal perimetro
+#   di questo cantiere («cambia solo l'algoritmo di assegnazione del numero»),
+#   ed e' registrato come decisione da prendere, non come dimenticanza.
+#
+# ⚠️ Idempotente: `WHERE NOT EXISTS`. Ri-eseguirlo non duplica niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260831-03-seed-registri-famiglie-per-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260831-03-seed-registri-famiglie-per-emittente
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-12: un registro di numerazione per ogni emittente attivo e ogni famiglia NON fiscale
+        (DDT, ORDINE, COMMESSA, RESO). ⛔ Va PRIMA dei generatori: dal C2-5
+        fn_get_registro_documento solleva quando il registro manca — fail-closed, verso giusto — e
+        finche'' questo passo non e'' fatto quel «meglio fermarsi» significa che quei documenti non
+        nascono. ⚠️ NON e'' un CSV, e la deroga e'' argomentata: queste righe dipendono da quali
+        emittenti esistono su QUELLA macchina, e un CSV fotograferebbe questo database creando
+        altrove registri per emittenti inesistenti — o lasciandone senza. Il catalogo delle
+        famiglie, che invece e'' uguale ovunque, il CSV ce l''ha: e'' la differenza fra CATALOGO e
+        DATO DI INSTALLAZIONE. ⚠️ Il codice usa l''ID e non la sigla: registri.codice e''
+        varchar(16) contro i 32 di emittenti_fiscali.codice, e troncare su una colonna UNIQUE
+        trasformerebbe due sigle simili in una collisione — la parte parlante sta nella
+        descrizione. ℹ️ utility_id resta NULL, cioe'' «vale per tutte»: chi vorra'' separare
+        aggiunge una riga piu'' specifica e la risoluzione la preferisce da se''. ⛔ Non provvede
+        all''emittente FUTURO: e'' una lacuna dichiarata, e il posto dove chiuderla
+        (trgfn_emittenti_fiscali_default_bootstrap) e'' fuori perimetro. Idempotente. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+            # ⛔ Il catalogo dev'esserci: e' da li' che si prendono le famiglie,
+            #    invece di elencarle a mano in questo file.
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.famiglie_documento
+                   WHERE attivo IS TRUE
+                     AND codice_interno <> 'FATTURA';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Le famiglie si LEGGONO dal catalogo, non si elencano qui: il
+              --   giorno in cui ne nasce una sesta, questo passo la copre da
+              --   solo. E' la stessa ragione per cui il catalogo esiste.
+              -- ⛔ La FATTURA resta fuori: il suo registro dipende da
+              --   (tipo documento, natura) e passa da tipi_doc_fiscale_registri.
+              --   Fabbricargliene uno «di famiglia» qui creerebbe un sezionale
+              --   che nessuno risolve e che a video sembrerebbe configurazione.
+              INSERT INTO vendite.registri_fatturazione (
+                  codice,
+                  descrizione,
+                  famiglia_documento,
+                  emittente_soggetto_ruolo_id,
+                  utility_id,
+                  reset_policy,
+                  attivo,
+                  meta)
+              SELECT
+                  -- ⚠️ Prime tre lettere della famiglia + id dell'emittente:
+                  --   deterministico, unico per costruzione e dentro i 16
+                  --   caratteri della colonna.
+                  left(fd.codice_interno, 3) || '-' || ef.soggetto_ruolo_id::text,
+                  'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
+                  fd.codice_interno,
+                  ef.soggetto_ruolo_id,
+                  NULL,          -- vale per tutte le utility (2º livello del fallback)
+                  'ANNUALE',
+                  TRUE,
+                  jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
+                FROM anagrafiche.emittenti_fiscali ef
+               CROSS JOIN vendite.famiglie_documento fd
+               WHERE ef.attivo IS TRUE
+                 AND fd.attivo IS TRUE
+                 AND fd.codice_interno <> 'FATTURA'
+                 -- ⚠️ Idempotente: chi ha gia' il suo registro non ne prende un
+                 --   secondo. Il predicato guarda la COPPIA, non il codice:
+                 --   un registro creato a mano con un altro nome vale lo stesso.
+                 AND NOT EXISTS (
+                       SELECT 1
+                         FROM vendite.registri_fatturazione r
+                        WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                          AND r.famiglia_documento          = fd.codice_interno);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Si cancellano SOLO le righe nate da questo passo, e solo se
+              --   nessun documento le ha gia' usate: un registro che ha
+              --   numerato non si toglie, perche' il numero resta scritto sul
+              --   documento e il sezionale ne e' l'identita'.
+              DELETE FROM vendite.registri_fatturazione r
+               WHERE r.meta->>'origine' = 'C2-12'
+                 AND NOT EXISTS (SELECT 1 FROM vendite.fatture f WHERE f.registro_id = r.id);

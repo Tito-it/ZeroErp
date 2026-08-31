@@ -109,11 +109,7 @@ SELECT
   (SELECT sc.id FROM vendite.stati_commessa sc
     WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
     ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r
-    WHERE r.attivo IS TRUE
-      AND (r.emittente_soggetto_ruolo_id IS NULL
-           OR r.emittente_soggetto_ruolo_id = (SELECT emittente_sr_id FROM tmp_cost_rde))
-    ORDER BY r.id LIMIT 1)            AS registro_id;
+  script.fn_pgtap_registro_fattura((SELECT emittente_sr_id FROM tmp_cost_rde))            AS registro_id;
 
 SELECT ok(
   (SELECT r.stato_draft_id IS NOT NULL

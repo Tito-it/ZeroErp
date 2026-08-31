@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registri/serie di numerazione per fatture di vendita (per emittente/brand).
+> Registri (sezionali) di NUMERAZIONE dei documenti di vendita, uno per emittente fiscale e per famiglia di documento: serie, politica della data, regole di reset e contatore in vendite.registri_fatturazione_progressivi. ⛔ IL NOME DICE MENO DI QUELLO CHE LA TABELLA FA, ED E' UN DEBITO DICHIARATO. Fino al 2026-08-30 qui vivevano i soli sezionali fiscali; dal 2026-08-31 la colonna famiglia_documento distingue FATTURA, DDT, ORDINE, COMMESSA e RESO, e il motore di numerazione e' lo stesso per tutti — la fattura compare ormai solo nel ramo d'errore di vendite.fn_get_next_progressivo. La descrizione precedente («registri/serie di numerazione per FATTURE DI VENDITA, per emittente/brand») non era incompleta: era falsa per quattro quinti del contenuto. ⚠️ Ne discende anche una correzione al COMMENT di famiglia_documento (changeSet 20260830-15, applicato e quindi non riscrivibile), che sosteneva «la descrizione della tabella dice gia' registri/serie di NUMERAZIONE, era il nome dell'oggetto a essere rimasto indietro»: meta' vero — diceva numerazione, ma diceva anche «per fatture di vendita» — e rimandava a un §12.5-bis del brief che non esiste, mentre il debito e' scritto al §3.8. ⭐ PERCHE' IL NOME RESTA: rinominare questa tabella significa rinominare vendite.registri_fatturazione_progressivi, i trigger, le funzioni che la interrogano, le viste, i vincoli e le colonne registro_id sparse su cinque tabelle di documento. E' un cantiere suo, e soprattutto un cantiere che non cambia NESSUN comportamento — cioe' esattamente il genere di lavoro che non si infila dentro uno che ne cambia molti, dove un errore di rename si confonderebbe con un errore di trasloco. Un debito dichiarato in quattro sedi (questo COMMENT, il COMMENT di famiglia_documento, la doc manuale, il brief §3.8) costa una frase; un rename fatto di fretta costa a chi verra' dopo. ⚠️ CHI LEGGE QUESTA TABELLA NON DEVE DEDURRE «fattura» DAL NOME: la famiglia si chiede a famiglia_documento, e vendite.fn_get_registro_documento RIFIUTA la famiglia FATTURA proprio perche' quella ha una strada sua (tipo documento + natura, via vendite.tipi_doc_fiscale_registri). ⚠️ Un registro non e' una categoria libera: e' la chiave del contatore, quindi due emittenti non condividono un registro (vendite.trgfn_fatture_guard_registro_emittente lo impedisce sulle fatture, e emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30) e cambiare il serie_default di un registro vivo SPOSTA il sezionale. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-1 e C2-15.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,7 +12,7 @@
 | uid | uuid | NO | uuidv7() |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
-| emittente_soggetto_ruolo_id | bigint | YES |  |
+| emittente_soggetto_ruolo_id | bigint | NO |  |
 | serie_default | character varying | YES |  |
 | reset_policy | character varying | NO | 'ANNUALE'::character varying |
 | attivo | boolean | NO | true |
@@ -27,16 +27,19 @@
 | politica_data_documento | character varying | NO | 'OGGI'::character varying |
 | limite_emissione_giorni | smallint | YES |  |
 | limite_emissione_giorno_mese | smallint | YES |  |
+| famiglia_documento | character varying | NO | 'FATTURA'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_registri_fatturazione_famiglia_regole_fattura |  |
 | CHECK | chk_registri_fatturazione_limite_coerenza |  |
 | CHECK | chk_registri_fatturazione_limite_giorni |  |
 | CHECK | chk_registri_fatturazione_limite_giorno_mese |  |
 | CHECK | chk_registri_fatturazione_politica_data |  |
 | CHECK | chk_registri_fatturazione_reset |  |
 | FOREIGN KEY | fk_registri_fatturazione_emitt | emittente_soggetto_ruolo_id |
+| FOREIGN KEY | fk_registri_fatturazione_famiglia | famiglia_documento |
 | FOREIGN KEY | fk_registri_fatturazione_utility | utility_id |
 | PRIMARY KEY | pk_regfatt | id |
 | UNIQUE | uq_registri_fatturazione_codice | codice |
@@ -47,6 +50,7 @@
 |------|-------------|
 | pk_regfatt | `CREATE UNIQUE INDEX pk_regfatt ON vendite.registri_fatturazione USING btree (id)` |
 | uq_registri_fatturazione_codice | `CREATE UNIQUE INDEX uq_registri_fatturazione_codice ON vendite.registri_fatturazione USING btree (codice)` |
+| uq_registri_fatturazione_famiglia_emittente_utility | `CREATE UNIQUE INDEX uq_registri_fatturazione_famiglia_emittente_utility ON vendite.registri_fatturazione USING btree (famiglia_documento, emittente_soggetto_ruolo_id, utility_id) NULLS NOT DISTINCT WHERE ((famiglia_documento)::text <> 'FATTURA'::text)` |
 | uq_registri_fatturazione_uid | `CREATE UNIQUE INDEX uq_registri_fatturazione_uid ON vendite.registri_fatturazione USING btree (uid)` |
 
 ## 🚨 Trigger

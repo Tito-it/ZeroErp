@@ -120,7 +120,7 @@ SELECT
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_draft_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r WHERE r.attivo IS TRUE ORDER BY r.id LIMIT 1)                         AS registro_id,
+  script.fn_pgtap_registro_fattura()                         AS registro_id,
   config.fn_get_natura_doc_fiscale_id('FATTURA')      AS natura_fattura_id,
   config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO') AS natura_nc_id
 FROM anagrafiche.billing_account ba

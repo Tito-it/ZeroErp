@@ -44,4 +44,84 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
 
 ---
 
+### 🔄 rev 2026-08-31 — quando un numeratore deve **traslocare sui registri**
+
+I motori di numerazione in Zero ERP sono **due**, e questa è la metà semplice.
+L'altra è `vendite.registri_fatturazione`, che numera fatture, documenti di
+trasporto, ordini, commesse e resi.
+
+⭐ **Questa tabella non ha perso niente nel trasloco: resta il catalogo dei
+FORMATI.** Anche i documenti passati ai registri continuano a leggere di qui
+prefisso, separatore e lunghezza. Cambia **una riga su tre**: il contatore.
+
+#### Il criterio, in una frase
+
+> **Il periodo il generatore se lo calcola da sé; l'emittente, la serie e un
+> momento diverso dall'inserimento gli arrivano dalla RIGA.**
+
+Chi chiede una dimensione che viene dalla riga sta chiedendo i **registri**, non
+un allargamento del sistema codici.
+
+#### I tre campanelli
+
+Se anche uno solo suona, il numeratore è nel posto sbagliato:
+
+1. **«Ogni azienda deve avere la sua numerazione.»** Qui il trigger generato è
+   **uno per tabella** e chiama il generatore senza passargli la riga: non può
+   sapere di chi è il documento. E non si aggira con una riga di configurazione
+   per azienda — il trigger resta uno.
+2. **«Il numero deve ripartire da 1 a Capodanno.»** Il contatore di qui è una
+   sequenza di database, e **una sequenza non sa cosa sia un anno**. Il reset
+   periodico non è configurabile: è il substrato a non prevederlo.
+3. **«Il numero non deve uscire alla creazione, ma quando il documento viene
+   confermato.»** Il trigger generato scatta all'inserimento, punto. Numerare più
+   tardi significa scriverne uno proprio — e a quel punto tanto vale usare il
+   motore che lo fa già.
+
+⚠️ **Un quarto campanello, più sottile: la serie.** Se lo stesso documento deve
+poter girare su più serie (sezionali), la serie è una dimensione del contatore e
+qui non c'è.
+
+#### ⛔ Il segnale che dice che si sta sbagliando strada
+
+Se per far quadrare la numerazione si sta pensando di aggiungere una colonna a
+questa tabella — l'azienda, il periodo, lo stato in cui numerare — **la risposta
+non è qui**. Ogni dimensione aggiunta va poi passata al trigger generato, che è
+generico per costruzione: si finisce a ricostruire i registri, peggio.
+
+⭐ **E c'è un invariante che decide da solo:** *ogni dimensione del contatore deve
+comparire nella stringa del codice*. Un contatore per azienda **obbliga** la sigla
+dell'azienda dentro il codice, altrimenti al primo cambio di periodo o di azienda
+il vincolo di unicità salta. Se quella sigla nel codice non ci può stare, il
+contatore per azienda non si può fare — e viceversa, se il codice la porta, il
+contatore *deve* essere per azienda o la sigla **mente**.
+
+#### La checklist del trasloco
+
+Per ogni documento che passa ai registri, **in quest'ordine**:
+
+1. la tabella guadagna `registro_id` (nullable: il documento in bozza il registro
+   non ce l'ha ancora);
+2. ⛔ **il vincolo di unicità guadagna `registro_id` nello STESSO passo**, e
+   **prima** che esca il primo numero nuovo. È l'unico errore che non degrada ma
+   **ferma**: due aziende che ripartono entrambe da 1 e una violazione di indice
+   senza messaggio di dominio;
+3. il generatore chiama il motore dei registri al posto della sequenza —
+   **formato, composizione e momento restano quelli di prima**;
+4. l'anno si ri-deriva dalla **data del documento** nello stesso comando del
+   numero. ⚠️ Il trigger di normalizzazione lo scrive solo se il documento nasce
+   già numerato: chi numera a stato non passa mai di lì, e l'anno resterebbe vuoto;
+5. la riga di qui va a `usa_sequenza = false` — il trigger generato si smonta da
+   solo — e la riga **resta**, perché il formato serve ancora;
+6. ogni azienda deve avere il registro di quella famiglia **prima**, o il primo
+   documento si ferma;
+7. la famiglia va registrata in `vendite.famiglie_documento`, o il documento non
+   entra nel controllo che impedisce di spostare un cliente fra due aziende.
+
+⚠️ **Un effetto sul frontend da non dimenticare.** `usa_sequenza` è ciò che le
+maschere leggono per decidere se il campo del numero è automatico: portandolo a
+`false`, una maschera può iniziare a invitare l'utente a digitarlo.
+
+---
+
 > **"Un sistema configurabile di generazione codici, che separa prefisso, numerazione e logica di sequenza, per codifiche coerenti e facilmente modificabili."**

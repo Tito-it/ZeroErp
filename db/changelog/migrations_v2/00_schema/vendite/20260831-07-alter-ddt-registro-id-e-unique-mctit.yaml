@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-8 (prima meta') — IL DDT PRENDE IL REGISTRO, E LA CHIAVE LO SEGUE
+#   vendite.ddt.registro_id + uq_ddt_v_anno_serie_numero
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-8 (§3.4)
+#
+# ── ⛔ LA CONDIZIONE CHE NON DEGRADA MA ROMPE ─────────────────────
+#   La colonna e la `UNIQUE` viaggiano nello STESSO changeSet, e la `UNIQUE`
+#   dev'essere allargata PRIMA che esca il primo numero dal contatore nuovo.
+#   Due registri DDT di due emittenti ripartono entrambi da 1: senza il
+#   registro in chiave, il secondo emittente prende un `23505` al primo DDT
+#   dell'anno — una violazione di indice senza codice di dominio, che non
+#   spiega niente a nessuno.
+#
+# ── 🔴 E MENTRE LA GUARDAVO: QUELL'INDICE NON PRESIDIAVA NIENTE ───
+#   Misurato il 2026-08-31: **28 DDT numerati su 47, e TUTTI e 28 hanno `anno`
+#   NULL e `serie` NULL**. In SQL due NULL non collidono, quindi
+#   `uq_ddt_v_anno_serie_numero (anno, serie, numero)` non ha mai respinto
+#   niente: l'unicita' del numero DDT non era presidiata da nessuno.
+#
+#   ⭐ La causa non e' un caso, ed e' istruttiva: `trgfn_ddt_normalize`
+#   valorizza `anno` in un ramo che comincia con
+#   `IF TG_OP = 'INSERT' AND NEW.numero IS NOT NULL` — cioe' solo se il DDT
+#   NASCE gia' numerato. Ma dal 2026-07-09 (`20260709-07`) il DDT si numera a
+#   **EMESSO**, cioe' in UPDATE: da allora quel ramo non si attraversa piu' e
+#   `anno` resta NULL per sempre. Lo spostamento del momento ha spento, a
+#   distanza e in silenzio, la chiave che lo accompagnava.
+#   ⇒ Il §12.2 del brief diceva «la chiave promette l'anno e il contatore non
+#   riparte»: la realta' e' peggiore — **la colonna non veniva nemmeno
+#   riempita**. La seconda meta' del C2-8 la riempie, nello stesso statement
+#   del numero, ed e' li' che deve stare.
+#
+# ── ⚠️ `NULLS NOT DISTINCT`, e serve a proteggere il PREGRESSO ────
+#   Con il default (NULLS DISTINCT) le 28 righe storiche — registro, anno e
+#   serie tutti NULL — resterebbero esenti dall'unicita' come lo sono oggi.
+#   Con NULLS NOT DISTINCT tornano a essere confrontate fra loro, cioe' il
+#   vincolo comincia a fare quello che il suo nome promette da sempre.
+#   ⭐ Provato in transazione prima di scriverlo: sui dati attuali l'indice si
+#   crea (i 28 numeri sono distinti fra loro).
+#
+# ⚠️ `registro_id` resta NULLABLE: un DDT in bozza il registro non ce l'ha
+#   ancora — lo prende quando viene emesso, insieme al numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-07-alter-ddt-registro-id-e-unique-mctit.yaml
+
+  - changeSet:
+      id: 20260831-07-alter-ddt-registro-id-e-unique
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-8 (prima meta''): vendite.ddt prende registro_id e la UNIQUE lo segue, nello STESSO
+        changeSet — e'' la condizione che non degrada ma ROMPE: due registri DDT di due emittenti
+        ripartono entrambi da 1, e senza il registro in chiave il secondo prende un 23505 al primo
+        DDT dell''anno. 🔴 E guardando quell''indice e'' venuto fuori che non presidiava NIENTE:
+        misurato il 2026-08-31, 28 DDT numerati su 47 e tutti e 28 con anno NULL e serie NULL — in
+        SQL due NULL non collidono, quindi uq_ddt_v_anno_serie_numero non ha mai respinto niente.
+        ⭐ La causa: trgfn_ddt_normalize valorizza anno solo nel ramo «INSERT con numero gia''
+        presente», ma dal 2026-07-09 il DDT si numera a EMESSO, cioe'' in UPDATE — lo spostamento
+        del momento ha spento a distanza e in silenzio la chiave che lo accompagnava. La seconda
+        meta'' del C2-8 riempie anno nello stesso statement del numero. ⚠️ NULLS NOT DISTINCT per
+        proteggere il pregresso: col default le 28 righe storiche resterebbero esenti come oggi.
+        Provato in transazione: sui dati attuali l''indice si crea. ⚠️ registro_id resta NULLABLE:
+        un DDT in bozza il registro non ce l''ha ancora. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-8.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: registro_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ddt
+            columns:
+              - column:
+                  name: registro_id
+                  type: bigint
+                  remarks: >-
+                    Registro di numerazione su cui il DDT ha preso il numero. NULL finche' il
+                    documento non e' emesso: il registro si risolve insieme al numero, alla
+                    transizione a EMESSO.
+        - addForeignKeyConstraint:
+            constraintName: fk_ddt_registro
+            baseTableSchemaName: vendite
+            baseTableName: ddt
+            baseColumnNames: registro_id
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ La UNIQUE guadagna il REGISTRO, e nello stesso passo della
+              --   colonna: allargarla dopo che il contatore ha gia' consegnato
+              --   il primo numero significherebbe ripulire a mano dei duplicati
+              --   — e un DDT numerato non si rinumera.
+              DROP INDEX IF EXISTS vendite.uq_ddt_v_anno_serie_numero;
+
+              CREATE UNIQUE INDEX uq_ddt_v_anno_serie_numero
+                  ON vendite.ddt (registro_id, anno, serie, numero)
+                  NULLS NOT DISTINCT
+                  WHERE numero IS NOT NULL;
+
+              COMMENT ON INDEX vendite.uq_ddt_v_anno_serie_numero
+              IS 'Unicita'' del numero DDT dentro il suo sezionale: (registro, anno, serie, numero) sui soli documenti numerati. ⛔ Il REGISTRO e'' entrato in chiave il 2026-08-31 insieme al passaggio del DDT sul motore dei registri, e nello STESSO changeSet della colonna: due registri DDT di due emittenti ripartono entrambi da 1, e senza il registro in chiave il secondo emittente avrebbe preso un 23505 al primo DDT dell''anno — una violazione di indice senza codice di dominio. 🔴 E fino a quel giorno questo indice NON PRESIDIAVA NIENTE: misurati 28 DDT numerati su 47, tutti con anno NULL e serie NULL, e in SQL due NULL non collidono. La causa e'' un residuo di uno spostamento: vendite.trgfn_ddt_normalize valorizza `anno` nel solo ramo «INSERT con numero gia'' presente», ma dal 2026-07-09 il DDT si numera a EMESSO, cioe'' in UPDATE — da allora quel ramo non si attraversa e la colonna resta NULL. Spostare il MOMENTO di una numerazione puo'' spegnere, a distanza e in silenzio, la chiave che la accompagna. ⚠️ NULLS NOT DISTINCT non e'' un dettaglio: col default le righe storiche — registro, anno e serie tutti NULL — resterebbero esenti dall''unicita'' esattamente come lo erano prima, e il vincolo continuerebbe a non fare nulla per loro. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-8.';
+
+              COMMENT ON COLUMN vendite.ddt.registro_id
+              IS 'Registro di numerazione su cui il DDT ha preso il numero. ⭐ Dal 2026-08-31 il DDT si numera sul motore dei registri invece che su una sequenza propria (vendite.ddt_numero_seq): il registro e'' quello di famiglia DDT del suo emittente, risolto da vendite.fn_get_registro_documento. ⚠️ NULLABLE, e non e'' una dimenticanza: un DDT in bozza il registro non ce l''ha ancora — lo prende alla transizione a EMESSO, insieme al numero e all''anno, nello stesso statement. ⛔ Entra in uq_ddt_v_anno_serie_numero: e'' cio'' che permette a due emittenti di ripartire entrambi da 1 senza collidere. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_ddt_v_anno_serie_numero;
+              CREATE UNIQUE INDEX uq_ddt_v_anno_serie_numero
+                  ON vendite.ddt (anno, serie, numero)
+                  WHERE numero IS NOT NULL;
+              ALTER TABLE vendite.ddt DROP CONSTRAINT IF EXISTS fk_ddt_registro;
+              ALTER TABLE vendite.ddt DROP COLUMN IF EXISTS registro_id;

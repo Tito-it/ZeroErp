@@ -1,0 +1,104 @@
+# ⚙️ Funzione `trgfn_ordini_gen_numero`
+
+```sql
+CREATE FUNCTION trgfn_ordini_gen_numero()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_gen_numero()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_prefix       config.sistema_codici.prefisso%TYPE;
+    v_sep          config.sistema_codici.separatore%TYPE;
+    v_len          config.sistema_codici.lunghezza_numero%TYPE;
+    v_emittente_sr vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
+    v_registro     vendite.registri_fatturazione.id%TYPE;
+    v_serie_reg    vendite.registri_fatturazione.serie_default%TYPE;
+    v_serie        text;
+    v_anno         vendite.ordini.anno%TYPE;
+    v_numero       bigint;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Assegnare ordini.numero all'INSERT, prendendolo dal
+    --   MOTORE DEI REGISTRI invece che dalla sequenza generica
+    --   di config.sistema_codici.
+    --
+    -- ⭐ Il MOMENTO non cambia: nessuno stato da guardare,
+    --   l'ordine nasce numerato. ⛔ E i buchi da bozza scartata
+    --   restano: e' la conseguenza dichiarata di quella scelta.
+    -- =========================================================
+
+    -- ⭐ Gia' numerato -> no-op. Serve a due cose: rispettare un
+    --   numero fornito da fuori, e rendere INNOCUA la finestra in
+    --   cui questo trigger convive con quello generico (il CSV
+    --   che lo spegne vive in 80_data, che gira dopo 20_code).
+    IF NEW.numero IS NOT NULL AND btrim(NEW.numero::text) <> '' THEN
+        RETURN NEW;
+    END IF;
+
+    -- ⚠️ Due convenzioni per lo stesso emittente: l'ordine porta
+    --   l'id di anagrafiche.emittenti_fiscali, il registro porta
+    --   il soggetto_ruolo. Traduzione 1:1, esplicita.
+    SELECT ef.soggetto_ruolo_id INTO v_emittente_sr
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.id = NEW.emittente_fiscale_id;
+
+    -- ⛔ L'involucro, non il lettore: qui si SCRIVE, e un
+    --   emittente senza registro ORDINE deve fermare.
+    SELECT k.registro_id, k.serie
+      INTO v_registro, v_serie_reg
+      FROM vendite.fn_get_registro_documento(
+               p_famiglia_documento          => 'ORDINE',
+               p_emittente_soggetto_ruolo_id => v_emittente_sr,
+               p_utility_id                  => NEW.utility_id) k;
+
+    v_serie := COALESCE(NEW.serie, v_serie_reg, '');
+
+    -- ⛔ L'anno viene dalla DATA DEL DOCUMENTO e non da oggi:
+    --   dev'essere lo stesso che il contatore usa, o un ordine
+    --   datato dicembre inserito a gennaio porterebbe l'anno
+    --   nuovo con un numero del contatore vecchio.
+    -- ⚠️ trgfn_ordini_normalize gira DOPO (ordine alfabetico) e
+    --   riempie l'anno solo se NULL: qui lo trova gia' scritto.
+    v_anno := vendite.fn_get_anno_registro(NEW.data);
+
+    -- ℹ️ p_competenza_mese NULL: l'ordine non ha competenza, e il
+    --   limite di emissione non si applica alla sua famiglia.
+    -- ℹ️ Nessun cancello sulla data: ORDINE ha
+    --   presidia_data_documento = false.
+    v_numero := vendite.fn_get_next_progressivo(
+                    v_registro, NEW.data, NULL,
+                    v_serie, NEW.id, 'ORDINE');
+
+    -- Formato data-driven dalla riga sistema_codici 'ordine',
+    -- che da qui in avanti e' solo un catalogo di FORMATO
+    -- (usa_sequenza = false).
+    SELECT prefisso, separatore, lunghezza_numero
+      INTO v_prefix, v_sep, v_len
+      FROM config.sistema_codici
+     WHERE codice_interno = 'ordine';
+
+    -- ⚠️ Le quattro colonne si scrivono INSIEME: sono la chiave
+    --   del documento.
+    NEW.registro_id := v_registro;
+    NEW.anno        := v_anno;
+    NEW.serie       := NULLIF(v_serie, '');
+    NEW.numero      := COALESCE(v_prefix, 'ORD')
+                    || COALESCE(v_sep, '')
+                    || lpad(v_numero::text, COALESCE(v_len, 7), '0');
+
+    RETURN NEW;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.trgfn_ordini_gen_numero()
+IS 'Assegna vendite.ordini.numero all''INSERT, prendendolo dal MOTORE DEI REGISTRI invece che dalla sequenza generica di config.sistema_codici. ⭐ Nasce il 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9) e sostituisce il trigger GENERATO trg_ordini_a10_gen_codice_ins_upd, che se ne va da solo quando la riga `ordine` di config.sistema_codici passa a usa_sequenza = false: e'' script.trgfn_config_sistema_codici_sync_gen_codice a fare DROP di trigger e funzione generati, senza DDL a mano. ⚠️ Il CSV che lo spegne vive in 80_data, che gira DOPO 20_code: per la durata di un migrate i due trigger coesistono, e la finestra e'' innocua perche'' il generico scrive NEW.numero e questo — che parte dopo, essendo `gen_codice` < `gen_numero` in ordine alfabetico — trova il numero gia'' valorizzato e non fa niente. Il no-op sul numero gia'' presente non e'' una cortesia: e'' cio'' che rende innocua la finestra. ⭐ IL MOMENTO NON CAMBIA — si numera all''INSERT, decisione di Tid del 2026-08-30 — quindi qui non si guarda nessuno stato e l''ordine nasce numerato come prima. ⛔ Ne discende che i buchi da bozza scartata RESTANO: e'' una conseguenza dichiarata, non una dimenticanza. ⛔ L''ANNO passa da CURRENT_DATE (che ci metteva vendite.trgfn_ordini_normalize) alla DATA DEL DOCUMENTO: con il contatore sui registri l''anno della riga deve essere quello che il contatore ha usato, o un ordine datato dicembre e inserito a gennaio porterebbe l''anno nuovo con un numero preso dal contatore dell''anno vecchio. ⚠️ Funziona perche'' normalize gira DOPO in ordine alfabetico e riempie l''anno solo se NULL: qui lo trova gia'' scritto e lo lascia stare. ⚠️ Anno, serie, registro e numero si scrivono NELLO STESSO statement: sono la chiave del documento. ⚠️ L''emittente va tradotto (l''ordine porta l''id di emittenti_fiscali, il registro il soggetto_ruolo). ⛔ Si usa l''INVOLUCRO fn_get_registro_documento e non il lettore: qui si scrive, e un emittente senza registro ORDINE deve fermare. ℹ️ Nessun cancello sulla data: la famiglia ORDINE ha presidia_data_documento = false (20260831-11), perche'' rifiutare un ordine datato indietro sarebbe un comportamento nuovo. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -71,14 +71,26 @@ SELECT (SELECT a.id  FROM vendite.attivita_fatturabili a ORDER BY a.id LIMIT 1) 
 -- Due registri di prova, uno per politica. ⭐ Si creano invece di usare quelli
 -- di catalogo: cosi' il test non dipende dal seed, che e' una DECISIONE di
 -- configurazione e puo' cambiare senza che questo file debba accorgersene.
+-- ⛔ L'emittente del registro e' NOT NULL dal 2026-08-30 (C1-2, 20260830-11):
+--   un registro di numerazione appartiene a UN emittente. Questo file prova la
+--   politica della data e i pavimenti, non il perimetro: ne serve uno qualsiasi,
+--   e si PRENDE dal catalogo invece di cablarne l'id.
+CREATE TEMP TABLE tmp_ddoc_ef AS
+SELECT ef.soggetto_ruolo_id AS emittente_id
+  FROM anagrafiche.emittenti_fiscali ef
+ WHERE ef.attivo IS TRUE
+ ORDER BY ef.id
+ LIMIT 1;
+
 CREATE TEMP TABLE tmp_ddoc_reg AS
 WITH ins AS (
   INSERT INTO vendite.registri_fatturazione
-      (codice, descrizione, reset_policy, attivo, politica_data_documento, meta)
+      (codice, descrizione, reset_policy, attivo, politica_data_documento,
+       emittente_soggetto_ruolo_id, meta)
   VALUES ('RDD_OGGI',    'Registro prova OGGI',     'ANNUALE', true, 'OGGI',
-          jsonb_build_object('test_scope', 'pgtap_data_documento')),
+          (SELECT emittente_id FROM tmp_ddoc_ef), jsonb_build_object('test_scope', 'pgtap_data_documento')),
          ('RDD_FINEMESE','Registro prova fine mese','ANNUALE', true, 'FINE_MESE_COMPETENZA',
-          jsonb_build_object('test_scope', 'pgtap_data_documento'))
+          (SELECT emittente_id FROM tmp_ddoc_ef), jsonb_build_object('test_scope', 'pgtap_data_documento'))
   RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice = 'RDD_OGGI')     AS reg_oggi,
        max(id) FILTER (WHERE codice = 'RDD_FINEMESE') AS reg_finemese

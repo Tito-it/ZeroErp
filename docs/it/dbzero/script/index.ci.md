@@ -15,6 +15,7 @@
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
+- [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)

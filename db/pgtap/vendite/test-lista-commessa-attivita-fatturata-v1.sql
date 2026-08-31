@@ -188,7 +188,11 @@ CREATE TEMP TABLE tmp_fattura_lcf AS
 WITH f AS (
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
                                billing_account_id, meta)
-  SELECT (SELECT id FROM vendite.registri_fatturazione ORDER BY id LIMIT 1),
+  -- ⛔ Il registro dev'essere quello dell'emittente della riga sotto, non
+  --   «il primo che c'e'»: dal 2026-08-30 il guard non ammette piu' la
+  --   coincidenza (vendite.trgfn_fatture_guard_registro_emittente).
+  SELECT script.fn_pgtap_registro_fattura(
+           anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_refs_lcf))),
          current_date,
          anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_refs_lcf)),
          (SELECT billing_account_id FROM tmp_refs_lcf),

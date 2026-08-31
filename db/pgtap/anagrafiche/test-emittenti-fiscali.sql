@@ -109,8 +109,15 @@ validi AS (
 )
 SELECT
     'pgtap_emittenti_fiscali'::text AS test_scope,
-    ('PGTAP-EF-' || v.ts)::text AS codice_ef1,
-    ('PGTAP-EF2-' || v.ts)::text AS codice_ef2,
+    -- ⚠️ 2026-08-31: le sigle emittente hanno una FORMA vincolata
+    --   (chk_emittenti_fiscali_codice_forma): maiuscole e cifre, 2..10
+    --   caratteri, NIENTE trattino — perche' la sigla finisce dentro il codice
+    --   commessa `CMM-<sigla>-<anno>-<numero>`, che si legge separando sul
+    --   trattino. I vecchi `PGTAP-EF-<ts>` non passerebbero piu'.
+    --   ⭐ Le ultime 8 cifre del timestamp bastano a distinguere le corse, e la
+    --   pulizia non si appoggia al codice ma a `brand_meta->>'test_scope'`.
+    ('EF' || right(v.ts, 8))::text AS codice_ef1,
+    ('EG' || right(v.ts, 8))::text AS codice_ef2,
     v.cf_piva_1,
     v.cf_piva_2,
     ('ef1_' || v.ts || '@test.local')::text AS email_1,

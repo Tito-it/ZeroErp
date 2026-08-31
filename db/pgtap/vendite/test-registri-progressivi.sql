@@ -83,6 +83,11 @@ WITH ins AS (
     --   test-limite-emissione-v1.sql. Qui si prova il CANCELLO DI MONOTONIA,
     --   e il limite dev'essere fuori strada.
     limite_emissione_giorni,
+    -- ⛔ NOT NULL dal 2026-08-30 (C1-2, 20260830-11): un registro di
+    --   numerazione appartiene a UN emittente. Qui ne basta uno
+    --   qualsiasi — questo file prova il CONTATORE, non il perimetro —
+    --   ma va dato, e si PRENDE dal catalogo invece di cablarlo.
+    emittente_soggetto_ruolo_id,
     meta
   )
   SELECT
@@ -91,6 +96,11 @@ WITH ins AS (
     'ANNUALE',
     true,
     9999,
+    (SELECT ef.soggetto_ruolo_id
+       FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.attivo IS TRUE
+      ORDER BY ef.id
+      LIMIT 1),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_reg))
   RETURNING id
 )
@@ -248,11 +258,16 @@ WITH ins AS (
     codice, descrizione, serie_default, reset_policy, attivo,
     -- ⛔ Come sopra: qui si prova la separazione fra due SERIE, non il limite
     --   di emissione, e le date sono d'archivio.
-    limite_emissione_giorni, meta)
+    limite_emissione_giorni, emittente_soggetto_ruolo_id, meta)
   SELECT
     left('REGB_' || (SELECT test_scope FROM tmp_costanti_reg), 16),
     'Registro test serie', 'PG1', 'ANNUALE', true,
     9999,
+    (SELECT ef.soggetto_ruolo_id
+       FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.attivo IS TRUE
+      ORDER BY ef.id
+      LIMIT 1),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_reg))
   RETURNING id)
 SELECT * FROM ins;

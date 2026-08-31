@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-0 — IL CATALOGO DELLE FAMIGLIE DI DOCUMENTO
+#   vendite.famiglie_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-0 (§3.1)
+#
+# ── ⭐ PERCHE' UNA TABELLA E NON UN `CHECK` ────────────────────────
+#   `registri_fatturazione.famiglia_documento` potrebbe essere un CHECK con
+#   cinque valori. Non basta, e la ragione non e' l'estensibilita': e' che il
+#   presidio del cambio emittente del BA deve DERIVARE da qui.
+#
+#   `anagrafiche.fn_get_storia_emittente_ba` oggi conta fatture e commesse con
+#   due sub-select scritte a mano. Dopo il trasloco deve contare anche DDT,
+#   ordini e resi NUMERATI — e la regola, in una riga, e': «lo spostamento si
+#   blocca quando anche un solo documento del BA e' gia' numerato su un
+#   registro». ⛔ Scritta come elenco, quella regola ha un difetto noto: il
+#   SESTO documento che un domani entra nei registri e che nessuno aggiunge al
+#   conteggio. Derivata dal catalogo, il sesto documento entra nella regola il
+#   giorno in cui si registra la sua famiglia — non c'e' nessun elenco
+#   parallelo che possa restare indietro.
+#
+#   ⭐ E' la stessa forma che `config.sistema_codici` usa gia' per dire dove
+#   vive un codice (schema_tabella / nome_tabella / nome_colonna): non si
+#   inventa un meccanismo, si riusa quello di casa. Stesso principio della
+#   primitiva di pulizia che scopre le figlie da `pg_constraint`.
+#
+# ── ⚠️ LE DUE COLONNE CHE SEMBRANO RIDONDANTI E NON LO SONO ────────
+#   `colonna_numero` esiste perche' il nome NON e' lo stesso ovunque: e'
+#   `numero` per fatture, DDT, ordini e resi, ed e' `codice` per la commessa.
+#   `colonna_billing_account` esiste perche' il BA e' `NOT NULL` su fatture e
+#   commesse ma NULLABLE su ddt, ordini e resi: il predicato derivato deve
+#   saperlo, e non puo' dedurlo.
+#
+# ── ⛔ COSA NON C'E', ED E' UNA DECISIONE ──────────────────────────
+#   Nessun flag `conta_come_storia`. La regola decisa il 2026-08-30 e'
+#   CATEGORICA — ogni famiglia che ha un registro e' per costruzione
+#   per-emittente, quindi e' candidata a bloccare lo spostamento del BA. Un
+#   flag che nessuno mettesse a `false` sarebbe una promessa che il codice non
+#   mantiene, esattamente come le voci `NESSUNA`/`MENSILE` di `reset_policy`,
+#   dichiarate e non implementate, tolte dal CHECK il 2026-08-25.
+#
+# ⚠️ Tabella NUOVA: i trigger audit/tx_id/storico non ci sono fino al
+#   `ci_apply`, e l'indice della FK in arrivo va seminato in
+#   `dbops.fk_index_policy` (gli indici FK sono OPT-IN).
+# ⚠️ Il SEED delle cinque famiglie NON sta qui: vive in `80_data` come CSV con
+#   il suo mirror, come ogni tabella di catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260830-13-create-famiglie-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260830-13-create-famiglie-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-0: il catalogo delle famiglie di documento numerabili. ⭐ Non e'' un vocabolario per
+        decorare un CHECK: e'' cio'' da cui il presidio del cambio emittente del BA si DERIVA invece
+        di copiarsi. La regola «lo spostamento si blocca quando anche un solo documento del BA e''
+        gia'' numerato su un registro», scritta come elenco di SELECT, ha un difetto noto — il sesto
+        documento che entra nei registri e che nessuno aggiunge al conteggio; derivata dal catalogo,
+        il sesto entra nella regola il giorno in cui si registra la sua famiglia. ⭐ Stessa forma di
+        config.sistema_codici (schema/tabella/colonna): si riusa il meccanismo di casa. ⚠️
+        colonna_numero esiste perche'' il nome non e'' lo stesso ovunque (`numero` per quattro,
+        `codice` per la commessa) e colonna_billing_account perche'' il BA e'' NOT NULL su fatture e
+        commesse ma nullable su ddt/ordini/resi. ⛔ Nessun flag conta_come_storia: la regola e''
+        categorica, e un flag che nessuno mette a false e'' una promessa che il codice non mantiene.
+        ⚠️ Il seed delle cinque famiglie sta in 80_data, come ogni catalogo. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-0.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: famiglie_documento
+            remarks: >-
+              Catalogo delle famiglie di documento che si numerano su un registro
+              (vendite.registri_fatturazione.famiglia_documento). Dichiara DOVE vive ogni famiglia,
+              perche' il presidio del cambio emittente del billing account si deriva da qui invece
+              di elencare le tabelle a mano.
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_famiglie_documento
+                    nullable: false
+              - column:
+                  name: codice_interno
+                  type: varchar(16)
+                  remarks: "Chiave naturale e stabile: FATTURA, DDT, ORDINE, COMMESSA, RESO. E' il contratto, l'id e' dettaglio implementativo."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: varchar(120)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: schema_tabella
+                  type: text
+                  remarks: "Schema della tabella che contiene i documenti di questa famiglia."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nome_tabella
+                  type: text
+                  remarks: "Tabella che contiene i documenti di questa famiglia."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: colonna_numero
+                  type: text
+                  remarks: "Colonna che porta il numero assegnato dal registro. NON e' la stessa ovunque: 'numero' per fatture/ddt/ordini/resi, 'codice' per la commessa."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: colonna_billing_account
+                  type: text
+                  remarks: "Colonna che porta il billing account. Serve al predicato derivato del presidio storia; su ddt/ordini/resi e' nullable, e il predicato deve reggerlo."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValue: "{}"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columnNames: codice_interno
+            constraintName: uq_famiglie_documento_codice_interno
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.famiglie_documento
+              IS 'Catalogo delle famiglie di documento che si numerano su un registro. ⭐ Non e'' un vocabolario che decora un CHECK: e'' la sede da cui si DERIVA il presidio del cambio emittente del billing account. La regola — «lo spostamento di un BA si blocca quando anche un solo documento del BA e'' gia'' NUMERATO su un registro» — scritta come elenco di sub-select ha un difetto noto: il SESTO documento che un domani entra nei registri e che nessuno aggiunge al conteggio. Derivata da qui, quel documento entra nella regola il giorno in cui si registra la sua famiglia, e non esiste nessun elenco parallelo che possa restare indietro. ⭐ E'' la stessa forma che config.sistema_codici usa per dire dove vive un codice (schema_tabella/nome_tabella/nome_colonna), ed e'' lo stesso principio della primitiva di pulizia che scopre le figlie da pg_constraint: si condivide la funzione, non una copia della sua logica. ⚠️ colonna_numero e colonna_billing_account non sono ridondanti: il numero si chiama `numero` su fatture, ddt, ordini e resi ma `codice` sulla commessa, e il billing account e'' NOT NULL su fatture e commesse mentre e'' NULLABLE su ddt, ordini e resi — il predicato derivato deve saperlo e non puo'' dedurlo. ⛔ Non c''e'' nessun flag `conta_come_storia`: la regola decisa il 2026-08-30 e'' CATEGORICA, e un flag che nessuno mettesse a false sarebbe una voce dichiarata e non implementata — la stessa specie di NESSUNA/MENSILE, tolte da chk_registri_fatturazione_reset il 2026-08-25. ⚠️ Chi aggiunge una famiglia deve anche darle un registro per emittente, o i documenti di quella famiglia non nascono. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-0.';
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: famiglie_documento

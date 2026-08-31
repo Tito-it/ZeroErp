@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C1-2 — UN REGISTRO APPARTIENE A UN SOLO EMITTENTE
+#   vendite.registri_fatturazione.emittente_soggetto_ruolo_id -> NOT NULL
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C1-2 (§2.2)
+#
+# ── ⭐ LA RAGIONE STA SUL MODELLO, NON SUI DATI ─────────────────────
+#   La descrizione della tabella dice gia' «Registri/serie di numerazione per
+#   fatture di vendita (PER EMITTENTE/BRAND)»: era la colonna nullable a
+#   contraddire la doc, non il contrario. Con l'emittente obbligatorio,
+#   (registro, anno, serie) diventa PER COSTRUZIONE una chiave dentro un solo
+#   emittente — ed e' cio' che rende inutile allargare uq_fatture_numero, che
+#   sarebbe la mossa sbagliata (un vincolo allargato non scopre un difetto che
+#   quello stretto gia' non scopriva).
+#
+#   ⛔ Cosa chiude davvero: il registro SENZA emittente e' il quarto livello
+#   della gerarchia di vendite.fn_lookup_registro_id, cioe' il sezionale
+#   condiviso da tutti. Due partite IVA che pescano dalla stessa serie non
+#   producono numeri duplicati — il contatore e' uno solo — ma nessuna delle
+#   due ha una propria numerazione progressiva. Difetto MUTO.
+#
+# ── ℹ️ LA RICOGNIZIONE E' STATA FATTA, e non decide niente ──────────
+#   Le due query del §2.1 sono state eseguite da owner il 2026-08-30 e hanno
+#   restituito ZERO righe: nessun registro senza emittente, nessun mapping che
+#   ci punti. Quindi C1-1 (la bonifica) NON SERVE su questa macchina.
+#   ⚠️ Quello zero non e' il motivo del NOT NULL — il motivo e' sopra, ed e'
+#   sul modello. Lo zero dice soltanto che l'ALTER passa senza bonifica.
+#
+# ── ⛔ E PROPRIO PERCHE' LO ZERO E' UNA FOTOGRAFIA, C'E' LA PRECONDITION
+#   Il DB di sviluppo non e' ricostruito da zero: un'altra installazione — o la
+#   CI — puo' avere registri generici. La preCondition conta i NULL e FERMA il
+#   migrate con un messaggio leggibile, invece di far fallire l'ALTER a meta'
+#   con un errore che non dice cosa fare.
+#
+# ── ⚠️ NIENTE PATTERN IN DUE PASSI, e diverge dal piano ─────────────
+#   Il piano proponeva `CHECK ... NOT VALID` + `VALIDATE` + `SET NOT NULL` per
+#   evitare il lock lungo di uno scan pieno. Serve sulle tabelle grandi:
+#   registri_fatturazione e' una tabella di configurazione con poche righe, e
+#   lo scan e' istantaneo. Tre changeSet al posto di uno per un lock che non
+#   esiste sarebbero complessita' comprata a vuoto.
+#
+# ⚠️ La colonna resta una FK verso anagrafiche.soggetti_ruoli
+#   (fk_registri_fatturazione_emitt): qui cambia solo la nullabilita'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260830-11-alter-registri-fatturazione-emittente-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260830-11-alter-registri-fatturazione-emittente-not-null
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C1-2: vendite.registri_fatturazione.emittente_soggetto_ruolo_id diventa NOT NULL. ⭐ La
+        ragione e'' sul modello, non sui dati: la descrizione della tabella dice gia'' «registri di
+        numerazione PER EMITTENTE», ed era la colonna nullable a contraddirla. Con l''emittente
+        obbligatorio, (registro, anno, serie) e'' per costruzione una chiave dentro un solo
+        emittente — ed e'' per questo che NON si allarga uq_fatture_numero. ⛔ Chiude il registro
+        «di nessuno», quarto livello della gerarchia di fn_lookup_registro_id: due partite IVA sulla
+        stessa serie non producono numeri duplicati (il contatore e'' uno solo) ma nessuna delle due
+        ha una numerazione progressiva propria — difetto MUTO. ℹ️ La ricognizione del §2.1, eseguita
+        da owner il 2026-08-30, ha dato ZERO righe: la bonifica C1-1 non serve qui. ⚠️ Quello zero
+        NON e'' il motivo dell''ALTER, dice solo che passa — ed e'' per questo che la preCondition
+        lo ri-verifica su ogni macchina. ⚠️ Niente pattern in due passi: e'' una tabella di
+        configurazione, lo scan e'' istantaneo. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C1-2.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            C1-2 FERMATO: esistono registri di numerazione senza emittente
+            (vendite.registri_fatturazione.emittente_soggetto_ruolo_id IS NULL). Vanno separati
+            prima — un registro per emittente — con la ricognizione del §2.1 del brief
+            brief-db-registri-di-numerazione-emittente-e-trasloco. Le fatture gia'' numerate NON si
+            ripuntano: cambiare il registro di una fattura numerata le cambia il sezionale.
+        - and:
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.registri_fatturazione
+                   WHERE emittente_soggetto_ruolo_id IS NULL;
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                    JOIN pg_class c     ON c.oid = a.attrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relname = 'registri_fatturazione'
+                     AND a.attname = 'emittente_soggetto_ruolo_id'
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                     AND NOT a.attnotnull;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                  ALTER COLUMN emittente_soggetto_ruolo_id SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.emittente_soggetto_ruolo_id
+              IS 'Emittente fiscale (soggetto_ruolo) proprietario del registro. ⛔ NOT NULL dal 2026-08-30 (C1-2): un registro di numerazione appartiene a UN SOLO emittente, e non e'' una convenzione — e'' cio'' che rende (registro, anno, serie) una chiave PER EMITTENTE, e quindi cio'' che rende superfluo allargare uq_fatture_numero. ⛔ Prima era nullable, e il registro senza emittente era il QUARTO livello della gerarchia di vendite.fn_lookup_registro_id: il sezionale condiviso da tutti. Due partite IVA che pescano dalla stessa serie non producono numeri duplicati — il contatore e'' uno solo, quindi uq_fatture_numero non aveva niente da respingere — ma nessuna delle due ha una propria numerazione progressiva, e non compare nessun errore: e'' un difetto MUTO, ed e'' la ragione di questo vincolo. ⚠️ Ne discende che ogni emittente vuole le proprie righe in vendite.tipi_doc_fiscale_registri: un emittente non configurato NON EMETTE, fail-closed e rumoroso, che e'' il verso giusto. ⭐ Il presidio gemello sta sulla fattura: vendite.trgfn_fatture_guard_registro_emittente verifica che il documento stia sul registro del proprio emittente (E_FATTURA_REGISTRO_EMITTENTE_INCOERENTE) — e da questo NOT NULL in poi quel guard non ha piu'' rami che tacciono. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C1-2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                  ALTER COLUMN emittente_soggetto_ruolo_id DROP NOT NULL;

@@ -9,47 +9,76 @@ CREATE FUNCTION fn_get_storia_emittente_ba(p_billing_account_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id bigint)
- RETURNS TABLE(n_fatture bigint, n_commesse bigint)
+ RETURNS TABLE(famiglia_documento character varying, famiglia_descrizione character varying, n_documenti bigint)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public'
 AS $function$
+DECLARE
+    v_famiglia record;
+    v_n        bigint;
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Quanti documenti hanno gia' CONGELATO l'emittente di
-    --   questo billing account. E' la definizione operativa di
-    --   «storia» (decisione D-2): non «quanto e' grave», ma
-    --   «chi porta una copia che nessuno riscrivera' piu'».
+    --   Dire QUANTI documenti e DI CHE SPECIE hanno gia'
+    --   congelato l'emittente di questo billing account. Una
+    --   riga per famiglia che ha almeno un documento numerato;
+    --   nessuna riga = nessuna storia.
     --
-    -- ⚠️ SECURITY DEFINER: fatture e commesse hanno la RLS. Da
-    --   SECURITY INVOKER la storia di un altro emittente sarebbe
-    --   invisibile e il chiamante concluderebbe «non c'e'
-    --   storia» proprio nel caso da bloccare.
+    -- ⭐ rev 2026-08-31: prima tornava (n_fatture, n_commesse) —
+    --   due colonne fisse, cioe' un elenco travestito da firma.
+    --   Ora la forma segue il catalogo, e il messaggio che legge
+    --   l'operatore puo' dire QUALE documento blocca: senza,
+    --   «non si puo'» manda a cercare a mano in cinque tabelle.
     --
-    -- ⛔ Ordini e DDT non si contano: il loro emittente ha un
-    --   guard che lo ricontrolla col BA a ogni scrittura, quindi
-    --   non e' una copia stantia.
+    -- ⚠️ Si chiama SOLO nel ramo d'errore. Il si'/no del guard
+    --   lo da' anagrafiche.fn_ba_ha_storia_emittente.
     -- =========================================================
     IF p_billing_account_id IS NULL THEN
-        -- Nessun BA = nessuna storia da proteggere. La riga senza
-        -- billing account e' quella del gestore globale, e la
-        -- guarda fn_guard_ba_gestore_globale_storia.
-        RETURN QUERY SELECT 0::bigint, 0::bigint;
         RETURN;
     END IF;
 
-    RETURN QUERY
-    SELECT
-        (SELECT count(*) FROM vendite.fatture f
-          WHERE f.billing_account_id = p_billing_account_id),
-        (SELECT count(*) FROM vendite.commesse c
-          WHERE c.billing_account_id = p_billing_account_id);
+    FOR v_famiglia IN
+        SELECT fd.codice_interno,
+               fd.descrizione,
+               fd.schema_tabella,
+               fd.nome_tabella,
+               fd.colonna_numero,
+               fd.colonna_billing_account
+          FROM vendite.famiglie_documento fd
+         WHERE fd.attivo
+         ORDER BY fd.id
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %I.%I d'
+            || ' WHERE d.%I = $1'
+            || '   AND d.%I IS NOT NULL'
+            || '   AND btrim(d.%I::text) <> $2',
+            v_famiglia.schema_tabella,
+            v_famiglia.nome_tabella,
+            v_famiglia.colonna_billing_account,
+            v_famiglia.colonna_numero,
+            v_famiglia.colonna_numero)
+          INTO v_n
+         USING p_billing_account_id, ''::text;
+
+        -- ⚠️ Le famiglie a zero NON escono: «nessuna riga» e'
+        --   la risposta «nessuna storia», e chi compone la frase
+        --   non deve filtrare gli zeri.
+        IF v_n > 0 THEN
+            famiglia_documento   := v_famiglia.codice_interno;
+            famiglia_descrizione := v_famiglia.descrizione;
+            n_documenti          := v_n;
+            RETURN NEXT;
+        END IF;
+    END LOOP;
+
+    RETURN;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id bigint)
-IS 'Quanti documenti hanno gia'' CONGELATO l''emittente di un billing account: (n_fatture, n_commesse). E'' la definizione operativa di «storia» del cantiere brief-db-billing-account-cambio-emittente (decisione D-2), e il criterio non e'' la gravita'' ma una proprieta'' del modello — si conta cio'' che porta una COPIA dell''emittente che nessuno riscrivera'' piu''. ⭐ Sono due cose e si compilano da sole: vendite.fatture, dove emittente_soggetto_ruolo_id e'' NOT NULL e accanto c''e'' emittente_snapshot (il documento fiscale porta con se'' chi lo ha emesso); e vendite.commesse, dove dal 20260826-41 la colonna e'' NOT NULL e vincolata al billing account — con un guard montato UPDATE OF, quindi un mapping spostato NON riscrive quella riga e la lascia falsa in silenzio. ⛔ Ordini e DDT NON si contano, e non per clemenza: hanno un trgfn_*_guard_emittente_ba che ricontrolla la coerenza col BA a ogni scrittura, quindi la loro copia non invecchia — metterli nella lista bloccherebbe piu'' casi senza chiudere nessun buco in piu'', e «blocca di piu''» non e'' un argomento. ⚠️ SECURITY DEFINER: entrambe le tabelle hanno la RLS accesa, e da SECURITY INVOKER la storia di un ALTRO emittente sarebbe invisibile — il guard direbbe «nessuna storia, si puo'' spostare» proprio nel caso che deve bloccare. E'' la stessa ragione per cui anagrafiche.fn_guard_albero_ba_emittente e'' DEFINER. ⭐ Restituisce i CONTEGGI e non un booleano perche'' il messaggio che legge l''operatore deve dire QUANTE fatture e QUANTE commesse: un «non si puo''» senza numeri manda a cercare a mano cosa c''e'' sotto. ⚠️ Entrambi i conteggi sono serviti da un indice (ix_fatture_ba_data, ix_commesse_ba_utility). Input NULL -> (0, 0): la riga senza billing account e'' quella del gestore globale, e la guarda anagrafiche.fn_guard_ba_gestore_globale_storia.';
+IS 'Quanti documenti e DI CHE SPECIE hanno gia'' congelato l''emittente di un billing account: una riga per famiglia con almeno un documento NUMERATO, nessuna riga se non c''e'' storia. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-16): prima tornava (n_fatture, n_commesse), due colonne fisse — cioe'' un elenco travestito da firma. Ora la forma segue vendite.famiglie_documento, e il messaggio del rifiuto puo'' dire QUALE documento blocca: senza, un «non si puo''» manda a cercare a mano in cinque tabelle. ⛔ CAMBIA LA DEFINIZIONE DI STORIA, e la ragione e'' il trasloco: l''argomento che escludeva ordini e DDT — «il loro emittente ha un trgfn_*_guard_emittente_ba che glielo ricontrolla a ogni scrittura, quindi non e'' una copia stantia» — cade nel momento in cui quei documenti prendono il NUMERO dal registro di quell''emittente, perche'' il numero nessuno lo rinumera. La regola nuova e'' categorica: ogni famiglia che ha un registro e'' per costruzione per-emittente, quindi blocca. ⭐ Ed e'' DERIVATA, non elencata: il sesto documento entra nella regola il giorno in cui si registra la sua famiglia, e non esiste nessun elenco parallelo che possa restare indietro — lo stesso principio della primitiva di pulizia che scopre le figlie da pg_constraint. ⚠️ IL PERIMETRO NON SI ALLARGA SOLTANTO: entrano DDT, ordini e resi numerati, ed ESCE la fattura in BOZZA — che prima si contava perche'' il conteggio era un count(*) senza condizione sul numero. E'' voluto: una bozza non ha congelato niente (vendite.trgfn_fatture_guard_uscita_draft pretende emittente_snapshot solo per USCIRE da DRAFT), ed e'' esattamente il caso per cui la finestra di correzione esiste. ⛔ Resta scoperto un punto, e va detto: una bozza porta gia'' emittente_soggetto_ruolo_id e su vendite.fatture non c''e'' un guard che lo ricontrolli col BA, quindi spostare il BA la lascerebbe sull''emittente vecchio — ma resta una bozza, si cancella e si rifa'', e presidiarla costerebbe la finestra di correzione per intero. ⚠️ Si chiama SOLO nel ramo d''errore: il si''/no del guard lo da'' anagrafiche.fn_ba_ha_storia_emittente, che esce al primo documento. ⚠️ SQL dinamico: identificatori da %I, valori da USING; una riga di catalogo sbagliata romperebbe qui a runtime, ed e'' la ragione del guard vendite.trgfn_famiglie_documento_guard_riferimenti. ⚠️ SECURITY DEFINER per la RLS, come nella versione precedente. ℹ️ Input NULL -> nessuna riga: la riga senza billing account e'' quella del gestore globale, e la guarda anagrafiche.fn_guard_ba_gestore_globale_storia. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-16.';
 ```
 
 ---

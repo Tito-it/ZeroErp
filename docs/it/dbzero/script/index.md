@@ -17,6 +17,7 @@
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
+- [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_cambio_emittente](funzioni/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
@@ -110,6 +111,7 @@
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_operatore](funzioni/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
+- [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).

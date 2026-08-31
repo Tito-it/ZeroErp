@@ -45,18 +45,20 @@
 |------|--------|--------|--------|
 | trg_soggetti_titoli_iva_ambiti_a10_articoli_gruppi_requi_a02454 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_gruppi', 'attivo', 'gruppo_voce_id', 'id')` |
 | trg_soggetti_titoli_iva_ambiti_a10_articoli_gruppi_requi_a02454 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_gruppi', 'attivo', 'gruppo_voce_id', 'id')` |
-| trg_soggetti_titoli_iva_ambiti_a10_articoli_require_atti_b48ce2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_soggetti_titoli_iva_ambiti_a10_articoli_require_atti_b48ce2 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
+| trg_soggetti_titoli_iva_ambiti_a10_articoli_require_atti_b48ce2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_soggetti_titoli_iva_ambiti_a10_articoli_tipologie_re_30578a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_tipologie', 'attivo', 'tipo_voce_id', 'id')` |
 | trg_soggetti_titoli_iva_ambiti_a10_articoli_tipologie_re_30578a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'articoli_tipologie', 'attivo', 'tipo_voce_id', 'id')` |
-| trg_soggetti_titoli_iva_ambiti_a10_soggetti_titoli_iva_r_ead690 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
 | trg_soggetti_titoli_iva_ambiti_a10_soggetti_titoli_iva_r_ead690 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
-| trg_soggetti_titoli_iva_ambiti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_titoli_iva_ambiti_a10_soggetti_titoli_iva_r_ead690 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
 | trg_soggetti_titoli_iva_ambiti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_titoli_iva_ambiti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_soggetti_titoli_iva_ambiti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_titoli_iva_ambiti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_titoli_iva_ambiti_z90_guard_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard()` |
 | trg_soggetti_titoli_iva_ambiti_z90_guard_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard()` |
+| trg_soggetti_titoli_iva_ambiti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetti_titoli_iva_ambiti_id')` |
+| trg_soggetti_titoli_iva_ambiti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetti_titoli_iva_ambiti_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

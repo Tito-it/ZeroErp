@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-4 — IL LETTORE: quale registro numera questa famiglia, per questo emittente
+#   vendite.fn_lookup_registro_documento(famiglia, emittente, utility)
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-4 (§3.2)
+#
+# ── ⛔ PERCHE' NON PASSA DA `tipi_doc_fiscale_registri` ────────────
+#   Quella mappa parte dal TIPO DOCUMENTO FISCALE e dalla NATURA. DDT, ordine,
+#   commessa e reso non ne hanno: `vendite.ddt` non ha proprio la colonna. Per
+#   loro la chiave e' un'altra — «il registro della mia famiglia, del mio
+#   emittente, eventualmente della mia utility» — e una riga per emittente
+#   basta: non c'e' niente da mappare.
+#   ⭐ Ed e' per questo che le due risoluzioni restano DUE: partono da chiavi
+#   diverse verso la stessa tabella. Unificarle vorrebbe dire inventare un tipo
+#   documento fiscale per il DDT, cioe' allargare un vocabolario che 83 file di
+#   20_code leggono come chiuso.
+#
+# ── ⭐ E' UN LETTORE: non solleva mai ──────────────────────────────
+#   Stessa coppia gia' in casa (fn_lookup_registro_id / fn_get_registro_id,
+#   fn_get_ba_emittente_sr_id / fn_get_emittente_fiscale_id): chi LEGGE — una
+#   vista, una previsione — non puo' morire su una configurazione mancante;
+#   chi SCRIVE consuma l'involucro, dove il buco DEVE fermare.
+#
+# ── ⚠️ IL FALLBACK RESTA SOLO SULL'UTILITY ────────────────────────
+#   Due livelli: (utility mia) → (registro per tutte le utility). Sull'emittente
+#   NON c'e' fallback, ed e' la differenza che conta: un registro «di nessuno»
+#   non esiste piu' dal 2026-08-30 (C1-2), e ricrearne uno per questa strada
+#   riaprirebbe dalla finestra il difetto chiuso dalla porta.
+#
+# ── ⚠️ LA SERIE VIENE DAL REGISTRO ────────────────────────────────
+#   Senza mappa non c'e' un override di serie: la serie e' `serie_default` del
+#   registro. Esce grezza — `NULL` significa «nessuna serie», ed e' la stessa
+#   convenzione che fn_assign_numero_fattura risolve con il suo COALESCE.
+#
+# ── ℹ️ `FATTURA` NON E' RIFIUTATA QUI ─────────────────────────────
+#   Il guard sta nell'involucro (C2-5), dove stanno tutti i guard di questa
+#   coppia. Un lettore che si mettesse a giudicare i parametri smetterebbe di
+#   essere un lettore — e la vista che lo consuma vuole una risposta, non un
+#   verdetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-01-create-fn-lookup-registro-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260831-01-create-fn-lookup-registro-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-4: il LETTORE del registro per famiglia — quale registro numera questa famiglia, per
+        questo emittente, eventualmente per questa utility. ⛔ Non passa da
+        tipi_doc_fiscale_registri, e non e'' una semplificazione: quella mappa parte dal tipo
+        documento fiscale e dalla natura, che DDT, ordine, commessa e reso NON hanno — vendite.ddt
+        non ha proprio la colonna. Le due risoluzioni restano DUE perche'' partono da chiavi diverse
+        verso la stessa tabella; unificarle vorrebbe dire inventare un tipo documento fiscale per il
+        DDT, cioe'' allargare un vocabolario che 83 file di 20_code leggono come chiuso. ⭐ E'' un
+        lettore e non solleva mai: chi legge (viste, previsioni) non puo'' morire su una
+        configurazione mancante, chi scrive consuma l''involucro C2-5. ⚠️ Il fallback resta SOLO
+        sull''utility (mia → per tutte): sull''emittente non c''e'', perche'' il registro «di
+        nessuno» non esiste piu'' dal C1-2 e ricrearne uno per questa strada riaprirebbe dalla
+        finestra il difetto chiuso dalla porta. ⚠️ La serie e'' il serie_default del registro: senza
+        mappa non c''e'' nessun override. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_lookup_registro_documento(
+                  -- ⚠️ Tipi ANCORATI con %TYPE, firma e RETURNS TABLE comprese.
+                  --   Il %TYPE in firma e' una FOTOGRAFIA: si risolve al CREATE
+                  --   e non si riaggancia — chi cambia una di queste colonne
+                  --   ricrea la funzione.
+                  p_famiglia_documento          vendite.registri_fatturazione.famiglia_documento%TYPE,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(registro_id vendite.registri_fatturazione.id%TYPE,
+                             serie       vendite.registri_fatturazione.serie_default%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_registro vendite.registri_fatturazione.id%TYPE;
+                  v_serie    vendite.registri_fatturazione.serie_default%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   CERCARE il registro su cui si numera un documento di
+                  --   questa famiglia, e basta. Chi non trova risponde NULL:
+                  --   qui non si solleva mai.
+                  --
+                  -- ⛔ Il guard di parametro e il raise NON stanno qui: sono
+                  --   in vendite.fn_get_registro_documento, l'involucro per
+                  --   chi SCRIVE.
+                  -- =========================================================
+
+                  -- ⚠️ Fallback a DUE livelli, e solo sull'UTILITY:
+                  --     1) il registro della mia utility
+                  --     2) il registro «per tutte le utility»
+                  --   ⛔ Sull'emittente NON c'e' fallback: il registro «di
+                  --     nessuno» e' stato chiuso dal C1-2, e riaprirlo qui
+                  --     rimetterebbe due partite IVA sulla stessa serie.
+                  -- ⚠️ Solo registri ATTIVI: un registro spento e' una
+                  --   configurazione ritirata, non una da ripescare.
+                  -- ℹ️ Con un parametro a NULL il predicato non corrisponde a
+                  --   niente e la risposta e' NULL: e' voluto, non un caso da
+                  --   intercettare.
+                  SELECT r.id, r.serie_default
+                    INTO v_registro, v_serie
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.famiglia_documento           = p_famiglia_documento
+                     AND r.emittente_soggetto_ruolo_id  = p_emittente_soggetto_ruolo_id
+                     AND r.attivo IS TRUE
+                     AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+                   ORDER BY
+                       CASE
+                           WHEN r.utility_id = p_utility_id THEN 1
+                           WHEN r.utility_id IS NULL        THEN 2
+                           ELSE 9
+                       END, r.id
+                   LIMIT 1;
+
+                  -- ⭐ UNA riga sempre, anche tutta a NULL: e' il contratto
+                  --   del lettore, e permette al chiamante di distinguere
+                  --   «non trovato» da «non chiamato».
+                  RETURN QUERY SELECT v_registro, v_serie;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_lookup_registro_documento(vendite.registri_fatturazione.famiglia_documento%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE, vendite.registri_fatturazione.utility_id%TYPE)
+              IS 'CERCA il registro su cui si numera un documento di una data FAMIGLIA (DDT, ORDINE, COMMESSA, RESO) per un dato emittente, con l''utility a raffinare — e NON solleva mai. E'' il lettore puro di cui vendite.fn_get_registro_documento e'' l''involucro: stessa coppia, e stessa ragione, di vendite.fn_lookup_registro_id / vendite.fn_get_registro_id. ⛔ NON passa da vendite.tipi_doc_fiscale_registri, e non e'' una scorciatoia: quella mappa parte dal TIPO DOCUMENTO FISCALE e dalla NATURA, che DDT, ordine, commessa e reso non hanno — vendite.ddt non ha proprio la colonna del tipo. Per queste famiglie la chiave e'' «famiglia + emittente (+ utility)», e una riga di registro per emittente basta: non c''e'' niente da mappare. Le due risoluzioni restano quindi DUE, e partono da chiavi diverse verso la stessa tabella; unificarle vorrebbe dire inventare un tipo documento fiscale per il DDT, cioe'' allargare un vocabolario che 83 file di 20_code leggono come chiuso. ⚠️ Il fallback e'' a DUE livelli e SOLO sull''utility (la mia → quella per tutte): sull''EMITTENTE non c''e'', ed e'' la differenza che conta — il registro «di nessuno» e'' stato chiuso dal NOT NULL del 2026-08-30 (C1-2), e ricrearne uno per questa strada riaprirebbe dalla finestra il difetto chiuso dalla porta, rimettendo due partite IVA sulla stessa serie. ⚠️ Solo registri ATTIVI: uno spento e'' una configurazione ritirata, non una da ripescare. ⚠️ La SERIE e'' il serie_default del registro ed esce grezza: senza mappa non esiste nessun override di serie, e NULL significa «nessuna serie» — la stessa convenzione che vendite.fn_assign_numero_fattura risolve con il suo COALESCE. ℹ️ La famiglia FATTURA non e'' rifiutata qui: il guard sta nell''involucro, dove stanno tutti i guard di questa coppia — un lettore che giudicasse i parametri smetterebbe di essere un lettore, e la vista che lo consuma vuole una risposta, non un verdetto. ℹ️ Ritorna SEMPRE una riga, anche tutta a NULL. STABLE: legge una sola tabella. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_lookup_registro_documento(varchar, bigint, integer);

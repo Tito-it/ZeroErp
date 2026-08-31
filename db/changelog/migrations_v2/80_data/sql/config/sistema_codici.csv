@@ -4,7 +4,7 @@ id,codice_interno,descrizione,prefisso,separatore,lunghezza_numero,usa_sequenza,
 1,soggetto,Codice soggetto automatico,SGT,-,7,t,2025-04-12 09:47:40.919091+02,postgres,2026-03-01 12:56:47.16872+01,titodb,e6471ed9-08e4-4fb5-b177-06c94e63548a,anagrafiche,soggetti,codice
 2,billing_account,Codice cliente(account) automatico,BAC,/,7,t,2025-04-22 16:25:06.668578+02,postgres,2026-03-01 12:56:47.16872+01,titodb,f6e9e624-1bab-477a-aacf-4293625d9ee3,anagrafiche,billing_account,codice
 3,istanze_utilities,Codice istanza (ex fornitura) automatico,IFO,-,7,t,2025-04-22 16:38:12.173131+02,titodb,2026-03-01 12:56:47.16872+01,titodb,a1b0ecc7-abb8-4557-954e-5a1b71dd1af0,anagrafiche,istanze_utilities,codice
-6,ordine,Numero ordine,ORD,"",7,t,2025-10-31 19:16:41.105172+01,titodb,2026-03-01 12:56:47.16872+01,titodb,2e8d9107-4184-4544-ab28-6f8f8b06cf07,vendite,ordini,numero
+6,ordine,Numero ordine,ORD,"",7,f,2025-10-31 19:16:41.105172+01,titodb,2026-03-01 12:56:47.16872+01,titodb,2e8d9107-4184-4544-ab28-6f8f8b06cf07,vendite,ordini,numero
 7,ddt,Numero ddt,DDT,"",7,f,2025-10-31 19:25:09.326307+01,titodb,2026-07-09 00:00:00+02,mctit,13a4876e-aee4-45e9-a6af-c07b45a57b6c,vendite,ddt,numero
 8,contratto,Numero contratto,CNT,"",7,t,2025-11-01 18:35:35.185402+01,titodb,2026-03-01 12:56:47.16872+01,titodb,dd70b7e5-10b5-4b66-8827-bcc22723a2c7,vendite,contratti,numero
 15,fornitori,Codice fornitore,FORN,,7,t,2026-03-28 15:50:58.565352+01,titodb,2026-03-28 15:50:58.565352+01,titodb,019d34ed-471c-79cb-be79-f7356d96ff74,anagrafiche,fornitori,codice
@@ -12,3 +12,4 @@ id,codice_interno,descrizione,prefisso,separatore,lunghezza_numero,usa_sequenza,
 17,offerta_commerciale,Numero offerta commerciale,OFC,-,7,t,2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED,32eb7ad5-b1f3-48e4-88f2-32ae5dc7e887,vendite,offerte_commerciali,codice
 18,reso,Numero reso,RESO,"",7,f,2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED,NULL,vendite,resi,numero
 19,vettori,Codice vettore,VET,-,7,t,2026-08-21 00:00:00+02,SEED,2026-08-21 00:00:00+02,SEED,NULL,anagrafiche,vettori,codice
+20,commessa,Codice commessa,CMM,-,9,f,2026-08-31 00:00:00+02,SEED,2026-08-31 00:00:00+02,SEED,NULL,vendite,commesse,codice

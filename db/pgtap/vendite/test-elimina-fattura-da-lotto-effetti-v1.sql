@@ -121,11 +121,7 @@ SELECT
   -- ⚠️ Il registro dev'essere compatibile con l'emittente del contesto:
   --   uno legato a un ALTRO emittente farebbe fallire l'INSERT sul guard di
   --   scope, e il rosso parlerebbe di permessi invece che del soggetto.
-  (SELECT r.id FROM vendite.registri_fatturazione r
-    WHERE r.attivo IS TRUE
-      AND (r.emittente_soggetto_ruolo_id IS NULL
-           OR r.emittente_soggetto_ruolo_id = (SELECT emittente_sr_id FROM tmp_cost_ef))
-    ORDER BY r.id LIMIT 1)            AS registro_id;
+  script.fn_pgtap_registro_fattura((SELECT emittente_sr_id FROM tmp_cost_ef))            AS registro_id;
 
 SELECT ok(
   (SELECT r.stato_draft_id IS NOT NULL

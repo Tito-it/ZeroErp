@@ -1,0 +1,381 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-6 (seconda meta') — IL MOTORE SMETTE DI PARLARE SOLO DI FATTURE
+#   vendite.fn_get_next_progressivo: arriva p_famiglia_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-6/7 (§3.3)
+#
+# ── ⭐ IL PERCORSO FELICE NON CAMBIA DI UNA RIGA ───────────────────
+#   Verificato prima di scrivere: sul percorso felice questa funzione NON legge
+#   `vendite.fatture`. La competenza arriva come parametro, il pavimento da
+#   fn_get_pavimento_data_documento, il contatore dalla sua tabella. Le fatture
+#   compaiono in DUE punti soltanto, ed entrambi stanno nel RAMO D'ERRORE:
+#     1) il BERSAGLIO «apri l'ultima numerata», che e' una lookup su
+#        vendite.fatture;
+#     2) il NOME dei due codici errore.
+#   E' per questo che il trasloco costa poco: il motore era gia' quasi agnostico
+#   e non lo sapeva.
+#
+# ── ⚠️ UN PARAMETRO IN CODA, E UN `DROP` OBBLIGATO ────────────────
+#   `p_famiglia_documento` ha un DEFAULT e sta in fondo, quindi l'unico
+#   chiamante — vendite.fn_assign_numero_fattura, che chiama POSIZIONALE con
+#   cinque argomenti — non cambia di una virgola.
+#   ⛔ Ma un parametro in piu' crea un OVERLOAD, non una sostituzione: senza
+#   `DROP` resterebbero due funzioni e le chiamate a cinque argomenti
+#   diventerebbero ambigue. Il DROP e' nel changeSet, prima del CREATE.
+#
+# ── ⛔ IL NOME `p_fattura_id` RESTA, ED E' UN DEBITO DICHIARATO ────
+#   Ora quel parametro porta l'id di un documento qualunque. Rinominarlo
+#   spezzerebbe le chiamate per parametro nominato e costringerebbe a una
+#   revisione di fn_assign_numero_fattura che questo cantiere non deve fare.
+#   E' la stessa scelta gia' fatta sul nome della tabella
+#   `registri_fatturazione`: si tiene il nome, si dichiara il debito.
+#
+# ── ⭐ IL CODICE ERRORE LO SCEGLIE LA FAMIGLIA, E NE BASTA UNO NUOVO
+#   Ramo SEQUENZA: `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` per la fattura,
+#   `E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO` per gli altri. ⛔ Non si riusa
+#   il codice della fattura: la sua frase parla di fatture, e i consumatori di
+#   un messaggio si cercano dal NOME di chi lo solleva — un DDT che segnalasse
+#   E_FATTURA_* manderebbe a cercare nel posto sbagliato.
+#   ⛔ Il gemello del LIMITE DI EMISSIONE non esiste, ed e' una conseguenza del
+#   20260831-05: quel pavimento vale sulla sola famiglia FATTURA, quindi fuori
+#   dalla fattura il ramo EMISSIONE e' IRRAGGIUNGIBILE PER COSTRUZIONE. Un
+#   codice che nessuno puo' sollevare sarebbe una voce dichiarata e non
+#   implementata — la specie che questo progetto toglie dai CHECK.
+#
+# ── ⚠️ IL BERSAGLIO: due elementi per la fattura, uno per gli altri ─
+#   Il secondo elemento e' «apri l'ultima numerata del sezionale», e per gli
+#   altri documenti quella lookup non esiste (sono tabelle diverse) ne'
+#   servirebbe: non c'e' nessuna pagina a cui mandare. ⛔ E un pulsante verso il
+#   nulla e' peggio di nessun pulsante — e' la stessa regola gia' scritta per il
+#   ramo EMISSIONE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-06-recreate-fn-get-next-progressivo-agnostico-mctit.yaml
+
+  - changeSet:
+      id: 20260831-06-recreate-fn-get-next-progressivo-agnostico
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-6/7: il motore smette di parlare solo di fatture. ⭐ Il percorso felice NON cambia di una
+        riga — verificato: le fatture comparivano in due soli punti, entrambi nel RAMO D''ERRORE (la
+        lookup del bersaglio e il nome dei codici). E'' per questo che il trasloco costa poco: il
+        motore era gia'' quasi agnostico e non lo sapeva. ⚠️ p_famiglia_documento ha un DEFAULT e
+        sta in coda, quindi l''unico chiamante (fn_assign_numero_fattura, che chiama POSIZIONALE con
+        cinque argomenti) non cambia — ⛔ ma un parametro in piu'' crea un OVERLOAD e non una
+        sostituzione: senza DROP resterebbero due funzioni e le chiamate a cinque argomenti
+        diventerebbero ambigue. ⛔ Il nome p_fattura_id RESTA benche'' ora porti l''id di un
+        documento qualunque: rinominarlo spezzerebbe le chiamate per nome e costringerebbe a una
+        revisione di fn_assign_numero_fattura fuori perimetro — stessa scelta gia'' fatta sul nome
+        della tabella registri_fatturazione, si tiene il nome e si dichiara il debito. ⭐ Un solo
+        codice nuovo (E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO): il gemello del limite di emissione
+        non esiste perche'' dopo il 20260831-05 quel pavimento vale sulla sola FATTURA, quindi fuori
+        dalla fattura il ramo EMISSIONE e'' irraggiungibile PER COSTRUZIONE. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-6/7.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_next_progressivo'
+                     AND p.pronargs = 5;
+            # ⛔ QUI C'ERA UNA PRECONDITION SUL CODICE ERRORE NUOVO, ED ERA
+            #    SBAGLIATA PER COSTRUZIONE — tolta il 2026-08-31 dopo che ha
+            #    fermato il migrate.
+            #    Liquibase esegue 00_schema → 20_code → 80_data: un changeSet di
+            #    20_code che pretende una riga seminata in 80_data non puo'
+            #    essere soddisfatto NELLA STESSA CORSA che quella riga la
+            #    introduce. Non e' un caso di bordo: e' l'unico modo in cui il
+            #    codice nuovo puo' arrivare.
+            #    ⭐ E non serve: il codice si nomina come STRINGA e si risolve
+            #    solo quando l'errore viene sollevato — cioe' a runtime, quando
+            #    80_data e' passato da un pezzo. La regola generale, gia' a
+            #    registro: **un changeSet di 20_code non fa preCondition sul
+            #    contenuto di 80_data.**
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ DROP e non solo REPLACE: il parametro in piu' cambia l'arita'
+              --   e creerebbe un OVERLOAD, con le chiamate a cinque argomenti
+              --   diventate ambigue.
+              DROP FUNCTION IF EXISTS vendite.fn_get_next_progressivo(bigint, date, date, text, bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_next_progressivo(
+                  p_registro_id        vendite.registri_fatturazione.id%TYPE,
+                  p_data               vendite.fatture.data%TYPE,
+                  p_competenza_mese    vendite.fatture.competenza_mese%TYPE,
+                  p_serie              text    DEFAULT NULL,
+                  -- ⛔ Il nome resta `p_fattura_id` benche' ora porti l'id di un
+                  --   documento qualunque: rinominarlo spezzerebbe le chiamate
+                  --   per parametro nominato. Debito dichiarato, come il nome
+                  --   della tabella registri_fatturazione.
+                  p_fattura_id         bigint  DEFAULT NULL,
+                  p_famiglia_documento vendite.registri_fatturazione.famiglia_documento%TYPE
+                                               DEFAULT 'FATTURA'
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_anno       vendite.registri_fatturazione_progressivi.anno%TYPE;
+                  -- ⚠️ Fermo a 0 finche' MENSILE non esiste: vedi il COMMENT
+                  --    della colonna.
+                  v_mese       vendite.registri_fatturazione_progressivi.mese%TYPE := 0;
+                  v_serie      TEXT := COALESCE(p_serie, '');
+                  v_last       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+                  v_next       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+                  v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+                  v_origine    text;
+                  v_competenza vendite.fatture.competenza_mese%TYPE;
+                  v_ultima_id  vendite.fatture.id%TYPE;
+                  v_bersagli   jsonb;
+                  -- ⭐ Il codice del ramo SEQUENZA lo sceglie la famiglia.
+                  v_codice_seq text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Consegnare il prossimo numero del sezionale, e rifiutare
+                  --   se la data del documento sta sotto il PAVIMENTO
+                  --   EFFETTIVO.
+                  --
+                  -- Regole:
+                  --   - il controllo sta SOTTO il lock, o e' soggetto a corsa;
+                  --   - il lock ha lo STESSO perimetro del controllo;
+                  --   - la stessa data e' ammessa (>=, non >);
+                  --   - il codice dell'errore lo sceglie il pavimento che ha
+                  --     morso E la famiglia del documento.
+                  --
+                  -- ⭐ rev 2026-08-31: arriva p_famiglia_documento. Cambia SOLO
+                  --   il ramo d'errore — il percorso felice non legge
+                  --   vendite.fatture e non l'ha mai fatto.
+                  -- =========================================================
+
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_next_progressivo',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_next_progressivo',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  IF p_data IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_next_progressivo',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'data documento obbligatoria',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_next_progressivo',
+                          'p_data (obbligatorio)');
+                  END IF;
+
+                  -- ⭐ LA COMPETENZA, O IL SUO RIPIEGO.
+                  -- ⛔ NON si legge dal lotto: quello ha la RLS, e da dentro una
+                  --    SECURITY INVOKER un lotto invisibile darebbe competenza
+                  --    NULL e via libera — fail-open nel punto non aggirabile.
+                  -- ℹ️ Sui documenti non fiscali la competenza non serve a
+                  --    niente (il limite di emissione non si applica), ma il
+                  --    ripiego costa nulla e tiene una sola forma di chiamata.
+                  v_competenza := COALESCE(p_competenza_mese,
+                                           date_trunc('month', p_data)::date);
+
+                  v_anno := vendite.fn_get_anno_registro(p_data);
+
+                  -- ─── IL LOCK ──────────────────────────────────────────
+                  -- 🔴 La chiave NON porta l'anno, e non e' una svista: il
+                  --    cancello legge il massimo ATTRAVERSO GLI ANNI, e con
+                  --    l'anno nella chiave due transazioni con date in anni
+                  --    diversi prenderebbero lock DIVERSI e passerebbero
+                  --    entrambe.
+                  -- ⚠️ Forma a DUE argomenti (namespace + chiave).
+                  PERFORM pg_advisory_xact_lock(
+                      hashtext('registri_fatturazione_progressivi'),
+                      hashtext(p_registro_id::text || '|' || v_serie)
+                  );
+
+                  -- ─── ⭐ IL CANCELLO ───────────────────────────────────
+                  -- ⚠️ La lettura resta SOTTO il lock: la parte di sequenza
+                  --    legge il contatore, ed e' quella che va serializzata.
+                  -- ⭐ Dal 20260831-05 il pavimento sa gia' che il limite di
+                  --    emissione vale sulla sola FATTURA: qui non si distingue
+                  --    niente, si chiede.
+                  SELECT pv.pavimento, pv.origine
+                    INTO v_pavimento, v_origine
+                    FROM vendite.fn_get_pavimento_data_documento(
+                             p_registro_id, v_serie, v_competenza) pv;
+
+                  -- ⚠️ `<` e non `<=`: la STESSA data del pavimento e' ammessa,
+                  --    ed e' il caso piu' comune.
+                  IF v_pavimento IS NOT NULL AND p_data < v_pavimento THEN
+
+                      -- ⭐ Da qui in giu' si e' gia' deciso di rifiutare: il
+                      --    costo di comporre il bersaglio non tocca il percorso
+                      --    felice.
+                      v_bersagli := CASE
+                          WHEN p_fattura_id IS NOT NULL
+                          THEN jsonb_build_array(jsonb_build_object(
+                                   'tipo', p_famiglia_documento,
+                                   'id',   p_fattura_id::text))
+                          ELSE '[]'::jsonb
+                      END;
+
+                      -- ─── Ramo LIMITE DI EMISSIONE ────────────────────
+                      -- ⛔ Nessun secondo bersaglio: dietro il limite non c'e'
+                      --    nessun documento da aprire.
+                      -- ⛔ E questo ramo e' raggiungibile SOLO dalla famiglia
+                      --    FATTURA: dal 20260831-05 il pavimento di emissione
+                      --    non si applica alle altre. E' il motivo per cui il
+                      --    codice resta E_FATTURA_* senza un gemello.
+                      IF v_origine = 'EMISSIONE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_get_next_progressivo',
+                              'E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE',
+                              jsonb_build_object(
+                                  'campo',          'data_documento',
+                                  'registro_id',    p_registro_id,
+                                  'serie',          v_serie,
+                                  'pavimento',      v_pavimento,
+                                  'origine',        v_origine,
+                                  'competenza',     v_competenza,
+                                  'data_richiesta', p_data,
+                                  'famiglia',       p_famiglia_documento,
+                                  'documento_id',   p_fattura_id)
+                              || CASE WHEN jsonb_array_length(v_bersagli) > 0
+                                      THEN jsonb_build_object('bersaglio', v_bersagli)
+                                      ELSE '{}'::jsonb
+                                 END,
+                              NULL::uuid,
+                              to_char(v_pavimento, 'DD/MM/YYYY'));
+                      END IF;
+
+                      -- ─── Ramo SEQUENZA (e pareggio, che va a SEQUENZA) ─
+                      -- ⭐ Il secondo bersaglio — «apri l'ultima numerata» —
+                      --    esiste SOLO per la fattura: per gli altri documenti
+                      --    quella lookup e' su un'altra tabella e non c'e'
+                      --    nessuna pagina a cui mandare. Un pulsante verso il
+                      --    nulla e' peggio di nessun pulsante.
+                      -- ⭐ L'ultima numerata si cerca PER DATA, non per numero:
+                      --    in un registro con inversioni gia' scritte «l'ultimo
+                      --    per numero» porterebbe una data diversa da quella
+                      --    che la frase nomina.
+                      -- ⚠️ vendite.fatture ha la RLS e questa funzione e'
+                      --    SECURITY INVOKER: se non e' visibile non si trova
+                      --    nulla e il pulsante non nasce.
+                      IF p_famiglia_documento = 'FATTURA' THEN
+                          SELECT f.id
+                            INTO v_ultima_id
+                            FROM vendite.fatture f
+                            JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                           WHERE f.registro_id = p_registro_id
+                             AND COALESCE(f.serie, r.serie_default, '') = v_serie
+                             AND f.numero IS NOT NULL
+                             AND f.data   = v_pavimento
+                           ORDER BY f.anno DESC, f.numero DESC
+                           LIMIT 1;
+
+                          IF v_ultima_id IS NOT NULL THEN
+                              v_bersagli := v_bersagli || jsonb_build_array(
+                                  jsonb_build_object('tipo', 'FATTURA',
+                                                     'id', v_ultima_id::text));
+                          END IF;
+                      END IF;
+
+                      -- ⭐ Il codice lo sceglie la FAMIGLIA: la frase del
+                      --    gemello non nomina la fattura, perche' a leggerla e'
+                      --    chi sta emettendo un DDT. ⛔ Riusare il codice della
+                      --    fattura manderebbe a cercare nel posto sbagliato:
+                      --    i consumatori di un messaggio si trovano dal NOME
+                      --    di chi lo solleva.
+                      v_codice_seq := CASE
+                          WHEN p_famiglia_documento = 'FATTURA'
+                          THEN 'E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO'
+                          ELSE 'E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO'
+                      END;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_next_progressivo',
+                          v_codice_seq,
+                          jsonb_build_object(
+                              'campo',          'data_documento',
+                              'registro_id',    p_registro_id,
+                              'serie',          v_serie,
+                              'ultima_data',    v_pavimento,
+                              'origine',        v_origine,
+                              'data_richiesta', p_data,
+                              'famiglia',       p_famiglia_documento,
+                              'documento_id',   p_fattura_id)
+                          -- ⚠️ La chiave si OMETTE se non c'e' nessun bersaglio:
+                          --    un array vuoto e' malformato e lascerebbe un
+                          --    W_BERSAGLIO_MALFORMATO nel log per niente.
+                          || CASE WHEN jsonb_array_length(v_bersagli) > 0
+                                  THEN jsonb_build_object('bersaglio', v_bersagli)
+                                  ELSE '{}'::jsonb
+                             END,
+                          NULL::uuid,
+                          to_char(v_pavimento, 'DD/MM/YYYY'));
+                  END IF;
+
+                  -- ─── IL CONTATORE ─────────────────────────────────────
+                  SELECT rp.last_numero
+                    INTO v_last
+                    FROM vendite.registri_fatturazione_progressivi rp
+                   WHERE rp.registro_id = p_registro_id
+                     AND rp.anno  = v_anno
+                     AND rp.mese  = v_mese
+                     AND rp.serie = v_serie
+                     FOR UPDATE;
+
+                  IF v_last IS NULL THEN
+                      INSERT INTO vendite.registri_fatturazione_progressivi
+                             (registro_id, anno, mese, serie, last_numero, attivo)
+                      VALUES (p_registro_id, v_anno, v_mese, v_serie, 0, true)
+                      RETURNING last_numero INTO v_last;
+                  END IF;
+
+                  v_next := v_last + 1;
+
+                  -- ⭐ `GREATEST` e non un'assegnazione secca: la memoria della
+                  --    sequenza non deve MAI arretrare.
+                  UPDATE vendite.registri_fatturazione_progressivi
+                     SET last_numero = v_next,
+                         ultima_data = GREATEST(COALESCE(ultima_data, p_data), p_data)
+                   WHERE registro_id = p_registro_id
+                     AND anno  = v_anno
+                     AND mese  = v_mese
+                     AND serie = v_serie;
+
+                  RETURN v_next;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_next_progressivo(vendite.registri_fatturazione.id%TYPE, vendite.fatture.data%TYPE, vendite.fatture.competenza_mese%TYPE, text, bigint, vendite.registri_fatturazione.famiglia_documento%TYPE)
+              IS 'Prossimo progressivo del sezionale, con il CANCELLO sulla data. ⛔ Rifiuta se p_data sta sotto il PAVIMENTO EFFETTIVO, che e'' il MAGGIORE fra la sequenza gia'' emessa su (registro, serie) e il LIMITE DI EMISSIONE. La data UGUALE al pavimento e'' ammessa (>=, non >). ⭐ Il pavimento arriva COMPOSTO da vendite.fn_get_pavimento_data_documento — una sede sola. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-6/7): ARRIVA p_famiglia_documento, e il motore smette di parlare solo di fatture. ⭐ IL PERCORSO FELICE NON CAMBIA DI UNA RIGA, ed e'' il fatto che ha reso il trasloco economico: questa funzione non legge vendite.fatture sul percorso felice e non l''ha mai fatto — la competenza arriva come parametro, il pavimento dalla sede unica, il contatore dalla sua tabella. Le fatture comparivano in DUE punti soltanto, entrambi nel ramo d''errore: la lookup del BERSAGLIO e il NOME dei codici. ⚠️ Il parametro nuovo ha un DEFAULT e sta in CODA, quindi l''unico chiamante — vendite.fn_assign_numero_fattura, che chiama POSIZIONALE con cinque argomenti — non cambia. ⛔ Ma un parametro in piu'' crea un OVERLOAD e non una sostituzione: senza DROP resterebbero due funzioni e le chiamate a cinque argomenti diventerebbero ambigue, ed e'' per questo che il changeSet fa DROP prima del CREATE. ⛔ IL NOME p_fattura_id RESTA benche'' ora porti l''id di un documento qualunque: rinominarlo spezzerebbe le chiamate per parametro nominato e costringerebbe a una revisione di fn_assign_numero_fattura che questo cantiere non deve fare — e'' la stessa scelta gia'' presa sul nome della tabella registri_fatturazione, si tiene il nome e si dichiara il debito. ⭐ IL CODICE ERRORE DEL RAMO SEQUENZA LO SCEGLIE LA FAMIGLIA: E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO per la fattura, E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO per gli altri. ⛔ Non si riusa il codice della fattura: la sua frase parla di fatture, e i consumatori di un messaggio si cercano dal NOME di chi lo solleva — un DDT che segnalasse E_FATTURA_* manderebbe a cercare nel posto sbagliato. ⛔ IL GEMELLO DEL LIMITE DI EMISSIONE NON ESISTE, ed e'' una conseguenza del 20260831-05: quel pavimento vale sulla sola famiglia FATTURA, quindi fuori dalla fattura il ramo EMISSIONE e'' IRRAGGIUNGIBILE PER COSTRUZIONE — e un codice che nessuno puo'' sollevare sarebbe una voce dichiarata e non implementata. ⭐ IL SECONDO BERSAGLIO — «apri l''ultima numerata del sezionale» — esiste SOLO per la fattura: per gli altri documenti quella lookup e'' su un''altra tabella e non c''e'' nessuna pagina a cui mandare, e un pulsante verso il nulla e'' peggio di nessun pulsante (stessa regola gia'' scritta per il ramo EMISSIONE). ⚠️ L''ultima numerata si cerca PER DATA e non per numero, e solo se VISIBILE: vendite.fatture ha la RLS e questa funzione e'' SECURITY INVOKER. ⭐ Il controllo sta SOTTO l''advisory lock: e'' l''unico punto NON AGGIRABILE. 🔴 La chiave del lock non porta l''ANNO ed e'' (registro | serie), perche'' il cancello legge il massimo ATTRAVERSO GLI ANNI. ⚠️ Il massimo si legge dal CONTATORE e non da vendite.fatture, che ha la RLS: un max() sotto perimetro ristretto tornerebbe NULL, cioe'' «via libera» proprio quando non si sa. ⭐ ultima_data si aggiorna con GREATEST: la memoria della sequenza non arretra mai. ℹ️ Sui documenti non fiscali la competenza non serve (il limite non si applica) ma il ripiego resta, per tenere una sola forma di chiamata. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-10, rivisto da brief-db-registri-di-numerazione-emittente-e-trasloco C2-6/7.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback manuale: ri-applicare 20260825-11-recreate-fn-get-next-progressivo-cancello e le revisioni successive'::text;

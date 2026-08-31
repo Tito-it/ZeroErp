@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-19 (prima meta') — LA SIGLA DELL'EMITTENTE PRENDE UNA FORMA
+#   bonifica + chk_emittenti_fiscali_codice_forma
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4
+#
+# ── ⛔ PERCHE' SERVE: IL CODICE COMMESSA E' DECOMPONIBILE ──────────
+#   Dal 2026-08-31 la commessa si chiama `CMM-<sigla>-<anno>-<9 cifre>`, e i
+#   pezzi si separano col trattino. La sigla e'
+#   `anagrafiche.emittenti_fiscali.codice`, che era LIBERO: 32 caratteri e
+#   nessun vincolo di forma, trattino compreso.
+#   ⇒ Sigla `AC-ME` ⇒ `CMM-AC-ME-2026-000000001`: cinque pezzi invece di
+#   quattro, e non si capisce piu' dove finisce la sigla.
+#   ⚠️ E il difetto e' MUTO: `uq_commesse_codice` regge lo stesso, nessun
+#   errore, nessun duplicato — solo codici che smettono di essere leggibili,
+#   per sempre e per quel solo emittente.
+#
+# ── ⭐ LA FORMA: `^[A-Z0-9]{2,10}$` ───────────────────────────────
+#   Maiuscole e cifre, da 2 a 10. ⛔ Niente trattino, che e' il separatore: un
+#   separatore che puo' comparire dentro un campo non separa niente.
+#   ⚠️ Il tetto a 10 non e' estetica: con 10 il codice commessa arriva a 29
+#   caratteri e resta leggibile a colpo d'occhio; con 32 arriverebbe a 51.
+#
+# ── ⚠️ LA BONIFICA E IL VINCOLO STANNO NELLO STESSO changeSet ─────
+#   E non e' una comodita': `00_schema` gira PRIMA di `80_data`, quindi una
+#   bonifica messa fra i dati arriverebbe DOPO il vincolo — che fallirebbe sul
+#   pregresso, cioe' proprio sul caso che la bonifica esiste per togliere.
+#   ⭐ Uno solo: o passa tutto, o non passa niente.
+#
+# ── ⭐ LA BONIFICA E' UNA REGOLA, NON DUE `UPDATE` ────────────────
+#   Si scrive come trasformazione — «togli i caratteri non ammessi, alza a
+#   maiuscolo, tronca a 10» — e non come due righe puntuali.
+#   ⚠️ Perche' il DB di sviluppo NON e' ricostruito da zero: le due righe
+#   misurate qui (`EMI-TEST`, `PGTAP-EF-20260126172242554`) sono di QUESTA
+#   macchina, e altrove le righe storte saranno altre o nessuna. Una regola le
+#   corregge tutte allo stesso modo; due `UPDATE` puntuali correggono una
+#   fotografia.
+#   ✅ Le due proposte sono state verificate e accettate da Tid il 2026-08-31:
+#   `EMI-TEST` -> `EMITEST`, `PGTAP-EF-20260126172242554` -> `PGTAPEF202`.
+#
+# ── ⚠️ IL CODICE E' IMMUTABILE, E SI PASSA DALLA PORTA ────────────
+#   `dbops.automation_lock_columns` lo blocca in UPDATE via
+#   `script.trgfn_lock_columns`. ⭐ Non si smonta il lock: si usa il bypass che
+#   quella funzione PREVEDE — `zeroerp.allow_lock_columns_override = 'on'`,
+#   messo con `set_config(..., true)` cioe' LOCAL, e rimesso a `off` in coda.
+#
+# ⚠️ RICADUTA DICHIARATA: la sigla e' dentro il codice delle commesse GIA'
+#   create, che non si rinumerano (⛔ nessuna rinumerazione del pregresso, per
+#   nessun numeratore). Le commesse vecchie di quei due emittenti restano con
+#   la sigla vecchia nella stringa. Non si rompe niente — l'unicita' e' sulla
+#   stringa intera — ma la discontinuita' e' visibile, ed e' voluta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260831-22-alter-emittenti-fiscali-codice-forma-mctit.yaml
+
+  - changeSet:
+      id: 20260831-22-alter-emittenti-fiscali-codice-forma
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-19 (prima meta''): la sigla dell''emittente prende una forma — ^[A-Z0-9]{2,10}$ — e il
+        pregresso si bonifica nello stesso changeSet. ⛔ Serve perche'' dal 2026-08-31 il codice
+        commessa e'' CMM-<sigla>-<anno>-<9 cifre>, decomponibile sul trattino: una sigla che
+        contiene un trattino produce cinque pezzi invece di quattro, e il difetto e'' MUTO —
+        uq_commesse_codice regge, nessun errore, solo codici illeggibili per sempre. ⚠️ Bonifica e
+        vincolo insieme e non separati: 00_schema gira PRIMA di 80_data, quindi una bonifica messa
+        fra i dati arriverebbe dopo il vincolo, che fallirebbe sul pregresso. ⭐ La bonifica e'' una
+        REGOLA (togli i non ammessi, alza a maiuscolo, tronca a 10) e non due UPDATE puntuali,
+        perche'' il DB di sviluppo non e'' ricostruito da zero e altrove le righe storte saranno
+        altre. ⭐ Il codice e'' immutabile e si passa dalla PORTA: il bypass GUC che
+        script.trgfn_lock_columns prevede, LOCAL e rimesso a off in coda. ⚠️ Ricaduta dichiarata:
+        le commesse gia'' create tengono la sigla vecchia nella stringa — nessuna rinumerazione
+        del pregresso. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4.
+      preConditions:
+        - onFail: HALT
+        # ⛔ Le due condizioni che renderebbero la regola inapplicabile. Se una
+        #    delle due suona, la scelta e' di una PERSONA: una sigla non la
+        #    inventa una regexp.
+        - and:
+            # a) nessuna proposta scenderebbe sotto i 2 caratteri
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM anagrafiche.emittenti_fiscali e
+                   WHERE e.codice !~ '^[A-Z0-9]{2,10}$'
+                     AND length(left(upper(regexp_replace(e.codice, '[^A-Za-z0-9]', '', 'g')), 10)) < 2;
+            # b) nessuna proposta collide, ne' con un codice esistente ne' con
+            #    un'altra proposta
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  WITH b AS (
+                      SELECT e.id,
+                             left(upper(regexp_replace(e.codice, '[^A-Za-z0-9]', '', 'g')), 10) AS proposta
+                        FROM anagrafiche.emittenti_fiscali e
+                       WHERE e.codice !~ '^[A-Z0-9]{2,10}$'
+                  )
+                  SELECT COUNT(*)
+                    FROM b
+                   WHERE EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali e2
+                                  WHERE e2.id <> b.id AND e2.codice = b.proposta)
+                      OR EXISTS (SELECT 1 FROM b b2
+                                  WHERE b2.id <> b.id AND b2.proposta = b.proposta);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Il bypass che il lock PREVEDE, non uno smontaggio del lock.
+              --   `true` = LOCAL: vale per questa transazione e basta.
+              SELECT set_config('zeroerp.allow_lock_columns_override', 'on', true);
+
+              -- ⚠️ La bonifica e' la STESSA trasformazione che la ricognizione
+              --   ha proposto e che Tid ha accettato il 2026-08-31:
+              --     EMI-TEST                   -> EMITEST
+              --     PGTAP-EF-20260126172242554 -> PGTAPEF202
+              --   Scritta come regola, non come due UPDATE: su una macchina
+              --   diversa le righe storte sono altre, e vanno corrette allo
+              --   stesso modo.
+              UPDATE anagrafiche.emittenti_fiscali e
+                 SET codice = left(upper(regexp_replace(e.codice, '[^A-Za-z0-9]', '', 'g')), 10)
+               WHERE e.codice !~ '^[A-Z0-9]{2,10}$';
+
+              SELECT set_config('zeroerp.allow_lock_columns_override', 'off', true);
+
+              -- ⛔ Validato subito, non NOT VALID: le sigle si POSSONO
+              --   correggere (deciso da Tid il 2026-08-31), quindi non c'e'
+              --   nessuna storia da lasciare fuori — e un vincolo che non
+              --   guarda il pregresso lascerebbe in giro proprio i codici
+              --   illeggibili che questo cantiere esiste per togliere.
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  ADD CONSTRAINT chk_emittenti_fiscali_codice_forma
+                  CHECK (codice ~ '^[A-Z0-9]{2,10}$');
+
+              COMMENT ON CONSTRAINT chk_emittenti_fiscali_codice_forma
+                  ON anagrafiche.emittenti_fiscali
+              IS 'La sigla dell''emittente e'' fatta di MAIUSCOLE e CIFRE, da 2 a 10 caratteri. ⛔ Esiste perche'' dal 2026-08-31 quella sigla sta DENTRO il codice commessa — CMM-<sigla>-<anno>-<9 cifre> — che si legge separando sul trattino: una sigla che contiene un trattino produce cinque pezzi invece di quattro, e non si capisce piu'' dove finisca. ⚠️ E il difetto sarebbe MUTO: uq_commesse_codice regge lo stesso, non nascono duplicati e non si solleva niente — cambia solo che quell''emittente ha codici illeggibili, per sempre, perche'' il codice e'' immutabile. ⭐ Il divieto del TRATTINO e'' il cuore della regola: un separatore che puo'' comparire dentro un campo non separa niente. ⚠️ Il tetto a 10 non e'' estetica: con 10 il codice commessa arriva a 29 caratteri e resta leggibile a colpo d''occhio, con i 32 che il tipo ammette arriverebbe a 51. ⚠️ Il pavimento a 2 evita la sigla di un carattere, che non distingue niente in una installazione che cresce. ⭐ La frase leggibile non la da'' questo vincolo ma il guard gemello anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma (E_EMITTENTE_CODICE_FORMA_NON_VALIDA), che alza anche il minuscolo a maiuscolo invece di rifiutarlo: qui resta la RETE, che nessuno aggira nemmeno da uno script. ⚠️ Se i due dovessero mai dissentire vince questo, quindi il guard va tenuto identico o piu'' stretto. Bonifica del pregresso: stesso changeSet (20260831-22). Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §5.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                  DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_codice_forma;
+              SELECT 'Rollback manuale: le sigle bonificate NON si ripristinano — il valore precedente non e'' ricostruibile dalla trasformazione.'::text;

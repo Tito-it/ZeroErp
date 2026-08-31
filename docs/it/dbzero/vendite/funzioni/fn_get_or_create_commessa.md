@@ -33,6 +33,16 @@ DECLARE
     v_ba_found    BOOLEAN := FALSE;
     v_emittente   vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
     v_codice      vendite.commesse.codice%TYPE;
+    -- ⭐ rev 2026-08-31 (C2-11): il codice non si fabbrica piu' qui, si
+    --   COMPONE dal numero che consegna il registro.
+    v_sigla       anagrafiche.emittenti_fiscali.codice%TYPE;
+    v_registro    vendite.registri_fatturazione.id%TYPE;
+    v_data        date;
+    v_anno        smallint;
+    v_numero      bigint;
+    v_prefix      config.sistema_codici.prefisso%TYPE;
+    v_sep         config.sistema_codici.separatore%TYPE;
+    v_len         config.sistema_codici.lunghezza_numero%TYPE;
 BEGIN
     -- Guard: parametri obbligatori
     IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
@@ -140,7 +150,56 @@ BEGIN
         IF v_commessa_id IS NOT NULL THEN RETURN v_commessa_id; END IF;
     END IF;
 
-    v_codice := 'CMM-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-' || substr(md5(random()::text), 1, 6);
+    -- ═══ IL CODICE, rev 2026-08-31 (C2-11) ═══════════════════
+    -- ⛔ Prima era 'CMM-' || timestamp || '-' || md5(random()): un
+    --   identificatore, non un codice. Diceva quando e' nata la riga
+    --   — cosa che data_insert dice gia' — e affidava l'unicita' a
+    --   sei caratteri casuali SOTTO un vincolo deterministico
+    --   (uq_commesse_codice): un'unicita' probabilistica, che quando
+    --   fallisce esce come 23505 nudo in mezzo a un fan-out.
+    -- ⭐ Ora: CMM-<sigla emittente>-<anno>-<9 cifre>, e l'unicita' e'
+    --   DETERMINISTICA — la sigla e' unica, l'anno e' un fatto, il
+    --   numero viene da un contatore serializzato.
+
+    -- La sigla entra nel codice, e per questo il contatore e' PER
+    -- EMITTENTE: ogni dimensione del contatore dev'essere nella
+    -- stringa, o al primo cambio di periodo la UNIQUE salta.
+    SELECT ef.codice INTO v_sigla
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.soggetto_ruolo_id = v_emittente;
+
+    -- ⛔ L'INVOLUCRO, non il lettore: qui si scrive, e un emittente
+    --   senza registro COMMESSA deve fermare invece di far nascere
+    --   una commessa senza codice.
+    SELECT k.registro_id INTO v_registro
+      FROM vendite.fn_get_registro_documento(
+               p_famiglia_documento          => 'COMMESSA',
+               p_emittente_soggetto_ruolo_id => v_emittente,
+               p_utility_id                  => p_utility_id) k;
+
+    -- ⭐ La commessa non ha una data documento: la sua data e' quella
+    --   di CREAZIONE, e si legge da script.fn_data_operativa() —
+    --   la data di oggi NEL FUSO DELL'AZIENDA, mai now() nudo.
+    v_data := script.fn_data_operativa();
+    v_anno := vendite.fn_get_anno_registro(v_data);
+
+    -- ℹ️ serie vuota (la commessa non ne ha) e nessun bersaglio: la
+    --   riga non esiste ancora, e il cancello non puo' mordere
+    --   perche' la data e' sempre oggi.
+    v_numero := vendite.fn_get_next_progressivo(
+                    v_registro, v_data, NULL, '', NULL, 'COMMESSA');
+
+    -- Formato dal catalogo, come per gli altri documenti: prefisso,
+    -- separatore e lunghezza restano un DATO.
+    SELECT prefisso, separatore, lunghezza_numero
+      INTO v_prefix, v_sep, v_len
+      FROM config.sistema_codici
+     WHERE codice_interno = 'commessa';
+
+    v_codice := COALESCE(v_prefix, 'CMM') || COALESCE(v_sep, '-')
+             || v_sigla                   || COALESCE(v_sep, '-')
+             || v_anno::text              || COALESCE(v_sep, '-')
+             || lpad(v_numero::text, COALESCE(v_len, 9), '0');
 
     -- SPECCHIO 3 — INSERT: la commessa nasce con la chiave completa.
     INSERT INTO vendite.commesse (codice, tipo_commessa, policy_fatturazione, fatturazione_immediata,
@@ -158,7 +217,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
-IS 'Recupera o crea commessa coerente con BA/utility. Da D-R la chiave di raggruppamento comprende anche (termine_pagamento_id, modalita_pagamento_id): un documento sorgente con condizioni diverse apre una commessa NUOVA invece di riusarne una. Advisory lock previene la doppia creazione e include le stesse dimensioni del WHERE. ⭐ rev 2026-08-26 (brief-db-emittente-commessa-invariante, L5 / decisione D-2): NON esiste piu'' il parametro p_emittente_soggetto_ruolo_id — l''emittente si DERIVA dal billing account e non si passa da fuori (decisione D-1). Con vendite.trgfn_commesse_guard_emittente_ba in servizio quell''override poteva solo essere ridondante (uguale al derivato) o sbagliato (respinto dal trigger): un parametro il cui unico valore ammesso e'' quello che la funzione calcola da se'' non e'' un''opzione, e'' una trappola per il prossimo chiamante, che lo legge nella firma e crede di poter scegliere. ⚠️ La firma passa da 13 a 12 parametri, quindi e'' servito un DROP: un CREATE OR REPLACE avrebbe creato un OVERLOAD e, coi DEFAULT, le chiamate sarebbero diventate ambigue. I chiamanti usano parametri NOMINATI, quindi la rottura e'' rumorosa e immediata invece che silenziosa. ⚠️ Il WHERE confronta l''emittente con un `=` PURO (la colonna e'' NOT NULL dal 20260826-41), mentre il COALESCE dentro l''hash dell''advisory lock resta: li'' si hasha l''IDENTITA'' del lock, e cambiarla farebbe smettere di serializzarsi a due sessioni su revisioni diverse. Ne discende che i «tre specchi» non sono identici alla lettera, ed e'' voluto: cio'' che va tenuto uguale sono le DIMENSIONI, non il testo. ⚠️ IS NOT DISTINCT FROM resta sulle quattro dimensioni davvero nullable (competenza dal/al, termine e modalita'' di pagamento). ⭐ Lo stesso emittente lo riscriverebbe comunque vendite.trgfn_commesse_default_emittente sulla INSERT: qui si risolve PRIMA perche'' entra nella chiave di riuso e nell''advisory lock.';
+IS 'Recupera o crea la commessa coerente con il contesto dimensionale. La chiave di raggruppamento comprende anche (termine_pagamento_id, modalita_pagamento_id): un documento sorgente con condizioni diverse apre una commessa NUOVA. Advisory lock contro la doppia creazione, con le stesse dimensioni del WHERE. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-11): IL CODICE VIENE DAL REGISTRO. Era ''CMM-'' || clock_timestamp() || ''-'' || substr(md5(random()),1,6) — 28 caratteri di cui sei di puro rumore e i primi dodici uguali per tutte le commesse dello stesso giorno: un IDENTIFICATORE e non un codice, che diceva quando era nata la riga, cioe'' cio'' che data_insert dice gia'' e con il tipo giusto. ⛔ E quella md5 era un''UNICITA'' PROBABILISTICA SOTTO UN VINCOLO DETERMINISTICO: uq_commesse_codice la collisione la impedisce gia'', il random la rendeva soltanto improbabile — e quando fosse capitata sarebbe uscita come 23505 nudo in mezzo a un fan-out, senza retry e senza codice di dominio. ⭐ Ora la forma e'' CMM-<sigla emittente>-<anno>-<9 cifre>: l''unicita'' e'' DETERMINISTICA e si legge nella stringa, perche'' la sigla e'' unica (uq:codice su anagrafiche.emittenti_fiscali), l''anno e'' un fatto e il numero viene da un contatore serializzato sotto advisory lock. ⭐ E'' l''invariante del cantiere applicato alla lettera: ogni dimensione del contatore deve comparire nella CHIAVE D''IDENTITA'' del numero — e per la commessa quella chiave e'' la STRINGA NUDA (uq_commesse_codice), quindi emittente e anno devono starci dentro per davvero, non basta che il contatore li conosca. ⭐ La sigla si puo'' usare qui mentre il 2026-08-30 sembrava impossibile, e la ragione e'' cambiata sotto: l''obiezione era che il generatore GENERICO (script.fn_generate_codice) non puo'' tradurre un id in sigla senza imparare a conoscere anagrafiche.emittenti_fiscali — vera, ma la commessa da quel generatore se n''e'' andata, e qui siamo dentro una funzione di dominio che legge cio'' che le serve. ⚠️ La sigla e'' IMMUTABILE (script.trgfn_lock_columns su emittenti_fiscali.codice): il codice non diventa mai falso. ⚠️ NESSUNA COLONNA NUOVA su vendite.commesse: sigla e anno stanno nella stringa, quindi uq_commesse_codice resta intatta e il codice continua a bastare da solo per trovare una commessa — e'' la decisione «A» del 2026-08-30. ℹ️ La data e'' quella di CREAZIONE, letta da script.fn_data_operativa() (la data di oggi nel fuso dell''AZIENDA, mai now() nudo): ne discende che il cancello di monotonia non puo'' morderla, ed e'' il motivo per cui la famiglia COMMESSA resta a presidia_data_documento = true senza che costi niente. ⛔ Si usa l''INVOLUCRO vendite.fn_get_registro_documento e non il lettore: qui si scrive, e un emittente senza registro COMMESSA deve fermare invece di far nascere una commessa senza codice. ⛔ Il pregresso NON si rinumera (decisione di Tid): le commesse vecchie tengono il loro codice e non collidono con i nuovi perche'' hanno una forma diversa — ed e'' l''unica cosa che li separa. ⚠️ La firma e'' INVARIATA (12 parametri): CREATE OR REPLACE basta, nessun DROP e nessun overload. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-11.';
 ```
 
 ---

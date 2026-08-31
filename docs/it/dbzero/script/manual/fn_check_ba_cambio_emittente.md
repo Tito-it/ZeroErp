@@ -57,6 +57,40 @@ righe di un'installazione a un solo emittente — tutte a torto.
 
 ---
 
+### La frase deve dire **quale** documento blocca (dal 31-08-2026)
+
+Fino al 30 agosto 2026 la frase del rifiuto diceva *«ha già 3 fatture e 1
+commesse»*, perché la storia erano due soli tipi di documento.
+
+Da quando anche documenti di trasporto, ordini, commesse e resi prendono il numero
+da un registro, i tipi in gioco sono **cinque** — e una frase che ne nominasse due
+sarebbe **peggio** di una che non ne nomina nessuno: manderebbe a cercare fatture
+a un cliente bloccato da un documento di trasporto.
+
+⭐ Ora la frase porta un **elenco**: *«Documento di trasporto: 2, Commessa: 1»*. Le
+parole sono le descrizioni del catalogo delle famiglie, non etichette ricopiate
+qui, quindi un tipo di documento in più domani cambia la frase da sé.
+
+⚠️ Chi legge la risposta di questa funzione dal di fuori deve saperlo: i valori
+della frase sono passati da **quattro a tre** (cliente, emittente, elenco), e nel
+dettaglio i due conteggi fissi sono stati sostituiti da un elenco per tipo più il
+totale. ⭐ La chiave di traduzione del frontend **non** è cambiata.
+
+---
+
+### ⭐ Prima si chiede «sì o no», i conteggi vengono dopo
+
+Il caso normale è che non ci sia storia, ed è anche quello che gira di più: la
+lista degli agganci lo attraversa **una volta per riga**, a ogni caricamento. Lì
+si chiede solo *«c'è almeno un documento numerato?»*, e ci si ferma al primo che si
+trova.
+
+I conteggi per tipo si pagano **soltanto** quando si è già deciso di rifiutare,
+cioè per scrivere la frase. È lo stesso principio per cui il bersaglio di un
+errore si compone dopo il no, non prima.
+
+---
+
 ### ⭐ Il pulsante e il rifiuto non possono divergere
 
 Questa funzione non è una copia della regola *per la UI*: è **la** regola. Il
@@ -96,5 +130,7 @@ perché** — e il difetto sarebbe a monte.
   del gesto;
 * la frase nomina il cliente e l'emittente **per codice**: prima l'emittente
   compariva come identificativo numerico in mezzo a una frase italiana;
+* e dice **quale tipo di documento** blocca, con le parole del catalogo: chi la
+  legge sa dove guardare invece di doverlo indovinare;
 * una regola sola per due superfici — il tooltip e l'errore — e un presidio che
   verifica che resti una sola.

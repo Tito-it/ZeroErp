@@ -25,5 +25,11 @@
 | ix_soggetti_titoli_iva_movimenti_soggetti_titoli_iva_movimenti_ | `CREATE INDEX ix_soggetti_titoli_iva_movimenti_soggetti_titoli_iva_movimenti_ ON storico.soggetti_titoli_iva_movimenti USING btree (soggetti_titoli_iva_movimenti_id)` |
 | pk_storico_soggetti_titoli_iva_movimenti | `CREATE UNIQUE INDEX pk_storico_soggetti_titoli_iva_movimenti ON storico.soggetti_titoli_iva_movimenti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

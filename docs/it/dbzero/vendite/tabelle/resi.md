@@ -28,6 +28,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| registro_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -35,6 +36,7 @@
 | FOREIGN KEY | fk_resi_billing_account | billing_account_id |
 | FOREIGN KEY | fk_resi_destinatario_ruolo | destinatario_soggetto_ruolo_id |
 | FOREIGN KEY | fk_resi_emittente_fiscale | emittente_fiscale_id |
+| FOREIGN KEY | fk_resi_registro | registro_id |
 | FOREIGN KEY | fk_resi_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_resi_stato | stato_doc_reso_id |
 | FOREIGN KEY | fk_resi_utility | utility_id |
@@ -48,7 +50,7 @@
 | ix_resi_sorgente | `CREATE INDEX ix_resi_sorgente ON vendite.resi USING btree (sorgente_tipo_id, sorgente_uid)` |
 | ix_resi_stato | `CREATE INDEX ix_resi_stato ON vendite.resi USING btree (stato_doc_reso_id)` |
 | pk_resi | `CREATE UNIQUE INDEX pk_resi ON vendite.resi USING btree (id)` |
-| uq_resi_anno_numero | `CREATE UNIQUE INDEX uq_resi_anno_numero ON vendite.resi USING btree (anno, numero) WHERE (numero IS NOT NULL)` |
+| uq_resi_anno_numero | `CREATE UNIQUE INDEX uq_resi_anno_numero ON vendite.resi USING btree (registro_id, anno, numero) NULLS NOT DISTINCT WHERE (numero IS NOT NULL)` |
 | uq_resi_uid | `CREATE UNIQUE INDEX uq_resi_uid ON vendite.resi USING btree (uid)` |
 
 ## 🚨 Trigger
