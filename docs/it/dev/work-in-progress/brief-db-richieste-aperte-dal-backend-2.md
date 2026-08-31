@@ -12,39 +12,51 @@
 > ([elenco 1](../work-done/brief-db-richieste-aperte-dal-backend.md), chiuso il
 > 2026-08-31 con tutte e cinque le voci applicate).
 >
-> **Stato.** 2026-08-31 — ⚠️ **una voce su due e' gia' chiusa**: la 1 e'
-> stata applicata in giornata, resta la **2**, che e' del cantiere
-> **registri di numerazione** e non blocca niente. Verificato sul repo e
-> sul database, non ricordato.
+> **Stato.** 2026-08-31 (3) — ⚠️ **la 2 è chiusa, la 1 no.** È l'opposto di come
+> stava scritto qui un'ora fa, e la ragione vale più dell'esito: la voce 1 è
+> applicata **quasi** per intero, ma le manca la riga di `task_policy` che questo
+> documento aveva dichiarato non obbligatoria — sulla base di un «Verificato»
+> mai eseguito. Il cancello BE è **rosso**. Dettaglio al §1.
+> Verificato sul repo **e sul database**, non ricordato.
 
 ---
 
 ## L'ordine
 
 ```text
-1. task di pipeline «consuma_plafond_lotto»       ✅ FATTO 31/08
-2. fn_check_registro_disattivabile                1 funzione        🟡 non blocca
+1. task di pipeline «consuma_plafond_lotto»       🟠 QUASI — 2 righe task_policy
+2. fn_check_registro_disattivabile                ✅ FATTO 31/08 (20260831-38)
 ```
 
-✅ **La prima è FATTA il 2026-08-31**, ed era l'ultima cosa che separava il
-registro del plafond costruito in Fase 2 dall'essere usato: prima
-`anagrafiche.fn_consuma_plafond_titolo_iva` non aveva **nessun chiamante
-possibile**. Ora il task gira, e il plafond si consuma — provato sul database
-vero (§1).
+🟠 **La prima è quasi fatta.** Il task è registrato, ha il suo handler ed è **in
+testa** a entrambe le pipeline: `anagrafiche.fn_consuma_plafond_titolo_iva`, che
+non aveva **nessun chiamante possibile**, ora ce l'ha.
 
-⚠️ **La seconda NON blocca niente, e va detto**: il CRUD dei registri procede
-senza — sono i suoi ultimi due passi ad aspettarla, non il cantiere. Non è
-urgente; è **giusta**, ed è chiesta prima di scrivere il codice che ne dipende
-invece che dopo.
+⛔ **Ma mancano le due righe di `fatturazione_pipeline_task_policy`, e il
+cancello BE è ROSSO** — `test_ogni_task_in_pipeline_ha_una_task_policy`. Senza,
+il task gira **cieco**: niente `task_run`, niente resume. La colpa è di questo
+documento, che aveva dichiarato quella riga non obbligatoria sulla base di un
+«Verificato» mai eseguito: la correzione, con il calco esatto, è al §1.
+
+✅ **La seconda è FATTA** (`script.fn_check_registro_disattivabile`, changeSet
+`20260831-38`): forma del §12.5.1, `SECURITY DEFINER`, tre `reason` senza
+prefisso `E_`, nessun codice errore nuovo. ⚠️ Con un residuo dichiarato al §2,
+che **non blocca** il CRUD: la check elenca i tre figli a mano mentre le madri
+sono l'automazione generica, quindi i due elenchi possono divergere.
 
 ---
 
-## 1. ~~⛔ Manca il task di pipeline che consuma il plafond~~ ✅ FATTO
+## 1. 🟠 Il task di pipeline che consuma il plafond — quasi fatto
 
-> ✅ **CHIUSA il 2026-08-31**, e applicata **come chiesto**: il task è **in
-> testa** allo step DEFINITIVA su **entrambe** le pipeline (4 e 6), e ⭐ **senza
-> chiave `fn`** — nessuna madre SQL, che era il rischio nominato qui sotto.
-> Verificato sul seed **e** sul database vivo.
+> 🟠 **APPLICATA il 2026-08-31, ma non chiusa.** Tutto ciò che questa voce
+> chiedeva è stato fatto **come chiesto**: il task è **in testa** allo step
+> DEFINITIVA su **entrambe** le pipeline (4 e 6), e ⭐ **senza chiave `fn`** —
+> nessuna madre SQL, che era il rischio nominato qui sotto. Verificato sul seed
+> **e** sul database vivo.
+>
+> ⛔ **Ciò che questa voce NON chiedeva, e avrebbe dovuto**: le due righe di
+> `fatturazione_pipeline_task_policy`. Il cancello BE è rosso, e il difetto è del
+> documento — vedi la CORREZIONE qui sotto.
 >
 > ⇒ Lo smoke che questa voce chiedeva è scritto e verde:
 > `backend/scripts/tests/smoke-consuma-plafond-lotto.py`, **21 controlli** —
@@ -123,16 +135,53 @@ comportamento che dipende dal *tipo di lotto*: il plafond consumato sui lotti
 giornalieri e non su quelli massivi, e nessuno se ne accorgerebbe finché i conti
 di un esportatore abituale non tornano.
 
-~~📌 **La riga in `fatturazione_pipeline_task_policy` la decide il team DB.**
-Verificato: `popola_fatture_rettifiche` gira nelle stesse due pipeline e **non
-ne ha una** — quindi non è obbligatoria.~~
+### 🔴 CORREZIONE 2026-08-31 (3) — la riga di `task_policy` È obbligatoria
 
-⛔ **Qui nasce l'errore, ed è una misura sbagliata scritta come "Verificato".**
-`popola_fatture_rettifiche` **ha** le sue righe (id 24 e 25, dal 2026-08-18):
-quel «verificato» ha guardato nel posto sbagliato, e da lì la conclusione si è
-propagata fino alla decisione di non mettere la riga. ⇒ Righe **messe** il
-2026-08-31 (id 26 e 27) e applicate — ragionamento completo nella **Rettifica**
-in fondo a questa voce.
+> ⛔ **Questo brief diceva il falso, e il team DB ha giustamente seguito ciò che
+> c'era scritto.** La frase era:
+> *«Verificato: `popola_fatture_rettifiche` gira nelle stesse due pipeline e
+> **non ne ha una** — quindi non è obbligatoria.»*
+> **Rimisurato sul DB: ne ha DUE, attive** — come tutti e tredici i task in
+> pipeline. Quel «Verificato» non era stato eseguito.
+
+⛔ **E non è una preferenza: c'è un cancello BE che lo pretende**, preesistente e
+oggi **rosso** — `apps/vendite/tests/db/test_pipeline_task_handler_guardrail.py`,
+`test_ogni_task_in_pipeline_ha_una_task_policy`:
+
+```text
+AssertionError: ['pipeline 4: consuma_plafond_lotto',
+                 'pipeline 6: consuma_plafond_lotto'] != []
+  task in pipeline senza riga attiva in vendite.fatturazione_pipeline_task_policy:
+  girerebbero senza tracing ne' resume
+```
+
+⚠️ **Il motivo, scritto nel test stesso**: *«senza policy il task gira CIECO:
+niente `task_run`, niente resume — un fallimento non lascia traccia e il
+rilancio non riprende»*. Su un giro di documenti fiscali è il difetto peggiore:
+non si ferma, non si vede, e non si può riprendere.
+
+✅ **Cosa è già a posto** (verificato sul DB, non sullo YAML): il task è **in
+testa** a entrambe le pipeline, `dbops.pipeline_task_registry` id 22 e
+`..._registry_impl` id 22 (`default` → `consuma_plafond_lotto_default`) ci sono
+e sono attivi.
+
+⛔ **Mancano due righe**, e il calco è `popola_fatture_rettifiche`, che gira
+nelle stesse due pipeline nello stesso step:
+
+| `pipeline_id` | `annullabile` | `resume_mode` | `attivo` | `meta` |
+| --- | --- | --- | --- | --- |
+| **4** | `false` | `RESUME_TASK` | `true` | `{"scope": "DEFINITIVA"}` |
+| **6** | `false` | `RESUME_TASK` | `true` | `{"scope": "DEFINITIVA", "tipo_lotto": "GIORNALIERO"}` |
+
+⭐ **`RESUME_TASK` e non `RESUME_LOTTO`**: il consumo del plafond è per fattura e
+scrive movimenti: al rilancio si riprende **da quel task**, non si rifà il giro.
+È la stessa scelta del vicino, che spezza righe nello stesso step.
+
+⭐ **La lezione, e vale oltre questo caso.** La frase sbagliata è nata
+guardando **una** tabella e generalizzando; sarebbe bastato contare le righe
+(`13 task, 13 con policy`) o leggere il test che quella regola la presidia da
+prima. *Un «Verificato:» scritto senza eseguire la misura è peggio di nessuna
+verifica: chi legge smette di controllare.*
 
 ### Cosa blocca
 
@@ -272,7 +321,33 @@ zero movimenti scritti. Senza, un task che «gira sempre» passerebbe il primo.
 
 ---
 
-## 2. 🟡 Manca la `fn_check_*` che dice perché un registro non si disattiva
+## 2. ✅ La `fn_check_*` che dice perché un registro non si disattiva — FATTA
+
+> ✅ **CHIUSA il 2026-08-31**, changeSet `20260831-38` applicato. Verificato sul
+> database vivo, non sullo YAML: `SECURITY DEFINER` (serve — legge
+> `vendite.fatture`, che ha la RLS), tre `reason` **senza prefisso `E_`**
+> (`HA_FATTURE`, `HA_PROGRESSIVI`, `HA_MAPPING_TIPO_DOC`), e **nessun codice
+> errore nuovo**: nomina i due `E_ATTIVO_BLOCK_CHILDREN_*` già a catalogo.
+>
+> ⚠️ **Resta un residuo, e NON blocca il CRUD** — la check funziona e il tooltip
+> dirà la cosa giusta. Il presidio del §12.5.2 (*«la madre non contiene più il
+> predicato»*) però **non è raggiunto, e non era raggiungibile così**: le tre
+> madri non sono guard scritti a mano, sono tre istanze dell'automazione generica
+> `dbops.trgfn_prevent_deactivate_if_children`, ognuna col proprio figlio negli
+> argomenti del trigger. Una funzione generica che serve 100 tabelle non può
+> chiamare una check specifica.
+> ⇒ Restano **due elenchi paralleli**: i figli nei trigger montati, e la check
+> che li riscrive. Il giorno che si registra un **quarto** figlio, l'automazione
+> monta il trigger da sé e la check resta a tre — tooltip che dice «si può» su un
+> gesto che fallisce.
+>
+> ⭐⭐ **E il numero cambia la scala del problema: 100 tabelle, 363 trigger
+> montati, UNA sola check di disattivazione** (questa). `catalogo.articoli` ha 29
+> figli, `unita_misura` 21: a mano non regge. ⇒ La strada giusta non è per
+> tabella ma **generica** — una `script.fn_check_disattivabile(schema, tabella,
+> id)` che legge i trigger montati, come `fn_get_storia_emittente_ba` legge il
+> catalogo delle famiglie invece di elencarle. **Decisione a Tid**, e vale un
+> cantiere suo: non è di questo ordine di lavoro.
 
 📌 **Il ragionamento è già scritto**, e non si ricopia: §FE-2 del
 [brief BE/FE del CRUD dei registri](brief-be-fe-crud-registri-di-numerazione.md).
