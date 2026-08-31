@@ -80,6 +80,12 @@
 > | 6 | **D-25** | 🔴 `pagamenti` | ✅ `20260831-66` (il varco) · `-67` (`fn_annulla_sistemazione` estesa) |
 > | 7 | **D-24** | `db/pgtap` | ✅ tre file nuovi (38 asserzioni) + due esistenti allineati |
 >
+> ➕ **E un ottavo, arrivato dopo**: la **colonna `azioni` della lista 44**, che il
+> team BE ha girato al DB perché metà di FE-1 è un seed del catalogo. ✅ Seminata
+> (due righe in append, nessun changeSet). 🔴 **Ma la sua catena ha un buco in
+> mezzo**: `DELETE /api/v1/vendite/fondi-fattura/{id}/` **non esiste su nessun
+> branch**, contrariamente a quanto la richiesta dava per fatto. **§9.12**.
+>
 > ### ⚠️ Le tre cose da sapere prima di applicare
 >
 > 1. ⛔ **L'ordine di apply è quello dei numeri**, e ha una dipendenza vera:
@@ -3063,6 +3069,93 @@ formula. Oggi il predicato non espone `reason_key`, perché nessuno la legge.
 
 ---
 
+### 9.12 ✅ La colonna `azioni` della lista 44 — seminata, e 🔴 il resto della catena non c'è
+
+> 📮 **Richiesta del team BE, 2026-08-31.** ⛔ **Perché è una voce DB e non FE-1:**
+> metà di FE-1 è un **seed del catalogo**, cioè la stessa specie di D-19 e D-23.
+> *Un passo si assegna per la sede in cui si scrive, non per il consumatore che
+> lo userà.* La richiesta è accolta e **fatta**.
+
+#### (a) Che cosa è stato scritto
+
+Due righe, in append ai CSV che i mirror `loadUpdateData` già leggono — nessun
+changeSet nuovo. `git diff --numstat` dà **`1 0`** su entrambi.
+
+| File | Riga |
+| --- | --- |
+| `80_data/sql/ui/lista_colonna.csv` | `619,44,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,…,common.col_azioni,100` |
+| `80_data/sql/ui/lista_preset_colonna.csv` | `44,619,999,t,f` |
+
+⚠️ **Tre scelte diverse da come la richiesta le descriveva**, e tutte per
+allinearsi a ciò che il catalogo già fa:
+
+* **`ordine_default = 999`** e non un numero in coda alla serie della 44 (che
+  arriva a 160): tutti e **29** i precedenti usano 999 — «in coda» qui è una
+  costante, non un calcolo;
+* **`gruppo_ordine` vuoto** e non `99`: le liste 1/2/3 hanno 99, ma tutte e
+  sedici le colonne della 44 hanno gruppo e gruppo_ordine vuoti. Con 99 sarebbe
+  stata l'unica con un ordinamento di gruppo in una lista **senza gruppi**;
+* **`priorita = 100`**: in `useResponsiveColumns` si ritira per prima la priorità
+  **più bassa**, quindi la colonna delle azioni vuole la più alta.
+
+✅ **Provato in transazione con `ROLLBACK`**: il resolver restituisce **17
+colonne** con `azioni` ultima e **`colonne_nuove = 0`** — il banner DEF-2 resta
+spento, ed è il motivo per cui la riga nel preset non è opzionale. I quattro
+pgTAP che presidiano il seed liste restano verdi identici, compresa l'invariante
+«ogni colonna di un preset appartiene alla stessa lista del preset».
+
+#### (b) 🔴 «Il consumatore è pronto» non è vero, e va corretto qui
+
+La richiesta si chiudeva con *«ℹ️ `DELETE /api/v1/vendite/fondi-fattura/{id}/`
+esiste, è gated su `governa_fondo_fattura` e i suoi rifiuti arrivano tradotti.
+Manca solo la colonna»*. ⚠️ **Tutte e tre le affermazioni sono false**, misurato
+il 2026-08-31 su **cinque** branch dopo un `fetch` — `dev/db-tid`,
+`dev/backend-tid`, `Tito-dev`, `main` e i rispettivi `origin/`:
+
+```text
+git grep "fondi-fattura"  in backend/  → solo /da-decidere/ e /da-decidere/export/  (due GET)
+git grep "governa_fondo_fattura|fn_cancella_fondo_fattura"  in backend/  → 0 occorrenze
+```
+
+⭐ **È la stessa specie di difetto registrato stamattina** su
+`docs/it/backend/vendite/manual/api_fondi_fattura.md`, dove tre affermazioni
+erano false da nove giorni: *il documento che si legge PRIMA di scrivere il
+codice non è quello che qualcuno rilegge quando il progetto cambia.*
+
+#### (c) La catena è a CINQUE anelli, e la colonna è l'ultimo
+
+| | Pezzo | Stato al 2026-08-31 | Se manca, l'anello dopo… |
+| :---: | --- | --- | --- |
+| 1 | `vendite.fn_cancella_fondo_fattura` | scritta (`20260831-64`), **non applicata** | `42883 function does not exist` |
+| 2 | `governa_fondo_fattura` **concessa a un profilo** | seminata, non applicata, **mai concessa** | kebab spento per tutti tranne il super admin |
+| 3 | `DELETE /api/v1/vendite/fondi-fattura/{id}/` (**BE-4**) | 🔴 **non esiste su nessun branch** | `404` |
+| 4 | lo slot `#actions` nel `.vue` (**FE-2**) | non esiste | la colonna **non si vede** |
+| 5 | la colonna a catalogo (**FE-1**, metà DB) | ✅ seminata qui | — |
+
+⛔ **Nessuno dei quattro salti produce un errore che qualcuno legge.** È il motivo
+per cui l'ordine conta più della singola riga.
+
+#### (d) ⭐ Perché il seed è sicuro ADESSO, e il pericolo è il verso opposto
+
+`FondiFatturaDaDecidereTab.vue` monta `<ListaConfigurabile>` con quattro slot
+(`#cell-motivo`, `#cell-stato_atto`, `#cell-origine`, `#empty`) e **non passa
+`#actions`**. Letto il componente invece di dedurlo — `ListaConfigurabile.vue`
+righe 237-238 — le colonne `tipo_colonna = 'azione'` si rendono **solo se** ce
+n'è una a catalogo **e** il caller passa lo slot.
+
+Quindi finché FE-2 non arriva: nessuna cella vuota, nessun header orfano,
+**niente**. La colonna aspetta il suo consumatore in silenzio, ed è il
+comportamento corretto per un gesto non ancora raggiungibile.
+
+> ⛔ **Il pericolo è l'ordine inverso**: aggiungere `#actions` prima che esistano
+> l'endpoint e la concessione. Lì il pulsante c'è, si clicca, e risponde `404`.
+> ⚠️ Chi scriverà FE-2 non lo saprà dal `.vue`: lo sa da qui.
+
+ℹ️ Il pattern per FE-2 è battuto — **25 viste** passano già `#actions` a
+`ListaConfigurabile` — e la regola del kebab la dichiara già il seed della lista:
+si disegna **solo** sul motivo `NON_PIU_CAPIENTE`, perché gli altri tre non hanno
+un atto da cancellare e *«una colonna che apre un menu vuoto è la stessa cosa di
+una riga di elenco che non può accadere»*.
 ### 9.12 ✅ La colonna `azioni` della lista 44 — chiesta al team DB e ARRIVATA
 
 > ✅ **Chiusa il 2026-08-31 (notte, 2)**: il seed è atterrato col merge su
@@ -3109,6 +3202,7 @@ Manca solo la colonna perché il gesto diventi raggiungibile.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (sera, 2) | ✅ **Accolta la richiesta del team BE: la colonna `azioni` della lista 44 e' SEMINATA** — due righe in append a `ui/lista_colonna.csv` e `ui/lista_preset_colonna.csv`, nessun changeSet nuovo (i mirror `loadUpdateData` esistenti le prendono), `git diff --numstat` = `1 0` su entrambi. ⭐ **Tre scelte diverse da come la richiesta le descriveva**, tutte per allinearsi al catalogo: `ordine_default = 999` (e' la costante che tutti e 29 i precedenti usano per «in coda», non un numero da calcolare), `gruppo_ordine` **vuoto** (con 99 sarebbe stata l'unica colonna con un ordinamento di gruppo in una lista senza gruppi) e `priorita = 100` (in `useResponsiveColumns` si ritira per prima la priorita' piu' BASSA). Provato in transazione: il resolver da' 17 colonne con `azioni` ultima e **`colonne_nuove = 0`**, cioe' il banner DEF-2 resta spento — ed e' la ragione per cui la riga nel preset non e' opzionale; i quattro pgTAP che presidiano il seed liste restano verdi identici. 🔴 **E una correzione alla richiesta, misurata**: la sua chiusa diceva *«il consumatore e' pronto: `DELETE /api/v1/vendite/fondi-fattura/{id}/` esiste, e' gated su `governa_fondo_fattura`, i rifiuti arrivano tradotti — manca solo la colonna»*, e **tutte e tre le affermazioni sono false** — cercato su CINQUE branch dopo un `fetch` (`dev/db-tid`, `dev/backend-tid`, `Tito-dev`, `main` e gli `origin/`): in `backend/` ci sono le sole due GET, e i due nomi non compaiono da nessuna parte. ⭐ *E' la stessa specie del difetto registrato stamattina su `api_fondi_fattura.md`: il documento che si legge PRIMA di scrivere il codice non e' quello che qualcuno rilegge quando il progetto cambia.* ⛔ **La catena e' a CINQUE anelli e la colonna e' l'ULTIMO** (funzione applicata → azione concessa a un profilo → BE-4 → slot `#actions` → colonna), e nessuno dei quattro salti produce un errore che qualcuno legge: `42883`, kebab spento, `404`, colonna invisibile. ⭐ **Il seed pero' e' inerte per costruzione e va bene cosi'**: `ListaConfigurabile` (righe 237-238, letto e non dedotto) rende le colonne `azione` **solo se** ce n'e' una a catalogo **e** il caller passa lo slot — e `FondiFatturaDaDecidereTab.vue` oggi ne passa quattro ma non quello. Niente cella vuota, niente header orfano. ⛔ **Il pericolo e' il verso opposto**: chi aggiungesse `#actions` prima dell'endpoint avrebbe un pulsante che risponde 404, e dal `.vue` non lo saprebbe — lo sa da **§9.12**. 📮 Nessuna riga di `backend/` o `frontend/` toccata: perimetro DB rispettato, la richiesta al BE e' scritta. |
 | 2026-08-31 (notte, 3) | 🔵 **Revisione critica del codice di questo cantiere, su richiesta di Tid — quattro difetti trovati e corretti, nessuno dei quali dava errore.** **(1)** 🔴 **Buco di COPERTURA, il piu' grave**: la view non era mai stata provata **end-to-end**. `handle_post_json` nasce per le POST e fa `parse_json_body`; il verbo qui e' un `DELETE` a **corpo vuoto**. Se quel parsing non avesse retto il vuoto, **ogni chiamata sarebbe tornata 400 e tutti i test del service sarebbero rimasti verdi** — provano la funzione, non la rotta. Provato: regge (200 con la chiave, 400 `E_IDEMPOTENCY_KEY_REQUIRED` senza), e il buco e' chiuso con **cinque test di API** (`test_fondo_fattura_delete_api.py`), fra cui che l'id viene dal **path** e il corpo si ignora, e che senza chiave il service **non viene nemmeno chiamato** — un rifiuto che arrivasse dopo la cancellazione sarebbe la peggiore delle risposte. **(2)** 🔴 **HARDCODED**: avevo scritto `'CONFERMATA'` letterale **due volte** in `SistemazioneDrawer.vue` — in un file che importa `STATO_SISTEMAZIONE_BOZZA` da `vocabolari.js` proprio per non farlo. Aggiunta `STATO_SISTEMAZIONE_CONFERMATA` alla sede unica. *Un vocabolario senza catalogo a DB ha gia' una copia inevitabile nel frontend: la seconda non lo e'.* **(3)** ⚠️ **FRAGILE**: il dialogo di conferma mostrava `importo_atto` **grezzo** (`8.00`) a un operatore che su ogni altra schermata legge `8,00 €` — e in un dialogo che chiede di cancellare del denaro. Passato da `formatCurrency`, che porta anche il placeholder se l'importo manca (memoria `feedback_locale_formatters_centralizzato`). **(4)** ⚠️ **FRAGILE**: `isinstance(fondo_source_id, int)` accetta `True`, perche' in Python `bool` e' **sottoclasse** di `int` — e `True > 0` passa: un booleano sarebbe finito al database come tale, dando un errore di tipo invece del messaggio giusto. Guard esplicito, e il test esteso a `True` e `1.0`. **(5)** ⭐ **DUPLICATO — regola del 2**: il guard di canale (`connection_role_bypasses_rls`) era alla **seconda** occorrenza nel repository. Estratto in `_require_canale_utente(gesto, oggetto, metodo)`: **de-duplicazione locale**, non un BB cross-modulo, e il messaggio resta **parametrico** — si unifica la meccanica, non la ragione. ⚠️ *Il difetto che quel guard previene non fallisce: **riesce**. Su una lettura mostra i dati di tutti gli emittenti, su una scrittura li **cancella**. Un guard riscritto a mano ogni volta e' un guard che alla terza volta qualcuno non scrive, e nessun test se ne accorge perche' il caso non solleva niente.* ✅ **Verificato e NON toccato**: la kebab a zero voci non e' un difetto — `RowActionsMenu` la rende **disabilitata** (`:disabled="disabled \|\| isEmpty"`), che e' la soluzione gia' adottata dal cantiere posting, e il mio `return []` ci si allinea. Verde: **2853** test backend, build frontend, eslint, i18n |
 | 2026-08-31 (notte, 2) | ✅ **IL CANTIERE E' CHIUSO SU TUTTI I LATI: DB, BACKEND E FRONTEND.** Fast-forward su `origin/Tito-dev` (`8e7be0ef3`) autorizzato da Tid. ⚠️ **Il lavoro non committato e' stato messo da parte e ripreso** (`stash` → `merge --ff-only` → `pop`): due collisioni previste sui locales, entrambe **in zone diverse del JSON** — le mie chiavi in `pagamenti.sistemazioni.*` e `vendite.fondi_fattura_da_decidere.*`, le loro in `amministrazione.registri_fatturazione.*` — quindi pop pulito, nessun conflitto. ⭐ **Guardato PRIMA che cosa arrivava**, non dopo: e' la ragione per cui si sapeva gia' che non avrebbero litigato. ✅ **E' arrivato il seed della colonna `azioni`** chiesto in §9.12 (riga `619`, piu' la riga di preset), **gia' applicato a database** — verificato sul catalogo, non nel CSV. Quindi **FE-1** (meta' `.vue`) e **FE-2** sono stati scritti: kebab `RowActionsMenu` sulla lista 44, voce gated su `governa_fondo_fattura`, conferma **rossa** con `confirmAction` destrutturato e callback `onAccept`, client `DELETE` con `Idempotency-Key`. ⛔ **Il kebab si disegna SOLO dove c'e' un atto** (`fondo_source_id != null`, cioe' in pratica `NON_PIU_CAPIENTE`): un menu che si apre a zero voci promette un gesto che non c'e'. ⛔ **E il frontend NON ricalcola se quel fondo sia cancellabile**: il predicato ha sei motivi, una copia qui divergerebbe al primo cambio — si prova e si LEGGE IL RIFIUTO, col suo messaggio e la sua soluzione. 🔴 **La trappola della colonna e' scattata una SECONDA volta, dentro FE-2**: la prima stesura portava `hideWhenReadonly: true`, proprieta' che legge `DrawerActionsBar` e **non** `RowActionsMenu` — sarebbe stata **ignorata in silenzio**, cioe' un kebab attivo su una pagina in sola lettura. Sostituita col gating esplicito via `useInjectReadonly`. *Due proprieta' con lo stesso nome e due letture diverse sono la stessa specie di difetto della colonna che non c'e': nessuna delle due da' un errore, e il codice sembra fatto.* ⭐ **Chiuse di rimbalzo** anche le tre chiavi i18n mancanti del cantiere numerazione: ne sono arrivate **sei**, e `check_i18n_keys.py` e' **tutto pulito** — compreso «nessuna chiave emessa dal DB risulta irrisolvibile», che era rosso stamattina. Verde: **2848** test backend con `ZEROERP_TEST_DB_E2E=1`, build frontend, eslint sui file toccati, parita' i18n. 📮 **Resta la sola CONCESSIONE di `governa_fondo_fattura` a un profilo** (in-app, Tid): la riga a catalogo c'e', l'assegnazione no — finche' manca, l'endpoint e il kebab sono chiusi per tutti tranne il super admin |
 | 2026-08-31 (notte) | ✅ **APPLICATO da Tid, e il BACKEND E' CHIUSO.** Verificato **sul database vivo** e non sul documento: le due funzioni esistono, `fatture_fondi_fattura_source` ha `relrowsecurity = true` con due policy, i cinque `E_` sono a catalogo, il guard risponde in `INSERT`, il varco `RIPORTO` e' nel guard di `pagamenti` e `fn_annulla_sistemazione` chiama la cancellazione. **Fatto**: `genera_error_policies` (⚠️ **dopo** aver guardato la divergenza — erano esattamente i sette attesi, nessuna rimozione) e **sette** frasi di ripiego, i cinque `E_` **piu' i due `W_`** che il cancello pretende come i loro gemelli; **BE-4** (`DELETE /api/v1/vendite/fondi-fattura/{id}/`, repository + service + view + rotta + otto test); **FE-3** (annullo su `CONFERMATA` di tipo `RIPORTO`, con le due frasi di rifiuto che **nominano l'alternativa** invece di dire «immutabile»). ⭐ **La prova che conta e' il binding REALE**: chiamata vera alla madre su un id inesistente — torna `E_FONDO_NON_TROVATO` col messaggio e l'**hint** del catalogo, cioe' firma, tipi, nomi delle colonne di ritorno e catena di traduzione provati insieme. *Un mock non vede la firma, ed e' la memoria gia' pagata su questo progetto.* 🔴 **Trovato: FE-1 NON e' un passo frontend, e' mezzo seed DB** — la colonna `azioni` e' una riga di `lista_colonna.csv`, cioe' un'azione DB come D-19 e D-23, e passa al team (**§9.12**). ⭐ **E FE-2 non si scrive prima**: misurato sul componente, `ListaConfigurabile` rende quella colonna solo se il catalogo la dichiara `tipo_colonna = 'azione'` **E** il caller passa lo slot — a database oggi ce ne sono **zero**. *Uno slot senza la colonna non e' un errore: non si vede niente, ed e' la specie di difetto che questo cantiere sta chiudendo.* ⚠️ Il vocabolario FE diceva ancora *«da CONFERMATA non si torna, la correzione e' una sistemazione nuova»* — falso dal `20260831-66` per il riporto: corretto in `vocabolari.js` e nelle due frasi i18n. Verde: **2687** test backend con `ZEROERP_TEST_DB_E2E=1`, build frontend, parita' i18n. 📮 Restano il seed della colonna (team DB), la **concessione** di `governa_fondo_fattura` a un profilo (in-app, Tid) e i pgTAP da rilanciare come applicazione. ⚠️ Segnalato di rimbalzo, **non di questo cantiere**: tre chiavi i18n emesse da `fn_check_registro_disattivabile` mancano dai locales — cantiere numerazione, stesso push |

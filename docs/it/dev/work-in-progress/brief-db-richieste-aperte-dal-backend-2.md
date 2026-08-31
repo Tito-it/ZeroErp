@@ -37,54 +37,138 @@
 
 | # | Cosa | Di chi | Stato verificato |
 | --- | --- | --- | --- |
-| A | le **sei** `reason_key` di `disattiva_blocco.*` non sono nei locales | **FE** | `it.json` e `en.json`: 0 su 6 |
-| B | `automation_fk_exclusions.csv` è un CSV **senza tabella** | DB | tabella assente, CSV presente |
-| C | `automation_rules_tbl.params`: 3 chiavi con **zero** consumatori | DB | `pg_proc` → 0, 0, 0 |
-| D | §2 dice ancora «la strada giusta è generica, decisione a Tid» | doc | ⛔ **decisa il contrario** in fondo al file |
+| A | le **sei** `reason_key` di `disattiva_blocco.*` non erano nei locales | FE | ✅ **FATTO** — 6 su 6 in `it.json`/`en.json`, guard `[ok] tutto pulito` |
+| B | `automation_fk_exclusions.csv` era un CSV **senza tabella** | DB | ✅ **FATTO** — CSV cancellato, guida e scheda manuale corrette |
+| C | `automation_rules_tbl.params`: 3 chiavi con **zero** consumatori | DB | 🟡 **analizzata, non eseguita** — raccomandazione: escono. Decisione a Tid |
+| D | §2 diceva «la strada giusta è generica, decisione a Tid» | doc | ✅ **FATTO** — marcata come superata, con il perché |
 
 ### A · Il debito i18n è di SEI chiavi, non di tre — e il presidio ne vede solo tre
 
 ⛔ **Nessuna** delle sei è nei locales: mancano anche `ha_fatture`,
 `ha_progressivi`, `ha_mapping_tipo_doc`, non solo le tre nuove.
 
-⚠️ **E il presidio su cui questo file si appoggia è cieco proprio sulle tre
-nuove.** `scripts/check_i18n_keys.py` oggi **fallisce** — `[X] 3 CHIAVI EMESSE
-DAL DB e assenti dai locales` — ma le tre che nomina sono le **originali**. Le
-tre di `20260831-71` non le vede, perché il guard estrae le chiavi dal **corpo
-delle funzioni nella doc auto-gen** (`docs/it/dbzero`, non `pg_proc`), e quella
-doc è ferma alle **21:37** mentre il changeSet è delle **22:05**.
+✅ **FATTO il 2026-08-31**: tutte e sei sono in `it.json` e `en.json`, con la
+frase che dice **il fatto e il rimedio** («si spengono prima i contatori», «si
+toglie prima l'assegnazione») e i segnaposto `{codice}` e `{quante}` che la
+funzione già passa nel `dettaglio`. `scripts/check_i18n_keys.py` passa da
+`[X] 3 problemi` a **`[ok] tutto pulito`**.
 
-⇒ La frase *«vanno aggiunte ai locales, o `check_i18n_keys.py` fallisce»* è vera
-a metà: sulle tre nuove il cancello tacerà **finché la doc non viene
-rigenerata**. Non è un difetto del guard — è la stessa premessa che salta per
-tutti: *la doc auto-gen riflette il vivo solo se è stata rigenerata*.
+⚠️ **C'era una finestra cieca, ed è la parte da ricordare.** Il guard estrae le
+chiavi emesse dal DB dal **corpo delle funzioni nella doc auto-gen**
+(`docs/it/dbzero`), non da `pg_proc`. Alle 21:37 quella doc portava **tre**
+guard mentre la funzione viva ne aveva **sei** dalle 22:05: in quella finestra
+il cancello non poteva vedere le tre nuove, e avrebbe taciuto.
+✅ La doc è stata rigenerata alle **22:37** e ora ne porta sei, quindi la
+finestra è chiusa e il guard le presidia. Ma è la **terza volta in una giornata**
+che la doc auto-gen viene letta come se fosse l'oggetto vivo: la regola vale
+finché la rigenerazione tiene il passo delle applicazioni.
 
-📌 **Il lavoro è del FE** (locales `it`/`en`), e sta qui come richiesta, non come
-compito del DB. Al DB non resta niente su questa voce: i sei `reason_key` sono
-già emessi correttamente dalla funzione.
+📌 Il lavoro era del FE (locales `it`/`en`) ed è stato eseguito su richiesta
+esplicita di Tid — è l'unico file fuori dal perimetro DB toccato in questa
+sessione. Lato DB non c'era niente da fare: i sei `reason_key` erano già emessi
+correttamente.
 
 ### B · `automation_fk_exclusions.csv` — un seme senza terreno
 
-✅ **Confermato misurando**: `dbops.automation_fk_exclusions` **non esiste**
-(droppata da `20260101-01-drop-attivo-legacy-objects`), e
-`80_data/sql/dbops/automation_fk_exclusions.csv` **c'è ancora**.
+✅ **FATTO il 2026-08-31.** `dbops.automation_fk_exclusions` **non esiste**
+(droppata da `20260101-01-drop-attivo-legacy-objects` il 2026-01-01), e il CSV
+— **vuoto, sola intestazione** — è stato **cancellato**.
 
 ⚠️ Otto changelog lo nominano, ma sono tutti **storici** — compreso il drop
 stesso e la `legacy/baseline_v2`. Nessun loader vivo lo legge.
 
-⇒ **Va cancellato il file**: è la stessa regola dell'oggetto ritirato che lascia
-la scheda in `manual/` — un moncone resta pubblicizzato, e chi lo trova conclude
-che il meccanismo esista. È già successo, in questo stesso brief.
+⭐ **E il file era la metà meno grave del problema: la documentazione diceva il
+falso in cinque punti**, ed è quella che ha ingannato davvero (chi ha proposto la
+strada B non ha guardato il CSV, ha letto la guida). Corretti:
+
+| Dove | Diceva | Ora |
+| --- | --- | --- |
+| `guide/automazione-db.md` §override | *«attualmente inerte»* | ⛔ **non esiste più**, droppata il 2026-01-01 |
+| `guide/automazione-db.md` §«cosa fare» | *«aggiungi la tabella in `automation_fk_exclusions`»* | istruzione **impossibile** → disabilita la regola o restringi lo scope |
+| `guide/automazione-db.md` diagramma ER | relazione verso una tabella inesistente | riga rimossa |
+| `guide/automazione-db.md` checklist | *«esclusioni FK dove necessario»* | voce rimossa |
+| `guide/automazione-db.md` indice tabelle | link a `/dbzero/dbops/tabelle/automation_fk_exclusions` | ⛔ **link morto** → riga rimossa |
+| `dbzero/dbops/manual/automation_rules_tbl.md` | *«la tabella esiste ma è inerte»* | rettifica dichiarata |
+
+⚠️ **«Inerte» e «non esiste» non sono sfumature**: la prima invita a riempirla,
+la seconda dice che il meccanismo va **ricostruito**. È esattamente su quella
+parola che si è appoggiata la proposta poi rientrata.
+📌 I brief in `work-done` non sono stati toccati: erano veri quando sono stati
+scritti, e l'archivio non si riscrive.
 
 ### C · Tre chiavi di `params` che nessuno legge
 
 ✅ **Confermato su `pg_proc`**: `block_if_child_no_attivo`, `cascade_children`,
-`include_no_action` hanno **zero** consumatori, e **una** riga di
-`dbops.automation_rules_tbl` le dichiara.
+`include_no_action` hanno **zero** consumatori. Stanno tutte e tre nella **stessa
+riga**, la regola `ATTIVO`, insieme a due che invece sono consumate (`mode`,
+`require_active_parent`) — il che le rende più credibili, non meno.
 
-⇒ O si implementano, o **escono**. Un catalogo che dichiara più di quanto esegue
-prima o poi convince qualcuno a sceglierne una — è il difetto di `reset_policy`,
-già pagato una volta.
+#### Cosa comporta implementarle — una per una
+
+⭐ **La domanda giusta non è «quanto costa scriverle» ma «che cosa si ottiene».**
+E la risposta sorprende: **due delle tre descrivono ciò che il motore già fa**,
+e sono dichiarate `true`. Implementarle non aggiunge un comportamento —
+aggiunge la possibilità di metterle a **`false`**, cioè costruisce tre
+interruttori per **spegnere** delle protezioni.
+
+| Chiave | Dichiara | Cosa fa oggi il motore | Implementarla significa |
+| --- | --- | --- | --- |
+| `block_if_child_no_attivo: true` | blocca se la figlia non ha la colonna `attivo` | **già così**, cablato: è il ramo `_EXIST` di `trgfn_prevent_deactivate_if_children` | costruire l'interruttore per portarla a `false` — cioè **la strada B scartata** in fondo a questo file |
+| `include_no_action: true` | include le FK `ON DELETE NO ACTION` | **già così**: il cursor filtra solo `c.contype = 'f'`, nessun filtro su `confdeltype` | costruire l'interruttore per portarla a `false` |
+| `cascade_children: true` | disattivando il padre, **disattiva i figli** | fa **l'opposto**: rifiuta di disattivare il padre | resuscitare il **vecchio disegno** di ATTIVO |
+
+**1 · `block_if_child_no_attivo` — è l'interruttore che stasera è stato rifiutato.**
+Portarla a `false` vuol dire lasciar disattivare un padre che ha figlie senza
+`attivo`: esattamente ciò che è stato **deciso di non fare** (registro numerato →
+blocco senza uscita). ⛔ E c'è un aggravante di forma: il parametro sta **sulla
+regola**, che è **una riga sola** per tutte le tabelle. Spegnerlo toglierebbe la
+protezione a **tutte e 100**, non alle tre coppie che avevano sollevato la
+domanda. Per farlo *per coppia* servirebbe una tabella di esclusioni — cioè
+`automation_fk_exclusions`, che **non esiste più** (voce B).
+
+**2 · `include_no_action` — spegnerla disarmerebbe il 79% dei guard.** Misurato
+su `pg_constraint`: delle 870 FK del database, **684 sono `NO ACTION`** (`a`),
+101 `CASCADE`, 48 `RESTRICT`, 37 `SET NULL`. Un `false` qui non è una messa a
+punto: è togliere l'automazione a quasi tutte le coppie padre/figlio del
+progetto, in una riga di seed e senza che nulla lo segnali.
+
+**3 · `cascade_children` — è l'unica che aggiungerebbe un comportamento, ed è
+incompatibile con la prima.** ⛔ Non si può insieme *rifiutare* la disattivazione
+del padre e *disattivargli i figli*: sono due risposte opposte alla stessa
+azione. La riga di catalogo oggi le dichiara **entrambe `true`**.
+⛔ E la funzione che servirebbe, `dbops.trgfn_soft_delete_cascade`, è stata
+**droppata dallo stesso changeSet** che ha portato via la tabella delle
+esclusioni — `20260101-01-drop-attivo-legacy-objects`, che la classifica
+letteralmente come *«funzione trigger legacy (ATTIVO old design)»*. Verificato:
+oggi non esiste, mentre le sue due sorelle di quel drop sono state ricreate.
+⇒ Implementarla vuol dire **tornare a un disegno abbandonato di proposito**, e
+per giunta con un esito ibrido: sulle figlie senza `attivo` (`ddt`, `ordini`,
+`resi`, `fatture`) il cascade **non può applicarsi**, quindi si otterrebbe
+«spegne i contatori e poi si blocca sui DDT» — peggio sia del blocco puro sia
+del cascade puro.
+
+#### ⇒ Raccomandazione: **escono**
+
+E la ragione sta sul **modello**, non sul costo:
+
+* due su tre sono **parametri che ammettono un solo valore**. Un parametro che
+  non varia non è un parametro: è un commento scritto nel posto sbagliato, dove
+  però ha la forma di una leva;
+* la terza dichiara un comportamento **opposto** a quello del motore, e la sua
+  implementazione è stata rimossa con un changeSet che lo dice.
+
+⚠️ **Il rischio non è che restino inerti: è che qualcuno le legga come vere.** È
+già successo due volte in questo stesso brief — con `automation_fk_exclusions`
+(«esiste ma è inerte» → si può riempire) e con la premessa sulla `task_policy`.
+Un catalogo che dichiara più di quanto esegue **non è documentazione ottimista,
+è documentazione falsa**.
+
+📌 **Se invece si decide di tenerle**, il minimo è che la scheda manuale di
+`automation_rules_tbl` dica per ognuna *«dichiarata, non letta»* con la data —
+così chi la incontra non deve scoprirlo interrogando `pg_proc`.
+
+⛔ **Non eseguito**: la rimozione tocca un seed di `80_data` della regola ATTIVO,
+che è il cuore dell'automazione su 100 tabelle. Decisione di Tid.
 
 ### D · Una frase che dichiara aperto ciò che è chiuso
 
