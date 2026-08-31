@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-15 — LA LUNGHEZZA SI LEGGE DAVVERO DAL REGISTRO
+#   vendite.fn_assegna_numero_documento
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-15
+#
+# ── ⛔ IL DIFETTO, MISURATO IL 2026-08-31 ────────────────────────
+#   Il changeSet 20260831-50 si intitola «il formato viene TUTTO dal registro» e
+#   dichiara «una lettura sola al posto di due». ⚠️ Ha cambiato l'ANCORAGGIO
+#   `%TYPE` della variabile e ha lasciato la QUERY dov'era:
+#
+#       SELECT sc.lunghezza_numero INTO v_len
+#         FROM config.sistema_codici sc
+#        WHERE sc.codice_interno = lower(p_famiglia_documento);
+#
+#   Poi il 20260831-53 ha cancellato proprio quelle quattro righe.
+#   ⇒ La SELECT torna ZERO RIGHE, `v_len` resta NULL (SELECT INTO senza righe
+#   azzera la variabile) e il `COALESCE(p_lunghezza, 7)` della composizione da'
+#   7 a tutti:
+#
+#       COMMESSA  registro 9  ->  CMM-ACME-2026-0000007   invece di
+#                                 CMM-ACME-2026-000000007
+#       DDT/ORDINE/RESO  registro 7  ->  giusto PER CASO, il ripiego coincide
+#
+#   ⛔ Nessun errore, nessun vincolo violato: un codice piu' corto e basta. Ed e'
+#   proprio la FORMA cio' che separa i codici nuovi dal pregresso non numerato
+#   sui registri — quindi il difetto tocca l'unica cosa che li teneva distinti.
+#
+# ── ⭐ LA CORREZIONE E' QUELLA CHE IL 20260831-50 DICEVA DI FARE ──
+#   Prefisso, suffisso e lunghezza vengono dalla STESSA riga del registro, in
+#   una lettura sola. Il registro e' l'EFFETTIVO (la colonna e' NOT NULL con
+#   default 7), vendite.famiglie_documento tiene i DEFAULT.
+#
+# ── ⚠️ LA LEZIONE, PERCHE' NON RICADA ────────────────────────────
+#   Le preCondition del 20260831-53 verificavano che la SEDE NUOVA fosse
+#   popolata — registri con prefisso e lunghezza, famiglie con i default — e
+#   nessuna verificava CHI LEGGE ANCORA la sede vecchia. ⛔ Prima di cancellare
+#   una fonte si fa il censimento dei suoi LETTORI (`pg_proc.prosrc` e i file
+#   pgTAP), non solo l'inventario del sostituto.
+#   ⭐ Il presidio che ne discende sta in
+#   db/pgtap/vendite/test-documenti-numerazione-trasloco-v1.sql: nessuna
+#   funzione di schema `vendite` deve piu' nominare config.sistema_codici.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-55-update-fn-assegna-numero-lunghezza-dal-registro-mctit.yaml
+
+  - changeSet:
+      id: 20260831-55-update-fn-assegna-numero-lunghezza-dal-registro
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-15: la lunghezza si legge DAVVERO dal registro. ⛔ Il 20260831-50 si intitolava «il
+        formato viene tutto dal registro» ma ha cambiato solo l''ancoraggio %TYPE della variabile,
+        lasciando la SELECT su config.sistema_codici; poi il 20260831-53 ha cancellato quelle
+        righe. ⇒ Zero righe, v_len NULL, e il COALESCE della composizione dava 7 a tutti: giusto
+        per caso su DDT, ordini e resi, SBAGLIATO sulla commessa che ne vuole 9 —
+        CMM-ACME-2026-0000007 invece di CMM-ACME-2026-000000007, senza nessun errore. ⛔ E la
+        forma e'' proprio cio'' che separa i codici nuovi dal pregresso. ⭐ La correzione e'' quella
+        che il 20260831-50 dichiarava: prefisso, suffisso e lunghezza dalla STESSA riga del
+        registro, in una lettura sola. ⚠️ La lezione: le preCondition del 53 verificavano che la
+        sede NUOVA fosse popolata e nessuna chiedeva CHI LEGGE ancora quella vecchia — prima di
+        cancellare una fonte si censiscono i suoi lettori, non l''inventario del sostituto.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: lunghezza_numero
+            # ⛔ Il difetto vive solo finche' la funzione legge il catalogo: se
+            #   qualcuno l'avesse gia' corretta a mano, questo changeSet
+            #   riscriverebbe sopra una versione che non conosce.
+            - sqlCheck:
+                expectedResult: 1
+                onFailMessage: >-
+                  vendite.fn_assegna_numero_documento non legge piu' config.sistema_codici:
+                  qualcuno l'ha gia' corretta. Verificare quale versione e' viva prima di
+                  riscriverla sopra.
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_assegna_numero_documento'
+                     AND p.prosrc ~ 'FROM config\.sistema_codici';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_assegna_numero_documento(
+                  p_famiglia_documento vendite.registri_fatturazione.famiglia_documento%TYPE,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                  p_data               vendite.fatture.data%TYPE,
+                  p_documento_id       bigint  DEFAULT NULL,
+                  p_utility_id         vendite.registri_fatturazione.utility_id%TYPE DEFAULT NULL,
+                  p_corpo              text    DEFAULT NULL,
+                  -- ⚠️ La serie del DOCUMENTO, quando ce l'ha: DDT e ordini
+                  --   possono dichiararne una propria, resi e commesse no.
+                  p_serie              vendite.ddt.serie%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  registro_id  vendite.registri_fatturazione.id%TYPE,
+                  anno         vendite.ddt.anno%TYPE,
+                  progressivo  bigint,
+                  numero       text,
+                  -- ⭐ La serie RISOLTA esce, perche' chi ha la colonna deve
+                  --   scriverla: e' la stessa che entra nella chiave del
+                  --   contatore, e risolverla due volte con due COALESCE
+                  --   diversi e' il modo in cui il contatore e la UNIQUE
+                  --   cominciano a guardare sezionali diversi.
+                  serie        vendite.registri_fatturazione.serie_default%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_registro vendite.registri_fatturazione.id%TYPE;
+                  v_serie    vendite.registri_fatturazione.serie_default%TYPE;
+                  v_prefisso vendite.registri_fatturazione.prefisso%TYPE;
+                  v_suffisso vendite.registri_fatturazione.suffisso%TYPE;
+                  v_len      vendite.registri_fatturazione.lunghezza_numero%TYPE;
+                  v_anno     vendite.ddt.anno%TYPE;
+                  v_num      bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I SEI PASSI che ogni documento numerato su un registro
+                  --   deve fare, in una sede sola: risolvere il registro,
+                  --   ricavare l'anno, chiedere il progressivo, leggere il
+                  --   formato, comporre.
+                  --
+                  -- ⛔ Prima stavano in QUATTRO funzioni identiche, e una
+                  --   correzione alla composizione andava fatta quattro volte:
+                  --   chi ne dimenticava una produceva un documento formattato
+                  --   diverso dagli altri, che nessun vincolo respinge.
+                  --
+                  -- ⚠️ Cosa NON fa, ed e' deliberato: non decide QUANDO. Il
+                  --   momento e' l'unica cosa che distingue davvero i quattro
+                  --   documenti — DDT a EMESSO, resi a CONFERMATO, ordini e
+                  --   commessa alla creazione — e resta nel trigger di ciascuno.
+                  -- =========================================================
+
+                  -- 1) Il registro. ⛔ L'INVOLUCRO e non il lettore: qui si
+                  --    scrive, e un emittente senza registro deve fermare.
+                  SELECT k.registro_id, k.serie
+                    INTO v_registro, v_serie
+                    FROM vendite.fn_get_registro_documento(
+                             p_famiglia_documento          => p_famiglia_documento,
+                             p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                             p_utility_id                  => p_utility_id) k;
+
+                  -- 2) L'anno, dalla DATA DEL DOCUMENTO.
+                  v_anno := vendite.fn_get_anno_registro(p_data);
+
+                  -- ⚠️ La serie si risolve UNA volta: quella del documento, poi
+                  --   quella del registro, poi vuota. Lo stesso valore va al
+                  --   contatore e torna al chiamante per la colonna.
+                  v_serie := COALESCE(p_serie, v_serie, '');
+
+                  -- 3) Il progressivo, sotto il lock del motore.
+                  v_num := vendite.fn_get_next_progressivo(
+                               v_registro, p_data, NULL,
+                               v_serie, p_documento_id,
+                               p_famiglia_documento);
+
+                  -- 4) Il formato, TUTTO dalla stessa riga: prefisso, suffisso
+                  --    e lunghezza sono l'EFFETTIVO del sezionale e stanno sul
+                  --    registro. I DEFAULT stanno in vendite.famiglie_documento
+                  --    ed e' da li' che nascono i registri nuovi.
+                  --
+                  -- ⛔ Fino al 2026-08-31 la lunghezza si leggeva da
+                  --    config.sistema_codici, e quando il 20260831-53 ne ha
+                  --    tolto le quattro righe la SELECT ha smesso di trovarne:
+                  --    v_len NULL, COALESCE a 7 per tutti — giusto per caso su
+                  --    DDT, ordini e resi, e SBAGLIATO sulla commessa, che ne
+                  --    vuole 9. Un codice piu' corto, senza un errore.
+                  SELECT r.prefisso, r.suffisso, r.lunghezza_numero
+                    INTO v_prefisso, v_suffisso, v_len
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = v_registro;
+
+                  -- 5) La composizione, dalla funzione pura.
+                  RETURN QUERY
+                  SELECT v_registro, v_anno, v_num,
+                         vendite.fn_componi_numero_documento(
+                             v_prefisso, p_corpo, v_num, v_len, v_suffisso),
+                         v_serie;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_assegna_numero_documento(vendite.registri_fatturazione.famiglia_documento%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE, vendite.fatture.data%TYPE, bigint, vendite.registri_fatturazione.utility_id%TYPE, text, vendite.ddt.serie%TYPE)
+              IS 'I SEI PASSI che ogni documento numerato su un registro deve fare, in una sede sola: risolve il registro, ricava l''anno dalla data del documento, chiede il progressivo al motore, legge il formato e compone. Torna (registro_id, anno, progressivo, numero, serie). ⭐ La SERIE risolta esce perche'' chi ha quella colonna deve scriverla: e'' la stessa che entra nella chiave del contatore, e risolverla due volte con due COALESCE diversi e'' il modo in cui il contatore e la UNIQUE cominciano a guardare sezionali diversi. ⛔ Prima stavano in QUATTRO funzioni identiche — vendite.trgfn_ddt_gen_numero_emesso, trgfn_ordini_gen_numero, trgfn_resi_gen_numero e fn_get_or_create_commessa — verificato il 2026-08-31: gli stessi sei passi, ognuno per conto proprio. ⚠️ Una correzione alla composizione andava fatta in quattro posti, e chi ne dimenticava uno produceva un difetto MUTO: un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ TORNA ANCHE `progressivo` e non solo `numero`, ed e'' cio'' che permette alla commessa di usare la stessa funzione: il suo codice porta sigla e anno DENTRO la stringa, quindi passa quei due pezzi come `corpo` — vuoto per gli altri tre. ⚠️ COSA NON FA, ed e'' deliberato: non decide QUANDO. Il momento e'' l''unica cosa che distingue davvero i quattro documenti (DDT a EMESSO, resi a CONFERMATO, ordini e commessa alla creazione) e resta nel trigger di ciascuno — centralizzare anche quello significherebbe mettere in una funzione la sola cosa che non e'' comune. ⭐ IL FORMATO VIENE TUTTO DAL REGISTRO, in una lettura sola: prefisso, suffisso e lunghezza sono l''EFFETTIVO del sezionale; i DEFAULT con cui un registro nasce stanno in vendite.famiglie_documento. ⛔ Dal 20260831-41 al 20260831-54 la LUNGHEZZA si leggeva invece da config.sistema_codici: quando il 20260831-53 ne ha tolto le quattro righe la SELECT ha smesso di trovarne, v_len e'' rimasta NULL e il COALESCE della composizione ha dato 7 a tutti — giusto per caso su DDT, ordini e resi, e SBAGLIATO sulla commessa, che ne vuole 9 (CMM-ACME-2026-0000007 invece di CMM-ACME-2026-000000007). Nessun errore, nessun vincolo violato: solo un codice piu'' corto, e la forma e'' proprio cio'' che separa i codici nuovi dal pregresso. ⚠️ LA LEZIONE: le preCondition del 20260831-53 verificavano che la sede NUOVA fosse popolata e nessuna chiedeva CHI LEGGE ancora quella vecchia — prima di cancellare una fonte si censiscono i suoi lettori (pg_proc.prosrc e i file pgTAP), non l''inventario del sostituto. ⛔ Usa l''INVOLUCRO fn_get_registro_documento e non il lettore: qui si scrive, e un emittente senza registro deve fermare. ⚠️ SECURITY DEFINER: legge il registro, e chi la chiama e'' un trigger che gira sotto RLS. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback non previsto: tornare a leggere config.sistema_codici significa tornare a comporre la commessa con 7 cifre invece di 9.'::text;

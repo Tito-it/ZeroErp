@@ -479,6 +479,7 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
 #        la riga entrava in fattura a valore nullo invece di essere fermata.
 class DdtRigaSenzaPrezzoTests(SimpleTestCase):
     _PRICING = "apps.vendite.services.pricing_service.PricingService"
+    _IVA = "apps.vendite.services.ddt_service._risolvi_iva_riga"
 
     def setUp(self) -> None:
         # `transaction.atomic()` a no-op: qui non c'e' DB, e quel che si prova
@@ -486,6 +487,21 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         patcher = patch(_ATOMIC, return_value=nullcontext())
         patcher.start()
         self.addCleanup(patcher.stop)
+        # ⭐ Il risolutore IVA e' un collaboratore NUOVO di `gestisci_riga`
+        #    (I3, 2026-08-31), e va mockato per la stessa ragione del
+        #    repository: senza, questi test aprirebbero una connessione vera e
+        #    in CI — dove il DB non c'e' — fallirebbero per un motivo che non
+        #    c'entra con cio' che verificano.
+        # ⚠️ Il default risponde «nessun `iva_id`, nessun meta»: cosi' i casi
+        #    che qui non parlano di IVA restano identici a prima.
+        # ⚠️ Si patcha `_risolvi_iva_riga` e non il BB: dal 2026-08-31 e'
+        #    costruito da una FACTORY, quindi il service non nomina piu'
+        #    `IvaResolverService` e patchare quello non intercetterebbe niente —
+        #    il test sarebbe verde senza mockare nulla.
+        iva_patcher = patch(self._IVA)
+        self.iva = iva_patcher.start()
+        self.addCleanup(iva_patcher.stop)
+        self.iva.return_value = (None, {})
 
     # Scopo: testata minima in DRAFT con quel che serve al pricing.
     def _testata(self):
@@ -497,6 +513,81 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
             "data": "2026-08-19",
             "emittente_fiscale_id": 3,
         }
+
+    # Scopo: ⭐ IL CABLAGGIO E' VISIBILE. Con il risolutore mockato il resto
+    #        della suite non si accorgerebbe se qualcuno lo staccasse: qui si
+    #        prova che `gestisci_riga` lo interroga col contesto della TESTATA
+    #        e scrive il suo esito sulla riga.
+    # ⛔ `emittente_fiscale_id` e' la PK (3), non il `soggetto_ruolo_id` (42)
+    #    che il pricing usa: e' la trappola che il progetto ha gia' pagato, e
+    #    con quello sbagliato il risolutore non troverebbe i titoli e
+    #    risponderebbe con l'aliquota ordinaria SENZA sollevare.
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_iva_di_riga_viene_dal_risolutore(self, repo_cls, pricing_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = False
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 31}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
+
+        ddt_service.gestisci_riga(7, {
+            "articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10",
+            "meta": {"origine_import": "XYZ"},
+        })
+
+        # ⭐ Qui si prova il CABLAGGIO: la testata arriva al risolutore e il suo
+        #    esito finisce sulla riga. Che dalla testata si ricavi la PK giusta
+        #    dell'emittente e' provato dove quella logica ora vive —
+        #    `test_iva_contesto_documento.py`.
+        self.assertIs(self.iva.call_args.args[0], repo.get_ddt.return_value)
+        self.assertEqual(self.iva.call_args.kwargs["articolo_id"], "ART1")
+
+        scritta = repo.create_riga.call_args.kwargs
+        self.assertEqual(scritta["iva_id"], 9)
+        # ⚠️ Il meta del client non si perde: il patch dell'IVA si FONDE.
+        self.assertEqual(scritta["meta"]["origine_import"], "XYZ")
+        self.assertEqual(scritta["meta"]["iva_origine"], "TITOLO")
+
+
+    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora
+    #        `iva_id` nel payload deve vederlo IGNORATO: a decidere l'aliquota
+    #        e' il risolutore, e la scelta manuale non esiste piu'.
+    # ⚠️ E il valore non viene RESPINTO, viene SCARTATO: una chiave fuori
+    #        whitelist non solleva. Senza questo caso la rimozione della chiave
+    #        sarebbe invisibile — la suite e' restata verde quando e' stata
+    #        fatta, perche' nessun presidio copriva «il payload vince».
+    # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
+    #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
+    #        errori sono best-effort — cioe' una riga si salverebbe anche
+    #        quando l'IVA non e' determinabile.
+    @patch(_PRICING)
+    @patch(_REPO)
+    def test_i6_iva_del_payload_ignorata(self, repo_cls, pricing_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = self._testata()
+        repo.is_articolo_composito.return_value = False
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 31}
+        repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
+        self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
+
+        ddt_service.gestisci_riga(7, {
+            "articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10",
+            "iva_id": 999,
+        })
+
+        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
+        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
+        #    allora `payload_iva_id` tornerebbe 999.
+        self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
+        self.assertNotIn("iva_id", ddt_service._CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ddt_service._UPDATE_KEYS_RIGA)
+        self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
+
 
     @patch(_PRICING)
     @patch(_REPO)

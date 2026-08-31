@@ -11,7 +11,7 @@ Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
 > [vw_resi_da_accreditare](vw_resi_da_accreditare.md)
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md` §8.5
+> Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §8.5
 
 ---
 

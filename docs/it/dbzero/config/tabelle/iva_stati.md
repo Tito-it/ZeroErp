@@ -16,6 +16,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | assoggettamento_id_override | bigint | YES |  |
+| id | bigint | NO |  |
+| storicizza | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -25,23 +27,27 @@
 | FOREIGN KEY | fk_iva_stati_assoggettamento_override | assoggettamento_id_override |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |
 | FOREIGN KEY | fk_iva_stati_stato | stato_id |
-| PRIMARY KEY | pk_iva_stati | iva_id, stato_id |
+| PRIMARY KEY | pk_iva_stati | id |
+| UNIQUE | uq_iva_stati_iva_stato | iva_id, stato_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_config_iva_stati_stato_id | `CREATE INDEX ix_config_iva_stati_stato_id ON config.iva_stati USING btree (stato_id)` |
-| pk_iva_stati | `CREATE UNIQUE INDEX pk_iva_stati ON config.iva_stati USING btree (iva_id, stato_id)` |
+| pk_iva_stati | `CREATE UNIQUE INDEX pk_iva_stati ON config.iva_stati USING btree (id)` |
+| uq_iva_stati_iva_stato | `CREATE UNIQUE INDEX uq_iva_stati_iva_stato ON config.iva_stati USING btree (iva_id, stato_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_iva_stati_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_iva_stati_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
+| trg_iva_stati_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_iva_stati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_stati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_iva_stati_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
 | trg_iva_stati_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
+| trg_iva_stati_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
+| trg_iva_stati_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_stati_id')` |
+| trg_iva_stati_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_stati_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

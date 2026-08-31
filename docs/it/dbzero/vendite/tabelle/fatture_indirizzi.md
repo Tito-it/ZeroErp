@@ -19,6 +19,7 @@
 | origine_indirizzo_id | bigint | YES |  |
 | origine_soggetto_ruolo_id | bigint | YES |  |
 | tx_id | uuid | YES |  |
+| storicizza | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

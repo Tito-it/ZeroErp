@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente - `I5`, coda:
+# LA SORGENTE ACCETTAVA CIO' CHE LA DESTINAZIONE RIFIUTA.
+#
+# -- L'ASIMMETRIA, TROVATA GUARDANDO IL CATALOGO ---------------------
+#
+#   `vendite.fatture_riepiloghi_iva.esigibilita` ha un `CHECK`:
+#
+#       CHECK (esigibilita IS NULL OR esigibilita IN ('I','D','S'))
+#
+#   `vendite.fatture_righe.esigibilita` **non ha niente**. Eppure il riepilogo
+#   si costruisce DALLE RIGHE, e `fn_ricalcola_riepilogo_iva_fattura` copia il
+#   valore di riga dentro il riepilogo senza toccarlo.
+#
+#   ⛔ Quindi un valore fuori dominio scritto su una riga **entra**, resta li'
+#   finche' nessuno rigenera, e poi fa esplodere il ricalcolo con una violazione
+#   di `CHECK` grezza - **su un'altra tabella, in un altro momento, dentro una
+#   funzione che i suoi chiamanti danno per infallibile**. E' la stessa forma
+#   gia' incontrata su questo progetto: il vincolo messo dove il dato ARRIVA
+#   invece che dove il dato NASCE.
+#
+# -- PERCHE' ADESSO -------------------------------------------------
+#
+#   Perche' `20260829-54` ha appena creato **il primo scrittore** di quella
+#   colonna. Finche' era NULL su tutte le righe l'asimmetria era innocua e
+#   invisibile; da adesso la colonna porta valori, e un secondo scrittore - il
+#   backend, che `I5` deve ancora toccare - non ha nessun recinto.
+#
+# -- IL `NULL` RESTA AMMESSO, ED E' UNA DECISIONE --------------------
+#
+#   Il `CHECK` ricalca quello del riepilogo, `NULL` compreso. Non e' pigrizia di
+#   copia: `NULL` significa **«non determinato»**, ed e' cio' che il trigger
+#   scrive di proposito quando il soggetto cliente non si risolve (`D32`).
+#   Vietarlo obbligherebbe a scegliere fra `'I'` e `'D'` senza saperlo - cioe'
+#   ad affermare un regime.
+#
+# -- ⚠️ NESSUNA BONIFICA, E SI VERIFICA -------------------------------
+#
+#   Il vincolo nasce **validato** perche' non c'e' niente da bonificare. La
+#   `preCondition` non si fida della frase: conta le righe fuori dominio e
+#   ferma il migrate se ne trova. Un `NOT VALID` avrebbe nascosto il problema
+#   invece di dichiararlo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260829-55-alter-fatture-righe-check-esigibilita-mctit.yaml
+
+  - changeSet:
+      id: 20260829-55-alter-fatture-righe-check-esigibilita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fatture_righe.esigibilita prende lo stesso CHECK che il riepilogo aveva gia'
+        (NULL o 'I'/'D'/'S'). L'asimmetria era invisibile finche' la colonna era NULL su
+        tutte le righe; 20260829-54 ha appena creato il primo scrittore. Senza il vincolo,
+        un valore fuori dominio entra sulla riga e fa esplodere fn_ricalcola_riepilogo_iva
+        molto dopo, su un'altra tabella, con una violazione di CHECK grezza. Il NULL resta
+        ammesso di proposito: significa «non determinato», ed e' cio' che il trigger scrive
+        quando il soggetto cliente non si risolve (D32).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: esigibilita
+            - not:
+                - sqlCheck:
+                    expectedResult: "1"
+                    sql: >-
+                      SELECT count(*) FROM pg_constraint
+                       WHERE conrelid = 'vendite.fatture_righe'::regclass
+                         AND conname = 'chk_fatture_righe_esigibilita'
+            # ⚠️ Non ci si fida della frase «non c'e' niente da bonificare»:
+            #    si conta. Se una riga fuori dominio esistesse, il migrate si
+            #    ferma qui invece di fallire dentro l'ALTER.
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >-
+                  SELECT count(*) FROM vendite.fatture_righe
+                   WHERE esigibilita IS NOT NULL AND esigibilita NOT IN ('I', 'D', 'S')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                ADD CONSTRAINT chk_fatture_righe_esigibilita
+                CHECK (esigibilita IS NULL OR esigibilita IN ('I', 'D', 'S'));
+
+              COMMENT ON CONSTRAINT chk_fatture_righe_esigibilita ON vendite.fatture_righe IS
+                  'Dominio dell''esigibilita'' IVA: I = immediata, D = differita, S = '
+                  'scissione dei pagamenti. ⭐ Nasce il 2026-08-29 con la coda di I5, e '
+                  'ricalca ESATTAMENTE il vincolo che vendite.fatture_riepiloghi_iva aveva '
+                  'gia'': la sorgente accettava cio'' che la destinazione rifiuta, e il '
+                  'riepilogo si costruisce dalle righe copiando il valore senza toccarlo. '
+                  'Senza questo vincolo un valore fuori dominio entra sulla riga, resta '
+                  'finche'' nessuno rigenera, e poi fa esplodere '
+                  'fn_ricalcola_riepilogo_iva_fattura con una violazione di CHECK grezza su '
+                  'un''altra tabella, in un altro momento. ⚠️ L''asimmetria era innocua '
+                  'finche'' la colonna era NULL su tutte le righe; 20260829-54 ha creato il '
+                  'primo scrittore, e il secondo (il backend, per I5) non avrebbe avuto '
+                  'nessun recinto. ⭐ Il NULL resta ammesso ed e'' una decisione: significa '
+                  '«non determinato», ed e'' cio'' che il trigger scrive di proposito '
+                  'quando il soggetto cliente non si risolve (D32) - vietarlo obbligherebbe '
+                  'ad affermare un regime senza saperlo. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, I5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_esigibilita;

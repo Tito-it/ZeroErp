@@ -23,7 +23,16 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 
 ### Vincoli e Logiche Aziendali
 
-* **PK composito** `(iva_id, stato_id)`: garantisce un solo override per ciascuna combinazione di codice IVA e Stato.
+* ~~**PK composito** `(iva_id, stato_id)`~~ ⛔ **non è più vero dal 2026-08-29**
+  (changeSet `20260829-42`). La tabella ha ora una **chiave surrogata** `id`, e la
+  coppia `(iva_id, stato_id)` è retrocessa a **vincolo di unicità** — che continua
+  a garantire un solo override per combinazione, cioè la regola non è cambiata.
+  ⭐ Il motivo del cambio non è estetico: **una chiave composita non è
+  storicizzabile**. Le tabelle di storico portano *una sola* colonna di
+  riferimento, quindi finché la chiave era doppia questa tabella non poteva avere
+  una gemella in `storico` — e gli override di aliquota sono esattamente il
+  genere di dato di cui serve sapere *com'era allora*.
+* **`storicizza`**: da `20260829-42` la tabella partecipa allo storico.
 * **Aliquota e assoggettamento**: entrambe sempre valorizzate; `aliquota_override` rappresenta la percentuale locale, mentre `assoggettamento_override` segue gli stessi codici di default (`NS`, `NI`, `ND`, `ES`, `RC`, `ED`, \`\`).
 * **Assoggettamento**: se `assoggettamento_override` è diverso da vuoto, **`aliquota_override` deve essere 0** o lasciata al default, a indicare che prevale la modalità non imponibile o esente.
 

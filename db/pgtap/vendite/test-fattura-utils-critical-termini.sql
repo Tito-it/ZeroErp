@@ -96,12 +96,8 @@ WITH ba AS (
   LIMIT 1
 )
 SELECT
-  (
-    SELECT id
-    FROM vendite.registri_fatturazione
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
+  script.fn_pgtap_registro_fattura(
+    anagrafiche.fn_get_emittente_fiscale_id((SELECT id FROM ba))
   ) AS registro_id,
   (
     SELECT m.emittente_soggetto_ruolo_id

@@ -53,6 +53,28 @@ fino al 2026-08-21 il valore `'ERRORE'`, pur ammesso dal CHECK della tabella e
 contato dalla summary, **non veniva scritto mai** (misurato: 16 righe su 16 a
 `COMPLETED`).
 
+## La capability di riga «riporta in lavorazione» (2026-08-31)
+
+La riga porta la **terna di capability** dell'azione che toglie una fattura dal
+lotto, letta da `script.fn_check_fattura_eliminabile_da_lotto` con un
+`LEFT JOIN LATERAL` che ne prende il **primo** motivo.
+
+| Campo | Cosa |
+|---|---|
+| `can_reset_fattura` | l'azione è ammessa? ⭐ **Deriva dal motivo** (`reason IS NULL`), non è una seconda risposta: due sorgenti per la stessa domanda sono due risposte che prima o poi differiscono, e la divergenza sarebbe **muta** — un pulsante acceso su un gesto che il DB rifiuta |
+| `can_reset_fattura_reason` | il motivo macchina, per il diario |
+| `can_reset_fattura_reason_key` | ⭐ la **chiave i18n**, che è ciò che viaggia: il testo lo compone il frontend. Vocabolario `vendite.lotti.azione_reason.*`, reso con `labelOrCode` perché è del DB ed è **aperto** |
+
+Tutti e tre parlano della **stessa** domanda: *«l'azione fallirebbe?»*.
+
+⚠️ **Permesso ⇒ nascondi, stato ⇒ disabilita CON il motivo** (regola di
+`api.md`). Qui è sempre il secondo caso: l'azione resta **a video, spenta, col
+perché**. Fino al 2026-08-31 spariva e basta, e un pulsante che sparisce non
+spiega niente.
+
+⛔ **Fail-closed**: capability assente ⇒ azione **spenta**. Su un verbo che
+cancella il documento dal lotto, «non lo so» non può voler dire «vai».
+
 ## Input
 
 - Metodo: `GET`
@@ -104,7 +126,10 @@ contato dalla summary, **non veniva scritto mai** (misurato: 16 righe su 16 a
         "errore_messaggio": "Non si può numerare il documento: rettifica righe di altri documenti che non risultano ancora numerati. Documenti da numerare prima: 1.",
         "errore_codice": "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
         "errore_quando": "2026-08-21T17:39:39.675+02:00",
-        "errore_livello": "C"
+        "errore_livello": "C",
+        "can_reset_fattura": false,
+        "can_reset_fattura_reason": "il lotto e' oltre la soglia di congelamento fiscale",
+        "can_reset_fattura_reason_key": "vendite.lotti.azione_reason.lotto_congelato"
       }
     ]
   },
@@ -123,9 +148,17 @@ contato dalla summary, **non veniva scritto mai** (misurato: 16 righe su 16 a
 - Quando `sort_by != fattura_id` viene aggiunto `fllf.fattura_id ASC` come tiebreaker deterministico.
 - `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
 - `is_search_endpoint = True` sulla view: attiva throttling `SearchBurstRateThrottle`.
-- `stato_doc_fiscale_codice` = `config.stati_doc_fiscale.codice_interno` (chiave stabile):
-  e' il campo su cui il FE basa i gate (es. reset fattura solo su `DRAFT`) — mai la
-  `descrizione`, che e' display e puo' cambiare.
+- `stato_doc_fiscale_codice` = `config.stati_doc_fiscale.codice_interno` (chiave
+  stabile) — mai la `descrizione`, che e' display e puo' cambiare. Serve a
+  MOSTRARE lo stato.
+- ⛔ **Il FE NON basa piu' il gate del reset su questo codice** (dal
+  2026-08-31). Fino ad allora `LottoDrawer.vue` teneva una lista
+  `PRE_FISCALI = ['DRAFT','EMESSA']`: era la **nona copia** della soglia di
+  congelamento, e rispondeva a una domanda diversa da quella che serviva.
+  ⚠️ *«L'azione fallirebbe?»* e *«e' congelato?»* oggi danno la stessa risposta,
+  ma non devono appoggiarsi l'una sull'altra (regola 3 di `D15`): il giorno che
+  una precondizione nuova entra nella check DB, la lista di stati non se ne
+  accorge. A rispondere e' `can_reset_fattura`.
 - Endpoint di sola lettura: nessun `Idempotency-Key` richiesto.
 - Endpoint v1 richiede JWT.
 
@@ -137,6 +170,13 @@ contato dalla summary, **non veniva scritto mai** (misurato: 16 righe su 16 a
 - `anagrafiche.vw_soggetti_ruoli_dettaglio` (INNER JOIN — ragione_sociale_completa, id_fiscale_univoco_cf_piva)
 - `config.stati_sdi` (LEFT JOIN — decodifica stato SDI)
 - `config.stati_doc_fiscale` (LEFT JOIN — decodifica stato documento fiscale)
+- `script.fn_check_fattura_eliminabile_da_lotto` (LEFT JOIN LATERAL — la
+  capability di riga). ⭐ `STABLE` e pura, ritorna l'array ORDINATO dei motivi
+  con `{codice, reason, reason_key}`. Il suo `Scopo` dichiara **due**
+  consumatori: `fn_elimina_fattura_da_lotto`, che solleva il codice del primo
+  motivo, e il BE — «per spiegare invece di far fallire». Il secondo esisteva
+  solo sulla carta fino al 2026-08-31.
+  ⚠️ Il `LATERAL` sta **fuori dal `COUNT`**, come quello dell'errore.
 
 ## Note di migrazione
 

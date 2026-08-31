@@ -107,20 +107,32 @@ SELECT script.fn_data_operativa()                                               
 -- ⚠️ Cinque e non due: il registro del CANCELLO deve avere il contatore
 --   VERGINE, o il pavimento di sequenza coprirebbe quello di emissione e i test
 --   13-15 proverebbero l'altro presidio senza dirlo.
+-- ⛔ L'emittente del registro e' NOT NULL dal 2026-08-30 (C1-2, 20260830-11):
+--   un registro di numerazione appartiene a UN emittente. Questo file prova la
+--   politica della data e i pavimenti, non il perimetro: ne serve uno qualsiasi,
+--   e si PRENDE dal catalogo invece di cablarne l'id.
+CREATE TEMP TABLE tmp_le_ef AS
+SELECT ef.soggetto_ruolo_id AS emittente_id
+  FROM anagrafiche.emittenti_fiscali ef
+ WHERE ef.attivo IS TRUE
+ ORDER BY ef.id
+ LIMIT 1;
+
 CREATE TEMP TABLE tmp_le_reg AS
 WITH ins AS (
   INSERT INTO vendite.registri_fatturazione
       (codice, descrizione, reset_policy, attivo, politica_data_documento,
-       limite_emissione_giorni, limite_emissione_giorno_mese, meta)
+       limite_emissione_giorni, limite_emissione_giorno_mese,
+       emittente_soggetto_ruolo_id, meta)
   VALUES
       ('RLE_OGGI',  'Registro prova limite OGGI',      'ANNUALE', true, 'OGGI',
-       12,   NULL, jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
+       12,   NULL, (SELECT emittente_id FROM tmp_le_ef), jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
       ('RLE_OVER',  'Registro prova override giorni',  'ANNUALE', true, 'OGGI',
-       3,    NULL, jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
+       3,    NULL, (SELECT emittente_id FROM tmp_le_ef), jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
       ('RLE_DIFF',  'Registro prova differita',        'ANNUALE', true, 'FINE_MESE_COMPETENZA',
-       12,   15,   jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
+       12,   15,   (SELECT emittente_id FROM tmp_le_ef), jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
       ('RLE_GATE',  'Registro prova cancello',         'ANNUALE', true, 'OGGI',
-       12,   NULL, jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
+       12,   NULL, (SELECT emittente_id FROM tmp_le_ef), jsonb_build_object('test_scope', 'pgtap_limite_emissione')),
       -- ⭐ giorni = 0 NON e' un capriccio: e' cio' che rende DISCRIMINANTI i due
       --   test di bordo. Con 12 giorni, nella prima meta' del mese la fine della
       --   competenza scorsa e' PIU' RECENTE di `oggi - 12`, quindi il LEAST
@@ -128,7 +140,7 @@ WITH ins AS (
       --   due test direbbero la stessa cosa. Con 0, il permesso aperto risponde
       --   la fine competenza e quello chiuso risponde oggi: sempre diversi.
       ('RLE_BORDO', 'Registro prova bordo scadenza',   'ANNUALE', true, 'FINE_MESE_COMPETENZA',
-       0,    15,   jsonb_build_object('test_scope', 'pgtap_limite_emissione'))
+       0,    15,   (SELECT emittente_id FROM tmp_le_ef), jsonb_build_object('test_scope', 'pgtap_limite_emissione'))
   RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice = 'RLE_OGGI')  AS reg_oggi,
        max(id) FILTER (WHERE codice = 'RLE_OVER')  AS reg_over,

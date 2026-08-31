@@ -161,8 +161,7 @@ CREATE TEMP TABLE tmp_refs_vfl AS
 SELECT
   ba.id                                    AS billing_account_id,
   script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r
-    WHERE r.attivo IS TRUE ORDER BY r.id LIMIT 1)      AS registro_id,
+  script.fn_pgtap_registro_fattura()      AS registro_id,
   config.fn_get_natura_doc_fiscale_id('FATTURA')       AS natura_fattura_id
 FROM anagrafiche.billing_account ba
 WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL

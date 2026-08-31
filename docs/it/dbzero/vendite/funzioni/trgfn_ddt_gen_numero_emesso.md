@@ -12,17 +12,29 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: assegna ddt.numero alla transizione a EMESSO (C6), fuori dal
---   framework sistema_codici (che numera all'INSERT). Mirror spirito
---   fatture: numerazione bespoke a emissione.
 DECLARE
-    v_stato  config.stati_doc_ddt.codice_interno%TYPE;
-    v_prefix config.sistema_codici.prefisso%TYPE;
-    v_sep    config.sistema_codici.separatore%TYPE;
-    v_len    config.sistema_codici.lunghezza_numero%TYPE;
-    v_seq    bigint;
+    v_stato        config.stati_doc_ddt.codice_interno%TYPE;
+    v_emittente_sr vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
+    v_registro     vendite.registri_fatturazione.id%TYPE;
+    v_ass          record;
+    v_anno         vendite.ddt.anno%TYPE;
 BEGIN
-    -- Gia' numerato -> no-op (immutabilita' da trgfn_v_ddt_protect_num).
+    -- =========================================================
+    -- Scopo:
+    --   Assegnare ddt.numero alla transizione a EMESSO,
+    --   prendendolo dal MOTORE DEI REGISTRI.
+    --
+    -- ⭐ rev 2026-08-31: qui resta il MOMENTO, e basta. Il
+    --   formato — prefisso, suffisso, lunghezza — viene TUTTO
+    --   dal registro, e la composizione dalla funzione centrale.
+    -- ⛔ config.sistema_codici non ha piu' una riga 'ddt': il
+    --   20260831-53 l'ha tolta insieme alle altre tre. I DEFAULT
+    --   con cui nasce un registro stanno in
+    --   vendite.famiglie_documento.
+    -- =========================================================
+
+    -- Gia' numerato -> no-op (immutabilita' da
+    -- trgfn_v_ddt_protect_num).
     IF NEW.numero IS NOT NULL AND btrim(NEW.numero::text) <> '' THEN
         RETURN NEW;
     END IF;
@@ -35,23 +47,50 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Formato data-driven dalla riga sistema_codici (usa_sequenza=false,
-    -- ma prefisso/separatore/lunghezza restano validi).
-    SELECT prefisso, separatore, lunghezza_numero
-      INTO v_prefix, v_sep, v_len
-      FROM config.sistema_codici
-     WHERE codice_interno = 'ddt';
+    -- ⚠️ Due convenzioni per lo stesso emittente: il DDT porta
+    --   l'id di anagrafiche.emittenti_fiscali, il registro porta
+    --   il soggetto_ruolo. La traduzione e' 1:1
+    --   (uq_emittenti_fiscali_ruolo) e si fa qui, esplicita.
+    SELECT ef.soggetto_ruolo_id INTO v_emittente_sr
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.id = NEW.emittente_fiscale_id;
 
-    v_seq := nextval('vendite.ddt_numero_seq');
-    NEW.numero := COALESCE(v_prefix, 'DDT')
-               || COALESCE(v_sep, '')
-               || lpad(v_seq::text, COALESCE(v_len, 7), '0');
+    -- ⛔ L'INVOLUCRO, non il lettore: qui si SCRIVE, e un
+    --   emittente senza registro DDT deve fermare — non emettere
+    --   un documento senza sezionale.
+    -- ⭐ I SEI PASSI IN UNA CHIAMATA SOLA. Stavano qui e in altre tre
+    --   funzioni identiche: risolvere il registro, ricavare l'anno,
+    --   chiedere il progressivo, leggere il formato, comporre.
+    --   ⚠️ Una correzione alla composizione andava fatta in QUATTRO
+    --   posti, e chi ne dimenticava uno produceva un documento
+    --   formattato diverso dagli altri — che nessun vincolo respinge.
+    -- ⭐ Qui resta l'unica cosa che distingue davvero questo documento
+    --   dagli altri tre: il MOMENTO, cioe' i guard qui sopra.
+    SELECT * INTO v_ass
+      FROM vendite.fn_assegna_numero_documento(
+               p_famiglia_documento          => 'DDT',
+               p_emittente_soggetto_ruolo_id => v_emittente_sr,
+               p_data                        => NEW.data,
+               p_documento_id                => NEW.id,
+               p_utility_id                  => NEW.utility_id,
+                        p_serie              => NEW.serie,
+               p_corpo                       => NULL) v;
+
+    -- ⚠️ Le colonne si scrivono INSIEME: numero, anno, serie e registro
+    --   sono una cosa sola — la chiave del documento — e scriverne
+    --   una senza le altre lascia la riga a raccontare un sezionale
+    --   che non e' il suo.
+    NEW.registro_id := v_ass.registro_id;
+    NEW.anno        := v_ass.anno;
+    NEW.serie       := NULLIF(v_ass.serie, '');
+    NEW.numero      := v_ass.numero;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
-IS 'Assegna ddt.numero alla transizione a EMESSO (C6), fuori dal framework sistema_codici (mirror fatture). Formato da config.sistema_codici riga ddt (usa_sequenza=false) + sequenza vendite.ddt_numero_seq. Immutabilita'': trgfn_v_ddt_protect_num. rev 2026-07-09.';
+IS 'Assegna il numero a il DDT alla transizione a EMESSO, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ IL FORMATO VIENE TUTTO DAL REGISTRO — prefisso, suffisso e lunghezza, in una lettura sola — e i DEFAULT con cui un registro nasce stanno in vendite.famiglie_documento. ⛔ config.sistema_codici NON C''ENTRA PIU'': il 20260831-53 ne ha tolto le righe di ddt, ordine, reso e commessa. ⚠️ Fino al 20260831-54 questa descrizione diceva che il catalogo dei formati «conserva la sola LUNGHEZZA»: era vero fino al 53, e nel frattempo la funzione centrale continuava a leggerla da li'' — zero righe, lunghezza NULL, 7 cifre a tutti (giusto per caso qui, sbagliato sulla commessa). Corretto dal 20260831-55, e questa frase resta a ricordare che un COMMENT superato e'' una prova falsa a favore dell''ipotesi sbagliata. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4 e P-16.';
 ```
 
 ---

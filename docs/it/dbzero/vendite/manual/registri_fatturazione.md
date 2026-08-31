@@ -12,9 +12,13 @@
 >
 ### 🎯 Scopo Principale
 (latest review 26-01-2026)
-`vendite.registri_fatturazione` definisce i **registri fiscali di emissione**:
-serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura
-si aggancia a un registro, che governa numerazione e perimetro fiscale.
+`vendite.registri_fatturazione` definisce i **sezionali di numerazione**: serie,
+regole di reset, politica della data e collegamento all'emittente fiscale. Ogni
+documento numerato si aggancia a un registro, che ne governa numerazione e
+perimetro.
+
+⛔ **Il nome dice meno di quello che la tabella fa, ed è un debito dichiarato:**
+dal 31 agosto 2026 qui non vivono più solo le fatture. Vedi la sezione in fondo.
 
 ---
 
@@ -24,6 +28,8 @@ si aggancia a un registro, che governa numerazione e perimetro fiscale.
 * **Emittente**: `emittente_soggetto_ruolo_id` (ruolo fiscale che emette).
 * **Utility**: `utility_id` (opzionale, per registri specifici di utility).
 * **Numerazione**: `serie_default`, `reset_policy` (es. ANNUALE).
+* **Forma del numero**: `prefisso`, `suffisso`, `lunghezza_numero` — vedi la
+  revisione «il registro dice anche CHE FORMA ha il numero».
 * **Stato**: `attivo`.
 * **Governance**: `meta`, `storicizza`, `tx_id`, audit.
 
@@ -100,6 +106,143 @@ una (`COALESCE(f.serie, r.serie_default, '')`), quindi **rinominarlo sposta il
 sezionale**: le righe di `registri_fatturazione_progressivi` restano sulla serie
 vecchia e vanno spostate a mano, o il contatore riparte da zero e il cancello
 resta senza pavimento.
+
+---
+
+### 🔄 rev 2026-08-31 — il registro numera **cinque famiglie**, non solo le fatture
+
+Brief: `brief-db-registri-di-numerazione-emittente-e-trasloco` (**C2**).
+
+#### La colonna `famiglia_documento`
+
+Dice **che specie di documento** questo registro numera: `FATTURA`, `DDT`,
+`ORDINE`, `COMMESSA`, `RESO` — le voci sono quelle di
+[`vendite.famiglie_documento`](/dbzero/vendite/manual/famiglie_documento).
+
+⭐ **Il motore era già neutro.** Documenti di trasporto, ordini, commesse e resi
+avevano ciascuno il proprio contatore, e nessuno dei tre sapeva ripartire a
+Capodanno né distinguere due aziende. Portarli qui non ha richiesto un motore
+nuovo: nel generatore la fattura compariva ormai solo nel ramo dell'errore.
+
+⚠️ **Un registro appartiene a UNA azienda**, e non è una preferenza: è la chiave
+del contatore. Due aziende sullo stesso registro non producono numeri doppi — il
+contatore è uno solo — ma **spezzano l'attribuzione**, e nessuna delle due ha più
+una progressione propria. Nessun errore lo segnala: è il motivo per cui esiste un
+controllo apposta e per cui l'emittente è obbligatorio dal 30 agosto 2026.
+
+#### ⚠️ Il cancello della data vale **solo per le fatture**
+
+Il pavimento di sequenza — *«non numeri un documento con data anteriore
+all'ultimo già numerato»* — è una regola **fiscale** e vive dove c'è il registro
+fiscale.
+
+⛔ Acceso anche altrove sarebbe un rifiuto nuovo, non un modo diverso di dare il
+numero: emesso un documento di trasporto datato oggi, su quel registro **nessuno
+datato prima passerebbe più** — e il documento per la spedizione di ieri, inserito
+stamattina, verrebbe respinto. Lo governa il flag `presidia_data_documento` sul
+catalogo delle famiglie.
+
+⭐ **L'anno invece resta quello della data del documento** per tutti, ed è
+indipendente da quel flag.
+
+#### ⛔ Un registro spento occupa ancora il suo posto
+
+**«Spegni e rifai» non è una strada per un registro.** Per la stessa combinazione
+di famiglia, azienda e utility non se ne ritira uno per crearne un altro: si
+**riattiva quello che c'è**.
+
+Il motivo è che l'unicità dei registri non guarda l'interruttore acceso/spento:
+una riga spenta continua a occupare il posto. Chi prova a inserirne una nuova
+accanto riceve un errore di duplicato che parla di una riga che non vede più — ed
+è il genere di messaggio che fa perdere mezz'ora.
+
+⭐ **Ed è giusto così, non è una svista.** Se spegnere liberasse il posto,
+resterebbero due registri storici della stessa famiglia per la stessa azienda, e
+nessuno saprebbe più **quale ha numerato cosa**. La numerazione è una storia che
+non si riapre, e il vincolo è severo per quel motivo.
+
+⚠️ **Spegnere resta invece la mossa giusta** quando serve solo a togliere un
+registro dalla circolazione: chi cerca il registro da usare guarda l'interruttore
+e lo salta. La differenza è fra *ritirare* e *sostituire* — la prima si fa
+spegnendo, la seconda no.
+
+#### ⛔ Il debito sul nome, dichiarato
+
+La tabella si chiama `registri_fatturazione` e numera anche merce in uscita e
+ordini. **Il nome non si cambia**, e non per pigrizia: rinominarla significa
+rinominare la tabella dei progressivi, i trigger, le funzioni, le viste, i vincoli
+e le colonne `registro_id` di cinque tabelle di documento.
+
+⭐ È un lavoro che non cambia **nessun** comportamento — cioè esattamente quello
+che non va infilato dentro un cantiere che ne cambia molti, dove un errore di
+rinomina si confonderebbe con un errore di trasloco.
+
+⚠️ **Ne discende una regola di lettura:** chi trova questo nome in giro non deve
+dedurne «fattura». La specie si chiede a `famiglia_documento`, e la funzione che
+risolve il registro di un documento **rifiuta** proprio la famiglia `FATTURA` —
+quella ha una strada sua, che passa dal tipo di documento fiscale e dalla natura
+dell'operazione.
+
+---
+
+### 🔄 rev 2026-08-31 (sera) — il registro dice anche **che forma** ha il numero
+
+Brief: `brief-db-prefisso-sul-registro-e-allineamento-contatori` (**P-2**, **P-9**).
+
+Fino a quel giorno il registro diceva **quanto**: chi conta, per quale azienda e
+per quale anno. La forma della stringa — il prefisso, le cifre di riempimento —
+stava altrove, in `config.sistema_codici`. Oggi sta qui:
+
+| colonna | che cos'è |
+| --- | --- |
+| `prefisso` | ciò che precede il numero. Vuoto è legittimo, e vuol dire «nessun prefisso» |
+| `suffisso` | ciò che lo segue. Nato insieme al prefisso, per non doverlo aggiungere dopo |
+| `lunghezza_numero` | quante cifre ha la parte numerica. `NOT NULL`, default 7; la commessa ne usa 9 |
+
+#### ⭐ Default e effettivo: due sedi, un ruolo ciascuna
+
+```
+famiglie_documento     →  il DEFAULT   (com'è fatto quel TIPO di documento)
+registri_fatturazione  →  l'EFFETTIVO  (com'è fatto QUESTO sezionale)
+```
+
+Tutti i documenti di trasporto hanno 7 cifre: è una proprietà del tipo documento.
+Un singolo sezionale può però volere un prefisso suo — è esattamente **a cosa
+serve un sezionale** — e allora vale quello scritto qui.
+
+⚠️ **Un registro nuovo nasce copiando il default della sua famiglia**, quindi
+nessuno deve ricordarsi di riempirlo. Chi ne crea uno a mano e lascia il prefisso
+vuoto ottiene numeri **nudi**, in silenzio: è il motivo per cui esiste un presidio
+sul provisioning.
+
+#### ⚠️ Il separatore non è più un campo a sé
+
+Se serve, si scrive **dentro** il prefisso (`CMM-`). Con due campi distinti un
+prefisso vuoto lasciava il separatore **orfano in testa** — `-ACME-2026-000000001`
+— e chi spezzava il codice sul trattino trovava un primo pezzo vuoto.
+
+#### ⛔ La coppia prefisso+suffisso è unica dentro l'emittente
+
+Due registri della stessa azienda non possono avere la stessa coppia: sarebbero
+due sezionali **indistinguibili a valle**, che è il contrario di ciò per cui
+esistono. ⚠️ Il vincolo è **parziale**: due registri entrambi senza prefisso né
+suffisso convivono, perché non hanno un nome da tenere distinto.
+
+#### ⛔ I contatori sono stati allineati al massimo già emesso
+
+Il giorno del trasloco i contatori partivano da zero mentre il pregresso era
+arrivato per esempio a `ORD0040688`: il primo ordine nuovo ha ricevuto
+`ORD0000001`, **un numero già usato**, con la stessa identica forma.
+
+⚠️ E il vincolo di unicità non se n'è accorto: le righe vecchie hanno il registro
+vuoto, le nuove no, e **un campo vuoto contro un campo pieno non collide mai**.
+
+⭐ L'allineamento porta ogni contatore almeno al massimo progressivo già emesso
+dalla stessa azienda in quell'anno. Lascia dei buchi nella progressione — un
+contatore non torna indietro — ed è un prezzo molto più basso di un numero doppio.
+
+⚠️ L'anno si ricava dalla **data del documento** e non dalla colonna `anno`: sul
+pregresso di documenti di trasporto e resi quella colonna è vuota.
 
 ---
 

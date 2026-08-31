@@ -43,6 +43,48 @@ consumatore della stessa soglia — il risolutore IVA, una stampa, un ricalcolo 
 **ricopia**, e due finestre di congelamento sullo stesso documento sono due verita` che
 divergono in silenzio.
 
+> ### ✅ ~~E la ricopiano ANCORA~~ → **CHIUSO il 2026-08-30** (`D33`)
+>
+> Per un giorno la colonna e` esistita con **un solo lettore**: le altre sette
+> funzioni tenevano la lista `NOT IN ('DRAFT','EMESSA')` nel proprio corpo. Otto
+> copie della stessa frase, e sette non danno errore se ci si dimentica di
+> aggiornarle.
+>
+> ⛔ **Le due copie peggiori erano le guardie di congelamento stesse**
+> (~~`trgfn_fatture_righe_guard_congelamento`~~,
+> `trgfn_fattura_satellite_guard_congelamento`). ⭐ Dal 2026-08-30 sono **una
+> sola**: la prima e` stata riassorbita dalla seconda (`D34`), perche` erano la
+> stessa funzione. Una guardia che usa una
+> definizione di «congelato» diversa da quella di chi ricalcola lascia il
+> documento **congelato per meta` sistema e scrivibile per l'altra** — senza un
+> errore e senza una riga di log.
+>
+> ✅ **Tutte e sette portate a leggere la colonna** con i changeSet
+> `20260830-01`…`-07`. ⚠️ Il comportamento **non e` cambiato**: verificato che
+> sui sei stati esistenti colonna e lista dicevano la stessa cosa. E` cambiata la
+> **sede**, cioe` quante cose vanno toccate il giorno che il confine si sposta —
+> da otto a una.
+>
+> ⚠️ **Il trattamento dello STATO MANCANTE e` rimasto identico funzione per
+> funzione**, e non e` lo stesso per tutte: alcune lasciano passare, altre
+> bloccano. Uniformarlo sarebbe stato giusto in se`, ma sarebbe stato un
+> cambiamento di comportamento **nascosto** dentro un lavoro di sede.
+>
+> ### ⭐ E il confine e` `DEFINITIVA`, non `EMESSA` (rilievo di Tid)
+>
+> Da `EMESSA` si **torna indietro**: `EMESSA -> DRAFT` e` una transizione
+> **ammessa** su `config.stati_doc_fiscale_transizioni`. `DEFINITIVA` non ha
+> ritorno. La colonna lo diceva gia` correttamente; la lista di codici anche —
+> ma in otto posti.
+>
+> ### 🔒 Il presidio
+>
+> `db/pgtap/config/test-soglia-congelamento-sede-unica.sql`. Quattro casi: che
+> **nessuna** funzione porti piu` la lista (e se lo fa, la **nomina**); che le
+> otto la leggano davvero; e — i due che contano — che il guard **segua** la
+> colonna, in entrambi i versi. Provato per mutazione: sul database di ieri e`
+> rosso e nomina tutte e sette.
+
 ⚠️ **`DEFAULT true`, e la direzione e` una decisione.** Uno stato futuro che nessuno
 classifica **rifiuta** il ricalcolo con un errore parlante, invece di lasciar riscrivere in
 silenzio uno snapshot fiscale. E` la stessa direzione che aveva il vecchio `NOT IN`, che per

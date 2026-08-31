@@ -23,10 +23,28 @@ righe (`fatture_righe`).
 ### Regole principali
 
 * `p_fattura_id` obbligatorio e `> 0`.
-* Ricalcolo ammesso solo se lo stato documento è `DRAFT` o `EMESSA` (via `codice_interno`).
+* ~~Ricalcolo ammesso solo se lo stato documento è `DRAFT` o `EMESSA`~~ ⛔ **non è
+  più vero dal 2026-08-29**: la soglia si legge da
+  `config.stati_doc_fiscale.congela_fiscale`, **non** da una lista di codici
+  scritta qui dentro. ⭐ Una lista in una funzione e una colonna sulla tabella
+  degli stati sono due verità sullo stesso fatto, e divergono in silenzio al
+  primo stato nuovo. In caso di dubbio **non si ricalcola**: il valore è
+  fail-closed.
 * L’imponibile e` arrotondato a 2 decimali (half-up) prima del calcolo imposta.
 * L’imposta e` calcolata come `round(imponibile_arrotondato * aliquota_iva / 100, 2)` con arrotondamento half-up.
-* L’aliquota IVA e` risolta in base allo **stato fiscale dell’emittente** (override da `config.iva_stati` se presente).
+* L’aliquota IVA e` risolta in base allo **stato fiscale dell’emittente**
+  (override da `config.iva_stati` se presente), e da `20260829-39` viene
+  **scritta anche sul riepilogo**, accanto a imponibile e imposta: chi ristampa
+  un documento non deve più andarsela a ricalcolare.
+* ⭐ **rev 2026-08-29: prima di aggregare, la funzione RIALLINEA l'aliquota delle
+  righe** al catalogo di adesso. Questa funzione, per costruzione, vede **solo
+  documenti non congelati** — il guard qui sopra rifiuta gli altri — e su un
+  documento che può ancora cambiare la risposta giusta è la configurazione
+  corrente. È la stessa regola che segue il trigger di riga.
+  ⚠️ **Non si confonda con lo snapshot**: `fatture_righe.aliquota_iva` diventa una
+  fotografia quando il documento **smette di essere scritto**, non perché
+  qualcuno smette di leggerlo. Il riallineamento tocca solo ciò che è davvero
+  cambiato.
 * Le righe devono avere `iva_id` gia` valorizzato dal processo di generazione.
 * I riepiloghi sono ricreati aggregando per combinazione fiscale.
 

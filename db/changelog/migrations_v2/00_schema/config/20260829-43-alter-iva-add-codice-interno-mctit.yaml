@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# `config.iva` prende `codice_interno`. Decisione di Tid, 2026-08-29.
+#
+# ── ⭐ PERCHE' ORA, e sono due ragioni che convergono ──────────────────
+#
+#   1. **Il dispatch per paese** (`D21`) si aggancia a una chiave: un guscio che
+#      smista deve poter nominare un codice IVA senza dipendere da un id
+#      numerico, che e' dettaglio implementativo soggetto a reseed;
+#   2. **`D24`**: il riferimento normativo stampato in fattura resta l'identita'
+#      della riga di `config.iva`, e il testo vive in `descrizione` — che e' una
+#      **label modificabile**. Con `codice_interno` la riga ha finalmente una
+#      chiave che non cambia, distinta dall'etichetta che si puo' correggere.
+#
+#   ⭐ E chiude un debito che le linee guida citano **per nome**: §6b elenca
+#   `DEFAULT_IVA_ID -> config.iva.id` fra i «parametri legacy che stoccano id
+#   numerici a tabelle che NON espongono ancora una chiave naturale stabile»,
+#   con il percorso di uscita gia' scritto — aggiungere `codice_interno`, il lock
+#   si auto-provisiona, poi si rinomina il parametro e si registra il pattern.
+#   Questo changeSet e' il **primo** dei tre passi; gli altri due sono un
+#   cantiere loro.
+#
+# ── ℹ️ IL BACKFILL E' `codice_interno = codice` ───────────────────────
+#
+#   Decisione di Tid: per le righe esistenti i due valori coincidono. Da qui in
+#   avanti divergono se qualcuno rinomina il `codice` — che e' esattamente il
+#   punto: il `codice` e' display e si puo' rinominare, il `codice_interno` no.
+#
+# ── ⚠️ IL LOCK SI AUTO-PROVISIONA, E QUI C'E' LA TRAPPOLA ─────────────
+#
+#   `dbops.fn_run_automations_lock_columns` aggiunge `codice_interno` alla lista
+#   delle colonne bloccate **per la sola presenza della colonna**, senza bisogno
+#   di configurare niente.
+#
+#   ⛔ Ma crea il trigger **solo se non esiste** (`fn_trigger_exists_by_name` /
+#   `by_function`): una volta creato, aggiungere una colonna al lock **non fa
+#   piu' niente**, in silenzio. Su `config.iva` oggi nessun trigger di lock c'e'
+#   — verificato — ma il `DROP ... IF EXISTS` qui sotto e' messo apposta: nello
+#   stesso giro entra anche il lock su `aliquota_iva` e `natura_iva_id`
+#   (20260829-44), e le due cose devono finire **nello stesso trigger**. Senza il
+#   DROP, se per qualsiasi ragione il trigger esistesse gia', la seconda meta'
+#   sarebbe ignorata e nessuno se ne accorgerebbe.
+#   ⚠️ Il DROP non lascia la tabella scoperta: le automazioni girano nel
+#   contesto `ci_apply` subito dopo e lo ricreano completo.
+#
+# ── ⚠️ IL CODICE ERRORE DEL LOCK IMPLICITO E' `E_CODICE_NON_MODIFICABILE` ──
+#
+#   Non `CODICE_NON_MODIFICABILE` (senza prefisso), che pure esiste a catalogo ed
+#   e' quello usato nelle righe di `automation_lock_columns` seminate a mano. La
+#   funzione mette il primo, cablato. Verificato che sia a catalogo.
+#
+# ⚠️ `iva.csv` prende la colonna nello stesso giro: senza, il valore non sarebbe
+#   governato dal CSV e cambiarlo li' non sposterebbe niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-43-alter-iva-add-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260829-43-alter-iva-add-codice-interno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.iva prende codice_interno, con backfill = codice. Serve al dispatch per
+        paese (D21), che deve poter nominare un codice IVA senza dipendere da un id
+        numerico, e a D24, dove il testo del riferimento normativo vive in `descrizione`
+        che e' una label modificabile - con codice_interno la riga ha una chiave che non
+        cambia, distinta dall'etichetta. Chiude il primo dei tre passi che le linee guida
+        §6b descrivono per il debito DEFAULT_IVA_ID. Il lock su codice_interno si
+        auto-provisiona; il DROP del trigger e' messo apposta perche' si rigeneri completo
+        insieme al lock di 20260829-44.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: iva
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: iva
+                    columnName: codice_interno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.iva
+                ADD COLUMN codice_interno VARCHAR(20);
+
+              -- Backfill: per le righe esistenti i due valori coincidono
+              -- (decisione di Tid). Da qui in avanti divergono se qualcuno
+              -- rinomina il `codice`, ed e' precisamente il punto.
+              UPDATE config.iva SET codice_interno = codice WHERE codice_interno IS NULL;
+
+              -- ⚠️ NOT NULL DOPO il backfill: metterlo nella ADD COLUMN avrebbe
+              --    preteso un default, e un default su una chiave logica e'
+              --    peggio del vincolo che si voleva.
+              ALTER TABLE config.iva
+                ALTER COLUMN codice_interno SET NOT NULL;
+
+              ALTER TABLE config.iva
+                ADD CONSTRAINT uq_iva_codice_interno UNIQUE (codice_interno),
+                ADD CONSTRAINT chk_iva_codice_interno_non_vuoto
+                    CHECK (btrim(codice_interno) <> '');
+
+              COMMENT ON COLUMN config.iva.codice_interno IS
+                  'Chiave logica IMMUTABILE del codice IVA. La logica — confronti, filtri, '
+                  'seed, dispatch per paese — si aggancia SOLO a questa; `codice` resta '
+                  'l''etichetta modificabile dall''utente e non va mai usata in logica '
+                  '(linee-guida-sql §6c). '
+                  '⭐ Nasce il 2026-08-29 per due ragioni che convergono: il guscio che '
+                  'smista per paese (D21) deve poter nominare un codice IVA senza dipendere '
+                  'da un id numerico, che e'' dettaglio implementativo soggetto a reseed; e '
+                  'D24 lascia il riferimento normativo nell''identita'' della riga, con il '
+                  'testo in `descrizione` — che e'' una label e si puo'' correggere, mentre '
+                  'la chiave no. '
+                  '⭐ E'' anche il primo dei tre passi che linee-guida-sql §6b descrive per '
+                  'il debito DEFAULT_IVA_ID, che oggi stocca un id numerico: aggiungere '
+                  'codice_interno, lasciare che il lock si auto-provisioni, poi rinominare '
+                  'il parametro e registrarlo nel framework FK-surrogata. '
+                  '⚠️ Il lock di immutabilita'' lo aggiunge da sola '
+                  'dbops.fn_run_automations_lock_columns, per la sola presenza di questo '
+                  'nome, con il codice E_CODICE_NON_MODIFICABILE. '
+                  'Backfill iniziale: codice_interno = codice. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.';
+
+              -- ⛔ Il trigger di lock si ricrea COMPLETO, e va tolto prima.
+              --    fn_run_automations_lock_columns lo crea solo se non esiste:
+              --    una volta in piedi, aggiungere una colonna bloccata non fa
+              --    piu' niente e non lo dice a nessuno. In questo giro entrano
+              --    insieme `codice_interno` (implicito) e le due colonne del
+              --    trattamento IVA (20260829-44): devono finire nello STESSO
+              --    trigger.
+              -- ⚠️ Non lascia la tabella scoperta: le automazioni girano nel
+              --    contesto ci_apply subito dopo e lo ricreano.
+              DROP TRIGGER IF EXISTS trg_iva_a10_lock_columns_upd ON config.iva;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_iva_a10_lock_columns_upd ON config.iva;
+              ALTER TABLE config.iva DROP CONSTRAINT IF EXISTS chk_iva_codice_interno_non_vuoto;
+              ALTER TABLE config.iva DROP CONSTRAINT IF EXISTS uq_iva_codice_interno;
+              ALTER TABLE config.iva DROP COLUMN IF EXISTS codice_interno;

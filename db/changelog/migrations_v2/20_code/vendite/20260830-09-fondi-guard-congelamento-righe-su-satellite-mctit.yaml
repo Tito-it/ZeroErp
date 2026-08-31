@@ -1,0 +1,204 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `D34` - LE DUE GUARDIE DI CONGELAMENTO DIVENTANO UNA (2 di 2)
+# Brief: brief-db-be-iva-risolutore-e-regime-cliente, §8-octies.
+#
+# -- COSA SUCCEDE QUI -------------------------------------------------
+#
+#   Le righe di fattura passano alla guardia **generica**, che dal changeSet
+#   `20260830-08` sa anche quale codice errore sollevare. Poi
+#   `vendite.trgfn_fatture_righe_guard_congelamento` **sparisce**: non ha piu'
+#   niente che la generica non faccia.
+#
+#   Da due funzioni a una, e da quel momento la guardia di congelamento e'
+#   **una sola cosa** montata su quattro tabelle: `fatture`, `fatture_righe`,
+#   `fatture_indirizzi`, `fatture_scadenze`.
+#
+# -- ⚠️ IL NOME DEL TRIGGER NON CAMBIA --------------------------------
+#
+#   Resta `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt`, identico.
+#   Non e' pigrizia: i trigger `BEFORE ROW` scattano in **ordine alfabetico**,
+#   e rinominarlo lo sposterebbe rispetto agli altri `a10` sulla stessa
+#   tabella. Un cambio di nome qui e' un cambio di comportamento travestito.
+#
+# -- ⚠️ COSA NON CAMBIA per chi usa il sistema ------------------------
+#
+#   * il codice errore resta **`E_FATTURA_RIGA_CONGELATA`**, non diventa quello
+#     dei satelliti: e' il codice su cui il backend commuta;
+#   * il messaggio resta *«Fattura %s in stato %s: le righe non sono piu'
+#     modificabili»*, perche' e' legato al codice e non alla funzione;
+#   * il bypass via GUC `zeroerp.maintenance_reset_lotto_draft` resta, ed e'
+#     nella generica identico a com'era.
+#
+#   ℹ️ Una cosa si **aggiunge**: il contesto dell'errore ora porta anche
+#   `'tabella'`. E' additivo e non toglie niente a chi lo legge.
+#
+# -- 📌 DUE COMMENTI DEL BACKEND DIVENTANO FALSI ----------------------
+#
+#   `backend/apps/vendite/api/fatture_views.py` (riga 9) e
+#   `backend/apps/vendite/db/note_repositories.py` (riga 89) **nominano** la
+#   funzione che sparisce. Sono **solo commenti** - nessuna dipendenza
+#   funzionale, verificato - ma diventano falsi, e il perimetro DB non li
+#   tocca: e' una richiesta al backend, scritta nel brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260830-09-fondi-guard-congelamento-righe-su-satellite-mctit.yaml
+
+  - changeSet:
+      id: 20260830-09-fondi-guard-congelamento-righe-su-satellite
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D34 (2 di 2): le righe di fattura passano alla guardia generica
+        trgfn_fattura_satellite_guard_congelamento, con TG_ARGV = ('fattura_id',
+        'E_FATTURA_RIGA_CONGELATA'), e trgfn_fatture_righe_guard_congelamento viene
+        eliminata: era la stessa funzione scritta due giorni prima senza il parametro della
+        colonna FK. ⚠️ Il nome del trigger NON cambia: i BEFORE ROW scattano in ordine
+        alfabetico e rinominarlo sarebbe un cambio di comportamento travestito. Codice
+        errore, messaggio e bypass GUC restano identici; il contesto guadagna 'tabella'.
+        📌 Due commenti nel backend nominano la funzione tolta: sono solo commenti, e la
+        richiesta di aggiornarli e' nel brief.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⚠️ La generica DEVE gia' sapere il codice errore: senza 20260830-08
+            #    le righe si prenderebbero il codice dei satelliti, in silenzio.
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_fattura_satellite_guard_congelamento'
+                     AND p.prosrc LIKE '%TG_ARGV[1]%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Prima il trigger, poi la funzione: al contrario il DROP FUNCTION
+              --    fallirebbe perche' il trigger dipende da lei.
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_righe;
+
+              -- ⭐ Stesso nome di prima. I BEFORE ROW scattano in ordine alfabetico:
+              --    rinominarlo lo sposterebbe rispetto agli altri `a10` sulla stessa
+              --    tabella, ed e' un cambio di comportamento travestito da pulizia.
+              -- ⚠️ Il secondo argomento e' cio' che tiene il codice errore SPECIFICO
+              --    delle righe: senza, il backend riceverebbe quello dei satelliti.
+              CREATE TRIGGER trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.fatture_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento(
+                      'fattura_id', 'E_FATTURA_RIGA_CONGELATA');
+
+              -- ⛔ E ora la funzione non serve piu'. Niente CASCADE: se qualcosa
+              --    dipendesse ancora da lei, il migrate deve FERMARSI e dirlo.
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_righe_guard_congelamento();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il ripristino rimette la funzione dedicata e la rimonta.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_guard_congelamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la fattura e' un documento fiscale — superata la soglia
+              --        DRAFT/EMESSA le sue righe sono uno snapshot e non si
+              --        toccano piu', ne' in scrittura ne' in cancellazione.
+              -- Uso:   BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW
+              -- brief-fix-importi-riga-fattura-zero §4.1-bis (D1-bis).
+              DECLARE
+                  v_fattura_id  vendite.fatture.id%TYPE;
+                  v_riga_id     vendite.fatture_righe.id%TYPE;
+                  v_stato       config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_congela config.stati_doc_fiscale.congela_fiscale%TYPE;
+                  v_allow_reset text;
+              BEGIN
+                  -- Bypass di manutenzione: stesso contratto degli altri guard
+                  -- della famiglia. fn_cleanup_fatture_by_ids (reset lotto)
+                  -- imposta questa GUC per attraversarli; la DELETE in cascata
+                  -- dalla testata fattura passa di qui.
+                  v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                  IF COALESCE(lower(v_allow_reset), 'off') IN ('on', 'true', '1') THEN
+                      IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      v_fattura_id := OLD.fattura_id;
+                      v_riga_id    := OLD.id;
+                  ELSE
+                      v_fattura_id := NEW.fattura_id;
+                      v_riga_id    := NEW.id;
+                  END IF;
+
+                  -- Stato per codice_interno (immutabile), mai per codice.
+                  SELECT s.codice_interno, s.congela_fiscale
+                    INTO v_stato, v_congela
+                    FROM vendite.fatture f
+                    JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+                   WHERE f.id = v_fattura_id;
+
+                  -- Fattura senza stato: non e' questo il guard che deve
+                  -- occuparsene: fallire qui darebbe un errore fuorviante su un
+                  -- problema che sta altrove.
+                  IF v_stato IS NULL THEN
+                      IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+                  END IF;
+
+                  -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+                  --    Fino al 2026-08-30 questa funzione portava la propria copia di
+                  --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+                  --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+                  --    per toglierle: era stata collegata a un solo lettore.
+                  -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+                  --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+                  --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+                  -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+                  --    decisione di questa funzione, non della soglia.
+                  -- ⚠️ Qui `v_congela` non puo' essere NULL: la colonna e' NOT NULL e il
+                  --    JOIN e' interno, quindi se lo stato non si risolve `v_stato` e' NULL e
+                  --    la funzione e' gia' uscita sopra, dal ramo che resta com'era.
+                  IF v_congela THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_fatture_righe_guard_congelamento',
+                          'E_FATTURA_RIGA_CONGELATA',
+                          jsonb_build_object(
+                              'operazione',  TG_OP,
+                              'fattura_id',  v_fattura_id,
+                              'riga_id',     v_riga_id,
+                              'stato',       v_stato,
+                              'soglia',      'DRAFT,EMESSA'),
+                          NULL::uuid,
+                          v_fattura_id::text, v_stato
+                      );
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_righe_guard_congelamento()
+              IS 'Guard (BEFORE INSERT OR UPDATE OR DELETE su vendite.fatture_righe): oltre la soglia DRAFT/EMESSA le righe della fattura sono uno snapshot fiscale e non si toccano piu''. Congela gli INPUT (qta, prezzo_unitario, sconto_percentuale, iva_id) e non l''importo: imponibile_riga e'' una colonna GENERATA e segue sempre le colonne sorgente, quindi bloccare il solo importo lascerebbe passare una riga con qta=999 e imponibile=500 — incoerente e indistinguibile da un dato buono. Blocca anche INSERT e DELETE: aggiungere o togliere una riga a un documento emesso ne cambia il totale come modificarla. L''UPDATE e'' bloccato per intero, descrizione compresa: finisce sul PDF come tutto il resto. Soglia identica a fn_ricalcola_riepilogo_iva_fattura, per codice_interno. Bypass via GUC zeroerp.maintenance_reset_lotto_draft, che vendite.fn_cleanup_fatture_by_ids imposta per il reset lotto (la FK e'' ON DELETE CASCADE: cancellare una fattura fa scattare questo trigger su ogni riga). Errore: E_FATTURA_RIGA_CONGELATA. brief-fix-importi-riga-fattura-zero §4.1-bis, rev 2026-07-28.';
+
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_righe;
+
+              CREATE TRIGGER trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.fatture_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_righe_guard_congelamento();

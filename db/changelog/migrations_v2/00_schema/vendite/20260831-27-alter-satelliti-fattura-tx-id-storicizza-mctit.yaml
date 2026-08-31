@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE SATELLITI RIMASTI INDIETRO — `fatture_indirizzi` e `fatture_riepiloghi_iva`
+#   Decisione di Tid, 2026-08-31, presa insieme alla `C` dell'ordine di lavoro
+#   brief-db-richieste-aperte-dal-backend §4
+#
+# ── ⛔ NON E' SCOPE CREEP: E' TOGLIERE UN PRECEDENTE SBAGLIATO ────────
+#
+#   Il brief di `fatture_atti` diceva «audit + tx_id + storicizza: convenzione
+#   di progetto». Verificato sulla doc auto-generata, quella convenzione
+#   uniforme NON ESISTE — cinque parenti stretti, QUATTRO comportamenti:
+#
+#     vendite.fatture                 tx_id  SI'   storicizza  ACCESO
+#     vendite.fatture_scadenze        tx_id  SI'   storicizza  ACCESO
+#     vendite.fatture_righe           tx_id  SI'   storicizza  SPENTO
+#     vendite.fatture_indirizzi       tx_id  SI'   storicizza  (colonna assente)
+#     vendite.fatture_riepiloghi_iva  tx_id  NO    storicizza  (colonna assente)
+#
+#   ⭐ Il criterio non e' «tutti uguali», e' il CICLO DI VITA: `fatture` e
+#   `fatture_scadenze` sono cose che VIVONO — una testata cambia stato, un piano
+#   rate si rinegozia — e la loro storia e' informazione vera. Le altre tre sono
+#   cose che si RIFANNO, buttate e ricalcolate a ogni rigenerazione del lotto
+#   finche' la fattura e' in bozza, e intoccabili dopo il congelamento.
+#
+#   ⇒ Le tre «che si rifanno» devono avere lo STESSO assetto, e oggi non ce
+#   l'hanno. `fatture_righe` e' quella giusta: `tx_id` presente, `storicizza`
+#   presente e SPENTO. Le altre due si allineano.
+#
+#   ⛔ E la ragione per farlo ADESSO e' che `fatture_atti` nasce oggi con lo
+#   stesso assetto: lasciare due sorelle diverse significa lasciare in giro il
+#   precedente che il prossimo lettore userebbe come modello, e la prossima
+#   tabella nascerebbe di nuovo a caso.
+#
+# ── ⭐ PERCHE' IL `tx_id` SU `fatture_riepiloghi_iva` NON E' COSMESI ──
+#
+#   Il riepilogo IVA e' RICALCOLATO da vendite.fn_ricalcola_riepilogo_iva_fattura
+#   nella stessa transazione in cui cambiano le righe. Senza il timbro, quando i
+#   totali di una fattura non tornano non c'e' modo di sapere QUALE giro di
+#   scrittura ha prodotto quel riepilogo: si hanno le righe e si ha lo
+#   specchietto, e nulla che dica se sono figli della stessa operazione.
+#
+# ── ⚠️ PERCHE' E' SICURO, verificato e non supposto ──────────────────
+#
+#   * tutti gli scrittori delle due tabelle usano `INSERT` con l'ELENCO DELLE
+#     COLONNE ESPLICITO (vendite.fn_snapshot_indirizzi_fattura,
+#     vendite.fn_ricalcola_riepilogo_iva_fattura): una colonna aggiunta in coda
+#     non sposta nessuna posizione;
+#   * nessuna vista e nessuna funzione fa `SELECT *` su di esse;
+#   * la modifica e' puramente ADDITIVA: nessun default cambia comportamento,
+#     `storicizza` nasce a `false`.
+#
+# ── ⚠️ CONSEGUENZA MESSA IN CONTO: DUE GEMELLE VUOTE IN `storico` ────
+#
+#   L'automazione di provisioning crea la gemella dalla PRESENZA della colonna
+#   `storicizza`, non dal valore del flag — si vede da `storico.fatture_righe`,
+#   che esiste benche' li' il flag sia spento. Quindi nasceranno
+#   `storico.fatture_indirizzi` e `storico.fatture_riepiloghi_iva`, e resteranno
+#   vuote finche' qualcuno non accende il flag. E' il prezzo di lasciare la
+#   porta aperta senza pagare il rumore, ed e' la porta che si voleva.
+#   ⚠️ Col flag spento NON serve la riga in `config.storico_set_storicizza`.
+#   ⚠️ E le automazioni girano in contesto `ci_apply` o col job serale delle
+#   21:00: dopo un migrate manuale i trigger nuovi non ci sono subito.
+#
+# ── 📌 COSA RESTA FUORI, DICHIARATO ──────────────────────────────────
+#
+#   `fatture_riepiloghi_iva` e' l'UNICO satellite di fattura su cui il guard di
+#   congelamento NON e' montato — il COMMENT di
+#   vendite.trgfn_fattura_satellite_guard_congelamento lo nomina gia' come caso
+#   futuro («e (quando servira') fatture_riepiloghi_iva»). Non si monta in
+#   questo giro perche' tocca il ricalcolo del riepilogo, che ha una sua soglia
+#   da verificare prima: e' una voce a se', non una dimenticanza.
+#
+# Dipendenze: nessuna oltre l'esistenza delle due tabelle.
+# Verifica: db/pgtap/vendite/test-fatture-atti-v1.sql (caso sull'assetto delle
+#           tre tabelle «che si rifanno»)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-27-alter-satelliti-fattura-tx-id-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20260831-27-alter-satelliti-fattura-tx-id-storicizza
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Allinea i due satelliti rimasti indietro all'assetto di fatture_righe:
+        vendite.fatture_indirizzi prende storicizza, vendite.fatture_riepiloghi_iva
+        prende tx_id e storicizza, entrambe NOT NULL DEFAULT false. ⛔ Non e' scope
+        creep: le tre tabelle «che si rifanno» (righe, indirizzi, riepiloghi) devono
+        avere lo stesso assetto, e fatture_atti nasce oggi con quello — lasciare due
+        sorelle diverse lascia in giro il precedente che la prossima tabella
+        copierebbe. Additivo e sicuro: tutti gli scrittori usano INSERT con elenco
+        colonne esplicito, nessun SELECT * sulle due tabelle. ⚠️ Nasceranno due
+        gemelle VUOTE in storico: l'automazione provisiona dalla presenza della
+        colonna, non dal valore del flag.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_indirizzi
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_riepiloghi_iva
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_indirizzi
+                  ADD COLUMN IF NOT EXISTS storicizza boolean NOT NULL DEFAULT false;
+
+              ALTER TABLE vendite.fatture_riepiloghi_iva
+                  ADD COLUMN IF NOT EXISTS tx_id      uuid,
+                  ADD COLUMN IF NOT EXISTS storicizza boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN vendite.fatture_indirizzi.storicizza IS
+                'SPENTO di default, come su vendite.fatture_righe e '
+                'vendite.fatture_atti: questo snapshot si RIFA'' a ogni '
+                'rigenerazione del lotto e si congela con la fattura, quindi la sua '
+                'storia sarebbe una gemella piena di versioni identiche. ⭐ La '
+                'colonna c''e'' lo stesso per tenere la porta aperta senza pagare il '
+                'rumore: il giorno che servisse basta accendere il flag invece di '
+                'rifare la struttura. ⚠️ Col flag spento non serve la riga in '
+                'config.storico_set_storicizza. Decisione C, '
+                'brief-db-richieste-aperte-dal-backend (Tid, 2026-08-31).';
+
+              COMMENT ON COLUMN vendite.fatture_riepiloghi_iva.storicizza IS
+                'SPENTO di default: vedi il gemello su vendite.fatture_indirizzi. '
+                'Questo specchietto e'' RICALCOLATO da '
+                'vendite.fn_ricalcola_riepilogo_iva_fattura a ogni cambio delle '
+                'righe, quindi la sua storia sarebbe il diario di un calcolo '
+                'intermedio. Decisione C, brief-db-richieste-aperte-dal-backend.';
+
+              COMMENT ON COLUMN vendite.fatture_riepiloghi_iva.tx_id IS
+                'Timbro della transazione, allineato agli altri satelliti della '
+                'fattura — era l''unico che non ce l''aveva. ⭐ Non e'' cosmesi: il '
+                'riepilogo viene ricalcolato nella STESSA transazione in cui '
+                'cambiano le righe, e senza il timbro, quando i totali di una '
+                'fattura non tornano, non c''e'' modo di sapere quale giro di '
+                'scrittura ha prodotto questo specchietto — si hanno le righe e si '
+                'ha il riepilogo, e nulla che dica se sono figli della stessa '
+                'operazione. ⚠️ Lo riempie dbops.trgfn_tx_id_managed, che '
+                'l''automazione aggancia in contesto ci_apply o col job serale '
+                'delle 21:00: dopo un migrate manuale la colonna resta vuota fino '
+                'ad allora. Decisione C, brief-db-richieste-aperte-dal-backend.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_indirizzi
+                  DROP COLUMN IF EXISTS storicizza;
+              ALTER TABLE vendite.fatture_riepiloghi_iva
+                  DROP COLUMN IF EXISTS storicizza,
+                  DROP COLUMN IF EXISTS tx_id;

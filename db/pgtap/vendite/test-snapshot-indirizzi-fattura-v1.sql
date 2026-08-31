@@ -95,6 +95,7 @@ SELECT
   COALESCE((SELECT st.id FROM config.stati st WHERE st.codice_iso2 = 'IT'),
            (SELECT st.id FROM config.stati st ORDER BY st.id LIMIT 1)) AS stato_id;
 
+
 -- 1) Riferimenti minimi.
 SELECT ok(
   (SELECT registro_id IS NOT NULL AND tipo_doc_fiscale_id IS NOT NULL
@@ -141,6 +142,13 @@ WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
 ORDER BY ba.id
 LIMIT 1;
 
+
+-- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva: era scelto
+--   dalla mappa tipi_doc_fiscale_registri INDIPENDENTEMENTE da chi emette, e dal
+--   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non ammette piu' la
+--   coincidenza. ⚠️ Sta QUI e non accanto a tmp_base_sif: l'emittente nasce con tmp_refs_sif.
+UPDATE tmp_base_sif SET registro_id = script.fn_pgtap_registro_fattura(
+    (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_sif));
 -- 2) Fixture utilizzabile. Se qui e' falso tutto il resto viene saltato:
 --    serve un billing account il cui spazio indirizzi (ruolo + soggetto) sia
 --    vuoto per i tipi ammessi in ambito FATTURE, cosi' i conteggi dei giri

@@ -115,7 +115,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "Errore configurazione automazione chiusura. Contattare l'amministratore di sistema.",
     "E_BATCH_ARRAY_DISALLINEATI": "Errore interno nella generazione delle righe.",
     "E_BA_ADMIN_GLOBALE_VIETATO": "Un amministratore globale non puo' creare billing account quando esistono emittenti fiscali. Operare come operatore di un emittente specifico.",
-    "E_BA_EMITTENTE_CON_STORIA": "Il cliente ha gia' fatture o commesse con l'emittente attuale: non si puo' spostare su un altro emittente. Se il cliente e' passato davvero all'altro emittente, si apre presso di lui una fornitura nuova; i documenti gia' emessi restano con chi li ha emessi.",
+    # ⚠️ La frase NON nomina piu' «fatture o commesse»: dal 2026-08-31 la storia
+    #    e' qualunque documento gia' NUMERATO su un registro — DDT, ordini e resi
+    #    compresi — e si deriva da `vendite.famiglie_documento`. Una frase che ne
+    #    nomina due manderebbe a cercare fatture a un cliente bloccato da un DDT.
+    #    QUALI documenti bloccano lo dice il messaggio del catalogo, che li elenca;
+    #    questo e' il ripiego di quando quegli argomenti non sono arrivati, quindi
+    #    dice la regola e non l'elenco.
+    "E_BA_EMITTENTE_CON_STORIA": "Il cliente ha gia' documenti numerati con l'emittente attuale: non si puo' spostare su un altro emittente. Se il cliente e' passato davvero all'altro emittente, si apre presso di lui una fornitura nuova; i documenti gia' emessi restano con chi li ha emessi.",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "Soggetto del billing account diverso da quello dell'istanza utility.",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "Billing account senza utility associata.",
     "E_BOM_IVA_DISCORDANTE": "Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
@@ -278,6 +285,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_VALIDATION": "Parametri documento non validi.",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "Versione template documento non trovata.",
+    "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "La data del documento e' anteriore a quella dell'ultimo numero gia' emesso su questo registro: la sequenza di un sezionale segue il tempo, e il numero successivo non puo' portare una data precedente.",
     "E_DOCUMENTI_VERSIONE_OVERLAP": "Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva del template. Chiudi quella esistente prima di pubblicare la nuova.",
     "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "Versione PUBBLICATA non modificabile. Crea o clona una nuova versione BOZZA.",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "La versione template non e' in uno stato pubblicabile.",
@@ -296,6 +304,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMAIL_OP": "Operazione email non riuscita.",
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
     "E_EMITTENTE_ATTIVO_TOKEN": "Refresh token richiesto per applicare il cambio di emittente.",
+    "E_EMITTENTE_CODICE_FORMA_NON_VALIDA": "Sigla dell'emittente non valida: sono ammesse solo lettere maiuscole e cifre, da 2 a 10 caratteri. La sigla entra nel codice delle commesse, che si legge separandolo sui trattini.",
     "E_EMITTENTE_DEFAULT_MISSING": "Emittente fiscale default non configurato.",
     "E_EMITTENTE_DEFAULT_SINGLETON": "Un solo emittente fiscale puo' essere impostato come default.",
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "Impossibile disattivare l'emittente fiscale: esistono entita' collegate.",
@@ -312,6 +321,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": "Modifica eventi documento non consentita: timeline append-only.",
     "E_EVENT_LOG_ENTITY_TYPE_IGNOTO": "Il giornale non sa dove collocare un evento di questo tipo di entita'.",
     "E_EVENT_LOG_SCOPE_NON_RISOLTO": "L'evento non si lega a nessun emittente: il giornale non registra righe senza perimetro.",
+    "E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE": "Il catalogo delle famiglie di documento dichiara una tabella o una colonna che non esiste: e' un difetto di configurazione, non un dato sbagliato.",
     "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "Nessun lotto da fatturare nel perimetro indicato.",
     "E_FATTURAZIONE_GIRO_PAYLOAD": "Parametri del giro di fatturazione non validi.",
     "E_FATTURAZIONE_MIRATA_TRONCATA": "Emissione mirata troppo ampia: nessun lotto è stato creato. Selezionare meno gruppi e rilanciare.",
@@ -327,7 +337,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FATTURA_NON_EMETTIBILE_INCOMPLETA": "Fattura non emettibile: documento incompleto. Rieseguire lo step DRAFT del lotto (riscrive indirizzi e intestazione).",
     "E_FATTURA_NON_NUMERABILE_INCOERENTE": "Fattura non numerabile: totali, riepiloghi IVA o piano rate incoerenti. Il dettaglio dei motivi e' nei log della fattura.",
     "E_FATTURA_NON_TROVATA": "Fattura non trovata.",
+    "E_FATTURA_REGISTRO_EMITTENTE_INCOERENTE": "La fattura e' su un registro di numerazione che appartiene a un altro emittente: ogni registro e' di un emittente solo, e due partite IVA non possono pescare dalla stessa serie.",
     "E_FATTURA_RETTIFICATA_SENZA_NUMERO": "Numerazione rifiutata: il documento rettifica righe di altri documenti che non risultano ancora numerati. Numerare prima quelli, poi ripetere. Se uno di essi non risulta accessibile e' fuori dal perimetro di chi opera, e va numerato da chi lo gestisce.",
+    "E_FATTURA_RIGA_CAPOFILA_INCOERENTE": "Il legame fra una riga di fattura e la sua capofila non e' coerente: la catena deve restare a un solo passaggio, dalla capofila alle sue parti. E' un'anomalia tecnica del documento, non un dato da correggere a mano.",
     "E_FATTURA_RIGA_CONGELATA": "Lo stato della fattura non consente piu' di modificare le righe.",
     "E_FATTURA_SATELLITE_CONGELATO": "Lo stato della fattura non consente piu' di modificare questi dati.",
     "E_FATTURA_SENZA_RIGHE": "Numerazione fiscale rifiutata: il documento non ha righe.",
@@ -405,6 +417,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ISTANZA_UTILITY_SENZA_UTILITY": "Istanza utility senza utility dichiarata: serve almeno un riferimento (billing account, dati precontrattuali, cliente).",
     "E_IVA_CONTO_ACQ_ERR": "Il conto indicato per l'IVA acquisti non e' un conto di tipo Acquisto.",
     "E_IVA_CONTO_VEN_ERR": "Il conto indicato per l'IVA vendite non e' un conto di tipo Vendita.",
+    "E_IVA_PAESE_NON_IMPLEMENTATO": "Il trattamento IVA per il paese di questo emittente non e' ancora implementato.",
+    "E_IVA_RESOLVE_NON_INVOCABILE": "Risoluzione IVA invocata senza i dati necessari, o su un articolo che non esiste.",
+    "E_IVA_TITOLI_AMBIGUI": "Su questa riga ricadono due o piu' titoli IVA del soggetto con la stessa specificita': il trattamento non e' determinabile. Restringere l'ambito di uno dei titoli, o chiuderne uno.",
+    "E_IVA_TRATTAMENTO_IMMUTABILE": "Aliquota e natura di un codice IVA non si modificano: cambiarle riscriverebbe il trattamento dei documenti gia' emessi. Per un trattamento diverso si crea un codice nuovo.",
     "E_JOB_NON_ANNULLABILE": "Il lavoro non e` piu` in attesa: annullo non possibile.",
     "E_JOB_NON_RIACCODABILE": "Il lavoro non e` riaccodabile nello stato corrente.",
     "E_JOB_NON_TROVATO": "Lavoro non trovato.",
@@ -499,6 +515,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "Ordine senza righe: impossibile confermare.",
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+    "E_ORDINE_RIGA_IVA_MANCANTE": "Una riga dell'ordine ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_ORDINE_RIGA_NON_TROVATA": "Riga ordine non trovata.",
     "E_ORDINE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato dell'ordine non ammessa dallo stato attuale.",
     "E_ORD_ANNULLA_CON_DDT": "L'ordine ha gia' DDT collegati: la merce e' uscita, per riportarla dentro si registra un reso.",
@@ -579,6 +596,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PREV_REVISIONE_ATTIVA": "Esiste gia' una revisione attiva per questo preventivo.",
     "E_PREV_REVISIONE_BOZZA_ESISTENTE": "Esiste gia' una revisione in BOZZA per questo preventivo. Completa o annulla la BOZZA esistente prima di crearne una nuova.",
     "E_PREV_REVISIONE_STATO_NON_AMMESSO": "Revisione ammessa solo da preventivo EMESSO.",
+    "E_PREV_RIGA_IVA_MANCANTE": "Una riga del preventivo ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_PREV_RIGA_NATURA_IMMUTABILE": "La natura di vendita della riga non e' modificabile: e' ereditata dall'articolo.",
     "E_PREV_RIGA_NOT_FOUND": "Riga preventivo non trovata.",
     "E_PREV_STATO_CORRENTE_NON_TROVATO": "Stato corrente del preventivo non trovato.",
@@ -733,6 +751,23 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # misura del §10.1: 3 dei suoi punti dicevano 400 dove serve 500. E' un
     # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
     # l'operatore — quindi il messaggio non gli chiede di correggere niente.
+    "E_TITOLO_IVA_AMBITO_NON_AMMESSO": "Questo titolo IVA vale per tutte le merci: non ammette un elenco di voci. Togli le voci, oppure dichiara il titolo ristretto.",
+    "E_TITOLO_IVA_AMBITO_SOVRAPPOSTO": "Esiste gia' un titolo IVA dello stesso tipo, valido nello stesso periodo, che copre la stessa merce allo stesso livello.",
+    "E_TITOLO_IVA_ANNULLO_INCOERENTE": "La riga di annullo non corrisponde al movimento di plafond che dichiara di annullare: titolo diverso, oppure importo che non ne e' l'opposto esatto.",
+    # ⛔ NON ENUMERA I MOTIVI, ed e' deliberato: `fn_check_annullo_movimento_titolo_iva`
+    #    ne nomina CINQUE (non trovato, non e' una forzatura, e' gia' un annullo,
+    #    gia' annullato, plafond negativo) e nominarne tre manderebbe a cercare
+    #    la causa sbagliata. Il motivo puntuale viaggia gia' come capability di
+    #    riga (`annullo_blocco_codice` + la sua chiave i18n) ed e' li' che si
+    #    legge. Stessa ragione per cui il messaggio a catalogo dice soltanto
+    #    «non si puo' annullare».
+    "E_TITOLO_IVA_ANNULLO_NON_AMMESSO": "Questo movimento di plafond non si puo' annullare nello stato in cui si trova. Il motivo puntuale e' sulla riga del registro, nel drawer del titolo IVA.",
+    "E_TITOLO_IVA_CONSUMO_FUORI_VALIDITA": "Consumo di plafond chiesto a una data fuori dalla validita' del titolo.",
+    "E_TITOLO_IVA_CONSUMO_NON_INVOCABILE": "Consumo di plafond invocato senza i dati necessari, o su un titolo che non esiste.",
+    "E_TITOLO_IVA_MOVIMENTO_IMMUTABILE": "Il registro dei movimenti di plafond IVA e' append-only: una riga scritta non si modifica e non si cancella. Per correggere si registra un annullo.",
+    "E_TITOLO_IVA_PLAFOND_MANCANTE": "Questo tipo di titolo ha un tetto che si consuma: indica il plafond.",
+    "E_TITOLO_IVA_PLAFOND_NON_AMMESSO": "Questo tipo di titolo non ha un tetto da consumare: il plafond non si indica.",
+    "E_TITOLO_IVA_UTILIZZATO_NEGATIVO": "Il consumo del titolo scenderebbe sotto zero: non e' un valore possibile.",
     "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",

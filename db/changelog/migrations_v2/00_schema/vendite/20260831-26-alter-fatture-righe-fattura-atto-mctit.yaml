@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `vendite.fatture_righe.fattura_atto_id` — la riga si aggancia al suo blocco
+#   brief-db-fatture-atti-riferimenti-contratto §3.2 (voce 4 dell'ordine di
+#   lavoro brief-db-richieste-aperte-dal-backend)
+#
+# ── ⚠️ NULLABLE PER FORZA, e non e' una concessione ───────────────────
+#
+#   `fatture_righe` porta una sorgente fra QUINDICI tipi (config.sorgenti), e la
+#   maggior parte non nasce da un contratto. Una riga senza atto e' il caso
+#   ORDINARIO, non l'eccezione: un NOT NULL qui spegnerebbe i documenti
+#   legittimi per prendere quelli difettosi.
+#
+# ── ⭐ «LA RIGA E IL SUO ATTO STANNO SULLA STESSA FATTURA» E' UN VINCOLO ─
+#
+#   La FK non punta «a un atto»: punta «a un atto E alla sua fattura».
+#
+#       FK (fattura_atto_id, fattura_id) -> fatture_atti (id, fattura_id)
+#
+#   ⛔ E NON E' PIGNOLERIA, perche' il difetto che chiude e' MUTO. Una riga che
+#   puntasse a un atto di un'ALTRA fattura non produce nessun errore: il
+#   generatore XML raccoglie i blocchi della fattura che sta stampando, non
+#   trova nessuna riga che punti a quel blocco, e il `RiferimentoNumeroLinea`
+#   esce vuoto. Risultato: il CIG sparisce dal documento, in silenzio, e
+#   contemporaneamente resta appeso su un documento a cui non appartiene.
+#
+#   ⭐ E' un VINCOLO e non un guard di proposito: un guard e' codice, e il
+#   codice si puo' spegnere, sostituire o scavalcare. Qui il database non lascia
+#   scrivere la riga sbagliata — da uno script, da una migrazione, da un errore
+#   in un servizio. E' la stessa scelta presa sulla riga capofila (decisione D
+#   dell'ordine di lavoro, changeSet 20260831-30).
+#
+#   ⭐ E costa zero sul caso ordinario: con MATCH SIMPLE — il comportamento di
+#   default — quando `fattura_atto_id` e' NULL il vincolo NON si applica
+#   affatto. Nessuna eccezione da scrivere per le righe senza atto, che sono la
+#   stragrande maggioranza.
+#
+#   ⚠️ Il bersaglio e' `uq_fatture_atti_id_fattura` (20260831-25), che e' un
+#   indice RIDONDANTE — `id` e' gia' la PK — e comparira' in
+#   dbops.vw_duplicate_indexes. E' il prezzo del vincolo, dichiarato.
+#
+# ── ORDINE DELLE `ON DELETE`: NO ACTION, e non esplode ───────────────
+#
+#   `fatture_atti` muore in CASCADE con la sua fattura (20260831-25). Questa FK
+#   resta in NO ACTION, che si verifica a FINE ISTRUZIONE: quando la DELETE
+#   sulla testata ha finito, entrambe le cascate sono passate e non c'e' nessun
+#   istante in cui una riga viva punta a un atto gia' morto.
+#   ⚠️ E sul percorso della pulizia il caso non si pone nemmeno:
+#   fn_cleanup_fatture_by_ids cancella fatture_righe PRIMA di fatture.
+#   ⇒ Da PROVARE, non da dedurre: pgTAP che cancella una fattura con insieme
+#   righe e atti.
+#
+# ── ⚠️ LA GEMELLA IN `storico` NON SI AGGIORNA DA SOLA SUBITO ────────
+#
+#   `storico.fatture_righe` esiste e va allineata: la colonna nuova gliela
+#   aggiunge l'automazione di provisioning, che gira in contesto `ci_apply` o
+#   col job serale del pgagent (21:00). Fra l'apply e quell'ora un UPDATE su
+#   una riga di fattura storicizzata potrebbe non trovare la colonna: e' la
+#   stessa finestra gia' nota per le tabelle nuove, e vale la pena saperla.
+#
+# Dipendenze: 20260831-25 (vendite.fatture_atti e la sua UNIQUE (id, fattura_id)).
+# Consumatori: il generatore XML FatturaPA, che non esiste ancora; nel frattempo
+#              il BE che scrive le righe (I4 del cantiere IVA).
+# Verifica: db/pgtap/vendite/test-fatture-atti-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-26-alter-fatture-righe-fattura-atto-mctit.yaml
+
+  - changeSet:
+      id: 20260831-26-alter-fatture-righe-fattura-atto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fatture_righe.fattura_atto_id: la riga si aggancia al suo blocco
+        DatiContratto. Nullable per forza — fatture_righe porta una sorgente fra
+        quindici tipi e la maggior parte non nasce da un contratto. ⭐ La FK e'
+        COMPOSITA su (fattura_atto_id, fattura_id): «la riga e il suo atto stanno
+        sulla stessa fattura» diventa un vincolo che il database non lascia
+        violare, invece di un guard che si puo' spegnere. Il difetto che chiude e'
+        muto: una riga che punta all'atto di un'altra fattura fa sparire il CIG dal
+        documento senza nessun errore. Con MATCH SIMPLE il vincolo non si applica
+        quando fattura_atto_id e' NULL, cioe' sul caso ordinario.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_atti
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: fattura_atto_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN: tipo esplicito.
+              ALTER TABLE vendite.fatture_righe
+                  ADD COLUMN fattura_atto_id bigint;
+
+              -- FK COMPOSITA: non «a un atto», ma «a un atto E alla sua fattura».
+              -- Bersaglio: uq_fatture_atti_id_fattura (20260831-25).
+              -- ⭐ MATCH SIMPLE (default): con fattura_atto_id NULL il vincolo non
+              --    si applica, quindi le righe senza atto non pagano nulla.
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT fk_fatture_righe_fattura_atto
+                      FOREIGN KEY (fattura_atto_id, fattura_id)
+                      REFERENCES vendite.fatture_atti(id, fattura_id)
+                      ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.fatture_righe.fattura_atto_id IS
+                'Il blocco DatiContratto della FatturaPA a cui QUESTA riga si '
+                'riferisce (vendite.fatture_atti.id). Da qui il generatore XML '
+                'ricava RiferimentoNumeroLinea: le righe che puntano allo stesso '
+                'atto sono la lista di quel blocco. ⚠️ NULLABLE PER FORZA, e non e'' '
+                'una concessione: fatture_righe porta una sorgente fra quindici tipi '
+                '(config.sorgenti) e la maggior parte non nasce da un contratto — una '
+                'riga senza atto e'' il caso ORDINARIO. ⭐ La FK e'' COMPOSITA su '
+                '(fattura_atto_id, fattura_id): «la riga e il suo atto stanno sulla '
+                'stessa fattura» e'' un VINCOLO, non un guard, perche'' il difetto che '
+                'chiude e'' MUTO — una riga che puntasse all''atto di un''altra fattura '
+                'non solleva niente, semplicemente fa uscire il RiferimentoNumeroLinea '
+                'vuoto e il CIG sparisce dal documento. Stessa scelta della riga '
+                'capofila (decisione D). ⚠️ ON DELETE NO ACTION, e non esplode: la '
+                'NO ACTION si verifica a fine istruzione, quando le cascate della '
+                'DELETE sulla testata sono gia'' passate. '
+                'brief-db-fatture-atti-riferimenti-contratto §3.2.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT IF EXISTS fk_fatture_righe_fattura_atto;
+              ALTER TABLE vendite.fatture_righe
+                  DROP COLUMN IF EXISTS fattura_atto_id;

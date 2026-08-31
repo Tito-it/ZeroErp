@@ -15,6 +15,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_insert | text | YES |  |
 | user_update | text | YES |  |
+| storicizza | boolean | NO | true |
+| is_reverse_charge | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -33,6 +35,8 @@
 |------|--------|--------|--------|
 | trg_iva_natura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_natura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_iva_natura_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_natura_id')` |
+| trg_iva_natura_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_natura_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

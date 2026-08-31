@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE D — LA SUPERFICIE DA CUI SI PREME IL PULSANTE
+#   anagrafiche.vw_stiva_movimenti_dettaglio
+#   Piano: brief-db-titoli-iva-movimenti-annullo, §6.5 — decisione B-3
+#
+# ── ⭐ PERCHE' NASCE UNA VISTA ──────────────────────────────────────
+#   La decisione B-3 di Tid dice che l'operatore deve trovare il pulsante
+#   «Annulla» GIA' SPENTO, col motivo, invece di scoprirlo premendo. Perche' quel
+#   motivo arrivi a video serve una superficie che lo porti — e per il registro
+#   dei movimenti **non ne esisteva nessuna**.
+#
+#   ⚠️ E' lo stesso punto di partenza dei resi: le righe del reso erano l'unico
+#   dettaglio documento servito da SQL scritto in Python, ed era esattamente il
+#   motivo per cui il motivo di blocco poteva arrivare solo dove non serviva. Da
+#   li' e' nata vw_resi_righe_dettaglio; questa e' la sua gemella.
+#
+# ── ⛔ LA DOMANDA CHE DECIDE LA SEDE: da dove si preme quel pulsante? ─
+#   Non «quale lista parla di questa cosa». Il pulsante «Annulla» vive sul
+#   registro di UN titolo, quindi il motivo va sulle righe di quel registro.
+#
+# ── ⛔ UN VERBO, UNA COLONNA ────────────────────────────────────────
+#   `annullo_blocco_codice` dice per quale VERBO e' il blocco. Una colonna
+#   generica «bloccato» verrebbe riusata dal prossimo verbo e direbbe due cose
+#   insieme.
+#   ⚠️ La colonna porta il `reason` (codice macchina), non il `codice` errore —
+#   e' la stessa convenzione di vw_resi_righe_dettaglio, e il nome e' quello che
+#   il frontend gia' conosce. La coppia `annullo_blocco_reason_key` porta la
+#   chiave i18n del tooltip.
+#
+# ── ⛔ PERIMETRO: si passa da soggetti_titoli_iva ───────────────────
+#   Il registro ha la RLS, ma il join al titolo non e' ridondante: e' da li' che
+#   arrivano emittente e soggetto, e una vista che li leggesse altrove sarebbe
+#   leggibile per qualunque titolo_iva_id. ⚠️ Un oggetto di database dev'essere
+#   sicuro DA SOLO: il prossimo consumatore non sa cosa faceva il primo.
+#
+# ── ⛔ `security_invoker=on` VA RI-SPECIFICATA ──────────────────────
+#   PostgreSQL la AZZERA su un CREATE OR REPLACE VIEW che non la ripete, e la
+#   vista scavalcherebbe la RLS senza dirlo.
+#
+# ── ⚠️ LA VISTA PROIETTA, IL CHIAMANTE FILTRA ──────────────────────
+#   Nessun filtro incorporato e nessun ordinamento: una vista «dettaglio» che
+#   nascondesse righe di nascosto darebbe un conteggio diverso da quello della
+#   tabella senza dirlo.
+#
+# ── ⚠️ UNA CHIAMATA PER RIGA, ed e' la forma prevista ──────────────
+#   Il `LATERAL` invoca la check una volta per movimento. Per le azioni DI RIGA
+#   e' il pattern dichiarato (linee guida §12.5), non l'eccezione al §12.4: qui
+#   si guarda il registro di UN titolo, non una lista globale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260830-26-create-vw-stiva-movimenti-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260830-26-create-vw-stiva-movimenti-dettaglio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Fase D del brief-db-titoli-iva-movimenti-annullo (decisione B-3): la vista di riga del
+        registro movimenti plafond IVA, cioe' la superficie da cui si preme «Annulla». Porta
+        annullo_blocco_codice/annullo_blocco_reason_key dalla stessa
+        script.fn_check_annullo_movimento_titolo_iva che la madre interroga per rifiutare, cosi'
+        il pulsante spento e il rifiuto non possono divergere; e il legame nei due versi — cosa
+        annullo, e chi mi annulla — perche' il frontend possa barrare la riga annullata e
+        rimandare a quella che la annulla. ⭐ Nasce perche' per questo registro non esisteva
+        NESSUNA vista, ed e' lo stesso punto di partenza da cui nacque vw_resi_righe_dettaglio.
+        ⛔ Un verbo, una colonna. ⛔ security_invoker=on ri-specificata. ⚠️ La vista proietta, il
+        chiamante filtra e ordina.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva_movimenti
+                columnName: annulla_movimento_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_annullo_movimento_titolo_iva';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_stiva_movimenti_dettaglio
+              WITH (security_invoker=on) AS
+              SELECT m.id,
+                     m.titolo_iva_id,
+                     t.soggetto_id,
+                     t.emittente_fiscale_id,
+                     tt.codice_interno            AS tipo_titolo_codice_interno,
+                     tt.descrizione               AS tipo_titolo_descrizione,
+                     m.tipo_movimento,
+                     m.imponibile,
+                     m.data_movimento,
+                     m.fattura_id,
+                     m.fattura_riga_id,
+                     m.motivo,
+                     -- Il legame, nei DUE versi: cosa annullo, e chi mi annulla.
+                     -- ⭐ Il secondo e' quello che il frontend usa per barrare la
+                     --   riga e rimandare all'annullo — ed e' il verso che il
+                     --   brief dava per «senza consumatori» mentre il suo stesso
+                     --   §4 lo chiedeva.
+                     m.annulla_movimento_id,
+                     ann.id                       AS annullato_da_movimento_id,
+                     (ann.id IS NOT NULL)         AS is_annullato,
+                     (m.annulla_movimento_id IS NOT NULL) AS is_annullo,
+                     -- ⛔ Un verbo, una colonna. Porta il `reason` (codice
+                     --   macchina), non il codice errore: stessa convenzione di
+                     --   vendite.vw_resi_righe_dettaglio, ed e' il nome che il
+                     --   frontend gia' conosce. NULL = l'annullo e' ammesso.
+                     blk.reason                   AS annullo_blocco_codice,
+                     blk.reason_key               AS annullo_blocco_reason_key,
+                     m.meta,
+                     m.tx_id,
+                     m.data_insert,
+                     m.user_insert,
+                     m.data_update,
+                     m.user_update
+                FROM anagrafiche.soggetti_titoli_iva_movimenti m
+                -- ⛔ Il join al titolo NON e' ridondante: e' da li' che arrivano
+                --   emittente e soggetto, e un oggetto di database dev'essere
+                --   sicuro da solo.
+                JOIN anagrafiche.soggetti_titoli_iva t
+                  ON t.id = m.titolo_iva_id
+                LEFT JOIN config.tipi_titolo_iva tt
+                  ON tt.id = t.tipo_titolo_iva_id
+                LEFT JOIN anagrafiche.soggetti_titoli_iva_movimenti ann
+                  ON ann.annulla_movimento_id = m.id
+                CROSS JOIN LATERAL (
+                    SELECT (script.fn_check_annullo_movimento_titolo_iva(m.id) -> 0 ->> 'reason')::character varying     AS reason,
+                           (script.fn_check_annullo_movimento_titolo_iva(m.id) -> 0 ->> 'reason_key')::character varying AS reason_key
+                ) blk;
+
+              COMMENT ON VIEW anagrafiche.vw_stiva_movimenti_dettaglio
+              IS 'Le RIGHE DEL REGISTRO dei movimenti di plafond di un titolo IVA, per il drawer di dettaglio: anagrafica del movimento, il tipo di titolo, il legame dell''annullo nei DUE versi (cosa annullo / chi mi annulla, con i flag is_annullo e is_annullato) e il MOTIVO DI BLOCCO dell''annullo. ⭐ Nasce il 2026-08-30 perche'' per questo registro non esisteva nessuna vista, ed e'' esattamente il motivo per cui il motivo di blocco non poteva arrivare da nessuna parte — stesso punto di partenza da cui nacque vendite.vw_resi_righe_dettaglio. ⭐ annullo_blocco_codice/reason_key si leggono da script.fn_check_annullo_movimento_titolo_iva, la STESSA che anagrafiche.fn_annulla_movimento_titolo_iva interroga per sollevare: cosi'' il pulsante spento e il rifiuto non possono divergere. ⛔ Un verbo, una colonna: il nome dice per quale azione e'' il blocco. La colonna porta il `reason` (codice macchina), non il codice errore — stessa convenzione della gemella. NULL = annullo ammesso. ⛔ PERIMETRO: passa da anagrafiche.soggetti_titoli_iva, da cui arrivano emittente e soggetto; un oggetto di database dev''essere sicuro da solo, perche'' il prossimo consumatore non sa cosa faceva il primo. ⚠️ LA VISTA PROIETTA, IL CHIAMANTE FILTRA: nessun filtro incorporato e nessun ordinamento. ⚠️ Il LATERAL invoca la check una volta per riga: per le azioni DI RIGA e'' il pattern dichiarato (linee-guida-sql §12.5), e qui si guarda il registro di UN titolo. security_invoker=on. Piano: brief-db-titoli-iva-movimenti-annullo, Fase D.';
+
+              GRANT SELECT ON anagrafiche.vw_stiva_movimenti_dettaglio TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_stiva_movimenti_dettaglio;

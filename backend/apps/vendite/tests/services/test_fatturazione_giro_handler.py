@@ -52,9 +52,15 @@ _REPO = "apps.vendite.db.commesse_repository.CommesseRepository"
 # BOZZA. `n_pronte` valorizzato + `commessa_emittibile=False` e' cio' che
 # distingue «il lavoro c'e' ma la commessa e' chiusa alla fatturazione» da
 # «non c'era lavoro».
+# ⚠️ La SITUAZIONE e' quella storica; il CODICE commessa no, ed e' voluto: dal
+#    2026-08-31 la forma e' `CMM-<sigla>-<anno>-<9 cifre>` e non piu'
+#    `CMM-<timestamp>-<md5>` (changeSet `20260831-16`). Una fixture che mostra
+#    una forma che il sistema non produce piu' passa lo stesso — qui il codice
+#    sotto test tratta la stringa come opaca — ma insegna un formato falso a
+#    chi la legge. Era la coda `BE-2` dell'analisi della numerazione.
 _DIAGNOSI_COMMESSA_BOZZA = [{
     "gruppo_key": "ORDINE_VENDITA:019eb2ac",
-    "commessa_codice": "CMM-20260610175449872-e059eb",
+    "commessa_codice": "CMM-EMITEST-2026-000000108",
     "commessa_id": 108,
     "commessa_stato_codice_interno": "BOZZA",
     "commessa_stato_descrizione": "Bozza",
@@ -157,7 +163,7 @@ class FatturazioneGiroHandlerTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FATTURAZIONE_GIRO_NESSUN_LOTTO")
         # Il messaggio nomina la commessa e lo stato che blocca: e' quello che
         # l'operatore legge nel toast (FE: `ultimo_errore.message`).
-        self.assertIn("CMM-20260610175449872-e059eb", ctx.exception.message)
+        self.assertIn("CMM-EMITEST-2026-000000108", ctx.exception.message)
         # La DESCRIZIONE dello stato, non il codice interno (display-fields).
         self.assertIn("Bozza", ctx.exception.message)
         self.assertNotIn("BOZZA", ctx.exception.message)

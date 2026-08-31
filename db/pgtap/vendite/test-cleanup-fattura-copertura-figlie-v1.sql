@@ -1,5 +1,16 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: dieci asserzioni su undici leggono il CATALOGO
+--   (pg_constraint, pg_proc), che la RLS non filtra. L undicesima, il test 5,
+--   e l unica che CONTA RIGHE — ed e proprio su quello zero che si fonda
+--   l eccezione SCOPERTA_NOTA. Sotto RLS uno zero non distingue «la tabella e
+--   vuota» da «non la vedo»: dal 2026-08-29 l elenco comprende
+--   anagrafiche.soggetti_titoli_iva_movimenti, che ha RLS ATTIVA e policy per
+--   emittente, quindi da zeroerp_app quel conteggio sarebbe fail-closed e il
+--   presidio si autoassolverebbe. Da owner (relforcerowsecurity = false) il
+--   conteggio e una misura. Nessuna copertura RLS si perde: in questo file non
+--   ce n era.
 -- pgTAP test per Zero ERP
 -- Test: la pulizia della fattura copre TUTTE le sue tabelle figlie
 --       (piano-db-ritorno-lotto-a-draft.md §5.5 — invariante di catalogo)
@@ -125,6 +136,30 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
 
   -- ── CASCADE_DB: ci pensa la FK, e va bene cosi ─────────────────────
   ('vendite.fatture_indirizzi',            'CASCADE_DB',    'snapshot indirizzi: muore col documento e si rigenera al rilancio'),
+  -- ⭐ rev 2026-08-31 (changeSet 20260831-25): il satellite dei riferimenti
+  --   dell atto. Questo file ne ha fatto il nome il giorno stesso, ed e
+  --   esattamente il lavoro per cui esiste.
+  --
+  -- ⚠️ CASCADE_DB E UNA DECISIONE, non il modo di far tornare il verde: il
+  --   blocco DatiContratto e uno snapshot di QUELLA fattura - numero, data e i
+  --   tre codici congelati il giorno dell emissione - e senza il documento non
+  --   ha nessun oggetto. Non e come pagamenti.vendite_movimenti, dove il
+  --   rifiuto E la funzionalita: qui non c e niente da proteggere, c e una
+  --   copia da buttare insieme all originale. E si rigenera al rilancio, come
+  --   fatture_indirizzi qui sopra, dalla stessa scrittura che rifa le righe.
+  --
+  -- ⛔ E LA TABELLA HA UNA FIGLIA SUA - vendite.fatture_righe, via
+  --   fk_fatture_righe_fattura_atto - che NESSUNO DEI DUE INVENTARI GUARDA:
+  --   il primo elenca le figlie di vendite.fatture, il secondo quelle di
+  --   vendite.fatture_righe, e le figlie di fatture_atti sono un terzo livello
+  --   che non esiste. Oggi non e un buco: quell unica figlia e vendite.fatture_righe,
+  --   che e gia classificata al primo livello e muore PRIMA (la pulizia la
+  --   cancella esplicitamente, e in una DELETE sulla testata la NO ACTION si
+  --   verifica a fine istruzione, quando entrambe le cascate sono passate -
+  --   provato in test-fatture-atti-v1 caso 10).
+  --   ⚠️ Ma e un DEBITO DICHIARATO, non una svista: il giorno che a fatture_atti
+  --   si aggiungesse una seconda figlia, nessun presidio ne farebbe il nome.
+  ('vendite.fatture_atti',                 'CASCADE_DB',    'snapshot dei riferimenti dell atto (numero, data, CIG, CUP, commessa) congelato all emissione: senza il documento non ha oggetto, e si rigenera al rilancio dalla stessa scrittura che rifa le righe. ⚠️ Ha una figlia sua - fatture_righe via fk_fatture_righe_fattura_atto - che nessuno dei due inventari guarda, perche il terzo livello non esiste: oggi non e un buco (quella figlia e gia classificata al primo livello e muore prima), ma e un debito dichiarato'),
   ('vendite.fatture_rettifiche',           'CASCADE_DB',    'rettifiche del documento: senza il documento non hanno oggetto'),
   ('vendite.fatture_scadenze',             'CASCADE_DB',    'piano rate: si rigenera dal termine al rilancio'),
   ('vendite.fatture_stampa_coda',          'CASCADE_DB',    'outbox di stampa: una stampa di un documento che non esiste piu non ha senso'),
@@ -141,7 +176,32 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   ('pagamenti.sistemazioni',               'BLOCCO_VOLUTO', 'una fattura su cui e stata REGISTRATA una decisione di sistemazione NON si deve poter disfare: se l atto e CONFERMATO ha gia generato una distinta o un fondo, e cancellare il documento lascerebbe quel denaro senza origine; se e in BOZZA e comunque una decisione che qualcuno ha preso e che va ritrovata. ⚠️ Sul percorso vero il blocco non scatta mai - il cleanup lavora su fatture in DRAFT, e una sistemazione nasce da un sovra-incasso, cioe da movimenti su un documento gia emesso - ma il giorno che quel percorso cambiasse, il rifiuto e la risposta giusta'),
 
   -- ── SCOPERTA_NOTA: eccezione a tempo ───────────────────────────────
-  ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo');
+  ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo'),
+  -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2 / changeSet 20260829-26): la tabella
+  --   registra il CONSUMO DI PLAFOND di un titolo IVA (una dichiarazione
+  --   d intento) da parte di una fattura. E nata ieri, e questo file l ha
+  --   nominata il giorno dopo: e esattamente il lavoro per cui esiste.
+  --
+  -- ⚠️ Perche SCOPERTA_NOTA e non una delle due categorie definitive: la
+  --   risposta giusta DIPENDE da una decisione ancora aperta, il punto I5 del
+  --   brief - DOVE si consuma il plafond.
+  --     * se il consumo si registra all EMISSIONE, la pulizia (che lavora su
+  --       documenti in DRAFT) non incontrera mai un movimento, e il giorno che
+  --       lo incontrasse il rifiuto sarebbe la risposta giusta: BLOCCO_VOLUTO,
+  --       la stessa posizione di pagamenti.sistemazioni qui sopra;
+  --     * se invece si registra gia in bozza, un ripristino DEVE stornare il
+  --       movimento prima di cancellare - altrimenti il plafond di un terzo
+  --       resta mangiato da un documento che non esiste piu: GESTITA, e la
+  --       pulizia va estesa.
+  --   Scriverne una adesso significherebbe fissare la decisione da qui, che e
+  --   il verso sbagliato. SCOPERTA_NOTA e la categoria ARMATA: scade da sola
+  --   nel momento esatto in cui la decisione diventa reale.
+  --
+  -- ℹ️ Oggi il presupposto e vero e verificabile: 0 righe e NESSUNO scrittore -
+  --   anagrafiche.fn_consuma_plafond_titolo_iva esiste ma non ha chiamanti.
+  -- ⚠️ La stessa riga copre anche il secondo livello: la tabella ha una FK anche
+  --   verso vendite.fatture_righe, e una tabella vuota e vuota per entrambe.
+  ('anagrafiche.soggetti_titoli_iva_movimenti', 'SCOPERTA_NOTA', 'consumo di plafond di un titolo IVA: 0 righe e nessuno scrittore (fn_consuma_plafond_titolo_iva non ha chiamanti). Entrambe le FK verso fatture e fatture_righe sono NO ACTION e lo sono di proposito - il movimento e un fatto contabile - ma la categoria definitiva dipende da I5: consumo all EMISSIONE -> BLOCCO_VOLUTO come pagamenti.sistemazioni; consumo gia in bozza -> GESTITA, e la pulizia deve stornare il movimento prima di cancellare, altrimenti il plafond di un terzo resta mangiato da un documento che non esiste piu');
 
 -- Le figlie vere, lette dal catalogo
 CREATE TEMP TABLE tmp_figlie AS
@@ -151,11 +211,25 @@ SELECT DISTINCT c.conrelid::regclass::text AS tab
 
 -- Il corpo della pulizia: la primitiva PIU la funzione dei fondi, che la
 -- primitiva chiama. Sono due oggetti ma una catena sola.
+-- ⚠️ L'ELENCO DELLE FUNZIONI E' IL PERIMETRO DEL PRESIDIO, e va esteso ogni
+--   volta che un pezzo della pulizia si SPOSTA. Il test 3 cerca il nome di
+--   ogni figlia GESTITA dentro questo testo: una tabella cancellata da una
+--   funzione non elencata risulterebbe «non nominata», cioe' un rosso per il
+--   motivo sbagliato — e, se un giorno la si togliesse dall'inventario per
+--   farlo tacere, un verde per il motivo sbagliato.
+-- ⭐ rev 2026-08-31: entra vendite.fn_cancella_fondo_fattura. Dal changeSet
+--   20260831-65 fn_reset_fondi_fattura non cancella piu' inline: il criterio
+--   sta in fn_check_fondo_cancellabile e i tre DELETE nell'ordine imposto dalla
+--   FK stanno li'. Senza questa riga il file diventava rosso su
+--   pagamenti.vendite_contabili_righe — ed e' il presidio che ha funzionato,
+--   non un difetto: la pulizia era davvero cambiata di sede.
 CREATE TEMP TABLE tmp_corpo AS
 SELECT string_agg(pg_get_functiondef(p.oid), E'\n') AS src
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
  WHERE n.nspname = 'vendite'
-   AND p.proname IN ('fn_cleanup_fatture_by_ids', 'fn_reset_fondi_fattura');
+   AND p.proname IN ('fn_cleanup_fatture_by_ids',
+                     'fn_reset_fondi_fattura',
+                     'fn_cancella_fondo_fattura');
 
 -- ============================================================
 -- 1) La domanda che questo file esiste per porre
@@ -221,13 +295,50 @@ SELECT is(
 -- ============================================================
 -- 5) L'eccezione a tempo, e la sua scadenza
 -- ============================================================
--- attivita_consumi e' fuori copertura perche' NESSUNO la popola. Il giorno
--- che il flusso consumi si accende, questo test diventa rosso — che e'
+-- Le SCOPERTA_NOTA sono fuori copertura perche' NESSUNO le popola. Il giorno
+-- che uno dei due flussi si accende, questo test diventa rosso — che e'
 -- esattamente quando serve saperlo, non mesi dopo su una DELETE esplosa.
+--
+-- ⚠️ L'elenco resta ESPLICITO, e non diventa un giro sull'inventario: la
+--   categoria e' una stringa scritta a mano, e un presidio che si costruisce
+--   da sola la lista delle cose da sorvegliare si spegne nel momento in cui
+--   qualcuno scrive male la categoria. Qui la lista e' seconda firma.
+-- ⭐ E il messaggio NOMINA la tabella che si e' popolata, con quante righe: un
+--   rosso che dice solo «una delle due» costringe a rifare il lavoro a mano.
+-- ⛔ E' l'unica asserzione del file che conta righe, ed e' il motivo del
+--   marcatore `pgtap-runner: owner` in testa: soggetti_titoli_iva_movimenti ha
+--   RLS attiva, e sotto RLS uno zero non distingue «e' vuota» da «non la
+--   vedo». Il presidio si sarebbe autoassolto.
+CREATE TEMP TABLE tmp_scoperte AS
+SELECT 'vendite.attivita_consumi'::text AS tab,
+       (SELECT count(*) FROM vendite.attivita_consumi) AS righe
+UNION ALL
+-- ⭐ SI CONTA SOLO CIO' CHE L'ECCEZIONE DIFENDE (rev 2026-08-30).
+--   L'eccezione SCOPERTA_NOTA riguarda le righe FIGLIE DI UNA FATTURA: e' la
+--   pulizia della fattura che questo file presidia. Una FORZATURA manuale ha
+--   `fattura_id IS NULL` — glielo impone chk_stiva_movimenti_documento — quindi
+--   non e' figlia di nessuna fattura e non ha niente a che vedere con questo
+--   presidio.
+-- ⛔ Senza il filtro, la PRIMA forzatura salvata da un operatore faceva
+--   diventare rossa questa asserzione: un rosso in un file che parla di
+--   fatture, per un motivo che nessuno avrebbe collegato al cantiere dei titoli
+--   IVA. Il registro si e' popolato con il brief-db-titoli-iva-movimenti-annullo,
+--   e la creazione della forzatura esiste gia' lato backend.
+-- ⚠️ Il presidio NON si indebolisce: resta vivo per il caso vero — il giorno in
+--   cui I4 scrivera' i movimenti FATTURA/NOTA_CREDITO, che figlie lo sono
+--   davvero, e allora la categoria dell'eccezione andra' decisa come la sua
+--   nota gia' dice.
+SELECT 'anagrafiche.soggetti_titoli_iva_movimenti'::text,
+       (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti
+         WHERE fattura_id IS NOT NULL);
+
 SELECT is(
-  (SELECT count(*) FROM vendite.attivita_consumi),
+  (SELECT count(*) FROM tmp_scoperte WHERE righe > 0),
   0::bigint,
-  '5) attivita_consumi e ancora vuota: l eccezione SCOPERTA_NOTA e ancora valida'
+  '5) le SCOPERTA_NOTA sono ancora vuote, l eccezione e ancora valida: '
+  || COALESCE((SELECT string_agg(tab || ' (' || righe || ' righe)', ', ' ORDER BY tab)
+                 FROM tmp_scoperte WHERE righe > 0),
+              'tutte vuote')
 );
 
 
@@ -270,7 +381,39 @@ INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
   ('fk_resi_accrediti_fattura_riga',               'vendite.resi_righe_accrediti', 'BLOCCO_VOLUTO',
    'l accredito del reso punta alla riga accreditata: e il documento che prova quanto e stato reso'),
   ('fk_fatture_righe_riga_rettificata',            'vendite.fatture_righe',        'BLOCCO_VOLUTO',
-   'auto-riferimento: la riga di nota di credito punta alla riga rettificata. ⚠️ Blocca SOLO se la riga che rettifica sta FUORI dall insieme cancellato: se muoiono insieme la NO ACTION e soddisfatta a fine istruzione, ed e il caso normale della nota di credito nello stesso lotto');
+   'auto-riferimento: la riga di nota di credito punta alla riga rettificata. ⚠️ Blocca SOLO se la riga che rettifica sta FUORI dall insieme cancellato: se muoiono insieme la NO ACTION e soddisfatta a fine istruzione, ed e il caso normale della nota di credito nello stesso lotto'),
+  -- ⭐ rev 2026-08-31 (changeSet 20260831-30): il secondo auto-riferimento di
+  --   questa tabella. E la riga di sopra e il suo gemello per FORMA, non per
+  --   comportamento - vale la pena leggerli insieme.
+  --
+  -- ⚠️ PERCHE BLOCCO_VOLUTO e non CASCADE_DB, che sarebbe la risposta comoda:
+  --   la NO ACTION qui e VOLUTA. Cancellare una capofila lasciando vive le sue
+  --   parti spezzerebbe la lettura «capofila -> parti» a meta, e chi somma gli
+  --   importi partendo dall attivita fatturabile prenderebbe righe orfane che
+  --   non sa piu ricondurre a niente. Il rifiuto E la risposta giusta.
+  --
+  -- ⭐ E SUL PERCORSO DELLA PULIZIA NON SCATTA MAI, ma non per fortuna: per
+  --   COSTRUZIONE. La FK e COMPOSITA su (riga_capofila_id, fattura_id), quindi
+  --   capofila e parti stanno per forza sulla STESSA fattura - e la pulizia le
+  --   cancella con un DELETE solo, dove la NO ACTION e soddisfatta a fine
+  --   istruzione. E la differenza con la riga sopra: li il caso «fuori
+  --   dall insieme» esiste (una nota di credito di un altro lotto), qui no.
+  --   Stessa posizione di pagamenti.sistemazioni al primo livello: il blocco e
+  --   irraggiungibile oggi, e il giorno che il percorso cambiasse sarebbe la
+  --   risposta giusta comunque.
+  ('fk_fatture_righe_riga_capofila',               'vendite.fatture_righe',        'BLOCCO_VOLUTO',
+   'auto-riferimento: la parte di una riga spezzata dal plafond punta alla sua capofila. NO ACTION voluta - cancellare la capofila lasciando vive le parti spezzerebbe a meta la lettura «capofila -> parti», e chi somma gli importi partendo dall attivita troverebbe righe orfane. ⭐ Sul percorso della pulizia non scatta MAI per COSTRUZIONE, non per fortuna: la FK e composita su (riga_capofila_id, fattura_id), quindi le due righe stanno sempre sulla stessa fattura e muoiono nello stesso DELETE, dove la NO ACTION e soddisfatta a fine istruzione. ⚠️ E la differenza con fk_fatture_righe_riga_rettificata, che ha la stessa forma: li il caso «la riga sta fuori dall insieme cancellato» esiste davvero (una nota di credito di un altro lotto), qui il modello non lo ammette'),
+
+  -- ── SCOPERTA_NOTA: eccezione a tempo, la prima di questo inventario ─
+  -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2): e la SECONDA chiave esterna della
+  --   stessa tabella gia classificata al primo livello. Compare qui perche
+  --   questo inventario e indicizzato per VINCOLO e non per tabella - e questo
+  --   e il caso che mostra perche: la classificazione e la stessa, ma senza la
+  --   voce il test 6 sarebbe rosso e nessuna motivazione lo spiegherebbe.
+  -- ⚠️ La verifica di vuotezza NON si duplica: sta al test 5, una volta sola,
+  --   perche una tabella vuota e vuota per tutte le sue chiavi esterne.
+  ('fk_soggetti_titoli_iva_movimenti_fattura_riga', 'anagrafiche.soggetti_titoli_iva_movimenti', 'SCOPERTA_NOTA',
+   'stesso legame visto dal lato riga: il movimento di plafond puo puntare alla singola riga che lo ha consumato. Motivazione e scadenza sono quelle del primo livello - 0 righe, nessuno scrittore, e la categoria definitiva decisa da I5. Vuotezza verificata dal test 5');
 
 CREATE TEMP TABLE tmp_figlie_righe AS
 SELECT c.conname                       AS vincolo,

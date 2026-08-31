@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — IL PREFISSO PASSA SUL REGISTRO
+#   vendite.registri_fatturazione.prefisso / .suffisso + UNIQUE per emittente
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-2
+#
+# ── ⛔ PERCHE' QUI E NON SUI PROGRESSIVI ──────────────────────────
+#   La proposta iniziale era registri_fatturazione_progressivi. Non regge, e la
+#   ragione e' meccanica: la riga di progressivi la crea IL GENERATORE STESSO,
+#   con `last_numero = 0` e nient'altro, una nuova per ogni anno e ogni serie.
+#   Col prefisso li', ogni 1° gennaio ne nascerebbe una vuota e i documenti di
+#   quell'anno uscirebbero SENZA prefisso, in silenzio.
+#   ⭐ Il registro e' configurazione, dura nel tempo, e il generatore lo sta
+#   gia' leggendo: il contatore conta, la forma la decide il registro.
+#
+# ── ⭐ L'UNICITA' E' SULLA COPPIA, E SERVE ALLA LEGGIBILITA' ──────
+#   ⚠️ Non serve all'integrita': il contatore e' per (registro, anno, serie) e la
+#   stringa `ORD0000001` non porta ne' l'anno ne' il registro — stanno in colonne
+#   separate, ed e' li' che l'unicita' li guarda. La stringa si ripete gia' ogni
+#   anno, legittimamente.
+#   ⇒ Serve a questo: se due registri dello STESSO emittente avessero lo stesso
+#   prefisso, due numeri identici usciti da CONTATORI DIVERSI si presenterebbero
+#   uguali a chi legge. Il prefisso e' il NOME del sezionale, e due sezionali
+#   dello stesso emittente non possono chiamarsi uguale.
+#   ⚠️ Sulla COPPIA e non su ciascuno: pretendere il prefisso unico da solo
+#   vieterebbe `ORD`+`A` / `ORD`+`B`, che sono gia' distinguibili.
+#
+# ── ⚠️ OTTO CARATTERI, E NON QUATTRO ─────────────────────────────
+#   Il separatore fra prefisso e cifre non esiste piu' come campo a se': se
+#   serve, si scrive DENTRO il prefisso (Tid, 2026-08-31). ⭐ Toglie un caso
+#   speciale — sulla commessa il prefisso vuoto lasciava un separatore orfano in
+#   testa — al prezzo di due caratteri in piu': 'RESO-' sono cinque, e con
+#   varchar(4) non ci sarebbe stato.
+#
+# ── ⚠️ COLONNE, SEED E VINCOLO IN UN CHANGESET SOLO ──────────────
+#   E non per comodita': `00_schema` gira PRIMA di `80_data` e di `20_code`.
+#   Un seed messo fra i dati arriverebbe DOPO il vincolo e DOPO i generatori che
+#   leggono il prefisso, lasciando una finestra in cui i numeri escono nudi.
+#   ⭐ Uno solo: o passa tutto, o non passa niente.
+#
+# ── ⭐ IL SEED SI DERIVA, NON SI ELENCA ──────────────────────────
+#   Il prefisso di oggi vive in config.sistema_codici, e la chiave e' il nome
+#   della famiglia in minuscolo: DDT->'ddt', ORDINE->'ordine', RESO->'reso',
+#   COMMESSA->'commessa'. Si legge di li' invece di scrivere quattro valori.
+#   ⭐ La COMMESSA E' ENTRATA (Tid, 2026-08-31): anche il suo `CMM` diventa
+#   parametrizzabile, e non c'era ragione di lasciarla indietro — e' l'unica
+#   delle cinque a comporre il proprio codice a mano.
+#   ⚠️ Ma ha un dettaglio che le altre non hanno, ed e' nel changeSet del suo
+#   generatore: il prefisso vuoto le lascerebbe un SEPARATORE ORFANO in testa
+#   (`-ACME-2026-000000001`), perche' li' il prefisso non e' l'ultimo pezzo ma
+#   il primo di quattro.
+#   ⛔ La FATTURA resta fuori: il suo numero e' il progressivo NUDO, senza
+#   formato — non ha mai avuto un prefisso.
+#
+# ⚠️ Prefisso vuoto resta LEGITTIMO e significa «nessun prefisso»: non si mette
+#   un NOT NULL. Il presidio e' che chi CREA un registro dia un default sensato,
+#   ed e' il passo P-6 su fn_provision_registri_emittente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-40-alter-registri-prefisso-suffisso-mctit.yaml
+
+  - changeSet:
+      id: 20260831-40-alter-registri-prefisso-suffisso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-2: prefisso e suffisso (4 caratteri) su vendite.registri_fatturazione, seed dai
+        prefissi di oggi e UNIQUE sulla COPPIA per emittente — tutto in un changeSet solo.
+        ⛔ Non sui progressivi, e la ragione e'' meccanica: quella riga la crea il generatore con
+        last_numero = 0 e nient''altro, una nuova per ogni anno — col prefisso li'', ogni 1°
+        gennaio i documenti uscirebbero senza prefisso, in silenzio. ⭐ L''unicita'' non serve
+        all''integrita'' ma alla LEGGIBILITA'': la stringa non porta ne'' anno ne'' registro, quindi
+        due registri dello stesso emittente con lo stesso prefisso presenterebbero uguali due
+        numeri usciti da contatori diversi. Sulla COPPIA, perche'' prefisso unico da solo
+        vieterebbe ORD+A / ORD+B. ⚠️ Colonne, seed e vincolo insieme: 00_schema gira prima di
+        80_data e di 20_code, e un seed fra i dati arriverebbe dopo i generatori. ⭐ Il seed si
+        DERIVA da config.sistema_codici (la chiave e'' la famiglia in minuscolo), non si elenca.
+        ⭐ La COMMESSA e'' entrata (decisione di Tid): anche il suo CMM diventa parametrizzabile.
+        ⛔ La FATTURA resta fuori: non ha formato, il suo numero e'' il progressivo nudo.
+        ⚠️ Prefisso vuoto resta legittimo: nessun NOT NULL.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-2.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: prefisso
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: registri_fatturazione
+            columns:
+              - column:
+                  name: prefisso
+                  type: varchar(8)
+                  remarks: >-
+                    Prefisso del numero prodotto da questo registro. Vuoto = nessun prefisso.
+                    E' il NOME del sezionale, ed e' unico per emittente insieme al suffisso.
+                    ⚠️ Otto caratteri e non quattro: l'eventuale separatore si scrive QUI
+                    dentro (es. 'CMM-'), quindi 'RESO-' deve poterci stare.
+              - column:
+                  name: suffisso
+                  type: varchar(8)
+                  remarks: >-
+                    Suffisso del numero prodotto da questo registro. Vuoto = nessun suffisso.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Il seed si DERIVA: la chiave di config.sistema_codici e' il
+              --   nome della famiglia in minuscolo. Tre valori scritti a mano
+              --   sarebbero un elenco parallelo al primo documento nuovo.
+              UPDATE vendite.registri_fatturazione r
+                 SET prefisso = sc.prefisso
+                FROM config.sistema_codici sc
+               WHERE sc.codice_interno = lower(r.famiglia_documento)
+                 AND r.famiglia_documento IN ('DDT', 'ORDINE', 'RESO', 'COMMESSA')
+                 AND COALESCE(sc.prefisso, '') <> ''
+                 AND r.prefisso IS NULL;
+
+              -- ⚠️ NULLS NOT DISTINCT: senza, due registri entrambi senza
+              --   prefisso non verrebbero mai confrontati e il vincolo sarebbe
+              --   vuoto nel caso piu' comune. ⛔ Ma il predicato esclude le
+              --   righe in cui prefisso e suffisso sono ENTRAMBI vuoti: quelle
+              --   non hanno un nome da tenere distinto, e vietarne due
+              --   impedirebbe una configurazione legittima.
+              CREATE UNIQUE INDEX uq_registri_fatturazione_prefisso_suffisso
+                  ON vendite.registri_fatturazione
+                     (emittente_soggetto_ruolo_id, prefisso, suffisso)
+                  NULLS NOT DISTINCT
+                  WHERE COALESCE(prefisso, '') <> '' OR COALESCE(suffisso, '') <> '';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.prefisso
+              IS 'Prefisso del numero prodotto da questo registro; vuoto = nessun prefisso. ⭐ Dal 2026-08-31 il prefisso di DDT, ordini e resi vive QUI e non piu'' in config.sistema_codici: «non mescoliamo le cose — chi si ricorderebbe che il prefisso e'' su un''altra tabella?» (decisione di Tid). ⚠️ Le due sedi convivono, divise per MOTORE: config.sistema_codici tiene ancora il prefisso di chi si numera con la sua sequenza (preventivi, contratti, offerte, anagrafiche), e continua a tenere `lunghezza_numero` anche per i documenti sui registri. ⛔ NON sui progressivi, ed e'' l''obiezione che ha spostato la sede: quella riga la crea il generatore stesso con last_numero = 0 e nient''altro, una nuova per ogni anno e ogni serie — col prefisso li'', ogni 1° gennaio ne nascerebbe una vuota e i documenti di quell''anno uscirebbero senza prefisso, in silenzio. Il contatore conta; la forma la decide il registro. ⭐ E'' il NOME DEL SEZIONALE: entra in uq_registri_fatturazione_prefisso_suffisso insieme al suffisso, unico per emittente. ⚠️ Vuoto e'' LEGITTIMO e significa «nessun prefisso», quindi non c''e'' NOT NULL: il presidio contro il vuoto INVOLONTARIO e'' che vendite.fn_provision_registri_emittente lo valorizzi alla nascita del registro. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-2.';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.suffisso
+              IS 'Suffisso del numero prodotto da questo registro; vuoto = nessun suffisso. Vale tutto quanto detto per `prefisso`, di cui e'' il gemello: insieme formano il NOME del sezionale, ed e'' la COPPIA a essere unica per emittente. ⚠️ Nato vuoto sul seed del 2026-08-31: nessun documento oggi ha un suffisso, e la colonna esiste perche'' la forma del numero sia governabile senza un changeSet quando servira''. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-2.';
+
+              COMMENT ON INDEX vendite.uq_registri_fatturazione_prefisso_suffisso
+              IS 'La coppia (prefisso, suffisso) e'' unica dentro un emittente: due sezionali dello stesso emittente non possono chiamarsi uguale. ⚠️ NON serve all''integrita'' della numerazione, e vale la pena dirlo perche'' e'' controintuitivo: il contatore e'' per (registro, anno, serie) e la stringa prodotta non porta ne'' l''anno ne'' il registro — stanno in colonne separate, ed e'' li'' che uq_<doc>_anno_serie_numero li guarda. La stringa si RIPETE gia'' ogni anno, legittimamente. ⭐ Serve alla LEGGIBILITA'': con lo stesso prefisso, due numeri identici usciti da contatori diversi si presenterebbero uguali a chi legge, senza modo di distinguerli. ⚠️ Sulla COPPIA e non su ciascuno separatamente: pretendere il prefisso unico da solo vieterebbe ORD+A e ORD+B, che sono gia'' distinguibili. ⛔ Il predicato esclude le righe con prefisso E suffisso entrambi vuoti: quelle non hanno un nome da tenere distinto, e vietarne due impedirebbe una configurazione legittima — un registro senza prefisso e'' ammesso. ⚠️ NULLS NOT DISTINCT perche'' le due colonne sono nullable: senza, due registri con lo stesso prefisso e suffisso entrambi NULL non verrebbero confrontati. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_registri_fatturazione_prefisso_suffisso;
+              ALTER TABLE vendite.registri_fatturazione DROP COLUMN IF EXISTS suffisso;
+              ALTER TABLE vendite.registri_fatturazione DROP COLUMN IF EXISTS prefisso;

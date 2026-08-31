@@ -51,6 +51,12 @@ quindi attivo per una utility soltanto, e tutti gli altri contratti ricadono nel
 `utility_id` — a quale utility appartiene il tipo — e `iva_id`, che consente di legare un
 regime IVA al tipo d'uso.
 
+> ⭐ **Dal 2026-08-29 `iva_id` viene letto davvero.** È il secondo gradino dello
+> stadio A del risolutore IVA (`vendite.fn_resolve_iva_riga`), raggiunto da
+> `vendite.fn_get_tipo_utenza_fornitura`. ⚠️ Ma **solo dove l'articolo tace**:
+> l'articolo può dichiarare di non avere un'opinione sull'IVA, questa tabella no —
+> applicata per prima si prenderebbe anche cauzioni, spese e servizi.
+
 `tipo_pdr_std` (`char(1)`, default `'0'`) è il tipo standard di punto di riconsegna: un
 codice di dominio gas, che qui compare come default tecnico.
 

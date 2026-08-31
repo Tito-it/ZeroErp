@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — `D23`:
+# CESSIONE DI BENI o PRESTAZIONE DI SERVIZI. Decisione di Tid, 2026-08-29.
+#
+# ── ⭐ PERCHE' SERVE, ed e' un pezzo della FIRMA ──────────────────────
+#
+#   `D20` vuole che il risolutore prenda la **natura dell'operazione**, perche'
+#   in ambito intracomunitario e' quella a determinare il **luogo di
+#   imposizione**: una cessione di beni e una prestazione di servizi non seguono
+#   la stessa regola. E' la firma a decidere il costo
+#   dell'internazionalizzazione, molto piu' della logica interna — con
+#   `(articolo, cliente, data)` funziona benissimo in Italia e obbliga a toccare
+#   ogni chiamante il giorno che si aggiunge un paese.
+#
+#   ⛔ Oggi quell'informazione **non esiste**. Verificato: ne' `config.iva` ne'
+#   `config.iva_natura` hanno qualcosa che distingua beni da servizi.
+#
+# ── ⛔ E NON POTREBBE ESSERCI: sarebbe CIRCOLARE ──────────────────────
+#
+#   Beni-vs-servizi serve a **scegliere** il codice natura — `N3.1` esportazioni
+#   e' merce, `N7` e' prestazione di servizi. Ricavarlo dalla natura vorrebbe
+#   dire ricavare l'**input** del risolutore dal suo **output**.
+#
+# ── ⭐ PERCHE' SU `nature_vendita` E NON SULL'ARTICOLO ────────────────
+#
+#   `config.nature_vendita` e' gia' la classificazione commerciale della riga
+#   (`catalogo.articoli.natura_vendita_id`), ed e' un **vocabolario a seed**: il
+#   flag e' **una cella di CSV per tre righe**, non una colonna su ogni articolo
+#   da tenere allineata a mano.
+#
+#   ⚠️ **Ma non si riusa `destinazione_tipo`**, che pure sembra dire la stessa
+#   cosa (`MERCE -> ORDINE`, i due servizi -> `COMMESSA`/`CONTRATTO`): quella
+#   colonna risponde a **un'altra domanda** — dove finisce la riga dopo
+#   l'accettazione del preventivo. Appoggiarci sopra il luogo di imposizione e'
+#   la forma esatta del flag composto che il progetto ha gia' pagato: il giorno
+#   che le due risposte divergono non c'e' modo di separarle.
+#
+#   ⭐ Precedente della stessa specie, gia' nel progetto:
+#   `config.listini_tipologie.e_servizio`.
+#
+# ── ⚠️ `NOT NULL` SENZA DEFAULT ───────────────────────────────────────
+#
+#   Chi conia una natura di vendita nuova deve **dire** se e' cessione di beni.
+#   Nessuna delle due risposte e' «quella sicura» — per l'intracomunitario beni e
+#   servizi hanno regole diverse ma nessuna delle due e' conservativa — quindi un
+#   default sceglierebbe a caso. La colonna nasce nullable, si riempie una volta
+#   qui, e solo dopo diventa obbligatoria.
+#
+# ⚠️ La sede del valore resta il CSV `80_data/sql/config/nature_vendita.csv`, che
+#   prende la colonna nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-48-alter-nature-vendita-add-e-cessione-beni-mctit.yaml
+
+  - changeSet:
+      id: 20260829-48-alter-nature-vendita-add-e-cessione-beni
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.nature_vendita prende e_cessione_beni (D23): cessione di beni o prestazione
+        di servizi, che in ambito intracomunitario determina il luogo di imposizione ed e'
+        un pezzo della firma del risolutore (D20). Oggi non esiste da nessuna parte, e non
+        potrebbe stare in config.iva: sarebbe circolare, perche' beni-vs-servizi serve a
+        SCEGLIERE il codice natura. ⚠️ Non si riusa destinazione_tipo, che risponde a
+        un'altra domanda (dove finisce la riga dopo l'accettazione del preventivo):
+        appoggiarci sopra il luogo di imposizione e' il flag composto che il progetto ha
+        gia' pagato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: nature_vendita
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: nature_vendita
+                    columnName: e_cessione_beni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.nature_vendita
+                ADD COLUMN e_cessione_beni BOOLEAN;
+
+              -- ── Backfill UNA TANTUM, per `codice_interno` e non per `codice`:
+              --    il secondo e' modificabile dall'utente e smetterebbe di
+              --    agganciarsi in silenzio al primo rename.
+              --    MERCE e' una cessione di beni; i due servizi no.
+              UPDATE config.nature_vendita
+                 SET e_cessione_beni = (codice_interno = 'MERCE')
+               WHERE e_cessione_beni IS NULL;
+
+              -- ⚠️ NOT NULL DOPO il backfill e SENZA default: nessuna delle due
+              --    risposte e' «quella sicura» — per l'intracomunitario beni e
+              --    servizi hanno regole diverse e nessuna e' conservativa — quindi
+              --    un default sceglierebbe a caso al posto di chi conia la riga.
+              ALTER TABLE config.nature_vendita
+                ALTER COLUMN e_cessione_beni SET NOT NULL;
+
+              COMMENT ON COLUMN config.nature_vendita.e_cessione_beni IS
+                  'true = CESSIONE DI BENI, false = PRESTAZIONE DI SERVIZI. ⭐ Nasce il '
+                  '2026-08-29 con D23 del cantiere IVA: in ambito intracomunitario e'' '
+                  'questa distinzione a determinare il LUOGO DI IMPOSIZIONE, ed e'' un '
+                  'pezzo della firma del risolutore (D20) — con una firma che non lo '
+                  'prende, aggiungere un paese obbliga a toccare ogni chiamante. '
+                  '⛔ Non poteva stare in config.iva o config.iva_natura, e non per '
+                  'mancanza di spazio: sarebbe CIRCOLARE — beni-vs-servizi serve a '
+                  'SCEGLIERE il codice natura (N3.1 esportazioni e'' merce, N7 e'' '
+                  'prestazione di servizi), quindi ricavarlo da li'' significherebbe '
+                  'ricavare l''input del risolutore dal suo output. '
+                  '⚠️ E NON si deduce da `destinazione_tipo`, che pure sembra dire la '
+                  'stessa cosa (MERCE->ORDINE, i servizi->COMMESSA/CONTRATTO): quella '
+                  'colonna risponde a dove finisce la riga dopo l''accettazione del '
+                  'preventivo. Appoggiarci sopra il luogo di imposizione e'' la forma '
+                  'esatta del flag composto che il progetto ha gia'' pagato — il giorno '
+                  'che le due risposte divergono non c''e'' modo di separarle. '
+                  '⭐ Precedente della stessa specie: config.listini_tipologie.e_servizio. '
+                  '⚠️ NOT NULL senza default: chi conia una natura nuova deve DIRE quale '
+                  'delle due e'', perche'' nessuna delle due risposte e'' conservativa. '
+                  'La sede del valore e'' il CSV 80_data/sql/config/nature_vendita.csv. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D23 / D20.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.nature_vendita DROP COLUMN IF EXISTS e_cessione_beni;

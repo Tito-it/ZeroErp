@@ -33,12 +33,19 @@
 - [soggetti_conti_bancari](manual/soggetti_conti_bancari.md) — (latest review 10-01-26) `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_ruoli](manual/soggetti_ruoli.md) — (latest review 15-02-26) * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `meta` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 - [soggetti_ruoli_conti_bancari](manual/soggetti_ruoli_conti_bancari.md) — (latest review 25-03-26) `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
+- [soggetti_titoli_iva](manual/soggetti_titoli_iva.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
+- [soggetti_titoli_iva_ambiti](manual/soggetti_titoli_iva_ambiti.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
+- [soggetti_titoli_iva_movimenti](manual/soggetti_titoli_iva_movimenti.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
 - [vettori](manual/vettori.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni (manuale)
+- [fn_annulla_movimento_titolo_iva](manual/fn_annulla_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
+- [fn_ba_ha_storia_emittente](manual/fn_ba_ha_storia_emittente.md) — (latest review 31-08-2026)
 - [fn_build_indirizzo_normalizzato](manual/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
 - [fn_check_ba_coppia_emittente_omogenea](manual/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](manual/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
+- [fn_check_titolo_iva_ambito](manual/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_consuma_plafond_titolo_iva](manual/fn_consuma_plafond_titolo_iva.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](manual/fn_crea_operatore_v2.md)
@@ -50,7 +57,7 @@
 - [fn_get_emittente_fiscale_pk](manual/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
 - [fn_get_evento_stato_corrente_cliente](manual/fn_get_evento_stato_corrente_cliente.md) — (latest review 28-04-2026)
 - [fn_get_or_create_indirizzo_dettaglio](manual/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
-- [fn_get_storia_emittente_ba](manual/fn_get_storia_emittente_ba.md) — (latest review 26-08-26)
+- [fn_get_storia_emittente_ba](manual/fn_get_storia_emittente_ba.md) — (latest review 31-08-2026)
 - [fn_guard_albero_ba_emittente](manual/fn_guard_albero_ba_emittente.md) — (latest review 18-08-26)
 - [fn_guard_albero_ba_gestore_globale](manual/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
 - [fn_guard_ba_cambio_emittente](manual/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
@@ -127,7 +134,13 @@
 - [trgfn_soggetti_ruoli_conti_bancari_guard](manual/trgfn_soggetti_ruoli_conti_bancari_guard.md) — (last review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
 - [trgfn_soggetti_ruoli_guard_indirizzi_required](manual/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
 - [trgfn_soggetti_ruoli_guard_natura_ammessa](manual/trgfn_soggetti_ruoli_guard_natura_ammessa.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`** e una **trigger function di tipo "guard"** che:
+- [trgfn_soggetti_titoli_iva_ambiti_guard](manual/trgfn_soggetti_titoli_iva_ambiti_guard.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [trgfn_soggetti_titoli_iva_guard_ambito](manual/trgfn_soggetti_titoli_iva_guard_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [trgfn_soggetti_titoli_iva_guard_coerenza](manual/trgfn_soggetti_titoli_iva_guard_coerenza.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [trgfn_soggetti_titoli_iva_movimenti_accumulatore](manual/trgfn_soggetti_titoli_iva_movimenti_accumulatore.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_valida_cf_piva_dispatch](manual/trgfn_soggetti_valida_cf_piva_dispatch.md) — (latest review 29-12-25) La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
+- [trgfn_stiva_movimenti_append_only](manual/trgfn_stiva_movimenti_append_only.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
+- [trgfn_stiva_movimenti_guard_annullo](manual/trgfn_stiva_movimenti_guard_annullo.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [trgfn_vettori_gen_codice](manual/trgfn_vettori_gen_codice.md) — (rev 2026-08-21 — **funzione nata il 2026-08-21**)
 - [trgfn_vettori_guard_ruolo_vettore](manual/trgfn_vettori_guard_ruolo_vettore.md) — (rev 2026-08-21)
 - [trgfn_vettori_normalize](manual/trgfn_vettori_normalize.md) — (rev 2026-08-21)
@@ -149,6 +162,7 @@
 - [vw_pdp](manual/vw_pdp.md) — (rev 2026-08-21)
 - [vw_risorse_umane_dettaglio](manual/vw_risorse_umane_dettaglio.md) — (latest review 07-01-26) La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura unificata delle risorse umane con:
 - [vw_soggetti_ruoli_dettaglio](manual/vw_soggetti_ruoli_dettaglio.md) — (latest review 20-02-26) La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
+- [vw_stiva_movimenti_dettaglio](manual/vw_stiva_movimenti_dettaglio.md) — (rev 2026-08-31 — vista nata il 2026-08-31)
 
 ## 📘 Altri contenuti manuali
 - [catasto-architettura](manual/catasto-architettura.md)

@@ -27,6 +27,23 @@ La tabella **`config.iva_natura`** contiene i codici natura IVA utilizzati per l
 * **Unicità**: `codice` deve essere univoco nel catalogo.
 * **Validità**: ogni codice  corrisponde a uno specifico significato fiscale, es. `N1` (Esportazioni), `N2` (Operazioni non imponibili), etc.
 * **Audit**: ogni modifica al catalogo aggiorna automaticamente `data_update` e `user_update` tramite trigger.
+* ⭐ **`is_reverse_charge`** (dal 2026-08-29): dice se quella natura è
+  un'**inversione contabile**, cioè se l'imposta la assolve chi riceve invece di
+  chi emette. Sono le nature `N6.1`…`N6.9` — rottami, oro, subappalto edile,
+  fabbricati, cellulari, prodotti elettronici, comparto edile, settore
+  energetico, altri casi.
+  ⛔ **E non si deduce da `codice LIKE 'N6%'`**: sarebbe un letterale su una
+  colonna di catalogo, che al primo rename smette di agganciarsi **in silenzio** —
+  su un flag fiscale.
+  ⚠️ È `NOT NULL` **senza default**: chi conia una natura nuova deve **dire** di
+  che specie è. Con un default lo erediterebbe per distrazione, e la
+  classificazione sbagliata si vedrebbe solo su una fattura elettronica
+  rifiutata.
+  ℹ️ Sta sulla **natura** e non sul singolo codice IVA perché `N6.x` *è*
+  l'inversione contabile: su `config.iva` andrebbe ripetuto su ogni codice che
+  porta quella natura, col rischio che due codici della stessa natura dicano cose
+  diverse.
+* **`storicizza`**: dal 2026-08-29 la tabella ha una gemella in `storico`.
 
 ---
 

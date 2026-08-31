@@ -254,7 +254,8 @@
       "soggetti": "Subjects",
       "clienti": "Clients",
       "fornitori": "Suppliers",
-      "indirizzi": "Addresses"
+      "indirizzi": "Addresses",
+      "titoli-iva-sfondati": "Exceeded VAT titles"
     },
     "config": {
       "tabelle": "Tables",
@@ -1093,6 +1094,7 @@
       "metodo_down": "Always down (DOWN)",
       "field_soggetto": "Subject",
       "field_codice": "Code",
+      "field_codice_hint": "Issuer short code: {min} to {max} characters, uppercase letters and digits only. It becomes part of the job code (CMM-CODE-year-number) and cannot be changed after saving.",
       "field_attivo": "Active",
       "field_regime_fiscale_rf": "Tax regime (RF)",
       "regime_fiscale_rf_hint": "RF tax regime code of the FE/SdI layout (e.g. RF01, RF19).",
@@ -1119,7 +1121,8 @@
       "ba_default_exists": "A global default already exists for this issuer.",
       "ba_added": "Mapping added.",
       "ba_blocco": {
-        "con_storia": "This customer already has invoices or jobs with this issuer: removing the mapping would move it, leaving those documents without the customer they belong to.",
+        "con_storia": "This customer already has numbered documents with this issuer: removing the mapping would move it, leaving those documents without the customer they belong to.",
+        "elenco": "Blocking documents — {elenco}.",
         "default_singleton": "A global default must always exist, and there is exactly one: this row cannot be removed."
       },
       "ba_default_added": "Global default created.",
@@ -2208,10 +2211,17 @@
       "azione_reason": {
         "causale_mancante": "Transport reason is missing: required to issue the DDT.",
         "prezzo_non_risolvibile": "One or more rows have no resolvable price (own or inherited from the order) with an invoiceable reason.",
-        "iva_mancante": "One or more rows have a price but no VAT rate: choose the rate, or remove the price if the goods are not valued.",
+        "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued.",
         "componenti_prezzo_pendente": "Components with price pending valuation.",
         "componenti_non_valorizzati": "Document components not yet valued."
       }
+    },
+    "famiglie_documento": {
+      "FATTURA": "Invoices",
+      "DDT": "Delivery notes",
+      "ORDINE": "Orders",
+      "COMMESSA": "Jobs",
+      "RESO": "Returns"
     },
     "fatturazione": {
       "esiti_titolo": "Invoicing results",
@@ -2950,7 +2960,7 @@
       "azione_reason": {
         "ddt_collegati": "The order already has linked DDTs: the goods are out, and to bring them back you register a return.",
         "gia_in_commessa": "The order has already been sent to invoicing: cancel the job order activities first.",
-        "iva_mancante": "One or more rows have a price but no VAT rate: choose the rate, or remove the price if the goods are not valued."
+        "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued."
       },
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
@@ -3168,7 +3178,7 @@
         "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
         "gia_in_commessa": "The quote has already been sent to invoicing: cancel the job order activities first.",
         "commessa_gia_emessa": "Some lines have already been invoiced through the job order: reverse them on the invoicing side, or create a new revision of the quote.",
-        "iva_mancante": "One or more rows with a quantity have a price but no VAT rate: choose the rate, or remove the price if the goods are not valued."
+        "iva_mancante": "One or more rows with a quantity have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued."
       },
       "conferma_cambio_stato": "Move the quote to status {stato}?",
       "conferma_revisione": "Create a new revision? The current revision will be deactivated.",
@@ -3593,6 +3603,13 @@
       "azione_reason": {
         "righe_commessa_emesse": "The document has job lines already issued: it cannot be closed while they are there. Recover them first from the accrual dashboard, «Issued not invoiced» card, with the «Send back to be issued» action."
       }
+    },
+    "iva_origine": {
+      "ARTICOLO": "Rate from the item",
+      "TIPO_UTENZA": "Rate from the supply usage",
+      "TITOLO": "Customer VAT title (e.g. letter of intent)",
+      "ASSENTE": "No rate resolved: it must be chosen",
+      "MANUALE": "Chosen manually"
     }
   },
   "pagamenti": {
@@ -4571,6 +4588,87 @@
       "select_ruolo": "Select role...",
       "genera_cf": "Generate tax code from personal data",
       "soggetto": "Subject"
+    },
+    "titoli_iva": {
+      "aggiungi_ambito": "Add goods",
+      "aggiungi_titolo": "Register a VAT title",
+      "ambito_aggiunto": "Goods added to the scope",
+      "ambito_hint": "The title applies only to rows whose goods fall in here: every other row keeps the ordinary rate.",
+      "ambito_rimosso": "Goods removed from the scope",
+      "ambito_ristretto": "Only some goods",
+      "ambito_tutto": "All goods",
+      "ambito_vuoto": "No goods listed.",
+      "annulla_movimento": "Cancel movement",
+      "annullo_blocco": {
+        "e_un_annullo": "This is already a cancellation, and a cancellation cannot be cancelled: if the adjustment is still needed, record a new one with its reason.",
+        "gia_annullato": "This movement has already been cancelled.",
+        "non_forzatura": "Only manual adjustments can be cancelled: a movement coming from an invoice or a credit note is corrected from the document.",
+        "non_trovato": "The movement does not exist.",
+        "plafond_negativo": "Cancelling it would take the used allowance below zero: credit notes have exceeded invoices on this title."
+      },
+      "annullo_hint": "Cancelling does not delete: it records an opposite movement pointing to this one. Both stay visible, and the used allowance returns to its previous value.",
+      "avviso_ambito_incompleto": "This title is restricted but lists no goods, so it applies to nothing. Add at least one entry, or make it valid for all goods.",
+      "col_data": "Date",
+      "col_documento": "Document",
+      "col_eccedenza": "Excess",
+      "col_emittente": "Issuer",
+      "col_id_fiscale": "Tax ID / VAT no.",
+      "col_imponibile": "Taxable amount",
+      "col_iva": "VAT",
+      "col_livello": "Level",
+      "col_motivo": "Reason",
+      "col_movimento": "Movement",
+      "col_oggetto": "Goods",
+      "col_residuo": "Remaining",
+      "col_soggetto": "Subject",
+      "col_stato": "Status",
+      "col_tipo": "Type",
+      "col_validita": "Validity",
+      "field_ambito": "Scope",
+      "field_data_ricezione": "Received on",
+      "field_emittente": "Recipient issuer",
+      "field_iva": "Replacing VAT code",
+      "field_note": "Notes",
+      "field_plafond": "Ceiling",
+      "field_protocollo": "Protocol",
+      "field_residuo": "Remaining",
+      "field_riferimento": "Reference",
+      "field_tipo": "Title type",
+      "field_utilizzato": "Already used",
+      "field_valido_al": "Valid to",
+      "field_valido_dal": "Valid from",
+      "forza_rettifica": "Force an adjustment",
+      "forzatura_hint": "Use this to record ceiling usage that happened outside the system, or to reverse a wrong one. Positive amount consumes, negative gives back. The reason stays in the ledger and is the trace of why.",
+      "forzatura_registrata": "Adjustment recorded in the ceiling",
+      "gestisci_titoli": "Manage VAT titles",
+      "lista_vuota": "No VAT title registered for this subject.",
+      "livello_articolo": "Item",
+      "livello_gruppo_voce": "Item group",
+      "livello_tipo_voce": "Item type",
+      "mov_fattura": "Invoice",
+      "mov_forzatura": "Manual entry",
+      "mov_manuale": "manual",
+      "mov_nota_credito": "Credit note",
+      "movimento_annullato": "Movement cancelled",
+      "registra_forzatura": "Record the adjustment",
+      "registro_vuoto": "No movement recorded.",
+      "section_ambito": "Which goods it applies to",
+      "section_plafond": "Ceiling",
+      "section_prova": "Supporting document",
+      "section_registro": "Ceiling ledger",
+      "section_titolo": "Title",
+      "section_validita": "Validity",
+      "select_tipo": "Select type...",
+      "senza_scadenza": "no expiry",
+      "sfondati_hint": "Exceeding the ceiling is not blocked: a manual entry records usage that happened outside the system, and preventing it would prevent noticing. This list is the watch: you look at it.",
+      "sfondati_vuoto": "No title has exceeded its ceiling.",
+      "tag_ambito_incompleto": "Covers no goods",
+      "tag_non_attivo": "Inactive",
+      "titolo": "VAT title",
+      "titolo_creato": "VAT title registered",
+      "titolo_eliminato": "VAT title deleted",
+      "titolo_lista": "VAT titles",
+      "titolo_salvato": "VAT title saved"
     },
     "contatto": {
       "nominativo": "Contact name",

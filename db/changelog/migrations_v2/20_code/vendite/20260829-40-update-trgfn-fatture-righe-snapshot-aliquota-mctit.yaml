@@ -1,0 +1,240 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — D19, secondo
+# pezzo: CHI RIEMPIE l'aliquota sulla riga di fattura.
+#
+# ── ⭐ SI ESTENDE IL MECCANISMO CHE C'E', non se ne inventa uno ────────
+#
+#   `trgfn_fatture_righe_guard_normalize` copia gia' su ogni riga il codice di
+#   natura IVA preso dal master (`iva_natura`). Quello e' esattamente uno
+#   snapshot, ed e' sopravvissuto alla potatura che nel 2025 aveva tolto
+#   `iva_perc`. L'aliquota si aggiunge **accanto**, nello stesso punto e nello
+#   stesso momento: un solo posto che congela il trattamento IVA della riga.
+#
+# ── ⚠️ L'OVERRIDE PER STATO, e perche' il percorso e' ricopiato identico ──
+#
+#   L'aliquota non e' `config.iva.aliquota_iva` e basta: `config.iva_stati` puo'
+#   sovrascriverla per lo stato dell'emittente, ed e' `config.fn_get_aliquota_iva`
+#   a saperlo. Lo stato si ricava con **lo stesso identico percorso** che usa
+#   `fn_ricalcola_riepilogo_iva_fattura` — fattura -> soggetti_ruoli -> soggetti.
+#   ⛔ Se i due percorsi divergessero, riga e riepiloghi dello stesso documento
+#   porterebbero aliquote diverse, e nessuno se ne accorgerebbe finche' non
+#   quadrasse un totale.
+#
+# ── ⚠️ SOLO DOVE C'E' UN CODICE IVA ───────────────────────────────────
+#
+#   `config.fn_get_aliquota_iva` **solleva** su un id nullo (e' il difetto §R-3
+#   ancora aperto sul lato fatture, e non si chiude qui). Il ramo che gia'
+#   esiste — `IF NEW.iva_id IS NOT NULL` — lo evita per costruzione: la chiamata
+#   entra li' dentro e non fuori. Una riga senza codice IVA resta con aliquota
+#   NULL, che in bozza e' legittimo.
+#
+# ── ⚠️ SU UN DOCUMENTO VIVO L'ALIQUOTA SI RIALLINEA, ed e' voluto ─────
+#
+#   Il trigger scrive a ogni INSERT e a ogni UPDATE della riga: finche' la
+#   fattura e' in bozza, il valore segue il catalogo. Dal congelamento in poi le
+#   righe non si toccano piu' — c'e' gia'
+#   `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt` — quindi il valore
+#   resta fermo **per costruzione**, senza bisogno di un secondo presidio.
+#   ⭐ E' la stessa distinzione che rende questa colonna uno snapshot e non un
+#   duplicato: su un documento vivo deve seguire, su uno chiuso deve ricordare.
+#
+# ── ℹ️ DUE COSE SISTEMATE PASSANDO, dichiarate perche' non sembrino sviste ──
+#
+#   1. `v_parent_ba` era dichiarata `integer` mentre
+#      `anagrafiche.billing_account.id` e' `bigint`. Non ha mai morso perche'
+#      gli id sono piccoli, ma e' un troncamento in attesa: ora e' ancorata con
+#      `%TYPE`, come vuole la convenzione;
+#   2. il blocco 3 dell'originale ri-allinea `iva_natura` su UPDATE ed e'
+#      **ridondante** — il blocco 2 la riscrive gia' a ogni INSERT e UPDATE in
+#      cui `iva_id` e' valorizzato. Si lascia com'era: toglierlo e' un'altra
+#      modifica, e mescolarla a questa renderebbe meno leggibile il diff.
+#
+# ⚠️ Corpo preso dalla doc auto-gen (l'oggetto VIVO), non dallo YAML che lo
+#   creo' nel 2025: quello e' stale di due revisioni.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-40-update-trgfn-fatture-righe-snapshot-aliquota-mctit.yaml
+
+  - changeSet:
+      id: 20260829-40-update-trgfn-fatture-righe-snapshot-aliquota
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_fatture_righe_guard_normalize congela anche l'ALIQUOTA sulla riga, accanto
+        alla natura che gia' copiava. Stesso punto, stesso momento: un solo posto che
+        congela il trattamento IVA della riga. L'override per stato si ricava con lo stesso
+        identico percorso del ricalcolo dei riepiloghi - se i due divergessero, riga e
+        riepilogo dello stesso documento porterebbero aliquote diverse. La chiamata sta
+        dentro il ramo «iva_id valorizzato» che gia' esisteva, perche' fn_get_aliquota_iva
+        solleva su un id nullo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: aliquota_iva
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_fatture_righe_guard_normalize';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_guard_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              /*
+                vendite.trgfn_fatture_righe_guard_normalize()
+
+                Scopo:
+                  - Eredita BA di destinazione dalla testata fattura se non valorizzato.
+                  - Congela sulla riga il TRATTAMENTO IVA preso dal master:
+                      * `iva_natura`  (dal 2025)
+                      * `aliquota_iva` (dal 2026-08-29, D19)
+                  - NON gestisce assoggettamento.
+
+                Note:
+                  - Se l'IVA master ha aliquota > 0, per design natura_iva_id e' NULL:
+                    lo snapshot di natura risulta NULL. L'aliquota invece c'e'.
+                  - Se l'IVA master ha aliquota = 0, natura_iva_id puo' essere presente
+                    e viene copiato il codice corrispondente.
+                  - Nessun iva_id: entrambi gli snapshot restano com'erano. In bozza una
+                    riga senza codice IVA e' legittima (D3).
+              */
+              DECLARE
+                -- ⚠️ %TYPE: prima era `integer` mentre billing_account.id e' bigint.
+                --   Non ha mai morso, ma era un troncamento in attesa.
+                v_parent_ba    anagrafiche.billing_account.id%TYPE;
+                v_natura_code  config.iva_natura.codice%TYPE;
+                v_stato_id     anagrafiche.soggetti.stato_id%TYPE;
+                v_aliquota     vendite.fatture_righe.aliquota_iva%TYPE;
+              BEGIN
+                -- 1) Eredita BA dalla testata se non fornito
+                IF NEW.dest_billing_account_id IS NULL THEN
+                  SELECT f.billing_account_id
+                    INTO v_parent_ba
+                  FROM vendite.fatture f
+                  WHERE f.id = NEW.fattura_id;
+
+                  NEW.dest_billing_account_id := v_parent_ba;
+                END IF;
+
+                -- 2) Snapshot del trattamento IVA dal master.
+                --    ⚠️ Tutto dentro questo ramo: config.fn_get_aliquota_iva
+                --    SOLLEVA su un id nullo, quindi la chiamata non deve mai
+                --    poterlo incontrare.
+                IF NEW.iva_id IS NOT NULL THEN
+                  SELECT n.codice
+                    INTO v_natura_code
+                  FROM config.iva i
+                  LEFT JOIN config.iva_natura n
+                        ON n.id = i.natura_iva_id
+                  WHERE i.id = NEW.iva_id;
+
+                  -- Se la natura in master e' NULL (es. aliquota > 0), resta NULL
+                  NEW.iva_natura := v_natura_code;
+
+                  -- ⚠️ Lo stato dell'EMITTENTE, con lo stesso identico percorso di
+                  --   vendite.fn_ricalcola_riepilogo_iva_fattura: se i due
+                  --   divergessero, riga e riepilogo dello stesso documento
+                  --   porterebbero aliquote diverse e nessuno se ne accorgerebbe
+                  --   finche' non quadrasse un totale.
+                  SELECT s.stato_id
+                    INTO v_stato_id
+                  FROM vendite.fatture f
+                  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                  JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+                  WHERE f.id = NEW.fattura_id;
+
+                  v_aliquota := config.fn_get_aliquota_iva(NEW.iva_id, v_stato_id);
+                  NEW.aliquota_iva := v_aliquota;
+                END IF;
+
+                -- 3) Protezione soft su UPDATE:
+                --    Se qualcuno cambia solo iva_natura manualmente lasciando invariato
+                --    iva_id, riallineiamo comunque allo snapshot da master per evitare
+                --    derive manuali.
+                --    ℹ️ Ridondante rispetto al blocco 2, che riscrive gia' a ogni
+                --    INSERT/UPDATE con iva_id valorizzato. Si lascia com'era: toglierlo
+                --    e' un'altra modifica.
+                IF TG_OP = 'UPDATE'
+                  AND NEW.iva_id IS NOT NULL
+                  AND OLD.iva_id = NEW.iva_id
+                  AND NEW.iva_natura IS DISTINCT FROM OLD.iva_natura
+                THEN
+                  SELECT n.codice
+                    INTO v_natura_code
+                  FROM config.iva i
+                  LEFT JOIN config.iva_natura n
+                        ON n.id = i.natura_iva_id
+                  WHERE i.id = NEW.iva_id;
+
+                  NEW.iva_natura := v_natura_code;
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_righe_guard_normalize()
+              IS 'Eredita il billing account di destinazione dalla testata, e CONGELA sulla riga il trattamento IVA preso dal master: il codice di natura (dal 2025) e, dal 2026-08-29, l''ALIQUOTA APPLICATA (D19 del cantiere IVA). ⭐ Le due colonne sono la stessa specie — snapshot — ed e'' per questo che `iva_natura` sopravvisse alla potatura che nel 2025 tolse `iva_perc`: quella era una denormalizzazione su un documento vivo, queste sono memoria. 🔴 L''aliquota serve sulla RIGA e non solo sul riepilogo perche'' vendite.fn_ricalcola_riepilogo_iva_fattura ricostruisce i riepiloghi DALLE RIGHE: senza, una rigenerazione dopo un cambio di aliquota produrrebbe numeri diversi dall''originale e niente potrebbe smentirla. ⚠️ L''aliquota non e'' config.iva.aliquota_iva e basta: config.iva_stati puo'' sovrascriverla per lo stato dell''emittente, e lo stato si ricava con lo STESSO identico percorso di fn_ricalcola_riepilogo_iva_fattura (fattura -> soggetti_ruoli -> soggetti) — se i due divergessero, riga e riepilogo dello stesso documento porterebbero aliquote diverse e nessuno se ne accorgerebbe finche'' non quadrasse un totale. ⚠️ La chiamata sta DENTRO il ramo «iva_id valorizzato» che gia'' esisteva: config.fn_get_aliquota_iva solleva su un id nullo, e il difetto §R-3 su quel fronte non si chiude qui. ⚠️ Su un documento vivo il valore si riallinea a ogni scrittura della riga, ed e'' voluto; dal congelamento in poi le righe non si toccano piu'' (trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt), quindi resta fermo per costruzione senza un secondo presidio. ℹ️ Sistemato passando: v_parent_ba era `integer` mentre billing_account.id e'' bigint — ora ancorata con %TYPE. ℹ️ Il blocco 3 e'' ridondante rispetto al 2 e si lascia com''era: toglierlo e'' un''altra modifica.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Torna alla forma precedente: solo natura, nessuna aliquota.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_guard_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_parent_ba   integer;
+                v_natura_code varchar(10);
+              BEGIN
+                IF NEW.dest_billing_account_id IS NULL THEN
+                  SELECT f.billing_account_id INTO v_parent_ba
+                    FROM vendite.fatture f WHERE f.id = NEW.fattura_id;
+                  NEW.dest_billing_account_id := v_parent_ba;
+                END IF;
+
+                IF NEW.iva_id IS NOT NULL THEN
+                  SELECT n.codice INTO v_natura_code
+                    FROM config.iva i
+                    LEFT JOIN config.iva_natura n ON n.id = i.natura_iva_id
+                   WHERE i.id = NEW.iva_id;
+                  NEW.iva_natura := v_natura_code;
+                END IF;
+
+                IF TG_OP = 'UPDATE'
+                  AND NEW.iva_id IS NOT NULL
+                  AND OLD.iva_id = NEW.iva_id
+                  AND NEW.iva_natura IS DISTINCT FROM OLD.iva_natura
+                THEN
+                  SELECT n.codice INTO v_natura_code
+                    FROM config.iva i
+                    LEFT JOIN config.iva_natura n ON n.id = i.natura_iva_id
+                   WHERE i.id = NEW.iva_id;
+                  NEW.iva_natura := v_natura_code;
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;

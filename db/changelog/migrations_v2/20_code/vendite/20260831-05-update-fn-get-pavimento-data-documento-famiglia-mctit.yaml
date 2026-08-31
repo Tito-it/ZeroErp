@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-6 (prima meta') — IL LIMITE DI EMISSIONE E' UNA REGOLA DELLA FATTURA
+#   vendite.fn_get_pavimento_data_documento: diventa consapevole della famiglia
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-6 (§3.3)
+#
+# ── ⛔ CORREGGE UN'AFFERMAZIONE SBAGLIATA, ED E' MIA ───────────────
+#   Il changeSet 20260830-15 dice, nel COMMENT del CHECK e in quello della
+#   colonna: «su un registro non-FATTURA quelle colonne restano nulle,
+#   fn_get_pavimento_emissione non ha pavimento da dare e
+#   fn_get_pavimento_data_documento risponde "nessun vincolo" — il cancello si
+#   spegne DA SE'».
+#   ⛔ **E' FALSO.** vendite.fn_get_pavimento_emissione dichiara nel proprio
+#   COMMENT «Torna SEMPRE una data, mai NULL: il pavimento generale esiste
+#   sempre»: quando il registro non fa override, i giorni si leggono da
+#   `config.parameters`. Misurato il 2026-08-31 su un registro di famiglia DDT:
+#   pavimento di emissione **2026-08-19**, cioe' attivo.
+#   ⇒ Senza questa revisione, un DDT datato piu' indietro del limite verrebbe
+#   RIFIUTATO da una regola che riguarda le fatture. Il changeSet applicato non
+#   si puo' correggere: la correzione vive qui, e nel COMMENT della funzione.
+#
+# ── ⭐ PERCHE' QUI E NON NEL CANCELLO ─────────────────────────────
+#   Questa funzione esiste per essere LA SEDE UNICA della composizione dei due
+#   pavimenti: la usano la nascita del documento (fn_calcola_data_documento),
+#   la targa del dialog (fn_get_pavimento_lotto) e il cancello
+#   (fn_get_next_progressivo). Mettere la distinzione nel solo cancello
+#   lascerebbe gli altri due a proporre e a mostrare un pavimento che il
+#   cancello poi non applica — tre risposte diverse alla stessa domanda.
+#
+# ── ⚠️ LA FIRMA NON CAMBIA ───────────────────────────────────────
+#   La famiglia si LEGGE dal registro, che la funzione gia' identifica con
+#   `p_registro_id`. Un parametro in piu' avrebbe costretto tutti e tre i
+#   chiamanti a sapere una cosa che il registro sa gia' — e avrebbe creato un
+#   overload.
+#
+# ── ℹ️ COSA RESTA VERO DEL 20260830-15 ───────────────────────────
+#   Il CHECK condizionato serve ancora, e per la sua ragione: su una famiglia
+#   non fiscale quelle colonne non devono essere VALORIZZABILI. Sbagliata era
+#   solo la conseguenza che ne traevo — che bastasse a spegnere il pavimento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-05-update-fn-get-pavimento-data-documento-famiglia-mctit.yaml
+
+  - changeSet:
+      id: 20260831-05-update-fn-get-pavimento-data-documento-famiglia
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-6 (prima meta''): il LIMITE DI EMISSIONE si applica alla sola famiglia FATTURA. ⛔
+        Corregge un''affermazione sbagliata del changeSet 20260830-15, che dava per scontato che su
+        un registro non-FATTURA il pavimento di emissione si spegnesse da se'' perche'' le colonne
+        di override restano nulle: e'' FALSO, vendite.fn_get_pavimento_emissione dichiara «torna
+        SEMPRE una data, mai NULL» e senza override legge i giorni da config.parameters. Misurato il
+        2026-08-31 su un registro DDT: pavimento 2026-08-19, cioe'' attivo — un DDT datato piu''
+        indietro sarebbe stato rifiutato da una regola che riguarda le fatture. ⭐ La distinzione
+        sta QUI e non nel cancello perche'' questa funzione e'' la SEDE UNICA della composizione dei
+        due pavimenti: la usano la nascita del documento, la targa del dialog e il cancello, e
+        metterla nel solo cancello lascerebbe gli altri due a proporre un pavimento che poi non si
+        applica — tre risposte diverse alla stessa domanda. ⚠️ La firma NON cambia: la famiglia si
+        legge dal registro, che la funzione gia'' identifica. ℹ️ Il CHECK condizionato del
+        20260830-15 resta giusto per la sua ragione (quelle colonne non devono essere valorizzabili
+        su una famiglia non fiscale): sbagliata era solo la conseguenza. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_pavimento_emissione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_data_documento(
+                  p_registro_id     vendite.registri_fatturazione.id%TYPE,
+                  p_serie           vendite.registri_fatturazione.serie_default%TYPE,
+                  p_competenza_mese vendite.fatture.competenza_mese%TYPE
+              )
+               RETURNS TABLE(pavimento vendite.fatture.data%TYPE, origine text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_seq      vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+                  v_emi      vendite.fatture.data%TYPE;
+                  v_famiglia vendite.registri_fatturazione.famiglia_documento%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il pavimento EFFETTIVO della data di un documento — il
+                  --   maggiore fra quello della sequenza e quello del limite
+                  --   di emissione — e QUALE dei due ha vinto.
+                  --
+                  -- Regole:
+                  --   - una sede sola: nascita, targa e cancello leggono qui;
+                  --   - `pavimento` e' sempre il maggiore, mai quello di
+                  --     `origine`;
+                  --   - il pareggio va a SEQUENZA, perche' la sua frase puo'
+                  --     portare un bersaglio;
+                  --   - ⭐ dal 2026-08-31 il limite di emissione vale sulla
+                  --     sola famiglia FATTURA.
+                  -- =========================================================
+
+                  -- ℹ️ I guard di parametro stanno nelle due primitive, che li
+                  --    hanno gia' entrambi: qui sarebbero una seconda copia
+                  --    della stessa validazione, e due copie divergono.
+                  v_seq := vendite.fn_get_pavimento_sequenza(p_registro_id, p_serie);
+
+                  -- ⭐ LA FAMIGLIA DECIDE SE IL LIMITE SI APPLICA.
+                  --   Il limite di emissione risponde alla domanda «questo
+                  --   documento e' ancora emettibile?», ed e' una regola della
+                  --   FATTURA (differita): su un DDT o un ordine non vuole
+                  --   dire niente.
+                  -- ⛔ E NON si spegne da solo: vendite.fn_get_pavimento_emissione
+                  --   «torna SEMPRE una data, mai NULL» — senza override sul
+                  --   registro legge i giorni da config.parameters. Lasciarlo
+                  --   correre rifiuterebbe un DDT datato indietro per una
+                  --   regola che non lo riguarda.
+                  SELECT r.famiglia_documento
+                    INTO v_famiglia
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF v_famiglia = 'FATTURA' THEN
+                      v_emi := vendite.fn_get_pavimento_emissione(p_registro_id, p_competenza_mese);
+                  ELSE
+                      v_emi := NULL;
+                  END IF;
+
+                  -- ⚠️ GREATEST IGNORA I NULL (torna NULL solo se lo sono
+                  --    tutti): la sequenza risponde NULL quando non e' ancora
+                  --    uscito niente, e ora anche il limite risponde NULL sulle
+                  --    famiglie non fiscali. Nessun COALESCE difensivo.
+                  RETURN QUERY
+                  SELECT GREATEST(v_seq, v_emi),
+                         CASE
+                             -- ⭐ Il pareggio va a SEQUENZA: a parita' di data
+                             --    si sceglie la frase che puo' portare
+                             --    l'operatore su un documento vero.
+                             WHEN v_seq IS NOT NULL
+                                  AND (v_emi IS NULL OR v_seq >= v_emi) THEN 'SEQUENZA'::text
+                             WHEN v_emi IS NOT NULL                     THEN 'EMISSIONE'::text
+                             -- Nessun pavimento da nessuna delle due parti:
+                             -- «nessun vincolo». Sulle famiglie non fiscali e'
+                             -- il caso NORMALE finche' non e' uscito nessun
+                             -- numero.
+                             ELSE NULL::text
+                         END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_pavimento_data_documento(vendite.registri_fatturazione.id%TYPE, vendite.registri_fatturazione.serie_default%TYPE, vendite.fatture.competenza_mese%TYPE)
+              IS 'Il pavimento EFFETTIVO della data di un documento — il maggiore fra il pavimento della SEQUENZA (vendite.fn_get_pavimento_sequenza) e quello del LIMITE DI EMISSIONE (vendite.fn_get_pavimento_emissione) — e quale dei due ha vinto. ⛔ E'' LA SEDE UNICA, e il motivo per cui esiste e'' che il pavimento effettivo serve in TRE posti: la nascita del documento (fn_calcola_data_documento), la targa del dialog (fn_get_pavimento_lotto) e il cancello (fn_get_next_progressivo). Tre GREATEST scritti a mano sarebbero tre implementazioni della stessa regola. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-6): IL LIMITE DI EMISSIONE SI APPLICA ALLA SOLA FAMIGLIA `FATTURA`. Risponde alla domanda «questo documento e'' ancora emettibile?», che e'' una regola della fattura differita: su un DDT, un ordine, un reso o una commessa non vuole dire niente. ⛔ E NON SI SPEGNE DA SOLO — il changeSet 20260830-15 lo dava per scontato ed era SBAGLIATO: vendite.fn_get_pavimento_emissione dichiara «torna SEMPRE una data, mai NULL» e, senza override sul registro, legge i giorni da config.parameters. Misurato il 2026-08-31 su un registro di famiglia DDT: pavimento 2026-08-19, cioe'' attivo — un DDT datato piu'' indietro sarebbe stato rifiutato da una regola che non lo riguarda. ⚠️ La distinzione sta QUI e non nel cancello proprio perche'' questa e'' la sede unica: metterla nel solo cancello lascerebbe la nascita e la targa a proporre e a mostrare un pavimento che poi non si applica — tre risposte diverse alla stessa domanda. ⚠️ La FIRMA non cambia: la famiglia si legge dal registro, che la funzione gia'' identifica con p_registro_id; un parametro in piu'' avrebbe costretto tutti e tre i chiamanti a sapere una cosa che il registro sa gia'', e avrebbe creato un overload. ⭐ `pavimento` e'' SEMPRE quello EFFETTIVO, mai quello di `origine`: e'' il valore che va nella frase dell''errore e nella minDate del dialog, e nominare il pavimento di sequenza mentre a mordere e'' il limite direbbe all''operatore di scegliere una data CHE VERREBBE RIFIUTATA DI NUOVO. ⭐ `origine` (SEQUENZA | EMISSIONE) esiste per scegliere il CODICE ERRORE. ⚠️ IL PAREGGIO VA A SEQUENZA (decisione D-4): a parita'' di data le frasi non sono equivalenti — quella della sequenza puo'' portare un BERSAGLIO. ℹ️ GREATEST ignora i NULL, e ora sulle famiglie non fiscali il caso «pavimento e origine entrambi NULL» e'' quello NORMALE finche'' non e'' uscito nessun numero: chi legge deve trattarlo come «nessun vincolo». ℹ️ STABLE. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-4, rivisto da brief-db-registri-di-numerazione-emittente-e-trasloco C2-6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Il rollback non si scrive «a ritroso»: la revisione
+              --   precedente e' quella del cantiere limite-emissione, e si
+              --   ripristina da li'.
+              SELECT 'Rollback manuale: ri-applicare la revisione precedente di vendite.fn_get_pavimento_data_documento (cantiere brief-db-limite-emissione-e-data-verificata, DB-4)'::text;

@@ -410,26 +410,56 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertIn("attivo", ctx.exception.detail or "")
 
-    # Scopo: form-defaults articolo casta DEFAULT_IVA_ID a int (Fase 8).
+    # Scopo: form-defaults articolo legge DEFAULT_IVA (chiave naturale) e ne
+    # RISOLVE l'id sul lookup di `config.iva`.
+    @patch("apps.catalogo.services.catalogo_service.resolve_config_id_by_codice_interno")
     @patch("apps.catalogo.services.catalogo_service.ParameterService")
-    def test_fn_get_articolo_form_defaults_ok(self, mock_ps_cls):
+    def test_fn_get_articolo_form_defaults_ok(self, mock_ps_cls, mock_resolve):
         from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
 
-        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA_ID": "42"}
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA": "22"}
+        mock_resolve.return_value = 42
 
         result = fn_get_articolo_form_defaults()
 
         self.assertEqual(result, {"default_iva_id": 42})
         mock_ps_cls.return_value.get_defaults.assert_called_once_with(
-            ["DEFAULT_IVA_ID"],
+            ["DEFAULT_IVA"],
             django_user_id=None,
             group_ids=None,
             emittente_fiscale_id=None,
         )
 
-    # Scopo: parametro mancante -> default_iva_id a None (best-effort, no raise).
+    # Scopo: ⛔ IL CASO CHE DISCRIMINA, e senza di lui il rename sembrerebbe
+    # gia' a posto. Il `codice_interno` e' `22`, cioe' un NUMERO: un lettore
+    # rimasto indietro che facesse `int()` non fallirebbe — otterrebbe l'ID 22,
+    # che oggi in `config.iva` non esiste ma che il modello ammette eccome, e il
+    # giorno che esistesse sarebbe un'aliquota sbagliata proposta in silenzio su
+    # un dato che finisce sui documenti fiscali. Qui il lookup dice 7, e a
+    # vincere deve essere il lookup — mai il numero scritto nel parametro.
+    @patch("apps.catalogo.services.catalogo_service.resolve_config_id_by_codice_interno")
     @patch("apps.catalogo.services.catalogo_service.ParameterService")
-    def test_fn_get_articolo_form_defaults_missing_param(self, mock_ps_cls):
+    def test_fn_get_articolo_form_defaults_non_casta_il_codice(
+        self, mock_ps_cls, mock_resolve
+    ):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA": "22"}
+        mock_resolve.return_value = 7
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": 7})
+        mock_resolve.assert_called_once()
+        self.assertEqual(mock_resolve.call_args.args[0], "config.iva")
+        self.assertEqual(mock_resolve.call_args.args[1], "22")
+
+    # Scopo: parametro mancante -> default_iva_id a None (best-effort, no raise).
+    # ⚠️ E il lookup NON deve nemmeno partire: interrogare il database per un
+    # parametro che non c'e' e' un round-trip che non puo' rispondere.
+    @patch("apps.catalogo.services.catalogo_service.resolve_config_id_by_codice_interno")
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_missing_param(self, mock_ps_cls, mock_resolve):
         from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
 
         mock_ps_cls.return_value.get_defaults.return_value = {}
@@ -437,17 +467,40 @@ class CatalogoServiceTests(TestCase):
         result = fn_get_articolo_form_defaults()
 
         self.assertEqual(result, {"default_iva_id": None})
+        mock_resolve.assert_not_called()
 
-    # Scopo: parametro malformato -> default_iva_id a None (best-effort, no raise).
+    # Scopo: il codice non esiste (o l'aliquota e' disattivata) -> None, e il
+    # form si apre lo stesso. ⚠️ E' il contratto best-effort di questa funzione:
+    # far fallire il form-defaults spegnerebbe la creazione articolo per un
+    # default mancante.
+    @patch("apps.catalogo.services.catalogo_service.resolve_config_id_by_codice_interno")
     @patch("apps.catalogo.services.catalogo_service.ParameterService")
-    def test_fn_get_articolo_form_defaults_malformed_param(self, mock_ps_cls):
+    def test_fn_get_articolo_form_defaults_codice_non_risolvibile(
+        self, mock_ps_cls, mock_resolve
+    ):
         from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
 
-        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA_ID": "non-numerico"}
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA": "999"}
+        mock_resolve.side_effect = ServiceError(
+            code="E_CONFIG_MANCANTE", message="non trovato"
+        )
 
         result = fn_get_articolo_form_defaults()
 
         self.assertEqual(result, {"default_iva_id": None})
+
+    # Scopo: stringa vuota = assenza, non un codice da cercare.
+    @patch("apps.catalogo.services.catalogo_service.resolve_config_id_by_codice_interno")
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_stringa_vuota(self, mock_ps_cls, mock_resolve):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA": "  "}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": None})
+        mock_resolve.assert_not_called()
 
     # Scopo: campi sconosciuti nel payload -> errore esplicito, non ignorati.
     def test_fn_create_articolo_unknown_key(self):

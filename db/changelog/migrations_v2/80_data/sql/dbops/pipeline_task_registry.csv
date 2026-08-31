@@ -20,3 +20,4 @@ id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_upd
 19,1,snapshot_indirizzi_lotto,Snapshot indirizzi fattura da anagrafica cliente (step DRAFT),true,{},2026-07-31 00:00:00+02,titodb,,
 20,1,genera_scadenze_lotto,Generazione piano rate fattura (step EMESSA),true,{},2026-08-01 00:00:00+02,titodb,,
 21,1,popola_fatture_rettifiche,Legame documentale note di credito: proietta la coppia fattura rettificante -> fattura rettificata,true,{},2026-08-18 00:00:00+02,mctit,,
+22,1,consuma_plafond_lotto,Consumo del plafond dei titoli IVA del lotto (step DEFINITIVA): registra i movimenti sui titoli per le righe che il plafond copre solo in parte,true,{},2026-08-31 00:00:00+02,mctit,,

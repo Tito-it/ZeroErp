@@ -325,8 +325,23 @@ delle scritture precedenti sopravviva).
 | `DEFAULT_UTILITY` | EXACT | `config.utilities.codice_interno` |
 | `state_code_iso3` (default ISO3 stati) | — (parametro single-shot, no pattern) | `config.stati.code_iso3` (chiave naturale ISO) |
 | `soggetto_default_stato_iso2` | — | `config.stati.code_iso2` |
+| `DEFAULT_IVA` | EXACT | `config.iva.codice_interno` |
 
-**Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile (es. `DEFAULT_IVA_ID` -> `config.iva.id`). Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
+**Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile. Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
+
+> ✅ **`DEFAULT_IVA_ID` era l'esempio di questo debito, ed e' SALDATO** (2026-08-31).
+> I quattro passi sono stati percorsi tutti: `codice_interno` su `config.iva` +
+> lock (`20260829-43`), rinomina del parametro a **`DEFAULT_IVA`** con valore
+> `22` — il codice, non l'id — e riga nel registry. Il lettore BE
+> (form-defaults dell'articolo) risolve ora con
+> `resolve_config_id_by_codice_interno`.
+>
+> ⛔ **E la lezione che quel caso ha lasciato, perche' vale per i prossimi**: il
+> `codice_interno` dell'aliquota ordinaria e' **`22`**, cioe' un numero. Un
+> lettore rimasto indietro che facesse `int()` **non fallirebbe** — otterrebbe
+> l'id 22, che oggi non esiste ma che il modello ammette eccome. ⇒ Dopo una
+> rinomina di questo tipo il gemello negativo non e' opzionale: cercare il
+> **nome vecchio** per nome nudo, e pretendere zero occorrenze.
 
 **Override del principio**: ammessi solo in casi documentati (es. join interni cross-schema con vincoli di performance, FK fisica reale dove il reseed non e' possibile). Va motivato nella migration o nel manuale.
 
@@ -1573,6 +1588,37 @@ jsonb_build_object(
   'dettaglio',  jsonb_build_object('bloccate', v_n_bloccate, 'totali', v_n_rettifiche),
   'valori',     jsonb_build_array(...))               -- gli argomenti del messaggio
 ```
+
+⛔ **Un `reason` NON porta il prefisso `E_`, che è riservato ai codici a
+catalogo.** Il `codice` e il `reason` stanno nella stessa `jsonb` e si somigliano,
+ma sono cose diverse: il primo è un errore registrato in `config.codici_errore`
+con una policy e un messaggio, il secondo è un **motivo macchina** che il
+frontend usa come chiave di lettura.
+
+⚠️ **È una convenzione presidiata solo per caso, e va rispettata a mano.** Il
+guardrail `apps/core/tests/test_error_codes_db_policy_guardrail.py` cerca i
+letterali `E_*` nei corpi delle funzioni per trovare i codici che il database può
+nominare: un `reason` col prefisso `E_` gli arriva come **codice senza policy**, e
+il test diventa rosso. Non sa distinguerli, e **non gli si insegnerà** — sarebbe
+un'euristica su un letterale dentro un corpo PL/pgSQL, cioè un cancello che
+sbaglia in entrambe le direzioni; dopo due blocchi sbagliati qualcuno lo spegne, e
+un presidio spento è peggio di uno assente.
+
+⚠️ **Il caso reale, perché l'errore è comprensibile.** Il 2026-08-31
+`script.fn_check_annullo_movimento_titolo_iva` emetteva `reason = 'E_UN_ANNULLO'`
+— che non nasceva come *«E_ di errore»* ma come **«è un annullo»**, la frase
+italiana abbreviata. Due grammatiche che si scrivono uguale. Rinominato in
+`RIGA_DI_ANNULLO` (changeSet `20260831-35`).
+
+⭐ **E quando il nome si sceglie, si guardano i vicini.** Nella stessa funzione
+viveva già `GIA_ANNULLATO`, che dice il **contrario** — quella riga *è stata*
+annullata, contro questa riga *è* l'annullo di un'altra. Due motivi che
+differiscono per una parola, su un pulsante spento, si leggono male esattamente
+quando conta: si preferisce dire **cosa è** la riga invece di ripetere l'avverbio.
+
+⚠️ **Il `reason_key` invece è un INDIRIZZO, non un valore**: non si rinomina per
+inseguire il `reason`. Il frontend rende il testo da lì, quindi cambiarlo costa
+due file di `locales` e non compra niente.
 
 #### 12.5.2 ⭐ La madre CHIAMA la check — e questo è il punto
 

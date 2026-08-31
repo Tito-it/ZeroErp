@@ -77,7 +77,7 @@ SELECT
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo ORDER BY t.id LIMIT 1)     AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                            AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r WHERE r.attivo IS TRUE ORDER BY r.id LIMIT 1)                      AS registro_id,
+  script.fn_pgtap_registro_fattura()                      AS registro_id,
   -- Dal 2026-07-18 (DL-28) la causale trasporto e' obbligatoria all'emissione
   -- del DDT, e VENDITA e' l'unica fatturabile.
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                         AS causale_vendita_id,

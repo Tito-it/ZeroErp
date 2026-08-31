@@ -27,9 +27,69 @@ La logica di `vendite.fn_generate_fatture_righe()` (funzione DB **rimossa**) e` 
 - In `dry_run` conta gli elementi ma non esegue insert/update.
 - Error handling centralizzato via `ErrorManager`.
 
+### ⛔ Le TESTATE si creano PRIMA delle chiavi (2026-08-31, `I4`)
+
+L'ordine dei passi e` diventato un **requisito**, non una comodita`: l'IVA della
+riga la risolve ora `vendite.fn_resolve_iva_riga`, che vuole **cliente,
+emittente e data** — tre cose che stanno sulla TESTATA. Costruire le chiavi
+prima vorrebbe dire costruirle senza sapere l'IVA.
+⭐ Lo scambio non costa niente: `batch_get_or_create_fattura_headers` dipende
+solo da lotto e attivita`, mai dalle chiavi.
+
+```text
+1. mark RUNNING
+2. group inputs (batch)
+3. TESTATE  →  contesto IVA per fattura  →  risoluzione per attivita'
+4. validazioni + chiavi di gruppo
+5. aggregazione
+6. riga_nr progressivo
+7. INSERT righe + UPDATE attivita' (CTE)
+```
+
+⭐ **Una risoluzione per (fattura, articolo), non per attivita`.** La risposta
+dipende da articolo, cliente, emittente e data, e dentro una fattura gli ultimi
+tre sono fissi: un lotto massivo arriva a **50.000** attivita`, e senza cache
+sarebbero 50.000 round-trip.
+
+⛔ **Senza emittente ci si FERMA**, e non si scrive nulla — nemmeno le righe
+gia` risolte. La funzione DB e` `SECURITY INVOKER` su una tabella con RLS: senza
+contesto emittente leggerebbe zero titoli e risponderebbe con l'aliquota
+ordinaria *senza sollevare*. Fermarsi a meta` lascerebbe una fattura con alcune
+righe giuste e altre sbagliate, che e` peggio del rifiuto.
+
+### Il `meta` della riga porta il PERCHE` dell'IVA
+
+Ci finiscono **due** chiavi su dieci del composito: `iva_origine` e
+`iva_titolo_id` — i fatti che nessuno puo` ricostruire dopo.
+⚠️ Aliquota, natura e riferimento normativo **non si copiano**: si derivano da
+`iva_id` col JOIN su `config.iva` che i repository fanno gia`. Copiarli
+produrrebbe una frase che invecchia, ed e` il motivo per cui
+`fatture_righe.iva_perc` e` stata tolta.
+
+📌 Nel `meta` finisce anche la `group_key` per intero, quindi l'**atto** della
+riga (`group_key.contratto_id`) e` gia` scritto oggi — prima che
+`vendite.fatture_atti` sia popolata.
+
+### ⛔ L'ordinamento delle righe e` per CODICE articolo, non per UUID
+
+`riga_nr` discende da una chiave di ordinamento che fino al 2026-08-31 usava
+`articolo_id`, cioe` un **UUID**: deterministico per la macchina, **rumore** per
+chi guarda la fattura. Ora usa `catalogo.articoli.codice`.
+
+⚠️ `codice` e non `codice_interno`, di proposito: qui l'ordinamento serve a chi
+**legge il documento**, e chi legge vede il `codice`. Ne discende che rinominare
+un articolo fra due rigenerazioni di un lotto in bozza **cambia l'ordine** — ⭐ ed
+e` corretto che cambi, perche` il documento riflette i codici di adesso. Va detto,
+o il prossimo lettore torna all'UUID credendo di riparare qualcosa.
+ℹ️ Le righe senza articolo (rettifiche, oneri) restano in testa: chiave vuota.
+
 ## Dipendenze DB
 - Tabelle `vendite.attivita_fatturabili`, `vendite.fatture_righe`, `vendite.fatture`.
 - Funzione DB `vendite.fn_get_or_create_fattura_header(...)` per header.
+- `vendite.fn_resolve_iva_riga` (l'IVA della riga) e
+  `anagrafiche.fn_get_emittente_fiscale_pk` (il contesto della testata).
+- ⚠️ `catalogo.articoli.codice` entra nella proiezione delle attivita` da
+  fatturare per l'ordinamento leggibile.
 - Vincoli di integrita`/consistenza restano in DB.
 
 ## Matrice responsabilita` (Python vs DB)

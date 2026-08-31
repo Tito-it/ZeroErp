@@ -89,6 +89,13 @@ SELECT
   (SELECT s.codice_interno FROM config.stati_doc_fiscale s WHERE s.attivo IS TRUE
     ORDER BY COALESCE(s.ordine, 32767), s.id LIMIT 1) AS stato_fiscale_ci;
 
+
+-- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva: la riga sopra
+--   lo sceglieva indipendentemente, e dal 2026-08-30
+--   vendite.trgfn_fatture_guard_registro_emittente non ammette piu' la
+--   coincidenza. L'helper risponde con il registro di QUESTO emittente,
+--   creandolo se non ce n'e' uno.
+UPDATE tmp_dc_refs SET registro_id = script.fn_pgtap_registro_fattura((SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = tmp_dc_refs.emittente_fiscale_id));
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
       AND uom_id IS NOT NULL AND tipo_doc_fiscale_id IS NOT NULL

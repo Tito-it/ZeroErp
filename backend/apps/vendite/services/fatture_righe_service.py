@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from django.db import transaction
 
@@ -49,6 +50,10 @@ class _GruppoRiga:
     kit: _KitSnapshot
     articolo_id: str
     descrizione: str | None
+    # Il codice a video dell'articolo: NON entra nella chiave di gruppo (due
+    # attivita' dello stesso `articolo_id` hanno lo stesso codice per
+    # costruzione) — serve solo all'ORDINAMENTO, che deve essere leggibile.
+    articolo_codice: str | None = None
     qta_totale: Decimal = Decimal(0)
     attivita_ids: list[int] = field(default_factory=list)
 
@@ -90,11 +95,52 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
             log_to_db=True,
         )
-        self._guard_coerenza_rettifica(
-            row,
-            function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
+        fn = "vendite.fatture_righe_service.group_attivita_fatturabili"
+        self._guard_coerenza_rettifica(row, function_name=fn)
+        # ⚠️ La facade risolve l'IVA come il giro vero, ma su un contesto
+        #    RIDOTTO: qui l'attività può non avere ancora una testata, quindi il
+        #    cliente è il suo billing account e la data è quella dell'attività.
+        #    ⛔ L'AUTORITÀ resta `generate_fatture_righe`, che legge cliente,
+        #    emittente e data dalla TESTATA. Questo entrypoint esiste per
+        #    ispezionare la chiave di una singola attività, e va letto per
+        #    quello: su un'attività la cui fattura porta una data diversa, le
+        #    due risposte possono legittimamente non coincidere.
+        iva_id = self._risolvi_iva_diagnostica(row, function_name=fn)
+        return self._build_group_key(row, iva_id=iva_id)
+
+    # Scopo: l'IVA per la sola facade di ispezione. Vedi l'avvertenza sopra.
+    def _risolvi_iva_diagnostica(
+        self, row: GroupAttivitaInput, *, function_name: str
+    ) -> int | None:
+        if row.fattura_riga_rettificata_id is not None:
+            return row.rett_iva_id
+        from apps.anagrafiche.db.billing_account_repository import (
+            BillingAccountRepository,
         )
-        return self._build_group_key(row)
+        from apps.vendite.services.iva_resolver_service import IvaResolverService
+
+        ba_id = row.dest_billing_account_id
+        emittente_id = BillingAccountRepository().get_emittente_fiscale_id(int(ba_id))
+        ErrorManager.require(
+            emittente_id is not None,
+            code="E_GROUP_ATTIVITA_INVALID_DATA",
+            message="Dati attivita non validi per grouping.",
+            detail=(
+                f"emittente fiscale non risolvibile per il billing account {ba_id}: "
+                "il trattamento IVA non e' determinabile"
+            ),
+            context={"attivita_id": row.attivita_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        resolver = IvaResolverService()
+        parte = resolver.risolvi_anteprima(
+            articolo_id=str(row.articolo_id),
+            billing_account_id=int(ba_id),
+            emittente_fiscale_id=int(emittente_id),
+            data_riferimento=row.data_attivita,
+        )
+        return parte.get("iva_id")
 
     # Scopo: Il cartellino `tipo_movimento` e il puntatore
     #        `fattura_riga_rettificata_id` sono una COPPIA, e il guard e'
@@ -144,8 +190,15 @@ class FattureRigheService:
     #        `commesse_attivita`/`attivita_fatturabili` non ha la colonna: senza
     #        questa lettura, «copia esatta compresi gli sconti» non sarebbe
     #        realizzabile senza toccare la catena di TUTTE le fatture.
+    # ⛔ `iva_id` E' UN PARAMETRO, e non e' pignoleria di firma: dal 2026-08-31
+    #    l'IVA della riga NON sta piu' su `GroupAttivitaInput` — la proiezione ha
+    #    smesso di leggere `art.iva_id`, che era la risposta autonoma alla stessa
+    #    domanda a cui risponde il risolutore. Passarla esplicitamente rende
+    #    IMPOSSIBILE costruire una chiave senza aver risolto: se il campo fosse
+    #    rimasto sulla dataclass con un default, un chiamante distratto avrebbe
+    #    prodotto righe a IVA `None` senza nessun errore.
     @staticmethod
-    def _build_group_key(row: GroupAttivitaInput) -> GroupAttivitaKey:
+    def _build_group_key(row: GroupAttivitaInput, *, iva_id: int | None) -> GroupAttivitaKey:
         use_competenza = (
             row.competenza_dal is not None
             and row.competenza_al is not None
@@ -166,7 +219,11 @@ class FattureRigheService:
             "prezzo_unitario": _to_decimal_str(
                 row.rett_prezzo_unitario if e_rettifica else row.prezzo_unitario
             ),
-            "iva_id": row.rett_iva_id if e_rettifica else row.iva_id,
+            # ⚠️ Sulla RETTIFICA vince la riga rettificata, non il risolutore:
+            #    N-1, «la nota di credito non puo' differire da quanto
+            #    fatturato». Ri-risolvere qui produrrebbe una gemella con
+            #    un'aliquota diversa da quella del documento che corregge.
+            "iva_id": row.rett_iva_id if e_rettifica else iva_id,
             "competenza_dal": _to_iso(row.competenza_dal) if use_competenza else None,
             "competenza_al": _to_iso(row.competenza_al) if use_competenza else None,
             "calcolo_qta_padre": row.calcolo_qta_padre,
@@ -182,7 +239,98 @@ class FattureRigheService:
             "sconto_percentuale": (
                 _to_decimal_str(row.rett_sconto_percentuale) if e_rettifica else None
             ),
+            # ⛔ Fuori dalla rettifica il contratto SPEZZA: due attività di atti
+            # diversi non possono finire nella stessa riga. Sulla rettifica è
+            # `None`, e il perché sta accanto al campo in `GroupAttivitaKey` —
+            # la gemella è identificata dalla riga che rettifica, che è più
+            # specifica del contratto.
+            "contratto_id": None if e_rettifica else row.contratto_id,
         }
+
+    # Scopo: l'IVA di ogni attività, risolta dalla SEDE UNICA.
+    #        Ritorna `attivita_id -> (iva_id, meta_iva)`.
+    # ⭐ CACHE PER (fattura, articolo), e non è un'ottimizzazione opzionale: la
+    #    risposta del risolutore dipende da articolo, cliente, emittente e data
+    #    — e dentro una fattura gli ultimi tre sono fissi. Senza cache un lotto
+    #    massivo farebbe una chiamata per ATTIVITÀ (il limite è 50.000): con la
+    #    cache ne fa una per articolo distinto per fattura.
+    # ⚠️ Le RETTIFICHE non passano di qui: la loro IVA viene dalla riga di
+    #    fattura rettificata (N-1), e chiamare il risolutore darebbe una gemella
+    #    con un'aliquota diversa da quella del documento che corregge.
+    def _risolvi_iva_attivita(
+        self,
+        *,
+        group_inputs: dict[int, GroupAttivitaInput],
+        header_map: dict[int, int],
+        attivita_ids: list[int],
+        function_name: str,
+    ) -> dict[int, tuple[int | None, dict[str, Any]]]:
+        from apps.vendite.services.iva_resolver_service import IvaResolverService
+
+        ctx_map = self.repository.batch_get_fattura_iva_context(
+            sorted({header_map[a] for a in attivita_ids if a in header_map})
+        )
+        resolver = IvaResolverService()
+        cache: dict[tuple[int, str], tuple[int | None, dict[str, Any]]] = {}
+        esito: dict[int, tuple[int | None, dict[str, Any]]] = {}
+
+        for aid in attivita_ids:
+            gi = group_inputs.get(aid)
+            fattura_id = header_map.get(aid)
+            if gi is None or fattura_id is None:
+                # Non si solleva QUI: a dirlo con un messaggio leggibile e'
+                # il `require` del ciclo di validazione, che nomina l'attivita'.
+                continue
+            if gi.fattura_riga_rettificata_id is not None:
+                esito[aid] = (gi.rett_iva_id, {})
+                continue
+
+            chiave = (fattura_id, str(gi.articolo_id))
+            if chiave not in cache:
+                ctx = ctx_map.get(fattura_id) or {}
+                # ⛔ `P3`: senza emittente il calcolo si FERMA. La funzione DB è
+                #    `SECURITY INVOKER` e legge una tabella con RLS: senza
+                #    contesto emittente legge zero titoli e risponde con
+                #    l'aliquota ordinaria SENZA sollevare. Non è una lista più
+                #    corta — è un'imposta applicata dove non andava, su un
+                #    documento che nessuno segnalerà.
+                ErrorManager.require(
+                    ctx.get("emittente_fiscale_id") is not None,
+                    code="E_GROUP_ATTIVITA_INVALID_DATA",
+                    message="Dati attivita non validi per grouping.",
+                    detail=(
+                        "emittente fiscale non risolvibile per la fattura "
+                        f"{fattura_id}: il trattamento IVA non e' determinabile"
+                    ),
+                    context={"attivita_id": aid, "fattura_id": fattura_id},
+                    function_name=function_name,
+                    log_to_db=True,
+                )
+                ErrorManager.require(
+                    ctx.get("data_riferimento") is not None,
+                    code="E_GROUP_ATTIVITA_INVALID_DATA",
+                    message="Dati attivita non validi per grouping.",
+                    detail=f"fattura {fattura_id} senza data: IVA non determinabile",
+                    context={"attivita_id": aid, "fattura_id": fattura_id},
+                    function_name=function_name,
+                    log_to_db=True,
+                )
+                # ⚠️ ANTEPRIMA, cioè SENZA imponibile, ed è deliberato in questa
+                #    slice: passando l'importo il risolutore può tornare DUE
+                #    parti (plafond che finisce a metà riga), e la riga andrebbe
+                #    spezzata. La spezzatura vive nel giro del lotto, dove il
+                #    plafond si CONSUMA (`P5`) — qui una proiezione a due parti
+                #    sarebbe un numero che invecchia fino alla DEFINITIVA.
+                parte = resolver.risolvi_anteprima(
+                    articolo_id=str(gi.articolo_id),
+                    billing_account_id=ctx["billing_account_id"],
+                    emittente_fiscale_id=ctx["emittente_fiscale_id"],
+                    data_riferimento=ctx["data_riferimento"],
+                )
+                cache[chiave] = (parte.get("iva_id"), resolver.meta_riga(parte))
+            esito[aid] = cache[chiave]
+
+        return esito
 
     # Scopo: Estrae dallo `meta` dell'attività lo snapshot di esposizione kit.
     # Perimetro: nessuna risoluzione di distinta base — il push ha già scritto
@@ -262,9 +410,34 @@ class FattureRigheService:
             # 1. Le attività entrano in lavorazione.
             self.repository.mark_attivita_running(lotto_id)
 
-            # 2. Batch fetch group inputs (1 round-trip) + validazione per-attività.
+            # 2. Batch fetch group inputs (1 round-trip).
             group_inputs = self.repository.batch_get_group_attivita_inputs(attivita_ids)
+
+            # 3. Le TESTATE, e stanno PRIMA delle chiavi dal 2026-08-31 (`I4`).
+            #    ⛔ L'ordine è un requisito, non una comodità: l'IVA della riga
+            #    ora la risolve il risolutore, che vuole cliente, emittente e
+            #    data — cioè tre cose che stanno sulla TESTATA. Costruire le
+            #    chiavi prima vorrebbe dire costruirle senza sapere l'IVA.
+            #    ⭐ Lo scambio non costa niente: questa chiamata dipende solo da
+            #    lotto e attività, mai dalle chiavi.
+            header_map = self.repository.batch_get_or_create_fattura_headers(
+                lotto_id, attivita_ids
+            )
+            # ⚠️ Si passano TUTTE le attivita': la condizione «ha un group
+            #    input» era scritta due volte — qui come filtro e sotto come
+            #    `require` — e due scritture della stessa condizione sono due
+            #    cose da tenere d'accordo. A parlare resta il `require`, che e'
+            #    quello che produce un errore leggibile invece di un `KeyError`.
+            iva_risolta = self._risolvi_iva_attivita(
+                group_inputs=group_inputs,
+                header_map=header_map,
+                attivita_ids=attivita_ids,
+                function_name=fn,
+            )
+
+            # 4. Validazione per-attività + chiavi di gruppo.
             group_keys: dict[int, GroupAttivitaKey] = {}
+            iva_meta_per_attivita: dict[int, dict[str, Any]] = {}
             for aid in attivita_ids:
                 gi = group_inputs.get(aid)
                 ErrorManager.require(
@@ -291,7 +464,9 @@ class FattureRigheService:
                 # la chiave del GRUPPO in lavorazione, un'altra cosa. Due nomi
                 # uguali per due cose diverse nello stesso scope si leggono male
                 # e si sbagliano al primo refactor.
-                chiave = self._build_group_key(gi)
+                iva_id_risolto, meta_iva = iva_risolta[aid]
+                iva_meta_per_attivita[aid] = meta_iva
+                chiave = self._build_group_key(gi, iva_id=iva_id_risolto)
                 # `attivita_fatturabili.prezzo_unitario` è nullable, ma
                 # `fatture_righe.prezzo_unitario` è NOT NULL: senza questo guard
                 # l'attività senza prezzo arriverebbe fino all'INSERT e
@@ -311,16 +486,11 @@ class FattureRigheService:
                 )
                 group_keys[aid] = chiave
 
-            # 3. Batch header creation (1 round-trip, N function calls server-side).
-            header_map = self.repository.batch_get_or_create_fattura_headers(
-                lotto_id, attivita_ids
-            )
-
-            # 4. Aggregazione: una riga per gruppo.
+            # 5. Aggregazione: una riga per gruppo.
             gruppi = self._aggrega(attivita_list, group_keys, header_map)
             self._guard_quantita_kit_omogenee(gruppi, function_name=fn)
 
-            # 5. riga_nr progressivo per fattura, su ordinamento deterministico
+            # 6. riga_nr progressivo per fattura, su ordinamento deterministico
             #    dei gruppi: altrimenti l'ordine delle righe cambierebbe a ogni
             #    rigenerazione dello stesso lotto.
             distinct_fattura_ids = list({g.fattura_id for g in gruppi})
@@ -373,22 +543,34 @@ class FattureRigheService:
                 righe_kit_padri.append(gruppo.kit.articolo_padre_id)
                 righe_sconti.append(_to_decimal(gk["sconto_percentuale"]))
                 righe_rettificate.append(gk["fattura_riga_rettificata_id"])
-                righe_metas.append(
-                    json.dumps(
-                        {
-                            "group_key": gk,
-                            "n_attivita": len(gruppo.attivita_ids),
-                            "attivita_ids": gruppo.attivita_ids,
-                        }
+                # ⭐ `iva_origine` e `iva_titolo_id` nel `meta`, come sui
+                #    documenti (`P2`): sono i due fatti che nessuno può
+                #    ricostruire dopo. Aliquota, natura e riferimento normativo
+                #    si DERIVANO da `iva_id` con il JOIN su `config.iva` — e
+                #    copiarli produrrebbe una frase che invecchia, che è il
+                #    motivo per cui `fatture_righe.iva_perc` è stata tolta.
+                # ⚠️ Preso dalla PRIMA attività del gruppo, e non è una scelta
+                #    arbitraria: le attività di un gruppo condividono la chiave,
+                #    quindi lo stesso `iva_id`, lo stesso articolo e la stessa
+                #    fattura — cioè esattamente ciò da cui la risoluzione
+                #    dipende.
+                meta_riga: dict[str, Any] = {
+                    "group_key": gk,
+                    "n_attivita": len(gruppo.attivita_ids),
+                    "attivita_ids": gruppo.attivita_ids,
+                }
+                if gruppo.attivita_ids:
+                    meta_riga.update(
+                        iva_meta_per_attivita.get(gruppo.attivita_ids[0]) or {}
                     )
-                )
+                righe_metas.append(json.dumps(meta_riga))
 
                 for aid in gruppo.attivita_ids:
                     att_ids.append(aid)
                     att_fattura_ids.append(gruppo.fattura_id)
                     att_riga_nrs.append(riga_nr)
 
-            # 6. INSERT righe + UPDATE attività (1 round-trip CTE, correlazione n→1).
+            # 7. INSERT righe + UPDATE attività (1 round-trip CTE, correlazione n→1).
             self.repository.batch_insert_righe_and_mark(
                 righe_fattura_ids=righe_fattura_ids,
                 righe_nrs=righe_nrs,
@@ -451,6 +633,7 @@ class FattureRigheService:
                     kit=kit,
                     articolo_id=attivita.articolo_id,
                     descrizione=attivita.articolo_descrizione,
+                    articolo_codice=attivita.articolo_codice,
                 )
                 gruppi[bucket] = gruppo
 
@@ -475,7 +658,21 @@ class FattureRigheService:
         uom_id = g.group_key["uom_id"]
         return (
             g.fattura_id,
-            str(g.group_key["articolo_id"] or ""),
+            # ⛔ IL CODICE, NON L'UUID. Fino al 2026-08-31 qui c'era
+            # `group_key["articolo_id"]`, cioe' l'`id` di `catalogo.articoli`:
+            # un UUID. L'ordine era perfettamente deterministico e perfettamente
+            # ILLEGGIBILE — due articoli della stessa famiglia agli antipodi del
+            # documento, e nemmeno un ordine sbagliato da criticare: proprio
+            # nessun ordine leggibile. Decisione di Tid, 2026-08-31.
+            # ⚠️ La stabilita' fra due rigenerazioni resta, ed e' l'altra meta'
+            # dello scopo di questa chiave: il codice di un articolo non cambia
+            # da solo. Se qualcuno lo rinomina fra due rigenerazioni di un lotto
+            # in bozza l'ordine cambia — ⭐ ed E' CORRETTO che cambi, perche' il
+            # documento riflette i codici di adesso. Va detto qui, o il prossimo
+            # lettore torna all'UUID credendo di riparare qualcosa.
+            # ℹ️ Le righe senza articolo (rettifiche, oneri) restano in testa
+            # come prima: chiave vuota.
+            str(g.articolo_codice or ""),
             g.group_key["competenza_dal"] or "",
             g.group_key["competenza_al"] or "",
             prezzo is None,
@@ -483,12 +680,20 @@ class FattureRigheService:
             uom_id is None,
             uom_id if uom_id is not None else 0,
             g.kit.key or "",
-            # Ultimo discriminante: due rettifiche di righe di fattura diverse
-            # possono avere articolo, prezzo e uom identici. Senza questo,
-            # l'ordine — e quindi il `riga_nr` — cambierebbe fra due
+            # Discriminante della rettifica: due rettifiche di righe di fattura
+            # diverse possono avere articolo, prezzo e uom identici. Senza
+            # questo, l'ordine — e quindi il `riga_nr` — cambierebbe fra due
             # rigenerazioni dello stesso lotto, che è ciò che tutta questa
             # chiave esiste per impedire.
             g.group_key["fattura_riga_rettificata_id"] or 0,
+            # ⚠️ E lo stesso vale per il contratto, per la stessa ragione: da
+            # quando spezza, due gruppi possono differire SOLO per l'atto — e
+            # due gruppi che l'ordinamento non distingue prendono il `riga_nr`
+            # nell'ordine in cui le attività sono arrivate. Aggiungere una voce
+            # alla chiave di raggruppamento senza aggiungerla a questa rende
+            # instabile la numerazione delle righe, e il sintomo si vede solo
+            # rigenerando lo stesso lotto due volte.
+            g.group_key["contratto_id"] or 0,
         )
 
     # Scopo: R10 — i componenti che confluiscono nella stessa riga padre devono

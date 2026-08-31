@@ -155,8 +155,14 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   `KIT_PADRE` col totale, sotto i soli componenti con `kit_esposto_in_fattura`).
   ⚠️ `id` è **NULL** sulle righe `KIT_PADRE`: non usarlo come chiave.
 - Nessun verbo di modifica su questo path: la fattura è prodotta dalla pipeline
-  e oltre EMESSA le righe sono congelate a DB
-  (`trgfn_fatture_righe_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).
+  e oltre la soglia di congelamento le righe sono congelate a DB
+  (`trgfn_fattura_satellite_guard_congelamento`, `E_FATTURA_RIGA_CONGELATA`).
+  ⚠️ La soglia è un **dato**, `config.stati_doc_fiscale.congela_fiscale` (oggi
+  da `DEFINITIVA` in poi), non una lista di stati scritta a mano: `D33` del
+  brief IVA l'ha portata a sede unica. E la guardia sulle righe non è più una
+  funzione sua — `D34` l'ha riassorbita nella generica dei satelliti, che
+  riceve il codice errore come secondo argomento del trigger: stesso rifiuto,
+  stesso messaggio, stesso bypass.
 
 ### `contatori` — i badge senza un secondo round-trip
 

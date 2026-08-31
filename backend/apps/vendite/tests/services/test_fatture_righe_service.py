@@ -8,7 +8,9 @@ Indice test eseguiti:
 6) FattureRigheServiceAggregazioneTests.test_prezzo_diverso_produce_due_righe
 7) FattureRigheServiceAggregazioneTests.test_quantita_aggregata_non_arrotondata
 8) FattureRigheServiceAggregazioneTests.test_sorgente_non_scritta_su_riga_aggregata
-9) FattureRigheServiceAggregazioneTests.test_riga_nr_deterministico
+9) FattureRigheServiceAggregazioneTests.test_riga_nr_ordina_per_codice_articolo
+9b) FattureRigheServiceAggregazioneTests.test_riga_nr_stabile_al_variare_dell_ordine_di_arrivo
+9c) FattureRigheServiceAggregazioneTests.test_riga_senza_codice_resta_in_testa
 10) FattureRigheServiceAggregazioneTests.test_marca_running_prima_di_generare
 11) FattureRigheServiceKitTests.test_snapshot_kit_congelato_sulla_riga
 12) FattureRigheServiceKitTests.test_componente_senza_padre_solleva
@@ -29,8 +31,22 @@ Indice test eseguiti:
 27) FattureRigheServiceRettificaTests.test_riga_nr_stabile_fra_due_generazioni
 28) FattureRigheServiceRettificaTests.test_array_nuovi_allineati_agli_altri
 29) FattureRigheServiceRettificaTests.test_puntatore_senza_etichetta_solleva
+30) FattureRigheServiceContrattoTests.test_contratti_diversi_non_si_fondono
+31) FattureRigheServiceContrattoTests.test_stesso_contratto_resta_una_riga
+32) FattureRigheServiceContrattoTests.test_senza_contratto_il_raggruppamento_non_cambia
+33) FattureRigheServiceContrattoTests.test_il_contratto_sopravvive_nel_meta_della_riga
+34) FattureRigheServiceContrattoTests.test_riga_nr_stabile_fra_contratti
+35) FattureRigheServiceContrattoTests.test_rettifiche_della_stessa_riga_non_si_spezzano_per_contratto
+36) FattureRigheServiceIvaRisoltaTests.test_iva_della_riga_viene_dal_risolutore
+37) FattureRigheServiceIvaRisoltaTests.test_senza_emittente_si_ferma
+38) FattureRigheServiceIvaRisoltaTests.test_rettifica_non_passa_dal_risolutore
+39) FattureRigheServiceIvaRisoltaTests.test_una_sola_risoluzione_per_articolo_e_fattura
+40) FattureRigheServiceIvaRisoltaTests.test_fatture_diverse_risolvono_separatamente
+41) FattureRigheServiceIvaRisoltaTests.test_meta_porta_origine_e_titolo
+42) FattureRigheServiceIvaRisoltaTests.test_iva_risolta_diversa_produce_due_righe
 """
 
+import json
 from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
@@ -47,13 +63,21 @@ ART_A = "019d53f6-58ca-7cb7-b77b-86d201ce9787"
 ART_B = "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa"
 ART_PADRE = "019e2234-001d-72a4-bae6-308aba680e07"
 
+# ⭐ I codici sono in ordine INVERSO rispetto agli UUID, e non e' un caso: ART_A
+# ha l'UUID minore ma il codice maggiore. E' l'unico modo di distinguere «ordina
+# per codice» da «ordina per id» — con codici concordi all'ordine degli UUID
+# entrambe le implementazioni passerebbero, e il test non proverebbe niente.
+CODICE_A = "ZZZ-001"
+CODICE_B = "AAA-001"
+_CODICI = {ART_A: CODICE_A, ART_B: CODICE_B}
+
 
 # Scopo: Repository fittizio parametrizzabile — le attività e i loro group input
 # sono iniettati dal test, così ogni caso descrive solo lo scenario che verifica.
 class _RepoMock:
     # Scopo: Inizializza la istanza.
     def __init__(self, attivita=None, prezzi=None, fatture=None, iva=None,
-                 rettifiche=None):
+                 rettifiche=None, contratti=None, senza_emittente=False):
         self.insert_calls = 0
         self.batch_insert_and_mark_calls = 0
         self.running_calls = 0
@@ -70,6 +94,13 @@ class _RepoMock:
         # deliberatamente DIVERSI da quelli dell'attivita' nei test, perche' e'
         # l'unico modo di distinguere «li ha copiati» da «ha usato i suoi».
         self._rettifiche = rettifiche or {}
+        # contratto per attivita_id: l'ATTO a cui l'attivita' appartiene.
+        # Assente = `None`, che e' il caso di tutto cio' che nasce fuori da un
+        # contratto ed e' la maggior parte del traffico.
+        self._contratti = contratti or {}
+        # ⛔ `P3`: senza emittente il calcolo si FERMA, non ripiega
+        #    sull'aliquota ordinaria.
+        self._senza_emittente = senza_emittente
 
     def _make_group_input(self, attivita_id):
         rett = self._rettifiche.get(attivita_id) or {}
@@ -82,7 +113,6 @@ class _RepoMock:
                 self._prezzi[attivita_id] if attivita_id in self._prezzi
                 else Decimal("10.50")
             ),
-            iva_id=self._iva.get(attivita_id, 22),
             competenza_dal=date(2026, 1, 1),
             competenza_al=date(2026, 1, 31),
             data_attivita=date(2026, 1, 10),
@@ -96,6 +126,7 @@ class _RepoMock:
             rett_prezzo_unitario=rett.get("prezzo"),
             rett_sconto_percentuale=rett.get("sconto"),
             rett_iva_id=rett.get("iva"),
+            contratto_id=self._contratti.get(attivita_id),
         )
 
     def _articolo_di(self, attivita_id):
@@ -125,6 +156,28 @@ class _RepoMock:
     def batch_get_or_create_fattura_headers(self, lotto_id, attivita_ids):
         return {aid: self._fatture.get(aid, 500) for aid in attivita_ids}
 
+    # Scopo: il contesto di testata che il risolutore IVA vuole.
+    # ⚠️ `emittente_fiscale_id` e' la PK di `emittenti_fiscali`, non il
+    #    `soggetto_ruolo_id`: qui e' un numero finto, ma il nome dice quale.
+    def batch_get_fattura_iva_context(self, fattura_ids):
+        if self._senza_emittente:
+            return {fid: {"billing_account_id": 200, "emittente_fiscale_id": None,
+                          "data_riferimento": date(2026, 1, 31)} for fid in fattura_ids}
+        return {
+            fid: {"billing_account_id": 200, "emittente_fiscale_id": 77,
+                  "data_riferimento": date(2026, 1, 31)}
+            for fid in fattura_ids
+        }
+
+    # Scopo: mappa articolo -> iva che il risolutore finto restituira'.
+    #        I test parlano per `attivita_id` (piu' leggibile); il risolutore
+    #        vero e' interrogato per ARTICOLO, e la traduzione sta qui.
+    def iva_per_articolo(self):
+        mappa = {}
+        for aid, iva in self._iva.items():
+            mappa[self._articolo_di(aid)] = iva
+        return mappa
+
     # Scopo: Restituisce MAX(riga_nr) per lista di fattura_id.
     def get_max_riga_nrs(self, fattura_ids):
         return {fid: 0 for fid in fattura_ids}
@@ -142,10 +195,15 @@ class _RepoMock:
 
 
 # Scopo: Attività "normale" (non componente di kit) con quantità parametrica.
-def _attivita_base(attivita_id, quantita="2.0", articolo_id=ART_A, meta=None):
+def _attivita_base(attivita_id, quantita="2.0", articolo_id=ART_A, meta=None,
+                   articolo_codice=None):
     return AttivitaDaFatturare(
         id=attivita_id,
         articolo_id=articolo_id,
+        articolo_codice=(
+            articolo_codice if articolo_codice is not None
+            else _CODICI.get(articolo_id, "ART-000")
+        ),
         quantita=Decimal(quantita),
         prezzo_unitario=Decimal("10.50"),
         uom_id=3,
@@ -179,19 +237,55 @@ def _attivita_kit(
     )
 
 
-# Scopo: Esegue la generazione neutralizzando la transazione (test senza DB).
-def _genera(repo, *, dry_run=False):
+# Scopo: risolutore IVA finto — risponde per ARTICOLO, come quello vero.
+# ⚠️ `risolvi_anteprima` e non `risolvi`: sulla generazione delle righe l'IVA si
+#    chiede SENZA imponibile. Se il servizio passasse all'altra il mock non
+#    risponderebbe, ed e' voluto — la differenza fra le due e' se la riga puo'
+#    tornare spezzata in due parti.
+class _ResolverMock:
+    def __init__(self, mappa):
+        self._mappa = mappa
+        self.chiamate = []
+
+    def risolvi_anteprima(self, *, articolo_id, billing_account_id,
+                          emittente_fiscale_id, data_riferimento):
+        self.chiamate.append((articolo_id, billing_account_id, emittente_fiscale_id))
+        return {
+            "iva_id": self._mappa.get(articolo_id, 22),
+            "origine": "TITOLO" if articolo_id in self._mappa else "ARTICOLO",
+            "titolo_iva_id": 900 if articolo_id in self._mappa else None,
+        }
+
+    def meta_riga(self, parte):
+        return {"iva_origine": parte.get("origine"),
+                "iva_titolo_id": parte.get("titolo_iva_id")}
+
+
+# Scopo: Esegue la generazione neutralizzando la transazione (test senza DB) e
+#        il risolutore IVA (che altrimenti aprirebbe una connessione vera).
+def _genera(repo, *, dry_run=False, resolver=None):
     service = FattureRigheService(repository=repo)
+    fake = resolver or _ResolverMock(repo.iva_per_articolo())
     with patch(
         "apps.vendite.services.fatture_righe_service.transaction.atomic",
         return_value=nullcontext(),
+    ), patch(
+        "apps.vendite.services.iva_resolver_service.IvaResolverService",
+        return_value=fake,
     ):
         return service.generate_fatture_righe(99, dry_run=dry_run)
 
 
 class FattureRigheServiceUnitTests(SimpleTestCase):
     # Scopo: Verifica il caso `test_group_attivita_returns_group_key`.
-    def test_group_attivita_returns_group_key(self):
+    # ⚠️ La facade risolve l'IVA come il giro vero: senza mockare il risolutore e
+    #    il lookup dell'emittente aprirebbe una connessione, e in CI fallirebbe
+    #    per un motivo che col grouping non c'entra.
+    @patch("apps.vendite.services.iva_resolver_service.IvaResolverService")
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    def test_group_attivita_returns_group_key(self, mock_ba_cls, mock_resolver_cls):
+        mock_ba_cls.return_value.get_emittente_fiscale_id.return_value = 77
+        mock_resolver_cls.return_value = _ResolverMock({})
         service = FattureRigheService(repository=_RepoMock())
         result = service.group_attivita_fatturabili(11)
         self.assertEqual(result["articolo_id"], ART_A)
@@ -278,19 +372,52 @@ class FattureRigheServiceAggregazioneTests(SimpleTestCase):
             self.assertNotIn(chiave, repo.last_kwargs)
 
     # Scopo: L'ordine dei gruppi non segue l'ordine di arrivo delle attività.
-    def test_riga_nr_deterministico(self):
-        # Articolo B arriva per primo, ma A lo precede nell'ordinamento.
+    # ⛔ E ORDINA PER CODICE, NON PER UUID (decisione di Tid, 2026-08-31): qui
+    # ART_A ha l'UUID minore ma il codice MAGGIORE, quindi le due regole danno
+    # risposte opposte e il test sa distinguerle. Ordinare per UUID è
+    # deterministico e illeggibile: per chi guarda la fattura è rumore.
+    def test_riga_nr_ordina_per_codice_articolo(self):
         repo = _RepoMock(
             attivita=[
-                _attivita_base(11, articolo_id=ART_B),
-                _attivita_base(12, articolo_id=ART_A),
+                _attivita_base(11, articolo_id=ART_A),   # codice ZZZ-001
+                _attivita_base(12, articolo_id=ART_B),   # codice AAA-001
             ],
             prezzi={11: Decimal("10.50"), 12: Decimal("10.50")},
         )
         _genera(repo)
         kw = repo.last_kwargs
-        self.assertEqual(kw["righe_articolo_ids"], [ART_A, ART_B])
+        self.assertEqual(kw["righe_articolo_ids"], [ART_B, ART_A])
         self.assertEqual(kw["righe_nrs"], [1, 2])
+
+    # Scopo: ⭐ l'altra metà dello scopo di questa chiave, e va tenuta: il
+    # `riga_nr` non deve dipendere dall'ordine in cui le attività arrivano.
+    # Senza questo caso, un'implementazione che non ordinasse affatto
+    # passerebbe quello sopra a seconda di come è scritto il mock.
+    def test_riga_nr_stabile_al_variare_dell_ordine_di_arrivo(self):
+        def _ordine(attivita):
+            repo = _RepoMock(attivita=attivita,
+                             prezzi={11: Decimal("10.50"), 12: Decimal("10.50")})
+            _genera(repo)
+            return repo.last_kwargs["righe_articolo_ids"]
+
+        diretto = _ordine([_attivita_base(11, articolo_id=ART_A),
+                           _attivita_base(12, articolo_id=ART_B)])
+        inverso = _ordine([_attivita_base(12, articolo_id=ART_B),
+                           _attivita_base(11, articolo_id=ART_A)])
+        self.assertEqual(diretto, inverso)
+
+    # Scopo: ℹ️ le righe SENZA articolo (rettifiche, oneri) restano in testa —
+    # chiave vuota. È il comportamento di prima, e non deve cambiare.
+    def test_riga_senza_codice_resta_in_testa(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_base(11, articolo_id=ART_B),
+                _attivita_base(12, articolo_id=ART_A, articolo_codice=""),
+            ],
+            prezzi={11: Decimal("10.50"), 12: Decimal("10.50")},
+        )
+        _genera(repo)
+        self.assertEqual(repo.last_kwargs["righe_articolo_ids"], [ART_A, ART_B])
 
     # Scopo: Le attività entrano in lavorazione prima di produrre righe.
     def test_marca_running_prima_di_generare(self):
@@ -590,3 +717,201 @@ class FattureRigheServiceRettificaTests(SimpleTestCase):
         atteso = len(repo.last_kwargs["righe_nrs"])
         for chiave in ("righe_sconti", "righe_rettificate"):
             self.assertEqual(len(repo.last_kwargs[chiave]), atteso, chiave)
+
+
+class FattureRigheServiceContrattoTests(SimpleTestCase):
+    """L'ATTO nella chiave di aggregazione (`I4`, brief Fase 3 IVA §4.3)."""
+
+    # Scopo: il difetto vivo che questa voce corregge. Due attività identiche in
+    # TUTTO — articolo, prezzo, uom, IVA, competenza — tranne il contratto
+    # collassavano in una riga sola. Su quella riga aggregata nessuna domanda
+    # per atto ha una risposta: il CIG del primo contratto e quello del secondo
+    # pretenderebbero la stessa riga, e la FatturaPA vuole un blocco
+    # `DatiContratto` per atto.
+    # ⚠️ Il caso NON è di nicchia e non produce nessun errore: la fattura esce,
+    # i totali tornano, e a mancare è solo la distinzione.
+    def test_contratti_diversi_non_si_fondono(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")],
+            contratti={11: 3001, 12: 3002},
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 2)
+        self.assertEqual(sorted(kw["righe_qtas"]), [Decimal("3.0"), Decimal("5.0")])
+
+    # Scopo: ⭐ IL GEMELLO, e senza di lui il test precedente non discrimina —
+    # un'implementazione che spezzasse SEMPRE (per esempio mettendo
+    # `attivita_id` nella chiave) lo passerebbe. Stesso contratto ⇒ una riga
+    # sola, sommata: l'aggregazione resta quella di prima.
+    def test_stesso_contratto_resta_una_riga(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")],
+            contratti={11: 3001, 12: 3001},
+        )
+        _genera(repo)
+        kw = repo.last_kwargs
+        self.assertEqual(len(kw["righe_nrs"]), 1)
+        self.assertEqual(kw["righe_qtas"], [Decimal("8.0")])
+
+    # Scopo: la promessa scritta nel brief — «non sposta nessun raggruppamento
+    # esistente». Fuori da un contratto il valore è `None` per tutte le
+    # attività, ed è la maggior parte del traffico: se questo caso si spezzasse,
+    # la voce avrebbe cambiato il comportamento di TUTTE le fatture invece che
+    # delle sole che mescolano due atti.
+    def test_senza_contratto_il_raggruppamento_non_cambia(self):
+        repo = _RepoMock(attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")])
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 1)
+        self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("8.0")])
+
+    # Scopo: ⭐ finché `vendite.fatture_atti` non esiste, `fatture_righe` non ha
+    # una colonna per l'atto — quindi l'unica sede in cui il contratto della
+    # riga sopravvive è lo `meta`, dove la `group_key` finisce per intero. È ciò
+    # che rende la spezzatura RICOSTRUIBILE oggi: senza, si vedrebbero due righe
+    # separate e nessuno saprebbe perché.
+    def test_il_contratto_sopravvive_nel_meta_della_riga(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, "5.0"), _attivita_base(12, "3.0")],
+            contratti={11: 3001, 12: 3002},
+        )
+        _genera(repo)
+        contratti = sorted(
+            json.loads(m)["group_key"]["contratto_id"]
+            for m in repo.last_kwargs["righe_metas"]
+        )
+        self.assertEqual(contratti, [3001, 3002])
+
+    # Scopo: il `riga_nr` deve restare stabile fra due generazioni dello stesso
+    # lotto anche quando i gruppi differiscono SOLO per il contratto. ⚠️ È il
+    # caso che una voce aggiunta alla sola chiave di raggruppamento, e non
+    # all'ordinamento, romperebbe in silenzio: i due gruppi risulterebbero
+    # equivalenti all'ordinamento e prenderebbero il numero nell'ordine in cui
+    # le attività sono arrivate.
+    def test_riga_nr_stabile_fra_contratti(self):
+        def _ordine(attivita):
+            repo = _RepoMock(attivita=attivita, contratti={11: 3002, 12: 3001})
+            _genera(repo)
+            return [
+                json.loads(m)["group_key"]["contratto_id"]
+                for m in repo.last_kwargs["righe_metas"]
+            ]
+
+        diretto = _ordine([_attivita_base(11, "5.0"), _attivita_base(12, "3.0")])
+        inverso = _ordine([_attivita_base(12, "3.0"), _attivita_base(11, "5.0")])
+        self.assertEqual(diretto, inverso)
+        self.assertEqual(diretto, [3001, 3002])
+
+    # Scopo: ⛔ LA DECISIONE CHE VA PRESIDIATA, e senza questo test si perde.
+    # Su una RETTIFICA il contratto NON entra nella chiave: l'identità di una
+    # riga di nota di credito è la riga di fattura che rettifica, che è
+    # strettamente più specifica. Qui le due attività rettificano la STESSA riga
+    # e dichiarano contratti DIVERSI: devono restare una riga sola, o
+    # l'invariante «due rettifiche della stessa riga restano aggregabili» si
+    # romperebbe in silenzio su un dato incoerente a monte.
+    def test_rettifiche_della_stessa_riga_non_si_spezzano_per_contratto(self):
+        repo = _RepoMock(
+            attivita=[
+                _attivita_base(11, quantita="-2.0"),
+                _attivita_base(12, quantita="-3.0"),
+            ],
+            rettifiche={11: _rettifica(7001), 12: _rettifica(7001)},
+            contratti={11: 3001, 12: 3002},
+        )
+        _genera(repo)
+        self.assertEqual(len(repo.last_kwargs["righe_nrs"]), 1)
+        self.assertEqual(repo.last_kwargs["righe_qtas"], [Decimal("-5.0")])
+
+
+class FattureRigheServiceIvaRisoltaTests(SimpleTestCase):
+    """`I4`: l'IVA della riga di fattura viene dal RISOLUTORE (piano Fase 3 §4.3)."""
+
+    # Scopo: ⭐ l'auto-fill è morto. Fino al 2026-08-31 la proiezione leggeva
+    # `art.iva_id` e quella era la risposta: la nona risposta autonoma alla
+    # domanda «che IVA ha questa riga», che scavalcava l'uso della fornitura e i
+    # titoli documentati del cliente. Ora risponde il risolutore, e questo test
+    # lo prova facendogli dire un valore che nessun'altra fonte direbbe.
+    def test_iva_della_riga_viene_dal_risolutore(self):
+        repo = _RepoMock(attivita=[_attivita_base(11)])
+        _genera(repo, resolver=_ResolverMock({ART_A: 4}))
+        self.assertEqual(repo.last_kwargs["righe_iva_ids"], [4])
+
+    # Scopo: ⛔ IL PRESIDIO PIÙ IMPORTANTE DEL PIANO (`P3`), e il difetto che
+    # previene non ha NESSUN sintomo. La funzione DB è `SECURITY INVOKER` e
+    # legge una tabella con RLS: senza contesto emittente legge zero titoli e
+    # risponde con l'aliquota ORDINARIA senza sollevare — cioè l'IVA piena a un
+    # esportatore abituale, su una fattura che nessuno segnalerà.
+    # ⇒ Senza emittente ci si FERMA. Mai una riga scritta con un ripiego.
+    def test_senza_emittente_si_ferma(self):
+        repo = _RepoMock(attivita=[_attivita_base(11)], senza_emittente=True)
+        with self.assertRaises(ServiceError) as exc:
+            _genera(repo)
+        self.assertEqual(exc.exception.code, "E_GROUP_ATTIVITA_INVALID_DATA")
+        self.assertIn("emittente", (exc.exception.detail or "").lower())
+        # ⛔ E non ha scritto NIENTE: fermarsi a metà lascerebbe una fattura con
+        #    alcune righe risolte e altre no, che è peggio del rifiuto.
+        self.assertEqual(repo.batch_insert_and_mark_calls, 0)
+
+    # Scopo: N-1 — «la nota di credito non può differire da quanto fatturato».
+    # ⛔ Su una RETTIFICA il risolutore NON viene interrogato: l'IVA è quella
+    # della riga di fattura rettificata. Qui il risolutore direbbe 4 e la riga
+    # rettificata dice 9: a vincere deve essere la seconda, e il risolutore non
+    # deve nemmeno essere chiamato.
+    def test_rettifica_non_passa_dal_risolutore(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, quantita="-2.0")],
+            rettifiche={11: _rettifica(7001, iva=9)},
+        )
+        resolver = _ResolverMock({ART_A: 4})
+        _genera(repo, resolver=resolver)
+        self.assertEqual(repo.last_kwargs["righe_iva_ids"], [9])
+        self.assertEqual(resolver.chiamate, [])
+
+    # Scopo: ⭐ la cache per (fattura, articolo). Non è un'ottimizzazione
+    # opzionale: un lotto massivo arriva a 50.000 attività, e senza cache
+    # sarebbero 50.000 round-trip. Qui tre attività dello stesso articolo sulla
+    # stessa fattura devono produrre UNA sola interrogazione.
+    def test_una_sola_risoluzione_per_articolo_e_fattura(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11), _attivita_base(12), _attivita_base(13)]
+        )
+        resolver = _ResolverMock({})
+        _genera(repo, resolver=resolver)
+        self.assertEqual(len(resolver.chiamate), 1)
+
+    # Scopo: ⚠️ il gemello: fatture DIVERSE sono contesti diversi (cliente,
+    # emittente, data), quindi la cache NON deve fonderle. Senza questo caso una
+    # cache sul solo articolo passerebbe il test sopra ed applicherebbe a una
+    # fattura il trattamento di un altro cliente.
+    def test_fatture_diverse_risolvono_separatamente(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11), _attivita_base(12)],
+            fatture={11: 500, 12: 501},
+        )
+        resolver = _ResolverMock({})
+        _genera(repo, resolver=resolver)
+        self.assertEqual(len(resolver.chiamate), 2)
+
+    # Scopo: `P2` — nel `meta` della riga sopravvivono i due fatti che nessuno
+    # può ricostruire dopo: da DOVE viene l'aliquota e quale titolo l'ha decisa.
+    # ⚠️ Aliquota, natura e riferimento normativo NON si copiano: si derivano da
+    # `iva_id`, e copiarli produrrebbe una frase che invecchia.
+    def test_meta_porta_origine_e_titolo(self):
+        repo = _RepoMock(attivita=[_attivita_base(11)])
+        _genera(repo, resolver=_ResolverMock({ART_A: 4}))
+        meta = json.loads(repo.last_kwargs["righe_metas"][0])
+        self.assertEqual(meta["iva_origine"], "TITOLO")
+        self.assertEqual(meta["iva_titolo_id"], 900)
+        self.assertNotIn("aliquota_iva", meta)
+
+    # Scopo: ⛔ l'IVA risolta entra nella CHIAVE, quindi due articoli che il
+    # risolutore tratta diversamente non si fondono — e questo è il verso in cui
+    # il difetto vecchio si vedeva: con `art.iva_id` uguale per entrambi, due
+    # righe che l'Agenzia vuole distinte finivano in una sola.
+    def test_iva_risolta_diversa_produce_due_righe(self):
+        repo = _RepoMock(
+            attivita=[_attivita_base(11, articolo_id=ART_A),
+                      _attivita_base(12, articolo_id=ART_B)],
+        )
+        _genera(repo, resolver=_ResolverMock({ART_B: 4}))
+        self.assertEqual(sorted(repo.last_kwargs["righe_iva_ids"]), [4, 22])

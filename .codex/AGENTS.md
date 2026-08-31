@@ -180,6 +180,38 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 
 ## Frontend (Vue)
 
+### ⛔ Una lista si monta con `<ListaConfigurabile>`, mai con una `DataTable` grezza
+
+**Regola, non preferenza:** ogni lista passa da
+`<ListaConfigurabile codice="...">`. Importare `primevue/datatable` in una view
+è l'**eccezione**, e va motivata in un commento sopra l'import.
+
+Le uniche due eccezioni: le **righe di un documento** dentro il suo master
+(→ `RigheMasterDetailTable` / `SearchDetailTable`) e una tabella di **anteprima**
+dentro un dialog, non paginata e non configurabile.
+⛔ Non sono eccezioni: «è piccola», «è solo per l'admin», «faccio prima».
+
+La configurazione della lista è **dato, non DDL** — una riga in
+`ui.lista_definizione` più N in `ui.lista_colonna`, create dall'amministrazione
+in-app o con `scripts/gen_seed_lista.py`. **Non serve un brief e non si aspetta
+nessuno.**
+
+⚠️ **Perché sta qui, in cima:** fino al 2026-08-30 questa regola **non era
+scritta in nessun documento letto a inizio sessione**, mentre
+`frontend-standards.md` spiegava *come* configurare una `DataTable`. Risultato
+misurato: i file con `DataTable` grezza, scesi a 48 il 03-08, erano **risaliti a
+57**. Una regola che non sta dove si legge non esiste.
+
+**Verifica prima di dire che una view è finita** — se il numero sale, hai
+aggiunto una lista fuori standard:
+
+```bash
+grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue | wc -l
+```
+
+Dettaglio e motivazioni: `docs/it/dev/frontend/frontend-standards.md`
+§«Regola zero della lista».
+
 - Codice frontend in `frontend/`
 - **Documento di riferimento obbligatorio**: `docs/it/dev/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
 - **Guida sviluppo frontend**: `docs/it/dev/work-in-progress/frontend/guida-sviluppo-frontend.md` — convenzioni componenti, composable, routing, CSS, pattern operativi

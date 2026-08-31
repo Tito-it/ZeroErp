@@ -52,10 +52,10 @@ class ParameterServiceTests(TestCase):
     # Scopo: Verifica che get_parameter restituisca il valore dal repository.
     def test_get_parameter_returns_value(self):
         self._mock_repo.get_parameter.return_value = "16"
-        result = self.svc.get_parameter("DEFAULT_IVA_ID")
+        result = self.svc.get_parameter("PARAM_TEST")
         self.assertEqual(result, "16")
         self._mock_repo.get_parameter.assert_called_once_with(
-            "DEFAULT_IVA_ID", None, None, None,
+            "PARAM_TEST", None, None, None,
             categoria_cliente_id=None,
         )
 
@@ -69,7 +69,7 @@ class ParameterServiceTests(TestCase):
     # Scopo: Verifica che get_parameter_int converta correttamente a intero.
     def test_get_parameter_int_returns_int(self):
         self._mock_repo.get_parameter.return_value = "42"
-        result = self.svc.get_parameter_int("DEFAULT_IVA_ID")
+        result = self.svc.get_parameter_int("PARAM_TEST")
         self.assertEqual(result, 42)
         self.assertIsInstance(result, int)
 
@@ -97,12 +97,12 @@ class ParameterServiceTests(TestCase):
     # Scopo: Verifica che get_defaults restituisca un dizionario di parametri.
     def test_get_defaults_returns_dict(self):
         self._mock_repo.get_parameters.return_value = {
-            "DEFAULT_IVA_ID": "16",
+            "PARAM_TEST": "16",
             "DEFAULT_CURRENCY": "EUR",
         }
-        result = self.svc.get_defaults(["DEFAULT_IVA_ID", "DEFAULT_CURRENCY"])
+        result = self.svc.get_defaults(["PARAM_TEST", "DEFAULT_CURRENCY"])
         self.assertEqual(len(result), 2)
-        self.assertEqual(result["DEFAULT_IVA_ID"], "16")
+        self.assertEqual(result["PARAM_TEST"], "16")
         self.assertEqual(result["DEFAULT_CURRENCY"], "EUR")
 
     # Scopo: Verifica che get_defaults con lista vuota restituisca dizionario vuoto.
@@ -124,13 +124,13 @@ class ParameterServiceTests(TestCase):
     def test_get_parameter_passes_emittente_fiscale(self):
         self._mock_repo.get_parameter.return_value = "10"
         self.svc.get_parameter(
-            "DEFAULT_IVA_ID",
+            "PARAM_TEST",
             django_user_id=5,
             group_ids=[1],
             emittente_fiscale_id=3,
         )
         self._mock_repo.get_parameter.assert_called_once_with(
-            "DEFAULT_IVA_ID", 5, [1], 3,
+            "PARAM_TEST", 5, [1], 3,
             categoria_cliente_id=None,
         )
 
@@ -172,7 +172,7 @@ class ParameterServiceTests(TestCase):
     def test_list_parameters_for_user(self):
         mock_data = [
             {
-                "code": "DEFAULT_IVA_ID",
+                "code": "PARAM_TEST",
                 "description": "IVA default",
                 "default_value": "22",
                 "emittente_value": "10",
@@ -208,10 +208,10 @@ class ParameterServiceTests(TestCase):
     # Scopo: Verifica che upsert_user_override chiami il repository e restituisca l'ID.
     def test_upsert_user_override(self):
         self._mock_repo.upsert_user_override.return_value = 99
-        result = self.svc.upsert_user_override("DEFAULT_IVA_ID", 5, "10")
+        result = self.svc.upsert_user_override("PARAM_TEST", 5, "10")
         self.assertEqual(result, 99)
         self._mock_repo.upsert_user_override.assert_called_once_with(
-            "DEFAULT_IVA_ID", 5, "10",
+            "PARAM_TEST", 5, "10",
         )
 
     # Scopo: Verifica che upsert con codice vuoto lanci errore.

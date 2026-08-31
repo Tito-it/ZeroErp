@@ -4,19 +4,21 @@
 --
 -- Test: un billing account con storia non cambia emittente fiscale
 -- Oggetti:
---   anagrafiche.fn_get_storia_emittente_ba()            (20260826-46)
+--   anagrafiche.fn_get_storia_emittente_ba()            (20260831-17)
+--   anagrafiche.fn_ba_ha_storia_emittente()             (20260831-17)
 --   anagrafiche.fn_guard_ba_cambio_emittente()          (20260826-47)
 --   anagrafiche.trgfn_efba_guard_storia_emittente()     (20260826-49)
 --   script.fn_check_ba_cambio_emittente()               (20260827-01)
 --   anagrafiche.fn_guard_ba_cambio_emittente() rev N2   (20260827-02)
+--   script.fn_check_ba_cambio_emittente() rev C2-17     (20260831-19)
 --
 -- Elenco test (plan 14):
 --  1) Precondizioni: riferimenti anagrafici presenti
---  2) BA appena nato: nessuna storia -> (0, 0)
+--  2) BA appena nato: nessuna storia -> nessuna riga
 --  3) BA appena nato: il cambio di emittente PASSA        [la finestra di correzione]
---  4) Dopo una commessa: la storia conta 1 commessa
+--  4) Dopo una commessa: la storia conta 1 documento SOTTO LA FAMIGLIA COMMESSA
 --  5) Con storia: il cambio di emittente -> P0001         [il cancello]
---  6) ... e la frase nomina il cliente e i due conteggi
+--  6) ... e la frase nomina la SPECIE del documento che blocca
 --  7) Emittente che non cambia davvero: PASSA             [manutenzione ordinaria]
 --  8) Il trigger e' montato sui tre movimenti (INSERT/UPDATE/DELETE)
 --  9) check: senza storia -> [] (la stessa risposta del guard, dalla riga)
@@ -158,12 +160,16 @@ $$;
 -- =========================================================
 -- 2) BA appena nato: nessuna storia
 -- =========================================================
+-- ⭐ 2026-08-31: la funzione non torna piu' due colonne fisse ma UNA RIGA PER
+--   FAMIGLIA con almeno un documento numerato. «Nessuna storia» e' quindi
+--   «nessuna riga», e non «(0,0)»: gli zeri non escono, cosi' chi compone la
+--   frase del rifiuto non deve filtrarli.
 SELECT is(
-    (SELECT (s.n_fatture, s.n_commesse)::text
+    (SELECT count(*)
        FROM tmp_ids_ba_storia t,
             LATERAL anagrafiche.fn_get_storia_emittente_ba(t.billing_account_id) s),
-    '(0,0)',
-    'Un billing account appena nato non ha nessuna storia'
+    0::bigint,
+    'Un billing account appena nato non ha nessuna storia: nessuna famiglia risponde'
 );
 
 -- =========================================================
@@ -200,12 +206,16 @@ INSERT INTO vendite.commesse (codice, billing_account_id, utility_id)
 SELECT 'TST-BA-STORIA-CMM-01', t.billing_account_id, r.utility_id
   FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r;
 
+-- ⚠️ La riga si cerca per FAMIGLIA e non per posizione: l'ordine e' quello del
+--   catalogo, e un test che pescasse «la prima riga» misurerebbe l'ordinamento
+--   invece del conteggio.
 SELECT is(
-    (SELECT s.n_commesse
+    (SELECT s.n_documenti
        FROM tmp_ids_ba_storia t,
-            LATERAL anagrafiche.fn_get_storia_emittente_ba(t.billing_account_id) s),
+            LATERAL anagrafiche.fn_get_storia_emittente_ba(t.billing_account_id) s
+      WHERE s.famiglia_documento = 'COMMESSA'),
     1::bigint,
-    'La commessa appena creata entra nel conteggio della storia'
+    'La commessa appena creata entra nella storia, sotto la sua famiglia'
 );
 
 -- =========================================================
@@ -223,8 +233,12 @@ SELECT throws_ok(
     'Con una commessa a carico, il cambio di emittente e'' respinto'
 );
 
--- ⚠️ La frase E' la posta in gioco: deve dire QUANTE fatture e QUANTE
---   commesse, altrimenti manda a cercare a mano cosa c'e' sotto.
+-- ⚠️ La frase E' la posta in gioco: deve dire QUALE specie di documento blocca
+--   e quanti sono, altrimenti manda a cercare a mano cosa c'e' sotto.
+-- ⛔ Dal 2026-08-31 le famiglie sono cinque: una frase che ne nominasse due —
+--   «3 fatture e 1 commesse» — sarebbe PEGGIO di una che non ne nomina
+--   nessuna, perche' manderebbe a cercare fatture a un cliente bloccato da un
+--   DDT. Le parole vengono da vendite.famiglie_documento.descrizione.
 SELECT throws_like(
     format(
         $q$SELECT anagrafiche.fn_guard_ba_cambio_emittente(%s, %s, %s)$q$,
@@ -232,8 +246,8 @@ SELECT throws_like(
         (SELECT emittente_sr_ok    FROM tmp_refs_ba_storia),
         (SELECT emittente_sr_altro FROM tmp_refs_ba_storia)
     ),
-    '%ha gi%0 fatture e 1 commesse%',
-    'La frase nomina il cliente e i due conteggi'
+    '%(Commessa: 1)%',
+    'La frase nomina la specie del documento che blocca, con le parole del catalogo'
 );
 
 -- =========================================================
@@ -309,10 +323,13 @@ SELECT is(
 -- ⭐ Il canale VARIADIC compone quello che legge una PERSONA. Il messaggio
 --   diceva «…con l'emittente 72» — un soggetto_ruolo_id in mezzo a una frase
 --   italiana, nella stessa frase in cui il cliente era gia' nominato bene.
+-- ⚠️ 2026-08-31: i valori sono passati da QUATTRO a TRE (cliente, emittente,
+--   elenco), perche' i due conteggi fissi sono diventati un elenco derivato dal
+--   catalogo. L'emittente e' quindi in posizione 1, non 3.
 SELECT is(
     (SELECT (script.fn_check_ba_cambio_emittente(
                 t.billing_account_id, r.emittente_sr_ok, r.emittente_sr_altro)
-             -> 0 -> 'valori' ->> 3)
+             -> 0 -> 'valori' ->> 1)
        FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r),
     -- ⚠️ `::text` obbligatorio, e non e' cosmesi: `is()` e'
     --   `is(anyelement, anyelement, text)`, quindi i due lati devono

@@ -23,7 +23,7 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 ### Modello
 
 - **Identità**: `(anno, serie, numero)` + `uid`. Il `numero` è generato dal
-  trigger `trgfn_ordini_gen_codice` (BEFORE INSERT) via
+  trigger `trgfn_ordini_gen_numero` (BEFORE INSERT) via
   `script.fn_generate_codice('ordine')` — **valorizzato già in BOZZA**, immutabile
   dopo (lock colonne). Il campo `numero` **non va nel payload**.
 - **Stato iniziale** `DRAFT` (risolto dal service via
@@ -430,7 +430,7 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   riepilogo, scrive `*_tot` in testata); trigger `trgfn_ordini_righe_ricalcola_totali`
   (statement-level su `ordini_righe` INS/UPD/DLT) e `trgfn_ordini_ricalcola_totali`
   (`UPDATE OF emittente_fiscale_id`, l'aliquota dipende dallo stato emittente).
-- Trigger testata: `trgfn_ordini_gen_codice`, `trgfn_ordini_normalize`,
+- Trigger testata: `trgfn_ordini_gen_numero`, `trgfn_ordini_normalize`,
   `trgfn_ordini_default_emittente`, `trgfn_ordini_guard_emittente_ba`,
   `trgfn_ordini_guard_transizione_approvazione`, lock numero, immutabilità
   `canale_origine`.

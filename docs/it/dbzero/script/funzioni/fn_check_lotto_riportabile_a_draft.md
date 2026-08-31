@@ -23,6 +23,7 @@ AS $function$
 DECLARE
   v_motivi    jsonb := '[]'::jsonb;
   v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+  v_congela   config.stati_doc_fiscale.congela_fiscale%TYPE;
   v_trovato   boolean;
   v_numerate  integer;
 BEGIN
@@ -34,8 +35,8 @@ BEGIN
       NULL::uuid, 'lotto_id obbligatorio (>0)');
   END IF;
 
-  SELECT true, sdf.codice_interno
-    INTO v_trovato, v_stato_cod
+  SELECT true, sdf.codice_interno, sdf.congela_fiscale
+    INTO v_trovato, v_stato_cod, v_congela
     FROM vendite.fatturazione_lotti fl
     LEFT JOIN config.stati_doc_fiscale sdf
       ON sdf.id = fl.stato_doc_fiscale_id
@@ -51,7 +52,20 @@ BEGIN
   -- MOTIVO 1 — il lotto e' oltre il pre-fiscale.
   -- Oltre EMESSA c'e' la numerazione: il punto di non ritorno
   -- del documento fiscale, non una scelta di questa funzione.
-  IF COALESCE(v_stato_cod, '') NOT IN ('DRAFT', 'EMESSA') THEN
+  -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+  --    Fino al 2026-08-30 questa funzione portava la propria copia di
+  --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+  --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+  --    per toglierle: era stata collegata a un solo lettore.
+  -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+  --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+  --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+  -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+  --    decisione di questa funzione, non della soglia.
+  -- ⚠️ `COALESCE(..., true)` tiene il fail-closed di prima: con lo stato
+  --    non risolvibile la vecchia forma confrontava '' contro la lista e
+  --    quindi bloccava il ritorno a bozza.
+  IF COALESCE(v_congela, true) THEN
     v_motivi := v_motivi || jsonb_build_object(
       'codice',     'E_LOTTO_NON_RIPORTABILE_A_DRAFT',
       'reason',     'STATO_NON_PRE_FISCALE',

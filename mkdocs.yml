@@ -146,6 +146,7 @@ nav:
                             - Integrazione Ai: it/guide/integrazione-ai.md
                             - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
                             - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
+                            - Sistema numerazione generico per codici e documenti: it/guide/numerazione-documenti-e-codici.md
                   - Approfondimenti tecnici:
                             - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
                             - Architettura multi face auth: it/guide/architettura-multi-face-auth.md

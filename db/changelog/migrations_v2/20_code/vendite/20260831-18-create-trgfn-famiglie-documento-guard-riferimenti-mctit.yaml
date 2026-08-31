@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-18 — IL CATALOGO SI PRESIDIA DA SE'
+#   vendite.trgfn_famiglie_documento_guard_riferimenti
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-18 (§3.7)
+#
+# ── ⛔ IL PREZZO DELL'SQL DINAMICO, E SI PAGA QUI ──────────────────
+#   Da oggi il presidio sul cambio emittente del billing account non elenca
+#   piu' le tabelle: le legge da vendite.famiglie_documento e le compone con
+#   `%I`. E' il modo giusto — nessun elenco parallelo che resta indietro — ma
+#   sposta un rischio: una riga di catalogo che nomina una tabella o una
+#   colonna che non esiste non da' fastidio a nessuno finche' qualcuno non
+#   prova a spostare un billing account. Li' `fn_ba_ha_storia_emittente`
+#   fallisce con un `undefined_table` nudo, dentro un guard, in un movimento
+#   che con le famiglie di documento non c'entra niente.
+#
+#   ⇒ L'errore va spostato dal RUNTIME al momento in cui la riga si scrive.
+#   ⭐ Non e' un meccanismo nuovo: script.trgfn_config_sistema_codici_sync_gen_codice
+#   fa gia' esattamente questo controllo sulla sua tabella gemella.
+#
+# ── ⚠️ SOLO SULLE FAMIGLIE ATTIVE, ed e' una scelta ────────────────
+#   Una famiglia ritirata (`attivo = false`) puo' legittimamente nominare una
+#   tabella che non c'e' piu': e' storia, non configurazione. Pretendere che
+#   resti valida obbligherebbe a cancellare la riga, cioe' a perdere il fatto
+#   che quella famiglia e' esistita. ⛔ Ma `attivo` sta fra le colonne di
+#   `UPDATE OF`: RIACCENDERE una famiglia ri-attraversa il controllo.
+#
+# ── ⚠️ `UPDATE OF` e non UPDATE nudo ──────────────────────────────
+#   Con un UPDATE generico ogni ritocco alla descrizione o al `meta`
+#   rivaliderebbe i riferimenti, e una famiglia ritirata male diventerebbe non
+#   piu' modificabile con un errore che parla di colonne che nessuno stava
+#   toccando. E' la stessa ragione del guard sulle fatture (20260830-10).
+#
+# ⚠️ SECURITY INVOKER (il default): pg_attribute e' leggibile da chiunque, e un
+#   DEFINER qui sarebbe privilegio in piu' senza contropartita.
+# ⛔ Nessuna preCondition sul codice errore nuovo: 20_code gira PRIMA di
+#   80_data, e la corsa che introduce la riga sarebbe quella che fallisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-18-create-trgfn-famiglie-documento-guard-riferimenti-mctit.yaml
+
+  - changeSet:
+      id: 20260831-18-create-trgfn-famiglie-documento-guard-riferimenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-18: il catalogo delle famiglie di documento si presidia da se''. ⛔ E'' il prezzo
+        dell''SQL dinamico, e si paga qui: da oggi il presidio sul cambio emittente del billing
+        account legge tabelle e colonne da vendite.famiglie_documento e le compone con %I,
+        quindi una riga che nomina una tabella o una colonna inesistente non da'' fastidio a
+        nessuno finche'' qualcuno non prova a spostare un billing account — e li'' fallisce con
+        un undefined_table nudo, dentro un guard, in un movimento che con le famiglie non
+        c''entra niente. L''errore si sposta dal runtime al momento in cui la riga si scrive.
+        ⭐ Non e'' un meccanismo nuovo: script.trgfn_config_sistema_codici_sync_gen_codice fa
+        gia'' lo stesso controllo sulla tabella gemella. ⚠️ Solo sulle famiglie ATTIVE: una
+        famiglia ritirata puo'' legittimamente nominare una tabella che non c''e'' piu'' — e''
+        storia, non configurazione — ma `attivo` sta fra le colonne di UPDATE OF, quindi
+        riaccenderla ri-attraversa il controllo. ⚠️ UPDATE OF e non UPDATE nudo, per non
+        rivalidare i riferimenti a ogni ritocco della descrizione. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-18.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_relid     oid;
+                  v_mancante  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una riga di vendite.famiglie_documento deve nominare
+                  --   oggetti che ESISTONO: la tabella, la colonna del numero
+                  --   e la colonna del billing account.
+                  --
+                  -- ⛔ Perche' serve: il presidio sul cambio emittente del BA
+                  --   compone quei nomi in SQL dinamico. Senza questo guard un
+                  --   refuso resterebbe muto fino al primo spostamento di un
+                  --   billing account, dove uscirebbe come undefined_table —
+                  --   un errore che non nomina la sua causa e arriva in un
+                  --   movimento che con le famiglie non c'entra.
+                  --
+                  -- ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'
+                  --   nominare una tabella che non c'e' piu'. E' storia.
+                  -- =========================================================
+                  IF NOT NEW.attivo THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ to_regclass torna NULL invece di sollevare, anche se lo
+                  --   schema non esiste: e' proprio cio' che serve a un guard
+                  --   che vuole comporre la propria frase.
+                  v_relid := to_regclass(format('%I.%I', NEW.schema_tabella, NEW.nome_tabella));
+
+                  IF v_relid IS NULL THEN
+                      v_mancante := format('%I.%I', NEW.schema_tabella, NEW.nome_tabella);
+
+                  ELSIF NOT EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = v_relid
+                         AND a.attname  = NEW.colonna_numero
+                         AND a.attnum   > 0
+                         AND NOT a.attisdropped
+                  ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_numero);
+
+                  ELSIF NOT EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = v_relid
+                         AND a.attname  = NEW.colonna_billing_account
+                         AND a.attnum   > 0
+                         AND NOT a.attisdropped
+                  ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_billing_account);
+                  END IF;
+
+                  IF v_mancante IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_famiglie_documento_guard_riferimenti',
+                          'E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE',
+                          jsonb_build_object(
+                              'codice_interno',          NEW.codice_interno,
+                              'schema_tabella',          NEW.schema_tabella,
+                              'nome_tabella',            NEW.nome_tabella,
+                              'colonna_numero',          NEW.colonna_numero,
+                              'colonna_billing_account', NEW.colonna_billing_account,
+                              'riferimento_mancante',    v_mancante),
+                          NULL::uuid,
+                          NEW.codice_interno::text,
+                          v_mancante);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
+              IS 'Guard BEFORE INSERT / UPDATE OF su vendite.famiglie_documento: una riga ATTIVA deve nominare oggetti che esistono davvero — la tabella, la colonna del numero e la colonna del billing account, verificate su to_regclass e pg_attribute. Solleva E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE. ⛔ E'' il prezzo dell''SQL dinamico, e si paga qui: dal 2026-08-31 anagrafiche.fn_ba_ha_storia_emittente e anagrafiche.fn_get_storia_emittente_ba non elencano piu'' le tabelle dei documenti — le LEGGONO da questo catalogo e le compongono con %I. E'' il modo giusto, perche'' toglie di mezzo l''elenco parallelo che resta indietro, ma sposta un rischio: una riga che nomina una tabella o una colonna inesistente non da'' fastidio a nessuno finche'' qualcuno non prova a spostare un billing account, e li'' fallisce con un undefined_table NUDO — dentro un guard, in un movimento che con le famiglie di documento non c''entra niente, e senza nominare la propria causa. Questo trigger sposta l''errore dal runtime al momento in cui la riga si scrive. ⭐ Non e'' un meccanismo inventato: script.trgfn_config_sistema_codici_sync_gen_codice fa gia'' esattamente questo controllo sulla tabella gemella config.sistema_codici, che dichiara dove vive un codice con la stessa terna schema/tabella/colonna. ⚠️ Solo sulle famiglie ATTIVE, ed e'' una scelta: una famiglia ritirata puo'' legittimamente nominare una tabella che non c''e'' piu'' — e'' storia, non configurazione — e pretendere che resti valida obbligherebbe a cancellare la riga, cioe'' a perdere il fatto che quella famiglia e'' esistita. ⛔ Ma `attivo` sta fra le colonne di UPDATE OF: RIACCENDERE una famiglia ri-attraversa il controllo. ⚠️ UPDATE OF e non UPDATE nudo: con un UPDATE generico ogni ritocco alla descrizione o al meta rivaliderebbe i riferimenti, e una famiglia ritirata male diventerebbe non piu'' modificabile con un errore che parla di colonne che nessuno stava toccando — stessa ragione del guard sulle fatture (20260830-10). ⚠️ SECURITY INVOKER (il default): pg_attribute e'' leggibile da chiunque, e un DEFINER sarebbe privilegio in piu'' senza contropartita. ⛔ Il codice e'' TECNICO: una riga di questo catalogo non la scrive un operatore in un dialog, la scrive una migrazione — quindi niente chiave `campo` nel contesto. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-18.';
+
+              CREATE OR REPLACE TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  BEFORE INSERT OR UPDATE OF
+                      schema_tabella, nome_tabella,
+                      colonna_numero, colonna_billing_account, attivo
+                  ON vendite.famiglie_documento
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti();
+
+              COMMENT ON TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  ON vendite.famiglie_documento
+              IS 'Verifica che una riga ATTIVA del catalogo nomini oggetti esistenti, prima che il presidio sul cambio emittente del billing account provi a comporli in SQL dinamico. ⚠️ `attivo` e'' fra le colonne di UPDATE OF apposta: riaccendere una famiglia ritirata ri-attraversa il controllo. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  ON vendite.famiglie_documento;
+              DROP FUNCTION IF EXISTS vendite.trgfn_famiglie_documento_guard_riferimenti();

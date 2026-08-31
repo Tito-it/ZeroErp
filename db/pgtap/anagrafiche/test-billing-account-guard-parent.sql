@@ -388,11 +388,7 @@ BEGIN
     INSERT INTO vendite.fatture (
         registro_id, emittente_soggetto_ruolo_id, billing_account_id,
         tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id, data)
-    SELECT (SELECT r.id FROM vendite.registri_fatturazione r
-             WHERE r.attivo IS TRUE
-               AND (r.emittente_soggetto_ruolo_id IS NULL
-                    OR r.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore())
-             ORDER BY r.id LIMIT 1),
+    SELECT script.fn_pgtap_registro_fattura(script.fn_pgtap_emittente_sr_operatore()),
            script.fn_pgtap_emittente_sr_operatore(),
            af.billing_account_id, af.tipo_doc_fiscale_id, af.valuta_id,
            (SELECT s.id FROM config.stati_doc_fiscale s

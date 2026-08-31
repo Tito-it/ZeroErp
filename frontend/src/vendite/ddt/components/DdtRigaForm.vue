@@ -1,3 +1,7 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
 // Scopo: Form singola riga DDT — articolo (autocomplete), UoM, quantita',
 // prezzo, sconto, IVA. Pricing stile ordini gestito lato BE: se il prezzo resta
@@ -25,6 +29,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
 
 const { t } = useI18n()
 const store = useDdtStore()
@@ -38,6 +43,13 @@ const props = defineProps({
   // ne' sulla riga ne' sui componenti del kit (FE-D4).
   causaleFatturabile: { type: Boolean, default: true },
 })
+const {
+  ivaOrigine,
+  origineLabel: ivaOrigineLabel,
+  risolviPer: risolviIvaPer,
+  reset: resetIva,
+} = useIvaRisolta({ documentoTipo: 'DDT', documentoId: () => props.ddtId })
+
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
 const form = ref({
@@ -96,10 +108,12 @@ watch(() => props.riga, (riga) => {
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
   form.value.descrizione = item.descrizione || ''
-  // Auto-fill IVA dall'articolo (sovrascrivibile prima del save).
-  if (item.iva_id != null) {
-    form.value.iva_id = item.iva_id
-  }
+  // ⛔ NIENTE PIU' AUTO-FILL DALL'ARTICOLO: era una seconda risposta alla
+  // stessa domanda, e ignorava sia l'uso della fornitura sia i titoli
+  // documentati del cliente. Ora risponde la sede unica, col contesto derivato
+  // dalla testata — la stessa che il backend leggera' al salvataggio.
+  resetIva()
+  risolviIvaPer(form.value, item.id)
   form.value.uom_operativa_id = null
   form.value.prezzo_unitario = null
   articoloObj.value = item
@@ -136,7 +150,13 @@ const canSave = computed(() => {
   if (!isEdit.value) {
     if (!f.articolo_id) return false
     if (!f.uom_operativa_id) return false
-    if (!f.iva_id) return false
+    // ⛔ `I6`: l'IVA NON e' piu' un requisito per salvare, e toglierlo e'
+  //    obbligatorio — non un ripulisti. Con la casella spenta e
+  //    l'auto-fill morto, se l'anteprima non risponde il campo resta
+  //    vuoto e la riga non si potrebbe piu' salvare: la creazione si
+  //    bloccherebbe DA SOLA, senza che nulla lo spieghi.
+  //    A rispondere e' comunque il backend al salvataggio; a fermare
+  //    una riga senza aliquota e' il gate all'emissione (`I9`).
     // CREATE su articolo composito: blocca il save finche' la ComponentiDialog
     // non e' stata confermata almeno una volta (componentiPayload valorizzato).
     if (showComponentiDialog.value && componentiPayload.value == null) return false
@@ -164,7 +184,6 @@ function buildRigaPayload() {
     descrizione: f.descrizione || null,
     qta_operativa: f.qta_operativa,
     sconto_percentuale: f.sconto_percentuale,
-    iva_id: f.iva_id,
     uom_operativa_id: f.uom_operativa_id,
   }
   // Articolo composito CREATE: il prezzo padre e' SUM(componenti) — non inviarlo
@@ -252,8 +271,20 @@ async function handleSave() {
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('vendite.ddt.riga_iva') }} *</label>
+        <!-- ⛔ `I6`: LA CASELLA E' CHIUSA, sempre — anche in creazione.
+             L'aliquota la decide il risolutore, e lasciarla modificabile
+             riaprirebbe la seconda risposta alla stessa domanda che tutto
+             questo cantiere e' servito a togliere. Il campo resta a VIDEO, e
+             spento: l'operatore deve poter vedere cosa gli viene applicato.
+             ⚠️ Se serve cambiarla, si cambia sull'ARTICOLO — ed e' quello che
+             dicono ora i messaggi dei gate all'emissione. -->
         <IvaSelect v-model="form.iva_id"
-          :placeholder="t('vendite.ddt.riga_iva')" :disabled="isEdit" />
+          :placeholder="t('vendite.ddt.riga_iva')" disabled />
+        <!-- ⭐ IL PERCHE' DI QUEL NUMERO. `I6` sta per togliere all'operatore
+             la casella: un'aliquota che non si puo' cambiare E che non viene
+             spiegata e' la forma peggiore. La label la compone il composable —
+             qui non si costruisce nessun percorso i18n. -->
+        <small v-if="ivaOrigine" class="app-field-hint">{{ ivaOrigineLabel }}</small>
       </div>
       <div class="form-field" v-if="!isEdit">
         <label>{{ t('vendite.ddt.riga_uom') }} *</label>

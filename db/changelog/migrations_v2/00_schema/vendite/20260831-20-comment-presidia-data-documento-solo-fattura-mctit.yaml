@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-9 (correzione) — IL CANCELLO DI MONOTONIA VALE SULLA SOLA FATTURA
+#   COMMENT su vendite.famiglie_documento.presidia_data_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9
+#
+# ── ⛔ CORREGGE UN'AFFERMAZIONE SBAGLIATA DEL `20260831-11` ────────
+#   Quel changeSet mise `presidia_data_documento` a `false` sul solo ORDINE, e
+#   il suo COMMENT lo motivava cosi': *«ha senso su chi si EMETTE — fattura,
+#   DDT, reso: la data la sceglie una PERSONA, e una sequenza che torna
+#   indietro e' un difetto»*.
+#   ⛔ L'argomento e' rovesciato. E' proprio perche' la data la sceglie una
+#   persona che la RETRODATAZIONE e' un caso d'uso vivo: un DDT per la
+#   spedizione di ieri, inserito stamattina dopo che ne e' gia' uscito uno con
+#   la data di oggi.
+#
+# ── ⚠️ E NON E' UN CASO DI NICCHIA: E' STATO SCOPERTO GIRANDO ─────
+#   Il 2026-08-31 il pgTAP `test-vw-partite-merce-riconsegna-dopo-nc-v1` e'
+#   diventato rosso: la ri-consegna nasce da
+#   `vendite.fn_genera_ddt_riconsegna(..., p_data)` — e `p_data` il backend la
+#   passa dal corpo della richiesta, quindi la sceglie l'utente.
+#   ⛔ `fn_get_pavimento_sequenza` legge `max(ultima_data)` da
+#   `registri_fatturazione_progressivi`, che e' stato PERSISTENTE: emesso un
+#   DDT con la data di oggi, su quel registro nessun DDT con data anteriore
+#   passa piu'. In un magazzino che emette ogni giorno, il DDT di ieri viene
+#   respinto.
+#
+# ── ⭐ LA REGOLA GIUSTA, E LA SUA SEDE ────────────────────────────
+#   Il cancello di monotonia e' una regola FISCALE, e vive dove c'e' il
+#   registro fiscale: la sola famiglia `FATTURA`. Deciso da Tid il 2026-08-31.
+#   ⭐ Ne discende anche il rispetto del perimetro dichiarato del cantiere —
+#   «cambia SOLO l'algoritmo di assegnazione del numero»: il cancello e' un
+#   RIFIUTO nuovo, non un algoritmo, e su DDT, resi e commessa il generatore
+#   di prima non aveva nessuna nozione di data.
+#
+# ⭐ L'ANNO NON C'ENTRA e non cambia: resta quello della DATA DOCUMENTO
+#   (decisione D-1), che il generatore ri-deriva nello stesso statement del
+#   numero. Questo flag governa il solo PAVIMENTO.
+# ⚠️ I DATI stanno nel CSV `80_data/sql/vendite/famiglie_documento.csv`, il cui
+#   loader e' `runOnChange: true`: le quattro righe si aggiornano da se' alla
+#   prossima corsa. Qui si corregge la sola FRASE — e si corregge in un
+#   changeSet nuovo, perche' il `20260831-11` e' gia' applicato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-20-comment-presidia-data-documento-solo-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260831-20-comment-presidia-data-documento-solo-fattura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-9 (correzione): il cancello di monotonia della data vale sulla SOLA famiglia FATTURA.
+        ⛔ Corregge un''affermazione sbagliata del 20260831-11, che lo motivava con «ha senso su
+        chi si emette — fattura, DDT, reso: la data la sceglie una PERSONA». L''argomento e''
+        rovesciato: e'' proprio perche'' la sceglie una persona che la RETRODATAZIONE e'' un caso
+        d''uso vivo. ⚠️ Scoperto girando, non ragionando: il pgTAP
+        test-vw-partite-merce-riconsegna-dopo-nc-v1 e'' diventato rosso perche'' la ri-consegna
+        nasce da fn_genera_ddt_riconsegna con una p_data che il backend passa dal corpo della
+        richiesta — e fn_get_pavimento_sequenza legge max(ultima_data) da
+        registri_fatturazione_progressivi, che e'' stato PERSISTENTE: emesso un DDT con la data di
+        oggi, su quel registro nessun DDT con data anteriore passa piu''. ⭐ Il cancello e'' una
+        regola FISCALE e vive dove c''e'' il registro fiscale (deciso da Tid il 2026-08-31); ed e''
+        anche il perimetro del cantiere — il cancello e'' un RIFIUTO nuovo, non un algoritmo di
+        assegnazione. ⭐ L''ANNO non cambia: resta quello della data documento (D-1). ⚠️ I dati
+        stanno nel CSV, il cui loader e'' runOnChange: qui si corregge la sola frase.
+        Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: presidia_data_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.famiglie_documento.presidia_data_documento
+              IS 'Se true, alla famiglia si applica il PAVIMENTO DI SEQUENZA: un documento non prende un numero se la sua data e'' anteriore a quella dell''ultimo gia'' numerato sullo stesso sezionale (il «cancello di monotonia» di vendite.fn_get_next_progressivo). ⭐ rev 2026-08-31: vale sulla SOLA famiglia FATTURA. ⛔ CORREGGE L''AFFERMAZIONE DEL 20260831-11, che metteva il flag a false sul solo ORDINE motivandolo con «ha senso su chi si EMETTE — fattura, DDT, reso: la data la sceglie una PERSONA, e una sequenza che torna indietro e'' un difetto». L''argomento e'' ROVESCIATO: e'' proprio perche'' la data la sceglie una persona che la RETRODATAZIONE e'' un caso d''uso vivo — un DDT per la spedizione di ieri, inserito stamattina dopo che ne e'' gia'' uscito uno datato oggi. ⚠️ E non e'' stato dedotto, e'' stato SCOPERTO GIRANDO: il pgTAP test-vw-partite-merce-riconsegna-dopo-nc-v1 e'' diventato rosso perche'' la ri-consegna nasce da vendite.fn_genera_ddt_riconsegna(..., p_data), e quella data il backend la passa dal corpo della richiesta. ⛔ La conseguenza non e'' locale alla fixture: vendite.fn_get_pavimento_sequenza legge max(ultima_data) da vendite.registri_fatturazione_progressivi, che e'' stato PERSISTENTE — emesso un DDT con la data di oggi, su quel registro nessun DDT con data anteriore passa piu'', e in un magazzino che emette ogni giorno il DDT di ieri viene respinto. ⭐ La regola giusta, e la sua sede: il cancello di monotonia e'' una regola FISCALE, e vive dove c''e'' il registro fiscale. ⭐ Ne discende anche il rispetto del perimetro dichiarato del cantiere — «cambia SOLO l''algoritmo di assegnazione del numero»: il cancello e'' un RIFIUTO nuovo, non un algoritmo, e su DDT, resi e commessa il generatore precedente della data non sapeva nulla. ⛔ Sull''ORDINE resta false per la ragione di prima, che era ed e'' corretta: si numera all''INSERT. ⭐ L''ANNO NON C''ENTRA e non cambia: resta quello della DATA DOCUMENTO (decisione D-1), che il generatore ri-deriva nello stesso statement del numero — questo flag governa il solo pavimento. ⭐ E il flag STA NEL CATALOGO invece che come parametro di funzione perche'' il pavimento ha UNA SEDE SOLA — vendite.fn_get_pavimento_data_documento — usata da tre chiamanti: la nascita della data del documento, la targa del dialog e il cancello. Un parametro avrebbe informato il solo cancello, lasciando gli altri due a proporre e a mostrare un pavimento che nessuno applica: tre risposte diverse alla stessa domanda. E'' la stessa lezione del limite di emissione (changeSet 20260831-05). ⚠️ DEFAULT true: il verso prudente e'' quello che rifiuta, e una famiglia nuova che non dichiara nulla viene presidiata finche'' qualcuno non decide il contrario. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.';
+      rollback:
+        - empty: {}

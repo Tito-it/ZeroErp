@@ -83,8 +83,7 @@ SELECT
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
     ORDER BY s.id LIMIT 1) AS sorgente_tipo_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r WHERE r.attivo IS TRUE
-    ORDER BY r.id LIMIT 1) AS registro_id,
+  script.fn_pgtap_registro_fattura() AS registro_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.attivo IS TRUE
     ORDER BY COALESCE(s.ordine, 32767), s.id LIMIT 1) AS stato_fiscale_id;
 

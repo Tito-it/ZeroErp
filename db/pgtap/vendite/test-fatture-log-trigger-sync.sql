@@ -96,6 +96,14 @@ SELECT (
     ORDER BY s.id
     LIMIT 1
   ) AS stato_draft_id;
+
+-- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
+--   La riga sopra sceglieva «un registro qualunque» accanto a un emittente che
+--   viene da un'altra parte: che i due coincidessero era un CASO, e dal
+--   2026-08-30 vendite.trgfn_fatture_guard_registro_emittente non lo ammette
+--   piu'. L'helper risponde con il registro di QUESTO emittente, creandolo se
+--   non ce n'e' uno — la riga vive nella transazione del test.
+UPDATE tmp_refs_flts SET registro_id = script.fn_pgtap_registro_fattura(emittente_soggetto_ruolo_id);
 SELECT ok(
     (
       SELECT registro_id IS NOT NULL

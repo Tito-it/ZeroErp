@@ -77,11 +77,16 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_reg_nf AS
 WITH ins AS (
+  -- ⛔ emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30 (C1-2,
+  --   20260830-11), e dev'essere lo STESSO delle fatture di questo file:
+  --   vendite.trgfn_fatture_guard_registro_emittente rifiuta un documento
+  --   sul registro di un altro emittente (C1-3, 20260830-10).
   INSERT INTO vendite.registri_fatturazione (
     codice,
     descrizione,
     reset_policy,
     attivo,
+    emittente_soggetto_ruolo_id,
     meta
   )
   SELECT
@@ -89,6 +94,7 @@ WITH ins AS (
     'Registro test numerazione',
     'ANNUALE',
     true,
+    (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_nf),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf))
   RETURNING id
 )

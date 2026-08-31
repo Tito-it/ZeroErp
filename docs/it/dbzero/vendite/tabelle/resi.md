@@ -28,6 +28,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| registro_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -35,6 +36,7 @@
 | FOREIGN KEY | fk_resi_billing_account | billing_account_id |
 | FOREIGN KEY | fk_resi_destinatario_ruolo | destinatario_soggetto_ruolo_id |
 | FOREIGN KEY | fk_resi_emittente_fiscale | emittente_fiscale_id |
+| FOREIGN KEY | fk_resi_registro | registro_id |
 | FOREIGN KEY | fk_resi_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_resi_stato | stato_doc_reso_id |
 | FOREIGN KEY | fk_resi_utility | utility_id |
@@ -48,7 +50,7 @@
 | ix_resi_sorgente | `CREATE INDEX ix_resi_sorgente ON vendite.resi USING btree (sorgente_tipo_id, sorgente_uid)` |
 | ix_resi_stato | `CREATE INDEX ix_resi_stato ON vendite.resi USING btree (stato_doc_reso_id)` |
 | pk_resi | `CREATE UNIQUE INDEX pk_resi ON vendite.resi USING btree (id)` |
-| uq_resi_anno_numero | `CREATE UNIQUE INDEX uq_resi_anno_numero ON vendite.resi USING btree (anno, numero) WHERE (numero IS NOT NULL)` |
+| uq_resi_anno_numero | `CREATE UNIQUE INDEX uq_resi_anno_numero ON vendite.resi USING btree (registro_id, anno, numero) NULLS NOT DISTINCT WHERE (numero IS NOT NULL)` |
 | uq_resi_uid | `CREATE UNIQUE INDEX uq_resi_uid ON vendite.resi USING btree (uid)` |
 
 ## 🚨 Trigger
@@ -56,21 +58,23 @@
 |------|--------|--------|--------|
 | trg_resi_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_resi_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_resi_a10_gen_numero_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_gen_numero()` |
 | trg_resi_a10_gen_numero_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_gen_numero()` |
+| trg_resi_a10_gen_numero_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_gen_numero()` |
 | trg_resi_a10_guard_ddt_consegnato_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()` |
 | trg_resi_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_guard_transizione()` |
-| trg_resi_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
+| trg_resi_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
+| trg_resi_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_resi_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_resi_a10_stati_doc_reso_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_doc_reso_id', 'id')` |
+| trg_resi_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_resi_a10_stati_doc_reso_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_doc_reso_id', 'id')` |
+| trg_resi_a10_stati_doc_reso_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_doc_reso_id', 'id')` |
 | trg_resi_a10_v_protect_num_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_v_resi_protect_num()` |
-| trg_resi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_resi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_resi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_resi_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_normalize()` |
+| trg_resi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_resi_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_normalize()` |
+| trg_resi_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_normalize()` |
 | trg_resi_z10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_guard_emittente_ba()` |
 | trg_resi_z10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_guard_emittente_ba()` |
 | trg_resi_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('resi_id')` |

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, NoReturn
@@ -33,8 +34,10 @@ from apps.catalogo.db.catalogo_uom_repository import (
     CatalogoUomRepository,
 )
 from apps.core.api.payload_validators import paginated_envelope
+from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import (
@@ -42,6 +45,8 @@ from apps.core.services.payload_helpers import (
     MissingType as _MissingType,
     PayloadValidator,
 )
+
+logger = logging.getLogger(__name__)
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(ARTICOLI_ORDER_COLUMNS.keys())
 _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
@@ -1419,10 +1424,23 @@ def fn_riattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
 
 # Scopo: Restituisce defaults pre-compilazione form articolo (Fase 8 — A5).
 #        Centralizza il consumo dei parametri usati dal FE per il form di
-#        creazione articolo (oggi: DEFAULT_IVA_ID). Tipi gia' castati: il FE
-#        non duplica il cast da stringa generico di get_defaults. Parametri
-#        malformati ritornano None (best-effort, no raise: il form mostra
-#        comunque, l'utente seleziona manualmente).
+#        creazione articolo (oggi: DEFAULT_IVA). Tipi gia' risolti: il FE non
+#        duplica la conversione. Parametri malformati o non risolvibili
+#        ritornano None (best-effort, no raise: il form mostra comunque,
+#        l'utente seleziona manualmente).
+#
+# ⛔ IL PARAMETRO PORTA UNA CHIAVE NATURALE, NON UN ID, e la differenza NON e'
+#    stilistica: fino al 2026-08-31 si chiamava `DEFAULT_IVA_ID` e stoccava
+#    l'id `16`. Ora si chiama `DEFAULT_IVA` e vale `22`, cioe' il
+#    `config.iva.codice_interno` dell'aliquota ordinaria
+#    (`brief-db-default-iva-chiave-naturale`, `linee-guida-sql §6b`).
+#
+# ⛔ QUINDI NON SI FA `int()` SU QUEL VALORE, e il motivo e' che non
+#    fallirebbe: `22` e' un numero, il cast riuscirebbe, e si otterrebbe l'ID
+#    22 — che oggi in `config.iva` non esiste, ma che il modello ammette
+#    eccome. Il giorno che esistesse sarebbe un'aliquota SBAGLIATA proposta in
+#    silenzio, su un dato che finisce sui documenti fiscali. Si risolve con il
+#    lookup sulla colonna lockata, che e' il building block previsto per questo.
 def fn_get_articolo_form_defaults(
     *,
     django_user_id: int | None = None,
@@ -1431,21 +1449,44 @@ def fn_get_articolo_form_defaults(
 ) -> dict[str, object]:
     service = ParameterService()
     raw = service.get_defaults(
-        ["DEFAULT_IVA_ID"],
+        ["DEFAULT_IVA"],
         django_user_id=django_user_id,
         group_ids=group_ids,
         emittente_fiscale_id=emittente_fiscale_id,
     )
+    return {"default_iva_id": _risolvi_default_iva_id(raw.get("DEFAULT_IVA"))}
 
-    default_iva_id: int | None = None
-    raw_iva = raw.get("DEFAULT_IVA_ID")
-    if raw_iva is not None:
-        try:
-            default_iva_id = int(raw_iva)
-        except (ValueError, TypeError):
-            default_iva_id = None
 
-    return {"default_iva_id": default_iva_id}
+# Scopo: dal `codice_interno` del parametro all'`id` di `config.iva`.
+# Perimetro: best-effort — e' il contratto del form-defaults, che deve mostrare
+#        il form anche quando un default non si risolve.
+# ⚠️ MA NON MUTO: il ripiego a `None` e' indistinguibile a video da «non c'e'
+#    un default configurato», quindi un seed che punta a un'aliquota
+#    disattivata sparirebbe senza lasciare traccia. Il warning e' l'unico posto
+#    in cui quella differenza resta leggibile.
+def _risolvi_default_iva_id(codice_interno: object) -> int | None:
+    if codice_interno is None or str(codice_interno).strip() == "":
+        return None
+    try:
+        return resolve_config_id_by_codice_interno(
+            "config.iva",
+            str(codice_interno).strip(),
+            etichetta="Aliquota IVA di default",
+            function_name="catalogo.fn_get_articolo_form_defaults",
+        )
+    except ServiceError:
+        # ⛔ `ServiceError` e NON `Exception`. Il ripiego serve per il caso
+        #    previsto — `E_CONFIG_MANCANTE`, cioe' il codice non esiste o
+        #    l'aliquota e' disattivata. Un `except` largo inghiottirebbe anche
+        #    un errore di programmazione (un nome di tabella sbagliato, una
+        #    firma cambiata) e lo farebbe uscire come «nessun default»: il
+        #    difetto resterebbe vivo e invisibile per mesi.
+        logger.warning(
+            "DEFAULT_IVA non risolvibile: nessuna aliquota attiva con "
+            "codice_interno=%r. Il form articolo non proporra' un'IVA.",
+            codice_interno,
+        )
+        return None
 
 
 # Scopo: Restituisce lookup articoli limitato per autocomplete cross-dominio.

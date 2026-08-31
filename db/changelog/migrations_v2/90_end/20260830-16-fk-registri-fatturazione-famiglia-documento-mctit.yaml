@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-1 (coda) — LA FK CHE CHIUDE IL VOCABOLARIO
+#   vendite.registri_fatturazione.famiglia_documento
+#     -> vendite.famiglie_documento.codice_interno
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-1 (§3.1)
+#
+# ── ⛔ PERCHE' STA IN `90_end` E NON ACCANTO ALLA COLONNA ──────────
+#   La colonna nasce in `00_schema` (20260830-15) e il catalogo si semina in
+#   `80_data` (20260830-14). Liquibase esegue in quest'ordine: 00_schema →
+#   20_code → 80_data → 90_end. Una FK dichiarata insieme alla colonna
+#   verrebbe validata quando `vendite.famiglie_documento` e' ancora VUOTA, e
+#   fallirebbe sul default `'FATTURA'` delle righe esistenti — su una macchina
+#   ricostruita da zero, cioe' in CI, e non su quella di sviluppo dove il
+#   catalogo c'e' gia'. Il difetto peggiore: verde qui, rosso in CI.
+#   ⭐ `90_end` e' la sede giusta perche' e' il posto dove stanno le cose che
+#   presuppongono i DATI — resync delle sequenze, grant, policy degli indici FK.
+#
+# ── ⚠️ FK SULLA CHIAVE NATURALE, NON SULL'ID ──────────────────────
+#   Il registro porta `famiglia_documento` come TESTO (`FATTURA`, `DDT`, …), non
+#   `famiglia_documento_id`. E' una deroga consapevole alla preferenza per le
+#   surrogate: qui il valore si LEGGE in ogni COMMENT, in ogni WHERE della
+#   risoluzione e in ogni riga di configurazione, e un id costringerebbe a un
+#   join per sapere di che registro si sta parlando. La FK regge lo stesso —
+#   `uq_famiglie_documento_codice_interno` e' l'unicita' che la rende possibile
+#   — e il valore resta immutabile per costruzione.
+#
+# ── ℹ️ NIENTE `ON DELETE` ─────────────────────────────────────────
+#   Il default (`NO ACTION`) e' quello voluto: una famiglia con dei registri
+#   sopra non si cancella, e non si vuole ne' un CASCADE (cancellerebbe
+#   registri veri) ne' un SET NULL — che, sulla colonna `NOT NULL`, disarmerebbe
+#   il passo successivo invece di fermare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260830-16-fk-registri-fatturazione-famiglia-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260830-16-fk-registri-fatturazione-famiglia-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-1 (coda): la FK da vendite.registri_fatturazione.famiglia_documento a
+        vendite.famiglie_documento.codice_interno. ⛔ Sta in 90_end e non accanto alla colonna
+        perche'' Liquibase esegue 00_schema prima di 80_data: dichiarata insieme alla colonna,
+        verrebbe validata con il catalogo ancora VUOTO e fallirebbe sul default ''FATTURA'' delle
+        righe esistenti — su un database ricostruito da zero, cioe'' in CI, e non su quello di
+        sviluppo dove il catalogo c''e'' gia''. Verde qui e rosso in CI e'' il difetto peggiore.
+        ⚠️ FK sulla CHIAVE NATURALE e non sull''id: il valore si legge in ogni COMMENT, in ogni
+        WHERE della risoluzione e in ogni riga di configurazione, e un id costringerebbe a un join
+        per sapere di che registro si parla. ℹ️ Nessun ON DELETE: NO ACTION e'' quello voluto — un
+        CASCADE cancellerebbe registri veri e un SET NULL, su una colonna NOT NULL, disarmerebbe il
+        passo successivo invece di fermare. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-1.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+            # ⛔ Il catalogo dev'essere SEMINATO: senza le cinque famiglie la FK
+            #    non puo' validare il default delle righe esistenti.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.famiglie_documento
+                   WHERE codice_interno = 'FATTURA';
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: vendite
+                    foreignKeyName: fk_registri_fatturazione_famiglia
+      changes:
+        - addForeignKeyConstraint:
+            constraintName: fk_registri_fatturazione_famiglia
+            baseTableSchemaName: vendite
+            baseTableName: registri_fatturazione
+            baseColumnNames: famiglia_documento
+            referencedTableSchemaName: vendite
+            referencedTableName: famiglie_documento
+            referencedColumnNames: codice_interno
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: registri_fatturazione
+            constraintName: fk_registri_fatturazione_famiglia

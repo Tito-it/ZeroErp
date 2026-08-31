@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-14 — I REGISTRI SENZA FORMA LA PRENDONO DALLA LORO FAMIGLIA
+#   vendite.registri_fatturazione.prefisso (backfill)
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-14
+#
+# ── ⛔ IL DIFETTO, E LA SUA CAUSA E' UN ERRORE DI PROCESSO ───────
+#   Misurato il 2026-08-31 dalla preCondition del 20260831-53, che ha fermato
+#   il migrate: DUE registri di famiglia COMMESSA con `prefisso` NULL.
+#   ⇒ La causa non e' nei dati: il seed del 20260831-40 all'inizio filtrava su
+#   tre famiglie, e il filtro e' stato esteso a COMMESSA DOPO che quel
+#   changeSet era gia' stato applicato.
+#   ⛔ Con `runOnChange: false` modificare un changeSet APPLICATO non ha alcun
+#   effetto: il file che si legge oggi dice una cosa, quello che ha girato ne
+#   diceva un'altra. E'' la regola di sempre — lo stato si chiede a
+#   `databasechangelog`, non al file.
+#
+# ── ⭐ LA CORREZIONE NON NOMINA LA COMMESSA ─────────────────────
+#   Si scrive come regola generale: «ogni registro attivo che si numera su una
+#   famiglia non fiscale e non ha prefisso prende quello di default della sua
+#   famiglia». Cosi' vale anche per il prossimo registro che nascesse monco per
+#   un'altra ragione, e non e' una fotografia di questi due.
+#
+# ⭐ La fonte e' vendite.famiglie_documento (P-11), non piu' il catalogo dei
+#   formati: e' la stessa da cui il provisioning fa nascere i registri nuovi,
+#   quindi backfill e nascita non possono divergere.
+# ⚠️ Gira in `00_schema`, quindi PRIMA del DELETE in `80_data`: e' l'ordine che
+#   permette al 20260831-53 di trovare la condizione soddisfatta.
+# ⚠️ Idempotente: tocca solo chi ha il prefisso vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-54-backfill-prefisso-registri-da-famiglie-mctit.yaml
+
+  - changeSet:
+      id: 20260831-54-backfill-prefisso-registri-da-famiglie
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-14: i registri senza forma la prendono dalla loro famiglia. ⛔ Misurato dalla
+        preCondition del 20260831-53, che ha fermato il migrate: due registri COMMESSA con
+        prefisso NULL. La causa e'' un errore di processo, non un difetto dei dati — il seed del
+        20260831-40 filtrava su tre famiglie e il filtro e'' stato esteso a COMMESSA DOPO che
+        quel changeSet era gia'' applicato, e con runOnChange false modificare un changeSet
+        applicato non ha effetto. ⭐ La correzione non nomina la commessa: si scrive come regola
+        generale, cosi'' vale anche per il prossimo registro che nascesse monco per un''altra
+        ragione. ⭐ La fonte e'' vendite.famiglie_documento, la stessa da cui il provisioning fa
+        nascere i registri nuovi: backfill e nascita non possono divergere. ⚠️ Idempotente.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-14.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: prefisso_default
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ `COALESCE(r.prefisso,'') = ''` e non `IS NULL`: un prefisso
+              --   messo a stringa vuota e' indistinguibile da assente per chi
+              --   compone il numero, e va riparato allo stesso modo.
+              -- ⛔ Non si nomina COMMESSA: la regola vale per ogni famiglia che
+              --   dichiari un default, ed e' cio' che la rende utile anche al
+              --   prossimo caso invece che a questi due.
+              UPDATE vendite.registri_fatturazione r
+                 SET prefisso = fd.prefisso_default
+                FROM vendite.famiglie_documento fd
+               WHERE fd.codice_interno = r.famiglia_documento
+                 AND COALESCE(fd.prefisso_default, '') <> ''
+                 AND COALESCE(r.prefisso, '') = '';
+
+              -- ⚠️ Stessa cosa per la lunghezza: la colonna e' NOT NULL con
+              --   default 7, quindi un registro nato prima del 20260831-49 puo'
+              --   averla a 7 anche dove la famiglia ne vuole 9.
+              UPDATE vendite.registri_fatturazione r
+                 SET lunghezza_numero = fd.lunghezza_default
+                FROM vendite.famiglie_documento fd
+               WHERE fd.codice_interno = r.famiglia_documento
+                 AND r.lunghezza_numero IS DISTINCT FROM fd.lunghezza_default
+                 AND r.lunghezza_numero = 7;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback non previsto: togliere il prefisso rimetterebbe i registri senza forma.'::text;

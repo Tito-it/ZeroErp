@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/soggetti_titoli_iva_movimenti.md" %}
 # 📚 Tabella `soggetti_titoli_iva_movimenti`
 
 > 📝 **Descrizione**
@@ -22,15 +23,18 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| annulla_movimento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stiva_movimenti_auto_annullo |  |
 | CHECK | chk_stiva_movimenti_documento |  |
 | CHECK | chk_stiva_movimenti_motivo_forzatura |  |
 | CHECK | chk_stiva_movimenti_riga_con_fattura |  |
 | CHECK | chk_stiva_movimenti_segno |  |
 | CHECK | chk_stiva_movimenti_tipo |  |
+| FOREIGN KEY | fk_soggetti_titoli_iva_movimenti_annulla | annulla_movimento_id |
 | FOREIGN KEY | fk_soggetti_titoli_iva_movimenti_fattura | fattura_id |
 | FOREIGN KEY | fk_soggetti_titoli_iva_movimenti_fattura_riga | fattura_riga_id |
 | FOREIGN KEY | fk_soggetti_titoli_iva_movimenti_titolo | titolo_iva_id |
@@ -42,14 +46,26 @@
 | ix_stiva_movimenti_fattura_id | `CREATE INDEX ix_stiva_movimenti_fattura_id ON anagrafiche.soggetti_titoli_iva_movimenti USING btree (fattura_id) WHERE (fattura_id IS NOT NULL)` |
 | ix_stiva_movimenti_titolo | `CREATE INDEX ix_stiva_movimenti_titolo ON anagrafiche.soggetti_titoli_iva_movimenti USING btree (titolo_iva_id, data_movimento)` |
 | pk_soggetti_titoli_iva_movimenti | `CREATE UNIQUE INDEX pk_soggetti_titoli_iva_movimenti ON anagrafiche.soggetti_titoli_iva_movimenti USING btree (id)` |
+| uq_stiva_movimenti_annulla | `CREATE UNIQUE INDEX uq_stiva_movimenti_annulla ON anagrafiche.soggetti_titoli_iva_movimenti USING btree (annulla_movimento_id) WHERE (annulla_movimento_id IS NOT NULL)` |
 | uq_stiva_movimenti_documento | `CREATE UNIQUE INDEX uq_stiva_movimenti_documento ON anagrafiche.soggetti_titoli_iva_movimenti USING btree (titolo_iva_id, tipo_movimento, fattura_id, fattura_riga_id) NULLS NOT DISTINCT WHERE (fattura_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
-| trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
+| trg_soggetti_titoli_iva_movimenti_a10_soggetti_titoli_iv_39df48 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
+| trg_soggetti_titoli_iva_movimenti_a10_soggetti_titoli_iv_39df48 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
+| trg_soggetti_titoli_iva_movimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_titoli_iva_movimenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_titoli_iva_movimenti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetti_titoli_iva_movimenti_id')` |
+| trg_soggetti_titoli_iva_movimenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetti_titoli_iva_movimenti_id')` |
+| trg_stiva_movimenti_a10_append_only_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_stiva_movimenti_append_only()` |
+| trg_stiva_movimenti_a10_append_only_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_stiva_movimenti_append_only()` |
+| trg_stiva_movimenti_a10_guard_annullo_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_stiva_movimenti_guard_annullo()` |
 | trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
+| trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
+| trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
 
 ---
 {% include-markdown "signature-core.md" %}

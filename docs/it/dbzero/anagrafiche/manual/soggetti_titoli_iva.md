@@ -15,6 +15,20 @@ Approfondimento funzioni:
 
 ---
 
+### 👀 Chi legge questa tabella
+
+⭐ **Un consumatore solo, ed e` nato il 2026-08-29**:
+[`vendite.fn_resolve_iva_riga`](/dbzero/vendite/funzioni/fn_resolve_iva_riga) — il
+risolutore IVA di riga. E` il suo **stadio B**: dopo aver stabilito quale aliquota
+compete alla merce, guarda se il cliente ha un titolo che la **sostituisce su
+quella riga**.
+
+⚠️ Il risolutore **non consuma il plafond**: e` in sola lettura, e la ripartizione
+che ritorna e` una **proiezione** sul residuo di adesso. Il consumo e` un atto
+contabile e passa da `anagrafiche.fn_consuma_plafond_titolo_iva`.
+
+---
+
 ### 🎯 Scopo Principale
 
 (rev 2026-08-29 — tabella nata il 2026-08-29)
@@ -125,6 +139,12 @@ che chi lo legge scambia per un limite.
 chiede `P3`, ma non è un numero scritto sopra a un altro: è la **somma** del
 registro dei movimenti (`D5`). Ogni fattura ne mangia un pezzo, ogni nota di credito
 ne restituisce uno, ogni forzatura manuale è una riga **con il suo motivo**.
+
+⚠️ E anche **correggere** una forzatura è una riga: dal 2026-08-31 il registro è
+**solo aggiunte** — non si modifica e non si cancella — e una forzatura sbagliata
+si annulla con un contro-movimento di segno opposto, che lascia visibili sia
+l'errore sia la correzione. Il meccanismo sta nel manuale di
+[soggetti_titoli_iva_movimenti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_movimenti).
 
 ⭐ Si memorizza l'imponibile **usato** e non il residuo (`P4`), ed è la scelta più
 verificabile: quel numero si confronta con la somma degli imponibili fatturati,

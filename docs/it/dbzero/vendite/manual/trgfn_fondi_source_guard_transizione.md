@@ -22,6 +22,40 @@
 
 ---
 
+### ⭐ rev 31-08-2026 — LA MATRICE COMINCIA DALLA NASCITA (D-22)
+
+Fino a oggi il guard era montato **solo in `UPDATE`**, e `chk_fondi_source_stato`
+ammette tutti e quattro i valori: l'unico presidio sullo stato di **nascita** era
+la buona volontà di chi faceva l'`INSERT`.
+
+```text
+DISPONIBILE  ✅  il giro automatico (fn_genera_fondi_fattura_source)
+ASSEGNATO    ✅  il riporto (pagamenti.fn_conferma_sistemazione)
+ESEGUITO     ⛔  un trasferimento non si dichiara: lo si registra
+ANNULLATO    ⛔  non si toglie dal tavolo denaro che non c'e' mai stato
+```
+
+> ⭐ **`ASSEGNATO` alla nascita è un percorso VIVO, non una concessione.** Il
+> riporto nomina già la fattura di destinazione, e farlo nascere `DISPONIBILE`
+> sarebbe un credito che aspetta una decisione già presa. Un guard scritto sulla
+> sola matrice di D-7 — che descriveva la nascita come `DISPONIBILE` — avrebbe
+> rotto il processo rimborsi.
+
+⚠️ **Il trigger si chiama ora `…_a10_guard_transizione_ins_upd`.** Il suffisso di
+evento è una convenzione, e tenerlo a `_upd` su un trigger che scatta anche in
+`INSERT` sarebbe un nome che mente. L'ordine alfabetico dei `BEFORE ROW` **non
+cambia** — verificato carattere per carattere: dopo il prefisso comune il
+confronto è fra `i` e `u`, e il trigger resta fra `guard_importo_ins_upd` e
+`lock_atto_upd`.
+
+⚠️ **E da qui il guard OSCURA il `CHECK`**: un `BEFORE ROW` scatta prima che i
+vincoli di tabella siano valutati, quindi uno stato fuori vocabolario dà ora
+`P0001` e non più `23514`. Il `CHECK` resta come rete strutturale per le strade
+che il trigger non percorre, ed è presidiato a parte in
+`db/pgtap/vendite/test-fondi-fattura-governo.sql`.
+
+---
+
 ### 🎯 Scopo Principale
 (latest review 22-08-2026)
 

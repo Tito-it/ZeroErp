@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-1 / C2-2 / C2-3 — IL REGISTRO DICHIARA CHE FAMIGLIA NUMERA
+#   vendite.registri_fatturazione.famiglia_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.1
+#
+# ── ⭐ IL DISCRIMINANTE STA SUL REGISTRO, NON NEL VOCABOLARIO FISCALE
+#   Il DDT, l'ordine, la commessa e il reso non hanno un «tipo documento
+#   fiscale»: `vendite.ddt` non ha proprio nessuna colonna di tipo, e
+#   `config.tipi_doc_fiscale` e' consumata da 83 file di 20_code — chi la itera
+#   oggi puo' assumere «tipo doc fiscale ⇒ finisce in fattura». Farceli entrare
+#   avrebbe allargato un vocabolario che qualcuno legge come chiuso.
+#   Qui invece la famiglia e' un fatto LOCALE del registro.
+#
+# ── ⚠️ IL DEFAULT 'FATTURA' VALE SOLO PER IL PREGRESSO ─────────────
+#   Le righe che esistono SONO registri di fatturazione: il default le
+#   classifica senza una UPDATE, e resta come comodita' per il caso piu'
+#   frequente. Non e' una scorciatoia: e' l'unico valore che il pregresso puo'
+#   avere.
+#
+# ── ⛔ IL `CHECK` CONDIZIONATO, E PERCHE' NON E' PIGNOLERIA ─────────
+#   `limite_emissione_giorni`, `limite_emissione_giorno_mese` e una
+#   `politica_data_documento` diversa da `OGGI` sono regole della FATTURA
+#   DIFFERITA. Su un registro DDT non vogliono dire niente, e lasciarle
+#   valorizzabili significherebbe che un giorno qualcuno le valorizza e il
+#   cancello del pavimento comincia a mordere su documenti che non lo
+#   prevedono. Per vincolo, non per abitudine.
+#   ⭐ E il motore non ha bisogno di sapere niente di tutto questo: su un
+#   registro non-FATTURA quelle colonne restano nulle,
+#   fn_get_pavimento_emissione non ha pavimento da dare e
+#   fn_get_pavimento_data_documento risponde «nessun vincolo» — un caso che
+#   quella funzione documenta gia'. Il cancello si spegne DA SE' dove non
+#   serve, e resta acceso dove serve.
+#
+# ── ⛔ LA `UNIQUE` E' PARZIALE, ED E' LA DECISIONE MENO OVVIA ───────
+#   Serve a rendere DETERMINISTICA la risoluzione delle famiglie che NON
+#   passano da `tipi_doc_fiscale_registri` — DDT, ordine, commessa, reso: per
+#   loro il registro e' «quello della mia famiglia, del mio emittente,
+#   eventualmente della mia utility», e due righe uguali renderebbero la scelta
+#   un caso.
+#   ⛔ Ma sulla FATTURA la stessa regola sarebbe SBAGLIATA: lo stesso emittente
+#   puo' legittimamente avere piu' registri di fatturazione — la mappa
+#   (tipo_doc, natura) → registro esiste apposta, e nota di credito e fattura
+#   possono stare su registri diversi. Li' a decidere e' la mappa, e un vincolo
+#   che lo impedisse romperebbe una configurazione valida.
+#   ⇒ `WHERE famiglia_documento <> 'FATTURA'`.
+#
+# ── ⚠️ `NULLS NOT DISTINCT`, o il vincolo non vincola ──────────────
+#   `utility_id` e' nullable, e in SQL due NULL non collidono: senza quella
+#   clausola due registri della stessa famiglia e dello stesso emittente,
+#   entrambi «per tutte le utility», passerebbero tutti e due — cioe' il
+#   vincolo sarebbe vuoto proprio nel caso piu' comune.
+#
+# ⚠️ La FK verso vendite.famiglie_documento NON sta qui: il catalogo si semina
+#   in 80_data, che gira DOPO 00_schema. Vive in 90_end (20260830-16).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260830-15-alter-registri-fatturazione-famiglia-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260830-15-alter-registri-fatturazione-famiglia-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-1/2/3: il registro dichiara che FAMIGLIA di documento numera. ⭐ Il discriminante sta sul
+        registro e non in config.tipi_doc_fiscale: DDT, ordine, commessa e reso non hanno un tipo
+        documento fiscale (vendite.ddt non ha proprio la colonna) e quel vocabolario e'' consumato
+        da 83 file di 20_code, dove chi lo itera puo'' assumere «tipo doc fiscale ⇒ finisce in
+        fattura». ⚠️ Il default FATTURA vale per il pregresso, che SONO registri di fatturazione.
+        ⛔ Il CHECK condizionato tiene limite_emissione_* e politica_data_documento dentro la sola
+        FATTURA: sono regole della differita, e su un registro DDT non vogliono dire niente — per
+        vincolo, non per abitudine. ⭐ Il motore non va toccato: su un registro non-FATTURA quelle
+        colonne restano nulle e fn_get_pavimento_data_documento risponde «nessun vincolo», caso che
+        gia'' documenta. ⛔ La UNIQUE e'' PARZIALE (`famiglia <> FATTURA`): rende deterministica la
+        risoluzione delle famiglie che non passano da tipi_doc_fiscale_registri, ma sulla fattura
+        sarebbe sbagliata — lo stesso emittente puo'' avere piu'' registri, e li'' decide la mappa
+        (tipo_doc, natura). ⚠️ NULLS NOT DISTINCT, o con utility_id nullo il vincolo sarebbe vuoto
+        proprio nel caso piu'' comune. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-1/2/3.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: registri_fatturazione
+            columns:
+              - column:
+                  name: famiglia_documento
+                  type: varchar(16)
+                  defaultValue: "FATTURA"
+                  remarks: >-
+                    Famiglia di documento che questo registro numera (chiave naturale di
+                    vendite.famiglie_documento). Il default vale per il pregresso: le righe
+                    esistenti sono registri di fatturazione.
+                  constraints:
+                    nullable: false
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ CHECK CONDIZIONATO: le regole della fattura differita valgono
+              --   sulla sola FATTURA. Su un registro DDT il limite di emissione
+              --   non vuole dire niente, e una politica della data diversa da
+              --   OGGI farebbe mordere un cancello che quel documento non
+              --   prevede.
+              ALTER TABLE vendite.registri_fatturazione
+                  ADD CONSTRAINT chk_registri_fatturazione_famiglia_regole_fattura
+                  CHECK (
+                      famiglia_documento = 'FATTURA'
+                      OR (limite_emissione_giorni      IS NULL
+                      AND limite_emissione_giorno_mese IS NULL
+                      AND politica_data_documento      = 'OGGI')
+                  );
+
+              COMMENT ON CONSTRAINT chk_registri_fatturazione_famiglia_regole_fattura
+                  ON vendite.registri_fatturazione
+              IS 'limite_emissione_giorni, limite_emissione_giorno_mese e una politica_data_documento diversa da OGGI sono ammessi SOLO sulla famiglia FATTURA: sono le regole della fattura differita, e su un DDT o un ordine non vogliono dire niente. Per vincolo e non per abitudine — lasciarle valorizzabili significherebbe che un giorno qualcuno le valorizza e il cancello del pavimento comincia a mordere su documenti che non lo prevedono. ⭐ E'' anche cio'' che rende inutile toccare il motore: su un registro non-FATTURA quelle colonne restano nulle, vendite.fn_get_pavimento_emissione non ha pavimento da dare e vendite.fn_get_pavimento_data_documento risponde «nessun vincolo» — un caso che quella funzione documenta gia''. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-2.';
+
+              -- ⛔ UNIQUE PARZIALE, e l'esclusione della fattura e' la decisione
+              --   meno ovvia del changeSet: vedi il COMMENT dell'indice.
+              -- ⚠️ NULLS NOT DISTINCT: utility_id e' nullable e due NULL non
+              --   collidono; senza, il vincolo sarebbe vuoto nel caso piu'
+              --   comune (registro «per tutte le utility»).
+              CREATE UNIQUE INDEX uq_registri_fatturazione_famiglia_emittente_utility
+                  ON vendite.registri_fatturazione (famiglia_documento, emittente_soggetto_ruolo_id, utility_id)
+                  NULLS NOT DISTINCT
+                  WHERE famiglia_documento <> 'FATTURA';
+
+              COMMENT ON INDEX vendite.uq_registri_fatturazione_famiglia_emittente_utility
+              IS 'Un registro per (famiglia, emittente, utility) sulle famiglie che NON passano da vendite.tipi_doc_fiscale_registri — DDT, ORDINE, COMMESSA, RESO. Per loro il registro e'' «quello della mia famiglia, del mio emittente, eventualmente della mia utility», e due righe uguali renderebbero la scelta un caso invece di una risoluzione. ⛔ E'' PARZIALE apposta: sulla FATTURA la stessa regola sarebbe SBAGLIATA, perche'' lo stesso emittente puo'' legittimamente avere piu'' registri di fatturazione — la mappa (tipo_doc, natura) → registro esiste per questo, e nota di credito e fattura possono stare su registri diversi. Li'' a decidere e'' la mappa, e un vincolo che lo impedisse romperebbe una configurazione valida. ⚠️ NULLS NOT DISTINCT perche'' utility_id e'' nullable: in SQL due NULL non collidono, e senza quella clausola due registri della stessa famiglia e dello stesso emittente, entrambi «per tutte le utility», passerebbero tutti e due — il vincolo sarebbe vuoto proprio nel caso piu'' comune. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-3.';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.famiglia_documento
+              IS 'Famiglia di documento che questo registro numera: chiave naturale di vendite.famiglie_documento (FATTURA, DDT, ORDINE, COMMESSA, RESO). ⭐ Il discriminante sta QUI e non in config.tipi_doc_fiscale, ed e'' una decisione: DDT, ordine, commessa e reso non hanno un tipo documento fiscale — vendite.ddt non ha proprio la colonna — e quel vocabolario e'' consumato da 83 file di 20_code, dove chi lo itera puo'' assumere «tipo doc fiscale ⇒ finisce in fattura». Sul registro la famiglia e'' invece un fatto locale. ⚠️ Il DEFAULT ''FATTURA'' vale per il pregresso: le righe che esistevano il 2026-08-30 SONO registri di fatturazione, e il default le classifica senza una UPDATE. ⚠️ Il nome della tabella dice `fatturazione` e il contenuto e'' piu'' largo: e'' un debito DICHIARATO, non una svista — rinominare la tabella significherebbe rinominare trigger, funzioni, viste e vincoli, cioe'' un cantiere piu'' grande del miglioramento che accompagna, e per di piu'' scorrelato. La descrizione della tabella dice gia'' «registri/serie di NUMERAZIONE»: era il nome dell''oggetto a essere rimasto indietro. Debito registrato in brief-db-registri-di-numerazione-emittente-e-trasloco §12.5-bis. Piano: C2-1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_registri_fatturazione_famiglia_emittente_utility;
+              ALTER TABLE vendite.registri_fatturazione
+                  DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_famiglia_regole_fattura;
+              ALTER TABLE vendite.registri_fatturazione
+                  DROP COLUMN IF EXISTS famiglia_documento;

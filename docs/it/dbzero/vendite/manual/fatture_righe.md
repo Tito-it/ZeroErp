@@ -45,7 +45,7 @@ Obiettivi principali:
 2. **Calcolo dell'importo**: NON lo fa chi scrive la riga. Lo calcola il trigger `trg_fatture_righe_a20_importo_ins_upd` a ogni `INSERT`/`UPDATE` — vedi *Logiche di calcolo*.
 3. **Ordinamento**: `riga_nr` progressivo per fattura, assegnato con ordinamento **deterministico** dei gruppi; vincolo unico `(fattura_id, riga_nr)`.
 4. **Totali testata**: la somma delle righe alimenta i riepiloghi IVA e da lì `imponibile_tot`, `imposta_tot`, `totale_doc`, `totale_a_pagare`.
-5. **Congelamento**: superata la soglia `DRAFT`/`EMESSA`, il guard `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt` respinge `INSERT`, `UPDATE` **e** `DELETE`. La riga diventa uno snapshot fiscale intoccabile.
+5. **Congelamento**: da quando il documento e` **congelato** — `config.stati_doc_fiscale.congela_fiscale`, ⛔ non piu` la lista `DRAFT`/`EMESSA` scritta dentro il guard (rev 2026-08-30, `D33`) — il trigger `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt` respinge `INSERT`, `UPDATE` **e** `DELETE`. La riga diventa uno snapshot fiscale intoccabile. ⭐ Dal 2026-08-30 quel trigger esegue la guardia **generica** `vendite.trgfn_fattura_satellite_guard_congelamento` (`D34`): nome del trigger, codice errore `E_FATTURA_RIGA_CONGELATA` e bypass GUC **non sono cambiati**.
 6. **Normalizzazione**: `trg_fatture_righe_guard_normalize_ins_upd` eredita il BA destinatario dalla testata e allinea lo snapshot `iva_natura`.
 
 ---
@@ -54,9 +54,25 @@ Obiettivi principali:
 
 * **Identità e collegamenti**: `fattura_id` (testata), `riga_nr` (ordine), `articolo_id` (opzionale), `uom_id` (unità misura), `dest_billing_account_id` (attribuzione economica a BA figlio).
 * **Dati merce/servizio**: `descrizione`, `qta` , `prezzo_unitario` , `sconto_percentuale` (0–100, default 0). Per q.ta e prezzo leggere le note contenute nel documento
-* **IVA e fiscali**: `iva_id` (aliquota), `iva_natura` (snapshot), `esigibilita` (I|D|S), `split_payment`.
+* **IVA e fiscali**: `iva_id` (il codice), `aliquota_iva` (**la percentuale
+  congelata**, dal 2026-08-29), `iva_natura` (snapshot), `esigibilita` (`I`|`D`|`S`),
+  `split_payment`.
+  ⭐ **Nessuno di questi si scrive a mano**: li mette
+  `trgfn_fatture_righe_guard_normalize`. Natura e aliquota vengono dal codice IVA;
+  esigibilità e split dal soggetto **cliente**. ⚠️ Un valore passato dall'esterno
+  su `aliquota_iva` e `split_payment` viene **sovrascritto**; su `esigibilita`
+  no — lì una `'D'` (differita) scelta di proposito **sopravvive**, perché è una
+  decisione del documento che nessuna colonna sa dedurre.
 * **Importo congelato**: `imponibile_riga` — `NOT NULL`, **calcolato dal DB**, mai da chi scrive la riga. Un valore passato dall'esterno viene **sovrascritto**.
 * **Snapshot kit** (`NULL` sulle righe non-kit, tutti valorizzati insieme sulle righe di kit): `kit_key` (identità dell'**istanza** di kit), `kit_esposto_in_fattura`, `kit_articolo_padre_id`, `kit_descrizione_padre`. Vedi *Kit ed esposizione*.
+* **Riga spezzata** (dal 2026-08-31): `riga_capofila_id` — vuoto sulle righe
+  ordinarie, valorizzato sulle parti. Vedi *Quando una riga si spezza in due*.
+* **Riferimento all'atto** (dal 2026-08-31): `fattura_atto_id` — il blocco di
+  [vendite.fatture_atti](/dbzero/vendite/tabelle/fatture_atti) da cui questa riga
+  prende CIG, CUP e commessa. Vuoto sulle righe che non nascono da un contratto,
+  che sono la maggioranza. ⚠️ Il database garantisce che il blocco appartenga
+  **alla stessa fattura**: una riga agganciata all'atto di un altro documento non
+  darebbe nessun errore, farebbe solo sparire il CIG dalla fattura giusta.
 * **Governance**: `meta` (JSONB, NOT NULL), `storicizza`, `tx_id`, audit `data_*`/`user_*`.
 * **Tracciabilità di origine**: `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` con **unique parziale** su (sorgente_tipo_id, sorgente_uid). ⚠️ Sulle righe prodotte dall'aggregazione sono **NULL**: con *n* attività di sorgenti diverse non esiste una sorgente singola da dichiarare, e sceglierne una sarebbe una bugia. La tracciabilità passa da `attivita_fatturabili.fattura_riga_id`.
 
@@ -70,8 +86,21 @@ Obiettivi principali:
 > preventivi. Omonimia, non la stessa cosa.
 >
 > ❌ **`iva_perc` non è mai esistita** su questa tabella: il manuale precedente la
-> citava per errore. L'aliquota si risolve da `iva_id` con
-> `config.fn_get_aliquota_iva(iva_id, stato_emittente_id)`.
+> citava per errore.
+>
+> ⛔ **Ma la seconda metà di questa nota è a sua volta superata.** Diceva:
+> *«l'aliquota si risolve da `iva_id` con `config.fn_get_aliquota_iva`»*. Dal
+> **2026-08-29 esiste `aliquota_iva` sulla riga**, ed è **quella** che si legge —
+> la funzione ricalcola il valore **di oggi**, e su un documento congelato è la
+> risposta sbagliata.
+> ⭐ La regola in una frase: **lo snapshot diventa una fotografia quando il
+> documento smette di essere scritto**, non perché qualcuno smette di leggerlo.
+> Finché il documento è vivo il trigger riallinea la colonna a ogni scrittura;
+> una volta congelato, quella colonna è ciò che il documento porta con sé.
+> ⚠️ `NULL` significa **«riga anteriore allo snapshot»**: il backfill non ha
+> toccato le righe già congelate, e non doveva — scrivere su uno snapshot fiscale
+> è ciò che il guard di congelamento esiste per impedire. Per quelle righe
+> l'aliquota sta sul riepilogo.
 
 ---
 
@@ -165,6 +194,58 @@ giusto.
 ⚠️ **La vista vale per OGNI uscita**: PDF, XML SDI, portale. Non è «la vista di
 stampa»: se il PDF mostrasse il kit raggruppato e l'XML trasmettesse i
 componenti, avremmo due uscite dello stesso documento con dettagli diversi.
+
+---
+
+### Quando una riga si spezza in due
+
+(dal 2026-08-31)
+
+Un cliente che ha una **dichiarazione d'intento** ha diritto a un certo importo
+di acquisti senza IVA — un «plafond». Può succedere che una singola riga di
+fattura sia più grande di quello che resta: i primi tot euro sono coperti, il
+resto no.
+
+⛔ **Quella riga non può restare una riga sola.** La fattura elettronica ammette
+una sola aliquota e una sola natura per linea: due trattamenti fiscali diversi
+sullo stesso importo *devono* diventare due linee. Non è una scelta nostra, è il
+formato.
+
+Le due parti restano **due righe di fattura collegate fra loro**:
+
+* la prima è la **capofila**, e ha `riga_capofila_id` **vuoto** — è lei stessa la
+  prima parte;
+* le successive puntano alla capofila con `riga_capofila_id`.
+
+⭐ **Le attività fatturabili non se ne accorgono**: continuano a puntare alla
+capofila come prima, e il loro flag «fatturato» resta acceso da sé. Non è stato
+necessario toccare niente in `attivita_fatturabili`.
+
+> ⚠️ **La sola cosa da ricordare, e vale la pena scriverla in grande.** Chi parte
+> da un'attività per risalire a **quanto è stato fatturato** deve scendere dalla
+> capofila alle sue parti e sommare. Fermarsi alla capofila fa vedere **metà
+> valore, senza nessun errore** — il numero è semplicemente più basso.
+
+**Due regole che il database non lascia violare**, e sono proprio le due che, se
+saltassero, non darebbero nessun segnale:
+
+| Regola | Cosa impedisce |
+| --- | --- |
+| Una parte deve puntare a una capofila, **mai a un'altra parte** | Una catena di tre righe: chi somma si ferma al primo passaggio e perde il resto |
+| Capofila e parti stanno **sulla stessa fattura** | Una parte agganciata a un'altra fattura mette in disordine i totali di due documenti insieme |
+
+📌 **A video** le due parti si vedono come **due righe pari e adiacenti**, non una
+sotto l'altra: la vista di esposizione le tiene attaccate e marca la seconda con
+un tipo suo. Le loro quantità possono risultare non tonde (per esempio «6,3492»),
+perché la divisione segue l'importo coperto dal plafond e non un numero di pezzi:
+è legittimo, ed è voluto — il plafond è un diritto del cliente, e arrotondarlo
+per avere un numero più bello glielo ridurrebbe.
+
+⚠️ **Non si confonde con le righe di un kit.** Un kit è *un articolo composto*
+venduto insieme; una riga spezzata dal plafond è *lo stesso articolo* diviso in
+due per ragioni fiscali. Le colonne `kit_*` non c'entrano e non vanno usate: la
+vista di esposizione **somma** le righe di un kit in una sola, e farlo qui
+cancellerebbe la ragione per cui la riga si è spezzata.
 
 ---
 

@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 — IL REGISTRO NASCE COL PREFISSO
+#   vendite.fn_provision_registri_emittente
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-6
+#
+# ── ⛔ E' IL PASSO CHE CHIUDE IL BUCO APERTO DA P-3/4/5 ───────────
+#   Da quei changeSet i generatori leggono il prefisso SOLO dal registro, senza
+#   ripiego sul catalogo dei formati. Ne discende che un registro creato senza
+#   prefisso produce numeri NUDI, in silenzio.
+#   ⚠️ E questa funzione e' il punto in cui nascono i registri di ogni emittente
+#   NUOVO — cioe' esattamente il momento in cui nessuno sta guardando. Senza
+#   questo passo il difetto non si vedrebbe oggi: tornerebbe al primo emittente
+#   creato dopo il rilascio.
+#
+# ── ⭐ IL VALORE SI DERIVA, NON SI ELENCA ────────────────────────
+#   Dal catalogo dei formati, con la famiglia in minuscolo come chiave. Tre
+#   costanti scritte qui sarebbero l'ennesimo elenco parallelo.
+#   ⛔ Solo DDT, ORDINE e RESO: la commessa compone il proprio CMM nella
+#   funzione di dominio, la fattura non ha formato.
+#
+# ⚠️ Il prefisso vuoto resta LEGITTIMO: questa funzione non lo impone, gli da'
+#   un default sensato. E' la differenza fra vietare un caso e non lasciarlo
+#   accadere per distrazione.
+# ⚠️ Firma identica: CREATE OR REPLACE, nessun DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-44-update-fn-provision-registri-prefisso-mctit.yaml
+
+  - changeSet:
+      id: 20260831-44-update-fn-provision-registri-prefisso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-6: il registro nasce col prefisso. ⛔ E'' il passo che chiude il buco aperto da
+        P-3/4/5: da quei changeSet i generatori leggono il prefisso SOLO dal registro, senza
+        ripiego, quindi un registro creato senza prefisso produce numeri nudi in silenzio — e
+        questa funzione e'' il punto in cui nascono i registri di ogni emittente NUOVO, cioe'' il
+        momento in cui nessuno guarda. Senza, il difetto non si vedrebbe oggi e tornerebbe al
+        primo emittente creato dopo il rilascio. ⭐ Il valore si DERIVA dal catalogo dei formati
+        (la famiglia in minuscolo e'' la chiave), non si elenca. ⛔ Solo DDT, ORDINE e RESO: la
+        commessa compone il proprio CMM nella funzione di dominio, la fattura non ha formato.
+        ⚠️ Il prefisso vuoto resta legittimo: qui gli si da'' un default sensato, non lo si
+        impone. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: prefisso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri_emittente(
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE
+              )
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_creati integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dare a un emittente i registri di numerazione delle
+                  --   famiglie NON fiscali che ancora non ha, e dire quanti
+                  --   ne ha creati.
+                  --
+                  -- Regole:
+                  --   - le famiglie si LEGGONO dal catalogo, non si elencano:
+                  --     una famiglia nuova entra da sola;
+                  --   - un registro per famiglia, valido per tutte le utility;
+                  --   - idempotente: guarda la COPPIA (emittente, famiglia),
+                  --     quindi un registro creato a mano con un altro codice
+                  --     vale lo stesso e non ne nasce un secondo.
+                  --
+                  -- ⛔ La FATTURA resta fuori: il suo registro dipende da
+                  --   (tipo documento, natura) e si configura in
+                  --   vendite.tipi_doc_fiscale_registri.
+                  -- =========================================================
+                  IF p_emittente_soggetto_ruolo_id IS NULL THEN
+                      RETURN 0;
+                  END IF;
+
+                  INSERT INTO vendite.registri_fatturazione (
+                      codice, descrizione, famiglia_documento,
+                      emittente_soggetto_ruolo_id, utility_id,
+                      reset_policy, attivo, prefisso, meta)
+                  SELECT
+                      -- ⚠️ Prime tre lettere della famiglia + id dell'emittente:
+                      --   deterministico, unico per costruzione, e dentro i 16
+                      --   caratteri della colonna. ⛔ NON la sigla
+                      --   dell'emittente: e' varchar(32) contro 16, e troncarla
+                      --   su una UNIQUE trasformerebbe due sigle simili in una
+                      --   collisione. La parte parlante sta nella descrizione.
+                      left(fd.codice_interno, 3) || '-' || ef.soggetto_ruolo_id::text,
+                      'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
+                      fd.codice_interno,
+                      ef.soggetto_ruolo_id,
+                      NULL,
+                      'ANNUALE',
+                      TRUE,
+                      -- ⛔ IL PREFISSO SI DA' ALLA NASCITA, e non e' un dettaglio: dal
+                      --   2026-08-31 il generatore lo legge SOLO dal registro, senza
+                      --   ripieghi. Un registro creato senza prefisso produce numeri NUDI,
+                      --   in silenzio — e questo e' il punto in cui nascono i registri di
+                      --   ogni emittente NUOVO, cioe' il momento in cui nessuno guarda.
+                      -- ⭐ Si DERIVA dal catalogo dei formati (chiave: la famiglia in
+                      --   minuscolo) invece di elencare tre costanti.
+                      -- ⛔ Solo per le famiglie che lo usano: la COMMESSA compone il proprio
+                      --   CMM nella funzione di dominio, e un prefisso di registro li'
+                      --   sarebbe un valore che nessuno legge.
+                      CASE WHEN fd.codice_interno IN ('DDT', 'ORDINE', 'RESO', 'COMMESSA')
+                           THEN sc.prefisso END,
+                      jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
+                    FROM anagrafiche.emittenti_fiscali ef
+                   CROSS JOIN vendite.famiglie_documento fd
+                    LEFT JOIN config.sistema_codici sc
+                           ON sc.codice_interno = lower(fd.codice_interno)
+                   WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND fd.attivo IS TRUE
+                     AND fd.codice_interno <> 'FATTURA'
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM vendite.registri_fatturazione r
+                            WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                              AND r.famiglia_documento          = fd.codice_interno);
+
+                  GET DIAGNOSTICS v_creati = ROW_COUNT;
+                  RETURN v_creati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provision_registri_emittente(vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE)
+              IS 'Da'' a un emittente i registri di numerazione che gli mancano, uno per famiglia non fiscale, senza toccare quelli che ci sono. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-6): il registro nasce ora anche col PREFISSO, ed e'' un passo obbligato, non un abbellimento. ⛔ Dal 2026-08-31 i generatori di DDT, ordini e resi leggono il prefisso SOLO dal registro, senza ripiego su config.sistema_codici («non mescoliamo le cose», decisione di Tid): un registro creato senza prefisso produce numeri NUDI, in silenzio. E questa funzione e'' il punto in cui nascono i registri di ogni emittente NUOVO, cioe'' esattamente il momento in cui nessuno sta guardando — senza questo passo il difetto non si vedrebbe oggi e tornerebbe al primo emittente creato dopo il rilascio. ⭐ Il valore si DERIVA dal catalogo dei formati (la chiave e'' il codice della famiglia in minuscolo: DDT->ddt, ORDINE->ordine, RESO->reso) invece di elencare tre costanti, che il primo documento nuovo renderebbe un elenco parallelo. ⛔ Solo per quelle tre famiglie: la COMMESSA compone il proprio CMM dentro la funzione di dominio (CMM-<sigla>-<anno>-<9 cifre>) e un prefisso di registro li'' sarebbe un valore che nessuno legge; la FATTURA non ha formato, il suo numero e'' il progressivo nudo. ⚠️ Il prefisso VUOTO resta legittimo e significa «nessun prefisso»: questa funzione non lo impone, gli da'' un default sensato — e'' la differenza fra vietare un caso e non lasciarlo accadere per distrazione. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback manuale: ri-applicare 20260831-04-create-fn-provision-registri-emittente-mctit.yaml'::text;

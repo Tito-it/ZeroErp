@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE A — LA COLONNA CHE COLLEGA L'ANNULLO ALLA FORZATURA
+#   anagrafiche.soggetti_titoli_iva_movimenti.annulla_movimento_id
+#   Piano: brief-db-titoli-iva-movimenti-annullo, §6.2 (Fase A)
+#   Origine: richiesta di Tid del 2026-08-29 sul piano BE/FE di I7
+#
+# ── ⭐ IL MECCANISMO ──────────────────────────────────────────────────
+#   Una forzatura sbagliata NON si cancella e non si spegne con un flag: si
+#   annulla scrivendo una SECONDA riga FORZATURA di segno opposto. Cosi' il
+#   registro resta il racconto di cio' che e' successo — l'errore, la
+#   correzione, e le date di entrambi — e l'accumulatore riporta
+#   `imponibile_utilizzato` al valore giusto da se', perche' somma tutto senza
+#   filtri. Questa colonna e' l'unica cosa che il backend non poteva darsi da
+#   solo: il LEGAME fra le due righe.
+#
+# ── ⛔ PERCHE' UNA COLONNA E NON UN CAMPO IN `meta` ───────────────────
+#   Un riferimento strutturale dentro un jsonb non ha FK, non e' interrogabile e
+#   non ha unicita': sarebbe una relazione dichiarata A PAROLE dentro un campo
+#   libero. Il frontend deve poter dire «questa riga e' annullata» e il database
+#   deve poter rifiutare il doppio annullo: entrambe vogliono una colonna vera.
+#
+# ── ⚠️ IL VERSO: la colonna sta sull'ANNULLANTE ──────────────────────
+#   `annulla_movimento_id` si legge «io annullo quel movimento». La riga
+#   annullata resta intatta e non sa di esserlo: lo si scopre cercando chi la
+#   punta — ed e' esattamente cio' che l'indice unique qui sotto rende
+#   immediato, oltre a impedire il doppio annullo.
+#
+# ── ⛔ `ON DELETE NO ACTION`, e NON e' il default scritto per pigrizia ─
+#   Con la decisione di Tid del 2026-08-30 il registro diventa «solo aggiunte»
+#   (changeSet 20260830-22): nessuno cancella, quindi nessun comportamento in
+#   cascata serve. ⚠️ E una `ON DELETE SET NULL` messa «per sicurezza» sarebbe
+#   il difetto peggiore: davanti a una cancellazione svuoterebbe il legame in
+#   silenzio, lasciando due righe che non si riconoscono piu' — cioe'
+#   disarmerebbe proprio il presidio del passo dopo.
+#
+# ── ⭐ IL `CHECK` E' AMMESSO QUI, e altrove no ───────────────────────
+#   `chk_stiva_movimenti_auto_annullo` confronta due colonne della STESSA riga,
+#   quindi non ha bisogno di leggerne un'altra: e' la sede giusta. Tutte le
+#   altre regole dell'annullo — che il movimento annullato sia una forzatura,
+#   dello stesso titolo, con l'importo opposto — leggono UN'ALTRA RIGA e vivono
+#   quindi in un guard (20260830-24), non qui.
+#
+# ── ⚠️ INDICE UNIQUE PARZIALE, non un constraint ─────────────────────
+#   PostgreSQL non ha `UNIQUE` parziali come vincoli di tabella: la forma e'
+#   `CREATE UNIQUE INDEX … WHERE`. Il nome segue la tabella, che usa gia' `uq_`
+#   per un indice parziale (`uq_stiva_movimenti_documento`).
+#   ⭐ E copre da sola la FK: le linee guida (§8.7) ammettono come coperta una
+#   FK il cui indice ha predicato «assente o una congiunzione di soli
+#   `<colonna> IS NOT NULL`», ed e' letteralmente questo caso. Quindi
+#   `apply_fk_index_policy()` non creera' mai un indice gemello, nemmeno a
+#   `consentito=true` — la riga di policy (20260830-27) serve a GOVERNARE la FK,
+#   non a farle nascere un indice.
+#
+# ⚠️ La tabella nasce vuota e lo e' ancora (verificato 2026-08-30, 0 righe):
+#   nessuna bonifica, nessun backfill.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260830-21-alter-stiva-movimenti-annulla-movimento-id-mctit.yaml
+
+  - changeSet:
+      id: 20260830-21-alter-stiva-movimenti-annulla-movimento-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Fase A del brief-db-titoli-iva-movimenti-annullo: la colonna che collega la riga di
+        annullo alla forzatura che annulla, con la sua FK, il CHECK anti auto-annullo e
+        l'indice unique parziale che impedisce il doppio annullo. Una forzatura sbagliata si
+        corregge con un contro-movimento di segno opposto — non con un DELETE (deve restare
+        traccia) e non con un flag (sarebbe di nuovo un valore sovrascritto sopra a un altro, e
+        imporrebbe di mettere le mani nell'accumulatore per un caso di correzione). ⛔ ON DELETE
+        NO ACTION e non SET NULL: quest'ultima, davanti a una cancellazione, svuoterebbe il
+        legame in silenzio e disarmerebbe il presidio. ⭐ L'indice unique parziale copre gia' la
+        FK per le linee guida §8.7, quindi la policy che segue governa e non crea.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva_movimenti
+            - not:
+                - columnExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti_titoli_iva_movimenti
+                    columnName: annulla_movimento_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  ADD COLUMN annulla_movimento_id bigint;
+
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  ADD CONSTRAINT fk_soggetti_titoli_iva_movimenti_annulla
+                  FOREIGN KEY (annulla_movimento_id)
+                  REFERENCES anagrafiche.soggetti_titoli_iva_movimenti (id)
+                  ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  ADD CONSTRAINT chk_stiva_movimenti_auto_annullo
+                  CHECK (annulla_movimento_id IS NULL
+                         OR annulla_movimento_id <> id);
+
+              CREATE UNIQUE INDEX uq_stiva_movimenti_annulla
+                  ON anagrafiche.soggetti_titoli_iva_movimenti (annulla_movimento_id)
+                  WHERE annulla_movimento_id IS NOT NULL;
+
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva_movimenti.annulla_movimento_id
+              IS 'Il movimento che questa riga ANNULLA. Valorizzata solo sulle righe di annullo, che sono a loro volta FORZATURA e portano l''importo opposto di quella annullata: il registro resta append-only e l''accumulatore riporta imponibile_utilizzato al valore giusto da se'', perche'' somma senza filtri. ⚠️ Il verso e'' «io annullo quel movimento»: la riga annullata resta intatta e non sa di esserlo — lo si scopre cercando chi la punta, ed e'' cio'' che l''indice uq_stiva_movimenti_annulla rende immediato oltre a impedire il doppio annullo. ⛔ Profonda UNO: un annullo non si annulla (decisione di Tid 2026-08-30); se la forzatura serve ancora se ne scrive una nuova, col suo motivo. Le regole che leggono la riga annullata — forzatura, stesso titolo, importo opposto — stanno nel guard trgfn_stiva_movimenti_guard_annullo, non in un CHECK: un CHECK non puo'' leggere un''altra riga. Piano: brief-db-titoli-iva-movimenti-annullo.';
+
+              COMMENT ON CONSTRAINT chk_stiva_movimenti_auto_annullo
+                  ON anagrafiche.soggetti_titoli_iva_movimenti
+              IS 'Una riga non annulla se stessa. E'' uno dei pochi casi in cui il CHECK e'' la sede giusta: confronta due colonne della STESSA riga e non ha bisogno di leggerne un''altra.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.uq_stiva_movimenti_annulla;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  DROP CONSTRAINT IF EXISTS chk_stiva_movimenti_auto_annullo;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  DROP CONSTRAINT IF EXISTS fk_soggetti_titoli_iva_movimenti_annulla;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  DROP COLUMN IF EXISTS annulla_movimento_id;

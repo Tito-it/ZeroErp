@@ -32,7 +32,20 @@ La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo desc
 
 ### Vincoli e Logiche Aziendali
 
-* **Unicità**: `codice` deve essere univoco.
+* **Doppia chiave**: `codice_interno` (dal 2026-08-29) è il nome **stabile**, quello
+  con cui il codice si nomina dal codice applicativo; `codice` è l'etichetta che
+  l'utente può cambiare. Entrambi univoci.
+  ⭐ È la convenzione del progetto, e serve a una cosa sola: **un rename fatto
+  dall'utente non deve rompere niente**. Chi cerca un codice IVA per nome usa
+  `codice_interno`, mai `codice`.
+  ⚠️ `codice_interno` è **bloccato in modifica** da un trigger di lock: cambiarlo
+  solleva `E_CODICE_NON_MODIFICABILE`.
+* ⛔ **`aliquota_iva` è anch'essa bloccata in modifica** (dal 2026-08-29). Non è
+  un capriccio: le righe di fattura ne congelano una copia, e cambiare la
+  percentuale sotto un codice già usato farebbe divergere i documenti vivi da
+  quelli emessi. Per una percentuale nuova si **conia un codice nuovo**.
+* **`storicizza`**: la tabella partecipa allo storico (acceso il 2026-08-29 su
+  tutte le righe: la macchina c'era già, il rubinetto era chiuso).
   * …
 * **Aliquota vs. assoggettamento**: se `assoggettamento_iva_id` è diverso da vuoto, **l’`aliquota_iva` non può essere valorizzata** (dev’essere zero o lasciata al default).
 * **Split payment**: `id_iva_split` può essere valorizzato per indicare che il codice IVA segue la normativa di split payment. In questo caso punta ricorsivamente a un codice “reale” in `config.iva`, definendo a quale aliquota reale si collega il meccanismo di split.

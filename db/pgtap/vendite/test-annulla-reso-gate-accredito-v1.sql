@@ -119,7 +119,7 @@ SELECT
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo ORDER BY t.id LIMIT 1)   AS tipo_reso_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r WHERE r.attivo IS TRUE ORDER BY r.id LIMIT 1)                         AS registro_id,
+  script.fn_pgtap_registro_fattura()                         AS registro_id,
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                            AS causale_vendita_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                       AS tipo_ind_con_id
 FROM anagrafiche.billing_account ba

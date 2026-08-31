@@ -573,7 +573,9 @@ La colonna `origine` della seconda dice **come** si rimuove: `AUTOMAZIONE_FK` ri
 
 ## 8. Generazione automatica codici/numeri
 
-Questa parte del framework gestisce la **generazione automatica di codici o numeri** sulle tabelle applicative. Quando una tabella ha bisogno di un codice progressivo (es. numero fattura, codice articolo), il framework lo genera tramite configurazione dichiarativa e trigger.
+Questa parte del framework gestisce la **generazione automatica di codici o numeri** sulle tabelle applicative. Quando una tabella ha bisogno di un codice progressivo (es. codice cliente, codice pratica, numero preventivo), il framework lo genera tramite configurazione dichiarativa e trigger.
+
+⛔ **Non copre i documenti di vendita.** Fatture, documenti di trasporto, ordini, commesse e resi si numerano su un motore diverso — `vendite.registri_fatturazione` — perche' hanno bisogno di tre cose che qui non ci sono: una progressione **per azienda emittente**, il **reset annuale** e un momento di assegnazione che non e' l'inserimento. Il criterio per riconoscere quale dei due serve sta nella guida [Numerazione dei documenti e codici automatici](/guide/numerazione-documenti-e-codici).
 
 ### 8.1 Componenti
 

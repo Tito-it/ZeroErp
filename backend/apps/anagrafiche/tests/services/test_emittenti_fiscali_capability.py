@@ -16,6 +16,10 @@ Indice test eseguiti:
  5) test_list_records_capability_utility_disattiva_blocca_configure — can_configure=false
  6) test_list_mapping_can_remove_senza_motivo — nessun motivo => gesto ammesso
  6b) test_list_mapping_can_remove_con_motivo — motivo dal DB => gesto spento + chiave i18n
+ 6c) test_list_mapping_storia_arriva_intatta — l'elenco per famiglia passa senza
+     essere toccato (il servizio trasporta, non compone la frase)
+ 6d) test_list_mapping_storia_assente_resta_none — riga senza storia (gestore
+     globale): NULL non diventa `[]`
 """
 
 from unittest import TestCase
@@ -177,9 +181,11 @@ class TestBillingAccountMappingCapability(TestCase):
         mock_repo_cls.return_value.list_by_emittente.return_value = (
             [
                 {"id": 1, "billing_account_id": 100, "is_default": False,
-                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None},
+                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None,
+                 "rimozione_blocco_storia": None},
                 {"id": 2, "billing_account_id": 101, "is_default": False,
-                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None},
+                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None,
+                 "rimozione_blocco_storia": None},
             ],
             2,
         )
@@ -207,11 +213,19 @@ class TestBillingAccountMappingCapability(TestCase):
                 {"id": 1, "billing_account_id": 100, "is_default": False,
                  "rimozione_blocco_reason": "BA_CON_STORIA",
                  "rimozione_blocco_reason_key":
-                     "amministrazione.emittenti_fiscali.ba_blocco.con_storia"},
+                     "amministrazione.emittenti_fiscali.ba_blocco.con_storia",
+                 "rimozione_blocco_storia": [
+                     {"famiglia": "FATTURA", "descrizione": "Fattura di vendita", "n": 3},
+                 ]},
+                # ⛔ Il gestore globale e' bloccato dal SINGLETON, non dalla
+                #    storia: il suo `dettaglio` non porta la chiave `storia`.
+                #    Un fixture che gliela desse riprodurrebbe una forma che il
+                #    database non produce.
                 {"id": 2, "billing_account_id": None, "is_default": True,
                  "rimozione_blocco_reason": "DEFAULT_SINGLETON",
                  "rimozione_blocco_reason_key":
-                     "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"},
+                     "amministrazione.emittenti_fiscali.ba_blocco.default_singleton",
+                 "rimozione_blocco_storia": None},
             ],
             2,
         )
@@ -230,3 +244,69 @@ class TestBillingAccountMappingCapability(TestCase):
                  "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"),
             ],
         )
+
+    # Scopo: ⭐ L'ELENCO PER FAMIGLIA ARRIVA INTATTO — e' cio' che permette al
+    #        tooltip di dire quanto dice il rifiuto. Il servizio TRASPORTA: non
+    #        compone la frase (che vive nei `locales`), non riordina, non
+    #        somma. Se un giorno qualcuno ci mettesse una `join()` qui, la
+    #        traduzione uscirebbe dai `locales` senza che niente fallisca.
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_list_mapping_storia_arriva_intatta(self, mock_parent_cls, mock_repo_cls):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliBillingAccountService,
+        )
+
+        storia = [
+            {"famiglia": "FATTURA", "descrizione": "Fattura di vendita", "n": 3},
+            {"famiglia": "DDT", "descrizione": "Documento di trasporto", "n": 1},
+        ]
+        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
+        mock_repo_cls.return_value.list_by_emittente.return_value = (
+            [
+                {"id": 1, "billing_account_id": 100, "is_default": False,
+                 "rimozione_blocco_reason": "BA_CON_STORIA",
+                 "rimozione_blocco_reason_key":
+                     "amministrazione.emittenti_fiscali.ba_blocco.con_storia",
+                 "rimozione_blocco_storia": storia},
+            ],
+            1,
+        )
+
+        rows, _ = EmittentiFiscaliBillingAccountService().list_mapping(7)
+
+        self.assertFalse(rows[0]["can_remove"])
+        # ⚠️ L'ORDINE E' IL CONTRATTO: la funzione DB usa `WITH ORDINALITY` per
+        #    tenere l'ordine del catalogo (la fattura per prima). Un riordino
+        #    qui farebbe leggere all'operatore un elenco diverso da quello del
+        #    messaggio d'errore, sulla stessa condizione.
+        self.assertEqual(rows[0]["rimozione_blocco_storia"], storia)
+
+    # Scopo: ⛔ IL GEMELLO NEGATIVO — senza il quale il test sopra non
+    #        distingue «trasporta la storia» da «inventa una lista». La riga del
+    #        gestore globale non ha storia: `None` deve restare `None`, perche'
+    #        `[]` direbbe «nessun documento» dove la risposta e' «questa
+    #        domanda non si applica» (li' blocca il singleton).
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_list_mapping_storia_assente_resta_none(self, mock_parent_cls, mock_repo_cls):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliBillingAccountService,
+        )
+
+        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
+        mock_repo_cls.return_value.list_by_emittente.return_value = (
+            [
+                {"id": 2, "billing_account_id": None, "is_default": True,
+                 "rimozione_blocco_reason": "DEFAULT_SINGLETON",
+                 "rimozione_blocco_reason_key":
+                     "amministrazione.emittenti_fiscali.ba_blocco.default_singleton",
+                 "rimozione_blocco_storia": None},
+            ],
+            1,
+        )
+
+        rows, _ = EmittentiFiscaliBillingAccountService().list_mapping(7)
+
+        self.assertFalse(rows[0]["can_remove"])
+        self.assertIsNone(rows[0]["rimozione_blocco_storia"])

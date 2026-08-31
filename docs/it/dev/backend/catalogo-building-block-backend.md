@@ -533,6 +533,48 @@ Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie
 
 ---
 
+## Vendite — Risolutore IVA di riga (`apps/vendite/`)
+
+⛔ **La regola che questo BB esiste per tenere: mai leggere
+`catalogo.articoli.iva_id` in un service di dominio.** È il gemello esatto della
+regola di `PricingService` («mai leggere `listini_righe.prezzo`»), e nasce dallo
+stesso difetto — tre `onArticoloSelect` nel frontend e una proiezione di
+pipeline che rispondevano ognuno per conto suo alla stessa domanda. Il
+risolutore vive interamente nel DB (`vendite.fn_resolve_iva_riga`, due stadi +
+guscio che smista per paese); qui c'è solo il guard di chiamata, la traduzione
+errori e la normalizzazione. Cantiere: [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md) (F2-a).
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `IvaResolverRepository.resolve` | [iva_resolver_repository.py](../../../../backend/apps/vendite/db/iva_resolver_repository.py) | Wrapper su `vendite.fn_resolve_iva_riga`. ⛔ **Ritorna una LISTA, sempre**: la funzione è set-returning — una riga nel caso ordinario, **due** quando il plafond di un titolo finisce a metà riga, nell'ordine «prima la quota coperta dal titolo, poi il resto». Un `fetchone()` qui **non fallisce**: prende la parte coperta e butta il resto, cioè applica un'esenzione a un imponibile che non ne ha diritto. ⚠️ I tre parametri di contesto del dispatch (paese emittente, paese cliente, cessione di beni) **non si passano**: il guscio li deriva da sé, e derivarli nel chiamante vorrebbe dire ripetere tre lookup a ogni punto che risolve l'IVA. |
+| `IvaResolverService.risolvi` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | La ripartizione completa. ⛔ **`emittente_fiscale_id` è OBBLIGATORIO, ed è la ragione per cui il service esiste**: la funzione DB è `SECURITY INVOKER` e legge `anagrafiche.soggetti_titoli_iva`, che ha la RLS — senza contesto emittente legge **zero titoli** e risponde con l'aliquota ordinaria **senza sollevare**. Non è una lista più corta: è un'imposta applicata dove non andava, su un documento che nessuno segnalerà. Due invarianti presidiate: **zero righe** = contratto rotto (la funzione dice `origine = 'ASSENTE'`, non tace) e **ripartizione senza imponibile** = ramo di anteprima rotto. |
+| `IvaResolverService.risolvi_anteprima` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | Il trattamento «sul primo euro», **una parte sola**. È la forma che usano i documenti (il plafond si applica a tutta la riga se c'è capienza — decisione di Tid) e quella che alimenta l'anteprima del form. ⚠️ **Non è `risolvi()[0]`**: qui l'imponibile **non si passa affatto**. Chiamare col totale e prendere la prima parte darebbe il trattamento della sola quota coperta applicandolo a tutta la riga — il difetto opposto. |
+| `IvaResolverService.meta_riga` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | Il sottoinsieme che sopravvive nel `meta` della riga di documento: **`iva_origine` e `iva_titolo_id`**, due chiavi su dieci. ⭐ Il criterio: qui stanno i **fatti che nessuno può ricostruire dopo**. Aliquota, natura e riferimento normativo si **derivano** da `iva_id` con il `JOIN` su `config.iva` che i repository di riga fanno già — copiarli creerebbe una frase che invecchia, ed è il motivo per cui `fatture_righe.iva_perc` era stata tolta. |
+| `IvaResolverService.applica_riga_documento` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | La regola di chi vince fra payload e risolutore, **scritta una volta per i tre domini** (`P10-bis`, decisione di Tid 2026-08-31: opzione B). ⚠️ **Le due risoluzioni non hanno lo stesso peso, ed è il pezzo che non si vede leggendo in fretta**: senza `iva_id` nel payload la risoluzione è **autoritativa** e gli errori **passano** (meglio fermarsi che scrivere un'IVA inventata); con `iva_id` è di **audit**, best-effort dentro un savepoint — stesso idioma di `BaseSourceHandler._resolve_pricing_audit`. ⭐ `iva_origine = 'MANUALE'` **solo quando DIVERGE**: se l'operatore conferma il valore proposto non ha sovrascritto niente, e marcarlo manuale renderebbe manuale tutto il traffico del form, cioè toglierebbe al campo ogni capacità di dire qualcosa. ⛔ `MANUALE` è un valore **nostro** nel `meta`, non del vocabolario DB (`ARTICOLO`, `TIPO_UTENZA`, `TITOLO`, `ASSENTE`). | ⛔ **DAL 2026-08-31 (`I6`) IL RAMO DI AUDIT E' IRRAGGIUNGIBILE dai tre domini**: la casella IVA sul documento e' chiusa, i tre service passano sempre `payload_iva_id=None` e `make_risolvi_iva_riga` **rifiuta** il resto. Il ramo resta perche' e' la decisione `P10-bis` resa in codice, ma va saputo: i suoi test provano una strada che oggi nessun chiamante percorre. ⚠️ E il guard nel wrapper non e' ridondante con le whitelist di riga — quelle fermano il **client**, quello ferma il **chiamante**: senza, passare un valore farebbe scivolare in SILENZIO dal ramo autoritativo a quello best-effort, dove gli errori si inghiottono. |
+| `carica_testata` / `contesto_da_testata` | [_iva_contesto_documento.py](../../../../backend/apps/vendite/services/_iva_contesto_documento.py) | Il **contesto di testata** che il risolutore vuole (emittente, billing account, utility, data), ricavato in un posto solo. ⛔ **Non esiste per de-duplicare**: l'anteprima (il form) e il salvataggio (il service) devono guardare la **stessa fonte**, o mostrano un numero e ne scrivono un altro. ⭐ **La separazione fra le due è la cosa che conta**: `contesto_da_testata` è **PURA** — la usano i service, che la testata l'hanno già caricata e non devono spendere un secondo round-trip; `carica_testata` fa I/O e la usa chi ha in mano solo un id (la view di anteprima), validando il `documento_tipo` contro la whitelist. ⛔ `emittente_fiscale_id` è **la PK** di `anagrafiche.emittenti_fiscali`, non il `soggetto_ruolo_id` che il pricing usa: con quello sbagliato il risolutore non trova l'emittente, quindi non trova i suoi titoli, e risponde con l'aliquota ordinaria **senza sollevare**. |
+| `make_risolvi_iva_riga` | [_iva_contesto_documento.py](../../../../backend/apps/vendite/services/_iva_contesto_documento.py) | **Factory** del `_risolvi_iva_riga` di un dominio: fissa codice errore, `function_name` e `usa_auth_user`, e restituisce il callable. ⭐ **Factory e non tre copie, e non un oggetto condiviso** (`feedback_estrarre_non_condividere_stato`): è lo stesso stampo di `payload_helpers.make_db_errors_translator`. ⚠️ `usa_auth_user` esiste perché **un** dominio si comporta diversamente e va detto: sui preventivi l'emittente può non stare in testata (admin globale che non l'ha scelto) e si ripiega su quello dell'operatore; su DDT e ordini il trigger normalize lo garantisce `NOT NULL`. |
+| `normalizza_iva_id` | [_iva_contesto_documento.py](../../../../backend/apps/vendite/services/_iva_contesto_documento.py) | Normalizza l'`iva_id` che arriva dal payload di una riga. ⛔ **`int(x) if x else None` è la forma sbagliata**, ed era scritta in tre service: uno `0` esplicito è *falsy*, quindi diventava `None` — cioè «nessuna scelta», e il risolutore rispondeva in modo **autoritativo** su un payload che invece portava un valore (invalido). Un id non positivo non è un'assenza: è un errore, e va detto. ⚠️ La stringa vuota resta un'assenza: è ciò che il form manda quando il campo non è compilato. |
+
+⭐ **Nessun elenco di codici errore da riconoscere, e non è una semplificazione**:
+dal 2026-08-05 il codice di dominio viaggia in un **campo strutturato**
+dell'eccezione, che `translate_db_errors` legge da sé. È il debito che
+`pricing_service._KNOWN_DB_ERROR_MARKERS` dichiara nel proprio commento come «da
+togliere quando quel refactor sarà fatto» — è fatto, e il BB nuovo non lo eredita.
+
+Test: `apps/vendite/tests/services/test_iva_resolver_service.py` (18 casi,
+**provati per mutazione**: spegnendo il guard sull'emittente o quello sulla
+ripartizione cadono 7 asserzioni) · `test_iva_contesto_documento.py` (12) ·
+`apps/vendite/tests/api/test_iva_resolve_api.py` (7).
+
+⚠️ **E ce n'è uno che manca, dichiarato qui perché non se ne perda la
+memoria**: la catena verso il DB vero è stata provata con uno smoke *ad hoc* il
+2026-08-31 (dieci colonne, `quota = NULL`, l'SQL che lega davvero) e **quello
+smoke non è stato salvato**. I test qui sopra mockano il repository: provano la
+catena Python e **non** che la funzione esista né che i parametri leghino. Un
+`RETURNS TABLE` con una colonna in più passerebbe verde.
+
+---
+
 ## Preventivi vendita (`apps/vendite/`)
 
 | Building Block | File | Descrizione |

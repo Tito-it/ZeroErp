@@ -227,13 +227,18 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
     passati a init_componenti_riga per articolo composito.
     """
 
+    # ⚠️ `_risolvi_iva_riga` mockato per la stessa ragione del repository:
+    #    dal 2026-08-31 `gestisci_riga` interroga il risolutore IVA, e senza
+    #    mock questi test — che parlano di componenti BoM — aprirebbero una
+    #    connessione vera e in CI fallirebbero per un motivo che non c'entra.
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
     @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
     @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO)
     def test_gestisci_riga_composito_passa_overrides(
-        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr, _iva,
     ) -> None:
         mock_tx.atomic.return_value = nullcontext()
         repo = repo_cls.return_value
@@ -256,13 +261,18 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         self.assertEqual(kwargs["componenti_overrides"], {"10": "5.50"})
         self.assertTrue(out["is_composito"])
 
+    # ⚠️ `_risolvi_iva_riga` mockato per la stessa ragione del repository:
+    #    dal 2026-08-31 `gestisci_riga` interroga il risolutore IVA, e senza
+    #    mock questi test — che parlano di componenti BoM — aprirebbero una
+    #    connessione vera e in CI fallirebbero per un motivo che non c'entra.
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
     @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
     @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO)
     def test_gestisci_riga_composito_senza_overrides(
-        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr, _iva,
     ) -> None:
         # Articolo composito senza override: init con componenti_overrides=None
         # (la fn DB risolve i prezzi dal pricing corrente).
@@ -280,6 +290,51 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         )
         _, kwargs = repo.init_componenti_riga.call_args
         self.assertIsNone(kwargs["componenti_overrides"])
+
+
+    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora `iva_id`
+    #        nel payload deve vederlo IGNORATO: a decidere e' il risolutore.
+    # ⚠️ Il valore non viene RESPINTO ma SCARTATO (chiave fuori whitelist), e
+    #        senza questo caso la rimozione della chiave sarebbe invisibile: la
+    #        suite e' restata verde quando e' stata fatta, perche' nessun
+    #        presidio copriva «il payload vince».
+    # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
+    #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
+    #        errori sono best-effort — cioe' una riga si salverebbe anche
+    #        quando l'IVA non e' determinabile.
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(9, {"iva_origine": "TITOLO"}))
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_i6_iva_del_payload_ignorata(
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr, iva,
+    ) -> None:
+        mock_tx.atomic.return_value = nullcontext()
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        # ⚠️ Composito come i due casi vicini: sulla riga semplice il pricing
+        #    pretende il billing account in testata, e qui non si sta provando
+        #    il prezzo — si sta provando che l'IVA del payload non arriva.
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 52}
+
+        ordini_service.gestisci_riga(
+            7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
+                "iva_id": 999},
+            auth_user_id=42,
+        )
+
+        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
+        #    `_CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
+        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
+        #    allora `payload_iva_id` tornerebbe 999.
+        self.assertIsNone(iva.call_args.kwargs["payload_iva_id"])
+        self.assertNotIn("iva_id", ordini_service._CREATE_KEYS_RIGA)
+        self.assertNotIn("iva_id", ordini_service._UPDATE_KEYS_RIGA)
+        self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 
 class OrdiniDbErrorsTests(SimpleTestCase):

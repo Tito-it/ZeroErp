@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-9 — IL CANCELLO DI MONOTONIA NON VALE PER CHI SI NUMERA ALL'INSERT
+#   vendite.famiglie_documento.presidia_data_documento
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9 (§3.4)
+#
+# ── ⛔ IL PROBLEMA, CHE NASCE DAL MOMENTO E NON DALLA FAMIGLIA ────
+#   Il cancello rifiuta un documento la cui data sta sotto quella dell'ultimo
+#   gia' numerato sullo stesso sezionale. Ha senso su un documento che si
+#   EMETTE: la data la si sceglie, e una sequenza che torna indietro e' un
+#   difetto.
+#   ⛔ Sull'ORDINE no. L'ordine si numera all'INSERT — e' la decisione «il
+#   momento non cambia» — quindi il numero esce nell'istante in cui qualcuno
+#   crea la riga. Un ordine datato 20/08 creato dopo uno datato 31/08 verrebbe
+#   RIFIUTATO, e oggi non lo e'. Sarebbe un cambio di comportamento fuori dal
+#   perimetro dichiarato («cambia solo l'algoritmo di assegnazione del numero»).
+#
+# ── ⭐ PERCHE' NEL CATALOGO E NON UN PARAMETRO DELLA FUNZIONE ─────
+#   Il pavimento ha UNA SEDE SOLA — vendite.fn_get_pavimento_data_documento —
+#   e la usano in tre: la nascita della data del documento, la targa del
+#   dialog e il cancello. Un parametro informerebbe il solo cancello, e gli
+#   altri due continuerebbero a proporre e a mostrare un pavimento che nessuno
+#   applica: tre risposte diverse alla stessa domanda. E' la stessa lezione del
+#   20260831-05, imparata due giorni prima sul limite di emissione.
+#
+# ── ⚠️ E' UN FLAG CHE QUALCUNO METTE A `false`, e conta ──────────
+#   `ORDINE` lo mette. E' la differenza con il `conta_come_storia` che NON e'
+#   stato aggiunto al catalogo il 2026-08-30: quello nessuno lo avrebbe messo a
+#   falso, e sarebbe stato una voce dichiarata e non implementata.
+#
+# ⚠️ `DEFAULT true`: chi si numera a stato — DDT, reso — presidia, ed e' il
+#   comportamento che il motore ha sempre avuto. Il default e' la regola, il
+#   `false` e' l'eccezione dichiarata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-11-alter-famiglie-documento-presidia-data-mctit.yaml
+
+  - changeSet:
+      id: 20260831-11-alter-famiglie-documento-presidia-data
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-9: il cancello di monotonia non vale per chi si numera all''INSERT. ⛔ Il cancello
+        rifiuta un documento la cui data sta sotto quella dell''ultimo numerato sul sezionale: ha
+        senso su un documento che si EMETTE, non sull''ORDINE, che si numera all''INSERT — un ordine
+        datato 20/08 creato dopo uno datato 31/08 verrebbe rifiutato, e oggi non lo e''. Sarebbe un
+        cambio di comportamento fuori dal perimetro dichiarato. ⭐ Sta nel CATALOGO e non come
+        parametro della funzione perche'' il pavimento ha una sede sola e la usano in tre — nascita,
+        targa e cancello: un parametro informerebbe il solo cancello, e gli altri due
+        continuerebbero a proporre un pavimento che nessuno applica. Stessa lezione del 20260831-05.
+        ⚠️ E'' un flag che qualcuno mette davvero a false (ORDINE): e'' la differenza con il
+        conta_come_storia che il 2026-08-30 NON e'' stato aggiunto, perche'' quello sarebbe rimasto
+        una voce dichiarata e non implementata. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: presidia_data_documento
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columns:
+              - column:
+                  name: presidia_data_documento
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+                  remarks: >-
+                    Se true, il pavimento di SEQUENZA si applica a questa famiglia: un documento non
+                    puo' prendere un numero se la sua data e' anteriore a quella dell'ultimo gia'
+                    numerato sul sezionale. False per le famiglie che si numerano all'INSERT, dove
+                    la data non e' ancora una scelta definitiva.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.famiglie_documento.presidia_data_documento
+              IS 'Se true, alla famiglia si applica il PAVIMENTO DI SEQUENZA: un documento non prende un numero se la sua data e'' anteriore a quella dell''ultimo gia'' numerato sullo stesso sezionale (il «cancello di monotonia» di vendite.fn_get_next_progressivo). ⭐ Ha senso su chi si EMETTE — fattura, DDT, reso: la data la sceglie una persona, e una sequenza che torna indietro e'' un difetto. ⛔ NON ha senso sull''ORDINE, che si numera all''INSERT: il numero esce nell''istante in cui qualcuno crea la riga, e un ordine datato indietro rispetto all''ultimo creato verrebbe rifiutato — un cambio di comportamento che il cantiere del trasloco non deve introdurre («cambia solo l''algoritmo di assegnazione del numero»). ⭐ La distinzione nasce dal MOMENTO della numerazione, non dalla natura del documento: e'' per questo che vive sulla famiglia, che del momento e'' il proxy. ⭐ E sta nel CATALOGO invece che come parametro di funzione perche'' il pavimento ha UNA SEDE SOLA — vendite.fn_get_pavimento_data_documento — usata da tre chiamanti: la nascita della data del documento, la targa del dialog e il cancello. Un parametro avrebbe informato il solo cancello, lasciando gli altri due a proporre e a mostrare un pavimento che nessuno applica: tre risposte diverse alla stessa domanda. E'' la stessa lezione imparata il 2026-08-31 sul limite di emissione (changeSet 20260831-05). ⚠️ DEFAULT true: presidiare e'' la regola e il false e'' l''eccezione dichiarata — ed e'' un flag che qualcuno mette davvero a falso, il che lo distingue dal conta_come_storia che il 2026-08-30 si e'' deciso di NON aggiungere, perche'' sarebbe rimasto una voce dichiarata e non implementata. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-9.';
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columnName: presidia_data_documento

@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — IL DDT CHIAMA LA FUNZIONE CENTRALE
+#   vendite.trgfn_ddt_gen_numero_emesso
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4
+#
+# ── ⭐ COSA ESCE DA QUI ───────────────────────────────────────────
+#   I sei passi della numerazione, che stavano qui e in altre tre funzioni
+#   identiche. Ora sono in vendite.fn_assegna_numero_documento.
+#   ⚠️ Prima una correzione alla composizione andava fatta in QUATTRO posti, e
+#   chi ne dimenticava uno produceva un difetto MUTO: un documento formattato
+#   diverso dagli altri, che nessun vincolo respinge.
+#
+# ── ⭐ COSA RESTA, ED E' IL PUNTO ────────────────────────────────
+#   Il MOMENTO — alla transizione a EMESSO — cioe' i guard di uscita anticipata.
+#   E' l'unica cosa che distingue davvero questo documento dagli altri tre, e
+#   centralizzarla avrebbe messo in una funzione comune la sola cosa che comune
+#   non e'.
+#
+# ⚠️ Prefisso e suffisso vengono dal REGISTRO; di config.sistema_codici resta la
+#   sola LUNGHEZZA, ed e' letta dalla funzione centrale.
+# ⚠️ Firma identica (trigger function): CREATE OR REPLACE, nessun DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-42-update-trgfn-ddt-gen-numero-emesso-centralizzata-mctit.yaml
+
+  - changeSet:
+      id: 20260831-42-update-trgfn-ddt-gen-numero-emesso-centralizzata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-4: il DDT chiama vendite.fn_assegna_numero_documento invece di rifare i sei passi.
+        ⛔ Stavano qui e in altre tre funzioni identiche, verificato il 2026-08-31 — e una
+        correzione alla composizione andava fatta in quattro posti, con chi ne dimenticava uno
+        che produceva un documento formattato diverso, muto. ⭐ Qui resta il MOMENTO
+        (alla transizione a EMESSO), l''unica cosa che distingue davvero questo documento dagli altri
+        tre: centralizzarla avrebbe messo in comune la sola cosa che comune non e''.
+        ⚠️ Prefisso e suffisso dal registro, lunghezza dal catalogo dei formati.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_assegna_numero_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato        config.stati_doc_ddt.codice_interno%TYPE;
+                  v_emittente_sr vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
+                  v_registro     vendite.registri_fatturazione.id%TYPE;
+                  v_ass          record;
+                  v_anno         vendite.ddt.anno%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Assegnare ddt.numero alla transizione a EMESSO,
+                  --   prendendolo dal MOTORE DEI REGISTRI.
+                  --
+                  -- ⭐ rev 2026-08-31: cambia SOLO il contatore. Il formato
+                  --   resta in config.sistema_codici (riga 'ddt'), la
+                  --   composizione resta qui, il momento resta EMESSO.
+                  -- =========================================================
+
+                  -- Gia' numerato -> no-op (immutabilita' da
+                  -- trgfn_v_ddt_protect_num).
+                  IF NEW.numero IS NOT NULL AND btrim(NEW.numero::text) <> '' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Numero solo a EMESSO (no buchi da bozze DRAFT scartate).
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+                  IF v_stato IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ Due convenzioni per lo stesso emittente: il DDT porta
+                  --   l'id di anagrafiche.emittenti_fiscali, il registro porta
+                  --   il soggetto_ruolo. La traduzione e' 1:1
+                  --   (uq_emittenti_fiscali_ruolo) e si fa qui, esplicita.
+                  SELECT ef.soggetto_ruolo_id INTO v_emittente_sr
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = NEW.emittente_fiscale_id;
+
+                  -- ⛔ L'INVOLUCRO, non il lettore: qui si SCRIVE, e un
+                  --   emittente senza registro DDT deve fermare — non emettere
+                  --   un documento senza sezionale.
+                  -- ⭐ I SEI PASSI IN UNA CHIAMATA SOLA. Stavano qui e in altre tre
+                  --   funzioni identiche: risolvere il registro, ricavare l'anno,
+                  --   chiedere il progressivo, leggere il formato, comporre.
+                  --   ⚠️ Una correzione alla composizione andava fatta in QUATTRO
+                  --   posti, e chi ne dimenticava uno produceva un documento
+                  --   formattato diverso dagli altri — che nessun vincolo respinge.
+                  -- ⭐ Qui resta l'unica cosa che distingue davvero questo documento
+                  --   dagli altri tre: il MOMENTO, cioe' i guard qui sopra.
+                  SELECT * INTO v_ass
+                    FROM vendite.fn_assegna_numero_documento(
+                             p_famiglia_documento          => 'DDT',
+                             p_emittente_soggetto_ruolo_id => v_emittente_sr,
+                             p_data                        => NEW.data,
+                             p_documento_id                => NEW.id,
+                             p_utility_id                  => NEW.utility_id,
+                                      p_serie              => NEW.serie,
+                             p_corpo                       => NULL) v;
+
+                  -- ⚠️ Le colonne si scrivono INSIEME: numero, anno, serie e registro
+                  --   sono una cosa sola — la chiave del documento — e scriverne
+                  --   una senza le altre lascia la riga a raccontare un sezionale
+                  --   che non e' il suo.
+                  NEW.registro_id := v_ass.registro_id;
+                  NEW.anno        := v_ass.anno;
+                  NEW.serie       := NULLIF(v_ass.serie, '');
+                  NEW.numero      := v_ass.numero;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
+              IS 'Assegna il numero a il DDT alla transizione a EMESSO, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ Il PREFISSO e il SUFFISSO vengono dal REGISTRO e non piu'' da config.sistema_codici, che conserva la sola LUNGHEZZA: il formato si divide per RUOLO — la lunghezza e'' del tipo documento, prefisso e suffisso sono il nome del sezionale. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback manuale: ri-applicare il changeSet 20260831-08 di vendite.trgfn_ddt_gen_numero_emesso'::text;

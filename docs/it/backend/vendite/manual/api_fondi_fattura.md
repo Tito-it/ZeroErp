@@ -125,6 +125,20 @@ di `vendite.fatture` con l'identità della richiesta. Ne discendono due obblighi
 ha RLS**: è protetto dal JOIN INNER con `vendite.fatture`, non da un filtro
 proprio.
 
+> 🔴 **Vero oggi, ma è una scelta RIBALTATA — 2026-08-29 (G-2, decisione di
+> Tid).** La riga descrive lo stato di fatto, non più il progetto: la row
+> security su `fatture_fondi_fattura_source` **si accende** (passo **D-20**, le
+> due policy `ef_whitelist` + `ba_ownership`), perché la premessa che la
+> escludeva è scaduta. Quando fu scritta, l'unico accesso era **la lista**, e la
+> lista ha davvero il `JOIN` davanti; oggi la tabella ha anche uno **scrittore in
+> un altro schema** (`pagamenti.fn_conferma_sistemazione`) e, col gesto di D-21,
+> avrà un accesso **per id** — e un id non ha nessun `JOIN` davanti.
+> ⭐ Qui la policy è più semplice che sugli altri satelliti: `emittente_soggetto_ruolo_id`
+> e `billing_account_id` sono **in colonna e NOT NULL**, quindi niente delega a
+> `fn_scope_*_via_fattura`. Dettaglio in
+> [brief-db-fondo-fattura-ricalcolo-e-governo.md](../../../dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md)
+> §9.9. ⚠️ **Questa riga va riscritta al momento dell'apply di D-20**, non prima.
+
 ## Note di migrazione
 
 **Fatto** (BE-1…BE-3, BE-5 del piano §8.3):
@@ -140,6 +154,7 @@ proprio.
 
 | | Cosa manca |
 | --- | --- |
-| **BE-4** (atto manuale: `POST fondi-fattura/`, `POST fondi-fattura/<id>/annulla/`) | la **Fase D** non è applicata: `fn_crea_fondo_fattura_manuale` e `fn_annulla_fondo_fattura` non esistono, e l'azione di processo `governa_fondo_fattura` non è a catalogo. E comunque la porta va aperta **dopo** che `pagamenti` ha un processo rimborsi da cui chiamarla |
+| ~~**BE-4** (atto manuale: `POST fondi-fattura/`, `POST fondi-fattura/<id>/annulla/`)~~ | ~~la **Fase D** non è applicata: `fn_crea_fondo_fattura_manuale` e `fn_annulla_fondo_fattura` non esistono, e l'azione di processo `governa_fondo_fattura` non è a catalogo. E comunque la porta va aperta **dopo** che `pagamenti` ha un processo rimborsi da cui chiamarla~~ 🔴 **SUPERATA il 2026-08-22, riscritta il 2026-08-31 — sbagliava sia i verbi sia l'attesa.** Vedi la riga sotto |
+| **BE-4** — ri-perimetrato | 🔴 **Il processo rimborsi è arrivato il 2026-08-22 e NON passa di qui**: `pagamenti.fn_conferma_sistemazione` (lotto 7), ramo `RIPORTO`, scrive il fondo con un `INSERT` **diretto** — ed è la scelta giusta, perché `api.md` §Comunicazione cross-modulo vieta le chiamate laterali fra moduli di pari livello. ⭐ **Quindi i due `POST` non si scrivono più**: `fn_crea_fondo_fattura_manuale` non ha più un chiamante, e il gesto sul riporto sbagliato è `POST /api/v1/pagamenti/sistemazioni/{id}/annulla/`, **che esiste già**. 🔵 Resta **un solo** comando, e per l'**altra** popolazione — il fondo `AUTOMATICA` `DISPONIBILE` non più capiente, che la lista `id 44` addita e che non ha nessuna sistemazione dietro: **`DELETE /api/v1/vendite/fondi-fattura/{id}/`** (il metodo dice il verbo; `api.md` §Grammatica URL vieta di scriverlo nel path), su `vendite.fn_cancella_fondo_fattura` — passo **D-21**, non ancora scritto. Servono anche l'azione di processo `governa_fondo_fattura` (**D-23**, non a catalogo) per il `post_permission` e `Idempotency-Key`, perché il gesto è irreversibile. Perimetro per intero: [brief-db-fondo-fattura-ricalcolo-e-governo.md](../../../dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md) §9.3 |
 | ~~**Frontend** (la lista)~~ | ✅ **FATTO il 2026-08-22**: **Vendite → Tool fatturazione**, primo tab (`ToolFatturazioneView.vue` + `FondiFatturaDaDecidereTab.vue`, store `fondiFatturaDaDecidere.js`). Lista configurabile standard: paginazione e ordinamento server-side, colonne personalizzabili, export CSV/XLSX, click di riga → `FatturaDrawer`. ⭐ Fino a quel giorno la lista **esisteva e non era raggiungibile**: vista, catalogo ed endpoint c'erano dal 15-08 e nessun `.vue` la montava — è la differenza fra i 47 codici a catalogo e le 46 liste nel registro `_LISTE` |
 | ~~**R-3** (madre DB per lotto)~~ | ✅ **FATTA il 2026-08-15**, DB e BE. I due giri passano da `fn_genera_fondi_fattura_lotto` / `fn_applica_fondi_lotto` (firma col **codice interno** del tipo fondo): **una `SELECT` per task**, lookup e scope dentro il database. 🔴 Con lo spostamento i tre errori del giro sono passati da `ServiceError` Python a `DatabaseError`, e `_fail_task_run_safely` li appiattiva su `E_TASK`: chiuso leggendo il codice strutturato con `db_error_code` — vale per ogni task che delega a una funzione DB. Dettaglio: brief fondo fattura §8.3-bis (DB) e §8.3-ter (BE) |

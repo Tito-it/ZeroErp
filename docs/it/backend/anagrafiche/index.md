@@ -12,3 +12,4 @@
 - [api_indirizzi](manual/api_indirizzi.md) — Gestione degli indirizzi dettaglio: ricerca paginata, creazione, consultazione, aggiornamento e verifica duplicati.
 - [api_indirizzi_ruolo](manual/api_indirizzi_ruolo.md) — Endpoint REST per la gestione degli indirizzi a livello ruolo con supporto istanza. Implementa la cascata a 3 livelli: istanza specifica, ruolo generico, soggetto (fallback readonly).
 - [api_soggetti](manual/api_soggetti.md) — Endpoint REST per la gestione completa dei soggetti anagrafici: persone fisiche (PF), persone giuridiche (PG) ed enti. Copre CRUD soggetti, contatti, indirizzi, ruoli e utility di validazione/generazione codice fiscale.
+- [api_titoli_iva_soggetto](manual/api_titoli_iva_soggetto.md) — Esporre via HTTP il **registro dei titoli IVA di un soggetto** — le condizioni documentate che cambiano il trattamento fiscale delle sue righe (dichiarazioni d'intento, esportatore abituale, split payment, reverse charg…

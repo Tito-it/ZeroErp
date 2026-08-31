@@ -5,9 +5,11 @@
 # Scopo: API view di CONSULTAZIONE della fattura — dettaglio completo
 #        (testata + righe + riepilogo IVA + scadenze) per il drawer di
 #        visualizzazione. Sola lettura: la fattura si produce dalla pipeline
-#        di fatturazione e oltre EMESSA le righe sono congelate a DB
-#        (`trgfn_fatture_righe_guard_congelamento`), quindi qui non esiste
-#        nessun verbo di modifica.
+#        di fatturazione e oltre la soglia di congelamento le righe sono
+#        congelate a DB (`trgfn_fattura_satellite_guard_congelamento`, la
+#        guardia generica che dal 2026-08-30 copre anche le righe), quindi
+#        qui non esiste nessun verbo di modifica. La soglia e' un dato:
+#        `config.stati_doc_fiscale.congela_fiscale` (oggi da DEFINITIVA).
 #        Le view dei documenti generati (stampa/allegati) vivono in
 #        `fatture_documenti_views.py`; le azioni di processo (emissione,
 #        numerazione, ristampa massiva) nel cockpit fatturazione.

@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-12-bis — L'EMITTENTE NUOVO NASCE GIA' CAPACE DI EMETTERE
+#   vendite.fn_provision_registri_emittente(soggetto_ruolo_id)
+#   vendite.trgfn_emittenti_fiscali_provision_registri()  [AFTER INS / UPD OF attivo]
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12 (§3.5)
+#
+# ── ⭐ CHIUDE UNA LACUNA DICHIARATA, ED E' UNA DECISIONE DI TID ────
+#   Il C2-12 ha provveduto agli emittenti che c'erano. Restava scoperto quello
+#   FUTURO: creato domani, non avrebbe avuto i suoi registri, e i suoi DDT non
+#   sarebbero nati finche' qualcuno non li configurava. Fail-closed e rumoroso,
+#   ma attrito nuovo — e su un'operazione, «creo un emittente», che prima
+#   bastava a se stessa.
+#   ⚠️ E' formalmente FUORI dal perimetro del cantiere («cambia solo
+#   l'algoritmo di assegnazione del numero»). Tid, 2026-08-31: *«la lacuna va
+#   chiusa anche se fuori perimetro»* — ed e' la scelta giusta: una lacuna
+#   dichiarata e non chiusa e' un difetto con una nota sopra.
+#
+# ── ⭐ UNA FUNZIONE, E POI IL TRIGGER: la composizione ha UNA sede ─
+#   Il codice del registro, la descrizione e il `meta` sono una regola, non tre
+#   righe di INSERT. Se il trigger se la riscrivesse, il giorno in cui il
+#   formato cambia ci sarebbero due verita' — e quella che nessuno guarda
+#   resterebbe indietro in silenzio.
+#   ℹ️ Il primo passo (20260831-03) porta la stessa regola scritta in linea:
+#   era un'esecuzione una tantum, fatta prima che questa sede esistesse. Da qui
+#   in avanti la sede e' QUESTA, e il changeSet applicato resta storia.
+#
+# ── ⚠️ ANCHE SULLA RIATTIVAZIONE, non solo sull'INSERT ────────────
+#   Un emittente puo' nascere `attivo = false` ed essere acceso dopo: con un
+#   trigger di solo INSERT resterebbe senza registri proprio nel momento in cui
+#   comincia a servire. `AFTER INSERT OR UPDATE OF attivo`, e si agisce quando
+#   diventa vero.
+#
+# ── ⚠️ `SECURITY DEFINER`, e non e' comodita' ─────────────────────
+#   Chi crea un emittente e' un amministratore di anagrafica: non e' detto che
+#   abbia l'INSERT su `vendite.registri_fatturazione`. Senza DEFINER la
+#   creazione dell'emittente fallirebbe su un permesso, cioe' su un messaggio
+#   che non parla del problema. `search_path` fissato, come nelle altre
+#   DEFINER di casa.
+#
+# ── ⛔ LA FATTURA RESTA FUORI ─────────────────────────────────────
+#   Il registro delle fatture dipende da (tipo documento, natura) e si
+#   configura con `tipi_doc_fiscale_registri`: fabbricarne uno «di famiglia»
+#   creerebbe un sezionale che nessuno risolve e che a video sembrerebbe
+#   configurazione buona.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-04-create-fn-provision-registri-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260831-04-create-fn-provision-registri-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-12-bis: un emittente nuovo (o riattivato) nasce gia'' con i registri delle famiglie non
+        fiscali. ⭐ Chiude la lacuna dichiarata dal C2-12 — decisione di Tid del 2026-08-31, «la
+        lacuna va chiusa anche se fuori perimetro»: una lacuna dichiarata e non chiusa e'' un
+        difetto con una nota sopra. ⭐ Una FUNZIONE e poi il trigger, perche'' il codice del
+        registro, la descrizione e il meta sono una regola e non tre righe di INSERT: se il trigger
+        se la riscrivesse, il giorno in cui il formato cambia ci sarebbero due verita'' e quella che
+        nessuno guarda resterebbe indietro in silenzio. ⚠️ Il trigger scatta anche sulla
+        RIATTIVAZIONE (AFTER INSERT OR UPDATE OF attivo): un emittente puo'' nascere spento ed
+        essere acceso dopo, e resterebbe senza registri proprio quando comincia a servire. ⚠️
+        SECURITY DEFINER: chi crea un emittente e'' un amministratore di anagrafica e non e'' detto
+        abbia l''INSERT su vendite.registri_fatturazione — senza, la creazione fallirebbe su un
+        permesso, cioe'' su un messaggio che non parla del problema. ⛔ La FATTURA resta fuori: il
+        suo registro dipende da (tipo documento, natura). Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: famiglia_documento
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri_emittente(
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE
+              )
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_creati integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dare a un emittente i registri di numerazione delle
+                  --   famiglie NON fiscali che ancora non ha, e dire quanti
+                  --   ne ha creati.
+                  --
+                  -- Regole:
+                  --   - le famiglie si LEGGONO dal catalogo, non si elencano:
+                  --     una famiglia nuova entra da sola;
+                  --   - un registro per famiglia, valido per tutte le utility;
+                  --   - idempotente: guarda la COPPIA (emittente, famiglia),
+                  --     quindi un registro creato a mano con un altro codice
+                  --     vale lo stesso e non ne nasce un secondo.
+                  --
+                  -- ⛔ La FATTURA resta fuori: il suo registro dipende da
+                  --   (tipo documento, natura) e si configura in
+                  --   vendite.tipi_doc_fiscale_registri.
+                  -- =========================================================
+                  IF p_emittente_soggetto_ruolo_id IS NULL THEN
+                      RETURN 0;
+                  END IF;
+
+                  INSERT INTO vendite.registri_fatturazione (
+                      codice, descrizione, famiglia_documento,
+                      emittente_soggetto_ruolo_id, utility_id,
+                      reset_policy, attivo, meta)
+                  SELECT
+                      -- ⚠️ Prime tre lettere della famiglia + id dell'emittente:
+                      --   deterministico, unico per costruzione, e dentro i 16
+                      --   caratteri della colonna. ⛔ NON la sigla
+                      --   dell'emittente: e' varchar(32) contro 16, e troncarla
+                      --   su una UNIQUE trasformerebbe due sigle simili in una
+                      --   collisione. La parte parlante sta nella descrizione.
+                      left(fd.codice_interno, 3) || '-' || ef.soggetto_ruolo_id::text,
+                      'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
+                      fd.codice_interno,
+                      ef.soggetto_ruolo_id,
+                      NULL,
+                      'ANNUALE',
+                      TRUE,
+                      jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
+                    FROM anagrafiche.emittenti_fiscali ef
+                   CROSS JOIN vendite.famiglie_documento fd
+                   WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND fd.attivo IS TRUE
+                     AND fd.codice_interno <> 'FATTURA'
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM vendite.registri_fatturazione r
+                            WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                              AND r.famiglia_documento          = fd.codice_interno);
+
+                  GET DIAGNOSTICS v_creati = ROW_COUNT;
+                  RETURN v_creati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provision_registri_emittente(vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE)
+              IS 'Da a un emittente i registri di numerazione delle famiglie NON fiscali (DDT, ORDINE, COMMESSA, RESO) che ancora non ha, e ritorna quanti ne ha creati. ⭐ E'' la SEDE UNICA della composizione — codice, descrizione, meta — e per questo esiste come funzione invece di stare dentro il trigger: sono una regola, non tre righe di INSERT, e se il trigger se la riscrivesse il giorno in cui il formato cambia ci sarebbero due verita'', con quella che nessuno guarda rimasta indietro in silenzio. ℹ️ Il primo passo (changeSet 20260831-03) porta la stessa regola scritta in linea: era un''esecuzione una tantum, fatta prima che questa sede esistesse, e resta storia. ⭐ Le famiglie si LEGGONO dal catalogo vendite.famiglie_documento e non si elencano: una famiglia nuova entra da sola. ⚠️ Un registro per famiglia con utility_id NULL, cioe'' «vale per tutte»: chi vorra'' separare per utility aggiunge una riga piu'' specifica, e vendite.fn_lookup_registro_documento la preferisce da se''. ⚠️ Idempotente, e il predicato guarda la COPPIA (emittente, famiglia) e non il codice: un registro creato a mano con un altro nome vale lo stesso e non ne fa nascere un secondo. ⚠️ SECURITY DEFINER perche'' chi crea un emittente e'' un amministratore di ANAGRAFICA e non e'' detto abbia l''INSERT su vendite.registri_fatturazione: senza, la creazione dell''emittente fallirebbe su un permesso, cioe'' su un messaggio che non parla del problema. search_path fissato. ⛔ La FATTURA resta fuori: il suo registro dipende da (tipo documento, natura) e si configura in vendite.tipi_doc_fiscale_registri — fabbricarne uno «di famiglia» creerebbe un sezionale che nessuno risolve e che a video sembrerebbe configurazione buona. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un emittente nuovo — o appena riattivato — nasce gia'
+                  --   capace di emettere DDT, ordini, resi e commesse.
+                  --
+                  -- ⚠️ Anche sulla RIATTIVAZIONE: un emittente puo' nascere
+                  --   spento ed essere acceso dopo, e con un trigger di solo
+                  --   INSERT resterebbe senza registri proprio nel momento in
+                  --   cui comincia a servire.
+                  -- ⭐ La composizione non sta qui: sta in
+                  --   vendite.fn_provision_registri_emittente, che e' la sede
+                  --   unica. Qui c'e' solo il QUANDO.
+                  -- =========================================================
+                  IF NEW.attivo IS NOT TRUE THEN
+                      RETURN NULL;
+                  END IF;
+
+                  PERFORM vendite.fn_provision_registri_emittente(NEW.soggetto_ruolo_id);
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()
+              IS 'Trigger AFTER INSERT OR UPDATE OF attivo su anagrafiche.emittenti_fiscali: quando un emittente nasce attivo — o viene riattivato — gli provvede i registri delle famiglie non fiscali chiamando vendite.fn_provision_registri_emittente. ⭐ Chiude la lacuna dichiarata dal C2-12, che aveva provveduto ai soli emittenti gia'' esistenti: quello FUTURO sarebbe rimasto senza registri, e i suoi DDT non sarebbero nati finche'' qualcuno non li configurava — fail-closed e rumoroso, ma attrito nuovo su un''operazione che prima bastava a se stessa. Decisione di Tid, 2026-08-31: la lacuna va chiusa anche se formalmente fuori dal perimetro del cantiere, perche'' una lacuna dichiarata e non chiusa e'' un difetto con una nota sopra. ⚠️ Scatta anche sulla RIATTIVAZIONE e non solo sull''INSERT: un emittente puo'' nascere attivo = false ed essere acceso dopo, e un trigger di solo INSERT lo lascerebbe senza registri proprio quando comincia a servire. ⭐ Qui c''e'' solo il QUANDO: la composizione (codice, descrizione, meta) sta tutta nella funzione, che e'' la sede unica. ℹ️ AFTER e non BEFORE: la riga dell''emittente deve esistere, perche'' la FK del registro ci punta. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-12.';
+
+              CREATE OR REPLACE TRIGGER trg_emittenti_fiscali_z90_provision_registri_ins_upd
+                  AFTER INSERT OR UPDATE OF attivo
+                  ON anagrafiche.emittenti_fiscali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_z90_provision_registri_ins_upd ON anagrafiche.emittenti_fiscali;
+              DROP FUNCTION IF EXISTS vendite.trgfn_emittenti_fiscali_provision_registri();
+              DROP FUNCTION IF EXISTS vendite.fn_provision_registri_emittente(bigint);

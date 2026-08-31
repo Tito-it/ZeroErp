@@ -15,7 +15,7 @@ Viste collegate:
 > [vw_contatore_merce](vw_contatore_merce.md)
 > [vw_resi_righe_effettive](vw_resi_righe_effettive.md)
 > [vw_resi_da_accreditare](vw_resi_da_accreditare.md)
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md`
+> Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md`
 
 ---
 ### 🎯 Scopo Principale

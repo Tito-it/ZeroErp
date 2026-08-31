@@ -26,6 +26,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.api._serialize_helpers import serialize_value
 from apps.vendite.services.pricing_diagnose_service import (
     PricingDiagnoseService,
 )
@@ -95,14 +96,6 @@ _RESOLVE_RESPONSE = inline_serializer(
     },
 )
 
-
-# Scopo: Serializza valori Decimal/date in forma JSON stabile.
-def _serialize_value(value: Any) -> Any:
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, date):
-        return value.isoformat()
-    return value
 
 
 # Scopo: Risolve l'emittente_soggetto_ruolo_id dal JWT operatore.
@@ -183,7 +176,7 @@ class PricingResolveView(DomainAPIView):
                 ),
                 articolo_padre_contesto=str(padre_raw) if padre_raw else None,
             )
-            return {k: _serialize_value(v) for k, v in result.items()}
+            return {k: serialize_value(v) for k, v in result.items()}
 
         return handle_post_json(request, handler=_handler)
 

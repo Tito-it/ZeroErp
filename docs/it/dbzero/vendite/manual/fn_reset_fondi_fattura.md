@@ -12,6 +12,39 @@
 >
 • [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura)  
 >
+### ⭐ rev 31-08-2026 — IL CRITERIO NON STA PIÙ QUI (D-21)
+
+I tre blocchi «l'atto non è ancora un fatto» e i tre `DELETE` nell'ordine imposto
+dalla FK **si sono spostati**:
+
+```text
+il CRITERIO  →  vendite.fn_check_fondo_cancellabile
+l'AZIONE     →  vendite.fn_cancella_fondo_fattura
+la REAZIONE  →  resta qui, ed è l'opposto di quella del gesto manuale
+```
+
+| Chi | Quando l'atto è bloccato |
+| --- | --- |
+| **questa funzione** | **segnala e prosegue** — è un giro tecnico su N atti, e un'eccezione fermerebbe il reset di un lotto intero |
+| `fn_cancella_fondo_fattura` | **rifiuta e lo dice** — è il gesto di una persona su un atto |
+
+⚠️ **Il comportamento non cambia**, e va detto dove: il blocco degli atti
+`ESEGUITO` chiede al predicato invece di guardare lo stato, e la popolazione è la
+stessa perché `ATTO_ESEGUITO` è il primo motivo che il predicato prova. La quarta
+condizione (`FIGLIA_CONGELATA`) **non si accende in questo percorso**: l'unico
+chiamante, `fn_cleanup_fatture_by_ids`, imposta la GUC
+`zeroerp.maintenance_reset_lotto_draft`.
+
+⭐ **Un difetto latente chiuso**: un lotto la cui figlia aveva ricevuto un
+**riporto** faceva fallire il reset con un `23503` nudo sulla FK
+`fk_sistemazioni_fondo_source`. Adesso l'atto viene **saltato** con una nota nel
+diario (`W_FONDO_TRATTENUTO_DA_SISTEMAZIONE`). ⚠️ Il reset del lotto fallirà
+comunque più avanti — l'atto continua a puntare la fattura che si sta
+cancellando — ma il diario dice perché: *fallire ad alta voce resta, il silenzio
+no.*
+
+---
+
 ### 🎯 Scopo Principale
 (latest review 22-08-2026)
 

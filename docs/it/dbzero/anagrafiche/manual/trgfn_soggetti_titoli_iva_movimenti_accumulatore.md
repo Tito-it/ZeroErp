@@ -31,6 +31,24 @@ altro.
 * **Tipo**: trigger `AFTER INSERT OR UPDATE OR DELETE`, per riga
 * **Fascia**: `z90`
 
+> ## ⛔ Rev 2026-08-31 — due dei tre eventi sono IRRAGGIUNGIBILI
+>
+> Dal 2026-08-31 il registro è **«solo aggiunte» per progetto**:
+> [`trgfn_stiva_movimenti_append_only`](/dbzero/anagrafiche/funzioni/trgfn_stiva_movimenti_append_only)
+> rifiuta ogni `UPDATE` e ogni `DELETE`. Quindi di questo trigger, **oggi, gira
+> solo il ramo `INSERT`**.
+>
+> ⛔ **Il codice non si tocca, e le due sezioni qui sotto restano.** Sono difesa
+> in profondità: un guard si può spegnere, e il giorno che succedesse questo
+> accumulatore deve continuare a dire la verità. Ma vanno **lette per quello che
+> sono ora** — la descrizione di casi che il database non ammette più — invece
+> che come cronaca di ciò che succede.
+>
+> ⚠️ È scritto qui perché è **esattamente il tipo di cosa che invecchia in
+> silenzio**: nulla, nel corpo della funzione, dice che quei rami non arrivano
+> più. Chi leggesse la sezione 🔴 qui sotto senza questo riquadro lavorerebbe su
+> un caso che non può succedere.
+
 ---
 
 ### ⚠️ Ricalcola dalla somma, non somma un delta
@@ -43,9 +61,22 @@ Il ricalcolo **non ha casi**: qualunque cosa succeda al registro, la colonna tor
 dire quello che il registro dice. Costa una scansione dei movimenti di **un** titolo,
 che è esattamente ciò che il suo indice serve.
 
+> ⚠️ **Rev 2026-08-31**: i tre casi citati come motivazione — importo modificato,
+> riga cancellata, movimento spostato — **non sono più raggiungibili** (vedi il
+> riquadro sopra). La scelta del ricalcolo resta però quella giusta, e per una
+> ragione che non dipende da loro: **una correzione oggi è una riga nuova**
+> (il contro-movimento dell'annullo), e sommare un delta su una riga in più darebbe
+> lo stesso risultato solo finché nessuno sbaglia. Il ricalcolo non ha casi
+> nemmeno adesso.
+
 ---
 
 ### 🔴 Il caso che si sbaglia se non ci si pensa
+
+> ⛔ **Rev 2026-08-31 — QUESTO CASO NON PUÒ PIÙ SUCCEDERE.** Spostare un movimento
+> da un titolo a un altro vorrebbe dire un `UPDATE`, e il registro non ne ammette
+> più. La sezione resta perché il **codice** resta, e va capito da chi lo legge —
+> ma descrive una difesa, non un evento.
 
 Un aggiornamento che **sposta un movimento da un titolo a un altro** deve
 ricalcolarli **entrambi**. Guardando distrattamente solo il valore nuovo se ne

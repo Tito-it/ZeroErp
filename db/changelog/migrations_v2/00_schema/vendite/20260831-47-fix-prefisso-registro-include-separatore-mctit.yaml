@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-8 — IL PREFISSO DEL REGISTRO DEVE INCLUDERE IL SEPARATORE
+#   correzione del seed di 20260831-40
+#   Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-8
+#
+# ── ⛔ IL DIFETTO, TROVATO SCRIVENDO IL TEST ─────────────────────
+#   Il seed del 20260831-40 copiava `config.sistema_codici.prefisso` sul
+#   registro. Per DDT, ordini e resi va bene: il loro separatore e' VUOTO.
+#   ⛔ Per la COMMESSA no: il suo separatore e' `-` e stava in una colonna a
+#   parte. Il registro ha preso `CMM`, e la composizione nuova
+#   (prefisso || corpo || cifre) darebbe:
+#
+#       CMMACME-2026-000000007      invece di      CMM-ACME-2026-000000007
+#
+#   ⇒ Il trattino dopo il prefisso sparisce, e il codice smette di essere
+#   decomponibile — proprio la proprieta' per cui la sigla dell'emittente ha un
+#   vincolo di forma che vieta il trattino.
+#
+# ── ⭐ LA CAUSA E' LA DECISIONE, ED E' CORRETTA ──────────────────
+#   Il separatore non e' piu' un campo a se': se serve, si scrive DENTRO il
+#   prefisso (Tid, 2026-08-31). Il seed pero' aveva copiato solo meta' della
+#   cosa, lasciando il separatore dov'era.
+#   ⇒ Il prefisso del registro e' `sistema_codici.prefisso || separatore`.
+#
+# ⚠️ IDEMPOTENTE: tocca solo i registri il cui prefisso e' ANCORA uguale a
+#   quello del catalogo, cioe' non ancora concatenato. Rigirando non aggiunge
+#   un secondo trattino.
+# ⚠️ La funzione che crea i registri nuovi si corregge nel changeSet gemello
+#   che segue: senza, il difetto tornerebbe al primo emittente creato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-47-fix-prefisso-registro-include-separatore-mctit.yaml
+
+  - changeSet:
+      id: 20260831-47-fix-prefisso-registro-include-separatore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-8: il prefisso del registro deve includere il SEPARATORE. ⛔ Difetto trovato scrivendo
+        il pgTAP, non girando: il seed del 20260831-40 copiava il solo prefisso, e per DDT,
+        ordini e resi va bene perche'' il loro separatore e'' vuoto — ma la COMMESSA ha `-`, e il
+        registro ha preso `CMM` invece di `CMM-`. La composizione avrebbe dato
+        CMMACME-2026-000000007, cioe'' un codice non piu'' decomponibile. ⭐ La causa e'' la
+        decisione, che resta corretta: il separatore non e'' piu'' un campo a se'' e si scrive
+        dentro il prefisso — il seed pero'' aveva copiato solo meta''. ⚠️ Idempotente: tocca solo i
+        registri il cui prefisso e'' ancora uguale a quello del catalogo.
+        Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-8.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: prefisso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ La condizione `r.prefisso = sc.prefisso` rende l'UPDATE
+              --   idempotente: un registro gia' corretto porta 'CMM-', che e'
+              --   diverso da 'CMM', e non viene toccato.
+              UPDATE vendite.registri_fatturazione r
+                 SET prefisso = sc.prefisso || sc.separatore
+                FROM config.sistema_codici sc
+               WHERE sc.codice_interno = lower(r.famiglia_documento)
+                 AND COALESCE(sc.separatore, '') <> ''
+                 AND r.prefisso = sc.prefisso;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 'Rollback non previsto: togliere il separatore rimetterebbe il difetto.'::text;

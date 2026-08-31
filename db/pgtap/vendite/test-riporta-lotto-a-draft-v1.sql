@@ -32,7 +32,7 @@
 -- Indice test
 -- 1) Seed: la transizione EMESSA -> DRAFT del LOTTO non ha vincolo di tipo
 -- 2) La colonna riaperto_il esiste, e' timestamptz e nullable
--- 3) La funzione esiste e restituisce i cinque contatori
+-- 3) La funzione esiste e restituisce i SEI contatori
 -- 4) Fixture: un lotto pre-fiscale con almeno una fattura
 -- 5) Guard: con una fattura NUMERATA il ritorno e rifiutato
 -- 6) Il ritorno gira e non solleva
@@ -40,6 +40,10 @@
 -- 8) Le commesse_attivita sono tornate NON_EMESSA  <-- il test che vale
 -- 9) Le fatture del lotto sono state cancellate
 -- 10) I task_run sono chiusi ad ANNULLATO (il rilancio torna RUN, non SKIP)
+-- 11) RD-7: l'atto e' scritto nel GIORNALE, e il payload DICE IL VERO
+-- 12) RD-7: la riga si vede da vw_giornale_entita, e non SOTTO il suo effetto
+-- 13) La porta rifiuta un lotto le cui righe sono gia' accreditate
+-- 14) RD-7: il codice evento e' DICHIARATO a catalogo (strutturale)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -59,7 +63,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(14);
 
 -- ============================================================
 -- Strutturali (girano sempre)
@@ -88,16 +92,23 @@ SELECT ok(
        AND is_nullable = 'YES'),
   '2) La colonna riaperto_il esiste, e timestamptz e nullable');
 
--- Cinque contatori e non quattro: `riemesse_attivita` e' separato perche' un
+-- Sei contatori e non quattro: `riemesse_attivita` e' separato perche' un
 -- numero unico direbbe «10 cose fatte» senza distinguere fatture cancellate
--- da attivita' rimesse in coda, che per il cockpit sono fatti diversi.
+-- da attivita' rimesse in coda, che per il cockpit sono fatti diversi; e
+-- `annullati_task_run` perche' e' il passo RD-6, che senza un numero proprio
+-- non si distingue da «non c'era niente da annullare».
+-- ⚠️ rev 2026-08-31: l'etichetta diceva «cinque» ed era ferma alla firma
+-- pre-20260803-12 — lo stesso refuso che la scheda manuale portava fino a
+-- oggi (voce DB-R1). L'asserzione invece era gia' giusta: guarda due nomi
+-- che ci sono, non il conteggio. Ora ne guarda tre, incluso il sesto.
 SELECT ok(
   (SELECT count(*) FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'vendite' AND p.proname = 'fn_riporta_lotto_a_draft'
       AND pg_get_function_result(p.oid) ILIKE '%riemesse_attivita%'
+      AND pg_get_function_result(p.oid) ILIKE '%annullati_task_run%'
       AND pg_get_function_result(p.oid) ILIKE '%deleted_fatture%') = 1,
-  '3) La funzione esiste e restituisce i cinque contatori');
+  '3) La funzione esiste e restituisce i sei contatori');
 
 -- ============================================================
 -- Fixture
@@ -106,9 +117,14 @@ SELECT ok(
 -- NESSUNA fattura numerata. Il filtro sul numero e' lo stesso guard che il
 -- test 5 esercita: cosi' la fixture non muore su una condizione che il file
 -- verifica altrove.
+-- ⭐ rev 2026-08-31: si fotografa anche lo STATO FISCALE di partenza. Serve al
+--   test 11: e' il solo dato del payload che dopo l'UPDATE non sarebbe piu'
+--   ricostruibile, quindi e' anche il solo che un'asserzione «dice il vero»
+--   deve catturare prima.
 CREATE TEMP TABLE tmp_lotto_rld AS
 SELECT fl.id,
        fl.lock_batch_id,
+       s.codice_interno AS stato_prima,
        (SELECT count(*) FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = fl.id) AS n_fatture
   FROM vendite.fatturazione_lotti fl
   JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
@@ -150,7 +166,7 @@ SELECT count(*) AS n
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld)
-    THEN skip('nessun lotto pre-fiscale con fatture su questo DB', 7)
+    THEN skip('nessun lotto pre-fiscale con fatture su questo DB', 9)
   ELSE ok((SELECT n_fatture FROM tmp_lotto_rld) > 0,
           '4) Fixture: lotto pre-fiscale con almeno una fattura')
 END;
@@ -262,9 +278,79 @@ SELECT CASE
     '10) I task_run del lotto sono chiusi ad ANNULLATO (il rilancio torna RUN, non SKIP) e la storia resta')
 END;
 
+-- ============================================================
+-- 11-12) RD-7 — l'atto entra nel GIORNALE
+-- ============================================================
+-- ⚠️ Fino al 2026-08-31 la riapertura non scriveva in NESSUNO dei quattro
+--   registri di script.vw_giornale_entita: nella scheda «Storia» si leggeva
+--   solo DI RIMBALZO, dai task_run passati ad ANNULLATO (il test 10). Cioe'
+--   l'unico atto della funzione che CANCELLA documenti era anche l'unico
+--   senza una riga propria.
+--
+-- ⭐ E SI ASSERISCE CHE LA RIGA DICA IL VERO, non che esista.
+--   Una riga di giornale presente ma con contatori sbagliati e' peggio della
+--   sua assenza: chi indaga si fida di un numero inventato. Quindi il payload
+--   si confronta con i fatti fotografati PRIMA (n_fatture, stato_prima), non
+--   con se stesso.
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld) THEN NULL
+  ELSE ok(
+    EXISTS (
+      SELECT 1 FROM vendite.event_log e
+       WHERE e.entity_type = 'LOTTO'
+         AND e.entity_id   = (SELECT id FROM tmp_lotto_rld)
+         AND e.event_code  = 'LOTTO_RIAPERTO'
+         AND e.severity    = 'WARN'
+         AND (e.payload ->> 'stato_precedente')    = (SELECT stato_prima FROM tmp_lotto_rld)
+         AND (e.payload ->> 'deleted_fatture')::int = (SELECT n_fatture  FROM tmp_lotto_rld)
+         AND (e.payload ? 'annullati_task_run')
+         AND (e.payload ? 'riemesse_attivita')
+         AND e.emittente_soggetto_ruolo_id IS NOT NULL),
+    '11) RD-7: la riapertura e scritta nel giornale, WARN, e il payload dice il vero')
+END;
+
+-- ⭐ IL PUNTO DELLA VOCE NON E' LA TABELLA, E' LA SCHEDA «STORIA»:
+--   la riga deve arrivare fino a script.vw_giornale_entita, che e' cio' che
+--   una persona guarda. Una riga scritta in event_log ma invisibile li'
+--   avrebbe risolto la voce solo sulla carta.
+--
+-- ⚠️ E si verifica anche la GRAVITA' RELATIVA, che e' l'argomento del WARN:
+--   la vista mappa gia' TASK_RUN 'ANNULLATO' -> 'WARN'. Se la causa fosse
+--   INFO, chi filtra per gravita' vedrebbe l'effetto (otto corse annullate)
+--   senza il motivo — la riapertura sparirebbe proprio dal filtro che serve a
+--   capire perche' quelle corse sono state annullate.
+--   Si asserisce quindi che la riapertura NON stia sotto il suo stesso
+--   effetto, non che sia «WARN» in astratto: se un domani la vista rimappasse
+--   gli ANNULLATO, questa asserzione resta quella giusta.
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld) THEN NULL
+  ELSE ok(
+    EXISTS (
+      SELECT 1 FROM script.vw_giornale_entita g
+       WHERE g.registro    = 'EVENT_LOG'
+         AND g.entity_type = 'LOTTO'
+         AND g.entity_id   = (SELECT id FROM tmp_lotto_rld)
+         AND g.cosa        = 'LOTTO_RIAPERTO')
+    AND NOT EXISTS (
+      -- nessun task_run ANNULLATO dello stesso lotto risulta piu' grave
+      -- della riapertura che li ha prodotti
+      SELECT 1
+        FROM script.vw_giornale_entita eff
+        JOIN script.vw_giornale_entita causa
+          ON causa.entity_id = eff.entity_id
+         AND causa.registro  = 'EVENT_LOG'
+         AND causa.cosa      = 'LOTTO_RIAPERTO'
+       WHERE eff.entity_type = 'LOTTO'
+         AND eff.entity_id   = (SELECT id FROM tmp_lotto_rld)
+         AND eff.registro    = 'TASK_RUN'
+         AND eff.cosa LIKE '%ANNULLATO%'
+         AND eff.gravita = 'WARN' AND causa.gravita = 'INFO'),
+    '12) RD-7: la riapertura si vede nel giornale, e non sotto il suo stesso effetto')
+END;
+
 
 -- ============================================================
--- 11) La porta rifiuta un lotto le cui righe sono gia' accreditate
+-- 13) La porta rifiuta un lotto le cui righe sono gia' accreditate
 -- ============================================================
 -- ⚠️ E' il motivo 4, nato il 2026-08-22 dopo un 23503 grezzo dentro
 --   fn_cleanup_fatture_by_ids. Il gemello sulle fatture NUMERATE non lo
@@ -336,8 +422,48 @@ SELECT CASE
   ELSE is(
          pg_temp.rld_codice((SELECT id FROM tmp_lotto_rett_rld)),
          'E_FATTURE_RIGHE_RETTIFICATE',
-         '11) un lotto con righe gia accreditate viene rifiutato, e col codice giusto')
+         '13) un lotto con righe gia accreditate viene rifiutato, e col codice giusto')
 END;
+
+
+-- ============================================================
+-- 14) Il codice evento e' DICHIARATO a catalogo (strutturale, gira sempre)
+-- ============================================================
+-- ⛔ QUESTO TEST ESISTE PERCHE' IL RUBINETTO CI NON COPRE QUESTO CODICE, ed
+--   e' l'unico punto del file che parla di un presidio invece che di dominio.
+--
+--   `backend/apps/core/tests/test_event_codes_declared_guardrail.py` e' il
+--   rubinetto dei codici evento: fa fallire la build se un `event_code` viene
+--   scritto senza essere dichiarato in config.eventi_dominio. Ma cerca i punti
+--   di scrittura nel **Python**, e la sua stessa intestazione spiega perche':
+--   «il codice evento lo scrive il BACKEND», e una vista su `pg_proc`
+--   tornerebbe «vuota per sempre».
+--
+--   ⚠️ Quella premessa e' scaduta il 2026-08-31: `LOTTO_RIAPERTO` e' il PRIMO
+--   codice evento scritto dal DATABASE. Sul rubinetto Python e' invisibile —
+--   non e' un difetto del rubinetto, e' che guarda un'altra sorgente — quindi
+--   il verso «dichiarato obsoleto, ma ancora scritto» qui non lo presidia
+--   nessuno. La spia dei dati (dbops.vw_eventi_non_dichiarati) se ne
+--   accorgerebbe solo DOPO che una riga sbagliata e' finita nel registro.
+--
+--   ⭐ Si copre qui, dove il codice e' scritto: e si asserisce anche il verso
+--   dell'obsolescenza, non la sola presenza. Un codice deprecato a catalogo e
+--   ancora emesso da questa funzione e' esattamente il caso che nessun altro
+--   cancello vedrebbe.
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM config.eventi_dominio ed
+     WHERE ed.codice = 'LOTTO_RIAPERTO'
+       AND (ed.obsoleto_dal IS NULL OR ed.obsoleto_dal > CURRENT_DATE))
+  AND EXISTS (
+    -- e il tipo di entita' su cui la funzione lo scrive dev'essere
+    -- GIORNALABILE: un modo di risoluzione a NULL fa rifiutare la riga dal
+    -- trigger di scope, cioe' la riapertura fallirebbe invece di registrarsi.
+    SELECT 1 FROM config.tipi_entita te
+     WHERE te.codice = 'LOTTO'
+       AND te.modo_risoluzione_emittente IS NOT NULL
+       AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > CURRENT_DATE)),
+  '14) RD-7: LOTTO_RIAPERTO e dichiarato e non obsoleto, e LOTTO e giornalabile');
 
 SELECT * FROM finish();
 

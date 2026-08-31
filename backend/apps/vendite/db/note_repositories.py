@@ -85,9 +85,9 @@ NOTE_REPO_DDT = PartitionedNoteRepository(
 # Sesto e ultimo dominio note del ciclo attivo: nessuna migration, la partizione
 # e il suo trigger di validazione esistono gia' a DB e 'FATTURA' e' gia' in
 # TARGET_TIPI_AMMESSI del repository BB.
-# La nota resta scrivibile anche su fattura oltre EMESSA: il congelamento di
-# `trgfn_fatture_righe_guard_congelamento` protegge gli IMPORTI della fattura,
-# non l'annotazione operativa che ci gira intorno.
+# La nota resta scrivibile anche su fattura congelata: il congelamento di
+# `trgfn_fattura_satellite_guard_congelamento` protegge gli IMPORTI della
+# fattura, non l'annotazione operativa che ci gira intorno.
 # ⚠️ `vendite.note_fatture` NON ha policy RLS (a differenza di `fatture`,
 # `fatture_righe` e `fatture_riepiloghi_iva`): ogni lettura che parte da qui
 # — incluso il `count_for_parent` del badge — deve passare PRIMA dal cancello

@@ -57,10 +57,36 @@ colonna di configurazione con effetti di codice.
 
 ---
 
+### ⭐ `e_cessione_beni` — beni o servizi, e **non** si deduce da `destinazione_tipo`
+
+Dal 2026-08-29 la tabella porta **`e_cessione_beni`**: `true` = cessione di beni,
+`false` = prestazione di servizi.
+
+Serve perché in ambito **intracomunitario** è questa distinzione a determinare il
+**luogo di imposizione** — beni e servizi non seguono la stessa regola — ed è un
+pezzo della firma del risolutore IVA.
+
+> ⛔ **Non poteva stare su `config.iva` o `config.iva_natura`, e non per mancanza
+> di spazio: sarebbe circolare.** Beni-vs-servizi serve a *scegliere* il codice
+> natura (`N3.1` esportazioni è merce, `N7` è prestazione di servizi): ricavarlo
+> da lì significherebbe ricavare l'**input** del risolutore dal suo **output**.
+
+> ⚠️ **E NON si deduce da `destinazione_tipo`**, che pure sembra dire la stessa
+> cosa (`MERCE → ORDINE`, i due servizi → `COMMESSA`/`CONTRATTO`). Quella colonna
+> risponde a **un'altra domanda**: dove finisce la riga dopo l'accettazione del
+> preventivo. Appoggiarci sopra il luogo di imposizione è la forma esatta del
+> **flag composto** — un campo che risponde a due domande in AND — e il giorno che
+> le due risposte divergono non c'è modo di separarle.
+
+⚠️ È `NOT NULL` **senza default**: chi conia una natura nuova deve **dire** quale
+delle due è, perché nessuna delle due risposte è quella conservativa.
+
+---
+
 ### Struttura
 
 `codice_interno` / `codice` (doppia chiave), `descrizione`, `destinazione_tipo` (`NOT NULL`),
-`attivo`, `ordine`, `meta`.
+`e_cessione_beni` (`NOT NULL`), `attivo`, `ordine`, `meta`.
 
 `destinazione_tipo` è una stringa vincolata da CHECK, non una FK a un vocabolario di
 destinazioni: le tre destinazioni sono strutturali del ciclo di vendita, non configurabili.

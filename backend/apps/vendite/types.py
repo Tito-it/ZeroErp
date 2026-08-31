@@ -1,3 +1,13 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: `TypedDict` e alias condivisi del dominio vendite — le righe che i
+#        repository restituiscono e la pipeline si passa. Servono a togliere
+#        le chiavi «magiche» dalle firme e a far vedere al type checker cosa
+#        un payload porta davvero.
+# ------------------------------------------------------------
+
 from datetime import date
 
 from typing import Any, TypeAlias, TypedDict
@@ -48,6 +58,26 @@ class GroupAttivitaKey(TypedDict):
     # per la stessa ragione del prezzo: se la chiave prendesse un valore e la
     # INSERT ne scrivesse un altro, le due meta' si annullerebbero in silenzio.
     sconto_percentuale: str | None
+    # ── L'atto ───────────────────────────────────────────────────────────────
+    # ⛔ IL CONTRATTO STA NELLA CHIAVE, e la sua assenza era un difetto vivo:
+    # due attivita' di contratti DIVERSI collassavano nella stessa riga di
+    # fattura. Su quella riga aggregata nessuna domanda per atto ha una
+    # risposta — a partire dal CIG, che la FatturaPA vuole per blocco
+    # `DatiContratto` con `RiferimentoNumeroLinea` a puntare le sue righe.
+    #
+    # ⭐ E non sposta nessun raggruppamento esistente: fuori da un contratto il
+    # valore e' `None` per tutte le attivita', quindi si spezzano SOLO le righe
+    # che oggi mescolano davvero due atti.
+    #
+    # ⚠️ `None` anche su una RETTIFICA, ed e' voluto: l'identita' di una riga di
+    # nota di credito e' la riga di fattura che rettifica — `fattura_riga_
+    # rettificata_id`, che e' strettamente piu' specifico del contratto. Dare
+    # peso anche al contratto dell'attivita' potrebbe spezzare due rettifiche
+    # della STESSA riga, cioe' rompere in silenzio l'invariante «due rettifiche
+    # della stessa riga restano aggregabili». Quando `vendite.fatture_atti`
+    # dara' alla riga di fattura una sede per l'atto, la rettifica lo
+    # copiera' da li' come gia' fa con prezzo, sconto e IVA (N-1).
+    contratto_id: int | None
 
 
 class AnnullaLottoDaDraftResult(TypedDict):
@@ -196,6 +226,18 @@ class LottoFattureRow(TypedDict):
     # stessi nomi dell'envelope. NULL quando l'errore non ne porta — che e' il
     # caso normale, non un difetto.
     errore_bersagli: list[dict[str, str]] | None
+    # ⭐ CAPABILITY DI RIGA — «questa fattura si puo' riportare in
+    # lavorazione?» (F5, 2026-08-31). Permesso => nascondi, stato =>
+    # disabilita COL MOTIVO: qui e' sempre il secondo caso.
+    # ⛔ La terna e' coerente per costruzione — motivo e chiave si ricavano dal
+    # nome del flag — e il flag si DERIVA dal motivo (`reason IS NULL`), non si
+    # calcola a parte. Il nome dice QUALE verbo blocca: su questa riga puo'
+    # nascerne un secondo, e un `blocco_reason` generico li confonderebbe.
+    # ⚠️ `reason` e' il codice MACCHINA del primo motivo, `reason_key` la
+    # CHIAVE i18n: il testo non viaggia mai nel payload.
+    can_reset_fattura: bool
+    can_reset_fattura_reason: str | None
+    can_reset_fattura_reason_key: str | None
 
 
 class LottoListRow(TypedDict):

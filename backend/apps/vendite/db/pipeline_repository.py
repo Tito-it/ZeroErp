@@ -104,7 +104,6 @@ class GroupAttivitaInput:
     dest_billing_account_id: int | None
     uom_id: int | None
     prezzo_unitario: Decimal | None
-    iva_id: int | None
     competenza_dal: date | None
     competenza_al: date | None
     data_attivita: date | None
@@ -128,6 +127,10 @@ class GroupAttivitaInput:
     rett_prezzo_unitario: Decimal | None = None
     rett_sconto_percentuale: Decimal | None = None
     rett_iva_id: int | None = None
+    # ── L'atto ───────────────────────────────────────────────────────────────
+    # Il contratto a cui l'attivita' appartiene. `None` su tutto cio' che nasce
+    # fuori da un contratto, che oggi e' la maggior parte del traffico.
+    contratto_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,15 @@ class AttivitaDaFatturare:
     sorgente_uid: str | None
     sorgente_riga: int | None
     articolo_descrizione: str | None
+    # ⭐ Il CODICE dell'articolo, e serve a una cosa sola: ordinare le righe del
+    # documento in un modo che una PERSONA sappia leggere. Fino al 2026-08-31 si
+    # ordinava per `articolo_id`, che e' un UUID — deterministico per la
+    # macchina, rumore per chi guarda la fattura.
+    # ⚠️ `codice` e non `codice_interno`, di proposito: per convenzione di
+    # progetto il primo e' l'etichetta che l'utente vede e puo' cambiare, il
+    # secondo la chiave immutabile. Qui l'ordinamento serve a chi LEGGE, e chi
+    # legge vede il `codice`.
+    articolo_codice: str | None = None
     # `meta` dell'attivita': porta lo snapshot kit gia' risolto dal push
     # (`segment_key`, `componente_di`, `esposto_in_fattura`). Nessuna
     # risoluzione di distinta base a valle: lo stesso componente puo'
@@ -217,7 +229,7 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
 # Proiezione e mapping di `GroupAttivitaInput`, in un posto solo.
 #
 # 🔴 PERCHE' ESISTE. Le due letture — singola (`get_group_attivita_input`) e
-# batch (`batch_get_group_attivita_inputs`) — proiettavano le STESSE 19 colonne
+# batch (`batch_get_group_attivita_inputs`) — proiettavano le STESSE colonne
 # in due SELECT copiate, con due mapping riga->dataclass scritti a mano. E le due
 # copie erano gia' DIVERSE: quella singola faceva `articolo_id=int(row[1])` su
 # una colonna che e' un UUID, cioe' sollevava `ValueError` a ogni chiamata.
@@ -232,7 +244,16 @@ _GROUP_ATTIVITA_SELECT = """
                     a.billing_account_id AS dest_billing_account_id,
                     COALESCE(a.uom_id, art.uom_id) AS uom_id,
                     a.prezzo_unitario,
-                    art.iva_id,
+                    -- ⛔ `art.iva_id` E' USCITA DA QUI il 2026-08-31 (`I4`), e non
+                    --    e' una semplificazione: era la NONA risposta autonoma
+                    --    alla domanda «che IVA ha questa riga». L'aliquota
+                    --    dell'articolo e' lo stadio A1 del risolutore, che la
+                    --    ritorna con `origine = 'ARTICOLO'` — quindi qui non si
+                    --    perde niente, e si smette di scavalcare gli stadi B
+                    --    (i titoli documentati del cliente) e l'uso della
+                    --    fornitura. Leggerla di nuovo qui vorrebbe dire
+                    --    applicare l'IVA piena a un esportatore abituale, in
+                    --    silenzio.
                     a.competenza_dal,
                     a.competenza_al,
                     a.data_attivita,
@@ -247,7 +268,13 @@ _GROUP_ATTIVITA_SELECT = """
                     a.fattura_riga_rettificata_id,
                     fr.prezzo_unitario     AS rett_prezzo_unitario,
                     fr.sconto_percentuale  AS rett_sconto_percentuale,
-                    fr.iva_id              AS rett_iva_id
+                    fr.iva_id              AS rett_iva_id,
+                    -- L'ATTO a cui l'attivita' appartiene. Sta qui e non in un
+                    -- JOIN perche' `attivita_fatturabili` lo porta gia' sulla
+                    -- riga (FK `fk_attivita_fatturabili_contratto`): risalire
+                    -- alla commessa per rileggerlo sarebbe una seconda fonte
+                    -- per lo stesso fatto.
+                    a.contratto_id
                 FROM vendite.attivita_fatturabili a
                 JOIN catalogo.articoli art
                   ON art.id = a.articolo_id
@@ -272,20 +299,20 @@ def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
         dest_billing_account_id=None if row[2] is None else int(row[2]),
         uom_id=None if row[3] is None else int(row[3]),
         prezzo_unitario=row[4],
-        iva_id=None if row[5] is None else int(row[5]),
-        competenza_dal=row[6],
-        competenza_al=row[7],
-        data_attivita=row[8],
-        calcolo_qta_padre=row[9],
-        arrotondamento_importi_dec=int(row[10]),
-        arrotondamento_quantita_dec=int(row[11]),
-        metodo_arrotondamento_importi=row[12],
-        metodo_arrotondamento_quantita=row[13],
-        tipo_movimento=row[14] or TIPO_MOVIMENTO_NORMALE,
-        fattura_riga_rettificata_id=None if row[15] is None else int(row[15]),
-        rett_prezzo_unitario=row[16],
-        rett_sconto_percentuale=row[17],
-        rett_iva_id=None if row[18] is None else int(row[18]),
+        competenza_dal=row[5],
+        competenza_al=row[6],
+        data_attivita=row[7],
+        calcolo_qta_padre=row[8],
+        arrotondamento_importi_dec=int(row[9]),
+        arrotondamento_quantita_dec=int(row[10]),
+        metodo_arrotondamento_importi=row[11],
+        metodo_arrotondamento_quantita=row[12],
+        tipo_movimento=row[13] or TIPO_MOVIMENTO_NORMALE,
+        fattura_riga_rettificata_id=None if row[14] is None else int(row[14]),
+        rett_prezzo_unitario=row[15],
+        rett_sconto_percentuale=row[16],
+        rett_iva_id=None if row[17] is None else int(row[17]),
+        contratto_id=None if row[18] is None else int(row[18]),
     )
 
 
@@ -344,6 +371,12 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # funzione che i suoi chiamanti danno per infallibile. L'ordine e'
         # presidiato da `_TASK_ORDER_DEPENDENCIES`, non lasciato al solo seed.
         "popola_fatture_rettifiche": "vendite.fn_popola_fatture_rettifiche",
+        # `None` = implementazione PYTHON. Il consumo del plafond non e' una
+        # sola chiamata SQL: e' un giro che ordina le fatture (`P5`), risolve,
+        # spezza le righe e poi chiama `fn_consuma_plafond_titolo_iva` per
+        # riga. La madre DB fa la parte che DEVE stare sotto lock; l'ordine e
+        # la spezzatura stanno qui.
+        "consuma_plafond_lotto": None,
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1578,7 +1611,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     a.sorgente_riga,
                     art.descrizione,
                     a.meta,
-                    a.tipo_movimento
+                    a.tipo_movimento,
+                    art.codice
                 FROM vendite.attivita_fatturabili a
                 JOIN catalogo.articoli art
                   ON art.id = a.articolo_id
@@ -1616,6 +1650,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 # mockati non lo vedono, iniettano gia' dei dict.
                 meta=coerce_jsonb_dict(row[9]),
                 tipo_movimento=row[10] or TIPO_MOVIMENTO_NORMALE,
+                articolo_codice=row[11],
             )
             for row in rows
         ]
@@ -1648,6 +1683,169 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 safe_limit, lotto_id,
             )
         return [int(row[0]) for row in rows]
+
+    # Scopo: Le fatture del lotto nell'ORDINE in cui il plafond va consumato.
+    # ⛔ L'ORDINE E' UN REQUISITO FISCALE, non una comodita' (`P5` / `D15-bis`).
+    #    Il lock di riga sul titolo impedisce a due transazioni di portare il
+    #    plafond sotto zero insieme, ma NON sa che esiste una fattura
+    #    ANTERIORE non ancora arrivata: senza quest'ordine, a plafond quasi
+    #    esaurito e' la FORTUNA a decidere quale cliente resta scoperto.
+    # ⚠️ `numero` e' NULL per tutte quando questo giro parte — la numerazione
+    #    viene dopo — quindi a discriminare e' la DATA, e l'`id` e' il
+    #    pareggio stabile. La colonna resta nell'ORDER BY perche' la regola e'
+    #    «data, poi numero»: il giorno che il task girasse su documenti gia'
+    #    numerati direbbe ancora la cosa giusta, invece di dipendere da quando
+    #    e' stato scritto.
+    def list_fatture_by_lotto_ordinate(
+        self, lotto_id: int, *, limit: int = 50000
+    ) -> list[int]:
+        safe_limit = max(1, min(int(limit), 100000))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT f.id
+                FROM vendite.fatturazione_lotti_fatture lf
+                JOIN vendite.fatture f
+                  ON f.id = lf.fattura_id
+                WHERE lf.lotto_id = %s
+                ORDER BY f.data, f.numero NULLS FIRST, f.id
+                LIMIT %s
+                """,
+                [lotto_id, safe_limit],
+            )
+            rows = cursor.fetchall()
+        if len(rows) == safe_limit:
+            logger.warning(
+                "list_fatture_by_lotto_ordinate: risultato troncato al limit=%s "
+                "per lotto_id=%s",
+                safe_limit, lotto_id,
+            )
+        return [int(row[0]) for row in rows]
+
+    # Scopo: Le righe di una fattura che il consumo del plafond deve guardare,
+    #        con quanto serve a spezzarle.
+    # ⚠️ Si escludono le righe che sono GIA' una parte (`riga_capofila_id`
+    #    valorizzata): spezzare una parte darebbe la catena che il guard
+    #    `E_FATTURA_RIGA_CAPOFILA_INCOERENTE` rifiuta, e il giro dev'essere
+    #    ripetibile senza moltiplicare le righe.
+    # ⚠️ Si escludono le RETTIFICHE: la loro IVA viene dal documento che
+    #    correggono (`N-1`) e non si ri-risolve.
+    def list_righe_per_plafond(self, fattura_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT r.id, r.riga_nr, r.articolo_id, r.descrizione, r.uom_id,
+                       r.qta, r.prezzo_unitario, r.sconto_percentuale, r.iva_id,
+                       r.imponibile_riga, r.dest_billing_account_id,
+                       r.sorgente_tipo_id, r.sorgente_uid, r.sorgente_riga,
+                       r.meta
+                  FROM vendite.fatture_righe r
+                 WHERE r.fattura_id = %s
+                   AND r.riga_capofila_id IS NULL
+                   AND r.riga_rettificata_id IS NULL
+                   AND r.articolo_id IS NOT NULL
+                 ORDER BY r.riga_nr, r.id
+                """,
+                [fattura_id],
+            )
+            righe = rows_to_list(cursor)
+        # ⛔ Il driver restituisce `jsonb` come STRINGA. Senza questa coercion
+        #    il servizio farebbe `dict("{...}")` sul `meta` e — a seconda della
+        #    stringa — o solleverebbe un `ValueError` grezzo in mezzo a un giro
+        #    fiscale, o produrrebbe un dizionario di CARATTERI. E' la stessa
+        #    trappola gia' pagata su `list_attivita_da_fatturare`, dove il
+        #    commento la racconta: i test mockati non la vedono, perche'
+        #    iniettano gia' dei dict.
+        for riga in righe:
+            riga["meta"] = coerce_jsonb_dict(riga.get("meta"))
+        return righe
+
+    # Scopo: La SECONDA parte di una riga spezzata dal plafond.
+    # ⛔ `riga_capofila_id` punta alla capofila, che e' essa stessa la prima
+    #    parte. La FK e' COMPOSITA `(riga_capofila_id, fattura_id)`: una parte
+    #    che puntasse a una riga di un altro documento non viene scritta — non
+    #    per sorveglianza, per vincolo.
+    def insert_parte_plafond(
+        self,
+        *,
+        riga_capofila_id: int,
+        riga_nr: int,
+        qta: Decimal,
+        iva_id: int | None,
+        meta: dict[str, Any] | None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO vendite.fatture_righe (
+                    fattura_id, riga_nr, articolo_id, descrizione, uom_id,
+                    qta, prezzo_unitario, sconto_percentuale, iva_id,
+                    dest_billing_account_id, sorgente_tipo_id, sorgente_uid,
+                    sorgente_riga, riga_capofila_id, meta
+                )
+                SELECT c.fattura_id, %s, c.articolo_id, c.descrizione, c.uom_id,
+                       %s, c.prezzo_unitario, c.sconto_percentuale, %s,
+                       c.dest_billing_account_id, c.sorgente_tipo_id,
+                       c.sorgente_uid, c.sorgente_riga, c.id, %s::jsonb
+                  FROM vendite.fatture_righe c
+                 WHERE c.id = %s
+                RETURNING id
+                """,
+                [riga_nr, qta, iva_id, self._to_jsonb_param(meta), riga_capofila_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return int(row[0])
+
+    # Scopo: aggiorna la CAPOFILA dopo la spezzatura: la sua quantita' scende
+    #        alla quota coperta e la sua IVA diventa quella del titolo.
+    # ⚠️ `storicizza` si accende QUI e solo sulle righe spezzate (`P10`): il
+    #    rubinetto dello storico e' PER RIGA, e accenderlo su tutte darebbe
+    #    l'archivio sproporzionato che la decisione di Tid esclude.
+    def aggiorna_capofila_plafond(
+        self,
+        *,
+        riga_id: int,
+        qta: Decimal,
+        iva_id: int | None,
+        meta: dict[str, Any] | None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_righe
+                   SET qta = %s,
+                       iva_id = %s,
+                       storicizza = TRUE,
+                       meta = %s::jsonb
+                 WHERE id = %s
+                """,
+                [qta, iva_id, self._to_jsonb_param(meta), riga_id],
+            )
+
+    # Scopo: Wrapper su `anagrafiche.fn_consuma_plafond_titolo_iva`.
+    # ⭐ E' la funzione che PRENDE IL LOCK di riga sul titolo (`D15-bis`) e
+    #    ritorna la ripartizione EFFETTIVA: il backend non la calcola, la
+    #    riceve. Il risolutore e' `STABLE` e proietta; questa consuma.
+    def consuma_plafond_titolo(
+        self,
+        *,
+        titolo_iva_id: int,
+        fattura_id: int,
+        imponibile: Decimal,
+        data_movimento: date,
+        fattura_riga_id: int,
+    ) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT quota_coperta, quota_ordinaria, residuo_dopo, movimento_id
+                  FROM anagrafiche.fn_consuma_plafond_titolo_iva(%s, %s, %s, %s, %s)
+                """,
+                [titolo_iva_id, fattura_id, imponibile, data_movimento, fattura_riga_id],
+            )
+            righe = rows_to_list(cursor)
+        return righe[0] if righe else {}
 
     # Scopo: Genera i fondi source di tutto il lotto con UNA chiamata alla madre
     #        DB `fn_genera_fondi_fattura_lotto`. Ritorna i conteggi del giro
@@ -2554,6 +2752,52 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             rows = cursor.fetchall()
         return {int(row[0]): int(row[1]) for row in rows}
+
+    # Scopo: Il contesto che il risolutore IVA vuole, per un batch di testate
+    #        fattura: billing account del CLIENTE, PK dell'emittente e data.
+    # Perimetro: sola lettura, un round-trip. Le testate fuori dal perimetro RLS
+    #        non compaiono, ed e' la stessa risposta che dara' la scrittura.
+    #
+    # ⛔ `fn_get_emittente_fiscale_pk` E NON `f.emittente_soggetto_ruolo_id`.
+    #    La testata porta il SOGGETTO-RUOLO dell'emittente; il risolutore vuole
+    #    la PK di `anagrafiche.emittenti_fiscali`. I due numeri si somigliano
+    #    abbastanza da passare inosservati e il difetto sarebbe MUTO: con l'id
+    #    sbagliato la funzione non trova l'emittente, quindi non trova i suoi
+    #    titoli, e risponde con l'aliquota ORDINARIA senza sollevare — cioe'
+    #    l'IVA piena a un esportatore abituale, su una fattura.
+    #    (`feedback_emittente_pk_vs_soggetto_ruolo`, gia' pagato tre volte.)
+    #
+    # ⚠️ Il BA e' quello della TESTATA, cioe' il cliente, non il
+    #    `dest_billing_account_id` della riga (che e' la destinazione della
+    #    merce): la domanda fiscale — titoli, esigibilita', split — e' del
+    #    soggetto che paga.
+    def batch_get_fattura_iva_context(
+        self, fattura_ids: list[int]
+    ) -> dict[int, dict[str, Any]]:
+        if not fattura_ids:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    f.id,
+                    f.billing_account_id,
+                    anagrafiche.fn_get_emittente_fiscale_pk(f.billing_account_id),
+                    f.data
+                FROM vendite.fatture f
+                WHERE f.id = ANY(%s)
+                """,
+                [fattura_ids],
+            )
+            rows = cursor.fetchall()
+        return {
+            int(r[0]): {
+                "billing_account_id": int(r[1]),
+                "emittente_fiscale_id": None if r[2] is None else int(r[2]),
+                "data_riferimento": r[3],
+            }
+            for r in rows
+        }
 
     # Scopo: Gestisce `build_fattura_key` nel flusso applicativo del modulo.
     def build_fattura_key(self, attivita_id: int) -> dict[str, object]:

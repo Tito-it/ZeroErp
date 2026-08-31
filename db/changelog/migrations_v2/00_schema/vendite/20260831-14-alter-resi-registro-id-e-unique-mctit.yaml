@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C2-10 (prima meta') — IL RESO PRENDE IL REGISTRO
+#   vendite.resi.registro_id + uq_resi_anno_numero
+#   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-10 (§3.4)
+#
+# ── ⛔ STESSA MALATTIA DEL DDT, E PER LA STESSA RAGIONE ───────────
+#   Misurato il 2026-08-31: **12 resi numerati su 15, e `anno` NULL su tutti e
+#   quindici**. `trgfn_resi_normalize` — come quella del DDT e come quella
+#   degli ordini — riempie l'anno nel ramo «INSERT con numero gia' presente»,
+#   e il reso si numera a CONFERMATO, cioe' in UPDATE: il ramo non si
+#   attraversa mai.
+#   ⇒ `uq_resi_anno_numero (anno, numero)` non ha mai respinto niente, perche'
+#   `anno` e' NULL su ogni riga e i NULL non collidono. Terzo documento su
+#   quattro con lo stesso difetto, e ogni volta la causa e' che il MOMENTO
+#   della numerazione si e' spostato senza portarsi dietro la chiave.
+#
+# ── ⚠️ IL RESO NON HA LA `serie`, ed e' una differenza vera ──────
+#   `vendite.resi` non ha nessuna colonna `serie`. Il contatore invece la
+#   porta in chiave, quindi il numero girera' sulla serie del registro (vuota,
+#   sui registri creati dal C2-12) senza che la riga possa dirlo.
+#   ⛔ Ne discende un vincolo di configurazione, e va scritto: **un registro di
+#   famiglia RESO non deve avere `serie_default`**, o il documento non
+#   saprebbe raccontare su quale serie e' stato numerato.
+#
+# ⚠️ `NULLS NOT DISTINCT` come per gli altri: senza, le 12 righe storiche —
+#   registro e anno NULL — smetterebbero di essere confrontate fra loro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-14-alter-resi-registro-id-e-unique-mctit.yaml
+
+  - changeSet:
+      id: 20260831-14-alter-resi-registro-id-e-unique
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C2-10 (prima meta''): vendite.resi prende registro_id e la UNIQUE lo segue. ⛔ Stessa
+        malattia del DDT: misurati 12 resi numerati su 15 e anno NULL su tutti e quindici, perche''
+        trgfn_resi_normalize riempie l''anno nel ramo «INSERT con numero gia'' presente» e il reso si
+        numera a CONFERMATO, cioe'' in UPDATE — quindi uq_resi_anno_numero non ha mai respinto
+        niente. Terzo documento su quattro con lo stesso difetto, e ogni volta la causa e'' che il
+        MOMENTO della numerazione si e'' spostato senza portarsi dietro la chiave. ⚠️ Il reso non ha
+        colonna `serie` mentre il contatore la porta in chiave: ne discende un vincolo di
+        configurazione da rispettare — un registro di famiglia RESO non deve avere serie_default, o
+        il documento non saprebbe raccontare su quale serie e'' stato numerato. ⚠️ NULLS NOT
+        DISTINCT come per gli altri. Piano:
+        brief-db-registri-di-numerazione-emittente-e-trasloco, C2-10.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: resi
+                columnName: registro_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: resi
+            columns:
+              - column:
+                  name: registro_id
+                  type: bigint
+                  remarks: >-
+                    Registro di numerazione su cui il reso ha preso il numero. NULL finche' il
+                    documento non e' confermato: il registro si risolve insieme al numero.
+        - addForeignKeyConstraint:
+            constraintName: fk_resi_registro
+            baseTableSchemaName: vendite
+            baseTableName: resi
+            baseColumnNames: registro_id
+            referencedTableSchemaName: vendite
+            referencedTableName: registri_fatturazione
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_resi_anno_numero;
+
+              CREATE UNIQUE INDEX uq_resi_anno_numero
+                  ON vendite.resi (registro_id, anno, numero)
+                  NULLS NOT DISTINCT
+                  WHERE numero IS NOT NULL;
+
+              COMMENT ON INDEX vendite.uq_resi_anno_numero
+              IS 'Unicita'' del numero reso dentro il suo sezionale: (registro, anno, numero) sui soli resi numerati. ⛔ Il REGISTRO e'' entrato in chiave il 2026-08-31 con il passaggio del reso sul motore dei registri, e nello stesso changeSet della colonna: due registri RESO di due emittenti ripartono entrambi da 1. 🔴 E fino a quel giorno questo indice NON PRESIDIAVA NIENTE: misurati 12 resi numerati su 15 con `anno` NULL su TUTTI e quindici, e in SQL due NULL non collidono. La causa e'' la stessa del gemello sul DDT: vendite.trgfn_resi_normalize riempie l''anno nel solo ramo «INSERT con numero gia'' presente», ma il reso si numera a CONFERMATO, cioe'' in UPDATE — quel ramo non si attraversa mai. E'' il terzo documento su quattro con lo stesso difetto, e ogni volta la causa e'' che il MOMENTO della numerazione si e'' spostato senza portarsi dietro la chiave che lo accompagnava. ⚠️ La `serie` non c''e'' in questa chiave perche'' vendite.resi non ha quella colonna, mentre il contatore la porta: ne discende un vincolo di CONFIGURAZIONE — un registro di famiglia RESO non deve avere serie_default, o il numero girerebbe su una serie che il documento non puo'' raccontare. ⚠️ NULLS NOT DISTINCT: senza, le righe storiche (registro e anno NULL) smetterebbero di essere confrontate fra loro. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-10.';
+
+              COMMENT ON COLUMN vendite.resi.registro_id
+              IS 'Registro di numerazione su cui il reso ha preso il numero. ⭐ Dal 2026-08-31 il reso si numera sul motore dei registri invece che sulla sequenza propria vendite.resi_numero_seq: il registro e'' quello di famiglia RESO del suo emittente, risolto da vendite.fn_get_registro_documento. ⚠️ NULLABLE: un reso in bozza il registro non ce l''ha ancora — lo prende alla conferma, insieme al numero e all''anno, nello stesso statement. ⛔ Entra in uq_resi_anno_numero, ed e'' cio'' che permette a due emittenti di ripartire entrambi da 1 senza collidere. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-10.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_resi_anno_numero;
+              CREATE UNIQUE INDEX uq_resi_anno_numero
+                  ON vendite.resi (anno, numero)
+                  WHERE numero IS NOT NULL;
+              ALTER TABLE vendite.resi DROP CONSTRAINT IF EXISTS fk_resi_registro;
+              ALTER TABLE vendite.resi DROP COLUMN IF EXISTS registro_id;

@@ -88,8 +88,14 @@ SELECT ok(
 -- Registro dedicato e VERGINE: e' cio' che rende leggibile il test 9.
 CREATE TEMP TABLE tmp_reg_dk AS
 WITH ins AS (
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo, meta)
+  -- ⛔ emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30 (C1-2,
+  --   20260830-11), e dev'essere lo STESSO delle fatture di questo file:
+  --   vendite.trgfn_fatture_guard_registro_emittente rifiuta un documento
+  --   sul registro di un altro emittente (C1-3, 20260830-10).
+  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
+          emittente_soggetto_ruolo_id, meta)
   VALUES ('REGDK_pgtap_dk', 'Registro test guard coerenza numerazione', 'ANNUALE', true,
+          (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_dk),
           jsonb_build_object('test_scope', 'pgtap_guard_dk'))
   RETURNING id)
 SELECT * FROM ins;

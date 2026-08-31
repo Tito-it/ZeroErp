@@ -60,6 +60,288 @@
 > DDT da ordine resta fuori partita** — fatturata ma non accreditabile. Tre
 > opzioni in valutazione da Tid (§7-bis del brief NC).
 >
+> **Stato al 2026-08-31 — due voci sospese si sono sciolte, e restano TRE cose.**
+> Non le ha chiuse questo cantiere: le hanno chiuse i cantieri a valle, e il
+> brief non se n'era accorto.
+>
+> * ✅ **DL-28, metà «blocco parlante»**: ⏸️ dal 2026-08-17 *«finché le righe a
+>   prezzo zero non sono ammesse»*. Sono ammesse dal **2026-08-19** ed
+>   **esercitate in-app il 2026-08-27** — il gate scatta su un documento vero
+>   per la prima volta da quando esiste (§13.2, riquadro DL-28);
+> * 🟡 **area RESI delle card**: era vuota *«per progetto, finché non esiste la
+>   NC»*. La NC è chiusa il **2026-08-26** e le due celle di seed ci sono già —
+>   `MERCE_RESA_GIA_FATTURATA` è `RECUPERABILE` con azione. La voce passa da
+>   **bloccata** a **da guardare**: nessuno l'ha ancora vista a video.
+>
+> * ⭐ **V1, esito parziale**: **validato in-app il 2026-08-26** — su un **terzo**
+>   consumatore di `run_fan_out` che questo brief non sapeva di avere
+>   (`resi_service.accredita_righe_reso`), dalla prova **5** del collaudo nota
+>   di credito. Il **telaio** del BB — isolamento per item, tre stati, motivi
+>   per item — è esercitato in applicazione, non solo dai test (§13.1).
+>
+> 🔴 **Cosa resta aperto.** Di **V1**, la sola metà **pipeline**: che il
+> `task_run` si chiuda in **ERRORE** e che il rilancio **RITENTI** invece di
+> saltare — coperta da tre test mirati, che però girano **su mock**: per la
+> regola zero è un **presidio**, non una prova. ⇒ **Decisione a Tid**: se il
+> presidio basta, V1 si chiude dichiarandolo tale. Di **V2**: il ramo
+> `CONFERMATO` di **DL-23** (nessun soggetto, va costruito) e la verifica
+> dell'area RESI qui sopra.
+>
+> ✅ **E il §14 non lascia più niente**: la sola voce di sviluppo che
+> conteneva — la visibilità del lotto riaperto — è **caduta il 2026-08-31**
+> (il segnale arriva all'API dal 22/08 e il FE lo rende sul verbo; il Tag è
+> stato valutato e **scartato**, perché `riaperto_il` non è uno stato).
+> Le due voci **di documentazione DB** che ne sono uscite stanno nel blocco
+> «AL TEAM DB» qui sopra.
+>
+> ⚠️ **Resta in piedi l'avvertenza del §13.1**: la fattura **2263 non va
+> numerata**, e «Rendi definitive» numera *tutte* le EMESSA del mese.
+>
+> ---
+>
+> ## 🔎 Stato al 2026-08-31, sera — le tre voci verificate sui dati
+>
+> Le tre cose aperte qui sopra sono state **portate davanti al database**, una
+> per una, prima di dichiararle. Non le chiude nessuna — ma due cambiano forma,
+> e una **si spacca in due metà con esiti diversi**. Sotto, l'esito; il
+> dettaglio nelle rispettive sezioni.
+>
+> **① V1, metà pipeline — APERTA, e ora la prova che manca è più netta di
+> prima.** Il presidio non basta ed era già deciso; ciò che si aggiunge è che la
+> misura del 2026-08-16 su cui poggiava («zero run dal 03-08») è **scaduta**, e
+> se qualcuno la rileggesse oggi la troverebbe falsa: la pipeline ha girato,
+> 415 task_run in tutto, l'ultimo il **2026-08-28**. La domanda giusta non era
+> *quanti run* ma *in che stato*:
+>
+> | | |
+> | --- | --- |
+> | `pull_attivita_da_commessa` | 24 `COMPLETATO` + 21 `ANNULLATO` — **zero `ERRORE`** |
+> | task_run in `ERRORE`, tutta la tabella | 19, tutti di `numera_fatture` (13) e `genera_scadenze_lotto` (6) |
+>
+> ⭐ **Quello step non ha mai chiuso in ERRORE in vita sua**, quindi il resolver
+> non ha mai avuto occasione di rispondere `RESUME` su di lui. È esattamente il
+> ramo del cantiere, e resta non percorso.
+>
+> ✅ **E la materia per provarlo c'è**: il copione la dichiarava non misurata,
+> ora è misurata e scritta — `2026-08` ha **7 commesse emittibili** su 9 gruppi,
+> con la riga `commesse_sorgenti` da guastare indicata per ciascuna. Il
+> prerequisito `RESUME_TASK` è **verificato** (pipeline 1 e 8).
+>
+> 🔴 **E provando a preparare il collaudo è saltato fuori un difetto NEL
+> COPIONE** — dettaglio in §13.1-bis. L'`UPDATE` di **ripristino** era scritto
+> `WHERE ruolo_link = 'COLLEGATO'`, cioè come speculare esatto del guasto: ma il
+> modello ammette **1 ROOT + N COLLEGATO**, quindi su una commessa
+> multi-sorgente quel comando prova a promuovere a ROOT **tutte** le righe e
+> viene respinto da `uq_commesse_sorgenti_commessa_root` con un `23505`.
+> L'`UPDATE` non passa, e la commessa **resta senza ROOT**: il ripristino
+> fallisce proprio dove serviva di più. Corretto — si scrive sull'`id` della
+> riga, che il guasto restituisce con un `RETURNING`.
+>
+> **② Area RESI delle card — la metà che si poteva guardare da qui è VERDE, e
+> il soggetto indicato NON C'È PIÙ.** Due cose, e la seconda è una rettifica a
+> questo brief:
+>
+> * ✅ **l'area RESI compare nel Backlog**, con l'azione: una riga,
+>   `RESO0005123`, motivo `RICONSEGNA_NON_ESEGUITA`, classe `RECUPERABILE`,
+>   azione *«Genera il DDT di ri-consegna»*. Il filtro `<> 'FISIOLOGICO'` non la
+>   scarta. Le whitelist a valle la ammettono su **entrambi** i lati
+>   (`DASH_FATTURAZIONE_AREE` nel BE, `DASH_AREA_CONFIG` nel FE, con drawer
+>   `RESO_VENDITA`): la strada del drill-down è aperta per costruzione;
+> * ⛔ **ma il ramo `MERCE_RESA_GIA_FATTURATA` non ha soggetti oggi**, e il
+>   brief indicava proprio quello: *«va vista con il soggetto che c'è già
+>   (`RESO0005122`, accredito dovuto 5)»*. `vw_resi_da_accreditare` è **vuota**.
+>   Non è un difetto — è il verbo che ha funzionato: il collaudo NC ha emesso
+>   l'accredito, `gia_accreditato` è salito, `accredito_dovuto` è sceso a zero e
+>   la riga è **uscita dalla coda**, che è precisamente ciò che la coda deve
+>   fare. ⭐ Il soggetto è stato consumato dalla prova che lo aveva creato.
+>
+> ⚠️ **Rettifica di data, già che il paragrafo si tocca**: il §13.2 attribuisce
+> il passaggio di `MERCE_RESA_GIA_FATTURATA` a `RECUPERABILE` alla slice NC del
+> **2026-08-26**. È del **2026-08-18** — commit `06b661061`, e il mirror del CSV
+> risulta `RERAN` quel giorno alle 15:13. La conclusione non cambia, la data sì.
+>
+> **③ DL-23, ramo `CONFERMATO` — APERTA, e il soggetto continua a non
+> esistere.** Misurato oggi: gli ordini con `fatturazione_trigger = 'CONFERMATO'`
+> sono 95 e sono **DRAFT (55), EVASO (36), CONFERMATO (3), ANNULLATO (1)** —
+> nessuno `PARZIALMENTE_EVASO`. I due `PARZIALMENTE_EVASO` che esistono hanno
+> entrambi trigger `SPEDITO`, cioè sono il ramo **già provato**. Il caso va
+> costruito, come diceva il brief.
+>
+> ✅ **E il §14.4 lascia una voce in meno**: *«la memoria del DB va rettificata
+> su `terne_pronte` e `riaperto_il`»* — controllata oggi, **non contiene né
+> l'una né l'altra**. I due residui inesistenti non si autoconfermeranno,
+> perché non sono scritti da nessuna parte. Voce chiusa.
+>
+> 🔴 **Cosa resta davvero aperto, dopo questo giro** — tutte e tre cose che si
+> fanno **a video o sui dati**, non a tavolino:
+>
+> 1. le **5 prove** del copione V1 (più il guasto/ripristino, che sono `UPDATE`
+>    ⛔ da eseguire a mano: non le fa l'agent);
+> 2. **DL-23 `CONFERMATO`**: costruire ordine da 10 a `CONFERMATO` + DDT di 4, e
+>    verificare che il serbatoio mostri il **pieno**;
+> 3. l'**area RESI** guardata a video — oggi verificabile sul motivo
+>    `RICONSEGNA_NON_ESEGUITA` (`RESO0005123`); per il gemello serve prima un
+>    reso con accredito dovuto, che **va ricostruito**.
+>
+> ✅ **E la quarta è caduta in giornata**: il migrate di `20260831-70` (DB-R2)
+> è stato **applicato** alle 21:36, e il pgTAP rifatto come applicazione dà
+> 14/14. ⇒ **Il blocco «AL TEAM DB» non lascia più niente**: restano solo le
+> tre voci a video qui sopra.
+>
+> ---
+>
+> ## 📌 AL TEAM DB — residui da vedere (2026-08-31)
+>
+> ✅ **Entrambe chiuse in giornata**: DB-R1 corretta nella scheda manuale, DB-R2
+> decisa da Tid («sì, si registra»), scritta e **applicata** — changeSet
+> `20260831-70`, EXECUTED alle 21:36.
+>
+> ⛔ **Non c'è un brief separato per queste voci, di proposito** (decisione di
+> Tid): stanno qui, in testa al documento che le ha trovate. Nessuna è urgente,
+> nessuna richiede una migrazione; sono **documentazione che dice il falso**, ed
+> è la categoria che costa di più — chi la legge non ha modo di accorgersene.
+>
+> **DB-R1 · 🔴 `fn_riporta_lotto_a_draft`: la doc manuale contraddice la
+> funzione viva.** Trovato il 2026-08-31 leggendo
+> [fn_riporta_lotto_a_draft.md](../../dbzero/vendite/manual/fn_riporta_lotto_a_draft.md)
+> per capire cosa significhi «lotto riaperto» (domanda di Tid). Due punti:
+>
+> | Dice la doc (review 03-08-2026) | Fa la funzione oggi |
+> | --- | --- |
+> | *«Le esecuzioni dei task (`fatturazione_lotti_task_runs`) **non vengono toccate**… nessuno le consulta per decidere se rifare un passo»* | le **chiude ad `ANNULLATO`** (changeSet `20260803-12`) |
+> | *«Ritorna una riga con **cinque** contatori»*, poi li elenca | ne ritorna **sei**: c'è anche `annullati_task_run` |
+>
+> ⭐ **E la premessa smentita è quella che regge il ragionamento**, non un
+> dettaglio: la doc motiva il «non si toccano» con *«nessuno li consulta»* —
+> misurato il 2026-08-03 — e il changeSet dello **stesso giorno** dimostra il
+> contrario, col motivo scritto nel corpo della funzione:
+>
+> > *«RD-6: 🔴 i task_run si chiudono ad ANNULLATO, altrimenti
+> > `fn_resolve_lotto_task_execution_mode` li vede COMPLETATO e risponde SKIP:
+> > **il lotto riaperto rilancia a vuoto**.»*
+>
+> ⚠️ Quindi la doc non è solo incompleta: **spiega una scelta con un fatto che
+> è stato confutato**, e chi la legge impara una cosa falsa sul motore
+> dell'esecuzione. È la stessa forma del §14.4 — *una frase che dichiara chiuso
+> ciò che è aperto e una che dichiara aperto ciò che è chiuso costano uguale*.
+>
+> ✅ **CORRETTA il 2026-08-31, in giornata.** La scheda manuale è stata riscritta
+> su entrambi i punti, con la rettifica **dichiarata** invece che silenziosa
+> (chi ricorda la frase vecchia deve poter capire perché è cambiata):
+>
+> * il punto sui task_run dice ora che vengono **chiusi ad `ANNULLATO`** — tutti
+>   quelli attivi del lotto, non solo quelli dello step DRAFT — con il motivo
+>   RD-6 per esteso, il richiamo a `fn_cancel_lotto_task_run` (motivo
+>   `ritorno_a_draft`) e le due avvertenze del corpo: che **non si cancellano**,
+>   e che `attivo = false` **non basterebbe**, perché quella SELECT non filtra
+>   su `attivo`;
+> * l'Output dice **sei** contatori e include `annullati_task_run`;
+> * la riga di review passa da `03-08-2026` a `31-08-2026`.
+>
+> ⭐ **Ed è rimasto in piedi il pezzo di verità della frase vecchia**, che era
+> l'unica cosa da salvare: «registro storico» resta vero, perché le corse **non
+> si cancellano** — si chiudono con un esito e il giro nuovo apre
+> `tentativo = MAX+1`. La frase sbagliata non era «è un registro storico»: era
+> il *«nessuno le consulta»* usato per motivare l'inazione.
+>
+> 📌 Verificato su `databasechangelog`, non sul brief: `20260803-12-riporta-lotto-annulla-task-runs`
+> risulta **EXECUTED** il 2026-08-03 alle 20:42 — dopo `20260803-08` (creazione)
+> e `20260803-09`, e prima di `20260804-05`.
+>
+> **DB-R2 · 🟡 nessun registro di evento sulla riapertura.** `fn_riporta_lotto_a_draft`
+> non scrive in nessuno dei quattro registri di `script.vw_giornale_entita`
+> (`EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`). Nella scheda **Storia**
+> del lotto la riapertura si legge **solo di rimbalzo**, dai task_run passati ad
+> `ANNULLATO`. ⚠️ Non è un difetto dichiarato — è una **domanda**: se «riportato
+> in lavorazione» meriti una riga propria nel giornale. Chi indaga su un lotto
+> oggi deve dedurla; e l'atto cancella documenti, che è la categoria di gesto
+> che di solito una riga se la merita. **Decisione di Tid, non mia.**
+>
+> ✅ **DECISA, SCRITTA E APPLICATA il 2026-08-31: sì, si registra.** Decisione
+> di Tid. ✅ **Applicato** dal suo migrate: `databasechangelog` dà
+> `20260831-70-…` **EXECUTED** alle **21:36:10**, e `config.eventi_dominio`
+> contiene `LOTTO_RIAPERTO`. La funzione viva cita RD-7.
+>
+> | | |
+> | --- | --- |
+> | changeSet | `20260831-70-update-fn-riporta-lotto-a-draft-giornale-riapertura` (numerazione da −70 su indicazione di Tid: fino a −69 c'erano altri cantieri) |
+> | seed | append a `80_data/sql/config/eventi_dominio.csv` — nessun `INSERT` a parte, lo ri-legge il mirror `runOnChange` `20260822-55` |
+> | pgTAP | `test-riporta-lotto-a-draft-v1.sql`, da 11 a **14** test |
+> | doc | scheda manuale aggiornata (RD-7 + la sezione sul perché di quel registro) |
+>
+> **La forma**: una riga `LOTTO_RIAPERTO` in `vendite.event_log`, scritta con
+> `vendite.fn_log_event`, severity **WARN**, e nel `payload` lo stato fiscale di
+> partenza più cinque contatori.
+>
+> ⭐ **Il registro non era una scelta fra pari, e la ragione che decide non è
+> quella che sembrava.** I candidati erano due. Le prime due differenze sono
+> quelle attese: `fatturazione_lotti_log` ha la colonna `disabilitato` (una riga
+> che si può spegnere) ed è cercabile solo dal testo, mentre `event_log` è
+> append-only per trigger e porta un codice a catalogo. Su un atto che
+> **cancella documenti** contano entrambe.
+>
+> 🔴 **Ma la terza è di comportamento, non di leggibilità, e da sola bastava.**
+> `fn_list_lotto_segnalazioni` compone le segnalazioni da `fatture_log` unito a
+> `fatturazione_lotti_log`, e da `event_log` legge **soltanto** l'ancora del giro
+> corrente (`PIPELINE_STARTED`). Scrivere la riapertura nel registro delle
+> segnalazioni l'avrebbe fatta entrare nel conteggio su cui si decide se
+> l'avanzamento è ammesso: **un atto registrato sarebbe diventato un atto che
+> blocca** — e su un lotto appena riaperto, cioè esattamente quando l'operatore
+> deve poter ripartire. Verificato sul corpo della funzione, non per analogia.
+>
+> ⚠️ **WARN e non INFO**, e non è una sfumatura: la vista mappa già un task_run
+> `ANNULLATO` a `WARN`, e la riapertura ne produce uno per ogni step. Con la
+> causa a INFO, chi filtra per gravità vedrebbe otto corse annullate **senza il
+> motivo per cui lo sono**. La gravità qui non risponde a «si è rotto qualcosa»
+> ma a «quanto deve saltare all'occhio di chi indaga».
+>
+> ✅ **E non introduce un ramo di fallimento** — la domanda giusta davanti a un
+> `INSERT` aggiunto a un'operazione che oggi riesce. Il giornale rifiuta una riga
+> solo quando non sa dire di chi è; qui lo sa **per costruzione**: `LOTTO` è un
+> tipo giornalabile a catalogo, il perimetro si copia da
+> `fatturazione_lotti.emittente_soggetto_ruolo_id` che è **NOT NULL**, e
+> l'esistenza del lotto è già garantita dalle precondizioni. Proprietà dello
+> schema, non scommessa sui dati di oggi.
+>
+> ⚠️ **Un buco di presidio, dichiarato invece che scoperto dopo.**
+> `LOTTO_RIAPERTO` è il **primo codice evento scritto dal database** e non dal
+> backend. Il rubinetto CI dei codici evento scansiona il **Python** — e la sua
+> intestazione lo motiva così: *«il codice evento lo scrive il backend»*, e una
+> vista su `pg_proc` tornerebbe *«vuota per sempre»*. Quella premessa oggi
+> scade. Il codice è dichiarato a catalogo, quindi la spia dei dati
+> (`dbops.vw_eventi_non_dichiarati`) resta pulita; ma il verso **«deprecato a
+> catalogo e ancora scritto»** su questo codice non lo vede nessun cancello.
+> ⇒ Coperto con il **test 14** del pgTAP, che è strutturale e gira sempre.
+> ⇒ Se un giorno il DB scriverà un secondo codice evento, la sede giusta non è
+> un altro test: è il complemento su `pg_proc` che allora non sarebbe più vuoto.
+>
+> 📋 **Provato prima di fermarsi**, e nei due versi:
+>
+> * il changeSet è stato eseguito **dall'SQL estratto dallo YAML** (non da una
+>   copia riscritta), in `BEGIN`/`ROLLBACK`: su un lotto vero — 8688
+>   `LTF-0007949`, EMESSA — la riga esce con `WARN`, emittente derivato, `tx_id`
+>   e `cleanup_at` valorizzati, e `payload` con `stato_precedente: EMESSA`,
+>   `deleted_fatture: 1`, `annullati_task_run: 8`. E si **vede** in
+>   `script.vw_giornale_entita`, in testa, alla stessa gravità dei task_run
+>   `ANNULLATO` che l'atto ha appena prodotto — che era l'argomento del WARN,
+>   ora visibile;
+> * ⭐ **prova di mutazione sul pgTAP**: senza la modifica i tre test nuovi sono
+>   **rossi** (11, 12, 14) e gli altri undici restano verdi; con il changeSet
+>   applicato in transazione sono **14 su 14**. I test non sono verdi per
+>   sottrazione.
+>
+> ~~⚠️ Il pgTAP è girato da owner: la corsa RLS-reale va rifatta dopo
+> l'apply.~~ ✅ **Rifatta dopo l'apply, come applicazione** (`zeroerp_app`,
+> RLS attiva, il default del runner): **14 su 14**. L'argomento fatto in
+> anticipo ha tenuto — la fixture sceglie il lotto **sotto RLS**, quindi
+> l'emittente della riga di giornale è nel perimetro dell'operatore per
+> costruzione, e la `WITH CHECK` su `event_log` non poteva respingerla.
+>
+> 📌 **Residuo FE, piccolo e non bloccante**: `etichetta_key`
+> `config.eventi_dominio.lotto_riaperto` non ha ancora una chiave i18n nel
+> frontend — **come nessuno degli altri cinque codici**, che sono lì dal 22-08.
+> Non è un debito che questa voce apre: è quello che eredita.
+
 > ℹ️ **Il §14 non sposta questa riga.** È la ricognizione dei residui BE che il
 > team DB aveva consegnato «fuori da questa linea»: riverificati contro il
 > codice, **nessuno dei quattro richiede lavoro BE**. Non toglie né aggiunge
@@ -518,12 +800,155 @@ senza il segnale in-app gira ancora il codice vecchio.
 > saltarla. Restano quindi aperti i punti 2 e 3 della lista qui sopra, e servirà
 > costruire una commessa che fallisca l'emit dopo aver superato la scoperta.
 >
-> ⚠️ **Trovato guardando i dati, e non riguarda questo cantiere.** Le tre
-> attività di agosto sono legate a **tre fatture diverse, tutte EMESSA e tutte
-> senza numero**: 2263, 2457 e la 9691 appena creata. Il verbo «Rendi
+> ---
+>
+> ⭐ **L'ESITO PARZIALE È STATO VALIDATO IN-APP IL 2026-08-26 — ma su un TERZO
+> consumatore, che questo brief non sapeva di avere** (rilievo di Tid,
+> 2026-08-31: *«sono sicuro di averlo già fatto in un collaudo»* — ed è vero).
+>
+> Il §F5 elencava **due** consumatori di `run_fan_out`. Oggi sono **tre**:
+> `resi_service.accredita_righe_reso` (accredito massivo dalla coda accrediti)
+> lo usa dal cantiere nota di credito, con il commento che ne spiega il perché —
+> *«il savepoint per elemento è esattamente ciò che impedisce a una riga
+> rifiutata di portarsi via le rettifiche di quelle passate prima»*.
+>
+> E la **prova 5** di
+> [collaudo-in-app-nota-credito-resi.md](../work-done/collaudo-in-app-nota-credito-resi.md)
+> (*«L'esito parziale si legge»*, voce F2 del brief NC) lo ha percorso a video,
+> con un rifiuto vero costruito apposta:
+>
+> - ✅ il toast è **arancione**, non rosso, e dice **«X su Y»**;
+> - ✅ si apre l'elenco delle righe **non servite**, con **codice e motivo** per
+>   ciascuna;
+> - ✅ **le righe passate sono passate** — non è stato annullato tutto.
+>
+> ⭐ **Cosa questo chiude, ed è la metà che pesava di più.** Il rischio concreto
+> dell'estrazione a BB era che il **telaio** fosse rotto: isolamento per item,
+> tre stati, motivi per item. Quel telaio è ora **esercitato in applicazione**
+> su un consumatore reale — non dai soli test. La riga 3 della lista qui sopra
+> («le altre commesse devono risultare emesse, il giro non si ferma») è la
+> stessa proprietà, provata.
+>
+> ⚠️ **Cosa NON chiude, e va detto con precisione**: quella prova non passa da
+> un **task_run**. Restano fuori le due cose specifiche della **pipeline** —
+> che lo step si chiuda in **ERRORE** invece che COMPLETATO, e che il rilancio
+> **RITENTI** invece di saltare (SKIP). Che è, letteralmente, il difetto per cui
+> questo cantiere è nato.
+>
+> 📌 **Quelle due sono coperte da test mirati** — `test_pull_attivita_da_commessa_parziale_chiude_task_run_errore`,
+> `test_pull_attivita_da_commessa_tutte_fallite_solleva` (che asserisce
+> `E_PULL_COMMESSA_ALL_FAILED`) e `test_fan_out.py` sul BB — **e i test girano
+> su mock**. Per la regola zero questo è un **presidio**, non una prova: dice
+> che il cablaggio è quello previsto, non che il caso sia mai accaduto in
+> applicazione.
+>
+> ⇒ **Decisione presa da Tid (2026-08-31): si costruisce il caso.** Non per
+> completismo — per il **savepoint**, che è l'unica proprietà del cantiere che
+> nessuna esecuzione reale ha mai attraversato su questo percorso, e la cui
+> rottura sarebbe **silenziosa** (attività perse, nessun errore).
+>
+> 📋 **Il copione è scritto**:
+> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
+> — 5 prove più un prerequisito, con il guasto da iniettare nei dati (ROOT
+> source di **una** commessa portata a `COLLEGATO`) e il ripristino.
+> ⛔ Le `UPDATE` sono **azioni sul database**: le esegue Tid o il team DB, non
+> l'agent.
+>
+> ~~reversibile con l'`UPDATE` speculare~~ ⚠️ **Questa parentesi era sbagliata**,
+> ed è il difetto del §13.1-bis qui sotto: lo speculare *per ruolo* non è un
+> ripristino. Il copione ora scrive il ripristino sull'**`id` della riga**.
+>
+> ✅ **E dal 2026-08-31 il copione ha la sua materia** (era l'unica sezione che
+> si dichiarava non misurata): mese consigliato `2026-08`, 7 commesse
+> emittibili su 9 gruppi, con l'`id` della riga `commesse_sorgenti` ROOT per
+> ciascuna e il motivo per cui **tre** di quelle sette è meglio non guastarle.
+> Prerequisito `RESUME_TASK` verificato su entrambe le pipeline.
+
+#### 13.1-bis · 🔴 Il difetto trovato nel copione, prima ancora di eseguirlo (2026-08-31)
+
+⭐ **Il ripristino non era il contrario del guasto, e falliva proprio sulle
+commesse per cui il guasto era interessante.** Il copione dava due `UPDATE`
+speculari:
+
+```sql
+-- guasto      -> WHERE commessa_id = <x> AND ruolo_link = 'ROOT'       ✅ mirato
+-- ripristino  -> WHERE commessa_id = <x> AND ruolo_link = 'COLLEGATO'  🔴 non mirato
+```
+
+Sembrano simmetrici e non lo sono, **perché il modello non è simmetrico**: in
+`vendite.commesse_sorgenti` l'unicità è **parziale**, solo sulla ROOT
+(`uq_commesse_sorgenti_commessa_root`, indice unico su `commessa_id`
+`WHERE ruolo_link = 'ROOT'`), mentre il `CHECK` ammette i due valori senza
+limiti di cardinalità. Una commessa è quindi **1 ROOT + N COLLEGATO**.
+
+Ne segue, senza bisogno di guardare nessun dato:
+
+| | |
+| --- | --- |
+| il **guasto** filtra su `ROOT`, di cui ce n'è **al più una** | colpisce una riga, ed è corretto |
+| il **ripristino** filtra su `COLLEGATO`, di cui ce ne sono **N** | prova a promuoverle **tutte** a ROOT |
+
+⛔ E l'esito non è «ne promuove una a caso»: è un `23505` sull'indice parziale,
+l'`UPDATE` non passa **per intero**, e la commessa **resta senza ROOT** —
+esattamente lo stato che il collaudo doveva disfare. Il copione, che si chiude
+con *«ripristina sempre le ROOT prima di chiudere la sessione»*, dava il comando
+che su quelle commesse non ci riesce.
+
+⚠️ **La correzione**: il guasto porta un `RETURNING id`, e il ripristino scrive
+`WHERE id = <riga_id>`. Più una query di recupero, per quando l'id è andato
+perso, che riconosce la riga come *l'unica COLLEGATO di una commessa senza
+ROOT* — con l'avvertenza di fermarsi se ne trova più d'una.
+
+> *(Fatto datato, 2026-08-31, e non è il motivo — il motivo è il modello qui
+> sopra: delle 31 commesse con sorgenti, **5** hanno più di un COLLEGATO, e una
+> ne ha 31. Serve solo a dire che il caso non è teorico.)*
+
+⭐ **La lezione, che vale oltre questo file**: un `UPDATE` di ripristino si
+scrive sulla **riga**, non sulla condizione che il guasto ha creato — perché
+quella condizione, dopo il guasto, non identifica più solo ciò che il guasto ha
+toccato.
+
+> ---
+>
+> ⚠️ **Trovato guardando i dati, e non riguarda questo cantiere.** ~~Le tre
+> attività di agosto sono legate a tre fatture diverse, tutte EMESSA e tutte
+> senza numero: 2263, 2457 e la 9691 appena creata.~~ Il verbo «Rendi
 > definitive» numera **tutte** le fatture del mese in stato EMESSA — e la
 > **2263 non va numerata**. Prima di provare la numerazione va deciso come
 > escluderla, altrimenti la prova la trascina dentro.
+>
+> 🔄 **Aggiornato il 2026-08-31** — l'elenco di agosto era invecchiato e due
+> delle tre righe non valgono più:
+>
+> | Fattura | Allora | Oggi |
+> | --- | --- | --- |
+> | **2263** | EMESSA, senza numero | ⚠️ **invariata** — l'avvertenza resta in piedi |
+> | 2457 | EMESSA, senza numero | ✅ **DEFINITIVA**, `VX2/104` del 2026-08-31 |
+> | 9691 | EMESSA, senza numero | ⛔ **non esiste più** — vedi sotto |
+>
+> ⭐ **E il caso della 9691 vale più della riga di tabella: è `fn_riporta_lotto_a_draft`
+> vista all'opera.** Il suo lotto — **4135 `LTF-0003953`**, cioè lo stesso su cui
+> il 2026-08-16 era passato il «caso normale» di V1 — porta oggi
+> `riaperto_il = 2026-08-17 15:27` e **tutti e otto** i suoi task_run in
+> `ANNULLATO`, tentativo 1. È esattamente il passo **RD-6**, osservato sui dati
+> e non solo nel corpo della funzione: la fattura è stata cancellata (non
+> riaperta) dalla primitiva, e le corse sono state chiuse con esito perché il
+> resolver non le vedesse `COMPLETATO`.
+>
+> ⇒ **È anche la controprova di DB-R1**: la scheda manuale sosteneva che quelle
+> righe *«non vengono toccate»*, e c'è un lotto vero, in questo database, che
+> mostra il contrario. Il lotto è poi finito `ANNULLATA` / `CHIUSO`.
+>
+> ⚠️ **Nota a margine, non un difetto**: su quel lotto `riaperto_il` è **rimasto
+> valorizzato**, perché lo spegne il runner *quando onora la riapertura* e lì la
+> riapertura non è mai stata onorata — il lotto è stato annullato prima. Su un
+> lotto chiuso è stato morto e innocuo; si segnala perché chi legge
+> `riaperto_il` come «è riaperto adesso» su una lista storica leggerebbe male.
+>
+> 🔴 **E le EMESSA senza numero oggi sono quattro, non una**: `632`, `836`,
+> `2263`, `23662` — tre delle quali datate **agosto**, quindi dentro il tiro di
+> «Rendi definitive» sul mese. L'avvertenza non riguarda più una fattura sola:
+> il perimetro va guardato **prima** di premere, non l'elenco di allora.
 
 ### 13.2 V2 — Slice 3-ter: DDT e resi nelle lenti (dal brief due-lenti)
 
@@ -534,27 +959,31 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   order-backed con trigger `SPEDITO`, portalo a `CONSEGNATO`, verifica che risulti ancora
   da pushare. **Fatto il 2026-08-16 su entrambi i rami** — esito e contesto nel riquadro
   in fondo alla sezione.
-- ⏸️ **DL-28 — gate causale**: DDT con causale fatturabile e una riga senza prezzo risolvibile
+- ✅ **DL-28 — gate causale**: DDT con causale fatturabile e una riga senza prezzo risolvibile
   → **blocco parlante** all'emissione, non silenzio. E causale non fatturabile (es.
-  CONTO_VISIONE) → fuori dalle card. **SOSPESO il 2026-08-17**: la metà «blocco parlante»
-  non è provabile perché il caso **non è costruibile** — vedi il riquadro in fondo alla
-  sezione e [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md).
-  ⭐ **Aggiornamento 2026-08-19**: il lato DB è chiuso e applicato; il caso resta
-  non costruibile solo perché il backend non usa ancora il nuovo resolver
-  (richiesta BE-1). ✅ La metà
-  «causale non fatturabile fuori dalle card» è invece **provata**: `DDT0010840`
-  (CONTO_VISIONE, prezzo valorizzato, `SPEDITO`) resta fuori dai pushabili.
+  CONTO_VISIONE) → fuori dalle card. **CHIUSO su entrambe le metà.** La seconda il
+  2026-08-17 (`DDT0010840`, CONTO_VISIONE, prezzo valorizzato, `SPEDITO`: resta fuori
+  dai pushabili); la prima — quella sospesa per due mesi — il **2026-08-27**, esercitata
+  in-app dal collaudo delle righe a prezzo zero. Storia della sospensione e del suo
+  scioglimento nel riquadro in fondo alla sezione.
 - 🟡 **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
   `SPEDITO/CONSEGNATO` → serbatoio mostra il **residuo**; con `CONFERMATO` → mostra il
   **pieno**. **Primo ramo fatto il 2026-08-17** (esito in fondo alla sezione); il ramo
-  `CONFERMATO` non ha soggetti e va costruito.
+  `CONFERMATO` non ha soggetti e va costruito. ⚠️ **Ricontrollato il 2026-08-31:
+  ancora nessun soggetto**, e i due `PARZIALMENTE_EVASO` esistenti sono entrambi a
+  trigger `SPEDITO`, cioè il ramo già provato.
 - ✅ **DL-27 — il contatore**: reso confermato su merce già fatturata → riga in coda accrediti
   con differenza **negativa**; reso in DRAFT → **non** conta. **Entrambi i rami fatti il
   2026-08-17** (caso costruito da zero, esito in fondo alla sezione).
 - 🟡 **Card e drill-down**: le due aree nuove (DDT, RESI) si aprono davvero — la whitelist a 7
   aree era fail-closed, senza quella le card non erano drillabili. **Parziale al 2026-08-17**:
-  l'area **DDT** ha dati, si vede e **il drill-down si apre** (verificato da Tid); l'area
-  **RESI resta vuota per progetto** e non è verificabile oggi — vedi il riquadro in fondo.
+  l'area **DDT** ha dati, si vede e **il drill-down si apre** (verificato da Tid); ~~l'area
+  **RESI resta vuota per progetto** e non è verificabile oggi~~ — vedi il riquadro in fondo.
+  ⭐ **Aggiornato il 2026-08-31: l'area RESI ha una riga** (`RESO0005123`,
+  `RICONSEGNA_NON_ESEGUITA`, con azione) e le whitelist BE+FE la ammettono con drawer
+  `RESO_VENDITA`. ⛔ Resta da guardare **a video** che il drawer si apra, e il ramo
+  `MERCE_RESA_GIA_FATTURATA` è di nuovo **senza soggetti** (coda accrediti svuotata dal
+  collaudo NC): dettaglio nel riquadro in fondo.
 - ✅ **DL-24 — accredito dovuto vs facoltativo**: l'etichetta distingue l'obbligo dall'opzione
   (`riapre_residuo` + residuo di riconsegna ancora aperto → FACOLTATIVA). **Provato il
   2026-08-17**, e non era in programma: confermando un `RESO_PER_RICONSEGNA` sulla stessa
@@ -566,6 +995,10 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   **Guardata il 2026-08-17** sul primo soggetto mai esistito (`RESO0005122`).
   ⚠️ Le etichette ora dicono **«Accredito dovuto / facoltativo»**, non più «NC dovuta /
   facoltativa» (allineamento a DL-24: si nomina il fatto, non il rimedio).
+  📌 **Al 2026-08-31 la coda è di nuovo vuota** — `RESO0005122` è stato accreditato dal
+  collaudo NC e la riga è uscita, che è il comportamento voluto. La voce resta ✅ (è già
+  stata guardata piena); si annota perché chi riaprisse la lista oggi la troverebbe vuota
+  e potrebbe leggerlo come una regressione.
 
 > **Misura del 2026-08-16 — due dei sei punti oggi non hanno un soggetto su cui
 > girare.** Letto dal database:
@@ -720,6 +1153,27 @@ stato che lo renderebbe eleggibile — e `fn_list_ddt_da_pushare()` **non lo
 restituisce**. La regola «dentro chi fattura, fuori chi no» regge sul lato che
 si può provare.
 
+✅ **PRIMA metà fatta (2026-08-27) — la sospensione è sciolta.** Le righe a
+prezzo zero sono ammesse dal **2026-08-19** (DB slice A-D + BE-A→BE-D + FE-A→FE-E)
+e il **collaudo in-app** le ha portate a video il 27: caricata la riga senza
+prezzo su causale **fatturabile**, il pulsante *Emetti* è **disabilitato** e il
+tooltip **nomina la riga**; forzando, il DDT non passa a EMESSO.
+Copione e verbale in
+[collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)
+(prova **3**, casella **2**), che lo registra così:
+
+> ⭐ *«il gate esiste dal 2026-07-18 e in un anno non è mai scattato su un
+> documento reale — le 271 occorrenze nel diario erano tutte corse di pgTAP.
+> Se lo vedi scattare adesso, DL-28 è finalmente esercitato per intero.»*
+
+⭐ **Cosa lascia scritto questa voce**, ed è il motivo per cui vale la pena
+rileggerla tutta: DL-28 è stato **verde nei test per un anno** mentre la porta
+che presidiava era **murata**. Il gate era corretto, i pgTAP lo esercitavano,
+e nessuna di quelle 271 corse poteva accorgersi che in applicazione il caso non
+era nemmeno **inseribile**. È la regola zero vista dal lato del test: *«il test
+è verde perché i dati di oggi non sanno produrre il caso»* non prova niente —
+ed è servito un collaudo a mano, due mesi dopo, per saperlo.
+
 #### DL-27, ramo «reso in DRAFT» (2026-08-17) — ✅ chiuso
 
 Secondo reso sulla stessa merce, lasciato in **DRAFT**: la coda accrediti
@@ -754,6 +1208,31 @@ trigger `CONFERMATO` **e** parzialmente evaso non ne esiste nemmeno uno (i 91 a
 `CONFERMATO` o sono interi o non sono parzialmente evasi). Va costruito: ordine
 da 10 lasciato a `CONFERMATO`, DDT di 4, e il serbatoio deve mostrare il
 **pieno**.
+
+> 🔁 **Ricontrollato il 2026-08-31: continua a non esistere**, e la
+> distribuzione dice anche *perché* non nascerà da sé.
+>
+> | `fatturazione_trigger` | Stato ordine | N |
+> | --- | --- | --- |
+> | `CONFERMATO` | DRAFT | 55 |
+> | `CONFERMATO` | EVASO | 36 |
+> | `CONFERMATO` | CONFERMATO | 3 |
+> | `CONFERMATO` | ANNULLATO | 1 |
+> | `SPEDITO` | **PARZIALMENTE_EVASO** | **2** |
+>
+> ⭐ **I due `PARZIALMENTE_EVASO` che esistono sono entrambi a trigger `SPEDITO`**
+> — cioè sono il ramo **già provato** il 2026-08-17 (`ORD0018587` e il suo
+> gemello). Sull'incrocio che serve, `CONFERMATO` × `PARZIALMENTE_EVASO`, la
+> casella è vuota da sempre.
+>
+> ⚠️ E il caso **non arriverà spontaneamente**: chi lavora con `CONFERMATO` sta
+> fatturando alla conferma, quindi non passa dall'evasione parziale. Va
+> costruito a mano — ordine da 10, trigger `CONFERMATO`, DDT di 4 — e il
+> controllo è che il serbatoio ORDINI mostri il **pieno** (10 pezzi, valore
+> intero), non il residuo.
+>
+> ⚠️ **E si legge dal valore, non da `unita_totali`** — la stessa trappola
+> annotata per il primo ramo: quella colonna conta le **righe documento**.
 
 > 🐛 **Due difetti FE trovati validando, entrambi corretti in giornata.** Non
 > appartengono alla slice ma sono emersi solo perché qualcuno usava l'app sul
@@ -799,6 +1278,73 @@ verificabile ora (resta da confermare che il drill-down si apra: era il difetto
 della whitelist fail-closed); l'area RESI lo diventerà **con la slice NC**, e
 allora basteranno due celle di seed — vedi §6.1 di
 [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
+
+⭐ **Aggiornamento 2026-08-31 — la condizione si è avverata, la voce non è più
+bloccata.** ~~La slice NC è chiusa il 2026-08-26 (collaudo in-app compreso) e~~
+**le due celle di seed ci sono già**: in
+`db/changelog/migrations_v2/80_data/sql/config/motivi_fermo.csv` la riga 15 porta
+`MERCE_RESA_GIA_FATTURATA` da `FISIOLOGICO`/azione NULL a **`RECUPERABILE`** con
+azione *«Emetti la nota di credito dalla coda accrediti»*. Il filtro
+`WHERE COALESCE(mf.classe,'ANOMALIA') <> 'FISIOLOGICO'` — l'ultimo della vista,
+quello su cui l'area cadeva — **non la scarta più**.
+
+> ⚠️ **Rettifica di data (2026-08-31, sera).** Il seed non è della slice NC del
+> 26-08: la cella è `RECUPERABILE` dal **2026-08-18**, commit `06b661061`
+> (*brief-db-rettifiche-e-componenti*), e il mirror `loadUpdateData` risulta
+> `RERAN` lo stesso giorno alle 15:13. **Verificato applicato**, non dedotto dal
+> CSV: `config.motivi_fermo` in questo database dice `RECUPERABILE` + azione su
+> `MERCE_RESA_GIA_FATTURATA` **e** su `RICONSEGNA_NON_ESEGUITA`. La conclusione
+> resta identica — cambia solo chi se ne prende il merito, ed è la differenza
+> fra un fatto e una ricostruzione plausibile.
+
+⚠️ ~~**Ma «sbloccata» non è «verificata», e la differenza qui è tutta.** Nessuno
+ha ancora guardato il Backlog dopo il cambio.~~ **Guardato il 2026-08-31**, e
+l'esito si divide in due metà con segno opposto.
+
+⭐ **① L'area RESI compare nel Backlog, con l'azione.** Una riga:
+
+| Area | Documento | Motivo | Classe | Azione |
+| --- | --- | --- | --- | --- |
+| **RESI** | `RESO0005123` (`CONFERMATO`) | `RICONSEGNA_NON_ESEGUITA` | `RECUPERABILE` | *«Genera il DDT di ri-consegna»* |
+
+Il conteggio per area del Backlog è oggi **DDT 4 · ORDINI 22 · PREVENTIVI 63 ·
+RESI 1** — l'area non è più assente. E `valore_fermo` è **NULL**, non 0, come
+DL-11 prescrive per un'area a conteggi.
+
+✅ **E la strada del drill-down è aperta per costruzione**, non per fortuna: le
+whitelist a valle ammettono `RESI` su **entrambi** i lati — `DASH_FATTURAZIONE_AREE`
+in `backend/apps/vendite/db/vendite_repository.py` e `DASH_AREA_CONFIG` in
+`frontend/src/vendite/dashboardAree.js`, con `drawerTipo = RESO_VENDITA` e la
+severity dei resi. Era la whitelist fail-closed a 7 aree il difetto temuto: non
+lo è. **Resta da confermare a video che il drawer si apra davvero** — la
+whitelist è condizione necessaria, non sufficiente.
+
+⛔ **② Ma il soggetto che questo brief indicava NON C'È PIÙ, e il ramo che gli
+apparteneva è di nuovo senza materia.** La frase da correggere era *«va vista
+con il soggetto che c'è già (`RESO0005122`, accredito dovuto 5)»*:
+`vendite.vw_resi_da_accreditare` è **vuota**, e con lei il ramo
+`MERCE_RESA_GIA_FATTURATA` della union.
+
+⭐ **Non è un difetto: è il verbo che ha funzionato.** La coda ha
+`WHERE accredito_dovuto > 0`, e `accredito_dovuto` è calcolato **al netto di
+`gia_accreditato`** — proprio perché *«una riga esce dalla coda AL VERBO e non
+alla generazione della fattura»*. Il collaudo NC ha emesso l'accredito su
+`RESO0005122`, il residuo è sceso a zero, la riga è uscita. ⇒ **La prova che ha
+creato il soggetto è la stessa che l'ha consumato**, e va saputo prima di
+cercarlo: chi lo cercasse oggi concluderebbe che il seed non funziona.
+
+⚠️ **Quindi la voce si spunta a metà, di nuovo — ma per una ragione diversa da
+prima.** Non è più *«il motivo è fisiologico»* (risolto): è che **quel motivo non
+ha righe**. Per chiuderla del tutto serve **ricostruire** un reso con accredito
+dovuto — stesso gesto del 2026-08-17 (`DDT` → fattura → reso a credito) — e
+guardare che l'area compaia **con l'azione**, perché è l'azione la ragione per
+cui il motivo ha smesso di essere fisiologico.
+
+⚠️ **Nota di metodo, e vale per chiunque rimisuri queste viste**: interrogare
+`vw_dash_competenza_*` senza `app.current_user_id` restituisce **zero righe a
+chiunque** — `script.fn_get_emittenti_scope_sr_ids(NULL)` torna `{}` (array
+vuoto, non NULL) e il `= ANY` è falso ovunque. È **fail-closed**, non una
+misura. Le misure di questa sezione sono state prese con `SET app.current_user_id = '1'`.
 
 ### 13.3 Le due cose non-validazione — una chiusa, una aperta
 
@@ -902,6 +1448,48 @@ risale all'API e **il FE non mostra da nessuna parte che un lotto è stato
 riaperto**. È una richiesta di *visibilità*, non un residuo di consumo — e come
 tale va valutata a sé, non ereditata come «funzione DB inutile».
 
+> ✅ **SUPERATO — verificato il 2026-08-31 sul codice, ed erano false tutte e
+> due le metà.** Il paragrafo qui sopra resta perché la sua *forma* era giusta;
+> il suo contenuto no.
+>
+> **1 · Il segnale risale all'API.** `vendite_repository.py` espone
+> `(fl.riaperto_il IS NOT NULL) AS riaperto` in `_LOTTO_SELECT_COLS`, quindi
+> **su lista e dettaglio**, con `riaperto: bool` dichiarato in `types.py`.
+> Entrato con il collaudo NC del **2026-08-22**, due mesi prima che qualcuno
+> rileggesse questo §14.1.
+>
+> **2 · Il FE lo mostra — dove serve, cioè sul GESTO.** Su un lotto riaperto
+> `verbiPipeline` propone **«Rigenera la bozza»** (`pi pi-refresh`) al posto di
+> «Avanza step» (`pi pi-forward`), come **pulsante visibile** nella
+> `DrawerActionsBar` e come voce del kebab di riga. E il dialog di conferma lo
+> dice a parole: *«Il lotto è stato riportato in lavorazione: rieseguire lo step
+> per rigenerare i documenti? Il lotto resta in bozza.»* L'esito è «Bozza
+> rigenerata», non «Pipeline avanzata».
+>
+> ⭐ **E l'icona è diversa di proposito** — dal commento del composable: *«la
+> freccia in avanti su un gesto che non avanza è la stessa bugia
+> dell'etichetta»*.
+>
+> ⛔ **Il Tag di stato è stato VALUTATO E SCARTATO** (2026-08-31), ed è la parte
+> che vale la pena tenere scritta. La proposta era «un Tag *riaperto* in lista e
+> in testata drawer». È sbagliata, e la ragione sta nel ciclo di vita della
+> colonna: **`riaperto_il` non è uno stato, è un segnale di un giro solo** — il
+> runner lo spegne (`azzera_riaperto_il`) appena lo onora. Un Tag prometterebbe
+> **uno stato durevole su una cosa che dura una esecuzione**, e sarebbe una
+> seconda bugia dopo quella che l'etichetta del pulsante ha appena tolto.
+> ⇒ Ciò che l'operatore deve sapere non è *«questo lotto è riaperto»* ma
+> **«la prossima esecuzione RIFÀ invece di avanzare»** — e quello è già scritto
+> sul verbo, che è il posto dove la persona sta guardando quando la cosa conta.
+>
+> ⚠️ **Il residuo onesto, e sta in una riga**: nella finestra fra la riapertura
+> e il primo run, un lotto riaperto e uno mai riaperto sono **identici a
+> riposo** — si distinguono solo aprendo il menu delle azioni. Non conta per chi
+> ha appena premuto il pulsante (ha visto il toast); conta per un **secondo**
+> operatore, o per lo stesso dopo un ricarico di pagina. Se un giorno si vorrà
+> chiudere anche quello, la sede giusta **non è un Tag** ma la riga informativa
+> che la `DrawerActionsBar` già rende (`stato_info_key`), cioè lo stesso canale
+> con cui il DB spiega perché un verbo è spento.
+
 ### 14.2 `terne_pronte` — misura scattata 49 minuti troppo presto
 
 Anche qui il consumo c'è: `commesse_repository.py:1267` lo decodifica con
@@ -931,11 +1519,36 @@ questione di minuti: la nota è delle 16:02, la chiusura è stata pushata alle
 Nessun lavoro BE nuovo: **zero** delle quattro voci richiede codice. Restano due
 cose da fare, entrambe di registro e non di sviluppo:
 
-- la **memoria del DB va rettificata** sulle due voci `terne_pronte` e
-  `riaperto_il`, altrimenti si autoconfermano alla prossima sessione;
-- se la **visibilità FE del lotto riaperto** interessa davvero (§14.1), va
-  aperta come richiesta sua, con il suo perimetro — non lasciata implicita
-  dentro un residuo che nel merito è chiuso.
+- ~~la **memoria del DB va rettificata** sulle due voci `terne_pronte` e
+  `riaperto_il`, altrimenti si autoconfermano alla prossima sessione~~ — ✅
+  **CHIUSA il 2026-08-31, controllando invece di dedurre.** La memoria di
+  progetto è stata cercata su entrambi i termini: **non contiene né l'uno né
+  l'altro**, né come residuo aperto né in altra forma. I due residui
+  inesistenti non possono autoconfermarsi, perché non sono scritti da nessuna
+  parte.
+  ⭐ **E la verifica valeva la pena proprio perché l'esito era «niente da
+  fare»**: è il caso in cui si è più tentati di spuntare la voce a memoria. Una
+  voce di registro si chiude guardando il registro — che è la stessa regola per
+  cui «applicato?» si chiede a `databasechangelog` e non al brief;
+- ~~se la **visibilità FE del lotto riaperto** interessa davvero (§14.1), va
+  aperta come richiesta sua, con il suo perimetro~~ — ✅ **CADUTA il
+  2026-08-31**: la visibilità **c'è già** (il verbo cambia nome, icona, conferma
+  ed esito) e il Tag che sembrava mancare è stato **valutato e scartato**,
+  perché `riaperto_il` non è uno stato. Esito e ragione nel riquadro del §14.1.
+  ⇒ **Questa ricognizione non lascia più nessuna voce di sviluppo**, né BE né
+  FE: ~~restano solo le due di registro (la memoria del DB, qui sopra) e le due
+  voci DB di documentazione, in testa al documento.~~
+
+⭐ **Aggiornamento 2026-08-31, sera — il §14 non lascia più NIENTE.** Delle
+quattro cose che restavano fuori dallo sviluppo, tre sono chiuse in giornata e
+una sola è ancora in piedi, ed è una **domanda**, non un lavoro:
+
+| Voce | Dov'era | Oggi |
+| --- | --- | --- |
+| visibilità FE del lotto riaperto | §14.4 | ✅ caduta (il verbo la porta già; Tag scartato) |
+| memoria del DB su `terne_pronte` / `riaperto_il` | §14.4 | ✅ verificata: non contiene né l'una né l'altra |
+| **DB-R1** — la scheda manuale contraddice la funzione | testata | ✅ **corretta**, entrambi i punti, con rettifica dichiarata |
+| **DB-R2** — nessuna riga di giornale sulla riapertura | testata | ✅ **decisa, scritta e APPLICATA** il 31-08 (changeSet `20260831-70` EXECUTED 21:36 + seed + pgTAP 14/14 come app + doc) |
 
 ⭐ **La lezione, che è la stessa di due volte oggi**: una misura contro il codice
 vale quanto il momento in cui è scattata e il posto in cui ha guardato. Una
