@@ -8,6 +8,39 @@
 > • [vendite.tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)  
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 >
+### 🔴 rev 31-08-2026 — LA ROW SECURITY SI ACCENDE (D-20)
+
+Due policy, le stesse della famiglia dei satelliti della fattura:
+
+| Policy | Comando | Chi | Scope |
+| --- | --- | --- | --- |
+| `rls_fatture_fondi_fattura_source_ef_whitelist` | `FOR ALL` | `OPERATORE` | `fn_scope_ef_whitelist_via_sr` |
+| `rls_fatture_fondi_fattura_source_ba_ownership` | `FOR SELECT` | `CLIENTE_PORTALE` | `fn_scope_ba_ownership` |
+
+⚠️ **Non era cambiata la conclusione: era scaduta la PREMESSA.** Quando si decise
+«niente RLS, il perimetro passa dalla fattura», l'unico accesso era **la lista**,
+protetta dal `JOIN INNER` con `vendite.fatture`. Oggi la tabella ha un lettore
+applicativo, una pagina aperta agli operatori, uno scrittore in un **altro
+schema** (`pagamenti.fn_conferma_sistemazione`) e un accesso **per id** — e un id
+non ha nessun `JOIN` davanti.
+
+⭐ **Qui è più semplice che sugli altri satelliti**: `emittente_soggetto_ruolo_id`
+e `billing_account_id` sono **in colonna e NOT NULL**, quindi la `WITH CHECK` li
+legge da `NEW` invece di cercare il legame che l'`INSERT` sta scrivendo — che è
+precisamente l'errore corretto su `pagamenti.enti_incasso`.
+
+> ⭐ **E la misura ha trovato più della domanda.** Guardando *quali* satelliti
+> della fattura hanno i presidi, il fondo era l'assente di **due** famiglie:
+> niente congelamento oltre `EMESSA` e niente RLS. Erano la stessa dimenticanza
+> vista da due lati, discussa in due posti diversi — e quell'oggetto è l'unico
+> che muove denaro. L'altra metà la chiude `fn_check_fondo_cancellabile`.
+
+ℹ️ Niente `FORCE ROW LEVEL SECURITY`, come tutta la famiglia: l'owner non è un
+ruolo applicativo. Il giro notturno attraversa perché
+`zeroerp_batch_fatturazione` ha `BYPASSRLS` — **verificato, non dedotto**.
+
+---
+
 ### 🎯 Scopo Principale
 (latest review 15-08-2026)  
 `vendite.fatture_fondi_fattura_source` registra la **sorgente** dei fondi

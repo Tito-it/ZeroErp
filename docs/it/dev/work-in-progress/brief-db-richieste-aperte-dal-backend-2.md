@@ -123,10 +123,16 @@ comportamento che dipende dal *tipo di lotto*: il plafond consumato sui lotti
 giornalieri e non su quelli massivi, e nessuno se ne accorgerebbe finché i conti
 di un esportatore abituale non tornano.
 
-📌 **La riga in `fatturazione_pipeline_task_policy` la decide il team DB.**
+~~📌 **La riga in `fatturazione_pipeline_task_policy` la decide il team DB.**
 Verificato: `popola_fatture_rettifiche` gira nelle stesse due pipeline e **non
-ne ha una** — quindi non è obbligatoria. Se il task deve essere annullabile o
-avere un `resume_mode` proprio, la riga serve; altrimenti no.
+ne ha una** — quindi non è obbligatoria.~~
+
+⛔ **Qui nasce l'errore, ed è una misura sbagliata scritta come "Verificato".**
+`popola_fatture_rettifiche` **ha** le sue righe (id 24 e 25, dal 2026-08-18):
+quel «verificato» ha guardato nel posto sbagliato, e da lì la conclusione si è
+propagata fino alla decisione di non mettere la riga. ⇒ Righe **messe** il
+2026-08-31 (id 26 e 27) e applicate — ragionamento completo nella **Rettifica**
+in fondo a questa voce.
 
 ### Cosa blocca
 
@@ -182,12 +188,73 @@ letteralmente la chiave del `handler_registry` lato backend. Un valore diverso
 darebbe `E_TASK_IMPLEMENTATION_NOT_FOUND` — cioè lo stesso guasto, un gradino
 più in là.
 
-📌 **La riga in `fatturazione_pipeline_task_policy` NON è stata messa**, e la
+~~📌 **La riga in `fatturazione_pipeline_task_policy` NON è stata messa**, e la
 decisione è quella che il brief lasciava al DB: `popola_fatture_rettifiche` gira
 nelle stesse due pipeline senza averne una, quindi non è obbligatoria. Il task
 non ha bisogno di un `resume_mode` proprio — è idempotente per costruzione,
 perché il movimento di plafond lo scrive `fn_consuma_plafond_titolo_iva` sotto
-lock. Se servirà, si aggiunge senza toccare nient'altro.
+lock. Se servirà, si aggiunge senza toccare nient'altro.~~
+
+### ⛔ Rettifica del 2026-08-31, sera — le righe erano SEI
+
+> **Trovato da un pgTAP, non da una rilettura**: `test-pipeline-processi-invariante-v1.sql`
+> caso 7 — *«ogni (pipeline, task) armato ha la sua task_policy attiva»* —
+> `have: 2, want: 0`. Non era in baseline: rosso nuovo, dello stesso giorno.
+
+⛔ **La premessa del paragrafo qui sopra è falsa.** Diceva che
+`popola_fatture_rettifiche` *«gira nelle stesse due pipeline senza averne una»*.
+Ce l'ha: **id 24 e 25** di `fatturazione_pipeline_task_policy.csv`, per le
+pipeline 4 e 6, dal **2026-08-18**. Il calco su cui la decisione poggiava dice
+l'opposto di quello che le si è fatto dire.
+
+⭐ **Ed è la stessa forma dell'errore che questa voce dichiara di aver corretto**:
+poche righe sopra c'è scritto *«le righe erano QUATTRO, non due»*, dopo aver
+scoperto che mancava il catalogo. **Erano sei.** Un artefatto che sembrava uno
+si è rivelato tre, poi quattro, e alla fine sei — e ogni volta il pezzo
+mancante era invisibile perché *nessun vincolo lo intercetta*.
+
+**Cosa costava davvero.** Meno di quanto sembri, e va detto con precisione
+invece di drammatizzare:
+
+- ⛔ **NON** faceva morire lo step. L'executor chiama il resolver solo dopo
+  `task_policy_exists(...)` ([pipeline_step_executor.py:384](../../../../backend/apps/vendite/services/pipeline_step_executor.py)):
+  senza policy, `fn_resolve_lotto_task_execution_mode` non viene invocata e il
+  suo `E_CONFIG_MANCANTE` non scatta;
+- ⛔ **NON** consumava due volte il plafond. `fn_consuma_plafond_titolo_iva` ha
+  una guardia di idempotenza esplicita su (titolo, fattura, riga), con una
+  UNIQUE parziale come rete. ⚠️ La conclusione del paragrafo ritirato era
+  **giusta**, ma per il motivo sbagliato: il `FOR UPDATE` dà serializzazione,
+  non idempotenza — quella la dà la guardia;
+- ✅ **Costava la TRACCIA.** Senza policy non si apre nessun `task_run`: il
+  task girava **invisibile** nella scheda Task del lotto e nel registro
+  `TASK_RUN` di `script.vw_giornale_entita`, e senza `SKIP` rigirava a ogni
+  rilancio dello step. Innocuo sui numeri, ma *«eseguito»* e *«mai eseguito»*
+  diventavano indistinguibili — su un passo che tocca il plafond fiscale.
+
+**Le due righe messe** (append al CSV, nessun changeSet: il mirror
+`20260218-05` è `runOnChange`):
+
+| id | pipeline | `annullabile` | `resume_mode` | `meta` |
+| --- | --- | --- | --- | --- |
+| 26 | 4 (MASSIVO) | `f` | `RESUME_TASK` | `{"scope":"DEFINITIVA"}` |
+| 27 | 6 (GIORNALIERO) | `f` | `RESUME_TASK` | `{"scope":"DEFINITIVA","tipo_lotto":"GIORNALIERO"}` |
+
+⭐ **I due valori non sono una copia, sono un argomento:**
+
+- `annullabile = f` perché annullare il `task_run` **non storna i movimenti** —
+  quelli hanno il loro verbo, `anagrafiche.fn_annulla_movimento_titolo_iva`, con
+  il suo check e il suo guard. Dichiararlo `t` prometterebbe un annullo che il
+  cancel non esegue. È anche l'allineamento con i due compagni di corsia che
+  scrivono fatti (`numera_fatture`, `popola_fatture_rettifiche`);
+- `resume_mode = RESUME_TASK` perché il task è idempotente e autonomo:
+  rilanciare lui solo basta. `RESUME_STEP` serve a `numera_fatture`, dove in
+  gioco c'è una **sequenza**, non una riga.
+
+✅ **Applicato** dal migrate delle 21:47 del 2026-08-31 (mirror `RERAN`), e i due
+pgTAP sono verdi: `test-pipeline-processi-invariante-v1` **7/7** e
+`test-pipeline-consuma-plafond-seed-v1` **6/6** — quest'ultimo non asserisce
+nulla sulla policy, quindi l'aggiunta non lo tocca (verificato prima di
+scrivere, non dopo).
 
 ---
 

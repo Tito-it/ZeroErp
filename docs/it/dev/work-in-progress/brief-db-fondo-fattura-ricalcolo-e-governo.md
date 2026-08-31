@@ -1,60 +1,75 @@
 # Fondo fattura — un numero ricalcolato che muove denaro
 
-> # 📮 AL TEAM DB — i punti aperti al 2026-08-31
+> # 📮 AL TEAM DB — stato al 2026-08-31 (sera): **i sette passi sono SCRITTI**
 >
-> ⭐ **Leggi questo riquadro e le sezioni che nomina. Non serve rileggere il
-> brief.** §1…§8 sono il **ragionamento** da cui questi passi discendono: sono
-> tenuti per storia, sono lunghi, e **non contengono lavoro aperto**. Tutto ciò
-> che resta da fare sta in **§9**.
+> 🟢 **Tutti e sette i passi DB del riquadro precedente sono stati scritti,
+> provati e documentati.** ⛔ **Non sono APPLICATI**: nessun `liquibase update` è
+> stato lanciato, e l'apply lo autorizza Tid. L'elenco dei changeSet, gli
+> scostamenti dal piano e le cinque cose che il collaudo ha trovato stanno in
+> **§9.11** — che è l'unica sezione da leggere per sapere dove siamo.
 >
-> 🟢 **Non c'è nessuna domanda da fare e nessuna decisione da prendere**: le
-> cinque questioni di dominio (G-1…G-5) sono state **chiuse da Tid il
-> 2026-08-29**. Da qui è solo lavoro.
+> | # | Passo | Dove | Stato |
+> | :---: | --- | --- | --- |
+> | 1 | **D-19** | `80_data` (CSV) | ✅ scritto — la descrizione a catalogo racconta ora quattro stati **e** la nascita |
+> | 2 | **D-22** | `20_code/vendite` | ✅ `20260831-61` — il guard risponde anche in `INSERT` |
+> | 3 | **D-20** | `00_schema/vendite` | ✅ `20260831-62` — le due policy + `ENABLE`, in un changeSet solo |
+> | 4 | **D-21** | `20_code/vendite` | ✅ `20260831-63` (predicato) · `-64` (cancellazione) · `-65` (il reset ci si appoggia) |
+> | 5 | **D-23** | `80_data` + in-app | 🔵 seminata (`azioni_processo.csv`, id 34) — ⚠️ **la CONCESSIONE resta da fare in-app**, e senza quella l'azione è chiusa per tutti tranne il super admin |
+> | 6 | **D-25** | 🔴 `pagamenti` | ✅ `20260831-66` (il varco) · `-67` (`fn_annulla_sistemazione` estesa) |
+> | 7 | **D-24** | `db/pgtap` | ✅ tre file nuovi (38 asserzioni) + due esistenti allineati |
 >
-> 🔴 **Il fatto da cui discende tutto, in tre righe.** Dal **2026-08-22**
-> `pagamenti.fn_conferma_sistemazione` (lotto 7), ramo `RIPORTO`, fa un `INSERT`
-> **diretto** in `vendite.fatture_fondi_fattura_source`. ⭐ **Ed è la scelta
-> giusta** — `api.md` vieta le chiamate laterali fra moduli di pari livello, e il
-> DB è l'unica sede in cui i due schemi si toccano. **Il difetto non è che
-> `pagamenti` scriva: è che il presidio che accompagna quella scrittura non l'ha
-> costruito nessuna delle due parti.** Oggi si può **creare** un atto che muove
-> denaro e **non lo si può disfare**.
+> ### ⚠️ Le tre cose da sapere prima di applicare
 >
-> ### I sette passi, in ordine di lavorazione
->
-> | # | Passo | Dove | Che cosa è | Leggi solo | ⚠️ La trappola |
-> | :---: | --- | --- | --- | --- | --- |
-> | 1 | **D-19** | `80_data` | La descrizione di `E_FONDO_STATO_NON_AMMESSO` a catalogo racconta la matrice a **TRE** stati; dal 21/08 sono **QUATTRO** (`ESEGUITO`) | §9.3 D-19 | ⛔ **edit dei CSV** (`codici_errore.csv`, `messaggi_errore.csv`), **mai** un `UPDATE` SQL. È un testo **falso oggi**, e lo legge uno sviluppatore proprio quando il guard scatta |
-> | 2 | **D-22** | `20_code/vendite` | Il guard di transizione monta **solo `BEFORE UPDATE`**: un atto può **nascere** in qualunque stato. Ammessi alla nascita `DISPONIBILE` e `ASSEGNATO`, vietati `ESEGUITO` e `ANNULLATO` | §9.2-c + la matrice in §8.2 D-7 | ⚠️ Va montato **dopo** aver verificato che **non rompa il riporto**, che nasce `ASSEGNATO` ed è il caso da **ammettere**, non da bloccare |
-> | 3 | **D-20** | `00_schema/vendite` | Accendere la RLS: le **due** policy di famiglia, `ef_whitelist` + `ba_ownership` | §9.9 | ⭐ Qui **niente `JOIN` via fattura**: `emittente_soggetto_ruolo_id` e `billing_account_id` sono **in colonna e NOT NULL**, quindi la `WITH CHECK` li legge da `NEW` — è precisamente l'errore corretto su `enti_incasso`. 🔴 **Sei file pgTAP scrivono su questa tabella: guardarli PRIMA dell'apply**, non dopo il rosso (elenco in §9.9-d) |
-> | 4 | **D-21** | `20_code/vendite` | `fn_cancella_fondo_fattura(p_source_id)` **+ il predicato** che dice *perché* non si può | §9.5-a · §9.6-b · §9.7 | ⭐ **Non è una funzione nuova: è un'ESTRAZIONE.** I tre blocchi e i tre `DELETE` nell'ordine che la FK impone vivono già dentro `fn_reset_fondi_fattura` — si estraggono, non si riscrivono. ⚠️ Ai tre blocchi (che parlano di **denaro**) si aggiunge la **quarta** condizione sullo stato della **figlia**: soglia `NOT IN ('DRAFT','EMESSA')`, la stessa di `trgfn_fattura_satellite_guard_congelamento` |
-> | 5 | **D-23** | `80_data` + in-app | L'azione di processo `governa_fondo_fattura` | §9.3 D-23 | ⚠️ **Il seed non è la concessione.** Il precedente `registra_distinta` (id 32, area 7) è a catalogo dal 25/08 e **ancora chiuso per tutti** tranne il super admin, perché nessuno l'ha assegnata a un profilo. **Se si semina, si assegna nello stesso giro** |
-> | 6 | **D-25** | 🔴 **`pagamenti`** | Aprire `CONFERMATA → ANNULLATA` nella matrice delle sistemazioni ed estendere `fn_annulla_sistemazione`: sull'atto `RIPORTO` confermato chiama **D-21** e, **solo se la cancellazione riesce**, porta l'atto ad `ANNULLATA` | §9.6 · §9.8 | ⚠️ Il varco è **chirurgico su due assi**: solo la **transizione di stato** (il guard oggi rifiuta *ogni* update, e deve continuare) e **solo `destinazione = 'RIPORTO'`** — `RIMBORSO` e `COMPENSAZIONE` restano terminali, si disfano con la correzione guidata. ⚠️ E il loro rifiuto deve **nominare l'alternativa**, non dire «immutabile» |
-> | 7 | **D-24** | `db/pgtap/vendite` | I test dei passi qui sopra | §9.3 D-24 | ⚠️ **Nello stesso lotto** dei passi che collauda. `throws_ok` **sempre** con lo SQLSTATE, e la fixture va **costruita** — un test che itera su ciò che c'è passa a vuoto su un DB ricostruito. Il caso nuovo da costruire è la **figlia `DEFINITIVA`** |
->
-> **Dipendenze**: **1, 2, 3 e 5 sono indipendenti da tutto** e si possono fare
-> subito, anche in parallelo. **4 (D-21) è il pezzo che gli altri consumano**: da
-> lui dipendono **6** e **7**. Nient'altro è vincolato.
+> 1. ⛔ **L'ordine di apply è quello dei numeri**, e ha una dipendenza vera:
+>    `-67` (pagamenti) non funziona senza `-66` (il varco) e senza `-64`, e le
+>    sue `preConditions` lo dicono. I codici errore nuovi arrivano da `80_data`,
+>    che gira **dopo** `20_code`: a fine migrate il quadro è coerente.
+> 2. 🔴 **Sette codici errore nuovi**, non due. Il conto e il perché per ognuno in
+>    §9.11; ⚠️ due sono `W_` e non hanno (né devono avere) una riga in
+>    `config.messaggi_errore`.
+> 3. 📮 **Due richieste al backend che nascono dai codici**, e vanno nello stesso
+>    giro dell'apply o il primo errore arriva a video con un ripiego 400:
+>    `manage.py genera_error_policies` e la frase di ripiego in
+>    `error_messages_fallback.py` per ognuno dei cinque `E_`.
 >
 > ### ⛔ Cosa NON è del team DB
 >
 > **BE-4** (un solo `DELETE /api/v1/vendite/fondi-fattura/{id}/`) e **FE-1**,
-> **FE-2**, **FE-3**: sono lavoro applicativo e partono **dopo** D-21 e D-23.
-> Perimetro in §9.3, tabella «Lato BE / FE» — non serve leggerla per lavorare sui
-> sette passi.
+> **FE-2**, **FE-3**: perimetro invariato, in §9.3. Partono dopo l'apply.
 >
-> ### ℹ️ Due note di lettura, per non perdere tempo
+> ---
 >
-> * **§8 non è lavoro aperto**: le Fasi A, B, C, E, F sono **applicate e verdi**
->   dal 15/08, la Fase D è stata **scavalcata** (§9.1) e i suoi passi D-11…D-14
->   sono marcati superati **in loco**. Se un passo di §8 sembra da fare,
->   controlla §9 prima di scriverlo.
-> * **Il brief è stato riallineato al codice il 2026-08-31** su tutti i punti in
->   cui descriveva un sistema che non esiste più. Ciò che è rimasto 🔴 è 🔴 **sul
->   database**, non sulla carta — verificato oggetto per oggetto sul catalogo e
->   sul repo, non sul documento.
+> <details><summary>📜 <b>Il riquadro precedente (i sette passi da fare) — tenuto per storia</b></summary>
 >
-> ➡️ Il dettaglio con le motivazioni d'ordine è in **§9.10**.
+> > # 📮 AL TEAM DB — i punti aperti al 2026-08-31 (mattina)
+> >
+> > ⭐ **Leggi questo riquadro e le sezioni che nomina. Non serve rileggere il
+> > brief.** §1…§8 sono il **ragionamento** da cui questi passi discendono: sono
+> > tenuti per storia, sono lunghi, e **non contengono lavoro aperto**. Tutto ciò
+> > che resta da fare sta in **§9**.
+> >
+> > 🟢 **Non c'è nessuna domanda da fare e nessuna decisione da prendere**: le
+> > cinque questioni di dominio (G-1…G-5) sono state **chiuse da Tid il
+> > 2026-08-29**. Da qui è solo lavoro.
+> >
+> > 🔴 **Il fatto da cui discende tutto, in tre righe.** Dal **2026-08-22**
+> > `pagamenti.fn_conferma_sistemazione` (lotto 7), ramo `RIPORTO`, fa un `INSERT`
+> > **diretto** in `vendite.fatture_fondi_fattura_source`. ⭐ **Ed è la scelta
+> > giusta** — `api.md` vieta le chiamate laterali fra moduli di pari livello, e il
+> > DB è l'unica sede in cui i due schemi si toccano. **Il difetto non è che
+> > `pagamenti` scriva: è che il presidio che accompagna quella scrittura non l'ha
+> > costruito nessuna delle due parti.** Oggi si può **creare** un atto che muove
+> > denaro e **non lo si può disfare**.
+> >
+> > I sette passi, in ordine di lavorazione, erano: D-19 (`80_data`), D-22
+> > (`20_code/vendite`), D-20 (`00_schema/vendite`), D-21 (`20_code/vendite`),
+> > D-23 (`80_data` + in-app), D-25 (`pagamenti`), D-24 (`db/pgtap/vendite`).
+> > Dipendenze: 1, 2, 3 e 5 indipendenti da tutto; **4 (D-21) è il pezzo che gli
+> > altri consumano**, e da lui dipendono 6 e 7.
+> >
+> > ➡️ Il dettaglio con le motivazioni d'ordine è in **§9.10**.
+>
+> </details>
 
 ---
 
@@ -2369,9 +2384,19 @@ soddisfa**, o non saprà mai di essere stato accontentato.
 
 ### 9.3 I passi
 
-> ⚠️ **Nessuno di questi passi è stato scritto.** E tre dipendono da una
+> ~~⚠️ **Nessuno di questi passi è stato scritto.** E tre dipendono da una
 > decisione di dominio (§9.4): finché non c'è, si scriverebbe la cosa sbagliata
-> in fretta.
+> in fretta.~~
+>
+> ✅ **SUPERATO il 2026-08-31 (sera): sono stati scritti tutti e sette**, provati
+> e documentati — changeSet `20260831-61` … `-67`, più tre CSV di `80_data` e tre
+> file pgTAP nuovi. ⛔ **Non applicati.** Elenco, scostamenti dal piano e le cinque
+> cose trovate dal collaudo in **§9.11**.
+>
+> ⚠️ **La tabella qui sotto resta com'era, e si legge insieme a §9.11**: descrive
+> ciò che andava fatto, non ciò che è stato scritto. Dove le due divergono — la
+> soglia che è un dato e non una lista, i sei motivi invece di quattro, l'ordine
+> invertito dentro D-25 — a valere è §9.11, che dice anche perché.
 
 | | Passo | Dove | Dipende da |
 | --- | --- | --- | --- |
@@ -2833,10 +2858,154 @@ aspettano altro.
 
 ---
 
+### 9.11 ✅ Che cosa è stato scritto il 2026-08-31 (sera)
+
+> ⛔ **Scritto e provato, NON applicato.** Nessun `liquibase update` è stato
+> lanciato. L'SQL è stato **reso dagli YAML** — non riscritto a mano, che salta
+> `COMMENT` e `GRANT` — ed eseguito in una transazione chiusa in `ROLLBACK`.
+
+#### (a) I sette changeSet
+
+| # | File | Che cosa fa |
+| --- | --- | --- |
+| `20260831-61` | `20_code/vendite/…-update-trgfn-fondi-source-guard-transizione-nascita` | **D-22** — il guard risponde anche in `INSERT`; il trigger si rinomina `…_ins_upd` |
+| `20260831-62` | `00_schema/vendite/…-enable-rls-fatture-fondi-fattura-source` | **D-20** — `ef_whitelist` (FOR ALL) + `ba_ownership` (FOR SELECT) + `ENABLE` |
+| `20260831-63` | `20_code/vendite/…-create-fn-check-fondo-cancellabile` | **D-21** — il **predicato** |
+| `20260831-64` | `20_code/vendite/…-create-fn-cancella-fondo-fattura` | **D-21** — la cancellazione, e la sede unica dei tre `DELETE` |
+| `20260831-65` | `20_code/vendite/…-update-fn-reset-fondi-fattura-su-predicato` | **D-21** — il reset smette di portare la propria copia del criterio |
+| `20260831-66` | `20_code/pagamenti/…-update-trgfn-sistemazioni-guard-transizione-varco-riporto` | **D-25** — il varco `CONFERMATA → ANNULLATA`, solo `RIPORTO` |
+| `20260831-67` | `20_code/pagamenti/…-update-fn-annulla-sistemazione-cancella-riporto` | **D-25** — annullare il riporto fa cadere il suo fondo |
+
+⚠️ **I numeri sono stati riassegnati due volte.** Il primo blocco (55-57) è stato
+occupato da un altro cantiere **mentre lo scrivevo**, e il secondo (58-60) è
+stato spostato su richiesta di Tid. *Con cantieri paralleli il numero «libero»
+scade nel minuto: si ricontrolla prima di salvare, non prima di scrivere.*
+
+#### (b) I CSV di `80_data` — solo edit e append, nessun loader nuovo
+
+* `config/codici_errore.csv` — **1 riga corretta** (D-19) e **7 righe nuove**;
+* `config/messaggi_errore.csv` — **1 riga corretta** (D-19, `causa` + `soluzione`)
+  e **5 righe nuove** (id 1034-1038);
+* `config/azioni_processo.csv` — **1 riga nuova**: `governa_fondo_fattura`,
+  id 34, area 2 (vendite), `pericolosa = t`.
+
+> ⚠️ **Il seed non è la concessione**, ed è la trappola dichiarata nel riquadro in
+> testa: `registra_distinta` è a catalogo dal 25/08 e **ancora chiusa per tutti**
+> tranne il super admin, perché nessuno l'ha assegnata a un profilo.
+> `config.profili_accesso_azioni` non ha un CSV di seed — la concessione si dà
+> **in-app**, e va data nello stesso giro dell'apply.
+
+#### (c) I pgTAP
+
+| File | Asserzioni | Che cosa collauda |
+| --- | :---: | --- |
+| `vendite/test-fondo-fattura-cancellazione.sql` | 14 | gli stati di nascita, il predicato, la cancellazione, il bypass |
+| `pagamenti/test-sistemazione-annullo-riporto.sql` | 13 | il varco su tre assi, la caduta del fondo, il rifiuto sugli altri due |
+| `rls/test-rls-fondi-fattura-source-functional.sql` | 11 | le due policy, e soprattutto che la tabella resti **scrivibile** |
+| `vendite/test-fondi-fattura-governo.sql` | 29 → **30** | riscritto il caso 4 e aggiunta la rete strutturale (vedi (e)) |
+| `vendite/test-cleanup-fattura-copertura-figlie-v1.sql` | 11 | esteso il perimetro del presidio (vedi (e)) |
+
+Tutti gli otto file toccati o vicini sono stati eseguiti **con l'SQL della slice
+pre-applicato nella stessa transazione**, e confrontati con la corsa senza:
+nessuna regressione residua.
+
+⚠️ **Girano da owner**, perché il DDL non è ancora applicato: la RLS **non è
+esercitata** in questa prova, tranne che nel file `rls/`, che se la arma da sé
+con un `FORCE` locale alla transazione. Dopo l'apply vanno rilanciati come
+applicazione.
+
+#### (d) ⭐ Cinque scostamenti dal piano, e perché
+
+| Il piano diceva | Che cosa è stato scritto | Perché |
+| --- | --- | --- |
+| **quattro motivi** nel predicato (§9.7-b) | **sei** | `ATTO_NON_TROVATO` nasce con D-20 stessa: da quando c'è la row security, «non esiste» e «non è tuo» devono dare la stessa risposta, e il posto per dirlo una volta sola è il predicato. `SISTEMAZIONE_ATTIVA` è la **FK** `fk_sistemazioni_fondo_source` detta prima che scatti — cioè un `23503` nudo evitato sul gesto della persona, e un reset di lotto che smette di fallire per intero |
+| soglia `stato NOT IN ('DRAFT','EMESSA')` | `config.stati_doc_fiscale.congela_fiscale` | 🔴 **il brief era stantìo di un giorno**: dal `20260830-02` la guardia dei satelliti non porta più la lista, legge la colonna. Riscrivere la lista qui avrebbe rimesso in circolo la nona copia di una frase che quel passo aveva appena tolto |
+| «prima si cancella il fondo, e **solo se riesce** si annulla l'atto» (§9.6-b) | prima si stacca e si annulla, **poi** si cancella | alla lettera non è eseguibile: la FK `NO ACTION` trattiene il `DELETE` finché l'atto punta il fondo, e per staccare il puntatore serve proprio quell'`UPDATE`. ⭐ La garanzia regge lo stesso **per costruzione** — è tutto dentro una funzione, quindi se la cancellazione solleva l'`UPDATE` non sopravvive, e il record che il brief temeva non è raggiungibile |
+| **due** codici nuovi (§9.7-c) | **sette** | i due previsti, più `E_FONDO_NON_TROVATO` (D-20), `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE` (il rifiuto che nomina l'alternativa), `E_SISTEMAZIONE_ANNULLO_NON_AMMESSO` (§9.8, la domanda lasciata a chi scrive il changeSet) e due `W_` per i rami nuovi del reset — che non hanno riga in `messaggi_errore`, come i loro gemelli |
+| il varco «chirurgico su **due** assi» (§9.3 D-25) | **tre** | stato e destinazione erano i due dichiarati; il terzo sono le **colonne**, e senza di quello «rifiuta OGNI update e non solo quelli di stato» sarebbe diventato falso proprio sul ramo aperto |
+
+⭐ **Sul terzo asse una scelta che vale la riga**: il confronto elenca le colonne
+**ammesse** e non quelle vietate, così una colonna nuova sulla tabella nasce
+**chiusa** invece di diventare modificabile in silenzio.
+
+⚠️ **E una perdita, dichiarata**: portando l'atto ad `ANNULLATA`,
+`chk_sistemazioni_eseguita` pretende `data_esecuzione`, `contabile_id` e
+`fondo_source_id` a `NULL`. Il registro perderebbe *quando* l'atto era stato
+eseguito. La memoria finisce in `meta -> 'annullata_dopo_esecuzione'`, che nessun
+`CHECK` vincola. ⛔ **Allargare il `CHECK` era l'altra strada, ed è scartata**:
+indebolire un vincolo per non perdere una data significa ammettere per sempre un
+atto `ANNULLATA` che dichiara di essere stato eseguito.
+
+#### (e) 🔴 Cinque cose che ha trovato il COLLAUDO, non il ragionamento
+
+> ⭐ Sono qui perché sono la parte che non si sarebbe potuta scrivere a tavolino,
+> e ognuna ha lasciato un presidio.
+
+1. 🔴 **Il predicato era fail-open al contrario, e ha reso rossi sette test.** La
+   prima stesura faceva `COALESCE(v_congela, TRUE)` — «una figlia che non si
+   risolve vale congelata» — e bloccava anche la figlia che si legge e **non ha
+   stato**, che il modello ammette (la colonna è nullabile). Sette asserzioni di
+   `test-fondi-fattura.sql` sono diventate rosse, perché la loro figlia nasce
+   così. ⭐ La correzione non è un `COALESCE` diverso: è **distinguere i due
+   casi**, e per il secondo prendere la decisione che
+   `trgfn_fattura_satellite_guard_congelamento` prende già — *due risposte
+   diverse alla stessa domanda sono la divergenza che questo cantiere sta
+   chiudendo.*
+2. ⚠️ **Il guard di nascita OSCURA il `CHECK`.** Un `BEFORE ROW` scatta prima che
+   i vincoli di tabella siano valutati: uno stato fuori vocabolario dà ora
+   `P0001` e non più `23514`. Il test che lo asseriva è stato riscritto — e gli
+   si è aggiunta un'asserzione che il `CHECK` **esista ancora, con tutti e
+   quattro i valori**, perché senza quella spegnere il vincolo passerebbe
+   inosservato: a fermare l'`INSERT` basterebbe il guard.
+3. ⚠️ **Il presidio di copertura della pulizia aveva un perimetro invecchiato.**
+   `test-cleanup-fattura-copertura-figlie-v1.sql` cerca il nome di ogni figlia
+   «GESTITA» dentro il **testo** di `fn_cleanup_fatture_by_ids` +
+   `fn_reset_fondi_fattura`. Spostando i `DELETE` in `fn_cancella_fondo_fattura`,
+   `pagamenti.vendite_contabili_righe` non era più nominata → rosso. ⭐ Il
+   presidio ha funzionato: la pulizia era davvero cambiata di sede, e l'elenco
+   delle funzioni è stato esteso.
+4. ⛔ **Un mio test diceva di presidiare un asse e non lo presidiava.** La prova
+   di mutazione (togliere dal varco il confronto sulle colonne) lo lasciava
+   **verde**: un `UPDATE` del solo importo non chiede l'annullamento, quindi a
+   rifiutarlo bastava l'asse dello stato. L'asse delle colonne si esercita solo
+   cambiando lo stato **e** un'altra colonna nella stessa istruzione — ed è un
+   test in più, non lo stesso scritto meglio.
+5. ⛔ **E un altro era verde per il motivo sbagliato.** Il caso «`INSERT` fuori
+   scope rifiutato» stava in fondo al file, dopo un caso che lascia la sessione
+   in veste `CLIENTE_PORTALE`: l'`INSERT` falliva davvero, ma per il **ruolo**,
+   non per l'emittente. Il contesto ora si rimette esplicitamente prima
+   dell'asserzione. *Se ne è accorto il riordino, non la rilettura.*
+
+⚠️ **Sette mutazioni provate in tutto**, e ognuna doveva far cadere un test
+preciso: il guard di nascita, il bypass di manutenzione, il confronto sulle
+colonne, la caduta del fondo, la `USING` e la `WITH CHECK` della policy. ⛔ **Una
+non ha fatto cadere niente**, ed è dichiarata nel file: il ramo «la figlia non si
+legge» resta **scoperto**, perché la FK non lascia costruire un atto che punta
+una fattura irraggiungibile.
+
+#### (f) 📮 Che cosa resta, e a chi
+
+| A chi | Che cosa |
+| --- | --- |
+| **Tid** | 🔴 l'**apply** dei sette changeSet, nell'ordine dei numeri |
+| **Tid / amministrazione** | 🔵 **assegnare `governa_fondo_fattura` a un profilo**, in-app. Il seed non è la concessione |
+| **team DB, dopo l'apply** | rilanciare come applicazione i cinque pgTAP toccati (`PGTAP_RUNNER=app`) e aggiornare la baseline se serve. ⚠️ In questa prova giravano da owner, quindi la RLS non è stata esercitata se non nel file `rls/` |
+| **backend** | `manage.py genera_error_policies` per i sette codici nuovi, **e** la frase di ripiego in `error_messages_fallback.py` per i cinque `E_` — il test `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` è rosso finché mancano |
+| **backend** | **BE-4**: il solo `DELETE /api/v1/vendite/fondi-fattura/{id}/` su `fn_cancella_fondo_fattura`, con `post_permission = governa_fondo_fattura` |
+| **frontend** | **FE-1**, **FE-2**, **FE-3** — perimetro invariato, §9.3 |
+
+🔵 **Un'annotazione per il giorno in cui servirà**, e non è un passo aperto: se il
+frontend vorrà mostrare *perché* un fondo non si può cancellare **sulla riga**
+della lista 44, la sede è `fn_check_fondo_cancellabile` — non una seconda
+formula. Oggi il predicato non espone `reason_key`, perché nessuno la legge.
+
+---
+
 ## 10. Registro
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (sera) | ✅ **SCRITTI TUTTI E SETTE I PASSI DB**, provati e documentati — e ⛔ **non applicati**: nessun `liquibase update`, l'apply lo autorizza Tid. Sette changeSet `20260831-61`…`-67` (il guard di nascita, le due policy RLS, il predicato + la cancellazione + il reset che ci si appoggia, il varco delle sistemazioni e `fn_annulla_sistemazione` estesa), tre CSV di `80_data` (una riga corretta e sette codici nuovi, cinque messaggi, l'azione di processo `governa_fondo_fattura`), tre pgTAP nuovi (38 asserzioni) e due esistenti allineati. Elenco completo e scostamenti in **§9.11**. ⚠️ **I numeri di changeSet sono stati riassegnati due volte**: il primo blocco è stato occupato da un altro cantiere *mentre lo scrivevo* — con cantieri paralleli il numero «libero» scade nel minuto, e si ricontrolla prima di SALVARE. ⭐ **Cinque scostamenti dal piano, e nessuno di gusto**: il predicato ha **sei** motivi e non quattro (`ATTO_NON_TROVATO` nasce con la row security di D-20, `SISTEMAZIONE_ATTIVA` è la FK detta prima che scatti, cioè un 23503 nudo evitato e un reset di lotto che smette di fallire per intero); 🔴 **la soglia di G-3 era stantìa di UN GIORNO** — il brief scriveva `NOT IN ('DRAFT','EMESSA')`, ma dal `20260830-02` la guardia dei satelliti legge `config.stati_doc_fiscale.congela_fiscale`, e riscrivere la lista avrebbe rimesso in circolo la nona copia di una frase appena tolta; l'ordine dentro D-25 è **invertito** rispetto a §9.6-b perché la FK `NO ACTION` non lascia fare altrimenti, e la garanzia «solo se la cancellazione riesce» regge lo stesso **per costruzione** (una funzione, una transazione); **sette** codici errore invece di due; e il varco è chirurgico su **tre** assi e non due — il terzo sono le **colonne**, elencando le AMMESSE e non le vietate, così una colonna nuova nasce chiusa. 🔴 **E cinque cose le ha trovate il COLLAUDO, non il ragionamento**: (1) il predicato fail-closed sulla figlia «senza stato» rendeva rossi **sette** test veri — il modello ammette quella figlia, e la decisione giusta era quella che la guardia dei satelliti prende già; (2) il guard di nascita **oscura il CHECK** (un BEFORE ROW precede i vincoli), quindi un test che asseriva `23514` è stato riscritto su `P0001` e gli si è aggiunta la rete strutturale, o spegnere il vincolo passerebbe inosservato; (3) il presidio di copertura della pulizia aveva un perimetro invecchiato e lo ha **detto**, perché i `DELETE` avevano cambiato sede; (4) ⛔ un mio test **diceva** di presidiare l'asse delle colonne e non lo presidiava — la prova di mutazione lo lasciava verde, e serviva un test in più, non lo stesso scritto meglio; (5) ⛔ e un altro era **verde per il motivo sbagliato**, perché ereditava dal caso precedente una veste `CLIENTE_PORTALE`: l'`INSERT` falliva per il ruolo, non per l'emittente. ⚠️ **Sette mutazioni provate**, e una non ha fatto cadere niente: il ramo «la figlia non si legge» resta **scoperto**, ed è dichiarato nel file invece che nascosto fra i verdi — la FK non lascia costruire un atto che punta una fattura irraggiungibile. 📮 **Restano**: l'apply; l'**assegnazione in-app** di `governa_fondo_fattura` (⚠️ il seed non è la concessione — `registra_distinta` è a catalogo dal 25/08 e ancora chiusa per tutti); il rilancio dei pgTAP **come applicazione** dopo l'apply (qui giravano da owner, quindi la RLS non è stata esercitata se non nel file `rls/`, che se la arma da sé); e due richieste al backend che nascono dai codici — `genera_error_policies` e la frase di ripiego in `error_messages_fallback.py`. |
 | 2026-08-31 | 🔵 **Allineati i punti in cui il documento raccontava un sistema che non c'e' piu' — nessun oggetto DB toccato, nessun codice scritto.** Su richiesta di Tid, che ha separato i 🔴 «documento disallineato» (miei) dai 🔴 «manca un oggetto a DB» (del team, §9.10). ⭐ **Il rilievo piu' grosso era FUORI dal brief**, e il giro del 29/08 non l'aveva visto perche' guardava il brief: `docs/it/backend/vendite/manual/api_fondi_fattura.md` dava BE-4 come i due `POST` dell'atto manuale, in attesa di `fn_crea_fondo_fattura_manuale` / `fn_annulla_fondo_fattura` e — testualmente — *«dopo che `pagamenti` ha un processo rimborsi da cui chiamarla»*: **tutte e tre le affermazioni erano false da nove giorni**, perche' il processo rimborsi e' arrivato il 22/08 e non passa di li'. Riscritta con il perimetro vero (un solo `DELETE`, su D-21, per l'ALTRA popolazione) e annotata anche la scelta RLS ribaltata da G-2. ⚠️ *E' la stessa specie di difetto di D-17 e dei quattro di §9.2-e, ma con un aggravante che vale la pena scrivere: qui a mentire non era il brief — era la **doc di riferimento del backend**, cioe' il documento che uno sviluppatore legge PRIMA di scrivere l'endpoint, e che nessuno rilegge quando cambia il progetto.* Nel brief: **D-12** e `E_FONDO_ANNULLAMENTO_BLOCCATO` marcati superati in loco da G-1 (erano ancora scritti come piano vivo), la **matrice di D-7** completata con gli stati di **nascita** (era incompleta, non sbagliata — §9.2-c/D-22), la testata di **BE-4** in §8.3 allineata a §9.3, e spuntata in **D-20** la meta' «riscrivi la ragione in §8.6», che era gia' fatta. ⛔ **D-19 NON e' stato toccato benche' sembri una correzione di testo**: `codici_errore.csv` e `messaggi_errore.csv` sono **seed del catalogo DB**, non documentazione — restano il passo 1 di §9.10. 🔴 **Nessun altro 🔴 e' calato**: D-19…D-25 verificati di nuovo sul repo il 2026-08-31 e **tutti assenti** (nessuna policy su `fatture_fondi_fattura_source` in `00_schema/`, `fn_cancella_fondo_fattura` nominata dal solo brief, `guard_transizione` ancora solo `BEFORE UPDATE`, `governa_fondo_fattura` fuori da `azioni_processo.csv`, `fn_annulla_sistemazione` che fa un solo `UPDATE` e non tocca il fondo), e con loro BE-4 (solo le due GET a `urls_v1.py`) e FE-1/2/3 📮 **E in testa al documento c'e' ora una nota datata per il team DB**, su richiesta di Tid: i **sette** passi in ordine di lavorazione, con per ciascuno lo schema, che cosa e', **quale sezione leggere** e **la trappola** — piu' le dipendenze (1,2,3,5 indipendenti; D-21 e' il pezzo che 6 e 7 consumano) e cio' che **non** e' del team DB. ⭐ *Serve a far partire il lavoro senza rifare l'analisi*: §1…§8 sono il ragionamento e **non contengono lavoro aperto**, ma sono lunghi abbastanza da sembrare da leggere — e i passi superati sono marcati in loco proprio perche' chi entra adesso non li riscriva. ⚠️ *Un brief che ha ragione ma pretende 2800 righe di lettura prima del primo changeSet e' un brief che rallenta il lavoro che ha progettato.* |
 | 2026-08-29 (notte, 4) | ✅ **G-2 CHIUSA da Tid: la RLS su `fatture_fondi_fattura_source` SI ACCENDE**, e con lei **tutte e cinque le domande sono chiuse**: da qui il cantiere non aspetta piu' nessuna decisione. ⭐ **L'argomento decisivo il 15 agosto non c'era**: quando §8.6 decise «niente RLS» l'unico accesso era **la lista**, protetta dal `JOIN INNER` con `vendite.fatture`; il gesto di D-21 ne apre uno di natura diversa — `DELETE /vendite/fondi-fattura/{id}/` e' un accesso **per id**, e un id non ha nessun JOIN davanti. E' **la stessa forma** del buco che E-4 ha trovato il 28/08 su `GET /conti-incasso/`. ⚠️ Non e' cambiata solo la conclusione: era **la premessa** a essere scaduta, ed e' il difetto piu' insidioso — *una conclusione giusta appoggiata a una premessa scaduta produce la decisione sbagliata al giro dopo, quando la domanda cambia*. 🔴 **E la misura ha trovato piu' di quanto la domanda chiedesse**: guardando QUALI satelliti della fattura hanno le policy viene fuori che `fatture_scadenze`, `fatture_indirizzi`, `fatture_righe` e `fatture_riepiloghi_iva` hanno **entrambe** le famiglie di presidi — congelamento oltre `EMESSA` **e** RLS `ef_whitelist` + `ba_ownership` — e il fondo **non ha ne' l'una ne' l'altra**. ⭐ *Sono la stessa dimenticanza vista da due lati, discussa in due posti diversi (D-6 la prima, §8.6 la seconda) e per questo mai riconosciuta come una sola: due eccezioni ragionevoli prese una alla volta fanno una regola che non vale per un oggetto solo — e quell'oggetto e' l'unico che muove denaro.* ⭐ **E qui la policy e' piu' SEMPLICE che sugli altri satelliti**: `fatture_scadenze` dovette delegare a `fn_scope_ba_ownership_via_fattura` perche' il BA in riga non ce l'ha, mentre qui `emittente_soggetto_ruolo_id` e `billing_account_id` sono **NOT NULL in colonna** — niente JOIN, e soprattutto niente `WITH CHECK` che cerchi il legame che l'`INSERT` sta scrivendo, che e' esattamente l'errore che il team DB ha dovuto correggere su `enti_incasso`. ⚠️ **Tre verifiche dichiarate, non formalita'**: **sei** file pgTAP scrivono su questa tabella e dal 2026-08-07 girano **come l'applicazione** (una fixture che scrive dove l'applicazione non scrive non passa piu' — vanno guardati **prima** dell'apply); il giro notturno gira come `zeroerp_batch_fatturazione` che ha `BYPASSRLS`, quindi non cambia niente — **da verificare, non da dedurre**, perche' rompendosi si vedrebbe solo la mattina dopo; e un **conteggio a zero non e' una prova** su una tabella vuota, valgono solo la misura strutturale e quella su due operatori veri. ⚠️ **Nessun codice scritto**: aggiunte **§9.9** e **§9.10** (l'ordine in cui i sette passi DB passano al team, che sta **qui** e non in un brief a parte — *un brief separato si giustifica quando cambia il soggetto, non chi lavora*), ribaltata la riga di §8.6 e riscritto D-20 |
 | 2026-08-29 (notte, 3) | ✅ **G-5 CONFERMATA da Tid: si annulla SOLO il `RIPORTO`.** `RIMBORSO` e `COMPENSAZIONE` restano terminali com'erano, perche' lasciano dietro una **distinta** e per quella il rimedio esiste gia' — la **correzione guidata** (S6). ⛔ *Due strade per disfare lo stesso fatto e' il modo in cui due meccanismi cominciano a divergere: la prima volta fanno la stessa cosa, alla prima regola nuova no, e nessuno sa piu' quale delle due sia quella giusta.* ⚠️ **E ne discende una cosa che si vede a video e va scritta nella richiesta al team DB**: col varco ristretto, chi prova ad annullare un rimborso confermato riceve `E_SISTEMAZIONE_IMMUTABILE` — e non basta. ⭐ **Non lo dico io: lo dice il `COMMENT` di quel guard, che si autocritica proprio su questo** (*«"non puo' passare da CONFERMATA a BOZZA" e' vero ma non aiuta chi sta provando a correggere un importo gia' eseguito»*). Il rifiuto deve **nominare l'alternativa**, non lo stato. ⭐ E il predicato del varco e' banale: `destinazione = 'RIPORTO'`, una colonna della **stessa riga** — nessun JOIN, nessuna lettura in `vendite`. 🟢 **Con G-5 nessun passo del piano aspetta piu' una decisione**: resta aperta la sola **G-2** (la RLS su `fatture_fondi_fattura_source`), che tocca D-20 e non blocca niente. ⚠️ **Nessun codice scritto**: aggiunta **§9.8**, aggiornati D-25 e il grafo |

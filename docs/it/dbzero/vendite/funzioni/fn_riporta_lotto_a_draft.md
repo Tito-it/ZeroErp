@@ -14,7 +14,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
 AS $function$
 -- Scopo: rollback di un lotto PRE-FISCALE verso DRAFT — delega la
 --        pulizia alla primitiva, azzera lo STATO DI ESECUZIONE del
---        lotto (task_run ad ANNULLATO) e lo marca come riaperto.
+--        lotto (task_run ad ANNULLATO), lo marca come riaperto e
+--        REGISTRA L'ATTO NEL GIORNALE.
 --        Il lotto resta vivo e ripartira' dallo step DRAFT.
 -- Perimetro (RD-1): si torna indietro per QUALSIASI motivo.
 --        MASSIVO **e** GIORNALIERO, su lotti DRAFT o EMESSA.
@@ -24,6 +25,8 @@ AS $function$
 -- RD-6:  🔴 i task_run si chiudono ad ANNULLATO, altrimenti
 --        fn_resolve_lotto_task_execution_mode li vede COMPLETATO e
 --        risponde SKIP: il lotto riaperto rilancia A VUOTO.
+-- RD-7 (rev 2026-08-31): 🔴 l'atto entra in vendite.event_log.
+--        Prima si leggeva solo DI RIMBALZO dai task_run ANNULLATO.
 -- rev 2026-08-04: le precondizioni NON si scrivono piu' qui.
 --        Arrivano da script.fn_check_lotto_riportabile_a_draft, la
 --        stessa che alimenta enabled/reasons di
@@ -31,6 +34,7 @@ AS $function$
 DECLARE
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_draft_id             config.stati_doc_fiscale.id%TYPE;
+    v_stato_precedente     config.stati_doc_fiscale.codice_interno%TYPE;
     v_motivi               jsonb;
     v_fatture_ids          BIGINT[];
     v_updated_lotti        INTEGER := 0;
@@ -62,9 +66,17 @@ BEGIN
             v_motivi -> 0 ->> 'dettaglio');
     END IF;
 
-    SELECT fl.lock_batch_id
-      INTO v_lock_batch_id
-      FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+    -- ⭐ RD-7: si legge anche DA DOVE il lotto sta tornando, ed e'
+    -- l'unico fatto che dopo l'UPDATE non sarebbe piu' ricostruibile
+    -- (riaperto_il dice QUANDO, non DA QUALE stato).
+    -- ⚠️ LEFT JOIN e non INNER: fatturazione_lotti.stato_doc_fiscale_id
+    -- e' NULLABLE, e un INNER qui non tornerebbe righe azzerando
+    -- anche v_lock_batch_id.
+    SELECT fl.lock_batch_id, sdf.codice_interno
+      INTO v_lock_batch_id, v_stato_precedente
+      FROM vendite.fatturazione_lotti fl
+      LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = fl.stato_doc_fiscale_id
+     WHERE fl.id = p_lotto_id;
 
     SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
     IF v_draft_id IS NULL THEN
@@ -135,13 +147,51 @@ BEGIN
      WHERE id = p_lotto_id;
     GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
 
+    -- 🔴 RD-7 — l'atto entra nel GIORNALE, e ci entra QUI: dopo
+    -- l'UPDATE, perche' solo adesso i contatori sono definitivi.
+    -- ⭐ Il payload porta i numeri, e sono la ragione della riga:
+    -- «riaperto» da solo e' deducibile dai task_run ANNULLATO,
+    -- «riaperto, e ha cancellato N fatture e M righe» no.
+    -- ⚠️ severity WARN, non INFO: vw_giornale_entita mappa gia'
+    -- TASK_RUN ANNULLATO -> WARN, e la causa non puo' stare piu' in
+    -- basso del proprio effetto, o chi filtra per gravita' vede il
+    -- sintomo senza il motivo.
+    -- ⚠️ Non introduce un ramo di fallimento: il trigger di scope
+    -- deriva l'emittente da fatturazione_lotti, dove la colonna e'
+    -- NOT NULL, e l'esistenza del lotto e' gia' garantita sopra.
+    -- ⚠️ correlation_id resta NULL: la riapertura e' un atto
+    -- dell'operatore, non un passo di un giro di pipeline — non c'e'
+    -- un run a cui correlarla.
+    -- ⛔ E il registro e' event_log anche per un motivo di
+    -- COMPORTAMENTO, non solo di leggibilita': le segnalazioni si
+    -- compongono da fatture_log UNION fatturazione_lotti_log, e da
+    -- event_log si legge solo l'ancora PIPELINE_STARTED. Scrivere
+    -- qui NON aggiunge una segnalazione, quindi non entra nel
+    -- conteggio su cui il runner decide l'avanzamento: un atto
+    -- registrato non deve diventare un atto che blocca.
+    PERFORM vendite.fn_log_event(
+        p_entity_type    => 'LOTTO',
+        p_entity_id      => p_lotto_id,
+        p_event_code     => 'LOTTO_RIAPERTO',
+        p_severity       => 'WARN',
+        p_correlation_id => NULL::uuid,
+        p_payload        => jsonb_build_object(
+            'stato_precedente',   v_stato_precedente,
+            'deleted_fatture',    v_deleted_fatture,
+            'deleted_righe',      v_deleted_righe,
+            'updated_attivita',   v_updated_attivita,
+            'riemesse_attivita',  v_riemesse_attivita,
+            'annullati_task_run', v_annullati_task_run
+        )
+    );
+
     RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture,
                         v_deleted_righe, v_riemesse_attivita, v_annullati_task_run;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
-IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta ancora se una sola fattura e'' gia'' NUMERATA (ora E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti.';
+IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. 🔴 RD-7 (rev 2026-08-31): l''atto entra nel GIORNALE — LOTTO_RIAPERTO in vendite.event_log via fn_log_event, severity WARN, payload coi contatori e con lo stato fiscale di partenza. Prima la riapertura si leggeva solo DI RIMBALZO dai task_run passati ad ANNULLATO. Registro scelto per DUE proprieta'' strutturali che fatturazione_lotti_log non ha: append-only per trigger e codice a catalogo (li'' c''e'' disabilitato, e un atto che distrugge documenti non deve poter essere silenziato). WARN e non INFO perche'' vw_giornale_entita mappa gia'' TASK_RUN ANNULLATO -> WARN: la causa non puo'' stare piu'' in basso del proprio effetto. ⛔ Terza ragione della scelta, ed e'' di comportamento: le segnalazioni si compongono da fatture_log UNION fatturazione_lotti_log e da event_log si legge la sola ancora PIPELINE_STARTED, quindi questa riga NON entra nel conteggio su cui il runner decide l''avanzamento — un atto registrato non deve diventare un atto che blocca. ⚠️ La scrittura non introduce un ramo di fallimento: emittente_soggetto_ruolo_id e'' NOT NULL su fatturazione_lotti e l''esistenza del lotto e'' gia'' garantita dal check. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta ancora se una sola fattura e'' gia'' NUMERATA (ora E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti.';
 ```
 
 ---

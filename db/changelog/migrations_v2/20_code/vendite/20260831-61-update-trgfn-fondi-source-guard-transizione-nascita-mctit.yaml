@@ -1,0 +1,265 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `D-22` — UN ATTO NON PUO' PIU' NASCERE IN UNO STATO TERMINALE
+# Brief: brief-db-fondo-fattura-ricalcolo-e-governo, §9.2-c e §9.3 D-22.
+#
+# -- COSA SUCCEDE QUI -------------------------------------------------
+#
+#   La matrice degli stati del fondo era presidiata SOLO in UPDATE. Il CHECK
+#   `chk_fondi_source_stato` ammette tutti e quattro i valori, quindi l'unico
+#   presidio sullo stato di NASCITA era la buona volonta' di chi fa l'INSERT:
+#   un atto poteva nascere gia' `ESEGUITO` o gia' `ANNULLATO`, cioe' come un
+#   record che non e' mai stato vero.
+#
+#   Da qui la funzione risponde anche in INSERT:
+#
+#       DISPONIBILE  ✅  il giro automatico (fn_genera_fondi_fattura_source)
+#       ASSEGNATO    ✅  il riporto (pagamenti.fn_conferma_sistemazione)
+#       ESEGUITO     ⛔  un trasferimento non si dichiara: lo si registra
+#       ANNULLATO    ⛔  non si toglie dal tavolo denaro che non c'e' mai stato
+#
+# -- ⚠️ I DUE STATI DI NASCITA AMMESSI SONO ENTRAMBI ESERCITATI --------
+#
+#   Verificato PRIMA di scrivere il guard, ed e' la trappola dichiarata nella
+#   nota in testa al brief: il riporto nasce `ASSEGNATO`, e ammetterlo NON e'
+#   una concessione — e' il caso che il guard deve lasciar passare. Un guard
+#   scritto sulla sola matrice di D-7 (che descriveva la nascita come
+#   `DISPONIBILE`) avrebbe rotto il processo rimborsi del lotto 7.
+#
+# -- ⚠️ IL NOME DEL TRIGGER CAMBIA, E VA GUARDATO ---------------------
+#
+#   `..._guard_transizione_upd` -> `..._guard_transizione_ins_upd`: il suffisso
+#   di evento e' una convenzione (AGENTS.md § Trigger Conventions) e tenerlo a
+#   `_upd` su un trigger che scatta anche in INSERT sarebbe un nome che mente.
+#
+#   ⚠️ I BEFORE ROW scattano in ORDINE ALFABETICO, quindi rinominare un trigger
+#   puo' essere un cambio di comportamento travestito da pulizia. Qui NON lo e',
+#   ed e' stato verificato carattere per carattere: dopo il prefisso comune
+#   `..._a10_guard_transizione_` il confronto e' fra `i` e `u`, e il trigger
+#   resta dov'era — dopo `a10_guard_importo_ins_upd` e prima di
+#   `a10_lock_atto_upd`. Ordine invariato.
+#
+#   ℹ️ `BEFORE INSERT OR UPDATE OF stato`: la lista di colonne vale per il solo
+#   UPDATE, ed e' la forma che conserva il comportamento di prima sugli update
+#   che non toccano lo stato.
+#
+# -- 📌 IL TESTO A CATALOGO SI ADEGUA NELLO STESSO LOTTO ---------------
+#
+#   `E_FONDO_STATO_NON_AMMESSO` e' lo stesso codice, e la sua descrizione a
+#   catalogo raccontava TRE stati (D-19). Le due righe di `config/codici_errore.csv`
+#   e `config/messaggi_errore.csv` sono corrette in questo stesso lotto e
+#   arrivano dal mirror di `80_data`, che gira DOPO `20_code`: a fine migrate il
+#   testo e' vero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260831-61-update-trgfn-fondi-source-guard-transizione-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20260831-61-update-trgfn-fondi-source-guard-transizione-nascita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-22: vendite.trgfn_fondi_source_guard_transizione risponde anche in INSERT. Stati di
+        nascita ammessi DISPONIBILE (giro automatico) e ASSEGNATO (riporto da
+        pagamenti.fn_conferma_sistemazione); ESEGUITO e ANNULLATO rifiutati con
+        E_FONDO_STATO_NON_AMMESSO. Prima il presidio era solo in UPDATE e il CHECK
+        chk_fondi_source_stato ammette tutti e quattro i valori, quindi un atto poteva nascere
+        gia' terminale — un record mai stato vero. ⚠️ Il trigger si rinomina da _upd a _ins_upd:
+        verificato che l'ordine alfabetico dei BEFORE ROW sulla tabella non cambia (i < u, resta
+        fra guard_importo e lock_atto). brief-db-fondo-fattura-ricalcolo-e-governo §9.2-c, §9.3 D-22.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # La funzione deve esserci gia': questo changeSet la RISCRIVE, non la crea.
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_fondi_source_guard_transizione'
+            # ⚠️ Il quarto stato deve essere gia' a vocabolario (20260821-49/-50/-54):
+            #    un guard che nomina ESEGUITO su un CHECK a tre valori sarebbe morto.
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'chk_fondi_source_stato'
+                     AND conrelid = 'vendite.fatture_fondi_fattura_source'::regclass
+                     AND pg_get_constraintdef(oid) LIKE '%ESEGUITO%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: far rispettare la matrice degli stati del fondo, dalla
+              --        NASCITA in poi.
+              --        ANNULLATO e ESEGUITO sono terminali, per ragioni
+              --        opposte e simmetriche: dal primo si e' tolto denaro
+              --        dal tavolo, nel secondo lo si e' mosso. In entrambi i
+              --        casi tornare indietro non disfa niente — se serve un
+              --        altro esito, si compie un atto NUOVO.
+              -- ⭐ E se sono terminali, non sono nemmeno INIZIALI: un atto che
+              --        nasce gia' terminale e' un record che non e' mai stato
+              --        vero, e nessuna transizione lo ha prodotto.
+              -- Uso:   BEFORE INSERT OR UPDATE OF stato FOR EACH ROW
+              DECLARE
+                  v_ammessa BOOLEAN;
+              BEGIN
+                  -- ── LA NASCITA ────────────────────────────────────────
+                  -- ⚠️ Ramo separato e in testa: su un INSERT `OLD` non
+                  --    esiste, quindi il confronto piu' sotto darebbe NULL e
+                  --    il CASE cadrebbe nell'ELSE, rifiutando ogni INSERT.
+                  IF TG_OP = 'INSERT' THEN
+                      -- ⭐ Due stati, ed entrambi sono percorsi VIVI:
+                      --    DISPONIBILE lo scrive fn_genera_fondi_fattura_source,
+                      --    ASSEGNATO lo scrive pagamenti.fn_conferma_sistemazione
+                      --    sul ramo RIPORTO — il riporto nomina gia' la fattura
+                      --    di destinazione, e farlo nascere DISPONIBILE sarebbe
+                      --    un credito che aspetta una decisione gia' presa.
+                      IF NEW.stato NOT IN ('DISPONIBILE', 'ASSEGNATO') THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'trgfn_fondi_source_guard_transizione',
+                              'E_FONDO_STATO_NON_AMMESSO',
+                              jsonb_build_object(
+                                  'operazione',          TG_OP,
+                                  'fondo_source_id',     NEW.id,
+                                  'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                                  'campo',               'stato',
+                                  -- ⚠️ NULL e non una parola: alla nascita uno stato
+                                  --    precedente non c'e'. La parola sta nel VARIADIC,
+                                  --    che compone la frase che una persona legge.
+                                  'stato_da',            NULL,
+                                  'stato_a',             NEW.stato),
+                              NULL::uuid,
+                              'creazione', NEW.stato);
+                      END IF;
+
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── LE TRANSIZIONI ───────────────────────────────────
+                  -- Nessun movimento di stato: niente da verificare.
+                  IF NEW.stato IS NOT DISTINCT FROM OLD.stato THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_ammessa := CASE OLD.stato
+                      WHEN 'DISPONIBILE' THEN NEW.stato IN ('ASSEGNATO', 'ANNULLATO')
+                      -- ⭐ ESEGUITO dal 2026-08-21 (D11): lo scrive il trigger
+                      --    pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito
+                      --    quando la riga contabile del fondo entra in POSTATA.
+                      -- ⚠️ DISPONIBILE resta ammessa ma dal changeSet -54 non
+                      --    la percorre piu' nessuno: il reset di un atto non
+                      --    eseguito lo CANCELLA. Resta come unica strada per
+                      --    disfare l'assegnazione senza cancellare l'atto.
+                      WHEN 'ASSEGNATO'   THEN NEW.stato IN ('DISPONIBILE', 'ANNULLATO', 'ESEGUITO')
+                      WHEN 'ANNULLATO'   THEN FALSE
+                      WHEN 'ESEGUITO'    THEN FALSE
+                      ELSE FALSE
+                  END;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fondi_source_guard_transizione',
+                          'E_FONDO_STATO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'operazione',          TG_OP,
+                              'fondo_source_id',     NEW.id,
+                              'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                              'campo',               'stato',
+                              'stato_da',            OLD.stato,
+                              'stato_a',             NEW.stato),
+                          NULL::uuid,
+                          OLD.stato, NEW.stato);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+              IS 'Matrice degli stati del fondo fattura, dalla NASCITA in poi. Nascita: DISPONIBILE (giro automatico) o ASSEGNATO (riporto di pagamenti.fn_conferma_sistemazione); ESEGUITO e ANNULLATO alla nascita sono rifiutati. Transizioni: DISPONIBILE -> ASSEGNATO|ANNULLATO, ASSEGNATO -> DISPONIBILE|ANNULLATO|ESEGUITO, ANNULLATO e ESEGUITO terminali. ⭐ rev 2026-08-31 (D-22 di brief-db-fondo-fattura-ricalcolo-e-governo §9.2-c): il guard era montato SOLO in UPDATE e chk_fondi_source_stato ammette tutti e quattro i valori, quindi l''unico presidio sullo stato di nascita era la buona volonta'' di chi faceva l''INSERT — un atto poteva nascere gia'' terminale, cioe'' un record che non e'' mai stato vero. ⚠️ Il ramo INSERT e'' separato e sta in testa: su un INSERT OLD non esiste e il confronto delle transizioni darebbe NULL, facendo cadere ogni INSERT nell''ELSE. ⭐ ASSEGNATO alla nascita e'' un percorso VIVO e non una concessione: il riporto nomina gia'' la fattura di destinazione, e farlo nascere DISPONIBILE sarebbe un credito che aspetta una decisione gia'' presa. ⭐ rev 2026-08-21 (cantiere incassi, lotto 3, passo S1-15): il quarto stato ESEGUITO entra nella matrice. Nasce perche'' ANNULLATO portava TRE significati — non si deve fare piu'', non si e'' piu'' capienti, e'' gia'' stato eseguito — e il terzo produceva un record autocontraddittorio (ANNULLATO con fattura_figlia_id ancora valorizzato). ⚠️ ESEGUITO e'' TERMINALE perche'' descrive un fatto avvenuto: il trasferimento e'' stato registrato in contabilita'', e uscire da li'' non lo annullerebbe — lo renderebbe invisibile all''atto che l''ha prodotto, cioe'' il doppio conteggio che il lotto 3 chiude. Un fondo eseguito sbagliato non si corregge tornando indietro: si compie un atto NUOVO, ed e'' la ragione per cui i rimborsi sono un processo (pagamenti.sistemazioni) e non un UPDATE. ⚠️ ASSEGNATO -> DISPONIBILE resta ammessa ma dal changeSet 20260821-54 NON la percorre piu'' nessuno: fn_reset_fondi_fattura cancella l''atto non eseguito invece di riaprirlo. Guard e non lookup di transizioni: sono quattro valori interni senza etichette ne'' azioni di UI. D11 del brief incassi; D-7 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2 e'' SUPERATA in due riprese (diceva «tre stati e non quattro», e non descriveva la nascita).';
+
+              -- ⚠️ Il trigger si RIMONTA con il suffisso di evento corretto.
+              --    L'ordine alfabetico dei BEFORE ROW sulla tabella non cambia:
+              --    dopo il prefisso comune il confronto e' fra `i` e `u`, quindi
+              --    resta fra a10_guard_importo_ins_upd e a10_lock_atto_upd.
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_guard_transizione_upd
+                  ON vendite.fatture_fondi_fattura_source;
+
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_guard_transizione_ins_upd
+                  ON vendite.fatture_fondi_fattura_source;
+
+              -- ℹ️ La lista di colonne vale per il solo UPDATE: in INSERT il
+              --    trigger scatta comunque, ed e' precisamente cio' che serve.
+              CREATE TRIGGER trg_fatture_fondi_fattura_source_a10_guard_transizione_ins_upd
+                  BEFORE INSERT OR UPDATE OF stato ON vendite.fatture_fondi_fattura_source
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_transizione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il ripristino riporta il guard alla sola fase di UPDATE.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: far rispettare la matrice degli stati del fondo.
+              -- Uso:   BEFORE UPDATE OF stato FOR EACH ROW
+              DECLARE
+                  v_ammessa BOOLEAN;
+              BEGIN
+                  IF NEW.stato IS NOT DISTINCT FROM OLD.stato THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_ammessa := CASE OLD.stato
+                      WHEN 'DISPONIBILE' THEN NEW.stato IN ('ASSEGNATO', 'ANNULLATO')
+                      WHEN 'ASSEGNATO'   THEN NEW.stato IN ('DISPONIBILE', 'ANNULLATO', 'ESEGUITO')
+                      WHEN 'ANNULLATO'   THEN FALSE
+                      WHEN 'ESEGUITO'    THEN FALSE
+                      ELSE FALSE
+                  END;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fondi_source_guard_transizione',
+                          'E_FONDO_STATO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'fondo_source_id',     NEW.id,
+                              'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                              'stato_da',            OLD.stato,
+                              'stato_a',             NEW.stato),
+                          NULL::uuid,
+                          OLD.stato, NEW.stato);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_fatture_fondi_fattura_source_a10_guard_transizione_ins_upd
+                  ON vendite.fatture_fondi_fattura_source;
+
+              CREATE TRIGGER trg_fatture_fondi_fattura_source_a10_guard_transizione_upd
+                  BEFORE UPDATE OF stato ON vendite.fatture_fondi_fattura_source
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_transizione();

@@ -78,6 +78,46 @@ davvero, e c'è un controllo apposta che se ne accerta.
 
 ---
 
+### 🔄 rev 2026-08-31 (sera) — qui vive anche la **forma con cui un registro nasce**
+
+Due colonne nuove, `prefisso_default` e `lunghezza_default`, dicono con che
+aspetto nasce un registro di questa famiglia:
+
+| famiglia | prefisso | cifre |
+| --- | --- | --- |
+| DDT | `DDT` | 7 |
+| ORDINE | `ORD` | 7 |
+| RESO | `RESO` | 7 |
+| COMMESSA | `CMM-` | **9** |
+| FATTURA | *nessuno* | 7 |
+
+⭐ **Sono DEFAULT, non il valore effettivo.** Quello vive su
+`vendite.registri_fatturazione`, e un sezionale può averlo diverso: è a questo che
+serve un sezionale. La divisione è netta — **qui il tipo documento, lì il
+sezionale**.
+
+#### ⛔ Perché queste colonne esistono, ed è una storia che vale la pena leggere
+
+Il piano prevedeva di togliere da `config.sistema_codici` le quattro righe dei
+documenti traslocati. ⚠️ Ma la funzione che crea i registri di un emittente nuovo
+derivava **proprio da lì** prefisso e lunghezza.
+
+⇒ Togliendo le righe, ogni emittente **nuovo** sarebbe nato con registri senza
+prefisso e con 7 cifre — la commessa quindi sbagliata, in silenzio. E non si
+sarebbe visto quel giorno: si sarebbe visto **al primo emittente creato dopo il
+rilascio**, cioè quando nessuno guarda.
+
+⭐ La sede giusta c'era già: questo è il catalogo che dice **cos'è** ogni famiglia,
+e prefisso e lunghezza sono proprietà del tipo di documento. Non è stata una
+colonna aggiunta per far quadrare un passo: è il posto dove quel dato apparteneva.
+
+⚠️ **Nessun `NOT NULL` sul prefisso:** vuoto è legittimo e significa «nessun
+prefisso», come sul registro. La lunghezza invece è `NOT NULL` con default 7, così
+non c'è mai un valore assente da interpretare — ed è esattamente l'assenza da
+interpretare che ha prodotto il difetto corretto dal changeSet `20260831-55`.
+
+---
+
 ### Impatto e Vantaggi
 
 * una sola sede dice quali documenti si numerano sui registri, e tutti la
@@ -85,4 +125,7 @@ davvero, e c'è un controllo apposta che se ne accerta.
 * aggiungere un tipo di documento è **una riga**, non una caccia ai posti da
   aggiornare;
 * il messaggio che spiega perché un cliente non si può spostare usa le parole di
-  questa tabella, quindi resta corretto da sé.
+  questa tabella, quindi resta corretto da sé;
+* i registri di un emittente nuovo nascono con la forma giusta senza che nessuno
+  debba ricordarsene, e **il backfill dei registri monchi legge dalla stessa
+  fonte** — così nascita e riparazione non possono divergere.

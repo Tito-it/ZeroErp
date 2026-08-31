@@ -19,7 +19,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 03-08-2026)  
+(latest review 31-08-2026)  
 
 La funzione **`vendite.fn_riporta_lotto_a_draft()`** riporta **in bozza** un lotto
 già lavorato, perché l'operatore possa correggere qualcosa a monte e **rifare il
@@ -90,10 +90,37 @@ incoerente** — e quel presidio vive altrove, nella funzione che assegna il num
 * ⚠️ **`stato_lotto` non viene toccato**, di proposito: da COMPLETATO come da
   ERRORE l'unica transizione ammessa è verso IN_ESECUZIONE, che è esattamente
   quello che farà il giro successivo.
-* ⚠️ **Le esecuzioni dei task (`fatturazione_lotti_task_runs`) non vengono
-  toccate.** Sono un registro storico di cosa è stato eseguito, non una macchina
-  di stato: nessuno le consulta per decidere se rifare un passo, e cancellarle
-  distruggerebbe traccia utile senza sbloccare nulla.
+* 🔴 **Le esecuzioni dei task (`fatturazione_lotti_task_runs`) vengono chiuse ad
+  `ANNULLATO`** — tutte quelle attive del lotto, non solo quelle dello step
+  DRAFT. È il passo **RD-6**, ed è indispensabile:
+  [`fn_resolve_lotto_task_execution_mode`](/dbzero/vendite/funzioni/fn_resolve_lotto_task_execution_mode)
+  legge l'**ultimo** task_run per (lotto, task, stato_doc) e su `COMPLETATO`
+  risponde `SKIP`. Senza questo passo **il lotto riaperto rilancia a vuoto**: i
+  task vengono saltati tutti, in silenzio — nessun errore, nessun task_run
+  nuovo, e il giro *sembra* riuscito.
+  * ⚠️ **Non si cancellano: si chiudono con un esito**, tramite
+    `fn_cancel_lotto_task_run` con motivo `ritorno_a_draft`. Il giro nuovo apre
+    `tentativo = MAX+1`, quindi la storia resta leggibile per intero — che è la
+    ragione per cui «registro storico» resta vero anche dopo il passaggio.
+  * ⚠️ **Non basterebbe `attivo = false`**: quella SELECT non filtra su
+    `attivo`. La leva è l'**esito**.
+
+> 📌 **Rettifica del 31-08-2026 — questo punto diceva l'opposto, e lo motivava
+> con un fatto confutato.** Fino a oggi la scheda affermava *«le esecuzioni dei
+> task non vengono toccate … nessuno le consulta per decidere se rifare un
+> passo»*, sulla base di una misura del 03-08-2026. Il changeSet **`20260803-12`**,
+> dello **stesso giorno**, introduceva il passo RD-6 proprio perché qualcuno le
+> consulta — `fn_resolve_lotto_task_execution_mode`. Non era una descrizione
+> incompleta: era una scelta spiegata con una premessa falsa, e chi leggeva
+> imparava una cosa sbagliata sul motore dell'esecuzione.
+
+* 🔴 **L'atto viene REGISTRATO nel giornale** (RD-7, dal 31-08-2026): una riga
+  `LOTTO_RIAPERTO` in `vendite.event_log`, scritta con
+  [`fn_log_event`](/dbzero/vendite/funzioni/fn_log_event), severity **WARN**, e
+  nel `payload` lo stato fiscale di partenza più i cinque contatori.
+  Prima di allora la riapertura si leggeva **solo di rimbalzo**, dai task_run
+  passati ad `ANNULLATO`: l'unico atto della funzione che **cancella documenti**
+  era anche l'unico senza una riga propria.
 
 ---
 
@@ -116,9 +143,55 @@ questa funzione.
 
 ---
 
+### Perché la riapertura si scrive in `event_log` e non fra le segnalazioni
+
+Il giornale del lotto ([`script.vw_giornale_entita`](/dbzero/script/views/vw_giornale_entita))
+unisce quattro registri, e due potevano ospitare questa riga. Non sono
+equivalenti, e la differenza non è di gusto:
+
+| | `vendite.fatturazione_lotti_log` | `vendite.event_log` |
+| --- | --- | --- |
+| Si può spegnere una riga? | **sì**, ha `disabilitato` | no |
+| Si può modificarla? | sì | **no**, append-only per trigger |
+| Come la si cerca? | dal testo del messaggio | dal **codice**, che è a catalogo |
+| Alimenta le segnalazioni? | **sì** | no |
+
+Le prime tre righe dicono la stessa cosa: un atto che **cancella documenti** non
+deve poter essere silenziato, riscritto, o ritrovato solo indovinando come era
+stata scritta la frase.
+
+⭐ **Ma è la quarta a decidere, ed è di comportamento, non di leggibilità.** Le
+segnalazioni del lotto si compongono da `fatture_log` unito a
+`fatturazione_lotti_log`; da `event_log` si legge soltanto l'ancora del giro
+corrente (`PIPELINE_STARTED`). Scrivere la riapertura nel registro delle
+segnalazioni l'avrebbe fatta entrare nel conteggio su cui si decide se
+l'avanzamento è ammesso: **un atto registrato sarebbe diventato un atto che
+blocca**. In `event_log` la riga si legge e non condiziona nulla.
+
+#### Perché WARN e non INFO
+
+La **conseguenza** dell'atto è già `WARN` nel giornale — il giornale mappa un
+task_run `ANNULLATO` a `WARN`, e la riapertura ne produce uno per ogni step.
+Se la **causa** restasse `INFO`, chi filtra per gravità vedrebbe otto corse
+annullate e non il motivo per cui lo sono: la gravità sarebbe invertita fra
+effetto e causa. Qui `severity` non risponde a *«si è rotto qualcosa»* ma a
+*«quanto deve saltare all'occhio di chi indaga»*.
+
+#### Perché la riga non può far fallire la riapertura
+
+È la domanda giusta da farsi davanti a una scrittura aggiunta in coda a
+un'operazione che oggi riesce. Il giornale rifiuta una riga **solo** quando non
+sa dire di chi è — e qui lo sa sempre, per costruzione: `LOTTO` è un tipo
+giornalabile a catalogo, il perimetro si copia da
+`fatturazione_lotti.emittente_soggetto_ruolo_id` che è **NOT NULL**, e che il
+lotto esista è già garantito dalle precondizioni. Non è una scommessa sui dati
+di oggi: è una proprietà dello schema.
+
+---
+
 ### Output
 
-Ritorna una riga con **cinque** contatori, tenuti separati di proposito: un numero
+Ritorna una riga con **sei** contatori, tenuti separati di proposito: un numero
 unico direbbe «dieci cose fatte» senza distinguere fatture cancellate da attività
 rimesse in coda, che per chi guarda il cruscotto sono fatti diversi.
 
@@ -127,6 +200,18 @@ rimesse in coda, che per chi guarda il cruscotto sono fatti diversi.
 * `deleted_fatture`
 * `deleted_righe`
 * `riemesse_attivita` — attività di commessa tornate emittibili
+* `annullati_task_run` — esecuzioni di task chiuse ad `ANNULLATO` (RD-6)
+
+⭐ **Cinque di questi sei finiscono anche nel `payload` della riga di giornale**,
+insieme allo stato fiscale da cui il lotto è tornato (`stato_precedente`).
+Resta fuori `updated_lotti`, che vale sempre 1 e non direbbe niente. È la
+ragione per cui quella riga vale: *«riaperto»* si deduce già dai task_run
+`ANNULLATO`, *«riaperto, e ha cancellato N fatture e M righe»* no — e chi
+indaga a mesi di distanza non ha altro modo di saperlo.
+
+> 📌 **Rettifica del 31-08-2026**: la scheda diceva «cinque» ed elencava i primi
+> cinque. `annullati_task_run` è nella firma dal changeSet `20260803-12`, lo
+> stesso che ha introdotto il passo RD-6 — mancava qui, non nella funzione.
 
 ---
 

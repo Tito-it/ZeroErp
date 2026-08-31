@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `D-20` — LA ROW SECURITY SU vendite.fatture_fondi_fattura_source
+# Brief: brief-db-fondo-fattura-ricalcolo-e-governo, §9.9 (decisione G-2, Tid
+#        2026-08-29). Ribalta la riga di §8.6 «niente RLS: il perimetro passa
+#        dalla fattura».
+#
+# -- PERCHE' LA CONCLUSIONE DEL 15 AGOSTO NON VALE PIU' ----------------
+#
+#   ⚠️ Non e' cambiata la conclusione: era la PREMESSA a essere scaduta. Quando
+#   §8.6 decise «niente RLS», l'unico accesso alla tabella era **la lista**, ed
+#   e' protetta dal JOIN INNER con `vendite.fatture`. Da allora la tabella ha
+#   preso un lettore applicativo, una pagina Vue aperta agli operatori e uno
+#   scrittore in un ALTRO schema (`pagamenti.fn_conferma_sistemazione`).
+#
+#   E il gesto di D-21 ne apre uno di natura diversa:
+#
+#       DELETE /api/v1/vendite/fondi-fattura/{id}/
+#                                            └── un id non ha nessun JOIN davanti
+#
+#   E' la stessa forma del buco che il passo E-4 del cantiere posting ha trovato
+#   il 2026-08-28 su `GET /conti-incasso/?soggetto_ruolo_id=…`.
+#
+# -- ⭐ E LA MISURA STRUTTURALE HA TROVATO PIU' DELLA DOMANDA ----------
+#
+#   Guardando QUALI satelliti della fattura hanno le policy:
+#
+#     fatture_scadenze · fatture_indirizzi · fatture_righe · riepiloghi_iva
+#         congelamento oltre EMESSA  ✅      RLS ef_whitelist + ba_ownership  ✅
+#     fatture_fondi_fattura_source
+#         congelamento               ⛔      RLS                              ⛔
+#
+#   Il fondo era l'assente di ENTRAMBE le famiglie, e non se n'era accorto
+#   nessuno perche' le due assenze erano state discusse in due posti diversi
+#   (D-6 la prima, §8.6 la seconda). Sono la stessa dimenticanza vista da due
+#   lati — e quell'oggetto e' l'unico che muove denaro. L'altra meta' la chiude
+#   D-21, con la quarta condizione del predicato.
+#
+# -- ⭐ QUI E' PIU' SEMPLICE CHE SUGLI ALTRI SATELLITI -----------------
+#
+#   `fatture_scadenze` ha dovuto delegare a `fn_scope_ba_ownership_via_fattura`
+#   perche' la riga il billing account non ce l'ha. Qui la riga porta tutto in
+#   colonna, e NOT NULL:
+#
+#       emittente_soggetto_ruolo_id  bigint NOT NULL  -> ef_whitelist, senza JOIN
+#       billing_account_id           bigint NOT NULL  -> ba_ownership, senza JOIN
+#
+#   ⚠️ Ed e' precisamente cio' che evita l'errore corretto su `enti_incasso`: la'
+#   la `WITH CHECK` proposta cercava il legame che l'INSERT stesso stava
+#   scrivendo, e avrebbe reso la tabella non scrivibile. Qui i due valori sono
+#   dentro `NEW`, quindi la `WITH CHECK` li legge senza cercare niente altrove e
+#   `pagamenti.fn_conferma_sistemazione` continua a scrivere.
+#
+# -- ⚠️ UN SOLO changeSet, E NON PER COMODITA' -------------------------
+#
+#   La famiglia storica separa «crea la policy» da «accendi la RLS» (20260601-32
+#   vs 20260601-38). Qui stanno insieme di proposito: fra i due passi la tabella
+#   sarebbe in **deny-all** per l'applicazione, e in mezzo passa il giro
+#   notturno. Un changeSet solo non ha quel minuto.
+#
+# -- ⚠️ NIENTE `FORCE ROW LEVEL SECURITY` ------------------------------
+#
+#   Coerente con tutta la famiglia (`fatture`, `fatture_scadenze`,
+#   `fatture_indirizzi`: `relforcerowsecurity = false`). La regola di
+#   linee-guida-sql §10.5 chiede FORCE quando la tabella e' di proprieta' di un
+#   ruolo APPLICATIVO: qui l'owner e' `titodb`, non `zeroerp_app`. ⚠️ Conseguenza
+#   dichiarata: l'owner non e' soggetto alle policy, ed e' il motivo per cui il
+#   pgTAP funzionale della slice fa `FORCE` locale alla propria transazione.
+#
+# -- 📌 TRE VERIFICHE, E NON SONO FORMALITA' ---------------------------
+#
+#   1. ⭐ Quattro file pgTAP SCRIVONO su questa tabella e dal 2026-08-07 girano
+#      come l'applicazione: `vendite/test-fondi-fattura.sql`, `-governo`,
+#      `-lotto`, `vendite/test-fondo-fattura-eseguito.sql`. Le loro fixture
+#      creano la fattura sorgente PRIMA dell'atto e `vendite.fatture` ha gia'
+#      la stessa policy `ef_whitelist`: l'emittente e' quindi in whitelist per
+#      costruzione. Gli altri due file che nominano la tabella non la scrivono
+#      (`rls/test-role-batch-fatturazione-postura.sql` legge i GRANT dal
+#      catalogo, `vendite/test-cleanup-fattura-copertura-figlie-v1.sql` gira da
+#      owner e legge `pg_constraint`). Vanno lanciati tutti e sei dopo l'apply.
+#   2. ⭐ Il giro notturno NON cambia, e va verificato invece che dedotto:
+#      `zeroerp_batch_fatturazione` ha `rolbypassrls = true` (misurato su
+#      `pg_roles` il 2026-08-31), quindi `fn_genera_fondi_fattura_source` e
+#      `fn_applica_fondi_fattura` attraversano. E' l'unico percorso che,
+#      rompendosi, si vedrebbe solo la mattina dopo.
+#   3. ⚠️ Un conteggio a zero non e' una prova: la tabella e' vuota, quindi
+#      qualunque misura sui dati da' lo stesso numero con e senza policy. Le due
+#      prove che valgono sono quelle di E-4 — strutturale (`relrowsecurity` e le
+#      policy sul catalogo) e comportamentale (la stessa lettura fatta da due
+#      operatori di due emittenti diversi).
+#
+# Dipendenze: script.fn_scope_ef_whitelist_via_sr(integer, bigint),
+#             script.fn_scope_ba_ownership(bigint, bigint).
+# Verifica:   db/pgtap/rls/test-rls-fondi-fattura-source-functional.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260831-62-enable-rls-fatture-fondi-fattura-source-mctit.yaml
+
+  - changeSet:
+      id: 20260831-62-enable-rls-fatture-fondi-fattura-source
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        D-20 (G-2, Tid 2026-08-29): si accende la row security su
+        vendite.fatture_fondi_fattura_source con le DUE policy della famiglia —
+        rls_fatture_fondi_fattura_source_ef_whitelist (FOR ALL, gate OPERATORE, scope
+        fn_scope_ef_whitelist_via_sr) e rls_fatture_fondi_fattura_source_ba_ownership (FOR
+        SELECT, gate CLIENTE_PORTALE, scope fn_scope_ba_ownership). ⭐ Niente JOIN via fattura:
+        emittente_soggetto_ruolo_id e billing_account_id sono in colonna e NOT NULL, quindi la
+        WITH CHECK li legge da NEW e non cerca il legame che l'INSERT sta scrivendo — l'errore
+        corretto su enti_incasso. ⚠️ Policy e ENABLE nello STESSO changeSet: fra i due la
+        tabella sarebbe in deny-all e in mezzo passa il giro notturno. Niente FORCE: l'owner e'
+        titodb, non zeroerp_app, come tutta la famiglia. Ribalta §8.6.
+        brief-db-fondo-fattura-ricalcolo-e-governo §9.9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: emittente_soggetto_ruolo_id
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+                columnName: billing_account_id
+            # ⛔ Le due colonne devono essere NOT NULL: e' cio' che rende la
+            #    WITH CHECK leggibile da NEW senza nessun JOIN. Se una delle due
+            #    diventasse nullable, la policy direbbe NULL e la riga non
+            #    passerebbe — fail-closed silenzioso su una scrittura legittima.
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >-
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'fatture_fondi_fattura_source'
+                     AND column_name IN ('emittente_soggetto_ruolo_id', 'billing_account_id')
+                     AND is_nullable  = 'NO'
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_scope_ef_whitelist_via_sr', 'fn_scope_ba_ownership')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1) L'OPERATORE: il perimetro dell'emittente ──────────────
+              -- FOR ALL e non FOR SELECT: il giro di fatturazione, il riporto e
+              -- il gesto di cancellazione SCRIVONO qui. Con la sola SELECT ogni
+              -- scrittura operatore fallirebbe anche in-scope — la lezione
+              -- dell'Ondata 2 (20260603-16..25), pagata una volta.
+              DROP POLICY IF EXISTS rls_fatture_fondi_fattura_source_ef_whitelist
+                  ON vendite.fatture_fondi_fattura_source;
+
+              CREATE POLICY rls_fatture_fondi_fattura_source_ef_whitelist
+                  ON vendite.fatture_fondi_fattura_source
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_soggetto_ruolo_id
+                          )
+                  )
+                  -- ⭐ La WITH CHECK legge la colonna da NEW: non cerca il legame
+                  --    che l'INSERT sta scrivendo, quindi
+                  --    pagamenti.fn_conferma_sistemazione continua a scrivere.
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_soggetto_ruolo_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_fondi_fattura_source_ef_whitelist
+                  ON vendite.fatture_fondi_fattura_source IS
+                  'RLS operatori: si vedono e si scrivono solo gli atti di fondo degli '
+                  'emittenti in whitelist (config.user_emittenti_fiscali). FOR ALL come '
+                  'sulla testata e sugli altri satelliti: qui si SCRIVE — il giro di '
+                  'fatturazione, il riporto di pagamenti.fn_conferma_sistemazione e il '
+                  'gesto di cancellazione di D-21. ⭐ Nessun JOIN via fattura: '
+                  'emittente_soggetto_ruolo_id sta in colonna ed e'' NOT NULL, quindi la '
+                  'WITH CHECK lo legge da NEW invece di cercare il legame che l''INSERT '
+                  'sta scrivendo — l''errore corretto su pagamenti.enti_incasso. '
+                  'G-2 di brief-db-fondo-fattura-ricalcolo-e-governo §9.9, che ribalta '
+                  'la scelta di §8.6: non era cambiata la conclusione, era scaduta la '
+                  'premessa — l''unico accesso non e'' piu'' la lista protetta dal JOIN. '
+                  'rev 2026-08-31.';
+
+              -- ── 2) IL CLIENTE DEL PORTALE: i propri billing account ──────
+              -- FOR SELECT e non FOR ALL, deliberato: un cliente LEGGE il proprio
+              -- documento, non lo scrive — nemmeno il suo. Stessa asimmetria gia'
+              -- in atto su fatture_scadenze e fatture_righe.
+              DROP POLICY IF EXISTS rls_fatture_fondi_fattura_source_ba_ownership
+                  ON vendite.fatture_fondi_fattura_source;
+
+              CREATE POLICY rls_fatture_fondi_fattura_source_ba_ownership
+                  ON vendite.fatture_fondi_fattura_source
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              billing_account_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_fondi_fattura_source_ba_ownership
+                  ON vendite.fatture_fondi_fattura_source IS
+                  'RLS portale: CLIENTE_PORTALE vede gli atti di fondo dei PROPRI billing '
+                  'account. ⭐ Chiama fn_scope_ba_ownership diretta e non la variante '
+                  '_via_fattura: billing_account_id sta in colonna ed e'' NOT NULL, quindi '
+                  'non c''e'' niente da risolvere. FOR SELECT e non FOR ALL: un cliente '
+                  'legge il proprio documento, non lo scrive. SHOP_CUSTOMER escluso (le '
+                  'fatture B2B non sono ricevute shop, 20260420-08). Pre-armata come le '
+                  'gemelle sui satelliti: gli endpoint fattura del portale non ci sono '
+                  'ancora, e arrivare dopo di loro vorrebbe dire correggere un buco su '
+                  'codice vivo. G-2 di brief-db-fondo-fattura-ricalcolo-e-governo §9.9. '
+                  'rev 2026-08-31.';
+
+              -- ── 3) L'ACCENSIONE ─────────────────────────────────────────
+              -- ⚠️ Nello stesso changeSet delle policy: separandoli la tabella
+              --    resterebbe in deny-all fra i due, e in mezzo passa il giro
+              --    notturno.
+              -- ⚠️ Niente FORCE: l'owner e' titodb e non zeroerp_app, come su
+              --    tutta la famiglia (linee-guida-sql §10.5).
+              ALTER TABLE vendite.fatture_fondi_fattura_source ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_fondi_fattura_source DISABLE ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS rls_fatture_fondi_fattura_source_ba_ownership
+                  ON vendite.fatture_fondi_fattura_source;
+
+              DROP POLICY IF EXISTS rls_fatture_fondi_fattura_source_ef_whitelist
+                  ON vendite.fatture_fondi_fattura_source;
