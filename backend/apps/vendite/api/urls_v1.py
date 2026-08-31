@@ -1,3 +1,11 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Rotte canoniche `/api/v1/vendite/*`. Una APIView esplicita per
+#        endpoint: nessun router DRF automatico, nessun CRUD generato.
+# ------------------------------------------------------------
+
 from django.urls import include, path
 
 from apps.vendite.api.views import (
@@ -83,6 +91,7 @@ from apps.vendite.api.views_lookups import (
     ApiTipiVariazioneContrattoLookup,
     ApiTipiVariazionePromoLookup,
 )
+from apps.vendite.api.views_iva import IvaResolveView
 from apps.vendite.api.views_pricing import (
     PricingDiagnoseView,
     PricingLimitiUtenteView,
@@ -104,6 +113,11 @@ urlpatterns = [
     path("resi/", include("apps.vendite.api.urls_resi")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
+    # ⭐ Gemello del resolver prezzi, e sta qui accanto di proposito: stesso
+    #    mestiere (esporre un resolver DB al form), stessa area, stessa forma.
+    #    ⛔ Non accetta un imponibile: sui documenti la riga non si spezza, e
+    #    il contratto lo impedisce invece di chiederlo per favore.
+    path("iva/resolve/", IvaResolveView.as_view(), name="vendite-iva-resolve"),
     # Diagnostica configurazione asset pricing (BA, contratto, matrice, promo)
     # — checklist a stadi + azioni suggerite per UX e supporto.
     path("pricing/diagnose/", PricingDiagnoseView.as_view(), name="vendite-pricing-diagnose"),

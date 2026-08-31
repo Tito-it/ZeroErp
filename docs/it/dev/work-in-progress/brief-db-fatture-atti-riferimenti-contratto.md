@@ -5,6 +5,11 @@
 > [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md)
 > (§8-nonies, punto 2: *«si porta dietro la colonna `fatture_righe.contratto`»*).
 >
+> 📌 **La richiesta operativa è raccolta con le altre** in
+> [brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md):
+> quello è l'ordine di lavoro, questo è il ragionamento. ⛔ Se le due divergono,
+> vale questo — l'elenco rimanda, non ricopia.
+>
 > **Origine.** Decisione di Tid del 2026-08-31, presa rispondendo a una domanda
 > sua: *«la fattura elettronica lo richiede per riga?»*. La risposta ha rovesciato
 > una scelta fatta poche ore prima — testata — e ha portato alla forma (b) qui

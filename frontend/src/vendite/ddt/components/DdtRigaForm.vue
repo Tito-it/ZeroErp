@@ -1,3 +1,7 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
 <script setup>
 // Scopo: Form singola riga DDT — articolo (autocomplete), UoM, quantita',
 // prezzo, sconto, IVA. Pricing stile ordini gestito lato BE: se il prezzo resta
@@ -25,6 +29,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
 
 const { t } = useI18n()
 const store = useDdtStore()
@@ -38,6 +43,13 @@ const props = defineProps({
   // ne' sulla riga ne' sui componenti del kit (FE-D4).
   causaleFatturabile: { type: Boolean, default: true },
 })
+const {
+  ivaOrigine,
+  origineLabel: ivaOrigineLabel,
+  risolviPer: risolviIvaPer,
+  reset: resetIva,
+} = useIvaRisolta({ documentoTipo: 'DDT', documentoId: () => props.ddtId })
+
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
 const form = ref({
@@ -96,10 +108,12 @@ watch(() => props.riga, (riga) => {
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
   form.value.descrizione = item.descrizione || ''
-  // Auto-fill IVA dall'articolo (sovrascrivibile prima del save).
-  if (item.iva_id != null) {
-    form.value.iva_id = item.iva_id
-  }
+  // ⛔ NIENTE PIU' AUTO-FILL DALL'ARTICOLO: era una seconda risposta alla
+  // stessa domanda, e ignorava sia l'uso della fornitura sia i titoli
+  // documentati del cliente. Ora risponde la sede unica, col contesto derivato
+  // dalla testata — la stessa che il backend leggera' al salvataggio.
+  resetIva()
+  risolviIvaPer(form.value, item.id)
   form.value.uom_operativa_id = null
   form.value.prezzo_unitario = null
   articoloObj.value = item
@@ -254,6 +268,11 @@ async function handleSave() {
         <label>{{ t('vendite.ddt.riga_iva') }} *</label>
         <IvaSelect v-model="form.iva_id"
           :placeholder="t('vendite.ddt.riga_iva')" :disabled="isEdit" />
+        <!-- ⭐ IL PERCHE' DI QUEL NUMERO. `I6` sta per togliere all'operatore
+             la casella: un'aliquota che non si puo' cambiare E che non viene
+             spiegata e' la forma peggiore. La label la compone il composable —
+             qui non si costruisce nessun percorso i18n. -->
+        <small v-if="ivaOrigine" class="app-field-hint">{{ ivaOrigineLabel }}</small>
       </div>
       <div class="form-field" v-if="!isEdit">
         <label>{{ t('vendite.ddt.riga_uom') }} *</label>

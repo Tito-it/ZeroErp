@@ -22,7 +22,7 @@ from django.db import DatabaseError, transaction
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.parameter_service import ParameterService
+from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services._pricing_gate_helpers import (
     check_limite_variazione_prezzo,
@@ -799,6 +799,30 @@ def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════
 
 
+# Scopo: risolve il trattamento IVA di una riga preventivo, e ritorna
+#        `(iva_id, meta_patch)`.
+# ⭐ Wrapper sottile sul BB `IvaResolverService.applica_riga_documento`.
+# ⚠️ L'EMITTENTE IN DUE PASSI, come gia' fa l'init dei componenti: prima quello
+#    esplicito del preventivo (admin globale che l'ha scelto), poi quello
+#    dell'operatore. ⛔ Ma qui, a differenza dei componenti, l'assenza NON e'
+#    uno skip silenzioso: senza emittente il risolutore leggerebbe zero titoli
+#    sotto RLS e risponderebbe con l'aliquota ordinaria senza sollevare — una
+#    riga sbagliata che nessuno segnala. `P3`: ci si ferma.
+# ⛔ E' la PK di `emittenti_fiscali`, non il `soggetto_ruolo_id` che
+#    `resolve_emittente_sr_id_for_testata` produce per il pricing.
+# ⭐ Costruito da una FACTORY e non scritto qui: i tre domini avevano tre copie
+#    identiche a meno del codice errore. Stesso stampo di
+#    `make_db_errors_translator` — i parametri di dominio si fissano una volta,
+#    la regola resta in un posto solo.
+_risolvi_iva_riga = make_risolvi_iva_riga(
+    error_code="E_PREV_VALIDAZIONE",
+    function_name=f"{_FN}._risolvi_iva_riga",
+    usa_auth_user=True,
+)
+
+
+
+
 # Scopo: Aggiunge riga al preventivo con guard su stato + ricalcolo totali.
 #        Auto-fill prezzo da resolver v5 (Sprint 2 B+L1): se il payload non
 #        specifica `prezzo_unitario`, viene risolto automaticamente tramite
@@ -918,6 +942,17 @@ def gestisci_riga(
     # `trgfn_qta_from_operativa` deriva `quantita` (base) e riempie
     # `factor_to_base` dalla mappa UoM. Il BE non deriva piu' nulla e NON invia
     # `quantita` (colonna derivata, calcolata dal DB). Allineato a contratti/offerte.
+    # ⭐ L'IVA DI RIGA VIENE DALLA SEDE UNICA (I3, 2026-08-31).
+    # ⚠️ Il payload VINCE finche' `I6` non chiude la casella (opzione B).
+    iva_id_riga, iva_meta = _risolvi_iva_riga(
+        testata,
+        articolo_id=str(articolo_id),
+        payload_iva_id=payload.get("iva_id"),
+        auth_user_id=auth_user_id,
+    )
+    if iva_meta:
+        merged_meta = {**(merged_meta or {}), **iva_meta}
+
     result = repo.create_riga(
         preventivo_id=preventivo_id,
         articolo_id=articolo_id,
@@ -928,7 +963,7 @@ def gestisci_riga(
         factor_to_base=payload.get("factor_to_base"),
         prezzo_unitario=prezzo_finale,
         sconto_percentuale=payload.get("sconto_percentuale"),
-        iva_id=payload.get("iva_id"),
+        iva_id=iva_id_riga,
         ordine=payload.get("ordine"),
         meta=merged_meta or None,
         stato_approvazione_prezzo=stato_approvazione,

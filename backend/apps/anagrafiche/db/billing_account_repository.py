@@ -214,6 +214,39 @@ class BillingAccountRepository:
             row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else None
 
+    # Scopo: Risolve il `soggetti.id` del CLIENTE intestatario del BA, via
+    #        `billing_account -> soggetti_ruoli -> soggetti`.
+    # Perimetro: sola lettura, nessuno scope (l'id e' gia' noto; il cancello
+    #        sta sull'endpoint che ci arriva).
+    # Risultato: UUID del soggetto, oppure None se il BA non esiste.
+    #
+    # ⭐ Nasce il 2026-08-31 per il risolutore IVA, e la ragione e' un difetto
+    #    MUTO: `vendite.fn_resolve_iva_riga` applica lo stadio B — i titoli
+    #    documentati del soggetto, cioe' le dichiarazioni d'intento — solo se
+    #    riceve INSIEME `p_soggetto_id` e `p_emittente_fiscale_id`, e il
+    #    soggetto dal billing account NON lo deriva. Un chiamante che ha in
+    #    mano il solo BA (il caso ordinario di un form) otterrebbe l'aliquota
+    #    ordinaria senza che niente segnali che i titoli non sono stati
+    #    nemmeno guardati.
+    # ⚠️ E' la STESSA catena che `trgfn_fatture_righe_guard_normalize` percorre
+    #    per derivare esigibilita e split payment (I5, `20260829-54`): la
+    #    domanda fiscale e' del CLIENTE, non dell'emittente.
+    def get_soggetto_id(self, billing_account_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT sr.soggetto_id
+                  FROM anagrafiche.billing_account ba
+                  JOIN anagrafiche.soggetti_ruoli sr
+                    ON sr.id = ba.soggetto_ruolo_id
+                 WHERE ba.id = %s
+                 LIMIT 1
+                """,
+                [billing_account_id],
+            )
+            row = cursor.fetchone()
+        return str(row[0]) if row and row[0] is not None else None
+
     # Scopo: Restituisce il singolo billing_account arricchito per restore lato client.
     #        Usato in edit quando il form ha solo l'id e deve ricostruire il _obj
     #        dell'AutoComplete senza doppio round-trip.

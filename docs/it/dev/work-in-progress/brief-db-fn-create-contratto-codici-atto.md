@@ -4,6 +4,11 @@
 > `S3-b` del piano
 > [brief-be-fe-iva-risolutore-e-regime-cliente.md](brief-be-fe-iva-risolutore-e-regime-cliente.md).
 >
+> 📌 **La richiesta operativa è raccolta con le altre** in
+> [brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md):
+> quello è l'ordine di lavoro, questo è il ragionamento. ⛔ Se le due divergono,
+> vale questo — l'elenco rimanda, non ricopia.
+>
 > **Origine.** Trovato il 2026-08-29 costruendo `I8` lato BE/FE. La metà additiva
 > di `I8` è **applicata** — `vendite.contratti` ha `codice_cig`, `codice_cup`,
 > `codice_commessa` (changeSet `20260829-13`) — e il backend le scrive già in

@@ -32,6 +32,7 @@ from typing import Any, NamedTuple
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
@@ -560,6 +561,19 @@ def gestisci_riga(
                 "prezzo_resolver_context": {"esito_codice": esito_codice},
             }
 
+    # ⭐ L'IVA DI RIGA VIENE DALLA SEDE UNICA (I3, 2026-08-31). Fino a oggi la
+    # sceglieva il frontend copiandola dall'articolo in `onArticoloSelect`:
+    # una seconda risposta alla stessa domanda, che ignorava l'uso della
+    # fornitura e i titoli documentati del cliente — cioe' applicava l'aliquota
+    # piena a un esportatore abituale senza che niente lo segnalasse.
+    # ⚠️ Il payload VINCE finche' `I6` non chiude la casella (decisione di Tid,
+    # opzione B): qui si registra soltanto cosa avrebbe detto il risolutore.
+    iva_id_riga, iva_meta = _risolvi_iva_riga(
+        testata, articolo_id=str(articolo_id), payload_iva_id=data.get("iva_id"),
+    )
+    if iva_meta:
+        meta_riga = {**(meta_riga or {}), **iva_meta}
+
     with _db_errors("gestisci_riga"), transaction.atomic():
         riga_nr = repo.next_riga_nr(ddt_id)
         created = repo.create_riga(
@@ -573,7 +587,7 @@ def gestisci_riga(
             factor_to_base=data.get("factor_to_base"),
             prezzo_unitario=prezzo_unitario,
             sconto_percentuale=data.get("sconto_percentuale"),
-            iva_id=data.get("iva_id"),
+            iva_id=iva_id_riga,
             meta=meta_riga,
         )
         riga_id = int(created["id"])
@@ -945,6 +959,27 @@ def _data_riferimento(testata: dict[str, Any]) -> date:
         function_name=f"{_FN}._data_riferimento",
     )
     return date.fromisoformat(str(raw))
+
+
+# Scopo: risolve il trattamento IVA di una riga DDT dal contesto della testata,
+#        e ritorna `(iva_id, meta_patch)`.
+# ⭐ Wrapper sottile sul BB `IvaResolverService.applica_riga_documento`: la
+#    regola sta li' ed e' una sola per i tre domini. Qui c'e' solo il
+#    passaggio dei campi di testata, che sono di questo dominio.
+# ⛔ `emittente_fiscale_id` e' la PK di `anagrafiche.emittenti_fiscali`, NON il
+#    `soggetto_ruolo_id` che `_resolve_emittente_sr_id` produce per il pricing:
+#    i due numeri si somigliano abbastanza da passare inosservati, e con quello
+#    sbagliato il risolutore non trova i titoli e risponde con l'aliquota
+#    ordinaria senza sollevare.
+# ⭐ Costruito da una FACTORY e non scritto qui: i tre domini avevano tre copie
+#    identiche a meno del codice errore. Stesso stampo di
+#    `make_db_errors_translator` — i parametri di dominio si fissano una volta,
+#    la regola resta in un posto solo.
+_risolvi_iva_riga = make_risolvi_iva_riga(
+    error_code="E_DDT_VALIDAZIONE",
+    function_name=f"{_FN}._risolvi_iva_riga",
+)
+
 
 
 # Scopo: l'esito della risoluzione prezzo di una riga DDT: il prezzo se c'e',

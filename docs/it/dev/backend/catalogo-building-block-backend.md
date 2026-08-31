@@ -533,6 +533,36 @@ Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie
 
 ---
 
+## Vendite — Risolutore IVA di riga (`apps/vendite/`)
+
+⛔ **La regola che questo BB esiste per tenere: mai leggere
+`catalogo.articoli.iva_id` in un service di dominio.** È il gemello esatto della
+regola di `PricingService` («mai leggere `listini_righe.prezzo`»), e nasce dallo
+stesso difetto — tre `onArticoloSelect` nel frontend e una proiezione di
+pipeline che rispondevano ognuno per conto suo alla stessa domanda. Il
+risolutore vive interamente nel DB (`vendite.fn_resolve_iva_riga`, due stadi +
+guscio che smista per paese); qui c'è solo il guard di chiamata, la traduzione
+errori e la normalizzazione. Cantiere: [brief-be-fe-iva-fase-3-consumatori-risolutore.md](../work-in-progress/brief-be-fe-iva-fase-3-consumatori-risolutore.md) (F2-a).
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `IvaResolverRepository.resolve` | [iva_resolver_repository.py](../../../../backend/apps/vendite/db/iva_resolver_repository.py) | Wrapper su `vendite.fn_resolve_iva_riga`. ⛔ **Ritorna una LISTA, sempre**: la funzione è set-returning — una riga nel caso ordinario, **due** quando il plafond di un titolo finisce a metà riga, nell'ordine «prima la quota coperta dal titolo, poi il resto». Un `fetchone()` qui **non fallisce**: prende la parte coperta e butta il resto, cioè applica un'esenzione a un imponibile che non ne ha diritto. ⚠️ I tre parametri di contesto del dispatch (paese emittente, paese cliente, cessione di beni) **non si passano**: il guscio li deriva da sé, e derivarli nel chiamante vorrebbe dire ripetere tre lookup a ogni punto che risolve l'IVA. |
+| `IvaResolverService.risolvi` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | La ripartizione completa. ⛔ **`emittente_fiscale_id` è OBBLIGATORIO, ed è la ragione per cui il service esiste**: la funzione DB è `SECURITY INVOKER` e legge `anagrafiche.soggetti_titoli_iva`, che ha la RLS — senza contesto emittente legge **zero titoli** e risponde con l'aliquota ordinaria **senza sollevare**. Non è una lista più corta: è un'imposta applicata dove non andava, su un documento che nessuno segnalerà. Due invarianti presidiate: **zero righe** = contratto rotto (la funzione dice `origine = 'ASSENTE'`, non tace) e **ripartizione senza imponibile** = ramo di anteprima rotto. |
+| `IvaResolverService.risolvi_anteprima` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | Il trattamento «sul primo euro», **una parte sola**. È la forma che usano i documenti (il plafond si applica a tutta la riga se c'è capienza — decisione di Tid) e quella che alimenta l'anteprima del form. ⚠️ **Non è `risolvi()[0]`**: qui l'imponibile **non si passa affatto**. Chiamare col totale e prendere la prima parte darebbe il trattamento della sola quota coperta applicandolo a tutta la riga — il difetto opposto. |
+| `IvaResolverService.meta_riga` | [iva_resolver_service.py](../../../../backend/apps/vendite/services/iva_resolver_service.py) | Il sottoinsieme che sopravvive nel `meta` della riga di documento: **`iva_origine` e `iva_titolo_id`**, due chiavi su dieci. ⭐ Il criterio: qui stanno i **fatti che nessuno può ricostruire dopo**. Aliquota, natura e riferimento normativo si **derivano** da `iva_id` con il `JOIN` su `config.iva` che i repository di riga fanno già — copiarli creerebbe una frase che invecchia, ed è il motivo per cui `fatture_righe.iva_perc` era stata tolta. |
+
+⭐ **Nessun elenco di codici errore da riconoscere, e non è una semplificazione**:
+dal 2026-08-05 il codice di dominio viaggia in un **campo strutturato**
+dell'eccezione, che `translate_db_errors` legge da sé. È il debito che
+`pricing_service._KNOWN_DB_ERROR_MARKERS` dichiara nel proprio commento come «da
+togliere quando quel refactor sarà fatto» — è fatto, e il BB nuovo non lo eredita.
+
+Test: `apps/vendite/tests/services/test_iva_resolver_service.py` (10 casi,
+**provati per mutazione**: spegnendo il guard sull'emittente o quello sulla
+ripartizione cadono 7 asserzioni).
+
+---
+
 ## Preventivi vendita (`apps/vendite/`)
 
 | Building Block | File | Descrizione |

@@ -227,13 +227,18 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
     passati a init_componenti_riga per articolo composito.
     """
 
+    # ⚠️ `_risolvi_iva_riga` mockato per la stessa ragione del repository:
+    #    dal 2026-08-31 `gestisci_riga` interroga il risolutore IVA, e senza
+    #    mock questi test — che parlano di componenti BoM — aprirebbero una
+    #    connessione vera e in CI fallirebbero per un motivo che non c'entra.
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
     @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
     @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO)
     def test_gestisci_riga_composito_passa_overrides(
-        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr, _iva,
     ) -> None:
         mock_tx.atomic.return_value = nullcontext()
         repo = repo_cls.return_value
@@ -256,13 +261,18 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         self.assertEqual(kwargs["componenti_overrides"], {"10": "5.50"})
         self.assertTrue(out["is_composito"])
 
+    # ⚠️ `_risolvi_iva_riga` mockato per la stessa ragione del repository:
+    #    dal 2026-08-31 `gestisci_riga` interroga il risolutore IVA, e senza
+    #    mock questi test — che parlano di componenti BoM — aprirebbero una
+    #    connessione vera e in CI fallirebbero per un motivo che non c'entra.
+    @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
     @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
     @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO)
     def test_gestisci_riga_composito_senza_overrides(
-        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr, _iva,
     ) -> None:
         # Articolo composito senza override: init con componenti_overrides=None
         # (la fn DB risolve i prezzi dal pricing corrente).

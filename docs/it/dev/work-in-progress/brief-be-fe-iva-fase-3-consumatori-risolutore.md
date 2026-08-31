@@ -611,3 +611,304 @@ le due strade tornano a divergere.
 | Data | Cosa |
 | --- | --- |
 | 2026-08-31 | Piano scritto su richiesta di Tid, dopo la chiusura DB di Fase 2, Fase 3 e delle decisioni `D33`/`D34`. Nove decisioni prese nello scambio (§2). ⭐ **`P1` si è rivelata un ramo già scritto nel DB** (`p_imponibile IS NULL`): la regola «non spezzare le righe sul documento» non richiede una riga di codice DB. ⛔ Due difetti vivi trovati verificando invece di assumere: il **cancello dei codici errore è rosso** con un quinto codice applicato al DB e non in git, e **`contratto_id` non è nella group key** delle righe di fattura — due attività di contratti diversi collassano oggi nella stessa riga. Quattro decisioni restano aperte (§3), e `N3` — a chi puntano le attività quando la riga di fattura si spezza — è il punto duro del piano |
+
+---
+
+## 9. Avanzamento
+
+> Scritto il 2026-08-31, a lavoro in corso.
+
+### ✅ `F2-a` — il building block del risolutore
+
+Prima voce eseguita, e la ragione della priorità è che è **pura addizione**: due
+file nuovi, nessun consumatore ancora agganciato, quindi rischio di regressione
+zero — ed è il gate di tutto il resto di `F2`.
+
+| File | Cosa |
+| --- | --- |
+| `apps/vendite/db/iva_resolver_repository.py` | **nuovo** — wrapper su `fn_resolve_iva_riga`, ritorna una **lista** |
+| `apps/vendite/services/iva_resolver_service.py` | **nuovo** — `risolvi`, `risolvi_anteprima`, `meta_riga`, guard di `P3` |
+| `apps/vendite/tests/services/test_iva_resolver_service.py` | **nuovo** — 10 casi |
+| `docs/it/dev/backend/catalogo-building-block-backend.md` | il BB registrato a catalogo |
+
+⭐ **Trovato un accoppiamento che il piano non aveva previsto, e aggirato senza
+pagarlo.** `test_error_codes_declared_guardrail` esige che **ogni** codice `E_*`
+nominato in un punto di chiamata Python abbia la sua classe: nominare
+`E_IVA_TITOLI_AMBIGUI` o `E_IVA_PAESE_NON_IMPLEMENTATO` nel service avrebbe reso
+**rosso** quel cancello, perché `F0` è gated sul seed del quinto codice. Cioè
+`F2-a` sarebbe stata bloccata da `F0`.
+
+⇒ **Il BB non nomina nessuno dei quattro**, e non è un ripiego: dal 2026-08-05 il
+codice di dominio viaggia in un **campo strutturato** dell'eccezione e
+`translate_db_errors` lo legge da sé. È il debito che
+`pricing_service._KNOWN_DB_ERROR_MARKERS` dichiara nel proprio commento come «da
+togliere quando quel refactor sarà fatto» — **è fatto**, e il BB nuovo non lo
+eredita. Il fallback è `E_VENDITE_CHIAMATA_NON_VALIDA` (`TECNICO`, già
+dichiarato), che il catalogo descrive esattamente come *«guard di parametro su
+valori che nessuna interfaccia può produrre: se arrivano, è rotto il chiamante»* —
+cioè `P3` alla lettera.
+
+⚠️ **Finché `F0` non arriva** un `E_IVA_*` sollevato dal DB risolve sulla
+scorciatoia dei codici `E_` non registrati (400 «errore di validazione») invece
+che sulla sua classe. Non è un test rosso e si sana da sé il giorno del seed, ma
+va saputo.
+
+#### Le prove, e cosa prova ciascuna
+
+| Prova | Esito |
+| --- | --- |
+| 10 test unitari (repository mockato) | ✅ verdi |
+| ⭐ **mutazione** — spento il guard sull'emittente e quello sulla ripartizione | ✅ **7 asserzioni cadono**: i presidi discriminano |
+| ⭐ **smoke sul DB vero**, in transazione annullata | ✅ dieci colonne, `quota = NULL`, `origine = 'ARTICOLO'` — l'SQL lega davvero |
+
+⚠️ **Perché lo smoke serviva**: i test unitari mockano il repository, quindi
+provano la catena Python e **non** che la funzione esista né che i parametri
+leghino. Un `RETURNS TABLE` con una colonna in più o un cast sbagliato sarebbe
+passato verde.
+
+⭐ E lo smoke ha **confermato `D32`**: senza `soggetto_id`, `esigibilita` e
+`split_payment` escono entrambi `NULL` — *«senza il soggetto il regime di
+scissione non è determinato»*. La coppia dice «non lo so» invece di affermare
+«non scissa».
+
+### ✅ `F5` — `congela_fiscale`: la nona copia cade, e con essa il pulsante muto
+
+⭐ **La voce si è rivelata più grande e migliore di come era scritta.** Il piano
+diceva «il BE espone `congela_fiscale`, il FE lo legge». Guardando il DB è
+emerso che `script.fn_check_fattura_eliminabile_da_lotto` **esiste già**, è
+`STABLE` e pura, legge `congela_fiscale` (post-`D33`) e ritorna l'array ordinato
+dei motivi con `{codice, reason, reason_key}` — e il suo `Scopo` dichiara **due**
+consumatori: *«`fn_elimina_fattura_da_lotto` (solleva il codice del primo
+motivo) e il BE, per spiegare invece di far fallire»*. Il secondo non esisteva.
+
+⇒ Non si è esposto un flag: si è esposta la **capability**, e questo toglie non
+una copia della soglia ma **tutto il ragionamento duplicato**.
+
+| File | Cosa |
+| --- | --- |
+| `apps/vendite/db/vendite_repository.py` | `LEFT JOIN LATERAL` sulla funzione + `can_reset_fattura` / `_reason` / `_reason_key` |
+| `apps/vendite/types.py` | la terna su `LottoFattureRow` |
+| `frontend/.../LottoDrawer.vue` | `PRE_FISCALI` **eliminata**; l'azione resta visibile e **spenta col motivo** |
+| `backend/scripts/tests/smoke-lotto-capability-reset-fattura.py` | **nuovo**, 5 casi |
+
+⭐ **E l'operatore guadagna una cosa che prima non aveva**: fino a oggi l'azione
+*spariva* e basta. Ora resta a video, spenta, con il perché — reso nel kebab via
+`app-menu-item-motivo`, dove il tooltip non arriva perché su touch non c'è hover.
+
+⚠️ **Fail-closed**: capability assente ⇒ azione spenta. Su un verbo che
+**cancella** il documento, «non lo so» non può voler dire «vai».
+
+✅ **Le chiavi i18n c'erano già tutte** (`vendite.lotti.azione_reason.*`, it+en):
+il DB le dichiarava e nessuno le leggeva.
+
+#### Le prove
+
+| Prova | Esito |
+| --- | --- |
+| smoke sul DB vero, transazione annullata, **contesto operatore impostato** | ✅ 5/5 |
+| il caso **negativo** (lotto e fattura oltre soglia) | ✅ `False` + motivo + chiave |
+| ⭐ il caso **positivo** (lotto e fattura sotto soglia) | ✅ `True`, motivo assente |
+| ⭐ **mutazione**: il flag smette di derivare dal motivo | ✅ **2 casi cadono** |
+
+⚠️ **Il contesto operatore nello smoke non è cerimonia**: senza i cinque GUC
+`vendite.fatture` risponde zero righe sotto RLS e lo smoke sarebbe verde **per
+sottrazione** — «nessuna riga sbagliata» perché nessuna riga.
+
+### ✅ `F2-b` — l'endpoint di anteprima
+
+`POST /api/v1/vendite/iva/resolve/` (`apps/vendite/api/views_iva.py`), calco di
+`pricing/resolve/`. Sei test (`apps/vendite/tests/api/test_iva_resolve_api.py`).
+
+⛔ **Non accetta un imponibile, ed è il contratto che tiene `P1`.** Il modo
+solido di garantire «sui documenti la riga non si spezza» non è ricordarselo: è
+non dare al client il parametro con cui romperlo.
+
+⛔ **La PK dell'emittente, non il `soggetto_ruolo_id`** — trappola già pagata dal
+progetto (`feedback_emittente_pk_vs_soggetto_ruolo`), e qui sarebbe stata muta:
+con l'id sbagliato la funzione non trova l'emittente, quindi non trova i suoi
+titoli, e risponde con l'aliquota ordinaria.
+
+### ⛔ Un difetto muto trovato costruendo `F2-b`, e corretto nel BB
+
+`fn_resolve_iva_riga_it` applica lo **stadio B** — i titoli documentati, cioè le
+dichiarazioni d'intento — solo se riceve **insieme** `p_soggetto_id` e
+`p_emittente_fiscale_id` (riga 174 del corpo). E il soggetto dal billing account
+**non lo deriva**, a differenza del paese che il guscio deriva da sé.
+
+⇒ Un chiamante che ha in mano il solo BA — cioè **il caso ordinario di un
+form** — otterrebbe l'aliquota piena su un esportatore abituale, e niente
+segnalerebbe che i titoli non sono stati nemmeno guardati.
+
+✅ Corretto **nel BB e non nei chiamanti**: `IvaResolverService` deriva il
+soggetto dal BA quando manca, con `BillingAccountRepository.get_soggetto_id`
+(nuovo). È la stessa catena che il trigger di `I5` percorre per esigibilità e
+split — la domanda fiscale è del **cliente**. Due test nuovi: la derivazione
+avviene, e un soggetto esplicito **non** viene sovrascritto.
+
+### 🟡 `F6` — gated su un prerequisito DB
+
+⛔ **Non è una voce BE**, e il piano la classificava male: `linee-guida-sql §6b`
+descrive **quattro passi** e ne nomina proprio questo parametro. I primi due
+(`codice_interno` su `config.iva` + lock) sono fatti da `D28`; il terzo
+(rinominare il parametro e cambiarne il valore nel seed) e il quarto (riga nel
+registry `config.parameter_fk_surrogate`) sono **seed DB**.
+
+📌 Brief passato al team DB:
+[brief-db-default-iva-chiave-naturale.md](brief-db-default-iva-chiave-naturale.md).
+Il lettore BE — uno solo, il form-defaults dell'articolo — si adegua **nello
+stesso giro**, non prima.
+
+### ✅ `F2-c` — i tre service chiamano il risolutore
+
+`P10-bis` (Tid, 2026-08-31): **opzione B** — il payload vince, ma si registra
+cosa avrebbe detto il risolutore.
+
+| File | Cosa |
+| --- | --- |
+| `iva_resolver_service.applica_riga_documento` | la regola, **una volta sola** per i tre domini |
+| `ddt_service` · `ordini_service` · `preventivi_service` | `_risolvi_iva_riga`, wrapper sottile col contesto di testata |
+
+⚠️ **Le due risoluzioni non hanno lo stesso peso**, ed è il pezzo che non si
+vede leggendo in fretta: senza `iva_id` nel payload la risoluzione è
+**autoritativa** e gli errori **passano** (meglio fermarsi che scrivere un'IVA
+inventata); con `iva_id` è di **audit**, best-effort dentro un savepoint —
+stesso idioma di `BaseSourceHandler._resolve_pricing_audit`.
+
+⭐ **`MANUALE` solo quando DIVERGE**: se l'operatore conferma il valore
+proposto non ha sovrascritto niente, e marcarlo manuale renderebbe manuale
+tutto il traffico del form — cioè toglierebbe al campo ogni capacità di dire
+qualcosa.
+
+⛔ **Due guard nuovi**, e sono `P3` che morde: senza emittente o senza data la
+riga **non si scrive**. In `preventivi_service` l'emittente segue i due passi
+già usati per i componenti (testata → operatore) — ma qui l'assenza **non è**
+uno skip silenzioso come là.
+
+#### Le prove
+
+| Prova | Esito |
+| --- | --- |
+| suite vendite | ✅ 1781 |
+| ⭐ **mutazione**: il risolutore staccato dalla scrittura in DDT e preventivi | ✅ **2 presidi cadono** |
+| ⭐ mutazione sul BB: `MANUALE` sempre + payload ignorato | ✅ 2 casi cadono |
+
+⚠️ **Sette test esistenti adeguati**, e la ragione è sempre la stessa: il
+risolutore è un **collaboratore nuovo** di `gestisci_riga` e va mockato come il
+repository — senza, test che parlano di componenti BoM aprirebbero una
+connessione vera e in CI fallirebbero per un motivo che non c'entra.
+
+### ✅ `F2-d` — il frontend smette di rispondere per conto suo
+
+Scelta **(c)** (Tid, 2026-08-31): l'endpoint prende le **coordinate del
+documento** e deriva il contesto dalla testata.
+
+| File | Cosa |
+| --- | --- |
+| `services/_iva_contesto_documento.py` | **nuovo** — `carica_testata` (I/O) + `contesto_da_testata` (**pura**) |
+| `api/views_iva.py` | prende `documento_tipo` + `documento_id`; ⛔ `data_riferimento` **tolta dal contratto** |
+| i tre `_risolvi_iva_riga` | delegano allo **stesso** estrattore |
+| `frontend/.../api/iva.js` · `_shared/righe/useIvaRisolta.js` | **nuovi** — BB alla 3ª occorrenza |
+| i tre `*RigaForm.vue` | l'auto-fill **sparisce**; compare l'hint che dice **da dove viene** l'aliquota |
+| `it.json` · `en.json` | il vocabolario `vendite.iva_origine.*` |
+
+⭐ **La separazione fra le due funzioni dell'estrattore è la cosa che conta**:
+`contesto_da_testata` è **pura**, così i service — che la testata l'hanno già
+caricata — non spendono un secondo round-trip, mentre la view, che ha solo un
+id, usa il loader. Anteprima e salvataggio guardano la **stessa fonte**: non
+possono dire due numeri diversi.
+
+⛔ **E `data_riferimento` è uscita dal contratto dell'endpoint.** Accettarla dal
+client avrebbe ammesso che l'anteprima rispondesse per una data diversa da
+quella su cui il salvataggio calcola — cioè avrebbe **costruito** il disaccordo
+che questo endpoint esiste per togliere. Un campo dichiarato e ignorato è la
+stessa promessa falsa da cui il cantiere è partito.
+
+⭐ **L'hint sotto il campo IVA è il pezzo che ripaga `P2`**: `I6` sta per
+togliere la casella, e un'aliquota che non si può cambiare **e** che non viene
+spiegata è la forma peggiore. Ora il form dice se viene dall'articolo, dall'uso
+della fornitura o da un titolo del cliente — con `labelOrCode`, perché il
+vocabolario è del DB ed è **aperto**.
+
+⚠️ **La chiamata è best-effort di proposito**: se l'anteprima non risponde il
+campo resta vuoto e si salva lo stesso. L'autorità è il backend al salvataggio,
+non questa chiamata, che serve a far **vedere** — non a decidere.
+
+#### Le prove
+
+| Prova | Esito |
+| --- | --- |
+| suite backend intera | ✅ **4204** |
+| build FE + eslint sui file toccati | ✅ |
+| `check_i18n_keys.py` | ✅ **5 problemi, gli stessi identici di prima** (verificato con `git stash`) |
+| ⭐ smoke sul DB vero della catena intera: coordinate → testata → contesto → anteprima | ✅ |
+| ⭐ presidio «il client non detta il contesto» | ✅ un BA e una data mandati dal client vengono **ignorati** |
+
+### ~~🔴 `F2-d` — ferma, e su una cosa trovata guardando i file~~
+
+I tre `*RigaForm.vue` devono chiamare l'endpoint di anteprima al posto
+dell'auto-fill. ⛔ Ma **solo `PreventiviRigaForm` conosce il billing account**:
+`OrdiniRigaForm` e `DdtRigaForm` hanno il solo id del documento.
+
+⚠️ Senza BA l'anteprima **non può derivare il soggetto**, quindi salta lo stadio
+B: il form mostrerebbe l'aliquota ordinaria e il salvataggio scriverebbe quella
+del titolo. **L'operatore vedrebbe un numero e ne otterrebbe un altro** — e non
+sarebbe un errore, sarebbe un disaccordo silenzioso fra due schermate della
+stessa riga.
+
+Vedi §10 per la scelta.
+
+---
+
+## 10. ❓ La domanda che ferma `F2-c`
+
+> Nata scrivendo il cablaggio, e non era prevedibile leggendo il piano.
+
+`I6` — «la casella IVA si chiude» — è **decisa** (`D1`) ma va **per ultima**,
+perché applicata prima cementerebbe i valori sbagliati di oggi. Quindi durante
+`F2-c` l'operatore **può ancora** scegliere l'IVA a mano.
+
+⇒ Ne discende una domanda che il piano non poneva: **al salvataggio di una riga,
+chi è autoritativo?**
+
+| | Comportamento | Conseguenza |
+| --- | --- | --- |
+| **(A)** | il BE risolve **sempre** e scrive il suo valore | la scelta manuale sparisce **senza dirlo** — e `I6` diventa un no-op, ma per tre settimane l'operatore vede un campo che non serve a niente |
+| **(B)** | il BE risolve **solo se il payload non porta `iva_id`** | l'override manuale resta vivo fino a `I6`, e `I6` diventa letteralmente «togli la chiave dalla whitelist» |
+
+⭐ **Propendo per (B)**: è l'unica in cui la sequenza «`I3` poi `I6`» ha un senso —
+se il valore manuale venisse già ignorato, `I6` non avrebbe niente da chiudere.
+
+⚠️ **E si porta dietro una seconda domanda, sul `meta`.** Con (B), quando
+l'operatore sovrascrive, `iva_origine` cosa dice? Il vocabolario del DB
+(`ARTICOLO`, `TIPO_UTENZA`, `TITOLO`, `ASSENTE`) non ha un valore per «l'ha
+scelto una persona». Proposta: risolvere **comunque** — così si sa sempre cosa
+*avrebbe* detto il risolutore — e scrivere `iva_origine = 'MANUALE'` quando il
+payload diverge, tenendo il resto. ⛔ `MANUALE` sarebbe un valore **nostro** nel
+`meta`, non del vocabolario DB: la distinzione va scritta, o il prossimo lettore
+lo cerca in `config`.
+
+📌 Fino alla risposta, `F2-c` e `F2-d` restano ferme.
+
+---
+
+## 10-bis. ❓ La forma dell'anteprima — `F2-d`
+
+I tre form hanno **tutti** l'id del proprio documento (`preventivoId`,
+`ordineId`, `ddtId`, tutti `required`). Nessuno ha, in modo uniforme, il
+contesto che il risolutore vuole.
+
+| | Strada | Costo |
+| --- | --- | --- |
+| **(a)** | far scendere `billingAccountId` come prop | ⚠️ attraversa **due** livelli (`*RigheTable` → `*RigaForm`) in due domini, e le tabelle porterebbero un prop che non usano |
+| **(c)** | l'endpoint accetta **le coordinate del documento** (`tipo` + `id`) e deriva BA, utility e data dalla testata | ⭐ nessun prop drilling, e soprattutto **il FE smette di dover sapere quali campi servono al risolutore** — che è precisamente la conoscenza che invecchia |
+
+⭐ **Propendo per (c)**: è la stessa testata che il BE già legge al salvataggio,
+quindi anteprima e salvataggio guardano **la stessa fonte** — ed è l'unico modo
+di garantire per costruzione che mostrino lo stesso numero.
+
+⚠️ Cambia l'endpoint appena scritto: i campi espliciti restano (diagnostica), si
+aggiungono le coordinate. Non è una riscrittura, ma è la forma di `N2` che era
+stata approvata come «calco di `pricing/resolve/`», e questo la allarga.
+
+✅ **Scelta (c)** (Tid, 2026-08-31). Applicata: vedi §9.
+

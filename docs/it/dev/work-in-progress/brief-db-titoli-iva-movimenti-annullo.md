@@ -8,7 +8,10 @@
 > *«dovrebbe essere permesso l'annullamento di una riga forzata/manuale; solo
 > annullamento, deve rimanere traccia ma no delete»*.
 >
-> **Stato.** 2026-08-29 — verificato sulla **struttura** (`pg_constraint`,
+> ✅ **CHIUSO il 2026-08-31** (merge `#1438`): `annulla_movimento_id` esiste, con
+> `CHECK`, FK, unique e guard trigger. Sblocca `T3-b` del piano BE/FE dei titoli.
+>
+> **Stato.** ~~2026-08-29~~ — verificato sulla **struttura** (`pg_constraint`,
 > corpo dell'accumulatore dalla doc auto-generata). Nessuna misura sui dati.
 >
 > ⭐ **Rev. 2026-08-30 — RISPOSTO dal team DB: §5.** Il meccanismo e' approvato
