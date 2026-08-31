@@ -53,9 +53,17 @@ risolvere: qui c'è anche ciò che è andato bene e i tentativi poi superati.
           "results": [...]}}
 ```
 
-Ogni riga porta `riga_key`, `registro`, `quando`, `gravita`, `cosa`, `tx_id`,
-`correlation_id`, `auth_user_id`, `user_insert`, `ritirata` e — proprio di questo
-endpoint — **`entity_type` / `entity_id`**.
+Ogni riga porta `riga_key`, `registro`, `quando`, `gravita`, `cosa`,
+`etichetta_key`, `tx_id`, `correlation_id`, `auth_user_id`, `user_insert`,
+`ritirata` e — proprio di questo endpoint — **`entity_type` / `entity_id`**.
+
+⭐ **`etichetta_key` (dal 2026-08-31)** è l'indirizzo i18n del fatto
+(`config.eventi_dominio`), valorizzato per le sole righe **`EVENT_LOG`** — là
+`cosa` è il **codice** dell'evento; sugli altri tre registri è già una frase e il
+campo è `null`. Si rende con `labelOrCode(t, te, etichetta_key, cosa)`, ripiego
+sul codice grezzo. Contratto e storia nel gemello
+[api_fattura_giornale.md](api_fattura_giornale.md): i due endpoint leggono lo
+stesso `_list_giornale`, quindi il campo è comparso su entrambi in un colpo solo.
 
 ⭐ **`entity_type` non è un accessorio**: è l'informazione che rende utile il
 pannello. Senza, *«il lotto dice che è andata male»* e *«la fattura 20024 dice

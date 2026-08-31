@@ -93,10 +93,21 @@ export const DESTINAZIONI_CON_DESTINATARIO = Object.freeze(['RIPORTO', 'COMPENSA
 //    quale conto esce il bonifico e' una decisione del momento in cui si paga.
 export const DESTINAZIONE_CON_CANALE = 'RIMBORSO'
 
+// ⭐ L'unica destinazione che lascia dietro un FONDO invece di una distinta —
+//    ed e' la ragione per cui e' anche l'unica che si puo' annullare dopo la
+//    conferma: le altre due si disfano con la correzione guidata sulla loro
+//    distinta, che esiste gia'. Due strade per disfare lo stesso fatto e' il
+//    modo in cui due meccanismi cominciano a divergere.
+export const DESTINAZIONE_CON_FONDO = 'RIPORTO'
+
 // Gli stati di un atto di sistemazione — `CHECK chk_sistemazioni_stato`, senza
 // tabella di catalogo (tre stati e due passaggi: la regola sta nel guard, non
-// nei dati). ⚠️ CONFERMATA e ANNULLATA sono TERMINALI: da CONFERMATA non si
-// torna perche' il denaro si e' gia' mosso, e la correzione e' un atto NUOVO.
+// nei dati).
+// ⚠️ ANNULLATA e' terminale. ~~CONFERMATA e' terminale~~ 🔴 **non piu' dal
+//    2026-08-31**: il varco `CONFERMATA -> ANNULLATA` e' aperto per il SOLO
+//    `RIPORTO` (changeSet `20260831-66`, G-5). Su `RIMBORSO` e `COMPENSAZIONE`
+//    resta vero, e il rifiuto NOMINA la correzione guidata invece di dire
+//    «immutabile».
 export const STATI_SISTEMAZIONE = Object.freeze(['BOZZA', 'CONFERMATA', 'ANNULLATA'])
 export const STATO_SISTEMAZIONE_TERMINALI = Object.freeze(['CONFERMATA', 'ANNULLATA'])
 
@@ -106,6 +117,13 @@ export const STATO_SISTEMAZIONE_TERMINALI = Object.freeze(['CONFERMATA', 'ANNULL
 //    guard: «chi cerca la regola nei dati non la trova»), quindi la copia nel
 //    frontend e' inevitabile — e allora sta in un posto solo, dove si vede.
 export const STATO_SISTEMAZIONE_BOZZA = 'BOZZA'
+
+// ⭐ Serve da quando `CONFERMATA` non e' piu' solo «terminale»: e' lo stato su
+//    cui l'annullo del RIPORTO e' ammesso, quindi un componente deve poterlo
+//    NOMINARE. Sta qui per la stessa ragione della riga sopra — vocabolario
+//    senza catalogo, quindi la copia nel frontend e' inevitabile e sta in un
+//    posto solo, dove si vede.
+export const STATO_SISTEMAZIONE_CONFERMATA = 'CONFERMATA'
 
 // ⭐ Gli esiti della REGISTRAZIONE — vocabolario chiuso della funzione madre
 //    (`fn_posta_contabile`), senza tabella di catalogo. ⛔ `NULLA_DA_POSTARE`

@@ -103,6 +103,65 @@ secondo elenco da riconciliare a mano.
   vista**: il presidio è il pgTAP che asserisce l'insieme dei motivi, più il test
   `test_motivi_allineati_alla_vista` che dichiara la copia lato BE.
 
+## `DELETE /api/v1/vendite/fondi-fattura/<fondo_source_id>/`
+
+Cancella un atto di fondo che **non è ancora diventato un fatto** — oppure
+rifiuta, dicendo perché. BE-4, su `vendite.fn_cancella_fondo_fattura` (D-21).
+
+⭐ **Il metodo dice il verbo.** `api.md` §Grammatica URL vieta di scriverlo nel
+path: la rotta è la risorsa e la cancellazione è il `DELETE`. Non esiste un
+`POST .../cancella/`.
+
+| | |
+| --- | --- |
+| Permesso | `post_permission = governa_fondo_fattura` (azione di processo `pericolosa`, D-23). ⚠️ **Seminata non vuol dire concessa**: finché non è assegnata a un profilo resta chiusa per tutti tranne il super admin |
+| Header | **`Idempotency-Key` obbligatoria**: il gesto è irreversibile, e un doppio invio riceverebbe altrimenti un errore per un'operazione riuscita |
+| Corpo | vuoto — quello che serve è nel path |
+| Risposta | `{status, fondo_source_id, deleted_righe, deleted_fondi, deleted_source}` |
+
+### ⛔ A quale popolazione serve, e a quale NO
+
+Serve al fondo **`AUTOMATICA` non più capiente** del ramo `NON_PIU_CAPIENTE`
+dell'elenco «da decidere»: l'atto che il giro non riesce più ad applicare e che
+nessuna sistemazione trattiene.
+
+**Non** serve al riporto sbagliato. Quello si disfa annullando la sistemazione
+che lo ha creato — `POST /api/v1/pagamenti/sistemazioni/{id}/annulla/`, che
+esiste già — e se qualcuno prova a passare di qui il database rifiuta con
+`E_FONDO_TRATTENUTO_DA_SISTEMAZIONE`, che **nomina quell'alternativa** invece di
+dire «non si può».
+
+### I rifiuti, e perché non c'è un elenco locale di codici
+
+Il criterio sta in `vendite.fn_check_fondo_cancellabile`, che la madre legge
+**una volta sola**:
+
+| Motivo del predicato | Codice | HTTP |
+| --- | --- | --- |
+| `ATTO_NON_TROVATO` | `E_FONDO_NON_TROVATO` | **404** |
+| `ATTO_ESEGUITO` · `RIGA_REGISTRATA` · `CONTABILE_CHIUSA` | `E_FONDO_NON_CANCELLABILE` (la `cause` distingue i tre) | **409** |
+| `FIGLIA_CONGELATA` | `E_FONDO_FIGLIA_CONGELATA` | **409** |
+| `SISTEMAZIONE_ATTIVA` | `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE` | **409** |
+
+⛔ **«Non esiste» e «non è tuo» danno la stessa risposta**, di proposito: la
+tabella ha la row security, e distinguerle direbbe a chi è fuori perimetro che
+quel fondo c'è.
+
+⭐ **Il service usa `translate_db_errors` e non un elenco locale di codici
+ammessi**, ed è una scelta: quel predicato ha **sei** motivi dove il piano ne
+prevedeva quattro — due sono nati scrivendo il changeSet. Una copia del catalogo
+in Python si sarebbe disallineata in silenzio proprio su quei due. Così invece un
+codice nuovo arriva all'operatore com'è, col suo messaggio, la sua `soluzione` e
+il suo **bersaglio** (la fattura — sorgente o figlia secondo il motivo).
+
+### 🔴 Guard di canale
+
+Il repository rifiuta la chiamata da un ruolo `BYPASSRLS`. È lo stesso presidio
+dell'elenco, ma **pesa di più**: la madre è `SECURITY INVOKER` e si appoggia alla
+row security accesa da D-20. Su un canale di sistema il perimetro emittente
+sparisce, e qui non si *leggerebbe* l'atto di un altro emittente — lo si
+**cancellerebbe**. ⚠️ Un conteggio non lo troverebbe: l'operazione riuscirebbe.
+
 ## Dipendenze DB
 
 | Oggetto | Ruolo |
@@ -137,7 +196,10 @@ proprio.
 > e `billing_account_id` sono **in colonna e NOT NULL**, quindi niente delega a
 > `fn_scope_*_via_fattura`. Dettaglio in
 > [brief-db-fondo-fattura-ricalcolo-e-governo.md](../../../dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md)
-> §9.9. ⚠️ **Questa riga va riscritta al momento dell'apply di D-20**, non prima.
+> §9.9. ✅ **APPLICATA il 2026-08-31** (changeSet `20260831-62`): verificato sul
+> catalogo vivo — `relrowsecurity = true` e le **due** policy sulla tabella.
+> ⛔ La frase qui sopra («non ha RLS») **non è più vera**: il ramo
+> `NON_PIU_CAPIENTE` ha ora il suo filtro proprio, oltre al `JOIN` della vista.
 
 ## Note di migrazione
 
@@ -155,6 +217,7 @@ proprio.
 | | Cosa manca |
 | --- | --- |
 | ~~**BE-4** (atto manuale: `POST fondi-fattura/`, `POST fondi-fattura/<id>/annulla/`)~~ | ~~la **Fase D** non è applicata: `fn_crea_fondo_fattura_manuale` e `fn_annulla_fondo_fattura` non esistono, e l'azione di processo `governa_fondo_fattura` non è a catalogo. E comunque la porta va aperta **dopo** che `pagamenti` ha un processo rimborsi da cui chiamarla~~ 🔴 **SUPERATA il 2026-08-22, riscritta il 2026-08-31 — sbagliava sia i verbi sia l'attesa.** Vedi la riga sotto |
-| **BE-4** — ri-perimetrato | 🔴 **Il processo rimborsi è arrivato il 2026-08-22 e NON passa di qui**: `pagamenti.fn_conferma_sistemazione` (lotto 7), ramo `RIPORTO`, scrive il fondo con un `INSERT` **diretto** — ed è la scelta giusta, perché `api.md` §Comunicazione cross-modulo vieta le chiamate laterali fra moduli di pari livello. ⭐ **Quindi i due `POST` non si scrivono più**: `fn_crea_fondo_fattura_manuale` non ha più un chiamante, e il gesto sul riporto sbagliato è `POST /api/v1/pagamenti/sistemazioni/{id}/annulla/`, **che esiste già**. 🔵 Resta **un solo** comando, e per l'**altra** popolazione — il fondo `AUTOMATICA` `DISPONIBILE` non più capiente, che la lista `id 44` addita e che non ha nessuna sistemazione dietro: **`DELETE /api/v1/vendite/fondi-fattura/{id}/`** (il metodo dice il verbo; `api.md` §Grammatica URL vieta di scriverlo nel path), su `vendite.fn_cancella_fondo_fattura` — passo **D-21**, non ancora scritto. Servono anche l'azione di processo `governa_fondo_fattura` (**D-23**, non a catalogo) per il `post_permission` e `Idempotency-Key`, perché il gesto è irreversibile. Perimetro per intero: [brief-db-fondo-fattura-ricalcolo-e-governo.md](../../../dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md) §9.3 |
+| ~~**BE-4** — ri-perimetrato~~ | ✅ **FATTO il 2026-08-31**, dopo l'apply di D-21/D-23. Documentato nella sezione «Cancellare un atto» qui sopra |
+| ~~**Frontend** (le azioni di riga)~~ | ✅ **FATTE il 2026-08-31**: kebab `RowActionsMenu` sulla lista, voce «Cancella l'atto» gated su `governa_fondo_fattura`, conferma rossa. ⛔ Si disegna **solo dove c'è un atto** (`fondo_source_id != null`): un menu a zero voci promette un gesto che non c'è. ⚠️ Ha richiesto **anche** il seed della colonna `azioni` a catalogo (`tipo_colonna = 'azione'`): senza, lo slot `#actions` non rende niente e **non dà errore** |
 | ~~**Frontend** (la lista)~~ | ✅ **FATTO il 2026-08-22**: **Vendite → Tool fatturazione**, primo tab (`ToolFatturazioneView.vue` + `FondiFatturaDaDecidereTab.vue`, store `fondiFatturaDaDecidere.js`). Lista configurabile standard: paginazione e ordinamento server-side, colonne personalizzabili, export CSV/XLSX, click di riga → `FatturaDrawer`. ⭐ Fino a quel giorno la lista **esisteva e non era raggiungibile**: vista, catalogo ed endpoint c'erano dal 15-08 e nessun `.vue` la montava — è la differenza fra i 47 codici a catalogo e le 46 liste nel registro `_LISTE` |
 | ~~**R-3** (madre DB per lotto)~~ | ✅ **FATTA il 2026-08-15**, DB e BE. I due giri passano da `fn_genera_fondi_fattura_lotto` / `fn_applica_fondi_lotto` (firma col **codice interno** del tipo fondo): **una `SELECT` per task**, lookup e scope dentro il database. 🔴 Con lo spostamento i tre errori del giro sono passati da `ServiceError` Python a `DatabaseError`, e `_fail_task_run_safely` li appiattiva su `E_TASK`: chiuso leggendo il codice strutturato con `db_error_code` — vale per ogni task che delega a una funzione DB. Dettaglio: brief fondo fattura §8.3-bis (DB) e §8.3-ter (BE) |
