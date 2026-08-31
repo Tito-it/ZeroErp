@@ -473,7 +473,14 @@ tooltip di `origine` nascono come **un composable solo**
 vocabolario del giornale: un valore nuovo compare come codice grezzo, non come
 path di chiave.
 
-### 4.3 `F3` — `I4`: la riga di fattura ri-risolve · ⛔ gated
+### 4.3 `F3` — `I4`: la riga di fattura ri-risolve · 🟡 **una metà è fatta**
+
+> ⭐ **La voce ha due metà, e solo una aspettava il DB.** Scoperto il 2026-08-31
+> rispondendo alla domanda di Tid *«c'è qualcosa di Fase 3 che non dipende dal
+> DB?»*: la **group key** è puro Python — `attivita_fatturabili.contratto_id`
+> esiste già, con la sua FK. È stata fatta (§9, `F3-a`). Resta gated la
+> **spezzatura della riga**, e su un prerequisito che nessuno aveva chiesto (§9,
+> `F3-b`).
 
 **Backend, e la metà DB non esiste** (verificato: nessuna funzione del database
 inserisce in `vendite.fatture_righe`).
@@ -544,7 +551,8 @@ F5  congela_fiscale               ⭐ indipendente, si può fare subito
 F6  DEFAULT_IVA_ID                ⭐ indipendente, piccola
 --- decisioni N1 e N2 ---
 F2  I3 · documento                BE + FE, una slice sola
-F3  I4 · fattura                  ⛔ gated su brief-db-fatture-atti + decisione N3
+F3a I4 · group key contratto      ✅ fatta 31/08 — non aspettava nessuno
+F3b I4 · spezzatura della riga    ⛔ gated su fatture_atti + riga capofila
 F4  I5 · SDI                      📌 quando nascerà il builder
 F7  I6 · la casella si chiude     ⛔ dopo F2 e F3
 ```
@@ -610,6 +618,7 @@ le due strade tornano a divergere.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-31 (2) | ⭐ Domanda di Tid: *«hai cose da fare in Fase 3 a prescindere dal DB?»*. Controllando voce per voce sono venute fuori **tre** cose: `F3` ha due metà e solo una aspettava il DB (la **group key** è puro Python — fatta, `F3-a`); i due cataloghi BB che il piano chiedeva **non erano stati compilati**; e ⛔ la spezzatura di `N3` era bloccata su una colonna di `fatture_righe` che **nessuno aveva mai chiesto** al team DB, ora voce 5 dell'elenco. ⚠️ Trovato anche che gli smoke di `F2-a` e `F2-d` non erano stati salvati come file: uno smoke che non sta nel repo non è un presidio |
 | 2026-08-31 | Piano scritto su richiesta di Tid, dopo la chiusura DB di Fase 2, Fase 3 e delle decisioni `D33`/`D34`. Nove decisioni prese nello scambio (§2). ⭐ **`P1` si è rivelata un ramo già scritto nel DB** (`p_imponibile IS NULL`): la regola «non spezzare le righe sul documento» non richiede una riga di codice DB. ⛔ Due difetti vivi trovati verificando invece di assumere: il **cancello dei codici errore è rosso** con un quinto codice applicato al DB e non in git, e **`contratto_id` non è nella group key** delle righe di fattura — due attività di contratti diversi collassano oggi nella stessa riga. Quattro decisioni restano aperte (§3), e `N3` — a chi puntano le attività quando la riga di fattura si spezza — è il punto duro del piano |
 
 ---
@@ -842,6 +851,101 @@ non questa chiamata, che serve a far **vedere** — non a decidere.
 | `check_i18n_keys.py` | ✅ **5 problemi, gli stessi identici di prima** (verificato con `git stash`) |
 | ⭐ smoke sul DB vero della catena intera: coordinate → testata → contesto → anteprima | ✅ |
 | ⭐ presidio «il client non detta il contesto» | ✅ un BA e una data mandati dal client vengono **ignorati** |
+
+### ✅ `F3-a` — l'ATTO entra nella chiave, e la voce non aspettava nessuno
+
+⭐ **Nata da una domanda di Tid**: *«hai cose da fare in Fase 3 a prescindere dal
+DB?»*. Controllando voce per voce è venuto fuori che `F3` ha **due metà**, e che
+il piano le teneva insieme sotto un unico ⛔ — quindi una metà risultava bloccata
+senza esserlo.
+
+`contratto_id` fuori dalla chiave di aggregazione era un **difetto vivo che col
+cantiere IVA non c'entra**: due attività di contratti diversi collassavano nella
+stessa riga di fattura. Il CIG è solo ciò che l'ha fatto notare — la riga
+aggregata è già sbagliata senza.
+
+| File | Cosa |
+| --- | --- |
+| `db/pipeline_repository.py` | `a.contratto_id` nella proiezione (**in fondo**, §sotto) + campo sulla dataclass |
+| `types.py` | `contratto_id` in `GroupAttivitaKey`, col perché accanto |
+| `services/fatture_righe_service.py` | nella chiave di gruppo **e** nell'ordinamento |
+| `tests/services/test_fatture_righe_service.py` | 6 casi nuovi (30-35) |
+| `backend/scripts/tests/smoke-group-attivita-contratto.py` | **nuovo**, 11 controlli |
+
+⭐ **E la sede per il dato esiste già, senza aspettare la tabella**: la
+`group_key` finisce per intero nel `meta` della riga, quindi l'atto della riga è
+**già scritto** oggi (`meta.group_key.contratto_id`). Quando
+`vendite.fatture_atti` arriverà, il dato per popolarla non va ricostruito.
+
+⛔ **Sulla RETTIFICA il contratto NON entra nella chiave**, ed è una decisione,
+non una dimenticanza: l'identità di una riga di nota di credito è la **riga di
+fattura che rettifica**, che è strettamente più specifica del contratto. Dargli
+peso potrebbe spezzare due rettifiche della **stessa** riga su un dato incoerente
+a monte — cioè rompere in silenzio l'invariante «due rettifiche della stessa riga
+restano aggregabili». Quando `fatture_atti` darà alla riga di fattura una sede
+per l'atto, la rettifica lo copierà **da lì**, come già fa con prezzo, sconto e
+IVA (`N-1`).
+
+⚠️ **La voce è entrata anche nell'ORDINAMENTO dei gruppi, e non è un dettaglio**:
+da quando la chiave spezza, due gruppi possono differire **solo** per l'atto. Due
+gruppi che l'ordinamento non distingue prendono il `riga_nr` nell'ordine in cui
+le attività sono arrivate — cioè la numerazione delle righe smette di essere
+stabile fra due rigenerazioni dello stesso lotto, che è precisamente ciò che
+quella chiave esiste per impedire.
+
+#### Le prove, e cosa prova ciascuna
+
+| Prova | Esito |
+| --- | --- |
+| 6 test nuovi + i 29 esistenti | ✅ 35 |
+| ⭐ **il gemello negativo** — stesso contratto ⇒ **una** riga sommata | ✅ senza, un'implementazione che spezza sempre passerebbe il caso principale |
+| ⭐ **senza contratto il raggruppamento non cambia** | ✅ è la promessa «non sposta nessun raggruppamento esistente», ed è la maggior parte del traffico |
+| ⭐ **mutazione** ×3 — atto fuori dalla chiave · fuori dall'ordinamento · dentro anche sulla rettifica | ✅ **3, 1 e 1 casi cadono**: ogni decisione ha il suo presidio |
+| ⭐ **smoke sul DB vero**, transazione annullata | ✅ **11/11** |
+| suite backend intera | ✅ **4221** |
+
+⛔ **Perché lo smoke serviva, e non era cerimonia.** La proiezione è una tupla
+letta **per indice**: una colonna aggiunta in mezzo invece che in fondo
+sposterebbe tutte quelle dopo, e il difetto sarebbe **muto** — `rett_iva_id`
+finirebbe in `contratto_id` e viceversa, entrambi interi, entrambi plausibili. Il
+controllo che discrimina confronta la riga **campo per campo** prima e dopo aver
+posato l'atto: l'unica differenza ammessa è l'atto stesso.
+
+⭐ **E il caso è stato COSTRUITO**: `attivita_fatturabili` ha 52 righe e **zero**
+con un contratto. Uno smoke che avesse *cercato* l'attività con l'atto sarebbe
+passato a vuoto — verde per sottrazione, che è il difetto che questo cantiere
+insegue da giorni.
+
+### ⛔ `F3-b` — la spezzatura: gated su un prerequisito **mai chiesto**
+
+`N3` sceglie `(a')` — le due parti sono **due `fatture_righe` in relazione
+padre/figlia**. Verificato il 2026-08-31 sulla doc auto-generata: su
+`vendite.fatture_righe` ci sono `kit_key`, `kit_articolo_padre_id`,
+`kit_descrizione_padre` — **e basta**. La colonna che regge quel legame **non
+esiste**, e non era in nessuno dei quattro brief passati al team DB.
+
+⇒ Il lavoro risultava bloccato su `brief-db-fatture-atti`, ma in realtà era
+bloccato **anche** su una richiesta che nessuno aveva formulato. È ora la
+**voce 5** di
+[brief-db-richieste-aperte-dal-backend.md](brief-db-richieste-aperte-dal-backend.md).
+
+⚠️ **Riusare le colonne del kit sarebbe la scorciatoia sbagliata**: `kit_key`
+dice *«queste righe vengono dallo stesso kit venduto»*. Una riga spezzata dal
+plafond non viene da nessun kit, e marcarla così farebbe leggere a
+`vw_fattura_righe_esposte` — che le aggrega — un fatto che non è vero.
+
+### ✅ I due cataloghi, che il piano chiedeva e non erano stati fatti
+
+`useIvaRisolta` + `api/iva.js` nel catalogo BB **frontend** (il §4.2 lo chiedeva
+esplicitamente); `applica_riga_documento`, `carica_testata` /
+`contesto_da_testata`, `make_risolvi_iva_riga` e `normalizza_iva_id` in quello
+**backend**.
+
+⚠️ **E una riga di verità sulle prove**: la voce a catalogo dichiarava «10 casi»
+(oggi sono 18, più 12 + 7) e nessuno dei due smoke di `F2-a`/`F2-d` era stato
+**salvato come file** — erano corse *ad hoc*. Uno smoke che non sta nel repo non
+è un presidio: è un controllo fatto una volta. Il catalogo ora lo dice invece di
+vantare una copertura che non c'è.
 
 ### ~~🔴 `F2-d` — ferma, e su una cosa trovata guardando i file~~
 

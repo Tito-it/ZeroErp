@@ -128,6 +128,10 @@ class GroupAttivitaInput:
     rett_prezzo_unitario: Decimal | None = None
     rett_sconto_percentuale: Decimal | None = None
     rett_iva_id: int | None = None
+    # ── L'atto ───────────────────────────────────────────────────────────────
+    # Il contratto a cui l'attivita' appartiene. `None` su tutto cio' che nasce
+    # fuori da un contratto, che oggi e' la maggior parte del traffico.
+    contratto_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -217,7 +221,7 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
 # Proiezione e mapping di `GroupAttivitaInput`, in un posto solo.
 #
 # 🔴 PERCHE' ESISTE. Le due letture — singola (`get_group_attivita_input`) e
-# batch (`batch_get_group_attivita_inputs`) — proiettavano le STESSE 19 colonne
+# batch (`batch_get_group_attivita_inputs`) — proiettavano le STESSE colonne
 # in due SELECT copiate, con due mapping riga->dataclass scritti a mano. E le due
 # copie erano gia' DIVERSE: quella singola faceva `articolo_id=int(row[1])` su
 # una colonna che e' un UUID, cioe' sollevava `ValueError` a ogni chiamata.
@@ -247,7 +251,13 @@ _GROUP_ATTIVITA_SELECT = """
                     a.fattura_riga_rettificata_id,
                     fr.prezzo_unitario     AS rett_prezzo_unitario,
                     fr.sconto_percentuale  AS rett_sconto_percentuale,
-                    fr.iva_id              AS rett_iva_id
+                    fr.iva_id              AS rett_iva_id,
+                    -- L'ATTO a cui l'attivita' appartiene. Sta qui e non in un
+                    -- JOIN perche' `attivita_fatturabili` lo porta gia' sulla
+                    -- riga (FK `fk_attivita_fatturabili_contratto`): risalire
+                    -- alla commessa per rileggerlo sarebbe una seconda fonte
+                    -- per lo stesso fatto.
+                    a.contratto_id
                 FROM vendite.attivita_fatturabili a
                 JOIN catalogo.articoli art
                   ON art.id = a.articolo_id
@@ -286,6 +296,7 @@ def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
         rett_prezzo_unitario=row[16],
         rett_sconto_percentuale=row[17],
         rett_iva_id=None if row[18] is None else int(row[18]),
+        contratto_id=None if row[19] is None else int(row[19]),
     )
 
 
