@@ -84,6 +84,7 @@ from apps.vendite.api.views_dashboard_aperto import (
 from apps.vendite.api.views_fondi_fattura import (
     ApiFondiFatturaDaDecidere,
     ApiFondiFatturaDaDecidereExport,
+    ApiFondoFatturaDelete,
 )
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
@@ -295,6 +296,15 @@ urlpatterns = [
         "fondi-fattura/da-decidere/export/",
         ApiFondiFatturaDaDecidereExport.as_view(),
         name="vendite-fondi-fattura-da-decidere-export",
+    ),
+    # Il verbo (BE-4): il METODO dice l'azione, il path e' la risorsa —
+    # `api.md` §Grammatica URL vieta di scriverla nel path. ⚠️ Dichiarata DOPO
+    # le due rotte `da-decidere/` di proposito: `<int:...>` non le cattura, ma
+    # tenerle sopra rende l'ordine leggibile a chi cerca la lista.
+    path(
+        "fondi-fattura/<int:fondo_source_id>/",
+        ApiFondoFatturaDelete.as_view(),
+        name="vendite-fondo-fattura-delete",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     # Export CSV/XLSX della lista (colonne dal catalogo `vendite.lotti`).

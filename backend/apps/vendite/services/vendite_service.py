@@ -2043,6 +2043,57 @@ def fn_fondi_fattura_da_decidere(
     )
 
 
+_FN_CANCELLA_FONDO = "vendite.vendite_service.fn_cancella_fondo_fattura"
+
+
+# Scopo: Cancella un atto di fondo fattura che non e' ancora diventato un fatto
+#        — oppure lascia che il database dica perche' non si puo'.
+#        BE-4 di brief-db-fondo-fattura-ricalcolo-e-governo §9.3, su D-21.
+# Contesto: il gesto serve alla popolazione `NON_PIU_CAPIENTE` dell'elenco «da
+#        decidere» — l'atto AUTOMATICA che il giro non riesce piu' ad applicare
+#        e che nessuna sistemazione trattiene. ⛔ Il riporto sbagliato NON passa
+#        di qui: si disfa annullando la sistemazione che lo ha creato
+#        (`POST /pagamenti/sistemazioni/{id}/annulla/`), e se qualcuno ci prova
+#        lo dice il database con `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE`.
+# Perimetro: si CANCELLA e non si annulla — un atto che non e' mai diventato un
+#        fatto non lascia una riga di registro, lascia il posto vuoto che aveva
+#        prima (G-1, Tid 2026-08-29). La scelta e' gia' quella del reset dal
+#        changeSet 20260821-54.
+# Risultato: dict con i tre contatori della madre.
+#
+# ⭐ `translate_db_errors` e non un elenco locale di codici ammessi, per la
+#    stessa ragione gia' scritta su `fn_riporta_attivita_da_emettere`: il
+#    predicato ha SEI motivi e ne aveva quattro nel piano — due sono nati
+#    scrivendo il changeSet. Una copia del catalogo in Python si sarebbe
+#    disallineata in silenzio proprio su quei due. Cosi' invece il codice arriva
+#    all'operatore com'e', con la sua `soluzione`, il suo BERSAGLIO (la fattura,
+#    sorgente o figlia secondo il motivo) e la `cause` nel contesto — che e' cio'
+#    che distingue i tre motivi che parlano di denaro fra loro.
+def fn_cancella_fondo_fattura(*, fondo_source_id: int) -> dict[str, object]:
+    # ⚠️ `not isinstance(..., bool)` non e' pedanteria: in Python `bool` e'
+    #    SOTTOCLASSE di `int`, quindi `isinstance(True, int)` e' vero e
+    #    `True > 0` pure — un `True` arrivato per sbaglio sarebbe passato al
+    #    database come booleano, e il rifiuto sarebbe un errore di tipo invece
+    #    che il messaggio giusto.
+    ErrorManager.require(
+        isinstance(fondo_source_id, int)
+        and not isinstance(fondo_source_id, bool)
+        and fondo_source_id > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Identificativo del fondo non valido.",
+        detail=f"fondo_source_id ricevuto: {fondo_source_id!r}",
+        function_name=_FN_CANCELLA_FONDO,
+    )
+    repository = VenditeRepository()
+    with translate_db_errors(
+        context={"op": _FN_CANCELLA_FONDO, "fondo_source_id": fondo_source_id},
+        fallback_code="E_VENDITE_VALIDATION",
+        fallback_message="Cancellazione del fondo fattura non riuscita.",
+    ):
+        conteggi = repository.cancella_fondo_fattura(fondo_source_id)
+    return {"status": "deleted", "fondo_source_id": fondo_source_id, **conteggi}
+
+
 # ══════════════════════════════════════════════════════════════════
 #  Situazione merce (pannello ordine/DDT)
 #  brief-design-situazione-merce-ordine + brief-design-partita-merce-

@@ -4,10 +4,15 @@
 //        (vista `vendite.vw_fondi_fattura_da_decidere`, D-10 del brief
 //        fondo-fattura-ricalcolo-e-governo).
 //
-// ⚠️ SOLA LETTURA, e non e' una fase: l'elenco PRESENTA e non sana. Nessuna di
-// queste righe ha un gemello automatico che la corregge da sola — sanarle
-// vorrebbe dire muovere denaro senza che nessuno l'abbia deciso.
+// ⚠️ L'ELENCO PRESENTA E NON SANA: nessuna di queste righe ha un gemello
+// automatico che la corregge da sola — sanarle vorrebbe dire muovere denaro
+// senza che nessuno l'abbia deciso.
+// ⭐ ~~Sola lettura~~ non piu' dal 2026-08-31: c'e' UN verbo, la cancellazione
+// dell'atto (BE-4, in fondo al file). Non contraddice la riga qui sopra —
+// cancellare un atto che non ha mai mosso denaro non e' «sanare», e' togliere
+// una proposta che nessuno ha accettato. E lo chiede una persona, ogni volta.
 import api from '../../core/api'
+import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 // GET /vendite/fondi-fattura/da-decidere/?motivo=&order_by=&order_dir=&page=&page_size=
 // Elenco paginato. `motivo` e' un vocabolario CHIUSO (PROPOSTA_SENZA_ATTO |
@@ -29,5 +34,30 @@ export function exportFondiFatturaDaDecidere(params = {}) {
   return api.get('/vendite/fondi-fattura/da-decidere/export/', {
     params,
     responseType: 'blob',
+  })
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Il verbo (BE-4) — cancellare un atto che non e' ancora un fatto
+// ══════════════════════════════════════════════════════════════
+
+// DELETE /vendite/fondi-fattura/<id>/
+// Cancella l'atto di fondo, oppure il database RIFIUTA dicendo perche'.
+//
+// ⭐ Il METODO dice il verbo: `api.md` §Grammatica URL vieta di scriverlo nel
+// path, quindi non esiste un `POST .../cancella/`.
+//
+// ⛔ NON serve al riporto sbagliato. Quello si disfa annullando la sistemazione
+// che lo ha creato (`POST /pagamenti/sistemazioni/{id}/annulla/`), e se si prova
+// da qui il backend risponde `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE` — che NOMINA
+// quell'alternativa invece di dire «non si puo'». Qui si serve l'ALTRA
+// popolazione: il fondo `AUTOMATICA` non piu' capiente, che nessuno trattiene.
+//
+// ⚠️ `Idempotency-Key` obbligatoria (il backend dichiara
+// `require_idempotency_key`): il gesto e' IRREVERSIBILE, e senza la chiave un
+// doppio invio riceverebbe un errore per un'operazione riuscita.
+export function cancellaFondoFattura(fondoSourceId) {
+  return api.delete(`/vendite/fondi-fattura/${fondoSourceId}/`, {
+    headers: { 'Idempotency-Key': generateIdempotencyKey() },
   })
 }

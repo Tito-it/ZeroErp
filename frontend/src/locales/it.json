@@ -3594,7 +3594,11 @@
       "col_atto_data": "Data atto",
       "col_tipo_fondo_codice_interno": "Tipo fondo",
       "col_fattura_sorgente_id": "Id fattura",
-      "col_fondo_source_id": "Id atto"
+      "col_fondo_source_id": "Id atto",
+      "cancella_azione": "Cancella l'atto",
+      "cancella_titolo": "Cancella l'atto di fondo",
+      "cancella_messaggio": "L'atto da {importo} sulla fattura {numero} verrà cancellato. Non è reversibile: quell'atto non resta a registro, perché non ha mai mosso denaro. Il giro automatico potrà riproporne uno nuovo leggendo il residuo di allora.",
+      "cancellato": "Atto di fondo cancellato."
     },
     "tool_fatturazione": {
       "page_title": "Tool fatturazione",
@@ -3854,7 +3858,9 @@
       "annulla_azione": "Scarta",
       "annullata": "Decisione scartata.",
       "annullo_aiuto": "Obbligatorio se la decisione non ne aveva già uno: una decisione scartata senza ragione non si ricostruisce.",
-      "gia_terminale": "La decisione è già {stato}: da qui non si torna, la correzione è una sistemazione nuova.",
+      "gia_terminale": "La decisione è già {stato}: non si conferma due volte.",
+      "annullo_gia_annullata": "La decisione è già scartata.",
+      "annullo_solo_riporto": "Un rimborso o una compensazione già confermati non si annullano: si correggono con la correzione guidata sulla loro distinta.",
       "stato_bozza": "Bozza",
       "stato_confermata": "Confermata",
       "stato_annullata": "Scartata"
@@ -4371,6 +4377,14 @@
       "preventivo": "Preventivo",
       "flusso": "Flusso",
       "definizione_workflow": "Edizione workflow"
+    },
+    "eventi_dominio": {
+      "emittibilita_fallita": "Controllo di emittibilità non superato",
+      "lotto_riaperto": "Lotto riportato in lavorazione: documenti cancellati",
+      "pipeline_completed": "Giro di fatturazione concluso",
+      "pipeline_error": "Giro di fatturazione interrotto per errore",
+      "pipeline_started": "Giro di fatturazione avviato",
+      "step_completed": "Passo completato"
     }
   },
   "lista_config": {

@@ -371,12 +371,34 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Il fondo fattura e' gia' stato creato e non si puo' modificare: "
         "importo, fattura di origine, tipo e origine sono definitivi."
     ),
+    # ⭐ La soglia e' quella del congelamento fiscale, la STESSA con cui il
+    # progetto congela gli altri satelliti della fattura. Non nomina la tabella:
+    # e' la ragione per cui non riusa `E_FATTURA_SATELLITE_CONGELATO`, che
+    # riceve `TG_TABLE_NAME` nel VARIADIC e la metterebbe a video.
+    "E_FONDO_FIGLIA_CONGELATA": (
+        "Il fondo e' assegnato a una fattura che non si puo' piu' modificare: "
+        "cancellarlo cambierebbe un documento ormai definitivo."
+    ),
     "E_FONDO_MOTIVO_OBBLIGATORIO": (
         "Motivo obbligatorio: un fondo creato a mano o annullato deve dire perche'."
+    ),
+    # ⚠️ Copre i TRE motivi che parlano di DENARO (atto eseguito, riga
+    # contabile registrata, distinta chiusa): quale dei tre viaggia nella
+    # `cause` del contesto, non nella frase.
+    "E_FONDO_NON_CANCELLABILE": (
+        "Il fondo non si puo' cancellare perche' il denaro si e' gia' mosso: "
+        "l'atto e' stato eseguito, oppure la sua riga contabile e' registrata "
+        "o si trova in una distinta chiusa."
     ),
     "E_FONDO_NON_CORRISPONDE_SORGENTE": (
         "Il fondo non corrisponde alla fattura da cui nasce: deve avere lo stesso "
         "segno del totale del documento e non superarlo in valore assoluto."
+    ),
+    # ⛔ «Non esiste» e «non e' tuo» danno di proposito la STESSA frase: la
+    # tabella ha la row security, e distinguerle direbbe a chi e' fuori
+    # perimetro che quel fondo c'e'.
+    "E_FONDO_NON_TROVATO": (
+        "Il fondo fattura non esiste o non e' accessibile."
     ),
     "E_FONDO_SOGLIE_INCOMPLETE": (
         "Le due soglie del minimo si dichiarano insieme: valorizzarle entrambe "
@@ -384,6 +406,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     ),
     "E_FONDO_STATO_NON_AMMESSO": (
         "Passaggio di stato del fondo non ammesso: un fondo annullato non si riapre."
+    ),
+    # ⭐ Il rifiuto NOMINA L'ALTERNATIVA invece di dire «non si puo'»: chi legge
+    # sta provando a disfare un riporto, e la strada esiste — passa dall'atto
+    # che lo ha creato, non dal fondo che ne e' la conseguenza.
+    "E_FONDO_TRATTENUTO_DA_SISTEMAZIONE": (
+        "Il fondo e' nato da una sistemazione e non si cancella da qui: "
+        "si disfa annullando quella sistemazione."
     ),
     "E_FORMA_GIURIDICA_PAESE": "Forma giuridica non coerente con il paese del soggetto.",
     "E_FORNITORE_BLOCCATO": "Fornitore bloccato: non e' possibile emettere ordini.",
@@ -690,6 +719,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SESSIONE_REVOCA_CORRENTE": "Non puoi revocare la sessione corrente. Usa il logout.",
     "E_SHOP_NON_DISPONIBILE": "Shop non ancora disponibile. In arrivo con PR-C.",
     "E_SHOP_RICEVUTA_BA_CANALE_INVALIDO": "Il billing account collegato alla ricevuta non e' di canale SHOP.",
+    # ⭐ Anche qui il rifiuto nomina l'alternativa. Il varco CONFERMATA ->
+    # ANNULLATA e' aperto per il solo RIPORTO, perche' e' l'unica destinazione
+    # che lascia dietro un fondo: le altre due lasciano una distinta, e quella
+    # si corregge con la correzione guidata.
+    "E_SISTEMAZIONE_ANNULLO_NON_AMMESSO": (
+        "Un rimborso o una compensazione gia' confermati non si annullano: "
+        "si correggono con la correzione guidata sulla loro distinta."
+    ),
     "E_SISTEMAZIONE_DOCUMENTI_INCOERENTI": "La sistemazione non ha i documenti che le servono per il suo tipo.",
     "E_SISTEMAZIONE_DOCUMENTI_NON_ABBINABILI": "Il documento non si puo' abbinare a questa sistemazione: e' di un altro cliente o di un'altra azienda.",
     "E_SISTEMAZIONE_ECCEDENZA_INSUFFICIENTE": "L'eccedenza sulla fattura non basta per la sistemazione richiesta.",
@@ -899,8 +936,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # sarebbe un 500, ed e' esattamente cio' che non devono fare.
     "W_BERSAGLIO_MALFORMATO": "Avviso tecnico - il bersaglio dell'errore non e' utilizzabile: l'errore parte lo stesso, ma senza l'indicazione di quale cosa riguardi.",
     "W_FONDO_ESEGUITO_NON_RESETTABILE": "Fondo gia' eseguito: non si azzera, e la riga resta com'e'.",
+    "W_FONDO_FIGLIA_CONGELATA": "Fondo non azzerato: la fattura che lo ha ricevuto non si puo' piu' modificare, e la riga resta com'e'.",
     "W_FONDO_MINIMO_NON_RIPRISTINABILE": "Minimo del fondo non ripristinabile: la quota resta come e'.",
     "W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE": "Riga contabile non aggiornabile: il fondo resta legato a quella che c'e'.",
+    "W_FONDO_TRATTENUTO_DA_SISTEMAZIONE": "Fondo non azzerato: una sistemazione lo trattiene, e si disfa annullando quella.",
     "W_MESSAGGIO_ARITA": "Messaggio di errore con segnaposti non valorizzati: anomalia tecnica di catalogo.",
     "W_SCADENZE_TOTALE_NEGATIVO": "Totale a pagare negativo: nessun piano rate generato.",
     "W_TXID_NOT_REGISTERED": "Transazione non registrata: anomalia tecnica di tracciamento.",

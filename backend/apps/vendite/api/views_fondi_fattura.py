@@ -31,12 +31,15 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import qp_int_strict, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
-from apps.vendite.services.vendite_service import fn_fondi_fattura_da_decidere
+from apps.vendite.services.vendite_service import (
+    fn_cancella_fondo_fattura,
+    fn_fondi_fattura_da_decidere,
+)
 
 
 class ApiFondiFatturaDaDecidere(DomainAPIView):
@@ -216,4 +219,70 @@ class ApiFondiFatturaDaDecidereExport(DomainAPIView):
             total=data["count"],
             filtri_applicati={"motivo": motivo} if motivo else {},
             fmt=fmt,
+        )
+
+
+# ── Il verbo: cancellare un atto che non è ancora diventato un fatto ──
+#
+# BE-4 di brief-db-fondo-fattura-ricalcolo-e-governo §9.3, su `D-21`.
+#
+# ⭐ IL METODO DICE IL VERBO. `api.md` §Grammatica URL vieta di scriverlo nel
+# path: la rotta e' la risorsa (`fondi-fattura/<id>/`) e la cancellazione e' il
+# `DELETE`. Non esiste un `POST .../cancella/`.
+#
+# ⛔ Questo endpoint NON serve al riporto sbagliato. Quello si disfa annullando
+# la sistemazione che lo ha creato — `POST /pagamenti/sistemazioni/{id}/annulla/`,
+# che esiste gia' — e se qualcuno prova a passare di qui il database rifiuta con
+# `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE`, che NOMINA quell'alternativa invece di
+# dire «non si puo'». Qui si serve l'ALTRA popolazione dell'elenco «da decidere»:
+# il fondo `AUTOMATICA` non piu' capiente, che nessuna sistemazione trattiene.
+class ApiFondoFatturaDelete(DomainAPIView):
+    """DELETE /api/v1/vendite/fondi-fattura/<fondo_source_id>/ — cancella l'atto."""
+
+    area_funzionale = "vendite"
+    # ⚠️ Il cancello e' l'azione di processo `governa_fondo_fattura` (D-23,
+    # `pericolosa = true`): un gesto che cancella denaro non puo' avere una
+    # porta piu' larga di quello che lo ha scritto. ⛔ Seminarla non e'
+    # concederla: finche' non e' assegnata a un profilo resta chiusa per tutti
+    # tranne il super admin, ed e' voluto.
+    post_permission = "governa_fondo_fattura"
+
+    @extend_schema(
+        operation_id="vendite_fondo_fattura_delete",
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description=(
+                    "Obbligatoria: il gesto e' irreversibile e un doppio invio "
+                    "riceverebbe altrimenti un errore per un'operazione "
+                    "riuscita."
+                ),
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="FondoFatturaDeleteResponse",
+            fields={"data": inline_serializer(name="FondoFatturaDeleteData", fields={
+                "status": serializers.CharField(),
+                "fondo_source_id": serializers.IntegerField(),
+                "deleted_righe": serializers.IntegerField(),
+                "deleted_fondi": serializers.IntegerField(),
+                "deleted_source": serializers.IntegerField(),
+            })},
+        )},
+    )
+    # Scopo: Cancella l'atto di fondo indicato, o riporta il motivo del rifiuto.
+    # ⚠️ `handle_post_json` e non una chiamata diretta: e' la sede unica del
+    # controllo `Idempotency-Key` e del replay in strong mode. Il corpo di un
+    # DELETE e' vuoto, e il payload viene ignorato di proposito — quello che
+    # serve e' nel path.
+    def delete(self, request: Request, fondo_source_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _payload: fn_cancella_fondo_fattura(
+                fondo_source_id=fondo_source_id,
+            ),
+            require_idempotency_key=True,
         )

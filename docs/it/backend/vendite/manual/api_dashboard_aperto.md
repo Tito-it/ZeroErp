@@ -138,7 +138,7 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
 
 ## Regole
 
-- **Popolazione = serbatoio pre-commessa** (§6-ter, DL-14/15): union 4 aree
+- **Popolazione = serbatoio pre-commessa** (§6-ter, DL-14/15): union **5** aree
   documento con perimetro **aperti-non-chiusi** — `is_transitato IS DISTINCT
   FROM true` (esce l'accettato-già-smistato, transitato-non-chiuso) **AND**
   `fase <> 'CHIUSO'` (esce il preventivo EVASO-con-riga-residua,
@@ -155,9 +155,13 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
 - **Anti-drift fail-visible**: fasi/aree sconosciute accodate nel riepilogo e
   **passthrough su entrambi i filtri** `area`/`fase` del drill-down (mai 400,
   mai perse: la card accodata resta drillabile).
-- **Scope emittente — interamente DB-side**: RLS invoker sulle 4 aree documento
-  (`security_invoker=on` su entrambe le viste v2, verificato con guard pgTAP su
-  `pg_class.reloptions`). Il BE **non** passa alcun `auth_user_id`.
+- **Scope emittente — interamente DB-side**: RLS invoker sulle **5** aree
+  documento (`security_invoker=on` su entrambe le viste v2, verificato con guard
+  pgTAP su `pg_class.reloptions`). Il BE **non** passa alcun `auth_user_id`.
+  📌 *Diceva «4 aree» in due punti — un residuo del 2026-07-08, quando l'area
+  DDT non c'era ancora (è entrata il 2026-07-18, DL-21). Corretto il 2026-08-31,
+  misurando `pg_class.relrowsecurity`: `preventivi`, `ordini`,
+  `offerte_commerciali`, `contratti` **e `ddt`** hanno tutte la RLS.*
 - Una **sola valutazione della union** per pagina (`_query_paged_view`: CTE
   materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
   SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non

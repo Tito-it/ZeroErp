@@ -1233,8 +1233,16 @@ function fatturaNumero(row) {
                   </template>
                 </Column>
                 <Column field="cosa" :header="t('vendite.lotti.col_giornale_cosa')">
+                  <!-- ⭐ Il FATTO, tradotto quando il catalogo lo dichiara.
+                       `etichetta_key` arriva da `config.eventi_dominio` per le
+                       sole righe del diario; sugli altri tre registri e' NULL e
+                       `cosa` e' gia' una frase. Ripiego fail-visible sul codice
+                       grezzo: chiave mancante -> `LOTTO_RIAPERTO`, mai il path
+                       della chiave. -->
                   <template #body="{ data }">
-                    <span class="app-giornale-cosa">{{ data.cosa }}</span>
+                    <span class="app-giornale-cosa">
+                      {{ labelOrCode(t, te, data.etichetta_key, data.cosa) }}
+                    </span>
                   </template>
                 </Column>
                 <Column :header="t('vendite.lotti.col_giornale_chi')" style="width: 120px;">

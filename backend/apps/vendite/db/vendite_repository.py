@@ -2587,6 +2587,36 @@ class VenditeRepository:
         "capienza_attuale": lambda v: None if v is None else str(v),
     }
 
+    # Scopo: 🔴 Il cancello del CANALE, sede unica (regola del 2, 2026-08-31:
+    #        seconda occorrenza scrivendo `cancella_fondo_fattura`).
+    # Obiettivo: rifiutare la chiamata quando la connessione ha un ruolo
+    #        BYPASSRLS. Vale per ogni percorso che si appoggia alla row
+    #        security invece di filtrare da se': viste `security_invoker`,
+    #        funzioni `SECURITY INVOKER`, letture dirette di tabelle con
+    #        policy. Su un canale di sistema quel perimetro non c'e', e il
+    #        filtro applicativo no-opa con `auth_user_id = None` — che e' anche
+    #        il valore legittimo del superuser, quindi non discrimina.
+    # ⚠️ PERCHE' IN UNA SEDE SOLA: il difetto che previene non fallisce, RIESCE.
+    #        Su una lettura mostra i dati di tutti gli emittenti, su una
+    #        scrittura li tocca. Un guard riscritto a mano ogni volta e' un
+    #        guard che alla terza volta qualcuno non scrive — e nessun test se
+    #        ne accorge, perche' il caso non solleva niente.
+    # ⭐ Il messaggio resta PARAMETRICO e non generico: «non disponibile dal
+    #        canale di sistema» senza dire QUALE gesto e su quale oggetto non
+    #        aiuta chi legge il log. Si unifica la meccanica, non la ragione.
+    def _require_canale_utente(self, *, gesto: str, oggetto: str, metodo: str) -> None:
+        ErrorManager.require(
+            not connection_role_bypasses_rls(),
+            code="E_VENDITE_VALIDATION",
+            message=f"{gesto} non disponibile dal canale di sistema.",
+            detail=(
+                f"{oggetto} si appoggia alla row security per il perimetro "
+                "emittente: da un ruolo BYPASSRLS quel perimetro non si "
+                "applica. Usare la connessione dell'utente della richiesta."
+            ),
+            function_name=f"vendite.vendite_repository.{metodo}",
+        )
+
     # Scopo: Restituisce l'elenco paginato dei casi di fondo fattura che
     #        chiedono una persona (`vendite.vw_fondi_fattura_da_decidere`),
     #        filtrabile per motivo.
@@ -2624,16 +2654,10 @@ class VenditeRepository:
         # headless dentro `system_process_context` leggerebbe i fondi di TUTTI
         # gli emittenti senza che nulla fallisca. Stesso presidio (inverso) di
         # `_guard_canale_sistema` nel motore documentale.
-        ErrorManager.require(
-            not connection_role_bypasses_rls(),
-            code="E_VENDITE_VALIDATION",
-            message="Elenco fondi da decidere non disponibile dal canale di sistema.",
-            detail=(
-                "La vista e' security_invoker: letta da un ruolo BYPASSRLS "
-                "perderebbe il perimetro emittente. Usare la connessione "
-                "dell'utente della richiesta."
-            ),
-            function_name="vendite.vendite_repository.list_fondi_fattura_da_decidere",
+        self._require_canale_utente(
+            gesto="Elenco fondi da decidere",
+            oggetto="La vista vw_fondi_fattura_da_decidere e' security_invoker e",
+            metodo="list_fondi_fattura_da_decidere",
         )
         conditions: list[str] = []
         params: list[Any] = []
@@ -2698,6 +2722,48 @@ class VenditeRepository:
                 record[campo] = coerce(record[campo])
             result.append(record)  # type: ignore[arg-type]
         return result, total_count
+
+    # Scopo: Cancella un atto di fondo fattura via la madre DB
+    #        `vendite.fn_cancella_fondo_fattura` (D-21 di
+    #        brief-db-fondo-fattura-ricalcolo-e-governo §9.3).
+    # Obiettivo: UNA sola `SELECT`. Il criterio («il denaro non si e' ancora
+    #        mosso, e la fattura che ha ricevuto il fondo e' ancora
+    #        modificabile») sta nel predicato `fn_check_fondo_cancellabile`, che
+    #        la madre legge una volta sola: riscriverlo qui sarebbe una seconda
+    #        implementazione, e la divergenza sarebbe silenziosa.
+    # Perimetro: i tre `DELETE` nell'ordine che la FK `NO ACTION` impone li fa
+    #        il database, in transazione sua. ⛔ Niente `transaction.atomic()`
+    #        con piu' chiamate: sarebbe una seconda implementazione di
+    #        un'atomicita' che il database gia' garantisce.
+    # Risultato: dict con i tre contatori di cio' che e' stato cancellato.
+    #
+    # 🔴 GUARD DI CANALE, ed e' lo stesso di `list_fondi_fattura_da_decidere`
+    # ma pesa di piu': la madre e' `SECURITY INVOKER` e si appoggia alla row
+    # security di `fatture_fondi_fattura_source` (accesa il 2026-08-31, D-20).
+    # E' quella policy a rendere vera la frase «non esiste **o** non e' tuo»:
+    # su un ruolo BYPASSRLS il perimetro sparisce, e qui non si leggerebbe
+    # l'atto di un altro emittente — lo si **cancellerebbe**.
+    def cancella_fondo_fattura(self, source_id: int) -> dict[str, int]:
+        self._require_canale_utente(
+            gesto="Cancellazione del fondo",
+            oggetto="La funzione fn_cancella_fondo_fattura e' SECURITY INVOKER e",
+            metodo="cancella_fondo_fattura",
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT deleted_righe, deleted_fondi, deleted_source
+                FROM vendite.fn_cancella_fondo_fattura(%s::bigint)
+                """,
+                [source_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "deleted_righe": int(row[0]),
+            "deleted_fondi": int(row[1]),
+            "deleted_source": int(row[2]),
+        }
 
     # Scopo: Restituisce elenco fatture di un lotto con decodifiche e filtri opzionali.
     # Obiettivo: lista paginata per lotto_id con JOIN anagrafiche, SDI, stato doc fiscale.
@@ -4081,8 +4147,28 @@ class VenditeRepository:
                 SELECT t.riga_key, t.registro, t.quando, t.gravita, t.cosa,
                        t.tx_id, t.correlation_id, t.auth_user_id, t.user_insert,
                        t.ritirata, t.entity_type, t.entity_id,
-                       c.vive, c.ritirate, c.info_vive
-                  FROM tutte t CROSS JOIN conteggi c
+                       c.vive, c.ritirate, c.info_vive,
+                       ed.etichetta_key
+                  FROM tutte t
+                  CROSS JOIN conteggi c
+                  -- ⭐ L'INDIRIZZO i18n DEL FATTO, per le sole righe del diario.
+                  -- `cosa` e' il CODICE dell'evento solo su `EVENT_LOG`: sugli
+                  -- altri tre registri e' un messaggio o «task · stato · codice»,
+                  -- e agganciare il catalogo li' significherebbe cercare una
+                  -- frase in una tabella di codici. Il ramo sta nella ON, non in
+                  -- un filtro a valle.
+                  -- ⚠️ Il JOIN sta QUI e non dentro `tutte`: quella CTE alimenta
+                  -- anche i conteggi, e una riga in piu' li falserebbe. Oggi non
+                  -- puo' moltiplicare (`codice` e' la PK di `config.eventi_dominio`),
+                  -- ma la posizione la rende vera per costruzione e non per
+                  -- coincidenza con un indice.
+                  -- ⛔ Nessun filtro su `obsoleto_dal`: il diario e' append-only e
+                  -- le sue righe vecchie devono restare LEGGIBILI. Un evento
+                  -- ritirato oggi ha scritto ieri, ed e' la stessa regola dei
+                  -- codici errore ritirati, che restano e risolvono.
+                  LEFT JOIN config.eventi_dominio ed
+                         ON t.registro = 'EVENT_LOG'
+                        AND ed.codice = t.cosa
                  WHERE (NOT %s OR NOT t.ritirata)
                    -- ⚠️ «Non-INFO» e' TUTTO CIO' CHE NON E' INFO, NULL COMPRESO,
                    -- e per questo si filtra sul RANGO e non con un
@@ -4135,6 +4221,18 @@ class VenditeRepository:
                 # la fattura 19205 dice perche'».
                 "entity_type": row[10],
                 "entity_id": None if row[11] is None else int(row[11]),
+                # ⭐ LA CHIAVE i18n DEL FATTO (`config.eventi_dominio.etichetta_key`),
+                # per le sole righe `EVENT_LOG`. `None` ovunque altrove, e anche
+                # su un codice evento che il catalogo non dichiara — `event_log`
+                # non ha una FK verso quel catalogo, ed e' deliberato (il diario
+                # non deve smettere di scrivere per un problema di
+                # configurazione).
+                # ⚠️ Chi rende usa `labelOrCode(t, te, etichetta_key, cosa)`: il
+                # ripiego e' il CODICE grezzo, mai il path della chiave. Fino al
+                # 2026-08-31 il catalogo dichiarava questo indirizzo e non lo
+                # leggeva nessuno — un contratto emesso, trasportato e non
+                # consumato, la stessa forma di `ui_action`.
+                "etichetta_key": row[15],
             }
             for row in rows
         ]
