@@ -138,7 +138,7 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Snapshot (**agosto 2026**). Per il dettaglio per componente, lo stato per anello e
+Snapshot (**30 agosto 2026**). Per il dettaglio per componente, lo stato per anello e
 la roadmap aggiornata fa fede la [Mappa Concentrica](./mappa-concentrica.md); la
 storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 
@@ -146,20 +146,20 @@ storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 
 - **Database**: operativo — 20 schemi, `daterange` nativo, PostgreSQL 18, automazioni parametriche (audit, storicizzazione, chiusure a scadenza, anti-overlap)
 - **Coda lavori generica**: operativa — job queue DB-native transazionale, senza broker: la fondazione asincrona dell'ERP
-- **Errori come contratto**: il significato di un errore è **a catalogo** (690 codici, 10 classi); status HTTP e reazione della UI si **derivano**
-- **Test DB**: 442 file pgTAP, in CI, eseguiti **come l'applicazione** — quindi con le policy RLS attive a ogni corsa
+- **Errori come contratto**: il significato di un errore è **a catalogo** (10 classi, 831 codici nel seed); status HTTP e reazione della UI si **derivano**, e l'errore porta un **bersaglio** che la UI trasforma in un gesto
+- **Test DB**: 551 file pgTAP, in CI, eseguiti **come l'applicazione** — quindi con le policy RLS attive a ogni corsa; il debito noto è sceso da 86 rossi a 19
 
 **Accessi e dati di base**
 
 - **Autenticazione**: completa (JWT, multi-veste, email, token monouso, reset/invito/cambio password)
 - **Permessi**: tre livelli — area funzionale, oggetto, azione di processo — con **RLS operatori attiva** a scope emittente fiscale
-- **Anagrafiche**: soggetti e ruoli, indirizzi, contatti, conti bancari, risorse umane, emittenti fiscali, billing account
+- **Anagrafiche**: soggetti e ruoli, indirizzi, contatti, conti bancari, risorse umane, emittenti fiscali, billing account, **titoli IVA del soggetto** con registro movimenti append-only
 - **Catalogo**: articoli, unità di misura e conversioni, distinte base, note
 - **Presentazione configurabile**: liste personalizzabili per profilo/emittente/utente e **dashboard home** a card KPI
 
 **Processi**
 
-- **Ciclo attivo completo**: preventivi, offerte commerciali, contratti, ordini, DDT, **resi** e fatture — DB + backend + frontend
+- **Ciclo attivo completo**: preventivi, offerte commerciali, contratti, ordini, DDT, **resi**, fatture e **note di credito** — DB + backend + frontend, con la numerazione governata dal registro e l'IVA di riga decisa da un risolutore
 - **Fatturazione**: pipeline batch a corsie, lotti, **cockpit da cui si agisce** (fattura adesso, rendi definitive, stampa massiva), tre lenti di lettura
 - **Commesse**: multi-sorgente, quantità immutabili dopo la fatturazione, oneri manuali con la propria IVA
 - **Motore pratiche**: operativo e **validato dal primo consumatore reale** (pratica PREVENTIVI); il secondo è ciò che ne promuoverà le astrazioni a contratti
@@ -168,7 +168,7 @@ storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 
 **Aperto**
 
-- **Incassi e contabili di pagamento**: modello disegnato, **cantiere appena aperto** — decisioni portanti prese
+- **Incassi e contabili di pagamento**: il **posting è scritto** (contabile, saldo rata, sistemazioni) — ⛔ ma lo schema ha zero righe: di questo dominio è provato il *percorso*, mai l'*esito*, e il collaudo in-app è aperto
 - **Fatturazione elettronica SDI**: payload pronto, builder XML e persistenza esito da fare
 - **Acquisti, magazzino, contabilità**: DB presente, backend ancora stub
 - **Integrazione AI v2**: contesto dinamico e nuovi tool (v1 operativa: 11 tool + widget conversazionale)
