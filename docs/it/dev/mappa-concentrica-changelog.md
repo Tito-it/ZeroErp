@@ -10,6 +10,167 @@
 
 ---
 
+## 30 agosto 2026
+
+> Copre il periodo **11 – 30 agosto**. Venti giorni densi — **460 changeSet**
+> fra `00_schema` e `20_code`, di cui 268 in `vendite` e 57 in `pagamenti` —
+> ma non dispersi: quasi tutto ricade in **nove temi**, ed è per temi che sono
+> scritti qui sotto, non changeSet per changeSet.
+>
+> ⚠️ **Il 31 agosto è volutamente fuori.** Quel giorno era ancora in corso
+> mentre questa voce veniva scritta, e una giornata a metà in un changelog
+> diventa una riga che nessuno sa più se rileggere. Ciò che è atterrato il 31
+> — l'esecuzione del trasloco dei registri, i consumatori BE/FE del
+> risolutore IVA, l'apply del fondo fattura — entra nella voce successiva.
+
+**Anello 3 (vendite) — La nota di credito: si chiude il ramo morto degli
+accrediti.** Il reso portava indietro la merce e il motivo, e **nessun valore**:
+il ciclo attivo sapeva far tornare le cose ma non i soldi. Il cantiere (17 → 26
+agosto) apre `vendite.resi_righe_accrediti` e `config.nature_doc_fiscale`,
+chiude DB, BE e FE, e si valida a video con un collaudo spuntato riga per riga.
+Subito dopo si chiude anche la **genealogia**: il grafo dei documenti si fermava
+sul reso — la nota di credito era collegata alla fattura che rettifica ma non
+alla merce che l'aveva causata — e con l'arco mancante arrivano i tre residui
+del lineage (il `root` che dipendeva dagli id, la commessa senza origine, la
+nota di credito che in lista si chiamava «Fattura»). Chiuso il 29, collaudo in
+app compreso. Vedi
+[brief-design-note-credito-resi.md](work-done/brief-design-note-credito-resi.md),
+[brief-db-lineage-arco-reso-nota-credito.md](work-done/brief-db-lineage-arco-reso-nota-credito.md),
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](work-done/brief-db-lineage-residui-root-e-sorgente-ddt.md).
+
+**Anello 3 (vendite) — La data del documento smette di essere un effetto
+collaterale.** Origine: una fattura di luglio numerata il 25 agosto che prendeva
+il numero 11 quando esistevano già fatture di agosto. Il tema è uno solo — *chi
+decide la data e la sequenza di un documento fiscale* — e si è aperto in tre
+tempi: la **numerazione** (data e sequenza governate dal registro, non dedotte
+dal giro), il **limite di emissione** perché un documento nasca già conforme
+invece di scoprire in fondo di non essere più trasmissibile, e il **registro
+visibile in lista** perché la data prevista si sappia *prima* di generare. Il 30
+agosto l'analisi sui **due motori di numerazione** — il sistema codici e i
+registri — prende la decisione portante: la commessa passa sui registri, e la
+periodicità dentro `config.sistema_codici` **non si fa più**, perché senza la
+commessa quella colonna non ha più un cliente. Al 30 le decisioni sono prese e
+il piano è scritto; l'esecuzione è del giorno dopo. Vedi
+[brief-db-numerazione-data-documento-e-sequenza.md](work-done/brief-db-numerazione-data-documento-e-sequenza.md),
+[brief-db-limite-emissione-e-data-verificata.md](work-done/brief-db-limite-emissione-e-data-verificata.md),
+[analisi-db-numerazione-documenti-e-due-motori.md](work-done/analisi-db-numerazione-documenti-e-due-motori.md).
+
+**Anello 1 + 3 — L'IVA ha un risolutore, e il regime del cliente smette di
+essere scritto e mai letto.** La domanda di partenza era stretta (*«su un omaggio
+o un reverse charge l'IVA non discende più dall'articolo: è giusto che si possa
+modificare?»*); cercandone la risposta è emerso che **l'IVA la decideva
+l'articolo e nessun altro**, e che le colonne del regime fiscale del cliente
+erano compilate dall'operatore e **lette da nessuno**. Il modello che ne esce
+non mette un default sul cliente: l'influenza del soggetto sull'IVA passa
+**sempre da un titolo registrato e documentato**, e i titoli hanno ora una sede
+in `anagrafiche` (`soggetti_titoli_iva` con i suoi ambiti e un registro
+movimenti **append-only**, dove anche l'annullo di una forzatura è un movimento)
+più il vocabolario `config.tipi_titolo_iva`. Al 30 agosto il lato **DB è
+chiuso**; i consumatori applicativi vengono dopo. Vedi
+[brief-db-be-iva-risolutore-e-regime-cliente.md](work-done/brief-db-be-iva-risolutore-e-regime-cliente.md).
+
+**Anello 3 (`pagamenti`) — Il posting esiste.** Il 10 agosto questo cantiere si
+apriva su una misura sgradevole: *nessuna funzione, in tutto il database,
+scriveva `pagamenti.vendite_movimenti`* — il posting era documentato e non
+implementato, e per costruzione il saldo di una fattura era sempre il totale.
+Adesso il motore c'è: registrazione della contabile, saldo della rata, guard di
+transizione e di capienza, **sistemazione delle eccedenze**, distinta di
+correzione. E il perimetro: `pagamenti.enti_incasso` non aveva row security —
+ogni operatore vedeva i canali di incasso, **IBAN compreso**, di tutti gli
+emittenti.
+⛔ **Ma di questo dominio è stato provato il percorso, mai l'esito**: lo schema
+ha ancora zero righe, nessuno ha aperto una distinta o abbinato un incasso, e il
+collaudo in-app è **aperto**. Vedi
+[brief-db-posting-e-abbinamento-rata.md](work-in-progress/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md),
+[collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
+
+**Anello 3 (vendite) — Il lavoro che non torna indietro.** Le tre porte di reset
+della fatturazione — elimina fattura, riporta il lotto a DRAFT, annulla il lotto
+— cancellavano righe su cui era già stato registrato un accredito, e l'esito non
+era un rifiuto ma una violazione di chiave esterna **a metà lavoro**. Chiuse. Ma
+la parte che si vede è un'altra: il lavoro rimasto indietro ora ha un **verbo**
+(«Riporta da emettere», con la card che si spezza in due per non promettere una
+fattura che non c'è) e **«Rendi definitive» è tornata sulla lista Lotti**, dove
+sta l'elenco del suo oggetto, invece di stare su una card che ne mostrava un
+altro. Entrambi collaudati a video. Vedi
+[brief-db-lavoro-che-non-torna-indietro.md](work-done/brief-db-lavoro-che-non-torna-indietro.md),
+[brief-be-fe-rendi-definitive-sui-lotti.md](work-done/brief-be-fe-rendi-definitive-sui-lotti.md),
+[brief-db-guard-righe-fattura-rettificate.md](work-done/brief-db-guard-righe-fattura-rettificate.md).
+
+**Anello 0 — L'errore porta un bersaglio, e la riga di log dice per chi.** Due
+cantieri gemelli, stessa idea: un messaggio non serve se non si sa *su cosa*.
+Il **Passo 0 dell'osservabilità** rende parlante la riga di `vendite.event_log`
+— perimetro emittente, `tx_id`, identità del giro — e la mette sotto RLS
+**prima** che esista qualunque endpoint di lettura, perché quella tabella è
+append-only per trigger e sui campi della riga *non esiste rimedio a
+posteriori*, mentre policy, indici e viste si aggiungono in qualunque momento.
+Il **bersaglio** fa la stessa cosa sull'errore: oltre a dire cosa è successo,
+dice su quale entità, in una forma che l'interfaccia trasforma in un gesto
+(«vai lì») e chi diagnostica legge come coordinata. Quattro lati chiusi in due
+giorni, DB → roll-out → backend → toast con azioni. Vedi
+[brief-db-event-log-scope-e-riga-parlante.md](work-done/brief-db-event-log-scope-e-riga-parlante.md),
+[brief-db-bersaglio-errore.md](work-done/brief-db-bersaglio-errore.md).
+
+**Anello 0 — I presidi che non presidiavano.** Tre presidi del progetto cercavano
+i test con un glob a **un livello solo**: le sottocartelle di schema — 16 file —
+erano fuori dalla baseline, fuori dal guardrail del preambolo, fuori dal
+censimento dei `LIMIT 1`. Dodici erano rossi, e nessuno lo sapeva; la baseline
+diceva «nessuna regressione» e non mentiva — *quei file non li aveva guardati*.
+Sanato il ramo cieco, il debito è stato attaccato: **da 86 rossi su 442 file a
+19 su 551**. Nello stesso filone, il catalogo dei messaggi ha smesso di
+promettere segnaposto che nessun chiamante riempiva (un `%s` che arrivava a
+video letterale) e gli **smoke test** hanno preso una baseline: undici script
+che nessuno lanciava, e per un giorno sei erano rossi senza che si notasse. Vedi
+[brief-db-pgtap-rami-ciechi.md](work-done/brief-db-pgtap-rami-ciechi.md),
+[brief-db-bonifica-baseline-pgtap-vendite.md](work-done/brief-db-bonifica-baseline-pgtap-vendite.md),
+[brief-db-segnaposti-messaggi-errore.md](work-done/brief-db-segnaposti-messaggi-errore.md).
+
+**Anello 1 — Il perimetro emittente, e due invarianti che nessuno presidiava.**
+Il perimetro dell'emittente fiscale aveva due buchi nello stesso presidio —
+l'accesso alle liste e la gerarchia dei billing account — tenuti insieme perché
+uno teneva aperto l'altro. Chiusi, con la colonna emittente sulle cinque liste
+rimaste e nella riga della ricerca universale. Da lì sono uscite due domande di
+dominio che erano rimaste implicite: **un billing account può cambiare
+emittente?** (sì, finché non ha storia — e il motivo per cui non si può arriva
+*sulla riga*, non premendo il pulsante) e **l'emittente della commessa può
+essere NULL?** (no: la commessa lo deriva dalla cascata delle sorgenti, e una
+commessa non aggrega emittenti diversi). Vedi
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
+[brief-db-billing-account-cambio-emittente.md](work-done/brief-db-billing-account-cambio-emittente.md),
+[brief-db-emittente-commessa-invariante.md](work-done/brief-db-emittente-commessa-invariante.md).
+
+**Anello 1 (`ui`) — Una regola che non sta dove si legge non esiste.** Il 10
+agosto questo changelog registrava un'inversione: 40 file sul building block
+delle liste, registro del presidio 43/43. Rimisurato il **30 agosto**: i file
+sul building block sono saliti a **53**, ma quelli con `DataTable` grezza —
+scesi a 48 il 3 agosto — sono **risaliti a 57**. Il 30 agosto la **«regola zero
+della lista»** è stata spostata in cima ad `AGENTS.md`, dove si legge a inizio
+sessione: stava in `frontend-standards.md`, che si apre quando serve, e che anzi
+spiegava *come* configurare una `DataTable`. ⭐ **È il difetto che vale più del
+numero — non era nel codice, era nella sede della regola.**
+
+⚠️ **E il numero, guardato bene, non dice quello che sembra.** Classificati i 57:
+**26 sono drawer e dialog** e 15 pannelli o tab annidati — cioè l'**eccezione
+che `AGENTS.md` ammette**, non liste fuori standard — **6 sono i wrapper
+stessi**, e restano **5 view di lista** più 5 `*SearchTable` di dominio. Col
+paginator, il segno della lista vera, i file sono 13 e sei sono wrapper. ⛔ *Il
+presidio a un numero solo non separa il debito dalla crescita del frontend*: la
+regola resta giusta, il contatore che la accompagna misura un'altra cosa.
+
+**Manutenzione e chiusure.** DDT: le righe a prezzo zero sono ammesse (il
+solo-trasporto non è un difetto di prezzo) e il DDT di **ri-consegna** non nasce
+più nudo — eredita causale e indirizzi invece di farli ridigitare. `is_attiva`
+rispondeva a **due domande con un flag solo** (è la revisione corrente? è ancora
+in gioco?): separate, e il filtro «Annullato» è passato da 0 risultati *per
+costruzione* a 17. `acquisti` e `magazzino` sono stati **misurati** il 21 agosto
+e documentati: modello disegnato, tutte le tabelle a zero righe — e in
+`magazzino` un CHECK rendeva inseribili **solo i trasferimenti**. Archiviati per
+verifica contro il codice vivo: il documento di progettazione della pipeline
+(febbraio) e l'indice attività preventivi.
+
+---
+
 ## 10 agosto 2026
 
 > Copre il periodo **27 luglio – 10 agosto**. Due settimane dominate da due
