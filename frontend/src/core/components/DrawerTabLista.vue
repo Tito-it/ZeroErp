@@ -61,14 +61,25 @@ defineProps({
 
 const emit = defineEmits(['page', 'sort', 'config-loaded'])
 
-const slots = defineSlots()
 const listaInterna = ref(null)
 
-// Gli slot da inoltrare: tutti tranne i due nostri. Ricalcolato a ogni render,
-// cosi' uno slot condizionato dal caller compare e sparisce come deve.
-const slotInoltrati = computed(() =>
-  Object.keys(slots).filter((n) => !SLOT_PROPRI.includes(n)),
-)
+// Gli slot da inoltrare: tutti tranne i tre nostri.
+//
+// ⛔ E' UNA FUNZIONE, NON UNA `computed`, E LA DIFFERENZA E' UN BUG. L'oggetto
+//    degli slot NON e' reattivo: viene rimpiazzato a ogni render, ma non
+//    notifica nessuno. Una `computed` che lo legge non ha quindi NESSUNA
+//    dipendenza tracciata — si calcola la prima volta e non si ricalcola mai
+//    piu'. ⇒ Uno slot condizionato dal caller (`<template v-if="!isReadonly"
+//    #actions>`) resterebbe congelato allo stato che aveva al primo render:
+//    entrando in sola lettura la colonna azioni non sparirebbe, e uscendone
+//    non ricomparirebbe. Chiamata dal template, la funzione gira a ogni render
+//    e legge gli slot di ADESSO.
+// ⚠️ Si legge `$slots` del template (passato come argomento) e non un
+//    `useSlots()` catturato nel setup: sono lo stesso oggetto, ma prendere
+//    l'argomento rende esplicito che il valore e' quello del render corrente.
+function slotInoltrati(slots) {
+  return Object.keys(slots).filter((n) => !SLOT_PROPRI.includes(n))
+}
 
 // ⭐ Il caller mette `ref="listaRef"` QUI, non sulla lista interna — che non
 //    puo' raggiungere. `useListaAzioni` legge `config`/`dirty`/`colonneNuove`
@@ -124,7 +135,7 @@ defineExpose({
       @sort="emit('sort', $event)"
       @config-loaded="emit('config-loaded', $event)"
     >
-      <template v-for="nome in slotInoltrati" #[nome]="scope" :key="nome">
+      <template v-for="nome in slotInoltrati($slots)" #[nome]="scope" :key="nome">
         <slot :name="nome" v-bind="scope ?? {}" />
       </template>
     </ListaConfigurabile>

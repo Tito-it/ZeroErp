@@ -3,8 +3,12 @@
 > **Tipo**: brief al team DB · **Aperto**: 2026-08-18 · **Riscritto**: 2026-09-01
 > · **Richiedente**: perimetro BE · **Destinazione**: `dev/db-tid`
 > · **Stato**: 🟢 **DB fatto** — `20260901-04` applicato il 2026-09-01 12:31,
-> pgTAP verdi, baseline `vendite` senza regressioni. ⬜ Resta da applicare
-> `20260901-05` (sola correzione di due frasi nel `COMMENT ON VIEW`).
+> pgTAP verdi, baseline `vendite` senza regressioni. 🟢 **Anche `20260901-05`
+> applicato** (sola correzione di due frasi nel `COMMENT ON VIEW`): la doc
+> auto-gen di `vw_dash_competenza_gruppi` riporta il testo corretto, quindi il
+> commento vivo e' quello del `-05`. ⚠️ Questa riga diceva *«resta da
+> applicare»*: era stantia, corretta il 2026-09-01 al passo BE/FE.
+> · 🟢 **BE/FE fatto** — vedi §9.
 >
 > **Origine**: DL-2 di
 > [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
@@ -237,7 +241,8 @@ la vista invece che il catalogo. È ripiego, non prima scelta.
 | **P-3** | ✅ pgTAP — 6 test nuovi, 8 suite affette riverificate | §6 |
 | **P-4** | ✅ baseline `vendite` — 5 rossi su 259, **tutti noti**, zero regressioni | `scripts/pgtap-baseline.sh vendite` |
 | **P-5** | ✅ doc manuale della vista | `docs/it/dbzero/vendite/manual/vw_dash_competenza_gruppi.md` |
-| **P-6** | ⬜ changeSet `20260901-05` — corregge due frasi del `COMMENT ON VIEW`, **da applicare** | §5.3 |
+| **P-6** | ✅ changeSet `20260901-05` — corregge due frasi del `COMMENT ON VIEW` | §5.3 |
+| **P-7** | ✅ BE/FE — contratto stretto, catena di ripiego duplicata rimossa | §9 |
 
 ### 5.1 · Esito di P-2 — provato il 2026-09-01, **non applicato**
 
@@ -310,8 +315,11 @@ Tid a parole, per quel comando.
 
 ### 5.3 · P-6 — `20260901-05`, due frasi sbagliate nel commento della vista
 
-⛔ **Scritto, provato in `BEGIN/ROLLBACK`, NON applicato.** Non tocca DDL: la
-definizione della vista e `security_invoker=on` restano quelle del `-04`.
+✅ **Applicato** (verificato il 2026-09-01 dal passo BE/FE: la doc auto-gen della
+vista riporta il testo di questa revisione, non quello del `-04`). Non tocca DDL:
+la definizione della vista e `security_invoker=on` restano quelle del `-04`.
+⚠️ Questo capoverso diceva *«scritto, provato in `BEGIN/ROLLBACK`, NON
+applicato»*, ed era rimasto indietro rispetto all'apply.
 
 Il `-04` ha lasciato nel `COMMENT ON VIEW` due affermazioni false. Entrambe sono
 state trovate **dopo** l'apply, misurando:
@@ -446,21 +454,131 @@ non è mai stato morto. «Inutilizzabile» valeva per `zeroerp_app`, e solo per 
 contrario di quello che avevo supposto, e perché il lettore plausibile è un ruolo
 `BYPASSRLS` che non passa da nessuna delle viste censite.
 
-## 9. Per BE e FE — nessun codice, due effetti da annunciare
+## 9. Per BE e FE — 🟢 fatto il 2026-09-01
 
-- **BE-1** — nessuna modifica richiesta: `riferimento` e `documento_id`
-  conservano nome, tipo e posizione.
-- **BE-2, da sapere** — la ricerca libera su `g.riferimento` resta **senza indice
-  trigram**. Migliora di molto (una lookup per gruppo invece di sei scansioni) ma
-  non diventa indicizzata: il DL-2 *«ancorare la ricerca alla sorgente del
-  documento»* **resta aperto**.
-- **FE-1, effetto atteso senza codice** — sulle righe che oggi mostrano il
-  **codice commessa** al posto del numero documento (§3) comparirà il numero, e
-  **riapparirà la voce «Apri documento»**. Va annunciato, altrimenti si legge
-  come un difetto nuovo.
-- **FE-2, debito** — `gruppoRiferimento()` in `DashboardCompetenzaView.vue`
-  ripete la catena di ripiego del DB. Dopo la correzione è codice morto. Fuori
-  perimetro, da valutare.
+La previsione era *«nessun codice»*. È rimasta vera sulla **lettura** — nessun
+adeguamento è stato necessario per far funzionare la vista nuova — e falsa su una
+cosa che il giro ha reso visibile: il ripiego duplicato non era solo debito, era
+**legittimato da una dichiarazione di tipo sbagliata**. Le due cose si tolgono
+insieme o non si toglie nessuna delle due.
+
+| | Cosa | Esito |
+| --- | --- | --- |
+| **BE-1** | nessuna modifica di lettura: `riferimento` e `documento_id` conservano nome, tipo e posizione | ✅ confermato — e il presidio contro il ritorno di una seconda risoluzione lato Python era già in casa (`test_id_documento_dalla_vista_non_da_una_seconda_risoluzione`) |
+| **BE-1b** | `DashCompetenzaGruppoRow.riferimento` dichiarava `str \| None` | ✅ stretto a `str` (decisione di Tid, 2026-09-01) — vedi sotto |
+| **BE-1c** | il MAPPING del repository emetteva ancora `None` in un campo dichiarato non-nullable | ✅ corretto — trovato dalla revisione critica, §9.4 |
+| **BE-1d** | il commento della whitelist di ricerca descriveva la LATERAL a sei rami | ✅ corretto — §9.4 |
+| **BE-2** | ricerca libera su `g.riferimento` senza indice trigram | ⬜ **resta aperto**: il DL-2 *«ancorare la ricerca alla sorgente del documento»* è cantiere suo |
+| **FE-1** | sulle righe che mostravano il **codice commessa** compare il numero e **riappare «Apri documento»** | ✅ nessun codice — e il percorso a valle regge: D-1 apre la revisione **spinta**, cioè `is_superata = true`, che `PreventiviDrawer` già riconosce (tag «superseded», banner, readonly) |
+| **FE-2** | `gruppoRiferimento()` ripeteva la catena di ripiego del DB | ✅ **rimossa** |
+| **FE-3** | il toast dei gruppi «non serviti» nominava la COMMESSA | ✅ corretto — §9.2 |
+| **FE-4** | `row.riferimento ?? ''` difendeva da un caso che il contratto esclude | ✅ tolto — §9.4 |
+| **P** | il contratto stretto non aveva presidio | ✅ `test_mapping_espone_riferimento_non_nullo` (24-octies) |
+| **D** | doc API dell'endpoint | ✅ `docs/it/backend/vendite/manual/api_dashboard_competenza.md` — §9.5 |
+
+### 9.1 · Perché il tipo si stringe, e perché prima di togliere il ripiego
+
+`riferimento` era dichiarato `str | None` in `backend/apps/vendite/types.py`. La
+vista non può produrre NULL: il `COALESCE` finisce su `gruppo_key`, che è la
+chiave del gruppo. ⭐ **Finché il contratto ammetteva il NULL, il ripiego nel
+frontend era difendibile** — e infatti c'era. Il difetto non era la riga di
+frontend: era la dichiarazione che la giustificava.
+
+⭐ **E l'argomento per togliere il ripiego non è sui dati, è sulla forma.** La
+catena FE era `riferimento || commessa_codice || gruppo_key`, e `riferimento`
+**è** `COALESCE(documento_numero, commessa_codice, gruppo_key)`: il 2° e il 3°
+termine sono gli stessi due del `COALESCE`, quindi **irraggiungibili per
+costruzione**. Non «oggi non capitano»: non possono capitare. Era la stessa
+regola scritta in due posti, cioè la forma in cui le due copie divergono.
+
+### 9.2 · FE-3 — la stessa specie di difetto, in un toast
+
+Il messaggio dei gruppi richiesti ma rimasti fuori li nominava con
+`commessa_codice || gruppo_key`, mentre la lista sopra li nomina con
+`riferimento`. ⭐ **È il §3 su un'altra superficie**: lo stesso gruppo con due
+nomi a seconda di dove lo si legge, e il codice commessa che «sembra un valore
+legittimo». Ora entrambi passano da `etichettaGruppoKey(key, ripiego)`, col
+codice commessa come ripiego per le righe uscite dalla lista nel frattempo.
+
+⚠️ Il `ripiego` è un **parametro** e non un ramo fisso perché i due percorsi
+hanno in mano cose diverse: «non serviti» porta anche il codice commessa,
+«fatturati altrove» le sole chiavi.
+
+⛔ E non va passata **nuda** a `elencoTroncato`, che fa `.map(fmt)`: passerebbe
+l'**indice** come `ripiego`. Il call site di «fatturati altrove» è stato avvolto
+per questo — un difetto che sarebbe uscito muto, con un `1` a video al posto di
+un numero documento.
+
+### 9.3 · Collaudo — e cosa NON prova
+
+Verde: `apps.vendite.tests` (**1866**, +1 nuovo), `apps.core.tests` (832),
+`scripts/check_i18n_keys.py`, build Vite. Il conteggio delle `DataTable` grezze è
+invariato (57).
+
+⚠️ **Il collaudo in-app di FE-1 non è esercitabile sui dati di oggi**: il caso
+rotto ha **zero occorrenze** (§5.2). Chi lo cercasse fra questi dati leggerebbe
+un verde per sottrazione. O si fabbrica il caso — revisione su un preventivo con
+attività spinte — o si dichiara **non esercitato**. Il presidio vero resta il
+pgTAP di P-3, che il caso se lo costruisce.
+
+### 9.4 · ⭐ La revisione critica, e perché è la parte più utile di questo §
+
+Il giro «togli il ripiego + stringi il tipo» era **dichiarato finito e non lo
+era**. Una rilettura critica ha trovato tre cose, e la prima è dello **stesso
+difetto** che il cantiere stava correggendo, spostato di un livello.
+
+1. ⛔ **Il produttore contraddiceva il contratto appena stretto.**
+   `types.py` diceva `riferimento: str`, ma il mapping di
+   `list_dash_competenza_gruppi` faceva ancora
+   `None if row[3] is None else str(row[3])`: un campo dichiarato non-nullable
+   che il repository poteva emettere `None`.
+   ⭐ **Stringere un tipo senza guardare chi lo produce non è stringere niente**:
+   è aggiungere una seconda affermazione sul contratto, e lasciarle discordi.
+   Corretto in `str(row[3])`, che è anche **la convenzione del file** —
+   `gruppo_key` e `tipo_gruppo`, ugualmente NOT NULL, sono mappati così due
+   righe sopra. Non è stata inventata una policy: è stato tolto un caso
+   speciale.
+2. ⛔ **Un commento che insegnava un meccanismo inesistente.** La whitelist
+   `DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS` era annotata *«`riferimento` è
+   `COALESCE(doc.codice, …)` su una LEFT JOIN LATERAL che unisce sei rami»*.
+   È il **gemello lato BE** delle due frasi che il `-05` ha corretto a DB
+   (§5.3), e vale la stessa ragione: *un commento che sbaglia il meccanismo è
+   peggio di un commento assente, perché viene creduto* — chi ottimizzasse «le
+   sei scansioni» lavorerebbe su una cosa che non esiste più.
+   ⚠️ Riscritto tenendo ciò che **non** cambia: la ricerca resta non
+   indicizzata, il DL-2 resta aperto.
+3. ⛔ **Una difesa contro l'impossibile, nello stesso file che ora dice il
+   contrario.** `buildApriDocumentoAction` riceveva `row.riferimento ?? ''`:
+   doppiamente irraggiungibile — il campo è NOT NULL, e quella voce si rende
+   solo quando `documento_id` c'è. Lasciarla significava che lo stesso file
+   affermava due cose opposte sullo stesso contratto.
+
+⭐ **E il contratto stretto non aveva un presidio.** Il mapping legge **per
+indice**: un riordino del `SELECT` farebbe scorrere i valori sulle chiavi
+sbagliate senza rompere niente, e il test di larghezza (`24-septies`) resterebbe
+verde perché la larghezza non cambia. Aggiunto `24-octies`
+(`test_mapping_espone_riferimento_non_nullo`), gemello del test 24: quello
+presidia il NULL che deve **sopravvivere**, questo il valore che non deve **mai**
+esserlo.
+
+⚠️ Trovato di rimbalzo, e corretto perché il file era già aperto:
+`test_larghezza_riga_finta_uguale_al_select` esisteva nel codice come
+`24-septies` e **non compariva nell'indice** in testa al file, che
+[AGENTS.md](../../../../.codex/AGENTS.md) richiede. Un indice che non elenca un
+test è il primo passo perché quel test smetta di essere manutenuto.
+
+### 9.5 · Doc API dell'endpoint
+
+`docs/it/backend/vendite/manual/api_dashboard_competenza.md`:
+
+- `documento_id` era **assente** dall'elenco dei campi di riga, pur essendo ciò
+  con cui il client apre il drawer. Aggiunto;
+- nuova sezione sul contratto delle due colonne: `riferimento` NOT NULL col
+  perché **strutturale**, il divieto esplicito di rimettere la catena lato
+  client, il cambio di sorgente `20260901-04/-05` con **contratto HTTP
+  invariato**, l'effetto visibile sulle righe prima etichettate col codice
+  commessa, la scelta della revisione **spinta**, e il costo di ricerca che
+  resta non indicizzato.
 
 ## 10. ⛔ La prima stesura, e perché era sbagliata
 

@@ -669,6 +669,39 @@
     "filtered_by": "Results filtered by: {name}"
   },
   "amministrazione": {
+    "registri_numerazione": {
+      "help": "The numbering registers of this issuer: one per document family (delivery notes, orders, jobs, returns) and more than one for invoices. This is where the number FORMAT is governed — prefix, suffix and how many digits — and it is the only place it can be changed.",
+      "filtro_placeholder": "Search by code, description or prefix",
+      "nuovo_tooltip": "New numbering register",
+      "vuota": "No numbering register for this issuer.",
+      "stato_tutti": "All",
+      "stato_attivi": "Active only",
+      "stato_disattivati": "Deactivated only",
+      "disattiva": "Deactivate",
+      "disattiva_confirm": "Deactivate register {codice}? The register stays and keeps occupying its slot: it cannot be replaced by a new one on the same combination, only reactivated.",
+      "disattivato": "Register deactivated.",
+      "riattiva": "Reactivate",
+      "riattiva_confirm": "Reactivate register {codice}?",
+      "riattivato": "Register reactivated.",
+      "salvato": "Register saved.",
+      "drawer_lista_title": "Numbering registers",
+      "drawer_title_new": "New numbering register",
+      "drawer_title_edit": "Numbering register",
+      "sezione_forma": "Number format",
+      "sezione_limiti": "Issuing limits",
+      "sezione_contatori": "Counters",
+      "anteprima": "Preview",
+      "anteprima_hint": "What the first number issued by this register will look like.",
+      "serie_hint": "The counter series. Not editable here: changing it on a live register moves the sub-ledger.",
+      "politica_data": "Document date policy",
+      "politica_oggi": "Today's date",
+      "politica_fine_mese_competenza": "End of accrual month",
+      "limite_giorni": "Issuing limit (days)",
+      "limite_giorno_mese": "Issuing limit (day of month)",
+      "col_anno": "Year",
+      "col_ultimo_numero": "Last number",
+      "col_ultima_data": "Last date"
+    },
     "registri_fatturazione": {
       "disattiva_blocco": {
         "ha_fatture": "Register {codice} has already issued {quante} invoices: deactivating it would leave those documents without the register that numbered them.",
@@ -1126,6 +1159,7 @@
       "col_regime_fiscale": "Tax regime",
       "action_ba": "Manage billing accounts",
       "action_utilities": "Manage utilities",
+      "action_registri": "Numbering registers",
       "ba_help": "Map the issuer to one or more specific billing accounts, or create the global default (only one per instance).",
       "ba_search_placeholder": "Search billing account...",
       "ba_add_specific": "Add BA",
@@ -3430,6 +3464,18 @@
       "col_etichetta": "CN label",
       "col_tenuti": "Kept",
       "col_fatturati": "Invoiced"
+    },
+    "registri_numerazione": {
+      "col_codice": "Code",
+      "col_descrizione": "Description",
+      "col_famiglia_descrizione": "Family",
+      "col_utility_codice": "Utility",
+      "col_prefisso": "Prefix",
+      "col_suffisso": "Suffix",
+      "col_lunghezza_numero": "Digits",
+      "col_serie_default": "Series",
+      "col_attivo": "Active",
+      "col_data_insert": "Created"
     },
     "resi_da_riconsegnare": {
       "col_numero": "Number",

@@ -97,3 +97,31 @@ export function getAuditOpSeverity(tipo) {
   if (tipo === 'ELIMINAZIONE') return 'danger'
   return 'secondary'
 }
+
+// ------------------------------------------------------------
+// Registri di numerazione — i vocabolari CHIUSI che il frontend deve conoscere
+// ------------------------------------------------------------
+// ⛔ Stanno qui e non in un catalogo perche' NON hanno un catalogo: sono
+//    `CHECK` del database, verificati sul vivo il 2026-09-01. Una tabella da
+//    cui leggerli non esiste, quindi l'unica alternativa a queste costanti
+//    sarebbe la stessa stringa scritta a mano in tre punti della maschera.
+// ⚠️ Se un giorno un CHECK si allarga, questo file va allargato con lui: e' un
+//    elenco parallelo dichiarato, e la sua unica difesa e' stare in UN posto.
+
+// La famiglia che ammette i campi fiscali. Le altre quattro li vedono
+// rifiutare da `chk_registri_fatturazione_famiglia_regole_fattura`.
+export const REGISTRO_FAMIGLIA_FISCALE = 'FATTURA'
+
+// `chk_registri_fatturazione_politica_data`: due valori, non di piu'.
+// ⭐ `OGGI` e' anche il NEUTRO che il CHECK pretende fuori da FATTURA.
+export const REGISTRO_POLITICA_DATA = ['OGGI', 'FINE_MESE_COMPETENZA']
+export const REGISTRO_POLITICA_DATA_NEUTRA = 'OGGI'
+
+// Limiti della UI per `lunghezza_numero`.
+// ⚠️ NON sono un vincolo del database — la colonna non ha `CHECK` — sono un
+//    guard di maschera: il progressivo e' un `bigint`, quindi oltre 18 cifre
+//    il contatore non ci starebbe comunque, e sotto 1 non esiste un numero.
+//    Dichiarati qui perche' servono in DUE punti (il campo e l'anteprima) e
+//    due letterali che devono restare uguali sono un letterale di troppo.
+export const REGISTRO_CIFRE_MIN = 1
+export const REGISTRO_CIFRE_MAX = 18

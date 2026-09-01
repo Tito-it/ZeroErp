@@ -89,7 +89,20 @@ export const FIELD_LENGTH = {
   // ⛔ Non e' una regola di business duplicata: e' la validazione UX che evita
   // un giro fino al database. Il rifiuto autorevole resta del DB.
   EMITTENTE_CODICE_MIN: 2,
-  EMITTENTE_CODICE_MAX: 10
+  EMITTENTE_CODICE_MAX: 10,
+  // Registri di numerazione: le lunghezze REALI delle colonne, lette da
+  // `information_schema` il 2026-09-01 e non dedotte dall'auto-gen (che
+  // stampa «character varying» senza la lunghezza).
+  // ⛔ SERVONO DAVVERO, e la prova e' stata un errore vero: `prefisso` e'
+  //    `varchar(4)`, e senza `maxlength` un prefisso di cinque caratteri non
+  //    diventa un 400 parlante — diventa un `DataError`, che NON e' un
+  //    `IntegrityError` e quindi non passa da `map_integrity_error`: arriva
+  //    all'operatore come errore generico di database.
+  REGISTRO_CODICE_MAX: 16,
+  REGISTRO_DESCRIZIONE_MAX: 120,
+  REGISTRO_PREFISSO_MAX: 4,
+  REGISTRO_SUFFISSO_MAX: 4,
+  REGISTRO_SERIE_MAX: 8
 }
 
 // Enum ruolo applicativo (allineato a config.ruolo_applicativo nel DB).

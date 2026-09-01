@@ -1644,12 +1644,20 @@ class VenditeRepository:
     #        non si risponde con un filtro strutturato.
     # ⚠️ Costo dichiarato, non scoperto dopo: quattro di queste hanno un indice
     #        trigram a monte (ragione sociale, id fiscale, codice BA, codice
-    #        commessa), `riferimento` NO — e' `COALESCE(doc.codice, …)` su una
-    #        LEFT JOIN LATERAL che unisce sei rami, quindi va valutata per ogni
-    #        gruppo del perimetro PRIMA di poter filtrare. Resta dentro perche'
-    #        e' la domanda che l'operatore fa davvero; se un mese pieno non
-    #        reggesse, il rimedio NON e' togliere il campo ma ancorare la ricerca
-    #        alla sorgente del documento (DL-2 del brief).
+    #        commessa), `riferimento` NO — e' un `COALESCE` il cui primo ramo si
+    #        risolve per riga, quindi va valutato per ogni gruppo del perimetro
+    #        PRIMA di poter filtrare. Resta dentro perche' e' la domanda che
+    #        l'operatore fa davvero; se un mese pieno non reggesse, il rimedio
+    #        NON e' togliere il campo ma ancorare la ricerca alla sorgente del
+    #        documento (DL-2 del brief).
+    # ⚠️ Questo commento diceva «`COALESCE(doc.codice, …)` su una LEFT JOIN
+    #        LATERAL che unisce sei rami»: dal 2026-09-01 e' FALSO — la vista
+    #        risolve con `vendite.fn_get_sorgente_documento_ref`, che legge UNA
+    #        tabella (brief-db-riferimento-gruppi-lateral-costosa). Il costo per
+    #        riga resta, la sua natura no: chi progettasse intorno alle «sei
+    #        scansioni» ottimizzerebbe una cosa che non c'e' piu'. ⛔ E cio' che
+    #        NON cambia e' la conclusione: la ricerca resta **non indicizzata**,
+    #        quindi il DL-2 resta aperto.
     DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS = (
         "g.cliente_display",
         "g.id_fiscale",
@@ -1913,7 +1921,14 @@ class VenditeRepository:
                     "gruppo_key": str(row[0]),
                     "tipo_gruppo": str(row[1]),
                     "area_documento": None if row[2] is None else str(row[2]),
-                    "riferimento": None if row[3] is None else str(row[3]),
+                    # Nessun ramo NULL, come `gruppo_key` e `tipo_gruppo` qui
+                    # sopra: `riferimento` e' NOT NULL per contratto della vista
+                    # (`COALESCE(documento_numero, commessa_codice, gruppo_key)`,
+                    # e l'ultimo ramo e' la chiave del gruppo). Il ramo c'era, e
+                    # descriveva un caso che la vista non puo' produrre: e' la
+                    # stessa catena di ripiego duplicata tolta dal frontend il
+                    # 2026-09-01 (brief-db-riferimento-gruppi-lateral-costosa §9).
+                    "riferimento": str(row[3]),
                     "commessa_id": None if row[4] is None else int(row[4]),
                     "commessa_codice": None if row[5] is None else str(row[5]),
                     "cliente_display": None if row[6] is None else str(row[6]),
