@@ -115,6 +115,16 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "ui.lista_definizione",
         # --- vendite ---
         "vendite.area_geografica_fatturazione",
+        # Famiglie di documento numerate su un registro. Serve al form del
+        # CRUD registri (2026-09-01). ⭐ WHITELIST, non un endpoint dedicato:
+        # e' una tabella codice/descrizione e il lookup generico la legge gia'
+        # — verificato sul database vivo, dbops.fn_get_lookup_codici deriva il
+        # `codice` da `codice_interno`, che qui e' l'unica delle due colonne
+        # a esistere (`feedback_lookup_whitelist_first`).
+        # ⚠️ Il valore da spedire e' `codice_interno`: e' quello che la FK
+        #    `fk_registri_fatturazione_famiglia` referenzia.
+        "vendite.famiglie_documento",
+
         "vendite.articoli_gruppi",
         "vendite.articoli_spesa",
         "vendite.articoli_tipologie",

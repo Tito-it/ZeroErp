@@ -1275,15 +1275,106 @@ non c'è, un BB è un'ipotesi. E il secondo consumatore qui è quello **storico*
 che è il verso giusto — si estrae da ciò che esiste, non si indovina ciò che
 servirà.
 
-### 10.8 Stato
+### 10.8 ⚠️ Uno scostamento dal §FE-1, trovato scrivendo
 
-| Fase | Esito |
-| --- | --- |
-| **F0** · chiave i18n | 🔴 da fare — sblocca il guardrail |
-| **F1** · BE repository/service/rotte | 🔴 da fare |
-| **F2** · progressivi in lettura | 🔴 da fare |
-| **F3** · configurazione lista | 🔴 da fare |
-| **F-BB** · il BB del tab-lista + convergenza BA | 🔴 da fare |
-| **F4** · tab + drawer + forma del numero | 🔴 da fare |
-| **F5** · cestino col motivo + riattivazione | 🔴 da fare |
-| **F6** 🔴 | le due **matrici slot/override** — non è di questo cantiere: è la **decisione aperta** del [piano PrimeVue 5 §Gruppo B](piano-migrazione-primevue-5.md) |
+Il §FE-1 dice *«un terzo tab, `EmittenteFiscaleRegistriTab`»*, e descrive
+`EmittenteFiscaleBillingAccountTab` e `…UtilitiesTab` come **tab dentro il
+drawer dell'emittente**. ⛔ **Non lo sono.** Sono due **drawer a sé**
+(`…BillingAccountDrawer`, `…UtilitiesDrawer`) aperti dal kebab della riga nella
+lista emittenti; i due `…Tab.vue` sono i loro contenuti, non tab di un
+`TabPanel`.
+
+⇒ Il terzo segue **quello che c'è**, non quello che il brief ricordava:
+`EmittenteFiscaleRegistriDrawer` che wrappa `EmittenteFiscaleRegistriTab`, e una
+terza voce nel kebab. Una forma diversa dai due fratelli sarebbe una terza
+convenzione nella stessa schermata.
+
+⭐ **E il tab riceve il SOGGETTO-RUOLO, non la PK.** I due fratelli passano
+`itemId` (la PK dell'emittente fiscale) perché le loro tabelle si agganciano
+lì; `registri_fatturazione` si aggancia a `emittente_soggetto_ruolo_id`, che la
+lista emittenti porta già in riga. ⛔ Passare la PK non solleverebbe niente:
+filtrerebbe su numeri che non corrispondono e la lista uscirebbe **vuota** —
+cioè «questo emittente non ha registri», la risposta più rassicurante e più
+falsa (`feedback_emittente_pk_vs_soggetto_ruolo`).
+
+### 10.9 Stato — **F0→F5 CHIUSE** il 2026-09-01
+
+| Fase | Esito | Cosa è entrato |
+| --- | --- | --- |
+| **F0** · chiave i18n | ✅ | `…forma_blocco.ha_numerato` in `it`+`en`; `check_i18n_keys.py` da **rosso a verde** |
+| **F-BB** · il BB del tab-lista | ✅ | `core/utils/bloccoMotivo.js`, `core/composables/useDrawerTabLista.js`, `core/components/DrawerTabLista.vue` — e **`EmittenteFiscaleBillingAccountTab` convertito**, la copia non resta |
+| **F1** · BE repo/service/rotte | ✅ | `registri_repository.py`, `registri_service.py`, `views_registri.py`, `urls_registri.py` montate su `/api/v1/vendite/registri/` |
+| **F2** · progressivi in lettura | ✅ | `list_progressivi` nel dettaglio; **nessun** metodo di scrittura, presidiato da un test sulla superficie del repository |
+| **F3** · configurazione lista | ✅ | `vendite.registri_numerazione` — definizione, **10 colonne**, preset, preset-colonne nei CSV di `80_data`; lista registrata in `WHITELIST_BE` del generatore |
+| **F4** · drawer + forma del numero | ✅ | `RegistroNumerazioneDrawer` con **anteprima** (`ORD` + 7 cifre → `ORD0000001`) e forma in sola lettura **col motivo** |
+| **F5** · cestino col motivo + riattivazione | ✅ | kebab con `rimozione_blocco_*`; **«Riattiva»** al posto della creazione su terna occupata; filtro stato con default «tutti» |
+| **F6** 🔴 | aperta | le due **matrici slot/override** — decisione del [piano PrimeVue 5 §Gruppo B](piano-migrazione-primevue-5.md) |
+
+**Presidi**: **24 test** in `apps/vendite/tests/services/test_registri_service.py`,
+suite `apps.vendite` + `apps.core` **verde (2697)**. `check_i18n_keys` verde,
+ESLint pulito, `vite build` verde, header di licenza su tutti i file nuovi.
+⭐ Il contatore della regola zero **non è salito** (57 prima, 57 dopo): i
+contatori nel drawer sono una tabella HTML, non una `DataTable`.
+
+#### ⭐ Cosa è stato verificato sul database vivo, e non sui mock
+
+* la query di lista con le **due `CROSS JOIN LATERAL`** gira su `dbdev`: 14
+  registri, `dettaglio` decodificato a `dict`, e i due verbi **indipendenti**
+  (`COM-159` libero su entrambi; `Back-office` bloccato su entrambi — da
+  `HA_FATTURE` per lo spegnimento e da `HA_NUMERATO` per la forma, che è
+  esattamente il caso che il §9.2 descrive);
+* ⛔ **tutti e dodici i nomi di vincolo** delle mappe esistono davvero
+  (`pg_constraint` + `pg_indexes`). È la verifica che un mock non può fare:
+  `vincolo_violato` cerca il nome nel **testo** dell'eccezione, quindi un nome
+  sbagliato non solleva nulla — cade nel fallback generico, cioè un messaggio
+  plausibile su un difetto invisibile (`feedback_rinomina_db_binding_mockato`);
+* il lookup generico **legge già** `vendite.famiglie_documento`: `dbops.fn_get_lookup_codici`
+  deriva il `codice` da `codice_interno`, che qui è l'unica delle due colonne a
+  esistere. ⇒ **whitelist, non un endpoint dedicato**
+  (`feedback_lookup_whitelist_first`).
+
+### 10.10 🔎 Revisione critica del 2026-09-01 — sette rilievi, tutti corretti
+
+> Passata su codice **mio**, a lavoro finito, su richiesta di Tid. ⭐ Il dato che
+> conta: **due difetti su sette rompevano davvero**, e nessuno dei due era
+> visibile dai test — la suite era verde con entrambi dentro.
+
+| # | Rilievo | Perché non falliva |
+| --- | --- | --- |
+| 🔴 **1** | `views_registri.post` normalizzava l'id dell'emittente con `qp_int_optional`, che è l'helper della **query string** e fa `raw.strip()` | Un id che arriva come **numero** dal corpo JSON — cioè sempre, dal frontend — sollevava `AttributeError` ⇒ **500 su ogni creazione**. ⚠️ Un test scritto con la stringa `"99"` sarebbe passato: è il motivo per cui il presidio ora usa un `int` |
+| 🔴 **2** | `list_progressivi` selezionava `p.mese` | La colonna **non esiste più** sul database: il team DB l'ha tolta come il §8.1 Q1 annunciava, e **l'auto-gen non è stata rigenerata** — elenca ancora `mese`, il suo `CHECK` e la sua presenza in `uq_regprog_key`. ⇒ `ProgrammingError` alla prima apertura di un dettaglio. Un mock del cursore accetta qualunque SQL: si è visto solo chiamando il database vero |
+| 🟠 **3** | `DrawerTabLista` calcolava gli slot da inoltrare con una `computed` | L'oggetto degli slot **non è reattivo**: la `computed` non aveva nessuna dipendenza tracciata ⇒ si calcolava una volta e non si aggiornava mai. Uno slot condizionato (`#actions` in sola lettura) sarebbe restato **congelato** al primo render. Ora è una funzione chiamata dal template |
+| 🟠 **4** | `politica_data_documento` viaggiava nel payload **senza nessun campo a video** | È il **terzo** campo condizionato del §FE-4 (il `CHECK` verificato sul vivo dice `famiglia = FATTURA OR (limiti NULL AND politica = 'OGGI')`), e partiva sempre col valore cablato in `defaultForm()`. Ora ha il suo Select su FATTURA, e fuori da FATTURA **non parte** |
+| 🟠 **5** | Nessun `maxlength` sui campi di testo | `prefisso` e `suffisso` sono `varchar(4)`, `codice` 16, `descrizione` 120 — lunghezze **non visibili nell'auto-gen**, che stampa «character varying» e basta. Un carattere in più non è un 400 parlante: è un `DataError`, che **non** è un `IntegrityError` e quindi non passa da `map_integrity_error`. Trovato provando |
+| 🟡 **6** | Lo store chiamava `emittenteId` un campo che contiene un **soggetto-ruolo** | Non solleva niente: filtra su numeri che non corrispondono e la lista esce vuota. È la classe di difetto che il progetto ha già una memoria per nominare |
+| 🟡 **7** | Fetch delle famiglie scritta a mano con `res.data.data?.results \|\| res.data.data \|\| []`, `set_attivo` con **due** letture complete, slot `cell-data_insert` che rifaceva (peggio) il formatter del catalogo, `'FATTURA'` e `1..18` cablati | Duplicazione e fragilità: ora `useLookup`, una lettura sola, nessuno slot, e i vocabolari **chiusi** (`CHECK` del DB) in `amministrazione/constants.js` con la loro fonte scritta accanto |
+
+**Presidi aggiunti**: 6 test (30 in totale nel file), uno per rilievo bloccante,
+ognuno col suo **gemello positivo** dove serviva.
+
+⭐ **E la catena di scrittura è stata provata sul database vero**, in transazione
+annullata: create → update della forma su un registro che non ha mai numerato
+(passa) → `set_attivo` → e il **23505 vero** sulla coppia prefisso/suffisso, che
+torna con `E_VENDITE_DUPLICATO` e il campo `prefisso` acceso. ⛔ Quest'ultima è
+la verifica che i mock non possono dare: `vincolo_violato` cerca il nome nel
+**testo** dell'eccezione di psycopg, e solo una violazione reale prova che il
+formato di quel testo è quello che la mappa si aspetta.
+
+### 10.11 📌 Al team DB — una doc auto-generata da rigenerare
+
+⚠️ `docs/it/dbzero/vendite/tabelle/registri_fatturazione_progressivi.md` è
+**disallineata dal database**: elenca la colonna `mese`, il `CHECK`
+`chk_regprog_mese_valid` e `uq_regprog_key` come `(registro_id, anno, mese, serie)`.
+Sul vivo la colonna non c'è e la chiave è `(registro_id, anno, serie)`.
+
+⛔ **Non è un dettaglio di documentazione**: la regola di questo progetto è che
+l'introspezione si fa dalla doc auto-generata, e questa ha fatto scrivere una
+query che non compila. Il costo l'ha pagato chi ha letto la doc, non chi ha
+fatto la DROP. Va rigenerata per quella tabella.
+
+#### 🔭 Cosa resta, e non è di questo cantiere
+
+* il **residuo su `serie_default`** (§8.1 Q1): mostrata in sola lettura col suo
+  perché, fuori dalla whitelist di `update`. Resta una decisione aperta;
+* **F6**, le due matrici slot/override;
+* ⚠️ **il collaudo in-app**: niente di questa fase è stato guardato a video.

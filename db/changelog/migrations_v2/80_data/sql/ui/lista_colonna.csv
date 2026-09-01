@@ -617,3 +617,13 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 617,53,residuo,Residuo,"Residuo col suo segno: e' il verso, non il valore",residuo,informazione,numeric,currency_eur,130,100,right,Importi,3,f,f,t,f,f,t,2026-08-25 00:00:00,mctit,pagamenti.eccedenze.col_residuo,65
 618,53,totale_a_pagare,Totale documento,Totale del documento,totale_a_pagare,informazione,numeric,currency_eur,140,110,right,Importi,3,f,f,t,f,f,t,2026-08-25 00:00:00,mctit,pagamenti.eccedenze.col_totale_a_pagare,60
 619,44,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-08-31 00:00:00,mctit,common.col_azioni,100
+620,54,codice,Codice,Codice del registro di numerazione,codice,identificatore,string,,150,10,left,Identificazione,1,t,t,t,t,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_codice,100
+621,54,descrizione,Descrizione,Descrizione del registro,descrizione,identificatore,string,,220,20,left,Identificazione,1,t,t,t,t,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_descrizione,90
+622,54,famiglia_descrizione,Famiglia,Famiglia di documento numerata dal registro,famiglia_descrizione,informazione,string,,140,30,left,Identificazione,1,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_famiglia_descrizione,80
+623,54,utility_codice,Utility,Utility a cui il registro e legato,utility_codice,informazione,string,,110,40,left,Identificazione,1,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_utility_codice,40
+624,54,prefisso,Prefisso,Parte fissa davanti al numero,prefisso,informazione,string,,110,50,left,Forma del numero,2,t,t,t,t,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_prefisso,70
+625,54,suffisso,Suffisso,Parte fissa in coda al numero,suffisso,informazione,string,,110,60,left,Forma del numero,2,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_suffisso,30
+626,54,lunghezza_numero,Cifre,Quante cifre ha il progressivo,lunghezza_numero,numero,integer,,90,70,right,Forma del numero,2,f,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_lunghezza_numero,50
+627,54,serie_default,Serie,Serie di default del contatore,serie_default,informazione,string,,110,80,left,Forma del numero,2,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_serie_default,20
+628,54,attivo,Attivo,Registro attivo o disattivato,attivo,stato,boolean,,90,90,center,Stato,3,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_attivo,60
+629,54,data_insert,Creazione,Data di inserimento del registro,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,11,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_data_insert,5

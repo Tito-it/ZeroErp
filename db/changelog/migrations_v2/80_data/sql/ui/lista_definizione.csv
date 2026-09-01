@@ -52,3 +52,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 51,pagamenti.righe,Righe contabili da lavorare,pagamenti,NULL,t,2026-08-25 00:00:00,mctit,f
 52,pagamenti.rate_fuori_capienza,Rate fuori capienza,pagamenti,NULL,t,2026-08-25 00:00:00,mctit,f
 53,pagamenti.eccedenze,Eccedenze da sistemare,pagamenti,NULL,t,2026-08-25 00:00:00,mctit,f
+54,vendite.registri_numerazione,Registri di numerazione,vendite,NULL,t,2026-09-01 00:00:00,mctit,f

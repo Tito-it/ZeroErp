@@ -152,6 +152,11 @@ WHITELIST_BE: dict[str, tuple] = {
     "anagrafiche.emittente_billing_account": ("apps/anagrafiche/db/emittenti_fiscali_repository.py",
                                               "_ORDER_COLS",
                                               "class EmittentiFiscaliBillingAccountRepository"),
+    # Registri di numerazione (2026-09-01, brief-be-fe-crud-registri-di-
+    # numerazione F1/F3). Costante di MODULO, come vuole la convenzione del
+    # 7° lotto: una whitelist annidata nella classe si svuota quando un test
+    # mocka il repository.
+    "vendite.registri_numerazione": ("apps/vendite/db/registri_repository.py", "_ORDER_COLS"),
     "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
     "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
                                          "_ORDER_COLS"),

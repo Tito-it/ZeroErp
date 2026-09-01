@@ -669,6 +669,39 @@
     "filtered_by": "Risultati filtrati per: {name}"
   },
   "amministrazione": {
+    "registri_numerazione": {
+      "help": "I registri di numerazione di questo emittente: uno per famiglia di documento (DDT, ordini, commesse, resi) e piu' d'uno per le fatture. Qui si governa la FORMA del numero — prefisso, suffisso e quante cifre — che e' l'unico posto in cui si puo' cambiare.",
+      "filtro_placeholder": "Cerca per codice, descrizione o prefisso",
+      "nuovo_tooltip": "Nuovo registro di numerazione",
+      "vuota": "Nessun registro di numerazione per questo emittente.",
+      "stato_tutti": "Tutti",
+      "stato_attivi": "Solo attivi",
+      "stato_disattivati": "Solo disattivati",
+      "disattiva": "Disattiva",
+      "disattiva_confirm": "Disattivare il registro {codice}? Il sezionale resta e continua a occupare il suo slot: non potra' essere sostituito da uno nuovo sulla stessa combinazione, ma solo riattivato.",
+      "disattivato": "Registro disattivato.",
+      "riattiva": "Riattiva",
+      "riattiva_confirm": "Riattivare il registro {codice}?",
+      "riattivato": "Registro riattivato.",
+      "salvato": "Registro salvato.",
+      "drawer_lista_title": "Registri di numerazione",
+      "drawer_title_new": "Nuovo registro di numerazione",
+      "drawer_title_edit": "Registro di numerazione",
+      "sezione_forma": "Forma del numero",
+      "sezione_limiti": "Limiti di emissione",
+      "sezione_contatori": "Contatori",
+      "anteprima": "Anteprima",
+      "anteprima_hint": "Com'e' fatto il primo numero che uscira' da questo registro.",
+      "serie_hint": "La serie del contatore. Non si modifica da qui: cambiarla su un registro vivo sposta il sezionale.",
+      "politica_data": "Politica data documento",
+      "politica_oggi": "Data di oggi",
+      "politica_fine_mese_competenza": "Fine mese di competenza",
+      "limite_giorni": "Limite emissione (giorni)",
+      "limite_giorno_mese": "Limite emissione (giorno del mese)",
+      "col_anno": "Anno",
+      "col_ultimo_numero": "Ultimo numero",
+      "col_ultima_data": "Ultima data"
+    },
     "registri_fatturazione": {
       "disattiva_blocco": {
         "ha_fatture": "Il registro {codice} ha gia' emesso {quante} fatture: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
@@ -1126,6 +1159,7 @@
       "col_regime_fiscale": "Regime fiscale",
       "action_ba": "Gestisci billing account",
       "action_utilities": "Gestisci utilities",
+      "action_registri": "Registri di numerazione",
       "ba_help": "Mappa l'emittente a uno o piu' billing account specifici, oppure crea il default globale (uno solo per istanza).",
       "ba_search_placeholder": "Cerca billing account...",
       "ba_add_specific": "Aggiungi BA",
@@ -3430,6 +3464,18 @@
       "col_etichetta": "Etichetta NC",
       "col_tenuti": "Tenuti",
       "col_fatturati": "Fatturati"
+    },
+    "registri_numerazione": {
+      "col_codice": "Codice",
+      "col_descrizione": "Descrizione",
+      "col_famiglia_descrizione": "Famiglia",
+      "col_utility_codice": "Utility",
+      "col_prefisso": "Prefisso",
+      "col_suffisso": "Suffisso",
+      "col_lunghezza_numero": "Cifre",
+      "col_serie_default": "Serie",
+      "col_attivo": "Attivo",
+      "col_data_insert": "Creazione"
     },
     "resi_da_riconsegnare": {
       "col_numero": "Numero",

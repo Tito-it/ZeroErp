@@ -112,6 +112,10 @@ urlpatterns = [
     path("ddt/", include("apps.vendite.api.urls_ddt")),
     path("fatture/", include("apps.vendite.api.urls_fatture")),
     path("resi/", include("apps.vendite.api.urls_resi")),
+    # Registri di numerazione: CRUD del sezionale (brief-be-fe-crud-registri-
+    # di-numerazione). ⚠️ Il dato e' di vendite, la maschera vive nel drawer
+    # dell'emittente fiscale: il permesso resta quello dell'area `vendite`.
+    path("registri/", include("apps.vendite.api.urls_registri")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
     # ⭐ Gemello del resolver prezzi, e sta qui accanto di proposito: stesso
