@@ -74,10 +74,20 @@ non lo stesso divieto — e chi li confonde finisce per unificarli.
 ### ⛔ `serie_default` non è coperta, e sono due ragioni indipendenti
 
 **1. Sul modello.** `serie` entra nella **chiave del contatore**
-(`uq_regprog_key` = `registro_id, anno, mese, serie`). Cambiare `serie_default`
+(`uq_regprog_key`, che dal 2026-09-01 è `registro_id, anno, serie`). Cambiare `serie_default`
 non fa proseguire un contatore sotto una forma nuova: apre un **contenitore
 nuovo** che riparte da 1, sotto una serie che distingue i documenti da quelli di
 prima. È il modo **legittimo** di aprire una serie nuova.
+
+> 🔴 **Aggiornamento 2026-09-01, e cambia la seconda ragione.** Quando questa
+> pagina è stata scritta il divieto su `serie_default` non esisteva. Ora esiste,
+> **condizionato**: un registro non può portare una serie se la sua famiglia non
+> dichiara `colonna_serie`. ⇒ La prima ragione qui sopra **resta vera** — la
+> serie apre un contenitore nuovo, e dove il documento la registra è legittimo —
+> mentre la seconda, qui sotto, era corretta per un divieto **secco** e non per
+> uno condizionato: il mirror CSV tocca solo le fatture, che sono la famiglia
+> dove la serie è ammessa. Vedi
+> [`script.fn_check_registro_serie_ammessa`](/dbzero/script/funzioni/fn_check_registro_serie_ammessa).
 
 **2. Strutturale, e da sola chiude la questione.** Il file
 `80_data/sql/vendite/registri_fatturazione.csv` è un **mirror vivo** e fra le

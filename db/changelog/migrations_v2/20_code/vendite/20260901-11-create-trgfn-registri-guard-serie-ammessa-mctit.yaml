@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO NON PORTA UNA SERIE CHE LA SUA FAMIGLIA NON HA
+#   vendite.trgfn_registri_fatturazione_guard_serie_ammessa
+#   trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5 (S-3)
+#
+# ── ⛔ SI RIFIUTA, NON SI IGNORA ──────────────────────────────────
+#   L'alternativa era lasciar scrivere il serie_default e fare in modo che il
+#   motore lo ignorasse per le famiglie senza serie. Sarebbe stato il difetto che
+#   il cantiere del prefisso ha appena tolto da config.sistema_codici: un campo
+#   editabile dal pannello che l'amministratore cambia SENZA OTTENERE NIENTE e
+#   senza modo di accorgersene.
+#
+# ── ⚠️ UN TRIGGER E NON UN CHECK ─────────────────────────────────
+#   La condizione attraversa vendite.famiglie_documento, e un CHECK non fa
+#   sottoquery.
+#
+# ── ⛔ INSERT *E* UPDATE, e qui il compromesso va dichiarato ──────
+#   Serve anche in INSERT: un registro non deve nemmeno NASCERE con una serie che
+#   la sua famiglia non porta. ⚠️ Un guard BEFORE ROW montato in INSERT oscura i
+#   CHECK della tabella — verificato che i sei CHECK presenti
+#   (famiglia_regole_fattura, limite_*, politica_data, reset) riguardano
+#   condizioni DIVERSE da questa, quindi non li intercetta.
+#
+# ── ⭐ E DUE ACCORGIMENTI CHE TENGONO IL MIGRATE IN PIEDI ─────────
+#   1) In UPDATE si confrontano i VALORI (IS DISTINCT FROM): il mirror CSV
+#      20260127-57 riscrive serie_default a OGNI migrate con gli stessi valori,
+#      e `UPDATE OF` scatta comunque perche' e' lo statement a nominare la
+#      colonna. Senza il confronto, ogni migrate fallirebbe.
+#   2) Il ramo «famiglia non trovata» della check TACE: su un database
+#      ricostruito da zero il mirror dei registri gira PRIMA di quello delle
+#      famiglie (includeAll ordina per nome file), quindi in quella finestra la
+#      dichiarazione non esiste ancora. Senza, il migrate di un DB nuovo
+#      fallirebbe. Lo stato finale lo verifica il pgTAP.
+#
+# ⚠️ Il context porta `campo = 'serie_default'`: e' il canale che diventa
+#   error.fields e accende l'input giusto nel form.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-11-create-trgfn-registri-guard-serie-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20260901-11-create-trgfn-registri-guard-serie-ammessa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard che rifiuta un `serie_default` su un registro la cui famiglia non dichiara
+        `colonna_serie`. ⭐ CHIAMA script.fn_check_registro_serie_ammessa invece di riscriverne il
+        predicato (§12.5.2). ⛔ Si RIFIUTA e non si ignora: un campo editabile che non fa niente e''
+        il difetto appena tolto da config.sistema_codici. ⚠️ Un trigger e non un CHECK, perche'' la
+        condizione attraversa famiglie_documento. ⛔ INSERT e UPDATE — un registro non deve nemmeno
+        nascere sbagliato — con due accorgimenti che tengono in piedi il migrate: in UPDATE si
+        confrontano i VALORI (il mirror CSV riscrive serie_default a ogni migrate) e il ramo
+        «famiglia non trovata» tace (su un DB ricostruito il mirror dei registri gira prima di
+        quello delle famiglie). Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            # ⛔ Il guard CHIAMA la check: senza, l'unica alternativa sarebbe
+            #    riscrivere il predicato qui — cioe' due elenchi paralleli.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_registro_serie_ammessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare un `serie_default` su un registro la cui
+                  --   famiglia non dichiara una colonna dove il documento possa
+                  --   registrare la serie.
+                  --
+                  -- ⛔ Perche': la serie entra nella chiave del contatore.
+                  --   Cambiarla apre un secchio nuovo che riparte da 1, e se il
+                  --   documento non la registra (resi, commesse) quel numero
+                  --   collide con uno gia' emesso — il documento non si numera
+                  --   piu'.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Si chiama
+                  --   script.fn_check_registro_serie_ammessa e si solleva il
+                  --   codice del primo motivo, cosi' il rifiuto e il tooltip
+                  --   della maschera non possono divergere.
+                  -- =========================================================
+
+                  -- ⭐ In UPDATE il no-op passa: `UPDATE OF` scatta quando lo
+                  --   statement NOMINA la colonna, anche a valore invariato — e
+                  --   il mirror CSV dei registri riscrive serie_default a OGNI
+                  --   migrate. Senza questo confronto, ogni migrate fallirebbe.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.serie_default      IS NOT DISTINCT FROM OLD.serie_default
+                     AND NEW.famiglia_documento IS NOT DISTINCT FROM OLD.famiglia_documento THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_registro_serie_ammessa(
+                                  NEW.famiglia_documento, NEW.serie_default);
+
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
+                  --   scatta PRIMA di trg_registri_fatturazione_gen_tx_id_ins_upd
+                  --   (ordine alfabetico: 'a10' < 'gen').
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_registri_fatturazione_guard_serie_ammessa',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+                          || jsonb_build_object('campo', 'serie_default'),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre.
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()
+              IS 'Guard `_a10_` su vendite.registri_fatturazione: rifiuta un `serie_default` valorizzato quando la famiglia del registro non dichiara `colonna_serie`, cioe'' quando i suoi documenti non hanno dove registrare la serie. ⛔ PERCHE'': la serie entra nella chiave del contatore, quindi cambiarla apre un secchio nuovo che riparte da 1 — e se il documento non la registra ne'' ce l''ha nel proprio vincolo di unicita'' (resi, commesse) quel numero collide con uno gia'' emesso, il vincolo rifiuta e col rollback torna indietro anche il contatore: il documento non si numera piu''. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_registro_serie_ammessa e si solleva il codice del primo motivo, cosi'' il rifiuto e il tooltip della maschera non possono divergere. ⛔ SI RIFIUTA E NON SI IGNORA: lasciar scrivere il valore facendolo poi ignorare al motore sarebbe il difetto appena tolto da config.sistema_codici — un campo editabile dal pannello che l''amministratore cambia senza ottenere niente e senza accorgersene. ⚠️ UN TRIGGER E NON UN CHECK: la condizione attraversa vendite.famiglie_documento, e un CHECK non fa sottoquery. ⛔ INSERT *E* UPDATE, perche'' un registro non deve nemmeno NASCERE con una serie che la sua famiglia non porta; verificato che i sei CHECK della tabella riguardano condizioni diverse, quindi il ramo INSERT non li oscura. ⭐ DUE ACCORGIMENTI TENGONO IN PIEDI IL MIGRATE: in UPDATE si confrontano i VALORI (il mirror CSV 20260127-57 riscrive serie_default a ogni migrate e `UPDATE OF` scatta comunque), e il ramo «famiglia non trovata» della check TACE (su un database ricostruito da zero il mirror dei registri gira prima di quello delle famiglie, perche'' includeAll ordina per nome file). Lo stato finale lo verifica il pgTAP. ⚠️ Il context porta `campo = serie_default`: e'' il canale che diventa error.fields e accende l''input giusto nel form. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5 (S-3).';
+
+              DROP TRIGGER IF EXISTS trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd
+                  ON vendite.registri_fatturazione;
+
+              CREATE TRIGGER trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd
+                  BEFORE INSERT OR UPDATE OF serie_default, famiglia_documento
+                  ON vendite.registri_fatturazione
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa();
+
+              COMMENT ON TRIGGER trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd
+                  ON vendite.registri_fatturazione
+              IS 'Un registro non porta una serie che la sua famiglia non sa registrare sul documento. ⛔ INSERT e UPDATE OF (serie_default, famiglia_documento): il divieto vale anche alla nascita, e la famiglia e'' nella lista perche'' spostare un registro su una famiglia senza serie e'' lo stesso errore scritto al contrario. ⚠️ In UPDATE la funzione confronta i VALORI, cosi'' il mirror CSV che riscrive serie_default a ogni migrate non lo sveglia. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5 (S-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd
+                  ON vendite.registri_fatturazione;
+              DROP FUNCTION IF EXISTS vendite.trgfn_registri_fatturazione_guard_serie_ammessa();

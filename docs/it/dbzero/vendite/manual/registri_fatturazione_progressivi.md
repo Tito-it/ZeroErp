@@ -10,15 +10,21 @@
 ### 🎯 Scopo Principale
 (latest review 26-01-2026)
 `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione**
-per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del
+per ciascun registro, anno e serie. E` la base per l’assegnazione del
 numero documento in fase di emissione.
+
+⚠️ **Aggiornato il 2026-09-01**: la colonna `mese` è stata **tolta** dalla
+chiave. Vedi la sezione in fondo.
 
 ---
 
 ### Campi chiave (semantica)
 
 * **Registro**: `registro_id`.
-* **Periodo**: `anno`, `mese` (0 = annuale se non usato).
+* **Periodo**: `anno` — ⚠️ è l'anno del **secchio**, non quello del documento:
+  vale `0` quando il registro ha `reset_policy = 'NESSUNA'`, cioè quando il
+  contatore non riparte mai. L'anno del documento (`fatture.anno`, `ddt.anno`, …)
+  è sempre quello solare, e lo compone `vendite.fn_assegna_numero_documento`.
 * **Serie**: `serie` (default stringa vuota).
 * **Contatore**: `last_numero`.
 * **Stato**: `attivo`.
@@ -27,7 +33,11 @@ numero documento in fase di emissione.
 
 ### Note operative
 
-* Il vincolo univoco `(registro_id, anno, mese, serie)` impedisce duplicazioni.
+* Il vincolo univoco `(registro_id, anno, serie)` impedisce duplicazioni.
+  ⭐ **Ogni asse che sta in questa chiave deve poter stare anche nel vincolo di
+  unicità del documento** che riceve il numero, o il contatore consegna numeri
+  che il documento non sa ospitare — è l'invariante del cantiere della chiave del
+  contatore.
 * La tabella e` aggiornata dal processo di numerazione (fase emissione).
 
 ---
@@ -94,11 +104,39 @@ SELECT r.id, r.codice, COALESCE(r.serie_default,'') AS serie_che_usera, rp.serie
  WHERE rp.serie <> COALESCE(r.serie_default, '');   -- righe orfane
 ```
 
-#### ℹ️ La colonna `mese` resta, ferma a 0
+#### 🔴 rev 2026-09-01 — la colonna `mese` è stata TOLTA
 
-Toglierla vorrebbe dire rifare due `UNIQUE`, un `CHECK` e il corpo di
-`fn_get_next_progressivo` per due byte — e il giorno in cui `MENSILE` servisse
-davvero, la chiave c'è già.
+> ~~ℹ️ La colonna `mese` resta, ferma a 0. Toglierla vorrebbe dire rifare due
+> `UNIQUE`, un `CHECK` e il corpo di `fn_get_next_progressivo` per due byte — e
+> il giorno in cui `MENSILE` servisse davvero, la chiave c'è già.~~
+>
+> 🔴 **Superata.** Quella frase misurava il costo di toglierla e non il costo di
+> **tenerla**, che era più alto.
+
+⛔ **Il difetto: una dimensione dormiente in una chiave è ARMATA, non
+inutilizzata.** `mese` stava nella chiave del contatore e **in nessun vincolo di
+unicità di nessun documento** — verificato su `fatture`, `ddt`, `ordini`, `resi`
+e `commesse`. Era innocua solo perché **inchiodata** in due punti: `v_mese := 0`
+nella funzione e un `CHECK` che ammetteva il solo `ANNUALE`.
+
+⇒ Il giorno che qualcuno avesse acceso `MENSILE` — cioè fatto proprio la cosa
+per cui la colonna esisteva — il contatore sarebbe ripartito da 1 **ogni mese** e
+sarebbero collidati **tutti e cinque** i documenti. E a tenerlo chiuso non era un
+vincolo: era una **rinuncia**, che si revoca per distrazione.
+
+⭐ **Se un giorno servirà davvero**, l'asse torna **insieme** alla colonna sui
+documenti, dichiarato in `vendite.famiglie_documento` come lo è oggi
+`colonna_serie`. Cioè il lavoro vero: tenere la colonna qui non lo anticipava.
+
+⭐ **E togliendola è venuto via anche `uq_registri_progressivi_scope`**, che con
+quattro colonne `NOT NULL` aveva i `COALESCE` a no-op ed esprimeva la **stessa
+chiave** di `uq_regprog_key`. ⚠️ `dbops.vw_duplicate_indexes` non lo vedeva: il
+confronto lavora sulle colonne, e lì una chiave era colonne e l'altra
+espressioni — *un duplicato nascosto dietro espressioni che non fanno niente è
+invisibile proprio al presidio nato per i duplicati.*
+
+Cantiere: `brief-db-registri-numerazione-chiave-del-contatore`, changeSet
+`20260901-07` e `20260901-08`.
 
 ---
 

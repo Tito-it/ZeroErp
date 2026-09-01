@@ -25,6 +25,7 @@
 | presidia_data_documento | boolean | NO | true |
 | prefisso_default | character varying | YES |  |
 | lunghezza_default | integer | NO | 7 |
+| colonna_serie | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
