@@ -224,6 +224,23 @@ nessun blocco.
 | **Righe di un documento** dentro il suo master (righe ordine, componenti BoM…) | `RigheMasterDetailTable` / `SearchDetailTable`, **non** il BB |
 | Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
 
+⛔ **«È dentro un drawer» NON è un'eccezione, ed è l'errore che si fa più
+spesso.** Una lista su un tab di drawer — un'entità con endpoint suo,
+popolazione arbitraria e ciclo di vita indipendente dal padre — **è una lista**:
+le manca il paginator, non la natura. Si monta con
+`useDrawerTabLista` + `<DrawerTabLista>` (2026-09-01), che sono
+`useListaConfigurabilePage` + `<ListaConfigurabile>` più il legame col padre.
+⭐ Il criterio in tre domande sta nel
+[piano PrimeVue 5 §Gruppo B](../work-in-progress/piano-migrazione-primevue-5.md),
+riscritto il giorno in cui il secondo caso è emerso.
+
+🔴 **E un caso oggi non ha casa: la matrice slot/override** (la popolazione la
+decide il catalogo, l'operatore compila le celle in editing inline —
+`EmittenteFiscaleUtilitiesTab`, `OperatorePermessiTab`). Non è nessuna delle due
+eccezioni sopra, e resta `DataTable` grezza **con il debito dichiarato**, non con
+un'eccezione inventata. La scelta — estendere il BB con l'editing inline, o
+riconoscere la matrice come terza eccezione — è aperta e sta nello stesso §.
+
 ⛔ **Non sono eccezioni**: «è una lista piccola», «è solo per l'admin», «tanto
 non la guarda nessuno», «faccio prima». Una lista che nessuno guarda non è una
 lista senza problemi: è una lista che nessuno ha ancora aperto.
