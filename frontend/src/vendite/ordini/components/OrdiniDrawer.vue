@@ -63,7 +63,7 @@ const props = defineProps({
   ordineId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const emit = defineEmits(['update:visible', 'saved', 'changed', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
@@ -191,6 +191,12 @@ async function onEvaso() {
   // solo alla riapertura del drawer).
   collegamentiRef.value?.reload()
   merceRef.value?.reload()
+  // ⭐ E la LISTA dietro: l'ordine e' passato a PARZIALMENTE_EVASO e mostra un
+  // transito nuovo. `changed` e non `saved` perche' il lavoro continua — il DDT
+  // nasce DRAFT e si rifinisce dal tab DDT, quindi il drawer deve restare
+  // aperto. 🔴 Senza questa riga la lista restava ferma e il transito compariva
+  // solo ricaricando a mano (collaudo di Tid, 2026-09-01).
+  emit('changed')
 }
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
