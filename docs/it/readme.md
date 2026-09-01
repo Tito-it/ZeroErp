@@ -114,7 +114,7 @@ Il database e` organizzato per schemi funzionali principali:
 - `vendite`
 - `magazzino`
 - `pagamenti`
-- `contabilita`
+- `contabilita` (⛔ nome di schema, vuoto — vedi nota sotto)
 - `config`
 - `storico`
 - `documenti`
@@ -170,7 +170,11 @@ storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 
 - **Incassi e contabili di pagamento**: il **posting è scritto** (contabile, saldo rata, sistemazioni) — ⛔ ma lo schema ha zero righe: di questo dominio è provato il *percorso*, mai l'*esito*, e il collaudo in-app è aperto
 - **Fatturazione elettronica SDI**: payload pronto, builder XML e persistenza esito da fare
-- **Acquisti, magazzino, contabilità**: DB presente, backend ancora stub
+- **Acquisti, magazzino**: DB presente, backend ancora stub
+- ⛔ **Contabilità: fuori perimetro, e lo schema è vuoto.** `contabilita` non ha
+  tabelle, funzioni né viste: non è un modulo a metà, non c'è niente da finire.
+  Se un giorno servirà, sarà un **aggancio a una contabilità esterna**, e la
+  forma del piano dei conti la detta il **sistema di destinazione**
 - **Integrazione AI v2**: contesto dinamico e nuovi tool (v1 operativa: 11 tool + widget conversazionale)
 
 > Lavori in corso e previsti: vedi la [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#3-roadmap).

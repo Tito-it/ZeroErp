@@ -74,7 +74,7 @@ Il modello e completamente automatizzato: il framework di automazione DB crea si
 Schema operativo (es. anagrafiche)
 └── soggetti                        -- tabella operativa
     ├── colonna storicizza BOOLEAN  -- flag per-record (default true se configurato)
-    └── trigger trgx_z90_soggetti_upd_dlt_storico
+    └── trigger trg_soggetti_z90_storico_upd_dlt
         └── BEFORE UPDATE OR DELETE → script.trgfn_storico_generic('soggetto_id')
 
 Schema storico
@@ -365,12 +365,30 @@ Crea il trigger `BEFORE UPDATE OR DELETE` su tutte le tabelle operative che hann
 1. Risolve l'ambito (esclude `storico`)
 2. Per ogni tabella: verifica che `storico.<tabella>` esista
 3. Risolve la colonna FK (default `<tabella>_id`, override via `STORICO_FK`)
-4. Genera il nome trigger dal template (default: `trgx_z90_{table}_upd_dlt_storico`)
+4. Genera il nome trigger dal template (default: `trg_{table}_z90_storico_upd_dlt`)
 5. Verifica esistenza per strategia (`BY_NAME`, `BY_FUNCTION`, `BOTH`)
 6. Se non esiste: crea il trigger
-7. Opzionalmente rimuove trigger legacy separati (`drop_legacy_ud=true` in params)
+~~7. Opzionalmente rimuove trigger legacy separati (`drop_legacy_ud=true` in params)~~
 
-**Naming convention del trigger:** il prefisso `trgx_z90_` garantisce che il trigger di storico venga eseguito per ultimo nell'ordine alfabetico PostgreSQL, dopo tutti i trigger di guard e validazione.
+⛔ **Il passo 7 non esiste più (rev 2026-09-01).** Il ramo `drop_legacy_ud` è
+stato rimosso dal motore (`20260901-01`), e non perché la migrazione fosse
+finita: **cancellava un nome che non è mai esistito**. Puntava a
+`trg_{table}_upd_storico` / `trg_{table}_dlt_storico`, mentre i trigger legacy
+davvero creati si chiamavano `trg_<tab>_upd_dlt_storico_<tab>` e quelli di oggi
+`trg_<tab>_z90_storico_upd_dlt` — tre forme diverse, e il `DROP TRIGGER IF
+EXISTS` non poteva agganciare le altre due. Il flag era per giunta
+`COALESCE(..., false)`: il ramo non è mai stato eseguito nemmeno per sbaglio.
+
+**Naming convention del trigger:** la forma è `trg_<tabella>_z90_storico_upd_dlt`,
+e l'infisso `_z90_` garantisce che il trigger di storico venga eseguito per
+ultimo nell'ordine alfabetico PostgreSQL, dopo tutti i trigger di guard e
+validazione.
+
+> 📌 **Rettifica del 2026-09-01**: questa riga diceva *«il prefisso `trgx_z90_`»*.
+> Nel database non esiste **nessun** trigger che cominci per `trgx_` — i 118
+> trigger di storicizzazione usano tutti la forma qui sopra. ⚠️ E la differenza
+> non è cosmetica: chi cercasse i trigger di storico per prefisso non ne
+> troverebbe **nemmeno uno**.
 
 ---
 
@@ -434,7 +452,7 @@ flowchart TD
 
 4. **Trigger BEFORE, non AFTER**: il trigger deve essere `BEFORE UPDATE OR DELETE` perche modifica `NEW.storicizza`. L'uso di AFTER impedirebbe il reset del flag.
 
-5. **Prefisso `trgx_z90_`**: garantisce l'esecuzione per ultima nell'ordine alfabetico, dopo tutti i trigger di guard e validazione.
+5. **Infisso `_z90_`** (forma `trg_<tabella>_z90_storico_upd_dlt`): garantisce l'esecuzione per ultima nell'ordine alfabetico, dopo tutti i trigger di guard e validazione.
 
 6. **Colonna `storicizza` obbligatoria**: la tabella operativa deve avere la colonna `storicizza BOOLEAN` per poter usare il trigger generico. Se il flag e `FALSE`, il record non viene storicizzato.
 

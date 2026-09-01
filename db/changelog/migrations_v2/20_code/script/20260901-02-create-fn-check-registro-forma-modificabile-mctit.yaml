@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PERCHE' LA FORMA DEL NUMERO NON SI CAMBIA — la pure check
+#   script.fn_check_registro_forma_modificabile
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-2)
+#
+# ── ⛔ IL CASO ────────────────────────────────────────────────────
+#   Dal 2026-08-31 la forma del numero (prefisso, suffisso, lunghezza) vive
+#   INTERAMENTE su vendite.registri_fatturazione: e' uscita da
+#   config.sistema_codici, che un pannello di amministrazione ce l'ha.
+#   ⛔ Verificato il 2026-09-01: sulla tabella non esiste NESSUN guard su quelle
+#   colonne. Un UPDATE su un registro che ha gia' numerato passa, e il contatore
+#   in vendite.registri_fatturazione_progressivi PROSEGUE — quindi il documento
+#   successivo esce con una forma nuova e un numero che continua la serie
+#   vecchia. Nessun vincolo se ne accorge: la coppia (forma, numero) non e'
+#   vincolata da nessuna parte.
+#   ⭐ E' la stessa specie di difetto riparato dal cantiere del prefisso
+#   (difetto A: forma identica, contatore ripartito da 1) presa dal verso
+#   opposto.
+#
+# ── ⭐ IL PREDICATO: «HA CONSEGNATO UN NUMERO», NON «HA UNA RIGA» ─
+#   vendite.fn_get_next_progressivo inserisce la riga di contatore a
+#   last_numero = 0 e NELLA STESSA CHIAMATA la porta a >= 1. Una riga ferma a 0
+#   significa quindi che da quel bucket non e' mai uscito un numero.
+#   ⇒ Il predicato e' `EXISTS (... WHERE last_numero > 0)`.
+#   ⚠️ E' di proposito PIU' STRETTO di quello della disattivazione
+#   (script.fn_check_registro_disattivabile, motivo HA_PROGRESSIVI), che guarda
+#   `attivo` a prescindere dal contatore: la' si protegge il contatore in quanto
+#   tale, qui il danno comincia col primo numero consegnato. Due divieti
+#   imparentati, non lo stesso divieto.
+#
+# ── ⛔ serie_default RESTA FUORI, e le ragioni sono DUE ───────────
+#   1) SUL MODELLO: `serie` entra nella chiave del contatore
+#      (uq_regprog_key = registro_id, anno, mese, serie). Cambiare serie_default
+#      non fa proseguire un contatore sotto una forma nuova: apre un BUCKET
+#      NUOVO che riparte da 1, sotto una serie che distingue i documenti da
+#      quelli di prima. E' il modo LEGITTIMO di aprire una serie nuova.
+#   2) STRUTTURALE, e da sola chiude la questione: il CSV
+#      80_data/sql/vendite/registri_fatturazione.csv e' un mirror VIVO
+#      (20260127-57: runOnChange true + validCheckSums ANY) e fra le sue colonne
+#      c'e' serie_default. Un BEFORE UPDATE OF serie_default scatta anche quando
+#      il valore non cambia — e' lo UPDATE a nominare la colonna — quindi
+#      metterla nel guard FAREBBE FALLIRE OGNI MIGRATE.
+#   ⭐ Lo stesso CSV dice cosa rende il guard possibile: prefisso, suffisso e
+#      lunghezza_numero NON sono fra le sue colonne. Il mirror non le tocca.
+#   ⚠️ RESIDUO DICHIARATO: il COMMENT della tabella dice che cambiare
+#      serie_default su un registro vivo «SPOSTA il sezionale». Resta vero, e
+#      resta senza presidio. E' un'altra decisione.
+#
+# ── ⚠️ UN CODICE ERRORE NUOVO SERVE, e il §12.5.2 non lo vieta ────
+#   Quella riga («nessun codice errore nuovo») vale quando si retrofitta una
+#   check su un rifiuto CHE ESISTE GIA': se servisse un codice nuovo, la madre
+#   stava rifiutando senza saper dire perche'. Qui il rifiuto NON ESISTE — lo si
+#   sta creando — e non c'e' nessuna madre muta da sanare.
+#   ⇒ E_REGISTRO_FORMA_NUMERO_IMMUTABILE, classe CONFLITTO_STATO, seminato per
+#   append ai CSV di 80_data (mirror vivo 20260614-08, nessun loader nuovo).
+#   Il nome segue la famiglia gia' a catalogo: E_COMMESSA_CHIAVE_IMMUTABILE,
+#   E_DDT_CAUSALE_IMMUTABILE, E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE.
+#
+# ── ⚠️ SECURITY INVOKER, ED E' MOTIVATO ──────────────────────────
+#   La gemella fn_check_registro_disattivabile e' DEFINER perche' legge
+#   vendite.fatture/ddt/ordini/resi, che hanno la RLS. Questa legge SOLO
+#   vendite.registri_fatturazione e vendite.registri_fatturazione_progressivi:
+#   verificato il 2026-09-01, nessuna delle due ha la RLS (relrowsecurity = f).
+#   ⇒ Un DEFINER qui sarebbe un privilegio in piu' senza un caso che lo chieda.
+#
+# ⚠️ La reason_key e' un DEBITO VERSO IL FE (§12.3): va nei locales it/en nello
+#   stesso giro del lavoro frontend, o scripts/check_i18n_keys.py fallisce.
+# ⛔ Il `reason` NON porta il prefisso E_, riservato ai codici a catalogo
+#   (§12.5.1): il guardrail dei codici legge i letterali E_* nei corpi delle
+#   funzioni e lo prenderebbe per un codice senza policy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260901-02-create-fn-check-registro-forma-modificabile-mctit.yaml
+
+  - changeSet:
+      id: 20260901-02-create-fn-check-registro-forma-modificabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La pure check (§12.5.1) che dice PERCHE'' la forma del numero di un sezionale non si puo''
+        cambiare: prefisso, suffisso e lunghezza_numero sono immutabili da quando il registro ha
+        consegnato il primo numero. Ritorna [] se la modifica e'' ammessa, altrimenti un motivo
+        HA_NUMERATO. ⭐ Il predicato e'' «esiste un progressivo con last_numero > 0» e non «esiste
+        una riga»: fn_get_next_progressivo inserisce a 0 e porta a >= 1 nella stessa chiamata,
+        quindi una riga ferma a 0 significa che nessun numero e'' mai uscito. ⛔ serie_default resta
+        FUORI: entra nella chiave del contatore (cambiarla apre una serie nuova, ed e'' legittimo) e
+        il mirror CSV registri_fatturazione.csv la riscrive a ogni migrate. ⚠️ SECURITY INVOKER,
+        motivato: nessuna delle due tabelle lette ha la RLS. ⚠️ La reason_key e'' un debito verso il
+        FE. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione_progressivi
+            # ⛔ Le tre colonne della forma devono esistere: se una sparisse, la
+            #    check compilerebbe lo stesso (non le nomina) ma il guard che la
+            #    chiama non avrebbe piu' niente da presidiare.
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.registri_fatturazione'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname IN ('prefisso', 'suffisso', 'lunghezza_numero');
+            # ⛔ Il predicato poggia su last_numero: se cambiasse nome, la check
+            #    direbbe il falso invece di fallire.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.registri_fatturazione_progressivi'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname = 'last_numero';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_registro_forma_modificabile(p_registro_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE SECURITY INVOKER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_motivi    jsonb := '[]'::jsonb;
+                  v_codice    vendite.registri_fatturazione.codice%TYPE;
+                  v_ultimo    vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+                  v_contatori bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di CAMBIARE LA FORMA
+                  --   DEL NUMERO di un registro (prefisso, suffisso,
+                  --   lunghezza_numero). Funzione PURA (fn_check_*): nessuna
+                  --   scrittura, nessun raise di dominio.
+                  --   Consumatori: il guard che rifiuta l'UPDATE, e la
+                  --   maschera del registro, che tiene i tre campi in sola
+                  --   lettura e dice PERCHE'.
+                  --
+                  -- Ritorna: [] se la forma si puo' cambiare; altrimenti array
+                  --   ORDINATO di {codice, reason, reason_key, dettaglio,
+                  --   valori} (§12.5.1). Oggi il motivo e' UNO SOLO.
+                  --
+                  -- ⭐ IL PREDICATO E' «HA CONSEGNATO UN NUMERO», non «ha una
+                  --   riga di contatore»: vendite.fn_get_next_progressivo
+                  --   inserisce la riga a last_numero = 0 e NELLA STESSA
+                  --   CHIAMATA la porta a >= 1, quindi una riga ferma a 0
+                  --   significa che da quel bucket non e' mai uscito niente.
+                  --   ⚠️ E' di proposito piu' stretto del predicato della
+                  --   disattivazione (HA_PROGRESSIVI), che guarda `attivo` a
+                  --   prescindere dal contatore: la' si protegge il contatore
+                  --   in quanto tale, qui il danno comincia col primo numero.
+                  --
+                  -- ⛔ serie_default NON e' qui: entra nella chiave del
+                  --   contatore, quindi cambiarla apre una serie nuova che
+                  --   distingue i documenti — ed e' il modo legittimo di
+                  --   aprirne una. Vedi l'intestazione del changeSet.
+                  --
+                  -- ⚠️ SECURITY INVOKER: si leggono solo
+                  --   vendite.registri_fatturazione e
+                  --   vendite.registri_fatturazione_progressivi, e nessuna
+                  --   delle due ha la RLS (verificato 2026-09-01). Un DEFINER
+                  --   sarebbe un privilegio senza un caso che lo chieda.
+                  -- =========================================================
+
+                  -- Guard di parametro: un id assente o non positivo non esce
+                  -- da nessuna interfaccia, lo produce un chiamante rotto.
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_registro_forma_modificabile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_registro_id',
+                                             'valore', p_registro_id),
+                          NULL::uuid,
+                          'script.fn_check_registro_forma_modificabile',
+                          'identificativo del registro non valido');
+                  END IF;
+
+                  SELECT r.codice INTO v_codice
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  -- ⚠️ Qui «non esiste» e' davvero «non esiste»: nessuna delle
+                  --   due tabelle ha la RLS, quindi non c'e' il caso «non lo
+                  --   vedo».
+                  -- ⭐ E non si risponde []: sarebbe «la forma si puo'
+                  --   cambiare», che su una riga inesistente e' una frase
+                  --   senza senso. Stesso ramo della gemella
+                  --   script.fn_check_registro_disattivabile.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_registro_forma_modificabile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          'script.fn_check_registro_forma_modificabile',
+                          concat('registro ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  -- ---- MOTIVO 1 — ha gia' consegnato un numero -------------
+                  -- ⚠️ `last_numero > 0` e non `attivo`: un contatore spento
+                  --   che ha gia' numerato ha comunque prodotto documenti con
+                  --   la forma di adesso, e quelli non si disfano.
+                  SELECT count(*), max(p.last_numero)
+                    INTO v_contatori, v_ultimo
+                    FROM vendite.registri_fatturazione_progressivi p
+                   WHERE p.registro_id = p_registro_id
+                     AND p.last_numero > 0;
+
+                  IF v_contatori > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_REGISTRO_FORMA_NUMERO_IMMUTABILE',
+                          'reason',     'HA_NUMERATO',
+                          'reason_key', 'amministrazione.registri_fatturazione.forma_blocco.ha_numerato',
+                          'dettaglio',  jsonb_build_object('registro_id',   p_registro_id,
+                                                           'codice',        v_codice,
+                                                           'contatori',     v_contatori,
+                                                           'ultimo_numero', v_ultimo),
+                          -- ⭐ I due valori riempiono i due %s del messaggio a
+                          --   catalogo, nell'ordine: il codice del sezionale e
+                          --   l'ultimo numero consegnato. ⛔ Nessun nome di
+                          --   parametro o di colonna: qui dentro va cio' che
+                          --   una PERSONA legge.
+                          'valori',     jsonb_build_array(v_codice, v_ultimo::text));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_registro_forma_modificabile(bigint)
+              IS 'Pure check (§12.5.1): i motivi che impediscono di CAMBIARE LA FORMA DEL NUMERO di un registro — prefisso, suffisso, lunghezza_numero. Ritorna [] se la modifica e'' ammessa, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA il codice e non solleva (salvo i due guard di chiamata). Consumatori: vendite.trgfn_registri_fatturazione_guard_forma_numero, che la CHIAMA per rifiutare (§12.5.2), e la maschera del registro, che tiene i tre campi in sola lettura e dice perche''. ⭐ IL PREDICATO E'' «HA CONSEGNATO UN NUMERO», non «ha una riga di contatore»: vendite.fn_get_next_progressivo inserisce la riga a last_numero = 0 e nella stessa chiamata la porta a >= 1, quindi una riga ferma a 0 significa che da quel bucket non e'' mai uscito niente. ⚠️ E'' di proposito PIU'' STRETTO del predicato della disattivazione (script.fn_check_registro_disattivabile, motivo HA_PROGRESSIVI), che guarda `attivo` a prescindere dal contatore: la'' si protegge il contatore in quanto tale, qui il danno comincia col PRIMO numero consegnato — due divieti imparentati, non lo stesso divieto. ⛔ PERCHE'' IL DIVIETO ESISTE: cambiare la forma non fa ripartire il contatore, lo lascia proseguire — quindi sullo stesso sezionale convivono due forme con numeri consecutivi, e nessun vincolo se ne accorge perche'' la coppia (forma, numero) non e'' vincolata da nessuna parte. E'' la stessa specie di difetto riparato dal cantiere del prefisso il 2026-08-31 (difetto A: forma identica, contatore ripartito da 1) presa dal verso opposto. ⛔ serie_default NON E'' COPERTA, e per due ragioni indipendenti: entra nella chiave del contatore (uq_regprog_key), quindi cambiarla apre un bucket nuovo sotto una serie che distingue i documenti — che e'' il modo legittimo di aprire una serie — e il mirror CSV 80_data/sql/vendite/registri_fatturazione.csv (runOnChange, validCheckSums ANY) la riscrive a OGNI migrate: un BEFORE UPDATE OF serie_default scatta anche a valore invariato e farebbe fallire il migrate. ⚠️ RESIDUO DICHIARATO: il COMMENT della tabella dice che cambiare serie_default su un registro vivo «sposta il sezionale» — resta vero e resta senza presidio, ed e'' un''altra decisione. ⚠️ SECURITY INVOKER ed e'' motivato: si leggono solo vendite.registri_fatturazione e vendite.registri_fatturazione_progressivi, nessuna delle due con RLS (verificato 2026-09-01) — la gemella e'' DEFINER perche'' legge vendite.fatture, che ce l''ha. ⚠️ Registro inesistente: si SOLLEVA E_VENDITE_CHIAMATA_NON_VALIDA invece di rispondere [], perche'' «la forma si puo'' cambiare» su una riga che non esiste e'' una frase senza senso. ⛔ Il `reason` non porta il prefisso E_, riservato ai codici a catalogo (§12.5.1). ⚠️ La reason_key amministrazione.registri_fatturazione.forma_blocco.ha_numerato e'' un DEBITO VERSO IL FE (§12.3): va nei locales it/en nello stesso giro del lavoro frontend. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_registro_forma_modificabile(bigint);

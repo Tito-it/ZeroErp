@@ -25,7 +25,7 @@
                     │           ANELLO 3 — PROCESSI               │
                     │                                             │
                     │   vendite    acquisti    magazzino          │
-                    │   pagamenti  contabilita                    │
+                    │   pagamenti  contabilita*                   │
                     │                                             │
                     │  ┌───────────────────────────────────────┐  │
                     │  │    ANELLO 2 — ORCHESTRAZIONE          │  │
@@ -54,6 +54,9 @@
 ```
 
 **Regola fondamentale**: ogni anello dipende solo dagli anelli interni. Mai dipendenze inverse o laterali.
+
+⛔ **`contabilita*` sta fuori dal perimetro, e lo schema è VUOTO** — zero tabelle, zero
+funzioni, zero viste. Non è un processo di Anello 3 e non c'è niente da finire: vedi §2.
 
 ## Cronologia aggiornamenti
 
@@ -286,7 +289,7 @@ secondo.
 | `acquisti`    | App Django | Parziale  | Stub      | ⚠️ **Modello disegnato, non in esercizio** (misurato 21-08-2026): ordini, righe, DDT, indirizzi e ponte di fulfillment esistono con vincoli e trigger, ma **tutte le tabelle sono a 0 righe** — nessun documento di acquisto è mai stato creato. La struttura è lo **specchio** del ciclo vendite; ⚠️ la simmetria dei nomi non garantisce quella delle colonne (il progetto ha già pagato un `sorgente_uid` che significava due cose diverse). Doc concettuale completata 21-08-2026 |
 | `magazzino`   | App Django | Parziale  | Stub      | ⚠️ **Modello disegnato, non in esercizio** (misurato 21-08-2026): ledger movimenti, costo medio, inventari, rettifiche, trasferimenti, prenotazioni, ubicazioni e asset esistono con vincoli e trigger, ma **tutte le tabelle operative sono a 0 righe**; popolati solo i due vocabolari da seed (`ambito_causale` 6, `causali` 10). 🔴 Il dominio era **privo di qualunque pgTAP**, e il CHECK `chk_mag_movimenti_da_destinazione_distinti` rendeva inseribili **solo i trasferimenti** (corretto da `20260821-10`, presidiato dal primo test della tabella). ⚠️ Resta aperto: `causali.segno` non è legato al segno di `movimenti.qta`, e `vw_giacenza` somma senza guardarlo. Doc concettuale completata 21-08-2026 |
 | `pagamenti`   | App Django | Parziale  | Parziale  | ⭐ **Il posting esiste** (agosto 2026): registrazione della contabile, saldo della rata, guard di transizione e di capienza, **sistemazione delle eccedenze**, distinta di correzione, RLS sui canali di incasso (`enti_incasso` non ne aveva: l'IBAN di ogni emittente era visibile a tutti). Era la misura di apertura del cantiere — *nessuna funzione, in tutto il database, scriveva `vendite_movimenti`*. ⛔ **Provato il percorso, mai l'esito**: lo schema ha ancora 0 righe transazionali e il **collaudo in-app è aperto** |
-| `contabilita` | App Django | Operativo | Stub      | Piano conti, registrazioni, partite                                                                                                                                           |
+| `contabilita` | Nome di schema | ⛔ **Vuoto** | — | ⛔ **Lo schema non contiene nulla**: zero tabelle, zero funzioni, zero viste (verificato 01-09-2026 sulla doc auto-gen e su `migrations_v2`, dove le cartelle `00_schema/contabilita/` e `20_code/contabilita/` sono vuote). ⚠️ Fino a oggi questa riga diceva «DB Operativo — piano conti, registrazioni, partite»: erano **intenzioni scritte come stato**, e quelle tabelle non sono mai esistite. Anche `backend/apps/contabilita/` è uno scheletro vuoto. ⭐ **Ed è la posizione giusta in cui stare**: se un giorno servirà, sarà un **aggancio a una contabilità esterna**, e la forma la detta il **sistema di destinazione** — profondità dei livelli, composizione dei codici, mastro/conto/sottoconto contro albero libero, contropartite sul conto o sulla causale. Non avendo deciso niente, non c'è niente da disfare |
 | `storico`     | App Django | Operativo | Stub      | Audit temporale, storicizzazione                                                                                                                                              |
 
 ### Dipendenze verso anelli interni
@@ -369,10 +372,19 @@ vendite          usa     usa      usa      usa      usa        usa          -
 acquisti         usa     usa      usa      usa    (futuro)   (futuro)      -
 magazzino        usa     usa      usa       -     (futuro)      -           -
 pagamenti        usa     usa       -        -     (futuro)      -           -
-contabilita      usa     usa       -        -     (futuro)      -           -
+contabilita       -       -        -        -        -          -           -   ⛔ fuori perimetro
 ```
 
 Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3.
+
+⛔ **`contabilita` è a zero perché lo schema è vuoto**, non perché sia isolato: il `(futuro)`
+che stava su questa riga prometteva un collegamento che **non è previsto**. Se un giorno
+arriverà una contabilità, arriverà come **integrazione verso un sistema esterno**, e il lavoro
+vero non sarà l'albero dei conti ma la **superficie di associazione** — articolo → conto di
+ricavo, aliquota → conto IVA, causale → contropartita, cliente → sottoconto, più il formato con
+cui esce la prima nota. ⭐ Quella superficie vive **in `vendite` e `catalogo`**, non qui: le
+frecce da disegnare quel giorno partiranno da lì. E il primo passo non sarà scrivere codice,
+sarà **farsi dare un tracciato** dal commercialista del primo cliente che lo chiede.
 
 Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — vendite usa `core` e `config` senza passare per `pratiche`. Questo non viola la direzione delle dipendenze, sempre dall'esterno verso l'interno: descrive semplicemente come certi tipi di informazione attraversano il tronco (la linfa, nella metafora del vocabolario).
 
@@ -395,7 +407,6 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 | --- | --- | --- |
 | **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) · [DB](dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) · [BE/FE](dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | **Posting, abbinamento e sistemazioni scritti** (agosto). ⛔ Resta il [collaudo in-app](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md): dello schema è provato il *percorso*, mai l'*esito* — zero righe |
 | **Numerazione: il trasloco sui registri** | [analisi due motori](dev/work-done/analisi-db-numerazione-documenti-e-due-motori.md) | Decisioni prese il 30-08 (la commessa va sui registri; niente periodicità nel sistema codici), piano scritto. Perimetro secco: **cambia solo l'algoritmo di assegnazione del numero** |
-| **Fondo fattura — ricalcolo e governo** | [brief-db-fondo-fattura…](dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md) | Cantiere **aperto**, con il suo piano in §8: la finestra non la apre il primo incasso, la apre il primo che scrive righe contabili |
 | **Fan-out isolato / esito parziale** | [brief-be-fan-out…](dev/work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) | Codice eseguito; ciò che resta sono **collaudi a video**, raccolti in §13 |
 | **Fatturazione elettronica SDI** | payload pronto | Builder XML + persistenza esito. Dipende dal blocco `2.4`, che dipende dalle rate: ora esistono |
 | **Liste configurabili / PrimeVue** | [piano-migrazione-primevue-5.md](dev/work-in-progress/piano-migrazione-primevue-5.md) | Disaccoppiamento **chiuso**; l'upgrade è fermo su una **decisione di licenza** (vedi Anello 1) |
@@ -470,7 +481,7 @@ operativo può prenderle al posto di una persona.
 L'ordine cronologico effettivo dello sviluppo e' stato:
 
 1. **`pratiche` (Anello 2)** dichiarata Operativo su DB+BE+FE: 19 endpoint, 115 test, sospensioni, calcoli tempo, macchina a stati, giornale di bordo. Aprile 2026 con avvio in marzo.
-2. **Nessun processo di Anello 3** consuma ancora pratiche. La matrice dipendenze segna `pratiche (FUTURO)` per vendite, acquisti, magazzino, pagamenti, contabilita'.
+2. **Nessun processo di Anello 3** consuma ancora pratiche. La matrice dipendenze segna `pratiche (FUTURO)` per vendite, acquisti, magazzino e pagamenti *(all'epoca anche per `contabilita`, oggi fuori perimetro)*.
 3. **`vendite` ha sviluppato infrastruttura propria di orchestrazione** (pipeline fatturazione, lotti, registry task DB multi-dominio, dispatch task con `implementation_key`, runtime task tracing) **in parallelo a pratiche**, senza usarla. Risultato: due motori di orchestrazione paralleli, due vocabolari, un'integrazione futura ancora da disegnare.
 4. **L'autore ha riconosciuto il problema** mentre lavorava su listini → contratti → preventivi: "sto facendo questi sviluppi per avere aree dove iniziare ad applicare le pratiche". Cioe': costruire i consumatori per validare l'astrazione, l'inverso del workflow ipotizzato dal manifesto v1.
 
