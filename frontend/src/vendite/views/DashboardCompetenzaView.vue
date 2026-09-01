@@ -858,22 +858,26 @@ const opzioniRegistro = computed(() => {
   ]
 })
 
-// Scopo: etichetta del gruppo — riferimento leggibile del documento
-//        (PRV-0012…) oppure, per gli oneri sourceless, la commessa che li
-//        contiene. Il BE risolve gia' il riferimento: qui solo il fallback.
-function gruppoRiferimento(row) {
-  return row.riferimento || row.commessa_codice || row.gruppo_key
-}
-
 // Scopo: etichetta leggibile di una `gruppo_key` NUDA — quella che l'esito del
-//        job riporta per i gruppi «fatturati altrove», dove il BE manda le sole
-//        chiavi. La chiave e' `<TIPO>:<uuid>`: scritta in un toast non dice
-//        niente a nessuno. La riga a video ce l'ha ancora (il lookup gira prima
-//        del reload post-azione), quindi si riusa la stessa etichetta della
-//        lista; se la riga non c'e' piu', la chiave e' comunque meglio del vuoto.
-function etichettaGruppoKey(key) {
+//        job riporta (gruppi «fatturati altrove», gruppi non serviti), dove il
+//        BE manda le sole chiavi. La chiave e' `<TIPO>:<uuid>`: scritta in un
+//        toast non dice niente a nessuno. La riga a video ce l'ha ancora (il
+//        lookup gira PRIMA del reload post-azione), quindi si riusa lo stesso
+//        `riferimento` che la lista mostra nella colonna «Gruppo».
+//
+// ⭐ Il `ripiego` e' un PARAMETRO perche' i due percorsi hanno in mano cose
+//    diverse quando la riga non c'e' piu': l'esito «non serviti» porta anche il
+//    codice commessa, «fatturati altrove» le sole chiavi. Senza, il toast dei
+//    non serviti nominava la COMMESSA mentre la lista sopra nomina il
+//    DOCUMENTO — lo stesso gruppo con due nomi a seconda di dove lo si legge, e
+//    la commessa che «sembra un valore legittimo» e' esattamente la forma di
+//    difetto corretta a DB il 2026-09-01
+//    (brief-db-riferimento-gruppi-lateral-costosa §3).
+// ⚠️ Non passarla mai come `fmt` nudo a `elencoTroncato`: quello fa `.map(fmt)`,
+//    che passerebbe l'INDICE come `ripiego`.
+function etichettaGruppoKey(key, ripiego = null) {
   const row = gruppi.value.find((g) => g.gruppo_key === key)
-  return row ? gruppoRiferimento(row) : key
+  return row?.riferimento || ripiego || key
 }
 
 // Scopo: etichetta del TIPO di gruppo con decodifica i18n fail-visible: un
@@ -1273,7 +1277,15 @@ function notificaNonServiti(nonServiti, nLotti, context) {
     // `(gruppo_key, commessa_id)` e un gruppo su due commesse darebbe due
     // righe — «2 mancanti» per un solo gruppo non servito.
     mancanti: new Set(nonServiti.map((s) => s.gruppo_key)).size,
-    dettagli: elencoTroncato(nonServiti, (s) => `${s.commessa_codice || s.gruppo_key}: ${s.dettaglio}`, '; '),
+    // Il gruppo si nomina come nella lista — col `riferimento`, non col codice
+    // commessa: e' lo STESSO gruppo, e chiamarlo in due modi manda a cercare due
+    // oggetti. Il codice commessa resta come ripiego per le righe che nel
+    // frattempo sono uscite dalla lista.
+    dettagli: elencoTroncato(
+      nonServiti,
+      (s) => `${etichettaGruppoKey(s.gruppo_key, s.commessa_codice)}: ${s.dettaglio}`,
+      '; ',
+    ),
   }))
 }
 
@@ -1366,7 +1378,9 @@ const {
         // lookup gira PRIMA di `reloadDopoAzione`, quindi le righe del giro
         // sono ancora quelle a video; fallback sulla chiave, mai una frase
         // monca.
-        gruppi: elencoTroncato(altrove, etichettaGruppoKey, ', '),
+        // ⚠️ Avvolta, non passata nuda: `elencoTroncato` fa `.map(fmt)` e
+        // passerebbe l'indice come `ripiego` di `etichettaGruppoKey`.
+        gruppi: elencoTroncato(altrove, (k) => etichettaGruppoKey(k), ', '),
       }))
     }
     // ⚠️ `altrove` NON entra nel gate del successo: e' informazione, non un
@@ -1439,7 +1453,7 @@ function fatturaGruppi(righe) {
   // del giro, l'etichetta con cui l'esito verra' attribuito quando arrivera' —
   // magari dopo che la lista si e' gia' ricaricata e quelle righe non ci sono
   // piu'.
-  const riferimenti = elencoTroncato(righe, gruppoRiferimento)
+  const riferimenti = elencoTroncato(righe, (r) => r.riferimento)
   const gruppi = righe.map((r) => r.gruppo_key)
   chiediDataECrea(
     t('vendite.dashboard_competenza.fattura_gruppi_conferma', {
@@ -1575,8 +1589,13 @@ function buildGruppoRowActions(row) {
     buildApriDocumentoAction({
       area: row.area_documento,
       documentoId: row.documento_id,
+      // `riferimento` senza ripiego: e' NOT NULL per contratto (vedi
+      // `DashCompetenzaGruppoRow`), e questa voce si rende solo quando
+      // `documento_id` c'e' — cioe' proprio sui gruppi dove il riferimento E'
+      // il numero del documento. Un `?? ''` qui difenderebbe da un caso che il
+      // contratto esclude, ed e' la forma tolta da questo file il 2026-09-01.
       label: t('vendite.dashboard_competenza.azione_apri_documento', {
-        codice: row.riferimento ?? '',
+        codice: row.riferimento,
       }),
       onApri: apriDocumentoDrawer,
     }),
@@ -2290,8 +2309,13 @@ onActivated(() => {
                     />
                   </template>
 
+                  <!-- `riferimento` si rende NUDO: e' gia' il
+                       `COALESCE(numero documento, codice commessa, gruppo_key)`
+                       della vista, e ripetere quella catena qui sarebbe la stessa
+                       regola scritta due volte (i due termini di coda sarebbero
+                       irraggiungibili per costruzione). -->
                   <template #cell-riferimento="{ data }">
-                    <strong>{{ gruppoRiferimento(data) }}</strong>
+                    <strong>{{ data.riferimento }}</strong>
                     <!-- Segnalare, non nascondere (brief emittibilita' §3.1): la
                          testata non ammette fatturazione — lucchetto col motivo,
                          accanto al nome che l'operatore sta gia' leggendo. -->

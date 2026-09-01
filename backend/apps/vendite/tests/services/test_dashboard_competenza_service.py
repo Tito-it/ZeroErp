@@ -49,6 +49,8 @@ Indice test eseguiti:
 24-quater) DashCompetenzaGruppiRepositoryTests.test_where_gruppi_filtro_cliente_e_ricerca
 24-quinquies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittente_ragione_sociale
 24-sexies) DashCompetenzaGruppiRepositoryTests.test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
+24-septies) DashCompetenzaGruppiRepositoryTests.test_larghezza_riga_finta_uguale_al_select
+24-octies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_riferimento_non_nullo
 25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
 26) DashCompetenzaFatturePerCellaTests.test_stadio_non_calcolabile_e_non_applicabile
 27) DashCompetenzaFatturePerCellaTests.test_calcolo_fallito_e_errore_non_silenzio
@@ -1062,6 +1064,25 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
         )
         self.assertIsNone(righe[0]["documento_id"])
+
+    # 24-octies) `riferimento` arriva al FE, e arriva NON nullo. E' il gemello
+    #     del test 24: quello presidia il NULL che deve SOPRAVVIVERE, questo il
+    #     valore che non deve mai esserlo.
+    #     ⚠️ Serve perche' il mapping legge per INDICE: un riordino del SELECT
+    #     farebbe scorrere i valori sulle chiavi sbagliate senza rompere niente,
+    #     e la larghezza (24-septies) resterebbe giusta.
+    #     ⛔ Il campo e' dichiarato `str`, non `str | None`: il ripiego
+    #     `COALESCE(numero documento, codice commessa, gruppo_key)` lo fa GIA' la
+    #     vista, e l'ultimo ramo e' la chiave del gruppo — riscrivere quella
+    #     catena nel repository o nel frontend sarebbe la stessa regola in due
+    #     posti (brief-db-riferimento-gruppi-lateral-costosa §9).
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_riferimento_non_nullo(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["riferimento"], "ORD0005174")
 
     # 24-bis) L'emittibilita' della TESTATA arriva al FE (brief emittibilita' §3.1,
     #     rev 2026-08-15): e' il dato che la vista espone da giugno e che

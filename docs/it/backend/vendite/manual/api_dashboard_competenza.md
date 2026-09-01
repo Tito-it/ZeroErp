@@ -287,10 +287,52 @@ client produrrebbe un parziale con l'aria di un totale.
 
 Ogni riga: `gruppo_key`, `tipo_gruppo` (`codice_interno` della sorgente, oppure
 `ONERI_COMMESSA`), `area_documento`, `riferimento` (numero leggibile del
-documento, o la commessa per gli oneri), `commessa_id/commessa_codice`,
-`cliente_display`, `stadio`, `n_attivita`, `valore`, `ha_oneri`,
-`data_attivita_min` / `data_attivita_max`, `registri_n`, `registro_codice`,
-`data_documento_prevista`.
+documento, o la commessa per gli oneri), `documento_id`,
+`commessa_id/commessa_codice`, `cliente_display`, `stadio`, `n_attivita`,
+`valore`, `ha_oneri`, `data_attivita_min` / `data_attivita_max`, `registri_n`,
+`registro_codice`, `data_documento_prevista`.
+
+#### ⭐ `riferimento` è NOT NULL, e `documento_id` esce dalla sua stessa riga
+
+**`riferimento` non è mai `null`**, ed è un contratto della vista, non una
+fortuna dei dati: è `COALESCE(numero del documento, codice commessa,
+gruppo_key)` e l'ultimo ramo è la chiave del gruppo, che esiste sempre.
+
+⛔ **Quindi il client non deve rimettere quella catena.** Un
+`riferimento || commessa_codice || gruppo_key` lato client ripete i due rami di
+coda del `COALESCE`: sono **irraggiungibili per costruzione**, non «rari». Fino
+al 2026-09-01 il campo era dichiarato opzionale in `DashCompetenzaGruppoRow` e
+una copia della catena viveva davvero nel frontend; entrambe sono state tolte
+insieme, perché era la dichiarazione a legittimare la copia.
+
+**`documento_id`** è `null` **solo** sui gruppi la cui sorgente non è un
+documento sfogliabile (`config.sorgenti.area IS NULL`: oneri di commessa,
+attività). È l'id con cui il client apre il drawer; quando c'è, `riferimento` è
+il numero di **quel** documento — codice e id non possono descrivere oggetti
+diversi, perché escono dalla stessa risoluzione.
+
+⚠️ **Cambio di sorgente (2026-09-01, `20260901-04/-05`).** Le due colonne
+arrivano ora da `vendite.fn_get_sorgente_documento_ref(sorgente_tipo_id,
+sorgente_uid)` — una lettura sulla tabella dichiarata da
+`config.sorgenti.target_table` — e non più da una `LEFT JOIN LATERAL` su
+`vw_dash_fatturazione_documenti`. **Il contratto HTTP non cambia**: nome, tipo e
+posizione dei campi sono identici, nessun adeguamento client richiesto.
+
+⭐ **Cambia però cosa si vede su una classe di righe**, e va saputo per non
+leggerlo come un difetto nuovo: sui gruppi la cui sorgente era **esclusa** dai
+resolver della fatturazione — preventivo superato da una revisione, DDT con
+causale non fatturabile — prima usciva il **codice commessa** al posto del numero
+e `documento_id` era `null` (quindi niente azione «apri»). Ora esce il numero e
+l'id c'è. ⭐ Per un preventivo l'id è quello della **revisione spinta**, non della
+corrente: è quella da cui vengono quantità e prezzi che si stanno per fatturare.
+A video il testo è identico nei due casi (il numero è condiviso fra le
+revisioni): cambia solo il bersaglio dell'azione.
+
+⚠️ **La ricerca libera su `riferimento` resta NON indicizzata.** Il costo per
+riga è molto minore, ma la sua natura non è cambiata: resta un `COALESCE` il cui
+primo ramo si risolve per riga, quindi valutato su tutto il perimetro prima di
+poter filtrare. Il rimedio non è togliere il campo dalla whitelist — è ancorare
+la ricerca alla sorgente del documento, ed è un cantiere aperto (DL-2).
 
 Il blocco **`tipi`** è la *facet* del filtro: le voci realmente presenti nel
 perimetro con il conteggio (`tipo_gruppo`, `area_documento`, `n_gruppi`,
