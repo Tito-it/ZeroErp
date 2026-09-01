@@ -1180,7 +1180,28 @@ il principio di riuso.
 1. **Esiste gia'?** — controllare `core/components/` e `core/composables/`
 2. **Servira' altrove?** — se si', collocare in `core/`; se no, in `<dominio>/components/`
 3. **Props minimali** — esporre solo cio' che varia tra i contesti
-4. **Emits chiari** — `@saved`, `@row-click`, `@new`, `update:modelValue`
+4. **Emits chiari** — `@saved`, `@changed`, `@row-click`, `@new`, `update:modelValue`
+
+> ⭐ **`saved` e `changed` non sono sinonimi, e il drawer deve sceglierne uno.**
+> `saved` dice *«il lavoro su questo documento è finito»* — la lista si ricarica
+> e il drawer **si chiude**. `changed` dice *«la riga è cambiata, ma sto ancora
+> lavorando qui dentro»* — la lista si ricarica e il drawer **resta aperto**.
+> È il caso di ogni verbo che **genera un documento senza concludere il
+> proprio**: genera DDT da un ordine, genera reso da un DDT, smista un
+> preventivo, ri-consegna un reso.
+>
+> Li implementa entrambi
+> [`useDrawerSavedListRefresh`](catalogo-building-block-frontend.md): la vista
+> scrive `@saved="onDrawerSaved" @changed="onDrawerChanged"` e non riscrive
+> nulla.
+>
+> 🔴 **Perché la regola è scritta qui**: al 2026-09-01 quel momento esisteva in
+> **quattro** domini con **tre** comportamenti diversi — due drawer non
+> avvisavano nessuno (la lista restava ferma, e l'operatore ricaricava a mano
+> senza sapere perché), uno avvisava solo un'altra tab, uno emetteva `saved` e
+> **si chiudeva addosso a chi stava ancora lavorando**. Nessuno dei quattro
+> falliva: è la classe di difetto che nessun test vede, perché la pagina non
+> sbaglia — è solo **ferma**.
 5. **i18n** — tutti i testi tramite `$t()`, mai hardcoded
 6. **Responsive** — testare su mobile (flex-wrap, no larghezze fisse)
 

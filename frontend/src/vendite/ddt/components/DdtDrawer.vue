@@ -65,7 +65,7 @@ const props = defineProps({
   ddtId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const emit = defineEmits(['update:visible', 'saved', 'changed', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
@@ -105,6 +105,9 @@ function onResoCreato() {
   loadDetail()
   collegamentiRef.value?.reload()
   merceRef.value?.reload()
+  // ⭐ La lista DDT dietro: il reso cambia il conto della merce e i transiti.
+  // `changed`, non `saved`: dal DDT si continua a lavorare.
+  emit('changed')
 }
 // Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
 // alimentato dalla sezione indirizzi, mostrato nel dialog di emissione.

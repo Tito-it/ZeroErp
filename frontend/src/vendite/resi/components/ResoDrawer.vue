@@ -47,7 +47,7 @@ const props = defineProps({
   resoId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const emit = defineEmits(['update:visible', 'saved', 'changed', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
@@ -223,7 +223,11 @@ async function onCoperturaRiconsegnaCambiata() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
   collegamentiRef.value?.reload()
-  emit('saved', {})
+  // ⭐ Era `emit('saved', {})`, e la lista si aggiornava — ma il drawer si
+  // CHIUDEVA: una ri-spedizione parziale lascia il resto in coda, quindi
+  // l'operatore era ancora dentro a lavorare. `changed` ricarica e lascia
+  // aperto. Difetto gemello di quello degli ordini, con il segno opposto.
+  emit('changed')
 }
 </script>
 

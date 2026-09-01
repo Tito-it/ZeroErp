@@ -15,6 +15,7 @@ import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 
 import { useDrawerState } from '../../../core/composables/useDrawerState'
+import { useDrawerSavedListRefresh } from '../../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../../core/constants'
 import { TAB_RESI } from '../constants'
@@ -35,10 +36,49 @@ useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.RESO)
 
 // Su 'saved' (patch testata / conferma / annullo / ri-consegna): refresh
 // lista + chiude drawer.
-async function onDrawerSaved() {
-  store.filters.offset = 0
-  if (store.hasSearched) await store.fetchList()
-  drawer.close()
+// Handler standard, dal BB: `saved` ricarica e chiude, `changed` ricarica e
+// LASCIA APERTO (il drawer ha generato un documento e il lavoro continua).
+// `riapriDopoCreate: false` — la transizione CREATE → "edit-evolved" e' interna
+// al drawer (auto-save bozza) e non passa di qui.
+const {
+  onDrawerSaved: ricaricaListaEChiudi,
+  onDrawerChanged: ricaricaLista,
+} = useDrawerSavedListRefresh(
+  store, drawer, { riapriDopoCreate: false, soloSeCercata: true },
+)
+
+// ⭐ QUI LE LISTE SONO TRE, non una — ed e' la ragione per cui questa vista non
+// puo' usare gli handler del BB cosi' come sono. Il drawer reso si apre anche
+// DALLE CODE (`@apri-reso`), e da li' un accredito o una ri-consegna cambiano
+// la coda che sta dietro: senza questo giro l'operatore chiudeva il drawer e
+// ritrovava la riga che aveva appena lavorato, immutata.
+// ⚠️ Il `?.` non e' prudenza: i TabPanel sono `lazy`, quindi la coda non attiva
+// non e' montata e il suo ref e' `null`. Il ref E' il test di montaggio — la
+// coda non montata ricarichera' al proprio mount, e chiamare `fetchList` sul
+// suo store da qui produrrebbe la doppia chiamata gia' pagata in
+// `applicaDeepLinkCoda`.
+const codaAccreditareRef = ref(null)
+const codaRiconsegnareRef = ref(null)
+
+// ⚠️ BEST-EFFORT DICHIARATO: `fetchList` propaga (try/finally, nessun catch) e
+// qui non si attende — senza il `catch` un errore di rete su una coda
+// diventerebbe una unhandled rejection. E il silenzio e' voluto: questo e' un
+// riallineamento di CONTORNO, l'atto e' gia' riuscito e ha gia' il suo toast.
+// Una coda che non si ricarica si ricarica al prossimo giro; un secondo toast
+// rosso su un'operazione andata bene direbbe una cosa falsa.
+function ricaricaCode() {
+  codaAccreditareRef.value?.reload()?.catch(() => {})
+  codaRiconsegnareRef.value?.reload()?.catch(() => {})
+}
+
+async function onDrawerSaved(result) {
+  ricaricaCode()
+  await ricaricaListaEChiudi(result)
+}
+
+async function onDrawerChanged() {
+  ricaricaCode()
+  await ricaricaLista()
 }
 
 // Dalle code si apre lo stesso drawer reso (riga -> reso_id).
@@ -113,10 +153,10 @@ onActivated(applicaDeepLinkCoda)
           />
         </TabPanel>
         <TabPanel :value="TAB_RESI.DA_ACCREDITARE">
-          <ResiCodaTable coda="accreditare" @apri-reso="openReso" />
+          <ResiCodaTable ref="codaAccreditareRef" coda="accreditare" @apri-reso="openReso" />
         </TabPanel>
         <TabPanel :value="TAB_RESI.DA_RICONSEGNARE">
-          <ResiCodaTable coda="riconsegnare" @apri-reso="openReso" />
+          <ResiCodaTable ref="codaRiconsegnareRef" coda="riconsegnare" @apri-reso="openReso" />
         </TabPanel>
       </TabPanels>
     </Tabs>
@@ -126,6 +166,7 @@ onActivated(applicaDeepLinkCoda)
       @update:visible="v => drawer.state.visible = v"
       :reso-id="drawer.state.itemId"
       @saved="onDrawerSaved"
+      @changed="onDrawerChanged"
       @cancelled="drawer.close"
     />
   </div>
