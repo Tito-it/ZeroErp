@@ -677,6 +677,9 @@
         "ha_ordini": "Il registro {codice} ha gia' numerato {quante} ordini: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_ddt": "Il registro {codice} ha gia' numerato {quante} DDT: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_resi": "Il registro {codice} ha gia' numerato {quante} resi: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati."
+      },
+      "forma_blocco": {
+        "ha_numerato": "Il registro {codice} ha gia' consegnato dei numeri (ultimo: {ultimo_numero}): la forma del numero non si puo' piu' cambiare. Il contatore non riparte quando cambia la forma, prosegue — quindi sullo stesso sezionale convivrebbero due forme con numeri consecutivi."
       }
     },
     "matrici": {

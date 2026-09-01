@@ -1,0 +1,132 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) 2026 Tid (Michele Carlo Titini)
+-->
+<script setup>
+// Scopo: lo SCHELETRO di un tab-lista dentro un drawer — il markup che
+//        `EmittenteFiscaleBillingAccountTab` si era scritto in casa e che il
+//        secondo tab-lista avrebbe ricopiato: barra filtri + PageActionsBar
+//        con il tag di stato della configurazione + <ListaConfigurabile>.
+//        Estratto 2026-09-01 (regola del 2, ok Tid).
+//
+// ⭐ E' UN CONTENITORE, NON UNA LISTA. Non fa fetch, non tiene filtri, non sa
+//    che colonne esistono: riceve i valori che `useDrawerTabLista` produce e
+//    passa avanti TUTTI gli slot al componente di lista. Chi lo usa scrive le
+//    stesse `<template #cell-...>` che scriverebbe su <ListaConfigurabile>.
+//
+// ⛔ GLI SLOT SI INOLTRANO PER NOME, NON SI ELENCANO. Un elenco cablato qui
+//    sarebbe un secondo catalogo delle colonne accanto a `ui.lista_colonna`:
+//    la colonna nuova comparirebbe nella lista e il suo slot no, senza che
+//    niente fallisca. ⚠️ E l'inoltro conserva la CONDIZIONE del caller: uno
+//    slot dichiarato con `v-if` (tipicamente `#actions` in sola lettura) non
+//    entra in `$slots`, quindi qui non viene creato e <ListaConfigurabile>
+//    non monta la colonna — che e' esattamente il comportamento di prima.
+//
+// ⚠️ TRE NOMI SONO RISERVATI e non si inoltrano — `help`, `testata`, `filtri`:
+//    stanno sopra o dentro la toolbar, che e' markup di questo componente.
+//    `testata` e' il posto della form di inserimento quando il tab ne ha una
+//    sopra la lista (il mapping BA aggiunge da li', non da un drawer).
+import { computed, ref } from 'vue'
+import ListaConfigurabile from './ListaConfigurabile.vue'
+import ListaConfigStatusTag from './ListaConfigStatusTag.vue'
+import PageActionsBar from './PageActionsBar.vue'
+import Message from 'primevue/message'
+
+const SLOT_PROPRI = ['help', 'testata', 'filtri']
+
+defineProps({
+  // --- identita' e dati della lista (girati a <ListaConfigurabile>) ---
+  codice: { type: String, required: true },
+  rows: { type: Array, default: () => [] },
+  total: { type: Number, default: 0 },
+  loading: { type: Boolean, default: false },
+  paginatorOptions: { type: Object, default: null },
+  page: { type: Number, default: 1 },
+  sortField: { type: String, default: null },
+  sortOrder: { type: Number, default: null },
+  dataKey: { type: String, default: 'id' },
+
+  // --- testata (dallo scaffolding) ---
+  pageActions: { type: Array, default: () => [] },
+  dirty: { type: Boolean, default: false },
+  // Cancello di perimetro emittente: rende `inert` i filtri del caller. Lo
+  // scaffolding lo calcola, la toolbar e' markup nostro — e' l'unico modo che
+  // ha di raggiungerla.
+  perimetroBloccato: { type: Boolean, default: false },
+
+  // Testo di aiuto in testa al tab. Alternativa allo slot `help`, per il caso
+  // — che e' quello frequente — in cui e' una riga sola di testo tradotto.
+  helpText: { type: String, default: '' },
+})
+
+const emit = defineEmits(['page', 'sort', 'config-loaded'])
+
+const slots = defineSlots()
+const listaInterna = ref(null)
+
+// Gli slot da inoltrare: tutti tranne i due nostri. Ricalcolato a ogni render,
+// cosi' uno slot condizionato dal caller compare e sparisce come deve.
+const slotInoltrati = computed(() =>
+  Object.keys(slots).filter((n) => !SLOT_PROPRI.includes(n)),
+)
+
+// ⭐ Il caller mette `ref="listaRef"` QUI, non sulla lista interna — che non
+//    puo' raggiungere. `useListaAzioni` legge `config`/`dirty`/`colonneNuove`
+//    e chiama `openModal()`: le quattro cose viaggiano di rimbalzo.
+// ⚠️ `defineExpose` auto-unwrappa i ref, quindi i computed qui sotto arrivano
+//    al chiamante gia' come valori (`feedback_defineexpose_unwrap`).
+defineExpose({
+  config: computed(() => listaInterna.value?.config ?? null),
+  dirty: computed(() => listaInterna.value?.dirty ?? false),
+  colonneNuove: computed(() => listaInterna.value?.colonneNuove ?? 0),
+  presetAggiornato: computed(() => listaInterna.value?.presetAggiornato ?? false),
+  openModal: (...a) => listaInterna.value?.openModal?.(...a),
+  save: (...a) => listaInterna.value?.save?.(...a),
+  reset: (...a) => listaInterna.value?.reset?.(...a),
+  applyChange: (...a) => listaInterna.value?.applyChange?.(...a),
+  ignorePresetUpdate: (...a) => listaInterna.value?.ignorePresetUpdate?.(...a),
+})
+</script>
+
+<template>
+  <div class="app-tab-content">
+    <slot name="help">
+      <Message v-if="helpText" severity="info" :closable="false" class="mb-3">
+        {{ helpText }}
+      </Message>
+    </slot>
+
+    <slot name="testata" />
+
+    <div class="app-page-toolbar">
+      <div class="app-page-filters" :inert="perimetroBloccato">
+        <slot name="filtri" />
+      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
+    </div>
+
+    <ListaConfigurabile
+      ref="listaInterna"
+      :codice="codice"
+      :rows="rows"
+      :total="total"
+      :loading="loading"
+      :paginator-options="paginatorOptions"
+      :page="page"
+      :sort-field="sortField"
+      :sort-order="sortOrder"
+      :data-key="dataKey"
+      @page="emit('page', $event)"
+      @sort="emit('sort', $event)"
+      @config-loaded="emit('config-loaded', $event)"
+    >
+      <template v-for="nome in slotInoltrati" #[nome]="scope" :key="nome">
+        <slot :name="nome" v-bind="scope ?? {}" />
+      </template>
+    </ListaConfigurabile>
+  </div>
+</template>

@@ -967,3 +967,323 @@ da niente, e il `COMMENT` della tabella continua a dire che cambiarla su un
 registro vivo sposta il sezionale. Non blocca il CRUD — la colonna non è nella
 maschera finché qualcuno non decide che ci vada — ma è una decisione aperta, non
 una cosa fatta.
+
+---
+
+## 10. 🛠️ Piano di sviluppo BE/FE — il CRUD, adesso che il DB non deve più niente
+
+> **Destinatario:** backend + frontend (`dev/backend-tid`). Aperto il 2026-09-01,
+> dopo il push del team DB (merge `#1461`, commit `b6b6b83d`).
+> ⭐ È l'esecuzione dei **sei passi del §5**. Non li rinumera: li raggruppa in
+> fasi che si possono chiudere una per volta, ognuna con la sua prova.
+
+### 10.1 ✅ Verifica del push — sette fatti, letti dove stanno
+
+> Controllati il 2026-09-01 sulla **doc auto-generata** e sui guardrail, non sui
+> changeSet. Sono **fatti datati**: dicono che i prerequisiti ci sono, non come
+> va disegnato il CRUD.
+
+| # | Cosa | Dove l'ho letto | Esito |
+| --- | --- | --- | --- |
+| 1 | Le tre colonne di forma sulla tabella | auto-gen `registri_fatturazione` | ✅ `prefisso`, `suffisso` nullable, `lunghezza_numero` NOT NULL default 7 |
+| 2 | I **due** UNIQUE parziali, nessuno dei due su `attivo` | stesso auto-gen, sezione indici | ✅ `…_famiglia_emittente_utility` e `…_prefisso_suffisso`, entrambi `NULLS NOT DISTINCT` |
+| 3 | Il guard sulla forma è **montato** | stesso auto-gen, sezione trigger | ✅ `trg_registri_fatturazione_a10_guard_forma_numero_upd`, `BEFORE UPDATE` |
+| 4 | I **sei** guard di disattivazione | stesso auto-gen | ✅ `ddt`, `fatture`, `ordini`, `registri_fatturazione_progressivi`, `resi`, `tipi_doc_fiscale_registri` |
+| 5 | Le due `fn_check_*` e le loro `reason_key` | auto-gen `script/funzioni/` | ✅ sei `reason` sulla disattivabile, **una** (`HA_NUMERATO`) sulla forma |
+| 6 | Il codice errore e il suo messaggio | `codici_errore.csv` r. 833, `messaggi_errore.csv` r. 828 | ✅ `E_REGISTRO_FORMA_NUMERO_IMMUTABILE`, `CONFLITTO_STATO`, messaggio `it` id 1039 |
+| 7 | Il guardrail i18n | `python3 scripts/check_i18n_keys.py` | 🔴 **rosso**, con **una** sola chiave: `…forma_blocco.ha_numerato` |
+
+⭐ **Il punto 7 è la prima riga di codice da scrivere, non una noia di fine
+lavoro.** Le **sei** chiavi della disattivazione sono già nei due `locales`
+(verificate una per una, `it` **e** `en`); manca solo la settima, quella nata
+col guard di ieri. ⛔ Finché non c'è, **qualunque** PR di questo cantiere nasce
+rossa — e non per colpa di chi la apre.
+
+### 10.2 ⚠️ Due cose che il push ha cambiato, e il brief sopra non le dice ancora
+
+#### A · La whitelist di `update_registro` **si apre** — il ripiego è scaduto
+
+Il §BE-1 tiene `prefisso`, `suffisso` e `lunghezza_numero` **fuori** dalla
+whitelist di `update`, e lo dichiara *«ripiego prudente in attesa che il criterio
+nasca dove sta il rifiuto»*. Il §7 lo diceva con la data di scadenza dentro:
+*«il giorno che il guard esiste si aprono»*.
+
+⇒ **Il guard esiste da ieri.** I tre campi **entrano** nella whitelist di
+`update`, e a rifiutare è il database sul registro che ha già consegnato un
+numero. ⛔ Tenerli fuori adesso sarebbe l'errore opposto a quello che il ripiego
+evitava: un divieto **applicativo** accanto a un divieto **di database**, cioè il
+secondo elenco parallelo che tutto questo brief passa il tempo a rifiutare.
+
+⚠️ `serie_default` **resta fuori** dalla whitelist e fuori dalla maschera: non è
+coperta dal guard (§8.1 Q1), il suo residuo è dichiarato e aperto, e un campo
+editabile senza presidio è peggio di un campo assente.
+
+#### B · La sola-lettura di FE-5 diventa **per riga**, non categorica
+
+Il §FE-5 dice *«in modifica restano in sola lettura finché la §7 non è chiusa»*.
+Chiusa la §7, la regola giusta non è «sempre grigi» né «sempre editabili»: è
+**quello che risponde la check**, riga per riga.
+
+* `forma_blocco_reason` **vuoto** → i tre campi si modificano;
+* `forma_blocco_reason` **valorizzato** → sola lettura **col motivo**, dalla
+  `reason_key`, mai grigi e muti.
+
+⭐ È lo stesso schema del cestino di FE-2, su un secondo verbo — ed è la ragione
+per cui il §9.2 insiste su **due colonne, due nomi**: `rimozione_blocco_*` e
+`forma_blocco_*` rispondono a domande diverse e su un registro che ha numerato
+sono spente **per motivi diversi**.
+
+### 10.3 Le fasi
+
+#### F0 · La chiave i18n *(minuti, e sblocca il repository)*
+
+| Cosa | Dove |
+| --- | --- |
+| `amministrazione.registri_fatturazione.forma_blocco.ha_numerato` | `frontend/src/locales/it.json` **e** `en.json`, accanto alle sei `disattiva_blocco.*` già presenti |
+
+Prova: `python3 scripts/check_i18n_keys.py` torna verde.
+⛔ Non si aspetta il resto del lavoro FE: è il guardrail di tutti.
+
+#### F1 · BE — repository, service, rotte *(passi 1 e 2 del §5)*
+
+| File | Contenuto |
+| --- | --- |
+| `apps/vendite/db/registri_repository.py` | `list_registri`, `get_registro`, `create_registro`, `update_registro`, `set_attivo` |
+| `apps/vendite/services/registri_service.py` | validazione payload, le due specie, traduzione vincoli |
+| `apps/vendite/api/views_registri.py` | le viste, `area_funzionale = "vendite"`, `lista_codice = "vendite.registri_numerazione"` |
+| `apps/vendite/api/urls_registri.py` | montato in `urls_v1.py` come `path("registri/", include(...))`, accanto ai sette fratelli |
+
+⛔ **Sede: sottodominio suo, non `vendite_repository.py`** — che è già il generico
+dello schema. È la stessa scelta di `resi_repository.py` e `ddt_repository.py`.
+
+⭐ **La query della lista è quella del §9.2, e non si inventa**: una `SELECT` con
+**due `CROSS JOIN LATERAL`** sulle due check, che porta in riga sia
+`rimozione_blocco_*` sia `forma_blocco_*`. ⛔ Niente vista nuova, niente chiamata
+riga per riga dal service.
+
+**I quattro punti dove si sbaglia**, tutti già scritti sopra e qui solo raccolti:
+
+1. ⛔ **Lo scope emittente è a carico del BE**: `registri_fatturazione` **non ha
+   la RLS**. Si filtra con `PermissionResolver.get_emittenti_sr_ids` su
+   `emittente_soggetto_ruolo_id` — la colonna SR, **non** la PK
+   (`feedback_emittente_pk_vs_soggetto_ruolo`);
+2. ⛔ **`reset_policy` e `uid` fuori dalla whitelist** in creazione e in modifica;
+   `serie_default` fuori (§10.2 A); i tre campi di forma **dentro**;
+3. **`map_integrity_error`** (`apps/core/services/payload_helpers.py`) con le
+   **cinque** voci del §BE-2 — e le due frasi parlanti scritte per intero: quella
+   della terna dice *«possibilmente disattivato»*, quella della coppia
+   prefisso/suffisso pure. ⚠️ Tupla **a due** sulla terna (nessun campo è più
+   sbagliato degli altri), **a tre** sulla coppia (si dichiara `prefisso`);
+4. ⚠️ **Il permesso è di area `vendite`, la maschera vive in `amministrazione`**:
+   da verificare in F1 che l'operatore che apre il drawer dell'emittente arrivi
+   davvero alla rotta. Se non ci arriva è una domanda di permessi, **non** un
+   motivo per spostare il dominio dei dati.
+
+#### F2 · BE — i progressivi in lettura *(passo 2 del §5)*
+
+`get_registro` porta le righe di `registri_fatturazione_progressivi`
+(`anno`, `mese`, `serie`, `last_numero`, `ultima_data`) in **sola lettura**.
+⛔ Nessuna rotta di scrittura, nessuna eccezione per l'amministratore (§BE-4).
+
+#### F3 · La configurazione della lista *(passo 3 del §5)*
+
+`ui.lista_definizione` codice **`vendite.registri_numerazione`**, creata in-app o
+con `scripts/gen_seed_lista.py`. ⚠️ `vista_sql` è **nullable** e molte liste vive
+non ce l'hanno: non serve una vista (§9.2).
+
+Colonne minime: codice, descrizione, famiglia (display dal catalogo), utility,
+prefisso, suffisso, `lunghezza_numero`, `attivo`.
+⛔ **Filtro `attivo` con default «tutti»**, mai «solo attivi» fisso: una lista che
+nasconde gli spenti nasconde le righe che spiegano il rifiuto (§FE-3, §2-bis).
+
+#### F4 · FE — il tab, il drawer, la forma del numero *(passo 4 del §5)*
+
+| File | Note |
+| --- | --- |
+| `amministrazione/components/EmittenteFiscaleRegistriTab.vue` | terzo tab del drawer emittente |
+| `amministrazione/components/RegistroNumerazioneDrawer.vue` | drawer autonomo |
+| `amministrazione/api/registriNumerazione.js` + `stores/registriNumerazione.js` | store `userScoped: true` |
+
+⭐ **Il modello da copiare è `EmittenteFiscaleBillingAccountTab`**, non
+`…UtilitiesTab`: il primo usa `useListaConfigurabilePage` +
+`<ListaConfigurabile>` + `RowActionsMenu` + `can_remove`/`rimozione_blocco_*` con
+`labelOrCode`; il secondo è ancora una `DataTable` grezza. ⛔ Si copia il primo.
+
+Regole già in catalogo, qui solo richiamate: kebab `RowActionsMenu` +
+`MANAGE_ICONS.KEBAB` (mai la matita) · prop `readonly` + `useInjectReadonly` ·
+`contentReady` + `@after-show` · `watch(props.id, loadAll, { immediate: true })`
+sul tab · `if (result !== null)` al salvataggio.
+
+**FE-4 — i campi condizionati alla famiglia**: i tre fiscali solo su
+`FATTURA`. ⚠️ **Nasconderli non basta, vanno anche non spediti**: un `defaultForm()`
+li porta comunque.
+
+**FE-5 — la forma del numero, ed è il pezzo che vale la maschera**:
+
+* i tre campi valgono per **tutte** le famiglie;
+* **anteprima composta nel FE** dai tre valori del form — *«`ORD` + 7 cifre →
+  `ORD0000001`»*. Non si chiede al backend: è concatenazione di ciò che
+  l'operatore ha appena scritto, non una regola;
+* **sola lettura per riga** secondo `forma_blocco_reason` (§10.2 B), col motivo
+  reso da `labelOrCode(t, te, riga.forma_blocco_reason_key, riga.forma_blocco_reason)`.
+
+#### F5 · FE — il cestino col motivo e la riattivazione *(passi 5 e 6 del §5)*
+
+* **FE-2**: cestino spento con `rimozione_blocco_reason_key`. ⚠️ I `reason` da
+  saper tradurre sono **sei**; le chiavi ci sono già, **non se ne inventa una
+  settima**;
+* **FE-3**: quando la terna scelta ha già un registro **disattivato**, la
+  maschera propone di **riattivarlo** invece di lasciar premere Salva.
+
+⚠️ **Ordine dentro la fase, e non è indifferente** (§5, «una domanda di
+priorità»): con sei guard, cinque sull'*esistenza*, il cestino è spento su
+qualunque registro in servizio. F5 va **ultima**, e la riuscita del cantiere non
+si misura su di lei.
+
+### 10.4 I presidi
+
+Sono quelli del §6, con l'aggiunta che il push di ieri rende possibile:
+
+| # | Prova | Dove |
+| --- | --- | --- |
+| 1 | `23505` sulla terna occupata da uno **spento** → errore parlante, non `IntegrityError` nudo | test di servizio |
+| 2 | ⛔ gemello positivo: sulla terna **libera** la create passa | test di servizio |
+| 3 | `23505` sulla coppia prefisso/suffisso occupata da uno spento — ⛔ **in MODIFICA**, non solo in creazione | test di servizio |
+| 4 | gemello positivo della 3 | test di servizio |
+| 5 | `CHECK` famiglia: i campi del limite rifiutati su `DDT`, ammessi su `FATTURA` | test di servizio |
+| 6 | **Scope**: un operatore non vede i registri di un altro emittente | test di servizio — ⚠️ senza RLS è l'**unico** presidio |
+| 7 | 🔴 **`update` della forma su un registro che ha numerato** → il service propaga `E_REGISTRO_FORMA_NUMERO_IMMUTABILE`, non un 500 | test di servizio |
+| 8 | gemello positivo della 7: **prima** di numerare l'`update` passa | test di servizio |
+
+⛔ **Cosa NON si riscrive**: che i sei guard di disattivazione siano montati e
+che il guard sulla forma rifiuti. Sono trigger, e il pgTAP li presidia già
+(`test-registro-forma-numero-immutabile-v1.sql`, 8/8). Ricontarli in un test di
+servizio significa metterli in un posto dove nessuno li guarda.
+
+### 10.5 ⛔ Cosa questo piano NON fa
+
+* **non tocca `config.sistema_codici`** — le quattro righe traslocate ne sono
+  uscite di proposito;
+* **non espone `serie_default`** né in whitelist né in maschera: residuo aperto;
+* **non scrive endpoint sui progressivi**;
+* **non deriva `can_remove` in Python**: arriva dalle due check;
+* **non apre il cantiere della check generica** per le 100 tabelle: la decisione
+  è presa ed è «no» (§FE-2), e chi legge non la riproponga.
+
+### 10.6 ✅ Le tre risposte di Tid — 2026-09-01
+
+| # | Domanda | Risposta |
+| --- | --- | --- |
+| 1 | BB del tab-lista, o si aspetta il quarto? | ⭐ **Si estrae il BB adesso**, e le liste su `DataTable` grezza ci **convergono** |
+| 2 | `serie_default` fuori dalla maschera? | **No: almeno visualizzabile** — in sola lettura |
+| 3 | Quanto del piano | ⭐ **Tutto**, F0→F5 |
+
+#### ⚠️ Sulla 1 — «far convergere il tutto» non è una cosa sola, e va detto prima
+
+Ho classificato i candidati **prima** di disegnare il BB, e non sono la stessa
+famiglia. ⛔ Un BB che le tenesse tutte non unificherebbe una **lettura**:
+trasporterebbe forme diverse dentro un contenitore unico, che è il difetto
+opposto a quello che si vuole togliere.
+
+| Componente | Forma reale | Converge? |
+| --- | --- | --- |
+| `EmittenteFiscaleBillingAccountTab` | lista **paginata** + kebab + motivo di blocco dal DB | ⭐ **è l'originale** — ci converge per prima, o restano due copie |
+| **`EmittenteFiscaleRegistriTab`** (nuovo) | stessa forma | ✅ nasce già sul BB |
+| `EmittenteFiscaleUtilitiesTab` | **matrice slot/override** con editing inline multi-riga, non paginata | 🟡 **famiglia diversa** — vedi sotto |
+| `OperatorePermessiTab` | **tre** tabelle di spunte, stato locale, non paginate | 🟡 famiglia diversa |
+| `PraticaFlussiTab` | due tabelle di sola lettura, non paginate | 🟡 famiglia diversa |
+
+⭐ **Le tre 🟡 hanno in comune il difetto** (`DataTable` grezza, colonne cablate
+nel template, niente catalogo `ui.lista_colonna`) **ma non la forma**: due sono
+matrici a editing inline — il pattern `slot/override`, che è un pattern suo — e
+una è una coppia di tabelle di lettura.
+
+> 🔴 **CORREZIONE — l'analisi esisteva già, e dice di più** (rilievo di Tid,
+> 2026-09-01). Il censimento e la classificazione stanno nel
+> [piano di migrazione PrimeVue 5](piano-migrazione-primevue-5.md) §Gruppo B, e
+> la regola sta in [.codex/AGENTS.md](../../../../.codex/AGENTS.md) e in
+> [frontend-standards §Regola zero della lista](../frontend/frontend-standards.md).
+> Tutte e tre le 🟡 sono **già censite** lì (Gruppo B), quindi la tabella qui
+> sopra non scopre niente: lo conferma.
+>
+> ⭐ **E il piano prescriveva esattamente questo lavoro.** Il testo del Gruppo B
+> diceva due cose che qui si avverano insieme: che il gruppo mette insieme *«la
+> tabella di righe di un documento»* e *«la lista su tab di un'entità che ha
+> vita propria»* — e che la seconda **è una lista** — e che il suo equivalente
+> è *«un wrapper sottile da estrarre alla seconda occorrenza»*. ⇒ La seconda
+> occorrenza è `EmittenteFiscaleRegistriTab`, e il wrapper è il BB di F-BB.
+>
+> ⛔ **Ne discende un obbligo, non una scelta**: la nota del piano dice che se
+> emerge un secondo caso si **riscrive il criterio del gruppo**, non si sposta
+> una riga a mano. Fatto il 2026-09-01 — criterio in **tre domande** nel piano,
+> regola estesa in AGENTS.md e in frontend-standards.
+>
+> 🔴 **E la riclassificazione fa vedere un buco che era coperto**: la **matrice
+> slot/override** non rientra in nessuna delle due eccezioni ammesse dalla
+> regola zero (righe di documento, anteprima in dialog). `…UtilitiesTab` e
+> `OperatorePermessiTab` sono `DataTable` grezza **senza una motivazione
+> ammessa**. Le due strade — estendere `<ListaConfigurabile>` con l'editing
+> inline, o riconoscere la matrice come terza eccezione — sono una **decisione
+> di Tid**, scritta nel piano. ⚠️ Non si chiude inventando un'eccezione.
+
+⇒ **Come procedo**, e la differenza è dichiarata:
+
+1. il BB nasce ora sulla famiglia che esiste davvero — **lista paginata di
+   sotto-entità dentro un drawer, con il motivo di blocco dal database** — e ha
+   subito **due** consumatori (BA e registri), non uno;
+2. ⛔ `EmittenteFiscaleBillingAccountTab` **ci converge nello stesso giro**. Non
+   è cortesia: un BB estratto e lasciato accanto alla sua copia è due
+   implementazioni della stessa regola, e la copia diverge in silenzio;
+3. le tre 🟡 restano **dichiarate**, con la loro condizione: convergono quando
+   `<ListaConfigurabile>` sa fare l'editing inline. ⇒ È un cantiere suo, non una
+   riga di questo — e non si chiude fingendo che lo sia.
+
+#### La forma del BB
+
+⛔ **Non un componente che si mangia il tab.** Tre pezzi, ognuno con un mestiere:
+
+| Pezzo | Cosa fa | Perché separato |
+| --- | --- | --- |
+| `core/utils/bloccoMotivo.js` | `reason` + `reason_key` (+ `storia`) → **la frase** | è **lettura pura**: nessuno stato, testabile da sola |
+| `core/composables/useDrawerTabLista.js` | **factory**: watch sul `parentId`, bind allo store, reset filtri, fetch, + `useListaConfigurabilePage` | ⛔ una **factory**, non un oggetto condiviso: due tab montati insieme devono avere due stati (`feedback_estrarre_non_condividere_stato`) |
+| `core/components/DrawerTabLista.vue` | toolbar + `PageActionsBar` + `<ListaConfigurabile>` con gli slot passanti | è lo scheletro che oggi si ricopia a mano |
+
+### 10.7 Le due decisioni che ricadono sul codice
+
+* **`serie_default` — visualizzabile, non editabile** (risposta 2). Entra nella
+  proiezione di `list`/`get` e nella maschera **in sola lettura**, con la sua
+  spiegazione: *«la serie del contatore; cambiarla sposta il sezionale»*.
+  ⛔ **Fuori dalla whitelist di `update`**: il guard del DB non la copre
+  (§8.1 Q1), e un campo editabile senza presidio è peggio di un campo assente.
+  ⚠️ E la spiegazione **non è decorativa**: è l'unica cosa che dice all'operatore
+  perché quel campo si vede e non si tocca.
+* **F0→F5 tutte** (risposta 3), più la fase **F-BB** qui sotto, che viene
+  **prima** di F4 perché F4 ne è il primo consumatore.
+
+#### F-BB · Il building block del tab-lista *(prima di F4)*
+
+| Passo | Cosa |
+| --- | --- |
+| BB-1 | `bloccoMotivo.js` — estratto da `motivoBlocco()` di `…BillingAccountTab` |
+| BB-2 | `useDrawerTabLista.js` — la factory |
+| BB-3 | `DrawerTabLista.vue` — lo scheletro con gli slot |
+| BB-4 | ⛔ **`EmittenteFiscaleBillingAccountTab` ci converge** — la copia sparisce |
+| BB-5 | Riga nel [catalogo BB FE](../frontend/catalogo-building-block-frontend.md) e in [frontend-standards](../frontend/frontend-standards.md) |
+
+⚠️ **BB-4 è il passo che prova il BB**, non BB-3: finché il secondo consumatore
+non c'è, un BB è un'ipotesi. E il secondo consumatore qui è quello **storico**,
+che è il verso giusto — si estrae da ciò che esiste, non si indovina ciò che
+servirà.
+
+### 10.8 Stato
+
+| Fase | Esito |
+| --- | --- |
+| **F0** · chiave i18n | 🔴 da fare — sblocca il guardrail |
+| **F1** · BE repository/service/rotte | 🔴 da fare |
+| **F2** · progressivi in lettura | 🔴 da fare |
+| **F3** · configurazione lista | 🔴 da fare |
+| **F-BB** · il BB del tab-lista + convergenza BA | 🔴 da fare |
+| **F4** · tab + drawer + forma del numero | 🔴 da fare |
+| **F5** · cestino col motivo + riattivazione | 🔴 da fare |
+| **F6** 🔴 | le due **matrici slot/override** — non è di questo cantiere: è la **decisione aperta** del [piano PrimeVue 5 §Gruppo B](piano-migrazione-primevue-5.md) |

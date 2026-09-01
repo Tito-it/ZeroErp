@@ -191,6 +191,13 @@ Le uniche due eccezioni: le **righe di un documento** dentro il suo master
 dentro un dialog, non paginata e non configurabile.
 ⛔ Non sono eccezioni: «è piccola», «è solo per l'admin», «faccio prima».
 
+⛔ **Nemmeno «è dentro un drawer»** (2026-09-01). Una lista su un tab di drawer
+è una lista: le manca il paginator, non la natura. Si monta con
+`useDrawerTabLista` + `<DrawerTabLista>`. 🔴 L'unico caso oggi **senza casa** è
+la **matrice slot/override** (editing inline, popolazione dal catalogo): resta
+`DataTable` grezza col debito dichiarato nel piano PrimeVue 5 §Gruppo B, dove
+sta anche il criterio in tre domande e la decisione aperta.
+
 La configurazione della lista è **dato, non DDL** — una riga in
 `ui.lista_definizione` più N in `ui.lista_colonna`, create dall'amministrazione
 in-app o con `scripts/gen_seed_lista.py`. **Non serve un brief e non si aspetta

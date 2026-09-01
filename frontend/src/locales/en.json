@@ -677,6 +677,9 @@
         "ha_ordini": "Register {codice} has already numbered {quante} orders: deactivating it would leave those documents without the register that numbered them.",
         "ha_ddt": "Register {codice} has already numbered {quante} delivery notes: deactivating it would leave those documents without the register that numbered them.",
         "ha_resi": "Register {codice} has already numbered {quante} returns: deactivating it would leave those documents without the register that numbered them."
+      },
+      "forma_blocco": {
+        "ha_numerato": "Register {codice} has already issued numbers (last: {ultimo_numero}): the number format can no longer be changed. The counter does not restart when the format changes, it carries on — so the same register would hold two formats with consecutive numbers."
       }
     },
     "matrici": {

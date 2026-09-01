@@ -2031,6 +2031,66 @@ un wrapper sottile da estrarre alla seconda occorrenza
 > ⚠️ Se ne emergesse un secondo, la regola del 2 dice di **riscrivere il
 > criterio del gruppo**, non di spostare un'altra riga a mano.
 
+> ## ✅ Il secondo è emerso — criterio RISCRITTO (2026-09-01)
+>
+> Il caso è `EmittenteFiscaleRegistriTab`, il tab dei registri di numerazione
+> del drawer emittente
+> ([brief-be-fe-crud-registri-di-numerazione](brief-be-fe-crud-registri-di-numerazione.md)
+> §10). ⇒ Come questa nota prescriveva, non si sposta una riga: si riscrive il
+> criterio, e il gruppo si legge da qui in avanti così.
+>
+> ### Il criterio, in tre domande — la prima decide
+>
+> | Domanda | Se sì |
+> | --- | --- |
+> | ⭐ **L'entità ha vita propria** — un endpoint suo, una popolazione arbitraria, un ciclo di vita indipendente dal padre? | **Gruppo A**: `<ListaConfigurabile>` + `useDrawerTabLista` + `DrawerTabLista`. Le manca il paginator, non la natura |
+> | Sono le **righe** del documento che la contiene (righe ordine, componenti BoM, righe reso)? | **Gruppo B**: `RigheMasterDetailTable` / `SearchDetailTable`. È un dettaglio del master, non una lista |
+> | È una **matrice slot/override** — la popolazione la decide il catalogo (LEFT JOIN su tutte le voci ammesse), l'operatore compila le celle? | 🔴 **Nessuna delle due**, vedi il buco qui sotto |
+>
+> ⛔ **«È dentro un drawer» e «non ha il paginator» NON sono più il criterio.**
+> Erano un fatto di forma, e la forma è la conseguenza: un tab-lista non ha il
+> paginator perché nessuno gliel'ha ancora messo, non perché non gli serva.
+>
+> ### ⭐ Il wrapper sottile che questa sezione chiedeva ESISTE
+>
+> Il testo del gruppo diceva *«un wrapper sottile da estrarre alla seconda
+> occorrenza»*. La seconda occorrenza è arrivata, e il wrapper è stato estratto
+> il **2026-09-01** (ok di Tid), in **tre** pezzi separati per mestiere:
+>
+> | Pezzo | Cosa |
+> | --- | --- |
+> | [`core/composables/useDrawerTabLista.js`](../../../../frontend/src/core/composables/useDrawerTabLista.js) | il legame col padre: `watch` immediate, reset filtri, doppia fetch |
+> | [`core/components/DrawerTabLista.vue`](../../../../frontend/src/core/components/DrawerTabLista.vue) | lo scheletro: help + `testata` + toolbar + `<ListaConfigurabile>`, slot inoltrati per nome |
+> | [`core/utils/bloccoMotivo.js`](../../../../frontend/src/core/utils/bloccoMotivo.js) | la frase di un'azione spenta, dalla terna `reason`/`reason_key`/`dettaglio` |
+>
+> ⛔ **`EmittenteFiscaleBillingAccountTab` ci è stato convertito lo stesso
+> giorno**, e non per cortesia: un BB estratto e lasciato accanto alla sua
+> copia sono due implementazioni della stessa regola, e la copia diverge in
+> silenzio ([[feedback_duplicazione_nasconde_il_bug]]).
+>
+> ### 🔴 E resta un buco, che questa riclassificazione fa vedere
+>
+> **La matrice slot/override non ha una casa.** Le due eccezioni della regola
+> zero (`frontend-standards` §Regola zero della lista) sono *righe di un
+> documento* e *anteprima in un dialog*: una matrice non è né l'una né
+> l'altra, eppure `EmittenteFiscaleUtilitiesTab` e `OperatorePermessiTab` sono
+> esattamente questo — popolazione dal catalogo, editing inline multi-riga,
+> nessun paginator.
+>
+> ⇒ Oggi restano `DataTable` grezza **senza una motivazione che la regola
+> ammetta**, ed è un debito da nominare, non da coprire con un'eccezione
+> inventata sul momento. Le due strade, e sono una decisione di Tid:
+>
+> 1. dare a `<ListaConfigurabile>` l'**editing inline di riga** — è la strada
+>    che la regola zero indica quando il BB non basta (*«estendere il BB, non
+>    tornare alla DataTable grezza»*), e sblocca **tutte** le matrici insieme;
+> 2. riconoscere la **matrice** come terza eccezione e darle il suo wrapper,
+>    sul modello di `RigheMasterDetailTable`.
+>
+> ⚠️ Finché non si sceglie, quei file restano dove sono **con il debito
+> scritto**: non è un'omissione, è un rifiuto di chiamare «eccezione» una cosa
+> che non lo è.
+
 | ✓ | File | Col. |
 | --- | --- | --- |
 | ☐ | `amministrazione/components/CollectionEditorPanel.vue` | 2 |
@@ -2058,15 +2118,15 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `documenti/components/DocumentiGeneratiSorgenteList.vue` | 7 |
 | ☐ | `ui/components/ListaPresetColonneDrawer.vue` | 7 |
 | ☐ | `amministrazione/views/DefinizioneEditorView.vue` | 8 |
-| ☐ | `pratiche/components/PraticaFlussiTab.vue` | 8 |
+| ☐ | `pratiche/components/PraticaFlussiTab.vue` — due tabelle di **sola lettura**: resta Gruppo B col criterio nuovo | 8 |
 | ☐ | `ui/components/ListaPresetPanel.vue` | 8 |
 | ☐ | `vendite/_shared/componenti/ComponentiDialog.vue` | 8 |
 | ☐ | `vendite/_shared/componenti/ComponentiPanel.vue` | 8 |
 | ☐ | `vendite/components/FatturaDrawer.vue` | 8 |
 | ☐ | `vendite/ddt/components/DdtResoDialog.vue` | 8 |
 | ☐ | `vendite/resi/components/dialogs/ResoRiconsegnaDialog.vue` | 8 |
-| ☐ | `amministrazione/components/EmittenteFiscaleUtilitiesTab.vue` | 9 |
-| ☐ | `amministrazione/components/OperatorePermessiTab.vue` | 9 |
+| 🔴 | `amministrazione/components/EmittenteFiscaleUtilitiesTab.vue` — **matrice slot/override**: nessuna delle due eccezioni la copre (buco dichiarato sopra) | 9 |
+| 🔴 | `amministrazione/components/OperatorePermessiTab.vue` — **matrice slot/override** (tre tabelle di spunte): stesso buco | 9 |
 | ☐ | `config/components/ImpostazioniSearchTable.vue` | 9 |
 | ☐ | `ui/components/ListaColonnaPanel.vue` | 9 |
 | ➡️ | ~~`vendite/components/LottoDrawer.vue`~~ — **spostato al Gruppo A** il 2026-08-21 (3 liste su 3 tab) | 11 |
