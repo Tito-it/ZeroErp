@@ -2,7 +2,9 @@
 
 > **Tipo**: brief al team DB · **Aperto**: 2026-08-18 · **Riscritto**: 2026-09-01
 > · **Richiedente**: perimetro BE · **Destinazione**: `dev/db-tid`
-> · **Stato**: 🟢 piano approvato, **nessuna modifica applicata**
+> · **Stato**: 🟢 **DB fatto** — `20260901-04` applicato il 2026-09-01 12:31,
+> pgTAP verdi, baseline `vendite` senza regressioni. ⬜ Resta da applicare
+> `20260901-05` (sola correzione di due frasi nel `COMMENT ON VIEW`).
 >
 > **Origine**: DL-2 di
 > [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
@@ -35,11 +37,22 @@ Tre cose, tutte strutturali:
    quale leaky **non può mai essere valutato prima del security qual della RLS**,
    quindi non può diventare un `Index Cond`. Non è una scelta del planner: è una
    regola sua.
-2. ⛔ **La `LATERAL` apre tutte e sei le testate a ogni giro.** `d.area = s.area`
-   è un quale **correlato**, non una costante: non pota l'`Append` in fase di
-   piano. Il piano contiene sei `Seq Scan` — `preventivi`, `ordini`, `ddt`,
-   `contratti`, `offerte_commerciali`, `commesse` — indipendentemente da quale
-   area il gruppo abbia davvero.
+2. ⛔ **La `LATERAL` ricostruisce il resolver intero dell'area del gruppo, una
+   volta per gruppo.** Il piano contiene sei `Seq Scan` — `preventivi`,
+   `ordini`, `ddt`, `contratti`, `offerte_commerciali`, `commesse` — perché
+   `d.area = s.area` è un quale **correlato** e l'`Append` non si pota in fase di
+   piano.
+   ⚠️ **A runtime però quattro rami non partono**, e la prima stesura di questo
+   §1.2 diceva il contrario: ogni ramo della UNION emette un'area **costante**,
+   quindi il confronto diventa un `One-Time Filter: ('PREVENTIVI'::text =
+   (s.area)::text)` per ramo, e i non corrispondenti risultano `never executed`.
+   Verificato il 2026-09-01: su 48 gruppi, `loops=31` sul ramo preventivi e
+   `loops=17` su ordini — uno per gruppo, non sei.
+   ⭐ **Il costo vero è che quell'uno è il resolver completo**: per un gruppo
+   preventivi si scandisce tutta `vendite.preventivi`, si uniscono le righe, si
+   passa da `vw_preventivi_smistamento_righe`, si aggrega — e poi si tiene una
+   riga, per due colonne. I buffer lo dicono: 21.813 sul ramo preventivi e 7.109
+   su ordini, su 31.789 totali.
 3. ⭐ **La primitiva esiste già, ed è usata dalla lente gemella.**
    `vendite.fn_get_sorgente_documento_ref(sorgente_tipo_id, sorgente_uid)`
    restituisce `(documento_id, documento_numero)` — esattamente le due colonne —
@@ -67,7 +80,9 @@ Verificato il 2026-09-01 sui piani, come `zeroerp_app`:
 PostgreSQL **non può eliminare una `LEFT JOIN LATERAL` inutilizzata** — la join
 removal non copre le LATERAL. Quindi i totali in cima alla schermata e le facet
 delle tendine risolvono il documento per ogni gruppo **e poi buttano via il
-risultato**.
+risultato**. ⚠️ «Apre le sei testate» è la forma del **piano**: a runtime ne
+parte una per gruppo (§1.2). Il costo resta, perché quell'una è il resolver
+completo.
 
 ⚠️ **Non è un argomento di velocità**, ed è il punto: se lo fosse, una vista
 materializzata sarebbe una risposta legittima. È che due lettori su tre pagano
@@ -105,9 +120,21 @@ dove la RLS non c'è**. Sul percorso applicativo è morto per costruzione.
 ## 3. Il difetto che si vede a video
 
 Non è solo prestazioni. Quando il resolver non trova il documento,
-`riferimento` ripiega su `COALESCE(…, commessa_codice, gruppo_key)` e a video
-esce la **chiave interna** — `PREVENTIVO:01a0581a-0d09-…` — in grassetto, dove
-l'operatore si aspetta un numero.
+`riferimento` ripiega su `COALESCE(…, commessa_codice, gruppo_key)`.
+
+⚠️ **E il ripiego che scatta è il PRIMO dei due, sempre**: `vendite.commesse.codice`
+è `NOT NULL` e `commesse_attivita.commessa_id` pure, quindi per un gruppo
+documento `commessa_codice` c'è sempre e la `gruppo_key` **non è raggiungibile**.
+
+⭐ **Questo rende il difetto peggiore, non minore.** Una `gruppo_key` a video —
+`PREVENTIVO:01a0581a-…` — si vede che è rotta. Un codice commessa
+(`CMM-…-000000003`) sembra un valore legittimo: la riga **nomina un oggetto
+diverso** da quello di cui parla, e nessuno se ne accorge. È esattamente il
+difetto che il FE si è già trovato a correggere sull'azione «Apri commessa» —
+*«portava a un oggetto DIVERSO da quello scritto nella riga»*.
+Verificato sul caso fabbricato (2026-09-01): risoluzione vecchia →
+`riferimento = CMM-PGTAPEF202-2026-000000003`, `documento_id = NULL`;
+risoluzione nuova → `PGTAP-VGRIF`, id della revisione spinta.
 
 E `riferimento` **non è solo un'etichetta**: è colonna di **ricerca libera** e di
 **ordinamento** (`DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS` /
@@ -207,9 +234,64 @@ la vista invece che il catalogo. È ripiego, non prima scelta.
 | --- | --- | --- |
 | **P-1** | changeSet `CREATE OR REPLACE VIEW` | `20_code/vendite/20260901-NN-update-vw-dash-competenza-gruppi-riferimento-da-sorgente-mctit.yaml` |
 | **P-2** | prova del piano **prima** di chiedere l'apply | SQL **estratto dallo YAML**, in `BEGIN; … ROLLBACK;`, come `zeroerp_app` con contesto operatore |
-| **P-3** | pgTAP: due presidi da tenere verdi, due test nuovi | §6 |
-| **P-4** | baseline `vendite` prima/dopo | `scripts/pgtap-baseline.sh vendite` |
-| **P-5** | doc manuale della vista | `docs/it/dbzero/vendite/manual/vw_dash_competenza_gruppi.md` |
+| **P-3** | ✅ pgTAP — 6 test nuovi, 8 suite affette riverificate | §6 |
+| **P-4** | ✅ baseline `vendite` — 5 rossi su 259, **tutti noti**, zero regressioni | `scripts/pgtap-baseline.sh vendite` |
+| **P-5** | ✅ doc manuale della vista | `docs/it/dbzero/vendite/manual/vw_dash_competenza_gruppi.md` |
+| **P-6** | ⬜ changeSet `20260901-05` — corregge due frasi del `COMMENT ON VIEW`, **da applicare** | §5.3 |
+
+### 5.1 · Esito di P-2 — provato il 2026-09-01, **non applicato**
+
+SQL **estratto dallo YAML** (non trascritto) ed eseguito dentro
+`BEGIN; … ROLLBACK;` scritto nel file eseguito.
+
+⚠️ `SET ROLE zeroerp_app` è **negato** — l'owner non è membro di quel ruolo.
+Si è usata la tecnica già in uso nei pgTAP RLS del progetto:
+`FORCE ROW LEVEL SECURITY` sulle sei testate dentro la transazione, che rende
+l'**owner** soggetto alle policy; l'identità la simulano le GUC `app.*`. Le due
+misure sotto sono prese così su **entrambi** i lati, quindi sono confrontabili.
+
+| | testate di documento aperte | nodi del piano |
+| --- | --- | --- |
+| lista gruppi | **6 → 0** | 159 → 37 |
+| riepilogo (totali + facet) | **6 → 0** | 161 → 39 |
+
+Controlli di non-regressione, tutti verdi:
+
+- **firma invariata** — zero colonne diverse per nome, tipo o posizione (30 su 30);
+- **`security_invoker=on`** prima e dopo;
+- **rollback pulito** — definizione originale ripristinata, nessuna tabella
+  lasciata con `FORCE`.
+
+### 5.2 · Esito post-apply — applicato il 2026-09-01 12:31
+
+`databasechangelog`: `20260901-04-…` `EXECUTED`, ordine 14842. Vista viva sul
+resolver, `security_invoker=on` intatta.
+
+**Correttezza — competenza giugno 2026, 48 gruppi, come `zeroerp_app`:**
+
+| Confronto vecchia vs nuova risoluzione | righe |
+| --- | --- |
+| `riferimento` e `documento_id` **identici** | **48 / 48** |
+| divergenti | 0 |
+| recuperate (prima chiave grezza, ora numero) | **0** |
+
+⭐ **Le zero righe recuperate sono il dato più importante di questa tabella.**
+Sui dati di oggi il caso rotto (§3.1) **non ha occorrenze**: nessun preventivo
+superato con attività spinte, nessun DDT con causale cambiata dopo il push. È
+esattamente il motivo per cui i test di P-3 devono **fabbricarsi** il caso — un
+test che lo cercasse fra questi dati sarebbe verde per sottrazione.
+⛔ E non è un argomento per non fare il lavoro: zero occorrenze non significa che
+il caso non esiste, significa che non c'è ancora un controesempio.
+
+**Costo — stessa sessione, stesso ruolo, stessi dati:**
+
+| | tempo | buffer |
+| --- | --- | --- |
+| lista nuova, intera (48 righe) | **23,97 ms** | **2.860** |
+| la sola risoluzione vecchia, rimessa sopra per confronto | **~2.850 ms** | **~28.900** |
+
+⚠️ **Non confrontabili con i 166 ms del §10**: mese e popolazione diversi, e le
+tabelle sono cresciute dal 18 agosto. Confrontabili sono le due righe fra loro.
 
 Vincoli sul changeSet, tutti già presidiati altrove:
 
@@ -225,6 +307,29 @@ Vincoli sul changeSet, tutti già presidiati altrove:
 
 ⛔ **Nessuna migrazione viene applicata da questo brief.** L'autorizzazione la dà
 Tid a parole, per quel comando.
+
+### 5.3 · P-6 — `20260901-05`, due frasi sbagliate nel commento della vista
+
+⛔ **Scritto, provato in `BEGIN/ROLLBACK`, NON applicato.** Non tocca DDL: la
+definizione della vista e `security_invoker=on` restano quelle del `-04`.
+
+Il `-04` ha lasciato nel `COMMENT ON VIEW` due affermazioni false. Entrambe sono
+state trovate **dopo** l'apply, misurando:
+
+1. *«apriva SEI Seq Scan per gruppo, perché `d.area = s.area` è correlato e non
+   pota l'Append»* → sei è la forma del **piano**; a runtime quattro rami sono
+   `never executed` (§1.2).
+2. *«`riferimento` ripiegava sulla gruppo_key (a video «PREVENTIVO:01a0…»)»* →
+   ripiega sul **codice commessa**; la gruppo_key è irraggiungibile (§3).
+
+⭐ **Perché valgono un changeSet e non una riga di brief.** La prima insegna che
+l'`Append` non si pota **mai** su un quale correlato: è falso, e chi diagnostica
+un caso simile progetterebbe intorno a un vincolo che non esiste. La seconda fa
+sembrare il difetto più visibile di quanto sia, e quindi meno urgente. *Un
+commento che sbaglia il meccanismo è peggio di un commento assente: viene
+creduto.*
+
+⚠️ Nessuna delle due tocca la conclusione del `-04`, e la seconda la rafforza.
 
 ## 6. pgTAP
 
@@ -293,8 +398,53 @@ La prima è quella da valutare. Cantiere suo.
 - **`config.sorgenti`**: già completo, nessun seed.
 - **`backend/`**: perimetro DB.
 - ⛔ **Nessun indice nuovo.** Quelli funzionali sui cinque rami mancanti sarebbero
-  **morti alla nascita** (§2). ⚠️ E `ix_preventivi_uid_text` resta **orfano**: va
-  censito in un giro suo, non cancellato di slancio.
+  **morti alla nascita** (§2).
+
+### 8.1 ⛔ `ix_preventivi_uid_text` NON è orfano — il censimento smentisce
+
+Chiudendo il cantiere avevo scritto che l'indice restava «orfano, da censire in
+un giro suo». **Era una congettura, e il censimento del 2026-09-01 la smentisce.**
+
+| Indice su `vendite.preventivi` | `idx_scan` |
+| --- | --- |
+| `pk_preventivi` | 2.314.872 |
+| `uq_preventivi_numero_rev` | 404.197 |
+| **`ix_preventivi_uid_text`** | **45.862** |
+| `uq_preventivi_uid` | 3.535 |
+| `ix_preventivi_emittente_fiscale_id` | 3 |
+
+È il **terzo** più usato, quattordici volte più della UNIQUE su `uid`.
+
+⭐ **E il motivo è la stessa diagnosi del §2, letta al contrario.** Il quale
+`(uid)::text = …` è bloccato dalla barriera RLS **solo per chi la RLS ce l'ha**.
+Non ce l'hanno:
+
+| Chi | Perché |
+| --- | --- |
+| `titodb` | è l'**owner** di `vendite.preventivi`, e `relforcerowsecurity = false` |
+| `zeroerp_batch_fatturazione` | **`BYPASSRLS`** |
+| `postgres` | superuser |
+
+⚠️ **Il ruolo batch della fatturazione scavalca la RLS**: per lui quell'indice
+non è mai stato morto. «Inutilizzabile» valeva per `zeroerp_app`, e solo per lui.
+
+**Cosa servirebbe per decidere, e perché non basta il numero qui sopra:**
+
+1. il contatore è **cumulativo** — `pg_stat_database.stats_reset` è `NULL`, mai
+   azzerato — quindi include tutto il periodo in cui la vista vecchia era viva e
+   le migrazioni giravano da owner. Serve un **delta**: valore di oggi
+   (**45.862**, 2026-09-01), riletto dopo qualche ciclo del batch;
+2. `pg_stat_statements` **non è installata**, quindi le scansioni non sono
+   attribuibili a una query. Senza, l'attribuzione si fa leggendo il codice dei
+   consumatori batch;
+3. il censimento va fatto sulla **lettura**, non sulla parola: nessuna delle 14
+   viste che contengono `(uid)::text` lo usa come **predicato** (verificato: zero
+   occorrenze di `(uid)::text =`), lo producono come colonna di output. Chi
+   confronta è codice applicativo o batch, non una vista.
+
+⛔ **Quindi: non si tocca.** Non per prudenza generica — perché la misura dice il
+contrario di quello che avevo supposto, e perché il lettore plausibile è un ruolo
+`BYPASSRLS` che non passa da nessuna delle viste censite.
 
 ## 9. Per BE e FE — nessun codice, due effetti da annunciare
 
@@ -304,9 +454,10 @@ La prima è quella da valutare. Cantiere suo.
   trigram**. Migliora di molto (una lookup per gruppo invece di sei scansioni) ma
   non diventa indicizzata: il DL-2 *«ancorare la ricerca alla sorgente del
   documento»* **resta aperto**.
-- **FE-1, effetto atteso senza codice** — sulle righe che oggi mostrano la chiave
-  grezza comparirà il numero, e **riapparirà la voce «Apri documento»**. Va
-  annunciato, altrimenti si legge come un difetto nuovo.
+- **FE-1, effetto atteso senza codice** — sulle righe che oggi mostrano il
+  **codice commessa** al posto del numero documento (§3) comparirà il numero, e
+  **riapparirà la voce «Apri documento»**. Va annunciato, altrimenti si legge
+  come un difetto nuovo.
 - **FE-2, debito** — `gruppoRiferimento()` in `DashboardCompetenzaView.vue`
   ripete la catena di ripiego del DB. Dopo la correzione è codice morto. Fuori
   perimetro, da valutare.

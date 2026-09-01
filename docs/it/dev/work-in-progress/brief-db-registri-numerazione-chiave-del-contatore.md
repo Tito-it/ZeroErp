@@ -1,49 +1,56 @@
-# Brief DB — la chiave del contatore, e i documenti che non la portano
+# Brief DB — la chiave del contatore: gli assi si dichiarano, non si assumono
 
 > **Destinatario:** team DB (`dev/db-tid`). Aperto il 2026-09-01.
 >
 > **In una riga:** il contatore dei registri distingue i numeri su **quattro**
 > assi — `(registro_id, anno, mese, serie)` — ma i documenti che quei numeri li
-> ricevono ne portano **al massimo tre**, e due di loro ne portano due. Dove
-> manca un asse, il contatore può consegnare un numero che il documento non è in
-> grado di ospitare.
+> ricevono ne portano al massimo tre, e nessuno controlla che li portino. Dove
+> il contatore discrimina su un asse che il documento non sa esprimere, consegna
+> un numero che il documento non è in grado di ospitare.
 >
-> **Origine.** Non è nata da un difetto in campo: è emersa il 2026-09-01
-> scrivendo il guard sulla forma del numero
-> ([brief CRUD registri](brief-be-fe-crud-registri-di-numerazione.md) §8),
-> chiedendosi *perché* `serie_default` potesse restare fuori dal divieto. La
-> risposta — «perché la serie distingue i documenti» — è vera per tre documenti
-> su cinque. Poi la domanda di Tid: *«questo comporta che i documenti che
-> vogliono la numerazione di registro debbano tutti avere la chiave completa?»*
-> Sì. E il seguito è questo brief.
+> **Origine.** Non da un difetto in campo: è emersa il 2026-09-01 scrivendo il
+> guard sulla forma del numero ([brief CRUD registri](brief-be-fe-crud-registri-di-numerazione.md)
+> §8), chiedendosi *perché* `serie_default` potesse restare fuori dal divieto. La
+> risposta — «perché la serie distingue i documenti» — vale per tre documenti su
+> cinque. Poi le domande di Tid, che hanno spostato il cantiere due volte:
+> *«allora tutti i documenti che si numerano sui registri devono avere la chiave
+> completa?»* e *«non conviene dichiararlo nella famiglia?»*. Sì a entrambe, e
+> la seconda ha cambiato la forma della cura.
 >
-> ⛔ **Nessuna misura ha deciso niente qui.** I conteggi che compaiono sono
-> **fatti datati** e servono a un uso solo: dire se qualcosa *smentisce* il
-> piano. Ciò che decide è la struttura — quali colonne esistono, quali vincoli
-> le presidiano.
+> ⛔ **Nessuna misura decide niente qui.** I conteggi sono **fatti datati** e
+> servono a un uso solo: dire se qualcosa *smentisce* il piano. A decidere è la
+> struttura.
 >
 > **Correlati:**
 > [brief-db-prefisso-sul-registro](../work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md) ·
 > [brief-db-registri-di-numerazione-emittente-e-trasloco](../work-done/brief-db-registri-di-numerazione-emittente-e-trasloco.md) ·
-> [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)
+> [vendite.famiglie_documento](/dbzero/vendite/tabelle/famiglie_documento)
 
 ---
 
-## 1. ⭐ L'invariante, e non era scritta da nessuna parte
+## 1. ⭐ L'invariante, e l'asimmetria che la governa
 
-> **Tutto ciò che discrimina il CONTATORE deve discriminare anche l'unicità del
+> **Tutto ciò che discrimina il CONTATORE deve poter discriminare anche il
 > DOCUMENTO.**
 
-Il contatore vive su `uq_regprog_key = (registro_id, anno, mese, serie)`. Ogni
-combinazione è un **secchio** che riparte da 1.
+Il contatore vive su `uq_regprog_key`. Ogni combinazione è un **secchio** che
+riparte da 1. Se il documento non porta uno di quegli assi nel proprio vincolo di
+unicità, il contatore gli può dare un numero che per lui è **già usato**.
 
-Se il documento non porta uno di quegli assi nel proprio vincolo di unicità, il
-contatore può dargli un numero che per il documento è **già usato**. Non è un
-caso limite: è la definizione stessa di due secchi che si affacciano sullo
-stesso spazio di numeri.
+⭐ **E i due versi non sono simmetrici** — è la regola che dice quale asse va
+dichiarato e quale no:
 
-⚠️ **E il difetto non si vede finché quell'asse non si muove.** È il motivo per
-cui è rimasto invisibile: gli assi che mancano oggi sono fermi.
+| | Effetto |
+| --- | --- |
+| il **contatore** ha un asse che il **documento** non ha | ⛔ **collisione** |
+| il **documento** ha un asse che il **contatore** non ha | ✅ **innocuo** — il documento è solo più specifico |
+
+⇒ Un asse va **dichiarato** solo quando può mancare al documento. Un asse che
+tutti i documenti portano è sicuro in entrambi i versi, e dichiararlo
+creerebbe una seconda sorgente di verità.
+
+⚠️ **E il difetto non si vede finché quell'asse non si muove.** È per questo che
+è rimasto invisibile: gli assi che mancano oggi sono fermi.
 
 ---
 
@@ -56,8 +63,6 @@ cui è rimasto invisibile: gli assi che mancano oggi sono fermi.
 | `serie` | ✅ | ✅ | ✅ | ⛔ | ⛔ |
 | `mese` | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ |
 
-I vincoli, per esteso:
-
 ```text
 fatture   uq_fatture_numero              (registro_id, anno, COALESCE(serie,''), numero)
 ddt       uq_ddt_v_anno_serie_numero     (registro_id, anno, serie, numero)
@@ -66,101 +71,184 @@ resi      uq_resi_anno_numero            (registro_id, anno, numero)          �
 commesse  uq_commesse_codice             (codice)                             ⛔ una stringa sola
 ```
 
-⚠️ **`vendite.commesse` non ha nemmeno `registro_id`**: le sue uniche colonne
-utili sono `codice` e `emittente_soggetto_ruolo_id`. Del registro che l'ha
-numerata non resta traccia se non dentro la stringa del codice.
+⚠️ **`vendite.commesse` non ha nemmeno `registro_id`**: ha `codice` e
+`emittente_soggetto_ruolo_id`. Del registro che l'ha numerata non resta traccia
+se non dentro la stringa.
 
 ---
 
-## 3. ⛔ Il caso `resi` — cosa succede davvero
+## 3. ⛔ Il caso `resi`
 
 `vendite.resi` **non ha la colonna `serie`**. `trgfn_resi_gen_numero` non passa
-nessuna serie a `fn_assegna_numero_documento`, quindi eredita il `serie_default`
-del registro — e **non la scrive da nessuna parte**.
+nessuna serie, quindi eredita il `serie_default` del registro — e **non la scrive
+da nessuna parte**.
 
-Cambiando `serie_default` su un registro `RESO` **a metà anno**:
+Cambiando `serie_default` su un registro `RESO` **a metà anno**: si apre un
+secchio nuovo che riparte da 1 → il primo reso prova a scrivere il numero 1 →
+`uq_resi_anno_numero` non ha la serie e quel numero nell'anno esiste già →
+**violazione**. La transazione fallisce e col rollback torna indietro **anche
+l'incremento del contatore**, quindi al tentativo dopo riparte da 1 e sbatte di
+nuovo.
 
-1. la serie entra nella chiave del contatore ⇒ si apre un secchio nuovo, che
-   riparte da **1**;
-2. il primo reso della serie nuova prova a scrivere il numero 1;
-3. `uq_resi_anno_numero` è su `(registro_id, anno, numero)` — la serie non c'è —
-   e quel numero nell'anno **esiste già** ⇒ **violazione di unicità**;
-4. la transazione fallisce, e col rollback torna indietro **anche l'incremento
-   del contatore** ⇒ al tentativo successivo riparte da 1 e sbatte di nuovo.
+⇒ **Non un dato sporco: un reso che non si numera più**, con un errore che parla
+del numero e non nomina la causa.
 
-⇒ **Non un dato sporco: un reso che non si riesce più a numerare**, con un
-errore che parla del numero e non nomina la causa.
+⭐ **Il morso è confinato all'anno**: `reset_policy` è `ANNUALE` e il reso scrive
+`anno` dalla stessa chiamata che gli dà il numero. Cambiare `serie_default` **a
+gennaio**, prima del primo reso, non rompe niente — e non lo nota nessuno.
 
-⭐ **Il morso è confinato all'anno**, ed è la ragione per cui è sopravvissuto:
-`reset_policy` è `ANNUALE`, l'anno sta nella chiave del contatore e il reso
-scrive `anno` dalla stessa chiamata che gli dà il numero. Cambiare
-`serie_default` **a gennaio**, prima del primo reso, non rompe niente — e non lo
-nota nessuno, perché la serie sul reso non è scritta.
-
-⚠️ **Il punto 4 è dedotto dal meccanismo, non provato su un reso vero**:
-costruirne uno richiede DDT e partita. I punti 1-3 sono struttura verificata.
+⚠️ Il rollback del contatore è **dedotto dal meccanismo, non provato su un reso
+vero**: costruirne uno richiede DDT e partita. Il resto è struttura verificata.
 
 ---
 
-## 4. ⛔ Il caso `commesse` — lo stesso difetto, scritto in un altro modo
+## 4. ⛔ Il caso `commesse` — lo stesso difetto, scritto altrimenti
 
-L'unicità della commessa è `uq_commesse_codice`, su **una stringa sola**. Il
-codice incorpora sigla, anno e progressivo — **non la serie**, e nemmeno il
-registro.
+L'unicità è su **una stringa sola**, che incorpora sigla, anno e progressivo —
+non la serie, non il registro. Stessa dinamica del §3.
 
-⇒ Stessa dinamica del §3: la serie cambia, il progressivo riparte, il codice
-ricalcolato collide con uno già emesso, e la commessa non nasce.
-
-⚠️ **Ma la cura non è la stessa, e va detto**: sul reso manca *una colonna*; qui
-manca **tutto l'aggancio** — registro, anno, serie e progressivo vivono solo
-dentro una stringa. Allineare la commessa è un lavoro di dimensione diversa, e
-non si infila nello stesso passo.
+⚠️ **La cura non è la stessa**: sul reso manca *una colonna*, qui manca **tutto
+l'aggancio**. Allineare la commessa significa decidere come si aggancia al
+registro — modello, non `ALTER TABLE`. **Resta fuori dal piano**, e il presidio
+la dichiarerà come debito invece di ignorarla.
 
 ---
 
-## 5. ✅ `mese` si TOGLIE — decisione di Tid, 2026-09-01
+## 5. ✅ La forma della cura — l'asse si DICHIARA sulla famiglia
 
-### 5.1 Perché è un residuo e non una colonna inutilizzata
+> **Decisione di Tid, 2026-09-01.**
+
+⛔ **La prima proposta era sbagliata nel bersaglio**: dare la colonna `serie` ai
+resi sistemava il **sintomo su una tabella**. Il sesto documento che entra
+domani sui registri avrebbe avuto lo stesso problema, e nessuno gliel'avrebbe
+chiesto.
+
+⭐ La cura sta dove una famiglia **entra** nei registri: `vendite.famiglie_documento`.
+
+### 5.1 Tre cose diverse che si chiamano «serie»
+
+| Cosa | Dove sta | Che natura ha |
+| --- | --- | --- |
+| `serie` sul documento | `fatture.serie`, `ddt.serie`, `ordini.serie` | **il fatto**: quale serie è stata usata |
+| `serie_default` | `registri_fatturazione` | **la scelta**: cosa usa questo sezionale |
+| `colonna_serie` | `famiglie_documento` | **la capacità**: questa famiglia una serie *può* averla, e si chiama così |
+
+> **Sulla FAMIGLIA si dichiara ciò che il documento PUÒ esprimere. Sul REGISTRO
+> si sceglie ciò che quel sezionale FA.**
+
+⛔ **`serie_default` non si sposta.** Resta sul registro, dov'è giusto che stia.
+
+### 5.2 ⭐ Il nome della colonna, non un booleano
+
+`famiglie_documento.colonna_serie text NULL` — `NULL` = la famiglia non ha una
+serie.
+
+Un `gestisce_serie boolean` messo a `true` su una famiglia la cui tabella non ha
+la colonna riporterebbe il difetto di partenza, **e nessuno se ne accorgerebbe**.
+Col nome, il presidio verifica che la colonna esista davvero.
+
+⭐ **Ed è già l'idioma della tabella**: `colonna_numero` e
+`colonna_billing_account` esistono esattamente per questo — *«il numero si chiama
+`numero` su fatture ma `codice` sulla commessa: il predicato derivato deve
+saperlo e non può dedurlo»*.
+
+Valori: `FATTURA`/`DDT`/`ORDINE` → `'serie'` · `RESO`/`COMMESSA` → `NULL`.
+
+#### ⛔ E sulla famiglia NON va un default della serie — `prefisso` e `serie` sono opposti
+
+| Famiglia | prefissi distinti | serie distinte |
+| --- | ---: | ---: |
+| `FATTURA` | **1** | **6** |
+| `DDT` · `ORDINE` · `RESO` · `COMMESSA` | 1 | 1 |
+
+Il **prefisso** ha un default sulla famiglia (`prefisso_default`) perché il suo
+mestiere è **essere uguale**: tutti i DDT cominciano per `DDT`. La **serie** fa
+il mestiere opposto — esiste per **differire**, ed è ciò che separa i sezionali
+di una stessa famiglia e di uno stesso emittente (Back-office, Front-office, NC).
+
+⇒ Un `serie_default` sulla famiglia dovrebbe rispondere «quale delle sei?», e non
+c'è risposta: collasserebbe proprio la distinzione per cui la serie esiste.
+
+⚠️ Il conteggio è un **fatto datato**: serviva a smentire il ragionamento se le
+sei serie fossero risultate uguali. Il motivo sta nel modello.
+
+#### ⚠️ E nemmeno l'OBBLIGATORIETÀ, e non è una dimenticanza
+
+«Questa famiglia **deve** avere una serie» è una domanda diversa da «può
+averla», e non entra in questo cantiere:
+
+1. **non serve al difetto** — il difetto è l'opposto, una serie dove il documento
+   non sa tenerla. L'obbligatorietà è completezza di dominio, non sicurezza;
+2. **nessuna regola di dominio la sostiene**: `uq_fatture_numero` usa
+   `COALESCE(serie,'')`, quindi il vuoto è un valore legittimo. Che oggi tutti e
+   sei i registri FATTURA ce l'abbiano è **popolazione**, e non decide;
+3. ⛔ **sarebbe la quarta** colonna dichiarata e non implementata di questa
+   famiglia di tabelle, dopo `mese`, `reset_policy` e i valori tolti dal CHECK.
+
+Se servirà è una decisione sua, col suo guard.
+
+### 5.3 ⛔ Sul registro si RIFIUTA, non si ignora
+
+Se un registro `RESO` accettasse un `serie_default` e il motore lo ignorasse in
+silenzio, avremmo ricreato il difetto che il cantiere del prefisso ha appena
+tolto da `config.sistema_codici`: *un campo editabile dal pannello che
+l'amministratore cambia senza ottenere niente e senza modo di accorgersene*.
+
+⚠️ **Non può essere un `CHECK`**: la condizione attraversa `famiglie_documento`, e
+un CHECK non fa sottoquery. Serve un **guard `_a10_`**, in `INSERT` **e**
+`UPDATE`: un registro non deve nemmeno *nascere* con una serie che la sua
+famiglia non porta.
+
+⭐ **E il motivo passa da una `fn_check_*` che il guard CHIAMA** (§12.5.2), perché
+serve anche alla maschera: il campo `serie_default` va disabilitato **col
+perché**, non lasciato grigio.
+
+### 5.4 Il terreno è pulito — verificato il 2026-09-01
+
+| | |
+| --- | --- |
+| registri con `serie_default` valorizzata | **6, tutti `FATTURA`** — DDT, ORDINE, RESO, COMMESSA sono tutti a NULL |
+| righe del mirror CSV `registri_fatturazione.csv` | **3, tutte `FATTURA`** (Front-office `R2`, Back-office `R1`, NC vuota) |
+| `fn_provision_registri_emittente` | **non** imposta `serie_default` |
+
+⭐ **E questo corregge una mia obiezione precedente.** Avevo scritto che un guard
+su `serie_default` non era montabile perché il mirror la riscrive a ogni migrate:
+vero per un divieto **secco**, falso per uno **condizionale** — il mirror tocca
+solo le fatture, che sono la famiglia dove la serie è legittima.
+
+---
+
+## 6. ✅ `mese` sparisce
+
+> **Decisione di Tid, 2026-09-01.**
 
 `mese` sta nella chiave del contatore e **non compare in nessun vincolo di
-unicità di nessun documento**. Oggi è innocuo, ma non per progetto: è innocuo
-perché è **inchiodato in due punti**.
+unicità di nessun documento**. È innocuo solo perché è **inchiodato** in due
+punti: `v_mese := 0` nel corpo vivo di `fn_get_next_progressivo`, e
+`chk_registri_fatturazione_reset` che ammette solo `ANNUALE`.
 
-```text
-vendite.fn_get_next_progressivo   v_mese ... := 0;     -- e non viene mai riassegnato
-chk_registri_fatturazione_reset   CHECK (reset_policy = 'ANNUALE')
-```
+⛔ **Una dimensione dormiente in una chiave non è inutilizzata: è ARMATA.** Un
+reset mensile farebbe collidere **tutti e cinque** i documenti, non i due del
+§3-§4. E a tenerla chiusa non è un vincolo: è una **rinuncia**, che si revoca per
+distrazione.
 
-⛔ **Una dimensione dormiente in una chiave non è «inutilizzata»: è ARMATA.** Il
-giorno che qualcuno accende un reset mensile — cioè fa esattamente la cosa per
-cui quella colonna esiste — il contatore riparte da 1 **ogni mese** e collidono
-**tutti e cinque** i documenti, non i due del §3-§4. È lo stesso difetto della
-serie, moltiplicato per dodici.
+⭐ E col §5 la revoca ha una strada pulita: se un giorno servisse, `mese` torna
+come `colonna_mese` sulla famiglia **insieme** alla colonna sui documenti. Cioè
+il lavoro vero. Tenerla adesso non anticipa niente.
 
-⭐ **E oggi a tenerlo chiuso non è un vincolo: è una rinuncia.** Quando il
-`CHECK` fu ristretto ad `ANNUALE`, `MENSILE` e `NESSUNA` uscirono perché
-*«dichiarate e non implementate»*. Quella scelta è l'unica cosa che separa il
-database dal difetto — e una rinuncia si può revocare per distrazione, un
-vincolo no.
+### 6.1 Il censimento dei LETTORI — verificato il 2026-09-01
 
-### 5.2 ⭐ Il censimento dei LETTORI — verificato il 2026-09-01
-
-Prima di cancellare una fonte si censiscono i suoi lettori, e il censimento si fa
-sulla **lettura**, non sulla parola: «mese» nel progetto è quasi sempre
-`competenza_mese` o «il primo del mese», che non c'entrano niente.
+Il censimento si fa sulla **lettura**, non sulla parola: «mese» nel progetto è
+quasi sempre `competenza_mese` o «il primo del mese».
 
 | Dove | Chi legge `registri_fatturazione_progressivi.mese` |
 | --- | --- |
 | funzioni PL/pgSQL | **una sola**: `vendite.fn_get_next_progressivo` |
-| viste / viste materializzate | **nessuna** |
-| backend Python | **nessuno** — `backend/` non nomina mai la tabella |
-| pgTAP | **nessuno** — i file che dicono «mese» parlano di `competenza_mese` o del giorno del mese del limite di emissione |
-| CSV di seed | **nessuno** che porti la colonna |
+| viste · backend Python · pgTAP · CSV di seed | **nessuno** |
 
-⚠️ `vendite.fn_calcola_data_documento` la nomina **solo in un commento**: è prosa
-su `competenza_mese`, non una lettura.
+⚠️ `fn_calcola_data_documento` la nomina **solo in un commento**.
 
-### 5.3 Cosa la tiene attaccata alla tabella
+### 6.2 Cosa la tiene attaccata
 
 ```text
 uq_regprog_key                 UNIQUE (registro_id, anno, mese, serie)
@@ -169,117 +257,172 @@ chk_regprog_mese_valid         CHECK (mese = 0 OR mese BETWEEN 1 AND 12)
                                NOT NULL
 ```
 
-### 5.4 ⭐ E togliendola si scopre un UNIQUE ridondante che nessun presidio vede
+### 6.3 ⭐ E si scopre un UNIQUE ridondante che il presidio non vede
 
-`registro_id`, `anno`, `mese` e `serie` sono **tutte e quattro `NOT NULL`**.
-⇒ I due `COALESCE` di `uq_registri_progressivi_scope` sono **no-op**, e
-quell'indice esprime **esattamente la stessa chiave** di `uq_regprog_key`.
+Le quattro colonne sono **tutte `NOT NULL`** ⇒ i `COALESCE` di
+`uq_registri_progressivi_scope` sono **no-op**, e quell'indice esprime la
+**stessa chiave** di `uq_regprog_key`.
 
-⛔ **`dbops.vw_duplicate_indexes` non lo segnala** — verificato: zero righe. Il
-confronto lavora sulle colonne, e qui una chiave è una lista di colonne e
-l'altra è una lista di **espressioni**: due cose che il presidio non sa
-riconoscere come uguali.
+⛔ **`dbops.vw_duplicate_indexes` non lo segnala** (verificato: zero righe): il
+confronto lavora sulle colonne, e qui una chiave è colonne e l'altra è
+**espressioni**.
 
 ⭐ *Un duplicato nascosto dietro espressioni che non fanno niente è invisibile
-proprio al presidio nato per trovare i duplicati.* Va tolto nello stesso giro,
-e la cecità del presidio va **dichiarata** — non è detto valga la pena
-insegnargliela, ma va saputa.
+proprio al presidio nato per i duplicati.* Si toglie nello stesso giro, e la
+cecità va **dichiarata**.
 
-### 5.5 ⚠️ Cosa preclude toglierla, dichiarato
+### 6.4 Il fatto datato che avrebbe potuto smentire il piano
 
-Toglie la possibilità di un **reset mensile** del contatore senza un cantiere
-che rimetta la colonna.
-
-⭐ Ed è coerente: il `CHECK` quella possibilità l'ha già chiusa, e riaprirla
-domani vorrebbe comunque dire **prima** dare l'asse `mese` a tutti e cinque i
-documenti (§1). Cioè il lavoro vero non è la colonna sul contatore: è la chiave
-sui documenti. Tenere la colonna non anticipa niente — tiene solo il difetto
-aperto nel frattempo.
-
-### 5.6 Il fatto datato che avrebbe potuto smentire il piano
-
-Al 2026-09-01 le righe di `registri_fatturazione_progressivi` sono **10, tutte
-con `mese = 0`**. ⇒ Nessuna riga distinta collasserebbe sulla chiave nuova.
-
-⚠️ **Questo numero non decide niente**: serviva solo a cercare un
-controesempio, e non ce n'è. Se ne fosse comparso uno, il piano sarebbe caduto —
-ed è l'unico uso legittimo di una misura.
+Le righe di `registri_fatturazione_progressivi` sono **10, tutte con `mese = 0`**
+⇒ nessuna riga distinta collassa sulla chiave nuova. ⚠️ Serviva a cercare un
+controesempio, non a decidere.
 
 ---
 
-## 6. La serie — allineare chi non la porta
+## 7. ✅ `reset_policy` diventa vera e funzionante
 
-| | Cosa manca | Dimensione |
+> **Decisione di Tid, 2026-09-01.**
+
+### 7.1 Oggi è dichiarata e mai letta
+
+```text
+chk_registri_fatturazione_reset   CHECK (reset_policy = 'ANNUALE')     — un valore solo
+fn_get_anno_registro              v_anno := EXTRACT(YEAR FROM p_data)  — hardcoded
+```
+
+Censito il 2026-09-01: `fn_numera_fattura_opz_emessa` e `fn_assign_numero_fattura`
+la nominano **solo nei commenti**; `fn_provision_registri_emittente` la **scrive**
+e basta. **Nessuna funzione ramifica su `reset_policy`.**
+
+⇒ È la **terza** colonna di questa famiglia dichiarata e non letta, dopo `mese` e
+i valori tolti dal CHECK.
+
+### 7.2 ⭐ Perché questa si accende invece di sparire, a differenza di `mese`
+
+È l'asimmetria del §1, applicata:
+
+* accendere **`MENSILE`** è **pericoloso** — nessun documento porta il mese ⇒ il
+  contatore discriminerebbe su un asse che il documento non ha ⇒ collisione;
+* accendere **`NESSUNA`** è **sicuro** — tutti i documenti portano `anno` ⇒ il
+  contatore userebbe **meno** assi, non di più, e cade nel verso innocuo.
+
+⭐ E la numerazione continua fra gli anni è una cosa che i gestionali fanno
+davvero su DDT e ordini. Il parametro esiste già, sul registro: manca solo che
+qualcuno lo legga.
+
+### 7.3 ⛔ Due `anno` che si chiamano uguale, e non vanno confusi
+
+| | Cosa significa | Sotto `NESSUNA` |
 | --- | --- | --- |
-| `resi` | la colonna `serie`, e la serie nel vincolo | **una colonna + un vincolo** |
-| `commesse` | tutto l'aggancio: registro, anno, serie, progressivo vivono solo dentro `codice` | **un cantiere suo** |
+| `registri_fatturazione_progressivi.anno` | **la chiave del secchio** | diventa `0` — un secchio solo |
+| `fatture.anno`, `ddt.anno`, `ordini.anno`, `resi.anno` | **l'anno del documento** | resta **l'anno solare**, sempre |
 
-⭐ **La cura è dare l'asse, non vietare il campo.** Un divieto su
-`serie_default` sarebbe il rimedio sbagliato per tre ragioni: renderebbe
-impossibile aprire una serie nuova anche dove è legittimo (fatture, DDT,
-ordini), non si potrebbe comunque montare com'è — il mirror CSV
-`80_data/sql/vendite/registri_fatturazione.csv` riscrive `serie_default` a ogni
-migrate — e lascerebbe il modello asimmetrico, che è la causa vera.
+⇒ **`fn_get_anno_registro` non si tocca**: risponde a *«che anno è il
+documento»*, e la risposta non cambia. Ha **quattro** chiamanti
+(`fn_assegna_numero_documento`, `fn_assign_numero_fattura`,
+`fn_get_next_progressivo`, `fn_get_or_create_commessa`) e cambiarle la firma li
+toccherebbe tutti per un motivo che non li riguarda.
 
-⚠️ **`commesse` resta fuori da questo brief.** Va nominata perché il difetto c'è,
-ma allinearla significa decidere come una commessa si aggancia al registro — che
-è una domanda di modello, non un `ALTER TABLE`.
+⭐ **La politica si legge dove serve, e serve in un punto solo**:
+`fn_get_next_progressivo` è **l'unica funzione che legge `progressivi.anno`**
+(censito). Lì `v_anno` diventa:
+
+```text
+ANNUALE  → vendite.fn_get_anno_registro(p_data)
+NESSUNA  → 0
+```
+
+⇒ Raggio d'azione: **una funzione**.
+
+### 7.4 ⚠️ Il sentinella `0`, e perché non è il ritorno di `mese = 0`
+
+Sembrano la stessa cosa e non lo sono:
+
+* `mese = 0` significava *«questo asse non è usato da nessuno, mai»* — un
+  segnaposto per una funzione non implementata;
+* `anno = 0` significherà *«questo registro non azzera per anno»* — un valore con
+  un **lettore vivo**, che una politica dichiarata sceglie.
+
+⚠️ **Ma la coerenza fra i due — `anno = 0` ⟺ registro `NESSUNA` — non la può
+tenere un `CHECK`**, perché attraversa due tabelle. La tiene la funzione, ed è il
+presidio del §9 a verificarla.
+
+### 7.5 Cosa cambia, in concreto
+
+* `chk_registri_fatturazione_reset` riammette **`NESSUNA`** (⛔ non `MENSILE`: quello
+  è l'asse che il §6 toglie);
+* `fn_get_next_progressivo` legge la politica del registro;
+* il **pavimento** non si tocca: `fn_get_pavimento_sequenza` e compagne leggono i
+  progressivi **senza filtrare per anno** (censito), quindi guardano già
+  attraverso gli anni — che è ciò che `NESSUNA` vuole.
 
 ---
 
-## 7. Il piano
+## 8. Il piano
 
-> ⛔ Ordine vincolante: **prima il codice, poi lo schema**. La funzione deve
-> smettere di nominare la colonna prima che la colonna cada.
+> ⛔ Ordine vincolante: **prima il codice, poi lo schema** dove una colonna cade.
 > ⚠️ L'autogen ordina per NN mescolando `00_schema` e `20_code`: l'ordine si
-> impone con la numerazione, non con la cartella.
+> impone con la **numerazione**, non con la cartella.
 
 | Passo | Cosa | Dove |
 | --- | --- | --- |
-| **M-1** | `fn_get_next_progressivo` senza `mese` — chiave del secchio a tre assi | `20_code/vendite` |
-| **M-2** | `chk_regprog_mese_valid` e `uq_registri_progressivi_scope` via; `uq_regprog_key` ricreata su `(registro_id, anno, serie)`; `DROP COLUMN mese` | `00_schema/vendite`, NN **maggiore** di M-1 |
-| **M-3** | pgTAP: il contatore distingue su tre assi, e la colonna non c'è più | `db/pgtap/vendite` |
-| **S-1** | `vendite.resi` guadagna `serie` (NOT NULL, default `''`) e `uq_resi_anno_numero` diventa `(registro_id, anno, serie, numero)`; `trgfn_resi_gen_numero` scrive la serie che il motore gli restituisce | `00_schema` + `20_code` |
-| **S-2** | pgTAP: cambiando `serie_default` il reso si numera lo stesso, e i due numeri convivono | `db/pgtap/vendite` |
-| **P-1** | ⭐ Il presidio dell'invariante — vedi §8 | `db/pgtap/vendite` |
+| **M-1** | `fn_get_next_progressivo` senza `mese` **e** che legge `reset_policy` | `20_code/vendite` |
+| **M-2** | `chk_regprog_mese_valid` e `uq_registri_progressivi_scope` via; `uq_regprog_key` su `(registro_id, anno, serie)`; `DROP COLUMN mese` | `00_schema/vendite`, NN > M-1 |
+| **R-1** | `chk_registri_fatturazione_reset` riammette `NESSUNA` | `00_schema/vendite` |
+| **S-1** | `famiglie_documento.colonna_serie` + seed dei cinque valori | `00_schema` + CSV `80_data` |
+| **S-2** | `script.fn_check_registro_serie_ammessa` — la pure check §12.5.1 | `20_code/script` |
+| **S-3** | Il guard `_a10_` su `registri_fatturazione` (INSERT + UPDATE OF `serie_default`, `famiglia_documento`) che la **chiama** | `20_code/vendite` |
+| **P-1** | I presidi del §9 | `db/pgtap/vendite` |
 
-⚠️ **`fn_assegna_numero_documento` restituisce già `serie`** e il suo commento
-dice *«la serie risolta esce perché chi ha quella colonna deve scriverla»*: S-1
-non cambia il motore, dà al reso la colonna che gli mancava per obbedirgli.
+⚠️ **M-1 fa due cose insieme di proposito**: toglie `mese` e accende
+`reset_policy` nella **stessa** riscrittura della chiave del secchio. Separarle
+significherebbe riscrivere due volte lo stesso `v_anno`/`v_mese`, con una
+revisione intermedia che non corrisponde a nessuno stato voluto.
 
----
-
-## 8. ⭐⭐ Il presidio che conta — l'invariante, non i casi
-
-⛔ **Un test che verificasse «resi ha la serie» proverebbe l'oggi.** Il difetto
-non è che a un documento manchi una colonna: è che **nessuno controlla** che i
-documenti numerati sui registri portino la chiave del contatore. È così che sono
-entrati `resi` e `commesse`, col trasloco, senza che niente diventasse rosso.
-
-Il presidio da scrivere **deriva** i due elenchi e li confronta:
-
-* gli assi della chiave del contatore, letti da `uq_regprog_key`;
-* per ogni famiglia registrata in `vendite.famiglie_documento`, gli assi presenti
-  nel vincolo di unicità del numero della sua tabella.
-
-Il giorno che una famiglia nuova entra sui registri senza la chiave completa, il
-test è **rosso prima del merge** invece che dopo, in campo.
-
-⭐ È la stessa forma del test 6 di `test-fn-check-registro-disattivabile-v1.sql`
-— *«il giorno che ne compare una quarta diventa rosso»* — ed è la forma che ha
-già funzionato una volta su questa stessa tabella.
-
-⚠️ **`commesse` sarà rossa dal primo giorno**, e va bene: è debito **dichiarato**,
-non un difetto nuovo. O si esclude con un motivo scritto, o il test nasce già a
-fallire — e la scelta va fatta esplicitamente, non per omissione.
+⛔ **Un codice errore nuovo serve** per il rifiuto della serie (§5.3): il rifiuto
+non esiste ancora, quindi non c'è nessuna madre muta da sanare — è lo stesso
+ragionamento del guard sulla forma del numero.
 
 ---
 
-## 9. ⛔ Cosa non si tocca
+## 9. ⭐⭐ I presidi — l'invariante, non i casi
 
-* **`serie_default` non si vieta.** La cura è dare l'asse ai documenti (§6).
-* **Il mirror CSV di `registri_fatturazione`** resta com'è: nessun guard nuovo
-  sulle colonne che riscrive.
+⛔ **Un test che verificasse «resi non ha la serie» proverebbe l'oggi.** Il
+difetto non è una colonna mancante: è che **nessuno controlla** che i documenti
+numerati sui registri portino la chiave del contatore. È così che `resi` e
+`commesse` sono entrati col trasloco senza che niente diventasse rosso.
+
+Tre controlli, tutti **derivati**:
+
+1. **La dichiarazione è vera** — per ogni famiglia con `colonna_serie`
+   valorizzata, quella colonna **esiste** sulla tabella dichiarata **e** compare
+   nel vincolo di unicità del numero;
+2. **Il registro rispetta la dichiarazione** — nessun registro di una famiglia
+   con `colonna_serie NULL` ha `serie_default` valorizzato;
+3. **Il secchio rispetta la politica** — `anno = 0` se e solo se il registro è
+   `NESSUNA` (§7.4).
+
+Nessun elenco a mano da nessuna parte. Il giorno che una famiglia nuova entra sui
+registri senza la chiave completa, il test è **rosso prima del merge**.
+
+⭐ È la forma del test 6 di `test-fn-check-registro-disattivabile-v1.sql` —
+*«il giorno che ne compare una quarta diventa rosso»* — che su questa stessa
+tabella ha già funzionato una volta.
+
+⚠️ **`commesse` sarà rossa dal primo giorno**, ed è debito **dichiarato**: o si
+esclude con un motivo scritto, o il test nasce a fallire. La scelta va fatta
+esplicitamente, non per omissione.
+
+---
+
+## 10. ⛔ Cosa non si tocca
+
+* **`serie_default` non si sposta** e non si vieta in blocco: resta sul registro,
+  e il divieto è **condizionato** alla dichiarazione della famiglia.
+* **`fn_get_anno_registro`** non cambia firma: risponde all'anno del *documento*,
+  non a quello del secchio (§7.3).
+* **`MENSILE`** non rientra nel CHECK: è l'asse che il §6 toglie.
 * **`config.sistema_codici`** non c'entra: la forma del numero è uscita di lì il
   2026-08-31 di proposito.
+* **`commesse`** resta fuori dal piano (§4), dentro il presidio come debito.
 * **Nessuna migrazione si applica** senza che Tid lo dica, per quel comando.
