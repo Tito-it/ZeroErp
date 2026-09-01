@@ -50,10 +50,11 @@
     <tr>
       <td><strong><a href="/it/dbzero/contabilita/">contabilita</a></strong></td>
       <td>
-        Contabilità generale/IVA e prima nota.
+        ⛔ <strong>Schema VUOTO e fuori perimetro</strong> — zero tabelle, zero funzioni, zero viste.
         <ul>
-          <li>Esempi: <code>piano_conti</code>, <code>registrazioni</code>, <code>liquidazioni_iva</code>, <code>partite</code></li>
-          <li>Coerenza con vendite/acquisti per scritture automatiche</li>
+          <li>⚠️ Questa scheda elencava <code>piano_conti</code>, <code>registrazioni</code>, <code>liquidazioni_iva</code>, <code>partite</code>: <strong>non esistono</strong>, erano intenzioni scritte come esempi (corretto 01-09-2026)</li>
+          <li>Se un giorno servirà, sarà un <strong>aggancio a una contabilità esterna</strong>, e la forma del piano dei conti la detta il <strong>sistema di destinazione</strong> — non questo progetto</li>
+          <li>⛔ Nessuna scrittura automatica da vendite/acquisti: non è implementata e non è prevista</li>
         </ul>
       </td>
     </tr>

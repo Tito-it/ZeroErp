@@ -52,7 +52,23 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
    * `p_dry_run=true` → registra evento `DRYRUN_CREATE_TRIGGER_UD` con `fn_audit_log_once`.
    * `p_dry_run=false` → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_storico_generic(fk_col)`; gestisce duplicate con log `SKIP_EXISTS`.
-8. **Pulizia legacy (opz.)**: se `params->>'drop_legacy_ud' = true`, rimuove eventuali vecchi trigger separati `upd/dlt`.
+~~8. **Pulizia legacy (opz.)**: se `params->>'drop_legacy_ud' = true`, rimuove eventuali vecchi trigger separati `upd/dlt`.~~
+
+> ⛔ **Il passo 8 è stato RIMOSSO il 2026-09-01** (changeSet `20260901-01`), e
+> con lui l'ultima chiave di `params` che questa funzione leggesse: la riga
+> `STORICO` di `dbops.automation_rules_tbl` ha ora `params = {}`.
+>
+> ⚠️ **Non è stata una migrazione portata a termine: era una pulizia puntata
+> sul nome sbagliato.** Cancellava `trg_{table}_upd_storico` e
+> `trg_{table}_dlt_storico`, mentre i trigger legacy davvero creati dai
+> changelog storici si chiamano `trg_<tab>_upd_dlt_storico_<tab>` e quelli
+> montati oggi `trg_<tab>_z90_storico_upd_dlt`. **Tre forme diverse**: il
+> `DROP TRIGGER IF EXISTS` non ha mai potuto agganciare le altre due.
+>
+> ⭐ E il flag era `COALESCE(..., false)`: il ramo non è mai stato eseguito
+> nemmeno per sbaglio. Si è tolta **una leva che prometteva una pulizia
+> impossibile**, non un comportamento — il dry-run della funzione produce
+> output identico a prima.
 
 ---
 

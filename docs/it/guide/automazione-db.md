@@ -185,9 +185,12 @@ Prima di ogni modifica o cancellazione, il framework salva una **copia del recor
 * Scrive su `storico.<stesso_nome_tabella>` (senza suffisso `_storico`)
 * Lo snapshot del record viene salvato in un campo JSONB
 
-**Template naming:** `trgx_z90_{table}_upd_dlt_storico`
+**Template naming:** `trg_{table}_z90_storico_upd_dlt`
 
-**Nota**: il prefisso `trgx_z90_` garantisce che questo trigger venga eseguito **per ultimo** (fase finale), dopo tutti gli altri trigger sulla tabella.
+**Nota**: l'infisso `_z90_` garantisce che questo trigger venga eseguito **per ultimo** (fase finale), dopo tutti gli altri trigger sulla tabella.
+
+> ⚠️ **Rettifica del 2026-09-01**: qui si leggeva `trgx_z90_…`. Nel database non esiste **nessun** trigger che cominci per `trgx_`: la forma vera è `trg_<tabella>_z90_storico_upd_dlt` (118 trigger, tutti così).
+
 
 ### 3.4 STORICO_PROVISION (creazione tabelle storico)
 
@@ -305,6 +308,34 @@ Per tabelle con dati temporanei che devono essere rimossi dopo un certo periodo 
 * `CLEANUP_AT`: `ttl_days`, `cleanup_column`, `base_ts_column`, `apply_on_update`
 * `CLEANUP_PURGE`: `cleanup_column`, `batch_limit`
 
+⚠️ **`base_ts_column` si dichiara solo dove serve.** È una proprietà **per
+tabella**, mentre `params` è **per riga di regola**: sulla riga `*all`/`*all` un
+valore unico sarebbe sbagliato per costruzione. Se manca, il motore la deduce a
+catena (`data_insert` → `executed_at` → `occurred_at` → `created_at`) e, se non
+trova nulla, **salta la tabella** con un audit `WARN`
+(`skip_reason = MISSING_BASE_TS_COLUMN`).
+⭐ L'eccezione oggi è **`vendite.event_log`** (`base_ts_column: "event_time"`,
+dal 2026-09-01): quella tabella ha sia `data_insert` sia `event_time`, il
+fallback prenderebbe la prima, ma il trigger che scrive `cleanup_at` calcola
+dalla seconda — due modi di derivare la stessa grandezza che non concordavano.
+
+⭐ **E le altre regole dichiarano poco o niente, di proposito** (rev 2026-09-01):
+
+| Regola | `params` | Perché |
+| --- | --- | --- |
+| `ATTIVO` | `{"reconcile_on_change": true}` | è l'**unica** chiave che il motore legge |
+| `STORICO` | `{}` | il motore non legge nessuna chiave |
+| `TX_ID`, `LOCK_COLUMNS` | `{}` | idem |
+
+⛔ **Regola di casa, e costa poco rispettarla:** in `params` si dichiara ciò che
+il motore **legge davvero**, né più né meno. Fino al 2026-09-01 la riga `ATTIVO`
+ne dichiarava **cinque** che nessuno leggeva e **nasconde­va** l'unica letta;
+`STORICO` ne dichiarava una mai letta e ne leggeva una mai dichiarata. Una
+chiave dichiarata e non letta è **una leva finta**: prima o poi qualcuno la
+gira. Una letta e non dichiarata è peggio — non si scopre affatto.
+⇒ La misura si fa sulla **lettura**, non sulla parola:
+`regexp_matches(prosrc, 'params\s*->>?\s*''([a-z_]+)''','g')`.
+
 **Esclusioni:** `dbops.automation_cleanup_exclusions`
 
 ### 4.6 GUARD utility/tipo_ruolo
@@ -418,8 +449,8 @@ INSERT INTO dbops.automation_rules_tbl
 (enabled, rule_type, target_schema, target_table, exec_mode,
  name_template, existence_strategy, params, priority, note)
 SELECT true, 'STORICO', '*all', NULL, 'AUTO',
-       'trgx_z90_{table}_upd_dlt_storico', 'BOTH',
-       '{"apply_triggers": true, "drop_legacy_ud": true}'::jsonb,
+       'trg_{table}_z90_storico_upd_dlt', 'BOTH',
+       '{}'::jsonb,
        100, 'storico: trigger unificato'
 WHERE NOT EXISTS (
   SELECT 1 FROM dbops.automation_rules_tbl
@@ -464,7 +495,7 @@ INSERT INTO dbops.automation_rules_tbl
 SELECT true, 'ATTIVO', '*all', NULL, 'AUTO',
        '{"block":"trg_{parent}_a10_{child}_block_deact_upd",
          "require":"trg_{child}_a10_{parent}_require_attivo_ins_upd"}',
-       'BOTH', '{}'::jsonb,
+       'BOTH', '{"reconcile_on_change": true}'::jsonb,
        100, 'attivo: blocco disattivazione padre se esistono figli'
 WHERE NOT EXISTS (
   SELECT 1 FROM dbops.automation_rules_tbl

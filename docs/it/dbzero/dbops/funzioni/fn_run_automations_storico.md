@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
+
 DECLARE
   v_schemas text[];
   rtab record;
@@ -57,12 +58,6 @@ BEGIN
         Determina la colonna FK logica passata alla funzione trigger tramite:
         - override (dbops.fn_get_override_col) con chiave 'STORICO_FK'
         - fallback: <table_name>_id
-
-        Legacy triggers
-        ---------------
-        Se rrule.params->>'drop_legacy_ud' è true, elimina eventuali trigger legacy
-        (pattern trg_{table}_upd_storico e trg_{table}_dlt_storico) dopo aver gestito
-        la creazione/validazione del trigger generico.
 
         Modalità DRY RUN
         ---------------
@@ -158,19 +153,16 @@ LOOP
           END IF;
         END IF;
 
-        IF COALESCE((rrule.params->>'drop_legacy_ud')::boolean,false) THEN
-          EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_upd_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
-          EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', dbops.fn_name_from_template('trg_{table}_dlt_storico',rtab.schema_name,rtab.table_name,NULL,NULL,NULL,NULL), rtab.schema_name, rtab.table_name);
-        END IF;
-
       END IF;
     END LOOP;
   END LOOP;
 END;
+
+
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_storico(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Crea i trigger di storico quando esiste storico.<tabella>_storico.';
+IS 'Automazione STORICO: monta il trigger generico di storicizzazione sulle tabelle che hanno la gemella in schema storico. rev 2026-09-01: RIMOSSO il ramo drop_legacy_ud, e con lui l''ultima chiave di params che questa regola leggeva (ora params vuoto). NON era una migrazione finita: era una pulizia PUNTATA SUL NOME SBAGLIATO. Cancellava trg_{table}_upd_storico e trg_{table}_dlt_storico, mentre i trigger legacy davvero creati dai changelog storici si chiamano trg_<tab>_upd_dlt_storico_<tab> e quelli di oggi trg_z90_{table}_storico_upd_dlt: tre forme diverse, e il DROP IF EXISTS non ha mai potuto agganciare nessuna delle altre due. Il flag era COALESCE(...,false), quindi il ramo non e'' mai stato eseguito nemmeno per sbaglio: si toglie una leva che prometteva una pulizia impossibile, non un comportamento. Fatto datato 2026-09-01, che conferma e non motiva: zero trigger di entrambe le forme legacy, 118 trigger storico tutti sulla convenzione z90. Richiesta: brief-db-richieste-aperte-dal-backend-2, coda C.';
 ```
 
 ---

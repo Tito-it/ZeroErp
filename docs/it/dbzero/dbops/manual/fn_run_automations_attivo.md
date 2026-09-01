@@ -129,10 +129,19 @@ Il nome finale è risolto tramite `dbops.fn_name_from_template`.
 
 ### Riconciliazione automatica
 
-Se `params.reconcile_on_change = true` (default):
+Se `params.reconcile_on_change = true` (default se assente, e **dichiarata
+esplicitamente dal 2026-09-01**):
 
 * eventuali trigger di blocco pre‑esistenti con stessi argomenti vengono **rimossi e ricreati**;
 * si evita la duplicazione di trigger in caso di rename o migrazioni progressive.
+
+> ⭐ **È l'unica chiave di `params` che questa funzione legge**, e fino al
+> 2026-09-01 era l'unica **non dichiarata**: la riga `ATTIVO` ne portava cinque
+> (`mode`, `cascade_children`, `include_no_action`, `require_active_parent`,
+> `block_if_child_no_attivo`) che **nessuno leggeva**, e taceva su questa.
+> ⇒ Ora `params` è `{"reconcile_on_change": true}`: dichiarato e letto
+> coincidono. ⚠️ *Una chiave dichiarata e mai letta è una leva finta — prima o
+> poi qualcuno la gira. Una letta e mai dichiarata non si scopre affatto.*
 
 La riconciliazione **non** introduce cascade né altri comportamenti.
 

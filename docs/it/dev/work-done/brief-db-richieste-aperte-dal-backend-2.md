@@ -9,10 +9,62 @@
 > *«Se arrivano richieste nuove dal backend, NON si riapre questo file: è chiuso
 > perché il suo elenco è esaurito, e un ordine di lavoro che si riapre smette di
 > dire cosa è finito. Se ne fa uno nuovo, con la stessa forma.»*
-> ([elenco 1](../work-done/brief-db-richieste-aperte-dal-backend.md), chiuso il
+> ([elenco 1](brief-db-richieste-aperte-dal-backend.md), chiuso il
 > 2026-08-31 con tutte e cinque le voci applicate).
 >
-> **Stato.** 2026-08-31 (4) — ✅ **entrambe le voci sono chiuse e applicate.**
+> # ✅ CHIUSO il 2026-09-01 — archiviato in `work-done`
+>
+> **Tutto applicato e verificato sul database vivo**, non sul documento. Le due
+> voci dell'ordine di lavoro sono chiuse, e con loro le quattro code che erano
+> emerse eseguendole:
+>
+> | | Cosa | Verifica finale |
+> | --- | --- | --- |
+> | **1** | task `consuma_plafond_lotto` nelle pipeline DEFINITIVA | 0 task senza policy; cancello BE verde |
+> | **2** | `script.fn_check_registro_disattivabile` | 6 `reason`, allineati ai 6 trigger montati |
+> | **A** | sei `reason_key` nei locales `it`/`en` | `check_i18n_keys.py` → `[ok] tutto pulito` |
+> | **B** | `automation_fk_exclusions.csv` (CSV senza tabella) | file cancellato; guida e scheda manuale corrette in 6 punti |
+> | **C** | `automation_rules_tbl.params` — **tutte e 11 le regole** | dichiarate = lette su ognuna, verificato nei due versi |
+> | **D** | la frase che dichiarava aperta una decisione già presa | marcata come superata, con il perché |
+>
+> ⭐ **Ciò che questo ordine di lavoro ha insegnato non sta nelle due voci: sta
+> in ciò che è emerso eseguendole.** Tre volte una frase scritta come
+> *«verificato»* si è rivelata falsa — *«la gemella gira senza policy»* (ce
+> l'aveva), *«la tabella esiste ma è inerte»* (era stata droppata), *«mode ha 79
+> consumatori»* (erano `exec_mode`). E ogni volta la premessa falsa era arrivata
+> a **decidere** qualcosa. La regola che ne esce è una sola, e vale oltre questo
+> file: **si misura la cosa, non la parola che la nomina.**
+>
+> ✅ **E il residuo dichiarato è stato chiuso il 2026-09-01**, estendendo la
+> stessa misura alle altre dieci righe di `automation_rules_tbl`. Ne è uscita
+> **una sola** con lo stesso difetto doppio di `ATTIVO`, e una da rifinire:
+>
+> * 🔴 **`STORICO`** — dichiarava `apply_triggers` (mai letta) e leggeva
+>   `drop_legacy_ud` (mai dichiarata). ⛔ E il ramo non era una migrazione
+>   finita: **cancellava un nome che non è mai esistito**
+>   (`trg_{table}_upd_storico`, contro `trg_<tab>_upd_dlt_storico_<tab>` dei
+>   changelog storici e `trg_z90_{table}_storico_upd_dlt` di oggi — **tre forme
+>   diverse**). Rimosso il ramo con `20260901-01`, `params` → `{}`;
+> * 🟡 **`CLEANUP_AT` su `vendite.event_log`** — leggeva `base_ts_column` senza
+>   dichiararla, e il fallback prendeva `data_insert` mentre il trigger che
+>   scrive `cleanup_at` calcola da `event_time`. Dichiarata `event_time`.
+>   ⭐ Sulle altre righe **non** si dichiara: la `*all`/`*all` copre ogni
+>   tabella, e un solo valore imposto a tutte sarebbe sbagliato per costruzione
+>   — lì il fallback a catena **è** il disegno giusto;
+> * ✅ `AUDIT_UPDATE`, `TX_ID`, `LOCK_COLUMNS`, `CLEANUP_PURGE`,
+>   `STORICO_PROVISION`: già allineate.
+>
+> ⚠️ **E il metodo si è vendicato una quarta volta.** La prima query che ha
+> confrontato dichiarate e lette su tutte le regole abbinava il motore con
+> `split_part(rule_type,'_',1)`: `AUDIT_UPDATE` → `audit`, `TX_ID` → `tx`,
+> `LOCK_COLUMNS` → `lock`, `STORICO_PROVISION` → `storico`. **Tre falsi
+> allarmi.** Stessa lezione delle altre tre volte, su un altro asse: *un
+> abbinamento approssimato produce un elenco di problemi che non esistono, ed è
+> indistinguibile da un elenco vero finché non lo si guarda uno per uno.*
+>
+> ---
+>
+> **Stato precedente — 2026-08-31 (4):** ✅ **entrambe le voci sono chiuse e applicate.**
 > Le due righe di `task_policy` che mancavano alla voce 1 sono state scritte
 > (id 26 e 27) e applicate dal migrate delle 21:47: il cancello BE
 > `test_ogni_task_in_pipeline_ha_una_task_policy` è **verde** — 0 task senza
@@ -39,7 +91,7 @@
 | --- | --- | --- | --- |
 | A | le **sei** `reason_key` di `disattiva_blocco.*` non erano nei locales | FE | ✅ **FATTO** — 6 su 6 in `it.json`/`en.json`, guard `[ok] tutto pulito` |
 | B | `automation_fk_exclusions.csv` era un CSV **senza tabella** | DB | ✅ **FATTO** — CSV cancellato, guida e scheda manuale corrette |
-| C | `automation_rules_tbl.params`: 3 chiavi con **zero** consumatori | DB | 🟡 **analizzata, non eseguita** — raccomandazione: escono. Decisione a Tid |
+| C | `automation_rules_tbl.params`: chiavi dichiarate e mai lette | DB | ✅ **CHIUSA**: cinque chiavi finte fuori, `reconcile_on_change` dichiarata. Dichiarate = lette, nei due versi (⛔ da applicare) |
 | D | §2 diceva «la strada giusta è generica, decisione a Tid» | doc | ✅ **FATTO** — marcata come superata, con il perché |
 
 ### A · Il debito i18n è di SEI chiavi, non di tre — e il presidio ne vede solo tre
@@ -178,8 +230,101 @@ Un catalogo che dichiara più di quanto esegue **non è documentazione ottimista
 `automation_rules_tbl` dica per ognuna *«dichiarata, non letta»* con la data —
 così chi la incontra non deve scoprirlo interrogando `pg_proc`.
 
-⛔ **Non eseguito**: la rimozione tocca un seed di `80_data` della regola ATTIVO,
-che è il cuore dell'automazione su 100 tabelle. Decisione di Tid.
+#### ✅ ESEGUITO il 2026-09-01 — e misurando è uscito di più
+
+**Decisione di Tid: «togli le manopole».** Le tre chiavi sono state tolte dal
+CSV `80_data/sql/dbops/automation_rules_tbl.csv`, riga `id = 4`:
+
+```
+prima  {"mode": "auto", "cascade_children": true, "include_no_action": true,
+        "require_active_parent": true, "block_if_child_no_attivo": true}
+dopo   {"reconcile_on_change": true}
+```
+
+⭐ **Tutte e cinque**, non tre: misurando per eseguire è emerso che nessuna era
+letta, e Tid ha esteso la decisione — *«se è nella stessa condizione, sì»*.
+✅ **E al loro posto è stata dichiarata l'unica chiave che il motore legge
+davvero**, `reconcile_on_change` (Tid, 2026-09-01).
+
+⭐ **L'operazione è stata fatta nei DUE versi, ed è ciò che la rende completa**:
+sono uscite cinque manopole finte ed è entrata quella vera. Verificato su
+`pg_proc` confrontando gli insiemi:
+
+| Verso | Esito |
+| --- | --- |
+| chiavi **dichiarate e non lette** | — (nessuna) |
+| chiavi **lette e non dichiarate** | — (nessuna) |
+
+⇒ Il catalogo ora dice **esattamente** quello che il motore fa: né più, né
+meno.
+
+⭐ **Nessun changeSet**: il mirror `20250918-02` è `runOnChange`, quindi la sede
+è il CSV e basta l'append/sostituzione della riga (`git diff --numstat` → `1 1`,
+nessun CRLF). Verificato che il `params` di quella riga **non ha una seconda
+sorgente**: gli altri due changelog che toccano la tabella scrivono un'altra
+riga (`LOCK_COLUMNS`) e un'altra colonna (`target_table`).
+
+📋 **Provato in transazione annullata**, e la prova è quella che conta: il
+dry-run di `dbops.fn_run_automations_attivo('AUTO', NULL, true)` produce un
+output **identico** prima e dopo. Il guard sui registri risponde ancora
+`HA_ORDINI` e rifiuta ancora la disattivazione. Nessun pgTAP, nessun codice
+backend e nessuno script nominava le tre chiavi.
+
+⛔ **Da applicare**: il migrate lo lancia Tid.
+
+---
+
+#### ⚠️ Misurando per eseguire, il conto è cambiato: sono CINQUE, non tre
+
+⭐ **E il difetto speculare è quello che sorprende.** Interrogando `pg_proc` su
+tutte le forme di lettura (`params ->> 'x'`, `params -> 'x'`, `#>>`, `?`),
+l'unica chiave che l'orchestratore ATTIVO legge davvero è
+**`reconcile_on_change`** — e **non era dichiarata nella riga**. La legge con un
+`COALESCE(..., true)`, quindi oggi vale `true` per omissione.
+
+| Chiave della riga `id = 4` | Letta dal motore |
+| --- | --- |
+| `block_if_child_no_attivo` | ⛔ no → **tolta** |
+| `cascade_children` | ⛔ no → **tolta** |
+| `include_no_action` | ⛔ no → **tolta** |
+| `require_active_parent` | ⛔ **no** → tolta con loro |
+| `mode` | ⛔ **no** → **tolta** (79 «occorrenze» erano `exec_mode`, `p_exec_mode`, `implementation_key`) |
+| *`reconcile_on_change`* | ✅ **sì**, ed è l'unica — *non dichiarata* |
+
+⚠️ **`require_active_parent` è uscita perché la misura la assolveva per errore.**
+Il conteggio «1 consumatore» che l'aveva salvata era un falso positivo: la sola
+occorrenza nel database è dentro un **commento** di
+`vendite.fn_genera_ddt_riconsegna`, funzione che con questa regola non c'entra.
+Cercare la *parola* invece della *lettura* è lo stesso errore di metodo che
+questo file ha già registrato due volte.
+
+✅ **Anche `mode` è uscita** (Tid, 2026-09-01: *«se è nella stessa condizione,
+sì»*). Era il caso più insidioso dei cinque, perché il conteggio la faceva
+sembrare **la più usata di tutte**: 79 occorrenze, che erano `exec_mode`,
+`p_exec_mode`, `implementation_key`. Una chiave dichiarata si difende da sola
+se la si cerca come parola.
+
+📋 **Riprovato dopo la seconda rimozione**: dry-run del motore ATTIVO
+**identico**, e il guard sui registri risponde ancora `HA_ORDINI`.
+
+✅ **`reconcile_on_change` è stata dichiarata a `true`** (Tid, 2026-09-01).
+
+Non cambia **niente** nel comportamento — il motore la legge con
+`COALESCE(..., true)`, quindi vale `true` sia dichiarata sia assente. Cambia
+cosa il catalogo **dice**, ed era l'altra metà del difetto.
+
+⭐ **La simmetria che chiude il giro.** Questo cantiere è nato dal principio
+*«un catalogo che dichiara più di quanto esegue»*. Fermarsi a `params = {}`
+avrebbe lasciato la riga a **dichiarare meno di quanto esegue** — lo stesso
+difetto rovesciato, e il più difficile dei due da scoprire:
+
+> Una manopola finta si scopre girandola a vuoto. Una manopola **assente** non
+> si scopre affatto.
+
+📋 **Riprovato dopo ogni passaggio**: dry-run del motore ATTIVO **identico** allo
+stato di partenza in tutte e tre le versioni del `params` (cinque chiavi → `{}`
+→ `{"reconcile_on_change": true}`), e il guard sui registri risponde sempre
+`HA_ORDINI`. ⛔ Resta da **applicare**: il migrate lo lancia Tid.
 
 ### D · Una frase che dichiara aperto ciò che è chiuso
 
@@ -596,7 +741,7 @@ al database. Vale come corollario alla regola, non come sua sostituzione.
 ---
 
 📌 **Il ragionamento è già scritto**, e non si ricopia: §FE-2 del
-[brief BE/FE del CRUD dei registri](brief-be-fe-crud-registri-di-numerazione.md).
+[brief BE/FE del CRUD dei registri](../work-in-progress/brief-be-fe-crud-registri-di-numerazione.md).
 
 ### Il fatto — i registri non hanno CRUD, e disattivare è la parte delicata
 

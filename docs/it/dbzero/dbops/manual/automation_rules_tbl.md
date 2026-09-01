@@ -79,10 +79,80 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
   Usa `name_template` ed `existence_strategy` per il naming e l'idempotenza dei trigger di lock.
 * **ATTIVO**:
 
-  * `include_no_action` *(boolean, default true)* → considera anche FK `NO ACTION` oltre a `RESTRICT`.
-  * (eventuali flag boolean: `cascade_children`, `require_active_parent`, `block_if_child_no_attivo` – default `true`).
-  * **Nota**: nella policy ATTIVO corrente, questi flag non vengono letti dall’orchestratore; sono mantenuti per retro‑compatibilità e non influenzano il comportamento attuale (block + require).
+  * `reconcile_on_change` *(boolean, default `true`)* → **è l'unica chiave che
+    l'orchestratore legge** (`dbops.fn_run_automations_attivo`), con un
+    `COALESCE(..., true)`: vale `true` sia dichiarata sia assente.
+    ✅ **Dichiarata esplicitamente dal 2026-09-01**: da quel giorno il `params`
+    della riga `ATTIVO` è `{"reconcile_on_change": true}` — l'insieme delle
+    chiavi **dichiarate** e quello delle chiavi **lette** coincidono, verificato
+    nei due versi su `pg_proc`.
+  * ~~`mode`, `include_no_action`, `cascade_children`, `require_active_parent`,
+    `block_if_child_no_attivo`~~ ⛔ **RIMOSSE TUTTE E CINQUE il 2026-09-01**
+    (decisione di Tid), e al loro posto è stata dichiarata l'unica chiave che
+    il motore legge davvero.
+
+  > 📌 **Perché sono uscite, e non era «non venivano lette».** La nota
+  > precedente diceva che erano *«mantenute per retro-compatibilità»*: una
+  > formula che le fa sembrare inerti e innocue. Non lo erano.
+  >
+  > * `block_if_child_no_attivo` e `include_no_action` erano dichiarate `true` e
+  >   **descrivevano ciò che il motore già fa cablato**. Implementarle non
+  >   avrebbe aggiunto un comportamento: avrebbe aggiunto la possibilità di
+  >   metterle a `false`, cioè **interruttori per spegnere protezioni** — la
+  >   seconda su **684 FK di 870**;
+  > * `cascade_children` dichiarava l'**opposto** del motore (spegni i figli
+  >   invece di rifiutare), ed è incompatibile con la prima: erano `true`
+  >   entrambe. La funzione che l'avrebbe implementata,
+  >   `dbops.trgfn_soft_delete_cascade`, è stata droppata il 2026-01-01 come
+  >   *«legacy (ATTIVO old design)»*;
+  > * `require_active_parent` è uscita con loro: **anche lei non è letta**. La
+  >   sola occorrenza nel database è in un **commento** di
+  >   `vendite.fn_genera_ddt_riconsegna`, che con questa regola non c'entra.
+  >
+  > ⚠️ **E `mode` era nello stesso stato**: dichiarata `"auto"`, letta da
+  > nessuno — è uscita con le altre («se è nella stessa condizione, sì»).
+  > ⭐ Il suo conteggio la faceva sembrare la più usata di tutte (**79
+  > occorrenze**): erano `exec_mode`, `p_exec_mode`, `implementation_key`. La
+  > misura giusta non cerca la **parola**, cerca la **lettura**
+  > (`params ->> 'chiave'`).
+  >
+  > ⭐ **Il difetto speculare, che è quello che sorprende**: la chiave che il
+  > motore legge davvero — `reconcile_on_change` — **non era dichiarata**. Il
+  > pannello mostrava cinque manopole scollegate e nascondeva l'unica collegata.
+  > ✅ **Sanato lo stesso giorno**, e nei due versi: le cinque finte sono uscite
+  > e quella vera è entrata. ⚠️ *Un catalogo che dichiara più di quanto esegue
+  > si scopre girando una manopola a vuoto; uno che dichiara meno non si scopre
+  > affatto* — ed era il caso qui.
+* **STORICO**: ⛔ **nessun parametro** — `params` è `{}` dal 2026-09-01.
+  ~~`apply_triggers`~~ era dichiarata `true` e **mai letta**;
+  ~~`drop_legacy_ud`~~ era letta e **mai dichiarata**, ed è uscita con il suo
+  ramo di codice (`20260901-01`).
+
+  > ⛔ **E non era una migrazione finita: era una pulizia puntata sul nome
+  > sbagliato.** Il ramo cancellava `trg_{table}_upd_storico` e
+  > `trg_{table}_dlt_storico`, mentre i trigger legacy davvero creati dai
+  > changelog storici si chiamano `trg_<tab>_upd_dlt_storico_<tab>` e quelli di
+  > oggi `trg_z90_{table}_storico_upd_dlt`. **Tre forme diverse**: il
+  > `DROP TRIGGER IF EXISTS` non ha mai potuto agganciare le altre due.
+  > ⚠️ Il flag era `COALESCE(..., false)`, quindi il ramo non è mai stato
+  > eseguito nemmeno per sbaglio — si è tolta una **leva che prometteva una
+  > pulizia impossibile**, non un comportamento.
+
 * **CLEANUP_AT**:
+  * ⚠️ `base_ts_column` *(opzionale)* → la colonna su cui si calcola la scadenza.
+    **Va lasciata assente sulla riga `*all`/`*all`**: è una proprietà *per
+    tabella*, mentre `params` è *per riga di regola* — un solo valore imposto a
+    tutte le tabelle sarebbe sbagliato per costruzione. Se manca, il motore la
+    deduce a catena (`data_insert` → `executed_at` → `occurred_at` →
+    `created_at`), e se non trova niente **salta la tabella** con un audit
+    `WARN` e `skip_reason = MISSING_BASE_TS_COLUMN`.
+  * ⭐ **Va invece dichiarata su `vendite.event_log`** (dal 2026-09-01,
+    `event_time`): quella tabella ha **sia** `data_insert` **sia** `event_time`,
+    il fallback prenderebbe la prima, ma il trigger che scrive `cleanup_at`
+    calcola da `event_time`. Erano due modi di derivare la stessa grandezza che
+    non concordavano — coincidono sulle righe nate normalmente, non su un evento
+    importato o ricostruito.
+
 
   * `ttl_days` *(int, obbligatorio)* → giorni di retention.
   * `cleanup_column` *(text, default cleanup_at)* → colonna target.

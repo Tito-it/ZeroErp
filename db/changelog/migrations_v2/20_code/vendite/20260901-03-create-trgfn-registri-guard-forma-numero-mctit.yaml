@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD SULLA FORMA DEL NUMERO — e CHIAMA la check, non la riscrive
+#   vendite.trgfn_registri_fatturazione_guard_forma_numero
+#   trg_registri_fatturazione_a10_guard_forma_numero_upd
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-3)
+#
+# ── ⭐ QUI IL PRESIDIO DEL §12.5.2 E' RAGGIUNGIBILE ───────────────
+#   Sulla DISATTIVAZIONE non lo era: a rifiutare e'
+#   dbops.trgfn_prevent_deactivate_if_children, un trigger GENERICO guidato da
+#   TG_ARGV e condiviso da un centinaio di tabelle, che non puo' chiamare una
+#   check specifica dei registri. Restavano due elenchi paralleli, tenuti
+#   allineati da un pgTAP.
+#   ⭐ Qui il guard e' NOSTRO: non riscrive il predicato, lo CHIAMA. Il presidio
+#   da scrivere non e' «tooltip e rifiuto coincidono» — proverebbe solo l'oggi —
+#   ma «il guard non contiene piu' il predicato», e il pgTAP lo verifica
+#   leggendo prosrc.
+#
+# ── ⭐ SI CONFRONTANO I VALORI, NON LE COLONNE ────────────────────
+#   `BEFORE UPDATE OF prefisso, suffisso, lunghezza_numero` scatta quando lo
+#   UPDATE NOMINA quelle colonne, anche se il valore non cambia. Il primo IF le
+#   confronta con IS DISTINCT FROM e lascia passare il no-op.
+#   ⚠️ Non e' un'ottimizzazione: e' cio' che rende il guard immune al giorno in
+#   cui il mirror CSV registri_fatturazione.csv guadagnasse quelle colonne. E'
+#   esattamente il motivo per cui serie_default e' rimasta fuori dal divieto —
+#   il mirror la riscrive gia' oggi a ogni migrate.
+#
+# ── ⛔ PERIMETRO: SOLO UPDATE, MAI INSERT ────────────────────────
+#   Un guard BEFORE ROW montato anche in INSERT oscurerebbe i CHECK della
+#   tabella: lo SQLSTATE passerebbe da 23514 a P0001 e i vincoli andrebbero
+#   presidiati a parte. Qui non serve: alla nascita il registro la sua forma non
+#   l'ha ancora usata, e non c'e' niente da proteggere.
+#   ⚠️ E i sei guard di disattivazione sono `BEFORE UPDATE OF attivo`: insiemi
+#   di colonne DISGIUNTI da questo, quindi non si oscurano a vicenda e l'ordine
+#   alfabetico fra loro non ha effetto.
+#
+# ── ⚠️ IL `campo` NEL CONTEXT ────────────────────────────────────
+#   Il context porta `campo` = la prima delle tre colonne che e' cambiata
+#   davvero. E' il canale che il backend traduce in error.fields e che il
+#   frontend usa per accendere l'input giusto: senza, l'operatore legge «non si
+#   puo' cambiare» e deve indovinare quale dei tre campi ha toccato.
+#
+# ⚠️ Il codice sollevato e' quello del PRIMO motivo dell'array, e l'ordine
+#   dell'array e' il contratto: se divergesse, il tooltip direbbe una cosa e
+#   l'errore un'altra. Oggi il motivo e' uno solo, e la regola vale lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-03-create-trgfn-registri-guard-forma-numero-mctit.yaml
+
+  - changeSet:
+      id: 20260901-03-create-trgfn-registri-guard-forma-numero
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard che rifiuta il cambio di forma del numero (prefisso, suffisso, lunghezza_numero)
+        su un registro che ha gia'' consegnato un numero. ⭐ CHIAMA
+        script.fn_check_registro_forma_modificabile invece di riscriverne il predicato: e'' il
+        presidio del §12.5.2, che sulla disattivazione non era raggiungibile perche'' li'' a
+        rifiutare e'' un trigger generico condiviso da tutto il database. ⭐ Confronta i VALORI con
+        IS DISTINCT FROM, non le colonne: un UPDATE che nomina le tre colonne senza cambiarle passa,
+        e il guard resta immune a un futuro mirror CSV. ⛔ Solo UPDATE, mai INSERT: in INSERT
+        oscurerebbe i CHECK della tabella, e alla nascita non c''e'' niente da proteggere.
+        ⚠️ Il context porta `campo` = la prima colonna cambiata davvero, per error.fields.
+        Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            # ⛔ Il guard CHIAMA la check: senza, non c'e' niente da chiamare e
+            #    la sola alternativa sarebbe riscrivere il predicato qui.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_registro_forma_modificabile';
+            # ⛔ Le tre colonne presidiate devono esistere tutte: se una sparisse,
+            #    il trigger fallirebbe alla CREATE con un errore oscuro invece
+            #    che qui, con il nome della colonna mancante.
+            # ⚠️ NON si precondiziona sulla presenza del codice errore a
+            #    catalogo: quello e' contenuto di 80_data, che gira DOPO 20_code.
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.registri_fatturazione'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname IN ('prefisso', 'suffisso', 'lunghezza_numero');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_forma_numero()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+                  v_campo  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare il cambio della FORMA DEL NUMERO — prefisso,
+                  --   suffisso, lunghezza_numero — su un registro che ha gia'
+                  --   consegnato almeno un numero.
+                  --
+                  -- ⛔ Perche': il contatore NON riparte quando cambia la
+                  --   forma, prosegue. Il documento successivo esce con una
+                  --   forma nuova e un numero che continua la serie vecchia, e
+                  --   nessun vincolo se ne accorge — la coppia (forma, numero)
+                  --   non e' vincolata da nessuna parte.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Il guard chiama
+                  --   script.fn_check_registro_forma_modificabile e solleva il
+                  --   codice del PRIMO motivo. Cosi' il rifiuto e il tooltip
+                  --   della maschera non «coincidono oggi»: non POSSONO
+                  --   divergere, perche' la regola sta scritta in un posto
+                  --   solo.
+                  -- =========================================================
+
+                  -- ⭐ Il no-op passa: `UPDATE OF` scatta quando lo statement
+                  --   NOMINA la colonna, anche a valore invariato. Confrontare
+                  --   i valori e' cio' che tiene il guard fuori dai piedi di un
+                  --   mirror CSV che riscrivesse queste colonne.
+                  IF NEW.prefisso         IS NOT DISTINCT FROM OLD.prefisso
+                     AND NEW.suffisso     IS NOT DISTINCT FROM OLD.suffisso
+                     AND NEW.lunghezza_numero IS NOT DISTINCT FROM OLD.lunghezza_numero THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_registro_forma_modificabile(OLD.id);
+
+                  -- Nessun motivo: il registro non ha ancora numerato, la forma
+                  -- si cambia liberamente.
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ Il campo da accendere nel form e' il PRIMO che e'
+                  --   cambiato davvero, non uno fisso: l'operatore ne ha
+                  --   toccato uno, e mandarlo a correggerne un altro e' peggio
+                  --   che non dirglielo.
+                  v_campo := CASE
+                      WHEN NEW.prefisso IS DISTINCT FROM OLD.prefisso THEN 'prefisso'
+                      WHEN NEW.suffisso IS DISTINCT FROM OLD.suffisso THEN 'suffisso'
+                      ELSE 'lunghezza_numero'
+                  END;
+
+                  -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
+                  --   scatta PRIMA di trg_registri_fatturazione_gen_tx_id_ins_upd
+                  --   (ordine alfabetico: 'a10' < 'gen'), quindi NEW.tx_id qui
+                  --   porta ancora il valore vecchio.
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_registri_fatturazione_guard_forma_numero',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+                          || jsonb_build_object('campo', v_campo),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre.
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_registri_fatturazione_guard_forma_numero()
+              IS 'Guard `_a10_` su vendite.registri_fatturazione: rifiuta il cambio della FORMA DEL NUMERO — prefisso, suffisso, lunghezza_numero — su un registro che ha gia'' consegnato almeno un numero. ⛔ PERCHE'': il contatore non riparte quando cambia la forma, PROSEGUE — quindi sullo stesso sezionale convivrebbero due forme con numeri consecutivi, e nessun vincolo se ne accorge perche'' la coppia (forma, numero) non e'' vincolata da nessuna parte. E'' la stessa specie di difetto riparato dal cantiere del prefisso il 2026-08-31 (difetto A: forma identica, contatore ripartito da 1) presa dal verso opposto. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: il guard CHIAMA script.fn_check_registro_forma_modificabile e solleva il codice del primo motivo, cosi'' il rifiuto e il tooltip della maschera non possono divergere. Sulla DISATTIVAZIONE lo stesso presidio non era raggiungibile, perche'' la'' a rifiutare e'' dbops.trgfn_prevent_deactivate_if_children, un trigger generico guidato da TG_ARGV e condiviso da un centinaio di tabelle. ⭐ CONFRONTA I VALORI, NON LE COLONNE: `UPDATE OF` scatta quando lo statement NOMINA la colonna anche a valore invariato, quindi il primo IF lascia passare il no-op — ed e'' cio'' che tiene il guard immune al giorno in cui il mirror CSV 80_data/sql/vendite/registri_fatturazione.csv guadagnasse queste colonne. ⛔ E'' anche il motivo per cui serie_default NON e'' fra le colonne presidiate: quel mirror la riscrive gia'' a ogni migrate, e un BEFORE UPDATE OF serie_default farebbe fallire il migrate; in piu'' serie entra nella chiave del contatore, quindi cambiarla apre una serie nuova che distingue i documenti — che e'' legittimo. ⛔ SOLO UPDATE, MAI INSERT: un guard BEFORE ROW montato anche in INSERT oscurerebbe i CHECK della tabella (SQLSTATE da 23514 a P0001), e alla nascita del registro non c''e'' niente da proteggere. ⚠️ Il context porta `campo` = la PRIMA delle tre colonne cambiata davvero: e'' il canale che diventa error.fields e accende l''input giusto nel form. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima di trg_registri_fatturazione_gen_tx_id_ins_upd (ordine alfabetico), quindi NEW.tx_id porta ancora il valore vecchio. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-3).';
+
+              DROP TRIGGER IF EXISTS trg_registri_fatturazione_a10_guard_forma_numero_upd
+                  ON vendite.registri_fatturazione;
+
+              CREATE TRIGGER trg_registri_fatturazione_a10_guard_forma_numero_upd
+                  BEFORE UPDATE OF prefisso, suffisso, lunghezza_numero
+                  ON vendite.registri_fatturazione
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_forma_numero();
+
+              COMMENT ON TRIGGER trg_registri_fatturazione_a10_guard_forma_numero_upd
+                  ON vendite.registri_fatturazione
+              IS 'Blocca il cambio di forma del numero su un registro che ha gia'' numerato. ⛔ BEFORE UPDATE OF sulle sole tre colonne della forma: serie_default resta fuori di proposito (mirror CSV + chiave del contatore), e i sei guard di disattivazione sono BEFORE UPDATE OF attivo, cioe'' un insieme di colonne DISGIUNTO — non si oscurano a vicenda. ⛔ Nessun ramo INSERT: oscurerebbe i CHECK della tabella. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_registri_fatturazione_a10_guard_forma_numero_upd
+                  ON vendite.registri_fatturazione;
+              DROP FUNCTION IF EXISTS vendite.trgfn_registri_fatturazione_guard_forma_numero();

@@ -54,7 +54,7 @@ ZeroErp/
 │   │   ├── anagrafiche/
 │   │   ├── catalogo/
 │   │   ├── config/
-│   │   ├── contabilita/
+│   │   ├── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro
 │   │   ├── magazzino/
 │   │   ├── pagamenti/
 │   │   ├── storico/
@@ -90,7 +90,7 @@ ZeroErp/
 | `acquisti` | Ciclo acquisti |
 | `magazzino` | Movimenti, giacenze, lotti, seriali |
 | `pagamenti` | Scadenze, riconciliazioni, contabili |
-| `contabilita` | Piano conti, registrazioni, partite |
+| `contabilita` | ⛔ **VUOTO e fuori perimetro** — zero tabelle, funzioni e viste (verificato 01-09-2026). ⚠️ Diceva «piano conti, registrazioni, partite»: non esistono. `backend/apps/contabilita/` è uno scheletro vuoto. Se servirà sarà un **aggancio a una contabilità esterna**, con la forma dettata dal sistema di destinazione |
 | `storico` | Audit temporale (storicizzazione tabelle) |
 | `dbops` | Strumenti DBA, registry task, FK policy |
 | `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |

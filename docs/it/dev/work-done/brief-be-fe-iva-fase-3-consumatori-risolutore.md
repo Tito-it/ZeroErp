@@ -1395,7 +1395,7 @@ test si possono scrivere per intero — semplicemente **non verrebbero invocati 
 niente** finché il seed non c'è.
 
 📌 Richiesta passata al team DB:
-[brief-db-richieste-aperte-dal-backend-2.md](../work-in-progress/brief-db-richieste-aperte-dal-backend-2.md),
+[brief-db-richieste-aperte-dal-backend-2.md](brief-db-richieste-aperte-dal-backend-2.md),
 voce 1. ⚠️ **File nuovo e non il precedente riaperto**, come quello stesso
 prescrive: *«un ordine di lavoro che si riapre smette di dire cosa è finito»*.
 
