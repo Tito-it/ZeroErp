@@ -45,8 +45,16 @@ registro».
 
 ### Regola applicata
 
-* Anno ricavato da `vendite.fn_get_anno_registro(p_data)`.
-* Mese fisso `0` (reset annuale).
+* ⭐ **L'anno del SECCHIO lo decide la politica del registro** (rev 2026-09-01):
+  `reset_policy = 'ANNUALE'` → `vendite.fn_get_anno_registro(p_data)`;
+  `'NESSUNA'` → `0`, cioè **un secchio solo** e numerazione continua fra gli anni.
+  ⛔ Da non confondere con l'anno del **documento** (`fatture.anno`, `ddt.anno`, …),
+  che è sempre quello solare e lo compone `vendite.fn_assegna_numero_documento`:
+  sono due cose diverse che si chiamano uguale.
+* ~~Mese fisso `0` (reset annuale).~~ 🔴 **Superata il 2026-09-01**: la colonna
+  `mese` è stata tolta dalla chiave del contatore — stava lì e in nessun
+  documento, quindi era una dimensione dormiente. Questa era l'unica funzione che
+  la leggeva.
 * `pg_advisory_xact_lock` su **registro/serie** per evitare interleaving.
 * ⭐ **Il cancello di monotonia**, sotto il lock (vedi sotto).
 * `SELECT ... FOR UPDATE` sulla riga progressivo.

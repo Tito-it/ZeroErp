@@ -377,6 +377,127 @@ tabella. La colonna tornerebbe sul tavolo solo se quell'identità dovesse essere
 
 ---
 
+## 8-bis. ⭐ La chiave del contatore: gli assi si **dichiarano**, non si assumono
+
+*(rev 2026-09-01)*
+
+Il §8 qui sopra si chiude chiedendo *«un controllo automatico che, per ogni
+famiglia di documento registrata a catalogo, verifichi che l'identità distingua
+l'azienda e che l'anno sia davvero in chiave»*. ⭐ **Quel controllo ora esiste**,
+e per scriverlo è venuta fuori la regola che lo governa.
+
+### La regola
+
+> **Tutto ciò che discrimina il CONTATORE deve poter discriminare anche il
+> DOCUMENTO.**
+
+Il contatore vive su una chiave — oggi `(registro, anno, serie)` — e ogni
+combinazione è un **secchio** che riparte da 1. Se il documento non porta uno di
+quegli assi nel proprio vincolo di unicità, il contatore gli consegna un numero
+che per lui **è già usato**.
+
+⭐ **E i due versi non sono simmetrici** — è questo che dice quale asse va
+dichiarato:
+
+| | Effetto |
+| --- | --- |
+| il **contatore** ha un asse che il **documento** non ha | ⛔ **collisione** |
+| il **documento** ha un asse che il **contatore** non ha | ✅ innocuo — il documento è solo più specifico |
+
+### ⛔ Il difetto che c'era, e il §8 lo aveva già sfiorato
+
+Il §8 osserva che *«i resi non hanno la serie, la commessa ha solo il codice»*.
+Era vero, ed era **più grave di come suonava**: la serie entra nella chiave del
+contatore, quindi cambiare il `serie_default` di un registro `RESO` avrebbe fatto
+ripartire il progressivo da 1 su numeri già emessi — con `uq_resi_anno_numero`
+che non porta la serie, il vincolo rifiuta, e col rollback torna indietro anche
+l'incremento del contatore. ⇒ **Il reso non si numerava più.**
+
+### ✅ La cura: la famiglia dichiara l'asse
+
+Non si è data la colonna `serie` ai resi — sistemava il **sintomo su una
+tabella**, e il sesto documento che entra domani avrebbe avuto lo stesso problema
+senza che nessuno gliel'avesse chiesto.
+
+⭐ La domanda si fa **dove una famiglia entra nei registri**:
+`vendite.famiglie_documento.colonna_serie` — il **nome** della colonna in cui
+quella famiglia registra la serie, `NULL` se non ne ha una.
+
+| Cosa | Dove sta | Che natura ha |
+| --- | --- | --- |
+| `serie` sul documento | `fatture.serie`, `ddt.serie`, `ordini.serie` | **il fatto** |
+| `serie_default` | `registri_fatturazione` | **la scelta** del sezionale |
+| `colonna_serie` | `famiglie_documento` | **la capacità** della famiglia |
+
+> **Sulla FAMIGLIA si dichiara ciò che il documento PUÒ esprimere. Sul REGISTRO
+> si sceglie ciò che quel sezionale FA.**
+
+⭐ **Il nome e non un booleano**, per la stessa ragione di `colonna_numero`: un
+flag «gestisce la serie» messo su una famiglia la cui tabella non ce l'ha
+riporterebbe il difetto senza che nessuno se ne accorga; col nome, il controllo
+verifica che la colonna **esista davvero**.
+
+⛔ E un registro di una famiglia senza serie **non può averne una**: si rifiuta,
+non si ignora. Un campo editabile che non fa niente è il difetto che il trasloco
+del prefisso ha appena finito di togliere (§7).
+
+### 🔴 Due cose sono sparite dal contatore
+
+**`mese` non c'è più.** Stava nella chiave e **in nessun documento**. Era innocua
+solo perché inchiodata: `mese = 0` nella funzione e un `CHECK` che ammetteva il
+solo `ANNUALE`.
+
+⛔ **Una dimensione dormiente in una chiave è ARMATA, non inutilizzata**: il
+giorno che qualcuno avesse acceso un reset mensile sarebbero collidati **tutti e
+cinque** i documenti. E a tenerla chiusa non era un vincolo, era una **rinuncia**
+— che si revoca per distrazione. Se un giorno servirà, l'asse torna **insieme**
+alla colonna sui documenti, dichiarato come lo è `colonna_serie`.
+
+**E con lei un `UNIQUE` ridondante** che nessuno vedeva: con quattro colonne
+`NOT NULL`, i `COALESCE` di `uq_registri_progressivi_scope` erano no-op e la
+chiave era la **stessa** di `uq_regprog_key`. ⚠️ Il presidio degli indici
+duplicati non lo segnalava, perché confronta colonne e lì una chiave era colonne
+e l'altra espressioni.
+
+### ✅ E `reset_policy` adesso funziona davvero
+
+Era **dichiarata e mai letta**: nessuna funzione ci ramificava sopra e l'anno era
+inchiodato nel codice. Ora `fn_get_next_progressivo` la legge:
+
+| `reset_policy` | L'anno del secchio | Effetto |
+| --- | --- | --- |
+| `ANNUALE` | l'anno solare del documento | il numero riparte da 1 a Capodanno |
+| `NESSUNA` | `0` — un secchio solo | numerazione **continua** fra gli anni |
+
+⛔ **`MENSILE` non è rientrata**, ed è l'asimmetria della regola: accenderla
+sarebbe **pericoloso** (nessun documento porta il mese), mentre `NESSUNA` è
+**sicura** perché fa usare al contatore **meno** assi, non di più — e l'anno ce
+l'hanno tutti.
+
+⚠️ **E due cose si chiamano «anno»**: quello del **secchio** (`progressivi.anno`,
+che vale `0` sotto `NESSUNA`) e quello del **documento** (`fatture.anno`,
+`ddt.anno`, …), che è sempre l'anno solare. `fn_get_anno_registro` risponde alla
+seconda domanda, e per questo non è stata toccata.
+
+### Il controllo automatico che il §8 chiedeva
+
+Tre verifiche, tutte **derivate** — nessun elenco scritto a mano:
+
+1. ogni famiglia che dichiara una serie ha **davvero** quella colonna;
+2. ...e quella colonna sta nel **vincolo di unicità del numero**;
+3. nessun registro di una famiglia senza serie porta un `serie_default`.
+
+Una famiglia nuova che entra sui registri senza la chiave completa fa **rosso
+prima del merge**, invece che in campo.
+
+⚠️ **Cosa resta scoperto, dichiarato**: `vendite.commesse`. Dichiara di non avere
+una serie — quindi i controlli la proteggono — ma la sua unicità resta su **una
+stringa sola** (`uq_commesse_codice`), che non porta né registro né serie.
+Allinearla significa decidere come una commessa si aggancia al registro: è una
+domanda di modello, non un `ALTER TABLE`.
+
+---
+
 ## 9. ⚠️ Un difetto trovato il giorno stesso, e cosa insegna
 
 *(31-08-2026, sera)*

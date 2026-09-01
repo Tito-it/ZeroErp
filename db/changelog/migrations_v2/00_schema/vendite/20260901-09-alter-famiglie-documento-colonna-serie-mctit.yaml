@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FAMIGLIA DICHIARA SE IL DOCUMENTO SA REGISTRARE UNA SERIE
+#   vendite.famiglie_documento.colonna_serie
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5 (S-1a)
+#
+# ── ⛔ IL CASO ────────────────────────────────────────────────────
+#   La `serie` entra nella chiave del contatore, quindi cambiare il
+#   `serie_default` di un registro apre un secchio nuovo che riparte da 1.
+#   Su fatture, ddt e ordini e' innocuo: la serie e' in colonna E dentro il
+#   vincolo di unicita' del numero, quindi i due blocchi restano distinguibili —
+#   e' il modo LEGITTIMO di aprire una serie nuova.
+#   ⛔ Su resi e commesse no: la serie non la registrano da nessuna parte e i loro
+#   vincoli non ce l'hanno. Il numero 1 della serie nuova collide con quello gia'
+#   emesso, il vincolo lo rifiuta, e col rollback torna indietro anche
+#   l'incremento del contatore — quindi il documento NON SI NUMERA PIU'.
+#
+# ── ⭐ PERCHE' LA DICHIARAZIONE STA SULLA FAMIGLIA ───────────────
+#   La prima proposta era dare la colonna `serie` ai resi: sistemava il SINTOMO
+#   su una tabella. Il sesto documento che entra domani sui registri avrebbe
+#   avuto lo stesso problema, e nessuno gliel'avrebbe chiesto.
+#   ⭐ Qui invece la domanda si fa dove una famiglia ENTRA nei registri.
+#
+#   Tre cose diverse che si chiamano «serie», e non vanno confuse:
+#     · fatture.serie / ddt.serie / ordini.serie -> IL FATTO: quale serie e'
+#       stata usata su quel documento;
+#     · registri_fatturazione.serie_default ---> LA SCELTA: cosa usa questo
+#       sezionale. ⛔ NON si sposta: resta sul registro;
+#     · famiglie_documento.colonna_serie ------> LA CAPACITA': questa famiglia
+#       una serie PUO' averla, e la colonna si chiama cosi'.
+#
+#   ⇒ Sulla FAMIGLIA si dichiara cio' che il documento PUO' esprimere.
+#     Sul REGISTRO si sceglie cio' che quel sezionale FA.
+#
+# ── ⭐ IL NOME DELLA COLONNA, NON UN BOOLEANO ────────────────────
+#   Un `gestisce_serie boolean` messo a true su una famiglia la cui tabella non
+#   ha la colonna riporterebbe il difetto di partenza, e nessuno se ne
+#   accorgerebbe. Col NOME, il presidio verifica che la colonna esista davvero.
+#   ⭐ Ed e' gia' l'idioma di questa tabella: `colonna_numero` e
+#   `colonna_billing_account` esistono esattamente per questo — «il numero si
+#   chiama numero su fatture ma codice sulla commessa: il predicato derivato deve
+#   saperlo e non puo' dedurlo».
+#
+# ── ⛔ E NON CI VA UN DEFAULT DELLA SERIE ────────────────────────
+#   `prefisso_default` sta sulla famiglia perche' il prefisso fa il mestiere di
+#   ESSERE UGUALE: tutti i DDT cominciano per DDT. La serie fa il mestiere
+#   OPPOSTO — esiste per DIFFERIRE, ed e' cio' che separa i sezionali di una
+#   stessa famiglia e di uno stesso emittente. Misurato il 2026-09-01: i sei
+#   registri FATTURA hanno SEI serie diverse, una per sezionale. Un default sulla
+#   famiglia dovrebbe rispondere «quale delle sei?», e non c'e' risposta.
+#
+# ⚠️ QUI NON SI SEMINA NIENTE, ed e' deliberato: su un database ricostruito da
+#   zero questa fase gira quando la tabella e' ANCORA VUOTA (00_schema precede
+#   80_data), quindi un UPDATE qui non toccherebbe nessuna riga e il valore
+#   sarebbe perso in CI mentre su dev funziona. Il seed vive in 80_data, con la
+#   sua sorgente CSV: 20260901-12.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260901-09-alter-famiglie-documento-colonna-serie-mctit.yaml
+
+  - changeSet:
+      id: 20260901-09-alter-famiglie-documento-colonna-serie
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        `vendite.famiglie_documento.colonna_serie`: il NOME della colonna in cui i documenti di
+        quella famiglia registrano la serie; `NULL` = la famiglia non ha una serie. ⭐ E'' la
+        dichiarazione dell''ASSE, non il suo valore: `serie_default` resta sul registro. ⭐ Il nome e
+        non un booleano, cosi'' il presidio verifica che la colonna esista davvero — stesso idioma di
+        `colonna_numero` e `colonna_billing_account`. ⛔ Nessun default della serie sulla famiglia:
+        il prefisso fa il mestiere di essere uguale, la serie quello opposto di differire.
+        ⚠️ Il seed NON sta qui: su un DB ricostruito 00_schema gira a tabella vuota, e il valore
+        andrebbe perso in CI. Vive in 80_data (20260901-12).
+        Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5 (S-1a).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            # ⛔ L'idioma che questa colonna estende deve esserci: se
+            #    `colonna_numero` sparisse, la forma «dichiaro il nome della
+            #    colonna» non sarebbe piu' quella di casa e questa scelta andrebbe
+            #    riletta invece che ereditata.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.famiglie_documento'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname = 'colonna_numero';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  ADD COLUMN IF NOT EXISTS colonna_serie text;
+
+              COMMENT ON COLUMN vendite.famiglie_documento.colonna_serie
+              IS 'Nome della colonna in cui i documenti di questa famiglia registrano la SERIE del sezionale; NULL = la famiglia non ha una serie. ⭐ E'' la dichiarazione dell''ASSE, non il suo valore: il valore vive su vendite.registri_fatturazione.serie_default (la scelta del sezionale) e sul documento (il fatto). Sulla FAMIGLIA si dichiara cio'' che il documento PUO'' esprimere, sul REGISTRO si sceglie cio'' che quel sezionale FA. ⛔ PERCHE'' ESISTE: la serie entra nella chiave del contatore, quindi cambiare serie_default apre un secchio nuovo che riparte da 1. Su fatture, ddt e ordini e'' innocuo — la serie e'' in colonna E nel vincolo di unicita'' del numero, quindi i due blocchi restano distinguibili. Su resi e commesse no: non la registrano da nessuna parte, il numero 1 collide con uno gia'' emesso, il vincolo rifiuta e col rollback torna indietro anche il contatore — il documento non si numera piu''. ⭐ IL NOME E NON UN BOOLEANO: un flag `gestisce_serie` messo a true su una famiglia la cui tabella non ha la colonna riporterebbe il difetto senza che nessuno se ne accorga; col nome il presidio verifica che la colonna ESISTA. E'' lo stesso idioma di colonna_numero e colonna_billing_account. ⛔ E NON C''E'' UN DEFAULT DELLA SERIE sulla famiglia, a differenza di prefisso_default: il prefisso fa il mestiere di ESSERE UGUALE (tutti i DDT cominciano per DDT), la serie quello OPPOSTO di DIFFERIRE — e'' cio'' che separa i sezionali di una stessa famiglia e di uno stesso emittente. ⚠️ A leggerla sono script.fn_check_registro_serie_ammessa (che il guard del registro CHIAMA) e il presidio pgTAP, che verifica nei due versi: la colonna dichiarata esiste ed e'' nel vincolo di unicita'' del numero, e nessun registro di una famiglia senza serie ha un serie_default. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  DROP COLUMN IF EXISTS colonna_serie;

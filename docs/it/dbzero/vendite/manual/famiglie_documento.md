@@ -47,14 +47,49 @@ perché non c'è nessuna copia.
 
 ---
 
-### Le due colonne che sembrano ripetute e non lo sono
+### ~~Le due colonne~~ **Le tre colonne** che sembrano ripetute e non lo sono
+
+*(la terza è arrivata il 2026-09-01)*
 
 * **la colonna del numero** non si chiama allo stesso modo dappertutto: è
   *numero* per fattura, documento di trasporto, ordine e reso, ma è *codice* per
   la commessa. È esattamente il genere di dettaglio che non si può indovinare;
 * **la colonna del cliente** è obbligatoria su fattura e commessa, mentre su
   documento di trasporto, ordine e reso può mancare. Chi legge deve saperlo, e
-  non ha modo di dedurlo.
+  non ha modo di dedurlo;
+* ⭐ **la colonna della serie** — `colonna_serie` — che su fattura, documento di
+  trasporto e ordine si chiama *serie*, e su reso e commessa **non esiste
+  affatto**. Il vuoto qui non è un dato mancante: è la dichiarazione che quella
+  famiglia **una serie non ce l'ha**.
+
+#### ⛔ Perché la terza è la più importante delle tre
+
+Le prime due servono a *leggere* il documento. La terza serve a **non
+rompere il contatore**.
+
+La serie entra nella chiave del contatore, quindi cambiare la serie di un
+registro apre un contenitore nuovo che riparte da 1. Su fattura, documento di
+trasporto e ordine è innocuo — la serie è scritta sul documento **e** dentro il
+suo vincolo di unicità, quindi i numeri restano distinguibili: è il modo
+legittimo di aprire una serie nuova. ⛔ Su reso e commessa no: la serie non la
+registrano da nessuna parte, quindi il numero 1 va a sbattere contro uno già
+emesso e **il documento non si numera più**.
+
+⇒ Da qui la regola generale, scritta per esteso nella
+[guida alla numerazione §8-bis](/guide/numerazione-documenti-e-codici):
+
+> **Tutto ciò che discrimina il contatore deve poter discriminare anche il
+> documento.**
+
+⭐ **Ed è il NOME e non un sì/no**, per la stessa ragione delle altre due: un
+interruttore «gestisce la serie» acceso su una famiglia la cui tabella non ha la
+colonna riporterebbe il difetto senza che nessuno se ne accorga. Col nome, il
+controllo automatico verifica che la colonna **esista davvero** e che stia nel
+vincolo di unicità del numero.
+
+⚠️ **E un registro di una famiglia senza serie non può averne una**: si rifiuta,
+non si ignora. Un campo che si può cambiare e non fa niente è il difetto che il
+trasloco del prefisso ha appena finito di togliere.
 
 ---
 

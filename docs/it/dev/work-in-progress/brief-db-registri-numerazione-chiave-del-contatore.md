@@ -426,3 +426,118 @@ esplicitamente, non per omissione.
   2026-08-31 di proposito.
 * **`commesse`** resta fuori dal piano (§4), dentro il presidio come debito.
 * **Nessuna migrazione si applica** senza che Tid lo dica, per quel comando.
+
+---
+
+## 11. ✅ Stato dello sviluppo — **APPLICATO** il 2026-09-01
+
+| Passo | Esito | File |
+| --- | --- | --- |
+| **R-1** | ✅ | `00_schema/vendite/20260901-06` — il CHECK riammette `NESSUNA` |
+| **M-1** | ✅ | `20_code/vendite/20260901-07` — via `mese`, e `reset_policy` si legge |
+| **M-2** | ✅ | `00_schema/vendite/20260901-08` — via la colonna e l'UNIQUE ridondante |
+| **S-1a** | ✅ | `00_schema/vendite/20260901-09` — `famiglie_documento.colonna_serie` |
+| **S-2** | ✅ | `20_code/script/20260901-10` — `fn_check_registro_serie_ammessa` |
+| **S-3** | ✅ | `20_code/vendite/20260901-11` — il guard che la **chiama** |
+| **S-1b** | ✅ | `80_data/20260901-12` + `famiglie_documento_colonna_serie.csv` |
+| — | ✅ | codice `E_REGISTRO_SERIE_NON_AMMESSA` (`DATO_ERRATO`) + messaggio, append ai due CSV |
+| **P-1** | ✅ **9/9 verdi** | `db/pgtap/vendite/test-chiave-contatore-assi-dichiarati-v1.sql` |
+
+✅ **Applicato da Tid il 2026-09-01, pgTAP verdi.** I nove changeSet del
+2026-09-01 risultano `EXECUTED` sul `databasechangelog`, e lo stato strutturale
+è quello voluto:
+
+| | |
+| --- | --- |
+| colonna `mese` | **non esiste più** |
+| `uq_registri_progressivi_scope` (il duplicato invisibile) | **non esiste più** |
+| chiave del secchio | `UNIQUE (registro_id, anno, serie)` |
+| `chk_registri_fatturazione_reset` | ammette `ANNUALE` **e** `NESSUNA` |
+| guard della serie | **montato** |
+| `E_REGISTRO_SERIE_NON_AMMESSA` | **a catalogo** |
+
+E il seed è quello dichiarato: `FATTURA`/`DDT`/`ORDINE` → `serie`,
+`RESO`/`COMMESSA` → `NULL`.
+
+### 11.1 Come è stato provato
+
+L'SQL **estratto dai sei YAML**, eseguito **nell'ordine di numerazione** su una
+transazione con `ROLLBACK`, col seed e il codice errore aggiunti dentro. Poi il
+pgTAP nella stessa forma.
+
+| Prova | Esito |
+| --- | --- |
+| `ANNUALE`: il secchio porta l'anno solare | ✅ |
+| `NESSUNA`: due documenti di **anni diversi** prendono 1 e 2 | ✅ il contatore non riparte |
+| registro `RESO` con serie, in **INSERT** | ✅ rifiutato |
+| lo stesso **senza** serie | ✅ passa (il gemello positivo) |
+| `UPDATE` che mette una serie su un `RESO` | ✅ rifiutato |
+| il mirror CSV che riscrive `serie_default` sulle 6 fatture | ✅ passa — **il migrate non si rompe** |
+
+### 11.2 ⚠️ Tre cose trovate scrivendo, che il piano non prevedeva
+
+**1. Il seed non poteva stare in `00_schema`.** Era la strada che sembrava
+ovvia — la colonna nasce lì — ed è quella del precedente `prefisso_default`
+(`20260831-51`). ⛔ Ma su un database **ricostruito da zero** `00_schema` gira
+quando la tabella è ancora **vuota**: l'`UPDATE` non tocca nessuna riga, le
+famiglie arrivano dopo dal mirror, e il valore resta `NULL` in CI mentre su dev
+è popolato. ⇒ Il seed vive in `80_data`, con un **CSV dedicato** e la chiave
+naturale `codice_interno` — il pattern di `registri_fatturazione_politica_data`.
+
+📌 **E ne discende un sospetto su `prefisso_default`, che non è di questo
+brief**: seminata con un `UPDATE` in `00_schema` e assente dal mirror, potrebbe
+essere `NULL` su un database ricostruito — e a leggerla è
+`fn_provision_registri_emittente`, che darebbe ai registri nuovi un prefisso
+vuoto. **Da verificare**, non è un'affermazione.
+
+**2. Il guard della serie ha due accorgimenti che tengono in piedi il migrate**,
+e sono la ragione per cui non è un `CHECK` né un guard ingenuo:
+
+* in `UPDATE` confronta i **valori**, perché il mirror `20260127-57` riscrive
+  `serie_default` a ogni migrate e `UPDATE OF` scatta comunque;
+* il ramo «famiglia non trovata» della check **tace** — su un database
+  ricostruito il mirror dei registri gira **prima** di quello delle famiglie
+  (`includeAll` ordina per nome file), e senza quel ramo il migrate di un DB
+  nuovo fallirebbe. ⚠️ Non è fail-open: in esercizio la FK garantisce la riga, e
+  lo stato finale lo verifica il test 6.
+
+**3. La trappola dell'auto-gen è scattata.** Il corpo di `fn_get_next_progressivo`
+è stato preso dalla funzione **viva** — che è la fonte giusta per il corpo — ma
+`pg_get_functiondef` **scioglie i `%TYPE` della firma** in tipi concreti. La
+firma è stata ripresa da `20260831-06`, l'ultimo YAML che la dichiara.
+⇒ **Il corpo dal vivo, la firma dall'ultimo YAML.**
+
+### 11.3 ⚠️ Un difetto trovato leggendo l'output, non il codice
+
+Il messaggio di `E_REGISTRO_SERIE_NON_AMMESSA` diceva *«Registro %s: la famiglia
+%s…»* e riceveva `(serie, famiglia)`: a video usciva **«Registro X1»**, dove `X1`
+è la **serie**. Arità giusta — due segnaposto, due valori — e frase **falsa**.
+
+⇒ Corretto in *«La famiglia %s non gestisce le serie: questo sezionale non può
+portare la serie %s»*, coi valori riordinati.
+
+⭐ **La lezione, che vale oltre questo caso**: l'ordine dei `VARIADIC` non si
+verifica contando i segnaposto, si verifica **leggendo la frase resa**. Un
+cancello sull'arità non lo avrebbe visto.
+
+### 11.4 🔭 Cosa resta
+
+* ⚠️ **Due `reason_key`** ora emesse dal database e assenti dai `locales`, e
+  `check_i18n_keys.py` è **rosso** finché il FE non le aggiunge — è il
+  comportamento voluto (§12.3), non un incidente:
+  * `amministrazione.registri_fatturazione.forma_blocco.ha_numerato`
+  * `amministrazione.registri_fatturazione.serie_blocco.non_gestita`
+
+  ⛔ Vanno in `it.json` **e** `en.json` nello stesso giro del lavoro frontend.
+  Chi apre una PR prima di allora la trova rossa, e non per colpa sua.
+* ⚠️ **`script.fn_check_registro_forma_modificabile` ha la firma senza `%TYPE`**
+  (`p_registro_id bigint` invece di `vendite.registri_fatturazione.id%TYPE`,
+  come fa la gemella). ⛔ È in un changeSet **già pushato**, quindi non si
+  modifica. ⭐ E un changeSet correttivo sarebbe **un no-op sul database**:
+  `%TYPE` si risolve allo stesso `bigint` e la firma non sta in `prosrc`. ⇒ È un
+  **debito di sorgente**, non di comportamento: si paga alla prossima revisione
+  di quella funzione, o con un changeSet dedicato se si preferisce la coerenza
+  degli YAML. Decisione a Tid.
+* ⛔ **`commesse` resta scoperta** (§4): dichiara `colonna_serie NULL`, quindi i
+  presidi la proteggono dal prendere una serie — ma la sua unicità resta su una
+  **stringa sola**, senza registro né serie. Debito dichiarato.
