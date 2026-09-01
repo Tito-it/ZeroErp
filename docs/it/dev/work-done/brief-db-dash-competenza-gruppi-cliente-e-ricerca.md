@@ -21,7 +21,7 @@
 >
 > 📌 **Un lavoro è uscito da qui e vive altrove**: DL-2 ha trovato un costo che
 > la ricerca non c'entra (166 ms per 45 righe, il 78% per risolvere
-> `riferimento`) → [brief-db-riferimento-gruppi-lateral-costosa.md](../work-in-progress/brief-db-riferimento-gruppi-lateral-costosa.md).
+> `riferimento`) → [brief-db-riferimento-gruppi-lateral-costosa.md](brief-db-riferimento-gruppi-lateral-costosa.md).
 >
 > ⭐ **Stato al 2026-08-17 (sera): perimetro DB APPLICATO e VERDE.**
 >
@@ -893,7 +893,7 @@ della union non esiste affatto.
    righe mostrate: a 450 gruppi sono ~1,3 s, e la paginazione non contiene nulla
    perché la `LATERAL` gira prima di poter impaginare.
 
-→ Aperto **[brief-db-riferimento-gruppi-lateral-costosa.md](../work-in-progress/brief-db-riferimento-gruppi-lateral-costosa.md)**
+→ Aperto **[brief-db-riferimento-gruppi-lateral-costosa.md](brief-db-riferimento-gruppi-lateral-costosa.md)**
 (perimetro DB), con la misura, la causa dal piano e il metodo per riprodurla.
 Il beneficio va oltre questa lista: `vw_dash_fatturazione_documenti` la leggono
 anche altri consumatori.

@@ -1,0 +1,114 @@
+# ⚙️ Funzione `fn_crea_famiglia_documento`
+
+```sql
+CREATE FUNCTION fn_crea_famiglia_documento(p_codice_interno character varying, p_descrizione character varying, p_schema_tabella text, p_nome_tabella text, p_colonna_numero text, p_colonna_billing_account text, p_colonna_serie text, p_prefisso_default character varying, p_lunghezza_default integer, p_attivo boolean, p_meta jsonb)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_crea_famiglia_documento(p_codice_interno character varying, p_descrizione character varying, p_schema_tabella text, p_nome_tabella text, p_colonna_numero text, p_colonna_billing_account text, p_colonna_serie text DEFAULT NULL::text, p_prefisso_default character varying DEFAULT NULL::character varying, p_lunghezza_default integer DEFAULT 7, p_attivo boolean DEFAULT true, p_meta jsonb DEFAULT '{}'::jsonb)
+ RETURNS TABLE(famiglia_id integer, codice_interno character varying, registri_creati integer)
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE
+    v_id      vendite.famiglie_documento.id%TYPE;
+    v_codice  vendite.famiglie_documento.codice_interno%TYPE;
+    v_creati  integer;
+    v_campo   text;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Creare una famiglia di documento E provvisionarne i
+    --   registri su tutti gli emittenti, come UNA cosa sola.
+    --   Torna (id, codice_interno, registri_creati).
+    --
+    -- ⛔ Perche' una madre: sono due scritture. Se la seconda
+    --   fallisse dopo la prima, resterebbe una famiglia senza
+    --   registri — un documento promesso che non si numerera'
+    --   mai, e nessun vincolo lo dice. Una sola SELECT su
+    --   connessione autocommit e' atomica per costruzione
+    --   (§5b delle linee guida).
+    --
+    -- ⭐ Cosa NON fa: non valida i riferimenti (lo fa il guard
+    --   a10_guard_riferimenti), non scrive audit ne' tx_id (ci
+    --   sono i trigger), non ricontrolla la serie (c'e' il guard).
+    --   Fa le due scritture e le tiene insieme.
+    -- =========================================================
+
+    -- ---- I sei obbligatori --------------------------------
+    -- ⚠️ Il NOT NULL della colonna non basta: una stringa VUOTA
+    --   lo attraversa, e un codice_interno vuoto sarebbe il
+    --   bersaglio di una FK — cioe' un riferimento che non si
+    --   riesce piu' a nominare. Qui si guarda il VALORE.
+    -- ⭐ `campo` nel contesto: e' il canale con cui il frontend
+    --   accende l'input giusto. Il messaggio a catalogo resta
+    --   generico di proposito — la frase utile la compone la
+    --   maschera, che sa come si chiama quel campo a video.
+    v_campo := CASE
+        WHEN COALESCE(btrim(p_codice_interno), '')          = '' THEN 'codice_interno'
+        WHEN COALESCE(btrim(p_descrizione), '')             = '' THEN 'descrizione'
+        WHEN COALESCE(btrim(p_schema_tabella), '')          = '' THEN 'schema_tabella'
+        WHEN COALESCE(btrim(p_nome_tabella), '')            = '' THEN 'nome_tabella'
+        WHEN COALESCE(btrim(p_colonna_numero), '')          = '' THEN 'colonna_numero'
+        WHEN COALESCE(btrim(p_colonna_billing_account), '') = '' THEN 'colonna_billing_account'
+        ELSE NULL
+    END;
+
+    IF v_campo IS NOT NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_crea_famiglia_documento',
+            'E_VENDITE_VALIDATION',
+            jsonb_build_object('campo', v_campo),
+            NULL::uuid,
+            -- ⚠️ `VARIADIC ARRAY[]::text[]` e non la chiamata a
+            --   cinque argomenti: senza, PostgreSQL non risolve
+            --   la firma variadica e risponde «la funzione non
+            --   esiste» — un errore TECNICO al posto di quello di
+            --   dominio, cioe' il guard che si autoannulla.
+            --   ⭐ Il messaggio a catalogo non ha segnaposti: qui
+            --   non c'e' niente da passare, ma va passato lo
+            --   stesso, vuoto.
+            VARIADIC ARRAY[]::text[]);
+    END IF;
+
+    -- ---- 1a scrittura: la riga di catalogo -----------------
+    -- ⚠️ La stringa vuota su `colonna_serie` diventa NULL: il
+    --   vuoto e' la dichiarazione che questa famiglia una serie
+    --   non ce l'ha, e un '' salvato al posto di NULL la
+    --   renderebbe indistinguibile da una serie che si chiama
+    --   cosi'. Stesso trattamento per il prefisso.
+    INSERT INTO vendite.famiglie_documento (
+        codice_interno, descrizione, schema_tabella, nome_tabella,
+        colonna_numero, colonna_billing_account, colonna_serie,
+        prefisso_default, lunghezza_default, attivo, meta)
+    VALUES (
+        btrim(p_codice_interno), btrim(p_descrizione),
+        btrim(p_schema_tabella), btrim(p_nome_tabella),
+        btrim(p_colonna_numero), btrim(p_colonna_billing_account),
+        NULLIF(btrim(COALESCE(p_colonna_serie, '')), ''),
+        NULLIF(btrim(COALESCE(p_prefisso_default, '')), ''),
+        COALESCE(p_lunghezza_default, 7),
+        COALESCE(p_attivo, TRUE),
+        COALESCE(p_meta, '{}'::jsonb))
+    RETURNING id, vendite.famiglie_documento.codice_interno
+         INTO v_id, v_codice;
+
+    -- ---- 2a scrittura: i registri mancanti -----------------
+    -- ⚠️ Su una famiglia creata SPENTA il provisioning torna 0
+    --   per costruzione (il filtro `fd.attivo` sta nella
+    --   primitiva). Non e' un errore: e' il caso «si semina
+    --   prima, si accende dopo».
+    v_creati := vendite.fn_provision_registri_famiglia(v_codice);
+
+    RETURN QUERY SELECT v_id, v_codice, v_creati;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_crea_famiglia_documento(p_codice_interno character varying, p_descrizione character varying, p_schema_tabella text, p_nome_tabella text, p_colonna_numero text, p_colonna_billing_account text, p_colonna_serie text, p_prefisso_default character varying, p_lunghezza_default integer, p_attivo boolean, p_meta jsonb)
+IS 'MADRE del CRUD delle famiglie di documento: crea la riga di catalogo E le da'' i registri di numerazione su tutti gli emittenti, come una cosa sola. Torna (famiglia_id, codice_interno, registri_creati). ⛔ PERCHE'' UNA MADRE: sono DUE scritture, e fatte in sequenza da fuori un fallimento della seconda lascerebbe una famiglia senza registri — cioe'' una riga di catalogo che promette un documento che non si numerera'' mai, e che nessun vincolo segnala. Una sola SELECT su connessione autocommit e'' atomica per costruzione (§5b delle linee guida). ⭐ COSA NON FA, ed e'' deliberato: non valida i riferimenti (c''e'' il guard a10_guard_riferimenti), non scrive audit ne'' tx_id (ci sono i trigger), non ricontrolla la serie. Rifare qui quei controlli sarebbe il secondo elenco che diverge. ⛔ NON ESISTE una madre per l''update ne'' per il verbo attivo: sono scritture singole, e il backend le fa come gia'' fa sui registri. ⚠️ I sei campi obbligatori si controllano sul VALORE e non sul NULL: una stringa vuota attraversa il NOT NULL, e un codice_interno vuoto sarebbe il bersaglio di una FK — un riferimento che non si riesce piu'' a nominare. Il `campo` viaggia nel contesto perche'' e'' il canale con cui il frontend accende l''input giusto. ⚠️ Su una famiglia creata SPENTA il provisioning torna 0 per costruzione: e'' il caso «si semina prima, si accende dopo», non un errore. ⚠️ Il conteggio torna al chiamante perche'' ZERO su una famiglia ATTIVA significa che non c''e'' nessun emittente, e quel documento non nascera'' comunque. ⚠️ SECURITY INVOKER: scrive su una tabella senza RLS su cui zeroerp_app ha gia'' INSERT; il provisioning che chiama e'' DEFINER per conto suo. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.7 (DB-5).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

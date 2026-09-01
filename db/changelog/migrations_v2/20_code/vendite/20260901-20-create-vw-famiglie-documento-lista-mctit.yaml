@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SUPERFICIE DI LETTURA DELLE FAMIGLIE — una vista, tre lettori
+#   vendite.vw_famiglie_documento_lista
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.8 (DB-6)
+#
+# ── ⛔ PERCHE' NON BASTA IL LOOKUP GENERICO ──────────────────────
+#   dbops.fn_get_lookup_codici torna cinque colonne — id, codice,
+#   codice_interno, descrizione, attivo — e non puo' portare i default della
+#   forma ne' le due colonne di natura. Non e' un difetto del lookup: e'
+#   generico, e va lasciato generico.
+#
+# ── ⭐ TRE LETTORI, UNA SEDE ─────────────────────────────────────
+#   1) la LISTA del CRUD delle famiglie (ed e' anche la sua `vista_sql` a
+#      catalogo, §11.9: da li' il database valida ogni `campo_sorgente`);
+#   2) il suo EXPORT CSV/XLSX, che legge le stesse righe con le stesse chiavi;
+#   3) il DRAWER DEI REGISTRI, che da qui prende `prefisso_default` e
+#      `lunghezza_default` per precompilare la forma alla creazione, e
+#      `colonna_serie` / `presidia_data_documento` per decidere quali campi
+#      mostrare.
+#   ⛔ Il terzo e' quello che toglie i due letterali 'FATTURA' paralleli da
+#   backend e frontend: `presidia_data_documento` E' la colonna che risponde a
+#   quella domanda.
+#
+# ── ⚠️ IL NOME DELLE COLONNE E' IL CONTRATTO ────────────────────
+#   <ListaConfigurabile> legge `data[campo_sorgente]` e il renderer di export
+#   fa lo stesso. Un rename qui non e' un dettaglio interno: rompe le celle e
+#   il file esportato insieme, e in silenzio (cella vuota, colonna vuota).
+#
+# ── ⭐ I DUE CONTEGGI SONO DATO, NON DECORAZIONE ─────────────────
+#   `n_registri` e' il predicato che rende immutabile la struttura;
+#   `n_registri_attivi` e' quello che blocca lo spegnimento. Metterli in lista
+#   fa capire il rifiuto PRIMA di provarlo.
+#
+# ── ⚠️ security_invoker=on, ed e' obbligatorio scriverlo QUI ─────
+#   L'opzione si AZZERA a ogni CREATE OR REPLACE VIEW: una revisione futura che
+#   non la ripete trasformerebbe la vista in un bypass della RLS, in silenzio.
+#   ⚠️ Qui sotto non c'e' nessuna tabella con RLS — famiglie_documento e
+#   registri_fatturazione non ne hanno — ma la vista si allinea alle sette
+#   `vw_*_lista` esistenti: una vista di lista che si comporta diversamente
+#   dalle altre e' una trappola per chi ne scrivera' l'ottava.
+#
+# ── ⚠️ LE CAPABILITY VENGONO DALLE CHECK, NON DA UN PREDICATO ────
+#   Le due `fn_check_*` sono la sede della regola (§12.5.2). Qui si chiamano e
+#   basta: se un domani un motivo si aggiunge, la lista lo mostra senza che
+#   nessuno tocchi questa vista.
+#   ⚠️ `LEFT JOIN LATERAL ... ON TRUE`: la check risponde `[]` quando l'azione
+#   e' ammessa, e jsonb_array_elements su un array vuoto non produce righe. Con
+#   un CROSS JOIN sparirebbero dalla lista proprio le famiglie senza problemi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-20-create-vw-famiglie-documento-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260901-20-create-vw-famiglie-documento-lista
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La superficie di lettura delle famiglie di documento: tutte le colonne di catalogo, i due
+        conteggi dei registri e i due blocchi capability presi dalle check. ⛔ Serve perche'
+        dbops.fn_get_lookup_codici torna cinque colonne e non puo'' portare i default della forma ne'' le
+        colonne di natura — ed e'' generico, va lasciato generico. ⭐ TRE lettori in una sede: la lista
+        del CRUD (dove e'' anche la `vista_sql` che fa validare i campo_sorgente dal database), il suo
+        export CSV/XLSX, e il drawer dei registri, che da qui prende prefisso e lunghezza per
+        precompilare la forma e `presidia_data_documento` per sapere quali campi mostrare — cioe'' la
+        colonna che toglie i due letterali ''FATTURA'' paralleli da BE e FE. ⚠️ security_invoker=on
+        scritto qui perche'' si azzera a ogni CREATE OR REPLACE VIEW. Piano:
+        brief-be-fe-crud-registri-di-numerazione, sezione 11.8 (DB-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_check_famiglia_documento_disattivabile',
+                                       'fn_check_famiglia_documento_struttura_modificabile');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_famiglie_documento_lista
+              WITH (security_invoker = on) AS
+              SELECT
+                     -- ---- identita' -----------------------------------
+                     f.id,
+                     f.codice_interno,
+                     f.descrizione,
+                     -- ---- dove vive il documento ----------------------
+                     f.schema_tabella,
+                     f.nome_tabella,
+                     f.colonna_numero,
+                     f.colonna_serie,
+                     f.colonna_billing_account,
+                     -- ⭐ Comoda a video e nell'export: le quattro colonne
+                     --   sopra hanno senso insieme, e chi guarda la lista
+                     --   vuole sapere «dove» in una cella sola.
+                     f.schema_tabella || '.' || f.nome_tabella AS tabella_documento,
+                     -- ---- natura della famiglia -----------------------
+                     -- ⛔ E' LA COLONNA CHE TOGLIE IL LETTERALE 'FATTURA' da
+                     --   backend e frontend: la domanda «questa famiglia
+                     --   presidia la data del documento?» ha una risposta a
+                     --   catalogo, non un nome cablato.
+                     f.presidia_data_documento,
+                     -- ⭐ `gestisce_serie` e' derivata e non ridondante: il
+                     --   frontend deve decidere se offrire il campo serie, e
+                     --   la domanda che si fa e' un si'/no. Il NOME della
+                     --   colonna resta accanto, perche' e' quello che il
+                     --   controllo automatico verifica.
+                     (f.colonna_serie IS NOT NULL) AS gestisce_serie,
+                     -- ---- forma con cui nasce un registro -------------
+                     f.prefisso_default,
+                     f.lunghezza_default,
+                     -- ---- uso -----------------------------------------
+                     r.n_registri,
+                     r.n_registri_attivi,
+                     -- ---- stato e audit -------------------------------
+                     f.attivo,
+                     f.meta,
+                     f.data_insert,
+                     f.data_update,
+                     -- ---- capability: si puo' spegnere? ---------------
+                     disattiva.reason                 AS rimozione_blocco_reason,
+                     disattiva.reason_key             AS rimozione_blocco_reason_key,
+                     disattiva.dettaglio              AS rimozione_blocco_dettaglio,
+                     (disattiva.reason IS NULL)       AS can_disattivare,
+                     -- ---- capability: si puo' cambiare la struttura? ---
+                     -- ⛔ DUE COLONNE, DUE NOMI: rispondono a due domande
+                     --   diverse, e su una famiglia con registri sono spente
+                     --   entrambe per motivi diversi. Riusare una colonna per
+                     --   l'altra domanda mostra la frase sbagliata senza che
+                     --   niente fallisca.
+                     struttura.reason                 AS struttura_blocco_reason,
+                     struttura.reason_key             AS struttura_blocco_reason_key,
+                     struttura.dettaglio              AS struttura_blocco_dettaglio,
+                     (struttura.reason IS NULL)       AS can_modificare_struttura
+                FROM vendite.famiglie_documento f
+                -- ⭐ I due conteggi in una passata sola: sono il predicato dei
+                --   due guard, e mostrarli in lista fa capire il rifiuto prima
+                --   di provarlo.
+                LEFT JOIN LATERAL (
+                    SELECT count(*)                                  AS n_registri,
+                           count(*) FILTER (WHERE rr.attivo)         AS n_registri_attivi
+                      FROM vendite.registri_fatturazione rr
+                     WHERE rr.famiglia_documento = f.codice_interno
+                ) r ON TRUE
+                -- ⚠️ LEFT JOIN LATERAL ... ON TRUE e non CROSS JOIN: la check
+                --   risponde `[]` quando l'azione e' ammessa, e
+                --   jsonb_array_elements su un array vuoto non produce righe —
+                --   con un CROSS JOIN sparirebbero dalla lista proprio le
+                --   famiglie senza problemi.
+                -- ⚠️ L'ORDINE E' IL CONTRATTO: il guard solleva il PRIMO
+                --   motivo, e il tooltip deve mostrare quello stesso.
+                LEFT JOIN LATERAL (
+                    SELECT m.value ->> 'reason'     AS reason,
+                           m.value ->> 'reason_key' AS reason_key,
+                           m.value -> 'dettaglio'   AS dettaglio
+                      FROM jsonb_array_elements(
+                               script.fn_check_famiglia_documento_disattivabile(f.id)
+                           ) WITH ORDINALITY AS m(value, ord)
+                     ORDER BY m.ord
+                     LIMIT 1
+                ) disattiva ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT m.value ->> 'reason'     AS reason,
+                           m.value ->> 'reason_key' AS reason_key,
+                           m.value -> 'dettaglio'   AS dettaglio
+                      FROM jsonb_array_elements(
+                               script.fn_check_famiglia_documento_struttura_modificabile(f.id)
+                           ) WITH ORDINALITY AS m(value, ord)
+                     ORDER BY m.ord
+                     LIMIT 1
+                ) struttura ON TRUE;
+
+              COMMENT ON VIEW vendite.vw_famiglie_documento_lista
+              IS 'Superficie di lettura del catalogo delle famiglie di documento: le colonne di catalogo, i due conteggi dei registri e i due blocchi capability presi dalle check. ⛔ ESISTE PERCHE'' IL LOOKUP GENERICO NON BASTA: dbops.fn_get_lookup_codici torna id, codice, codice_interno, descrizione e attivo, e non puo'' portare i default della forma ne'' le colonne di natura — non e'' un suo difetto, e'' generico e va lasciato generico. ⭐ TRE LETTORI, UNA SEDE: la lista del CRUD delle famiglie (dove e'' anche la `vista_sql` dichiarata a catalogo, cosi'' il database valida ogni campo_sorgente contro le colonne vere), il suo export CSV/XLSX che legge le stesse righe con le stesse chiavi, e il drawer dei REGISTRI, che da qui prende prefisso_default e lunghezza_default per precompilare la forma alla creazione e presidia_data_documento / colonna_serie per decidere quali campi mostrare. ⛔ Quest''ultimo e'' cio'' che toglie i due letterali ''FATTURA'' paralleli da backend e frontend: presidia_data_documento E'' la colonna che risponde a quella domanda. ⚠️ IL NOME DELLE COLONNE E'' IL CONTRATTO: <ListaConfigurabile> legge data[campo_sorgente] e il renderer di export fa lo stesso, quindi un rename qui rompe le celle e il file esportato insieme, e in silenzio. ⭐ I due conteggi sono DATO: n_registri e'' il predicato che rende immutabile la struttura, n_registri_attivi quello che blocca lo spegnimento — mostrarli fa capire il rifiuto prima di provarlo. ⛔ DUE BLOCCHI CAPABILITY, DUE NOMI: rimozione_* risponde a «posso spegnerla?», struttura_* a «posso cambiarle le colonne?»; su una famiglia con registri sono spenti entrambi per motivi diversi, e riusare uno per l''altra domanda mostrerebbe la frase sbagliata senza che niente fallisca. ⚠️ LEFT JOIN LATERAL ... ON TRUE e non CROSS JOIN: la check risponde [] quando l''azione e'' ammessa, e con un CROSS JOIN sparirebbero dalla lista proprio le famiglie senza problemi. ⚠️ security_invoker=on e'' scritto nel changeSet perche'' si AZZERA a ogni CREATE OR REPLACE VIEW: una revisione che non lo ripete trasforma la vista in un bypass della RLS, in silenzio. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.8 (DB-6).';
+
+              -- ⚠️ Solo SELECT: e' una superficie di LETTURA. Le scritture
+              --   passano dalla madre e dagli UPDATE sulla tabella, dove i
+              --   guard sono montati — una vista aggiornabile qui sarebbe una
+              --   seconda porta senza portiere.
+              GRANT SELECT ON vendite.vw_famiglie_documento_lista TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_famiglie_documento_lista;

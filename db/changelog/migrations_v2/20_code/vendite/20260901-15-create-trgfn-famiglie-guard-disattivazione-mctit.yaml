@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NON SI SPEGNE UNA FAMIGLIA CHE E' ANCORA LA REGOLA DI QUALCUNO
+#   vendite.trgfn_famiglie_documento_guard_disattivazione
+#   trg_famiglie_documento_a10_guard_disattivazione_upd
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2)
+#
+# ── ⛔ COSA SI STA DIFENDENDO ────────────────────────────────────
+#   Non la coerenza di un catalogo: un PRESIDIO. Le due funzioni che rispondono
+#   «questo billing account ha gia' documenti numerati?» iterano
+#   `WHERE fd.attivo`. Una famiglia spenta esce dal giro, e da quel momento i
+#   suoi documenti non trattengono piu' il BA presso l'emittente che li ha
+#   numerati. ⚠️ Nessun errore, nessun log: semplicemente il controllo guarda
+#   in un posto in meno.
+#
+# ── ⭐ IL PREDICATO NON E' QUI (§12.5.2) ─────────────────────────
+#   Il guard CHIAMA script.fn_check_famiglia_documento_disattivabile e solleva
+#   il codice del PRIMO motivo. Cosi' il rifiuto e il cestino spento della
+#   lista non «coincidono oggi»: non POSSONO divergere.
+#
+# ── ⛔ SOLO LA TRANSIZIONE VERSO SPENTO ──────────────────────────
+#   Riaccendere una famiglia e' sempre lecito: rimette in gioco un presidio,
+#   non lo toglie. Il guard guarda `OLD.attivo AND NOT NEW.attivo`, non
+#   `NOT NEW.attivo`.
+#
+# ── ⭐ E L'USCITA SUL NO-OP, CHE QUI E' OBBLIGATORIA ─────────────
+#   `UPDATE OF` scatta quando lo statement NOMINA la colonna, anche a valore
+#   invariato — e il mirror CSV 20260830-14 riscrive `attivo` a OGNI migrate,
+#   con lo stesso valore. Senza il confronto, ogni migrate fallirebbe.
+#   ⚠️ E' lo stesso accorgimento gia' scritto in
+#   vendite.trgfn_registri_fatturazione_guard_serie_ammessa: qui non e' una
+#   raffinatezza, e' la condizione per cui la decisione D1 (mirror accesi) sta
+#   in piedi.
+#
+# ── ⚠️ UN TRIGGER E NON UN CHECK ─────────────────────────────────
+#   La condizione attraversa vendite.registri_fatturazione e le cinque tabelle
+#   dei documenti: un CHECK non fa sottoquery.
+#
+# ── ⚠️ SOLO UPDATE, MAI INSERT ───────────────────────────────────
+#   Una famiglia che NASCE spenta e' legittima (si semina prima, si accende
+#   dopo) e non ha figli per definizione. Montare il guard anche in INSERT
+#   avrebbe in piu' il difetto noto di OSCURARE i CHECK della tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-15-create-trgfn-famiglie-guard-disattivazione-mctit.yaml
+
+  - changeSet:
+      id: 20260901-15-create-trgfn-famiglie-guard-disattivazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard `_a10_` su vendite.famiglie_documento: non si spegne una famiglia che ha ancora registri
+        accesi o documenti numerati. ⛔ Non difende un catalogo, difende un PRESIDIO: le due funzioni
+        che rispondono «questo billing account ha storia?» iterano `WHERE fd.attivo`, quindi una
+        famiglia spenta esce dal giro e i suoi documenti smettono di trattenere il BA. ⭐ §12.5.2 — il
+        predicato non e'' qui: si chiama script.fn_check_famiglia_documento_disattivabile e si solleva
+        il primo motivo. ⛔ Solo la transizione verso spento; riaccendere e'' sempre lecito. ⭐ Uscita
+        sul NO-OP obbligatoria: il mirror CSV riscrive `attivo` a ogni migrate e `UPDATE OF` scatta
+        comunque. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            # ⛔ La check deve esistere: senza, il guard non avrebbe un
+            #    predicato da chiamare e il trigger nascerebbe rotto.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_famiglia_documento_disattivabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare lo spegnimento di una famiglia di documento
+                  --   che ha ancora registri accesi o documenti numerati.
+                  --
+                  -- ⛔ Perche': anagrafiche.fn_ba_ha_storia_emittente itera
+                  --   `WHERE fd.attivo`. Spegnere la famiglia non nasconde una
+                  --   voce di catalogo: toglie i suoi documenti dal presidio
+                  --   sul cambio emittente del billing account. Nessun errore,
+                  --   nessun log — il controllo guarda in un posto in meno.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Il guard chiama
+                  --   script.fn_check_famiglia_documento_disattivabile e
+                  --   solleva il codice del PRIMO motivo, cosi' il rifiuto e
+                  --   il cestino spento della lista non possono divergere.
+                  -- =========================================================
+
+                  -- ⭐ IL NO-OP PASSA, ed e' la riga che tiene in piedi il
+                  --   migrate: `UPDATE OF` scatta quando lo statement NOMINA la
+                  --   colonna, anche a valore invariato, e il mirror CSV
+                  --   20260830-14 riscrive `attivo` a OGNI migrate.
+                  -- ⛔ E si guarda la TRANSIZIONE, non lo stato: riaccendere
+                  --   una famiglia rimette in gioco un presidio, non lo toglie.
+                  IF NOT (OLD.attivo AND NOT NEW.attivo) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_famiglia_documento_disattivabile(OLD.id);
+
+                  -- Nessun motivo: la famiglia non e' piu' la regola di
+                  -- nessuno e si puo' ritirare.
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ Niente `campo` nel contesto: non c'e' un input da
+                  --   correggere: l'operatore ha premuto un interruttore, e
+                  --   quello che non va e' la situazione. Il verbo e' `attivo`,
+                  --   e il frontend spegne il pulsante, non accende un campo.
+                  -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
+                  --   scatta PRIMA di trg_famiglie_documento_gen_tx_id_ins_upd
+                  --   (ordine alfabetico: 'a10' < 'gen'), quindi NEW.tx_id qui
+                  --   porta ancora il valore vecchio.
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_famiglie_documento_guard_disattivazione',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre.
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()
+              IS 'Guard `_a10_` su vendite.famiglie_documento: rifiuta lo spegnimento di una famiglia che ha ancora registri accesi o documenti numerati. ⛔ PERCHE'': non si difende la coerenza di un catalogo, si difende un PRESIDIO — anagrafiche.fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba iterano `WHERE fd.attivo`, quindi una famiglia spenta esce dal giro e i suoi documenti smettono di trattenere il billing account presso l''emittente che li ha numerati. Nessun errore e nessun log: il controllo guarda semplicemente in un posto in meno. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_famiglia_documento_disattivabile e si solleva il codice del PRIMO motivo, cosi'' il rifiuto e il cestino spento della lista non possono divergere. ⛔ SOLO LA TRANSIZIONE VERSO SPENTO (`OLD.attivo AND NOT NEW.attivo`): riaccendere rimette in gioco un presidio, non lo toglie. ⭐ L''USCITA SUL NO-OP E'' OBBLIGATORIA: `UPDATE OF` scatta quando lo statement NOMINA la colonna anche a valore invariato, e il mirror CSV 20260830-14 riscrive `attivo` a ogni migrate — senza il confronto ogni migrate fallirebbe. ⚠️ Niente `campo` nel contesto: l''operatore ha premuto un interruttore, non compilato un input; il frontend spegne il pulsante col motivo. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2).';
+
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_disattivazione_upd
+                  ON vendite.famiglie_documento;
+
+              CREATE TRIGGER trg_famiglie_documento_a10_guard_disattivazione_upd
+                  BEFORE UPDATE OF attivo
+                  ON vendite.famiglie_documento
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione();
+
+              COMMENT ON TRIGGER trg_famiglie_documento_a10_guard_disattivazione_upd
+                  ON vendite.famiglie_documento
+              IS 'Una famiglia di documento non si spegne finche'' ha registri accesi o documenti numerati. ⛔ Solo UPDATE, mai INSERT: una famiglia che NASCE spenta e'' legittima e non ha figli per definizione, e un guard BEFORE ROW montato in INSERT oscurerebbe i CHECK della tabella. ⚠️ In UPDATE la funzione esce subito sul no-op, cosi'' il mirror CSV che riscrive `attivo` a ogni migrate non lo sveglia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_disattivazione_upd
+                  ON vendite.famiglie_documento;
+              DROP FUNCTION IF EXISTS vendite.trgfn_famiglie_documento_guard_disattivazione();

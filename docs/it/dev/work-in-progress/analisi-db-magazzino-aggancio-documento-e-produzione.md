@@ -1,4 +1,4 @@
-# Brief DB — magazzino: come un movimento dice da dove viene, e perché oggi non lo può dire per la produzione
+# Analisi DB — magazzino: come un movimento dice da dove viene, e perché oggi non lo può dire per la produzione
 
 > **Destinatario:** team DB (`dev/db-tid`).
 >
@@ -15,11 +15,20 @@
 > **zero righe in tutte le tabelle operative**, quindi nessuna bonifica dati e
 > nessun vincolo storico da rispettare. Ciò che si decide qui si decide libero.
 >
-> **Stato:** 🔵 **APERTO — analisi e decisioni da prendere.** Nessun changeSet
+> **Stato:** 🔵 **APERTO — è un'ANALISI, non un piano.** Nessun changeSet
 > scritto, niente applicato. Le decisioni stanno in §8 e vanno prese **prima**
 > che si scriva la prima riga di `magazzino`.
 >
-> ⚠️ **Perimetro di questo brief:** solo l'**aggancio al documento di origine** e
+> 📌 **Declassato ad analisi il 2026-09-01** (decisione di Tid), e rinominato da
+> `brief-db-…` a `analisi-db-…`: ⭐ è la stessa distinzione già usata dal cantiere
+> numerazione, dove l'**analisi** dice *perché* e il **brief** dice *cosa si fa*.
+> ⛔ **Di questo documento non esce nessuna modifica certa**, ed è il suo esito
+> vero: ogni voce qui dentro è agganciata a una delle D-1 → D-8. Il piano
+> operativo delle sole modifiche **certe** vive in
+> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
+> e sta quasi tutto su `vendite` e `catalogo`.
+>
+> ⚠️ **Perimetro di questa analisi:** solo l'**aggancio al documento di origine** e
 > ciò che serve perché regga anche per la produzione. Il resto di *«cosa manca a
 > magazzino»* — valorizzazione, giacenza, ubicazioni, lotti/seriali, il rapporto
 > fra `causali.segno` e `movimenti.qta` — è l'**analisi successiva**, concordata
@@ -361,7 +370,7 @@ fuori, per l'**analisi successiva** su «cosa serve / cosa manca a magazzino»:
 - ⭐ **Il brief gemello, lato `vendite`** (2026-09-01): dove il ciclo si può
   fermare, perché non è la commessa, e le dimensioni che al ciclo di vendita
   mancano comunque —
-  [brief-db-commessa-e-produzione-predisposizione.md](brief-db-commessa-e-produzione-predisposizione.md).
+  [analisi-db-commessa-e-produzione-predisposizione.md](analisi-db-commessa-e-produzione-predisposizione.md).
   ⚠️ La sua §7 è la **gemella della D-5** qui sotto e va decisa insieme.
 - Convenzione della sorgente polimorfa:
   [sorgente-polimorfa.md](../../guide/sorgente-polimorfa.md)
