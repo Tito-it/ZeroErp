@@ -1,0 +1,297 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — `riferimento` SI RISOLVE DALLA SORGENTE, NON DAL MOTORE DI FATTURAZIONE
+#   Piano: brief-db-riferimento-gruppi-lateral-costosa §4 e §5
+#
+#   Cambia UNA COSA: come si ottengono `riferimento` e `documento_id`. Nessuna
+#   colonna cambia nome, tipo o posizione — i tipi coincidono gia'
+#   (text / bigint da una parte e dall'altra), quindi e' un CREATE OR REPLACE
+#   secco, senza DROP e senza cascade su vw_dash_competenza_gruppi_riepilogo.
+#
+# ── ⛔ IL PREDICATO DI PRIMA NON ERA INDICIZZABILE, E NON POTEVA DIVENTARLO ──
+#   La LATERAL confrontava `(uid)::text = sorgente_uid`. Il cast uuid → text non
+#   ha una entry in pg_cast: e' un CoerceViaIO, e contain_leaked_vars() lo
+#   dichiara LEAKY perche' uuid_out e textin hanno entrambe proleakproof = f.
+#   Un quale leaky NON PUO' essere valutato prima del security qual della RLS,
+#   quindi non puo' mai diventare un Index Cond. Non e' una scelta del planner.
+#   ⭐ Provato il 2026-09-01, stessa query, tre ruoli:
+#     - zeroerp_app + RLS, `(uid)::text = 'zzz'`  → Seq Scan (quale nel Filter)
+#     - zeroerp_app + RLS, `uid = '…'::uuid`      → Index Scan uq_preventivi_uid
+#     - owner, niente RLS, `(uid)::text = 'zzz'`  → Index Scan ix_preventivi_uid_text
+#   ⛔ Quindi ix_preventivi_uid_text e' morto sul percorso applicativo, e gli
+#   indici funzionali sugli altri cinque rami sarebbero morti alla nascita.
+#
+# ── ⛔ E ANCHE CON L'INDICE, LA LATERAL APRIVA SEI TESTATE PER GRUPPO ────────
+#   `d.area = s.area` e' un quale CORRELATO, non una costante: non pota
+#   l'Append in fase di piano. Il piano conteneva sei Seq Scan — preventivi,
+#   ordini, ddt, contratti, offerte_commerciali, commesse — comunque, per
+#   tenere DUE colonne. Ricostruiva l'intero motore di fatturazione (CTE righe,
+#   viste di smistamento, EXISTS per riga su commesse_attivita) e ne buttava
+#   via il 99%.
+#   ⭐ E lo pagavano anche vw_dash_competenza_gruppi_riepilogo (totali + facet)
+#   e fn_list_emittibili_lane, che `riferimento` non lo leggono MAI: PostgreSQL
+#   non puo' eliminare una LEFT JOIN LATERAL inutilizzata.
+#
+# ── ⭐ LA PRIMITIVA ESISTEVA GIA', E LA USA LA LENTE GEMELLA ────────────────
+#   vendite.fn_get_sorgente_documento_ref(sorgente_tipo_id, sorgente_uid)
+#   restituisce (documento_id, documento_numero) — esattamente le due colonne —
+#   leggendo UNA tabella, quella dichiarata da config.sorgenti.target_table, con
+#   `WHERE t.uid = $1` passando `USING v_uid::uuid`: la forma leakproof, che
+#   sotto RLS prende l'index scan. E' gia' il resolver di
+#   fn_list_commessa_attivita, fn_annulla_commessa_attivita e
+#   fn_genera_ddt_riconsegna. Qui si smette di duplicarla.
+#
+# ── ⭐ SPARISCE IL `LIMIT 1`, ED E' UN GUADAGNO DI SOSTANZA ────────────────
+#   Non era una scelta: vw_dash_fatturazione_documenti NON e' unica per
+#   documento — vw_dash_fatturazione_commesse raggruppa per ca.competenza_mese,
+#   quindi una commessa emette una riga per mese. L'ORDER BY … LIMIT 1 era
+#   de-duplicazione forzata dalla sorgente sbagliata, e il presidio anti-fan-out
+#   (test-vw-dash-competenza-gruppi-cliente-v1 test 3) era verde GRAZIE a
+#   quello. Col resolver il documento e' unico per costruzione, e quel test
+#   diventa verde per la ragione giusta.
+#
+# ── ⚠️ IL GUARD `s.area IS NOT NULL` RESTA, ED E' SEMANTICO ────────────────
+#   Nella LATERAL vecchia sembrava difensivo (evitare un join NULL-vs-NULL).
+#   Il suo EFFETTO pero' e' di dominio: una sorgente senza `area` — ATTIVITA,
+#   ATTIVITA_CONSUMI, le *_RIGA — non e' un documento che il cruscotto sappia
+#   aprire, e `documento_id` per quei gruppi deve restare NULL. Senza il guard
+#   il resolver restituirebbe l'id di attivita_fatturabili in una colonna che
+#   significa «l'id del documento sorgente»: un valore vero in un campo che
+#   afferma un'altra cosa. Quindi il guard e' portato nella ON.
+#
+# ── ⚠️ COSA CAMBIA A VIDEO, ED E' VOLUTO ──────────────────────────────────
+#   Sui gruppi la cui sorgente e' esclusa dai resolver — preventivo superato da
+#   una revisione (WHERE p.is_attiva, dove is_attiva = NOT is_abortito AND NOT
+#   is_superata), DDT con causale non fatturabile — oggi `riferimento` ripiega
+#   sulla `gruppo_key` e a video esce «PREVENTIVO:01a0581a-…» in grassetto,
+#   la ricerca per numero NON trova la riga, e `documento_id` NULL fa sparire
+#   la voce «Apri documento». Da qui esce il numero vero, la ricerca funziona e
+#   il pulsante torna.
+#   ⭐ Decisione D-1 (Tid, 2026-09-01): il pulsante apre la REVISIONE SPINTA,
+#   non la corrente — e' quella da cui vengono quantita' e prezzi che si stanno
+#   per fatturare. E' anche cio' che si ottiene senza scrivere niente: il
+#   resolver risolve per uid, e l'uid e' quello della riga spinta.
+#   ⚠️ Il testo a video e' identico nei due casi (label_selector = `numero`,
+#   condiviso fra le revisioni): la decisione riguarda solo l'id dell'azione.
+#
+# ── ⚠️ security_invoker=on RI-SPECIFICATA ─────────────────────────────────
+#   Non compare in pg_get_viewdef e PostgreSQL la azzera in silenzio a ogni
+#   CREATE OR REPLACE → bypass RLS. Presidio: test-vw-dash-security-invoker.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-04-update-vw-dash-competenza-gruppi-riferimento-da-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260901-04-update-vw-dash-competenza-gruppi-riferimento-da-sorgente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-1: `riferimento` e `documento_id` si risolvono con
+        vendite.fn_get_sorgente_documento_ref(sorgente_tipo_id, sorgente_uid) invece che con
+        una LEFT JOIN LATERAL su vw_dash_fatturazione_documenti — cioe' su una UNION dei sei
+        resolver della fatturazione. ⛔ Il predicato di prima, `(uid)::text = sorgente_uid`,
+        non era indicizzabile sotto RLS e non poteva diventarlo: il cast uuid → text e' un
+        CoerceViaIO e uuid_out/textin non sono leakproof, quindi il quale non puo' essere
+        valutato prima del security qual e non diventa mai un Index Cond (ix_preventivi_uid_text
+        e' morto sul percorso applicativo, e gli indici sugli altri cinque rami sarebbero morti
+        alla nascita). ⛔ E anche con l'indice la LATERAL apriva SEI Seq Scan per gruppo, perche'
+        `d.area = s.area` e' correlato e non pota l'Append: la pagavano pure il riepilogo e
+        fn_list_emittibili_lane, che `riferimento` non lo leggono mai. ⭐ Sparisce l'ORDER BY …
+        LIMIT 1, che era de-duplicazione forzata (vw_dash_fatturazione_commesse emette una riga
+        per mese): il documento ora e' unico per costruzione. ⚠️ Il guard `s.area IS NOT NULL`
+        resta nella ON ed e' semantico: una sorgente senza area non e' un documento apribile e
+        `documento_id` deve restare NULL. ⚠️ Cambia a video sui gruppi la cui sorgente e' esclusa
+        dai resolver (preventivo superato da revisione, DDT con causale non fatturabile): esce il
+        numero vero al posto della gruppo_key, la ricerca lo trova e «Apri documento» torna —
+        sulla REVISIONE SPINTA (decisione D-1). ⚠️ Nessuna colonna cambia nome, tipo o posizione;
+        security_invoker=on ri-specificata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_dash_competenza_gruppi
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_sorgente_documento_ref'
+                     AND p.pronargs = 2;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min((a.registro_codice)::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  -- ⭐ `riferimento` dal resolver di catalogo: una tabella sola,
+                  --    `WHERE t.uid = $1` (leakproof), invece della UNION dei sei
+                  --    rami della fatturazione. Il ripiego resta quello di sempre:
+                  --    gli oneri di commessa un documento non ce l'hanno.
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  -- ⚠️ Dalla STESSA riga di `riferimento`: codice e id non possono
+                  --    descrivere documenti diversi. E' l'invariante che il BE
+                  --    dichiara e su cui costruisce l'azione «apri».
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  (cardinality(g.registri_ids))::smallint AS registri_n,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id))
+                   -- ⚠️ `s.area IS NOT NULL` nella ON, non nella funzione: una
+                   --    sorgente senza area (ATTIVITA, ATTIVITA_CONSUMI, le
+                   --    *_RIGA) non e' un documento che il cruscotto sappia
+                   --    aprire, e `documento_id` per quei gruppi deve restare
+                   --    NULL come prima. Il resolver, chiamato, restituirebbe
+                   --    l'id della target_table: un valore vero in una colonna
+                   --    che afferma un'altra cosa.
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(
+                               g.sorgente_tipo_id, g.sorgente_uid) doc
+                          ON ((s.area IS NOT NULL))
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                  'Lente 1 Competenza, gruppi fatturabili: l''unita'' dell''emissione mirata. '
+                  'Una riga per (competenza_mese, gruppo_key). security_invoker=on (scope '
+                  'emittente). '
+                  '⭐ Rev 2026-09-01 (P-1, brief-db-riferimento-gruppi-lateral-costosa): '
+                  '`riferimento` e `documento_id` arrivano da '
+                  'vendite.fn_get_sorgente_documento_ref(sorgente_tipo_id, sorgente_uid) e non '
+                  'piu'' da una LEFT JOIN LATERAL su vw_dash_fatturazione_documenti. '
+                  '⛔ Il perche'' non e'' la velocita'': il predicato di prima, '
+                  '`(uid)::text = sorgente_uid`, NON e'' indicizzabile sotto RLS e non puo'' '
+                  'diventarlo — il cast uuid → text e'' un CoerceViaIO e uuid_out/textin non '
+                  'sono leakproof, quindi il quale non puo'' essere valutato prima del security '
+                  'qual e non diventa mai un Index Cond. Chi in futuro trovasse '
+                  'ix_preventivi_uid_text inutilizzato e pensasse di aggiungere lo stesso '
+                  'indice sugli altri cinque rami costruirebbe cinque indici morti. '
+                  '⛔ E la LATERAL apriva SEI Seq Scan per gruppo comunque, perche'' '
+                  '`d.area = s.area` e'' correlato e non pota l''Append: la pagavano anche '
+                  'vw_dash_competenza_gruppi_riepilogo e fn_list_emittibili_lane, che '
+                  '`riferimento` non lo leggono mai. '
+                  '⭐ Sparisce l''ORDER BY … LIMIT 1: era de-duplicazione forzata dalla '
+                  'sorgente sbagliata (vw_dash_fatturazione_commesse emette una riga per mese, '
+                  'quindi un documento poteva uscire piu'' volte). Ora il documento e'' unico '
+                  'per costruzione, e il presidio anti-fan-out non dipende piu'' da un '
+                  '«prendine una». '
+                  '⚠️ Il guard `s.area IS NOT NULL` e'' passato nella ON ed e'' SEMANTICO, non '
+                  'difensivo: una sorgente senza area (ATTIVITA, ATTIVITA_CONSUMI, le *_RIGA) '
+                  'non e'' un documento apribile, e `documento_id` per quei gruppi deve restare '
+                  'NULL — il resolver, chiamato, restituirebbe l''id della target_table, cioe'' '
+                  'un valore vero in una colonna che afferma un''altra cosa. '
+                  '⚠️ Effetto voluto sui gruppi la cui sorgente e'' esclusa dai resolver — '
+                  'preventivo superato da una revisione (is_attiva = NOT is_abortito AND NOT '
+                  'is_superata), DDT con causale non fatturabile: prima `riferimento` ripiegava '
+                  'sulla gruppo_key (a video «PREVENTIVO:01a0…», non trovabile dalla ricerca per '
+                  'numero) e `documento_id` NULL faceva sparire l''azione «apri». Ora esce il '
+                  'numero e l''azione torna. ⭐ Decisione D-1: apre la REVISIONE SPINTA, non la '
+                  'corrente — e'' quella da cui vengono quantita'' e prezzi che si stanno per '
+                  'fatturare. Il testo a video e'' identico nei due casi (label_selector = '
+                  'numero, condiviso fra le revisioni): cambia solo l''id dell''azione. '
+                  'Rev 2026-08-18 (P-4, brief perimetro-emittente Q4): espone '
+                  'emittente_ragione_sociale, non piu'' il solo emittente_soggetto_ruolo_id — un '
+                  'id a video non dichiara l''emittente, lo nasconde meglio. E'' la lista PILOTA '
+                  'del giro P-4 perche'' e'' quella da cui parte l''emissione mirata: si spuntano '
+                  'i gruppi e si fattura. '
+                  'Rev 2026-08-26 (L5, brief-db-registro-e-data-prevista-in-competenza): quattro '
+                  'colonne in coda — registri_ids, registri_n, registro_codice, '
+                  'data_documento_prevista. ⛔ «UNO OPPURE N» (decisione D-2): un gruppo puo'' '
+                  'toccare piu'' sezionali per costruzione — la chiave del gruppo non contiene ne'' '
+                  'tipo documento ne'' natura, che sono colonne di RIGA — e in quel caso codice e '
+                  'data restano VUOTI. Mai il primo che capita: un min() o un LIMIT 1 darebbe un '
+                  'valore plausibile che descrive meta'' di cio'' che sta per succedere. I due '
+                  'min() qui ci sono, ma dentro un CASE che ha gia'' verificato che l''insieme '
+                  'abbia un elemento solo. '
+                  '⭐ registri_ids e'' l''elemento PORTANTE e non un extra: e'' cio'' su cui il '
+                  'backend filtra per sezionale (decisione D-5), con %% = ANY(registri_ids). '
+                  'Filtrare su registro_codice non funzionerebbe — su un gruppo multi-sezionale '
+                  'e'' NULL per decisione, quindi il gruppo sparirebbe da ENTRAMBI i filtri, cioe'' '
+                  'proprio quello che ha piu'' bisogno di essere visto. La domanda giusta e'' '
+                  '«questo gruppo TOCCA quel sezionale?». '
+                  '⭐ registri_n non e'' una seconda verita'': e'' cardinality(registri_ids), la '
+                  'stessa espressione con due nomi, calcolata nella stessa vista. '
+                  '⚠️ array_agg INCLUDE i NULL mentre count(DISTINCT) li scarta in silenzio: e'' '
+                  'cosi'' che un gruppo con una riga risolta e una NON risolvibile conta 2 e legge '
+                  '«piu'' registri», invece di mostrare un sezionale solo. E su un gruppo '
+                  'interamente fatturato — dove la previsione e'' azzerata a monte per la '
+                  'decisione D-9 — l''array e'' {NULL}, cardinalita'' 1, con codice e data a NULL: '
+                  'a video «—». '
+                  '⛔ La frase «piu'' registri» NON nasce qui (decisione D-4): il database dice '
+                  'QUANTI sono, il testo lo mette BE/FE. Una vista che restituisse quella stringa '
+                  'scriverebbe italiano dentro il database, e il prodotto ha it.json E en.json; '
+                  'il precedente giusto e'' in questa stessa vista, dove tipo_gruppo restituisce '
+                  'un CODICE e non una frase.';
