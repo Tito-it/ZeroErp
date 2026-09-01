@@ -26,11 +26,18 @@ Indice test eseguiti:
  4) utente_anonimo_non_chiama_il_guard           — prima viene l'autenticazione
  5) il_guard_precede_il_metodo_http              — nessun dato servito se rifiuta
  6) vale_anche_per_il_post                       — non solo per le letture
+ 7) emittente_esplicito_dalla_query              — la richiesta che ne FISSA uno
+ 8) emittente_esplicito_assente_resta_none       — parametro dichiarato e non passato
+ 9) emittente_esplicito_doppio_non_fissa_niente  — `?e=1&e=2` non e' una scelta
+10) parametro_non_dichiarato_non_si_legge        — la query non conta da sola
+11) emittente_esplicito_non_numerico_non_vale    — `?e=pippo` non e' un id
 """
 
 from contextlib import ExitStack, contextmanager
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+from django.http import QueryDict
 
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -47,6 +54,14 @@ class _ViewSenzaLista(DomainAPIView):
 class _ViewConLista(DomainAPIView):
     area_funzionale = "vendite"
     lista_codice = "vendite.dash_competenza_gruppi"
+
+
+# La forma dei tab-lista dentro il drawer di un emittente: la lista non e'
+# certificata multi-emittente, ma la richiesta ne FISSA uno.
+class _ViewConEmittenteEsplicito(DomainAPIView):
+    area_funzionale = "vendite"
+    lista_codice = "vendite.registri_numerazione"
+    lista_emittente_param = "emittente_soggetto_ruolo_id"
 
 
 # Scopo: neutralizza i pezzi di `APIView.initial()` che non c'entrano col
@@ -73,19 +88,23 @@ def _catena_drf_neutralizzata():
 
 
 # Scopo: costruisce una request finta con l'identita' richiesta.
-def _request(*, autenticato=True, metodo="GET"):
+# ⚠️ `query_params` e' un `QueryDict` VERO e non un mock: e' l'unica struttura
+#    che distingue «un valore» da «due valori con lo stesso nome», che e'
+#    precisamente la differenza fra fissare un emittente e non fissarlo.
+def _request(*, autenticato=True, metodo="GET", query: str = ""):
     request = MagicMock()
     request.method = metodo
     request.user = MagicMock()
     request.user.is_authenticated = autenticato
+    request.query_params = QueryDict(query)
     return request
 
 
 # Scopo: invoca `initial()` — il punto della catena DRF in cui il cancello vive:
 #        autenticazione e permessi sono gia' risolti, nessun `get`/`post` e'
 #        ancora partito.
-def _esegui_initial(view_class, *, autenticato=True, metodo="GET"):
-    request = _request(autenticato=autenticato, metodo=metodo)
+def _esegui_initial(view_class, *, autenticato=True, metodo="GET", query: str = ""):
+    request = _request(autenticato=autenticato, metodo=metodo, query=query)
     with _catena_drf_neutralizzata():
         view_class().initial(request)
     return request
@@ -105,6 +124,7 @@ class BaseViewPerimetroEmittenteTests(TestCase):
         mock_guard.assert_called_once_with(
             user=request.user,
             lista_codice="vendite.dash_competenza_gruppi",
+            emittente_esplicito=None,
         )
 
     @patch(_GUARD, side_effect=ServiceError(
@@ -178,3 +198,56 @@ class BaseViewPerimetroEmittenteTests(TestCase):
         mostrare."""
         _esegui_initial(_ViewConLista, metodo="POST")
         mock_guard.assert_called_once()
+
+    # 7-10. L'emittente esplicito: la meta' che rende il cancello utilizzabile
+    #       dentro il drawer di un emittente senza spegnerlo altrove.
+    @patch(_GUARD)
+    def test_emittente_esplicito_dalla_query(self, mock_guard) -> None:
+        request = _esegui_initial(
+            _ViewConEmittenteEsplicito, query="emittente_soggetto_ruolo_id=42"
+        )
+        mock_guard.assert_called_once_with(
+            user=request.user,
+            lista_codice="vendite.registri_numerazione",
+            emittente_esplicito=42,
+        )
+
+    @patch(_GUARD)
+    def test_emittente_esplicito_assente_resta_none(self, mock_guard) -> None:
+        """Dichiarare il parametro non basta: deve ARRIVARE."""
+        _esegui_initial(_ViewConEmittenteEsplicito)
+        self.assertIsNone(mock_guard.call_args.kwargs["emittente_esplicito"])
+
+    @patch(_GUARD)
+    def test_emittente_esplicito_doppio_non_fissa_niente(self, mock_guard) -> None:
+        """⛔ `?e=1&e=2` e' l'ambiguita' che il cancello esiste per rifiutare.
+
+        Leggerne uno solo — che e' quello che farebbe un `.get()` distratto —
+        trasformerebbe due emittenti in un lasciapassare.
+        """
+        _esegui_initial(
+            _ViewConEmittenteEsplicito,
+            query="emittente_soggetto_ruolo_id=42&emittente_soggetto_ruolo_id=7",
+        )
+        self.assertIsNone(mock_guard.call_args.kwargs["emittente_esplicito"])
+
+    @patch(_GUARD)
+    def test_parametro_non_dichiarato_non_si_legge(self, mock_guard) -> None:
+        """La query da sola non conta: e' la VIEW a dire quale parametro fissa
+        l'emittente, perche' e' l'unica a sapere quale dei due nomi usa
+        (soggetto-ruolo o PK dell'emittente fiscale)."""
+        _esegui_initial(_ViewConLista, query="emittente_soggetto_ruolo_id=42")
+        self.assertIsNone(mock_guard.call_args.kwargs["emittente_esplicito"])
+
+    @patch(_GUARD)
+    def test_emittente_esplicito_non_numerico_non_vale(self, mock_guard) -> None:
+        """⛔ `?e=pippo` non fissa niente.
+
+        Non e' un controllo di autorizzazione — quello lo fanno scope e RLS —
+        ma una stringa che non e' un id non rende leggibile la schermata, e
+        accettarla regalerebbe un modo banale di spegnere il pannello.
+        """
+        _esegui_initial(
+            _ViewConEmittenteEsplicito, query="emittente_soggetto_ruolo_id=pippo"
+        )
+        self.assertIsNone(mock_guard.call_args.kwargs["emittente_esplicito"])

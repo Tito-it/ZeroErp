@@ -31,12 +31,16 @@ import {
  * Composable per una singola lista identificata da `codice`.
  *
  * @param {string} codice - codice stabile della lista (es. 'anagrafiche.clienti')
+ * @param {object} [opzioni]
+ * @param {Function|string|number} [opzioni.emittenteEsplicito] - l'emittente
+ *   gia' fissato dal contesto che apre la lista (getter o valore). Viaggia
+ *   verso il backend, che ne ricava `richiede_scelta_emittente`.
  * @returns {{
  *   config, catalogo, dirty, loading, savedSnapshot,
  *   load, ensureCatalogo, applyChange, save, reset
  * }}
  */
-export function useListaConfig(codice) {
+export function useListaConfig(codice, opzioni = {}) {
   // Configurazione corrente (mutata localmente da applyChange).
   // Shape allineata al payload accettato da PUT /preferenza/:
   //   {colonne[], ordinamento[], filtri{}, pagina_dimensione}
@@ -71,9 +75,22 @@ export function useListaConfig(codice) {
   //        Reset di dirty + snapshot. Ritorna la config se ok, null se
   //        fallita (errore gia' notificato; il catalogo e' best-effort:
   //        un suo fallimento isolato non azzera la config).
+  // Scopo: l'emittente esplicito al momento della fetch. Si accetta un GETTER
+  //        oltre al valore: nel drawer l'id puo' arrivare dopo il primo render,
+  //        e un valore letto una volta sola resterebbe quello di allora.
+  // ⚠️ Qui non si normalizza niente: cosa valga come «assente» lo decide
+  //    `getListaConfig`, che e' il punto in cui il parametro finisce sul filo.
+  function _emittenteEsplicito() {
+    return typeof opzioni.emittenteEsplicito === 'function'
+      ? opzioni.emittenteEsplicito()
+      : opzioni.emittenteEsplicito
+  }
+
   async function load() {
     const [configData, catalogoData] = await Promise.all([
-      execute(() => getListaConfig(codice)),
+      execute(() => getListaConfig(codice, {
+        emittenteEsplicito: _emittenteEsplicito(),
+      })),
       execute(() => getListaCatalogo(codice)),
     ])
     if (configData) {

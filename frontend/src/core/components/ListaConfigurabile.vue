@@ -74,6 +74,15 @@ const _DEFAULT_PAGINATOR_OPTIONS = Object.freeze({
 const props = defineProps({
   // Codice stabile della lista (es. 'anagrafiche.clienti').
   codice: { type: String, required: true },
+  // Emittente GIA' fissato dal contesto che apre la lista — oggi il tab dentro
+  // il drawer di un emittente. ⭐ Non filtra niente qui: viaggia al backend con
+  // la richiesta di config, ed e' quello che gli permette di rispondere
+  // `richiede_scelta_emittente: false` su una lista non certificata
+  // multi-emittente. Senza, il pannello del cancello chiederebbe di scegliere
+  // l'emittente che l'operatore ha gia' aperto davanti.
+  // ⚠️ I dati della lista li fetcha il CALLER: sta a lui filtrare per lo stesso
+  //    emittente. Qui la prop non tocca le righe.
+  emittenteEsplicito: { type: [String, Number], default: null },
   // Dati riga forniti dal caller (no fetch interno).
   rows: { type: Array, default: () => [] },
   // Conteggio totale per paginator (server-side).
@@ -137,7 +146,9 @@ const {
   save,
   reset,
   ignorePresetUpdate,
-} = useListaConfig(props.codice)
+} = useListaConfig(props.codice, {
+  emittenteEsplicito: () => props.emittenteEsplicito,
+})
 
 // Stato modale di personalizzazione.
 const modalVisible = ref(false)
@@ -165,6 +176,24 @@ async function loadEdEmetti() {
 }
 
 onMounted(loadEdEmetti)
+
+// ⭐ Si guarda la PRESENZA, non il valore: la risposta del backend dipende dal
+//    fatto che UN emittente sia fissato, non da QUALE. Cambiare emittente
+//    dentro il drawer non cambia `richiede_scelta_emittente`, e ricaricare la
+//    config a ogni cambio sarebbe un round-trip per una risposta identica.
+const emittenteFissato = computed(
+  () => props.emittenteEsplicito !== null
+    && props.emittenteEsplicito !== undefined
+    && props.emittenteEsplicito !== '',
+)
+
+// ⚠️ L'emittente esplicito puo' arrivare DOPO il primo render (il drawer si
+//    apre e poi passa l'id): la config e' gia' stata chiesta senza, e la
+//    risposta era «scegli un emittente». Questa e' l'unica transizione che
+//    cambia qualcosa.
+watch(emittenteFissato, async (ora, prima) => {
+  if (ora && !prima) await loadEdEmetti()
+})
 
 // Re-fetch se il codice cambia (caso raro: tab switch dinamico).
 // ⚠️ Ricaricare SENZA riemettere l'evento era un difetto: il pannello del

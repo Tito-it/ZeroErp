@@ -713,6 +713,9 @@
       },
       "forma_blocco": {
         "ha_numerato": "Register {codice} has already issued numbers (last: {ultimo_numero}): the number format can no longer be changed. The counter does not restart when the format changes, it carries on — so the same register would hold two formats with consecutive numbers."
+      },
+      "serie_blocco": {
+        "non_gestita": "Documents in the {famiglia_documento} family do not record the series anywhere: giving this register series {serie} would open a new counter, restarting from 1 over numbers already issued — and the document would no longer get a number. A series can only be used where the document carries it in a column."
       }
     },
     "matrici": {

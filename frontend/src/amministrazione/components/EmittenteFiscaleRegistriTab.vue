@@ -168,6 +168,7 @@ function motivoForma(data) {
     <DrawerTabLista
       ref="listaRef"
       codice="vendite.registri_numerazione"
+      :emittente-esplicito="emittenteSoggettoRuoloId"
       :help-text="t('amministrazione.registri_numerazione.help')"
       :rows="store.items"
       :total="store.totalRecords"

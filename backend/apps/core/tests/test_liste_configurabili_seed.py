@@ -339,6 +339,12 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_FUORI_CAPIENZA_SORT_COLUMNS")),
     ("pagamenti.eccedenze",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "ECCEDENZE_SORT_COLUMNS")),
+    # Registri di numerazione (2026-09-01), primo tab dell'emittente fiscale.
+    # ⭐ E' entrata qui insieme all'allargamento del censimento a
+    # `<DrawerTabLista>`: montata solo con quel componente, era invisibile al
+    # test 6 e quindi fuori da tutti i presidi di questo modulo.
+    ("vendite.registri_numerazione",
+     _da_costante("apps.vendite.db.registri_repository", "_ORDER_COLS")),
 )
 
 
@@ -552,12 +558,23 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             # appena convertite, che e' il caso per cui esiste. Ora si cerca
             # `codice="..."` entro una finestra di caratteri dal nome del tag,
             # senza pretendere di sapere dove finisce il tag stesso.
-            for m in re.finditer(
-                r"<ListaConfigurabile\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"",
-                senza_commenti,
-                re.S,
-            ):
-                montate.add(m.group(1))
+            # ⛔ DUE componenti, non uno. Una lista si monta con
+            #    `<ListaConfigurabile>` **oppure** con `<DrawerTabLista>` (il
+            #    wrapper per le liste che vivono su un tab di drawer): sono due
+            #    modi di montare la stessa cosa, e cercare solo il primo rende
+            #    il censimento cieco proprio sulle liste nate per ultime.
+            #    ⚠️ E' successo: `vendite.registri_numerazione`, montata il
+            #    2026-09-01 in `EmittenteFiscaleRegistriTab.vue` con
+            #    `<DrawerTabLista>`, e' rimasta fuori da `_LISTE` senza che
+            #    nessun test lo dicesse — cioe' senza NESSUN presidio, mentre
+            #    questo test restava verde.
+            for tag in ("ListaConfigurabile", "DrawerTabLista"):
+                for m in re.finditer(
+                    rf"<{tag}\b.{{0,400}}?(?<![:@\w-])codice=\"([^\"]+)\"",
+                    senza_commenti,
+                    re.S,
+                ):
+                    montate.add(m.group(1))
 
         self.assertTrue(
             montate,

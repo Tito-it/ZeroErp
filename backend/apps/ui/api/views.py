@@ -20,13 +20,14 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
+from apps.core.services import perimetro_emittente
 from apps.ui.services.lista_preferenza_service import ListaPreferenzaService
 from apps.ui.services.ui_service import UiService
 
@@ -55,10 +56,37 @@ class ApiListaConfigView(DomainAPIView):
     # JWT obbligatorio (default DomainAPIView), nessun check area.
     skip_area_check = True
 
-    @extend_schema(responses={200: _DATA_RESPONSE})
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name=perimetro_emittente.PARAM_EMITTENTE_ESPLICITO,
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Emittente gia' fissato dal contesto che apre la lista (un "
+                    "tab dentro il drawer di un emittente). Se c'e', la lista "
+                    "non e' ambigua e `richiede_scelta_emittente` resta falsa "
+                    "anche su una lista non certificata multi-emittente."
+                ),
+            ),
+        ],
+        responses={200: _DATA_RESPONSE},
+    )
     # Scopo: Restituisce la configurazione effettiva della lista per l'utente.
+    # ⭐ L'emittente esplicito viaggia insieme al codice: il pannello di
+    #    perimetro lo calcola il backend (`richiede_scelta_emittente`), e senza
+    #    questo parametro direbbe «scegli un emittente» proprio dentro il
+    #    drawer dell'emittente che l'operatore ha gia' aperto.
     def get(self, request: Request, codice: str) -> JsonResponse:
-        config = UiService().get_lista_config(request.user, codice)
+        config = UiService().get_lista_config(
+            request.user,
+            codice,
+            emittente_esplicito=perimetro_emittente.emittente_esplicito_da_query(
+                request.query_params,
+                nome=perimetro_emittente.PARAM_EMITTENTE_ESPLICITO,
+            ),
+        )
         return success_response(config)
 
 

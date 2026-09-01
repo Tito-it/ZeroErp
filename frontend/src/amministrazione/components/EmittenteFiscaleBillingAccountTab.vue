@@ -215,6 +215,7 @@ function buildRowActions(data) {
   <DrawerTabLista
     ref="listaRef"
     codice="anagrafiche.emittente_billing_account"
+    :emittente-esplicito="emittenteId"
     :help-text="t('amministrazione.emittenti_fiscali.ba_help')"
     :rows="store.items"
     :total="store.totalRecords"
