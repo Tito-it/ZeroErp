@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA TABELLA, UNA FAMIGLIA
+#   uq_famiglie_documento_tabella_attiva
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.15
+#
+# ── ⭐ LA DECISIONE (Tid, 2026-09-01) ────────────────────────────
+#   «Una tabella una famiglia, altrimenti si creerebbe un bel casino: un
+#   ddt_reso fa parte dello stesso insieme ddt.»
+#   ⇒ La famiglia NON e' un modo di chiamare i documenti: E' il tipo di
+#   documento, e il tipo di documento e' la tabella in cui vive. Due righe che
+#   nominano la stessa tabella sono due nomi per la stessa cosa.
+#
+# ── ⛔ COSA IMPEDISCE, in concreto ───────────────────────────────
+#   Il presidio sul cambio emittente del billing account ITERA le famiglie e
+#   per ognuna CONTA le righe della sua tabella. Con due famiglie sulla stessa
+#   tabella conterebbe gli stessi documenti due volte e li elencherebbe sotto
+#   due nomi diversi: il blocco reggerebbe — la domanda e' «ce n'e' almeno
+#   uno?» — ma la frase che l'operatore legge direbbe il falso.
+#   ⚠️ Finora non serviva: in quella tabella scriveva solo un seed. Il CRUD e'
+#   la prima cosa che rende raggiungibile il caso.
+#
+# ── ⭐ PARZIALE SU `attivo`, ED E' LA PARTE DA LEGGERE ───────────
+#   Il vincolo guarda le sole famiglie ATTIVE, e non tutte. ⛔ Un UNIQUE pieno
+#   sarebbe un cancello su uno stato PERSISTENTE: una famiglia ritirata resta
+#   scritta per sempre (decisione D4: si spegne, non si cancella), quindi
+#   terrebbe la sua tabella occupata PER SEMPRE e nessun successore potrebbe
+#   mai nascere — con l'unica via d'uscita, il DELETE, che abbiamo deciso di
+#   non offrire.
+#   ⭐ E il perimetro giusto e' proprio quello attivo, perche' e' quello che i
+#   presidi leggono: `anagrafiche.fn_ba_ha_storia_emittente` e la sua gemella
+#   iterano `WHERE fd.attivo`. Una famiglia spenta non e' nel conteggio, quindi
+#   non e' nel «casino» che questo vincolo esiste per impedire.
+#
+#   ⚠️ E' l'OPPOSTO di cio' che vale sui registri, dove `attivo = false` NON
+#   libera lo slot: li' lo slot e' la CHIAVE DEL CONTATORE, e un sezionale
+#   spento continua a possedere i numeri che ha consegnato. Qui lo slot e'
+#   un'identita' di catalogo che solo le righe accese fanno valere. Due
+#   vincoli simili, due ragioni diverse: chi legge non deve dedurre l'una
+#   dall'altra.
+#
+# ── ⚠️ INDICE E NON CONSTRAINT ──────────────────────────────────
+#   Un `UNIQUE` di tabella non ammette la clausola `WHERE`: il vincolo
+#   parziale si scrive come `CREATE UNIQUE INDEX ... WHERE`, che enforca
+#   eccome (a differenza di un GiST di supporto, §7b delle linee guida).
+#
+# ── ⚠️ IL 23505 VA TRADOTTO DAL BACKEND ─────────────────────────
+#   Violarlo produce un `23505` col nome dell'indice, non un errore di
+#   dominio: nessun codice nuovo a catalogo, ma una riga nella mappa dei
+#   vincoli del service — richiesta BE-F8 al §11.10.
+#
+# ⚠️ Nessun `fk_index_policy` da toccare: non e' una FK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260901-22-unique-famiglie-documento-tabella-mctit.yaml
+
+  - changeSet:
+      id: 20260901-22-unique-famiglie-documento-tabella
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Una tabella, una famiglia (decisione di Tid, 2026-09-01): UNIQUE parziale su
+        (schema_tabella, nome_tabella) per le sole famiglie ATTIVE. ⛔ Serve perche'' il presidio sul
+        cambio emittente del BA itera le famiglie e conta le righe della tabella di ognuna: due famiglie
+        sulla stessa tabella conterebbero gli stessi documenti due volte, e il messaggio all''operatore
+        direbbe il falso. ⭐ PARZIALE e non pieno: una famiglia ritirata resta scritta per sempre (D4),
+        e un UNIQUE pieno le lascerebbe la tabella occupata per sempre — un cancello su uno stato
+        persistente. Il perimetro giusto e'' quello attivo perche'' e'' quello che i presidi leggono.
+        ⚠️ E'' l''opposto di cio'' che vale sui registri, dove attivo=false NON libera lo slot: li'' lo slot
+        e'' la chiave del contatore. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            # ⛔ Il dato deve gia' rispettare la regola: se non la rispettasse,
+            #    il CREATE INDEX fallirebbe con un messaggio che parla di
+            #    duplicati e non della decisione. Meglio fermarsi qui e dirlo.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM (
+                      SELECT 1
+                        FROM vendite.famiglie_documento
+                       WHERE attivo
+                       GROUP BY schema_tabella, nome_tabella
+                      HAVING COUNT(*) > 1
+                    ) d;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ CREATE UNIQUE INDEX e non ADD CONSTRAINT UNIQUE: un vincolo
+              --   di tabella non ammette la clausola WHERE, e qui il predicato
+              --   e' il punto — vedi l'intestazione del changeSet.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_famiglie_documento_tabella_attiva
+                  ON vendite.famiglie_documento (schema_tabella, nome_tabella)
+               WHERE attivo;
+
+              COMMENT ON INDEX vendite.uq_famiglie_documento_tabella_attiva
+              IS 'UNA TABELLA, UNA FAMIGLIA (decisione di Tid, 2026-09-01): due famiglie ATTIVE non possono nominare la stessa tabella di documenti. ⭐ PERCHE'': la famiglia non e'' un modo di chiamare i documenti, E'' il tipo di documento — e il tipo di documento e'' la tabella in cui vive; un «ddt di reso» fa parte dello stesso insieme dei ddt. ⛔ COSA IMPEDISCE IN CONCRETO: anagrafiche.fn_get_storia_emittente_ba itera le famiglie e per ognuna CONTA le righe della sua tabella, quindi due famiglie sulla stessa tabella conterebbero gli stessi documenti due volte e li elencherebbero sotto due nomi diversi — il blocco reggerebbe (la domanda e'' «ce n''e'' almeno uno?») ma la frase che l''operatore legge direbbe il falso. Finora non serviva perche'' in quella tabella scriveva solo un seed: il CRUD e'' la prima cosa che rende raggiungibile il caso. ⭐ E'' PARZIALE SU `attivo`, e non e'' un dettaglio: un UNIQUE pieno sarebbe un cancello su uno stato PERSISTENTE — una famiglia ritirata resta scritta per sempre (si spegne, non si cancella), quindi terrebbe la sua tabella occupata per sempre e nessun successore potrebbe nascere. Il perimetro giusto e'' quello attivo perche'' e'' esattamente quello che i presidi leggono (`WHERE fd.attivo`): una famiglia spenta non e'' nel conteggio, quindi non e'' nel problema. ⚠️ E'' L''OPPOSTO di cio'' che vale sui registri, dove attivo=false NON libera lo slot: li'' lo slot e'' la CHIAVE DEL CONTATORE e un sezionale spento possiede ancora i numeri che ha consegnato, qui e'' un''identita'' di catalogo che solo le righe accese fanno valere. Due vincoli simili, due ragioni diverse: non si deduca l''una dall''altra. ⚠️ Violarlo da'' un 23505 col nome dell''indice: la frase per l''operatore la compone il backend (richiesta BE-F8). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_famiglie_documento_tabella_attiva;

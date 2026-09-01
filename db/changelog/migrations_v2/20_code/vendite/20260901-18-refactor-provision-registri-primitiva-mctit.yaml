@@ -1,0 +1,343 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I REGISTRI MANCANTI: UNA PRIMITIVA, DUE PORTE
+#   vendite.fn_provision_registri            (primitiva, nuova)
+#   vendite.fn_provision_registri_emittente  (involucro, firma INVARIATA)
+#   vendite.fn_provision_registri_famiglia   (involucro, nuovo)
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.6 (DB-4)
+#
+# ── ⛔ IL BUCO CHE SI CHIUDE ─────────────────────────────────────
+#   Il provisioning esisteva solo PER EMITTENTE, e lo chiama un trigger su
+#   anagrafiche.emittenti_fiscali. La simmetrica — dare a UNA FAMIGLIA il suo
+#   registro su tutti gli emittenti che gia' esistono — non c'era. Senza, una
+#   famiglia creata dal CRUD nasce senza registri e i suoi documenti non si
+#   numerano: fail-closed, ma silenzioso fino al primo documento.
+#   ⚠️ La doc manuale lo diceva gia' — «chi aggiunge una famiglia deve anche
+#   darle un registro per emittente» — e non c'era nessuno a eseguirlo.
+#
+# ── ⛔ PERCHE' UNA PRIMITIVA E NON UNA SECONDA SELECT ────────────
+#   La regola del codice (`left(codice_interno,3) || '-' || soggetto_ruolo_id`),
+#   la descrizione, il reset e i default presi dalla famiglia sono il CONTRATTO
+#   di come nasce un registro. Copiata in due funzioni, la prima correzione che
+#   ne tocca una sola produce due registri con codici diversi per la stessa
+#   coppia — e si vede sei mesi dopo, su un emittente solo.
+#   ⭐ Gli involucri restano SOTTILI: cambiano il filtro, non la regola.
+#
+# ── ⚠️ LA FIRMA DI fn_provision_registri_emittente NON CAMBIA ────
+#   La chiama vendite.trgfn_emittenti_fiscali_provision_registri. Un parametro
+#   in piu' sarebbe un OVERLOAD, non una modifica: il trigger continuerebbe a
+#   chiamare la vecchia, che resterebbe in giro con la regola vecchia dentro.
+#
+# ── ⭐ IDEMPOTENZA, e su quale chiave ────────────────────────────
+#   Il `NOT EXISTS` guarda la COPPIA (emittente, famiglia) e non il codice: un
+#   registro creato a mano con un altro codice vale lo stesso e non ne fa
+#   nascere un secondo. Era gia' cosi', e va conservato — e' cio' che rende le
+#   due porte sicure da chiamare a ripetizione.
+#
+# ── ⚠️ LA FATTURA RESTA FUORI, ed e' un debito DICHIARATO ────────
+#   `fd.codice_interno <> 'FATTURA'` e' un letterale, e non si deriva da nessuna
+#   colonna: il registro della fattura dipende da (tipo documento, natura) e si
+#   configura in vendite.tipi_doc_fiscale_registri. E' lo stesso letterale che
+#   sta in fn_get_registro_documento e in fn_get_pavimento_data_documento —
+#   §11.11 del piano lo dichiara e spiega perche' non si toglie adesso.
+#
+# ── ⚠️ SECURITY DEFINER, come l'originale ───────────────────────
+#   Scrive su vendite.registri_fatturazione leggendo anagrafiche.emittenti_fiscali:
+#   il chiamante puo' essere un trigger che gira nel contesto di chi ha creato
+#   l'emittente. Era gia' DEFINER e resta DEFINER — questo changeSet non e' la
+#   sede per rivedere quel privilegio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-18-refactor-provision-registri-primitiva-mctit.yaml
+
+  - changeSet:
+      id: 20260901-18-refactor-provision-registri-primitiva
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Estrae la primitiva vendite.fn_provision_registri(emittente, famiglia) e ci monta sopra due
+        involucri sottili: fn_provision_registri_emittente (firma INVARIATA, la chiama un trigger) e
+        fn_provision_registri_famiglia (nuovo). ⛔ Chiude il buco: il provisioning esisteva solo per
+        emittente, quindi una famiglia nuova nasceva senza registri e i suoi documenti non si numeravano.
+        ⛔ Una primitiva e non una seconda SELECT: la regola del codice e i default della famiglia sono
+        il contratto di come nasce un registro, e copiati divergono. ⭐ Idempotenza sulla COPPIA
+        (emittente, famiglia), non sul codice. ⚠️ La FATTURA resta fuori: il suo registro dipende da
+        (tipo documento, natura) — debito dichiarato al §11.11.
+        Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.6 (DB-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            # ⛔ I default della forma devono esistere: senza, ogni registro
+            #    nuovo nascerebbe con prefisso NULL e la lunghezza di default
+            #    della colonna — cioe' la commessa a 7 cifre invece di 9, in
+            #    silenzio. E' il difetto che il 20260831-52 ha gia' evitato una
+            #    volta.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.famiglie_documento'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname IN ('prefisso_default', 'lunghezza_default');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- LA PRIMITIVA — una sola sede per «come nasce un registro»
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri(
+                      p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE DEFAULT NULL,
+                      p_famiglia_documento          vendite.famiglie_documento.codice_interno%TYPE DEFAULT NULL)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_creati integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare i registri di numerazione MANCANTI per le
+                  --   combinazioni (emittente, famiglia non fiscale) che il
+                  --   filtro seleziona, e dire quanti ne ha creati.
+                  --
+                  -- Filtri, entrambi opzionali:
+                  --   - p_emittente_soggetto_ruolo_id NULL = tutti gli
+                  --     emittenti;
+                  --   - p_famiglia_documento NULL = tutte le famiglie attive.
+                  --   ⭐ I due involucri passano uno dei due e lasciano NULL
+                  --   l'altro: e' l'unica differenza fra le due porte.
+                  --
+                  -- Regole (erano gia' queste, e restano):
+                  --   - le famiglie si LEGGONO dal catalogo, non si elencano:
+                  --     una famiglia nuova entra da sola;
+                  --   - un registro per famiglia, valido per tutte le utility;
+                  --   - idempotente sulla COPPIA (emittente, famiglia), quindi
+                  --     un registro creato a mano con un altro codice vale lo
+                  --     stesso e non ne nasce un secondo.
+                  --
+                  -- ⛔ La FATTURA resta fuori: il suo registro dipende da
+                  --   (tipo documento, natura) e si configura in
+                  --   vendite.tipi_doc_fiscale_registri.
+                  -- =========================================================
+                  INSERT INTO vendite.registri_fatturazione (
+                      codice, descrizione, famiglia_documento,
+                      emittente_soggetto_ruolo_id, utility_id,
+                      reset_policy, attivo, prefisso, lunghezza_numero, meta)
+                  SELECT
+                      -- ⚠️ Prime tre lettere della famiglia + id dell'emittente:
+                      --   deterministico, unico per costruzione, e dentro i 16
+                      --   caratteri della colonna. ⛔ NON la sigla
+                      --   dell'emittente: e' varchar(32) contro 16, e troncarla
+                      --   su una UNIQUE trasformerebbe due sigle simili in una
+                      --   collisione. La parte parlante sta nella descrizione.
+                      left(fd.codice_interno, 3) || '-' || ef.soggetto_ruolo_id::text,
+                      'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
+                      fd.codice_interno,
+                      ef.soggetto_ruolo_id,
+                      NULL,
+                      'ANNUALE',
+                      TRUE,
+                      -- ⭐ IL DEFAULT VIENE DAL CATALOGO DELLE FAMIGLIE: prefisso
+                      --   e lunghezza sono proprieta' del TIPO DOCUMENTO, e `fd`
+                      --   E' il tipo documento. Il registro tiene l'EFFETTIVO,
+                      --   cioe' l'override del sezionale.
+                      -- ⚠️ Prima del 2026-08-31 si leggevano da
+                      --   config.sistema_codici, che stava per essere svuotata:
+                      --   ogni emittente NUOVO sarebbe nato con prefisso NULL e
+                      --   la commessa a 7 cifre invece di 9, in silenzio e non
+                      --   subito.
+                      fd.prefisso_default,
+                      fd.lunghezza_default,
+                      -- ⚠️ `origine` non dice CHI ha chiamato ma QUALE
+                      --   meccanismo ha creato la riga: le righe nate dalle due
+                      --   porte sono la stessa cosa, e distinguerle inviterebbe
+                      --   a trattarle diversamente.
+                      jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
+                    FROM anagrafiche.emittenti_fiscali ef
+                   CROSS JOIN vendite.famiglie_documento fd
+                   WHERE (p_emittente_soggetto_ruolo_id IS NULL
+                          OR ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                     AND (p_famiglia_documento IS NULL
+                          OR fd.codice_interno = p_famiglia_documento)
+                     AND fd.attivo IS TRUE
+                     AND fd.codice_interno <> 'FATTURA'
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM vendite.registri_fatturazione r
+                            WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                              AND r.famiglia_documento          = fd.codice_interno);
+
+                  GET DIAGNOSTICS v_creati = ROW_COUNT;
+                  RETURN v_creati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provision_registri(
+                      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                      vendite.famiglie_documento.codice_interno%TYPE)
+              IS 'PRIMITIVA del provisioning: crea i registri di numerazione MANCANTI per le combinazioni (emittente, famiglia non fiscale) selezionate dai due filtri — entrambi opzionali, NULL = tutti — e torna quanti ne ha creati. ⛔ ESISTE PER NON AVERE DUE COPIE della regola di come nasce un registro: il codice (`left(codice_interno,3) || - || soggetto_ruolo_id`), la descrizione, il reset ANNUALE e i default di forma presi dalla famiglia sono un CONTRATTO, e copiato in due funzioni la prima correzione che ne tocca una sola produce due registri diversi per la stessa coppia — visibile sei mesi dopo, su un emittente solo. Sopra ci stanno due involucri sottili: fn_provision_registri_emittente (chiamata da un trigger su anagrafiche.emittenti_fiscali) e fn_provision_registri_famiglia (chiamata dalla madre che crea una famiglia). ⭐ IDEMPOTENTE sulla COPPIA (emittente, famiglia) e non sul codice: un registro creato a mano con un altro codice vale lo stesso e non ne fa nascere un secondo. ⭐ I DEFAULT DI FORMA VENGONO DAL CATALOGO DELLE FAMIGLIE: prefisso e lunghezza sono proprieta'' del TIPO DOCUMENTO, il registro ne tiene l''EFFETTIVO. ⚠️ La FATTURA resta fuori con un letterale, ed e'' un debito DICHIARATO (§11.11 del piano): il suo registro dipende da (tipo documento, natura) e si configura in vendite.tipi_doc_fiscale_registri. ⚠️ SECURITY DEFINER come l''originale: scrive sui registri leggendo gli emittenti, e la puo'' chiamare un trigger nel contesto di chi crea l''emittente. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.6 (DB-4).';
+
+              -- =========================================================
+              -- INVOLUCRO 1 — per EMITTENTE. ⚠️ FIRMA INVARIATA: la chiama
+              --   vendite.trgfn_emittenti_fiscali_provision_registri, e un
+              --   parametro in piu' sarebbe un overload, non una modifica.
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri_emittente(
+                      p_emittente_soggetto_ruolo_id bigint)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dare a un emittente i registri delle famiglie non
+                  --   fiscali che ancora non ha, e dire quanti ne ha creati.
+                  --
+                  -- ⭐ Dal 2026-09-01 non contiene piu' la regola: chiama la
+                  --   primitiva vendite.fn_provision_registri. Qui resta solo
+                  --   il FILTRO, che e' l'unica cosa che distingue questa
+                  --   porta dalla gemella per famiglia.
+                  -- =========================================================
+                  IF p_emittente_soggetto_ruolo_id IS NULL THEN
+                      RETURN 0;
+                  END IF;
+
+                  RETURN vendite.fn_provision_registri(
+                             p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                             p_famiglia_documento          => NULL);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provision_registri_emittente(bigint)
+              IS 'Da a un emittente fiscale i registri di numerazione delle famiglie non fiscali che ancora non ha, e torna quanti ne ha creati. La chiama vendite.trgfn_emittenti_fiscali_provision_registri alla nascita (o riattivazione) di un emittente. ⭐ Dal 2026-09-01 e'' un INVOLUCRO SOTTILE: la regola di come nasce un registro vive in vendite.fn_provision_registri, e qui resta solo il filtro — l''unica cosa che distingue questa porta dalla gemella per famiglia. ⚠️ FIRMA INVARIATA di proposito: la chiama un trigger, e un parametro in piu'' sarebbe un OVERLOAD e non una modifica, cioe'' il trigger continuerebbe a chiamare la versione vecchia con la regola vecchia dentro. ⚠️ Un emittente NULL torna 0 e non solleva: il trigger la chiama su ogni riga, e una riga senza soggetto_ruolo non e'' un errore di dominio. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.6 (DB-4).';
+
+              -- =========================================================
+              -- INVOLUCRO 2 — per FAMIGLIA. La gemella che mancava.
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri_famiglia(
+                      p_famiglia_documento vendite.famiglie_documento.codice_interno%TYPE)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dare a UNA famiglia il suo registro su tutti gli
+                  --   emittenti che ancora non ce l'hanno, e dire quanti ne ha
+                  --   creati.
+                  --
+                  -- ⛔ Perche' serve: senza, una famiglia creata dal CRUD
+                  --   nasce senza registri, e i suoi documenti non si numerano.
+                  --   Il fail-closed di fn_get_registro_documento lo direbbe,
+                  --   ma al primo documento — non alla creazione.
+                  --
+                  -- ⚠️ Una famiglia NON ATTIVA non provisiona niente: il filtro
+                  --   sta nella primitiva (`fd.attivo IS TRUE`), e qui non si
+                  --   ripete. Una famiglia spenta non deve far nascere registri.
+                  -- =========================================================
+                  IF p_famiglia_documento IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_provision_registri_famiglia',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_famiglia_documento'),
+                          NULL::uuid,
+                          'vendite.fn_provision_registri_famiglia',
+                          'codice della famiglia di documento non valorizzato');
+                  END IF;
+
+                  RETURN vendite.fn_provision_registri(
+                             p_emittente_soggetto_ruolo_id => NULL,
+                             p_famiglia_documento          => p_famiglia_documento);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_provision_registri_famiglia(
+                      vendite.famiglie_documento.codice_interno%TYPE)
+              IS 'Da a UNA famiglia di documento il suo registro di numerazione su tutti gli emittenti fiscali che ancora non ce l''hanno, e torna quanti ne ha creati. ⛔ E'' la gemella che mancava: il provisioning esisteva solo per emittente (trigger su anagrafiche.emittenti_fiscali), quindi una famiglia nuova nasceva senza registri e i suoi documenti non si numeravano — il fail-closed di fn_get_registro_documento lo dice, ma al primo documento, non alla creazione. La chiama la madre vendite.fn_crea_famiglia_documento. ⭐ INVOLUCRO SOTTILE: la regola sta nella primitiva vendite.fn_provision_registri, qui c''e'' solo il filtro. ⚠️ Una famiglia NON ATTIVA non provisiona niente, e il filtro sta nella primitiva: una famiglia spenta non deve far nascere registri. ⚠️ A differenza della gemella per emittente, un parametro NULL qui SOLLEVA: nessun trigger la chiama a tappeto, ci arriva chi ha deciso di provisionare una famiglia precisa, e un NULL li'' e'' un chiamante rotto. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.6 (DB-4).';
+
+              -- ⚠️ Il GRANT segue quello che c'era: la primitiva NON si concede
+              --   all'applicazione — si passa dagli involucri, che dichiarano
+              --   quale delle due porte si sta usando.
+              GRANT EXECUTE ON FUNCTION vendite.fn_provision_registri_famiglia(
+                      vendite.famiglie_documento.codice_interno%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna al corpo del 20260831-52: la regola di nuovo dentro
+              --   fn_provision_registri_emittente, che ESISTEVA gia' e non si
+              --   droppa (la chiama un trigger).
+              DROP FUNCTION IF EXISTS vendite.fn_provision_registri_famiglia(character varying);
+              DROP FUNCTION IF EXISTS vendite.fn_provision_registri(bigint, character varying);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_provision_registri_emittente(
+                      p_emittente_soggetto_ruolo_id bigint)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_creati integer;
+              BEGIN
+                  IF p_emittente_soggetto_ruolo_id IS NULL THEN
+                      RETURN 0;
+                  END IF;
+
+                  INSERT INTO vendite.registri_fatturazione (
+                      codice, descrizione, famiglia_documento,
+                      emittente_soggetto_ruolo_id, utility_id,
+                      reset_policy, attivo, prefisso, lunghezza_numero, meta)
+                  SELECT
+                      left(fd.codice_interno, 3) || '-' || ef.soggetto_ruolo_id::text,
+                      'Registro ' || lower(fd.descrizione) || ' — ' || ef.codice,
+                      fd.codice_interno,
+                      ef.soggetto_ruolo_id,
+                      NULL,
+                      'ANNUALE',
+                      TRUE,
+                      fd.prefisso_default,
+                      fd.lunghezza_default,
+                      jsonb_build_object('origine', 'C2-12', 'famiglia', fd.codice_interno)
+                    FROM anagrafiche.emittenti_fiscali ef
+                   CROSS JOIN vendite.famiglie_documento fd
+                   WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND fd.attivo IS TRUE
+                     AND fd.codice_interno <> 'FATTURA'
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM vendite.registri_fatturazione r
+                            WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                              AND r.famiglia_documento          = fd.codice_interno);
+
+                  GET DIAGNOSTICS v_creati = ROW_COUNT;
+                  RETURN v_creati;
+              END;
+              $function$;

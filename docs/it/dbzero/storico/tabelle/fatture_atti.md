@@ -25,5 +25,11 @@
 | ix_fatture_atti_fatture_atti_id_fk | `CREATE INDEX ix_fatture_atti_fatture_atti_id_fk ON storico.fatture_atti USING btree (fatture_atti_id)` |
 | pk_storico_fatture_atti | `CREATE UNIQUE INDEX pk_storico_fatture_atti ON storico.fatture_atti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_atti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatture_atti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -164,3 +164,124 @@ interpretare che ha prodotto il difetto corretto dal changeSet `20260831-55`.
 * i registri di un emittente nuovo nascono con la forma giusta senza che nessuno
   debba ricordarsene, e **il backfill dei registri monchi legge dalla stessa
   fonte** — così nascita e riparazione non possono divergere.
+
+---
+
+### 🔄 rev 2026-09-01 — questa tabella si può **modificare da dentro il programma**
+
+Fino a oggi in `famiglie_documento` scriveva solo un seed. Da oggi ci scrive una
+persona, dall'amministrazione, e tre cose che reggevano **perché nessuno poteva
+toccarla** sono diventate presidi veri.
+
+#### 1. Non si spegne una famiglia che è ancora la regola di qualcuno
+
+Spegnere una famiglia **non nasconde una voce di catalogo: spegne un
+controllo**. Le due funzioni che rispondono *«questo cliente ha già documenti
+numerati?»* scorrono le famiglie **attive**: una famiglia spenta esce dal giro, e
+da quel momento i suoi documenti smettono di trattenere il cliente presso
+l'emittente che li ha numerati. Nessun errore, nessuna riga di diario — il
+controllo guarda semplicemente in un posto in meno.
+
+⇒ Una famiglia si spegne **solo** quando non ha più registri accesi né documenti
+numerati. I due motivi hanno un ordine, e non è estetico: prima quello a cui si
+può rimediare (spegnere i registri), poi quello a cui non si può — i numeri
+usciti non si disfano.
+
+#### 2. Dove vive il documento non si cambia sotto un registro
+
+Le colonne che dicono dove abita il documento — la tabella, la colonna del
+numero, quella del cliente, quella della serie — non descrivono la famiglia: **la
+fanno funzionare**. Una volta che esiste anche un solo registro, non si toccano
+più.
+
+⛔ Il caso peggiore è togliere la colonna della serie a una famiglia che ce
+l'aveva: da quel momento i suoi registri hanno una serie che il documento non sa
+più distinguere, il contatore continua a contare, e **nessun vincolo se ne
+accorge**.
+
+⚠️ Il *codice interno* non è in questo elenco, ed è voluto: quello lo protegge il
+blocco automatico che vale per tutte le tabelle di catalogo, e due divieti sulla
+stessa colonna con due messaggi diversi confondono e basta.
+
+#### 3. La serie dichiarata deve davvero **distinguere** il documento
+
+Il controllo che verifica i nomi ora guarda anche la colonna della serie, e non
+si limita a chiedere se esiste: pretende che **stia nel vincolo di unicità
+insieme al numero**. È la regola generale della numerazione — *tutto ciò che
+distingue il contatore deve poter distinguere anche il documento* — e finora era
+scritta in questa pagina senza che nessuno la eseguisse.
+
+⭐ Sono due difetti diversi e hanno due messaggi diversi: **un nome sbagliato** è
+un refuso, **un nome giusto che non basta** è il caso insidioso, perché la
+colonna c'è e si legge.
+
+---
+
+### ⭐ Una famiglia nuova nasce **con i suoi registri**
+
+Creare la riga e darle i registri sono due cose, e sono **una cosa sola**: se la
+seconda non riesce, non resta una famiglia a metà. Una famiglia senza registri
+non fallisce — promette un documento che non si numererà mai, e nessun vincolo lo
+dice.
+
+Il programma dà alla famiglia nuova un registro **su ogni emittente**, con il
+prefisso e le cifre che la famiglia stessa dichiara. È la stessa cosa che già
+succedeva al contrario — un emittente nuovo si prende i registri di tutte le
+famiglie — e ora le due strade usano **la stessa regola**, non due copie: il
+codice del registro, la sua descrizione e la forma del numero si decidono in un
+posto solo.
+
+⚠️ Una famiglia creata **spenta** non prende nessun registro, e non è un errore:
+è il caso «si prepara prima, si accende dopo».
+
+⚠️ E una famiglia che nasce **quando non c'è ancora nessun emittente** prende
+zero registri: il programma lo dice, perché quel documento non nascerebbe
+comunque.
+
+---
+
+### 📋 Cosa vede chi apre l'elenco
+
+L'elenco delle famiglie non mostra solo le colonne: mostra anche **quanti
+registri** ha ciascuna e quanti sono accesi, e per ogni riga se si può spegnere e
+se se ne può cambiare la struttura — **col motivo**, quando la risposta è no.
+Sono le stesse due domande a cui rispondono i divieti qui sopra: chieste prima di
+provare, invece che scoperte sbattendoci contro.
+
+⛔ **Cosa il programma non fa, ed è una decisione**: non cancella. Una famiglia
+ritirata resta scritta, perché la sua riga è la traccia di documenti che
+esistono ancora — ed è lo stesso motivo per cui non si spegne finché quei
+documenti ci sono. Le due regole sono la stessa regola, detta due volte.
+
+⚠️ **Una famiglia creata da qui nasce «non fiscale»**: niente limite di
+emissione, data del documento sempre di oggi. È un limite del modello, non della
+maschera — il registro della fattura si risolve per tipo e natura, per una strada
+tutta sua — e va detto nel form, non scoperto da un rifiuto.
+
+---
+
+### ⭐ Una tabella, una famiglia
+
+*(decisione del 2026-09-01)*
+
+Due famiglie **attive** non possono dire di abitare nella stessa tabella. La
+famiglia non è un modo di chiamare i documenti: **è il tipo di documento**, e il
+tipo di documento è la tabella in cui vive. Un «DDT di reso» non è una famiglia
+nuova — fa parte dell'insieme dei DDT.
+
+⛔ **Cosa impedisce davvero.** Il controllo che risponde *«questo cliente ha già
+documenti numerati?»* scorre le famiglie e per ognuna conta le righe della sua
+tabella. Con due famiglie sulla stessa tabella conterebbe **gli stessi documenti
+due volte**, e li elencherebbe sotto due nomi diversi: il blocco reggerebbe —
+basta che ce ne sia uno — ma la frase che una persona legge direbbe il falso.
+
+⚠️ **Una famiglia ritirata invece libera la sua tabella**, e serve che sia così:
+la riga di una famiglia spenta resta scritta per sempre, quindi un divieto senza
+eccezioni le lascerebbe quella tabella occupata **per sempre**, e nessun
+successore potrebbe più nascere. Una famiglia spenta, del resto, nessun controllo
+la guarda: non è nel conteggio, quindi non è nel problema.
+
+⚠️ Sui **registri** vale il contrario — uno spento continua a occupare il suo
+posto — e non è una contraddizione: lì il posto è la chiave del contatore, e un
+sezionale spento possiede ancora i numeri che ha consegnato. Qui è solo
+un'identità di catalogo, che vale finché la famiglia è accesa.

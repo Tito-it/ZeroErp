@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DOVE VIVE IL DOCUMENTO NON SI CAMBIA SOTTO UN REGISTRO
+#   vendite.trgfn_famiglie_documento_guard_struttura
+#   trg_famiglie_documento_a10_guard_chiave_struttura_upd
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3)
+#
+# ── ⭐ IL PREDICATO NON E' QUI (§12.5.2) ─────────────────────────
+#   Il guard CHIAMA script.fn_check_famiglia_documento_struttura_modificabile
+#   e solleva il codice del primo motivo, cosi' il rifiuto e i campi in sola
+#   lettura della maschera non possono divergere.
+#
+# ── ⚠️ IL CAMPO DA ACCENDERE E' IL PRIMO CHE E' CAMBIATO DAVVERO ─
+#   Non uno fisso: l'operatore ne ha toccato uno, e mandarlo a correggerne un
+#   altro e' peggio che non dirglielo. Stessa scelta gia' fatta in
+#   vendite.trgfn_registri_fatturazione_guard_forma_numero.
+#
+# ── ⭐ E L'USCITA SUL NO-OP, CHE QUI E' OBBLIGATORIA ─────────────
+#   Il mirror CSV 20260830-14 riscrive schema_tabella, nome_tabella,
+#   colonna_numero e colonna_billing_account a OGNI migrate; il 20260901-12
+#   riscrive colonna_serie. `UPDATE OF` scatta perche' lo statement NOMINA le
+#   colonne, anche a valore invariato: senza il confronto sui VALORI, ogni
+#   migrate fallirebbe. E' la condizione per cui la decisione D1 — mirror
+#   lasciati accesi — sta in piedi.
+#
+# ── ⛔ codice_interno NON E' NELLA LISTA ─────────────────────────
+#   Lo presidia il lock automatico con E_CODICE_NON_MODIFICABILE. Metterlo
+#   anche qui darebbe due rifiuti diversi per la stessa colonna, a seconda di
+#   quale trigger scatta per primo — e l'ordine e' alfabetico, cioe' un
+#   dettaglio che nessuno ha scelto.
+#
+# ── 🔴 IL NOME DEL TRIGGER DECIDE CHI PARLA PER PRIMO ───────────
+#   `..._a10_guard_CHIAVE_struttura_upd` e non `..._a10_guard_struttura_upd`,
+#   e non e' cosmetica: i trigger BEFORE ROW scattano in ORDINE ALFABETICO, e
+#   `guard_riferimenti` verrebbe prima di `guard_struttura`.
+#   ⚠️ Verificato provando: cambiando `nome_tabella` su una famiglia CON
+#   registri, il rifiuto arrivava da `guard_riferimenti` — «vendite.resi non ha
+#   la colonna serie» — che e' vero e non e' il punto. Il punto e' che quella
+#   colonna non si cambia affatto: l'operatore avrebbe corretto il riferimento
+#   per andare a sbattere un attimo dopo contro il muro vero.
+#   ⭐ La regola: PRIMA l'immutabilita', POI la validita' del valore nuovo. Se
+#   non si puo' cambiare, non ha senso dire se il valore nuovo era buono.
+#   `chiave` viene da `E_FAMIGLIA_DOCUMENTO_CHIAVE_IMMUTABILE`, e `c` < `r`.
+#
+# ── ⚠️ SOLO UPDATE, MAI INSERT ───────────────────────────────────
+#   Alla nascita non c'e' niente da proteggere: una famiglia nuova non ha
+#   registri. E un guard BEFORE ROW montato in INSERT oscurerebbe i CHECK
+#   della tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-17-create-trgfn-famiglie-guard-struttura-mctit.yaml
+
+  - changeSet:
+      id: 20260901-17-create-trgfn-famiglie-guard-struttura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard `_a10_` su vendite.famiglie_documento: le cinque colonne che dicono DOVE vive il documento
+        non si cambiano su una famiglia che ha gia'' dei registri. ⭐ §12.5.2 — il predicato non e'' qui:
+        si chiama script.fn_check_famiglia_documento_struttura_modificabile e si solleva il primo motivo.
+        ⚠️ Il `campo` del contesto e'' la PRIMA colonna cambiata davvero, non una fissa. ⭐ Uscita sul
+        NO-OP obbligatoria: i due mirror CSV riscrivono queste colonne a ogni migrate e `UPDATE OF`
+        scatta comunque. ⛔ codice_interno non e'' nella lista: lo presidia il lock automatico, e due
+        rifiuti diversi per la stessa colonna dipenderebbero dall''ordine alfabetico dei trigger.
+        🔴 Il nome porta `chiave` per ORDINARLO PRIMA di `guard_riferimenti`: i BEFORE ROW scattano in
+        ordine alfabetico, e senza, un cambio di `nome_tabella` su una famiglia con registri usciva col
+        messaggio del riferimento invece che con quello dell''immutabilita''. Prima l''immutabilita'', poi
+        la validita'' del valore nuovo. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_famiglia_documento_struttura_modificabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+                  v_campo  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare il cambio delle colonne che dicono DOVE VIVE
+                  --   IL DOCUMENTO — schema_tabella, nome_tabella,
+                  --   colonna_numero, colonna_billing_account, colonna_serie —
+                  --   su una famiglia che ha gia' dei registri.
+                  --
+                  -- ⛔ Perche': quelle colonne non descrivono la famiglia, la
+                  --   fanno funzionare. Il caso peggiore e' colonna_serie
+                  --   portata a NULL: da quel momento i registri che una serie
+                  --   ce l'hanno restano con un secchio del contatore che il
+                  --   documento non sa piu' distinguere, e nessun vincolo se
+                  --   ne accorge.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Si chiama
+                  --   script.fn_check_famiglia_documento_struttura_modificabile
+                  --   e si solleva il codice del primo motivo.
+                  -- =========================================================
+
+                  -- ⭐ IL NO-OP PASSA, ed e' la riga che tiene in piedi il
+                  --   migrate: i due mirror CSV riscrivono queste colonne a
+                  --   OGNI migrate con gli stessi valori, e `UPDATE OF` scatta
+                  --   comunque perche' e' lo statement a nominarle.
+                  IF NEW.schema_tabella          IS NOT DISTINCT FROM OLD.schema_tabella
+                     AND NEW.nome_tabella            IS NOT DISTINCT FROM OLD.nome_tabella
+                     AND NEW.colonna_numero          IS NOT DISTINCT FROM OLD.colonna_numero
+                     AND NEW.colonna_billing_account IS NOT DISTINCT FROM OLD.colonna_billing_account
+                     AND NEW.colonna_serie           IS NOT DISTINCT FROM OLD.colonna_serie THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_famiglia_documento_struttura_modificabile(OLD.id);
+
+                  -- Nessun motivo: la famiglia non ha ancora registri, la
+                  -- struttura si cambia liberamente.
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ Il campo da accendere nel form e' il PRIMO che e'
+                  --   cambiato davvero, non uno fisso: l'operatore ne ha
+                  --   toccato uno, e mandarlo a correggerne un altro e' peggio
+                  --   che non dirglielo.
+                  v_campo := CASE
+                      WHEN NEW.schema_tabella          IS DISTINCT FROM OLD.schema_tabella          THEN 'schema_tabella'
+                      WHEN NEW.nome_tabella            IS DISTINCT FROM OLD.nome_tabella            THEN 'nome_tabella'
+                      WHEN NEW.colonna_numero          IS DISTINCT FROM OLD.colonna_numero          THEN 'colonna_numero'
+                      WHEN NEW.colonna_billing_account IS DISTINCT FROM OLD.colonna_billing_account THEN 'colonna_billing_account'
+                      ELSE 'colonna_serie'
+                  END;
+
+                  -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
+                  --   scatta PRIMA di trg_famiglie_documento_gen_tx_id_ins_upd
+                  --   (ordine alfabetico: 'a10' < 'gen'), quindi NEW.tx_id qui
+                  --   porta ancora il valore vecchio.
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_famiglie_documento_guard_struttura',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+                          || jsonb_build_object('campo', v_campo),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre.
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()
+              IS 'Guard `_a10_` su vendite.famiglie_documento: rifiuta il cambio delle cinque colonne che dicono DOVE VIVE IL DOCUMENTO (schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie) su una famiglia che ha gia'' dei registri. ⛔ PERCHE'': quelle colonne non descrivono la famiglia, la fanno funzionare — il caso peggiore e'' colonna_serie portata a NULL, che lascia i registri con una serie dentro un secchio del contatore che il documento non sa piu'' distinguere, senza che nessun vincolo se ne accorga. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_famiglia_documento_struttura_modificabile e si solleva il codice del primo motivo, cosi'' il rifiuto e i campi in sola lettura della maschera non possono divergere. ⚠️ Il `campo` del contesto e'' la PRIMA colonna cambiata DAVVERO e non una fissa: l''operatore ne ha toccato una, e mandarlo a correggerne un''altra e'' peggio che non dirglielo. ⭐ L''USCITA SUL NO-OP E'' OBBLIGATORIA: i mirror 20260830-14 e 20260901-12 riscrivono queste colonne a ogni migrate e `UPDATE OF` scatta comunque, quindi senza il confronto sui VALORI ogni migrate fallirebbe. ⛔ codice_interno NON e'' fra le colonne: lo presidia il lock automatico con E_CODICE_NON_MODIFICABILE, e metterlo anche qui darebbe due rifiuti diversi per la stessa colonna a seconda di quale trigger scatta prima — cioe'' dell''ordine alfabetico, che nessuno ha scelto. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3).';
+
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_chiave_struttura_upd
+                  ON vendite.famiglie_documento;
+
+              CREATE TRIGGER trg_famiglie_documento_a10_guard_chiave_struttura_upd
+                  BEFORE UPDATE OF schema_tabella, nome_tabella, colonna_numero,
+                                   colonna_billing_account, colonna_serie
+                  ON vendite.famiglie_documento
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_struttura();
+
+              COMMENT ON TRIGGER trg_famiglie_documento_a10_guard_chiave_struttura_upd
+                  ON vendite.famiglie_documento
+              IS 'Dove vive il documento non si cambia sotto un registro. 🔴 IL NOME PORTA `chiave` PER ORDINARLO PRIMA DI `guard_riferimenti`: i trigger BEFORE ROW scattano in ordine alfabetico, e senza questo accorgimento un cambio di `nome_tabella` su una famiglia con registri usciva col messaggio del riferimento inesistente — vero, ma non il punto: quella colonna non si cambia affatto, e l''operatore avrebbe corretto il riferimento per sbattere un attimo dopo contro il muro vero. Prima l''immutabilita'', poi la validita'' del valore nuovo. ⛔ Solo UPDATE: alla nascita non c''e'' niente da proteggere — una famiglia nuova non ha registri — e un guard BEFORE ROW montato in INSERT oscurerebbe i CHECK della tabella. ⚠️ La funzione esce subito sul no-op, cosi'' i mirror CSV che riscrivono queste colonne a ogni migrate non lo svegliano. ⛔ codice_interno non e'' nella lista: e'' del lock automatico. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_chiave_struttura_upd
+                  ON vendite.famiglie_documento;
+              DROP FUNCTION IF EXISTS vendite.trgfn_famiglie_documento_guard_struttura();

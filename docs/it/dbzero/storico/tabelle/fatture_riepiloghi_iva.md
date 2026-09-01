@@ -25,5 +25,11 @@
 | ix_fatture_riepiloghi_iva_fatture_riepiloghi_iva_id_fk | `CREATE INDEX ix_fatture_riepiloghi_iva_fatture_riepiloghi_iva_id_fk ON storico.fatture_riepiloghi_iva USING btree (fatture_riepiloghi_iva_id)` |
 | pk_storico_fatture_riepiloghi_iva | `CREATE UNIQUE INDEX pk_storico_fatture_riepiloghi_iva ON storico.fatture_riepiloghi_iva USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatture_riepiloghi_iva_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatture_riepiloghi_iva_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

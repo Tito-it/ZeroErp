@@ -53,3 +53,4 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 52,52,rate_fuori_capienza_default,Vista standard rate fuori capienza,sistema,,,t,25,"[{""col"":""data_scadenza"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
 53,53,eccedenze_default,Vista standard eccedenze da sistemare,sistema,,,t,25,"[{""col"":""eccedenza_cliente"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
 54,54,registri_numerazione_default,Vista standard registri di numerazione,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit
+55,55,famiglie_documento_default,Vista standard famiglie di documento,sistema,,,t,25,"[{""col"":""codice_interno"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit

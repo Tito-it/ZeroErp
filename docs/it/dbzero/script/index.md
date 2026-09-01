@@ -27,6 +27,8 @@
 - [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_famiglia_documento_disattivabile](funzioni/fn_check_famiglia_documento_disattivabile.md)
+- [fn_check_famiglia_documento_struttura_modificabile](funzioni/fn_check_famiglia_documento_struttura_modificabile.md)
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
 - [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)

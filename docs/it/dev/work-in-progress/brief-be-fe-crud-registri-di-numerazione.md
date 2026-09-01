@@ -1426,3 +1426,632 @@ questa classe **prima** del migrate, invece che sulla macchina di chi migra.
   perché, fuori dalla whitelist di `update`. Resta una decisione aperta;
 * **F6**, le due matrici slot/override;
 * ⚠️ **il collaudo in-app**: niente di questa fase è stato guardato a video.
+
+---
+
+## 11. ✅ Piano di sviluppo DB — il CRUD delle famiglie di documento
+
+> ✅ **DB CHIUSO — applicato il 2026-09-01, pgTAP 21/21 come applicazione.**
+> Dieci changeSet (`20260901-13` → `-22`), due codici errore, il catalogo della
+> lista con la `vista_sql` dichiarata. Lo stato per esteso è al **§11.14**; ciò
+> che resta è **tutto di BE e FE** ed è elencato al **§11.10**.
+>
+> Scritto il 2026-09-01, su richiesta di Tid, **dal lato DB**. Tutto ciò che
+> segue è letto dagli oggetti vivi (`pg_constraint`, `pg_proc`, `pg_trigger`),
+> non dagli YAML: le due tabelle sono state ristrutturate fra il 30-08 e oggi e
+> più di un file di migrazione è già stantìo.
+>
+> ⛔ **Perimetro**: questo piano descrive **solo** il database. Ciò che ricade
+> sul backend e sul frontend sta al §11.10, come richiesta scritta — non si
+> tocca `backend/` da qui.
+
+### 11.0 ⭐ Il modello, prima dei passi
+
+Le due tabelle si sono divise il lavoro, e la divisione è già scritta nel
+codice del provisioning:
+
+| | `vendite.famiglie_documento` | `vendite.registri_fatturazione` |
+| --- | --- | --- |
+| che cos'è | il catalogo del **tipo di documento** | il **sezionale**, cioè la chiave del contatore |
+| dove vive il documento | `schema_tabella`, `nome_tabella`, `colonna_numero`, `colonna_billing_account` | — |
+| forma del numero | `prefisso_default`, `lunghezza_default` — **con che aspetto NASCE un registro** | `prefisso`, `suffisso`, `lunghezza_numero` — **l'effettivo**, cioè l'override |
+| natura | `colonna_serie` (NULL = questa famiglia una serie non ce l'ha), `presidia_data_documento` | `serie_default`, `politica_data_documento`, i due limiti |
+
+*«prefisso e lunghezza sono proprietà del TIPO DOCUMENTO, e `fd` È il tipo
+documento. Il registro tiene l'EFFETTIVO»* — sta nel corpo di
+`vendite.fn_provision_registri_emittente`, ed è la frase su cui poggia tutto
+questo piano.
+
+### 11.1 ⛔ Le quattro cose che oggi reggono perché NESSUNO può scrivere lì
+
+Non sono difetti di oggi: sono le conseguenze di aprire una tabella che finora
+solo un seed poteva toccare. Vanno chiuse **prima** che il CRUD esista, non
+dopo.
+
+| # | Cosa succede il giorno del CRUD | Dove sta oggi |
+| --- | --- | --- |
+| 1 | ⚠️ **Il migrate successivo riscrive quello che l'operatore ha appena salvato** sulle CINQUE righe di seed, senza dire niente: i due mirror sono `runOnChange` e rileggono il CSV intero. ⇒ D1: si accetta e si governa (§11.2), **non** si congela | `20260830-14` (possiede `descrizione`, `schema_tabella`, `nome_tabella`, `colonna_numero`, `colonna_billing_account`, `attivo`, `presidia_data_documento`, `meta`, audit) e `20260901-12` (possiede `colonna_serie`) |
+| 2 | ⛔ **Spegnere una famiglia SPEGNE UN PRESIDIO**: `anagrafiche.fn_get_storia_emittente_ba` e la sua gemella `fn_ba_ha_storia_emittente` ciclano `WHERE fd.attivo`. Una famiglia spenta esce dal controllo sul cambio emittente del billing account — e quel controllo è la ragione per cui questa tabella esiste | `attivo` non ha nessun guard |
+| 3 | ⛔ **La struttura di una famiglia in uso si può cambiare sotto i suoi registri.** Il caso peggiore è `colonna_serie` portata da `serie` a NULL: `script.fn_check_registro_serie_ammessa` cambia risposta, e i registri che una serie ce l'hanno restano con un secchio del contatore che il documento non sa più distinguere | nessun guard sulle sei colonne strutturali |
+| 4 | ⚠️ **`codice_interno` si può rinominare.** ⭐ E il fatto verificato è che `vendite.famiglie_documento` è **l'unica** tabella del database con una colonna `codice_interno` e **senza** il trigger `script.trgfn_lock_columns` — tutte le altre ce l'hanno. Non è una scelta: è un provisioning che non è passato | `pg_trigger`: sulla tabella ci sono tre trigger (guard riferimenti, audit, tx_id), nessun lock |
+
+⚠️ Sul punto 4 la FK `fk_registri_fatturazione_famiglia` (che punta a
+`codice_interno`, **senza** `ON UPDATE CASCADE`) rifiuta la rinomina quando i
+registri esistono — ma con un `23503` crudo, e **non protegge** una famiglia che
+i registri non li ha ancora: lì la rinomina passa e rompe i seed e i chiamanti
+che passano il letterale.
+
+### 11.2 DB-0 · ❌ La sede del dato — NON si congela niente, ed è una decisione di classe
+
+Oggi la sede è il CSV, e il mirror la difende rileggendola a ogni migrate
+(§11.2 delle linee guida SQL). Un CRUD in-app crea la **seconda sorgente di
+verità** che quella regola esiste per impedire.
+
+La proposta era: mirror a `runOnChange: false`, il CSV declassato a seme
+iniziale, la sede alla tabella.
+
+> ❌ **RESPINTA da Tid il 2026-09-01 (D1), e la ragione è più grande di questa
+> tabella**: *«abbiamo tantissime tabelle in questo stato, che dovranno essere
+> spente nel momento in cui esisterà una produzione. Per ora lascia così: in
+> futuro serviranno delle CI apposite per la produzione, dove le tabelle di
+> `80_data` non girano più.»*
+
+⭐ **Ed è la risposta giusta, non un rinvio**: congelare questo mirror sarebbe
+stato risolvere **un caso** di una classe. La sede della soluzione non è il
+singolo changeSet — è il **contesto** con cui si invoca Liquibase: una passata di
+produzione che `80_data` non lo esegue affatto. Spegnere venti mirror a mano, uno
+per volta, per poi introdurre comunque quel contesto, significa fare due volte un
+lavoro che la seconda volta cancella la prima.
+
+⚠️ E fino ad allora **non siamo in produzione**: una modifica che torna indietro
+al prossimo migrate, su un database di sviluppo, costa un fastidio — non un dato
+perso a un cliente.
+
+#### ⇒ Cosa vuol dire, in concreto, per questo CRUD
+
+⭐ **Il CRUD resta pienamente operativo in CREAZIONE.** I due loader sono
+`loadUpdateData` con chiave `id` (il primo) e `codice_interno` (il secondo):
+toccano **solo le righe che il CSV nomina**. Una famiglia nuova, creata
+dall'applicazione, non è nominata da nessuno dei due — e nessun migrate la
+sfiora. È il caso d'uso principale del CRUD, e funziona.
+
+⚠️ **Sono volatili in sviluppo le modifiche alle CINQUE righe di seed**
+(FATTURA, DDT, ORDINE, COMMESSA, RESO): descrizione, `attivo`,
+`presidia_data_documento`, le quattro colonne strutturali e `colonna_serie`
+tornano al valore del CSV al primo migrate. Se una di quelle modifiche deve
+restare, si riporta nel CSV — che è la regola normale del progetto, non
+un'eccezione.
+
+#### ⛔ E la conseguenza che RICADE SUI PASSI 3 E 4 — questa non è opzionale
+
+I mirror riscrivono quelle colonne **a ogni migrate**, con gli stessi identici
+valori. E `UPDATE OF` scatta quando lo statement **nomina** la colonna, anche a
+valore invariato.
+
+⇒ **Ogni guard nuovo di DB-2 (§11.4) e DB-3 (§11.5) deve uscire subito sul
+no-op**, confrontando `NEW` e `OLD` con `IS NOT DISTINCT FROM` prima di
+qualunque verifica. Senza, il migrate fallisce **a ogni giro**, su un dato che
+nessuno ha cambiato.
+
+⭐ Il precedente è già in casa e dice esattamente questo, con le stesse parole:
+`vendite.trgfn_registri_fatturazione_guard_serie_ammessa` — *«in UPDATE il no-op
+passa: `UPDATE OF` scatta quando lo statement NOMINA la colonna, anche a valore
+invariato — e il mirror CSV dei registri riscrive `serie_default` a OGNI migrate.
+Senza questo confronto, ogni migrate fallirebbe.»*
+
+⇒ **La decisione D1 non toglie un passo al piano: aggiunge un requisito a due.**
+
+⭐ `prefisso_default` e `lunghezza_default` restano comunque **fuori da ogni
+CSV** — li valorizza l'`UPDATE` di `20260831-51`, in `00_schema`. Su quelle due
+colonne, cioè proprio sulla forma con cui nasce un registro, il CRUD scrive e
+nessun mirror riscrive: sono durevoli anche sulle cinque famiglie di seed.
+
+#### 🔭 Il debito, dichiarato come debito di classe
+
+Le CI di produzione che non fanno girare `80_data` sono il cantiere che chiuderà
+questo punto — per **tutte** le tabelle di configurazione con un mirror, non solo
+per le famiglie. Fino ad allora la regola resta quella scritta: **la sede del
+dato di configurazione è il CSV**, e ciò che il CRUD scrive sulle righe seminate
+è una modifica di sviluppo.
+
+### 11.3 DB-1 · Il guard dei riferimenti deve validare anche `colonna_serie`
+
+`vendite.trgfn_famiglie_documento_guard_riferimenti` verifica che esistano la
+tabella, la colonna del numero e quella del billing account. **Non guarda
+`colonna_serie`**, che è arrivata dopo.
+
+⚠️ E la doc manuale della tabella **afferma già** che il controllo c'è: *«col
+nome, il controllo automatico verifica che la colonna esista davvero e che stia
+nel vincolo di unicità del numero»*. Nel database quel controllo non esiste — il
+solo presidio è un pgTAP (`db/pgtap/vendite/test-chiave-contatore-assi-dichiarati-v1.sql`),
+che gira quando qualcuno lo lancia, non quando qualcuno salva una riga.
+
+**Passo**: estendere il guard. Se `colonna_serie` è valorizzata su una famiglia
+**attiva**:
+
+1. la colonna esiste su `schema_tabella.nome_tabella`;
+2. compare in un vincolo `UNIQUE` che contiene **anche** `colonna_numero` — cioè
+   la regola generale *«tutto ciò che discrimina il contatore deve poter
+   discriminare anche il documento»*.
+
+Codice errore nuovo: `E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA`, classe
+`DATO_ERRATO` (lo compila una persona in un form), con `campo = 'colonna_serie'`.
+
+⚠️ Il guard è già `BEFORE INSERT OR UPDATE`: non oscura nessun `CHECK`, perché
+su queste colonne non ce n'è.
+
+### 11.4 DB-2 · ✅ Non si spegne una famiglia che è ancora la regola di qualcuno
+
+> ✅ **DECISO da Tid il 2026-09-01 (D2): no.** Si blocca, col motivo.
+
+**Passo**, nella forma del §12.5 delle linee guida (la stessa dei registri, così
+il rifiuto e il tooltip non possono divergere):
+
+* `script.fn_check_famiglia_documento_disattivabile(p_id)` — pura, `STABLE`,
+  ritorna `[]` oppure l'array ordinato di `{codice, reason, reason_key,
+  dettaglio, valori}`. Motivi previsti, in quest'ordine:
+  `HA_REGISTRI_ATTIVI`, poi `HA_DOCUMENTI_NUMERATI` (contati in SQL dinamico
+  dalle **sue stesse** colonne: nessun elenco di tabelle scritto a mano);
+* guard `trg_famiglie_documento_a10_guard_disattivazione_upd`,
+  `BEFORE UPDATE OF attivo`, che la chiama e solleva il **primo** motivo.
+
+⭐ La check serve due volte: al rifiuto e al cestino spento col motivo nella
+maschera. È l'unica ragione per cui è una funzione e non un `IF` dentro il
+trigger.
+
+Codice errore nuovo: `E_FAMIGLIA_DOCUMENTO_IN_USO`.
+
+### 11.5 DB-3 · La struttura di una famiglia in uso non si cambia
+
+Le cinque colonne: `schema_tabella`, `nome_tabella`, `colonna_numero`,
+`colonna_billing_account`, `colonna_serie`. (`codice_interno` **no**: lo presidia
+il lock, vedi in fondo alla sezione.)
+
+**Passo**: `script.fn_check_famiglia_documento_struttura_modificabile(p_id)` +
+guard `_a10_` su `BEFORE UPDATE OF` quelle cinque colonne, stessa forma del §11.4.
+Il predicato è *«esiste almeno un registro»* — non *«esiste un documento
+numerato»*: un registro già nato porta i default di questa famiglia dentro di
+sé, e cambiarli sotto è già una divergenza anche prima del primo numero.
+
+Codice errore nuovo: `E_FAMIGLIA_DOCUMENTO_STRUTTURA_IMMUTABILE`.
+
+✅ **DECISO da Tid il 2026-09-01 (D3): il LOCK automatico.** Si ripassa il
+provisioning di `script.trgfn_lock_columns` su questa tabella, che la allinea
+alle altre diciotto e la toglie dall'eccezione in cui si trova oggi da sola.
+
+⛔ **Conseguenza operativa, e va rispettata**: `codice_interno` è fuori
+dall'elenco del guard di struttura. Due presidi sulla stessa colonna con
+due messaggi diversi sono esattamente ciò che non si fa — il lock parla per
+`codice_interno`, il guard per le altre cinque.
+
+### 11.6 DB-4 · Una famiglia nuova senza registri non produce nessun documento
+
+`vendite.fn_provision_registri_emittente(bigint)` dà a **un emittente** i
+registri di tutte le famiglie non fiscali che gli mancano, e lo fa da un trigger
+su `anagrafiche.emittenti_fiscali`. La simmetrica — dare a **una famiglia** il
+registro su tutti gli emittenti esistenti — **non esiste**. Senza, una famiglia
+creata dal CRUD nasce senza registri e i suoi documenti non si numerano: lo dice
+già la doc manuale (*«chi aggiunge una famiglia deve anche darle un registro per
+emittente»*), e oggi quella frase non ha nessuno che la esegua.
+
+**Passo**:
+
+1. estrarre la **primitiva unica** con dentro la regola del codice
+   (`left(codice_interno,3) || '-' || soggetto_ruolo_id`), la descrizione, e i
+   default presi dalla famiglia;
+2. due involucri sottili sopra: `fn_provision_registri_emittente(bigint)`
+   — **firma invariata**, la chiama un trigger — e
+   `vendite.fn_provision_registri_famiglia(varchar)` nuova.
+
+⛔ Non una copia della `SELECT`: due porte che generano codici diversi per lo
+stesso registro sono il difetto che si vede sei mesi dopo, su un solo emittente.
+
+⚠️ Entrambe restano **idempotenti sulla coppia (emittente, famiglia)**: è già
+così, e va conservato — un registro creato a mano con un altro codice vale lo
+stesso e non ne fa nascere un secondo.
+
+### 11.7 DB-5 · La madre della creazione — due scritture, una transazione
+
+Creare la famiglia e provvisionarne i registri sono **due** scritture: §5b delle
+linee guida vuole una funzione madre, non due chiamate in sequenza.
+
+`vendite.fn_crea_famiglia_documento(...)` → `SECURITY INVOKER`, ritorna
+`(id, n_registri_creati)`. Fa l'`INSERT` (lasciando ai trigger audit, `tx_id` e
+i due guard il loro lavoro) e chiama il provisioning del §11.6.
+
+⛔ **`update` e `set_attivo` NON hanno una madre**: sono scritture singole, e il
+backend le fa come già fa sui registri — `UPDATE` diretto e traduzione dei
+vincoli. Una madre dove non c'è niente da tenere insieme è solo un livello in
+più.
+
+### 11.8 DB-6 · La superficie di lettura che oggi non esiste
+
+`dbops.fn_get_lookup_codici` ritorna `id, codice, codice_interno, descrizione,
+attivo` e nient'altro: **non può** portare `prefisso_default`,
+`lunghezza_default`, `colonna_serie`, `presidia_data_documento`. Non è un
+difetto del lookup — è generico, e va lasciato generico.
+
+**Passo**: `vendite.vw_famiglie_documento_lista`, con
+
+* tutte le colonne di catalogo, **compresi i default della forma e le due
+  colonne di natura**;
+* `n_registri` e `n_registri_attivi`;
+* i due blocchi capability (`reason`, `reason_key`, `dettaglio`) dalle check del
+  §11.4 e del §11.5, nella stessa forma in cui il backend già legge quelle dei
+  registri.
+
+⭐ **Una vista sola serve TRE consumatori**: la lista del CRUD delle famiglie
+(dove è anche la `vista_sql` dichiarata a catalogo, §11.9), il suo **export
+CSV/XLSX** — che legge le stesse righe per le stesse chiavi — e il drawer dei
+registri, che da lì prende i default con cui compilare il form di creazione e la
+natura con cui decidere quali campi mostrare. È il pezzo che
+toglie i letterali `'FATTURA'` da backend e frontend: `presidia_data_documento`
+è la colonna che risponde a quella domanda.
+
+### 11.9 DB-7 · La lista del CRUD è una lista STANDARD — e quasi tutto lo standard è catalogo
+
+> ⭐ **Richiesta di Tid, 2026-09-01**: *«le liste del CRUD devono rispettare il
+> formato liste che ci siamo dati — colonne parametrizzabili, estraibili
+> CSV/XLS: lo standard delle liste»*.
+
+La regola zero del frontend dice che una lista si monta con
+`<ListaConfigurabile codice="...">`, e che **colonne, ordine, larghezze,
+visibilità, personalizzazione, ritiro dinamico ed export «arrivano gratis»**.
+⭐ «Gratis» vuol dire **una cosa sola**: che arrivano dal **catalogo**. Se il
+catalogo è incompleto o sbagliato, non arriva niente — e non fallisce niente:
+la lista si vede lo stesso, con le colonne storte e l'export che stampa `True`
+al posto di `Sì`.
+
+⇒ **La parte di questa richiesta che è lavoro DB è il seed del catalogo, ed è
+quasi tutta la richiesta.** Il backend deve solo esporre l'endpoint di lista e
+quello di export; il frontend consuma i building block che già esistono.
+
+#### Cosa si semina (`80_data/sql/ui`)
+
+| Tabella | Cosa |
+| --- | --- |
+| `ui.lista_definizione` | una riga: `codice = 'vendite.famiglie_documento'`, `schema_dati = 'vendite'`, `multi_emittente = f` (⛔ una famiglia non è di un emittente), **`vista_sql` VALORIZZATO** — vedi sotto |
+| `ui.lista_colonna` | una riga per colonna, coi campi che governano **davvero** il comportamento (elenco sotto) |
+| `ui.lista_preset` | il preset `sistema` «Vista standard famiglie di documento», `pagina_dimensione = 25` (il default dello standard), `ordinamento_default` su `codice_interno` |
+| `ui.lista_preset_colonna` | una riga per colonna: ordine, `visibile`, `fissata` |
+
+#### ⭐ `vista_sql` valorizzato — la differenza che vale il passo
+
+Le ultime sei liste hanno `vista_sql` **NULL**, e su una lista senza vista il
+trigger `ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente` **si ferma
+subito**: nessuno verifica che i `campo_sorgente` del catalogo esistano davvero.
+Il refuso non si vede finché una colonna non esce vuota a video.
+
+Qui la vista c'è già — è `vendite.vw_famiglie_documento_lista` del §11.8 — quindi
+la si dichiara, e da quel momento **ogni `campo_sorgente` è validato dal database
+contro le colonne vere della proiezione**. È il presidio che rende la
+parametrizzazione una promessa mantenuta invece di un elenco parallelo.
+
+⚠️ **Il nome delle colonne della vista è il contratto**, e lo è per due
+consumatori: `<ListaConfigurabile>` legge `data[campo_sorgente]`, e il renderer
+di export fa lo stesso (`apps/ui/services/lista_export_service.py`: *«le chiavi
+devono coincidere con `colonne[i].campo_sorgente`»*). Un rename di colonna nella
+vista non è un dettaglio interno: rompe le celle e l'export insieme.
+
+⚠️ **Ordine di esecuzione**: il seed di `80_data` gira **dopo** `20_code`, ma la
+dipendenza va dichiarata lo stesso — `preConditions` con `viewExists` sulla vista.
+Senza, su un database ricostruito da zero il guard rifiuterebbe le colonne una
+per una e il messaggio parlerebbe di un `campo_sorgente` inesistente invece che
+della vista mancante.
+
+#### ⛔ I campi di `ui.lista_colonna` che NON sono decorazione
+
+| Campo | Cosa governa davvero | Errore che non fallisce |
+| --- | --- | --- |
+| `tipo_dato` | ⭐ **l'export**: `format_for_export` dispatcha su questo, non sul tipo Python | `boolean` mancante ⇒ nel CSV esce `True`, non `Sì` |
+| `formato` | il formatter di cella **e** dell'export (`date_short`, `datetime_short`, `yesno`, `number`…) | vuoto su una data ⇒ esce l'ISO grezzo |
+| `esportabile` | il renderer **esclude** le colonne a `false` e tutte le `tipo_colonna='azione'` | una colonna che l'admin non voleva nel file ci finisce |
+| `priorita` | ⭐ il **ritiro dinamico** delle colonne (`useResponsiveColumns`): su schermo stretto sparisce la priorità più bassa | tutte uguali ⇒ sparisce una colonna a caso |
+| `gruppo` / `gruppo_ordine` | i gruppi della modale «Personalizza colonne» | tutto in un blocco solo, senza titoli |
+| `ricercabile_full` | quali colonne entra nella ricerca libera | ⚠️ deve **coincidere** con la whitelist di ricerca del repository BE: sono due elenchi, e il catalogo è quello che l'operatore vede |
+| `ordinabile` | l'intestazione cliccabile | ⚠️ idem: deve coincidere con la whitelist `ORDER BY` del BE, o si clicca e non succede niente |
+| `sensibile` | ⛔ **è un cancello**: `true` ⇒ modello allowlist, e **senza grant la colonna è invisibile** | messo per prudenza ⇒ colonna che non si vede e nessun errore |
+| `larghezza_default`, `allineamento` | layout | — |
+| `etichetta_i18n_key` | l'etichetta tradotta; `etichetta` è il ripiego | chiave assente ⇒ si vede il ripiego italiano, non un errore |
+
+⛔ E i valori degli enum si prendono **dal catalogo**: `tipo_colonna` è
+`identificatore | informazione | azione` e descrive il **comportamento** (non il
+tipo del dato!), `tipo_dato` è `string | numeric | date | datetime | boolean |
+enum`. Due righe scritte a mano con `numero` e `integer` hanno appena fermato il
+migrate di tutti — §10.12.
+
+#### Le colonne previste
+
+`codice_interno` (identificatore), `descrizione` (identificatore),
+`schema_tabella`, `nome_tabella`, `colonna_numero`, `colonna_serie`,
+`colonna_billing_account`, `presidia_data_documento` (boolean, `yesno`),
+`prefisso_default`, `lunghezza_default` (**`numeric`**, allineata a destra),
+`n_registri` e `n_registri_attivi` (numeric, dalla vista), `attivo` (boolean),
+`data_insert` (datetime + `datetime_short`), più la colonna `azioni`
+(`tipo_colonna='azione'`, `esportabile = f` — lo impone il `CHECK`
+`chk_ui_lista_colonna_azione_non_esportabile`).
+
+⭐ **Gruppi**: *Identificazione* (codice, descrizione), *Dove vive il documento*
+(le quattro colonne strutturali), *Forma di nascita* (prefisso e lunghezza di
+default), *Uso* (i due conteggi), *Stato*, *Audit*. Sono i gruppi della modale di
+personalizzazione, e raccontano la tabella meglio di qualunque commento: sono le
+tre nature del §11.0 messe in fila.
+
+#### ⛔ Cosa NON entra nel catalogo, pur essendo nella vista
+
+Le sei colonne di capability (`*_reason`, `*_reason_key`, `*_dettaglio` dei due
+blocchi) **non sono dati della lista**: servono al tooltip del pulsante spento e
+al motivo del campo bloccato. Restano nella vista e **fuori** da
+`ui.lista_colonna` — altrimenti finiscono nella modale «Personalizza colonne» e,
+peggio, nel file esportato.
+
+### 11.10 📌 Cosa ricade su BE e FE (richiesta, non implementazione)
+
+| # | Chi | Cosa |
+| --- | --- | --- |
+| BE-F1 | backend | leggere `vendite.vw_famiglie_documento_lista` al posto del lookup generico, sia per il CRUD famiglie sia per il drawer dei registri |
+| BE-F2 | backend | ⛔ cancellare `_FAMIGLIA_FISCALE = "FATTURA"` da `registri_service.py` e derivare i tre campi condizionati da `presidia_data_documento` |
+| BE-F3 | backend | mappare i tre codici errore nuovi (§11.3, §11.4, §11.5) — arrivano come `P0001`, non come violazione di vincolo: **non passano da `map_integrity_error`** |
+| BE-F4 | backend | endpoint CRUD famiglie: la creazione chiama la **madre** `fn_crea_famiglia_documento`, non un `INSERT` diretto |
+| BE-F5 | backend | ⭐ **il CRUD è per il solo amministratore** (D6, Tid 2026-09-01): il cancello sta sull'endpoint, non nel database. ⛔ Nessun oggetto DB per questo — `vendite.famiglie_documento` non ha RLS e non gliene si aggiunge una per un caso che un permesso risolve |
+| BE-F8 | backend | tradurre il `23505` di `uq_famiglie_documento_tabella_attiva` (§11.15): il messaggio deve dire che **quella tabella ha già la sua famiglia**, e nominarla — un duplicato nudo manderebbe a cercare una riga che nella lista delle attive c'è eccome |
+| BE-F6 | backend | l'endpoint di lista espone **ricerca, ordinamento e paginazione** con le solite whitelist — ⚠️ e le due whitelist (`ORDER BY`, ricerca) devono **coincidere** con `ordinabile` / `ricercabile_full` del catalogo: sono due elenchi paralleli e quello che l'operatore vede è il catalogo |
+| BE-F7 | backend | export `?formato=csv\|xlsx` col renderer generico già in casa (`apps/ui/services/lista_export_service.py` + `apps/ui/api/export_helpers.py`): **non si scrive un export nuovo**, si passano righe + colonne del catalogo |
+| FE-F1 | frontend | il drawer del registro, alla scelta della famiglia in **creazione**, precompila `prefisso` e `lunghezza_numero` dai default della famiglia — oggi nasce con `''` e `7` cablati, e una COMMESSA creata a mano nasce a 7 cifre mentre quella creata dal provisioning ne ha 9 |
+| FE-F2 | frontend | ⛔ togliere `REGISTRO_FAMIGLIA_FISCALE` da `constants.js` (stessa ragione di BE-F2) e disabilitare la serie, col motivo, sulle famiglie che `colonna_serie` non ce l'hanno |
+| FE-F3 | frontend | nel Select della famiglia in creazione, gli slot già occupati per quell'emittente non si offrono: `uq_registri_fatturazione_famiglia_emittente_utility` ne ammette **uno solo** e non filtra su `attivo` (§FE-3, «Nuovo deve inciampare prima») |
+| FE-F4 | frontend | chiavi i18n `vendite.famiglie_documento.col_*` per la lista del §11.9 |
+| FE-F5 | frontend | i tre campi fiscali **non si mostrano** su una famiglia che non li ammette — compresa ogni famiglia creata dal CRUD (§11.11) |
+| FE-F6 | frontend | la lista si monta con `<ListaConfigurabile codice="vendite.famiglie_documento">` via `useListaConfigurabilePage` (che porta con sé «Personalizza colonne» e «Esporta» da `useListaAzioni` + `ExportDialog`). ⛔ Nessuna `DataTable` grezza: è la regola zero |
+
+### 11.11 ⛔ Il debito che questo piano NON salda, ed è dichiarato
+
+Il `CHECK chk_registri_fatturazione_famiglia_regole_fattura` cabla `'FATTURA'`, e
+**un `CHECK` non può leggere un'altra tabella**: quella è una costrizione, non
+una svista. Accanto, `vendite.fn_get_pavimento_data_documento` **deriva** il
+pavimento di sequenza da `presidia_data_documento` ma cabla `'FATTURA'` per il
+limite di emissione, e `vendite.fn_get_registro_documento` rifiuta `'FATTURA'`
+perché quella famiglia si risolve per (tipo documento, natura).
+
+⇒ **Una famiglia creata dal CRUD nasce necessariamente «non fiscale»**: politica
+data `OGGI`, nessun limite di emissione, registro sullo slot (famiglia,
+emittente, utility). È un limite del **modello**, non della maschera, e va detto
+nel form — non scoperto da un `23514` su un campo che l'operatore ha compilato.
+
+✅ **DECISO da Tid il 2026-09-01 (D5): no, e resta così.** Il `CHECK` non si
+tocca e la famiglia nuova nasce non fiscale.
+
+⛔ **La via d'uscita è quindi CHIUSA, non rimandata** — e va scritto perché, o
+qualcuno la riaprirà pensando che nessuno ci avesse pensato: sostituire il
+`CHECK` con un guard che legge `presidia_data_documento` costa più di quello che
+rende. Un guard `BEFORE ROW` montato anche in `INSERT` **oscura** il `CHECK` e
+porta lo SQLSTATE da `23514` a `P0001`: cambia il canale su cui il backend
+riconosce quel vincolo **per nome**, e il messaggio parlante che il §BE-2 ha
+costruito smetterebbe di uscire — in silenzio, su un form che continua a
+funzionare.
+
+⇒ **Ricade sul frontend**, e sta nel §11.10 come FE-F5: i tre campi fiscali si
+mostrano solo sulla famiglia che li ammette, e su una famiglia nuova non si
+mostrano affatto. Non è una limitazione da spiegare in un tooltip: è un campo
+che non c'è.
+
+### 11.12 I passi, in ordine
+
+| # | Passo | Cartella | Dipende da |
+| --- | --- | --- | --- |
+| ~~0~~ | ~~Congelamento dei due mirror~~ — ❌ **non si fa** (D1): è un debito di **classe**, lo chiuderà la CI di produzione che non esegue `80_data` | — | ❌ D1 |
+| 1 | Lock su `codice_interno` (provisioning `trgfn_lock_columns`) | `20_code` / registry | ✅ D3 |
+| 2 | Guard riferimenti esteso a `colonna_serie` | `20_code/vendite` | — |
+| 3 | `fn_check_famiglia_documento_disattivabile` + guard **con uscita sul no-op** (§11.2) | `20_code/script` + `20_code/vendite` | ✅ D2 |
+| 4 | `fn_check_famiglia_documento_struttura_modificabile` + guard (**cinque** colonne, non `codice_interno`) **con uscita sul no-op** (§11.2) | idem | 1 |
+| 5 | Primitiva unica di provisioning + `fn_provision_registri_famiglia` | `20_code/vendite` | — |
+| 6 | Madre `fn_crea_famiglia_documento` | `20_code/vendite` | 5 |
+| 7 | Vista `vw_famiglie_documento_lista` | `20_code/vendite` | 3, 4 |
+| 8 | Tre codici errore nuovi — **append ai CSV**, mai un loader nuovo | `80_data/sql/config` | 2, 3, 4 |
+| 9 | Seed del catalogo lista — definizione (**con `vista_sql`**), colonne, preset, preset_colonna | `80_data/sql/ui` | 7 |
+| 10 | pgTAP: un file per guard, col gemello positivo | `db/pgtap/vendite` | 2→7 |
+| 11 | Doc manuale delle due tabelle + questo brief | `docs/it/dbzero/vendite/manual` | tutti |
+
+⚠️ `%TYPE` **ovunque** — firma, `DECLARE`, `RETURNS TABLE`, `COMMENT` — come già
+fanno le due check dei registri. E un parametro in più su una funzione esistente
+è un **overload**, non una modifica: il passo 5 tiene la firma di
+`fn_provision_registri_emittente(bigint)` invariata proprio per questo.
+
+### 11.13 ✅ Le sei decisioni di Tid — 2026-09-01
+
+> Le domande restano scritte: una decisione senza la domanda che l'ha originata
+> è un'affermazione che il prossimo lettore non sa valutare.
+
+| # | Domanda | Risposta | Dove ricade |
+| --- | --- | --- | --- |
+| **D1** | La sede del dato diventa la tabella (mirror CSV congelati), o il CRUD resta ai soli campi che il CSV non possiede? | ❌ **Non si congela niente.** Il CSV è fedele (verificato: le cinque righe coincidono col database), ma **tantissime tabelle sono in questo stato**: la sede della soluzione non è il singolo mirror, è una **CI di produzione che non esegue `80_data`**, il giorno che una produzione esisterà | §11.2 — e ⛔ i guard dei passi 3 e 4 devono uscire sul **no-op** |
+| **D2** | Si può spegnere una famiglia che ha ancora documenti numerati? | **No.** Si blocca, col motivo | §11.4, passo 3 |
+| **D3** | `codice_interno`: lock automatico o guard dedicato? | **Lock automatico** — come le altre diciotto tabelle | §11.5, passo 1 |
+| **D4** | Il CRUD ha il `DELETE` o solo `attivo = false`? | **Solo spegnimento** | §11.7 |
+| **D5** | Una famiglia nuova può presidiare la data documento come la fattura? | **No** — il `CHECK` non si tocca, e il limite si dichiara nella maschera | §11.11, FE-F5 |
+| **D6** | Il CRUD sta sotto un permesso suo? | **Solo amministratore** | BE-F5, nessun oggetto DB |
+
+⭐ **Cosa cade fuori dal piano grazie a D4**: nessun verbo di cancellazione
+significa **nessuna primitiva di pulizia e nessuna figlia da scoprire da
+`pg_constraint`**. Una famiglia non si cancella perché la sua riga è la traccia
+di documenti che esistono ancora — ed è la stessa ragione per cui D2 dice no.
+Le due risposte sono la stessa risposta, data due volte.
+
+### 11.14 ✅ Stato — **APPLICATO** il 2026-09-01, suite verde
+
+> ✅ **APPLICATO da Tid il 2026-09-01**, e la suite gira ora **come
+> applicazione**: `test-famiglie-documento-crud-v1` **21/21**, e i sei pgTAP
+> vicini (chiave contatore, guard riferimenti, storia emittente BA, identità
+> documenti, motore trasloco, prefisso registro, scope ricerca) tutti PASS.
+>
+> Prima del migrate i changeSet erano stati provati eseguendo l'**SQL estratto
+> dagli YAML** dentro transazioni che si annullano — non una riscrittura a mano,
+> che salterebbe proprio i `COMMENT` e i `GRANT`.
+>
+> ⇒ **Lato DB questo cantiere è chiuso.** Quello che resta è al §11.10, ed è
+> tutto di BE e FE.
+
+#### La verifica post-apply, letta dagli oggetti vivi
+
+`databasechangelog`: i **dieci** changeSet `EXECUTED` (`20260901-13` → `-22`).
+⭐ Il `-22` è passato **prima** del `-21` ed è giusto così: `00_schema` viene
+prima di `90_end` nel master, e la numerazione dice *quando è stato scritto*, non
+in che ordine si applica. I due mirror del catalogo liste risultano `RERAN`,
+come devono.
+
+| Cosa | Come si presenta ora |
+| --- | --- |
+| trigger su `famiglie_documento` | sei: `a10_guard_chiave_struttura_upd`, `a10_guard_disattivazione_upd`, `a10_guard_riferimenti_ins_upd`, **`a10_lock_columns_upd`** (quello che mancava), audit, tx_id |
+| funzioni nuove | `fn_check_famiglia_documento_disattivabile`, `fn_check_famiglia_documento_struttura_modificabile`, `fn_provision_registri`, `fn_provision_registri_famiglia`, `fn_crea_famiglia_documento` |
+| vista | `vw_famiglie_documento_lista` con `security_invoker=on` — ⚠️ l'opzione **c'è**, e va riverificata a ogni `CREATE OR REPLACE` futuro |
+| vincolo | `uq_famiglie_documento_tabella_attiva` |
+| codici errore | i due nuovi a catalogo (1041, 1042) |
+| catalogo lista | **lista 55, 15 colonne, `vista_sql = vw_famiglie_documento_lista`** — cioè ogni `campo_sorgente` ora è validato dal database |
+
+⛔ **`vendite.famiglie_documento` non è più l'unica tabella con `codice_interno`
+senza lock**: era il rilievo del §11.1/4, ed è chiuso.
+
+| # | Passo | File | Stato |
+| --- | --- | --- | --- |
+| ~~0~~ | Congelamento mirror | — | ❌ non si fa (D1) |
+| 1 | Lock su `codice_interno` | `90_end/20260901-21-provision-lock-famiglie-documento` | ✅ |
+| 2 | Guard riferimenti + `colonna_serie` | `20_code/vendite/20260901-13-update-trgfn-famiglie-guard-riferimenti-serie` | ✅ |
+| 3 | Check + guard disattivazione | `20_code/script/20260901-14`, `20_code/vendite/20260901-15` | ✅ |
+| 4 | Check + guard struttura | `20_code/script/20260901-16`, `20_code/vendite/20260901-17` | ✅ |
+| 5 | Primitiva + provisioning per famiglia | `20_code/vendite/20260901-18-refactor-provision-registri-primitiva` | ✅ |
+| 6 | Madre `fn_crea_famiglia_documento` | `20_code/vendite/20260901-19` | ✅ |
+| 7 | Vista `vw_famiglie_documento_lista` | `20_code/vendite/20260901-20` | ✅ |
+| 8 | Due codici errore | append a `codici_errore.csv` + `messaggi_errore.csv` (id 1041-1042) | ✅ |
+| 9 | Catalogo lista (definizione **con `vista_sql`**, 15 colonne, preset) | append ai quattro CSV di `80_data/sql/ui` | ✅ |
+| 10 | pgTAP | `db/pgtap/vendite/test-famiglie-documento-crud-v1.sql` — **21/21** | ✅ |
+| 11 | Doc manuale della tabella + questo brief | `dbzero/vendite/manual/famiglie_documento.md` | ✅ |
+| 12 | **Una tabella, una famiglia** — UNIQUE parziale (deciso dopo il piano) | `00_schema/vendite/20260901-22-unique-famiglie-documento-tabella` | ✅ |
+
+⭐ **Come sono stati provati** — e conta, perché una prova sbagliata è peggio di
+nessuna prova:
+
+* l'SQL è stato **estratto dai `changes[].sql.sql`** e eseguito intero, con
+  `ON_ERROR_STOP=1`, dentro `BEGIN … ROLLBACK`;
+* ogni guard ha il suo **gemello positivo**: senza, un guard che rifiuta sempre
+  passa i test negativi esattamente come quello giusto;
+* il **no-op dei due mirror** è provato per primo su ogni guard nuovo — è la
+  condizione posta dalla decisione D1;
+* il seed del catalogo lista è stato caricato **attraverso i suoi guard veri**
+  (B1 sulla vista, B2 su ogni `campo_sorgente`): 15 colonne accettate;
+* ⚠️ il primo giro di pgTAP era stato eseguito **prima del migrate**, da owner e
+  con gli oggetti anteposti al file: una verifica delle asserzioni, non della
+  corsa reale. ⭐ **E la corsa reale ha trovato un difetto che quella non
+  poteva trovare** — vedi il quinto rilievo qui sotto.
+
+#### 🔴 Quattro difetti trovati PROVANDO, che leggendo non si vedevano
+
+| # | Cosa | Perché non si vedeva |
+| --- | --- | --- |
+| 1 | `trg_famiglie_documento_a10_guard_riferimenti_ins_upd` **non nominava `colonna_serie`** nella lista `UPDATE OF` | Aggiornare la sola funzione avrebbe prodotto un guard che valida una colonna su cui non viene **mai** chiamato: verde in ogni prova che passi dalle altre colonne, muto proprio sul caso per cui è stato scritto. ⚠️ E il mirror `20260901-12` scrive **esattamente e solo** quella colonna |
+| 2 | L'**ordine alfabetico** dei BEFORE ROW: `guard_riferimenti` parlava prima di `guard_struttura` | Cambiando `nome_tabella` su una famiglia con registri usciva *«vendite.resi non ha la colonna serie»* — vero, e non il punto: quella colonna non si cambia affatto. L'operatore avrebbe corretto il riferimento per sbattere un attimo dopo contro il muro vero. ⇒ il trigger si chiama `..._a10_guard_**chiave**_struttura_upd`: `c` < `r`. **Prima l'immutabilità, poi la validità del valore nuovo** |
+| 3 | Il predicato «la serie sta nel vincolo di unicità» scritto **per attnum** avrebbe **rifiutato la FATTURA** | `uq_fatture_numero` porta la serie come `COALESCE(serie, '')`, cioè un'**espressione**, che in `pg_index.indkey` ha attnum 0. La versione «precisa» sembra migliore ed è sbagliata: il primo migrate sarebbe fallito sul mirror delle famiglie. ⇒ predicato **testuale**, lo stesso del test 5 del pgTAP già in casa |
+| 4 | `script.fn_log_and_raise_error` chiamata con **cinque** argomenti non risolve la firma variadica | Rispondeva *«la funzione non esiste»* — un errore TECNICO al posto di quello di dominio, cioè il guard che si autoannulla. Serve `VARIADIC ARRAY[]::text[]` anche quando il messaggio non ha segnaposti |
+
+⭐ I primi due appartengono alla stessa specie: **un presidio che c'è e non viene
+chiamato**, oppure che viene chiamato dopo un altro che dice una cosa diversa. È
+la classe di difetto che nessun test scritto sulla funzione trova, perché la
+funzione è giusta — è il *montaggio* a essere sbagliato.
+
+#### 🔴 E un quinto, trovato dal migrate vero — nel TEST, non nel codice
+
+Lanciato come applicazione dopo l'apply, il **test 19 è fallito**: `have 1, want
+0`. Il colpevole era la colonna `azioni`.
+
+⚠️ **Il commento della DDL di `ui.lista_colonna` promette una cosa che il loader
+non produce**: dice *«`campo_sorgente` NULL per `tipo_colonna = azione`»*, ma il
+`loadUpdateData` scrive la **stringa vuota**. Verificato sul vivo: le colonne con
+`campo_sorgente IS NULL` in tutto il database sono **zero**, e tutte e 31 le
+colonne `azione` hanno `''`.
+
+⇒ Il test, scritto sulla promessa (`campo_sorgente IS NOT NULL`), andava a
+cercare una colonna chiamata `azioni` dentro la vista. **Il seed era giusto: era
+il test a chiedere la cosa sbagliata.**
+
+⭐ Corretto scrivendo il predicato **come lo scrive il guard** —
+`ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente` esclude le colonne
+`azione` e quelle senza sorgente — invece che come lo racconta la
+documentazione. È la stessa lezione del rilievo 3, dall'altro lato: *due
+predicati sulla stessa invariante, prima o poi, dissentono*.
+
+⚠️ E la lezione sul metodo: il giro pre-apply, da owner e con gli oggetti
+anteposti, **non poteva** trovarlo — lì le righe del catalogo le avevo inserite
+io con `NULL`, perché stavo riproducendo il `nullValue` del loader invece di
+lasciarlo scrivere davvero. Una fixture che *simula* il caricamento prova la
+simulazione.
+
+#### ✅ La domanda emersa scrivendo — DECISA il 2026-09-01
+
+⚠️ **Niente vieta due famiglie sulla stessa tabella.** Oggi non capita (le
+cinque sono una per tabella), ma il CRUD è la prima cosa che lo rende possibile,
+e il modello lo ammette: non c'è nessun `UNIQUE (schema_tabella, nome_tabella)`.
+
+Cosa succederebbe: il presidio sul cambio emittente del BA conta **per tabella**
+e itera **per famiglia**, quindi gli stessi documenti verrebbero contati due
+volte e il messaggio all'operatore li elencherebbe sotto due nomi diversi. Non
+rompe il presidio — la domanda è «ce n'è almeno uno?» — ma racconta una cosa
+falsa a chi legge.
+
+⇒ La domanda era di modello: **una famiglia è il tipo di documento**, o può
+esistere più di un modo di chiamare lo stesso documento?
+
+> ✅ **Risposta di Tid**: *«una tabella una famiglia, altrimenti si creerebbe un
+> bel casino: un `ddt_reso` fa parte dello stesso insieme `ddt`.»*
+
+⇒ Il vincolo è scritto, ed è il §11.15.
+
+### 11.15 ✅ Una tabella, una famiglia — il vincolo che chiude la domanda
+
+> ✅ **Deciso da Tid il 2026-09-01**: *«una tabella una famiglia, altrimenti si
+> creerebbe un bel casino: un `ddt_reso` fa parte dello stesso insieme `ddt`.»*
+
+⭐ **La famiglia non è un modo di chiamare i documenti: È il tipo di documento**,
+e il tipo di documento è la tabella in cui vive. Due righe che nominano la stessa
+tabella sono due nomi per la stessa cosa.
+
+`00_schema/vendite/20260901-22-unique-famiglie-documento-tabella`:
+
+```sql
+CREATE UNIQUE INDEX uq_famiglie_documento_tabella_attiva
+    ON vendite.famiglie_documento (schema_tabella, nome_tabella)
+ WHERE attivo;
+```
+
+#### ⭐ Perché è PARZIALE, e perché è l'opposto dei registri
+
+Un `UNIQUE` pieno sarebbe stato un **cancello su uno stato persistente**: una
+famiglia ritirata resta scritta per sempre (D4: si spegne, non si cancella),
+quindi terrebbe la sua tabella occupata **per sempre**, e l'unica via d'uscita —
+il `DELETE` — è proprio quella che abbiamo deciso di non offrire.
+
+E il perimetro *attivo* non è una concessione: è **esattamente quello che i
+presidi leggono**. `anagrafiche.fn_ba_ha_storia_emittente` e la sua gemella
+iterano `WHERE fd.attivo`, quindi una famiglia spenta non è nel conteggio e non
+è nel problema che il vincolo esiste per impedire.
+
+⚠️ **È il contrario di ciò che vale sui registri**, dove `attivo = false` **non**
+libera lo slot. Non è un'incoerenza, sono due cose diverse:
+
+| | lo slot è… | una riga spenta… |
+| --- | --- | --- |
+| `registri_fatturazione` | la **chiave del contatore** | possiede ancora i numeri che ha consegnato ⇒ **tiene** lo slot |
+| `famiglie_documento` | un'**identità di catalogo** che solo le righe accese fanno valere | non è letta da nessun presidio ⇒ **libera** lo slot |
+
+⛔ Chi legge non deve dedurre l'una dall'altra: è scritto nel `COMMENT`
+dell'indice, dove lo trova chi guarda l'oggetto e non il brief.
+
+#### Cosa cambia per chi sbaglia
+
+Violarlo produce un `23505` col nome dell'indice — nessun codice nuovo a
+catalogo, ma una riga nella mappa dei vincoli del backend (**BE-F8**). ⚠️ E il
+messaggio deve **nominare la famiglia che c'è già**: un «duplicato» nudo
+manderebbe a cercare una riga che nella lista delle attive si vede eccome.
+
+⭐ Due pgTAP in più (20 e 21), e il secondo è quello che spiega il predicato: la
+gemella **ritirata** sulla stessa tabella passa. Senza, un domani qualcuno
+«semplificherebbe» il vincolo in uno pieno senza accorgersi di aver chiuso la
+porta a chiave.

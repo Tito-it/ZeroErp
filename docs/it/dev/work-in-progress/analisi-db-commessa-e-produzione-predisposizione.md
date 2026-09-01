@@ -1,4 +1,4 @@
-# Brief DB — la commessa e la produzione: dove il ciclo si può fermare, e che cosa gli manca per farlo
+# Analisi DB — la commessa e la produzione: dove il ciclo si può fermare, e che cosa gli manca per farlo
 
 > **Destinatario:** team DB (`dev/db-tid`), con una parte finale che riguarda
 > anche BE/FE quando le colonne esisteranno.
@@ -15,16 +15,25 @@
 > parte delle cose che mancano **manca comunque**, produzione o no: sono
 > dimensioni del ciclo di vendita che oggi non esistono e che pesano già.
 >
-> **Stato:** 🔵 **APERTO — analisi.** Nessun changeSet scritto, niente applicato,
-> nessuna decisione presa. La §8 elenca ciò che va aggiunto **a prescindere**
-> dalla decisione di modello; la §7 è la decisione, ed è **rinviata a un'analisi
-> sua** per volontà di Tid: *«poi faremo un'analisi se la commessa attuale può
-> essere valida anche per la produzione o se conviene fare una specifica»*.
+> **Stato:** 🔵 **APERTO — è un'ANALISI, non un piano.** Nessun changeSet scritto,
+> niente applicato, nessuna decisione presa. La §8 elenca ciò che va aggiunto **a
+> prescindere** dalla decisione di modello; la §7 è la decisione, ed è **rinviata a
+> un'analisi sua** per volontà di Tid: *«poi faremo un'analisi se la commessa
+> attuale può essere valida anche per la produzione o se conviene fare una
+> specifica»*.
 >
-> ⚠️ **Perimetro:** questo brief guarda la **commessa e il ciclo di vendita**.
+> 📌 **Declassato ad analisi il 2026-09-01** (decisione di Tid), e rinominato da
+> `brief-db-…` a `analisi-db-…`: ⭐ è la stessa distinzione già usata dal cantiere
+> numerazione, dove l'**analisi** dice *perché* e il **brief** dice *cosa si fa*.
+> Il piano operativo che ne discende — le sole modifiche **certe**, quelle che
+> nessuna decisione aperta cambia — vive in
+> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
+> ⛔ Da qui in avanti **questo documento non si esegue**: si consulta.
+>
+> ⚠️ **Perimetro:** questa analisi guarda la **commessa e il ciclo di vendita**.
 > Il lato magazzino — l'aggancio del movimento al documento di origine, l'ODL come
 > sorgente, l'unicità del ledger — è già aperto e non si duplica qui:
-> [brief-db-magazzino-aggancio-documento-e-produzione](brief-db-magazzino-aggancio-documento-e-produzione.md).
+> [analisi-db-magazzino-aggancio-documento-e-produzione](analisi-db-magazzino-aggancio-documento-e-produzione.md).
 > I due brief sono **gemelli** e le loro decisioni si tengono (vedi §7).
 
 ---
@@ -157,7 +166,7 @@ scrive, la seconda si costruisce, la terza si aggiunge a ciò che esiste già.
 
 ### A. L'oggetto ODL: nominato e mai nato
 
-Il [brief magazzino](brief-db-magazzino-aggancio-documento-e-produzione.md) lo
+L'[analisi magazzino](analisi-db-magazzino-aggancio-documento-e-produzione.md) lo
 copre (§6 e D-5). Quello che si aggiunge qui, verificato sul codice:
 
 * ⛔ `causali.richiede_odl` e `causali.contabilizza_cdc` sono **flag morti**:
@@ -386,8 +395,8 @@ cui possono partire prima che la §7 abbia una risposta.
 ## 10. Che cosa NON è di questo brief
 
 * **L'aggancio del movimento al documento**, l'ODL come sorgente o anello,
-  l'unicità del ledger, il guard tipizzato: sono del
-  [brief magazzino](brief-db-magazzino-aggancio-documento-e-produzione.md),
+  l'unicità del ledger, il guard tipizzato: stanno nell'[analisi
+  magazzino](analisi-db-magazzino-aggancio-documento-e-produzione.md),
   decisioni D-1 → D-8.
 * **La decisione sulla testata** (§7): analisi separata, per volontà di Tid.
 * **Valorizzazione, lotti, seriali, ubicazioni, RLS su `magazzino`**: §9 del brief
@@ -400,7 +409,7 @@ cui possono partire prima che la §7 abbia una risposta.
 ## 11. Riferimenti
 
 * Il gemello sul magazzino:
-  [brief-db-magazzino-aggancio-documento-e-produzione.md](brief-db-magazzino-aggancio-documento-e-produzione.md)
+  [analisi-db-magazzino-aggancio-documento-e-produzione.md](analisi-db-magazzino-aggancio-documento-e-produzione.md)
 * Convenzione della sorgente polimorfa: [sorgente-polimorfa.md](../../guide/sorgente-polimorfa.md)
 * Stato dei domini: [mappa-concentrica.md](../../mappa-concentrica.md) § Anello 3
 * Il punto d'aggancio operativo:
