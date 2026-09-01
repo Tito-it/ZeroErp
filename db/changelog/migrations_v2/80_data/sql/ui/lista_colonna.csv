@@ -623,7 +623,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 623,54,utility_codice,Utility,Utility a cui il registro e legato,utility_codice,informazione,string,,110,40,left,Identificazione,1,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_utility_codice,40
 624,54,prefisso,Prefisso,Parte fissa davanti al numero,prefisso,informazione,string,,110,50,left,Forma del numero,2,t,t,t,t,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_prefisso,70
 625,54,suffisso,Suffisso,Parte fissa in coda al numero,suffisso,informazione,string,,110,60,left,Forma del numero,2,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_suffisso,30
-626,54,lunghezza_numero,Cifre,Quante cifre ha il progressivo,lunghezza_numero,numero,integer,,90,70,right,Forma del numero,2,f,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_lunghezza_numero,50
+626,54,lunghezza_numero,Cifre,Quante cifre ha il progressivo,lunghezza_numero,informazione,numeric,,90,70,right,Forma del numero,2,f,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_lunghezza_numero,50
 627,54,serie_default,Serie,Serie di default del contatore,serie_default,informazione,string,,110,80,left,Forma del numero,2,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_serie_default,20
-628,54,attivo,Attivo,Registro attivo o disattivato,attivo,stato,boolean,,90,90,center,Stato,3,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_attivo,60
+628,54,attivo,Attivo,Registro attivo o disattivato,attivo,informazione,boolean,,90,90,center,Stato,3,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_attivo,60
 629,54,data_insert,Creazione,Data di inserimento del registro,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,11,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.registri_numerazione.col_data_insert,5

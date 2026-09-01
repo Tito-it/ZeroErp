@@ -1372,6 +1372,54 @@ l'introspezione si fa dalla doc auto-generata, e questa ha fatto scrivere una
 query che non compila. Il costo l'ha pagato chi ha letto la doc, non chi ha
 fatto la DROP. Va rigenerata per quella tabella.
 
+### 10.12 🔴 L'ottavo rilievo, trovato dal migrate — il seed della lista non entrava
+
+Il migrate del 2026-09-01, dopo il merge, è morto sul mirror del catalogo
+colonne (`20260507-07-seed-ui-lista-colonna-clienti`):
+
+```
+ERRORE: la sintassi per l'enumerazione ui.tipo_colonna non è valida: "numero"
+```
+
+Due delle dieci righe aggiunte per la lista 54 portavano valori che **non stanno
+nei tre enum del catalogo**:
+
+| id | colonna | scritto | ammesso |
+| --- | --- | --- | --- |
+| 626 | `lunghezza_numero` | `tipo_colonna = 'numero'`, `tipo_dato = 'integer'` | `informazione` / `numeric` |
+| 628 | `attivo` | `tipo_colonna = 'stato'` | `informazione` |
+
+⛔ **`tipo_colonna` non descrive il dato: descrive il COMPORTAMENTO della
+colonna** — `identificatore` (sempre visibile, non nascondibile), `informazione`
+(personalizzabile), `azione` (pulsanti UI, non esportabile). Il tipo del dato lo
+dice `tipo_dato`, e lì `integer` non esiste: la mappa PG→`ui.tipo_dato` di
+`scripts/gen_seed_lista.py` porta `integer`/`bigint`/`smallint` tutti su
+`numeric`. Le due righe sono state scritte a mano; il generatore, che quei valori
+li sa, non le avrebbe prodotte così.
+
+⚠️ **Perché nessun presidio l'ha visto**, ed è la parte che vale per i prossimi:
+
+* l'enum vive nel **database**, il seed è un **CSV**: fra i due non c'è nessun
+  controllo che giri prima del migrate — il vincolo lo applica PostgreSQL al
+  momento dell'`INSERT`, cioè in fondo;
+* i test Django della fase mockano il cursore: nessuno di loro carica il CSV;
+* e il difetto **non era isolabile a questo cantiere** — il mirror è
+  `runOnChange` e rilegge **tutto** il file (§11.2 delle linee guida SQL), quindi
+  due righe nuove hanno fermato il migrate di chiunque.
+
+**Corretto il 2026-09-01** editando il CSV (`db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv`, 2 righe, nessun `UPDATE` SQL: la sede del dato è il
+CSV). L'export non cambia comportamento — `format_for_export`
+(`apps/core/services/locale_formatters.py`) dispatcha su `tipo_dato`, e con `numeric` + `formato` vuoto
+`lunghezza_numero` esce «3»; a video le due celle hanno comunque uno slot
+proprio (`AttivoTag` e l'icona della forma bloccata), quindi il `formato` resta
+vuoto come nelle altre `attivo` del catalogo.
+
+🟠 **Resta aperto, e non è di questo cantiere**: un cancello statico che confronti
+i CSV di `80_data` con i valori degli enum che le loro tabelle dichiarano. Oggi
+`scripts/` ha quattro guardrail (migrate, `runOnChange`, preambolo pgTAP,
+letterali SQL) e nessuno guarda dentro i CSV. Sarebbe l'unico modo di prendere
+questa classe **prima** del migrate, invece che sulla macchina di chi migra.
+
 #### 🔭 Cosa resta, e non è di questo cantiere
 
 * il **residuo su `serie_default`** (§8.1 Q1): mostrata in sola lettura col suo

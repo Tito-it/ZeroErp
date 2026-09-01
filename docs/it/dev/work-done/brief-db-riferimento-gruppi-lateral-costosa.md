@@ -2,6 +2,7 @@
 
 > **Tipo**: brief al team DB · **Aperto**: 2026-08-18 · **Riscritto**: 2026-09-01
 > · **Richiedente**: perimetro BE · **Destinazione**: `dev/db-tid`
+> · **Archiviato**: 2026-09-01 in `work-done/`
 > · **Stato**: 🟢 **DB fatto** — `20260901-04` applicato il 2026-09-01 12:31,
 > pgTAP verdi, baseline `vendite` senza regressioni. 🟢 **Anche `20260901-05`
 > applicato** (sola correzione di due frasi nel `COMMENT ON VIEW`): la doc
@@ -9,9 +10,12 @@
 > commento vivo e' quello del `-05`. ⚠️ Questa riga diceva *«resta da
 > applicare»*: era stantia, corretta il 2026-09-01 al passo BE/FE.
 > · 🟢 **BE/FE fatto** — vedi §9.
+> · 🟢 **Chiuso il 2026-09-01**: §11 verificato (era rimasto non spuntato),
+> §7 chiusa come rilievo sbagliato, §9.6 riporta «BE-2» al suo stato vero —
+> **indeciso**, né aperto né chiuso. Nessuna consegna pendente.
 >
 > **Origine**: DL-2 di
-> [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
+> [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
 > §10.
 >
 > ⚠️ **Riscrittura del 2026-09-01.** La prima stesura era motivata su una misura
@@ -367,35 +371,68 @@ CI.
 Preambolo obbligatorio (`BEGIN;`, riga di contesto, `SET CONSTRAINTS ALL
 IMMEDIATE`), da `db/pgtap/_TEMPLATE.sql.txt`.
 
-## 7. Voce aperta — il cambio causale su un DDT già spinto
+## 7. ⛔ CHIUSA — il cambio causale su un DDT già spinto non esiste
 
-**Non è di questo cantiere**, ma è emersa qui e va registrata.
+⚠️ **Questa sezione conteneva un rilievo sbagliato.** È rimasta due giorni come
+«voce aperta, cantiere suo» ed è stata sul punto di diventare un brief. Verificata
+il 2026-09-01: **il caso non è raggiungibile**, e c'era già un presidio.
 
-Verificato il 2026-09-01: la causale è controllata **solo al push**
-(`fn_list_ddt_da_pushare`, `fn_ddt_push_diagnosi`); **nessuno la ricontrolla al
-momento di fatturare**; `causale_trasporto_id` **non è bloccata**
-(`dbops.automation_lock_columns` per il DDT ha solo `numero`, per giunta
-`enabled = f`); il ritiro è montato sul DDT ma scatta **solo** sull'ingresso in
-uno stato abortito.
+### Cosa diceva (e perché sembrava vero)
 
-Quindi: si cambia la causale in non fatturabile dopo il push → **le attività
-restano, restano fatturabili, e vanno in fattura lo stesso**.
+Che la causale è controllata solo al push, che nessuno la ricontrolla al momento
+di fatturare, e che `causale_trasporto_id` **non è bloccata** — quindi si poteva
+cambiarla in non fatturabile dopo il push e le attività sarebbero finite in
+fattura lo stesso.
 
-⛔ **La risposta NON è un filtro che le esclude dalla lista.** Nasconderebbe un
-gruppo le cui attività finiscono in fattura comunque: lavoro che sparisce dallo
-schermo ma non dal database. Il progetto ha già una posizione scritta su questa
-forma, per il caso gemello dei gruppi bloccati — *«Segnalare, non nascondere»*
-(brief emittibilità §3.1): lucchetto col motivo, accanto al nome.
+Le prime due affermazioni sono vere. **La terza è falsa**, ed è quella che regge
+tutto il resto.
 
-⭐ **Il meccanismo giusto esiste già.** «Questo documento non alimenta più la
-fatturazione» è esattamente l'evento che `trgfn_doc_ritira_commessa_attivita`
-gestisce per l'annullamento. Due candidate:
+### ⛔ L'errore di metodo: ho cercato il presidio nel registro, non fra i trigger
 
-1. **estendere il ritiro al cambio causale** — coerente col motore che c'è;
-2. **bloccare la colonna** — ⛔ ma impedirebbe anche una correzione legittima su
-   un DDT mai spinto.
+La conclusione «non è bloccata» veniva da `dbops.automation_lock_columns`, dove
+per il DDT c'è solo `numero` (per giunta `enabled = f`). Ma quel registro **non è
+l'unico posto in cui una colonna si blocca**: il presidio vero è un trigger.
 
-La prima è quella da valutare. Cantiere suo.
+```text
+trg_ddt_a10_guard_causale_immutabile_upd  ->  vendite.trgfn_ddt_guard_causale_immutabile
+    IF v_stato_vecchio IS DISTINCT FROM 'DRAFT' THEN  -> solleva
+```
+
+⚠️ **La causale si cambia SOLO in `DRAFT`.** Ed esiste dal `20260819-20`/`-21`,
+con un pgTAP suo — `test-ddt-causale-immutabile-v1` — nato dallo slice B di
+`brief-ddt-righe-senza-prezzo` (decisione D-4, rilievo R-4) per **esattamente**
+questa preoccupazione.
+
+### ⭐ E il caso è irraggiungibile con tre stati di margine
+
+| Ramo di `fn_list_ddt_da_pushare` | stato minimo per essere spinto |
+| --- | --- |
+| STANDALONE | `sdd.codice_interno IN ('SPEDITO','CONSEGNATO')` |
+| ORDER-BACKED | `sdd.ordine >= sdd_trg.ordine`; il `CHECK` su `vendite.ordini.fatturazione_trigger` ammette solo `CONFERMATO`/`SPEDITO`/`CONSEGNATO`, e `CONFERMATO` **non esiste** fra gli stati DDT (quindi non risolve e il ramo è falso) → minimo **`SPEDITO`** |
+
+`DRAFT` è `ordine = 10`, `SPEDITO` è `40`. Fra «causale modificabile» e
+«spingibile» ci sono **tre stati**. Quando un DDT può essere spinto, la sua
+causale è **già congelata**.
+
+⛔ **Quindi niente cantiere, e niente filtro di lista.** Il filtro proposto (Tid,
+2026-09-01) avrebbe nascosto un gruppo per difendersi da un percorso che non
+esiste — e la posizione del progetto su quella forma resta valida in generale:
+*«Segnalare, non nascondere»* (brief emittibilità §3.1).
+
+### ⚠️ Cosa resta vero, e vale la pena tenere
+
+Le due affermazioni sopravvissute non descrivono un difetto **oggi**, ma dicono
+dove sarebbe il buco se il congelamento si allentasse:
+
+- la causale è verificata **solo al push** (`fn_list_ddt_da_pushare`,
+  `fn_ddt_push_diagnosi`); **nulla la ricontrolla al momento di fatturare**;
+- `trgfn_doc_ritira_commessa_attivita` è montato sul DDT ma scatta **solo**
+  all'ingresso in uno stato abortito, non su un cambio causale.
+
+⭐ Cioè: la sicurezza è **tutta** sul guard di immutabilità, senza una seconda
+rete a valle. Non è un difetto — è un fatto da sapere per chi un giorno dovesse
+allargare gli stati in cui la causale si cambia: dovrebbe aggiungere il ritiro
+nello stesso commit.
 
 ## 8. Cosa NON si tocca
 
@@ -468,7 +505,7 @@ insieme o non si toglie nessuna delle due.
 | **BE-1b** | `DashCompetenzaGruppoRow.riferimento` dichiarava `str \| None` | ✅ stretto a `str` (decisione di Tid, 2026-09-01) — vedi sotto |
 | **BE-1c** | il MAPPING del repository emetteva ancora `None` in un campo dichiarato non-nullable | ✅ corretto — trovato dalla revisione critica, §9.4 |
 | **BE-1d** | il commento della whitelist di ricerca descriveva la LATERAL a sei rami | ✅ corretto — §9.4 |
-| **BE-2** | ricerca libera su `g.riferimento` senza indice trigram | ⬜ **resta aperto**: il DL-2 *«ancorare la ricerca alla sorgente del documento»* è cantiere suo |
+| **BE-2** | ricerca libera su `g.riferimento` senza indice trigram | ⬜ **indeciso, non aperto e non chiuso** — vedi §9.6 |
 | **FE-1** | sulle righe che mostravano il **codice commessa** compare il numero e **riappare «Apri documento»** | ✅ nessun codice — e il percorso a valle regge: D-1 apre la revisione **spinta**, cioè `is_superata = true`, che `PreventiviDrawer` già riconosce (tag «superseded», banner, readonly) |
 | **FE-2** | `gruppoRiferimento()` ripeteva la catena di ripiego del DB | ✅ **rimossa** |
 | **FE-3** | il toast dei gruppi «non serviti» nominava la COMMESSA | ✅ corretto — §9.2 |
@@ -546,7 +583,10 @@ difetto** che il cantiere stava correggendo, spostato di un livello.
    peggio di un commento assente, perché viene creduto* — chi ottimizzasse «le
    sei scansioni» lavorerebbe su una cosa che non esiste più.
    ⚠️ Riscritto tenendo ciò che **non** cambia: la ricerca resta non
-   indicizzata, il DL-2 resta aperto.
+   indicizzata.
+   ⚠️ Chiude con *«quindi il DL-2 resta aperto»*: «DL-2» lì è una scorciatoia
+   per il limite, non un riferimento al task (che è chiuso). Impreciso, non
+   falso — §9.6 spiega perché non si tocca.
 3. ⛔ **Una difesa contro l'impossibile, nello stesso file che ora dice il
    contrario.** `buildApriDocumentoAction` riceveva `row.riferimento ?? ''`:
    doppiamente irraggiungibile — il campo è NOT NULL, e quella voce si rende
@@ -579,6 +619,67 @@ test è il primo passo perché quel test smetta di essere manutenuto.
   invariato**, l'effetto visibile sulle righe prima etichettate col codice
   commessa, la scelta della revisione **spinta**, e il costo di ricerca che
   resta non indicizzato.
+
+### 9.6 · ⚠️ «BE-2»: indeciso, e come ci sono arrivato due volte sbagliando
+
+La riga BE-2 ha portato due etichette sbagliate in due giorni. Vale la pena
+tenerle entrambe, perché sono errori opposti.
+
+**Primo errore — «resta aperto, cantiere suo».** Rimandava al **DL-2** di
+[brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)
+§10 come a una consegna in sospeso. Non lo era: DL-2 era *«misurare il tempo di
+risposta»*, ed è **chiuso** (misurato il 2026-08-18). Il residuo l'avevo ricavato
+da una nota di cautela in un commento Python, leggendola come un mandato.
+
+**Secondo errore, opposto — «chiuso, non è un residuo».** Corretto il primo, mi
+sono appoggiato alla frase del brief d'origine:
+
+> *«il rimedio di D-6 non serve più. "Ancorare la ricerca alla sorgente"
+> risolverebbe un decimo del problema, e solo quando si cerca»*
+
+⛔ **Ma quella era una bocciatura COMPARATIVA**, detta quando il 78% del costo
+stava nella `LATERAL`. Tolti i nove decimi, il paragone non regge più — e da una
+frase che non regge più non si ricava una chiusura. Ho archiviato come **decisa**
+una domanda che **nessuno ha deciso**.
+
+### Lo stato vero: indeciso
+
+| | |
+| --- | --- |
+| **Il fatto** | la ricerca su `riferimento` **non è indicizzata**: è un `COALESCE` valutato per ogni gruppo del perimetro prima di poter filtrare |
+| **La decisione** | ⬜ **mai presa**. Non «rimandata»: la sola volta che è stata guardata, il confronto era con un problema dieci volte più grande che ora non c'è |
+| **Cosa NON basta per prenderla** | *«il decimo che resta ora è il 100% di quel che c'è»* è un argomento sui numeri. Regola zero: non apre un cantiere |
+
+⭐ **L'argomento sul modello, se un giorno si vorrà aprire, è un altro e c'è.**
+`riferimento` è `COALESCE(documento_numero, commessa_codice, gruppo_key)`: come
+**etichetta** è giusto che ripieghi, ma come **colonna di ricerca** eredita il
+ripiego — cercare «PRV-0012» e cercare «CMM-…» interrogano lo stesso campo con
+due significati diversi. È la forma nota del campo che risponde a due domande, la
+stessa di `is_attiva`. Chi aprirà il cantiere parta da lì, **non** dai
+millisecondi.
+
+⚠️ **Nel frattempo il limite è dichiarato dove serve**: la doc API dell'endpoint
+(§9.5) dice che la ricerca su `riferimento` non è indicizzata.
+
+### ⛔ E niente richiesta al BE: quel commento non è sbagliato
+
+Una stesura precedente di questo § apriva un **BE-3** per far togliere, dal
+commento sopra `DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS`
+(`backend/apps/vendite/db/vendite_repository.py`, commit `7839dcfda`), la frase
+*«quindi il DL-2 resta aperto»*.
+
+**Ritirata.** Il **fatto** che quel commento afferma — la ricerca resta non
+indicizzata — è vero, ed è la cosa che conta per chi legge quel codice.
+«DL-2» ci sta come **scorciatoia** per *«il limite che quella misura ha lasciato
+scoperto»*, non come riferimento bibliografico: è impreciso, non falso.
+
+⚠️ **La differenza vale la pena tenerla**, perché è quella che separa le due
+correzioni legittime di questo cantiere da una di troppo: il `-05` ha corretto
+due frasi che insegnavano un **meccanismo inesistente** (l'`Append` che non si
+pota, il ripiego sulla `gruppo_key`) — chi le credeva progettava sbagliato. Qui
+invece il meccanismo descritto è giusto e l'etichetta è approssimativa: correggerlo
+sarebbe **stile**, e un giro di richieste al BE per lo stile è il modo in cui le
+richieste vere smettono di essere lette.
 
 ## 10. ⛔ La prima stesura, e perché era sbagliata
 
@@ -615,30 +716,60 @@ la ricerca), il vincolo che *«deve valere per tutti e sei i rami»*, l'avverten
 di misurare **con la RLS attiva** e non da owner, e il §6 *«non togliere
 `riferimento`: il problema è come si ottiene, non che ci sia»*.
 
-## 11. Definizione di «fatto» — sulla struttura, non sui millisecondi
+## 11. Definizione di «fatto» — ✅ verificata il 2026-09-01
 
-- [ ] il piano di `vw_dash_competenza_gruppi` **non contiene più** le sei
-      `Seq Scan` sulle testate;
-- [ ] ⭐ e non le contiene nemmeno il piano di
-      `vw_dash_competenza_gruppi_riepilogo` (§1.1): è il lettore che quella
-      risoluzione non l'ha mai chiesta, ed è la prova che la forma è cambiata e
-      non solo il costo;
-- [ ] `riferimento` non è mai la `gruppo_key` quando il documento **esiste**,
-      revisione superata compresa;
-- [ ] `riferimento` e `documento_id` continuano a descrivere **lo stesso**
-      documento;
-- [ ] la grana resta `(gruppo, stadio)` **senza** un `LIMIT 1` a difenderla;
-- [ ] `security_invoker` ancora attiva (`test-vw-dash-security-invoker` verde);
-- [ ] baseline `vendite` senza regressioni.
+⚠️ **Le caselle erano rimaste vuote** a cantiere concluso: DB, BE e FE erano
+dichiarati fatti e il criterio di chiusura non era stato passato. Verificato
+tutto, sul DB vivo, come `zeroerp_app` con contesto operatore.
+
+- [x] il piano di `vw_dash_competenza_gruppi` **non contiene più** nessuna
+      testata documentale — **0**;
+- [x] ⭐ e non ne contiene nemmeno il piano di
+      `vw_dash_competenza_gruppi_riepilogo` — **0**: è il lettore che quella
+      risoluzione non l'ha mai chiesta, ed è la prova che è cambiata la **forma**
+      e non solo il costo;
+- [x] `riferimento` non è mai la `gruppo_key` quando il documento **esiste**,
+      revisione superata compresa — `test-…-riferimento-sorgente-v1` test 3;
+- [x] `riferimento` e `documento_id` descrivono lo **stesso** documento — test 5
+      dello stesso file, verificato **dal percorso** (si rilegge il numero dal
+      documento puntato da `documento_id`);
+- [x] la grana resta `(gruppo, stadio)` **senza** un `LIMIT 1` a difenderla —
+      test 6, e `test-vw-dash-competenza-gruppi-cliente-v1` test 3 verde;
+- [x] `security_invoker` ancora attiva — `test-vw-dash-security-invoker` verde;
+- [x] baseline `vendite` senza regressioni — 5 rossi su 259, tutti noti.
+
+### 11.1 ⚠️ Il criterio com'era scritto si legge male, e la prima misura ha dato un falso rosso
+
+La formula originale — *«non contiene più le sei `Seq Scan` sulle testate»* —
+elenca fra le sei anche **`commesse`**. Ma `vendite.commesse` è **due cose**: una
+delle sei aree documentali *e* la tabella padre delle attività, che la vista base
+`vw_dash_competenza_attivita` unisce sempre e legittimamente.
+
+Un conteggio che cerca `Scan on (…|commesse)` legge quindi **1** anche a cantiere
+riuscito, e sembra una regressione. È successo alla prima verifica.
+
+⭐ **Il criterio corretto esclude `commesse`** e si accompagna a una
+**controprova**, senza la quale uno zero non prova niente — potrebbe venire da un
+pattern che non trova più nulla:
+
+| Vista | testate documentali nel piano | atteso |
+| --- | --- | --- |
+| `vw_dash_competenza_gruppi` | **0** | 0 — non risolve più da lì |
+| `vw_dash_competenza_gruppi_riepilogo` | **0** | 0 |
+| `vw_dash_backlog_documenti` | **6** | >0 — la UNION la vuole davvero |
+| `vw_dash_aperto_documenti` | **6** | >0 — idem |
+
+⚠️ Le ultime due righe sono il **gemello «esiste»** della misura: dicono che lo
+zero delle prime due è un fatto e non un pattern rotto.
 
 ## 12. Riferimenti
 
 | Cosa | Dove |
 | --- | --- |
-| Vista da correggere | `docs/it/dbzero/vendite/views/vw_dash_competenza_gruppi.md` |
+| Vista corretta (auto-gen, rigenerata) | `docs/it/dbzero/vendite/views/vw_dash_competenza_gruppi.md` |
 | Resolver da usare | `docs/it/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref.md` |
 | Union a sei rami (resta com'è) | `docs/it/dbzero/vendite/views/vw_dash_fatturazione_documenti.md` |
 | Catalogo delle sorgenti | `docs/it/dbzero/config/manual/sorgenti.md` |
-| DL-2 che ha aperto il cantiere | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) §10 |
+| DL-2 che ha aperto il cantiere | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) §10 |
 | Presidio anti-fan-out | `db/pgtap/vendite/test-vw-dash-competenza-gruppi-cliente-v1.sql` test 3 |
 | Presidi su `riferimento` | `db/pgtap/vendite/test-vw-dash-competenza-gruppi-v1.sql` test 6-7 |
