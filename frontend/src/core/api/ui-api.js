@@ -12,8 +12,23 @@ const BASE = '/ui'
 
 // Scopo: Risolve la configurazione effettiva di una lista per l'utente.
 // Restituisce {colonne, ordinamento, filtri, pagina_dimensione, colonne_nuove}.
-export function getListaConfig(codice) {
-  return api.get(`${BASE}/liste/${encodeURIComponent(codice)}/config/`)
+//
+// ⭐ `emittenteEsplicito` dice al backend che la lista si sta aprendo con un
+//    emittente GIA' fissato (il tab dentro il drawer di un emittente). Senza,
+//    l'envelope tornerebbe `richiede_scelta_emittente: true` su una lista non
+//    certificata multi-emittente, e il pannello chiederebbe di scegliere
+//    l'emittente che l'operatore ha gia' aperto davanti.
+// ⚠️ Il NOME sul filo (`emittente_esplicito`, che il backend tiene in
+//    `perimetro_emittente.PARAM_EMITTENTE_ESPLICITO`) vive solo qui: chi chiama
+//    passa un valore, non un parametro di query. E «assente» si decide in un
+//    posto solo — null, undefined o stringa vuota non sono una scelta, e
+//    mandarli varrebbe come non mandare niente.
+export function getListaConfig(codice, { emittenteEsplicito = null } = {}) {
+  const params = {}
+  if (emittenteEsplicito !== null && emittenteEsplicito !== undefined && emittenteEsplicito !== '') {
+    params.emittente_esplicito = emittenteEsplicito
+  }
+  return api.get(`${BASE}/liste/${encodeURIComponent(codice)}/config/`, { params })
 }
 
 // Scopo: Catalogo colonne per la modale di personalizzazione.

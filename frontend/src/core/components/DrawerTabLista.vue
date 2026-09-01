@@ -37,6 +37,10 @@ const SLOT_PROPRI = ['help', 'testata', 'filtri']
 defineProps({
   // --- identita' e dati della lista (girati a <ListaConfigurabile>) ---
   codice: { type: String, required: true },
+  // Girata a <ListaConfigurabile>: l'emittente che il drawer ha gia' fissato.
+  // ⭐ E' la ragione per cui un tab-lista dentro il drawer di un emittente non
+  //    deve vedere il pannello «scegli un emittente» — ce l'ha davanti.
+  emittenteEsplicito: { type: [String, Number], default: null },
   rows: { type: Array, default: () => [] },
   total: { type: Number, default: 0 },
   loading: { type: Boolean, default: false },
@@ -123,6 +127,7 @@ defineExpose({
     <ListaConfigurabile
       ref="listaInterna"
       :codice="codice"
+      :emittente-esplicito="emittenteEsplicito"
       :rows="rows"
       :total="total"
       :loading="loading"

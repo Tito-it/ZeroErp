@@ -23,6 +23,10 @@ Indice test eseguiti:
  6) per_codice_rifiuta_su_flag_falso          — codice e messaggio giusti
  7) per_codice_tace_su_flag_vero              — la lista certificata passa
  8) per_codice_lista_sconosciuta_e_errore_tecnico — non e' un rifiuto di perimetro
+ 9) per_codice_tace_se_la_richiesta_fissa_un_emittente — il tab nel drawer
+10) per_codice_risolve_lo_scope_una_volta_sola — le due domande condividono la cache
+11-13) richiede_scelta_emittente nei suoi tre termini
+14-18) emittente_esplicito_da_query: uno / nessuno / due / vuoto / non numerico
 """
 
 from unittest import TestCase
@@ -127,3 +131,98 @@ class GuardListaPerCodiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.inesistente")
         self.assertEqual(ctx.exception.code, "E_UI_LISTA_NON_TROVATA")
+
+    @patch(_CATALOGO, return_value=False)
+    @patch(_SCOPE, return_value=None)
+    def test_per_codice_tace_se_la_richiesta_fissa_un_emittente(
+        self, _m_scope, _m_catalogo
+    ) -> None:
+        """⭐ Lista NON certificata + perimetro multiplo: rifiuterebbe. Ma se la
+        richiesta fissa un emittente, l'ambiguita' non c'e' — e' il tab-lista
+        dentro il drawer di un emittente, dove sbarrare significherebbe chiedere
+        di scegliere cio' che l'operatore ha gia' aperto davanti."""
+        pe.guard_lista_per_codice(
+            user=_user(), lista_codice="vendite.x", emittente_esplicito=72
+        )
+
+    @patch(_CATALOGO, return_value=False)
+    @patch(_SCOPE, return_value=None)
+    def test_per_codice_risolve_lo_scope_una_volta_sola(
+        self, m_scope, _m_catalogo
+    ) -> None:
+        """⚠️ La domanda sullo scope viene posta DUE volte — qui e dentro
+        `richiede_scelta_emittente`, che e' la sede unica della conclusione — e
+        costa una query. Le due devono condividere la stessa cache: senza, ogni
+        lista non certificata pagherebbe il doppio, e sarebbe il prezzo di aver
+        tolto una duplicazione."""
+        with self.assertRaises(ServiceError):
+            pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.x")
+        cache_usate = [c.kwargs.get("cache") for c in m_scope.call_args_list]
+        self.assertEqual(len(cache_usate), 2, "lo scope non e' stato richiesto due volte")
+        self.assertIsNotNone(cache_usate[0], "nessuna cache: la seconda e' una query vera")
+        self.assertIs(cache_usate[0], cache_usate[1])
+
+
+class RichiedeSceltaEmittenteTests(TestCase):
+    """La conclusione unica, nei suoi tre termini."""
+
+    @patch(_SCOPE, return_value=None)
+    def test_lista_certificata_non_chiede_niente(self, _m) -> None:
+        self.assertFalse(
+            pe.richiede_scelta_emittente(user=_user(), multi_emittente=True)
+        )
+
+    @patch(_SCOPE, return_value=None)
+    def test_lista_non_certificata_con_perimetro_multiplo_chiede(self, _m) -> None:
+        self.assertTrue(
+            pe.richiede_scelta_emittente(user=_user(), multi_emittente=False)
+        )
+
+    @patch(_SCOPE, return_value=None)
+    def test_emittente_esplicito_scioglie_l_ambiguita(self, m_scope) -> None:
+        """⭐ E la domanda sullo scope non parte nemmeno: e' l'unica dei tre
+        termini che costa una query, e va per ultima."""
+        self.assertFalse(
+            pe.richiede_scelta_emittente(
+                user=_user(), multi_emittente=False, emittente_esplicito=72
+            )
+        )
+        m_scope.assert_not_called()
+
+
+class EmittenteEsplicitoDaQueryTests(TestCase):
+    """Cosa vale come «la richiesta fissa un emittente», e cosa no."""
+
+    def _q(self, querystring: str):
+        from django.http import QueryDict
+
+        return QueryDict(querystring)
+
+    def test_un_valore_numerico_vale(self) -> None:
+        self.assertEqual(
+            pe.emittente_esplicito_da_query(self._q("e=72"), nome="e"), 72
+        )
+
+    def test_assente_non_vale(self) -> None:
+        self.assertIsNone(pe.emittente_esplicito_da_query(self._q(""), nome="e"))
+
+    def test_due_valori_non_valgono(self) -> None:
+        """⛔ `?e=1&e=2` e' ESATTAMENTE l'ambiguita' che il cancello rifiuta:
+        leggerne uno solo la trasformerebbe in un lasciapassare."""
+        self.assertIsNone(
+            pe.emittente_esplicito_da_query(self._q("e=1&e=2"), nome="e")
+        )
+
+    def test_valore_vuoto_non_vale(self) -> None:
+        self.assertIsNone(pe.emittente_esplicito_da_query(self._q("e="), nome="e"))
+
+    def test_valore_non_numerico_non_vale(self) -> None:
+        self.assertIsNone(
+            pe.emittente_esplicito_da_query(self._q("e=pippo"), nome="e")
+        )
+
+    def test_senza_nome_dichiarato_non_si_legge(self) -> None:
+        """La query da sola non conta: e' la view a dire quale parametro fissa
+        l'emittente, perche' il progetto ne usa piu' d'uno (soggetto-ruolo e PK
+        dell'emittente fiscale non sono la stessa cosa)."""
+        self.assertIsNone(pe.emittente_esplicito_da_query(self._q("e=72"), nome=""))

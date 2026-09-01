@@ -109,6 +109,24 @@ def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
             albero = ast.parse(percorso.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover - file non parsabile
             continue
+        # ⚠️ Le costanti di MODULO prima delle classi, ed e' la differenza fra
+        #    vedere un cancello e non vederlo: `lista_codice = _LISTA_CODICE`
+        #    e' una dichiarazione come `lista_codice = "..."`, ma per `ast` e'
+        #    un `Name` e `literal_eval` la scarta. Il presidio diceva quindi
+        #    «`vendite.registri_numerazione` non ha nessun cancello» mentre il
+        #    cancello c'era, dichiarato via costante — un rosso su una cosa
+        #    giusta, che e' il modo piu' rapido di far disattivare un test.
+        costanti: dict[str, str] = {}
+        for stmt in albero.body:
+            if (
+                isinstance(stmt, ast.Assign)
+                and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)
+                and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str)
+            ):
+                costanti[stmt.targets[0].id] = stmt.value.value
+
         for nodo in ast.walk(albero):
             if not isinstance(nodo, ast.ClassDef):
                 continue
@@ -119,10 +137,16 @@ def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
                     and isinstance(stmt.targets[0], ast.Name)
                     and stmt.targets[0].id == "lista_codice"
                 ):
-                    try:
-                        codice = ast.literal_eval(stmt.value)
-                    except ValueError:  # pragma: no cover - valore dinamico
-                        continue
+                    if isinstance(stmt.value, ast.Name):
+                        # Costante dello stesso modulo: piu' in la' non si va
+                        # (un import da un altro file resterebbe invisibile, e
+                        # va saputo) — ma il caso vero e' questo.
+                        codice = costanti.get(stmt.value.id)
+                    else:
+                        try:
+                            codice = ast.literal_eval(stmt.value)
+                        except ValueError:  # pragma: no cover - valore dinamico
+                            continue
                     if isinstance(codice, str):
                         cancelli.setdefault(codice, []).append(nodo.name)
     return ({k: tuple(v) for k, v in cancelli.items()}, frozenset(classi))

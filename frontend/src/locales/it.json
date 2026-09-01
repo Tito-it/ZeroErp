@@ -713,6 +713,9 @@
       },
       "forma_blocco": {
         "ha_numerato": "Il registro {codice} ha gia' consegnato dei numeri (ultimo: {ultimo_numero}): la forma del numero non si puo' piu' cambiare. Il contatore non riparte quando cambia la forma, prosegue — quindi sullo stesso sezionale convivrebbero due forme con numeri consecutivi."
+      },
+      "serie_blocco": {
+        "non_gestita": "I documenti della famiglia {famiglia_documento} non registrano la serie da nessuna parte: dare a questo registro la serie {serie} aprirebbe un contatore nuovo, che ripartirebbe da 1 su numeri gia' emessi — e il documento non si numererebbe piu'. La serie si usa solo dove il documento la porta in colonna."
       }
     },
     "matrici": {

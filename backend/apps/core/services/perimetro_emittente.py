@@ -45,6 +45,47 @@ E_LISTA_EMITTENTE_DA_SCEGLIERE = "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE"
 E_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
 
 
+# Nome del parametro con cui l'endpoint di CONFIG di una lista riceve
+# l'emittente gia' fissato dal contesto che la apre.
+#
+# ⭐ NEUTRO di proposito, e non `emittente_soggetto_ruolo_id`. Qui il valore non
+#    filtra niente: serve solo a dire «uno e' gia' scelto». L'endpoint dei DATI
+#    invece filtra davvero, e li' il nome e' quello del dominio — che nel
+#    progetto e' di due famiglie diverse (`..._soggetto_ruolo_id` e' il
+#    soggetto-ruolo, `emittente_fiscale_id` e' la PK: `feedback_emittente_pk_vs_
+#    soggetto_ruolo`). Dare al parametro di config il nome di UNA delle due
+#    obbligherebbe la lista che usa l'altra a mandare un id sotto il nome
+#    sbagliato — e a quel punto il nome mentirebbe.
+# ⚠️ Sta qui e non nella view perche' lo leggono in due (l'endpoint di config e
+#    il client `ui-api.js`): rinominato da una parte sola, l'API concederebbe e
+#    il pannello continuerebbe a sbarrare.
+PARAM_EMITTENTE_ESPLICITO = "emittente_esplicito"
+
+
+# Scopo: l'emittente che una richiesta FISSA, letto dalla query string.
+#        `None` quando non ne fissa uno, ed e' il caso di gran lunga piu'
+#        frequente.
+#
+# ⛔ Tre modi di NON fissare un emittente, e vanno distinti dallo zero valori:
+#      · piu' valori (`?e=1&e=2`) -> e' l'ambiguita' che il cancello rifiuta;
+#        leggerne uno solo, come farebbe un `.get()` distratto, la
+#        trasformerebbe in un lasciapassare;
+#      · valore vuoto             -> il frontend che manda `?e=` non ha scelto;
+#      · valore non numerico      -> `?e=pippo` non e' un emittente.
+#
+# ⚠️ Non e' una validazione di autorizzazione e non pretende di esserlo: che
+#    quell'emittente sia visibile lo decidono scope e RLS. Qui si decide solo se
+#    la SCHERMATA e' leggibile, e una stringa che non e' un id non la rende tale.
+def emittente_esplicito_da_query(query_params: Any, *, nome: str) -> int | None:
+    if not nome or query_params is None:
+        return None
+    valori = [v for v in query_params.getlist(nome) if (v or "").strip()]
+    if len(valori) != 1:
+        return None
+    grezzo = valori[0].strip()
+    return int(grezzo) if grezzo.isdigit() else None
+
+
 # Scopo: TRUE se l'utente ha piu' di un emittente nel proprio perimetro
 #        effettivo (compreso «tutti»), FALSE se ne ha esattamente uno o
 #        nessuno.
@@ -112,12 +153,52 @@ def _rifiuta(lista_codice: str) -> None:
 #        scegliere un emittente per un problema che non lo riguarda; tacere
 #        lascerebbe il presidio spento senza che nessuno lo sappia. Si solleva
 #        l'errore tecnico, che e' quello che descrive il fatto.
+# Scopo: LA domanda, in un punto solo: «questa lista, per questa persona, in
+#        questo momento, va sbarrata?». Rispondono di qui sia il cancello
+#        dell'endpoint sia la chiave `richiede_scelta_emittente` dell'envelope.
+#
+# ⭐ ESTRATTA IL 2026-09-01, e la ragione e' l'header di questo file: i due
+#    consumatori la calcolavano ognuno per conto proprio con la stessa formula
+#    scritta due volte. Finche' sono uguali non si vede niente; il giorno che
+#    una delle due cresce di un termine — ed e' successo oggi, con l'emittente
+#    esplicito — l'endpoint e il pannello dicono cose diverse e l'operatore
+#    vede una schermata sbarrata su dati che l'API gli darebbe.
+#
+# ⭐ TRE TERMINI, e l'ordine e' quello che costa meno:
+#      1. emittente esplicito nella richiesta -> nessuna ambiguita' (in memoria);
+#      2. lista certificata multi-emittente   -> nessuna ambiguita' (in memoria);
+#      3. cardinalita' dello scope            -> costa una query, e va per ultima.
+#
+# ⚠️ Il primo termine NON e' un permesso, e non pretende di esserlo: dice solo
+#    che la richiesta FISSA un emittente, quindi la schermata e' leggibile. Se
+#    quell'emittente sia poi visibile lo decidono scope e RLS, che restano le
+#    uniche sedi di quella risposta (vedi l'header, «cosa NON e'»).
+def richiede_scelta_emittente(
+    *,
+    user: Any,
+    multi_emittente: bool,
+    emittente_esplicito: Any = None,
+    cache: dict[str, Any] | None = None,
+) -> bool:
+    if emittente_esplicito is not None:
+        return False
+    if multi_emittente:
+        return False
+    return scope_multi_emittente(user, cache=cache)
+
+
 def guard_lista_per_codice(
     *,
     user: Any,
     lista_codice: str,
     cache: dict[str, Any] | None = None,
+    emittente_esplicito: Any = None,
 ) -> None:
+    # ⚠️ Una cache anche quando il chiamante non la porta (la base view non ne
+    #    ha una): sotto, `richiede_scelta_emittente` ripone la stessa domanda
+    #    sullo scope, e senza cache sarebbe una SECONDA query per una risposta
+    #    gia' data. Con la cache e' un hit, e la formula resta in un posto solo.
+    cache = {} if cache is None else cache
     if not scope_multi_emittente(user, cache=cache):
         return
     multi = fetch_multi_emittente(lista_codice)
@@ -132,11 +213,17 @@ def guard_lista_per_codice(
         context={"lista_codice": lista_codice},
         function_name="core.perimetro_emittente.guard_lista_per_codice",
     )
-    if multi:
+    # ⭐ La decisione NON si riscrive qui: e' la stessa che risponde all'envelope
+    #    della config, e due copie della stessa conclusione finiscono per dire
+    #    cose diverse — l'API concede e il pannello sbarra, o viceversa.
+    #    Quello che questa funzione aggiunge e' solo il pezzo che il chiamante
+    #    non ha in mano: il flag `multi_emittente` della lista, che li' arriva
+    #    gia' nell'envelope e qui va letto dal catalogo.
+    if not richiede_scelta_emittente(
+        user=user,
+        multi_emittente=bool(multi),
+        emittente_esplicito=emittente_esplicito,
+        cache=cache,
+    ):
         return
-    # ⚠️ Lo scope NON si richiede: e' gia' stato risolto in testa a questa
-    #    funzione. Delegare a un helper che lo ricalcolasse sarebbe costato una
-    #    SECONDA query proprio nel ramo raro in cui si arriva fin qui — e senza
-    #    una cache passata dal chiamante (la base view non ne ha una) sarebbe
-    #    stata una query vera, non un cache hit.
     _rifiuta(lista_codice)

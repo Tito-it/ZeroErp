@@ -59,6 +59,14 @@ class ApiRegistriList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
     lista_codice = _LISTA_CODICE
+    # ⭐ Il tab dentro il drawer apre questa lista con l'emittente GIA' scelto:
+    #    e' l'oggetto stesso che l'operatore sta guardando. Senza questa riga il
+    #    cancello di perimetro rifiuterebbe (422) chi ha piu' emittenti nello
+    #    scope — chiedendogli di scegliere l'emittente che ha gia' aperto — e la
+    #    lista a catalogo NON e' certificata multi-emittente (`multi_emittente
+    #    = f`), perche' le sue colonne non dicono da quale emittente arriva la
+    #    riga. Le due cose sono entrambe vere: e' la richiesta a scioglierle.
+    lista_emittente_param = "emittente_soggetto_ruolo_id"
 
     @extend_schema(
         operation_id="vendite_registri_list",
