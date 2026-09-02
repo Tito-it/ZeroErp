@@ -70,6 +70,31 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |
+              -- 🔴 FIX 2026-09-02 — mancava lo SCHEMA, e il difetto era invisibile
+              --   per costruzione. `WITH SCHEMA pgagent` pretende che lo schema
+              --   esista gia': non lo crea. E nessuno lo creava.
+              --
+              --   ⭐ Perche' non se n'era accorto nessuno: nei due mondi che
+              --   esistevano, questo SQL non ha mai dovuto creare niente.
+              --     · su dbdev e' EXECUTED dal 2025-09-15, ma pgAgent era gia'
+              --       stato installato A MANO — schema compreso — quindi trovo'
+              --       il terreno pronto (lo dice il commento del 2026-08-04);
+              --     · in CI l'immagine (postgis/postgis:18-3.6) non ha pgagent
+              --       fra le `pg_available_extensions`, quindi la preCondition
+              --       non e' soddisfatta e `onFail: CONTINUE` lo salta.
+              --   ⇒ Un database in cui l'estensione e' DISPONIBILE ma non ancora
+              --   INSTALLATA non era mai esistito: e' il primo in cui questo SQL
+              --   deve davvero creare qualcosa, e li' si scopre che lo schema
+              --   nessuno lo fa. Trovato il 2026-09-02 costruendo un database da
+              --   zero in locale con scripts/ci-local.sh.
+              --
+              --   ⚠️ E' la forma esatta del difetto che la preCondition sbagliata
+              --   del 2026-08-04 nascondeva: un changeSet sempre saltato non e'
+              --   un changeSet che funziona, e' un changeSet non provato.
+              --
+              -- ℹ️ Le due righe sono idempotenti: dove schema ed estensione ci
+              --   sono gia' (dbdev) non fanno niente.
+              CREATE SCHEMA IF NOT EXISTS pgagent;
               CREATE EXTENSION IF NOT EXISTS pgagent WITH SCHEMA pgagent;
 
   - changeSet:

@@ -121,6 +121,34 @@ databaseChangeLog:
                  SET usa_sequenza = false
                WHERE codice_interno IN ('ddt', 'ordine', 'reso', 'commessa')
                  AND usa_sequenza IS TRUE;
+
+              -- ⛔ E il residuo che il sync NON riesce a togliere.
+              --   `20260709-14` dichiara: «la funzione trgfn_ddt_gen_codice
+              --   (override di 20260709-07) viene droppata dal sync del
+              --   framework quando usa_sequenza passa a false: atteso e
+              --   corretto». E' l'intenzione giusta appoggiata a un
+              --   meccanismo che su questo percorso non arriva.
+              --
+              --   ⚠️ Il ramo di drop del sync e' GUARDATO:
+              --       IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+              --         IF v_schema_tabella IS NOT NULL
+              --            AND v_nome_tabella IS NOT NULL THEN  ← qui
+              --   Senza le coordinate della tabella sulla riga di
+              --   config.sistema_codici non droppa niente, e non lo dice:
+              --   `RETURN NULL` e via. Quelle colonne sono nate il 2026-01-18
+              --   (20260118-01), molto dopo la riga della baseline.
+              --
+              --   ⇒ Su un database ricostruito da zero la funzione resta
+              --   ORFANA — senza nessun trigger agganciato — e a trovarla e'
+              --   scripts/sql/guardrail_riferimenti_morti.sql, che la chiama
+              --   «gia' di per se' un residuo». Ha ragione.
+              --   ⭐ Non si registra il debito in
+              --   dbops.riferimenti_morti_esenzioni: quella funzione E' morta
+              --   per progetto, quindi si toglie invece di dichiararla.
+              --
+              -- ℹ️ Idempotente: su una macchina dove il sync ci era arrivato
+              --   (dbdev, dove la funzione non esiste piu') non fa niente.
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_gen_codice();
       rollback:
         - sql:
             dbms: postgresql

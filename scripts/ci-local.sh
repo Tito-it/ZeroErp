@@ -145,6 +145,46 @@ GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
 GRANT CREATE ON DATABASE "$CI_DB" TO zeroerp;
 SQL
 
+# ── ⛔ LA DIVERGENZA CHE QUESTA REPLICA NON PUO' EVITARE, E COME SI CHIUDE ──
+#
+#   I database sono per-database, i RUOLI sono di CLUSTER. In GitHub il
+#   container e' vergine, quindi durante la passata principale
+#   `zeroerp_batch_fatturazione` NON ESISTE (lo provisiona il passo dopo).
+#   Qui esiste sempre: lo usa il database di sviluppo.
+#
+#   ⚠️ E c'e' una guardia che distingue proprio quei due mondi —
+#   `20260729-05-enable-rls-fatture-satelliti`, la cui preCondition conta
+#   «ruoli batch con la postura SBAGLIATA»:
+#     (a) ruolo assente        -> 0, niente da proteggere  ← GitHub
+#     (b) ruolo presente senza BYPASSRLS o senza i GRANT -> 1, HALT
+#   Sul database scratch cadiamo in (b) per un motivo che non e' un difetto:
+#   il ruolo c'e' (cluster) ma i GRANT no, perche' i GRANT sono per-database e
+#   questo database e' nuovo.
+#
+#   ⭐ Si chiude con ALTER DEFAULT PRIVILEGES, lo stesso meccanismo che il
+#   provisioning usa per gli oggetti futuri: ogni tabella creata da `zeroerp`
+#   durante la passata nasce gia' con il DML per il ruolo batch. E' per
+#   DATABASE (vive in pg_default_acl di questo database), quindi non tocca
+#   sviluppo.
+#
+#   🔴 E VA DICHIARATO: cosi' il database scratch da al ruolo batch PIU' di
+#   quanto il provisioning vero gli darebbe — li' il DML e' un perimetro
+#   esplicito di 28 tabelle, qui e' tutto. ⇒ Questo database serve a trovare
+#   i changeSet che rompono un migrate da zero, NON a collaudare la postura
+#   dei permessi: per quella c'e'
+#   db/pgtap/rls/test-role-batch-fatturazione-postura.sql, che va girato sul
+#   database vero.
+if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
+  echo "── il ruolo batch esiste nel cluster: gli do il DML sugli oggetti futuri di $CI_DB"
+  for s in anagrafiche catalogo config contabilita dbops documenti magazzino \
+           pagamenti pratiche public script storico ui vendite; do
+    psql_admin -d "$CI_DB" -c "
+      CREATE SCHEMA IF NOT EXISTS \"$s\";
+      ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp IN SCHEMA \"$s\"
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;" >/dev/null
+  done
+fi
+
 # --- L'autogen, come in CI: l'ordine dei changeSet e' generato, non versionato
 echo "── rigenero changelog-autogen.yaml (--strict)"
 python3 scripts/gen_master_autogen.py \
@@ -184,6 +224,27 @@ echo "── $("$LB" --version 2>/dev/null | grep -i '^Liquibase Version' || ech
 echo "── provision pre"
 "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username="$ADMIN_USER" --password="$ADMIN_PWD" \
   --changeLogFile=db/changelog/changelog-provision-pre.yaml update --contexts=provision
+
+# ⛔ LE GRANT VANNO QUI, DOPO IL PROVISION-PRE — e l'ordine e' tutto.
+#   Il provision-pre gira come SUPERUSER e crea `public.databasechangelog`; la
+#   passata principale gira come `zeroerp`, che su una tabella creata da un
+#   altro ruolo non ha nessun diritto. `GRANT … ON ALL TABLES` fotografa le
+#   tabelle CHE ESISTONO nel momento in cui lo si esegue: darlo prima non
+#   copre una tabella che nascera' dopo.
+#   ⚠️ Il sintomo, se lo si mette prima, non parla di permessi in modo
+#   riconoscibile: Liquibase muore su una sua query interna di checksum —
+#   «Error executing SQL SELECT MD5SUM FROM public.databasechangelog … :
+#   permesso negato» — e sembra un problema di MD5.
+#   ⭐ E' esattamente il passo «Grant CREATE on public (CI bootstrap)» di
+#   ci.yaml, che sta anch'esso DOPO il provision-pre: qui si copia la sua
+#   posizione, non solo il suo contenuto.
+echo "── grant post-provision (come il passo 'CI bootstrap' di ci.yaml)"
+psql_admin -d "$CI_DB" <<SQL
+GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
+GRANT CREATE ON DATABASE "$CI_DB" TO zeroerp;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;
+SQL
 
 echo "── passata principale  (--contexts=\"!provision\")"
 echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
