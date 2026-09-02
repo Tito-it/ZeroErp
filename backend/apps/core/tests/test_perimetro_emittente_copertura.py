@@ -86,6 +86,15 @@ _ESENZIONI: dict[str, str] = {
     "anagrafiche.operatori": "AdminAPIView — gestione utenti",
     "config.email_account": "AdminAPIView — configurazione tecnica",
     "config.email_log": "AdminAPIView — diario tecnico di sistema",
+    # ⭐ La schermata che monta questa lista e' `/amm-software/audit-log/`
+    #    (`amm_software.AuditLogView`, AdminAPIView): il diario delle MODIFICHE
+    #    ai dati. ⛔ Fino al 2026-09-02 il presidio la considerava «coperta»
+    #    perche' `core.ApiAuditLog` dichiarava quel `lista_codice` — ma
+    #    quell'endpoint serve `dbops.audit_log`, le ESECUZIONI di funzione,
+    #    che con questo catalogo non hanno una colonna in comune. La
+    #    dichiarazione e' stata tolta di la' e l'esenzione scritta qui, che e'
+    #    il posto in cui e' vera.
+    "storico.audit_log": "AdminAPIView — diario delle modifiche ai dati",
     "config.email_template": "AdminAPIView — configurazione tecnica",
     "config.tipi_ruolo_tipi_indirizzo": "AdminAPIView — matrice di configurazione",
     "config.utilities_tipi_ruolo": "AdminAPIView — matrice di configurazione",

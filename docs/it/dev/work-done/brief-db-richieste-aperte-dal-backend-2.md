@@ -741,7 +741,7 @@ al database. Vale come corollario alla regola, non come sua sostituzione.
 ---
 
 📌 **Il ragionamento è già scritto**, e non si ricopia: §FE-2 del
-[brief BE/FE del CRUD dei registri](../work-in-progress/brief-be-fe-crud-registri-di-numerazione.md).
+[brief BE/FE del CRUD dei registri](brief-be-fe-crud-registri-di-numerazione.md).
 
 ### Il fatto — i registri non hanno CRUD, e disattivare è la parte delicata
 

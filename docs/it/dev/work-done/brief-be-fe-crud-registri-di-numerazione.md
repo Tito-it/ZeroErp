@@ -1,5 +1,15 @@
 # Brief BE/FE — il CRUD dei registri di numerazione
 
+> 🎉 **Stato al 2026-09-02 — CANTIERE CHIUSO, DB e BE/FE.** Spostato in
+> `work-done/` il 2026-09-02. Il dettaglio di ciò che è stato scritto è al
+> **§13**; le decisioni che l'hanno guidato ai **§11.13** (le sei di Tid) e
+> **§12** (le tre della revisione).
+>
+> ⚠️ **Cosa il cantiere NON chiude, e lo dichiara**: il **collaudo in-app**, che
+> è in corso. I rilievi di Tid sono al §13.7, e sono tutti difetti che nessuna
+> delle prove scritte aveva preso — è la ragione per cui il collaudo non è
+> sostituibile.
+>
 > **Destinatario:** backend + frontend (`dev/backend-tid`).
 >
 > **In una riga:** `vendite.registri_fatturazione` **non ha nessun CRUD** — né
@@ -716,7 +726,7 @@ documento**, il residuo non è uniforme:
   vincolo li rifiuta e il documento **non si numera più**.
 
 ⇒ È diventato un cantiere suo, con la sua analisi e il suo piano:
-[brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md).
+[brief-db-registri-numerazione-chiave-del-contatore](../work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md).
 ⭐ Lì la cura è **dare l'asse mancante ai documenti**, non vietare il campo sul
 registro — e la colonna `mese` del contatore, dormiente e senza nessun documento
 che la porti, **si toglie**.
@@ -1200,7 +1210,7 @@ una è una coppia di tabelle di lettura.
 
 > 🔴 **CORREZIONE — l'analisi esisteva già, e dice di più** (rilievo di Tid,
 > 2026-09-01). Il censimento e la classificazione stanno nel
-> [piano di migrazione PrimeVue 5](piano-migrazione-primevue-5.md) §Gruppo B, e
+> [piano di migrazione PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md) §Gruppo B, e
 > la regola sta in [.codex/AGENTS.md](../../../../.codex/AGENTS.md) e in
 > [frontend-standards §Regola zero della lista](../frontend/frontend-standards.md).
 > Tutte e tre le 🟡 sono **già censite** lì (Gruppo B), quindi la tabella qui
@@ -1308,7 +1318,7 @@ falsa (`feedback_emittente_pk_vs_soggetto_ruolo`).
 | **F3** · configurazione lista | ✅ | `vendite.registri_numerazione` — definizione, **10 colonne**, preset, preset-colonne nei CSV di `80_data`; lista registrata in `WHITELIST_BE` del generatore |
 | **F4** · drawer + forma del numero | ✅ | `RegistroNumerazioneDrawer` con **anteprima** (`ORD` + 7 cifre → `ORD0000001`) e forma in sola lettura **col motivo** |
 | **F5** · cestino col motivo + riattivazione | ✅ | kebab con `rimozione_blocco_*`; **«Riattiva»** al posto della creazione su terna occupata; filtro stato con default «tutti» |
-| **F6** 🔴 | aperta | le due **matrici slot/override** — decisione del [piano PrimeVue 5 §Gruppo B](piano-migrazione-primevue-5.md) |
+| **F6** 🔴 | aperta | le due **matrici slot/override** — decisione del [piano PrimeVue 5 §Gruppo B](../work-in-progress/piano-migrazione-primevue-5.md) |
 
 **Presidi**: **24 test** in `apps/vendite/tests/services/test_registri_service.py`,
 suite `apps.vendite` + `apps.core` **verde (2697)**. `check_i18n_keys` verde,
@@ -2296,11 +2306,11 @@ dell'emittente, quindi non collide fra registri diversi.
 ## 13. ✅ Sviluppo BE/FE — **fatto** il 2026-09-01 · 02
 
 > ✅ **Backend e frontend chiusi** per tutto ciò che il §11.10 e il §12.4
-> elencavano. **4371 test verdi**; due rossi restano in albero e **non sono di
-> questo cantiere** (§13.6).
+> elencavano, **suite verde**.
 >
-> ⚠️ **Nessun collaudo in-app**: niente di quanto segue è stato guardato a
-> video. È l'unica cosa che le prove scritte non sostituiscono.
+> ⚠️ **Il collaudo in-app è arrivato dopo**, ed è al §13.7: cinque rilievi, tutti
+> difetti che nessuna delle prove scritte aveva preso. È l'unica cosa che quelle
+> prove non sostituiscono.
 
 ### 13.1 ⭐ Il cancello di perimetro e l'emittente esplicito
 
@@ -2403,7 +2413,7 @@ cui rigenerare è vietato.
 | 1 | `<DrawerTabLista>` era **invisibile** al censimento del frontend, che cercava solo `<ListaConfigurabile`: la lista dei registri era fuori da `_LISTE`, cioè da **tutti** i presidi di quel modulo | niente. Il test era verde |
 | 2 | `test_perimetro_emittente_copertura` scartava i `lista_codice` non letterali: diceva «registri non ha nessun cancello» mentre il cancello c'era, dichiarato via costante | un rosso su una cosa giusta — il modo più rapido di far spegnere un test |
 | 3 | 🔴 **La riattivazione era spenta su entrambe le liste**: `RowActionsMenu` disabilita da sé le azioni sulle righe inattive, e senza `allowWhenInactive` l'azione «Riattiva» era disabilitata **proprio sulle righe spente**. Era così anche nel codice dei registri già rilasciato — e riattivare è la strada che il §0 impone quando la terna è occupata | un pulsante grigio con un tooltip plausibile e falso |
-| 4 | `ApiAuditLog` (`core/api/views_tracciamento.py`) dichiara `lista_codice = "storico.audit_log"` ma serve `dbops.audit_log`, le **esecuzioni di funzione**: zero colonne in comune col catalogo di quella lista. La lista che il frontend monta chiama `/amm-software/audit-log/` | 🟠 **segnalato, non corretto**: è fuori da questo cantiere |
+| 4 | `ApiAuditLog` (`core/api/views_tracciamento.py`) dichiara `lista_codice = "storico.audit_log"` ma serve `dbops.audit_log`, le **esecuzioni di funzione**: zero colonne in comune col catalogo di quella lista. La lista che il frontend monta chiama `/amm-software/audit-log/` | ✅ **corretto il 2026-09-02** (ok di Tid): il `lista_codice` è stato tolto da lì — quell'endpoint non alimenta nessuna lista — e l'esenzione scritta dove è vera, sulla schermata `AdminAPIView` che la monta davvero. ⚠️ E non era solo un'etichetta: `lista_codice` accende il **cancello**, che leggeva i flag di perimetro di una lista non sua e avrebbe risposto **422** su un endpoint dove l'emittente non c'entra. Dormiente solo perché nessuna schermata lo chiama |
 | 5 | La lista 55 sbarrava la strada al super admin, e la correzione ovvia era una bugia | → §12.1, ed è diventato il terzo stato |
 
 ### 13.6 Stato, e cosa resta
@@ -2416,20 +2426,47 @@ cui rigenerare è vietato.
 | Prova sul database vero | lista, lookup, dettaglio, **28 ordinamenti**, creazione dalla madre (2 registri provveduti), update, spegnimento, e i tre rifiuti col messaggio giusto |
 | Prova del cancello | famiglie **si apre** · registri **resta chiusa** · registri + emittente esplicito **si apre** |
 
-🔴 **I due rossi, e sono un segnale non un difetto nostro.** Il seed delle
-quattro liste `ui.*` (2026-09-02) ha acceso due presidi:
+✅ **E il presidio sui `campo_sorgente` copre ora 43 liste**: alle 39 senza vista
+si sono aggiunte le quattro `ui.*` seminate il 2026-09-02, registrate il giorno
+stesso. ⭐ Non ordinano lato backend (`:paginata="false"`), e il test degli
+ordinamenti le tiene in un ramo suo — «non ha whitelist» e «non ordina lato
+backend» sono due cose diverse, e confonderle farebbe sembrare debito una scelta.
 
-* `test_il_registro_copre_ogni_lista_senza_vista` — le quattro hanno `vista_sql`
-  nullo e nessuno che ne guardi i `campo_sorgente`;
-* `test_ogni_lista_configurabile_ha_il_suo_cancello` — nessuna dichiara
-  `lista_codice`, e le loro view sono **`DomainAPIView`**: il registro delle
-  esenzioni, che per sua dichiarazione è solo per le `AdminAPIView`, **non è la
-  strada giusta**.
+🔭 **Resta il solo collaudo in-app** (§13.7, in corso).
+✅ `commesse` non è più scoperta: il team DB le ha dato il suo `registro_id`,
+nella stessa forma delle altre quattro famiglie (2026-09-02).
 
-⇒ Servono le tre righe di seed `perimetro_emittente = false` che il §12.1 aveva
-già previsto (56, 57, 59), la decisione sull'altra strada per `ui.lista_preset`
-(58), e un `lista_codice` sulle quattro view. ⛔ Non sono stati toccati perché
-quel cantiere è **aperto nello stesso albero**.
+### 13.7 🔴 Il collaudo in-app — primi rilievi di Tid, 2026-09-02
 
-🔭 **Resta**, e non è di questo cantiere: il **collaudo in-app** (§13, testata),
-`commesse` scoperta (§11.4 dell'altro brief) e il difetto 4 qui sopra.
+| | Rilievo | Cosa era |
+| --- | --- | --- |
+| 1 | 🔴 La colonna **Attivo** diceva «non attivo» su ogni riga | Il prop di `AttivoTag` si chiama **`active`**, non `attivo`: col nome sbagliato Vue non solleva niente, il prop resta al suo default `false` e la colonna mente su **tutte** le righe. ⚠️ Lo stesso identico difetto era sulla lista dei **registri**, rilasciata il 2026-09-01 — le uniche due occorrenze in tutto il frontend, le altre diciotto passano `:active` |
+| 2 | «Registri 2 (2 attivi)» sembra riferito a un emittente | È su **tutti**: la schermata è globale, ma chi ci arriva dal mondo dei registri — che vivono nel drawer di UN emittente — legge il numero con quella lente. Ora l'etichetta lo dice (*«Registri, su tutti gli emittenti»*), e l'aiuto sotto spiega che è anche il predicato che rende immutabili le colonne di struttura. Le due intestazioni di colonna diventano «Registri a sistema» / «Attivi a sistema» |
+| 3 | La frase sulla forma nominava il «provisioning» | Riscritta senza il termine tecnico: *«quello che crei a mano e quello che il sistema crea da sé devono avere la stessa forma del numero»* |
+| 4 | Sui registri il filtro stato **partiva vuoto** pur valendo «tutti» | Il valore di partenza è `null`, e per PrimeVue `null` è «niente selezionato»: la combo esce vuota su un filtro che è attivo e vale *tutti*. Il `placeholder` porta ora l'etichetta del default, così lo stato di partenza e quello scelto a mano si leggono uguali — che è la verità: sono lo stesso stato. Corretto sui registri e sulle due combo delle famiglie |
+
+✅ **E il 4 è stato chiuso come FORMA, non come caso** (ok di Tid, 2026-09-02).
+La stessa sagoma — un `<Select>` con un'opzione `value: null` («tutti») e nessun
+placeholder — viveva in altri **cinque** punti: `FondiFatturaDaDecidereTab`,
+`CommessaGestioneDrawer` (due), `SituazioneApertaView`, `DashboardBacklogView`.
+Corretti tutti; una ri-scansione del frontend dice **zero residui**.
+
+⭐ **E la regola non è stata inventata: era già nei file stessi.** In
+`SituazioneApertaView` il filtro *fase* il placeholder ce l'ha e quello *ritardo*
+no; in `DashboardBacklogView` idem con *area* e *ritardo*. Stesso file, stessa
+mano, stesso schema — uno dimenticato. La correzione rende ogni file coerente
+con sé stesso, e per questo non porta commenti nuovi in casa d'altri.
+
+⛔ **E anche la lista EMITTENTI FISCALI era sbagliata, in un modo più
+insidioso**: il placeholder c'era, ma portava l'etichetta del CAMPO («Stato»)
+invece di quella del DEFAULT («Tutti»). Non sembrava un difetto — sembrava una
+scelta — e diceva all'operatore il nome del filtro proprio nel punto in cui
+doveva dirgli il suo valore.
+
+| 5 | L'azione «Registri di numerazione» sul kebab dell'emittente portava la **matita** | La matita dice «modifica questa riga», e quell'azione apre invece i *sezionali* di quell'emittente — un elenco, non un form (`feedback_row_actions_menu`). Ora è **`pi-hashtag`**, il segno del numero, in `MANAGE_ICONS` — nel blocco delle icone di **dominio**, non fra le trasversali: nomina un'entità, non un'azione — e dichiarata nel catalogo BB. La portano anche i due drawer che si aprono: chi ha cliccato deve ritrovare il segno su cui ha cliccato, come fa già il mapping BA con la sua carta di credito. ⭐ Il drawer della famiglia prende invece il `pi-file` della sua voce di menu, per la stessa ragione |
+
+⭐ **Il rilievo 1 è la terza volta in due giorni** che un nome sbagliato passa in
+silenzio nel frontend: prima lo slot `#actions`, poi `allowWhenInactive`
+mancante, ora un prop. ⛔ Nessuno dei tre dà un errore, tutti e tre producono
+una schermata **plausibile e falsa** — ed è la ragione per cui il collaudo in-app
+non è sostituibile da nessuna delle prove scritte.

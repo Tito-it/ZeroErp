@@ -197,7 +197,7 @@
 | `LIVELLO_ACCESSO` | Enum livelli accesso (TUTTO, LETTURA, BLOCCATO) |
 | `STATO_PRATICA` | Enum stati pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA) |
 | `STATO_FLUSSO` | Enum stati flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, ecc.) |
-| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali. Categorie: dominio (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI, VERSIONI, CONTRATTI, LISTINI, RIGHE), trasversali (EDIT, ADD, CONFIRM, CANCEL, PLAY, PUBLISH, CLONE, CLOSE, CLOSE_DATE, PERMISSIONS, BILLING_ACCOUNT, UTILITY, LIST, BUILDING, RELOAD, DOWNLOAD, DELETE, KEBAB), workflow (APPROVE, REJECT), **toggle dinamico (EXPAND `pi-chevron-down` / COLLAPSE `pi-chevron-up`)** per accordion/expansion row/tree — usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND` |
+| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali. Categorie: dominio (SOGGETTO, CONTATTI, INDIRIZZI, CONTI_BANCARI, TITOLI_IVA, UOM, BOM, NOTE, CONVERSIONI, VERSIONI, CONTRATTI, COMMESSA, LISTINI, **NUMERAZIONE** `pi-hashtag` — i sezionali di un emittente, senza voce di navigazione come COMMESSA —, **FAMIGLIA_DOCUMENTO** `pi-file` — ripete `NAV_ICONS.FILE` della sua voce di menu, come SOGGETTO e FATTURE con le loro —, RIGHE, FATTURE), trasversali (EDIT, ADD, CONFIRM, CANCEL, PLAY, PUBLISH, CLONE, CLOSE, CLOSE_DATE, PERMISSIONS, BILLING_ACCOUNT, UTILITY, LIST, BUILDING, RELOAD, DOWNLOAD, DELETE, KEBAB), workflow (APPROVE, REJECT), **toggle dinamico (EXPAND `pi-chevron-down` / COLLAPSE `pi-chevron-up`)** per accordion/expansion row/tree — usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND` |
 | `SHORTCUTS` | Scorciatoie tastiera (Ctrl+K ricerca, Ctrl+Tab prossima tab, ecc.) |
 
 ---

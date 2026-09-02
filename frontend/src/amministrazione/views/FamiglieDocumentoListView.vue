@@ -153,9 +153,14 @@ function cambiaAttivo(data) {
             :placeholder="t('amministrazione.famiglie_documento.search_placeholder')"
             style="width: 250px;"
           />
+          <!-- ⚠️ Il placeholder porta l'etichetta del DEFAULT: il valore di
+               partenza e' `null` = tutte, e per PrimeVue `null` e' «niente
+               selezionato» — senza, le due combo escono vuote su filtri che
+               valgono «tutte». -->
           <Select
             v-model="attivoFilter"
             :options="attivoOptions"
+            :placeholder="t('amministrazione.stato_all')"
             option-label="label"
             option-value="value"
             @change="applyExtraFilters"
@@ -163,6 +168,7 @@ function cambiaAttivo(data) {
           <Select
             v-model="serieFilter"
             :options="serieOptions"
+            :placeholder="t('amministrazione.famiglie_documento.serie_tutte')"
             option-label="label"
             option-value="value"
             @change="applyExtraFilters"
@@ -191,7 +197,11 @@ function cambiaAttivo(data) {
         @config-loaded="onConfigLoaded"
       >
         <template #cell-attivo="{ data }">
-          <AttivoTag :attivo="data.attivo" />
+          <!-- ⛔ Il prop si chiama `active`, NON `attivo`: con il nome sbagliato
+             Vue non solleva niente, il prop resta al suo default `false` e la
+             colonna dice «non attivo» su OGNI riga. Difetto visto in app il
+             2026-09-02, su questa lista e sulla gemella. -->
+        <AttivoTag :active="data.attivo" />
         </template>
         <!-- ⚠️ Colonna DERIVATA (`colonna_serie IS NOT NULL`): il catalogo la
              dichiara `boolean` con formato `yesno`, quindi il formatter del BB

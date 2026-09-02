@@ -351,7 +351,7 @@ const titolo = computed(() => {
     @after-show="contentReady = true"
   >
     <template #header>
-      <DrawerTitle :icon="MANAGE_ICONS.EDIT" :title="titolo" />
+      <DrawerTitle :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
     </template>
 
     <div v-if="contentReady" :class="{ 'app-readonly': isReadonly }">

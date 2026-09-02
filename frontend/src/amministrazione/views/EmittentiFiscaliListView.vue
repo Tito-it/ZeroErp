@@ -100,7 +100,7 @@ function buildRowActions(data) {
     {
       key: 'registri',
       label: t('amministrazione.emittenti_fiscali.action_registri'),
-      icon: MANAGE_ICONS.EDIT,
+      icon: MANAGE_ICONS.NUMERAZIONE,
       command: () => regDrawer.editRow(data, 'id'),
     },
   ]
@@ -123,7 +123,7 @@ function buildRowActions(data) {
           :options="attivoOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amministrazione.filter_stato')"
+          :placeholder="t('amministrazione.stato_all')"
           @change="applyExtraFilters"
         />
       </div>

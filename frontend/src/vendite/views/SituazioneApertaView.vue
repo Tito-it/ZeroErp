@@ -410,6 +410,7 @@ onActivated(() => {
                 :options="ritardoOptions"
                 option-label="label"
                 option-value="value"
+                :placeholder="t('vendite.situazione_aperta.ritardo_tutti')"
                 size="small"
                 style="width: 150px;"
                 @change="onFiltriChange"

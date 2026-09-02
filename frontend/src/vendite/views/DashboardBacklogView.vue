@@ -414,6 +414,7 @@ onActivated(() => {
                 :options="ritardoOptions"
                 option-label="label"
                 option-value="value"
+                :placeholder="t('vendite.dashboard_backlog.ritardo_tutti')"
                 size="small"
                 style="width: 150px;"
                 @change="onRitardoChange"

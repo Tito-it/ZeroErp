@@ -204,7 +204,7 @@ const titolo = computed(() => (isEdit.value
     @after-show="contentReady = true"
   >
     <template #header>
-      <DrawerTitle :icon="MANAGE_ICONS.EDIT" :title="titolo" />
+      <DrawerTitle :icon="MANAGE_ICONS.FAMIGLIA_DOCUMENTO" :title="titolo" />
     </template>
 
     <div v-if="contentReady" :class="{ 'app-readonly': isReadonly }">
@@ -322,9 +322,20 @@ const titolo = computed(() => (isEdit.value
       <template v-if="isEdit && dettaglio">
         <h4 class="mt-3">{{ t('amministrazione.famiglie_documento.sezione_stato') }}</h4>
         <div class="form-grid">
+          <!-- ⚠️ IL CONTEGGIO E' SU TUTTI GLI EMITTENTI, e va detto: questa
+               schermata e' globale, ma chi ci arriva dal mondo dei registri —
+               che vivono nel drawer di UN emittente — legge «2 registri» e
+               capisce «due su questo emittente». Rilievo di Tid in collaudo,
+               2026-09-02.
+               ⭐ E il numero non e' decorazione: e' il predicato che rende
+               immutabili le colonne di struttura, quindi spiega un divieto che
+               l'operatore incontrera' due campi piu' su. -->
           <div class="form-field">
-            <label>{{ t('vendite.famiglie_documento.col_n_registri') }}</label>
+            <label>{{ t('amministrazione.famiglie_documento.registri_totali') }}</label>
             <span>{{ dettaglio.n_registri }} ({{ dettaglio.n_registri_attivi }} {{ t('amministrazione.famiglie_documento.attivi_suffisso') }})</span>
+            <small class="app-field-hint">
+              {{ t('amministrazione.famiglie_documento.registri_hint') }}
+            </small>
           </div>
           <div class="form-field">
             <label>{{ t('vendite.famiglie_documento.col_presidia_data_documento') }}</label>
