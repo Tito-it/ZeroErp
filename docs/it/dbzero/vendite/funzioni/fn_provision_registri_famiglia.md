@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_provision_registri_famiglia.md" %}
 # ⚙️ Funzione `fn_provision_registri_famiglia`
 
 ```sql

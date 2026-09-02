@@ -204,14 +204,26 @@ Il manuale della stessa tabella dice testualmente il contrario:
 ⛔ È il vincolo scritto che dice l'opposto del documento che lo spiega, e va corretto
 **prima** che il backend cominci a scriverci: dopo, la correzione ha dei dati da sanare.
 
-**⑧ Doppio legame ordine ↔ DDT.**
-Esistono **sia** `acquisti.ddt.ordine_id` (FK di testata) **sia**
-`acquisti.ordini_righe_fulfillment` (il ponte riga-a-riga). Il manuale dice che il legame
-«passa dal ponte […] non dalla testata». Due sedi per la stessa relazione, e nessun guard che
-le tenga d'accordo.
+**⑧ `acquisti.ddt.ordine_id` non è di troppo: è SBAGLIATO.**
 
-⚠️ È la **stessa specie** del doppio che il brief magazzino discute in D-1. Le due decisioni
-vanno prese guardandosi.
+🔴 **Riformulato il 2026-09-01.** La prima stesura lo trattava come una ridondanza da
+sciogliere — «due sedi per la stessa relazione, scegliamone una». È un modo di dirlo troppo
+gentile, e sposta la discussione sul terreno dell'ordine invece che su quello del modello.
+
+Esistono **sia** `acquisti.ddt.ordine_id` (FK di **testata**) **sia**
+`acquisti.ordini_righe_fulfillment` (il ponte **riga-a-riga**). Il manuale dice già che il
+legame «passa dal ponte […] non dalla testata». Ma la ragione vera è più netta:
+
+> ⛔ **Un fornitore consegna abitualmente più ordini in una bolla sola.** Una FK di testata
+> dice che **non può**. Il ponte riga-a-riga quel caso lo regge; la testata lo nega.
+
+⇒ Non è «scegliamo una delle due sedi»: è che **una delle due nega un caso normale del
+dominio**. La FK di testata va tolta, non arbitrata. ⚠️ E se serve una scorciatoia di lettura
+(«l'ordine principale di questa bolla»), quella si **deriva** dal ponte — non si memorizza,
+altrimenti torna lo stesso vincolo travestito da comodità.
+
+⚠️ Resta vero che è la **stessa specie** del doppio che l'analisi magazzino discute in D-1, e
+le due decisioni vanno prese guardandosi. Ma qui la risposta è già determinata dal dominio.
 
 ### 4.6 Il catalogo delle sorgenti
 
@@ -273,9 +285,13 @@ e una raccomandazione da confermare.
 | **D-7** | **Perimetro del cantiere**: solo ordine, o ordine + ricezione? | ✅ **Ordine + ricezione DDT**, con il meccanismo carico / reso al fornitore / da ri-consegnare → **§8** | **CHIUSA** |
 | **D-8** | **Prezzo**: a mano o listini fornitore? | ✅ **A mano**, con l'ipotesi di un «prezzo fornitore» sull'articolo → **§9** | **CHIUSA sul principio, da progettare** |
 | **D-9** | **Kit / BoM**: l'ordine a fornitore espande i compositi? | ✅ **Sì, se l'articolo lo richiede** ⇒ `acquisti.ordini_righe_componenti` + i gemelli di `fn_ordine_riga_componenti_init` / `_preview`, modello snapshot come in vendite | **CHIUSA** |
-| **D-10** | **Dove vive il motore di numerazione** ora che serve a due domini: resta in `vendite` o sale in `config`/`script`? | ✅ **Sale**, *«se si riesce a usarla per una pulizia migliore»* ⇒ la salita va giustificata da cosa **semplifica**, non dalla simmetria in sé. Il candidato è `config`, accanto a `sistema_codici` che ha la stessa forma. ⛔ `config.sistema_codici` non si tocca | **CHIUSA sul principio, da progettare** |
+| **D-10** | **Dove vive il motore di numerazione** ora che serve a due domini: resta in `vendite` o sale in `config`/`script`? | ✅ **Sale, ma NON adesso.** Si spacca: la correzione di `colonna_billing_account` è del Lotto 1; il **trasloco si rimanda** al giorno in cui il primo ordine di acquisto prende davvero un numero. Il secondo consumatore non esiste ancora ⇒ la regola del 2 non si applica → **§6** | **CHIUSA: fare la correzione, rimandare il trasloco** |
 | **D-11** | **`config.ambiti`**: che farne (popolarla per il suo scopo localizzato, o ritirarla)? | ⛔ **fuori da questo cantiere** — §7 dice perché | rinviata |
-| **D-12** | **Il numero della controparte**: dove sta, e come non collide col nostro | ✅ posta da Tid. `numero` = sempre il **nostro**; il riferimento del fornitore ha colonna propria. ⛔ Emersa una collisione già in casa su `acquisti.ddt.numero` → **§6, «I DUE numeri»** | **CHIUSA sul principio** |
+| **D-12** | **Il numero della controparte**: dove sta, e come non collide col nostro | ✅ posta da Tid. `numero` = sempre il **nostro**; il riferimento del fornitore ha colonna propria. Su `acquisti.ddt` il `numero` liberato **si toglie**, non si tiene vuoto → **§6, «I DUE numeri»** | **CHIUSA sul principio** |
+| **D-13** | **`acquisti.ddt.serie` e `.anno`**: sono del fornitore o nostri? | ✅ **Del fornitore** (Tid): `serie_fornitore`, `anno_fornitore`. Servono davvero, e servono all'unicità per fornitore — una bolla è identificata da **numero + anno del suo emittente**. La data di ricezione sta in una colonna data, non in un intero: tenerla in `anno` sarebbe la stessa collisione di `numero` un giro dopo → **§6** | **CHIUSA** |
+| **D-13b** | **`acquisti.ddt.data`**: è la data del documento del fornitore o quella di ricezione? | emersa chiudendo D-13: è `NOT NULL DEFAULT CURRENT_DATE`, e **il default è il campanello**. Proposta: `data_documento_fornitore` (sua, senza default) + ricezione su `data_ora_consegna_eff`. ⛔ Sono tre colonne dello stesso documento: farne due su tre lascia la terza a mentire | **APERTA** |
+| **D-14** | **La chiusura del ramo CREDITO** dei resi a fornitore | ⭐ buco individuato in revisione: la coda «da accreditare» non ha porta d'uscita finché non c'è il ciclo passivo. Serve la **dichiarazione esplicita di accredito**, sul modello di `resi_righe_rinunce` → **§8** | **da progettare — è del Lotto 3** |
+| **D-15** | **I presidi della classe «esiste e non è armata»** (3 viste `dbops` che devono restare vuote) | ⭐ proposto in revisione: 4 istanze in 2 analisi, nessuna produce un rosso → **§9-bis**. ⚠️ **cantiere di `dbops`, non di questo** | **proposta, fuori perimetro** |
 
 ---
 
@@ -321,27 +337,61 @@ non è un dato mancante — è **la dichiarazione che quella famiglia una serie 
 | `trgfn_famiglie_documento_guard_riferimenti` | salta il controllo su `pg_attribute` quando la colonna è `NULL` (esattamente come già fa, o dovrà fare, per `colonna_serie`) |
 | `fn_ba_ha_storia_emittente` / `fn_get_storia_emittente_ba` | **saltano** le famiglie con colonna `NULL`. ⭐ È corretto per costruzione, non una scorciatoia: un ordine di acquisto non ha un BA, quindi non può contribuire alla storia di nessun BA |
 
-⚠️ **Da verificare prima di scriverlo** — le due funzioni compongono SQL dinamico con `%I`:
-un `NULL` passato a `format('%I')` produce l'identificatore letterale, non un errore parlante.
-Il salto va fatto **nella query che sceglie le famiglie**, non dentro la composizione.
+⚠️ **Attenzione a dove si scrive il salto** — le due funzioni compongono SQL dinamico con
+`%I`: va messo **nella query che sceglie le famiglie**, non dentro la composizione.
 
-### E la domanda che l'obiezione fa emergere (D-10)
+> 🔴 **Correzione del 2026-09-02, verificata sul database** (rilievo di Tid; la stessa
+> correzione è nel [brief](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) §3-bis).
+> La prima stesura motivava la regola così: *«un `NULL` passato a `format('%I')` produce
+> l'identificatore letterale, non un errore parlante»*. ⛔ **Era falso in tutte e due le
+> metà.** Misurato:
+>
+> | Espressione | Risultato reale |
+> | --- | --- |
+> | `format('%I', NULL)` | ⛔ **solleva**: `i valori vuoti non possono essere formattati come un identificativo SQL` (`22004`) |
+> | `format('%L', NULL)` | la stringa `NULL` |
+> | `format('%s', NULL)` | **stringa vuota** |
+>
+> ⭐ **La regola resta identica e il motivo diventa migliore.** Non è il silenzio il
+> problema: è *dove* e *come* si fallisce. Comporre e poi sollevare significa che
+> l'operatore riceve un errore **di PostgreSQL** — nessun codice di dominio, nessun
+> `context`, nessun campo da accendere — nel bel mezzo di uno **spostamento di billing
+> account**, che con le famiglie di documento non c'entra niente e non nomina la propria
+> causa. È **esattamente** il difetto per cui esiste
+> `trgfn_famiglie_documento_guard_riferimenti`, il cui commento lo descrive con le stesse
+> parole (*«fallisce con un `undefined_table` NUDO … senza nominare la propria causa»*).
+> ⇒ Si salta **prima** per non arrivarci.
+>
+> ⚠️ **E il ramo muto esiste, ma vive su `%s`**: lì un `NULL` diventa stringa vuota e il
+> comando si compone lo stesso, sbagliato e silenzioso. Se una di quelle due funzioni
+> compone un pezzo con `%s`, il pericolo è quello — non `%I`.
+
+### E la domanda che l'obiezione fa emergere (D-10) — **si rimanda, e c'è la ragione**
 
 Il motore vive in `vendite` — `vendite.famiglie_documento`, `vendite.registri_fatturazione` —
-e il nome dice *fatturazione*. Con acquisti dentro diventa un motore **cross-dominio in uno
-schema di dominio**. È la regola del 2 che bussa: al secondo dominio, un pezzo condiviso sale.
+e il nome dice *fatturazione*. Con acquisti dentro diventerebbe un motore **cross-dominio in
+uno schema di dominio**, e sembra la regola del 2 che bussa.
 
-Non la decido qui. Le tre strade, con il costo vero:
+🔴 **Non bussa, e la prima stesura lo dava per scontato.** La regola del 2 si applica quando
+il **secondo consumatore esiste**. Qui non esiste: non c'è un ordine di acquisto, non c'è un
+registro che gli assegni un numero, e la forma stessa del catalogo potrebbe cambiare mentre lo
+si costruisce. Traslocare adesso vuol dire **migrare un motore per un consumatore ipotetico** —
+ed è lo stesso schema già pagato con le pratiche, stavolta con l'aggravante dei **changeSet già
+mergiati da rispettare** (che non si toccano: servirebbe un oggetto nuovo più una migrazione
+dei dati).
 
-1. **resta in `vendite`**, e si accetta che `acquisti` dipenda da `vendite` — costo zero
-   oggi, e un debito dichiarato;
-2. **sale in `config`** (dove sta già `sistema_codici`, che è la tabella gemella per forma) —
-   costo: rinomina, riferimenti, ⚠️ e i changeSet già mergiati non si toccano, quindi è un
-   oggetto nuovo più una migrazione dei dati;
-3. **sale in `script`** — stessa cosa, sede diversa.
+⇒ **La decisione si spacca in due, e le due parti hanno tempi diversi:**
 
-⛔ Comunque si decida, `config.sistema_codici` **non si tocca**: è un'altra tabella e un altro
-mestiere.
+| Cosa | Quando | Perché |
+| --- | --- | --- |
+| `colonna_billing_account` da `NOT NULL` a **nullable** + il salto nel guard e nelle due `fn_*_storia_emittente` | **subito**, Lotto 1 | è piccola, è **certa**, e ha già il suo precedente identico in `colonna_serie`. Senza, la famiglia dell'acquisto non si registra affatto |
+| **trasloco** del motore fuori da `vendite` | **il giorno in cui il primo ordine di acquisto prende davvero un numero da un registro** | a quel punto si **sa** se la forma del catalogo regge a due domini, invece di sperarlo. E il debito, nel frattempo, è dichiarato in una riga |
+
+⭐ È lo stesso criterio con cui questo documento rifiuta le misure come motivo: *un refactoring
+per un consumatore che non c'è è una previsione travestita da progetto.*
+
+⛔ Comunque si decida poi, `config.sistema_codici` **non si tocca**: è un'altra tabella e un
+altro mestiere.
 
 ### I DUE numeri: il nostro e quello del fornitore (D-12)
 
@@ -372,13 +422,61 @@ serve:
 > `numero` (+ `serie`, `anno`) è **sempre e solo il numero nostro**, quello che assegna un
 > registro. Il numero della controparte ha un nome proprio e non occupa mai quella colonna.
 
+⭐ **E ha già due applicazioni in questo documento**, il che è ciò che la rende una regola e non
+una toppa: qui, sul DDT di acquisto (dove si applica *dopo* il difetto, correggendolo), e al
+**§8** sulla dichiarazione di accredito, dove il riferimento alla nota di credito del fornitore
+si chiama `numero_nota_credito_fornitore` — cioè dove si applica **prima** che il difetto
+esista. ⚠️ La seconda vale più della prima: una convenzione si giudica da come si comporta sul
+caso che deve ancora nascere.
+
 Ne discendono tre interventi, tutti nel Lotto 1:
 
 | Dove | Cosa | Perché |
 | --- | --- | --- |
 | `acquisti.ordini` | **aggiungere** `numero_fornitore` (+ eventuale `data_conferma_fornitore`) | è la conferma d'ordine del fornitore, e arriva **dopo** che l'ordine è partito |
-| `acquisti.ddt` | **spostare** il numero del fornitore da `numero` a `numero_fornitore`, lasciando `numero` libero per un eventuale protocollo nostro di ricezione | toglie la collisione, e rende ⑦ risolvibile: l'UNIQUE per fornitore va su *quella* colonna, non su `numero` |
+| `acquisti.ddt` | **rinominare** `numero` → `numero_fornitore`, e ⛔ **NON** lasciare un `numero` vuoto al suo posto | vedi il riquadro qui sotto |
 | `famiglie_documento` | il DDT di acquisto **non si registra** come famiglia finché non ha un numero nostro | una famiglia dichiarata senza registro non produce documenti |
+
+#### 🔴 Correzione: il `numero` liberato NON si tiene
+
+La prima stesura proponeva di *«lasciare `numero` libero per un eventuale protocollo nostro di
+ricezione»*. **È sbagliato, ed è il difetto che questo stesso documento contesta due volte** —
+⑩ (i totali `*_atteso` che nessuno calcola) e §7 (la struttura che sembra funzione). Un
+protocollo di ricezione **oggi non esiste**: una colonna vuota tenuta «per quando servirà» è
+esattamente ciò che costringe a spiegarla a ogni lettura, e nel frattempo non presidia niente.
+
+⇒ La mossa pulita è **toglierla** e rimetterla il giorno in cui le ricezioni si numerano
+davvero. Costa una riga di DDL *allora*; costa spiegazioni *ogni volta* fino ad allora.
+
+⭐ **E questo scioglie ⑦ meglio di come lo scioglieva la prima versione.** Sparito `numero`,
+sparisce anche `uq_a_ddt_anno_serie_numero` — il vincolo che contraddiceva il proprio manuale.
+Al suo posto l'unicità torna dove il manuale la voleva: **per fornitore**, cioè
+`(mittente_soggetto_ruolo_id, numero_fornitore, …)`.
+
+#### D-13 — `serie` e `anno`: **sono del fornitore** (chiusa)
+
+✅ **Decisione di Tid, 2026-09-01.** Erano gli accessori di un `numero` che è del fornitore:
+**sono suoi**, e si rinominano con lui — `serie_fornitore`, `anno_fornitore`.
+
+⭐ **E non è una rinomina di simmetria: quelle due colonne servono davvero**, e servono
+proprio all'unicità per fornitore che il §6 vuole. Una bolla italiana è identificata da
+**numero + anno del suo emittente**: senza l'anno, due bolle dello stesso fornitore con lo
+stesso numero in anni diversi collidono. ⇒ il vincolo diventa
+`(mittente_soggetto_ruolo_id, anno_fornitore, serie_fornitore, numero_fornitore)`.
+
+⛔ **E la data di ricezione non entra qui.** È un'altra cosa e ha il suo posto naturale in una
+colonna **data**, non in un intero. Tenere `anno` con dentro l'anno di ricezione sarebbe **la
+stessa collisione di `numero`, un giro dopo**: una colonna il cui nome non dice di chi è il
+dato.
+
+⚠️ **Ne esce un terzo membro della stessa famiglia, e va chiuso nello stesso giro**:
+`acquisti.ddt.data`. Oggi è `NOT NULL DEFAULT CURRENT_DATE` — e **il default è il campanello**:
+un default «oggi» descrive il momento in cui *noi* registriamo, ma su un documento che
+subiamo la `data` che conta è quella **del suo documento**. Sono di nuovo due domande su una
+colonna sola. ⇒ Applicando lo stesso criterio: `data_documento_fornitore` (sua, e senza quel
+default) e il momento della ricezione dove già c'è — `data_ora_consegna_eff`, che è nostro. ⛔
+Da confermare, ma la direzione è la stessa e conviene deciderla adesso: sono tre colonne dello
+stesso documento, e farne due su tre lascia la terza a mentire.
 
 ⚠️ **Due dettagli che decidono se funziona:**
 
@@ -477,6 +575,63 @@ anelli**.
 in cui ne servisse un terzo si valuta allora. ⛔ E `config.ambiti` **non si tocca in questo
 cantiere**: che farne (popolarla per il suo scopo, o ritirarla) è una domanda sua, e
 riempirla di stati la trasformerebbe in una quinta cosa ancora.
+
+### ⛔ Qui non si rompono dei DATI: si rompe una FUNZIONE che gira
+
+> 🔴 **Riscritta il 2026-09-02.** La prima stesura chiamava questa parte «migrazione su un
+> dominio vivo, con dati veri» e ne faceva una questione di **cautela sui dati**. ⛔ È il
+> registro sbagliato: i dati sono di prova e si rifanno quando si vuole (Tid, 2026-09-02).
+> ⭐ **Ma il punto non era mai stato quello**, e riscriverlo lo rende più forte: il satellite
+> non mette a rischio delle righe — mette a rischio **un pezzo di vendita che oggi
+> funziona**.
+
+L'argomento «prima che qualsiasi riga esista» vale per `acquisti`, che è a zero. **Non vale
+qui**, e per una ragione che non ha niente a che fare con la popolazione:
+
+> Il guard `BEFORE` legge il satellite. Se il satellite non ha la riga `(stato, VENDITE)`,
+> **l'ordine di vendita non cambia più stato.** Non un ordine vecchio: *qualunque* ordine,
+> anche uno creato dopo, anche su un database appena rifatto.
+
+Lo stesso per le transizioni con `ambito` nella chiave: senza le righe `VENDITE`, il guard di
+transizione della vendita non trova più le proprie regole.
+
+⭐ **È la distinzione che vale la pena tenere a mente oltre questo caso**: «non siamo in
+produzione» toglie il **rischio sui dati** — nessuna bonifica, nessun rollback, breaking
+secchi ammessi. **Non toglie il rischio funzionale**: una regola incompleta rompe il
+comportamento anche a tabella vuota, e si ripresenta identica sul database ricostruito in CI.
+
+⇒ Due cose obbligatorie, e nessuna delle due è una precauzione sui dati:
+
+| | Cosa | Perché |
+| --- | --- | --- |
+| 1 | il seed copre **ogni** riga di `stati_doc_ordini` e `stati_doc_ddt` col gemello `VENDITE`, e ogni transizione con `ambito = VENDITE` | ⚠️ non è un backfill di dati: `config` è **catalogo che spedisce**, e un catalogo incompleto è una funzione incompleta |
+| 2 | ⭐ un pgTAP sull'invariante: **nessuno stato senza almeno un ambito** | il seed incompleto **non fallisce: non fa niente**. È la sola forma che lo rende rumoroso — e vale in CI, dove il database nasce vuoto |
+
+⭐ E l'invariante del punto 2 è un altro membro della famiglia del **§9-bis**: uno stato che
+non appartiene a nessun ciclo è «esiste e non è armato» applicato a una riga di catalogo.
+
+### La coda fuori dal DB — c'è, ed è più corta del temuto
+
+Spostare `nessuna_azione_key` dallo stato al **paio** cambia chi la legge. Verificato il
+2026-09-01, i lettori sono tre e **non si comportano allo stesso modo**:
+
+| Lettore | Cambia? | Perché |
+| --- | --- | --- |
+| le funzioni `script.fn_available_actions_ordine` e `_ddt` | ✅ **sì, nello stesso migrate** | leggono il `meta` dello stato; devono leggere il satellite. Sono **due**, non otto: le altre sei insistono su tabelle di stato che questo lavoro non tocca |
+| il **backend e il frontend** di vendite | ⭐ **no** — e non è fortuna | il contratto non è la colonna: è il campo **`stato_info_key`** che la funzione **emette**. Finché l'output non cambia forma, `DrawerActionsBar` e la prop `infoKey` non sanno da dove viene |
+| il guard CI `scripts/check_i18n_keys.py` | ⚠️ **dipende dal NOME della proprietà** | scandisce **ogni** CSV di `80_data/sql` (quindi il satellite nuovo è coperto da sé) ma matcha sul contenuto: `label_key\|reason_key\|nessuna_azione_key` |
+
+⛔ **Da cui la regola operativa più stretta di questa sezione**: nel satellite la proprietà
+**deve continuare a chiamarsi `nessuna_azione_key`**. Ribattezzarla — anche per allinearla al
+più sensato `stato_info_key` che la funzione emette — renderebbe il guard **verde per
+cecità**, che è già il modo in cui questo presidio ha fallito due volte. L'asimmetria fra il
+nome della proprietà e il nome del campo emesso è **voluta e documentata**: non si "sistema"
+di straforo.
+
+⇒ Ne discende che il pezzo di BE/FE di vendite dentro questo lotto è **zero righe**, a
+condizione che le due funzioni preservino il proprio contratto d'uscita. ⚠️ Ed è una
+condizione da **provare**, non da assumere: se una delle due cambia la forma del blob, il
+lotto «solo DB» rompe il dominio che funziona.
 
 ### E lo stesso trattamento serve a `config.stati_doc_ddt`
 
@@ -635,6 +790,55 @@ ledger va concordato con quel cantiere, non deciso qui.
 documento che riceviamo: servono qualcosa come *RICEVUTO → VERIFICATO → CARICATO*, più
 *RESPINTO*. È l'altra metà del §7, e il motivo per cui i due satelliti conviene farli insieme.
 
+### ⛔ Il buco: il ramo CREDITO non ha una porta d'uscita
+
+⭐ **Aggiunto il 2026-09-01, ed è il punto più importante di questa sezione.** La prima stesura
+notava che l'asse fiscale non c'è (§8-a) ma **non ne traeva la conseguenza sulla coda** — e la
+conseguenza è quella che decide se il meccanismo è usabile.
+
+**In vendita la coda «da accreditare» si chiude perché la nota di credito la emettiamo noi**:
+il ciclo è interno, e `fn_accredita_riga_reso` è la porta. In acquisto il reso a credito si
+chiude con una **nota di credito del fornitore**, che nel sistema **non entra da nessuna
+parte** finché non esiste il ciclo passivo.
+
+⇒ Senza una porta, quella coda **non si svuota mai**. E una coda che non si svuota si riempie
+di roba vecchia, finché la gente smette di guardarla — che è **letteralmente la piaga che in
+vendita ha fatto nascere le rinunce**: *«una ri-consegna mai eseguita lasciava l'ordine
+`PARZIALMENTE_EVASO` per sempre, la riga in coda indistinguibile da una lavorabile»*.
+
+**La simmetria è incompleta, e va vista bene:**
+
+| Ramo | In vendita si chiude con | In acquisto si chiude con |
+| --- | --- | --- |
+| ri-consegna | il DDT di ri-spedizione, **oppure** la rinuncia (`resi_righe_rinunce`) | il DDT di ri-ricezione, **oppure** la rinuncia — ✅ coperto, §8 sopra |
+| credito | `fn_accredita_riga_reso` → rettifica → nota di credito **nostra** | ⛔ **niente** |
+
+**Serve una dichiarazione esplicita di accredito**, sul modello di `resi_righe_rinunce`:
+*«questo reso è stato accreditato, fuori sistema, il giorno X, con la nota di credito numero
+Y»*. Forma e proprietà, entrambe prese dal precedente:
+
+* ⭐ **è una dichiarazione, non un calcolo** — «scrivere qui non muove nessun numero»: registra
+  data, riferimento della nota di credito del fornitore, importo dichiarato e chi lo dichiara.
+  Tutto il resto (la riga esce dalla coda) è **conseguenza** del cambio di natura;
+* ⛔ **e il campo del riferimento NON si chiama `numero`** — è la **seconda applicazione** della
+  convenzione D-12 (§6), e la prima in cui si applica *prima* di sbagliare invece che dopo.
+  Quella nota di credito è del **fornitore**: il nome è `numero_nota_credito_fornitore`, o
+  qualunque altro che dica di chi è. ⭐ La convenzione nasce così con **due casi** invece che
+  con uno — e un caso solo si legge come una toppa a `acquisti.ddt`, due si leggono come una
+  regola;
+* ⚠️ **non è una rinuncia**, e i due non vanno fusi: la rinuncia dice *«non tornerà più»*,
+  l'accredito dichiarato dice *«è stato compensato»*. Fondere i due farebbe sparire dalla coda
+  righe per cui non è arrivato niente;
+* ⭐ **è il ponte verso il ciclo passivo, non un ripiego**: il giorno in cui la fattura
+  fornitore entra nel sistema, questa tabella diventa il posto dove **agganciarla** — la
+  dichiarazione a mano è il caso degradato di un legame che allora sarà automatico. Non è un
+  dato da buttare.
+
+⛔ **È un'aggiunta piccola oggi e insanabile dopo.** Costruire la coda senza la sua uscita
+significa consegnare un meccanismo che al terzo mese nessuno guarda più — e a quel punto
+aggiungere la porta non basta, perché la coda va anche **bonificata a mano** di tutto
+l'arretrato che nel frattempo si è depositato.
+
 ---
 
 ## 9. Il prezzo: a mano, e il «prezzo fornitore» sull'articolo
@@ -666,6 +870,60 @@ resolver: sull'acquisto non esiste (e non serve oggi) il gemello di `PricingServ
 
 ---
 
+## 9-bis. La classe di difetto che continua a uscire: «esiste e non è armata»
+
+⭐ **Rilievo trasversale, 2026-09-01.** Fra questa analisi e
+[analisi-db-commessa-e-produzione-predisposizione.md](analisi-db-commessa-e-produzione-predisposizione.md) —
+scritte lo stesso giorno — lo **stesso difetto è uscito quattro volte**, in forme diverse:
+
+| Istanza | Dove | Cosa sembra | Cosa fa |
+| --- | --- | --- | --- |
+| il **guard tipizzato** montato su zero tabelle | magazzino | un presidio | niente |
+| le **due policy RLS** senza `ENABLE` | `acquisti.ordini`, `acquisti.ddt` (§4.1) | sicurezza a livello di riga | niente |
+| `magazzino.causali.ambito_causale_id` **vuota in tutte e dieci** le righe seminate | magazzino | una classificazione | niente |
+| `config.ambiti`: **zero righe, zero FK entranti** (§7) | config | un vocabolario | niente |
+
+⛔ **Nessuna delle quattro produce un rosso**, e nessuna delle quattro è un difetto di
+scrittura: sono tutte cose costruite bene e **non collegate**. È la specie peggiore, perché
+l'oggetto c'è — chi lo cerca lo trova, chi legge il codice lo conta come presidiato.
+
+### La proposta: presidiare la CLASSE, non le quattro istanze
+
+Il progetto ha già **otto** viste di questa identica forma in `dbops` —
+`vw_bersagli_non_dichiarati`, `vw_eventi_non_dichiarati`, `vw_codici_errore_da_dichiarare`,
+`vw_riferimenti_morti_da_sanare`, `vw_parameter_fk_surrogate_dangling`,
+`vw_operatori_senza_emittente`, `vw_liste_multi_emittente_non_certificate`,
+`vw_fk_senza_indice` — e una guida che spiega come aggiungerne una
+([presidi-e-registri-del-debito §6](/guide/presidi-e-registri-del-debito)). Non c'è niente da
+inventare: c'è da **applicare lo stampo a una classe che nessuno ha ancora nominato**.
+
+Tre viste in `dbops`, **che devono restare vuote**:
+
+| Vista | Cosa elenca | Query, in una riga |
+| --- | --- | --- |
+| *funzioni trigger montate da nessuno* | le `trgfn_*` di `script`/dominio che **nessun trigger** invoca | `pg_proc` meno i `tgfoid` di `pg_trigger` |
+| *policy su tabelle senza RLS attiva* | le `pg_policy` la cui tabella ha `relrowsecurity = false` | `pg_policy` ⋈ `pg_class` |
+| *cataloghi orfani* | le tabelle di riferimento con **zero righe e zero FK entranti** | `pg_class` ⋈ `pg_constraint` + `n_live_tup` |
+
+⚠️ **Due avvertenze**, o il presidio nasce già da spegnere:
+
+* le tre viste avranno **falsi positivi legittimi**: una funzione trigger tenuta per un
+  cantiere aperto, una policy in dry-run **dichiarata** come le due di §4.1. ⇒ ognuna vuole il
+  suo **registro delle eccezioni motivate**, esattamente come `baseline-rossi.tsv` — non un
+  filtro cablato nella vista. *Un cancello che boccia a caso viene spento, e un presidio
+  spento è peggio di uno assente.*
+* la terza è la più delicata: «zero righe» è una **misura**, e da sola non decide niente
+  (regola zero). La condizione che vale è **strutturale** — *zero FK entranti* — e le righe
+  sono solo il secondo indizio. Una tabella piena e non referenziata è ugualmente orfana.
+
+⭐ **Costa tre query e chiude la classe invece dell'istanza**, e chiude anche le prossime:
+`config.ambiti` (D-11) e la causale del reso a fornitore (§8) sarebbero **uscite da sole** da
+un presidio così, invece che da due analisi lette a mano. È probabilmente l'ora meglio spesa
+del Lotto 1 — e ⚠️ **non è di questo cantiere**: è un cantiere di `dbops`, che questo documento
+si limita a proporre.
+
+---
+
 ## 10. L'ordine in cui conviene costruire
 
 Non è un piano — le decisioni aperte lo cambiano. È la sequenza che evita di scrivere due
@@ -674,9 +932,10 @@ volte.
 | Lotto | Cosa | Perché prima di quello dopo |
 | --- | --- | --- |
 | **0** | Chiudere **D-2** (policy fornitore) e **D-6b** (ancora doppia degli indirizzi) + confermare la forma del satellite §7 | sono le due rimaste. D-6b decide se si tocca un BB usato da 5 domini |
-| **1 — DB, allineamento** | `emittente_fiscale_id` + guard; `acquisti.ordini_indirizzi` + ambito `ACQUISTI_ORDINI` (§7-bis); **i due numeri** — `numero_fornitore` su ordini e spostamento su DDT (§6); satellite ambiti su stati ordini **e** DDT; transizioni con ambito; correzione dell'UNIQUE del DDT ⑦; scioglimento del doppio legame ⑧; `uid NOT NULL` ⑫ | ⛔ **prima che qualsiasi riga esista**: dopo, ognuna di queste è una migrazione con dati da sanare — e lo spostamento del numero del fornitore su `acquisti.ddt` è quello che si paga di più |
+| **1a — DB, terreno vuoto** (solo `acquisti`) | `emittente_fiscale_id` + guard; `acquisti.ordini_indirizzi` + ambito `ACQUISTI_ORDINI` (§7-bis); **le colonne del fornitore** — `numero_fornitore` su ordini; su DDT `numero`→`numero_fornitore`, `serie`/`anno`→`_fornitore`, `data`→`data_documento_fornitore`, **DROP** del `numero` liberato, UNIQUE per fornitore (§6, che assorbe ⑦ e D-13); **rimozione** di `ddt.ordine_id` ⑧; `uid NOT NULL` ⑫ | ⭐ **qui l'argomento «prima che qualsiasi riga esista» vale davvero**: `acquisti` è a zero, e ognuna di queste dopo sarebbe una migrazione con dati da sanare |
+| **1b — DB, tocca una FUNZIONE che gira** (`config` + `vendite`) | satellite ambiti su `stati_doc_ordini` **e** `stati_doc_ddt` + **backfill `VENDITE` completo**; `ambito` nella chiave delle transizioni + backfill; aggiornamento di `fn_available_actions_ordine` e `_ddt`; `colonna_billing_account` nullable (§6, **senza** il trasloco) | ⛔ **Non va nello stesso paniere di 1a**, e non per i dati (quelli sono di prova): il guard legge il satellite, e un catalogo incompleto **impedisce a qualunque ordine di vendita di cambiare stato** — anche su un database appena rifatto. Invariante da provare: **§7 «Qui non si rompono dei DATI»** |
 | **2 — DB, motore** | RLS armata; `fn_available_actions_ordine_acquisto`; numerazione (§6); `fn_ricalcola_totali_ordine_acquisto`; sorgenti a catalogo ⑨ | sono i **quattro ganci** a cui i building block si attaccano. Senza, il BE si scrive contro il nulla |
-| **3 — DB, ricezione** | partita di acquisto, reso al fornitore, ri-consegna, rinuncia (§8) — coordinato col brief magazzino | poggia sul motore del lotto 2 |
+| **3 — DB, ricezione** | partita di acquisto, reso al fornitore, ri-consegna, rinuncia **e la dichiarazione di accredito** (§8, D-14) — coordinato con l'analisi magazzino | poggia sul motore del lotto 2. ⛔ La porta d'uscita del ramo credito entra **qui**, non dopo: una coda senza uscita al terzo mese non la guarda più nessuno |
 | **4 — BE** | app `acquisti`: repository + service + rotte, in fotocopia da `vendite` | ⭐ qui la simmetria paga davvero |
 | **5 — FE** | dominio `acquisti`: lista configurabile (è **dato**, non DDL — si semina in-app), drawer, righe, ricezione | idem |
 | **6** | azioni di processo su area 3, i18n `acquisti.*`, menu L2 | sono le tre cose che oggi sono vuote e che nessun lotto precedente riempie da sé |
@@ -707,3 +966,8 @@ volte.
 | 2026-09-01 | ⭐ **D-6 chiusa** dopo verifica: l'ancora del BB indirizzi è un **parametro**, non «il cliente» ⇒ il BB si usa. Emerso che `acquisti.ddt_indirizzi` **è già convergente** dal 2026-07-11 (ambito `ACQUISTI_DDT`, funzione dedicata ritirata): `acquisti.ordini` è l'unico documento rimasto sulla forma vecchia. Nuovo **§7-bis** con i due limiti veri del BB (join BA cablato, ancora singola) e la nuova **D-6b** |
 | 2026-09-01 | **D-9 chiusa** (kit sì, se l'articolo lo richiede) e **D-10 chiusa sul principio** (il motore di numerazione sale, se la salita compra una pulizia) |
 | 2026-09-01 | ⭐ **D-12, posta da Tid**: servono due numeri, il nostro e quello del fornitore. Verificato che **nessun documento del progetto** ha oggi una colonna per il riferimento della controparte — non c'è precedente. Emersa una collisione già in casa: `acquisti.ddt.numero` **è già** il numero del fornitore, e `famiglie_documento.colonna_numero` puntata lì lo sovrascriverebbe. Nuova convenzione generale al §6 |
+| 2026-09-01 | 🔴 **Revisione — cinque rilievi, tre correggono il documento.** ① **D-10 rimandata**: la regola del 2 non si applica a un secondo consumatore che non esiste; si fa la correzione di `colonna_billing_account` e si rimanda il trasloco. ② **Il `numero` liberato su `acquisti.ddt` si TOGLIE**, non si tiene vuoto — la prima stesura ricadeva nel difetto che essa stessa contesta in ⑩ e §7; e così ⑦ si scioglie meglio. ③ **⑧ riformulato**: `ddt.ordine_id` non è ridondante, è **sbagliato** — un fornitore consegna più ordini in una bolla, e la FK di testata lo nega. ④ Nuovo **§8 «Il buco: il ramo CREDITO non ha una porta d'uscita»** (D-14) — la coda «da accreditare» non si chiude senza ciclo passivo, e serve la dichiarazione esplicita di accredito. ⑤ Nuovo **§9-bis** (D-15): la classe «esiste e non è armata» è uscita **quattro volte in due analisi**, si presidia con tre viste `dbops` invece che istanza per istanza. Nuove **D-13**, **D-14**, **D-15** |
+| 2026-09-01 | ⭐ **La convenzione D-12 acquista il suo secondo caso** (rilievo di Tid): il riferimento della nota di credito del fornitore nella dichiarazione di accredito (D-14) è già una sua applicazione, e il campo non si chiama `numero`. ⚠️ È l'applicazione che vale di più — è **preventiva**, non correttiva: con un caso solo la convenzione si legge come una toppa a `acquisti.ddt`, con due come una regola. Annotata in §6 e §8 |
+| 2026-09-01 | 🔴 **Revisione — il Lotto 1 non era tutto su terreno vuoto** (rilievo di Tid). ① Il satellite degli ambiti sta in `config`, su tabelle che **`vendite` usa in esercizio**: senza il backfill `VENDITE` completo il guard rifiuta il primo cambio di stato di un ordine di vendita. Il Lotto 1 è stato **spaccato in 1a (terreno vuoto, solo `acquisti`) e 1b (migrazione su dominio vivo)**, con l'invariante «nessuno stato senza ambito» da provare in pgTAP — il seed incompleto non fallisce, *non fa niente*. ② Verificata la **coda fuori dal DB**: cambiano **due** funzioni (`fn_available_actions_ordine`/`_ddt`), BE e FE **zero righe** perché il contratto è il campo emesso `stato_info_key` e non la colonna — ⚠️ ma la proprietà nel satellite deve restare `nessuna_azione_key`, o `check_i18n_keys.py` diventa verde per cecità. ③ **D-13 chiusa**: `serie` e `anno` sono del fornitore, e ne esce **D-13b** su `data` |
+| 2026-09-02 | 🔴 **Corretto un fatto sbagliato al §6** (rilievo di Tid), e **verificato sul DB** invece che ragionato: `format('%I', NULL)` **solleva** (`22004`, «i valori vuoti non possono essere formattati come un identificativo SQL»), non produce l'identificatore letterale. Era falso in tutte e due le metà. ⭐ La regola — saltare nella query che sceglie le famiglie — **non cambia**, e il motivo migliora: si fallirebbe con un errore **di PostgreSQL**, senza codice di dominio, dentro uno spostamento di billing account che con le famiglie non c'entra. ⚠️ Il ramo muto vive su `%s` (stringa vuota), non su `%I`. Allineato al [brief](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) §3-bis, che era già stato corretto: i due documenti dicevano due cose opposte sullo stesso fatto |
+| 2026-09-02 | 🔴 **Tolta la cerimonia da produzione** (Tid: «i dati sono solo di test, possiamo fare quello che vogliamo»). Il §7 chiamava il Lotto 1b «migrazione su dominio vivo con dati veri» e ne faceva una cautela sui **dati**: registro sbagliato. ⭐ Riscritto sul punto vero, che ne esce **più forte** — il satellite non mette a rischio delle righe, mette a rischio **una funzione di vendita che gira**: un catalogo incompleto impedisce a *qualunque* ordine di cambiare stato, anche su un DB appena rifatto. ⇒ La distinzione da tenere: «niente produzione» toglie il rischio **sui dati**, non quello **funzionale**. Da tre obblighi a due, e il Lotto 1b rinominato |

@@ -54,3 +54,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 53,pagamenti.eccedenze,Eccedenze da sistemare,pagamenti,NULL,t,2026-08-25 00:00:00,mctit,f
 54,vendite.registri_numerazione,Registri di numerazione,vendite,NULL,t,2026-09-01 00:00:00,mctit,f
 55,vendite.famiglie_documento,Famiglie di documento,vendite,vw_famiglie_documento_lista,t,2026-09-01 00:00:00,mctit,f
+56,ui.lista_definizione,Definizioni di lista,ui,NULL,t,2026-09-02 00:00:00,mctit,f
+57,ui.lista_colonna,Catalogo colonne di lista,ui,NULL,t,2026-09-02 00:00:00,mctit,f
+58,ui.lista_preset,Preset di colonne,ui,NULL,t,2026-09-02 00:00:00,mctit,f
+59,ui.lista_colonna_permesso,Permessi di colonna,ui,NULL,t,2026-09-02 00:00:00,mctit,f
