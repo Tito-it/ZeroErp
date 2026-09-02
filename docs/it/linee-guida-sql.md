@@ -1659,21 +1659,38 @@ Conta la citazione **diretta**.
 marcano**: marcare ciò che non fa danno allarga il perimetro senza aggiungere
 garanzia, e ogni marcatura è una riga che qualcuno dovrà rileggere.
 
-#### Il meccanismo: `context: dati_macchina`
+#### Il meccanismo, e cosa la prova ha detto davvero
 
-Non è una via nuova — è quella che già filtra sei changeSet a ogni corsa della CI
-(la riga `Context mismatch: 6` in fondo al report).
+Il primo tentativo è stato: marcare `context: dati_macchina` e contare sul fatto
+che la CI gira `--contexts="!provision"`.
+
+> 🔴 **Provato il 2026-09-02: NON basta.** Il changeSet marcato è stato eseguito
+> lo stesso. Un `--contexts="!provision"` esclude ciò che è `provision`, non ciò
+> che ha un contesto qualsiasi.
+
+⇒ Perché il contesto sia un **filtro** e non un'etichetta, va reso esplicito
+nell'invocazione, in `ci.yaml` e nel comando di produzione:
+
+```text
+--contexts="!provision and !dati_macchina"
+```
 
 | dove | invocazione | effetto |
 |---|---|---|
 | sviluppo | `liquibase update` (nessun `--contexts`) | **gira** — il DB di sviluppo resta com'è |
-| CI | `--contexts="!provision"` | filtrato |
-| produzione | invocazione con `--contexts` | filtrato |
+| CI / produzione | `--contexts="!provision and !dati_macchina"` | filtrato |
+| CI / produzione | `--contexts="!provision"` (oggi) | ⛔ **NON** filtrato |
 
-🔴 **Perché regga in produzione, l'invocazione di produzione DEVE passare un
-`--contexts`.** Un `liquibase update` nudo farebbe girare anche i seed di
-macchina. Meglio esplicito — `--contexts="!provision and !dati_macchina"` — così
-la regola sta nel comando e non in un effetto collaterale.
+⚠️ **Finché quella riga non c'è, `context: dati_macchina` è documentazione, non un
+cancello** — e va detto, perché un'etichetta che sembra proteggere e non protegge
+è peggio di nessuna etichetta.
+
+⭐ **Per i mirror CSV c'è una via che non dipende dal contesto: svuotare il file.**
+Un `loadUpdateData` su un CSV di sola intestazione carica zero righe, ovunque, e
+non cancella niente su un database dove quelle righe esistono già. È ciò che si è
+fatto il 2026-09-02 per `registri_fatturazione.csv` e per i due
+`tipi_doc_fiscale_registri*`. Il contesto **serve** invece per i seed scritti in
+SQL, che non si possono svuotare.
 
 ⚠️ **Un changeSet già applicato non si de-applica** dandogli un contesto: su
 sviluppo resta applicato, su un database nuovo non parte. È ciò che si vuole, ma

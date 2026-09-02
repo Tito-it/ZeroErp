@@ -3,6 +3,22 @@
 # Liquibase changelog per Zero ERP
 # ------------------------------------------------------------
 
+# ── 🔴 2026-09-02 — `tipi_doc_fiscale_registri.csv` E' STATO SVUOTATO ───────────────────────
+#
+#   Portava righe che puntano ai registri 3/4/5, e quei registri sono usciti dal
+#   seed: appartengono a un emittente (`soggetti_ruoli` 72 / 159) che nessun
+#   changeSet crea — 72 e' una fixture pgTAP, 159 e' stato fatto a mano. Su un
+#   database ricostruito da zero il migrate moriva su
+#   `fk_registri_fatturazione_emitt`.
+#   ⇒ Non e' una decisione nuova: e' la stessa di
+#   `20260127-57-upsert-registri-fatturazione`, applicata ai figli. Un mapping
+#   verso un registro che non esiste non e' dato di catalogo.
+#
+#   ⚠️ Su sviluppo NON si cancella niente: `loadUpdateData` non elimina. Le
+#   righe restano dove sono.
+#   Ragionamento e censimento: `docs/it/linee-guida-sql.md` §11.7.
+# ------------------------------------------------------------
+
 databaseChangeLog:
   - changeSet:
       id: 20260127-08-upsert-tipi-doc-fiscale-registri

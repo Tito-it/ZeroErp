@@ -360,11 +360,14 @@ installazione, il codice lo nomina per `codice_interno`. **Macchina** = descrive
 **valorizza una FK verso `anagrafiche.*`** — quelle righe nascono dall'uso, e su
 un database ricostruito da zero non esistono.
 
-Un seed di macchina si marca `context: dati_macchina`: gira in sviluppo
-(`liquibase update` senza `--contexts`), è filtrato in CI e in produzione. È lo
-stesso meccanismo che già filtra sei changeSet a ogni corsa.
-🔴 La produzione **deve** invocare con un `--contexts` — meglio esplicito,
-`"!provision and !dati_macchina"`.
+Un seed di macchina si marca `context: dati_macchina`.
+🔴 **Ma provato il 2026-09-02: `--contexts="!provision"` NON lo filtra** — quel
+filtro esclude ciò che è `provision`, non ciò che ha un contesto qualsiasi. Serve
+esplicito, in `ci.yaml` e in produzione: `--contexts="!provision and !dati_macchina"`.
+Finché quella riga non c'è, il contesto è documentazione, non un cancello.
+⭐ Per i **mirror CSV** c'è una via che non dipende dal contesto: **svuotare il
+file** (sola intestazione). Carica zero righe ovunque e non cancella niente dove
+quelle righe già esistono. Il contesto serve per i seed scritti in **SQL**.
 ⛔ I **backfill** che nominano un'anagrafica NON si marcano: su un DB vuoto sono
 `UPDATE` su zero righe, quindi innocui.
 
