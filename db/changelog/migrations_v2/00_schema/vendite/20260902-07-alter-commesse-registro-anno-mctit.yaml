@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COMMESSA PORTA GLI ASSI DEL CONTATORE NELLE SUE COLONNE
+#   vendite.commesse.registro_id, vendite.commesse.anno
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 12.6
+#
+# ── ⛔ IL DEBITO CHE CHIUDE ──────────────────────────────────────
+#   `commesse` era l'UNICA delle cinque famiglie la cui identita' e' una
+#   STRINGA NUDA: `uq_commesse_codice UNIQUE (codice)`, e basta. Le altre
+#   quattro hanno `registro_id` e `anno` come colonne, accanto al numero.
+#
+#   ⭐ Non e' che il codice sia sbagliato: dal 2026-08-31 e'
+#   `CMM-<sigla>-<anno>-<9 cifre>` e gli assi del contatore li porta DENTRO,
+#   come la funzione dichiara — «ogni dimensione del contatore dev'essere nella
+#   stringa, o al primo cambio di periodo la UNIQUE salta».
+#   ⛔ Il punto e' che quell'invariante regge per CONVENZIONE di chi compone la
+#   stringa, e nessun vincolo la impone: il giorno che al contatore si
+#   aggiungesse un asse senza toccare la composizione, la UNIQUE salterebbe al
+#   primo cambio di periodo — come 23505 nudo in mezzo a un fan-out.
+#   ⚠️ E gli assi non erano interrogabili: «le commesse del registro X nel
+#   2026» richiedeva di PARSARE una stringa.
+#
+# ── ⭐ COSA SERVIVA DAVVERO: DUE COLONNE, NON TRE ────────────────
+#   Sulle quattro sorelle `numero` e' la STRINGA COMPOSTA (`DDT0023454`), non
+#   il progressivo nudo — verificato sui dati, non dedotto. Sulla commessa
+#   quella stringa e' `codice`, che gia' c'e'.
+#   ⇒ Mancavano solo `registro_id` e `anno`. Nessun numero da inventare per lo
+#   storico, e la domanda «che numero diamo alle righe vecchie?» non si pone.
+#
+# ── ⭐ IL BACKFILL NON RICOSTRUISCE NIENTE A MANO ────────────────
+#   `registro_id` si chiede a `vendite.fn_lookup_registro_documento`, che e' la
+#   sede unica della regola «quale registro per questo documento» (la mia
+#   utility, altrimenti quello per tutte). ⛔ Riscrivere quel predicato qui
+#   sarebbe stato il secondo elenco, e avrebbe sbagliato: le commesse hanno una
+#   utility valorizzata mentre i loro registri valgono «per tutte», quindi un
+#   join ingenuo su `utility_id` risolve ZERO righe — provato.
+#   `anno` viene da `data_insert`, perche' la commessa non ha una data
+#   documento: la sua data e' quella di creazione, e lo dice gia' la madre.
+#   ⚠️ Misurato il 2026-09-02 prima di scrivere: 62 righe su 62 risolvono.
+#
+# ── ⛔ NULLABLE, e non e' una resa ───────────────────────────────
+#   Le quattro sorelle hanno queste colonne nullable — un documento puo'
+#   esistere prima di essere numerato — e la commessa nasce numerata, quindi la
+#   tentazione del NOT NULL c'e'.
+#   ⚠️ Ma UNA DECINA DI FILE pgTAP inseriscono in `vendite.commesse`
+#   direttamente, senza passare dalla madre: un NOT NULL li farebbe rossi tutti
+#   insieme, e in cambio non aggiungerebbe nessuna garanzia che il modello non
+#   abbia gia' — `codice` e' NOT NULL e UNIQUE, ed e' l'identita'.
+#   ⇒ Le colonne sono nullable, e a presidiare l'invariante e' un pgTAP che
+#   ora si PUO' scrivere, perche' gli assi sono diventati interrogabili.
+#
+# ── ⚠️ L'INDICE COPRE ANCHE LA FK ───────────────────────────────
+#   `ix_commesse_registro_anno` ha `registro_id` in testa, quindi la FK e'
+#   coperta e la policy degli indici FK non ha niente da creare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260902-07-alter-commesse-registro-anno-mctit.yaml
+
+  - changeSet:
+      id: 20260902-07-alter-commesse-registro-anno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.commesse prende `registro_id` e `anno`: era l''unica delle cinque famiglie la cui
+        identita'' e'' una stringa nuda, con gli assi del contatore dentro il codice per convenzione di
+        chi lo compone. ⭐ Bastano DUE colonne e non tre: sulle sorelle `numero` e'' la stringa composta,
+        e sulla commessa quella stringa e'' `codice` — quindi non c''e'' nessun numero da inventare per lo
+        storico. ⭐ Il backfill chiede il registro a vendite.fn_lookup_registro_documento invece di
+        riscriverne il predicato: un join ingenuo su utility_id risolverebbe ZERO righe, perche'' le
+        commesse hanno un''utility e i loro registri valgono per tutte. ⛔ Nullable come le sorelle: una
+        decina di file pgTAP inserisce in commesse senza passare dalla madre.
+        Piano: brief-be-fe-crud-registri-di-numerazione, sezione 12.6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: commesse
+                    columnName: registro_id
+            # ⛔ Il backfill chiama questa funzione: se non ci fosse, le righe
+            #    resterebbero senza registro e il changeSet passerebbe verde
+            #    lasciando il lavoro a meta'.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_lookup_registro_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse
+                  ADD COLUMN registro_id BIGINT,
+                  ADD COLUMN anno        SMALLINT;
+
+              ALTER TABLE vendite.commesse
+                  ADD CONSTRAINT fk_commesse_registro
+                  FOREIGN KEY (registro_id)
+                  REFERENCES vendite.registri_fatturazione (id);
+
+              -- ---------------------------------------------------------
+              -- BACKFILL
+              -- ⭐ Il registro si CHIEDE alla funzione che gia' risponde a
+              --   «quale registro per questo documento»: la mia utility,
+              --   altrimenti quello valido per tutte. Riscrivere qui quel
+              --   predicato sarebbe il secondo elenco — e sbaglierebbe, perche'
+              --   un join su utility_id risolve zero righe.
+              -- ⭐ L'anno viene dalla data di CREAZIONE, che per la commessa e'
+              --   la sua data: non ha una data documento, e lo dice la madre.
+              -- ⚠️ SOTTOQUERY CORRELATA e non un LATERAL nel FROM: in un
+              --   UPDATE la tabella bersaglio NON e' visibile agli elementi
+              --   del FROM, e un LATERAL che la nomina risponde «riferimento
+              --   non valido». Cosi' invece la riga che non risolve resta
+              --   semplicemente senza registro, che e' il comportamento
+              --   voluto — non sparisce e non blocca.
+              -- ---------------------------------------------------------
+              UPDATE vendite.commesse c
+                 SET registro_id = (
+                         SELECT k.registro_id
+                           FROM vendite.fn_lookup_registro_documento(
+                                    'COMMESSA',
+                                    c.emittente_soggetto_ruolo_id,
+                                    c.utility_id) k),
+                     anno        = vendite.fn_get_anno_registro(c.data_insert::date)
+               WHERE c.registro_id IS NULL;
+
+              -- ⚠️ Non UNIQUE: l'identita' resta `codice`, che e' gia' unico da
+              --   solo e in modo piu' stretto delle sorelle (porta la sigla
+              --   dell'emittente). Questo indice serve a INTERROGARE gli assi —
+              --   «le commesse del registro X nel 2026» — e a coprire la FK,
+              --   che ha registro_id in testa.
+              CREATE INDEX IF NOT EXISTS ix_commesse_registro_anno
+                  ON vendite.commesse (registro_id, anno);
+
+              COMMENT ON COLUMN vendite.commesse.registro_id IS
+              'Il registro di numerazione da cui viene il codice di questa commessa. ⭐ ESISTE PER RENDERE INTERROGABILE UN ASSE CHE C''ERA GIA'': dal 2026-08-31 il codice e'' CMM-<sigla emittente>-<anno>-<9 cifre> e il registro sta DENTRO la stringa (attraverso il prefisso e la sigla), ma per convenzione di chi la compone — nessun vincolo lo imponeva, e «le commesse del registro X» richiedeva di parsare una stringa. ⛔ La commessa era l''UNICA delle cinque famiglie di documento la cui identita'' e'' una stringa nuda: le altre quattro hanno registro_id e anno come colonne. ⚠️ NULLABLE come le sorelle, e non per resa: una decina di file pgTAP inserisce in commesse senza passare da vendite.fn_get_or_create_commessa, e un NOT NULL li farebbe rossi insieme senza aggiungere una garanzia che il modello non abbia gia'' — `codice` e'' NOT NULL e UNIQUE, ed e'' l''identita''. A presidiare l''invariante e'' un pgTAP, che ora si PUO'' scrivere proprio perche'' gli assi sono colonne. ⚠️ Il backfill del 2026-09-02 ha chiesto il registro a vendite.fn_lookup_registro_documento invece di riscriverne il predicato: un join ingenuo su utility_id risolve ZERO righe, perche'' le commesse hanno un''utility valorizzata e i loro registri valgono «per tutte». Piano: brief-be-fe-crud-registri-di-numerazione, sezione 12.6.';
+
+              COMMENT ON COLUMN vendite.commesse.anno IS
+              'L''anno del contatore da cui viene il codice. ⭐ E'' il secondo asse della chiave del progressivo — (registro_id, anno, serie), e per la commessa la serie non esiste — e come registro_id sta gia'' dentro il codice: qui diventa dato. ⚠️ Per la commessa l''anno viene dalla data di CREAZIONE e non da una data documento, che la commessa non ha: lo dichiara vendite.fn_get_or_create_commessa, che legge script.fn_data_operativa(). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 12.6.';
+
+              COMMENT ON INDEX vendite.ix_commesse_registro_anno IS
+              'Interroga gli assi del contatore — «le commesse del registro X nel 2026» — senza parsare il codice. ⚠️ NON e'' unico di proposito: l''identita'' resta uq_commesse_codice, che e'' gia'' piu'' stretto (il codice porta la sigla dell''emittente, quindi e'' unico globalmente e non solo per registro). ⭐ Copre anche fk_commesse_registro, che ha registro_id in testa: la policy degli indici FK non ha niente da creare.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_commesse_registro_anno;
+              ALTER TABLE vendite.commesse
+                  DROP CONSTRAINT IF EXISTS fk_commesse_registro;
+              ALTER TABLE vendite.commesse
+                  DROP COLUMN IF EXISTS anno,
+                  DROP COLUMN IF EXISTS registro_id;

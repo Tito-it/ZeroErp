@@ -2217,3 +2217,76 @@ possibile cambiare nome della colonna di vista `prefisso_default` in
 `ammette_regole_fiscali`»). Il changeSet fa `DROP` e ricrea — **senza `CASCADE`**,
 di proposito: se un domani qualcosa dipendesse da quella vista, il `DROP` deve
 fallire invece di portarselo via. Verificato: nessun dipendente.
+
+### 12.6 ✅ La commessa porta gli assi del contatore nelle sue colonne
+
+**Il rilievo:** `vendite.commesse` è l'unica delle cinque famiglie la cui
+identità è una **stringa nuda** — `UNIQUE (codice)` e basta, mentre le altre
+quattro hanno `registro_id` e `anno` come colonne.
+
+⭐ **Non è che il codice sia sbagliato.** Dal 2026-08-31 è
+`CMM-<sigla>-<anno>-<9 cifre>` e gli assi li porta **dentro**, come la funzione
+dichiara: *«ogni dimensione del contatore dev'essere nella stringa, o al primo
+cambio di periodo la UNIQUE salta»*. Prima era `CMM-<timestamp>-<md5 random>` —
+un'unicità **probabilistica** sotto un vincolo deterministico — e quel pezzo era
+già stato sistemato.
+
+⛔ **Il debito è che l'invariante regge per CONVENZIONE di chi compone la
+stringa**, e nessun vincolo la impone. Il giorno che al contatore si aggiungesse
+un asse senza toccare la composizione, la `UNIQUE` salterebbe al primo cambio di
+periodo — come `23505` nudo in mezzo a un fan-out. E gli assi non erano
+interrogabili: «le commesse del registro X nel 2026» richiedeva di **parsare**
+una stringa.
+
+#### ⭐ Servivano DUE colonne, non tre — e nessun numero da inventare
+
+Sulle quattro sorelle `numero` è la **stringa composta** (`DDT0023454`), non il
+progressivo nudo: verificato sui dati, non dedotto. Sulla commessa quella
+stringa è `codice`, che già c'è.
+
+⇒ Mancavano solo `registro_id` e `anno`. **La domanda «che numero diamo alle
+righe vecchie?» non si pone**: non c'è nessun numero da assegnare, e quindi
+nessun valore alto da inventare per tenerle fuori dai piedi.
+
+#### ⭐ Il backfill non ricostruisce niente a mano — e per poco non sbagliava
+
+`registro_id` si **chiede** a `vendite.fn_lookup_registro_documento`, la sede
+unica della regola «quale registro per questo documento»: la mia utility,
+altrimenti quello valido per tutte.
+
+⚠️ **Riscrivere quel predicato a mano avrebbe risolto ZERO righe su 62**: le
+commesse hanno un'utility valorizzata mentre i loro registri valgono «per
+tutte», e un join ingenuo su `utility_id` non trova niente. Provato prima di
+scrivere il changeSet — ed è la ragione per cui il backfill chiama la funzione
+invece di copiarne la logica.
+
+`anno` viene da `data_insert`, perché la commessa non ha una data documento: la
+sua data è quella di creazione, e lo dichiara già la madre.
+⇒ **62 righe su 62 risolte**, tutte 2026.
+
+#### ⛔ Colonne NULLABLE, e non è una resa
+
+Le sorelle le hanno nullable perché un documento può esistere prima di essere
+numerato. La commessa nasce numerata, quindi il `NOT NULL` sarebbe tentante —
+⚠️ ma **una decina di file pgTAP inserisce in `vendite.commesse` direttamente**,
+senza passare dalla madre: li farebbe rossi tutti insieme, e in cambio non
+aggiungerebbe una garanzia che il modello non abbia già (`codice` è `NOT NULL` e
+`UNIQUE`, ed è l'identità).
+
+⇒ A presidiare l'invariante è un pgTAP che **ora si può scrivere**, proprio
+perché gli assi sono diventati colonne: `test-commessa-chiave-numerazione-v1`,
+**6/6**, e il test che conta è il 3 — *il codice porta la sigla e l'anno che le
+colonne dichiarano*.
+
+#### Stato
+
+| Passo | File | Stato |
+| --- | --- | --- |
+| Colonne + FK + indice + backfill | `00_schema/vendite/20260902-07` | ✅ scritto |
+| La madre le scrive | `20_code/vendite/20260902-08` | ✅ scritto |
+| pgTAP | `vendite/test-commessa-chiave-numerazione-v1` — **6/6** | ✅ verde |
+
+⛔ Non applicato. ⚠️ E l'indice **non è unico** di proposito: l'unicità ce l'ha
+già il codice, e in forma più stretta delle sorelle — porta la sigla
+dell'emittente, quindi non collide fra registri diversi.
+
