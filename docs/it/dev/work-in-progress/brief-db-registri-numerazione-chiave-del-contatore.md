@@ -58,8 +58,8 @@ creerebbe una seconda sorgente di verità.
 
 | Asse del contatore | `fatture` | `ddt` | `ordini` | `resi` | `commesse` |
 | --- | --- | --- | --- | --- | --- |
-| `registro_id` | ✅ | ✅ | ✅ | ✅ | ⛔ |
-| `anno` | ✅ | ✅ | ✅ | ✅ | ~ dentro la stringa |
+| `registro_id` | ✅ | ✅ | ✅ | ✅ | ⛔ → ✅ **dal 02-09** |
+| `anno` | ✅ | ✅ | ✅ | ✅ | ~ dentro la stringa → ✅ **dal 02-09** |
 | `serie` | ✅ | ✅ | ✅ | ⛔ | ⛔ |
 | `mese` | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ |
 
@@ -68,12 +68,19 @@ fatture   uq_fatture_numero              (registro_id, anno, COALESCE(serie,''),
 ddt       uq_ddt_v_anno_serie_numero     (registro_id, anno, serie, numero)
 ordini    uq_ordini_v_anno_serie_numero  (registro_id, anno, serie, numero)
 resi      uq_resi_anno_numero            (registro_id, anno, numero)          ⛔ senza serie
-commesse  uq_commesse_codice             (codice)                             ⛔ una stringa sola
+commesse  uq_commesse_codice             (codice)                             ⚠️ una stringa sola
 ```
 
 ⚠️ **`vendite.commesse` non ha nemmeno `registro_id`**: ha `codice` e
 `emittente_soggetto_ruolo_id`. Del registro che l'ha numerata non resta traccia
 se non dentro la stringa.
+
+> ✅ **Superato il 2026-09-02** (changeSet `20260902-07`): `registro_id` e `anno`
+> sono colonne, con FK e indice, e le 62 righe esistenti sono state riempite
+> chiedendo il registro a `fn_lookup_registro_documento`.
+> ⚠️ **L'unicità invece è rimasta `uq_commesse_codice`**, e di proposito: il
+> codice porta la sigla dell'emittente, quindi è unico **globalmente** — una
+> condizione più stretta di quella per registro delle altre quattro. Vedi §4.
 
 ---
 
@@ -102,7 +109,10 @@ vero**: costruirne uno richiede DDT e partita. Il resto è struttura verificata.
 
 ---
 
-## 4. ⛔ Il caso `commesse` — lo stesso difetto, scritto altrimenti
+## 4. ✅ Il caso `commesse` — CHIUSO il 2026-09-02
+
+> La fotografia qui sotto è del 2026-09-01 e resta com'era scritta. Sotto, cosa
+> è successo davvero.
 
 L'unicità è su **una stringa sola**, che incorpora sigla, anno e progressivo —
 non la serie, non il registro. Stessa dinamica del §3.
@@ -111,6 +121,37 @@ non la serie, non il registro. Stessa dinamica del §3.
 l'aggancio**. Allineare la commessa significa decidere come si aggancia al
 registro — modello, non `ALTER TABLE`. **Resta fuori dal piano**, e il presidio
 la dichiarerà come debito invece di ignorarla.
+
+### ✅ Com'è andata, ed era più piccola di così
+
+⭐ **La frase «qui manca tutto l'aggancio» era vera a metà.** Guardando le altre
+quattro si è visto che il loro campo `numero` contiene la **stringa già
+formattata** (`DDT0023454`), non il progressivo nudo — verificato sui dati, non
+dedotto. Sulla commessa quella stringa è `codice`, che c'era già.
+⇒ Mancavano **due colonne**, non l'aggancio: `registro_id` e `anno`. E nessun
+numero da inventare per lo storico, il che ha tolto di mezzo la domanda che
+sembrava la più difficile.
+
+⚠️ **Il riempimento delle 62 righe esistenti non ha ricostruito niente a mano**:
+il registro si chiede a `vendite.fn_lookup_registro_documento`, la sede unica
+della regola «la mia utility, altrimenti quella per tutte». ⛔ Riscrivere quel
+predicato con un join su `utility_id` avrebbe risolto **zero righe su 62** — le
+commesse hanno un'utility valorizzata e i loro registri valgono «per tutte».
+Provato prima di scrivere il changeSet.
+
+⛔ **Le colonne sono NULLABLE, e non è una resa**: una decina di file pgTAP
+inserisce in `vendite.commesse` senza passare dalla madre, e un `NOT NULL` li
+farebbe rossi insieme senza aggiungere una garanzia che il modello non abbia già
+— `codice` è `NOT NULL` e `UNIQUE`, ed è l'identità.
+
+⭐ **Il guadagno vero non è il vincolo: è che l'invariante ora si può
+VERIFICARE.** Prima «gli assi stanno dentro la stringa» era una convenzione di
+chi compone il codice, controllabile solo rileggendo la funzione. Ora
+`db/pgtap/vendite/test-commessa-chiave-numerazione-v1` confronta il codice con
+gli assi dichiarati dalle colonne — e se un domani qualcuno cambia la
+composizione senza toccare le colonne, o viceversa, diventa rosso.
+
+Dettaglio e decisioni: `brief-be-fe-crud-registri-di-numerazione` §12.6.
 
 ---
 
@@ -409,6 +450,8 @@ registri senza la chiave completa, il test è **rosso prima del merge**.
 *«il giorno che ne compare una quarta diventa rosso»* — che su questa stessa
 tabella ha già funzionato una volta.
 
+> ✅ **Non più, dal 2026-09-02**: vedi §4. La riga qui sotto resta come stava.
+
 ⚠️ **`commesse` sarà rossa dal primo giorno**, ed è debito **dichiarato**: o si
 esclude con un motivo scritto, o il test nasce a fallire. La scelta va fatta
 esplicitamente, non per omissione.
@@ -538,6 +581,7 @@ cancello sull'arità non lo avrebbe visto.
   **debito di sorgente**, non di comportamento: si paga alla prossima revisione
   di quella funzione, o con un changeSet dedicato se si preferisce la coerenza
   degli YAML. Decisione a Tid.
-* ⛔ **`commesse` resta scoperta** (§4): dichiara `colonna_serie NULL`, quindi i
+* ✅ ~~⛔ **`commesse` resta scoperta**~~ — **chiusa il 2026-09-02**, vedi §4:
+  dichiara `colonna_serie NULL`, quindi i
   presidi la proteggono dal prendere una serie — ma la sua unicità resta su una
   **stringa sola**, senza registro né serie. Debito dichiarato.

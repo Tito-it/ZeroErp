@@ -20,10 +20,12 @@
 | data_update | timestamp without time zone | YES |  |
 | user_update | character varying | YES |  |
 | multi_emittente | boolean | NO | false |
+| perimetro_emittente | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ui_lista_definizione_perimetro_coerente |  |
 | PRIMARY KEY | lista_definizione_pkey | id |
 | UNIQUE | uq_ui_lista_definizione_codice | codice |
 

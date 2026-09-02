@@ -26,10 +26,12 @@
 | prefisso_default | character varying | YES |  |
 | lunghezza_default | integer | NO | 7 |
 | colonna_serie | text | YES |  |
+| ammette_regole_fiscali | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_famiglie_documento_regole_fiscali_solo_fattura |  |
 | PRIMARY KEY | pk_famiglie_documento | id |
 | UNIQUE | uq_famiglie_documento_codice_interno | codice_interno |
 

@@ -46,3 +46,36 @@ Contiene le dimensioni che identificano la commessa (BA/utility/emittente, polic
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---
+
+### 🔄 rev 2026-09-02 — la commessa dice da quale registro viene, e di che anno
+
+Due colonne nuove: **il registro** che le ha dato il codice e **l'anno** del
+contatore.
+
+⭐ **Non sono un doppione del codice.** Il codice —
+`CMM-<sigla azienda>-<anno>-<nove cifre>` — quelle due informazioni le porta già
+*dentro*, ma dentro una stringa: per sapere «quali commesse ha numerato il
+registro di quest'azienda nel 2026» bisognava spezzare il testo. Ora sono due
+campi, e si chiedono.
+
+⛔ **E c'era un motivo più serio della comodità.** Che sigla e anno stessero nella
+stringa era una **convenzione di chi la compone**: giusta, e non verificata da
+niente. Il giorno che al contatore si fosse aggiunta una dimensione — un periodo
+diverso dall'anno, per dire — senza aggiornare anche la composizione, il codice
+avrebbe ricominciato a ripetersi al primo cambio di periodo, e la commessa
+sarebbe stata rifiutata per «codice duplicato» nel mezzo di un'elaborazione che
+con la numerazione non c'entra. Adesso un controllo automatico confronta la
+stringa con le due colonne.
+
+⚠️ **L'identità non è cambiata**: unico resta il `codice`, e resta unico **da
+solo**. È una regola più stretta di quella degli altri quattro documenti, che
+sono unici *per registro*: il codice della commessa porta la sigla dell'azienda,
+quindi non si ripete mai fra aziende diverse.
+
+⚠️ **Le due colonne possono essere vuote**, come sui documenti fratelli: le righe
+create dai test non passano dalla funzione che le riempie, e pretendere il
+contrario avrebbe fatto fallire una decina di file di prova senza aggiungere
+nessuna garanzia.
+
