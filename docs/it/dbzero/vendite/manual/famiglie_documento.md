@@ -285,3 +285,34 @@ la guarda: non è nel conteggio, quindi non è nel problema.
 posto — e non è una contraddizione: lì il posto è la chiave del contatore, e un
 sezionale spento possiede ancora i numeri che ha consegnato. Qui è solo
 un'identità di catalogo, che vale finché la famiglia è accesa.
+
+---
+
+### 🔄 rev 2026-09-02 — la famiglia dice se ammette le **regole fiscali**
+
+Una colonna nuova, `ammette_regole_fiscali`, risponde a una domanda che finora
+era scritta a mano **fuori** dal database, in due posti: *questa famiglia
+ammette il limite di emissione e una data del documento diversa da oggi?*
+
+Fino a ieri la risposta era il nome «FATTURA», ricopiato nel programma e nella
+maschera. Adesso è un dato del catalogo, e chi lo legge non deve più sapere a
+memoria quale famiglia sia speciale.
+
+⛔ **Ma non è una casella libera, e la ragione è la parte importante.** La regola
+vera vive su un vincolo del registro, che continua a nominare la fattura. Se
+questa colonna si potesse accendere su una famiglia qualsiasi, la maschera
+offrirebbe tre campi che il database poi **rifiuta al salvataggio** — una
+promessa rotta addosso a chi sta compilando. Un vincolo la lega allo stesso
+nome: **il posto in cui si decide che cosa è fiscale resta uno**, e questa
+colonna lo dichiara invece di duplicarlo.
+
+⚠️ **Non è un doppione di «presidia la data».** Quella dice se la famiglia ha un
+pavimento sulla *sequenza* delle date; questa dice quali *campi* il registro
+ammette. Oggi hanno la stessa risposta su tutte e cinque le famiglie — e restano
+due domande: unirle vorrebbe dire che il giorno in cui una cambia si scopre che
+comandava anche l'altra.
+
+⭐ Una famiglia creata dal programma nasce **non fiscale**, ed è il limite già
+dichiarato: il registro della fattura si sceglie per tipo documento e natura, per
+una strada tutta sua.
+

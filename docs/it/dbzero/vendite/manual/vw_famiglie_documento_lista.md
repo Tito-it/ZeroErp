@@ -48,8 +48,10 @@ superficie dedicata.
    e `colonna_serie` / `presidia_data_documento` per sapere quali campi mostrare.
 
 ⛔ Il terzo è quello che toglie da backend e frontend i due letterali `'FATTURA'`
-paralleli: **`presidia_data_documento` È la colonna che risponde a quella
-domanda**, e finora nessuno gliela chiedeva.
+paralleli: dal 2026-09-02 **`ammette_regole_fiscali` È la colonna che risponde a
+quella domanda** — quali campi il registro ammette — e `presidia_data_documento`
+resta accanto a lei per l'altra, il pavimento di sequenza. ⚠️ Due domande diverse
+con la stessa risposta di oggi, tenute distinte apposta.
 
 ---
 

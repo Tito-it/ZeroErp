@@ -2055,3 +2055,165 @@ manderebbe a cercare una riga che nella lista delle attive si vede eccome.
 gemella **ritirata** sulla stessa tabella passa. Senza, un domani qualcuno
 «semplificherebbe» il vincolo in uno pieno senza accorgersi di aver chiuso la
 porta a chiave.
+
+---
+
+## 12. 🔴 La revisione BE/FE del 2026-09-02 — tre rilievi, tre decisioni
+
+> Tre righe arrivate da `dev/backend-tid` a lavoro applicato. Le decisioni sono
+> di Tid, stessa giornata.
+
+### 12.1 ⭐ La lista famiglie sbarrava la strada al super admin — e la strada breve era una bugia
+
+**Il rilievo:** la lista `vendite.famiglie_documento` è inutilizzabile. Una
+famiglia è globale, non appartiene a nessun emittente, e il pannello chiede
+comunque di sceglierne uno prima di entrare — proprio al super admin, che per la
+decisione D6 è l'unico che può aprirla.
+
+**La correzione proposta:** `multi_emittente` da `f` a `t` sulla riga 55. Un
+carattere.
+
+> ⛔ **E qui la richiesta si ferma, perché quel flag non significa «la lista è
+> usabile».** Significa *«so dire da quale emittente arriva ogni riga»*, e su un
+> catalogo globale è **falso**: non c'è nessun emittente da dire.
+>
+> Metterlo a `t` avrebbe fatto comparire una riga in
+> `dbops.vw_liste_multi_emittente_non_certificate` — la vista che pretende che
+> chi dichiara `true` **esponga l'emittente nella riga** — e **due pgTAP** la
+> vogliono a zero righe (`test-lista-definizione-multi-emittente-v1` §6,
+> `test-viste-dash-emittente-v1` §11). La suite sarebbe diventata rossa, e la
+> reazione ovvia sarebbe stata allargare i due presidi con un'eccezione per la
+> lista 55: cioè spegnerli un pezzo alla volta.
+
+✅ **Deciso da Tid (2026-09-02): il terzo stato.**
+
+`ui.lista_definizione.perimetro_emittente BOOLEAN NOT NULL DEFAULT TRUE`
+(`20260902-01`), dichiarata `false` per la sola lista famiglie (`20260902-02`) ed
+esposta dal risolutore (`20260902-03`).
+
+⭐ **Due domande indipendenti, due colonne:**
+
+| Colonna | Domanda | Natura |
+| --- | --- | --- |
+| `perimetro_emittente` | le righe di questa lista appartengono a un emittente? | **natura del dato** |
+| `multi_emittente` | se ci appartengono, la lista sa dire a quale? | **capacità conquistata**, e certificata |
+
+⇒ La regola per chi legge: **si entra senza scegliere un emittente quando la
+lista SA DIRLO, oppure quando non c'è niente da dire.** Due ragioni diverse per
+lo stesso gesto, e vanno tenute distinte.
+
+⛔ Un enum a tre valori le avrebbe legate: è il flag che risponde a due domande
+in AND, e che poi non si riesce più a invertire.
+
+⭐ **Default `true`**, cioè il verso prudente: il comportamento delle altre 58
+liste non cambia di una virgola, e la globalità si **dichiara** invece di
+ereditarla. Un `CHECK` rende impossibile la combinazione incoerente — «non ho
+emittenti, e so dirti quale sono».
+
+⚠️ **Una riga sola nel seed, ed è una scelta.** Nella stessa condizione ci sono
+anche `ui.lista_definizione`, `ui.lista_colonna` e `ui.lista_colonna_permesso`
+(56, 57, 59): cataloghi tecnici, nessuna riga che appartenga a un emittente.
+Non sono state dichiarate perché nessuno ha ancora detto di sbatterci contro, e
+una riga di seed che nessuno ha chiesto è una decisione presa di nascosto —
+basterà una riga per ognuna.
+⛔ `ui.lista_preset` (58) **non** è fra queste, ed è il caso interessante: un
+preset **può** appartenere a un emittente (`ambito = emittente_fiscale`), quindi
+quella lista un perimetro ce l'ha. Per lei la strada è l'altra — esporre
+l'emittente nella riga e certificarsi `multi_emittente`.
+
+### 12.2 ✅ La famiglia dice se ammette le regole fiscali (scelta B)
+
+✅ **Deciso da Tid: opzione B — colonna, seed, pgTAP, e il BE/FE cambiano la
+derivazione.**
+
+`vendite.famiglie_documento.ammette_regole_fiscali BOOLEAN NOT NULL DEFAULT
+FALSE` (`20260902-04`), `true` sulla sola FATTURA (`20260902-05`), esposta dalla
+vista di lettura (`20260902-06`).
+
+⇒ Spariscono i **due letterali** `'FATTURA'` scritti a mano fuori dal database:
+`_FAMIGLIA_FISCALE` in `registri_service.py` e `REGISTRO_FAMIGLIA_FISCALE` in
+`constants.js`.
+
+⛔ **Il `CHECK` che accompagna la colonna non è un dettaglio: è ciò che la rende
+vera.** `chk_registri_fatturazione_famiglia_regole_fattura` continua a nominare
+`'FATTURA'` e non si tocca (decisione D5). Una colonna **libera** accanto a quel
+`CHECK` sarebbe la dichiarazione parallela classica: qualcuno la mette a `true`
+su una famiglia nuova, la maschera offre i tre campi, e il database li rifiuta al
+salvataggio — una promessa rotta a valle, addosso a chi compila.
+⇒ Il `CHECK` la lega allo stesso letterale: **il posto in cui si decide cosa è
+fiscale resta uno**, e la colonna lo *dichiara* invece di duplicarlo. Il giorno
+in cui la fattura smetterà di essere l'unica, i due `CHECK` si cambiano insieme —
+e il **test 23** del pgTAP verifica che concordino.
+
+⛔ **Perché non si riusa `presidia_data_documento`**, che oggi ha lo stesso
+valore su tutte e cinque: risponde a un'**altra** domanda — «questa famiglia ha
+un pavimento sulla data del documento?» — usata da
+`fn_get_pavimento_data_documento` per il pavimento di **sequenza**, mentre il
+limite di emissione, nella stessa funzione, è gated dal letterale. ⚠️ Due domande
+diverse con la stessa risposta di oggi restano due domande: unirle è il flag
+composto che poi non si riesce più a invertire.
+
+### 12.3 ✅ `serie_default` resta in sola lettura
+
+✅ **Deciso da Tid: nessun cambiamento.** Il campo si vede e non si tocca, ed è
+coerente con quello che il database presidia: il guard sulla forma del numero non
+lo copre, e il mirror CSV lo riscrive a ogni migrate.
+⇒ Nessun lavoro DB, e nessun debito nuovo: la situazione di oggi era già quella
+voluta.
+
+### 12.4 📌 Cosa ricade su BE e FE
+
+| # | Chi | Cosa |
+| --- | --- | --- |
+| BE-F9 | backend | la configurazione risolta porta **`perimetro_emittente`**: si entra senza scegliere l'emittente quando `multi_emittente` **oppure** `NOT perimetro_emittente` |
+| FE-F7 | frontend | stessa regola sul lato che disegna la schermata — ⚠️ **due ragioni diverse per lo stesso gesto**, e il codice deve mostrarlo (non una sola condizione che le confonde) |
+| BE-F2 · FE-F2 | entrambi | ⭐ ora si possono chiudere: `ammette_regole_fiscali` arriva dalla vista, e i due letterali `'FATTURA'` si cancellano |
+
+### 12.5 ✅ Stato
+
+| Passo | File | Stato |
+| --- | --- | --- |
+| Colonna `perimetro_emittente` + `CHECK` | `00_schema/ui/20260902-01` | ✅ scritto |
+| Seed (lista famiglie) | `80_data/.../20260902-02` + CSV dedicato | ✅ scritto |
+| Risolutore | `20_code/ui/20260902-03` | ✅ scritto |
+| Colonna `ammette_regole_fiscali` + `CHECK` | `00_schema/vendite/20260902-04` | ✅ scritto |
+| Seed (FATTURA) | `80_data/.../20260902-05` + CSV dedicato | ✅ scritto |
+| Vista di lettura | `20_code/vendite/20260902-06` | ✅ scritto |
+| pgTAP | `ui/test-lista-definizione-perimetro-emittente-v1` **6/6** · `vendite/test-famiglie-documento-crud-v1` **24/24** | ✅ verde |
+
+✅ **APPLICATO da Tid il 2026-09-02**, e i due pgTAP girano **come
+applicazione**: **7/7** e **24/24**.
+
+#### 🔴 E il migrate vero ha trovato un difetto nel test, di nuovo
+
+Il test sulla combinazione incoerente chiedeva un `23514` — il `CHECK` — e come
+applicazione è arrivato un **`P0001`**: davanti a `multi_emittente` ci sono
+**due muri**, e l'applicazione incontra il primo.
+
+| Muro | Chi è | Chi lo incontra |
+| --- | --- | --- |
+| 1° | il guard `trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd` — *«quel flag non si scrive dall'applicazione, si dichiara nel seed»* | l'applicazione, **sempre** |
+| 2° | il `CHECK` di coerenza | chi il guard lo attraversa: l'owner, cioè il migrate |
+
+⚠️ **Girando da owner il primo muro non c'è** (`pg_has_role` fa uscire subito il
+guard), quindi il giro pre-apply vedeva parlare il `CHECK` e il test chiedeva il
+suo codice. In esercizio quel test sarebbe stato **rosso su un database sano**.
+
+⇒ Il test è stato **separato in due**: il 4 prova che dall'applicazione quel
+flag non si scrive affatto, il 5 prova che il `CHECK` esiste — sulla
+**struttura**, perché per vederlo agire servirebbe una veste che quel file non
+deve avere.
+
+⭐ È il gemello esatto del rilievo di ieri sul `campo_sorgente`: **un presidio
+che passa solo nella veste sbagliata non presidia**. Ieri la fixture simulava il
+loader, oggi il test girava da owner — due modi di provare qualcosa che in
+esercizio non succede.
+
+⚠️ **Un dettaglio trovato provando**: la vista non si aggiorna con un
+`CREATE OR REPLACE`. La colonna nuova entra **in mezzo**, accanto alle altre due
+che dicono la natura della famiglia, e `CREATE OR REPLACE VIEW` sa solo
+**appendere in coda**: rinominare o spostare una colonna lo fa fallire («non è
+possibile cambiare nome della colonna di vista `prefisso_default` in
+`ammette_regole_fiscali`»). Il changeSet fa `DROP` e ricrea — **senza `CASCADE`**,
+di proposito: se un domani qualcosa dipendesse da quella vista, il `DROP` deve
+fallire invece di portarselo via. Verificato: nessun dipendente.
