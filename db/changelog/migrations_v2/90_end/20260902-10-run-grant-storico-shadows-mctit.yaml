@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Allinea i privilegi delle shadow `storico.*` — la chiamata
+#   dbops.fn_grant_storico_shadows()
+#
+# ── PERCHE' `90_end` E `runAlways` ───────────────────────────────────
+#   Le shadow non nascono da un changeSet: le crea l'automazione, e ne puo'
+#   nascere una in qualunque momento — anche dal job pgAgent della sera, cioe'
+#   FRA due migrate. Un passo che gira una volta sola risolverebbe il giorno in
+#   cui viene applicato e niente dopo.
+#   ⇒ `runAlways`, come `20260818-72-resync-identity-sequences-globale`: e' una
+#   RETE che converge, non una migrazione.
+#
+#   E `90_end` perche' e' l'ultima fase: a quel punto tutte le tabelle
+#   esistono, quindi anche le shadow che questo migrate ha appena fatto nascere.
+#
+# ── ⚠️ COSTO ─────────────────────────────────────────────────────────
+#   Zero scritture nel caso normale: la funzione filtra via le coppie
+#   (shadow, ruolo) i cui privilegi ci sono gia', quindi su un database
+#   allineato non emette nessun `GRANT` e non registra niente.
+#
+# ── 🔴 COSA QUESTO PASSO NON PUO' FARE ───────────────────────────────
+#   Un `GRANT` lo da' il proprietario dell'oggetto. Le shadw ereditano il
+#   proprietario da chi ha eseguito l'automazione: se il migrate gira come
+#   `titodb` e la shadow e' di `postgres`, la funzione registra un `SKIP`
+#   nell'audit e prosegue.
+#   ⇒ Resta autorevole `scripts/sql/provision_db_role_batch_fatturazione.sql`,
+#   che gira da superuser. Questo passo chiude la FINESTRA fra la nascita di
+#   una shadow e la corsa successiva del provisioning, non lo sostituisce.
+#
+# Verifica: db/pgtap/rls/test-role-batch-fatturazione-postura.sql (test 18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260902-10-run-grant-storico-shadows-mctit.yaml
+
+  - changeSet:
+      id: 20260902-10-run-grant-storico-shadows
+      author: mctit
+      runAlways: true
+      # Il passo e' una rete che converge: il corpo puo' cambiare senza che il
+      # checksum debba invalidare i database dove ha gia' girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Chiama dbops.fn_grant_storico_shadows() a ogni migrate, in 90_end quando tutte le
+        tabelle esistono. Allinea i privilegi delle shadow storico.* a quelli della madre,
+        chiudendo la finestra fra la nascita di una shadow (automazione, anche dal job pgAgent
+        fra due migrate) e la corsa successiva del provisioning. Zero scritture dove i
+        privilegi sono gia' a posto; dove il migratore non e' proprietario della shadow
+        registra un SKIP nell'audit e prosegue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_grant_storico_shadows'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_grant_storico_shadows();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si revoca: i privilegi concessi qui sono quelli che il
+              --    provisioning avrebbe dato comunque, e toglierli romperebbe
+              --    la storicizzazione del ruolo batch.
+              SELECT 1;
