@@ -14,7 +14,7 @@
 --       lock su codice_interno                               (20260901-21)
 --       Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11
 -- ------------------------------------------------------------
--- Elenco test (plan 21):
+-- Elenco test (plan 24):
 --  1) ⭐ Il trigger dei riferimenti NOMINA colonna_serie nella lista UPDATE OF
 --  2) ⛔ Una colonna_serie che non esiste sul documento e' rifiutata
 --  3) ⛔ ...e una che esiste ma NON discrimina il numero pure, con codice suo
@@ -36,6 +36,9 @@
 -- 19) ⭐⭐ DERIVATO: ogni campo_sorgente a catalogo esiste nella vista
 -- 20) ⛔ Due famiglie ATTIVE non nominano la stessa tabella
 -- 21) ⭐ ...ma una RITIRATA si': il vincolo e' parziale, ed e' voluto
+-- 22) ⭐⭐ DERIVATO: `ammette_regole_fiscali` e' vera esattamente sulla FATTURA
+-- 23) ⭐⭐ ...e i DUE check che lo decidono nominano lo stesso letterale
+-- 24) ⛔ La dichiarazione e' rifiutata su una famiglia non fiscale
 --
 -- Scopo:
 --   ⭐ IL TEST CHE CONTA E' IL 19, ed e' DERIVATO. Gli altri provano un
@@ -62,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(24);
 
 -- ============================================================
 -- Fixture
@@ -322,6 +325,43 @@ SELECT lives_ok(
       VALUES ('PGTAP-DDT3', 'Un ddt ritirato', 'vendite', 'ddt',
               'numero', 'billing_account_id', 'serie', FALSE, 'pgtap')$$,
     '21) ...ma una famiglia RITIRATA si'': il vincolo e'' parziale, e non blocca per sempre');
+
+-- ============================================================
+-- 22/23/24) ⭐ La famiglia DICE se ammette le regole fiscali
+-- ============================================================
+-- ⭐ La colonna esiste per togliere due letterali 'FATTURA' scritti a mano
+--   fuori dal database (il service dei registri e le costanti del frontend).
+--   ⛔ Ma una dichiarazione libera accanto a un CHECK che dice la stessa cosa
+--   e' una seconda verita' che puo' contraddirlo: qui si verifica che non lo
+--   faccia — sui DATI (22) e sulla STRUTTURA (23).
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.famiglie_documento f
+      WHERE f.ammette_regole_fiscali <> (f.codice_interno = 'FATTURA')),
+    0,
+    '22) `ammette_regole_fiscali` e'' vera esattamente sulla famiglia FATTURA');
+
+-- ⚠️ Il presidio vero e' questo: i due CHECK nominano lo STESSO letterale, e il
+--   giorno che la fattura smettera' di essere l'unica si cambiano INSIEME.
+--   Se qualcuno ne tocca uno solo, questo test diventa rosso — che e'
+--   esattamente cio' che deve fare.
+SELECT is(
+    (SELECT count(*)::int
+       FROM pg_constraint
+      WHERE conname IN ('chk_registri_fatturazione_famiglia_regole_fattura',
+                        'chk_famiglie_documento_regole_fiscali_solo_fattura')
+        AND pg_get_constraintdef(oid) LIKE '%FATTURA%'),
+    2,
+    '23) ...e i due CHECK che decidono cosa e'' fiscale nominano lo stesso letterale');
+
+PREPARE dichiara_ddt_fiscale AS
+UPDATE vendite.famiglie_documento SET ammette_regole_fiscali = TRUE
+ WHERE codice_interno = 'DDT';
+
+SELECT throws_ok(
+    'dichiara_ddt_fiscale', '23514',
+    NULL,
+    '24) Una famiglia non fiscale non puo'' dichiarare di ammettere le regole fiscali');
 
 SELECT * FROM finish();
 ROLLBACK;
