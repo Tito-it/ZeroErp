@@ -80,15 +80,18 @@ databaseChangeLog:
                    WHERE n.nspname = 'vendite'
                      AND p.proname IN ('trgfn_doc_guard_chiusura_sorgente',
                                        'trgfn_doc_ritira_commessa_attivita');
-            # ⚠️ Le quattro sorgenti devono essere a catalogo con quel codice:
-            #    un trigger montato su un codice inesistente sarebbe fail-closed
-            #    a runtime, ma il posto giusto per accorgersene e' qui.
-            - sqlCheck:
-                expectedResult: 4
-                sql: |
-                  SELECT COUNT(*) FROM config.sorgenti
-                   WHERE codice_interno IN ('PREVENTIVO', 'ORDINE_VENDITA',
-                                            'DDT_VENDITA', 'CONTRATTO');
+            # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.sorgenti (le quattro
+            #    codice_interno PREVENTIVO / ORDINE_VENDITA / DDT_VENDITA / CONTRATTO).
+            #    `00_schema` e `20_code` girano PRIMA di `80_data`: su un database
+            #    ricostruito da zero — cioe' in CI — le righe cercate NON esistono ancora,
+            #    e il migrate muore con «SQL Precondition failed. Expected '4' got '0'».
+            #    Non e' un caso di bordo: e' l'UNICO modo in cui un seed nuovo puo'
+            #    arrivare.
+            #    ⭐ Il commento diceva gia' la cosa giusta — «un trigger montato su un
+            #    codice inesistente sarebbe fail-closed a runtime» — e sbagliava solo il
+            #    POSTO in cui accorgersene: il catalogo si verifica in pgTAP, che gira a
+            #    80_data applicato, non in un cancello di migrate.
+            #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4.
       changes:
         - sql:
             dbms: postgresql

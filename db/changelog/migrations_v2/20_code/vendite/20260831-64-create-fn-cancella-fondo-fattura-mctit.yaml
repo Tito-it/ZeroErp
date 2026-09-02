@@ -110,14 +110,17 @@ databaseChangeLog:
                    WHERE n.nspname = 'vendite'
                      AND p.proname = 'fn_check_fondo_cancellabile'
                      AND p.pronargs = 1
-            # ⚠️ Il bersaglio FATTURA deve essere a catalogo: dbops.vw_bersagli_non_dichiarati
-            #    fa fallire la CI su un tipo non dichiarato, e un bersaglio malformato si perde
-            #    in silenzio lasciando solo un W_BERSAGLIO_MALFORMATO nel log.
-            - sqlCheck:
-                expectedResult: "1"
-                sql: >-
-                  SELECT count(*) FROM config.tipi_entita
-                   WHERE codice = 'FATTURA' AND obsoleto_dal IS NULL
+            # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.tipi_entita (codice = 'FATTURA').
+            #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+            #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+            #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+            #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+            #    Il bersaglio si dichiara come stringa e si risolve a runtime; che il tipo
+            #    sia a catalogo lo presidia gia' dbops.vw_bersagli_non_dichiarati, DOPO
+            #    che 80_data e' passato.
+            #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+            #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+            #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
       changes:
         - sql:
             dbms: postgresql

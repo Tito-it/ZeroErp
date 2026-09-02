@@ -73,11 +73,16 @@ databaseChangeLog:
                  WHERE table_schema = 'config'
                    AND table_name   = 'stati_doc_offerte'
                    AND column_name  = 'is_superato'
-          - sqlCheck:
-              expectedResult: 1
-              sql: |
-                SELECT COUNT(*) FROM config.codici_errore
-                 WHERE codice = 'E_CONFIG_MANCANTE'
+          # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.codici_errore (codice = 'E_CONFIG_MANCANTE').
+          #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+          #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+          #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+          #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+          #    Un codice errore si nomina come STRINGA e si risolve solo quando l'errore
+          #    viene sollevato, cioe' a runtime.
+          #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+          #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+          #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
       changes:
         - sql:
             dbms: postgresql
