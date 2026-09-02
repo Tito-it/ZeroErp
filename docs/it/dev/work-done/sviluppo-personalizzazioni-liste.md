@@ -751,7 +751,7 @@ I tre `E_UI_*_NON_TROVATA/_NON_TROVATO` sono già seedati in [messaggi_errore.cs
 
 #### Base view e permessi
 
-`/api/v1/ui/*` è **meta-API trasversale** (consumata da tutti i domini): non è un'area funzionale di business e lo schema `ui` **non è registrato** in `config.aree_funzionali`. La via corretta è `DomainAPIView` con `skip_area_check = True`, coerente con il pattern dei lookup cross-dominio (cfr. `BillingAccountLookupView`, `IstanzaUtilityLookupView` in [catalogo-building-block-backend.md §Anagrafiche — Billing Account](../backend/catalogo-building-block-backend.md#anagrafiche--billing-account-appsanagrafiche)).
+`/api/v1/ui/*` è **meta-API trasversale** (consumata da tutti i domini): non è un'area funzionale di business e lo schema `ui` **non è registrato** in `config.aree_funzionali`. La via corretta è `DomainAPIView` con `skip_area_check = True`, coerente con il pattern dei lookup cross-dominio (cfr. `BillingAccountLookupView`, `IstanzaUtilityLookupView` in [catalogo-building-block-backend.md §Anagrafiche — Billing Account](../backend/catalogo-building-block-backend.md#anagrafiche-billing-account-appsanagrafiche)).
 
 I dati comunque restano per-utente: il `GET /config` proietta solo le colonne ammesse all'utente; il `GET /catalogo` ritorna metadati di struttura non sensibili; le preferenze sono sempre filtrate per `request.user.id`.
 
