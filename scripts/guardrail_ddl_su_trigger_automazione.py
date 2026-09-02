@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Guardrail CI — niente DDL INCONDIZIONATA su un trigger che lo crea `ci_apply`
+#   Regola: docs/it/linee-guida-sql.md §11.5
+#
+# COSA PRESIDIA, in una riga:
+#   «un changeSet di schema o di codice non puo' dare per scontato un trigger
+#    che nasce dalle automazioni: quelle girano DOPO, nella seconda invocazione
+#    di Liquibase».
+#
+# IL MECCANISMO. I trigger di audit, `tx_id` e storico non li scrive nessun
+# changeSet: li genera il framework delle automazioni, che gira con
+# `--contexts=ci_apply` — in CI la SECONDA invocazione di Liquibase, sul
+# migrate manuale il pgagent la sera. Quindi durante la prima passata una
+# tabella creata poche centinaia di changeSet prima **non li ha ancora**.
+# Un `ALTER TRIGGER … RENAME` o un `DROP TRIGGER` senza `IF EXISTS` su uno di
+# quei nomi passa su un database di sviluppo — dove esistono da settimane — e
+# uccide il migrate su un database ricostruito da zero:
+#   ERROR: trigger "trg_<vecchio>_audit_data_user_upd" for table "<t>" does not exist
+#
+# ⭐ E quasi sempre, in quel mondo, l'operazione NON SERVIVA: le automazioni
+# lavorano per pattern, quindi alla loro passata genereranno gia' il nome
+# giusto. L'operazione e' legittimamente CONDIZIONALE — «rinomina se c'e'» —
+# e il modo di dirlo e' un changeSet suo con `onFail: MARK_RAN`.
+#
+# PERCHE' SERVE UN CANCELLO E NON BASTAVA LA REGOLA. Perche' il changeSet che
+# ha rotto la CI il 2026-09-02
+# (`20260822-25-rename-compensazioni-in-sistemazioni`) aveva il fatto SCRITTO
+# nella propria intestazione — «una tabella nuova non ha i trigger di audit e
+# tx_id finche' non passa ci_apply» — due paragrafi sopra il difetto. Sapere la
+# regola non basta: mentre si scrive la rinomina si guarda il database che si
+# ha davanti, e li' il trigger c'e'.
+#
+# ⛔ NON si risolve con una preCondition sul changeSet intero: `HALT` sposta
+# solo il punto in cui la CI si ferma, e `MARK_RAN` salterebbe anche la
+# rinomina della TABELLA, lasciando il database sul nome vecchio in silenzio.
+# La forma giusta e' un changeSet per trigger, che fa una cosa sola.
+#
+# COSA NON VIENE SEGNALATO, e percio' e' la via d'uscita:
+#   * un `onFail` diverso da `HALT` (`MARK_RAN`, `CONTINUE`, `WARN`): li' il
+#     salto e' la risposta voluta;
+#   * `DROP TRIGGER IF EXISTS`;
+#   * l'SQL dentro un commento (`--` oppure `/* … */`): il 2026-01-30 un
+#     changeSet ha lasciato apposta il blocco commentato, ed e' sano.
+#
+# ⚠️ LIMITI DICHIARATI:
+#   * guarda le `changes`, non i `rollback`: un rollback si esegue a mano e
+#     raramente, e il rumore costerebbe piu' della copertura;
+#   * riconosce i trigger dai tre suffissi generati dal framework. Un'automazione
+#     nuova con un suffisso nuovo va aggiunta a `SUFFISSI_AUTOMAZIONE`, e finche'
+#     non la si aggiunge non e' guardata — e' l'elenco che fa da perimetro.
+#
+# Uso (read-only, nessun database):
+#   python scripts/guardrail_ddl_su_trigger_automazione.py
+# Exit 0 se pulito, 1 se trova violazioni.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+BASE = ROOT / "db" / "changelog" / "migrations_v2"
+FASI_PRESIDIATE = ("00_schema", "20_code")
+FILENAME_RE = re.compile(r"^\d{8}-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
+
+# I suffissi con cui le automazioni battezzano i trigger che generano.
+# Misurati sul database il 2026-09-02: 309 audit, 300 tx_id, 121 storico.
+SUFFISSI_AUTOMAZIONE = (
+    "_audit_data_user_upd",
+    "_gen_tx_id_ins_upd",
+    "_z90_storico_upd_dlt",
+)
+
+# `ALTER TRIGGER <nome>` e `DROP TRIGGER <nome>` (quest'ultimo solo senza
+# IF EXISTS: con IF EXISTS l'assenza e' gia' contemplata).
+ALTER_RE = re.compile(r"\bALTER\s+TRIGGER\s+([a-z_][a-z0-9_]*)", re.IGNORECASE)
+DROP_RE = re.compile(
+    r"\bDROP\s+TRIGGER\s+(?!IF\s+EXISTS\b)([a-z_][a-z0-9_]*)", re.IGNORECASE
+)
+
+BLOCCO_COMMENTO_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+RIGA_COMMENTO_RE = re.compile(r"--[^\n]*")
+
+ONFAIL_CHE_FERMA = frozenset({"HALT"})
+
+
+# Scopo: togliere i commenti, perche' l'SQL commentato non viene eseguito.
+def _senza_commenti(sql: str) -> str:
+    return RIGA_COMMENTO_RE.sub("", BLOCCO_COMMENTO_RE.sub("", sql))
+
+
+# Scopo: l'`onFail` dichiarato dal blocco preConditions (default: HALT).
+def _on_fail(pre) -> str:
+    if isinstance(pre, list):
+        for voce in pre:
+            if isinstance(voce, dict) and "onFail" in voce:
+                return str(voce["onFail"]).strip().upper()
+    elif isinstance(pre, dict) and "onFail" in pre:
+        return str(pre["onFail"]).strip().upper()
+    return "HALT"
+
+
+# Scopo: raccoglie l'SQL delle `changes` di un changeSet.
+def _sql_delle_changes(cs: dict) -> list[str]:
+    fuori: list[str] = []
+    for change in cs.get("changes", []) or []:
+        if not isinstance(change, dict):
+            continue
+        blocco = change.get("sql")
+        if isinstance(blocco, dict) and isinstance(blocco.get("sql"), str):
+            fuori.append(blocco["sql"])
+    return fuori
+
+
+# Scopo: elenca le violazioni (file, changeSet, verbo, trigger).
+def trova_violazioni() -> list[tuple[str, str, str, str]]:
+    fuori: list[tuple[str, str, str, str]] = []
+    for fase in FASI_PRESIDIATE:
+        radice = BASE / fase
+        if not radice.is_dir():
+            continue
+        for p in sorted(radice.rglob("*")):
+            if not p.is_file() or not FILENAME_RE.match(p.name):
+                continue
+            testo = p.read_text(encoding="utf-8")
+            if "TRIGGER" not in testo.upper():
+                continue
+            try:
+                doc = yaml.safe_load(testo)
+            except yaml.YAMLError as exc:
+                print(f"⚠️  YAML non parsabile, saltato: {p} ({exc})", file=sys.stderr)
+                continue
+            if not isinstance(doc, dict):
+                continue
+            rel = p.relative_to(BASE).as_posix()
+            for blocco in doc.get("databaseChangeLog", []) or []:
+                if not isinstance(blocco, dict) or "changeSet" not in blocco:
+                    continue
+                cs = blocco["changeSet"] or {}
+                # Un changeSet che si SEGNA invece di fallire ha gia' dichiarato
+                # che l'oggetto puo' non esserci: e' la forma corretta.
+                if _on_fail(cs.get("preConditions")) not in ONFAIL_CHE_FERMA:
+                    continue
+                cs_id = str(cs.get("id", "<senza id>"))
+                for sql in _sql_delle_changes(cs):
+                    pulito = _senza_commenti(sql)
+                    for verbo, regex in (("ALTER TRIGGER", ALTER_RE),
+                                         ("DROP TRIGGER", DROP_RE)):
+                        for nome in regex.findall(pulito):
+                            if nome.lower().endswith(SUFFISSI_AUTOMAZIONE):
+                                fuori.append((rel, cs_id, verbo, nome))
+    return fuori
+
+
+# Scopo: eseguire il controllo e tradurre l'esito in exit code per la CI.
+def main() -> int:
+    violazioni = trova_violazioni()
+    if not violazioni:
+        print(
+            "✅ guardrail DDL/trigger-automazione: nessuna DDL incondizionata su "
+            f"trigger generati da ci_apply in {' / '.join(FASI_PRESIDIATE)}"
+        )
+        return 0
+
+    print(
+        f"❌ guardrail DDL/trigger-automazione: {len(violazioni)} istruzioni "
+        "toccano un trigger che nasce da ci_apply, senza contemplarne l'assenza.\n"
+        "   Su un database ricostruito da zero quel trigger non esiste ancora e il\n"
+        "   migrate muore con «trigger ... does not exist».\n",
+        file=sys.stderr,
+    )
+    for rel, cs_id, verbo, nome in violazioni:
+        print(f"  · {rel}", file=sys.stderr)
+        print(f"      changeSet: {cs_id}", file=sys.stderr)
+        print(f"      istruzione: {verbo} {nome}", file=sys.stderr)
+    print(
+        "\n   Rimedio: portare QUELLA SOLA istruzione in un changeSet suo, con\n"
+        "   `preConditions: onFail: MARK_RAN` + un `sqlCheck` su pg_trigger che\n"
+        "   chiede se il trigger c'e'. Cosi' si rinomina dove serve e ci si segna\n"
+        "   dove non serve.\n"
+        "   ⛔ NON una preCondition sul changeSet intero: `MARK_RAN` salterebbe\n"
+        "   anche il resto — la rinomina della tabella, per dire — in silenzio.\n"
+        "   Un `DROP TRIGGER` puo' invece bastarsi con `IF EXISTS`.\n"
+        "   Regola: docs/it/linee-guida-sql.md §11.5",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

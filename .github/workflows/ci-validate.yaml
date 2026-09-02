@@ -201,6 +201,31 @@ jobs:
         # Guida: docs/it/linee-guida-sql.md §11.4
         run: python scripts/guardrail_precondition_seed.py
 
+      - name: Guardrail DDL su trigger generati da ci_apply
+        # ⚠️ POSIZIONE: prima del migrate, come gli altri quattro — il difetto
+        # che presidia uccide il migrate.
+        #
+        # Cosa presidia: i trigger di audit, tx_id e storico non li scrive
+        # nessun changeSet, li genera il framework delle automazioni con
+        # --contexts=ci_apply, cioe' la SECONDA invocazione di Liquibase (piu'
+        # sotto). Durante la prima passata una tabella appena creata non li ha
+        # ancora: un ALTER TRIGGER ... RENAME o un DROP TRIGGER senza IF EXISTS
+        # su quei nomi passa su un DB di sviluppo — dove esistono da settimane —
+        # e qui muore con «trigger ... does not exist».
+        #
+        # Perche' esiste: il 2026-09-02 il migrate si e' fermato su
+        # 20260822-25-rename-compensazioni-in-sistemazioni, che aveva il fatto
+        # scritto nella propria intestazione due paragrafi sopra il difetto.
+        # Sapere la regola non basta: mentre si scrive la rinomina si guarda il
+        # database che si ha davanti, e li' il trigger c'e'.
+        #
+        # Via d'uscita, e non e' una deroga: quell'istruzione va in un changeSet
+        # suo con onFail: MARK_RAN, perche' l'operazione e' davvero condizionale
+        # — su un DB nuovo le automazioni genereranno gia' il nome giusto.
+        #
+        # Guida: docs/it/linee-guida-sql.md §11.5
+        run: python scripts/guardrail_ddl_su_trigger_automazione.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \

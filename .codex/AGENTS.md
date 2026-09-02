@@ -319,6 +319,29 @@ Ciò che il cancello voleva difendere («se il `codice_interno` cambiasse, il
 ⚠️ Il verso opposto va invece tenuto: un changeSet di `80_data` **deve**
 precondizionare su `tableExists`.
 
+### ⛔ Niente DDL incondizionata su un trigger che nasce da `ci_apply`
+
+Presidiato da `scripts/guardrail_ddl_su_trigger_automazione.py` (CI, `ci-validate.yaml`).
+Regola estesa: [linee-guida-sql.md §11.5](../docs/it/linee-guida-sql.md).
+
+I trigger di **audit**, **`tx_id`** e **storico** non li scrive nessun changeSet:
+li genera il framework delle automazioni con `--contexts=ci_apply`, cioè la
+**seconda** invocazione di Liquibase. Durante la prima passata una tabella appena
+creata **non li ha ancora**: un `ALTER TRIGGER … RENAME` o un `DROP TRIGGER` senza
+`IF EXISTS` su quei nomi passa in sviluppo — dove esistono da settimane — e in CI
+muore con `trigger "…" does not exist`.
+
+Il 2026-09-02 è successo su `20260822-25-rename-compensazioni-in-sistemazioni`,
+che aveva il fatto **scritto nella propria intestazione** due paragrafi sopra il
+difetto.
+
+⭐ E in quel mondo l'operazione non serviva: le automazioni lavorano **per
+pattern**, quindi genereranno già il nome nuovo. L'operazione è legittimamente
+**condizionale** ⇒ va in un changeSet suo, **uno per trigger**, con
+`onFail: MARK_RAN` + un `sqlCheck` su `pg_trigger`.
+⛔ Mai una preCondition sul changeSet intero: `MARK_RAN` salterebbe anche la
+rinomina della tabella, in silenzio.
+
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
 La sede di una tabella di configurazione è il suo CSV in `80_data/sql/...`, letto

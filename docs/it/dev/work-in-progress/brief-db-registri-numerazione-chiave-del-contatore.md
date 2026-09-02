@@ -153,6 +153,50 @@ composizione senza toccare le colonne, o viceversa, diventa rosso.
 
 Dettaglio e decisioni: `brief-be-fe-crud-registri-di-numerazione` §12.6.
 
+### ⚠️ 2026-09-02 — le due colonne hanno fatto diventare rosso un ALTRO presidio
+
+`db/pgtap/vendite/test-identita-documenti-derivata-v1.sql` ha cominciato a
+fallire i test 2 e 3 con `have: COMMESSA`. **Non era un difetto dello schema: era
+il test.**
+
+Quel file sceglieva fra i due rami dell'identità così:
+
+> «la tabella **ha** la colonna `registro_id`? allora l'unicità deve portarla;
+> altrimenti guarda la stringa nuda.»
+
+Era un **proxy**, non la proprietà. Funzionava solo finché *avere* quella colonna
+coincideva con l'*avere l'identità sul registro* — e le due cose hanno smesso di
+coincidere nel momento esatto in cui questo §4 ha dato a `vendite.commesse`
+`registro_id` e `anno` **come dato**, con l'identità che resta la stringa.
+
+⛔ **E il rosso chiedeva un peggioramento.** Preso alla lettera, avrebbe fatto
+sostituire `uq_commesse_codice` su `(codice)` con una chiave `(registro_id, anno,
+…)`: una chiave più **larga**, cioè meno stretta di quella che c'è. La
+`UNIQUE (codice)` da sola è la forma più forte possibile — non lascia collidere
+*nessuno*, quindi a maggior ragione non lascia collidere due emittenti.
+
+⭐ **La regola vera è la proprietà, e ora è scritta così**: l'unicità impedisce a
+due emittenti di collidere se **o** porta `registro_id` in chiave, **o** è un
+indice sulla **sola** colonna del numero. Del secondo ramo il test pretende ora
+anche `indnatts = 1`, `NOT NULL` (o `NULLS NOT DISTINCT`) e `indpred IS NULL` —
+tre condizioni che tolgono altrettanti modi di non respingere niente, e la
+seconda è il difetto del 2026-08-31 in forma generale.
+Il test 3 (`anno` in chiave) si applica ora al **solo ramo per-registro**, scritto
+dal lato positivo: dove l'identità è la stringa, l'anno è già dentro di essa.
+
+⭐ È nato anche un **test 6, gemello «esiste»**: asserisce che *entrambi* i rami
+siano abitati. Senza, il giorno in cui una delle due forme sparisse, metà del
+presidio diventerebbe verde per non avere più niente da guardare — e sarebbe
+proprio il momento in cui il difetto del §3 potrebbe rientrare.
+
+⚠️ **La lezione va oltre questo file**: il §9 qui sotto dice «tutti derivati», ed
+è giusto — ma *derivare dalla cosa sbagliata sembra derivare*. Un presidio che
+sceglie un ramo guardando **quali colonne esistono** sta misurando una
+coincidenza; deve guardare **la forma del vincolo**, che è dove la proprietà
+vive. Verificato per mutazione: annullando il ramo «stringa nuda» tornano rossi
+i test 2 e 6, e restringendo `idd_unique_porta` alla prima colonna della chiave
+diventa rosso il 3 con `DDT, FATTURA, ORDINE, RESO`.
+
 ---
 
 ## 5. ✅ La forma della cura — l'asse si DICHIARA sulla famiglia
