@@ -90,9 +90,19 @@ qualcun altro ha ricostruito.
 | **B** | riga 5 → `attivo = f` | il rosso di CI, in una riga | ⚠️ l'audit AUTH dopo il cutover è `identita_digitali` (riga 8, già attiva), quindi il presente è coperto — ma gli snapshot **pre-cutover** restano nella tabella **senza nessuna strada per leggerli** dal drawer |
 | **C** | `vw_audit_sources` espone anche `storico_table`, e il BE legge quella invece di `code` | il difetto **latente**: da lì in poi una storico si può rinominare senza rompere l'audit | è DDL sulla vista (vostro) **più** una modifica BE (mia, e la faccio appena la colonna c'è) |
 
-⭐ **A + C insieme** è l'unica combinazione che toglie anche la trappola, non
-solo il rosso. **B** è la più corta e non è sbagliata — ma va scelta sapendo che
-butta via l'unica strada verso la storia vecchia, non che la rimanda.
+⛔ **E QUI C'È LA COSA DA NON SBAGLIARE: `C` DA SOLA NON FA TORNARE VERDE LA
+CI.** Sembra la strada «giusta» perché corregge il difetto vero, e infatti lo
+corregge — ma il valore scritto oggi nella riga 5 è
+`storico.risorse_umane_auth_user`: un backend che leggesse `storico_table`
+invece di `code` costruirebbe **esattamente lo stesso nome** e fallirebbe
+identico. `C` sistema il *come* si deduce il nome, non il *nome*.
+
+⇒ **Le uniche due combinazioni che spengono i 9 errori sono `B` da sola, oppure
+`A` + `C`.** Ogni altra le lascia lì.
+
+⭐ **A + C insieme** è l'unica che toglie anche la trappola, non solo il rosso.
+**B** è la più corta e non è sbagliata — ma va scelta sapendo che butta via
+l'unica strada verso la storia vecchia, non che la rimanda.
 
 ## 5. Cosa serve a me, e quando
 
