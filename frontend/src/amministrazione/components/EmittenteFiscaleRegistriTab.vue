@@ -150,6 +150,14 @@ function buildRowActions(data) {
           key: 'riattiva',
           label: t('amministrazione.registri_numerazione.riattiva'),
           icon: MANAGE_ICONS.RELOAD,
+          // 🔴 DIFETTO TROVATO IL 2026-09-02, e non dava nessun errore.
+          //    `RowActionsMenu` disabilita da sé le azioni sulle righe spente
+          //    (`disableWhenInactive`, default true): senza questo escape la
+          //    riattivazione era SPENTA su tutti i registri disattivati —
+          //    cioè sugli unici su cui ha senso — e il tooltip diceva «azione
+          //    non disponibile su record inattivo». La strada che il §0 impone
+          //    quando la terna è occupata non era percorribile dalla lista.
+          allowWhenInactive: true,
           command: () => cambiaAttivo(data, true),
         },
   ]

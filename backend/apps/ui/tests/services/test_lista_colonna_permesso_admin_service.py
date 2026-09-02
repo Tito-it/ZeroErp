@@ -73,10 +73,26 @@ class ListaColonnaPermessoListTests(SimpleTestCase):
                 "livello_accesso": "BLOCCATO",
             }
         ]
+        repo.count_permessi_by_lista.return_value = 1
         svc = ListaColonnaPermessoAdminService(repo=repo)
         result = svc.list_permessi(1)
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["livello_accesso"], "BLOCCATO")
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["livello_accesso"], "BLOCCATO")
+
+    # Scopo: il `count` NON e' `len(results)` — vedi il gemello in
+    #        test_lista_colonna_admin_service. Qui vale doppio: il conteggio
+    #        replica gli INNER JOIN della lista, quindi deve contare lo stesso
+    #        PERIMETRO pur restando indipendente dalle RIGHE.
+    def test_count_permessi_non_e_derivato_dalle_righe(self) -> None:
+        repo = MagicMock()
+        repo.get_definizione.return_value = {"id": 1}
+        repo.list_permessi_by_lista.return_value = [{"id": 1, "livello_accesso": "BLOCCATO"}]
+        repo.count_permessi_by_lista.return_value = 12
+        svc = ListaColonnaPermessoAdminService(repo=repo)
+        result = svc.list_permessi(1)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 12)
 
 
 class ListaColonnaPermessoUpsertTests(SimpleTestCase):

@@ -360,7 +360,9 @@ class ApiAdminListaDefinizioneAdminView(AdminAPIView):
 
     @extend_schema(responses={200: _DATA_RESPONSE})
     # Scopo: Restituisce la lista completa delle definizioni (anche
-    #        disattivate) per la pagina tecnica.
+    #        disattivate) per la pagina tecnica, nella forma
+    #        `{results, count}`. Il `count` non impagina — dichiara quante
+    #        righe esistono, cosi' il client puo' verificare di averle tutte.
     def get(self, request: Request) -> JsonResponse:
         return success_response(
             ListaDefinizioneAdminService().list_definizioni_admin()

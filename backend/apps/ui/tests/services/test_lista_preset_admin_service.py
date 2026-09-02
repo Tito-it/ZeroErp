@@ -71,6 +71,34 @@ class ListaPresetAdminReadTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, E_LISTA_NOT_FOUND)
         repo.list_preset_by_lista.assert_not_called()
 
+    # Scopo: happy path della lista preset — non esisteva, e la lista era
+    #        l'unica delle quattro `ui` senza copertura sulla FORMA della
+    #        risposta (`{results, count}`).
+    def test_list_preset_happy_path(self) -> None:
+        repo = MagicMock()
+        repo.get_definizione.return_value = {"id": 1}
+        repo.list_preset_by_lista.return_value = [
+            {"id": 7, "codice": "default", "ambito": "sistema"}
+        ]
+        repo.count_preset_by_lista.return_value = 1
+        svc = ListaPresetAdminService(repo=repo)
+        result = svc.list_preset(1)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["codice"], "default")
+
+    # Scopo: il `count` NON e' `len(results)` — vedi il gemello in
+    #        test_lista_colonna_admin_service.
+    def test_count_preset_non_e_derivato_dalle_righe(self) -> None:
+        repo = MagicMock()
+        repo.get_definizione.return_value = {"id": 1}
+        repo.list_preset_by_lista.return_value = [{"id": 7, "codice": "default"}]
+        repo.count_preset_by_lista.return_value = 5
+        svc = ListaPresetAdminService(repo=repo)
+        result = svc.list_preset(1)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 5)
+
     def test_get_preset_inesistente_raises(self) -> None:
         repo = MagicMock()
         repo.get_preset.return_value = None

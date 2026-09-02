@@ -15,6 +15,7 @@
 #     2. list_colonne_lista_happy_path
 #   Fase 2 read
 #     3. list_definizioni_admin_delegata_a_repo
+#     3-bis. count_non_e_derivato_dalle_righe
 #     4. get_definizione_inesistente_raises
 #     5. get_definizione_happy_path_include_disattive
 #   Fase 2 create
@@ -138,11 +139,29 @@ class ListaDefinizioneFase2ReadTests(SimpleTestCase):
             _row_definizione_full(),
             _row_definizione_full(id=8, codice="vendite.fatture", attivo=False),
         ]
+        repo.count_definizioni_admin.return_value = 2
         svc = ListaDefinizioneAdminService(repo=repo)
         result = svc.list_definizioni_admin()
-        self.assertEqual(len(result), 2)
-        self.assertFalse(result[1]["attivo"])
+        self.assertEqual(len(result["results"]), 2)
+        self.assertEqual(result["count"], 2)
+        self.assertFalse(result["results"][1]["attivo"])
         repo.list_definizioni_admin.assert_called_once_with()
+
+    # Scopo: il `count` non e' `len(results)`. E' l'INVARIANTE che rende utile
+    #        il guard anti-troncamento del frontend: se il conteggio si
+    #        derivasse dalle righe direbbe sempre di si', e non presidierebbe
+    #        niente. Qui il repo dichiara 57 e consegna 2 righe (il caso
+    #        «qualcuno ha messo un LIMIT»): il service deve RIPORTARE la
+    #        divergenza, non appianarla.
+    def test_count_non_e_derivato_dalle_righe(self) -> None:
+        repo = MagicMock()
+        repo.list_definizioni_admin.return_value = [_row_definizione_full()]
+        repo.count_definizioni_admin.return_value = 57
+        svc = ListaDefinizioneAdminService(repo=repo)
+        result = svc.list_definizioni_admin()
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 57)
+        repo.count_definizioni_admin.assert_called_once_with()
 
     def test_get_definizione_inesistente_raises(self) -> None:
         repo = MagicMock()

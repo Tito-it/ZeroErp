@@ -109,8 +109,12 @@ export function getAuditOpSeverity(tipo) {
 //    elenco parallelo dichiarato, e la sua unica difesa e' stare in UN posto.
 
 // La famiglia che ammette i campi fiscali. Le altre quattro li vedono
-// rifiutare da `chk_registri_fatturazione_famiglia_regole_fattura`.
-export const REGISTRO_FAMIGLIA_FISCALE = 'FATTURA'
+// ⛔ QUI C'ERA `REGISTRO_FAMIGLIA_FISCALE = 'FATTURA'`, ED È STATO TOLTO IL
+//    2026-09-02 (§11.10 FE-F2). Era il gemello di un letterale identico nel
+//    backend, e diceva col nome di UNA riga una proprietà che è una COLONNA:
+//    `famiglie_documento.presidia_data_documento`, che il drawer dei registri
+//    riceve col lookup delle famiglie. Due copie della stessa affermazione, in
+//    due linguaggi, che nessun presidio teneva allineate.
 
 // `chk_registri_fatturazione_politica_data`: due valori, non di piu'.
 // ⭐ `OGGI` e' anche il NEUTRO che il CHECK pretende fuori da FATTURA.

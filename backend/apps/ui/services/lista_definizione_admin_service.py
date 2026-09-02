@@ -150,9 +150,20 @@ class ListaDefinizioneAdminService:
     # =================================================================
 
     # Scopo: Lista completa definizioni (include disattivate) per la
-    #        pagina tecnica `/amm-software/personalizzazioni-liste-tecniche`.
-    def list_definizioni_admin(self) -> list[dict[str, Any]]:
-        return self._repo.list_definizioni_admin()
+    #        pagina tecnica `/amm-software/personalizzazioni-liste-tecniche`,
+    #        con il conteggio totale accanto alle righe.
+    # ⭐ Forma `{results, count}` — la variante offset-based gia' documentata in
+    #    `api.md` §Paginazione. Qui non c'e' paginazione: il `count` non serve a
+    #    impaginare, serve a DICHIARARE quante righe esistono, in modo che il
+    #    client possa verificare di averle tutte invece di assumerlo.
+    # ⛔ `count` viene da una query SUA (`count_definizioni_admin`), non da
+    #    `len(results)`: derivarlo dalle righe sposterebbe la tautologia dal
+    #    frontend al backend senza toglierla.
+    def list_definizioni_admin(self) -> dict[str, Any]:
+        return {
+            "results": self._repo.list_definizioni_admin(),
+            "count": self._repo.count_definizioni_admin(),
+        }
 
     # Scopo: Dettaglio singolo per id (campi completi, anche disattivate).
     #        404 se id inesistente. Usato post-create/post-update e dal

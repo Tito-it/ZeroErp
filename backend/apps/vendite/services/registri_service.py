@@ -17,6 +17,7 @@ from django.db import IntegrityError, transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.value_normalizer import empty_to_none
+from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.registri_repository import RegistriRepository
 
 logger = logging.getLogger(__name__)
@@ -26,14 +27,18 @@ E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 E_VENDITE_FK = "E_VENDITE_FK"
 
-# La famiglia che ammette i campi del limite di emissione e una politica data
-# non neutra. ⛔ Non e' una preferenza di maschera: e' il `CHECK`
-# `chk_registri_fatturazione_famiglia_regole_fattura`, che sulle altre quattro
-# famiglie li RIFIUTA.
-_FAMIGLIA_FISCALE = "FATTURA"
+# ⛔ QUI C'ERA `_FAMIGLIA_FISCALE = "FATTURA"`, ED E' STATO TOLTO IL 2026-09-02
+#    (§11.10 BE-F2). Era il secondo di due letterali paralleli — l'altro viveva
+#    in `frontend/src/amministrazione/constants.js` — e diceva col nome di UNA
+#    riga una proprieta' che ora e' una COLONNA:
+#    `vendite.famiglie_documento.presidia_data_documento`.
+#    ⭐ La differenza non e' di stile: col letterale, una famiglia nuova che
+#    presidia la data sarebbe stata trattata come non fiscale da entrambi i
+#    lati, e i suoi campi sarebbero spariti dalla maschera senza che niente
+#    fallisse. Ora la domanda si fa al catalogo, che e' l'unico a saperlo.
 
 # ⭐ I TRE CAMPI CONDIZIONATI ALLA FAMIGLIA, col loro valore NEUTRO — cioe' cio'
-#    che il `CHECK` pretende quando la famiglia non e' FATTURA. Verificato sul
+#    che il `CHECK` pretende quando la famiglia non ammette le regole fiscali. Verificato sul
 #    database vivo il 2026-09-01, non dedotto dal nome:
 #
 #      CHECK (famiglia = 'FATTURA' OR (limite_giorni IS NULL
@@ -45,7 +50,7 @@ _FAMIGLIA_FISCALE = "FATTURA"
 #    messaggio che parla di un campo obbligatorio invece che della famiglia.
 #    E' la ragione per cui qui c'e' una MAPPA e non un elenco di nomi
 #    (`feedback_normalize_guard_simmetrico`).
-_NEUTRI_FUORI_FATTURA: dict[str, object] = {
+_NEUTRI_SENZA_REGOLE_FISCALI: dict[str, object] = {
     "limite_emissione_giorni": None,
     "limite_emissione_giorno_mese": None,
     "politica_data_documento": "OGGI",
@@ -145,6 +150,10 @@ class RegistriService:
 
     def __init__(self) -> None:
         self.repo = RegistriRepository()
+        # ⭐ Il catalogo delle famiglie e' un LETTORE, non una dipendenza di
+        #    scrittura: serve a chiedere se la famiglia presidia la data del
+        #    documento (§11.10 BE-F2), che prima era un letterale cablato.
+        self.famiglie = FamiglieDocumentoRepository()
 
     # =================================================================
     # Lettura
@@ -201,11 +210,22 @@ class RegistriService:
         #    in update la famiglia non e' nel payload (non e' modificabile), e
         #    dedurre «non e' FATTURA» dalla sua assenza cancellerebbe i limiti
         #    di un registro fiscale a ogni salvataggio.
-        if famiglia is not None and famiglia != _FAMIGLIA_FISCALE:
-            for campo, neutro in _NEUTRI_FUORI_FATTURA.items():
+        if famiglia is not None and not self._famiglia_ammette_regole_fiscali(famiglia):
+            for campo, neutro in _NEUTRI_SENZA_REGOLE_FISCALI.items():
                 if campo in dati and dati[campo] != neutro:
                     dati[campo] = neutro
         return dati
+
+    # Scopo: «la famiglia di questo registro ammette le regole fiscali?», cioe'
+    #        i tre campi condizionati.
+    # ⚠️ Famiglia SCONOSCIUTA -> `False`, e quindi i tre campi si azzerano: e'
+    #    la risposta prudente, e non nasconde niente — a rifiutare la famiglia
+    #    inesistente e' la FK `fk_registri_fatturazione_famiglia`, un attimo
+    #    dopo e col suo messaggio. Ripiegare su `True` avrebbe fatto arrivare al
+    #    database dei valori che il CHECK respinge, con un errore che parla di
+    #    un campo invece che della famiglia.
+    def _famiglia_ammette_regole_fiscali(self, codice_interno: str) -> bool:
+        return bool(self.famiglie.ammette_regole_fiscali(codice_interno))
 
     def create_registro(
         self,

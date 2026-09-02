@@ -148,7 +148,13 @@ class ListaColonnaAdminService:
     #        campi completi). 404 se lista_id non esiste in
     #        lista_definizione (anche disattivata: la pagina tecnica
     #        deve poter editare colonne di liste soft-disabled).
-    def list_colonne_admin(self, lista_id: int) -> list[dict[str, Any]]:
+    # ⭐ Forma `{results, count}`: il `count` non impagina, DICHIARA quante
+    #    righe esistono, cosi' il client puo' verificare di averle tutte invece
+    #    di assumerlo (guard `troncamentoSospetto` di `<ListaConfigurabile>` in
+    #    modalita' `paginata: false`). ⛔ Viene da una query SUA, non da
+    #    `len(results)`: derivarlo dalle righe sposterebbe la tautologia dal
+    #    frontend al backend senza toglierla.
+    def list_colonne_admin(self, lista_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(lista_id, field="lista_id")
         ErrorManager.require(
             self._repo.get_definizione_admin(lista_id) is not None,
@@ -156,7 +162,10 @@ class ListaColonnaAdminService:
             message="Definizione lista non trovata.",
             detail=f"lista_id={lista_id}",
         )
-        return self._repo.list_colonne_by_lista_admin(lista_id)
+        return {
+            "results": self._repo.list_colonne_by_lista_admin(lista_id),
+            "count": self._repo.count_colonne_by_lista_admin(lista_id),
+        }
 
     # Scopo: Dettaglio colonna per id. 404 se inesistente.
     def get_colonna(self, colonna_id: int) -> dict[str, Any]:

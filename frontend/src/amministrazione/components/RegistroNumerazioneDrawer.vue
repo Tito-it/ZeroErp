@@ -22,10 +22,17 @@
 //    fatto no, e il motivo si LEGGE: un campo grigio senza spiegazione è la
 //    stessa promessa mancata del cestino spento senza tooltip.
 //
-// ⚠️ I TRE CAMPI FISCALI SOLO SU `FATTURA`, e non basta nasconderli: vanno
-//    anche non spediti. Il `CHECK` chk_registri_fatturazione_famiglia_regole_
-//    fattura li rifiuta sulle altre quattro famiglie, e un `defaultForm()` che
-//    li tiene in memoria li porta comunque.
+// ⚠️ I TRE CAMPI FISCALI SOLO DOVE LA FAMIGLIA LI AMMETTE, e non basta
+//    nasconderli: vanno anche non spediti. Il `CHECK` chk_registri_
+//    fatturazione_famiglia_regole_fattura li rifiuta altrove, e un
+//    `defaultForm()` che li tiene in memoria li porta comunque.
+//
+// ⭐ E «dove li ammette» NON è più un nome cablato (§11.10 FE-F2, 2026-09-02).
+//    Fino a ieri qui c'era `REGISTRO_FAMIGLIA_FISCALE = 'FATTURA'`, gemello di
+//    un letterale identico nel backend: due copie della stessa affermazione, in
+//    due linguaggi, che nessun presidio teneva allineate. Ora la risposta la dà
+//    il catalogo — `famiglie_documento.presidia_data_documento` — e arriva col
+//    lookup delle famiglie, insieme ai default della forma.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../core/composables/useNotify'
@@ -34,18 +41,17 @@ import { motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 // ⛔ Mai formattare una data inline: la sede è unica
 //    (`feedback_locale_formatters_centralizzato`).
 import { displayDate } from '../../core/utils/date'
-import { lookupCodici } from '../../core/apiCore'
 import { useLookup } from '../../core/composables/useLookup'
 import { DRAWER_WIDTH, FIELD_LENGTH, MANAGE_ICONS } from '../../core/constants'
 import {
   REGISTRO_CIFRE_MAX,
   REGISTRO_CIFRE_MIN,
-  REGISTRO_FAMIGLIA_FISCALE,
   REGISTRO_POLITICA_DATA,
   REGISTRO_POLITICA_DATA_NEUTRA,
 } from '../constants'
 import { useRegistriNumerazioneStore } from '../stores/registriNumerazione'
-import { getRegistro } from '../api/registriNumerazione'
+import { getRegistro, listRegistri } from '../api/registriNumerazione'
+import { lookupFamiglie } from '../api/famiglieDocumento'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
@@ -73,21 +79,67 @@ const dettaglio = ref(null)
 const salvando = ref(false)
 
 // Vocabolario APERTO: le famiglie stanno in `vendite.famiglie_documento` e una
-// nuova arriva con un seed, non con un rilascio del frontend. Da qui il lookup
-// generico invece di un elenco cablato (`feedback_lookup_whitelist_first`).
-// ⛔ `useLookup` e non una fetch scritta a mano: la forma dell'envelope
-//    (`r.data.data.results`) e' UNA, e indovinarla con dei fallback a catena
-//    significa non accorgersi il giorno che cambia — la lista uscirebbe vuota
-//    invece di rompersi.
-const { items: famiglieRaw, load: caricaFamiglie } = useLookup(
-  () => lookupCodici('vendite.famiglie_documento'),
-)
+// nuova arriva dal suo CRUD, non da un rilascio del frontend.
+// ⛔ E NON dal lookup generico, ed è la voce BE-F1 del brief (decisione di Tid,
+//    2026-09-02: «lookup generico non adatto»). `fn_get_lookup_codici` torna
+//    id/codice/descrizione/attivo e non può portare i default della forma né le
+//    colonne di natura — non è un suo difetto, è generico e va lasciato
+//    generico. Qui servono `prefisso_default`, `lunghezza_default`,
+//    `gestisce_serie` e `presidia_data_documento`, che sono esattamente ciò che
+//    questa maschera deve sapere.
+const { items: famiglieRaw, load: caricaFamiglie } = useLookup(lookupFamiglie)
+
 // ⚠️ Il valore da spedire e' `codice_interno`: e' quello che la FK
-//    `fk_registri_fatturazione_famiglia` referenzia, non `codice`.
-const famiglie = computed(() => famiglieRaw.value.map((f) => ({
-  value: f.codice_interno || f.codice,
-  label: f.descrizione || f.codice_interno || f.codice,
-})))
+//    `fk_registri_fatturazione_famiglia` referenzia.
+// ⛔ E LE FAMIGLIE GIÀ SERVITE NON SI OFFRONO (§FE-3, «Nuovo deve inciampare
+//    prima»): `uq_registri_fatturazione_famiglia_emittente_utility` ne ammette
+//    UNO solo e **non filtra su `attivo`** — un registro spento continua a
+//    occupare lo slot. Offrire quella riga significa mandare l'operatore a
+//    prendere un 409 su una scelta che si sapeva già impossibile.
+const famiglie = computed(() => famiglieRaw.value.map((f) => {
+  const occupata = slotOccupato(f.codice_interno)
+  return {
+    value: f.codice_interno,
+    label: occupata
+      ? `${f.descrizione} — ${t('amministrazione.registri_numerazione.slot_occupato')}`
+      : f.descrizione,
+    disabled: occupata,
+  }
+}))
+
+// La famiglia scelta, per intero: da qui vengono i default della forma e le due
+// domande di natura (presidia la data? gestisce le serie?).
+const famigliaCorrente = computed(
+  () => famiglieRaw.value.find((f) => f.codice_interno === form.value.famiglia_documento) || null,
+)
+
+// ⭐ I registri che l'emittente ha GIÀ, spenti compresi: servono a sapere quali
+//    slot sono presi. Si leggono una volta all'apertura in creazione.
+// ⚠️ `limit` alto e non la pagina corrente della lista: la lista è paginata a
+//    25, e uno slot occupato da un registro in seconda pagina risulterebbe
+//    libero — cioè il presidio tacerebbe proprio dove serve.
+const registriEsistenti = ref([])
+
+async function caricaRegistriEsistenti() {
+  registriEsistenti.value = []
+  if (isEdit.value || !store.emittenteSoggettoRuoloId) return
+  const res = await listRegistri({
+    emittente_soggetto_ruolo_id: store.emittenteSoggettoRuoloId,
+    limit: 500,
+    offset: 0,
+  })
+  registriEsistenti.value = res.data.data.results || []
+}
+
+// Scopo: «questo slot è già preso?» — lo slot è la terna (famiglia, emittente,
+//        utility), e l'emittente lo dà il contesto.
+function slotOccupato(codiceFamiglia) {
+  if (isEdit.value) return false
+  const utility = form.value.utility_id ?? null
+  return registriEsistenti.value.some(
+    (r) => r.famiglia_documento === codiceFamiglia && (r.utility_id ?? null) === utility,
+  )
+}
 
 const opzioniPolitica = computed(() => REGISTRO_POLITICA_DATA.map((v) => ({
   value: v,
@@ -103,7 +155,9 @@ function defaultForm() {
   return {
     codice: '',
     descrizione: '',
-    famiglia_documento: REGISTRO_FAMIGLIA_FISCALE,
+    // ⛔ Nessuna famiglia preselezionata: il default era `FATTURA`, cioè lo
+    //    stesso letterale che questo cantiere ha tolto. La sceglie chi crea.
+    famiglia_documento: null,
     utility_id: null,
     serie_default: null,
     prefisso: '',
@@ -115,8 +169,19 @@ function defaultForm() {
   }
 }
 
-const isFattura = computed(
-  () => form.value.famiglia_documento === REGISTRO_FAMIGLIA_FISCALE,
+// ⭐ LA DOMANDA È DEL CATALOGO, NON DEL NOME. `ammette_regole_fiscali` dice se
+//    questa famiglia ammette i tre campi condizionati; `gestisce_serie` se i
+//    suoi documenti registrano la serie da qualche parte.
+// ⛔ E NON è `presidia_data_documento`, che il 2026-09-02 aveva la stessa
+//    risposta su tutte e cinque: quella dice se c'è un PAVIMENTO sulla data del
+//    documento, questa cosa ammette il `CHECK` dei registri. Sono due domande
+//    diverse con la stessa risposta di oggi — e la prima famiglia creata dal
+//    CRUD le separa, perché nasce presidiata e non fiscale (§12.2).
+const ammetteRegoleFiscali = computed(
+  () => famigliaCorrente.value?.ammette_regole_fiscali === true,
+)
+const gestisceSerie = computed(
+  () => famigliaCorrente.value?.gestisce_serie === true,
 )
 
 // ⭐ IL MOTIVO PER CUI LA FORMA NON SI TOCCA, letto e non dedotto.
@@ -141,6 +206,13 @@ async function carica() {
   dettaglio.value = null
   if (!isEdit.value) {
     form.value = defaultForm()
+    // ⚠️ Anche la memoria di cosa ha messo la famiglia: senza, riaprendo il
+    //    drawer il primo cambio di famiglia crederebbe «toccato dall'operatore»
+    //    un valore che aveva scritto lui stesso al giro prima.
+    defaultsApplicati.value = {
+      prefisso: '',
+      lunghezza: form.value.lunghezza_numero,
+    }
     return
   }
   const res = await getRegistro(props.registroId)
@@ -167,7 +239,45 @@ watch(() => props.visible, async (aperto) => {
     contentReady.value = false
     return
   }
-  await Promise.all([caricaFamiglie(), carica()])
+  await Promise.all([caricaFamiglie(), carica(), caricaRegistriEsistenti()])
+})
+
+// ⭐ FE-F1: LA FORMA SI PRECOMPILA DALLA FAMIGLIA, e non è una comodità. Fino
+//    al 2026-09-02 il form nasceva con `prefisso: ''` e `lunghezza_numero: 7`
+//    cablati, quindi una COMMESSA creata a mano usciva a 7 cifre mentre quella
+//    creata dal provisioning ne aveva 9: due documenti della stessa famiglia,
+//    due forme diverse, e nessuno che se ne accorgesse prima di vedere un
+//    numero storto.
+// ⛔ Solo in CREAZIONE, e SOLO su ciò che ha messo la famiglia precedente —
+//    mai su ciò che ha scritto l'operatore.
+// ⚠️ La prima stesura trattava i due campi in modo diverso: il prefisso lo
+//    rispettava («solo se vuoto»), le cifre le sovrascriveva sempre. Chi
+//    scriveva 9 e poi cambiava famiglia si vedeva tornare 7 senza capire
+//    perché, e chi scriveva un prefisso non vedeva mai quello della famiglia
+//    nuova. Due regole diverse sullo stesso gesto sono un difetto, quale che
+//    sia quella giusta.
+// ⭐ La regola è una sola: un campo che porta ancora il default della famiglia
+//    di prima è «non toccato» e si aggiorna; un campo che l'operatore ha
+//    cambiato resta suo.
+const defaultsApplicati = ref({
+  prefisso: '',
+  lunghezza: defaultForm().lunghezza_numero,
+})
+
+watch(() => form.value.famiglia_documento, (codice) => {
+  if (isEdit.value || !codice) return
+  const fam = famiglieRaw.value.find((f) => f.codice_interno === codice)
+  if (!fam) return
+  const prefissoNuovo = fam.prefisso_default || ''
+  const cifreNuove = fam.lunghezza_default ?? form.value.lunghezza_numero
+  if (!form.value.prefisso || form.value.prefisso === defaultsApplicati.value.prefisso) {
+    form.value.prefisso = prefissoNuovo
+  }
+  if (form.value.lunghezza_numero == null
+      || form.value.lunghezza_numero === defaultsApplicati.value.lunghezza) {
+    form.value.lunghezza_numero = cifreNuove
+  }
+  defaultsApplicati.value = { prefisso: prefissoNuovo, lunghezza: cifreNuove }
 })
 
 // Scopo: il payload da spedire — ⛔ i campi che il verbo non ammette NON ci
@@ -183,7 +293,7 @@ function payload() {
   //    senza nessun campo a video, quindi partiva sempre col suo valore
   //    cablato — un dato spedito che l'operatore non poteva né vedere né
   //    scegliere. Ora ha il suo Select, e fuori da FATTURA non parte.
-  if (isFattura.value) {
+  if (ammetteRegoleFiscali.value) {
     p.politica_data_documento = form.value.politica_data_documento
     p.limite_emissione_giorni = form.value.limite_emissione_giorni
     p.limite_emissione_giorno_mese = form.value.limite_emissione_giorno_mese
@@ -287,10 +397,21 @@ const titolo = computed(() => {
              del contatore, e il mirror CSV la riscrive a ogni migrate — quindi
              un campo editabile su di lei sarebbe l'unico senza presidio. Si
              mostra perché spiega da dove viene la serie dei numeri. -->
-        <div v-if="isEdit" class="form-field">
+        <div v-if="isEdit || famigliaCorrente" class="form-field">
           <label>{{ t('vendite.registri_numerazione.col_serie_default') }}</label>
-          <span>{{ form.serie_default || '—' }}</span>
-          <small class="app-field-hint">
+          <span v-if="isEdit">{{ form.serie_default || '—' }}</span>
+          <!-- ⭐ FE-F2: sulle famiglie che la serie non la registrano da nessuna
+               parte, il campo dice PERCHÉ invece di mostrare un trattino muto.
+               La frase è la stessa che il database manda quando rifiuta
+               (`serie_blocco.non_gestita`): una voce sola per lo stesso fatto,
+               detta prima invece che dopo il rifiuto. -->
+          <small v-if="!gestisceSerie" class="app-field-hint">
+            {{ t('amministrazione.registri_fatturazione.serie_blocco.non_gestita', {
+              famiglia_documento: famigliaCorrente?.descrizione || form.famiglia_documento,
+              serie: form.serie_default || '—',
+            }) }}
+          </small>
+          <small v-else class="app-field-hint">
             {{ t('amministrazione.registri_numerazione.serie_hint') }}
           </small>
         </div>
@@ -345,7 +466,7 @@ const titolo = computed(() => {
       </div>
 
       <!-- ── I campi che il CHECK ammette solo su FATTURA ───────────────── -->
-      <template v-if="isFattura">
+      <template v-if="ammetteRegoleFiscali">
         <h4 class="mt-3">{{ t('amministrazione.registri_numerazione.sezione_limiti') }}</h4>
         <div class="form-grid-2col">
           <!-- ⭐ La politica data è il terzo campo condizionato del §FE-4, e

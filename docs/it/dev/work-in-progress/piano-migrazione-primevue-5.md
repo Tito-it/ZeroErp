@@ -209,7 +209,7 @@ non un azzardo — semplicemente non è quella che consiglio a parità di tutto.
 
 ---
 
-## 2. Superficie misurata (2026-07-29 — da ri-verificare)
+## 2. Superficie misurata (2026-07-29 · **ri-verificata il 2026-09-02**)
 
 ```bash
 cd frontend
@@ -221,16 +221,29 @@ grep -rho "from 'primevue/[a-z]*'" src --include=*.vue --include=*.js \
   | sed "s/.*primevue\///;s/'//" | sort | uniq -c | sort -rn
 ```
 
-| Pacchetto | Superficie |
-| --- | --- |
-| `primevue` | **937 import in 260 file** (su 335 `.vue`) — **47 moduli distinti** |
-| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) |
-| `@primeuix/themes` | **1 file** — `src/main.js`, preset `Aura` |
-| `primeicons` | 122 classi `pi-*` distinte + **28 codepoint cablati** in `main.css` |
+| Pacchetto | Superficie 2026-07-29 | **Superficie 2026-09-02** |
+| --- | --- | --- |
+| `primevue` | 937 import in 260 file (su 335 `.vue`) — 47 moduli distinti | **1039 import in 300 file** (su **383** `.vue`) — **47** moduli distinti |
+| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) | non ri-misurato |
+| `@primeuix/themes` | 1 file — `src/main.js`, preset `Aura` | **1 file** (invariato) |
+| `primeicons` | 122 classi `pi-*` distinte + 28 codepoint cablati in `main.css` | non ri-misurato |
 
-I dieci componenti più usati: `tag` (96), `button` (93), `inputtext` (90),
-`column` (86), `datatable` (76), `select` (75), `drawer` (67), `message` (58),
-`toggleswitch` (43), `inputnumber` (43).
+I dieci componenti più usati, **al 2026-09-02** (fra parentesi il 2026-07-29):
+`tag` 117 (96), `button` 111 (93), `inputtext` 97 (90), `select` 93 (75),
+`message` 77 (58), `drawer` 73 (67), `column` 67 (86), `datatable` **57** (76),
+`inputnumber` 48 (43), `datepicker` 45 (—).
+
+⚠️ **Il rapporto fra le due colonne conta più dei valori.** In 35 giorni il
+repo è cresciuto di 48 `.vue` e la superficie PrimeVue di 102 import: `datatable`
+e `column` sono le **uniche due voci in calo** (−19 e −19), tutto il resto sale.
+Sono i due componenti su cui esiste un building block; gli altri non ne hanno
+uno, e crescono col repo.
+
+> ℹ️ **Come leggere questi numeri.** Sono una **fotografia datata**, non un
+> argomento: dicono dov'era la superficie in quel giorno, non cosa vada fatto.
+> La ragione per cui una lista passa da `<ListaConfigurabile>` sta nella regola
+> zero di `frontend-standards`, e resterebbe identica se questa tabella dicesse
+> altri numeri ([AGENTS.md §Regola zero](../../../../.codex/AGENTS.md)).
 
 ### 2-bis. La superficie che la prima stesura non aveva contato
 
@@ -246,14 +259,19 @@ grep -rhoE '\-\-p-[a-z0-9-]+' src --include=*.css --include=*.vue --include=*.js
 grep -rhoE '\.p-[a-z0-9-]+' src --include=*.css --include=*.vue | sort | uniq -c | sort -rn
 ```
 
-| Aggancio | Superficie | Se cede |
-| --- | --- | --- |
-| Variabili `--p-*` | **364 usi, 63 distinte, 51 file** | Il colore ripiega sul nulla: testo invisibile, sfondi trasparenti |
-| Classi interne `.p-*` | **187 usi, 48 distinte, 9 file** | Lo stile si stacca e il componente torna nudo |
+| Aggancio | Superficie 2026-07-29 | **Superficie 2026-09-02** | Se cede |
+| --- | --- | --- | --- |
+| Variabili `--p-*` | 364 usi, 63 distinte, 51 file | **374 usi, 65 distinte, 54 file** | Il colore ripiega sul nulla: testo invisibile, sfondi trasparenti |
+| Classi interne `.p-*` | 187 usi, 48 distinte, 9 file | **194 usi, 49 distinte, 11 file** | Lo stile si stacca e il componente torna nudo |
 
-Le più agganciate sono `--p-primary-color` (65), `--p-text-muted-color` (58) e,
-sul fronte classi, `.p-menu-item-link` + `.p-tieredmenu-item-link` (26 fra le
+Le più agganciate **al 2026-09-02** sono `--p-primary-color` (63),
+`--p-text-muted-color` (61) e `--p-text-color` (24); sul fronte classi
+`.p-button` (19) e `.p-menu-item-link` + `.p-tieredmenu-item-link` (26 fra le
 due) — cioè **il kebab**, che sta in ogni riga di ogni lista.
+
+⚠️ Entrambi gli agganci **salgono**, e sono quelli che nessun build segnala. La
+deriva è lenta (+10 usi e +7 usi in 35 giorni) ma il verso è quello: il debito
+di [[feedback_css_centralizzazione]] non si sta riassorbendo da sé.
 
 ⚠️ Nota di merito, non di migrazione: le 364 variabili dirette contraddicono la
 regola di casa «mai `--p-*` diretto, sempre `--app-*` da `theme.css`»
@@ -288,6 +306,11 @@ done
 
 > Questo lo dobbiamo alla migrazione `TabView`→`Tabs` e `Dropdown`/`Calendar`
 > completata il 2026-07-22: ci ha già portati fuori dal campo minato.
+
+✅ **Ri-eseguito il 2026-09-02: tutti e otto a zero**, più i due controlli di
+non-regressione di `frontend-standards` §«Residui PrimeVue 3» (`tabview`,
+`inputswitch`) — anch'essi **zero**. In 35 giorni di sviluppo nessun componente
+rimosso o deprecato è rientrato: il campo resta sgombro.
 
 ---
 
@@ -757,13 +780,62 @@ Obiezione di Tid, giusta. Risposta con numeri invece che con rassicurazioni.
 
 941 import su 47 componenti distinti, ma **11 coprono l'80%**:
 
-| Gruppo | Import | Difficoltà di sostituzione |
-| --- | --- | --- |
-| Primitivi (`tag`, `button`, `inputtext`, `select`, `toggleswitch`, `inputnumber`, `message`) | ~449 | **Bassa** — ce li ha qualunque libreria: rinomina + mappatura prop |
-| `datatable` + `column` | **164 in 77 file** | **Alta** — è il componente che nessuno replica bene |
-| Coda lunga (22 componenti usati in ≤2 posti) | poche decine | Trascurabile |
+| Gruppo | Import 2026-07-29 | **Import 2026-09-02** | Difficoltà di sostituzione |
+| --- | --- | --- | --- |
+| Primitivi (`tag`, `button`, `inputtext`, `select`, `toggleswitch`, `inputnumber`, `message`) | ~449 | **586** | **Bassa** — ce li ha qualunque libreria: rinomina + mappatura prop |
+| `datatable` + `column` | 164 in 77 file | **124 in 57 file** | **Alta** — è il componente che nessuno replica bene |
+| Coda lunga (componenti usati in ≤2 posti) | 22 componenti, poche decine | **21 componenti**, poche decine | Trascurabile |
 
 **Il costo di lasciare PrimeVue è quasi tutto in DataTable.**
+
+⭐ **Ri-misurato il 2026-09-02, e le due righe si muovono in verso opposto.**
+`datatable`+`column` è calato di 40 import e 20 file — è il lavoro del Gruppo A,
+e si vede. I primitivi sono saliti di **137**, cioè più di quanto DataTable sia
+sceso: la superficie complessiva **cresce** mentre la parte cara si assottiglia.
+
+⚠️ Non cambia la conclusione della riga in grassetto — la difficoltà dei
+primitivi resta bassa e quella di DataTable resta alta, e sono proprietà dei
+componenti, non dei conteggi. Cambia **dove sta il numero che cresce**, ed è la
+metà del §8-bis che il piano non ha mai sviluppato: vedi la sezione nuova qui
+sotto.
+
+### I primitivi — la riga che questo piano non ha mai sviluppato
+
+Il paragrafo «La mossa» (qui sotto) dice, in una riga sola: *«stessa logica per i
+primitivi, con un sottile strato nostro davanti dove capita di passarci»*.
+**Quella riga non ha mai avuto un inventario, un criterio, né una spunta**, e nel
+frattempo i primitivi sono passati da ~449 a 586 import.
+
+Cosa c'è già davanti ai primitivi, **misurato il 2026-09-02** (file che li usano):
+
+| Strato di casa | Primitivo che copre | File |
+| --- | --- | --- |
+| `FormFooter` | `button` (coppia Annulla/Salva) | 81 |
+| `LookupSelect` | `select` | 72 |
+| `PageActionsBar` | `button` (azioni di pagina) | 70 |
+| `RowActionsMenu` | `button` + `menu` (azioni di riga) | 49 |
+| `AppDialog` | `dialog` | 43 |
+| `AttivoTag` | `tag` (il caso attivo/non attivo) | 28 |
+| `DrawerActionsBar` | `button` (azioni di drawer) | 18 |
+| `NewButton` | `button` | 3 |
+| `AppDrawer` | `drawer` | 2 |
+| `EntityFormField` | `inputtext` & c. | 1 |
+| — | `inputtext` (97), `datepicker` (45), `toggleswitch` (43), `inputnumber` (48), `message` (77), `textarea` (21), `checkbox` (19) | **nessuno** |
+
+⭐ **Lo strato non è assente: è a due velocità.** Dove c'è un building block di
+*comportamento* — una barra di azioni, un footer, un lookup — la copertura è
+larga (70-81 file) e nessuno importa più il primitivo a mano. Dove servirebbe un
+wrapper di *presentazione pura* (`AttivoTag`, `NewButton`, `AppDrawer`,
+`EntityFormField`) la copertura è 1, 2, 3, 28 file: **quei quattro sono estratti
+e non adottati**, che è la forma peggiore — una seconda implementazione della
+stessa cosa accanto alla prima ([[feedback_duplicazione_nasconde_il_bug]]).
+
+⛔ **Non è una lista di lavoro, ed è deliberato.** I sette primitivi senza casa
+sono ~350 import: incapsularli è un progetto di migrazione, cioè esattamente
+quello che «La mossa» dice di **non** aprire. La cosa che questa sezione
+stabilisce è più piccola e più utile: **prima di scrivere un wrapper nuovo, si
+guarda perché i quattro esistenti non sono stati adottati** — un quinto wrapper
+inadottato non abbassa nessun costo, lo raddoppia.
 
 ### Il numero scomodo, ed è anche la leva
 
@@ -817,31 +889,62 @@ mai**.
 Totale file con `DataTable` grezza: **77**, di cui **6** sono i
 wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 
-> 📉 **Ri-misurato: i file con `DataTable` grezza sono scesi a 56 il 2026-08-02
-> e a 48 a fine 03-08.** I 77 sono la fotografia del 2026-07-29 e restano qui
-> perché sono il metro con cui è stato dimensionato il lavoro; il numero vivo è
-> quello sopra. Il calo è più grande del numero di conversioni perché alcune
-> pagine montavano più `DataTable` nello stesso file (`DashboardCompetenzaView`
-> ne aveva tre). Le 48 rimaste sono in larghissima parte **Gruppo B**, che non
-> va convertito: il loro posto è `RigheMasterDetailTable`/`SearchDetailTable`.
+> 📉 **Ri-misurato: i file con `DataTable` grezza sono scesi a 56 il 2026-08-02,
+> a 48 a fine 03-08, risaliti a 57 il 30-08 e ancora 57 al 2026-09-02.** I 77
+> sono la fotografia del 2026-07-29 e restano qui perché sono il metro con cui è
+> stato dimensionato il lavoro; il numero vivo è quello sopra. Il calo di agosto
+> è più grande del numero di conversioni perché alcune pagine montavano più
+> `DataTable` nello stesso file (`DashboardCompetenzaView` ne aveva tre).
+>
+> ⚠️ **Fermo a 57 non vuol dire fermo**: fra il 30-08 e il 02-09 sono state
+> convertite `EmittenteFiscaleBillingAccountTab` (§Gruppo B, 01-09) e ne sono
+> nate altrettante altrove. Il totale sta piatto perché entrate e uscite si
+> compensano — è il motivo per cui questa riga da sola non dice se il lavoro
+> avanza, e vanno guardati i due denominatori separati.
 >
 > Contro cosa verificarlo, visto che i denominatori in questo documento sono
 > **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
 >
-> | Misura | 02-08 | **03-08 (fine)** | Cos'è |
-> |---|---|---|---|
-> | codici seedati (`ui.lista_definizione`) | 33 | **43** | le liste configurate a DB |
-> | righe nel registro del presidio (`_LISTE`) | 33 | **43** | devono coincidere con la riga sopra, sempre |
-> | file consumer che montano `<ListaConfigurabile>` | 32 | **40** | meno dei codici: `ResiCodaTable` ne serve **due** con `:codice` dinamico, e `DashboardCompetenzaView` ne monta **tre** |
-> | file del Gruppo A convertiti | 22 / 34 | **30 / 34** | il denominatore dell'inventario qui sotto; i 4 rimasti sono fermi per decisione 4 |
-> | file con `DataTable` grezza | 56 | **48** | scende anche per conversioni fuori Gruppo A |
+> | Misura | 02-08 | 03-08 (fine) | **02-09** | Cos'è |
+> | --- | --- | --- | --- | --- |
+> | codici seedati (`ui.lista_definizione`) | 33 | 43 | **55** | le liste configurate a DB |
+> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | **54** ⏳ | devono coincidere con la riga sopra **a cantiere chiuso** |
+> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | **55** | meno dei codici: `ResiCodaTable` ne serve **due** con `:codice` dinamico, e `DashboardCompetenzaView` ne monta **tre** |
+> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | **31 / 35** | il denominatore dell'inventario qui sotto; i 4 rimasti sono fermi per decisione 4 |
+> | file con `DataTable` grezza | 56 | 48 | **57** | sale anche per liste nuove nate fuori standard |
 >
-> Comandi per rifare le prime tre in un colpo:
+> ⏳ **Le prime due righe divergono di uno, ed è cantiere aperto** (confermato da
+> Tid il 2026-09-02). Lo scarto è `vendite.famiglie_documento` (id 55, seedata il
+> 2026-09-01, `vista_sql = vw_famiglie_documento_lista`): è a catalogo, non è
+> ancora nel registro `_LISTE` di
+> `apps/core/tests/test_liste_configurabili_seed.py`, e non ha ancora un consumer
+> `<ListaConfigurabile codice="…">` — oggi il codice è usato come **vocabolario**
+> da `EmittenteFiscaleBillingAccountTab` e `RegistroNumerazioneDrawer`. Fa parte
+> del cantiere dei **registri di numerazione**, ed è un seed arrivato prima del
+> suo consumer.
+> ⚠️ Le altre due seedate senza consumer statico — `vendite.resi_da_accreditare`,
+> `vendite.resi_da_riconsegnare` — sono i due `:codice` dinamici di
+> `ResiCodaTable`, e sono a posto.
+> ⇒ **La riga di destra resta l'invariante**, ma si verifica a cantiere chiuso:
+> il momento in cui deve tornare a coincidere è quando la lista prende il suo
+> consumer. Fino ad allora la divergenza è **attesa e datata**, non un difetto —
+> e questa nota esiste perché fra un mese non lo sembri.
+>
+> Comandi per rifare le misure, **tutte** (aggiornati il 2026-09-02: la nota sui
+> «+3 falsi positivi in commento» non vale più — oggi il conteggio è netto):
 >
 > ```bash
-> tail -n +2 db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | grep -c .
-> grep -rl "<ListaConfigurabile" frontend/src --include=*.vue | wc -l   # +3 falsi positivi: sono citazioni in commento
+> # i tre denominatori
+> awk 'NR>1 && NF' db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | wc -l
+> grep -rl "<ListaConfigurabile" frontend/src --include=*.vue | wc -l
 > grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue | wc -l
+>
+> # l'invariante seed ↔ presidio, che il 02-09 è rotta di 1
+> awk -F',' 'NR>1 && NF {print $2}' \
+>   db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | sort > /tmp/seed.txt
+> grep -oE '"[a-z_]+\.[a-z_0-9]+"' backend/apps/core/tests/test_liste_configurabili_seed.py \
+>   | tr -d '"' | sort -u > /tmp/presidio.txt
+> comm -23 /tmp/seed.txt /tmp/presidio.txt      # seedate e NON presidiate
 > ```
 
 #### Cosa serve davvero per convertire una lista (leggere prima di iniziare)
@@ -913,6 +1016,26 @@ generatore (più sotto), non per cui va temuto.
 sono spuntabili «di passaggio» come le altre —
 `ArticoloBomDrawer`, `ContrattiBillingAccountDrawer`, `ContrattoRigheDrawer`,
 `OffertaEccezioniDrawer`.
+
+> ⚠️ **E due di quelle quattro contraddicono il criterio riscritto il
+> 2026-09-01** (rilevato il 02-09). La seconda domanda del §Gruppo B dice
+> *«sono le **righe** del documento che la contiene (righe ordine, **componenti
+> BoM**, righe reso)?»* ⇒ Gruppo B. Ma `ArticoloBomDrawer` **sono** i componenti
+> BoM e `ContrattoRigheDrawer` **sono** le righe del contratto: per il criterio
+> nuovo stanno in Gruppo B, per la tabella qui sotto sono in Gruppo A fermi per
+> decisione 4.
+>
+> ⛔ **Non riclassificati d'ufficio**, ed è la stessa disciplina con cui il
+> criterio è stato riscritto invece di spostare una riga: qui la contraddizione è
+> fra il criterio e **la tabella che lo precede**, quindi o si sposta la coppia in
+> Gruppo B (e il denominatore del Gruppo A torna 33), o si dichiara perché una
+> lista di righe con endpoint proprio resta Gruppo A. È una decisione, non una
+> svista da correggere di passaggio.
+>
+> ℹ️ Le altre due (`ContrattiBillingAccountDrawer`, `OffertaEccezioniDrawer`)
+> non hanno il problema: la prima è un tab-lista su entità con vita propria
+> (prima domanda ⇒ Gruppo A, oggi la casa è `useDrawerTabLista`), la seconda è
+> un'eccezione di prezzo con endpoint suo.
 
 #### Il generatore: `scripts/gen_seed_lista.py`
 
@@ -1029,6 +1152,80 @@ fuori. Fonderle produrrebbe una lista sbagliata e `codice` duplicati.
 - `core/components/ListaConfigurabile.vue`
 - `core/components/RigheMasterDetailTable.vue`
 - `core/components/SearchDrawer.vue`
+
+#### ⚠️ L'inventario qui sotto è più vecchio del repo — riconciliato il 2026-09-02
+
+Le due tabelle che seguono coprono **46** dei **57** file misurati oggi (35
+Gruppo A + 36 Gruppo B − `LottoDrawer` contato due volte, + 6 dello strato = 76
+righe che valgono 46 file vivi). **Undici file non stanno in nessuna delle due**,
+e la conciliazione va fatta prima di usare l'inventario come lista di spunta:
+
+| File fuori inventario | Da dove arriva |
+| --- | --- |
+| `pagamenti/components/CanaliIncassoSearchTable.vue` | cantiere incassi — porta già in testa il proprio debito dichiarato: *«NON ha un seed in `ui.lista_definizione`»* |
+| `pagamenti/components/DistintaDrawer.vue` | cantiere incassi |
+| `pagamenti/components/RegistraDistintaDialog.vue` | cantiere incassi |
+| `pagamenti/components/SistemazioneDrawer.vue` | cantiere incassi |
+| `anagrafiche/components/TitoliIvaSoggettoDrawer.vue` | titoli IVA (I7/D10) |
+| `anagrafiche/components/TitoloIvaDrawer.vue` | titoli IVA (I7/D10) |
+| `anagrafiche/views/TitoliIvaSfondatiView.vue` | titoli IVA (Q4) |
+| `vendite/resi/components/AccreditoEsitoDialog.vue` | resi — esito giro di accredito (F2) |
+| `vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue` | situazione merce — **quattro** `DataTable` nello stesso file |
+| `vendite/components/ListiniSearchTable.vue` | ✅ già convertita 01-08: **residuo** nella riga di espansione (versioni) |
+| `vendite/components/LottoDrawer.vue` | ✅ già convertito 22-08: **residuo**, motivo dichiarato in commento a riga 17 |
+
+⚠️ **Le ultime due righe non sono un errore di spunta.** Un file può montare
+`<ListaConfigurabile>` **e** una `DataTable` grezza: il `grep` degli import conta
+i file, non le tabelle. ⇒ Il contatore di `frontend-standards` §Regola zero
+resta valido come **campanello** (se sale, hai aggiunto una lista fuori
+standard), ma **non** è il conteggio delle liste da convertire, e non lo è mai
+stato. Confonderli è il quarto denominatore.
+
+⛔ **La classificazione dei nove file nuovi non è fatta qui**, ed è deliberato:
+richiede il criterio in tre domande del §Gruppo B applicato caso per caso, e due
+di essi (`SituazioneMerceContenuto`, `AccreditoEsitoDialog`) toccano la terza
+domanda — quella senza risposta. Va fatta **prima** del prossimo lotto, non
+mentre lo si esegue.
+
+#### 🔴 Consegna aperta — il legame catalogo ↔ payload non ha presidio su 39 liste
+
+> Rilievo del **team DB**, 2026-09-02, alla chiusura di
+> [brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md).
+> Non appartiene a quel lotto: vale per tutte le liste senza vista.
+
+Il guard DB sui `campo_sorgente`
+(`trgfn_ui_lista_colonna_a10_valida_campo_sorgente`) **si ferma subito quando la
+lista non dichiara una `vista_sql`**. Su quelle liste nessuno verifica che i
+`campo_sorgente` a catalogo esistano davvero nel payload dell'endpoint.
+
+⚠️ **Se un endpoint rinomina un campo non fallisce niente**: cella vuota a video
+e colonna vuota nell'export, in silenzio. È la classe di difetto più cara di
+questo repo — quella che non dà errore. E non è teorica: le quattro liste `ui`
+appena seedate hanno **sei** campi in questa condizione (`colonne_count`,
+`preset_riferimento`, `colonna_etichetta`, `colonna_codice`,
+`profilo_accesso_codice`, `livello_accesso`), tutti prodotti da JOIN o calcolati
+dal service.
+
+⭐ **Perimetro: 43 liste su 59** non dichiarano una vista — solo 16 ce l'hanno
+(misurato il 2026-09-02 su `origin/Tito-dev`, seed `ui` compreso: `vista_sql`
+NULL o vuota in `lista_definizione.csv`). Il presidio possibile è **uno solo ed è
+lato BE**: un test che confronti i `campo_sorgente` a catalogo con le chiavi
+della proiezione del repository che serve quella lista.
+
+```bash
+git show origin/Tito-dev:db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv \
+  | awk -F',' 'NR>1 && NF {tot++; if ($5=="NULL" || $5=="") senza++} \
+               END {print senza" senza vista su "tot}'
+```
+
+⇒ **Vale per tutte in una volta.** Farlo lista per lista, mentre si converte,
+significa scriverne 43 versioni e dimenticarne alcune — che è il modo in cui i
+presidi di questo repo diventano verdi per sottrazione. Cantiere suo, non un
+pezzo della conversione.
+
+⚠️ Il rapporto è **il contrario di come suona**: la lista con la vista è
+l'eccezione (16), quella senza è la norma (43). Un presidio che coprisse le sole
+liste «con vista» presidierebbe poco più di un quarto del catalogo.
 
 #### Gruppo A — liste vere (35 file, hanno il paginator)
 
@@ -2153,6 +2350,50 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-09-02 · Ri-misura di tutta la superficie, e tre cose che i numeri fanno vedere
+
+Passata di sole **misure**, senza toccare una riga di frontend: §2, §2-bis, §3,
+§8-bis e i denominatori dell'inventario sono stati ri-eseguiti sul repo di oggi.
+I valori stanno nelle rispettive sezioni; qui c'è solo ciò che il confronto con
+il 2026-07-29 mette in evidenza.
+
+**1. La superficie cresce, ma non dove costa.** `datatable`+`column` è passato da
+164 import in 77 file a **124 in 57 file**; i sette primitivi da ~449 a **586**.
+In 35 giorni il repo è cresciuto di 48 `.vue` (335 → 383) e sono le uniche due
+voci in calo di tutta la tabella. ⇒ Il lavoro del Gruppo A si vede nel numero
+caro; la crescita si è spostata sui primitivi, che è il gruppo a difficoltà
+bassa — ma è anche **la riga del piano che non è mai stata sviluppata**, e ora
+ha una sezione sua in §8-bis.
+
+**2. Seed ↔ presidio divergono di 1, ed è cantiere aperto.** 55 codici in
+`ui.lista_definizione`, **54** righe nel registro `_LISTE`: lo scarto è
+`vendite.famiglie_documento`, seedata il 2026-09-01, ancora senza consumer
+`<ListaConfigurabile>` — oggi il codice è vocabolario per il cantiere dei
+registri di numerazione. ⚠️ Confermato da Tid il 02-09: **in costruzione, non una
+regressione**. La riga «devono coincidere» resta l'invariante, ma il momento in
+cui si verifica è la chiusura del cantiere, non oggi.
+
+**3. Il contatore della regola zero non è il conteggio delle liste da
+convertire**, e per tre giorni è sembrato che lo fosse. 57 il 30-08, 57 il 02-09:
+piatto, mentre nel mezzo `EmittenteFiscaleBillingAccountTab` veniva convertita
+(01-09) e altrettante liste nascevano altrove. ⚠️ E **due file già convertiti
+compaiono ancora nel `grep`** — `ListiniSearchTable` (riga di espansione) e
+`LottoDrawer` (residuo dichiarato in commento) — perché un file può montare
+`<ListaConfigurabile>` **e** una `DataTable`: il `grep` conta i file, non le
+tabelle. ⇒ Resta un ottimo **campanello** (se sale, è nata una lista fuori
+standard) e un pessimo denominatore.
+
+⛔ **Nessuna riclassificazione fatta in questa passata**, e non per prudenza: le
+due cose emerse — gli **11 file fuori inventario** e la coppia
+`ArticoloBomDrawer`/`ContrattoRigheDrawer` che il criterio del 01-09 manda in
+Gruppo B mentre la tabella li tiene in Gruppo A — sono **decisioni**, non
+aggiornamenti di conteggio. Stanno scritte dove servono (§Inventario e §Gruppo A)
+come domande aperte.
+
+⚠️ **E vale la regola zero su tutto quanto sopra**: questi numeri sono fatti
+datati. Nessuno di essi è la ragione per convertire una lista — quella sta nella
+regola zero di `frontend-standards`, e reggerebbe identica con altri numeri.
 
 ### 2026-08-24 · La settima sorella — `vendite.vw_fatture_lista` e la lista a catalogo
 

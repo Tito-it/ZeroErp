@@ -144,9 +144,14 @@ class ListaPresetAdminService:
 
     # Scopo: Lista preset di una lista. 404 (E_UI_LISTA_NON_TROVATA) se
     #        lista_id non esiste o non e' attivo.
-    def list_preset(self, lista_id: int) -> list[dict[str, Any]]:
+    # ⭐ Forma `{results, count}` — vedi la nota su `list_colonne_admin`:
+    #    conteggio da query SUA, mai `len(results)`.
+    def list_preset(self, lista_id: int) -> dict[str, Any]:
         self._guard_lista_exists(lista_id)
-        return self._repo.list_preset_by_lista(lista_id)
+        return {
+            "results": self._repo.list_preset_by_lista(lista_id),
+            "count": self._repo.count_preset_by_lista(lista_id),
+        }
 
     # Scopo: Dettaglio singolo preset. 404 (E_UI_PRESET_NON_TROVATO) se
     #        l'id non esiste. Usato da get post-create / post-update.

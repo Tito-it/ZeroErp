@@ -238,6 +238,7 @@
       "profili-reparto": "Profili Reparto",
       "permessi": "Permessi",
       "emittenti-fiscali": "Emittenti Fiscali",
+      "famiglie-documento": "Famiglie di documento",
       "matrici": "Matrici",
       "matrice-utilities-ruoli": "Matrice Utilities/Ruoli",
       "matrice-indirizzi-ruoli": "Matrice Indirizzi/Ruoli",
@@ -670,6 +671,7 @@
   },
   "amministrazione": {
     "registri_numerazione": {
+      "slot_occupato": "slot già occupato",
       "help": "I registri di numerazione di questo emittente: uno per famiglia di documento (DDT, ordini, commesse, resi) e piu' d'uno per le fatture. Qui si governa la FORMA del numero — prefisso, suffisso e quante cifre — che e' l'unico posto in cui si puo' cambiare.",
       "filtro_placeholder": "Cerca per codice, descrizione o prefisso",
       "nuovo_tooltip": "Nuovo registro di numerazione",
@@ -701,6 +703,42 @@
       "col_anno": "Anno",
       "col_ultimo_numero": "Ultimo numero",
       "col_ultima_data": "Ultima data"
+    },
+    "famiglie_documento": {
+      "new": "Nuova famiglia",
+      "search_placeholder": "Cerca per codice, descrizione o prefisso",
+      "drawer_title_new": "Nuova famiglia di documento",
+      "drawer_title_edit": "Famiglia di documento",
+      "sezione_dove_vive": "Dove vive il documento",
+      "sezione_forma": "Forma con cui nascono i registri",
+      "sezione_stato": "Stato",
+      "schema_tabella": "Schema",
+      "nome_tabella": "Tabella",
+      "codice_immutabile": "Il codice non si cambia: è il bersaglio del riferimento dei registri, e cambiarlo li staccherebbe tutti.",
+      "serie_hint": "Vuota = questa famiglia non gestisce le serie. Se la compili, quella colonna deve distinguere il numero anche sul documento.",
+      "forma_hint": "Sono i valori con cui NASCE un registro di questa famiglia: un registro creato a mano e uno creato dal provisioning devono uscire con la stessa forma.",
+      "ammette_regole_fiscali": "Ammette le regole fiscali",
+      "fiscali_hint": "Solo la fattura ammette i limiti di emissione e una politica data non neutra: una famiglia creata da qui nasce senza, ed è un limite del modello, non della maschera.",
+      "presidia_hint": "Se vera, un documento non prende un numero quando la sua data è anteriore a quella dell'ultimo già numerato sullo stesso sezionale. ⚠️ È una domanda diversa da quella qui sotto, anche quando la risposta coincide.",
+      "attivi_suffisso": "attivi",
+      "serie_assente": "non gestita",
+      "serie_tutte": "Serie: tutte",
+      "serie_si": "Con serie",
+      "serie_no": "Senza serie",
+      "action_disattiva": "Disattiva",
+      "action_attiva": "Riattiva",
+      "conferma_disattiva": "Disattivare la famiglia {codice}? Esce dai presidi che la iterano, e i suoi documenti smettono di trattenere il cliente dove sono stati numerati.",
+      "conferma_attiva": "Riattivare la famiglia {codice}?",
+      "stato_aggiornato": "Stato della famiglia aggiornato.",
+      "salvata": "Famiglia di documento salvata.",
+      "salvata_con_registri": "Famiglia creata, e con lei {registri} registri di numerazione sugli emittenti che non ne avevano uno.",
+      "disattiva_blocco": {
+        "ha_registri_attivi": "La famiglia {codice_interno} ha ancora {registri} registri di numerazione accesi: si spengono prima quelli. Una famiglia spenta esce dai presidi che la iterano, e i suoi registri resterebbero a numerare senza piu' nessuno che li guardi.",
+        "ha_documenti_numerati": "La famiglia {codice_interno} ha gia' {documenti} documenti numerati in {tabella}: spegnerla li farebbe uscire dal presidio sul cambio emittente del cliente, e quei documenti smetterebbero di trattenere il cliente dove sono stati numerati. I numeri gia' usciti non si disfano."
+      },
+      "struttura_blocco": {
+        "ha_registri": "Le colonne che dicono dove vive il documento non si cambiano: {registri} registri di numerazione portano gia' dentro di se' i default della famiglia {codice_interno}. Si cambia prima cio' che dipende da loro, o si crea una famiglia nuova."
+      }
     },
     "registri_fatturazione": {
       "disattiva_blocco": {
@@ -2267,6 +2305,20 @@
       }
     },
     "famiglie_documento": {
+      "col_codice_interno": "Codice",
+      "col_descrizione": "Descrizione",
+      "col_tabella_documento": "Tabella",
+      "col_colonna_numero": "Colonna del numero",
+      "col_colonna_serie": "Colonna della serie",
+      "col_colonna_billing_account": "Colonna del cliente",
+      "col_gestisce_serie": "Gestisce le serie",
+      "col_presidia_data_documento": "Presidia la data",
+      "col_prefisso_default": "Prefisso di nascita",
+      "col_lunghezza_default": "Cifre di nascita",
+      "col_n_registri": "Registri",
+      "col_n_registri_attivi": "Registri attivi",
+      "col_attivo": "Attiva",
+      "col_data_insert": "Creazione",
       "FATTURA": "Fatture",
       "DDT": "DDT",
       "ORDINE": "Ordini",
@@ -4464,7 +4516,9 @@
     "export_success": "Esportazione completata",
     "preset_aggiornato_messaggio": "La configurazione di questa lista è stata aggiornata da un amministratore. Le novità non sono ancora visibili nella tua vista personale.",
     "preset_aggiornato_vedi_novita": "Vedi novità",
-    "preset_aggiornato_ignora": "Ignora"
+    "preset_aggiornato_ignora": "Ignora",
+    "troncamento_titolo": "Elenco incompleto — non visualizzato",
+    "troncamento_testo": "La lista è configurata come non paginata, ma sono arrivate {righe} righe su {total}. Mostrarle farebbe passare una parte per il tutto, quindi la tabella non viene disegnata. Segnalare l'anomalia: il dettaglio è nella console del browser."
   },
   "export_dialog": {
     "title": "Esporta lista",

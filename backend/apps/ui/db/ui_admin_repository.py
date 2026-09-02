@@ -26,6 +26,8 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.core.db._helpers import fetchone_scalar
+
 
 # SELECT comune per ui.lista_preset con display fields (profilo accesso +
 # emittente fiscale via LEFT JOIN). Riusato da `list_preset_by_lista` e
@@ -132,6 +134,23 @@ class UiAdminRepository:
             )
             cols = [c[0] for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Conta TUTTE le definizioni (incluse disattivate), con lo stesso
+    #        perimetro di `list_definizioni_admin` ma senza passare dalle righe.
+    # ⛔ E' una query SEPARATA di proposito, e non un `len()` sul risultato
+    #    della lista: il conteggio serve al frontend come ASSERZIONE che le
+    #    righe consegnate siano tutte (guard `troncamentoSospetto` di
+    #    `<ListaConfigurabile>` in modalita' `paginata: false`). Derivarlo dalle
+    #    righe lo renderebbe una tautologia — direbbe sempre di si', anche il
+    #    giorno in cui qualcuno mettesse un LIMIT nella SELECT sopra. E'
+    #    l'INDIPENDENZA dalle righe a fare il presidio, non il numero.
+    # ⚠️ Il perimetro deve restare quello della lista: se un giorno
+    #    `list_definizioni_admin` prendesse un filtro, va preso anche qui, o le
+    #    due grandezze divergono per un motivo che non e' un troncamento.
+    def count_definizioni_admin(self) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM ui.lista_definizione")
+            return int(fetchone_scalar(cursor))
 
     # Scopo: Restituisce la riga di lista_definizione per id, oppure None
     #        se inesistente o non attivo. Usato per validare l'id passato
@@ -350,6 +369,23 @@ class UiAdminRepository:
             cols = [c[0] for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
+    # Scopo: Conta le colonne di una lista con lo STESSO perimetro di
+    #        `list_colonne_by_lista_admin` (stessa tabella, stesso WHERE),
+    #        senza passare dalle righe.
+    # ⛔ Query separata, non `len()` sul risultato della lista: vedi la nota
+    #    estesa su `count_definizioni_admin`. E' l'indipendenza dalle righe a
+    #    fare il presidio, non il numero.
+    # ⚠️ Il `WHERE lista_id = %s` deve restare gemello di quello della lista:
+    #    se uno dei due prendesse un filtro in piu', le due grandezze
+    #    divergerebbero per un motivo che non e' un troncamento.
+    def count_colonne_by_lista_admin(self, lista_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM ui.lista_colonna WHERE lista_id = %s",
+                [lista_id],
+            )
+            return int(fetchone_scalar(cursor))
+
     # Scopo: Restituisce la colonna per id (campi completi, anche
     #        disattivate). Usato dal service admin Fase 2 per get
     #        post-mutazione e validazione id update/delete.
@@ -561,6 +597,22 @@ class UiAdminRepository:
                 self._normalize_preset_jsonb(dict(zip(cols, row)))
                 for row in cursor.fetchall()
             ]
+
+    # Scopo: Conta i preset di una lista con lo STESSO perimetro di
+    #        `list_preset_by_lista` (`p.lista_id = %s`), senza passare dalle
+    #        righe. ⛔ Query separata, non `len()`: vedi `count_definizioni_admin`.
+    # ⚠️ La lista passa da `_PRESET_SELECT_SQL`, che ha dei LEFT JOIN per i
+    #    display field: sono LEFT apposta, quindi non tolgono righe e il
+    #    `count` sulla sola tabella e' l'equivalente esatto. Se uno di quei
+    #    JOIN diventasse INNER, questo conteggio andrebbe rifatto con lo
+    #    stesso FROM — o direbbe piu' righe di quante la lista ne consegna.
+    def count_preset_by_lista(self, lista_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM ui.lista_preset p WHERE p.lista_id = %s",
+                [lista_id],
+            )
+            return int(fetchone_scalar(cursor))
 
     # Scopo: Restituisce il preset per id (con display fields), None se
     #        inesistente. Usato dal service per get post-mutazione.
@@ -790,6 +842,30 @@ class UiAdminRepository:
             )
             cols = [c[0] for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Conta i permessi di una lista con lo STESSO perimetro di
+    #        `list_permessi_by_lista`, senza passare dalle righe.
+    # ⛔ Query separata, non `len()`: vedi `count_definizioni_admin`.
+    # ⭐ Qui il FROM e' RIPETUTO per intero, JOIN compresi, e non e' pigrizia:
+    #    quelli di `list_permessi_by_lista` sono INNER, quindi POSSONO togliere
+    #    righe. Un `count(*)` sulla sola `lista_colonna_permesso` conterebbe
+    #    anche i permessi che i JOIN scartano, direbbe un numero piu' grande di
+    #    quello che la lista consegna, e farebbe scattare il guard
+    #    anti-troncamento su un troncamento che non c'e'. Il conteggio dev'essere
+    #    indipendente dalle RIGHE, non dal PERIMETRO.
+    def count_permessi_by_lista(self, lista_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*)
+                  FROM ui.lista_colonna_permesso lcp
+                  JOIN ui.lista_colonna          lc ON lc.id = lcp.colonna_id
+                  JOIN config.profili_accesso    pa ON pa.id = lcp.profilo_accesso_id
+                 WHERE lc.lista_id = %s
+                """,
+                [lista_id],
+            )
+            return int(fetchone_scalar(cursor))
 
     # Scopo: UPSERT permesso colonna su (colonna_id, profilo_accesso_id).
     #        Vincolo UNIQUE garantisce 1 sola riga per coppia. Ritorna
