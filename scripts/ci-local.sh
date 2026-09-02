@@ -43,9 +43,12 @@
 #
 # PREREQUISITI: `sudo -u postgres` (per creare il database) e `db/internal.env`
 #   per host/porta.
-# ⚠️ Liquibase si invoca SEMPRE via `scripts/liquibase5.sh`, mai col binario nel
-#   PATH: quello e' `/opt/liquibase` → 5.0.2, un residuo. Il wrapper prende
-#   `tools/liquibase/current` (5.0.3, la stessa della CI) e il driver JDBC
+# ⚠️ Liquibase si invoca SEMPRE via `scripts/liquibase5.sh`, mai un binario nel
+#   PATH: dal 02-09-2026 nel PATH non ce n'e' piu' nessuno (l'installazione di
+#   sistema `/opt/liquibase-5.0.2` e i suoi symlink sono stati rimossi), cosi'
+#   un `liquibase` nudo fallisce subito invece di far girare in silenzio una
+#   versione vecchia e senza driver. Il wrapper prende
+#   `tools/liquibase/current` (5.0.4, la stessa della CI) e il driver JDBC
 #   versionato nel repo (`tools/liquibase/jdbc/postgresql-42.7.10.jar`).
 # ------------------------------------------------------------
 set -euo pipefail

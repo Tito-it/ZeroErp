@@ -700,3 +700,12 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 700,63,eccedenza,Eccedenza,,eccedenza,informazione,numeric,currency_eur,,80,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_eccedenza,100
 701,62,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
 702,54,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+703,64,livello,Livello,,livello,identificatore,string,,140,10,left,,10,f,f,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_livello,10
+704,64,oggetto,Merce,,,informazione,string,,320,20,left,,10,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_oggetto,20
+705,64,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+706,65,data,Data,,data_movimento,identificatore,date,date_short,110,10,left,,10,f,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_data,10
+707,65,movimento,Movimento,,tipo_movimento,informazione,string,,130,20,left,,10,f,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_movimento,20
+708,65,imponibile,Imponibile,,imponibile,informazione,numeric,currency_eur,130,30,right,,10,f,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_imponibile,10
+709,65,documento,Documento,,,informazione,string,,200,40,left,,10,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_documento,30
+710,65,motivo,Motivo,,motivo,informazione,string,,240,50,left,,10,f,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_motivo,40
+711,65,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50

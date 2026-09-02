@@ -53,6 +53,19 @@ jobs:
           --health-retries 30
 
     
+    env:
+      # ⚠️ Presidio percorsi (aggiunto 02-09-2026, Liquibase 5.0.4). Anticipa il
+      #   default che una major futura adottera'. PERIMETRO MISURATO, non
+      #   dedotto dalla documentazione: fallisce — ValidationFailedException,
+      #   exit 1, con nome del file e del changeSet — sui percorsi con `..`
+      #   risolti sulla RADICE del search path che da essa ESCONO.
+      #   ⛔ RAMO CIECO: i percorsi con `relativeToChangelogFile: true` NON
+      #   sono coperti dal flag, provato sia da argomento CLI sia da env. E'
+      #   la forma dei 192 seed di `80_data`, che infatti passano identici col
+      #   flag attivo (`calculate-checksum` = valore nel databasechangelog).
+      #   Quindi: impedisce che nasca la PRIMA forma, non copre la seconda.
+      LIQUIBASE_ALLOW_PARENT_DIRECTORY_REFERENCES: "false"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -91,7 +104,7 @@ jobs:
       - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v3.0.0
         with:
-          version: '5.0.3'
+          version: '5.0.4'
           edition: 'oss'
 
    # Istalla il driver PostgreSQL       
