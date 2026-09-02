@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
 
@@ -393,3 +393,124 @@ class TitoliIvaCatenaUpdateTests(TestCase):
             f"Chiavi accettate dal service che il repository non scrive: "
             f"{non_scrivibili}.",
         )
+
+
+class TitoliSfondatiPaginazioneTests(TestCase):
+    """La lista di presidio, paginata dal 2026-09-02.
+
+    ⭐ Prima restituiva i primi 500 e non lo diceva: dal 501-esimo caso in poi
+    una forzatura non si vedeva, su una lista che esiste per non farne sfuggire
+    nessuna. Questi test presidiano le due meta' della correzione.
+    """
+
+    def _servizio(self, righe, totale):
+        from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+
+        repo = MagicMock()
+        # ⭐ Il repository ritorna (righe, totale) da UNA valutazione: il totale
+        #    non e' una seconda query, ed e' il motivo per cui non puo'
+        #    divergere dalla pagina.
+        repo.list_titoli_sfondati.return_value = (righe, totale)
+        # ⚠️ `TitoliIvaService` costruisce il proprio repository e non lo accetta
+        #    iniettato: si sostituisce l'attributo, come fanno gli altri test di
+        #    questo modulo. Cambiare la firma del service per i test sarebbe
+        #    farsi dettare il progetto dalla prova.
+        svc = TitoliIvaService()
+        svc._repo = repo
+        return svc, repo
+
+    # Scopo: i parametri di pagina arrivano al repository come li ha dati la
+    #        view — se si perdessero per strada la lista tornerebbe a mostrare
+    #        sempre la prima pagina, e sembrerebbe che i casi siano quelli.
+    def test_i_parametri_di_pagina_arrivano_al_repository(self) -> None:
+        svc, repo = self._servizio([{"id": 1}], 1)
+        svc.list_titoli_sfondati(
+            limit=25, offset=50, order_by="eccedenza", order_dir="desc",
+        )
+        repo.list_titoli_sfondati.assert_called_once_with(
+            limit=25, offset=50, order_by="eccedenza", order_dir="desc",
+        )
+
+    # Scopo: il `count` NON e' `len(results)`. E' il numero che dice quanti casi
+    #        esistono davvero: derivarlo dalla pagina lo farebbe coincidere con
+    #        la pagina, cioe' rifarebbe esattamente il difetto corretto.
+    def test_il_totale_non_e_la_lunghezza_della_pagina(self) -> None:
+        svc, _ = self._servizio([{"id": 1}, {"id": 2}], 700)
+        esito = svc.list_titoli_sfondati(limit=2, offset=0)
+        self.assertEqual(len(esito["results"]), 2)
+        self.assertEqual(esito["count"], 700)
+
+    # Scopo: la whitelist e' chiavata sui `campo_sorgente` FISICI, che sono i
+    #        nomi che `<ListaConfigurabile>` manda in `order_by`. Chiavarla sui
+    #        codici logici e' il difetto trovato su `vendite.lotti` il 07-31.
+    def test_whitelist_chiavata_sui_campi_fisici(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _ORDER_COLS_SFONDATI
+
+        self.assertIn("eccedenza", _ORDER_COLS_SFONDATI)
+        self.assertIn("imponibile_utilizzato", _ORDER_COLS_SFONDATI)
+        # ⛔ Nessuna chiave "logica" che il frontend non manderebbe mai.
+        self.assertNotIn("utilizzato", _ORDER_COLS_SFONDATI)
+
+
+class TitoliSfondatiOrdinamentoSQLTests(TestCase):
+    """L'ORDER BY generato, letto dal SQL invece che dedotto.
+
+    🔴 Nasce da un difetto REALE introdotto e corretto il 2026-09-02: la view
+    passava `parse_list_params()["order_dir"]`, che normalizza l'assenza ad
+    `"asc"` e non e' mai `None` — quindi il `default_desc=True` del repository
+    non veniva mai raggiunto e la lista di presidio si ordinava dalla eccedenza
+    PIU' PICCOLA. Nessun errore: solo il caso piu' grave in ultima pagina, su
+    una schermata che esiste per metterlo davanti.
+    ⭐ Il test guarda il SQL perche' e' li' che il difetto viveva: qualunque
+    prova sui soli valori di ritorno sarebbe passata.
+    """
+
+    def _sql_di(self, **kwargs) -> str:
+        from apps.anagrafiche.db import titoli_iva_repository as m
+
+        catturato = {}
+
+        class _Cursore:
+            description = ()
+
+            def execute(self, sql, params=None):
+                catturato["sql"] = sql
+
+            def fetchall(self):
+                return []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        with patch.object(m.connection, "cursor", return_value=_Cursore()):
+            m.TitoliIvaRepository().list_titoli_sfondati(limit=25, offset=0, **kwargs)
+        return catturato["sql"]
+
+    # Scopo: senza indicazioni si ordina dalla PIU' GRAVE. E' il difetto sopra.
+    def test_senza_order_dir_ordina_decrescente(self) -> None:
+        sql = self._sql_di(order_by=None, order_dir=None)
+        self.assertIn("DESC NULLS LAST", sql)
+        self.assertNotIn("ASC NULLS FIRST", sql)
+
+    # Scopo: e se l'operatore chiede il contrario, lo ottiene.
+    def test_order_dir_esplicito_vince(self) -> None:
+        self.assertIn("ASC NULLS FIRST", self._sql_di(order_by=None, order_dir="asc"))
+
+    # Scopo: il tiebreak segue la direzione primaria (decisione Tid 2026-08-03),
+    #        non un `DESC` inchiodato: a parita' di eccedenza l'elenco non deve
+    #        andare al contrario di come e' stato chiesto.
+    def test_il_tiebreak_segue_la_direzione(self) -> None:
+        self.assertRegex(self._sql_di(order_by=None, order_dir="asc"), r"t\.id ASC")
+        self.assertRegex(self._sql_di(order_by=None, order_dir="desc"), r"t\.id DESC")
+
+    # Scopo: pagina e conteggio condividono lo STESSO frammento FROM+WHERE.
+    #        Se divergessero, il totale mentirebbe rispetto alle righe e il guard
+    #        anti-troncamento del frontend suonerebbe (o tacerebbe) a sproposito.
+    def test_pagina_e_conteggio_hanno_lo_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _SFONDATI_FROM_WHERE
+
+        sql = self._sql_di(order_by=None, order_dir=None)
+        self.assertIn(_SFONDATI_FROM_WHERE, sql)

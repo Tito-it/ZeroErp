@@ -36,7 +36,9 @@ from apps.core.services.service_errors import ServiceError
 _MESSAGE = "Payload titolo IVA non valido."
 
 # Tetto dichiarato della lista di presidio dei titoli sfondati (Q4).
-_SFONDATI_LIMIT = 500
+# ⛔ Il cap a 500 e' stato RIMOSSO il 2026-09-02: la lista e' paginata, e un
+# tetto silenzioso sopra una paginazione sarebbe la stessa bugia di prima con un
+# numero diverso. Il tetto per pagina lo impone `parse_list_params` (MAX_LIMIT).
 
 # Ambito dichiarato, mai dedotto da un NULL (D12 + `feedback_null_nelle_chiavi_due_forme`).
 _AMBITI: frozenset[str] = frozenset({"TUTTO", "RISTRETTO"})
@@ -104,6 +106,16 @@ class TitoliIvaService:
         for t in titoli:
             t["ambito_incompleto"] = self._ambito_incompleto(t)
         return titoli
+
+    # Scopo: Quanti titoli ha il soggetto, contati con una query SUA.
+    # ⛔ Perche' esiste invece di un `len()` sulla lista: la lista dei titoli e'
+    #    consegnata a `<ListaConfigurabile>` in modalita' non paginata, dove
+    #    `total` non e' decorazione ma l'ASSERZIONE che le righe siano tutte.
+    # ⚠️ `list_titoli_soggetto` NON e' stata cambiata di firma di proposito: la
+    #    consuma anche `soggetti_service`, che la incorpora nel dettaglio di un
+    #    soggetto e si aspetta una LISTA. L'envelope lo compone la view.
+    def count_titoli_soggetto(self, soggetto_id: str) -> int:
+        return self._repo.count_titoli_soggetto(soggetto_id)
 
     # Scopo: Dettaglio di un titolo, con ambiti e registro movimenti.
     def get_titolo(self, soggetto_id: str, titolo_id: int) -> dict[str, Any]:
@@ -190,8 +202,27 @@ class TitoliIvaService:
     #    schermata proprio quando c'e' piu' da guardare. Le righe sono ordinate
     #    per eccedenza decrescente: se il tetto morde, in cima ci sono comunque i
     #    casi peggiori.
-    def list_titoli_sfondati(self) -> list[dict[str, Any]]:
-        return self._repo.list_titoli_sfondati(limit=_SFONDATI_LIMIT)
+    # ⭐ PAGINATA dal 2026-09-02 (decisione Tid: «così è standard e non ci
+    #    pensiamo più»). Prima restituiva i primi `_SFONDATI_LIMIT` (500) e
+    #    **non lo diceva a nessuno**: su una lista di presidio significava che
+    #    dal 501-esimo caso in poi una forzatura non si vedeva, e nessuno poteva
+    #    accorgersene. Ora la pagina e' una pagina e il totale e' il totale.
+    def list_titoli_sfondati(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> dict[str, Any]:
+        # ⭐ UNA chiamata: righe e totale arrivano dalla stessa valutazione
+        #    (`COUNT(*) OVER()`), quindi non possono raccontare due popolazioni
+        #    diverse. Prima erano due query separate — scritte a mano sopra un
+        #    building block che gia' faceva questo.
+        risultati, totale = self._repo.list_titoli_sfondati(
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
+        return {"results": risultati, "count": totale}
 
     # =================================================================
     # Ambiti

@@ -38,7 +38,15 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+
+from apps.core.db._helpers import (
+    fetch_paged_with_total,
+    fetchone_scalar,
+    row_to_dict,
+    rows_to_list,
+    sql_order_direction,
+    sql_tiebreak_direction,
+)
 
 # Display field via JOIN (`feedback_display_fields_backend`): il frontend riceve
 # le descrizioni gia' risolte e non fa lookup client-side.
@@ -80,6 +88,23 @@ _TITOLO_COLS = """
                       FROM anagrafiche.soggetti_titoli_iva_ambiti a
                      WHERE a.titolo_iva_id = t.id)  AS ambiti_count"""
 
+# ⛔ Whitelist di ordinamento della lista sfondati, CHIAVATA SUL
+#    `campo_sorgente` e non sul codice logico: `<ListaConfigurabile>` monta le
+#    Column con `:field="col.campo_sorgente"`, quindi `event.sortField` porta il
+#    nome FISICO. Chiavarla sui codici logici romperebbe proprio le colonne dove
+#    i due divergono — difetto trovato su `vendite.lotti` il 2026-07-31.
+# ⚠️ `eccedenza` non e' una colonna di tabella: e' l'espressione che da' senso a
+#    questa lista, esposta come alias e ordinabile come le altre.
+_ORDER_COLS_SFONDATI: dict[str, str] = {
+    "soggetto_ragione_sociale": "sog.ragione_sociale_completa",
+    "soggetto_id_fiscale": "sog.id_fiscale_univoco_cf_piva",
+    "tipo_descrizione": "tt.descrizione",
+    "emittente_ragione_sociale": "s_ef.ragione_sociale_completa",
+    "plafond": "t.plafond",
+    "imponibile_utilizzato": "t.imponibile_utilizzato",
+    "eccedenza": "(t.imponibile_utilizzato - t.plafond)",
+}
+
 _TITOLO_JOINS = """
               FROM anagrafiche.soggetti_titoli_iva t
               JOIN config.tipi_titolo_iva tt ON tt.id = t.tipo_titolo_iva_id
@@ -87,6 +112,27 @@ _TITOLO_JOINS = """
               JOIN anagrafiche.emittenti_fiscali ef ON ef.id = t.emittente_fiscale_id
               JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id"""
+
+# Ordinamento di DEFAULT della lista di presidio: la piu' grave per prima.
+# ⭐ E' una costante e non una stringa scritta due volte: la view la passa come
+#    `default_order` e il repository la usa come fallback del lookup. Con due
+#    letterali, rinominare la chiave avrebbe lasciato la view a chiedere una
+#    colonna che la whitelist non conosce piu'.
+SFONDATI_ORDER_DEFAULT = "eccedenza"
+
+# Perimetro della lista di presidio, in UN posto solo: lo condividono la pagina
+# e il conteggio, che altrimenti potrebbero divergere in silenzio.
+# ⚠️ FROM **e** WHERE insieme, non solo il WHERE: i join sono INNER e possono
+#    togliere righe, quindi anche loro fanno parte del perimetro. Estrarne meta'
+#    lascia l'altra meta' libera di divergere — ed e' esattamente cio' che il
+#    conteggio non deve poter fare rispetto alla pagina.
+_SFONDATI_FROM_WHERE = f"""
+              {_TITOLO_JOINS}
+              JOIN anagrafiche.soggetti sog ON sog.id = t.soggetto_id
+             WHERE tt.ha_plafond IS TRUE
+               AND t.plafond IS NOT NULL
+               AND t.imponibile_utilizzato > t.plafond"""
+
 
 # Colonne scrivibili del titolo.
 # ⛔ `emittente_fiscale_id` NON c'e', ed e' la decisione Q5: spostarlo
@@ -154,6 +200,29 @@ class TitoliIvaRepository:
     # ⚠️ `valido_al` NULL = «senza scadenza», e va in cima: e' il titolo vivo.
     #    `COALESCE(..., 'infinity')` e' la forma del progetto per le date di
     #    validita' (`feedback_ordinamento_validita_infinity`).
+    # Scopo: Conta i titoli di un soggetto con lo STESSO perimetro di
+    #        `list_titoli_soggetto`, senza passare dalle righe.
+    # ⛔ Query separata, non `len()` sul risultato: serve al frontend come
+    #    ASSERZIONE che le righe consegnate siano tutte (guard
+    #    `troncamentoSospetto` di `<ListaConfigurabile>` con `paginata: false`).
+    #    Un conteggio derivato dalle righe e' un'eco, non un presidio.
+    # ⭐ Il FROM e' `_TITOLO_JOINS` per intero, e non e' pigrizia: quei JOIN sono
+    #    INNER, quindi POSSONO togliere righe. Un `count(*)` sulla sola
+    #    `soggetti_titoli_iva` conterebbe anche i titoli che i join scartano,
+    #    direbbe piu' di quanto la lista consegna, e accenderebbe il guard su un
+    #    troncamento che non c'e'. Indipendente dalle RIGHE, non dal PERIMETRO.
+    def count_titoli_soggetto(self, soggetto_id: str) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                {_TITOLO_JOINS}
+                 WHERE t.soggetto_id = %s::uuid
+                """,
+                [soggetto_id],
+            )
+            return int(fetchone_scalar(cursor))
+
     def list_titoli_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
         sql = f"""
             SELECT {_TITOLO_COLS}
@@ -259,22 +328,60 @@ class TitoliIvaRepository:
     #    stessa cosa solo finche' il guard di coerenza regge, e appoggiarsi
     #    all'effetto invece che alla causa e' il modo in cui una lista di presidio
     #    smette di presidiare senza che nessuno se ne accorga.
-    def list_titoli_sfondati(self, *, limit: int) -> list[dict[str, Any]]:
-        sql = f"""
+    # Scopo: UNA pagina dei titoli sfondati PIU' il totale, in una valutazione
+    #        sola (`COUNT(*) OVER()` via `fetch_paged_with_total`).
+    #
+    # ⭐ Non due query. Il building block esiste da luglio e fa esattamente
+    #    questo: una prima stesura di questo metodo aveva una `list_` e una
+    #    `count_` separate — un gemello scritto a mano dello stesso pattern.
+    #    ⚠️ E non era solo ridondante: due valutazioni dello stesso predicato
+    #    possono **non concordare** se una riga entra fra l'una e l'altra, e il
+    #    totale racconterebbe una popolazione diversa da quella mostrata.
+    #
+    # ⚠️ `fallback_count_sql` serve al rientro su una pagina STANTIA: con
+    #    `offset > 0` e zero righe la window function non ha nulla su cui
+    #    contare, e senza fallback la schermata direbbe «nessun caso» a chi e'
+    #    solo rimasto su una pagina che si e' accorciata sotto di lui. Su una
+    #    lista di presidio dire «zero» quando i casi ci sono e' il difetto che
+    #    questa schermata esiste per evitare.
+    def list_titoli_sfondati(
+        self,
+        *,
+        limit: int,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        colonna = _ORDER_COLS_SFONDATI.get(
+            order_by or "", _ORDER_COLS_SFONDATI[SFONDATI_ORDER_DEFAULT],
+        )
+        # ⭐ `default_desc=True`: senza indicazioni si ordina dalla PIU' GRAVE.
+        #    Su un presidio l'ordine non e' una preferenza — e' cio' che mette in
+        #    cima la cosa da guardare per prima.
+        direzione = sql_order_direction(order_dir, default_desc=True)
+        # ⛔ Il tiebreak segue la direzione PRIMARIA, non un `DESC` inchiodato
+        #    (decisione Tid 2026-08-03): a parita' di eccedenza l'elenco andrebbe
+        #    al contrario di come e' stato chiesto. E il tiebreak su `t.id` e'
+        #    obbligatorio: due titoli con la stessa eccedenza non sono un caso di
+        #    scuola (il plafond e' lo stesso per tipo), e senza di esso a offset
+        #    alti PostgreSQL puo' restituire righe gia' viste.
+        verso_tiebreak = sql_tiebreak_direction(direzione)
+        data_sql = f"""
             SELECT {_TITOLO_COLS},
                    sog.ragione_sociale_completa    AS soggetto_ragione_sociale,
-                   sog.id_fiscale_univoco_cf_piva  AS soggetto_id_fiscale
-              {_TITOLO_JOINS}
-              JOIN anagrafiche.soggetti sog ON sog.id = t.soggetto_id
-             WHERE tt.ha_plafond IS TRUE
-               AND t.plafond IS NOT NULL
-               AND t.imponibile_utilizzato > t.plafond
-             ORDER BY (t.imponibile_utilizzato - t.plafond) DESC, t.id DESC
-             LIMIT %s
+                   sog.id_fiscale_univoco_cf_piva  AS soggetto_id_fiscale,
+                   (t.imponibile_utilizzato - t.plafond) AS eccedenza,
+                   COUNT(*) OVER ()                AS total_count
+             {_SFONDATI_FROM_WHERE}
+             ORDER BY {colonna} {direzione}, t.id {verso_tiebreak}
+             LIMIT %s OFFSET %s
         """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [limit])
-            return rows_to_list(cursor)
+        return fetch_paged_with_total(
+            data_sql,
+            [limit, offset],
+            fallback_count_sql=f"SELECT count(*) {_SFONDATI_FROM_WHERE}",  # noqa: S608
+            offset=offset,
+        )
 
     # =================================================================
     # Ambiti (D12: la condizione di applicabilita', non un'etichetta)

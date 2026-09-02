@@ -28,6 +28,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     fetch_paged_with_total,
+    fetchone_scalar,
     jsonb_out,
     rows_to_list,
     sql_order_direction,
@@ -1351,6 +1352,26 @@ class PagamentiRepository:
     # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
     #    resto, e l'elenco delle eccedenze conta apposta le bozze e le confermate
     #    separatamente.
+    # Scopo: Conta gli atti di una fattura con lo STESSO perimetro di
+    #        `list_sistemazioni_fattura`, senza passare dalle righe.
+    # ⛔ Query separata, non `len()` sul risultato: il conteggio serve al
+    #    frontend come ASSERZIONE che le righe consegnate siano tutte (guard
+    #    `troncamentoSospetto` di `<ListaConfigurabile>` con `paginata: false`).
+    #    Derivarlo dalle righe lo renderebbe una tautologia — direbbe sempre di
+    #    si', anche il giorno in cui qualcuno mettesse un LIMIT nella SELECT.
+    # ⚠️ Il `WHERE` deve restare gemello di quello della lista.
+    def count_sistemazioni_fattura(self, fattura_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*)
+                  FROM pagamenti.sistemazioni s
+                 WHERE s.fattura_origine_id = %s
+                """,
+                [fattura_id],
+            )
+            return int(fetchone_scalar(cursor))
+
     def list_sistemazioni_fattura(self, fattura_id: int) -> list[dict[str, Any]]:
         self._guard_canale_sistema("list_sistemazioni_fattura")
         sql = """

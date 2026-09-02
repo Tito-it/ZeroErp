@@ -245,8 +245,14 @@ def get_sistemazione(sistemazione_id: int) -> dict[str, Any]:
 # Scopo: Gli atti registrati su un documento.
 def list_sistemazioni_fattura(fattura_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
-    atti = repository.list_sistemazioni_fattura(fattura_id)
-    return {"count": len(atti), "results": atti}
+    # ⛔ `count` da una query SUA, non `len(atti)`. Era `len(atti)`, cioe' un
+    #    numero derivato dalle righe: non puo' dire niente SULLE righe, e come
+    #    asserzione per il guard anti-troncamento del frontend sarebbe un'eco
+    #    (`rows.length === rows.length`, sempre vero).
+    return {
+        "results": repository.list_sistemazioni_fattura(fattura_id),
+        "count": repository.count_sistemazioni_fattura(fattura_id),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════

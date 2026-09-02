@@ -239,6 +239,16 @@ e `column` sono le **uniche due voci in calo** (−19 e −19), tutto il resto s
 Sono i due componenti su cui esiste un building block; gli altri non ne hanno
 uno, e crescono col repo.
 
+🔗 **Sulle icone c'è una regola, e NON sta qui.** Dove viva il *nome* di
+un'icona (costante o letterale sul posto) è deciso dal 2026-09-02 in
+[frontend-standards §«Dove vive il NOME di un'icona»](../frontend/frontend-standards.md):
+regola del 2 applicata al **significato**, non campagna. ⛔ La regola generale
+«ogni icona da `MANAGE_ICONS`» è stata valutata e **rifiutata**.
+⚠️ Il rimando esiste perché la centralizzazione abbassa il costo di R2
+(primeicons e i codepoint cablati) — ma **la regola non appartiene a questo
+piano**: un piano è destinato a chiudersi in `work-done/`, e uno standard
+archiviato insieme a lui smette di essere trovabile.
+
 > ℹ️ **Come leggere questi numeri.** Sono una **fotografia datata**, non un
 > argomento: dicono dov'era la superficie in quel giorno, non cosa vada fatto.
 > La ragione per cui una lista passa da `<ListaConfigurabile>` sta nella regola
@@ -1255,13 +1265,58 @@ resta valido come **campanello** (se sale, hai aggiunto una lista fuori
 standard), ma **non** è il conteggio delle liste da convertire, e non lo è mai
 stato. Confonderli è il quarto denominatore.
 
-⛔ **La classificazione dei nove file nuovi non è fatta qui**, ed è deliberato:
-richiede il criterio in tre domande del §Gruppo B applicato caso per caso, e due
-di essi (`SituazioneMerceContenuto`, `AccreditoEsitoDialog`) toccano la terza
-domanda — quella senza risposta. Va fatta **prima** del prossimo lotto, non
-mentre lo si esegue.
+#### ✅ Classificazione fatta — 2026-09-02
 
-#### 🔴 Consegna aperta — il legame catalogo ↔ payload non ha presidio su 39 liste
+Applicato il criterio in tre domande a tutti e undici, guardando **da dove
+arrivano le righe** e non dove sta la tabella. ⚠️ Nessuno tocca la terza domanda:
+il timore che `SituazioneMerceContenuto` e `AccreditoEsitoDialog` fossero
+matrici era infondato — sono entrambi dettaglio, non slot/override.
+
+| File | Righe da | Esito |
+| --- | --- | --- |
+| `pagamenti/components/CanaliIncassoSearchTable.vue` | `store.items`, endpoint suo, ha il paginator | **Gruppo A** |
+| `pagamenti/components/SistemazioneDrawer.vue` | `listSistemazioniFattura(fatturaId)` → envelope `results` | **Gruppo A** |
+| `anagrafiche/components/TitoliIvaSoggettoDrawer.vue` | endpoint suo (`results`), e il singolo titolo ha un **drawer autonomo** | **Gruppo A** |
+| `anagrafiche/views/TitoliIvaSfondatiView.vue` | endpoint suo (`results`), è una view di presidio | **Gruppo A** |
+| `pagamenti/components/DistintaDrawer.vue` | `dettaglio.righe` — sono le **righe della distinta** | Gruppo B |
+| `anagrafiche/components/TitoloIvaDrawer.vue` | `ambiti` + `movimenti` **del titolo** che il drawer mostra | Gruppo B |
+| `vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue` | 4 tabelle di **dettaglio** della stessa situazione | Gruppo B |
+| `pagamenti/components/RegistraDistintaDialog.vue` | `anteprima.righe_non_registrabili` | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
+| `vendite/resi/components/AccreditoEsitoDialog.vue` | `props.esito.falliti` — il referto di un giro | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
+| `vendite/components/ListiniSearchTable.vue` | riga di espansione (versioni) di una lista **già convertita** | non è un bersaglio |
+| `vendite/components/LottoDrawer.vue` | residuo dichiarato in commento, lista **già convertita** | non è un bersaglio |
+
+⇒ **4 al Gruppo A, 5 al Gruppo B (di cui 2 sono l'eccezione anteprima), 2 non
+sono bersagli.**
+
+⭐ **Il segnale che decide è UNO, ed è ripetibile**: `grep -oE ':value="[^"]+"'`
+sul `.vue`, poi si risale alla variabile. Se viene da un `dettaglio.righe` o da
+una prop del padre è dettaglio; se viene da un endpoint suo con envelope
+`results` è una lista. ⚠️ **Non** decide il contenitore: due dei quattro Gruppo A
+stanno dentro un drawer, ed è esattamente l'errore che il criterio del 01-09 è
+nato per correggere.
+
+⚠️ **`CanaliIncassoSearchTable` è il caso più netto**: porta già in testa il
+proprio debito scritto — *«NON ha un seed in `ui.lista_definizione`»*. Non era
+una svista, era una dichiarazione in attesa di questo momento.
+
+#### ✅ CHIUSA — il legame catalogo ↔ payload ha il suo presidio
+
+> ⚠️ **Questa sezione era sbagliata quando l'ho scritta** (2026-09-02 mattina):
+> la registrai come «consegna aperta al team BE/FE» senza cercare se il presidio
+> esistesse gia'. Esisteva — `apps/core/tests/db/test_lista_proiezione_campo_sorgente.py`
+> — e copre **43 liste**, si **arma da solo** dal seed (una lista nuova senza
+> vista rende rosso `test_il_registro_copre_ogni_lista_senza_vista` il giorno in
+> cui viene seminata) e include gia' le 4 liste `ui`.
+> ⭐ Eseguito contro il database vero il 2026-09-02 (`ZEROERP_TEST_DB_E2E=1`):
+> **4 test verdi**, incluse le 4 liste nuove.
+> ⛔ E' skippato nella corsa normale (vuole un DB), quindi **non si vede** nella
+> suite veloce: chi tocca un seed deve lanciarlo a mano o fidarsi della CI.
+>
+> Il testo originale resta sotto perche' descrive bene il difetto che quel
+> presidio previene — ma **non e' piu' una consegna**.
+
+#### 🕳️ Il difetto che quel presidio previene (era: consegna aperta)
 
 > Rilievo del **team DB**, 2026-09-02, alla chiusura di
 > [brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md).

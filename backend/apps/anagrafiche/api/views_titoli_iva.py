@@ -22,7 +22,9 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.anagrafiche.db.titoli_iva_repository import SFONDATI_ORDER_DEFAULT
 from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+from apps.core.api.payload_validators import parse_list_params, qp_str
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
@@ -52,8 +54,14 @@ class SoggettoTitoliIvaView(DomainAPIView):
     # Scopo: Titoli IVA del soggetto. Ogni riga porta `residuo` (tetto meno
     #        imponibile gia' applicato) e `ambito_incompleto` (Q2).
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
-        results = TitoliIvaService().list_titoli_soggetto(soggetto_id)
-        return success_response({"results": results})
+        # ⭐ `count` accanto a `results`: non impagina, DICHIARA quanti titoli
+        #    esistono, cosi' il client puo' verificare di averli tutti invece di
+        #    assumerlo. Viene da una query sua, mai da `len(results)`.
+        servizio = TitoliIvaService()
+        return success_response({
+            "results": servizio.list_titoli_soggetto(soggetto_id),
+            "count": servizio.count_titoli_soggetto(soggetto_id),
+        })
 
     @extend_schema(
         request=inline_serializer(name="SoggettoTitoloIvaCreateReq", fields={
@@ -298,6 +306,25 @@ class TitoliIvaSfondatiView(DomainAPIView):
     #    forzature: «una forzatura esiste per registrare fatturazioni fuori dal
     #    sistema, e impedire di scriverla impedirebbe di accorgersene». Questa
     #    lista e' l'altra meta' di quella decisione.
+    # ⚠️ PAGINATA: `limit`/`offset`/`order_by`/`order_dir` dal query string, con
+    #    il bundle standard `parse_list_params`. L'ordinamento di default resta
+    #    l'eccedenza decrescente — su un presidio l'ordine non e' una preferenza.
     def get(self, request: Request) -> JsonResponse:
-        results = TitoliIvaService().list_titoli_sfondati()
-        return success_response({"results": results})
+        qp = request.query_params
+        p = parse_list_params(qp, default_order=SFONDATI_ORDER_DEFAULT)
+        dati = TitoliIvaService().list_titoli_sfondati(
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            # ⛔ NON `p["order_dir"]`, ed e' un difetto che ho scritto e corretto
+            #    il 2026-09-02: `parse_list_params` normalizza l'assenza a
+            #    `"asc"` e non restituisce mai `None`, quindi il `default_desc`
+            #    del repository non veniva MAI raggiunto. Effetto: la lista di
+            #    presidio si sarebbe ordinata per eccedenza CRESCENTE — il caso
+            #    piu' grave in ultima pagina, su una schermata che esiste per
+            #    metterlo davanti. Nessun errore, solo l'ordine al contrario.
+            # ⭐ Il valore grezzo (`None` se il client non chiede) e' il pattern
+            #    gia' in uso in `pagamenti` per tutte le liste a default DESC.
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return success_response(dati)
