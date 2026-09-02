@@ -134,6 +134,15 @@ databaseChangeLog:
                 -- partizioni compaiono accanto al padre: e' ridondante e innocuo
                 -- (forward-only, idempotente).
                 FOR r IN
+                  -- ⭐ rev 2026-09-02 — DUE STADI, e la CTE e' MATERIALIZED
+                  --   apposta: e' una barriera di ottimizzazione. Nel primo
+                  --   stadio solo predicati di CATALOGO, che non richiedono
+                  --   nessun permesso; nel secondo la chiamata che il permesso
+                  --   lo pretende. In un unico WHERE l'ordine di valutazione
+                  --   non e' garantito, e bastava che PostgreSQL provasse
+                  --   `pg_get_serial_sequence` su una tabella di uno schema
+                  --   chiuso prima di guardare il filtro.
+                  WITH candidate AS MATERIALIZED (
                   SELECT n.nspname AS schema_name,
                          c.relname AS table_name,
                          a.attname AS column_name
@@ -175,7 +184,30 @@ databaseChangeLog:
                     --   apposta per coprire da solo le tabelle future.
                     AND (n.nspowner = current_user::regrole
                          OR c.relowner = current_user::regrole)
-                    AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL
+                    -- ⛔ rev 2026-09-02 — SI CHIEDE IL PERMESSO, non chi possiede.
+                    --   Secondo inciampo della stessa forma dopo `tiger`: il
+                    --   proprietario e' un PROXY di «ci posso entrare», e i due
+                    --   si separano appena qualcuno chiude uno schema apposta.
+                    --   `internal` e' chiuso VOLUTAMENTE — 20250311_01 fa
+                    --   `REVOKE ALL ON SCHEMA internal FROM PUBLIC` e concede
+                    --   USAGE al solo `zeroerp_app` — e lo crea il provision-pre,
+                    --   che gira come `postgres`. Il migratore non ci entra, ed
+                    --   e' giusto cosi': va lasciato chiuso, non aperto per far
+                    --   passare questo ciclo.
+                    AND has_schema_privilege(current_user, n.nspname, 'USAGE')
+                    -- ⚠️ E il `pg_get_serial_sequence` sta FUORI da questo WHERE,
+                    --   nella CTE materializzata qui sopra: risolvere un nome
+                    --   `schema.tabella` RICHIEDE gia' l'USAGE, e in un unico
+                    --   WHERE nessuno garantisce che il filtro sui permessi
+                    --   venga valutato prima. Il difetto non era il predicato
+                    --   mancante: era che stava nella stessa istruzione della
+                    --   chiamata che poteva esplodere.
+                  )
+                  SELECT cd.schema_name, cd.table_name, cd.column_name
+                    FROM candidate cd
+                   WHERE pg_get_serial_sequence(
+                           format('%I.%I', cd.schema_name, cd.table_name),
+                           cd.column_name) IS NOT NULL
                 LOOP
                   v_viste := v_viste + 1;
                   v_seq := pg_get_serial_sequence(format('%I.%I', r.schema_name, r.table_name), r.column_name);

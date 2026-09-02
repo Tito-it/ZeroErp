@@ -174,15 +174,18 @@ SQL
 #   dei permessi: per quella c'e'
 #   db/pgtap/rls/test-role-batch-fatturazione-postura.sql, che va girato sul
 #   database vero.
+#   ⚠️ SENZA `IN SCHEMA`, e non e' pigrizia: la forma con lo schema pretende
+#   che lo schema ESISTA, e qui gli schemi li crea la passata principale, dopo.
+#   Crearli in anticipo sarebbe peggio del problema: un changeSet con
+#   `CREATE SCHEMA` senza `IF NOT EXISTS` morirebbe. La forma senza schema vale
+#   per l'intero database, compresi quelli che nasceranno.
 if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
   echo "── il ruolo batch esiste nel cluster: gli do il DML sugli oggetti futuri di $CI_DB"
-  for s in anagrafiche catalogo config contabilita dbops documenti magazzino \
-           pagamenti pratiche public script storico ui vendite; do
-    psql_admin -d "$CI_DB" -c "
-      CREATE SCHEMA IF NOT EXISTS \"$s\";
-      ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp IN SCHEMA \"$s\"
-        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;" >/dev/null
-  done
+  psql_admin -d "$CI_DB" -c "
+    ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;
+    ALTER DEFAULT PRIVILEGES FOR ROLE postgres
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;" >/dev/null
 fi
 
 # --- L'autogen, come in CI: l'ordine dei changeSet e' generato, non versionato
@@ -245,6 +248,52 @@ GRANT CREATE ON DATABASE "$CI_DB" TO zeroerp;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;
 SQL
+
+# ── ⚠️ E LE TABELLE CHE ESISTONO GIA' ─────────────────────────────────
+#   `ALTER DEFAULT PRIVILEGES` copre solo cio' che NASCE dopo. Su una corsa
+#   incrementale — cioe' la seconda in poi — meta' schema esiste gia', creato
+#   prima che quella riga ci fosse: quelle tabelle restano senza i grant, e la
+#   guardia di 20260729-05 continua a vedere la postura sbagliata.
+#   ⇒ Le due cose servono entrambe: il default per il futuro, il GRANT per il
+#   passato. E' idempotente, quindi si rifa' a ogni corsa.
+if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
+  echo "── grant al ruolo batch sulle tabelle GIA' create (corsa incrementale)"
+  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
+DO $$
+DECLARE s text;
+BEGIN
+  FOR s IN SELECT nspname FROM pg_namespace
+            WHERE nspname NOT LIKE 'pg\_%' AND nspname <> 'information_schema'
+  LOOP
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO zeroerp_batch_fatturazione', s);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO zeroerp_batch_fatturazione', s);
+    EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO zeroerp_batch_fatturazione', s);
+  END LOOP;
+END $$;
+SQL
+fi
+
+# ── ⚠️ pgAgent: qui la fase 85_pgagent GIRA DAVVERO, in CI no ─────────
+#   I nove changeSet di `85_pgagent` sono protetti da
+#   `onFail: MARK_RAN` + «esiste l'estensione pgagent». Sull'immagine della CI
+#   l'estensione non e' disponibile, quindi vengono saltati tutti e quella fase
+#   non e' mai stata eseguita da nessuna parte. Qui l'estensione c'e', quindi
+#   girano — ed e' un guadagno: si collauda codice che GitHub non puo' provare.
+#   ⚠️ Ma il migratore ha bisogno dei diritti sullo schema `pgagent`, che
+#   appartiene a chi ha creato l'estensione (postgres). Su dbdev il problema non
+#   si vede perche' pgAgent fu installato a mano dallo stesso utente.
+#   🔵 Domanda aperta per il deploy vero: in produzione, chi lancia Liquibase ha
+#   USAGE su `pgagent`? Se no, quei nove changeSet falliranno li' come qui.
+if psql_admin -d "$CI_DB" -tAc "SELECT 1 FROM pg_namespace WHERE nspname='pgagent'" | grep -q 1; then
+  echo "── grant su schema pgagent a zeroerp (la fase 85 qui gira davvero)"
+  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
+GRANT USAGE ON SCHEMA pgagent TO zeroerp;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgagent TO zeroerp;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA pgagent TO zeroerp;
+ALTER DEFAULT PRIVILEGES IN SCHEMA pgagent
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp;
+SQL
+fi
 
 echo "── passata principale  (--contexts=\"!provision\")"
 echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
