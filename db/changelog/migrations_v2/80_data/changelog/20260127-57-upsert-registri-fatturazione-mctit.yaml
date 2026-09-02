@@ -3,10 +3,59 @@
 # Liquibase changelog per Zero ERP
 # ------------------------------------------------------------
 
+# ── ⛔ 2026-09-02 — QUESTO MIRROR PORTA DATI DI MACCHINA, NON DI CATALOGO ──
+#
+#   Il migrate in CI e' morto qui:
+#     null value in column "emittente_soggetto_ruolo_id" ... violates not-null
+#
+#   ⭐ E la ragione non e' il CSV: e' la NATURA di questo seed. Un registro
+#   appartiene a un emittente, un emittente e' un'anagrafica, e `80_data` non
+#   semina anagrafiche — mai, da nessuna parte. Su un database ricostruito da
+#   zero questi registri non hanno a chi essere intestati.
+#   ⚠️ Misurato il 2026-09-02: i due emittenti che il CSV nomina sono
+#   `soggetti_ruoli` 72 (`PGTAPEF202`, una fixture pgTAP del 23-01) e 159
+#   (`EMITEST`, creato a mano il 10-04). Nessuno dei due nasce da un changeSet.
+#
+#   ⇒ Il file non e' un catalogo: e' la fotografia dell'anagrafica di QUESTA
+#   macchina. Riallinearlo al database — fatto oggi con `scripts/export_csv.sh`,
+#   che ha anche disinnescato la mina del 25-08 (CSV stantio + mirror
+#   `runOnChange` dormiente) — lo rende vero, non lo rende seminabile.
+#
+# ── ⭐ LA CURA E' DICHIARARLO: `context: dati_macchina` ────────────────
+#
+#   | dove        | invocazione                  | effetto                     |
+#   |-------------|------------------------------|-----------------------------|
+#   | sviluppo    | `liquibase update` (nessun   | gira — il DB di sviluppo    |
+#   |             | `--contexts`)                | resta com'e'                |
+#   | CI          | `--contexts="!provision"`    | filtrato                    |
+#   | produzione  | invocazione con `--contexts` | filtrato                    |
+#
+#   ⚠️ E' il meccanismo che gia' filtra sei changeSet a ogni corsa della CI
+#   (la riga «Context mismatch: 6» del report), non una via nuova.
+#   ⚠️ Un changeSet gia' applicato NON si de-applica dandogli un contesto: su
+#   sviluppo resta applicato, su un database nuovo non parte. E' cio' che si
+#   vuole, ma e' controintuitivo abbastanza da doverlo scrivere.
+#   🔴 Perche' regga in produzione, l'invocazione di produzione DEVE passare un
+#   `--contexts` — meglio esplicito, `"!provision and !dati_macchina"`, cosi' la
+#   regola sta nel comando e non in un effetto collaterale.
+#
+#   ⭐ Questo file e' il PRIMO marcato, ed e' una prova: se la CI lo supera, gli
+#   altri della stessa specie sono meccanici — `tipi_doc_fiscale_registri.csv` e
+#   il suo gemello nota di credito (puntano ai registri 3/4/5),
+#   `20260819-05` e `20260831-03` (intestano i registri, con guard fail-loud
+#   sull'emittente), `20260309-01` e `20260419-95` (l'utente `tid`).
+#   ⚠️ I cinque BACKFILL che nominano un'anagrafica NON si marcano: su un
+#   database vuoto sono UPDATE su zero righe, quindi innocui. Marcare cio' che
+#   non fa danno allarga il perimetro senza aggiungere garanzia.
+#
+#   Censimento completo e criterio: `docs/it/linee-guida-sql.md` §11.7.
+# ------------------------------------------------------------
+
 databaseChangeLog:
   - changeSet:
       id: 20260127-09-upsert-registri-fatturazione
       author: mctit
+      context: dati_macchina
       runOnChange: true
       validCheckSums:
         - ANY
@@ -24,7 +73,14 @@ databaseChangeLog:
             schemaName: vendite
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            # ⚠️ 2026-09-02 — il TOKEN LETTERALE, non la cella vuota.
+            #   Con `nullValue: ""` una cella vuota diventa la stringa '' su
+            #   ogni colonna dichiarata STRING: su `utility_id` (integer) il
+            #   migrate e' morto con «sintassi di input non valida per il tipo
+            #   integer: ""», e su una varchar sarebbe passato scrivendo ''
+            #   dove c'era NULL — peggio, perche' non lo dice.
+            #   Il CSV ora esce da scripts/export_csv.sh con `NULL 'NULL'`.
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -49,4 +105,15 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
-              - column: { name: utility_id, type: STRING }
+              - column: { name: utility_id, type: NUMERIC }   # integer, non testo
+              # ⚠️ 2026-09-02 — le sette colonne che il CSV rigenerato porta in
+              #   piu': si DICHIARANO invece di lasciarle inferire, perche' un
+              #   tipo indovinato su una colonna NOT NULL e' il modo silenzioso
+              #   di far fallire il mirror al primo risveglio.
+              - column: { name: politica_data_documento, type: STRING }
+              - column: { name: limite_emissione_giorni, type: NUMERIC }
+              - column: { name: limite_emissione_giorno_mese, type: NUMERIC }
+              - column: { name: famiglia_documento, type: STRING }
+              - column: { name: prefisso, type: STRING }
+              - column: { name: suffisso, type: STRING }
+              - column: { name: lunghezza_numero, type: NUMERIC }

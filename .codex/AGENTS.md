@@ -350,6 +350,24 @@ del test 6 del suo pgTAP, che fa la stessa identica query e gira a `ci_apply`
 avvenuto. *Una preCondition guarda ciò che viene prima; un invariante si
 asserisce in pgTAP.*
 
+### ⛔ In `80_data` convivono catalogo e dati di macchina — si dichiarano
+
+Regola estesa e censimento: [linee-guida-sql.md §11.7](../docs/it/linee-guida-sql.md).
+
+**Catalogo** = parte del contratto del software, vale identico su ogni
+installazione, il codice lo nomina per `codice_interno`. **Macchina** = descrive
+*questa* installazione. ⭐ Il discriminante si deriva: un seed è di macchina se
+**valorizza una FK verso `anagrafiche.*`** — quelle righe nascono dall'uso, e su
+un database ricostruito da zero non esistono.
+
+Un seed di macchina si marca `context: dati_macchina`: gira in sviluppo
+(`liquibase update` senza `--contexts`), è filtrato in CI e in produzione. È lo
+stesso meccanismo che già filtra sei changeSet a ogni corsa.
+🔴 La produzione **deve** invocare con un `--contexts` — meglio esplicito,
+`"!provision and !dati_macchina"`.
+⛔ I **backfill** che nominano un'anagrafica NON si marcano: su un DB vuoto sono
+`UPDATE` su zero righe, quindi innocui.
+
 ### ⛔ I privilegi dei ruoli batch stanno nel provisioning, mai in un changeSet
 
 Presidiato da `scripts/guardrail_grant_ruolo_batch.py` (CI, `ci-validate.yaml`).
