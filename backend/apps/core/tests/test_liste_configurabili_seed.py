@@ -53,6 +53,13 @@
    colonna viene RIMOSSA per tutti, e il badge «colonne nuove» continua a
    contarla. Cancello su un difetto DB noto e non ancora corretto.
 
+8-bis. test_le_liste_locali_sono_montate_non_paginate
+   Chiude il cerchio della sentinella `ORDINAMENTO_LOCALE`: una lista dichiarata
+   «ordina nel browser» DEVE essere montata con `:paginata="false"`. Se qualcuno
+   togliesse la prop, la lista tornerebbe a ordinare lato server — dove non ha
+   nessuna whitelist — e la freccia risponderebbe 400 al primo click, mentre
+   questo registro continuerebbe a dire che va tutto bene.
+
 8. test_il_debito_non_cresce
    `_DEBITO_WHITELIST_LOGICA` e' un registro di debito, non una lista di
    eccezioni: una lista rientrata va tolta, o il debito residuo risulta piu'
@@ -93,6 +100,32 @@ def _senza_commenti(testo: str) -> str:
     senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
     senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
     return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+
+
+# Scopo: il TAG DI APERTURA che comincia a `inizio`, fino al `>` che lo chiude.
+#
+# ⛔ Non si puo' usare una regex `[^>]*`: un `>` vive dentro gli attributi
+#    (`v-if="documentiCount > 0"`) e la classe negata si fermerebbe li' — e' il
+#    difetto gia' corretto nel test 6 il 2026-08-03.
+# ⛔ E non si puo' usare una FINESTRA a caratteri, che e' la scorciatoia in cui
+#    ero cascato: se l'attributo cercato cade appena oltre la finestra il test
+#    non lo trova e passa. Un guard che sbaglia in direzione «verde» e' peggio
+#    di uno assente, perche' qualcuno ci conta.
+# ⇒ Si scandisce carattere per carattere tenendo conto delle virgolette: il `>`
+#   dentro un valore quotato non chiude niente. In un template Vue i valori
+#   degli attributi sono sempre quotati, quindi la scansione e' esatta.
+def _tag_apertura(testo: str, inizio: int) -> str:
+    virgoletta: str | None = None
+    for i in range(inizio, len(testo)):
+        c = testo[i]
+        if virgoletta is not None:
+            if c == virgoletta:
+                virgoletta = None
+        elif c in "\"'":
+            virgoletta = c
+        elif c == ">":
+            return testo[inizio:i + 1]
+    return testo[inizio:]
 
 
 # Scopo: whitelist di ordinamento di una lista il cui ORDINE vive nella funzione
@@ -200,6 +233,18 @@ def _da_costante(modulo: str, costante: str):
         return set(getattr(importlib.import_module(modulo), costante))
 
     return risolvi
+
+
+# Sentinella per le liste montate con `:paginata="false"` (2026-09-02).
+# ⭐ Non hanno una whitelist di ordinamento lato backend perche' NON ordinano
+#    lato backend: l'ordine lo calcola PrimeVue nel browser, sulle righe gia'
+#    consegnate. Chiedere loro una whitelist significherebbe pretendere un
+#    contratto con un interlocutore che non esiste.
+# ⛔ NON e' `_DEBITO_WHITELIST_LOGICA`, ed e' una distinzione che va tenuta:
+#    quello e' un REGISTRO DI DEBITO e deve calare, questa e' una PROPRIETA'
+#    della lista e resta. Confonderli farebbe sembrare debito una scelta, e
+#    sparire dal debito una cosa che debito non e'.
+ORDINAMENTO_LOCALE = "ordinamento-locale"
 
 
 # Registro delle liste convertite: `codice` -> risolutore della whitelist di
@@ -345,6 +390,24 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # test 6 e quindi fuori da tutti i presidi di questo modulo.
     ("vendite.registri_numerazione",
      _da_costante("apps.vendite.db.registri_repository", "_ORDER_COLS")),
+    # Famiglie di documento (2026-09-02): il CRUD della REGOLA che il registro
+    # applica. ⭐ E' la prima lista del gruppo con `vista_sql` VALORIZZATA — il
+    # trigger DB le valida i `campo_sorgente` contro la vista — ma la whitelist
+    # di ORDINAMENTO resta materia di questo presidio: la vista non sa niente
+    # di cosa il repository accetta in `ORDER BY`.
+    ("vendite.famiglie_documento",
+     _da_costante("apps.vendite.db.famiglie_repository", "_ORDER_COLS")),
+    # Le 4 liste della pagina tecnica `ui` (2026-09-02) — primo lotto montato
+    # con `:paginata="false"`. ⭐ Nessuna whitelist di ordinamento: non ordinano
+    # lato backend, quindi non c'e' un contratto seed<->repository da esigere.
+    # Restano coperte da TUTTI gli altri test di questo modulo (azione mai
+    # ordinabile, slot `actions`, preset di default, `sensibile` col grant,
+    # censimento dal frontend) piu' il test 9, che pretende che il frontend le
+    # monti davvero come non paginate.
+    ("ui.lista_definizione", ORDINAMENTO_LOCALE),
+    ("ui.lista_colonna", ORDINAMENTO_LOCALE),
+    ("ui.lista_preset", ORDINAMENTO_LOCALE),
+    ("ui.lista_colonna_permesso", ORDINAMENTO_LOCALE),
 )
 
 
@@ -369,10 +432,18 @@ _LISTE: tuple[tuple[str, object], ...] = (
 _DEBITO_WHITELIST_LOGICA: frozenset[str] = frozenset()
 
 
-# Scopo: liste su cui il contratto seed<->whitelist e' esigibile, cioe' tutte
-#        tranne il debito noto.
+# Scopo: liste su cui il contratto seed<->whitelist e' esigibile: tutte tranne
+#        il debito noto e quelle che ordinano nel browser.
 def _liste_allineate() -> tuple[tuple[str, object], ...]:
-    return tuple((c, w) for c, w in _LISTE if c not in _DEBITO_WHITELIST_LOGICA)
+    return tuple(
+        (c, w) for c, w in _LISTE
+        if c not in _DEBITO_WHITELIST_LOGICA and w is not ORDINAMENTO_LOCALE
+    )
+
+
+# Scopo: i codici delle liste dichiarate a ordinamento locale.
+def _liste_locali() -> tuple[str, ...]:
+    return tuple(c for c, w in _LISTE if w is ORDINAMENTO_LOCALE)
 
 
 # Scopo: righe di un CSV di seed della cartella ui.
@@ -658,6 +729,59 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             "toglierle dall'insieme, cosi' il registro dice la verita' sul debito "
             "residuo e le protegge dalle regressioni.",
         )
+
+    # 8-bis. La sentinella del registro deve corrispondere a come il frontend
+    #        MONTA la lista. Il registro dice «questa non ordina lato server»;
+    #        se il `.vue` non dice `:paginata="false"`, il registro sta mentendo
+    #        e nessun altro test se ne accorge — le liste locali sono proprio
+    #        quelle escluse dai test 1-3.
+    #
+    # ⚠️ Il difetto che previene e' una RIMOZIONE, non un'aggiunta: togliere la
+    #    prop e' un'operazione che sembra innocua (e la pagina continua a
+    #    funzionare, perche' i dati arrivano tutti lo stesso), ma riaccende
+    #    l'ordinamento server-side su una lista senza whitelist. Il primo click
+    #    su un'intestazione risponde 400.
+    def test_le_liste_locali_sono_montate_non_paginate(self) -> None:
+        locali = _liste_locali()
+        self.assertTrue(
+            locali,
+            "nessuna lista a ordinamento locale nel registro: se e' voluto, "
+            "togliere questo test insieme alla sentinella.",
+        )
+        src = _repo_root() / "frontend/src"
+        # codice lista -> TAG DI APERTURA completo del montaggio.
+        # ⚠️ Serve il tag INTERO, non il pezzo fino a `codice="..."`: `:paginata`
+        #    vive dopo `codice` fra gli attributi, e cercarla in un testo che si
+        #    ferma prima significherebbe cercarla dove non puo' esserci.
+        montaggi: dict[str, str] = {}
+        for percorso in src.rglob("*.vue"):
+            senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
+            for tag in ("ListaConfigurabile", "DrawerTabLista"):
+                for m in re.finditer(rf"<{tag}\b", senza_commenti):
+                    apertura = _tag_apertura(senza_commenti, m.start())
+                    mc = re.search(r'(?<![:@\w-])codice="([^"]+)"', apertura)
+                    if mc:
+                        montaggi.setdefault(mc.group(1), apertura)
+
+        for codice in locali:
+            with self.subTest(lista=codice):
+                montaggio = montaggi.get(codice)
+                self.assertIsNotNone(
+                    montaggio,
+                    f"`{codice}` e' nel registro come ordinamento locale ma non "
+                    "risulta montata da nessun .vue: o il rilevamento e' rotto, "
+                    "o la riga in `_LISTE` e' rimasta orfana.",
+                )
+                assert montaggio is not None
+                self.assertRegex(
+                    montaggio,
+                    r':paginata="false"',
+                    f"`{codice}` e' dichiarata a ordinamento locale nel registro "
+                    "ma il frontend la monta SENZA `:paginata=\"false\"`. Cosi' "
+                    "ordina lato server, dove non ha nessuna whitelist: la "
+                    "freccia risponde 400 al primo click. O si rimette la prop, "
+                    "o la lista esce dalla sentinella e prende una whitelist.",
+                )
 
     def test_ogni_lista_del_seed_ha_un_preset_default(self) -> None:
         preset = _seed("lista_preset.csv")

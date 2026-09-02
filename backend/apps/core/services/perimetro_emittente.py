@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.db.lista_catalogo_repository import fetch_multi_emittente
+from apps.core.db.lista_catalogo_repository import fetch_flag_perimetro
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
 
@@ -177,13 +177,27 @@ def richiede_scelta_emittente(
     *,
     user: Any,
     multi_emittente: bool,
+    perimetro_emittente: bool = True,
     emittente_esplicito: Any = None,
     cache: dict[str, Any] | None = None,
 ) -> bool:
+    # ⭐ TRE MODI DI NON DOVER SCEGLIERE, E SONO TRE RAGIONI DIVERSE. Restano
+    #    tre rami e non una condizione sola in OR: chi legge deve vedere PERCHE'
+    #    si entra, non solo che si entra — il giorno che una delle tre cambia,
+    #    una condizione unica costringe a rileggerle tutte per capire quale.
+    #
+    #    1. la richiesta FISSA un emittente     -> l'ambiguita' e' gia' sciolta;
+    #    2. la lista non ha un perimetro        -> non c'e' NIENTE da scegliere
+    #       (catalogo globale: nessuna riga appartiene a un emittente, §12.1);
+    #    3. la lista e' certificata multi        -> l'emittente c'e', e la riga
+    #       lo dice da se'.
     if emittente_esplicito is not None:
+        return False
+    if not perimetro_emittente:
         return False
     if multi_emittente:
         return False
+    # ⚠️ Ultimo, ed e' l'unico dei quattro termini che costa una query.
     return scope_multi_emittente(user, cache=cache)
 
 
@@ -201,9 +215,9 @@ def guard_lista_per_codice(
     cache = {} if cache is None else cache
     if not scope_multi_emittente(user, cache=cache):
         return
-    multi = fetch_multi_emittente(lista_codice)
+    flag = fetch_flag_perimetro(lista_codice)
     ErrorManager.require(
-        multi is not None,
+        flag is not None,
         code=E_LISTA_NON_TROVATA,
         message="Lista non trovata.",
         detail=(
@@ -217,11 +231,13 @@ def guard_lista_per_codice(
     #    della config, e due copie della stessa conclusione finiscono per dire
     #    cose diverse — l'API concede e il pannello sbarra, o viceversa.
     #    Quello che questa funzione aggiunge e' solo il pezzo che il chiamante
-    #    non ha in mano: il flag `multi_emittente` della lista, che li' arriva
-    #    gia' nell'envelope e qui va letto dal catalogo.
+    #    non ha in mano: i DUE flag di perimetro della lista, che nell'envelope
+    #    arrivano gia' e qui vanno letti dal catalogo.
+    assert flag is not None
     if not richiede_scelta_emittente(
         user=user,
-        multi_emittente=bool(multi),
+        multi_emittente=flag.multi_emittente,
+        perimetro_emittente=flag.perimetro_emittente,
         emittente_esplicito=emittente_esplicito,
         cache=cache,
     ):

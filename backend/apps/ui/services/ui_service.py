@@ -109,9 +109,15 @@ class UiService:
         #    l'emittente esplicito — il 2026-09-01. Due copie della stessa
         #    conclusione sono il modo classico di far dire cose diverse al
         #    pannello e all'API.
+        # ⚠️ `perimetro_emittente` con default `True` e non `bool(get(...))`: se
+        #    la chiave mancasse — un risolutore piu' vecchio del backend —
+        #    `bool(None)` direbbe «questa lista non ha perimetro» e APRIREBBE il
+        #    cancello su tutte le liste insieme, in silenzio. Il verso prudente
+        #    e' quello che chiude, ed e' anche il default della colonna.
         config["richiede_scelta_emittente"] = perimetro_emittente.richiede_scelta_emittente(
             user=user,
             multi_emittente=bool(config.get("multi_emittente")),
+            perimetro_emittente=bool(config.get("perimetro_emittente", True)),
             emittente_esplicito=emittente_esplicito,
             cache=self._perm_cache,
         )

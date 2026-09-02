@@ -2290,3 +2290,146 @@ colonne dichiarano*.
 già il codice, e in forma più stretta delle sorelle — porta la sigla
 dell'emittente, quindi non collide fra registri diversi.
 
+
+---
+
+## 13. ✅ Sviluppo BE/FE — **fatto** il 2026-09-01 · 02
+
+> ✅ **Backend e frontend chiusi** per tutto ciò che il §11.10 e il §12.4
+> elencavano. **4371 test verdi**; due rossi restano in albero e **non sono di
+> questo cantiere** (§13.6).
+>
+> ⚠️ **Nessun collaudo in-app**: niente di quanto segue è stato guardato a
+> video. È l'unica cosa che le prove scritte non sostituiscono.
+
+### 13.1 ⭐ Il cancello di perimetro e l'emittente esplicito
+
+Non era nel piano: è nato dal presidio. Registrando la lista dei registri in
+`_LISTE` è andato rosso `test_ogni_lista_configurabile_ha_il_suo_cancello`, e
+guardando perché si è scoperto che **il cancello era acceso davvero**: la lista
+54 ha `multi_emittente = f`, quindi un operatore con più emittenti nello scope
+prendeva **422 aprendo il tab Registri dell'emittente che aveva già davanti**.
+
+✅ **Deciso da Tid (2026-09-01): estendere il cancello**, non esentare la lista.
+
+| Pezzo | Dove |
+| --- | --- |
+| `PARAM_EMITTENTE_ESPLICITO` + `emittente_esplicito_da_query()` — un valore solo, numerico | `core/services/perimetro_emittente.py` |
+| `richiede_scelta_emittente()` — **la conclusione, in una sede sola** | idem |
+| `lista_emittente_param`, attributo dichiarativo (solo query string) | `core/api/base_views.py` |
+| Il parametro sull'endpoint di config, con nome **neutro** | `ui/api/views.py` · `ui/services/ui_service.py` |
+| Il valore che viaggia dal tab fino alla richiesta di config | `ui-api.js` → `useListaConfig` → `ListaConfigurabile` → `DrawerTabLista` |
+
+⭐ **La formula era scritta due volte** — nel cancello dell'endpoint e
+nell'envelope della config — e stava per crescere di un termine su un lato solo:
+è stata estratta in `richiede_scelta_emittente()`, con una cache condivisa
+perché lo scope resti **una query sola**. Un test verifica che le due chiamate
+ricevano lo **stesso** dizionario di cache: senza, la de-duplicazione si sarebbe
+pagata al doppio del prezzo.
+
+⛔ **Perché la query string e non il payload**: sulle scritture l'emittente è già
+verificato dalla view che lo riceve, e leggere il corpo dentro `initial()`
+significherebbe consumarlo prima del `post`.
+⛔ **Perché un valore solo**: `?e=1&e=2` è *esattamente* l'ambiguità che il
+cancello rifiuta, e leggerne uno — come farebbe un `.get()` distratto — la
+trasformerebbe in un lasciapassare.
+
+### 13.2 Il CRUD delle famiglie — le otto voci BE
+
+| # | Fatto |
+| --- | --- |
+| BE-F1 | `famiglie_repository.py` legge `vw_famiglie_documento_lista` con **`SELECT v.*`**: la lista dichiara `vista_sql`, quindi il trigger DB valida il catalogo contro la vista — elencare le colonne anche qui sarebbe stata una **terza copia** che nessun presidio guarda. Più `GET /vendite/famiglie/lookup/` per il drawer dei registri |
+| BE-F2 | derivazione da `ammette_regole_fiscali` (§12.2), i due letterali `'FATTURA'` cancellati |
+| BE-F3 | i tre codici dei guard **non** passano da `map_integrity_error` — arrivano come `P0001` e risalgono al middleware. Un test lo inchioda |
+| BE-F4 | la creazione chiama la madre `fn_crea_famiglia_documento` e riporta `registri_creati` |
+| BE-F5 | CRUD su `AdminAPIView`, **lookup no** — provato in entrambi i versi |
+| BE-F6 | le due whitelist coincidono col catalogo, e a tenerle allineate è `test_liste_configurabili_seed`: la lista 55 è entrata in `_LISTE`, quindi lo verifica il presidio |
+| BE-F7 | export col renderer generico, zero righe di render nuove |
+| BE-F8 | il `23505` di `uq_famiglie_documento_tabella_attiva` **nomina l'occupante**: *«La tabella vendite.fatture ha già la sua famiglia: "Fatture" (FATTURA)»* |
+| BE-F9 | `fetch_flag_perimetro` legge le **due** colonne insieme e le restituisce nominate; la conclusione ha **tre rami separati** (§12.1) |
+
+⛔ **Gli argomenti della madre viaggiano per NOME** (`p_colonna_serie => %s`), non
+per posizione: con undici `%s` la corrispondenza sarebbe vissuta in una tupla
+Python, e il giorno che la firma cambia ordine `colonna_serie` avrebbe ricevuto
+il valore di `colonna_billing_account` — sono tutti `text`, quindi la famiglia
+sarebbe nata **sbagliata senza che niente fallisse**.
+
+⛔ **`presidia_data_documento` fuori dall'update, e `codice_interno` pure**: la
+prima perché una famiglia creata dal CRUD nasce non fiscale (D5), il secondo
+perché lo presidia il lock automatico (D3). Le **quattro colonne strutturali**
+invece ci sono, ed è la stessa logica dei tre campi di forma dei registri:
+esiste il guard che le rifiuta, quindi tenerle fuori sarebbe un divieto
+applicativo accanto a uno di database.
+
+### 13.3 La schermata, e le quattro voci FE sul drawer dei registri
+
+✅ **Dove vive: Amministrazione**, voce di menu accanto a Emittenti Fiscali
+(decisione di Tid, 2026-09-02). ⛔ **Non** come tab dentro i registri: quelli
+stanno nel drawer di UN emittente, e una famiglia è globale — la stessa riga
+sarebbe comparsa modificabile aprendo un emittente qualunque, e sarebbe sembrata
+sua.
+
+| # | Fatto |
+| --- | --- |
+| FE-F1 | alla scelta della famiglia in creazione, `prefisso` e `lunghezza_numero` si precompilano dai suoi default — il difetto per cui una COMMESSA creata a mano usciva a **7 cifre** e quella del provisioning a **9** |
+| FE-F2 | `REGISTRO_FAMIGLIA_FISCALE` cancellato da `constants.js`; la serie dice **il perché** sulle famiglie che non la registrano, con la stessa frase che manda il database |
+| FE-F3 | le famiglie con lo **slot già preso** non si offrono. ⚠️ Il controllo legge i registri dell'emittente con `limit: 500`, **non la pagina della lista**: a 25 righe per pagina uno slot occupato in seconda pagina sarebbe risultato libero |
+| FE-F5 | i tre campi fiscali seguono `ammette_regole_fiscali` |
+| FE-F4 · F6 | 17 chiavi i18n (14 intestazioni + 3 `reason_key`) e la lista con `<ListaConfigurabile>` via `useListaConfigurabilePage` |
+| FE-F7 | il frontend legge **la conclusione sola**: ricalcolarla sarebbe la seconda sede della stessa verità. Le tre ragioni si vedono dove la decisione si prende |
+
+⭐ **La regola del precompilamento è una sola per i due campi**: si aggiorna ciò
+che porta ancora il default della famiglia *precedente*, mai ciò che ha scritto
+l'operatore. La prima stesura ne aveva due — il prefisso rispettato, le cifre
+sovrascritte sempre — e due regole diverse sullo stesso gesto sono un difetto
+quale che sia quella giusta.
+
+### 13.4 I quattro codici errore che il backend non sapeva tradurre
+
+`error_policies_generated.py` rigenerato (**831 → 835**, il diff è esattamente i
+quattro codici nuovi) più i quattro **ripieghi senza segnaposto**. Due erano di
+questo cantiere (`E_FAMIGLIA_DOCUMENTO_*`), due venivano dal precedente
+(`E_REGISTRO_FORMA_NUMERO_IMMUTABILE`, `E_REGISTRO_SERIE_NON_AMMESSA`) e
+rendevano rossa la suite da giorni.
+
+⚠️ Prima di rigenerare: catalogo vivo e CSV in git confrontati — **835 = 835,
+zero divergenze**. Non eravamo nel caso «database avanti rispetto al repo», in
+cui rigenerare è vietato.
+
+### 13.5 🔴 Cinque difetti trovati costruendo, che leggendo non si vedevano
+
+| | Cosa | Come si vedeva |
+| --- | --- | --- |
+| 1 | `<DrawerTabLista>` era **invisibile** al censimento del frontend, che cercava solo `<ListaConfigurabile`: la lista dei registri era fuori da `_LISTE`, cioè da **tutti** i presidi di quel modulo | niente. Il test era verde |
+| 2 | `test_perimetro_emittente_copertura` scartava i `lista_codice` non letterali: diceva «registri non ha nessun cancello» mentre il cancello c'era, dichiarato via costante | un rosso su una cosa giusta — il modo più rapido di far spegnere un test |
+| 3 | 🔴 **La riattivazione era spenta su entrambe le liste**: `RowActionsMenu` disabilita da sé le azioni sulle righe inattive, e senza `allowWhenInactive` l'azione «Riattiva» era disabilitata **proprio sulle righe spente**. Era così anche nel codice dei registri già rilasciato — e riattivare è la strada che il §0 impone quando la terna è occupata | un pulsante grigio con un tooltip plausibile e falso |
+| 4 | `ApiAuditLog` (`core/api/views_tracciamento.py`) dichiara `lista_codice = "storico.audit_log"` ma serve `dbops.audit_log`, le **esecuzioni di funzione**: zero colonne in comune col catalogo di quella lista. La lista che il frontend monta chiama `/amm-software/audit-log/` | 🟠 **segnalato, non corretto**: è fuori da questo cantiere |
+| 5 | La lista 55 sbarrava la strada al super admin, e la correzione ovvia era una bugia | → §12.1, ed è diventato il terzo stato |
+
+### 13.6 Stato, e cosa resta
+
+| Cosa | Stato |
+| --- | --- |
+| Suite backend | **4371 test**, 2 rossi non di questo cantiere (sotto) |
+| Guard i18n · liste · licenza | ✅ puliti |
+| Frontend | `npm run build` ✅, lint invariato (3 errori preesistenti, file non toccati) |
+| Prova sul database vero | lista, lookup, dettaglio, **28 ordinamenti**, creazione dalla madre (2 registri provveduti), update, spegnimento, e i tre rifiuti col messaggio giusto |
+| Prova del cancello | famiglie **si apre** · registri **resta chiusa** · registri + emittente esplicito **si apre** |
+
+🔴 **I due rossi, e sono un segnale non un difetto nostro.** Il seed delle
+quattro liste `ui.*` (2026-09-02) ha acceso due presidi:
+
+* `test_il_registro_copre_ogni_lista_senza_vista` — le quattro hanno `vista_sql`
+  nullo e nessuno che ne guardi i `campo_sorgente`;
+* `test_ogni_lista_configurabile_ha_il_suo_cancello` — nessuna dichiara
+  `lista_codice`, e le loro view sono **`DomainAPIView`**: il registro delle
+  esenzioni, che per sua dichiarazione è solo per le `AdminAPIView`, **non è la
+  strada giusta**.
+
+⇒ Servono le tre righe di seed `perimetro_emittente = false` che il §12.1 aveva
+già previsto (56, 57, 59), la decisione sull'altra strada per `ui.lista_preset`
+(58), e un `lista_codice` sulle quattro view. ⛔ Non sono stati toccati perché
+quel cantiere è **aperto nello stesso albero**.
+
+🔭 **Resta**, e non è di questo cantiere: il **collaudo in-app** (§13, testata),
+`commesse` scoperta (§11.4 dell'altro brief) e il difetto 4 qui sopra.

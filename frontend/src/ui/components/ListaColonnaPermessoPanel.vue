@@ -1,12 +1,16 @@
 <script setup>
 // Scopo: Pannello tab "Permessi colonne". Lista permessi della lista
 //        corrente, click apre drawer in edit, "Nuovo" apre drawer create.
-import { computed, watch } from 'vue'
+//
+// ⭐ Lista NON paginata su `<ListaConfigurabile>` (2026-09-02): i permessi di
+//    colonna di UNA lista sono pochi per modello, quindi `:paginata="false"`.
+//    ⛔ `total` resta obbligatorio: e' l'asserzione che le righe siano tutte.
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -14,6 +18,7 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
 import { useUiAdminStore } from '../stores/uiAdmin'
@@ -30,6 +35,10 @@ const isReadonly = useInjectReadonly()
 const isBlocked = useInjectBlocked()
 
 const drawer = useDrawerState()
+
+const listaRef = ref(null)
+// Nessun `exportFn`: la lista non ha endpoint di export.
+const { azioniLista, dirty } = useListaAzioni(() => listaRef.value)
 
 const listaId = computed(() => uiAdmin.listaCorrenteId)
 const listaSelezionata = computed(() => listaId.value != null)
@@ -57,6 +66,7 @@ const pageActions = computed(() => [
     disabled: !listaSelezionata.value,
     command: reload,
   },
+  ...azioniLista.value,
   {
     key: 'new',
     kind: 'primary',
@@ -124,6 +134,7 @@ function severityForLivello(livello) {
         <div class="app-page-filters" />
         <PageActionsBar :actions="pageActions">
           <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
@@ -139,34 +150,27 @@ function severityForLivello(livello) {
         {{ t('ui.admin.lista_corrente_obbligatoria') }}
       </Message>
 
-      <DataTable
+      <!-- ⚠️ `@row-click` emette `data` direttamente, non l'evento PrimeVue. -->
+      <ListaConfigurabile
         v-else
-        :value="permessoStore.items"
-        data-key="id"
-        class="app-datatable"
+        ref="listaRef"
+        codice="ui.lista_colonna_permesso"
+        :paginata="false"
+        :rows="permessoStore.items"
+        :total="permessoStore.totalRecords"
         :loading="loading || permessoStore.loading"
-        scrollable
-        scroll-height="flex"
-        striped-rows
-        @row-click="(e) => drawer.editRow(e.data, 'id')"
+        @row-click="(data) => drawer.editRow(data, 'id')"
       >
-        <Column field="colonna_etichetta" :header="t('ui.admin.permesso_colonna')" />
-        <Column field="colonna_codice" :header="t('ui.admin.permesso_colonna_codice')" style="width: 220px" />
-        <Column field="profilo_accesso_codice" :header="t('ui.admin.permesso_profilo')" style="width: 240px" />
-        <Column :header="t('ui.admin.permesso_livello_accesso')" style="width: 140px">
-          <template #body="{ data }">
-            <Tag
-              :value="t(`common.livello_${data.livello_accesso.toLowerCase()}`)"
-              :severity="severityForLivello(data.livello_accesso)"
-            />
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-          <template #body="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </Column>
-      </DataTable>
+        <template #cell-livello_accesso="{ data }">
+          <Tag
+            :value="t(`common.livello_${data.livello_accesso.toLowerCase()}`)"
+            :severity="severityForLivello(data.livello_accesso)"
+          />
+        </template>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+      </ListaConfigurabile>
     </template>
 
     <ListaColonnaPermessoDrawer

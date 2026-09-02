@@ -100,6 +100,13 @@ export const FIELD_LENGTH = {
   //    all'operatore come errore generico di database.
   REGISTRO_CODICE_MAX: 16,
   REGISTRO_DESCRIZIONE_MAX: 120,
+  // Famiglie di documento: le tre `varchar` della tabella, verificate sul
+  // database il 2026-09-02. ⛔ Stanno qui e non nel template per la ragione di
+  // sempre — un `maxlength` scritto a mano non e' un limite dichiarato, e' un
+  // numero che nessuno ricontrolla il giorno che la colonna cambia.
+  FAMIGLIA_CODICE_MAX: 16,
+  FAMIGLIA_DESCRIZIONE_MAX: 120,
+  FAMIGLIA_PREFISSO_MAX: 8,
   REGISTRO_PREFISSO_MAX: 4,
   REGISTRO_SUFFISSO_MAX: 4,
   REGISTRO_SERIE_MAX: 8

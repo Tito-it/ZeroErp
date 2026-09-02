@@ -26,17 +26,26 @@ Indice test eseguiti:
  9) per_codice_tace_se_la_richiesta_fissa_un_emittente — il tab nel drawer
 10) per_codice_risolve_lo_scope_una_volta_sola — le due domande condividono la cache
 11-13) richiede_scelta_emittente nei suoi tre termini
+13-bis) la lista SENZA perimetro non chiede niente — e per un'altra ragione
 14-18) emittente_esplicito_da_query: uno / nessuno / due / vuoto / non numerico
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from apps.core.db.lista_catalogo_repository import FlagPerimetroLista
 from apps.core.services import perimetro_emittente as pe
 from apps.core.services.service_errors import ServiceError
 
 _SCOPE = "apps.core.services.perimetro_emittente.PermissionResolver.get_emittenti_pk_ids"
-_CATALOGO = "apps.core.services.perimetro_emittente.fetch_multi_emittente"
+_CATALOGO = "apps.core.services.perimetro_emittente.fetch_flag_perimetro"
+
+
+# Scopo: i due flag di perimetro come li consegna il catalogo.
+# ⚠️ Nominati e non una tupla nuda: sono due booleani adiacenti con significati
+#    opposti, e scambiarli non solleverebbe niente.
+def _flag(*, multi=False, perimetro=True):
+    return FlagPerimetroLista(multi_emittente=multi, perimetro_emittente=perimetro)
 
 
 def _user(user_id: int = 42):
@@ -100,7 +109,7 @@ class GuardListaPerCodiceTests(TestCase):
         pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.x")
         m_catalogo.assert_not_called()
 
-    @patch(_CATALOGO, return_value=False)
+    @patch(_CATALOGO, return_value=_flag(multi=False))
     @patch(_SCOPE, return_value=None)
     def test_per_codice_rifiuta_su_flag_falso(self, _m_scope, m_catalogo) -> None:
         with self.assertRaises(ServiceError) as ctx:
@@ -112,7 +121,7 @@ class GuardListaPerCodiceTests(TestCase):
         self.assertIn("emittente", ctx.exception.message.lower())
         m_catalogo.assert_called_once_with("vendite.x")
 
-    @patch(_CATALOGO, return_value=True)
+    @patch(_CATALOGO, return_value=_flag(multi=True))
     @patch(_SCOPE, return_value=None)
     def test_per_codice_tace_su_flag_vero(self, _m_scope, _m_catalogo) -> None:
         pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.x")
@@ -132,7 +141,7 @@ class GuardListaPerCodiceTests(TestCase):
             pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.inesistente")
         self.assertEqual(ctx.exception.code, "E_UI_LISTA_NON_TROVATA")
 
-    @patch(_CATALOGO, return_value=False)
+    @patch(_CATALOGO, return_value=_flag(multi=False))
     @patch(_SCOPE, return_value=None)
     def test_per_codice_tace_se_la_richiesta_fissa_un_emittente(
         self, _m_scope, _m_catalogo
@@ -145,7 +154,7 @@ class GuardListaPerCodiceTests(TestCase):
             user=_user(), lista_codice="vendite.x", emittente_esplicito=72
         )
 
-    @patch(_CATALOGO, return_value=False)
+    @patch(_CATALOGO, return_value=_flag(multi=False))
     @patch(_SCOPE, return_value=None)
     def test_per_codice_risolve_lo_scope_una_volta_sola(
         self, m_scope, _m_catalogo
@@ -161,6 +170,23 @@ class GuardListaPerCodiceTests(TestCase):
         self.assertEqual(len(cache_usate), 2, "lo scope non e' stato richiesto due volte")
         self.assertIsNotNone(cache_usate[0], "nessuna cache: la seconda e' una query vera")
         self.assertIs(cache_usate[0], cache_usate[1])
+
+
+class GuardListaSenzaPerimetroTests(TestCase):
+    """⭐ Il terzo stato (§12.1, 2026-09-02): la lista che un perimetro non ce l'ha."""
+
+    @patch(_CATALOGO, return_value=_flag(multi=False, perimetro=False))
+    @patch(_SCOPE, return_value=None)
+    def test_lista_senza_perimetro_non_sbarra_nessuno(self, _m_scope, _m_cat) -> None:
+        """Catalogo GLOBALE: nessuna riga appartiene a un emittente.
+
+        ⛔ E il flag `multi_emittente` resta FALSE, ed e' corretto: dichiarare
+        `true` avrebbe significato «so dire da quale emittente arriva ogni
+        riga» — falso, e per giunta con due pgTAP che lo verificano. Le due
+        domande sono diverse, e questa lista risponde «non c'e' niente da
+        dire», non «so dirlo».
+        """
+        pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.famiglie_documento")
 
 
 class RichiedeSceltaEmittenteTests(TestCase):
@@ -226,3 +252,25 @@ class EmittenteEsplicitoDaQueryTests(TestCase):
         l'emittente, perche' il progetto ne usa piu' d'uno (soggetto-ruolo e PK
         dell'emittente fiscale non sono la stessa cosa)."""
         self.assertIsNone(pe.emittente_esplicito_da_query(self._q("e=72"), nome=""))
+
+    @patch(_SCOPE, return_value=None)
+    def test_lista_senza_perimetro_non_chiede_e_non_interroga_lo_scope(self, m_scope) -> None:
+        """⭐ Apre come `multi_emittente`, ma NON per la stessa ragione: li' un
+        emittente c'e' e la riga lo dice, qui non c'e' niente da dire. I due
+        rami restano separati perche' il giorno che uno dei due cambia si deve
+        poter toccare quello, non una condizione che li ha fusi."""
+        self.assertFalse(
+            pe.richiede_scelta_emittente(
+                user=_user(), multi_emittente=False, perimetro_emittente=False,
+            ),
+        )
+        m_scope.assert_not_called()
+
+    @patch(_SCOPE, return_value=None)
+    def test_perimetro_omesso_vale_TRUE_ed_e_il_verso_prudente(self, _m) -> None:
+        """⚠️ Il default del parametro e' quello della colonna: chi non dichiara
+        niente ha un perimetro. Un default `False` avrebbe aperto il cancello su
+        tutte le liste insieme, in silenzio."""
+        self.assertTrue(
+            pe.richiede_scelta_emittente(user=_user(), multi_emittente=False),
+        )

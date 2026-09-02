@@ -2,23 +2,37 @@
 // Scopo: Pannello tab "Definizioni" della pagina tecnica
 //        Personalizzazioni Liste (Blocco F Fase 2 — DEF-5b).
 //        Lista TUTTE le definizioni (incluse disattivate). Click riga
-//        apre il drawer in edit. Pattern lista standard:
-//        PageActionsBar + DataTable + RowActionsMenu + drawer.
+//        apre il drawer in edit.
 //
 //        SUPER_ADMIN-only (BE: AdminAPIView). Niente readonly conditional:
 //        chi accede a questa pagina e' SUPER_ADMIN, l'editing e' sempre
-//        attivo. Mantengo `useInjectReadonly` per coerenza pattern, ma
-//        non e' attivo sulla pagina tecnica.
-import { computed, onMounted } from 'vue'
+//        attivo.
+//
+// ⭐ PRIMA LISTA NON PAGINATA su `<ListaConfigurabile>` (pilota, 2026-09-02).
+//    La popolazione e' limitata PER MODELLO — una riga per lista configurata —
+//    quindi `:paginata="false"`: niente paginator, ordinamento locale.
+//    ⛔ Cio' NON vuol dire «senza total»: `total` resta obbligatorio ed e'
+//    l'asserzione che le righe siano tutte. Il BB confronta `rows.length` con
+//    `total` e si rifiuta di disegnare la tabella se divergono — e il `count`
+//    arriva da una query SUA nel backend, non da `len(results)`, altrimenti il
+//    confronto sarebbe un'eco.
+//
+// ⚠️ Non usa `useListaConfigurabilePage`: quello scaffolding e' costruito su
+//    `useSearchTable` e pretende uno store «ricerca + sort + limit». Qui lo
+//    store ha un solo `fetchAll()`. Le due azioni di utility arrivano
+//    comunque dal BB condiviso `useListaAzioni`, che nasce esattamente per
+//    questo caso.
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { MANAGE_ICONS } from '../../core/constants'
 import { useUiDefinizioneAdminStore } from '../stores/uiDefinizioneAdmin'
 import ListaDefinizioneDrawer from './ListaDefinizioneDrawer.vue'
@@ -31,6 +45,13 @@ const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
 const drawer = useDrawerState()
+
+// Il ref va sul componente lista: `useListaAzioni` legge di rimbalzo
+// `config`/`dirty`/`colonneNuove` e chiama `openModal()`.
+const listaRef = ref(null)
+// Nessun `exportFn`: questa lista non ha endpoint di export, e il BB rende
+// l'azione condizionale — senza handler il pulsante aprirebbe un dialog inerte.
+const { azioniLista, dirty } = useListaAzioni(() => listaRef.value)
 
 onMounted(async () => {
   await definizioneStore.fetchAll()
@@ -48,6 +69,7 @@ const pageActions = computed(() => [
     icon: MANAGE_ICONS.RELOAD,
     command: reload,
   },
+  ...azioniLista.value,
   {
     key: 'new',
     kind: 'primary',
@@ -107,39 +129,35 @@ async function onDrawerSaved() {
   <div class="app-tab-content">
     <div class="app-page-toolbar">
       <div class="app-page-filters" />
-      <PageActionsBar :actions="pageActions" />
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="definizioneStore.items"
-      data-key="id"
-      class="app-datatable"
+    <!-- ⚠️ `@row-click` emette `data` direttamente, non l'evento PrimeVue:
+         la firma cambia rispetto alla `<DataTable>` di prima. -->
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="ui.lista_definizione"
+      :paginata="false"
+      :rows="definizioneStore.items"
+      :total="definizioneStore.totalRecords"
       :loading="loading || definizioneStore.loading"
-      scrollable
-      scroll-height="flex"
-      striped-rows
-      @row-click="(e) => drawer.editRow(e.data, 'id')"
+      @row-click="(data) => drawer.editRow(data, 'id')"
     >
-      <Column field="codice" :header="t('ui.admin.definizione_codice')" sortable />
-      <Column field="descrizione" :header="t('ui.admin.definizione_descrizione')" sortable />
-      <Column field="schema_dati" :header="t('ui.admin.definizione_schema_dati')" sortable />
-      <Column field="vista_sql" :header="t('ui.admin.definizione_vista_sql')">
-        <template #body="{ data }">
-          <span v-if="data.vista_sql">{{ data.vista_sql }}</span>
-          <span v-else class="muted">—</span>
-        </template>
-      </Column>
-      <Column :header="t('common.col_attivo')" style="width: 90px">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-vista_sql="{ data }">
+        <span v-if="data.vista_sql">{{ data.vista_sql }}</span>
+        <span v-else class="muted">—</span>
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />
+      </template>
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+      </template>
+    </ListaConfigurabile>
 
     <ListaDefinizioneDrawer
       :visible="drawer.state.visible"

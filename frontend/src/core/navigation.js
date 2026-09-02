@@ -155,6 +155,10 @@ export const DOMAIN_MENUS = {
     { key: 'profili-reparto', icon: NAV_ICONS.SITEMAP, to: '/amm-software/profili-reparto' },
     { key: 'permessi', icon: NAV_ICONS.SHIELD, to: '/amm-software/permessi' },
     { key: 'emittenti-fiscali', icon: NAV_ICONS.ID_CARD, to: '/amm-software/emittenti-fiscali' },
+    // Accanto agli emittenti, ed e' la loro vicina di casa: i registri di
+    // numerazione vivono nel drawer dell'emittente, la REGOLA che applicano
+    // vive qui — globale, uguale per tutti.
+    { key: 'famiglie-documento', icon: NAV_ICONS.FILE, to: '/amm-software/famiglie-documento' },
     { key: 'categorie-clienti', icon: NAV_ICONS.TAGS, to: '/amm-software/categorie-clienti' },
     { key: 'definizioni-workflow', icon: NAV_ICONS.SITEMAP, to: '/amm-software/definizioni-workflow' },
     { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },

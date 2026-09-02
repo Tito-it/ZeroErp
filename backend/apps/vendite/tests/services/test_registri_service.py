@@ -60,6 +60,7 @@ from unittest.mock import MagicMock, patch
 from django.db import IntegrityError
 
 from apps.core.services.service_errors import ServiceError
+from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.registri_repository import (
     _CAMPI_CREATE,
     _CAMPI_UPDATE,
@@ -424,7 +425,13 @@ class RegistriRevisioneTests(TestCase):
     #    azzerarla come gli altri due la farebbe respingere da un vincolo
     #    diverso, con un messaggio che parla di un campo obbligatorio invece
     #    che della famiglia.
-    def test_politica_data_neutralizzata_fuori_fattura(self):
+    # ⚠️ Il flag si MOCKA, e non e' pigrizia: dal 2026-09-02 lo legge il catalogo
+    #    (`famiglie_documento.ammette_regole_fiscali`, §11.10 BE-F2 · §12.2). Lasciarlo
+    #    andare al database trasformerebbe due test di contratto — che questo
+    #    file dichiara di fare coi mock — in due test che senza database
+    #    falliscono, e il difetto si vedrebbe in CI e non qui.
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=False)
+    def test_politica_data_neutralizzata_fuori_fattura(self, _ammette):
         dati = RegistriService()._normalizza({
             "famiglia_documento": "DDT",
             "politica_data_documento": "FINE_MESE_COMPETENZA",
@@ -436,7 +443,8 @@ class RegistriRevisioneTests(TestCase):
     # Scopo: (12b) il gemello positivo — su FATTURA la politica passa intatta.
     #        Senza, il test non distingue «normalizza il caso giusto» da
     #        «schiaccia tutto su OGGI».
-    def test_politica_data_intatta_su_fattura(self):
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=True)
+    def test_politica_data_intatta_su_fattura(self, _ammette):
         dati = RegistriService()._normalizza({
             "famiglia_documento": "FATTURA",
             "politica_data_documento": "FINE_MESE_COMPETENZA",
@@ -444,6 +452,38 @@ class RegistriRevisioneTests(TestCase):
         })
         self.assertEqual(dati["politica_data_documento"], "FINE_MESE_COMPETENZA")
         self.assertEqual(dati["limite_emissione_giorni"], 15)
+
+    # Scopo: (12c) ⭐ LA PROVA CHE IL CRITERIO NON E' PIU' IL NOME. Una famiglia
+    #        che non si chiama FATTURA ma che a catalogo presidia la data tiene
+    #        i suoi tre campi. Col letterale `_FAMIGLIA_FISCALE = "FATTURA"`
+    #        — tolto il 2026-09-02, §11.10 BE-F2 — questo test sarebbe rosso, e
+    #        i campi di quella famiglia sarebbero spariti dalla maschera senza
+    #        che niente fallisse.
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=True)
+    def test_i_campi_fiscali_seguono_il_catalogo_non_il_nome(self, _ammette):
+        dati = RegistriService()._normalizza({
+            "famiglia_documento": "PARCELLA",
+            "politica_data_documento": "FINE_MESE_COMPETENZA",
+            "limite_emissione_giorni": 15,
+        })
+        self.assertEqual(dati["politica_data_documento"], "FINE_MESE_COMPETENZA")
+        self.assertEqual(dati["limite_emissione_giorni"], 15)
+
+    # Scopo: (12d) e il verso opposto — famiglia SCONOSCIUTA al catalogo: i tre
+    #        campi si azzerano. ⛔ Non e' «si presume non fiscale per prudenza»:
+    #        e' che a rifiutare una famiglia inesistente deve essere la FK, col
+    #        suo messaggio, un attimo dopo. Ripiegare su «presidia» manderebbe
+    #        al database valori che il CHECK respinge, con un errore che parla
+    #        di un campo invece che della famiglia.
+    @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=None)
+    def test_famiglia_sconosciuta_azzera_i_campi_fiscali(self, _ammette):
+        dati = RegistriService()._normalizza({
+            "famiglia_documento": "NON_ESISTE",
+            "politica_data_documento": "FINE_MESE_COMPETENZA",
+            "limite_emissione_giorni": 15,
+        })
+        self.assertEqual(dati["politica_data_documento"], "OGGI")
+        self.assertIsNone(dati["limite_emissione_giorni"])
 
     # Scopo: (13) `set_attivo` legge UNA volta sola. La prima stesura leggeva
     #        anche prima della scrittura per distinguere il 404, e ogni lettura

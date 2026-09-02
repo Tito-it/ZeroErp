@@ -34,12 +34,19 @@ export const useUiDefinizioneAdminStore = defineStore('ui-definizione-admin', ()
 
   // Scopo: Carica tutte le definizioni (incluse disattivate). Sostituisce
   //        gli items.
+  // ⛔ `totalRecords` viene dal BACKEND (`count`), NON da `items.length`.
+  //    Era `items.value.length`, cioe' un'eco: un numero derivato dalle righe
+  //    non puo' dire niente SULLE righe. Serve come asserzione al guard
+  //    anti-troncamento di `<ListaConfigurabile>` in modalita' `paginata:
+  //    false` — se un giorno l'endpoint impaginasse, le due grandezze
+  //    divergono e la lista lo dichiara invece di mostrare un sottoinsieme
+  //    facendolo passare per l'insieme.
   async function fetchAll() {
     loading.value = true
     try {
       const res = await listAdminDefinizioniAdmin()
-      items.value = res.data.data
-      totalRecords.value = items.value.length
+      items.value = res.data.data.results
+      totalRecords.value = res.data.data.count
       hasSearched.value = true
     } finally {
       loading.value = false

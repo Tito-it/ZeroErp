@@ -2,15 +2,18 @@
 // Scopo: Pannello tab "Preset" della pagina admin Personalizzazioni Liste.
 //        Lista preset filtrata per `listaCorrenteId`. Click riga apre il
 //        drawer in edit. Pulsante kebab per gestire la composizione (sub-drawer).
-//        Pattern lista standard: PageActionsBar + DataTable + drawer.
 //        Empty state "seleziona prima una lista" se nessuna selezione.
-import { computed, watch } from 'vue'
+//
+// ⭐ Lista NON paginata su `<ListaConfigurabile>` (2026-09-02): i preset di UNA
+//    lista sono pochi per modello, quindi `:paginata="false"`. ⛔ `total` resta
+//    obbligatorio: e' l'asserzione che le righe siano tutte.
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import Message from 'primevue/message'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -18,6 +21,7 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
 import { useUiAdminStore } from '../stores/uiAdmin'
@@ -36,6 +40,10 @@ const isBlocked = useInjectBlocked()
 
 const drawerTestata = useDrawerState()
 const drawerComposizione = useDrawerState()
+
+const listaRef = ref(null)
+// Nessun `exportFn`: la lista non ha endpoint di export.
+const { azioniLista, dirty } = useListaAzioni(() => listaRef.value)
 
 const listaId = computed(() => uiAdmin.listaCorrenteId)
 const listaSelezionata = computed(() => listaId.value != null)
@@ -63,6 +71,7 @@ const pageActions = computed(() => [
     disabled: !listaSelezionata.value,
     command: reload,
   },
+  ...azioniLista.value,
   {
     key: 'new',
     kind: 'primary',
@@ -141,6 +150,7 @@ function severityForAmbito(ambito) {
         <div class="app-page-filters" />
         <PageActionsBar :actions="pageActions">
           <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
@@ -156,54 +166,39 @@ function severityForAmbito(ambito) {
         {{ t('ui.admin.lista_corrente_obbligatoria') }}
       </Message>
 
-      <DataTable
+      <!-- ⚠️ `@row-click` emette `data` direttamente, non l'evento PrimeVue. -->
+      <ListaConfigurabile
         v-else
-        :value="presetStore.items"
-        data-key="id"
-        class="app-datatable"
+        ref="listaRef"
+        codice="ui.lista_preset"
+        :paginata="false"
+        :rows="presetStore.items"
+        :total="presetStore.totalRecords"
         :loading="loading || presetStore.loading"
-        scrollable
-        scroll-height="flex"
-        striped-rows
-        @row-click="(e) => drawerTestata.editRow(e.data, 'id')"
+        @row-click="(data) => drawerTestata.editRow(data, 'id')"
       >
-        <Column field="codice" :header="t('ui.admin.preset_codice')" style="width: 180px" sortable />
-        <Column field="descrizione" :header="t('ui.admin.preset_descrizione')" />
-        <Column field="ambito" :header="t('ui.admin.preset_ambito')" style="width: 160px">
-          <template #body="{ data }">
-            <Tag :value="t(`ui.admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
-          </template>
-        </Column>
-        <Column :header="t('ui.admin.preset_riferimento')" style="width: 220px">
-          <template #body="{ data }">
-            <span v-if="data.profilo_accesso_codice">
-              {{ data.profilo_accesso_codice }}
-            </span>
-            <span v-else-if="data.emittente_fiscale_codice">
-              {{ data.emittente_fiscale_codice }}
-            </span>
-            <span v-else class="muted">—</span>
-          </template>
-        </Column>
-        <Column :header="t('ui.admin.preset_colonne_count')" style="width: 100px" class="text-right">
-          <template #body="{ data }">{{ data.colonne_count }}</template>
-        </Column>
-        <Column :header="t('ui.admin.preset_default')" style="width: 90px" class="text-center">
-          <template #body="{ data }">
-            <i v-if="data.is_default" class="pi pi-check" />
-          </template>
-        </Column>
-        <Column :header="t('common.col_attivo')" style="width: 90px">
-          <template #body="{ data }">
-            <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-          <template #body="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </Column>
-      </DataTable>
+        <template #cell-ambito="{ data }">
+          <Tag :value="t(`ui.admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
+        </template>
+        <template #cell-preset_riferimento="{ data }">
+          <span v-if="data.profilo_accesso_codice">
+            {{ data.profilo_accesso_codice }}
+          </span>
+          <span v-else-if="data.emittente_fiscale_codice">
+            {{ data.emittente_fiscale_codice }}
+          </span>
+          <span v-else class="muted">—</span>
+        </template>
+        <template #cell-is_default="{ data }">
+          <i v-if="data.is_default" class="pi pi-check" />
+        </template>
+        <template #cell-attivo="{ data }">
+          <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />
+        </template>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+      </ListaConfigurabile>
     </template>
 
     <ListaPresetDrawer

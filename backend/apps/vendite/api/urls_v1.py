@@ -116,6 +116,9 @@ urlpatterns = [
     # di-numerazione). ⚠️ Il dato e' di vendite, la maschera vive nel drawer
     # dell'emittente fiscale: il permesso resta quello dell'area `vendite`.
     path("registri/", include("apps.vendite.api.urls_registri")),
+    # Famiglie di documento: il CRUD della REGOLA che il registro applica
+    # (brief-be-fe-crud-registri-di-numerazione §11.10).
+    path("famiglie/", include("apps.vendite.api.urls_famiglie")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
     # ⭐ Gemello del resolver prezzi, e sta qui accanto di proposito: stesso

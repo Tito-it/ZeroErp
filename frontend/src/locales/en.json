@@ -238,6 +238,7 @@
       "profili-reparto": "Department Profiles",
       "permessi": "Permissions",
       "emittenti-fiscali": "Fiscal Issuers",
+      "famiglie-documento": "Document families",
       "matrici": "Matrices",
       "matrice-utilities-ruoli": "Utilities/Roles Matrix",
       "matrice-indirizzi-ruoli": "Addresses/Roles Matrix",
@@ -670,6 +671,7 @@
   },
   "amministrazione": {
     "registri_numerazione": {
+      "slot_occupato": "slot already taken",
       "help": "The numbering registers of this issuer: one per document family (delivery notes, orders, jobs, returns) and more than one for invoices. This is where the number FORMAT is governed — prefix, suffix and how many digits — and it is the only place it can be changed.",
       "filtro_placeholder": "Search by code, description or prefix",
       "nuovo_tooltip": "New numbering register",
@@ -701,6 +703,42 @@
       "col_anno": "Year",
       "col_ultimo_numero": "Last number",
       "col_ultima_data": "Last date"
+    },
+    "famiglie_documento": {
+      "new": "New family",
+      "search_placeholder": "Search by code, description or prefix",
+      "drawer_title_new": "New document family",
+      "drawer_title_edit": "Document family",
+      "sezione_dove_vive": "Where the document lives",
+      "sezione_forma": "Shape new registers are born with",
+      "sezione_stato": "Status",
+      "schema_tabella": "Schema",
+      "nome_tabella": "Table",
+      "codice_immutabile": "The code cannot be changed: it is the target of the registers' reference, and changing it would detach them all.",
+      "serie_hint": "Empty = this family does not handle series. If you fill it in, that column must also tell numbers apart on the document itself.",
+      "forma_hint": "These are the values a register of this family is BORN with: a hand-made register and a provisioned one must come out with the same shape.",
+      "ammette_regole_fiscali": "Allows fiscal rules",
+      "fiscali_hint": "Only the invoice allows issue limits and a non-neutral date policy: a family created here is born without them, and that is a limit of the model, not of this form.",
+      "presidia_hint": "If true, a document gets no number when its date is earlier than the last one already numbered on the same register. ⚠️ It is a different question from the one below, even when the answer is the same.",
+      "attivi_suffisso": "active",
+      "serie_assente": "not handled",
+      "serie_tutte": "Series: all",
+      "serie_si": "With series",
+      "serie_no": "Without series",
+      "action_disattiva": "Deactivate",
+      "action_attiva": "Reactivate",
+      "conferma_disattiva": "Deactivate family {codice}? It drops out of the guards that iterate it, and its documents stop holding the customer they were numbered under.",
+      "conferma_attiva": "Reactivate family {codice}?",
+      "stato_aggiornato": "Family status updated.",
+      "salvata": "Document family saved.",
+      "salvata_con_registri": "Family created, and with it {registri} numbering registers on the issuers that had none.",
+      "disattiva_blocco": {
+        "ha_registri_attivi": "Family {codice_interno} still has {registri} active numbering registers: switch those off first. A switched-off family drops out of the guards that iterate it, and its registers would keep numbering with nobody watching them.",
+        "ha_documenti_numerati": "Family {codice_interno} already has {documenti} numbered documents in {tabella}: switching it off would drop them from the guard on the customer's issuer change, and those documents would stop holding the customer they were numbered under. Numbers already issued cannot be undone."
+      },
+      "struttura_blocco": {
+        "ha_registri": "The columns that say where the document lives cannot be changed: {registri} numbering registers already carry the defaults of family {codice_interno}. Change what depends on them first, or create a new family."
+      }
     },
     "registri_fatturazione": {
       "disattiva_blocco": {
@@ -2267,6 +2305,20 @@
       }
     },
     "famiglie_documento": {
+      "col_codice_interno": "Code",
+      "col_descrizione": "Description",
+      "col_tabella_documento": "Table",
+      "col_colonna_numero": "Number column",
+      "col_colonna_serie": "Series column",
+      "col_colonna_billing_account": "Customer column",
+      "col_gestisce_serie": "Handles series",
+      "col_presidia_data_documento": "Guards the date",
+      "col_prefisso_default": "Default prefix",
+      "col_lunghezza_default": "Default digits",
+      "col_n_registri": "Registers",
+      "col_n_registri_attivi": "Active registers",
+      "col_attivo": "Active",
+      "col_data_insert": "Created",
       "FATTURA": "Invoices",
       "DDT": "Delivery notes",
       "ORDINE": "Orders",
@@ -4464,7 +4516,9 @@
     "export_success": "Export completed",
     "preset_aggiornato_messaggio": "The configuration of this list was updated by an administrator. The new options are not yet visible in your personal view.",
     "preset_aggiornato_vedi_novita": "See what's new",
-    "preset_aggiornato_ignora": "Dismiss"
+    "preset_aggiornato_ignora": "Dismiss",
+    "troncamento_titolo": "Incomplete list — not displayed",
+    "troncamento_testo": "This list is configured as non-paginated, but {righe} of {total} rows were received. Showing them would present a subset as the whole set, so the table is not rendered. Please report this: details are in the browser console."
   },
   "export_dialog": {
     "title": "Export list",

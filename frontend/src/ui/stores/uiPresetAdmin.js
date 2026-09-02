@@ -49,8 +49,12 @@ export const useUiPresetAdminStore = defineStore('ui-preset-admin', () => {
     loading.value = true
     try {
       const res = await listAdminPresetByLista(listaId)
-      items.value = res.data.data
-      totalRecords.value = items.value.length
+      // ⛔ `totalRecords` dal BACKEND (`count`), NON da `items.length`: un
+      // numero derivato dalle righe non puo' dire niente SULLE righe. Serve
+      // come asserzione al guard anti-troncamento di `<ListaConfigurabile>`
+      // in modalita' `paginata: false`.
+      items.value = res.data.data.results
+      totalRecords.value = res.data.data.count
       hasSearched.value = true
       lastListaId.value = listaId
     } finally {
