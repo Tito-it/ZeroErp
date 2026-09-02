@@ -392,6 +392,26 @@ UPDATE vendite.registri_fatturazione_progressivi p
    SET attivo = false
  WHERE p.registro_id IN (SELECT registro_id FROM tmp_num_reg_cmm);
 
+-- ⛔ E DAL 2026-09-02 I PASSI SONO TRE, non due. `vendite.commesse` ha
+--   guadagnato `registro_id` (changeSet 20260902-07) e l'automazione ATTIVO ha
+--   montato il SETTIMO guard di disattivazione da sola, a partire dalla FK: le
+--   commesse gia' numerate su questo registro lo trattengono.
+-- ⚠️ E qui non c'e' un «figli prima»: `vendite.commesse` NON ha la colonna
+--   `attivo`, quindi il guard cade nel ramo dell'ESISTENZA — ne basta UNA
+--   qualsiasi, e spegnerla non e' un'opzione. L'unico modo di liberare il padre
+--   e' STACCARLE.
+-- ⭐ Il caso piu' stretto e' che il test se lo procura da solo: il 5) ha appena
+--   creato una commessa su QUESTO registro, quindi senza questa riga il file si
+--   blocca su cio' che ha appena fatto.
+-- ⚠️ Lo stacco vive dentro la transazione che il file annulla: non tocca il
+--   database oltre il ROLLBACK, ed e' fixture, non un rimedio di dominio. Nella
+--   realta' un registro che ha numerato una commessa non si spegne piu' — ed e'
+--   la durezza che script.fn_check_registro_disattivabile ora DICHIARA prima
+--   del click (motivo HA_COMMESSE, changeSet 20260902-12).
+UPDATE vendite.commesse cm
+   SET registro_id = NULL
+ WHERE cm.registro_id IN (SELECT registro_id FROM tmp_num_reg_cmm);
+
 UPDATE vendite.registri_fatturazione r
    SET attivo = false
  WHERE r.id IN (SELECT registro_id FROM tmp_num_reg_cmm);

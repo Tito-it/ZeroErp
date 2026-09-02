@@ -20,7 +20,7 @@
 -- 6) ⭐⭐ STRUTTURALE: la check copre TUTTI i guard montati
 --
 -- Scopo:
---   ⛔ Su vendite.registri_fatturazione i guard di disattivazione sono SEI, ed
+--   ⛔ Su vendite.registri_fatturazione i guard di disattivazione sono SETTE, ed
 --   erano TRE fino al 2026-08-31: col trasloco vendite.ddt, ordini e resi hanno
 --   guadagnato `registro_id`, e l'automazione ha montato il guard DA SOLA a
 --   partire dalla FK — al migrate, senza annunciarlo.
@@ -43,7 +43,7 @@
 --   ⇒ Quello che si puo' presidiare e' l'altra meta': che la check non resti
 --   INDIETRO rispetto ai guard. Il test 6 legge da `pg_trigger` quali tabelle
 --   figlie bloccano davvero la disattivazione, e le confronta con quelle che la
---   check copre. Il giorno che ne compare una quarta, diventa rosso — invece di
+--   check copre. Il giorno che ne compare una in piu', diventa rosso — invece di
 --   lasciare la check a spegnere un cestino che il trigger poi rifiuta.
 --
 -- ⚠️ COSA QUESTO FILE NON PROVA: la frase tradotta. Le tre `reason_key` sono un
@@ -148,7 +148,17 @@ SELECT throws_like(
 --   puo' garantire e' che la check non resti INDIETRO.
 -- ⚠️ Le figlie si leggono dal SECONDO argomento di
 --   dbops.trgfn_prevent_deactivate_if_children, che e' il nome della tabella
---   figlia. Se ne comparisse una quarta, questa riga diventa rossa.
+--   figlia. Se ne comparisse un'ottava, questa riga diventa rossa.
+--
+-- ⭐ ED E' GIA' SUCCESSO, il 2026-09-02: `vendite.commesse` ha guadagnato
+--   `registro_id` (changeSet 20260902-07) e l'automazione ATTIVO ha montato il
+--   SETTIMO guard da sola, al migrate. Questa riga e' diventata rossa PRIMA
+--   che qualcuno premesse un cestino — che e' tutto il punto. La check ha
+--   imparato il motivo con 20260902-12.
+-- ⛔ E QUANDO RIACCADE: si aggiunge il motivo alla check, POI si aggiorna
+--   l'elenco atteso. Aggiornare solo questa riga farebbe tacere il presidio
+--   invece di rispondergli, e lascerebbe il cestino acceso su un registro che
+--   il trigger rifiuta.
 SELECT is(
     (SELECT string_agg(DISTINCT x.figlia, ',' ORDER BY x.figlia)
        FROM pg_trigger t
@@ -161,7 +171,7 @@ SELECT is(
         AND n.nspname = 'vendite'
         AND c.relname = 'registri_fatturazione'
         AND pg_get_triggerdef(t.oid) LIKE '%prevent_deactivate_if_children%'),
-    'ddt,fatture,ordini,registri_fatturazione_progressivi,resi,tipi_doc_fiscale_registri',
+    'commesse,ddt,fatture,ordini,registri_fatturazione_progressivi,resi,tipi_doc_fiscale_registri',
     '6) I guard di disattivazione montati sono esattamente quelli che la check copre');
 
 SELECT * FROM finish();
