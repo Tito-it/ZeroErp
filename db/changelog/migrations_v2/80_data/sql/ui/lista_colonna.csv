@@ -670,3 +670,31 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 670,59,profilo_accesso,Profilo accesso,,profilo_accesso_codice,informazione,string,,240,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.permesso_profilo,90
 671,59,livello_accesso,Livello,,livello_accesso,informazione,string,,140,40,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.permesso_livello_accesso,70
 672,59,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+673,60,codice,Codice,,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_codice,100
+674,60,descrizione,Descrizione,,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_descrizione,90
+675,60,tipo,Tipo,,tipo,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_tipo,80
+676,60,conto_iban,Conto di incasso,,conto_iban,informazione,string,,,40,left,,,t,f,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_conto,70
+677,60,conto_utility,Utility del conto,,conto_utility_descrizione,informazione,string,,,50,left,,,t,f,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_utility,40
+678,60,centro,Centro di riscossione,,centro_descrizione,informazione,string,,,60,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_centro,60
+679,60,attivo,Attivo,,attivo,informazione,boolean,,,70,center,,,t,f,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.canali.col_attivo,70
+680,60,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+681,61,destinazione,Destinazione,,destinazione,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.sistemazioni.col_destinazione,100
+682,61,importo,Importo,,importo,informazione,numeric,currency_eur,,20,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.sistemazioni.col_importo,90
+683,61,stato,Stato,,stato,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.sistemazioni.col_stato,80
+684,61,motivo,Motivo,,motivo,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.sistemazioni.col_motivo,50
+685,61,data_esecuzione,Eseguita il,,data_esecuzione,informazione,datetime,datetime_short,,50,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,pagamenti.sistemazioni.col_eseguita,60
+686,61,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+687,62,tipo,Tipo,,tipo_descrizione,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_tipo,100
+688,62,emittente_ragione_sociale,Emittente,,emittente_ragione_sociale,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_emittente,80
+689,62,iva,IVA,,iva_codice,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_iva,70
+690,62,validita,Validità,Compone valido_dal e valido_al,,informazione,string,,,40,left,,,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_validita,60
+691,62,residuo,Residuo,,residuo,informazione,numeric,currency_eur,,50,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_residuo,90
+692,62,stato,Stato,Compone attivo e ambito_incompleto,,informazione,string,,,60,left,,,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_stato,80
+693,63,soggetto_ragione_sociale,Soggetto,,soggetto_ragione_sociale,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_soggetto,100
+694,63,soggetto_id_fiscale,CF / P.IVA,,soggetto_id_fiscale,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_id_fiscale,70
+695,63,tipo,Tipo,,tipo_descrizione,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_tipo,80
+696,63,emittente_ragione_sociale,Emittente,,emittente_ragione_sociale,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_emittente,60
+697,63,validita,Validità,Compone valido_dal e valido_al,,informazione,string,,,50,left,,,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_validita,40
+698,63,plafond,Plafond,,plafond,informazione,numeric,currency_eur,,60,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.field_plafond,70
+699,63,imponibile_utilizzato,Utilizzato,,imponibile_utilizzato,informazione,numeric,currency_eur,,70,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.field_utilizzato,80
+700,63,eccedenza,Eccedenza,,eccedenza,informazione,numeric,currency_eur,,80,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_eccedenza,100
