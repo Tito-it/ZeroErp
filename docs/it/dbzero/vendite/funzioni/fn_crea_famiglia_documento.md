@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_crea_famiglia_documento.md" %}
 # ⚙️ Funzione `fn_crea_famiglia_documento`
 
 ```sql

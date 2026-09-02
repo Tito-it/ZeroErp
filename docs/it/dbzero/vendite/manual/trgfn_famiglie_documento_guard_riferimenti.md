@@ -72,3 +72,53 @@ un errore che parla di colonne che nessuno stava toccando.
   un'operazione scollegata;
 * il messaggio nomina la famiglia e il riferimento mancante: si sa dove mettere
   le mani senza doverlo dedurre.
+
+---
+
+### 🔄 rev 2026-09-01 — ora guarda anche la **serie**, e non le basta che esista
+
+`colonna_serie` è arrivata il 2026-09-01, il controllo era stato scritto il 30
+agosto: la serie non la conosceva.
+
+⚠️ **E questa pagina lo affermava già** — *«col nome, il controllo automatico
+verifica che la colonna esista davvero e che stia nel vincolo di unicità del
+numero»*. Nel database quel controllo **non c'era**: l'unico presidio era un test,
+che gira quando qualcuno lo lancia, non quando qualcuno salva una riga. Da oggi
+la frase è vera.
+
+**Sulla serie i controlli sono due, e sono difetti diversi:**
+
+| Che cosa non va | Che tipo di difetto è |
+| --- | --- |
+| la colonna dichiarata **non esiste** | un refuso, come per le altre tre: stesso messaggio |
+| la colonna esiste ma **non distingue il numero** — non compare in nessun vincolo di unicità insieme a lui | ⭐ il caso insidioso: il nome è giusto e si legge. Ha un messaggio suo |
+
+⛔ **Perché il secondo conta.** La serie entra nella chiave del contatore, quindi
+apre un contenitore nuovo che riparte da 1. Se il documento non la porta anche
+nel proprio vincolo di unicità, quel numero va a sbattere contro uno già emesso:
+il documento non si numera più. È la regola generale — *tutto ciò che distingue
+il contatore deve poter distinguere anche il documento*.
+
+#### 🔴 E il trigger non nominava la colonna
+
+Fino a oggi la lista delle colonne che risvegliano il controllo era: tabella,
+colonna del numero, colonna del cliente, interruttore. **`colonna_serie` non
+c'era.**
+
+⇒ Aggiornare la sola funzione avrebbe prodotto un controllo che verifica una
+colonna su cui **non viene mai chiamato**: verde in ogni prova che passi dalle
+altre colonne, muto proprio sul caso per cui è stato scritto. ⚠️ E il seed che
+scrive la serie tocca **esattamente e solo** quella colonna.
+
+⭐ Trovato eseguendo l'aggiornamento vero, non leggendo il codice: il trigger è
+stato ricreato con la colonna dentro.
+
+#### ⚠️ Un dettaglio che sembra tecnico e decide il comportamento
+
+Il controllo «la serie sta nel vincolo del numero» guarda il **testo** della
+definizione dell'indice, non l'elenco delle sue colonne.
+
+Sembra meno preciso ed è l'unico corretto: sulle fatture la serie entra
+nell'unicità **dentro una funzione** — `COALESCE(serie, '')` — e per l'elenco
+delle colonne quella non è una colonna. La versione «precisa» avrebbe **rifiutato
+la fattura**, cioè fatto fallire la migrazione sul seed delle famiglie.

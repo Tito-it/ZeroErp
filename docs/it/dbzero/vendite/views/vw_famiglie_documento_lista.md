@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_famiglie_documento_lista.md" %}
 # 🔍 View `vw_famiglie_documento_lista`
 
 > 📝 **Descrizione**

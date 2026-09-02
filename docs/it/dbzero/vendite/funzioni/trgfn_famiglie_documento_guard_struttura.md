@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_famiglie_documento_guard_struttura.md" %}
 # ⚙️ Funzione `trgfn_famiglie_documento_guard_struttura`
 
 ```sql

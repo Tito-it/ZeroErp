@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_famiglia_documento_disattivabile.md" %}
 # ⚙️ Funzione `fn_check_famiglia_documento_disattivabile`
 
 ```sql

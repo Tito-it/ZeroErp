@@ -12,6 +12,11 @@
 > quelle che sicuramente servono, tenendo fuori quelle collegate a decisioni da
 > prendere»*.
 >
+> ⭐ **Terza origine, aggiunta il 2026-09-01 a sera**:
+> [analisi-simmetria-ordini-acquisto.md](analisi-simmetria-ordini-acquisto.md),
+> scritta lo stesso giorno. Ha prodotto **tre** voci che passano lo stesso filtro
+> (§3-bis, §7, §8) e ha allargato la motivazione del Blocco B — vedi §1.
+>
 > **Stato:** 🔵 **APERTO — piano scritto, nulla applicato.** Nessun changeSet
 > ancora creato. ⛔ Niente si applica senza autorizzazione esplicita di Tid.
 >
@@ -48,6 +53,17 @@ stanno su `magazzino` e sulla forma dell'ODL.**
 Le due analisi sembravano contigue e in realtà **non si bloccano a vicenda**: il
 lavoro di questo brief si può fare adesso, sulle tabelle in esercizio, mentre
 `magazzino` aspetta le sue decisioni. Non c'è un ordine da rispettare fra i due.
+
+### ⭐ E il Blocco B serve a due cantieri, non a uno (2026-09-01)
+
+Il Blocco B è motivato qui dalla **produzione** — «questa riga richiede
+produzione?». L'analisi acquisto mostra che risponde anche a una seconda domanda,
+che nessuna decisione aperta tocca: **«questo articolo si compra?»**. Il valore
+`ACQUISTO` è il default del vocabolario, ed è il perno da cui parte qualunque
+proposta d'acquisto.
+
+⇒ Non cambia una riga del blocco: ne **rinforza la certezza**. Un blocco che
+serve a due cantieri indipendenti non dipende dalla forma di nessuno dei due.
 
 ---
 
@@ -207,6 +223,73 @@ coincidono.
 
 ---
 
+## 3-bis. Blocco B-bis — `famiglie_documento`: la colonna del billing account
+
+> ⚠️ **Voce da confermare, ed è l'unica di questo brief che non si autogiustifica.**
+> Passa il filtro della §1 — nessuna decisione aperta la cambia — ma **non è
+> richiesta da nulla che stia qui dentro**: la chiede il cantiere acquisto. Sta in
+> questo brief per una ragione sola, di costo, ed è Tid a decidere se accettarla.
+
+`vendite.famiglie_documento` è l'elenco dei tipi di documento che prendono il
+numero da un registro. Dichiara, per ognuno, **dove vive**: schema, tabella, e il
+nome di tre colonne — `colonna_numero`, `colonna_serie`, `colonna_billing_account`.
+
+⛔ **`colonna_billing_account` è `NOT NULL`**, e il guard
+`trgfn_famiglie_documento_guard_riferimenti` verifica su `pg_attribute` che la
+colonna nominata **esista davvero** sulla tabella. È corretto oggi: tutte e cinque
+le famiglie in servizio un billing account ce l'hanno.
+
+Diventa sbagliato al **primo documento che non ce l'ha** — e il primo è l'ordine
+di acquisto, la cui controparte è un `soggetto_ruolo`, non un BA. Registrare
+quella famiglia, oggi, fallisce con
+`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`.
+
+⭐ **La correzione non è da inventare: sta già nella stessa tabella.**
+`colonna_serie` è **nullable**, e il vuoto non è un dato mancante — è la
+dichiarazione che *quella famiglia una serie non ce l'ha* (reso e commessa). Stessa
+forma per il billing account:
+
+| Oggetto | Cosa |
+| --- | --- |
+| `famiglie_documento.colonna_billing_account` | da `NOT NULL` a **nullable**: `NULL` = «questa famiglia non ha un billing account» |
+| `trgfn_famiglie_documento_guard_riferimenti` | salta il controllo `pg_attribute` quando è `NULL` |
+| `anagrafiche.fn_ba_ha_storia_emittente` · `fn_get_storia_emittente_ba` | **saltano** le famiglie con colonna `NULL` — corretto per costruzione: un documento senza BA non può contribuire alla storia di nessun BA |
+
+⚠️ **Il dettaglio che decide se funziona**: le due funzioni compongono SQL dinamico
+con `%I`, e il salto va scritto nella query che **sceglie** le famiglie, non dentro
+la composizione.
+
+🔴 **Correzione del 2026-09-02, verificata sul database.** La prima stesura
+motivava la regola dicendo che *«un `NULL` passato a `format('%I')` non solleva un
+errore parlante»*. **È falso**: `%I` con `NULL` solleva eccome —
+`i valori vuoti non possono essere formattati come un identificativo SQL`.
+⭐ La regola resta la stessa e il motivo diventa **migliore**: comporre e poi
+fallire significa che un operatore vede un errore **di PostgreSQL** — nessun codice
+di dominio, nessun `context`, nessun campo da accendere — al posto di una funzione
+che semplicemente non considera quella famiglia. Si salta *prima* per non arrivarci.
+⚠️ **E il pericolo del silenzio esiste, ma vive su `%s`**: `format('%s', NULL)`
+produce **stringa vuota** senza fiatare. Se in quelle due funzioni una parte del
+comando si compone con `%s`, il ramo muto è lì, non su `%I`.
+
+### Perché proporla adesso, e perché potresti dire di no
+
+| Per farla ora | Per rimandarla |
+| --- | --- |
+| è il momento di **costo minimo**: cinque righe, nessun consumatore acquisto, nessun registro vivo di acquisto | non serve a **niente** di ciò che sta in questo brief |
+| dopo si tocca una tabella con registri in esercizio e il guard in servizio | il cantiere acquisto ha i suoi lotti, e questa è roba sua |
+| la forma è **certa** e ha il precedente identico accanto | ⚠️ farla ora significa una colonna nullable che per mesi non ha nessun `NULL` — e questo brief altrove **contesta** proprio le strutture senza funzione |
+
+⛔ **Non la decido io.** La riga di destra è un argomento vero, ed è lo stesso che
+in §8 tiene fuori altre voci. ⇒ **P-9 è marcata come opzionale** in §6: si esegue
+solo se Tid la conferma.
+
+⚠️ E comunque **il trasloco del motore fuori da `vendite` NON è di questo brief**:
+l'analisi acquisto lo ha rimandato di proposito al giorno in cui il primo ordine
+d'acquisto prende davvero un numero — la regola del 2 non si applica a un secondo
+consumatore che non esiste ancora.
+
+---
+
 ## 4. Blocco C — La commessa leggibile
 
 ⛔ Oggi `vendite.commesse` ha `codice` e **nient'altro di parlante**: in una lista
@@ -231,6 +314,50 @@ verificato che il generato non **oscuri** uno di quelli, cambiando l'errore che
 l'operatore vede.
 
 ---
+
+## 4-bis. I default che AFFERMANO — e perché resta una domanda di modello
+
+> 🔴 **Riscritta il 2026-09-02.** La prima stesura trattava questo come un problema
+> di **migrazione dati**: backfill obbligatorio, sequenza in tre passi per non
+> scrivere mai il valore falso. ⛔ **Era cerimonia da produzione, e produzione non
+> ce n'è.** Tid: *«i dati sono solo di test, possiamo fare quello che vogliamo»* —
+> è la regola già in vigore nel progetto (breaking secchi ammessi, nessun fallback
+> transitorio), e qui non l'avevo applicata.
+>
+> ⭐ **Ma la domanda che resta non è sui dati: è sul modello.** Ed è per questo che
+> la sezione non sparisce, si accorcia.
+
+### Quel che cade
+
+⛔ Niente sequenza `nullable → backfill → SET NOT NULL`, niente `UPDATE` di
+bonifica obbligatorio, niente precauzioni sull'ordine dei changeSet. Con dati
+usa-e-getta si scrive la forma finale e, se le righe di prova danno fastidio, si
+rifanno. **Non è un rischio: è una comodità che abbiamo.**
+
+### Quel che resta, ed è la parte che i dati non risolvono
+
+`NOT NULL` è un'**affermazione strutturale**: *«ogni riga di questa tabella ha
+questo dato, e lo sappiamo»*. Se esiste un caso in cui la risposta onesta è «non lo
+so», allora `NOT NULL` è la scelta sbagliata **sul modello** — e resta sbagliata
+anche con zero righe, perché il caso si ripresenta il giorno in cui arriva un
+import, un percorso di creazione che non valorizza la colonna, o una commessa
+generata da un flusso che quella data non ce l'ha.
+
+⇒ Le tre `NOT NULL` con default vanno guardate **una per una**, e non sono la
+stessa cosa:
+
+| Colonna | Che cosa afferma il default | Verdetto sul modello |
+| --- | --- | --- |
+| `articoli.gestito_a_magazzino = false` | «non movimenta giacenza» | ✅ **fail-safe**: dice *nel dubbio non fare*, ed è sempre una risposta legittima. `NOT NULL` è corretto. ⚠️ Resta il registro del §7, che non è una bonifica ma un **presidio**: la colonna a `false` ovunque è indistinguibile da «nessuno l'ha ancora marcata» |
+| `articoli.modo_approvvigionamento_id = ACQUISTO` | «questo articolo si compra» | ⚠️ **afferma un fatto positivo**. Per una prestazione è falso, e il vocabolario ha `NON_APPLICABILE` apposta. ⇒ da decidere: il default giusto è `ACQUISTO` o `NON_APPLICABILE`? Il primo è il caso comune, il secondo è quello che **non mente mai** |
+| `commesse.data_apertura` | «questa commessa è stata aperta oggi» | ⛔ **una data inventata non è un default**: è un valore che sembra un fatto. Se una commessa può esistere senza che si sappia quando è stata aperta, la colonna è **nullable** |
+
+⭐ **E su `data_apertura` c'è un'alternativa che non richiede di scegliere**:
+`commesse.data_insert` esiste ed è `NOT NULL` per convenzione. Non è la data di
+apertura *reale*, ma è **un fatto** — se si vuole `NOT NULL`, il valore iniziale
+si prende da lì invece di inventarlo. ⚠️ È un `UPDATE` di comodo, non una
+bonifica: lo si fa perché è più utile di «oggi», non perché ci siano dati da
+salvare.
 
 ## 5. ⭐ La predisposizione BE/FE — la parte che va letta dall'altro lato
 
@@ -363,13 +490,14 @@ non vengono da qui.
 | # | Passo | Fase |
 | --- | --- | --- |
 | **P-1** | `config.modi_approvvigionamento`: tabella + seed + lock su `codice_interno` + `fk_index_policy` | `00_schema` + `80_data` |
-| **P-2** | `catalogo.articoli`: le tre colonne (FK, boolean, integer) | `00_schema` |
+| **P-2** | `catalogo.articoli`: le tre colonne (FK, boolean, integer). ⚠️ **§4-bis**: decidere se il default di `modo_approvvigionamento_id` è `ACQUISTO` (il caso comune) o `NON_APPLICABILE` (quello che non mente) | `00_schema` |
 | **P-3** | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date | `00_schema` |
-| **P-4** | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_soggetto_ruolo_id` | `00_schema` |
+| **P-4** | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_soggetto_ruolo_id`. ⚠️ **§4-bis**: `data_apertura` è `NOT NULL` o nullable? Se `NOT NULL`, il valore iniziale si prende da `data_insert`, non da «oggi» | `00_schema` |
 | **P-5** | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento) | `20_code` |
 | **P-6** | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` | `20_code` |
 | **P-7** | `ui.lista_colonna`: le righe nuove, append al CSV | `80_data` |
 | **P-8** | pgTAP (§7) | `db/pgtap` |
+| **P-9** | ⚠️ **OPZIONALE, da confermare (§3-bis)** — `famiglie_documento.colonna_billing_account` nullable + salto nel guard e nelle due `fn_*_storia_emittente` | `00_schema` + `20_code` |
 
 ⛔ **L'ordine di fase non è negoziabile**: `00_schema` → `20_code` → `80_data`.
 Una `preCondition` di `20_code` **non** deve verificare il *contenuto* di
@@ -408,6 +536,45 @@ sottrazione**.
 `scripts/pgtap-baseline.sh`, non si attribuisce un rosso a questo lavoro senza
 averlo verificato.
 
+### ⛔ Il presidio che manca, e riguarda ciò che consegna QUESTO brief
+
+⭐ **Aggiunto il 2026-09-01.** Le tre analisi della giornata hanno fatto uscire
+**quattro volte** lo stesso difetto: *una cosa esiste, è costruita bene, e non è
+collegata a niente* — il guard tipizzato montato su zero tabelle, due policy RLS
+senza `ENABLE`, `magazzino.causali.ambito_causale_id` vuota in **tutte e dieci** le
+righe seminate, `config.ambiti` con zero FK entranti. **Nessuna produce un rosso.**
+
+🔴 **Questo brief consegna due candidati alla stessa classe**, e i test della
+tabella sopra non li intercettano:
+
+| Deliverable | Perché è un candidato | Il presidio che serve |
+| --- | --- | --- |
+| `config.modi_approvvigionamento` | è un **catalogo nuovo**: se domani nessuna vista, nessuna funzione e nessun consumatore lo legge, è vivo e inerte esattamente come `config.ambiti` | un registro che elenca i cataloghi **senza FK entranti** — e la FK da `catalogo.articoli` c'è, quindi questo passa: il presidio serve a **provarlo**, non a sperarlo |
+| `articoli.gestito_a_magazzino` | `NOT NULL DEFAULT false` ⇒ al rilascio **tutte le righe sono `false`**. La §3.3 lo dice già («la merce va marcata: è un lavoro di dato») ma lo lascia come **nota** | ⛔ una nota non è un presidio: serve un **registro che deve calare** — «articoli con `gestito_a_magazzino = true`», che al rilascio vale zero e deve smettere di valerlo |
+
+⛔ **Attenzione alla POLARITÀ del secondo registro, o nasce con lo stampo
+sbagliato.** Le otto viste `dbops` esistenti — e le tre proposte dall'analisi
+acquisto — devono restare **vuote**: una riga è un difetto. Questa no: «articoli
+con `gestito_a_magazzino = true`» deve **riempirsi**, e lo zero è l'allarme.
+⇒ Non è un registro del debito «che deve calare»: è un **controllo di prontezza**,
+e va scritto come tale. Chi lo implementasse copiando lo stampo degli altri otto
+otterrebbe un presidio verde esattamente nel momento in cui il problema c'è.
+
+⚠️ **Il secondo è il più insidioso**, ed è la ragione per cui questa sezione
+esiste: la colonna sarà presente, popolata, con il default fail-safe **giusto** —
+e `magazzino` la leggerà trovando che nessun articolo movimenta giacenza. Nessun
+errore, nessun test rosso, e un dominio intero che si comporta come se non ci
+fosse merce. È **la stessa forma** di `ambito_causale_id`: seminata, valorizzata a
+vuoto, e nessuno se n'è accorto per mesi.
+
+⇒ Il presidio **generale** della classe (tre viste in `dbops` che devono restare
+vuote — funzioni trigger montate da nessuno, policy su tabelle senza RLS attiva,
+cataloghi orfani) è proposto in
+[analisi-simmetria-ordini-acquisto §9-bis](analisi-simmetria-ordini-acquisto.md).
+⚠️ **È un cantiere di `dbops`, non di questo brief**: qui resta l'obbligo del
+registro su `gestito_a_magazzino`, che è nostro e non si può delegare a un cantiere
+che forse non parte.
+
 ---
 
 ## 8. Che cosa NON entra, e dove sta
@@ -418,8 +585,55 @@ averlo verificato.
 | `uom_id` del componente e **sfrido** sulla BoM | analisi commessa §8.4 | dipendono dal fatto che la distinta di produzione sia o no `articoli_componenti`, che è **immutabile** per un altro motivo |
 | **Consuntivo**, ODL, ciclo di lavorazione | analisi commessa §6 e §7 | sono **strutture**, non colonne, e stanno di là dalla decisione |
 | Cliente proprio, budget, data di chiusura prevista sulla commessa | analisi commessa §8.5 ⏸️ | dipendono dalla §7 |
-| `uq_mag_movimenti_docref`, `vw_giacenza`, causale di versamento, `ambito_causale_id` | analisi magazzino §5, §6, §9, D-4 e D-8 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì |
+| `vw_giacenza` (il segno) e la **causale di versamento** | analisi magazzino §5, §6, §9 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì |
+| `uq_mag_movimenti_docref` | analisi magazzino **§8-quater** (D-4) | ⭐ *aggiornato 2026-09-01 sera*: la forma ora **c'è** — chiave dell'operazione, colonna e non tabella. Resta fuori di qui perché è `magazzino` e perché la D-4 è di Tid, non perché manchi il disegno |
+| `causali.ambito_causale_id` | analisi magazzino D-8 | ⭐ *aggiornato*: gli appunti di revisione lo chiudono («valorizzare», + `NOT NULL` perché l'undicesima causale non rinasca vuota). ⇒ smetterà di essere una decisione, ma resta `magazzino`: andrà in un piano suo, non qui |
 | Chi scrive un movimento di magazzino | analisi magazzino D-1 | la forma del riferimento al documento è la prima decisione aperta |
+| **Prezzo di riferimento del fornitore** sull'articolo | analisi acquisto §9, D-8 | ⚠️ **tocca `catalogo.articoli`, cioè P-2.** Le due forme in campo (una colonna sull'articolo *oppure* la tabella `catalogo.articoli_fornitori`) sono una decisione aperta ⇒ chi esegue P-2 sappia che quella tabella **potrebbe essere toccata una seconda volta**, e non consideri P-2 l'ultimo intervento su di lei |
+| **Discriminante di ciclo** sugli stati (`stati_doc_ordini`, `stati_doc_ddt`) | analisi acquisto §7, D-3 | il fatto è certo — le due tabelle sono **condivise con `acquisti`** e non hanno modo di dire a quale ciclo appartiene uno stato — ma la **forma** (satellite, colonna, split) è ancora da confermare |
+| Ancora doppia degli **indirizzi documento** | analisi acquisto §7-bis, D-6b | tocca un BB usato da **5 domini di vendita**, ed è aperta. ⚠️ Non è DDL: è backend |
+| Partita di acquisto, reso a fornitore, **chiusura del ramo credito** | analisi acquisto §8, D-14 | è il cantiere acquisto, e poggia su un motore di stato che non esiste |
+
+### ⭐ Una convenzione che invece entra, e non costa una riga di DDL
+
+L'analisi acquisto ha stabilito una regola che **vale per tutto il progetto** e che
+finora non era scritta da nessuna parte:
+
+> `numero` (+ `serie`, `anno`) è **sempre e solo il numero NOSTRO**, quello che
+> assegna un registro. Il numero della **controparte** ha un nome proprio e non
+> occupa mai quella colonna.
+
+⚠️ **Perché riguarda anche la vendita**, benché il caso sia emerso sugli acquisti:
+il «vostro riferimento» del cliente su un ordine di vendita è lo stesso concetto,
+oggi non ce l'ha nessun documento, e il giorno che servirà **la tentazione sarà di
+metterlo dove c'è posto**. Su `acquisti.ddt` quella tentazione ha già prodotto il
+danno: `numero` **è** il numero del fornitore, e `famiglie_documento.colonna_numero`
+puntata lì lo sovrascriverebbe.
+
+⛔ Qui non si aggiunge nessuna colonna — nessuno l'ha chiesta. Si scrive la regola,
+perché il costo di scriverla adesso è zero e quello di scoprirla dopo è una
+migrazione.
+
+---
+
+### ⚠️ Revisione del 2026-09-01 (sera) — il filtro ha tenuto
+
+Gli appunti di revisione sulle due analisi hanno chiuso o proposto **D-1** (ledger a
+catalogo), **D-4** (l'indice si toglie, la regola passa su una chiave
+dell'operazione), **D-6** (sciolta: il «movimento senza documento» non è un caso
+reale), **D-7** (assorbita) e **D-8**; hanno ristretto **D-2/D-3** e rinviato
+**D-5**.
+
+⭐ **Ripassati i tre blocchi voce per voce: non cambia niente.** Nessuna colonna,
+nessuna nullabilità, nessun default, nessuna vista, nessuna riga di lista.
+
+Non è una coincidenza fortunata, ed è la prova che il §1 valeva la pena: le voci
+di questo brief stanno su `vendite` e `catalogo`, le decisioni stanno su
+`magazzino`. Muovendo le seconde, le prime non si spostano.
+
+⇒ Della revisione è cambiata **solo la §8**, e solo nello *stato* di due voci
+escluse: la loro forma adesso esiste. Restano fuori perché sono di un altro
+dominio, non perché siano indecise.
 
 ---
 
@@ -429,6 +643,11 @@ averlo verificato.
   — perché il punto di fermata non è la commessa, e la §8 da cui questo brief è estratto
 * [analisi-db-magazzino-aggancio-documento-e-produzione.md](analisi-db-magazzino-aggancio-documento-e-produzione.md)
   — le decisioni D-1 → D-8, nessuna delle quali tocca questo brief
+* [analisi-simmetria-ordini-acquisto.md](analisi-simmetria-ordini-acquisto.md)
+  — terza origine (2026-09-01): il §3-bis viene dal suo §6, la convenzione del §8
+  dal suo §6 «I DUE numeri», il presidio del §7 dal suo §9-bis. ⚠️ Le sue
+  decisioni aperte (D-2, D-6b, D-13) non toccano questo brief; **D-8 sì**, di
+  striscio, perché insiste su `catalogo.articoli`
 * Convenzioni SQL (naming, §6c sul `codice_interno`): `docs/it/linee-guida-sql.md`
 * Standard liste e `<ListaConfigurabile>`: `docs/it/dev/frontend/frontend-standards.md`
 * Il residuo del nome morto in `fn_push_preventivo_a_ordine`:

@@ -642,3 +642,31 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 642,55,attivo,Attiva,"Una famiglia spenta esce dai presidi che la iterano",attivo,informazione,boolean,yesno,90,130,center,Stato,6,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_attivo,75
 643,55,data_insert,Creazione,"Data di inserimento della famiglia",data_insert,informazione,datetime,datetime_short,150,140,center,Audit,11,t,t,t,f,f,t,2026-09-01 00:00:00,mctit,vendite.famiglie_documento.col_data_insert,5
 644,55,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-01 00:00:00,mctit,common.col_azioni,100
+645,56,codice,Codice,,codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.definizione_codice,100
+646,56,descrizione,Descrizione,,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.definizione_descrizione,90
+647,56,schema_dati,Schema dati,,schema_dati,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.definizione_schema_dati,60
+648,56,vista_sql,Vista SQL,,vista_sql,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.definizione_vista_sql,50
+649,56,attivo,Attivo,,attivo,informazione,boolean,,,50,center,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,common.col_attivo,70
+650,56,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+651,57,ordine_default,Ordine,,ordine_default,informazione,numeric,,80,10,right,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_ordine,80
+652,57,codice,Codice,,codice,identificatore,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_codice,100
+653,57,etichetta,Etichetta,,etichetta,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_etichetta,90
+654,57,tipo_colonna,Tipo colonna,,tipo_colonna,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_tipo_colonna,70
+655,57,tipo_dato,Tipo dato,,tipo_dato,informazione,string,,,50,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_tipo_dato,60
+656,57,campo_sorgente,Campo sorgente,,campo_sorgente,informazione,string,,,60,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_campo_sorgente,60
+657,57,gruppo,Gruppo,,gruppo,informazione,string,,,70,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.colonna_gruppo,40
+658,57,attivo,Attivo,,attivo,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,common.col_attivo,70
+659,57,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+660,58,codice,Codice,,codice,identificatore,string,,180,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_codice,100
+661,58,descrizione,Descrizione,,descrizione,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_descrizione,90
+662,58,ambito,Ambito,,ambito,informazione,string,,160,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_ambito,80
+663,58,preset_riferimento,Riferimento,Profilo o emittente a cui il preset si applica,,informazione,string,,220,40,left,,,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_riferimento,60
+664,58,colonne_count,Colonne,,colonne_count,informazione,numeric,,100,50,right,,,f,f,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_colonne_count,50
+665,58,is_default,Default,,is_default,informazione,boolean,,90,60,center,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.preset_default,70
+666,58,attivo,Attivo,,attivo,informazione,boolean,,90,70,center,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,common.col_attivo,70
+667,58,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+668,59,colonna_etichetta,Colonna,,colonna_etichetta,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.permesso_colonna,100
+669,59,colonna_codice,Codice colonna,,colonna_codice,informazione,string,,220,20,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.permesso_colonna_codice,80
+670,59,profilo_accesso,Profilo accesso,,profilo_accesso_codice,informazione,string,,240,30,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.permesso_profilo,90
+671,59,livello_accesso,Livello,,livello_accesso,informazione,string,,140,40,left,,,t,t,t,f,f,t,2026-09-02 00:00:00,mctit,ui.admin.permesso_livello_accesso,70
+672,59,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
