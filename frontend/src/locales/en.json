@@ -256,7 +256,7 @@
       "clienti": "Clients",
       "fornitori": "Suppliers",
       "indirizzi": "Addresses",
-      "titoli-iva-sfondati": "Exceeded VAT titles"
+      "titoli-iva-sfondati": "Exceeding VAT titles"
     },
     "config": {
       "tabelle": "Tables",
@@ -3888,6 +3888,7 @@
     "canali": {
       "nuovo": "New channel",
       "filtro_tipo": "Channel type",
+      "filtro_tipo_tutti": "All",
       "nessun_canale": "No collection channel configured: until there is one, money arriving before the invoice has no perimeter.",
       "titolo_nuovo": "New collection channel",
       "titolo_modifica": "Collection channel",
@@ -3910,8 +3911,9 @@
       "tipo_psp": "PSP",
       "tipo_altro": "Other",
       "campo_emittente": "Issuer",
-      "campo_emittente_placeholder": "Choose the issuer",
       "emittente_dal_permesso": "It is your perimeter: it selects the right accounts and is not saved on the channel.",
+      "emittente_dal_conto": "Derived from the channel bank account.",
+      "emittente_dalla_sessione": "Session working issuer (change it from the top bar).",
       "campo_conto": "Collection account",
       "campo_conto_placeholder": "Choose the account the money lands on",
       "conto_senza_iban": "No IBAN",
@@ -4934,6 +4936,7 @@
   },
   "core": {
     "emittente_attivo": {
+      "serve_per_creare": "You are working across all issuers: pick one from the top bar to create records.",
       "tutti": "All issuers",
       "aria": "Active issuer",
       "conferma_titolo": "Change working issuer?",

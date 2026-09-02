@@ -41,7 +41,6 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     fetch_paged_with_total,
-    fetchone_scalar,
     row_to_dict,
     rows_to_list,
     sql_order_direction,
@@ -112,6 +111,31 @@ _TITOLO_JOINS = """
               JOIN anagrafiche.emittenti_fiscali ef ON ef.id = t.emittente_fiscale_id
               JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id"""
+
+# FROM + WHERE dei titoli di UN soggetto, condiviso fra la pagina e il conteggio
+# di ripiego. ⛔ Una copia sola: due predicati scritti due volte divergono, e il
+# giorno che divergono il totale racconta una popolazione diversa da quella
+# mostrata — senza che niente fallisca.
+_TITOLI_SOGGETTO_FROM_WHERE = f"""
+              {_TITOLO_JOINS}
+             WHERE t.soggetto_id = %s::uuid"""
+
+# Colonne ordinabili dei TITOLI DI UN SOGGETTO (lista 62).
+# ⛔ Chiavata sui `campo_sorgente` FISICI — vedi la nota gemella su
+#    `_ORDER_COLS_SFONDATI`. Prima di questa modifica il metodo IGNORAVA
+#    `order_by`: la freccia si girava sopra righe immobili, senza un 400 a dirlo.
+# ⚠️ `residuo` NON e' una colonna della tabella: e' un `CASE WHEN plafond IS NOT
+#    NULL THEN plafond - imponibile_utilizzato END` calcolato dalla SELECT, che
+#    vale **NULL** sui tipi senza tetto. Si ordina per l'ALIAS di output —
+#    PostgreSQL lo ammette in `ORDER BY` — e non per una sottrazione riscritta a
+#    mano: quella darebbe un numero anche dove il residuo non significa niente, e
+#    l'elenco si ordinerebbe **diversamente da come si legge**.
+_ORDER_COLS_TITOLI_SOGGETTO: dict[str, str] = {
+    "tipo_descrizione": "tt.descrizione",
+    "emittente_ragione_sociale": "s_ef.ragione_sociale_completa",
+    "iva_codice": "iva.codice",
+    "residuo": "residuo",
+}
 
 # Ordinamento di DEFAULT della lista di presidio: la piu' grave per prima.
 # ⭐ E' una costante e non una stringa scritta due volte: la view la passa come
@@ -196,44 +220,72 @@ class TitoliIvaRepository:
     # Titoli
     # =================================================================
 
-    # Scopo: Titoli IVA di un soggetto, ordinati dal piu' recente.
-    # ⚠️ `valido_al` NULL = «senza scadenza», e va in cima: e' il titolo vivo.
-    #    `COALESCE(..., 'infinity')` e' la forma del progetto per le date di
-    #    validita' (`feedback_ordinamento_validita_infinity`).
-    # Scopo: Conta i titoli di un soggetto con lo STESSO perimetro di
-    #        `list_titoli_soggetto`, senza passare dalle righe.
-    # ⛔ Query separata, non `len()` sul risultato: serve al frontend come
-    #    ASSERZIONE che le righe consegnate siano tutte (guard
-    #    `troncamentoSospetto` di `<ListaConfigurabile>` con `paginata: false`).
-    #    Un conteggio derivato dalle righe e' un'eco, non un presidio.
-    # ⭐ Il FROM e' `_TITOLO_JOINS` per intero, e non e' pigrizia: quei JOIN sono
-    #    INNER, quindi POSSONO togliere righe. Un `count(*)` sulla sola
-    #    `soggetti_titoli_iva` conterebbe anche i titoli che i join scartano,
-    #    direbbe piu' di quanto la lista consegna, e accenderebbe il guard su un
-    #    troncamento che non c'e'. Indipendente dalle RIGHE, non dal PERIMETRO.
-    def count_titoli_soggetto(self, soggetto_id: str) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT count(*)
-                {_TITOLO_JOINS}
-                 WHERE t.soggetto_id = %s::uuid
-                """,
-                [soggetto_id],
+    # Scopo: UNA pagina dei titoli IVA di un soggetto PIU' il totale, in una
+    #        valutazione sola (`COUNT(*) OVER()` via `fetch_paged_with_total`).
+    #
+    # ⭐ Era una `list_` piu' una `count_` separata (2026-09-02), ed e' stata
+    #    unificata al primo consumatore che ha chiesto le pagine: due
+    #    valutazioni dello stesso predicato possono NON concordare se una riga
+    #    entra fra l'una e l'altra, e il totale racconterebbe una popolazione
+    #    diversa da quella mostrata. Stessa forma di `list_titoli_sfondati`.
+    #
+    # ⚠️ `limit=None` = «tutte le righe», e serve al SECONDO consumatore:
+    #    `soggetti_service` incorpora i titoli nel dettaglio del soggetto e non
+    #    impagina. Il totale torna lo stesso — con `limit` assente coincide col
+    #    numero di righe, ma resta la stessa query e la stessa promessa.
+    #
+    # ⚠️ `fallback_count_sql` serve al rientro su una pagina STANTIA: con
+    #    `offset > 0` e zero righe la window function non ha nulla su cui
+    #    contare, e senza fallback la schermata direbbe «nessun titolo» a chi e'
+    #    solo rimasto su una pagina che si e' accorciata sotto di lui.
+    def list_titoli_soggetto(
+        self,
+        soggetto_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        # ⭐ Senza `order_by` resta l'ordinamento STORICO — validita' piu' lunga
+        #    per prima, con `COALESCE(valido_al,'infinity')` che porta in cima i
+        #    titoli senza scadenza (`feedback_ordinamento_validita_infinity`).
+        #    ⚠️ Va preservato perche' questo metodo ha un SECONDO consumatore:
+        #    `soggetti_service` lo incorpora nel dettaglio di un soggetto e non
+        #    passa nessun ordinamento. Cambiargli il default sotto i piedi
+        #    riordinerebbe una sezione che nessuno sta toccando.
+        if not order_by or order_by not in _ORDER_COLS_TITOLI_SOGGETTO:
+            ordinamento = (
+                "COALESCE(t.valido_al, 'infinity'::date) DESC, "
+                "t.valido_dal DESC, t.id DESC"
             )
-            return int(fetchone_scalar(cursor))
-
-    def list_titoli_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
-        sql = f"""
-            SELECT {_TITOLO_COLS}
-              {_TITOLO_JOINS}
-             WHERE t.soggetto_id = %s::uuid
-             ORDER BY COALESCE(t.valido_al, 'infinity'::date) DESC,
-                      t.valido_dal DESC, t.id DESC
+        else:
+            direzione = sql_order_direction(order_dir, default_desc=False)
+            verso = sql_tiebreak_direction(direzione)
+            colonna = _ORDER_COLS_TITOLI_SOGGETTO[order_by]
+            ordinamento = f"{colonna} {direzione}, t.id {verso}"
+        # ⛔ LIMIT/OFFSET si aggiungono solo se il chiamante impagina: una
+        #    `LIMIT NULL` sarebbe legale in PostgreSQL ma legherebbe il ripiego
+        #    a un parametro in piu' senza che serva a nessuno.
+        paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
+        params: list[Any] = [soggetto_id]
+        if limit is not None:
+            params += [limit, offset]
+        data_sql = f"""
+            SELECT {_TITOLO_COLS},
+                   COUNT(*) OVER () AS total_count
+             {_TITOLI_SOGGETTO_FROM_WHERE}
+             ORDER BY {ordinamento}{paginazione}
         """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id])
-            return rows_to_list(cursor)
+        return fetch_paged_with_total(
+            data_sql,
+            params,
+            fallback_count_sql=(
+                f"SELECT count(*) {_TITOLI_SOGGETTO_FROM_WHERE}"  # noqa: S608
+            ),
+            fallback_params=[soggetto_id],
+            offset=offset,
+        )
 
     # Scopo: Un titolo per id. Ritorna None se non esiste O se e' fuori dal
     #        perimetro emittente dell'operatore — la RLS non distingue i due

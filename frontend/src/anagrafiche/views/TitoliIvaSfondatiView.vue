@@ -13,109 +13,117 @@
 //   di titoli sfondati che qualcuno guarda». Senza questa schermata, quella
 //   decisione resterebbe una meta' sola.
 //
-// ⚠️ Lista SEMPLICE e non `<ListaConfigurabile>`, ed e' una scelta: quella si
-//   registra con righe di seed in `ui.lista_definizione`/`lista_colonna`, cioe'
-//   una dipendenza dal team DB, per una lista che si guarda e basta — non si
-//   esporta e non si personalizza. Il giorno che servisse, il seed e' una cella
-//   di CSV e la query BE e' gia' scritta.
+// ⭐ CONVERTITA su `<ListaConfigurabile>` il 2026-09-02 (lista 63), e la
+//   motivazione precedente — «lista semplice, si guarda e basta, non si esporta
+//   e non si personalizza» — e' caduta insieme al difetto che nascondeva:
+//   l'endpoint restituiva i primi **500** e non lo diceva a nessuno. Su un
+//   presidio, dal 501-esimo caso in poi la forzatura non si vedeva. Ora pagina.
 //
 // ⚠️ Il perimetro emittente lo fa la RLS: un operatore vede solo i titoli degli
 //   emittenti che ha in whitelist. Qui non si filtra niente a mano.
-import { ref, computed, onMounted, onActivated } from 'vue'
+import { onActivated, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useApiHandler } from '../../core/composables/useApiHandler'
+import Message from 'primevue/message'
+import Tag from 'primevue/tag'
+import ExportDialog from '../../core/components/ExportDialog.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { listTitoliIvaSfondati } from '../api/anagrafiche'
-import { READONLY_DOMAINS, MANAGE_ICONS } from '../../core/constants'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import { useTitoliIvaSfondatiStore } from '../stores/titoliIvaSfondati'
 import TitoloIvaDrawer from '../components/TitoloIvaDrawer.vue'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
-import Message from 'primevue/message'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
-const { execute, loading } = useApiHandler()
+const store = useTitoliIvaSfondatiStore()
 
-const righe = ref([])
 const drawerVisible = ref(false)
 const titoloSelezionato = ref({ soggettoId: null, titoloId: null })
 
-async function load() {
-  const res = await execute(() => listTitoliIvaSfondati())
-  righe.value = res === null ? [] : (res.data.data?.results || [])
-}
+// Scaffolding della lista configurabile (useSearchTable + pageActions).
+// ⚠️ Niente `exportFn`: questa lista non ha endpoint di export, e il BB rende
+//    l'azione condizionale — con l'handler assente il pulsante aprirebbe un
+//    dialog che non scarica niente.
+const {
+  onPage, onSort, paginatorProps, tablePage, reload,
+  listaRef, dirty,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store)
 
-onMounted(load)
+onMounted(reload)
 // ⚠️ `onActivated` e non solo `onMounted`: sotto KeepAlive il rientro nella tab
 //    non rimonta il componente, e una lista di presidio che mostra dati vecchi
 //    e' peggio di una vuota (`feedback_keepalive_onactivated`).
-onActivated(load)
+onActivated(reload)
 
-function apri(riga) {
-  titoloSelezionato.value = { soggettoId: riga.soggetto_id, titoloId: riga.id }
+// Scopo: apre il drawer del titolo su cui si e' cliccato.
+// ⚠️ `<ListaConfigurabile>` emette `data` direttamente, non l'evento PrimeVue:
+//    la firma e' diversa da quella della `<DataTable>` che c'era prima.
+function onRowClick(data) {
+  titoloSelezionato.value = { soggettoId: data.soggetto_id, titoloId: data.id }
   drawerVisible.value = true
-}
-
-// ⚠️ `computed` e non un array costante: le label si risolvono al setup e non
-//    seguirebbero il cambio lingua. E' la forma usata dalle altre toolbar.
-const pageActions = computed(() => [{
-  key: 'reload', kind: 'utility', label: t('common.reload_list'),
-  icon: MANAGE_ICONS.RELOAD, command: load,
-}])
-
-// Di quanto si e' sfondato: il numero che interessa e' l'ECCEDENZA, non il
-// residuo negativo — si legge senza dover fare il segno a mente.
-function eccedenza(r) {
-  return Number(r.imponibile_utilizzato) - Number(r.plafond)
 }
 </script>
 
 <template>
   <div class="app-page">
-    <PageActionsBar :actions="pageActions" />
+    <div class="app-page-toolbar">
+      <div class="app-page-filters" />
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
+    </div>
 
     <Message severity="info" :closable="false" class="mb-2">
       {{ t('anagrafiche.titoli_iva.sfondati_hint') }}
     </Message>
 
-    <DataTable :value="righe" :loading="loading" class="app-datatable"
-      data-key="id" size="small" @row-click="apri($event.data)">
-      <Column field="soggetto_ragione_sociale"
-        :header="t('anagrafiche.titoli_iva.col_soggetto')" />
-      <Column field="soggetto_id_fiscale"
-        :header="t('anagrafiche.titoli_iva.col_id_fiscale')" />
-      <Column field="tipo_descrizione" :header="t('anagrafiche.titoli_iva.col_tipo')" />
-      <Column field="emittente_ragione_sociale"
-        :header="t('anagrafiche.titoli_iva.col_emittente')" />
-      <Column :header="t('anagrafiche.titoli_iva.col_validita')">
-        <template #body="{ data }">
-          {{ displayDate(data.valido_dal) }} —
-          {{ data.valido_al ? displayDate(data.valido_al)
-                            : t('anagrafiche.titoli_iva.senza_scadenza') }}
-        </template>
-      </Column>
-      <Column :header="t('anagrafiche.titoli_iva.field_plafond')">
-        <template #body="{ data }">{{ formatCurrency(data.plafond) }}</template>
-      </Column>
-      <Column :header="t('anagrafiche.titoli_iva.field_utilizzato')">
-        <template #body="{ data }">{{ formatCurrency(data.imponibile_utilizzato) }}</template>
-      </Column>
-      <Column :header="t('anagrafiche.titoli_iva.col_eccedenza')">
-        <template #body="{ data }">
-          <Tag :value="formatCurrency(eccedenza(data))" severity="danger" />
-        </template>
-      </Column>
-      <template #empty>{{ t('anagrafiche.titoli_iva.sfondati_vuoto') }}</template>
-    </DataTable>
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="anagrafiche.titoli_iva_sfondati"
+      :rows="store.items"
+      :total="store.totalRecords"
+      :loading="store.loading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
+    >
+      <!-- Colonna composta da DUE campi: non ha un `campo_sorgente` e il
+           catalogo la dichiara calcolata. -->
+      <template #cell-validita="{ data }">
+        {{ displayDate(data.valido_dal) }} —
+        {{ data.valido_al ? displayDate(data.valido_al)
+                          : t('anagrafiche.titoli_iva.senza_scadenza') }}
+      </template>
+      <!-- ⭐ `eccedenza` arriva ora dal BACKEND come colonna vera (alias SQL),
+           non piu' calcolata qui: e' l'ordinamento che da' senso a questa
+           lista, e una colonna calcolata dal frontend non si puo' ordinare. -->
+      <template #cell-eccedenza="{ data }">
+        <Tag :value="formatCurrency(data.eccedenza)" severity="danger" />
+      </template>
+    </ListaConfigurabile>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @confirm="onExportConfirm"
+    />
 
     <TitoloIvaDrawer
       v-model:visible="drawerVisible"
       :soggetto-id="titoloSelezionato.soggettoId"
       :titolo-id="titoloSelezionato.titoloId"
-      @saved="load" />
+      @saved="reload" />
   </div>
 </template>

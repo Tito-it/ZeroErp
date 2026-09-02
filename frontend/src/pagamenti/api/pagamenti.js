@@ -230,8 +230,21 @@ export function getSistemazione(sistemazioneId) {
 
 // Gli atti di un documento — ⭐ sono più di uno per natura: si può rimborsare
 // una parte e riportare il resto.
-export function listSistemazioniFattura(fatturaId) {
-  return api.get(`${BASE}/fatture/${fatturaId}/sistemazioni/`)
+// ⚠️ `params` porta limit/offset/order_by/order_dir: la lista PAGINA dal
+//    2026-09-02, come ogni altra lista configurabile.
+export function listSistemazioniFattura(fatturaId, params = {}) {
+  return api.get(`${BASE}/fatture/${fatturaId}/sistemazioni/`, { params })
+}
+
+// Scopo: export CSV/Excel degli atti di sistemazione di una fattura.
+// ⚠️ `formato` e non `format`: quest'ultimo è un parametro magico di DRF e
+//    collide col content negotiation (`feedback_drf_format_magic_param`).
+//    Risposta Blob: errore 422 se il dataset supera il cap.
+export function exportSistemazioniFattura(fatturaId, params = {}) {
+  return api.get(`${BASE}/fatture/${fatturaId}/sistemazioni/export/`, {
+    params,
+    responseType: 'blob',
+  })
 }
 
 // ══════════════════════════════════════════════════════════════

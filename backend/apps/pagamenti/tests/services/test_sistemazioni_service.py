@@ -62,7 +62,7 @@ def _repo() -> MagicMock:
     }
     repo.create_sistemazione.return_value = 3
     repo.get_sistemazione.return_value = dict(_ATTO)
-    repo.list_sistemazioni_fattura.return_value = []
+    repo.list_sistemazioni_fattura.return_value = ([], 0)
     repo.list_eccedenze.return_value = ([], 0)
     repo.conferma_sistemazione.return_value = {
         "contabile_id": 88,

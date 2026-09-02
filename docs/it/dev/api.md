@@ -369,6 +369,77 @@ Pattern alternativo (per endpoint che usano `limit`/`offset`):
 }
 ```
 
+#### ⛔ Il `count` non si deriva MAI dalle righe che stai consegnando
+
+> Regola scritta il **2026-09-02**, dopo averla vista rotta due volte nello
+> stesso giorno e in due forme diverse.
+
+Un endpoint di lista deve calcolare `count` con una **valutazione indipendente**
+dalle righe che ritorna:
+
+* **paginato** → `COUNT(*) OVER ()` nella stessa query, tramite il building
+  block `fetch_paged_with_total` (`apps/core/db/_helpers.py`), che fa pagina e
+  totale in **una** valutazione e ha il fallback per il rientro su una pagina
+  stantia;
+* **non paginato** → una `SELECT count(*)` **sua**, con lo **stesso perimetro**
+  della lista.
+
+⛔ **`len(results)` non è un conteggio: è un'eco.** Un numero derivato dalle
+righe non può dire niente *sulle* righe — vale `rows.length == rows.length`,
+sempre vero. Il client che lo usa per verificare di aver ricevuto tutto sta
+confrontando una cosa con se stessa.
+
+⚠️ **E la forma sbagliata somiglia moltissimo a quella giusta**: uno dei due
+casi del 02-09 era già scritto `{"count": len(atti), "results": atti}`. Leggendolo
+sembra a posto — c'è un `count`, c'è un `results`. Non lo è.
+
+**Chi lo consuma e perché conta.** `<ListaConfigurabile>` in modalità
+`:paginata="false"` tratta `rows` come il dataset completo: se il backend
+paginasse senza dirlo, la lista mostrerebbe un sottoinsieme **senza paginator e
+senza errore**. Il building block confronta `rows.length` con `total` e si
+rifiuta di disegnare la tabella se divergono — ma quel confronto vale solo se il
+`total` è indipendente.
+
+⚠️ **Il perimetro del conteggio deve essere quello della lista, JOIN compresi.**
+Con `INNER JOIN` che possono togliere righe, un `count(*)` sulla sola tabella
+madre conta di più di quanto la lista consegna e fa scattare il guard su un
+troncamento che non esiste. ⇒ Si condivide il frammento `FROM`+`WHERE` fra le
+due query, non lo si riscrive.
+
+#### ⚠️ `parse_list_params` normalizza `order_dir` ad `"asc"`: non è mai `None`
+
+`parse_list_params(qp)` fa `order_dir = qp.get("order_dir") or "asc"`. Quindi
+**annulla** il `default_desc=True` dei repository, che si accende solo su
+`None`.
+
+🔴 Il difetto che produce è muto: una lista che deve aprirsi dal più grave (o
+dal più recente) si apre al contrario, senza nessun errore. ⇒ Per le liste con
+un default DESC si passa il valore **grezzo**, che è il pattern già in uso in
+`pagamenti`:
+
+```python
+p = parse_list_params(qp, default_order="eccedenza")
+dati = service.list_x(
+    limit=p["limit"], offset=p["offset"], order_by=p["order_by"],
+    order_dir=qp_str(qp.get("order_dir")),   # ⛔ non p["order_dir"]
+)
+```
+
+#### La whitelist di ordinamento si chiava sul `campo_sorgente` FISICO
+
+`<ListaConfigurabile>` monta le Column con `:field="col.campo_sorgente"`, quindi
+`order_by` porta il nome **fisico** del catalogo, non il codice logico.
+
+⚠️ E il **valore** della whitelist è la colonna per cui si ordina davvero:
+**si ordina la colonna che si vede**. Una chiave `centro_descrizione` mappata su
+`centro_codice` ordina per un campo che a video non c'è, e se i due non sono
+correlati l'ordine sembra arbitrario a chi guarda (corretto il 2026-09-02).
+
+⚠️ Se la colonna è un'espressione della `SELECT` (un `CASE`, una sottrazione),
+si ordina per il suo **alias** — PostgreSQL lo ammette in `ORDER BY` — e non
+riscrivendo l'espressione: una copia riscritta può divergere dall'originale, e
+la lista si ordinerebbe diversamente da come si legge.
+
 ### Ricerca e throttling
 
 * `is_search_endpoint = True` sulla view abilita `SearchBurstRateThrottle`

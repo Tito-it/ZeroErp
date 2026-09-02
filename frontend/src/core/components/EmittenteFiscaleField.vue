@@ -1,15 +1,26 @@
 <script setup>
-// Scopo: Campo emittente fiscale auto-adattivo. Sempre rendering `<Select>`,
-//        con opzioni e abilitazione contestuali al modo:
+// Scopo: Campo emittente fiscale, SEMPRE IN SOLA LETTURA. Rendering `<Select>`
+//        con una sola opzione, che cambia sorgente a seconda del modo:
 //
-//         - edit:                     opzione singola sintetizzata dal record
-//                                     (`emittente_fiscale_id/codice/descrizione`
-//                                     denormalizzati dal BE detail). Disabled.
-//         - create + admin globale:   opzioni dal lookup admin (cache modulo
-//                                     via useGlobalLookup). Editabile.
-//         - create + operatore:       opzione singola sintetizzata da
-//                                     `auth.emittenteCorrente` (modello 1-a-1).
-//                                     Disabled.
+//         - edit:                     opzione sintetizzata dal record
+//                                     (`emittente_fiscale_id/codice` + ragione
+//                                     sociale denormalizzati dal BE detail).
+//         - create:                   l'emittente della SESSIONE — quello di
+//                                     permesso per l'operatore, quello scelto
+//                                     in topbar per il super admin
+//                                     (`auth.emittenteScritturaId`).
+//
+// ⛔ NON E' UNA SCELTA DI RIGA, ED E' LA DECISIONE DI TID DEL 2026-09-02.
+//    Prima il super admin in create aveva una combo editabile sul lookup admin:
+//    poteva creare il record dentro un emittente DIVERSO da quello in cui sta
+//    lavorando — due verita' sullo stesso perimetro, nella stessa sessione, e
+//    la seconda invisibile a chi guarda la topbar. L'emittente di lavoro si
+//    sceglie una volta per sessione, e da li' comanda: chi vuole cambiarlo
+//    passa dalla combo in alto, che chiede conferma e ricarica l'applicazione.
+//
+// ⚠️ Il lookup admin resta caricato nel ramo create+admin, ma solo per
+//    RISOLVERE L'ETICHETTA dell'id attivo: `/me/` dice quale emittente e',
+//    non come si chiama.
 //
 //        Beneficio rispetto al doppio rendering (InputText vs Select) usato
 //        in passato: il display passa sempre da `formatEmittenteOptionLabel`,
@@ -26,6 +37,7 @@
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittenteFiscaleField } from '../composables/useEmittenteFiscaleField'
+import { useAuthStore } from '../../stores/auth'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
 
@@ -54,15 +66,17 @@ const emit = defineEmits(['update:modelValue'])
 const {
   isAdminMode,
   currentEmittente,
-  emittentiOptions,
+  defaultEmittenteId,
+  opzioneSessione,
   emittentiLoading,
   emittentiError,
   loadOptions,
   formatEmittenteOptionLabel,
 } = useEmittenteFiscaleField()
+const auth = useAuthStore()
 
-// L'admin globale puo' davvero scegliere: solo qui usiamo il lookup completo
-// e abilitiamo la combo. Negli altri rami la combo resta disabled (display-only).
+// Il lookup admin serve solo a dare un NOME all'id attivo: l'operatore il nome
+// ce l'ha gia' nel profilo, e in edit lo porta il record.
 const useAdminLookup = computed(() => isAdminMode.value && !props.isEdit)
 
 // Sintesi della singola option per i casi disabled (edit o operatore-mode).
@@ -92,23 +106,51 @@ const operatoreAsOption = computed(() => {
   }
 })
 
-// Opzioni effettive renderizzate dal Select. In edit e operatore-mode e' un
-// array di un solo elemento (sintetizzato sopra) che fa match col modelValue
-// per visualizzare correttamente il label. In admin+create e' la lookup completa.
+// L'emittente della SESSIONE come option, in create.
+// ⚠️ Per il super admin il nome non arriva da `/me/` — che dichiara solo l'id —
+//    ma dal lookup gia' caricato in questo ramo. Finche' non e' arrivato,
+//    nessuna option: il Select mostra il placeholder invece di un id nudo.
+const sessioneAsOption = computed(
+  () => operatoreAsOption.value ?? opzioneSessione.value,
+)
+
+// Opzioni effettive: sempre UNA sola, perche' il campo non e' una scelta.
 const finalOptions = computed(() => {
-  if (props.isEdit) {
-    return recordAsOption.value ? [recordAsOption.value] : []
-  }
-  if (useAdminLookup.value) {
-    return emittentiOptions.value
-  }
-  return operatoreAsOption.value ? [operatoreAsOption.value] : []
+  const unica = props.isEdit ? recordAsOption.value : sessioneAsOption.value
+  return unica ? [unica] : []
 })
 
-// Combo modificabile solo per admin globale in CREATE. Operatore (1 solo EF) e
-// qualsiasi EDIT (EF immutabile post-create) restano disabled.
-const isFieldDisabled = computed(
-  () => props.disabled || props.isEdit || !isAdminMode.value
+// ⛔ SEMPRE disabilitato: vedi l'intestazione — non esiste piu' un ramo in cui
+//    questo campo si sceglie.
+// ⚠️ Il prop `disabled` resta DICHIARATO ma non ha piu' effetto, e va detto: i
+//    nove chiamanti lo passano ancora (`:disabled="isReadonly"`) e il
+//    risultato non cambia, perche' `true` domina comunque. Toglierlo dalle
+//    props non lo toglierebbe dai template: diventerebbe un attributo
+//    `disabled` sul `<div>` esterno, cioe' rumore nel DOM al posto di un
+//    contratto. Resta qui, dichiarato e inerte, finche' qualcuno non ripulisce
+//    i chiamanti.
+const isFieldDisabled = true
+
+// La sessione non ha un emittente su cui scrivere. Non e' una combo vuota da
+// riempire: e' una condizione da DIRE, perche' senza di quella il salvataggio
+// verrebbe rifiutato dopo aver compilato tutto.
+// ⚠️ Due testi, perche' sono due situazioni diverse e una sola frase ne
+//    mentirebbe a meta': il super admin deve SCEGLIERE dalla topbar,
+//    l'operatore non configurato non ha niente da scegliere.
+// ⛔ La domanda e' «la sessione HA un emittente?», non «sono riuscito a
+//    trovarne il nome»: guardare l'option era sbagliato in due modi, e li ho
+//    scritti e corretti nella stessa passata. (1) mentre il lookup carica
+//    l'option non c'e' ancora, e l'avviso lampeggiava su una sessione che un
+//    emittente ce l'ha; (2) se il lookup FALLISCE l'option non arriva mai, e
+//    l'avviso avrebbe detto «stai lavorando su tutti gli emittenti» — che e'
+//    falso. Quel caso lo dice gia' il messaggio d'errore qui sopra.
+const sessioneSenzaEmittente = computed(
+  () => !props.isEdit && defaultEmittenteId.value == null,
+)
+const messaggioSenzaEmittente = computed(
+  () => (auth.puoScegliereEmittente
+    ? t('core.emittente_attivo.serve_per_creare')
+    : t(props.noneI18nKey)),
 )
 
 const selectModel = computed({
@@ -138,8 +180,6 @@ watch(
       :placeholder="t(placeholderI18nKey)"
       :loading="useAdminLookup && emittentiLoading"
       :disabled="isFieldDisabled"
-      :filter="useAdminLookup"
-      :show-clear="useAdminLookup"
       class="app-form-select"
       style="width: 100%; min-width: 0;"
     />
@@ -150,6 +190,14 @@ watch(
       class="mt-025"
     >
       {{ t(errorI18nKey) }}
+    </Message>
+    <Message
+      v-else-if="sessioneSenzaEmittente"
+      severity="warn"
+      :closable="false"
+      class="mt-025"
+    >
+      {{ messaggioSenzaEmittente }}
     </Message>
   </div>
 </template>

@@ -301,6 +301,32 @@ export const useAuthStore = defineStore('auth', () => {
     () => emittenteAttivo.value?.perimetro_multi_emittente === true
   )
 
+  // Scopo: l'emittente su cui questa sessione SCRIVE — il valore da mettere in
+  //        `emittente_fiscale_id` quando si crea qualcosa.
+  //
+  // ⭐ DUE SORGENTI, UN VALORE, ed e' il punto: per l'OPERATORE e' il suo
+  //    emittente di permesso (ne ha sempre uno, e non lo sceglie); per il SUPER
+  //    ADMIN e' quello che ha scelto per la sessione. Prima questa domanda non
+  //    aveva una risposta sola — `useEmittenteFiscaleField` guardava solo la
+  //    prima sorgente e per il super admin rispondeva `null` **anche dopo che
+  //    aveva scelto**, cioe' il drawer gli richiedeva una scelta gia' fatta.
+  //
+  // ⚠️ Le due chiavi sono la STESSA famiglia di id — la PK di
+  //    `anagrafiche.emittenti_fiscali` — verificato su entrambe le sorgenti
+  //    (`user_emittenti_fiscali.emittente_fiscale_id` e `ef.id` delle opzioni
+  //    selezionabili). Non e' il `soggetto_ruolo_id`, che vive accanto e non si
+  //    puo' scambiare (`feedback_emittente_pk_vs_soggetto_ruolo`).
+  //
+  // ⛔ `null` NON e' un default innocuo: vuol dire «questa sessione non ha un
+  //    emittente su cui scrivere», ed e' lo stato in cui i verbi di creazione
+  //    vanno spenti — non uno in cui compilare una form fino in fondo e farsi
+  //    rifiutare dal database alla scrittura.
+  const emittenteScritturaId = computed(
+    () => emittenteCorrente.value?.id
+      ?? emittenteAttivo.value?.emittente_fiscale_id
+      ?? null
+  )
+
   // Scopo: Domini visibili. Filtri applicati:
   //   - adminOnly: solo SUPER_ADMIN (es. Amm. Software).
   //   - non adminOnly: solo operatori interni (OPERATORE). I portali e lo
@@ -417,6 +443,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdminGlobale,
     emittenteCorrente,
     emittenteAttivo,
+    emittenteScritturaId,
     perimetroMultiEmittente,
     puoScegliereEmittente,
     deveScegliereEmittente,

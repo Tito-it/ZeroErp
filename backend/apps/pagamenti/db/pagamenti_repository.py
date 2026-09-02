@@ -28,7 +28,6 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     fetch_paged_with_total,
-    fetchone_scalar,
     jsonb_out,
     rows_to_list,
     sql_order_direction,
@@ -324,18 +323,49 @@ _COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
      "formato_flusso", "regole_match", "meta"}
 )
 
+# Colonne ordinabili degli ATTI DI SISTEMAZIONE di una fattura (lista 61).
+# ⛔ Chiavata sui `campo_sorgente` FISICI, non sui codici logici: il frontend
+#    monta le Column con `:field="col.campo_sorgente"` e manda QUELLO in
+#    `order_by`. Chiavarla sui codici logici e' il difetto di `vendite.lotti`
+#    (2026-07-31), e qui sarebbe stato peggio: prima di questa modifica il
+#    metodo aveva `ORDER BY s.id` inchiodato e **ignorava** `order_by` in
+#    silenzio — la freccia si girava sopra righe immobili, senza nemmeno un 400
+#    a dirlo.
+# `FROM` + `WHERE` degli ATTI DI SISTEMAZIONE di una fattura, in una sede sola.
+# ⛔ Lo condividono la query di PAGINA e il conteggio di RIPIEGO: sono due
+#    domande sullo stesso insieme, e scritte due volte diventano due insiemi al
+#    primo filtro che se ne aggiunge a una sola delle due.
+_SISTEMAZIONI_FROM_WHERE = """
+              FROM pagamenti.sistemazioni s
+             WHERE s.fattura_origine_id = %s"""
+
+SISTEMAZIONI_SORT_COLUMNS: dict[str, str] = {
+    "destinazione": "s.destinazione",
+    "importo": "s.importo",
+    "stato": "s.stato",
+    "motivo": "s.motivo",
+    "data_esecuzione": "s.data_esecuzione",
+}
+
 # Colonne ordinabili dell'elenco dei canali di incasso.
-# ⚠️ QUESTA E' ANCORA CHIAVATA SUI CODICI LOGICI, ed e' legittimo **finche'**
-#    l'elenco non diventa una `<ListaConfigurabile>`: non ha un seed in
-#    `ui.lista_colonna`, quindi nessuno le manda un `campo_sorgente` e nessun
-#    presidio la copre. ⛔ Il giorno in cui la schermata dei canali si monta sul
-#    BB, `centro` va riscritta come `centro_descrizione` — o l'intestazione
-#    rispondera' **400** al click, come sarebbe successo alle altre quattro.
+# ⭐ CHIAVATA SUI `campo_sorgente` FISICI dal 2026-09-02, ed e' il giorno che il
+#    commento precedente aveva previsto: *«il giorno in cui la schermata dei
+#    canali si monta sul BB, `centro` va riscritta come `centro_descrizione` — o
+#    l'intestazione rispondera' 400 al click»*. La lista e' seedata
+#    (`pagamenti.canali_incasso`, id 60) con `campo_sorgente = centro_descrizione`,
+#    quindi quel giorno e' arrivato.
+# ⭐ E SI ORDINA PER LA DESCRIZIONE, non per il codice (decisione di Tid,
+#    2026-09-02). Il valore era `centro_codice`: l'intestazione mostra
+#    `centro_descrizione` e ordinava per un campo che a video non c'e'. Se
+#    codice e descrizione non sono correlati l'ordine sembra arbitrario — e un
+#    ordinamento che non corrisponde a cio' che si legge e' un difetto che
+#    l'operatore vede e nessun test prende.
+#    ⇒ **Si ordina la colonna che si vede.**
 ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
     "descrizione": "descrizione",
     "tipo": "tipo",
-    "centro": "centro_codice",
+    "centro_descrizione": "centro_descrizione",
 }
 
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
@@ -1352,39 +1382,61 @@ class PagamentiRepository:
     # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
     #    resto, e l'elenco delle eccedenze conta apposta le bozze e le confermate
     #    separatamente.
-    # Scopo: Conta gli atti di una fattura con lo STESSO perimetro di
-    #        `list_sistemazioni_fattura`, senza passare dalle righe.
-    # ⛔ Query separata, non `len()` sul risultato: il conteggio serve al
-    #    frontend come ASSERZIONE che le righe consegnate siano tutte (guard
-    #    `troncamentoSospetto` di `<ListaConfigurabile>` con `paginata: false`).
-    #    Derivarlo dalle righe lo renderebbe una tautologia — direbbe sempre di
-    #    si', anche il giorno in cui qualcuno mettesse un LIMIT nella SELECT.
-    # ⚠️ Il `WHERE` deve restare gemello di quello della lista.
-    def count_sistemazioni_fattura(self, fattura_id: int) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT count(*)
-                  FROM pagamenti.sistemazioni s
-                 WHERE s.fattura_origine_id = %s
-                """,
-                [fattura_id],
-            )
-            return int(fetchone_scalar(cursor))
-
-    def list_sistemazioni_fattura(self, fattura_id: int) -> list[dict[str, Any]]:
+    # ⭐ PAGINATA dal 2026-09-02 (decisione di Tid). Prima consegnava TUTTI gli
+    #    atti in un colpo e il totale veniva da una query separata
+    #    (`count_sistemazioni_fattura`, ora sparita): due valutazioni dello
+    #    stesso predicato possono non concordare, una sola non puo'.
+    # ⚠️ `limit=None` NON e' un ripiego per pigrizia: e' il modo in cui un
+    #    chiamante dichiara di volere il dataset intero (l'export). Il totale
+    #    resta quello vero perche' lo dice `COUNT(*) OVER ()`, che non guarda
+    #    la finestra.
+    def list_sistemazioni_fattura(
+        self,
+        fattura_id: int,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         self._guard_canale_sistema("list_sistemazioni_fattura")
-        sql = """
+        colonna = SISTEMAZIONI_SORT_COLUMNS.get(order_by or "", "s.id")
+        direzione = sql_order_direction(order_dir, default_desc=False)
+        # ⚠️ Tiebreak `s.id` sempre, e allineato alla direzione primaria: senza,
+        #    due atti con lo stesso importo o lo stesso stato uscirebbero in un
+        #    ordine che cambia fra una richiesta e l'altra. ⛔ E da quando la
+        #    lista impagina non e' piu' solo estetica: senza tiebreak, a offset
+        #    diversi PostgreSQL puo' consegnare due volte la stessa riga e mai
+        #    un'altra.
+        verso = sql_tiebreak_direction(direzione)
+        # ⛔ LIMIT/OFFSET solo se il chiamante impagina: una `LIMIT NULL` sarebbe
+        #    legale in PostgreSQL ma legherebbe la query a un parametro in piu'
+        #    senza che serva a nessuno.
+        paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
+        params: list[Any] = [int(fattura_id)]
+        if limit is not None:
+            params += [limit, offset]
+        data_sql = f"""
             SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
                    s.fattura_destinazione_id, s.contabile_id, s.fondo_source_id,
-                   s.data_esecuzione, s.user_esecuzione, s.data_insert
-              FROM pagamenti.sistemazioni s
-             WHERE s.fattura_origine_id = %s
-             ORDER BY s.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
-            return rows_to_list(cursor)
+                   s.data_esecuzione, s.user_esecuzione, s.data_insert,
+                   COUNT(*) OVER () AS total_count
+             {_SISTEMAZIONI_FROM_WHERE}
+             ORDER BY {colonna} {direzione}, s.id {verso}{paginazione}
+        """  # noqa: S608
+        return fetch_paged_with_total(
+            data_sql,
+            params,
+            # ⛔ Il conteggio di ripiego riusa lo STESSO `FROM`/`WHERE` della
+            #    pagina, e non e' cerimonia: due predicati scritti a mano
+            #    divergono, e il giorno in cui divergono il totale parla di un
+            #    insieme diverso da quello che si sta guardando.
+            fallback_count_sql=(
+                f"SELECT count(*) {_SISTEMAZIONI_FROM_WHERE}"  # noqa: S608
+            ),
+            fallback_params=[int(fattura_id)],
+            offset=offset,
+        )
 
     # Scopo: Esegue l'atto — la decisione diventa un fatto.
     # ⭐ UNA SOLA `SELECT` sulla funzione madre: sceglie la strada (fondo,

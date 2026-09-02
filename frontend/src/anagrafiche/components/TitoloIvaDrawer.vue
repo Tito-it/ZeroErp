@@ -403,9 +403,16 @@ const onClose = useDrawerClose(emit)
 </script>
 
 <template>
+  <!-- ⛔ `DRAWER_WIDTH.WIDE` e non `.LARGE`: quella chiave NON ESISTE in
+       `constants.js`, e per mesi questo drawer e' stato largo **320px** — il
+       default di PrimeVue per un drawer laterale. Nessun errore: `undefined`
+       finisce in `width` e il browser ignora la regola, il build e' verde,
+       ESLint tace. A video le griglie a 2 e 3 colonne collassavano in una e la
+       maschera sembrava «scritta male» quando era solo strizzata.
+       ⇒ Presidiato da `scripts/check-drawer-width.mjs`, che nasce da qui. -->
   <Drawer
     :visible="visible" @update:visible="emit('update:visible', $event)"
-    position="right" :style="{ width: DRAWER_WIDTH.LARGE }" @after-show="onAfterShow">
+    position="right" :style="{ width: DRAWER_WIDTH.WIDE }" @after-show="onAfterShow">
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"

@@ -6,28 +6,31 @@
 // Scopo: L'elenco dei CANALI DI INCASSO — la configurazione da cui il denaro
 //        entra, e il conto su cui atterra.
 //
-// ⛔ Tabella semplice e non `<ListaConfigurabile>`: questa lista NON ha un seed
-//    in `ui.lista_definizione` (verificato sul database il 2026-08-28). Montarla
-//    sul BB manderebbe al backend il `campo_sorgente` di colonne che nessuno ha
-//    dichiarato, e il click sull'intestazione risponderebbe **400** —
-//    esattamente il difetto gia' pagato sulle altre quattro liste del dominio.
+// ⭐ MONTATA su `<ListaConfigurabile>` il 2026-09-02 (lista 60). Il commento
+//    precedente diceva «non ha un seed in `ui.lista_definizione`, montarla sul
+//    BB risponderebbe 400 al click»: era vero e ora non lo e' piu' — il seed
+//    c'e' e `ENTI_INCASSO_SORT_COLUMNS` e' stata ri-chiavata sui
+//    `campo_sorgente` fisici (richiesta BE-2), che era la meta' mancante.
+// ⚠️ Solo `codice`, `descrizione`, `tipo` e `centro_descrizione` sono
+//    `ordinabile = t` a catalogo: le altre non hanno una colonna ordinabile
+//    dietro, e seminarle `t` avrebbe messo a video una freccia che risponde 400.
 //
 // ⭐ La colonna della UTILITY del conto c'e' anche qui, non solo nel drawer:
 //    e' il modo per accorgersi da fuori che due canali puntano al conto
 //    sbagliato, senza aprirli uno per uno.
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Column from 'primevue/column'
-import DataTable from 'primevue/datatable'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { MANAGE_ICONS } from '../../core/constants'
 import { useEtichettePagamenti } from '../etichette'
@@ -39,16 +42,31 @@ const store = useCanaliIncassoStore()
 const isBlocked = useInjectBlocked()
 const isReadonly = useInjectReadonly()
 
-const { onPage, onSort, applyFilters, paginatorProps, reloadAction } = useSearchTable(store, {
-  defaultSortField: 'codice',
-  defaultSortOrder: 'asc',
+// Scaffolding della lista configurabile: `useSearchTable` + le due azioni di
+// utility + `pageActions`. ⚠️ Niente `exportFn`: la lista non ha endpoint di
+// export, e il BB rende l'azione condizionale.
+const {
+  onPage, onSort, applyFilters, paginatorProps, reloadAction, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions: azioniScaffolding,
+} = useListaConfigurabilePage(store, {
+  searchTableOptions: { defaultSortField: 'codice', defaultSortOrder: 'asc' },
 })
 
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: tipoFilter, onChange: onTipoChange } = bindSelect('tipo')
 
 const { tipoCanale: etichettaTipo, opzioniTipoCanale } = useEtichettePagamenti()
-const opzioniTipo = opzioniTipoCanale()
+// ⚠️ «Tutti i tipi» e' una VOCE dell'elenco (`value: null`), non la X di
+//    `show-clear`: sono due modi di dire la stessa cosa, e la X non si vede
+//    finche' non hai gia' scelto — cioe' proprio quando serve sapere che
+//    «nessun filtro» e' una scelta possibile. Stessa forma di `ritardoOptions`
+//    in `SituazioneApertaView` e del filtro stato dei registri.
+// ⚠️ `computed` e non un array fisso: le etichette vengono da `t()`, e al
+//    cambio lingua un array costruito una volta resterebbe indietro in silenzio.
+const opzioniTipo = computed(() => [
+  { value: null, label: t('pagamenti.canali.filtro_tipo_tutti') },
+  ...opzioniTipoCanale(),
+])
 
 // ⚠️ In sola lettura il «Nuovo» non si mostra: un pulsante che apre un form che
 //    non salva e' peggio di un pulsante assente.
@@ -64,6 +82,13 @@ const pageActions = computed(() => {
     })
   }
   azioni.push(reloadAction())
+  // ⭐ Le due azioni di utility della lista configurabile — «Personalizza
+  //    colonne» e (quando ci sara' un endpoint) «Esporta» — arrivano dallo
+  //    scaffolding: non si riscrivono qui, o divergono dalle altre 40 liste.
+  //    ⚠️ Lo scaffolding porta anche il proprio `reload`: si filtra, perche'
+  //    questa toolbar ha gia' il suo `reloadAction()`, che sa disabilitarsi su
+  //    lista vuota.
+  azioni.push(...azioniScaffolding.value.filter((a) => a.key !== 'reload' && a.key !== 'new'))
   return azioni
 })
 
@@ -102,85 +127,61 @@ onMounted(() => store.fetchList())
             option-label="label"
             option-value="value"
             :placeholder="t('pagamenti.canali.filtro_tipo')"
-            show-clear
             style="width: 200px;"
             @update:model-value="onTipoChange"
           />
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
       </div>
 
-      <DataTable
-        v-bind="paginatorProps"
-        :value="store.items"
+      <ListaConfigurabile
+        ref="listaRef"
+        codice="pagamenti.canali_incasso"
+        :rows="store.items"
+        :total="store.totalRecords"
         :loading="store.loading"
-        class="app-datatable"
-        data-key="id"
-        lazy
-        removable-sort
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
         @page="onPage"
         @sort="onSort"
         @row-click="onRowClick"
+        @config-loaded="onConfigLoaded"
       >
-        <Column field="codice" :header="t('pagamenti.canali.col_codice')" sortable />
-        <Column field="descrizione" :header="t('pagamenti.canali.col_descrizione')" sortable />
-        <Column field="tipo" :header="t('pagamenti.canali.col_tipo')" sortable>
-          <template #body="{ data }">
-            <!-- Fail-visible: un tipo nuovo si vede come CODICE, non come cella
-                 vuota. -->
-            <Tag :value="etichettaTipo(data.tipo)" severity="secondary" />
-          </template>
-        </Column>
-        <Column field="conto_iban" :header="t('pagamenti.canali.col_conto')">
-          <template #body="{ data }">{{ data.conto_iban || '—' }}</template>
-        </Column>
+        <template #cell-tipo="{ data }">
+          <!-- Fail-visible: un tipo nuovo si vede come CODICE, non come cella
+               vuota. -->
+          <Tag :value="etichettaTipo(data.tipo)" severity="secondary" />
+        </template>
+        <template #cell-conto_iban="{ data }">{{ data.conto_iban || '—' }}</template>
         <!-- ⚠️ NULL qui non e' un buco: e' «nessuna utility» — il conto generico
              del ruolo, o un'istanza senza PDP. Due casi legittimi e diversi, e
              nessuno dei due e' un dato mancante. -->
-        <Column
-          field="conto_utility_descrizione"
-          :header="t('pagamenti.canali.col_utility')"
-        >
-          <template #body="{ data }">
-            <span v-if="data.conto_utility_descrizione">
-              {{ data.conto_utility_descrizione }}
-            </span>
-            <span v-else class="app-text-muted">
-              {{ t('pagamenti.canali.conto_senza_utility') }}
-            </span>
-          </template>
-        </Column>
-        <Column field="centro_descrizione" :header="t('pagamenti.canali.col_centro')">
-          <template #body="{ data }">{{ data.centro_descrizione || '—' }}</template>
-        </Column>
-        <Column field="attivo" :header="t('pagamenti.canali.col_attivo')">
-          <template #body="{ data }">
-            <Tag
-              :value="t(data.attivo ? 'common.yes' : 'common.no')"
-              :severity="data.attivo ? 'success' : 'secondary'"
-            />
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-          <template #body="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </Column>
-
-        <template #empty>
-          <div class="app-empty-state">
-            <i class="pi pi-inbox" />
-            <!-- ⭐ Il vuoto qui ha una CONSEGUENZA, e va detta: senza canali non
-                 si apre una distinta col canale, e la coda del denaro non
-                 attribuito resta senza padrone. -->
-            <p>{{ t('pagamenti.canali.nessun_canale') }}</p>
-          </div>
+        <template #cell-conto_utility="{ data }">
+          <span v-if="data.conto_utility_descrizione">
+            {{ data.conto_utility_descrizione }}
+          </span>
+          <span v-else class="app-text-muted">
+            {{ t('pagamenti.canali.conto_senza_utility') }}
+          </span>
         </template>
-      </DataTable>
+        <template #cell-centro="{ data }">{{ data.centro_descrizione || '—' }}</template>
+        <template #cell-attivo="{ data }">
+          <Tag
+            :value="t(data.attivo ? 'common.yes' : 'common.no')"
+            :severity="data.attivo ? 'success' : 'secondary'"
+          />
+        </template>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+      </ListaConfigurabile>
     </template>
   </div>
 </template>

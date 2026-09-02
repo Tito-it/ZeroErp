@@ -242,17 +242,29 @@ def get_sistemazione(sistemazione_id: int) -> dict[str, Any]:
     return {"sistemazione": _sistemazione_o_404(repository, sistemazione_id)}
 
 
-# Scopo: Gli atti registrati su un documento.
-def list_sistemazioni_fattura(fattura_id: int) -> dict[str, Any]:
+# Scopo: Gli atti registrati su un documento, in envelope `results` + `count`.
+# ⛔ `count` NON e' `len(results)`. Era `len(atti)`, cioe' un numero derivato
+#    dalle righe: non puo' dire niente SULLE righe, e come asserzione per il
+#    guard anti-troncamento del frontend sarebbe un'eco
+#    (`rows.length === rows.length`, sempre vero).
+# ⭐ E dal 2026-09-02 non e' nemmeno una SECONDA query: la pagina e il totale
+#    escono da UNA valutazione (`COUNT(*) OVER ()`). Due valutazioni dello stesso
+#    predicato possono non concordare — fra l'una e l'altra qualcuno registra un
+#    atto — e la lista direbbe «3 di 4» avendone in mano 3 su 3.
+def list_sistemazioni_fattura(
+    fattura_id: int,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+) -> dict[str, Any]:
     repository = PagamentiRepository()
-    # ⛔ `count` da una query SUA, non `len(atti)`. Era `len(atti)`, cioe' un
-    #    numero derivato dalle righe: non puo' dire niente SULLE righe, e come
-    #    asserzione per il guard anti-troncamento del frontend sarebbe un'eco
-    #    (`rows.length === rows.length`, sempre vero).
-    return {
-        "results": repository.list_sistemazioni_fattura(fattura_id),
-        "count": repository.count_sistemazioni_fattura(fattura_id),
-    }
+    atti, totale = repository.list_sistemazioni_fattura(
+        fattura_id,
+        limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+    )
+    return {"results": atti, "count": totale}
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -96,26 +96,31 @@ class TitoliIvaService:
     # Titoli
     # =================================================================
 
-    # Scopo: Titoli IVA di un soggetto.
+    # Scopo: Titoli IVA di un soggetto, in envelope `results` + `count`.
     # ⚠️ Ogni titolo porta `ambito_incompleto`: RISTRETTO con zero righe di
     #    ambito. E' la decisione Q2 — il DB ammette apposta quello stato, perche'
     #    il caso si costruisce in due istruzioni; l'API lo DICHIARA, cosi' il
     #    frontend puo' avvisare senza dover ri-derivare la regola in un template.
-    def list_titoli_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
-        titoli = self._repo.list_titoli_soggetto(soggetto_id)
+    # ⭐ PAGINATA dal 2026-09-02: prima consegnava TUTTI i titoli in un colpo e
+    #    il conteggio veniva da una query separata (`count_titoli_soggetto`, ora
+    #    sparita). Due valutazioni dello stesso predicato possono non concordare;
+    #    una sola non puo'.
+    def list_titoli_soggetto(
+        self,
+        soggetto_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> dict[str, Any]:
+        titoli, totale = self._repo.list_titoli_soggetto(
+            soggetto_id,
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
         for t in titoli:
             t["ambito_incompleto"] = self._ambito_incompleto(t)
-        return titoli
-
-    # Scopo: Quanti titoli ha il soggetto, contati con una query SUA.
-    # ⛔ Perche' esiste invece di un `len()` sulla lista: la lista dei titoli e'
-    #    consegnata a `<ListaConfigurabile>` in modalita' non paginata, dove
-    #    `total` non e' decorazione ma l'ASSERZIONE che le righe siano tutte.
-    # ⚠️ `list_titoli_soggetto` NON e' stata cambiata di firma di proposito: la
-    #    consuma anche `soggetti_service`, che la incorpora nel dettaglio di un
-    #    soggetto e si aspetta una LISTA. L'envelope lo compone la view.
-    def count_titoli_soggetto(self, soggetto_id: str) -> int:
-        return self._repo.count_titoli_soggetto(soggetto_id)
+        return {"results": titoli, "count": totale}
 
     # Scopo: Dettaglio di un titolo, con ambiti e registro movimenti.
     def get_titolo(self, soggetto_id: str, titolo_id: int) -> dict[str, Any]:

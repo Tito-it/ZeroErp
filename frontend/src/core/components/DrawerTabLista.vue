@@ -63,7 +63,14 @@ defineProps({
   helpText: { type: String, default: '' },
 })
 
-const emit = defineEmits(['page', 'sort', 'config-loaded'])
+// ⚠️ `row-click` si INOLTRA, non si assorbe: un contenitore che si tiene un
+//    evento del componente che avvolge e' un buco silenzioso — il caller
+//    scrive `@row-click`, non fallisce niente, e la riga non si apre. Aggiunto
+//    il 2026-09-02 al primo caller che ne aveva bisogno (i titoli IVA del
+//    soggetto, che dal click aprono il drawer del titolo).
+// ⭐ La firma resta quella del BB: si emette la RIGA, non l'evento PrimeVue
+//    (`feedback` del guard `check-liste-configurabili.mjs`).
+const emit = defineEmits(['page', 'sort', 'config-loaded', 'row-click'])
 
 const listaInterna = ref(null)
 
@@ -138,6 +145,7 @@ defineExpose({
       :data-key="dataKey"
       @page="emit('page', $event)"
       @sort="emit('sort', $event)"
+      @row-click="emit('row-click', $event)"
       @config-loaded="emit('config-loaded', $event)"
     >
       <template v-for="nome in slotInoltrati($slots)" #[nome]="scope" :key="nome">

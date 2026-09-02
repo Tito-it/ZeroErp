@@ -39,6 +39,12 @@
    non viene resa affatto — nessun kebab e NESSUN errore. Difetto reale su
    `LottoDrawer.vue`, visto solo in app il 2026-08-24.
 
+4-ter. test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo
+   Il VERSO OPPOSTO del 4-bis (BE-3): chi fornisce lo slot pretende che la
+   lista abbia una colonna `azione` a catalogo. Senza, il BB non rende la
+   colonna e le azioni di riga spariscono senza che niente fallisca — e' il
+   difetto DB-1, trovato convertendo e non da un test.
+
 5. test_ogni_lista_del_seed_ha_un_preset_default
    Senza preset `is_default` la lista non ha una configurazione di partenza.
 
@@ -72,6 +78,7 @@ I test 4-6 girano su TUTTE: valgono a prescindere dalla chiave della whitelist.
 import csv
 import re
 import unittest
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -100,6 +107,46 @@ def _senza_commenti(testo: str) -> str:
     senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
     senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
     return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+
+
+# Scopo: TUTTI i montaggi di lista del frontend, letti UNA volta sola.
+#        Per ogni `<ListaConfigurabile codice="X">` / `<DrawerTabLista codice="X">`
+#        ritorna il codice, il TAG DI APERTURA (gli attributi) e il CORPO (gli
+#        slot), che sono le tre cose su cui i test di questo modulo interrogano
+#        il frontend.
+#
+# ⭐ Estratto il 2026-09-02 alla TERZA copia (regola del 2). Le tre erano nello
+#    stesso file e divergevano gia': due cercavano il tag con `_tag_apertura`,
+#    la terza con una finestra a caratteri — cioe' la versione che il 02-09
+#    stesso era stata corretta perche' sbagliava in direzione «verde».
+# ⚠️ E percorrevano `frontend/src` **tre volte**: `lru_cache` perche' un
+#    presidio lento e' un presidio che prima o poi qualcuno toglie dalla corsa
+#    veloce (stessa ragione scritta in `test_perimetro_emittente_copertura`).
+@lru_cache(maxsize=1)
+def _montaggi_lista() -> tuple[tuple[str, str, str, str], ...]:
+    src = _repo_root() / "frontend/src"
+    trovati: list[tuple[str, str, str, str]] = []
+    for percorso in src.rglob("*.vue"):
+        senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
+        # ⛔ DUE componenti, non uno. Una lista si monta con
+        #    `<ListaConfigurabile>` **oppure** con `<DrawerTabLista>`: cercare
+        #    solo il primo rende il censimento cieco sulle liste nate per ultime
+        #    (successo con `vendite.registri_numerazione`, 2026-09-01).
+        for tag in ("ListaConfigurabile", "DrawerTabLista"):
+            for m in re.finditer(rf"<{tag}\b", senza_commenti):
+                apertura = _tag_apertura(senza_commenti, m.start())
+                # `(?<![:@\w-])codice=` esclude i binding DINAMICI
+                # (`:codice="var"`): il loro valore non e' risolvibile
+                # staticamente. Sono coperti lo stesso — `ResiCodaTable` sceglie
+                # fra due costanti, entrambe in `_LISTE`.
+                mc = re.search(r'(?<![:@\w-])codice="([^"]+)"', apertura)
+                if not mc:
+                    continue
+                inizio = m.start() + len(apertura)
+                fine = senza_commenti.find(f"</{tag}>", inizio)
+                corpo = senza_commenti[inizio:fine if fine != -1 else len(senza_commenti)]
+                trovati.append((mc.group(1), apertura, corpo, percorso.name))
+    return tuple(trovati)
 
 
 # Scopo: il TAG DI APERTURA che comincia a `inizio`, fino al `>` che lo chiude.
@@ -408,6 +455,37 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("ui.lista_colonna", ORDINAMENTO_LOCALE),
     ("ui.lista_preset", ORDINAMENTO_LOCALE),
     ("ui.lista_colonna_permesso", ORDINAMENTO_LOCALE),
+    # Lotto 2 (2026-09-02): gli atti di sistemazione di una fattura, montati
+    # nel drawer dell'eccedenza.
+    # ⭐ PAGINATA dal 2026-09-02 (decisione di Tid), dopo esserlo stata per
+    #    mezza giornata no. La ragione per cui era «ordinamento locale» —
+    #    «gli atti di una fattura sono pochi per modello» — e' una previsione
+    #    sui DATI, e le previsioni sui dati non decidono la forma di una lista:
+    #    il drawer restava senza pagine, senza «Personalizza colonne» e senza
+    #    export, cioe' fuori dallo standard delle altre quaranta, e nessuno
+    #    poteva accorgersene perche' non falliva niente.
+    # ⇒ Da qui la whitelist di BE-1 non e' piu' «pronta per domani»: e' la
+    #   whitelist che l'intestazione cliccata usa oggi, ed e' esigibile dai
+    #   test 1-3 come per ogni altra lista. Il ponte del lotto 2 e' sparito
+    #   insieme all'ultima riga che conteneva.
+    ("pagamenti.sistemazioni_fattura",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "SISTEMAZIONI_SORT_COLUMNS")),
+    # Le altre tre del lotto 2. ⭐ Entrano nel registro col SEED e non con la
+    # conversione: `test_lista_proiezione_campo_sorgente` pretende che ogni
+    # lista senza vista abbia qui la sua whitelist, perche' altrimenti «i loro
+    # ordinamenti non li prova nessuno» — ed e' vero anche prima che una view
+    # le monti.
+    ("pagamenti.canali_incasso",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "ENTI_INCASSO_SORT_COLUMNS")),
+    ("anagrafiche.titoli_iva_sfondati",
+     _da_costante("apps.anagrafiche.db.titoli_iva_repository", "_ORDER_COLS_SFONDATI")),
+    # ⭐ PAGINATA dal 2026-09-02 (rilievo di Tid: il drawer era fuori standard —
+    #    niente pagine, niente scelta colonne, niente export). Da quel giorno
+    #    ordina lato SERVER, quindi rientra nei test 1-3 con la sua whitelist e
+    #    la riga corrispondente esce dal ponte del lotto 2.
+    ("anagrafiche.soggetto_titoli_iva",
+     _da_costante("apps.anagrafiche.db.titoli_iva_repository",
+                  "_ORDER_COLS_TITOLI_SOGGETTO")),
 )
 
 
@@ -602,51 +680,63 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             f"azioni non viene resa (nessun kebab, nessun errore): {colpevoli}",
         )
 
+    # 4-ter. IL VERSO MANCANTE del 4-bis (richiesta BE-3 del team DB,
+    #        2026-09-02). Quello controlla «la config dichiara l'azione ⇒ il
+    #        caller deve fornire lo slot col nome giusto». Questo controlla
+    #        l'opposto: **il caller fornisce `#actions` ⇒ la lista deve avere
+    #        una colonna `azione` a catalogo**.
+    #
+    # 🔴 E' il difetto DB-1, trovato convertendo e non da un test: la lista
+    #    `anagrafiche.soggetto_titoli_iva` non aveva la colonna a catalogo
+    #    mentre il suo drawer ha un pulsante ELIMINA per riga. Il BB rende la
+    #    colonna delle azioni solo se la config la dichiara: senza la riga, il
+    #    cestino sparisce e **non fallisce niente** — nessun errore, nessun
+    #    rosso, solo un'azione che non c'e' piu'.
+    # ⚠️ Il generatore del seed non poteva vederla: riconosce la colonna azioni
+    #    dall'header `common.col_azioni`, e li' la `<Column v-if="!isReadonly">`
+    #    non aveva header. Il presidio va quindi sul FRONTEND, che e' l'unico
+    #    posto dove quell'intenzione e' scritta.
+    def test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo(self) -> None:
+        # ⭐ Il registro di debito che stava qui e' VUOTO dal 2026-09-02 ed e'
+        #    stato tolto, non azzerato: un registro vuoto che resta e' un posto
+        #    dove la prossima eccezione si infila senza discussione.
+        #    Conteneva `vendite.registri_numerazione` (lista 54) — SECONDO caso
+        #    della specie di DB-1, trovato da questo test alla PRIMA corsa: il
+        #    tab forniva `#actions` con un `RowActionsMenu`, il catalogo non
+        #    aveva la colonna, e quel kebab non si e' mai reso senza che
+        #    fallisse niente. Chiuso dalla riga 702 a catalogo (DB-2).
+        con_slot = {
+            codice: dove
+            for codice, _apertura, corpo, dove in _montaggi_lista()
+            if re.search(r"#actions|v-slot:actions", corpo)
+        }
+        self.assertTrue(
+            con_slot,
+            "nessuno slot `#actions` trovato: il rilevamento e' rotto, non e' "
+            "che nessuna lista abbia azioni di riga.",
+        )
+        senza_colonna = sorted(
+            f"{codice} ({dove})"
+            for codice, dove in con_slot.items()
+            if not any(
+                r["tipo_colonna"] == "azione" for r in _colonne_attive(codice)
+            )
+        )
+        self.assertEqual(
+            senza_colonna, [],
+            "il frontend fornisce lo slot `#actions` ma il catalogo non ha una "
+            "colonna `tipo_colonna = 'azione'`: il building block NON rende la "
+            "colonna e non fallisce niente — le azioni di riga spariscono in "
+            "silenzio. Serve la riga a catalogo (richiesta al team DB).",
+        )
+
     def test_registro_copre_tutte_le_liste_montate_dal_frontend(self) -> None:
         # La fonte di verita' su "quali liste sono convertite" e' il frontend:
         # chi monta `<ListaConfigurabile codice="X">` ha convertito X. Senza
         # questo controllo, dimenticare una riga in `_LISTE` non produce un
         # rosso — produce un presidio che non presidia, che e' peggio di non
         # averlo.
-        src = _repo_root() / "frontend/src"
-        montate: set[str] = set()
-        for percorso in src.rglob("*.vue"):
-            testo = percorso.read_text(encoding="utf-8")
-            # Solo il montaggio reale: i commenti che NOMINANO il componente
-            # (es. GeoSearchTable, che dichiara di non usarlo) sono esclusi.
-            senza_commenti = re.sub(r"^\s*//.*$", "", testo, flags=re.M)
-            # `(?<![:@\w-])codice=` esclude i binding DINAMICI (`:codice="var"`):
-            # il loro valore non e' risolvibile staticamente, e catturare il nome
-            # della variabile produrrebbe un falso "codice lista" inesistente.
-            # Sono comunque coperti: `ResiCodaTable` sceglie fra due costanti,
-            # entrambe presenti in `_LISTE`.
-            #
-            # ⚠️ **Niente `[^>]*` fra il tag e l'attributo** (difetto corretto il
-            # 2026-08-03): un `>` puo' vivere DENTRO un attributo — e ci vive
-            # davvero, in `v-if="documentiCount > 0 || documentiLoading"` sulle
-            # dashboard. La classe negata si fermava li' e quattro liste su sei
-            # risultavano NON MONTATE: il presidio taceva proprio sulle liste
-            # appena convertite, che e' il caso per cui esiste. Ora si cerca
-            # `codice="..."` entro una finestra di caratteri dal nome del tag,
-            # senza pretendere di sapere dove finisce il tag stesso.
-            # ⛔ DUE componenti, non uno. Una lista si monta con
-            #    `<ListaConfigurabile>` **oppure** con `<DrawerTabLista>` (il
-            #    wrapper per le liste che vivono su un tab di drawer): sono due
-            #    modi di montare la stessa cosa, e cercare solo il primo rende
-            #    il censimento cieco proprio sulle liste nate per ultime.
-            #    ⚠️ E' successo: `vendite.registri_numerazione`, montata il
-            #    2026-09-01 in `EmittenteFiscaleRegistriTab.vue` con
-            #    `<DrawerTabLista>`, e' rimasta fuori da `_LISTE` senza che
-            #    nessun test lo dicesse — cioe' senza NESSUN presidio, mentre
-            #    questo test restava verde.
-            for tag in ("ListaConfigurabile", "DrawerTabLista"):
-                for m in re.finditer(
-                    rf"<{tag}\b.{{0,400}}?(?<![:@\w-])codice=\"([^\"]+)\"",
-                    senza_commenti,
-                    re.S,
-                ):
-                    montate.add(m.group(1))
-
+        montate = {codice for codice, _a, _c, _d in _montaggi_lista()}
         self.assertTrue(
             montate,
             "nessun <ListaConfigurabile codice=\"...\"> trovato nel frontend: "
@@ -748,31 +838,23 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             "nessuna lista a ordinamento locale nel registro: se e' voluto, "
             "togliere questo test insieme alla sentinella.",
         )
-        src = _repo_root() / "frontend/src"
-        # codice lista -> TAG DI APERTURA completo del montaggio.
-        # ⚠️ Serve il tag INTERO, non il pezzo fino a `codice="..."`: `:paginata`
-        #    vive dopo `codice` fra gli attributi, e cercarla in un testo che si
-        #    ferma prima significherebbe cercarla dove non puo' esserci.
-        montaggi: dict[str, str] = {}
-        for percorso in src.rglob("*.vue"):
-            senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
-            for tag in ("ListaConfigurabile", "DrawerTabLista"):
-                for m in re.finditer(rf"<{tag}\b", senza_commenti):
-                    apertura = _tag_apertura(senza_commenti, m.start())
-                    mc = re.search(r'(?<![:@\w-])codice="([^"]+)"', apertura)
-                    if mc:
-                        montaggi.setdefault(mc.group(1), apertura)
-
+        # codice lista -> TAG DI APERTURA del montaggio. ⚠️ Serve il tag
+        # INTERO: `:paginata` vive fra gli attributi, dopo `codice`.
+        montaggi = {c: apertura for c, apertura, _corpo, _dove in _montaggi_lista()}
         for codice in locali:
             with self.subTest(lista=codice):
                 montaggio = montaggi.get(codice)
-                self.assertIsNotNone(
-                    montaggio,
-                    f"`{codice}` e' nel registro come ordinamento locale ma non "
-                    "risulta montata da nessun .vue: o il rilevamento e' rotto, "
-                    "o la riga in `_LISTE` e' rimasta orfana.",
-                )
-                assert montaggio is not None
+                # ⚠️ TERZO STATO, che la prima stesura di questo guard non
+                #    prevedeva (corretto il 2026-09-02): una lista puo' essere
+                #    **seedata e registrata ma non ancora convertita**. Succede
+                #    perche' `test_lista_proiezione_campo_sorgente` pretende la
+                #    riga in `_LISTE` gia' col SEED — «altrimenti i loro
+                #    ordinamenti non li prova nessuno» — mentre la view arriva
+                #    dopo. Non e' un difetto: e' l'ordine in cui si lavora.
+                # ⛔ Qui si esce, NON si fallisce: questo test dice «se la monti,
+                #    montala non paginata», non «devi averla montata».
+                if montaggio is None:
+                    continue
                 self.assertRegex(
                     montaggio,
                     r':paginata="false"',

@@ -916,17 +916,50 @@ wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 > Contro cosa verificarlo, visto che i denominatori in questo documento sono
 > **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
 >
-> | Misura | 02-08 | 03-08 | 02-09 mattina | 02-09 sera | **02-09 notte** | Cos'è |
-> | --- | --- | --- | --- | --- | --- | --- |
-> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | 59 | **63** | le liste configurate a DB — +4 col lotto 2 |
-> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | 59 ✅ | **59** ⏳ | ⚠️ divergenza **attesa**: il lotto 2 è seed senza consumer, vedi sotto |
-> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | 60 | **60** | più dei codici e non meno: `ResiCodaTable` ne serve **due** con `:codice` dinamico e `DashboardCompetenzaView` ne monta **tre**, ma il conteggio include anche il BB stesso, che si cita nel proprio commento |
-> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | 35 / 39 | **35 / 39** | invariato: il lotto 2 semina il DB, non converte ancora nessun file |
-> | **liste montate `:paginata="false"`** | — | — | — | 4 | **4** | modalità nata il 02-09; il quinto `grep` è il commento del BB, non un montaggio |
-> | file con `DataTable` grezza | 56 | 48 | 57 | 53 | **53** | il contatore della regola zero |
+> | Misura | 02-08 | 03-08 | 02-09 mattina | 02-09 sera | 02-09 notte | 02-09 chiusura | **02-09 · 61 paginata** | Cos'è |
+> | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | 59 | 63 | 63 | **63** | le liste configurate a DB — +4 col lotto 2 |
+> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | 59 ✅ | 59 ⏳ | 63 ✅ | **63** ✅ | ⭐ divergenza rientrata e RIMASTA tale: `comm -23 seed presidio` è vuoto |
+> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | 60 | 60 | 62 | **61** | ⭐ **scende, e non è una regressione**: `SistemazioneDrawer` è passato a `<DrawerTabLista>`, che il BB lo monta per lui. Il `grep` su `<ListaConfigurabile` non lo vede più — è il conteggio a essere parziale, non la conversione a essere tornata indietro |
+> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | 35 / 39 | 35 / 39 | 35 / 39 | **35 / 39** | invariato: qui si contano le conversioni, e la 61 era già convertita — è cambiata la MODALITÀ, non lo stato |
+> | **liste montate `:paginata="false"`** | — | — | — | 4 | 4 | 5 | **4** | ⭐ **cala di uno**: la 61 non è più fra queste. Restano i quattro pannelli `ui.*`. Il `grep` ne trova sempre uno in più (5), ed è il BB che si cita nel proprio commento |
+> | file con `DataTable` grezza | 56 | 48 | 57 | 53 | 53 | 49 | **49** | il contatore della regola zero |
 >
-> ⏳ **E riaperta la sera stessa, di proposito: 63 seedati contro 59 nel registro**
-> (2026-09-02, lotto 2 — `brief-db-seed-liste-lotto-2.md`). Le quattro sono
+> ⭐ **CODA DELLA GIORNATA — la 61 è passata da «non paginata» a paginata**
+> (decisione di Tid, 2026-09-02, dopo la chiusura qui sopra). `SistemazioneDrawer`
+> era stato convertito **con `:paginata="false"`**, e la ragione scritta era «gli
+> atti di UNA fattura sono pochi per modello».
+>
+> ⛔ **Quella ragione è una previsione sui DATI, e una previsione sui dati non
+> decide la forma di una lista** (regola zero). Il prezzo era concreto e non si
+> vedeva: niente pagine, niente «Personalizza colonne», niente export — cioè un
+> drawer fuori dallo standard delle altre quaranta liste, senza che niente lo
+> dicesse. Ora ha lo stesso pacchetto della 62: store Pinia + `useDrawerTabLista`
+> + `<DrawerTabLista>`, e un endpoint di export suo.
+>
+> ⭐ **E la whitelist di BE-1 ha smesso di essere «pronta per domani»**: la 61 è
+> uscita dalla sentinella `ORDINAMENTO_LOCALE` ed è ora esigibile dai test 1-3
+> come ogni altra lista. ⇒ **`test_liste_lotto2_whitelist_ponte.py` è stato
+> cancellato**: esisteva solo per coprire ciò che quei test non raggiungevano, e
+> a zero righe nel suo registro non copriva più niente. Due presidi sullo stesso
+> invariante divergono al primo che qualcuno aggiorna.
+>
+> ⚠️ **Cosa è cambiato anche a BE**: `list_sistemazioni_fattura` restituisce
+> `(righe, totale)` in **una** valutazione (`COUNT(*) OVER ()`) e
+> `count_sistemazioni_fattura` è sparita — era una seconda query sullo stesso
+> predicato, e due valutazioni possono non concordare. Stessa mossa già fatta su
+> `count_titoli_soggetto` con la 62.
+
+> ✅ **E RICHIUSA a fine giornata: 63 = 63** (`comm -23 seed presidio` vuoto). Le
+> quattro liste del lotto 2 sono montate — `CanaliIncassoSearchTable`,
+> `SistemazioneDrawer`, `TitoliIvaSoggettoDrawer`, `TitoliIvaSfondatiView` — e
+> con loro sono rientrate BE-1 e BE-2. ⭐ **Il debito auto-esigente ha funzionato
+> nel verso previsto**: i due rossi annunciati qui sotto si sono presentati alla
+> conversione, non prima, e sono stati pagati in quel momento. Il blocco che
+> segue resta come racconto, non come stato.
+>
+> ⏳ *Era: riaperta la sera stessa, di proposito — 63 seedati contro 59 nel registro*
+> (2026-09-02, lotto 2 — `work-done/brief-db-seed-liste-lotto-2.md`). Le quattro sono
 > `pagamenti.canali_incasso`, `pagamenti.sistemazioni_fattura`,
 > `anagrafiche.soggetto_titoli_iva`, `anagrafiche.titoli_iva_sfondati`: **seed
 > arrivato prima del suo consumer**, esattamente la forma già descritta qui sotto
@@ -939,7 +972,7 @@ wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 >
 > ⛔ **Ma il giorno in cui si converte una di quelle view, il registro la
 > pretende — e con lei arrivano DUE rossi già previsti**, che sono la ragione per
-> cui `brief-db-seed-liste-lotto-2.md` §7 esiste:
+> cui `work-done/brief-db-seed-liste-lotto-2.md` §7 esiste:
 >
 > | Test che diventerà rosso | Su quale lista | Cosa chiede |
 > | --- | --- | --- |
@@ -2516,6 +2549,39 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-09-02 · Il drawer dei titoli IVA del soggetto torna sullo standard
+
+Rilievo di Tid in collaudo: *«la lista titoli iva soggetti drawer non è per
+niente standard, non ha neanche la possibilità di fare il download o
+parametrizzare le colonne e neanche la paginazione»*. Ed era vero: la lista era
+una `<ListaConfigurabile>` montata **a mano**, con le righe in due `ref` locali.
+
+⛔ **Il difetto non stava nel componente, stava nel montaggio.** Le tre cose
+mancanti — pagine, «Personalizza colonne», export — non sono tre lavori: sono
+quello che lo **scaffolding** porta con sé, e che chi monta il BB da solo si
+perde tutte insieme. È il motivo per cui una schermata resta indietro **senza
+che niente lo dica**: funziona, mostra dati veri, e nessun test è rosso.
+
+Cosa è cambiato, in ordine di dipendenza:
+
+| Dove | Cosa |
+| --- | --- |
+| `titoli_iva_repository` | `list_titoli_soggetto` accetta `limit`/`offset` e ritorna `(righe, totale)` da **una** valutazione (`fetch_paged_with_total`). ⛔ `count_titoli_soggetto` **cancellata**: era una seconda query sullo stesso predicato, e due valutazioni possono non concordare |
+| `titoli_iva_service` | envelope `{results, count}` come ogni altra lista |
+| `views_titoli_iva` | GET paginata + **nuovo** `GET .../titoli-iva/export/` (DEF-1, `build_export_response`) |
+| `soggettoTitoliIva.js` (nuovo) | store col contratto `useSearchTable` |
+| `TitoliIvaSoggettoDrawer.vue` | `useDrawerTabLista` + `<DrawerTabLista>` |
+| `DrawerTabLista.vue` | ⭐ inoltra `@row-click`: un contenitore che si tiene un evento del componente che avvolge è un buco silenzioso |
+
+⭐ **`limit` assente = nessuna paginazione**, e non è una comodità: quel metodo
+ha un **secondo consumatore** (`SoggettiService`, che incorpora i titoli nel
+dettaglio del soggetto). Un `LIMIT` di default avrebbe troncato quella sezione
+senza dirlo — lo stesso difetto appena corretto sui sfondati, in un altro posto.
+
+⇒ Conseguenza sul registro: `anagrafiche.soggetto_titoli_iva` **esce** dalla
+sentinella `ORDINAMENTO_LOCALE` (ora ordina lato server, quindi i test 1-3 la
+coprono) e la sua riga **esce dal ponte** del lotto 2, che resta con la sola 61.
 
 ### 2026-09-02 · Cade il cancello del `lazy`, e le 4 liste `ui` entrano dal Gruppo B
 
