@@ -310,6 +310,10 @@ const colonneRender = computed(() => {
         formato: m.formato || null,
         allineamento: m.allineamento || 'left',
         ordinabile: m.ordinabile !== false,
+        // ⭐ Serve al VERSO DI PARTENZA dell'ordinamento (vedi `onSort`): una
+        //    colonna data si legge dalla piu' recente. `c` prima di `m` perche'
+        //    la config arriva a ogni richiesta, il catalogo e' un secondo giro.
+        tipo_dato: c.tipo_dato || m.tipo_dato || null,
       }
     })
     .sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0))
@@ -506,10 +510,49 @@ function onPage(event) {
   emit('page', event)
 }
 
+// ⭐ REGOLA DI TID (2026-09-02): «gli ordinamenti per DATA hanno sempre default
+//    DESC». Una data si legge dalla piu' recente — cliccare «Data» e ricevere il
+//    2019 in cima e' il contrario di cio' che si e' chiesto, e su una lista di
+//    presidio e' anche il caso meno utile.
+// ⚠️ QUALI SIANO LE COLONNE DATA NON SI DECIDE QUI: lo dice il catalogo
+//    (`ui.lista_colonna.tipo_dato`), che e' gia' la sede di quel fatto. Un
+//    elenco di nomi scritto nel frontend sarebbe una seconda verita' che
+//    diverge alla prima colonna aggiunta a catalogo.
+const TIPI_DATO_CRONOLOGICI = new Set(['date', 'datetime'])
+
+// I `campo_sorgente` — cioe' i valori che PrimeVue manda in `sortField` — delle
+// colonne cronologiche di QUESTA lista.
+const campiCronologici = computed(() => new Set(
+  colonneRender.value
+    .filter((c) => TIPI_DATO_CRONOLOGICI.has(c.tipo_dato))
+    .map((c) => c.campo_sorgente),
+))
+
+// Scopo: il verso del PRIMO click su un'intestazione data.
+// ⛔ SOLO IL PRIMO, e la condizione che lo distingue e' `sortField` DIVERSO da
+//    quello applicato ora: PrimeVue alterna asc -> desc -> niente, e girare
+//    anche i click successivi renderebbe la colonna NON INVERTIBILE — il
+//    secondo click ripeterebbe il primo. Con questa guardia il ciclo diventa
+//    desc -> asc -> niente, che e' lo stesso ciclo di prima letto dall'altro
+//    capo.
+// ⚠️ Non tocca le liste non paginate: la' l'ordine lo calcola PrimeVue in
+//    locale e questo evento non parte nemmeno (vedi la guardia sotto).
+function versoIniziale(event) {
+  const nuovaColonna = event?.sortField && event.sortField !== props.sortField
+  if (
+    event?.sortOrder === 1
+    && nuovaColonna
+    && campiCronologici.value.has(event.sortField)
+  ) {
+    return { ...event, sortOrder: -1 }
+  }
+  return event
+}
+
 function onSort(event) {
   if (!props.paginata) return
   resetExpansionSePropria()
-  emit('sort', event)
+  emit('sort', versoIniziale(event))
 }
 
 function onRowClick(event) {

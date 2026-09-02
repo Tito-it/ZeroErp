@@ -247,8 +247,12 @@ export function deleteSoggettoTitoloIva(soggettoId, titoloId) {
 
 // Ambiti: l'oggetto su cui il titolo si applica (D12). ⚠️ Non e' un'etichetta:
 // e' la condizione di applicabilita', valutata riga per riga dal risolutore.
-export function listTitoloIvaAmbiti(soggettoId, titoloId) {
-  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/ambiti/`)
+// ⚠️ `params` porta il conteggio accanto alle righe: la lista si monta non
+//    paginata, e li' `count` e' l'asserzione che le righe siano tutte.
+export function listTitoloIvaAmbiti(soggettoId, titoloId, params = {}) {
+  return api.get(
+    `${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/ambiti/`, { params },
+  )
 }
 
 export function createTitoloIvaAmbito(soggettoId, titoloId, payload) {
@@ -261,8 +265,11 @@ export function deleteTitoloIvaAmbito(soggettoId, titoloId, ambitoId) {
 
 // Registro movimenti del plafond (D5). ⛔ In POST si scrive SOLO una forzatura
 // manuale: fatture e note di credito le produce la fatturazione (I4).
-export function listTitoloIvaMovimenti(soggettoId, titoloId) {
-  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/movimenti/`)
+// ⚠️ PAGINATO (lista 65): un registro append-only cresce a ogni fattura.
+export function listTitoloIvaMovimenti(soggettoId, titoloId, params = {}) {
+  return api.get(
+    `${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/movimenti/`, { params },
+  )
 }
 
 export function createTitoloIvaForzatura(soggettoId, titoloId, payload) {

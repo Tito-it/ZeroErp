@@ -125,8 +125,12 @@ class TitoliIvaService:
     # Scopo: Dettaglio di un titolo, con ambiti e registro movimenti.
     def get_titolo(self, soggetto_id: str, titolo_id: int) -> dict[str, Any]:
         titolo = self._require_titolo(soggetto_id, titolo_id)
-        titolo["ambiti"] = self._repo.list_ambiti(titolo_id)
-        titolo["movimenti"] = self._repo.list_movimenti(titolo_id)
+        # ⚠️ Si scartano i totali, e non e' distrazione: qui ambiti e movimenti
+        #    sono SOTTO-LISTE del titolo e arrivano senza `limit`, quindi il
+        #    totale coincide con la lunghezza. Portarselo dietro vorrebbe dire
+        #    dichiarare due conteggi che in questo punto nessuno legge.
+        titolo["ambiti"], _tot_ambiti = self._repo.list_ambiti(titolo_id)
+        titolo["movimenti"], _tot_movimenti = self._repo.list_movimenti(titolo_id)
         titolo["ambito_incompleto"] = self._ambito_incompleto(titolo)
         return titolo
 
@@ -233,10 +237,19 @@ class TitoliIvaService:
     # Ambiti
     # =================================================================
 
-    # Scopo: Righe di ambito di un titolo.
-    def list_ambiti(self, soggetto_id: str, titolo_id: int) -> list[dict[str, Any]]:
+    # Scopo: Righe di ambito di un titolo, in envelope `results` + `count`.
+    # ⛔ Il `count` viene da una valutazione INDIPENDENTE dalle righe (la stessa
+    #    query, via `COUNT(*) OVER()`), mai da `len(results)`: la lista si monta
+    #    non paginata, e li' il totale e' l'asserzione che le righe siano tutte.
+    def list_ambiti(
+        self, soggetto_id: str, titolo_id: int,
+        *, limit: int | None = None, offset: int = 0,
+    ) -> dict[str, Any]:
         self._require_titolo(soggetto_id, titolo_id)
-        return self._repo.list_ambiti(titolo_id)
+        risultati, totale = self._repo.list_ambiti(
+            titolo_id, limit=limit, offset=offset,
+        )
+        return {"results": risultati, "count": totale}
 
     # Scopo: Aggiunge una riga di ambito.
     def create_ambito(
@@ -263,10 +276,19 @@ class TitoliIvaService:
     # Registro movimenti (D5)
     # =================================================================
 
-    # Scopo: Il registro di un titolo.
-    def list_movimenti(self, soggetto_id: str, titolo_id: int) -> list[dict[str, Any]]:
+    # Scopo: Il registro di un titolo, in envelope `results` + `count`.
+    # ⭐ Paginato (lista 65): un registro append-only cresce a ogni fattura.
+    def list_movimenti(
+        self, soggetto_id: str, titolo_id: int,
+        *, limit: int | None = None, offset: int = 0,
+        order_by: str | None = None, order_dir: str | None = None,
+    ) -> dict[str, Any]:
         self._require_titolo(soggetto_id, titolo_id)
-        return self._repo.list_movimenti(titolo_id)
+        risultati, totale = self._repo.list_movimenti(
+            titolo_id, limit=limit, offset=offset,
+            order_by=order_by, order_dir=order_dir,
+        )
+        return {"results": risultati, "count": totale}
 
     # Scopo: Registra una forzatura manuale sul plafond.
     # ⛔ DALL'API SI SCRIVE SOLO `FORZATURA`, ed e' la decisione Q3 — la piu'
@@ -383,7 +405,11 @@ class TitoliIvaService:
     ) -> dict[str, Any]:
         self._require_titolo(soggetto_id, titolo_id)
 
-        movimenti = {int(m["id"]): m for m in self._repo.list_movimenti(titolo_id)}
+        # ⛔ Senza `limit`: qui il registro serve per VERIFICARE che il
+        #    movimento appartenga a questo titolo, e un controllo di
+        #    appartenenza su una pagina guarda meta' delle righe.
+        righe, _totale = self._repo.list_movimenti(titolo_id)
+        movimenti = {int(m["id"]): m for m in righe}
         ErrorManager.require(
             movimento_id in movimenti,
             code=E_ANAG_NOT_FOUND,

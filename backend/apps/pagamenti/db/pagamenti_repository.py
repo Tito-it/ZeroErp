@@ -28,6 +28,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     fetch_paged_with_total,
+    sql_order_clause,
     jsonb_out,
     rows_to_list,
     sql_order_direction,
@@ -346,6 +347,15 @@ SISTEMAZIONI_SORT_COLUMNS: dict[str, str] = {
     "motivo": "s.motivo",
     "data_esecuzione": "s.data_esecuzione",
 }
+
+# ⭐ Le colonne DATA della lista 61. Il BB `sql_order_clause` le ordina DESC
+#    quando il chiamante non indica un verso: «gli ordinamenti per data hanno
+#    sempre default DESC» (Tid, 2026-09-02). Una data si legge dalla piu'
+#    recente, e chiedere «ordina per data» ricevendo il caso piu' vecchio in
+#    cima e' il contrario di cio' che si e' chiesto.
+# ⚠️ Vive ACCANTO alla whitelist e non altrove: e' un sottoinsieme delle sue
+#    chiavi, e a distanza le due si separerebbero senza che niente lo dica.
+SISTEMAZIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_esecuzione"})
 
 # Colonne ordinabili dell'elenco dei canali di incasso.
 # ⭐ CHIAVATA SUI `campo_sorgente` FISICI dal 2026-09-02, ed e' il giorno che il
@@ -1400,15 +1410,26 @@ class PagamentiRepository:
         order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._guard_canale_sistema("list_sistemazioni_fattura")
-        colonna = SISTEMAZIONI_SORT_COLUMNS.get(order_by or "", "s.id")
-        direzione = sql_order_direction(order_dir, default_desc=False)
-        # ⚠️ Tiebreak `s.id` sempre, e allineato alla direzione primaria: senza,
-        #    due atti con lo stesso importo o lo stesso stato uscirebbero in un
-        #    ordine che cambia fra una richiesta e l'altra. ⛔ E da quando la
-        #    lista impagina non e' piu' solo estetica: senza tiebreak, a offset
-        #    diversi PostgreSQL puo' consegnare due volte la stessa riga e mai
-        #    un'altra.
-        verso = sql_tiebreak_direction(direzione)
+        # ⭐ `default_desc=True` — decisione di Tid del 2026-09-02: **l'ultimo
+        #    atto deciso sta in cima**. Prima era `s.id ASC`, e finche' la lista
+        #    non impaginava non si vedeva; da quando impagina, un atto appena
+        #    registrato finiva nell'ULTIMA pagina e chi l'aveva appena creato non
+        #    lo vedeva. ⚠️ E' anche il verso del registro gemello qui accanto
+        #    (`list_movimenti`, «il piu' recente per primo, che e' come si legge
+        #    un registro»): due elenchi della stessa cosa non devono leggersi al
+        #    contrario l'uno dell'altro.
+        # ⛔ Il tiebreak `s.id` NON e' estetica da quando la lista impagina:
+        #    senza, a offset diversi PostgreSQL puo' consegnare due volte la
+        #    stessa riga e mai un'altra. Lo scrive il BB, allineato alla
+        #    direzione primaria — e lo OMETTE quando la colonna e' gia' `s.id`.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=SISTEMAZIONI_SORT_COLUMNS,
+            default="s.id",
+            tiebreak="s.id",
+            default_desc=True,
+            colonne_desc=SISTEMAZIONI_SORT_COLONNE_DATA,
+        )
         # ⛔ LIMIT/OFFSET solo se il chiamante impagina: una `LIMIT NULL` sarebbe
         #    legale in PostgreSQL ma legherebbe la query a un parametro in piu'
         #    senza che serva a nessuno.
@@ -1422,7 +1443,7 @@ class PagamentiRepository:
                    s.data_esecuzione, s.user_esecuzione, s.data_insert,
                    COUNT(*) OVER () AS total_count
              {_SISTEMAZIONI_FROM_WHERE}
-             ORDER BY {colonna} {direzione}, s.id {verso}{paginazione}
+             ORDER BY {ordinamento}{paginazione}
         """  # noqa: S608
         return fetch_paged_with_total(
             data_sql,

@@ -43,8 +43,7 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
+    sql_order_clause,
 )
 
 # Display field via JOIN (`feedback_display_fields_backend`): il frontend riceve
@@ -103,6 +102,29 @@ _ORDER_COLS_SFONDATI: dict[str, str] = {
     "imponibile_utilizzato": "t.imponibile_utilizzato",
     "eccedenza": "(t.imponibile_utilizzato - t.plafond)",
 }
+
+# Colonne ordinabili del REGISTRO MOVIMENTI di un titolo (lista 65).
+# ⛔ Chiavata sui `campo_sorgente` FISICI — stessa regola delle due gemelle qui
+#    sopra. Le quattro chiavi sono esattamente le colonne che il seed dichiara
+#    `ordinabile = t` (righe 706/707/708/710): una in piu' sarebbe una capacita'
+#    che l'operatore non puo' raggiungere, una in meno una freccia che non fa
+#    quello che promette.
+# ⚠️ `documento` NON c'e' ed e' giusto: a catalogo non ha `campo_sorgente` —
+#    la cella la compone il frontend da `fattura_id` — quindi non esiste una
+#    colonna SQL per cui ordinare.
+_ORDER_COLS_MOVIMENTI: dict[str, str] = {
+    "data_movimento": "m.data_movimento",
+    "tipo_movimento": "m.tipo_movimento",
+    "imponibile": "m.imponibile",
+    "motivo": "m.motivo",
+}
+
+# ⭐ Le colonne DATA della lista 65: il BB `sql_order_clause` le ordina DESC
+#    quando il chiamante non indica un verso — «gli ordinamenti per data hanno
+#    sempre default DESC» (Tid, 2026-09-02).
+# ⚠️ Accanto alla whitelist e non altrove: e' un sottoinsieme delle sue chiavi,
+#    e a distanza le due si separerebbero senza che niente lo dica.
+_ORDER_COLONNE_DATA_MOVIMENTI: frozenset[str] = frozenset({"data_movimento"})
 
 _TITOLO_JOINS = """
               FROM anagrafiche.soggetti_titoli_iva t
@@ -194,6 +216,21 @@ _AMBITO_COLS = """
                    tv.descrizione                  AS tipo_voce_descrizione,
                    a.note"""
 
+# FROM + WHERE degli ambiti di UN titolo, condiviso fra la pagina e il conteggio
+# di ripiego. ⛔ Una copia sola: due predicati scritti due volte divergono, e il
+# giorno che divergono il totale racconta una popolazione diversa da quella
+# mostrata — su una lista non paginata, dove il totale E' la promessa che le
+# righe siano tutte, e' il difetto peggiore possibile.
+# ⚠️ I JOIN sono LEFT e quindi non tolgono righe: qui il perimetro lo fa la sola
+#    `WHERE`. Restano nel frammento condiviso lo stesso, perche' il giorno che
+#    uno diventasse INNER il conteggio deve seguirlo da se'.
+_AMBITI_FROM_WHERE = """
+              FROM anagrafiche.soggetti_titoli_iva_ambiti a
+              LEFT JOIN catalogo.articoli art ON art.id = a.articolo_id
+              LEFT JOIN vendite.articoli_gruppi gv ON gv.id = a.gruppo_voce_id
+              LEFT JOIN vendite.articoli_tipologie tv ON tv.id = a.tipo_voce_id
+             WHERE a.titolo_iva_id = %s"""
+
 _MOVIMENTO_COLS = """
                    m.id,
                    m.titolo_iva_id,
@@ -211,6 +248,13 @@ _MOVIMENTO_COLS = """
                    m.annullo_blocco_reason_key,
                    m.data_insert,
                    m.user_insert"""
+
+# FROM + WHERE del registro di UN titolo, condiviso fra la pagina e il conteggio
+# di ripiego. ⭐ Si legge la VISTA e non la tabella (T3-b): e' li' che vivono il
+# legame dell'annullo nei due versi e il motivo del blocco.
+_MOVIMENTI_FROM_WHERE = """
+              FROM anagrafiche.vw_stiva_movimenti_dettaglio m
+             WHERE m.titolo_iva_id = %s"""
 
 
 class TitoliIvaRepository:
@@ -254,16 +298,19 @@ class TitoliIvaRepository:
         #    `soggetti_service` lo incorpora nel dettaglio di un soggetto e non
         #    passa nessun ordinamento. Cambiargli il default sotto i piedi
         #    riordinerebbe una sezione che nessuno sta toccando.
-        if not order_by or order_by not in _ORDER_COLS_TITOLI_SOGGETTO:
-            ordinamento = (
-                "COALESCE(t.valido_al, 'infinity'::date) DESC, "
-                "t.valido_dal DESC, t.id DESC"
-            )
-        else:
-            direzione = sql_order_direction(order_dir, default_desc=False)
-            verso = sql_tiebreak_direction(direzione)
-            colonna = _ORDER_COLS_TITOLI_SOGGETTO[order_by]
-            ordinamento = f"{colonna} {direzione}, t.id {verso}"
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_TITOLI_SOGGETTO,
+            # ⚠️ `default_clause` e non `default`: questo ordinamento di
+            #    partenza ha DUE criteri e porta le direzioni dentro di se'.
+            #    Passarlo come colonna gli farebbe appiccicare una seconda
+            #    direzione in coda (`DESC DESC`), che PostgreSQL rifiuta.
+            default_clause=(
+                "COALESCE(t.valido_al, 'infinity'::date) DESC, t.valido_dal DESC"
+            ),
+            tiebreak="t.id",
+            default_desc=True,
+        )
         # ⛔ LIMIT/OFFSET si aggiungono solo se il chiamante impagina: una
         #    `LIMIT NULL` sarebbe legale in PostgreSQL ma legherebbe il ripiego
         #    a un parametro in piu' senza che serva a nessuno.
@@ -404,20 +451,23 @@ class TitoliIvaRepository:
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        colonna = _ORDER_COLS_SFONDATI.get(
-            order_by or "", _ORDER_COLS_SFONDATI[SFONDATI_ORDER_DEFAULT],
-        )
         # ⭐ `default_desc=True`: senza indicazioni si ordina dalla PIU' GRAVE.
         #    Su un presidio l'ordine non e' una preferenza — e' cio' che mette in
         #    cima la cosa da guardare per prima.
-        direzione = sql_order_direction(order_dir, default_desc=True)
         # ⛔ Il tiebreak segue la direzione PRIMARIA, non un `DESC` inchiodato
         #    (decisione Tid 2026-08-03): a parita' di eccedenza l'elenco andrebbe
         #    al contrario di come e' stato chiesto. E il tiebreak su `t.id` e'
         #    obbligatorio: due titoli con la stessa eccedenza non sono un caso di
         #    scuola (il plafond e' lo stesso per tipo), e senza di esso a offset
-        #    alti PostgreSQL puo' restituire righe gia' viste.
-        verso_tiebreak = sql_tiebreak_direction(direzione)
+        #    alti PostgreSQL puo' restituire righe gia' viste. Entrambe le cose
+        #    le fa ora il BB.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_SFONDATI,
+            default=_ORDER_COLS_SFONDATI[SFONDATI_ORDER_DEFAULT],
+            tiebreak="t.id",
+            default_desc=True,
+        )
         data_sql = f"""
             SELECT {_TITOLO_COLS},
                    sog.ragione_sociale_completa    AS soggetto_ragione_sociale,
@@ -425,7 +475,7 @@ class TitoliIvaRepository:
                    (t.imponibile_utilizzato - t.plafond) AS eccedenza,
                    COUNT(*) OVER ()                AS total_count
              {_SFONDATI_FROM_WHERE}
-             ORDER BY {colonna} {direzione}, t.id {verso_tiebreak}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         return fetch_paged_with_total(
@@ -439,20 +489,39 @@ class TitoliIvaRepository:
     # Ambiti (D12: la condizione di applicabilita', non un'etichetta)
     # =================================================================
 
-    # Scopo: Righe di ambito di un titolo, con le descrizioni degli oggetti.
-    def list_ambiti(self, titolo_id: int) -> list[dict[str, Any]]:
-        sql = f"""
-            SELECT {_AMBITO_COLS}
-              FROM anagrafiche.soggetti_titoli_iva_ambiti a
-              LEFT JOIN catalogo.articoli art ON art.id = a.articolo_id
-              LEFT JOIN vendite.articoli_gruppi gv ON gv.id = a.gruppo_voce_id
-              LEFT JOIN vendite.articoli_tipologie tv ON tv.id = a.tipo_voce_id
-             WHERE a.titolo_iva_id = %s
-             ORDER BY a.livello, a.id
+    # Scopo: Righe di ambito di un titolo PIU' il totale, con le descrizioni
+    #        degli oggetti.
+    #
+    # ⛔ Il totale non e' decorazione: la lista si monta `:paginata="false"`
+    #    (lista 64, nessuna colonna `ordinabile` a catalogo), e in quella
+    #    modalita' `total` e' l'ASSERZIONE che le righe consegnate siano TUTTE
+    #    — il building block rifiuta di disegnare la tabella se non coincide.
+    #    Derivarlo da `len(results)` lo renderebbe un'eco: `rows.length ===
+    #    rows.length` e' vero sempre, anche mentre tronca.
+    # ⚠️ `limit=None` = tutte le righe, ed e' il caso del SECONDO consumatore:
+    #    `get_titolo` incorpora gli ambiti nel dettaglio e non impagina.
+    def list_ambiti(
+        self, titolo_id: int, *, limit: int | None = None, offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
+        params: list[Any] = [titolo_id]
+        if limit is not None:
+            params += [limit, offset]
+        data_sql = f"""
+            SELECT {_AMBITO_COLS},
+                   COUNT(*) OVER () AS total_count
+             {_AMBITI_FROM_WHERE}
+             ORDER BY a.livello, a.id{paginazione}
         """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [titolo_id])
-            return rows_to_list(cursor)
+        return fetch_paged_with_total(
+            data_sql,
+            params,
+            fallback_count_sql=(
+                f"SELECT count(*) {_AMBITI_FROM_WHERE}"  # noqa: S608
+            ),
+            fallback_params=[titolo_id],
+            offset=offset,
+        )
 
     # Scopo: Aggiunge una riga di ambito. Il CHECK di livello pretende che sia
     #        valorizzata la colonna del livello dichiarato e NULL le altre due:
@@ -495,7 +564,24 @@ class TitoliIvaRepository:
     # =================================================================
 
     # Scopo: Il registro di un titolo, dal piu' recente.
-    def list_movimenti(self, titolo_id: int) -> list[dict[str, Any]]:
+    # ⭐ PAGINATA dal 2026-09-02 (lista 65, `pagina_dimensione = 25` a
+    #    catalogo): un registro append-only cresce a ogni fattura, e una query
+    #    senza LIMIT che un giorno torna diecimila righe fa cadere la maschera
+    #    proprio sul titolo piu' usato.
+    # ⚠️ `limit=None` = tutte, ed e' il caso dei DUE altri consumatori:
+    #    `get_titolo` incorpora il registro nel dettaglio, e `annulla_movimento`
+    #    lo indicizza per id per verificare che il movimento sia di questo
+    #    titolo. Impaginare sotto di loro nasconderebbe righe a un controllo di
+    #    appartenenza — che e' il modo in cui un guard smette di guardare.
+    def list_movimenti(
+        self,
+        titolo_id: int,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         # ⭐ SI LEGGE LA VISTA, non piu' la tabella (T3-b, 2026-08-31). La vista
         #    porta tre cose che la tabella non ha e che il frontend non puo'
         #    ricostruire: il legame dell'annullo nei DUE versi (`is_annullo` /
@@ -505,15 +591,42 @@ class TitoliIvaRepository:
         #    pulsante spento e il rifiuto non possono divergere.
         # ⚠️ `security_invoker=on`: la vista si legge con la connessione
         #    dell'utente, mai da un canale di sistema.
-        sql = f"""
-            SELECT {_MOVIMENTO_COLS}
-              FROM anagrafiche.vw_stiva_movimenti_dettaglio m
-             WHERE m.titolo_iva_id = %s
-             ORDER BY m.data_movimento DESC, m.id DESC
+        # ⭐ Senza `order_by` resta l'ordinamento STORICO — il movimento piu'
+        #    recente per primo, che e' come si legge un registro.
+        #    ⚠️ Va preservato perche' questo metodo ha un SECONDO consumatore:
+        #    `get_titolo` lo incorpora nel dettaglio e non passa nessun
+        #    ordinamento. Cambiargli il default sotto i piedi riordinerebbe una
+        #    sezione che nessuno sta toccando.
+        # ⚠️ Tiebreak `m.id` allineato alla direzione primaria: due movimenti con
+        #    la stessa data non sono un caso di scuola — un annullo nasce quasi
+        #    sempre nella giornata di cio' che annulla.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_MOVIMENTI,
+            default="m.data_movimento",
+            tiebreak="m.id",
+            default_desc=True,
+            colonne_desc=_ORDER_COLONNE_DATA_MOVIMENTI,
+        )
+        paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
+        params: list[Any] = [titolo_id]
+        if limit is not None:
+            params += [limit, offset]
+        data_sql = f"""
+            SELECT {_MOVIMENTO_COLS},
+                   COUNT(*) OVER () AS total_count
+             {_MOVIMENTI_FROM_WHERE}
+             ORDER BY {ordinamento}{paginazione}
         """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [titolo_id])
-            return rows_to_list(cursor)
+        return fetch_paged_with_total(
+            data_sql,
+            params,
+            fallback_count_sql=(
+                f"SELECT count(*) {_MOVIMENTI_FROM_WHERE}"  # noqa: S608
+            ),
+            fallback_params=[titolo_id],
+            offset=offset,
+        )
 
     # Scopo: Annulla un movimento del registro scrivendo il CONTRO-MOVIMENTO.
     # ⛔ NON e' un UPDATE e non e' un flag, ed e' la decisione `Q7` di Tid:

@@ -1,18 +1,33 @@
 # Brief team DB — seed lotto 3: le due liste dentro `TitoloIvaDrawer`
 
-> **Stato**: ✅ chiuso su indicazione di Tid (2026-09-02) e spostato in
-> `work-done/`.
+> **Stato**: ✅ **seed APPLICATO dal team DB** il 2026-09-02 (liste **64** e
+> **65** in `lista_definizione.csv`, colonne 703-711). ⚠️ La nota precedente
+> diceva che in questo tree non c'erano: era vera quando è stata scritta, e il
+> merge `be811011a` l'ha superata. Resta scritta come fatto datato, non come
+> stato.
 >
-> ⚠️ **Ma va letto sapendo cosa risulta in QUESTO tree, ed è scritto perché un
-> brief in `work-done/` non dica una cosa che il repo non conferma**: al
-> 2026-09-02 su `dev/backend-tid` i due codici **non sono nel seed** —
-> `lista_definizione.csv` si ferma a `63` (`anagrafiche.titoli_iva_sfondati`) e
-> `anagrafiche.titolo_iva_ambiti` / `anagrafiche.titolo_iva_movimenti` non ci
-> sono. ⇒ Se il DB le ha applicate, è su un ramo che qui non è ancora arrivato:
-> **la verifica che chiude davvero è `grep titolo_iva_ambiti
-> db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv` dopo il
-> merge**, e finché non torna una riga le due `DataTable` grezze del drawer
-> restano dove sono.
+> ⛔ **Ciò che NON è chiuso, ed è dichiarato qui perché non sembri fatto**: il
+> drawer non è convertito — `grep titolo_iva_ambiti frontend/src` non trova
+> niente, e le due `DataTable` grezze di `TitoloIvaDrawer` sono ancora lì. È il
+> lavoro FE di Gruppo B, e il seed lo aspetta.
+>
+> ✅ **Il BE che il seed ha reso esigibile è invece fatto** (2026-09-02), perché
+> tre presidi si sono accesi da soli nel momento in cui le righe sono arrivate:
+>
+> | Presidio acceso dal seed | Cosa ha chiesto | Fatto |
+> | --- | --- | --- |
+> | `test_lista_proiezione_campo_sorgente` §2 | una riga in `_ESERCIZI` per ogni lista senza vista | ✅ 64 e 65, esercitate su `list_ambiti` / `list_movimenti` |
+> | idem §4 | una whitelist di ordinamento per ogni lista esercitata | ✅ `_ORDER_COLS_MOVIMENTI` (4 colonne, chiavate sui campi fisici) e `list_movimenti(order_by, order_dir)`. ⭐ Gli **ambiti** no, ed è corretto: a catalogo nessuna loro colonna è `ordinabile = t`, quindi vanno in `ORDINAMENTO_LOCALE` — non c'è nessun contratto da esigere |
+> | `test_perimetro_emittente_copertura` | un `lista_codice` su una view per ogni lista a registro | ✅ dichiarato su `SoggettoTitoloIvaAmbitiView` e `SoggettoTitoloIvaMovimentiView` |
+>
+> ⚠️ **Un punto da rivedere insieme, e non l'ho toccato perché è vostro.** Il §4
+> di questo brief dice *«`perimetro_emittente` non si accende»*, ma le due liste
+> **non** hanno una riga in `lista_definizione_perimetro_emittente.csv` — e
+> l'assenza di quella riga significa `TRUE` (è la decisione D-3 del lotto 2,
+> presa in quella forma). Oggi non fa danno, perché il perimetro vale come sul
+> padre `anagrafiche.soggetto_titoli_iva` e chi apre il drawer ci è arrivato da
+> lì. Ma il brief e il catalogo dicono due cose diverse, e conviene farne dire
+> una sola.
 >
 > **Chi scrive**: BE/FE. **Cosa serve**: 2 codici lista a catalogo, nient'altro.
 > **Nessun DDL, nessun changeSet**: quattro append ai mirror `runOnChange` di
@@ -139,21 +154,39 @@ DB-2, e il presidio
 
 ---
 
-## 3. Cosa fa il BE quando le righe atterrano
+## 3. Cosa fa il BE quando le righe atterrano — ✅ FATTO il 2026-09-02
 
-Scritto qui perché il DB sappia cosa sblocca, **non** fatto (il perimetro DB non
-modifica `backend/`, e queste due cose non servono a nessuno finché il catalogo
-non c'è):
+Le righe sono atterrate lo stesso giorno e il lavoro è stato fatto subito dopo:
+**BE-4 e BE-5 sono chiuse, e il drawer è convertito** (le due `DataTable` grezze
+non ci sono più, contatore della regola zero 49 → **48**).
+
+| # | Stato |
+| --- | --- |
+| **BE-4** | ✅ `list_movimenti(limit, offset, order_by, order_dir) -> (righe, totale)` con `COUNT(*) OVER()` e `fallback_count_sql`; whitelist `_ORDER_COLS_MOVIMENTI` sui campi fisici; endpoint paginato |
+| **BE-5** | ✅ `list_ambiti(limit=None, offset)` ritorna `(righe, totale)` dalla **stessa** valutazione — non una seconda query. Envelope `{results, count}` |
+| **FE** | ✅ due store su `createListaStore` + `useDrawerTabLista` + `<DrawerTabLista>`; gli ambiti `:paginata="false"`, il registro paginato |
+
+⚠️ **`limit=None` = tutte le righe, e non è una comodità**: entrambi i metodi
+hanno altri consumatori interni — `get_titolo` incorpora le due liste nel
+dettaglio, e `annulla_movimento` indicizza il registro per verificare che il
+movimento **appartenga a quel titolo**. Impaginare sotto quel controllo lo
+avrebbe fatto guardare metà delle righe: è il modo in cui un guard smette di
+guardare senza che niente lo dica.
+
+<details>
+<summary>La richiesta originale (per storia)</summary>
 
 | # | Dove | Cosa | Perché |
 | --- | --- | --- | --- |
 | **BE-4** | `.../{titolo_id}/movimenti/` | `limit`/`offset` + `(righe, totale)` da **una** valutazione, e whitelist `MOVIMENTI_SORT_COLUMNS` chiavata sui `campo_sorgente` fisici (`data_movimento`, `tipo_movimento`, `imponibile`, `motivo`) | Le 4 colonne sono seminate `ordinabile = t`. Senza, la freccia o risponde 400 o non ordina — **e la seconda non lo dice** |
 | **BE-5** | `.../{titolo_id}/ambiti/` | `count` accanto a `results`, da una query **sua** | La lista si monta `:paginata="false"`, dove `total` non è decorazione ma l'**asserzione** che le righe siano tutte. ⛔ Mai `len(results)`: sposterebbe la tautologia dal frontend al backend senza toglierla |
 
-⭐ **E non serve che qualcuno si ricordi di questa tabella**: il presidio la rende
-esigibile da sé. `test_liste_configurabili_seed` misura il registro `_LISTE` sul
-**frontend** — il giorno in cui il drawer monta le due liste, il registro le
-pretende e con loro arriva il rosso di BE-4.
+⭐ **E non è servito che qualcuno se ne ricordasse**: i presidi si sono accesi da
+soli quando le righe sono arrivate — `test_lista_proiezione_campo_sorgente` ha
+preteso un esercizio e una whitelist per ciascuna, `test_perimetro_emittente_copertura`
+un `lista_codice` sulle view.
+
+</details>
 
 ---
 

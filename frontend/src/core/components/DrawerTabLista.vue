@@ -45,6 +45,12 @@ defineProps({
   total: { type: Number, default: 0 },
   loading: { type: Boolean, default: false },
   paginatorOptions: { type: Object, default: null },
+  // ⚠️ Si inoltra, non si decide qui: una lista limitata PER MODELLO (gli
+  //    ambiti di un titolo) si monta senza paginatore, e senza questa prop il
+  //    contenitore imporrebbe la paginazione a tutti — cioe' deciderebbe al
+  //    posto del catalogo. Il building block interno pretende in cambio che
+  //    `total` coincida con le righe consegnate, e lo verifica.
+  paginata: { type: Boolean, default: true },
   page: { type: Number, default: 1 },
   sortField: { type: String, default: null },
   sortOrder: { type: Number, default: null },
@@ -139,6 +145,7 @@ defineExpose({
       :total="total"
       :loading="loading"
       :paginator-options="paginatorOptions"
+      :paginata="paginata"
       :page="page"
       :sort-field="sortField"
       :sort-order="sortOrder"

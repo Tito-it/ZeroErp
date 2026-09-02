@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from django.db import connection
@@ -242,6 +243,97 @@ def sql_tiebreak_direction(direction: str) -> str:
     loro ordine naturale anche quando la lista e' ordinata al contrario.
     """
     return "DESC" if direction.strip().upper().startswith("DESC") else "ASC"
+
+
+def sql_order_clause(
+    order_by: str | None,
+    order_dir: str | None,
+    *,
+    colonne: Mapping[str, str],
+    tiebreak: str,
+    default: str | None = None,
+    default_clause: str | None = None,
+    default_desc: bool = False,
+    colonne_desc: Collection[str] = (),
+) -> str:
+    """Il corpo di un `ORDER BY` di lista: colonna, direzione e spareggio.
+
+    Ritorna la clausola SENZA la parola `ORDER BY`, da interpolare::
+
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS, default="t.data DESC"[...], tiebreak="t.id",
+        )
+        sql = f"... ORDER BY {ordinamento} LIMIT %s OFFSET %s"
+
+    **Regola del 2 (ok Tid 2026-09-02)**: le tre righe
+    `COLS.get(...)` + `sql_order_direction` + `sql_tiebreak_direction` erano
+    scritte **46 volte** nel backend, in due varianti (`.get(k, COLS[DEF])` e
+    `if not order_by or order_by not in COLS`). Qui vivono una volta sola.
+
+    Argomenti:
+      `colonne`  whitelist chiave-logica -> espressione SQL. ⛔ Le chiavi sono i
+                 `campo_sorgente` FISICI del catalogo: il frontend manda quelli.
+      `tiebreak` colonna univoca di spareggio, quasi sempre `<alias>.id`.
+      `default`  **una COLONNA** usata quando `order_by` manca o e' fuori
+                 whitelist: la direzione gliela mette il BB. E' SQL e non una
+                 chiave perche' l'ordinamento di partenza di una lista spesso
+                 non e' una colonna offerta all'operatore (`s.id`).
+      `default_clause`  **una CLAUSOLA GIA' COMPLETA**, con le sue direzioni
+                 dentro, usata verbatim. Alternativa esclusiva a `default`.
+      `default_desc`   verso del ramo `default` quando nessuno chiede niente.
+      `colonne_desc`   chiavi di `colonne` il cui verso NATURALE e' DESC.
+
+    ⛔ **`default` e `default_clause` sono due parametri e non uno, e la prima
+    stesura di questo BB ne aveva uno solo — sbagliando.** Un ordinamento di
+    partenza a piu' criteri porta le direzioni dentro di se'
+    (`COALESCE(valido_al,'infinity') DESC, valido_dal DESC`): trattarlo come una
+    colonna gli appiccica una seconda direzione in coda e produce
+    `... DESC DESC NULLS LAST`. ⭐ Li' e' andata bene — PostgreSQL rifiuta la
+    query con un errore di sintassi, quindi il difetto si e' visto subito. Ma la
+    distinzione resta nell'API perche' il prossimo chiamante non debba
+    scoprirla allo stesso modo.
+
+    ⭐ **`colonne_desc` e' la regola di Tid del 2026-09-02: «gli ordinamenti per
+    DATA hanno sempre default DESC».** Una data si legge dalla piu' recente —
+    chiedere «ordina per data» e ricevere il 2019 in cima e' il contrario di
+    cio' che si e' chiesto. ⚠️ Vale solo quando `order_dir` NON e' indicato: una
+    direzione esplicita vince sempre, altrimenti l'operatore non potrebbe
+    invertire l'ordine di una colonna data.
+
+    ⛔ **Se la colonna risolta E' il tiebreak, lo spareggio non si scrive.**
+    Senza questo, il ramo di default di una lista che ordina per `id` produceva
+    `ORDER BY s.id ASC, s.id ASC` — la colonna e il suo stesso spareggio. Non
+    sbaglia il risultato, ma e' una clausola che dice due volte la stessa cosa
+    e nasconde alla lettura qual e' l'ordinamento vero.
+    """
+    if (default is None) == (default_clause is None):
+        raise ValueError(
+            "sql_order_clause: si passa `default` (una colonna) OPPURE "
+            "`default_clause` (una clausola completa), mai entrambi ne' nessuno"
+        )
+    if not order_by or order_by not in colonne:
+        # ⚠️ La clausola completa NON prende direzione: ce l'ha gia' dentro, e
+        #    aggiungerne una produrrebbe `DESC DESC`.
+        if default_clause is not None:
+            verso = sql_tiebreak_direction(
+                sql_order_direction(order_dir, default_desc=default_desc)
+            )
+            return f"{default_clause}, {tiebreak} {verso}"
+        colonna = default
+        direzione = sql_order_direction(order_dir, default_desc=default_desc)
+    else:
+        colonna = colonne[order_by]
+        direzione = sql_order_direction(
+            order_dir, default_desc=order_by in colonne_desc,
+        )
+    # ⚠️ Confronto sul TESTO dell'espressione, che e' l'unica cosa che abbiamo:
+    #    e' esatto sul caso che conta (il default che vale gia' il tiebreak) e
+    #    al massimo scrive uno spareggio in piu' su una colonna che il tiebreak
+    #    non e' davvero — cioe' sbaglia sempre dalla parte innocua.
+    if colonna.strip() == tiebreak.strip():
+        return f"{colonna} {direzione}"
+    return f"{colonna} {direzione}, {tiebreak} {sql_tiebreak_direction(direzione)}"
 
 
 def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:

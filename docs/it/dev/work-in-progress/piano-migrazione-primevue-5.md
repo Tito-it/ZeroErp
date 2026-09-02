@@ -916,15 +916,49 @@ wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 > Contro cosa verificarlo, visto che i denominatori in questo documento sono
 > **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
 >
-> | Misura | 02-08 | 03-08 | 02-09 mattina | 02-09 sera | 02-09 notte | 02-09 chiusura | **02-09 · 61 paginata** | Cos'è |
-> | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | 59 | 63 | 63 | **63** | le liste configurate a DB — +4 col lotto 2 |
-> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | 59 ✅ | 59 ⏳ | 63 ✅ | **63** ✅ | ⭐ divergenza rientrata e RIMASTA tale: `comm -23 seed presidio` è vuoto |
-> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | 60 | 60 | 62 | **61** | ⭐ **scende, e non è una regressione**: `SistemazioneDrawer` è passato a `<DrawerTabLista>`, che il BB lo monta per lui. Il `grep` su `<ListaConfigurabile` non lo vede più — è il conteggio a essere parziale, non la conversione a essere tornata indietro |
-> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | 35 / 39 | 35 / 39 | 35 / 39 | **35 / 39** | invariato: qui si contano le conversioni, e la 61 era già convertita — è cambiata la MODALITÀ, non lo stato |
-> | **liste montate `:paginata="false"`** | — | — | — | 4 | 4 | 5 | **4** | ⭐ **cala di uno**: la 61 non è più fra queste. Restano i quattro pannelli `ui.*`. Il `grep` ne trova sempre uno in più (5), ed è il BB che si cita nel proprio commento |
-> | file con `DataTable` grezza | 56 | 48 | 57 | 53 | 53 | 49 | **49** | il contatore della regola zero |
+> | Misura | 02-08 | 03-08 | 02-09 mattina | 02-09 sera | 02-09 notte | 02-09 chiusura | 02-09 · 61 paginata | **02-09 · lotto 3** | Cos'è |
+> | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | 59 | 63 | 63 | 63 | **65** | le liste configurate a DB — +4 col lotto 2, +2 col lotto 3 (`titolo_iva_ambiti`, `titolo_iva_movimenti`) |
+> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | 59 ✅ | 59 ⏳ | 63 ✅ | 63 ✅ | **65** ✅ | ⭐ divergenza rientrata e RIMASTA tale anche col lotto 3: `comm -23 seed presidio` è vuoto |
+> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | 60 | 60 | 62 | 61 | **61** | ⭐ **scende, e non è una regressione**: `SistemazioneDrawer` è passato a `<DrawerTabLista>`, che il BB lo monta per lui. Il `grep` su `<ListaConfigurabile` non lo vede più — è il conteggio a essere parziale, non la conversione a essere tornata indietro |
+> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | 35 / 39 | 35 / 39 | 35 / 39 | 35 / 39 | **35 / 37** | ⭐ cala il DENOMINATORE, non sale il numeratore: BoM e righe contratto passano al Gruppo B (decisione di Tid, 02-09). Le conversioni restano 35 — quei due file non sono stati toccati |
+> | **liste montate `:paginata="false"`** | — | — | — | 4 | 4 | 5 | 4 | **5** | i quattro pannelli `ui.*` più gli **ambiti** del titolo (lista 64, limitata per modello). Il `grep` ne trova sempre uno in più (6), ed è il BB che si cita nel proprio commento |
+> | file con `DataTable` grezza | 56 | 48 | 57 | 53 | 53 | 49 | 49 | **48** | il contatore della regola zero — `TitoloIvaDrawer` convertito (lotto 3) |
 >
+> ⭐ **SECONDA CODA — il lotto 3 (liste 64 e 65).** Il team DB ha seminato le due
+> liste dentro `TitoloIvaDrawer` (`brief-db-seed-liste-titolo-iva.md`, in
+> `work-done/`), e il drawer **è stato convertito lo stesso giorno**: le sue due
+> `DataTable` grezze sono sparite, `DataTable grezza` scende a **48**.
+>
+> ⛔ **E le due liste sono passate da Gruppo B a Gruppo A**, con la stessa
+> disciplina con cui BoM e righe-contratto hanno fatto il viaggio opposto: la
+> classificazione del 02-09 mattina le aveva lette come *dettaglio del master*
+> perché le righe **arrivavano dal payload del dettaglio** (`detail.ambiti`,
+> `detail.movimenti`). Ma la PRIMA domanda del criterio — *«l'entità ha vita
+> propria: un endpoint suo, una popolazione arbitraria?»* — per entrambe
+> risponde sì, e i due endpoint esistevano già. Il registro dei movimenti, in
+> più, **cresce a ogni fattura**: leggerlo dentro un dettaglio significava una
+> query senza LIMIT che un giorno cade proprio sul titolo più usato.
+>
+> ⚠️ **Le due hanno contratti diversi, e di proposito**: gli ambiti sono
+> limitati per modello (montati `:paginata="false"`, `ordinabile = f` su tutte
+> le colonne, `pagina_dimensione` vuota), il registro è paginato a 25. Un
+> contratto solo per due nature diverse sarebbe stato comodo e sbagliato.
+>
+> ⛔ **Ma il registro sì, e stavolta i presidi che si sono accesi sono TRE**, non
+> due. Vale la pena elencarli perché è la prova che il meccanismo funziona senza
+> che nessuno se ne ricordi:
+>
+> | Presidio | Cosa ha preteso |
+> | --- | --- |
+> | `test_lista_proiezione_campo_sorgente` §2 | una riga in `_ESERCIZI` per ciascuna delle due |
+> | idem §4 | una whitelist per ogni lista esercitata ⇒ `_ORDER_COLS_MOVIMENTI` + `list_movimenti(order_by, order_dir)`. Gli **ambiti** no: a catalogo nessuna colonna è `ordinabile = t`, quindi `ORDINAMENTO_LOCALE` |
+> | `test_perimetro_emittente_copertura` | un `lista_codice` su una view ⇒ dichiarato sulle due view dei titoli |
+>
+> ⭐ **Nessuno dei tre è stato «ricordato»: si sono accesi da soli quando le
+> righe sono arrivate.** È il verso giusto — il lavoro BE serve nel momento in
+> cui il catalogo lo rende raggiungibile, non prima.
+
 > ⭐ **CODA DELLA GIORNATA — la 61 è passata da «non paginata» a paginata**
 > (decisione di Tid, 2026-09-02, dopo la chiusura qui sopra). `SistemazioneDrawer`
 > era stato convertito **con `:paginata="false"`**, e la ragione scritta era «gli
@@ -1095,32 +1129,41 @@ costo di ogni conversione.
 `ArticoloBomDrawer`, `ContrattiBillingAccountDrawer`, `ContrattoRigheDrawer`,
 `OffertaEccezioniDrawer`.
 
+⭐ **Due delle quattro sono uscite dal Gruppo A il 2026-09-02** (decisione di
+Tid): `ArticoloBomDrawer` e `ContrattoRigheDrawer` sono **righe di un master**,
+non liste — vedi la nota qui sotto. Ferme per decisione 4 restano le altre due.
+
 ⭐ **Dal 2026-09-02 quel blocco non è più automatico**: se la loro popolazione è
 limitata per modello possono montarsi `:paginata="false"` senza toccare il
 backend. ⚠️ Ma non è un liberi tutti e non le sblocca d'ufficio: le righe di un
 contratto o i componenti di una distinta base **non** sono limitati per modello,
-e per tre di esse la domanda vera resta un'altra (sono righe di documento →
-Gruppo B, vedi la nota qui sotto).
+e per due di esse la domanda vera era un'altra (sono righe di documento →
+Gruppo B: spostate il 2026-09-02, vedi la nota qui sotto).
 
-> ⚠️ **E due di quelle quattro contraddicono il criterio riscritto il
-> 2026-09-01** (rilevato il 02-09). La seconda domanda del §Gruppo B dice
-> *«sono le **righe** del documento che la contiene (righe ordine, **componenti
-> BoM**, righe reso)?»* ⇒ Gruppo B. Ma `ArticoloBomDrawer` **sono** i componenti
-> BoM e `ContrattoRigheDrawer` **sono** le righe del contratto: per il criterio
-> nuovo stanno in Gruppo B, per la tabella qui sotto sono in Gruppo A fermi per
-> decisione 4.
+> ✅ **DECISO DA TID IL 2026-09-02: la coppia passa al Gruppo B.**
+> `ArticoloBomDrawer` **sono** i componenti BoM e `ContrattoRigheDrawer` **sono**
+> le righe del contratto: la seconda domanda del criterio li nomina per esteso
+> (*«righe ordine, **componenti BoM**, righe reso»*), e per loro la risposta è
+> quella — non una lista con un paginator mancante, un **dettaglio del master**.
+> Vanno su `RigheMasterDetailTable` / `SearchDetailTable`, non su
+> `<ListaConfigurabile>`.
 >
-> ⛔ **Non riclassificati d'ufficio**, ed è la stessa disciplina con cui il
-> criterio è stato riscritto invece di spostare una riga: qui la contraddizione è
-> fra il criterio e **la tabella che lo precede**, quindi o si sposta la coppia in
-> Gruppo B (e il denominatore del Gruppo A torna 33), o si dichiara perché una
-> lista di righe con endpoint proprio resta Gruppo A. È una decisione, non una
-> svista da correggere di passaggio.
+> ⭐ **Ha vinto il criterio, non la tabella**, ed è il verso giusto: la
+> contraddizione stava fra una regola scritta il 01-09 e un inventario più
+> vecchio, e a muoversi è l'inventario. Il denominatore del Gruppo A scende da
+> **39 a 37**, e i convertiti restano 35 — nessuno di quei due file è stato
+> toccato: cambia dove sono attesi, non cosa è stato fatto.
+>
+> ⚠️ **Il denominatore non cala perché il lavoro è finito**: cala perché due
+> file erano contati nel posto sbagliato. Chi legge il numero fra un mese deve
+> vedere questa riga, altrimenti legge un avanzamento che non c'è stato.
 >
 > ℹ️ Le altre due (`ContrattiBillingAccountDrawer`, `OffertaEccezioniDrawer`)
-> non hanno il problema: la prima è un tab-lista su entità con vita propria
-> (prima domanda ⇒ Gruppo A, oggi la casa è `useDrawerTabLista`), la seconda è
-> un'eccezione di prezzo con endpoint suo.
+> restano **Gruppo A**, e non per inerzia: la prima è un tab-lista su entità con
+> vita propria (prima domanda ⇒ Gruppo A, oggi la casa è `useDrawerTabLista`), la
+> seconda è un'eccezione di prezzo con endpoint suo. Sono le uniche due ancora
+> ferme per decisione 4 — cioè in attesa di un endpoint paginato o della scelta
+> di montarle non paginate.
 
 #### ⭐ La modalità non paginata — il cancello che è caduto (2026-09-02)
 
@@ -1337,7 +1380,7 @@ matrici era infondato — sono entrambi dettaglio, non slot/override.
 | `anagrafiche/components/TitoliIvaSoggettoDrawer.vue` | endpoint suo (`results`), e il singolo titolo ha un **drawer autonomo** | **Gruppo A** |
 | `anagrafiche/views/TitoliIvaSfondatiView.vue` | endpoint suo (`results`), è una view di presidio | **Gruppo A** |
 | `pagamenti/components/DistintaDrawer.vue` | `dettaglio.righe` — sono le **righe della distinta** | Gruppo B |
-| `anagrafiche/components/TitoloIvaDrawer.vue` | `ambiti` + `movimenti` **del titolo** che il drawer mostra | Gruppo B |
+| `anagrafiche/components/TitoloIvaDrawer.vue` | `ambiti` + `movimenti` **del titolo** che il drawer mostra | ~~Gruppo B~~ → **Gruppo A** (02-09 sera): le righe arrivavano dal dettaglio, ma i due endpoint esistevano già e il registro **cresce**. Convertito col lotto 3 |
 | `vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue` | 4 tabelle di **dettaglio** della stessa situazione | Gruppo B |
 | `pagamenti/components/RegistraDistintaDialog.vue` | `anteprima.righe_non_registrabili` | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
 | `vendite/resi/components/AccreditoEsitoDialog.vue` | `props.esito.falliti` — il referto di un giro | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
@@ -1431,7 +1474,6 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 01-08 | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
-| ⏸ dec.4 | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
 | ✅ 01-08 | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
 | ✅ 01-08 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
 | ✅ 03-08 | `vendite/components/VersioneDrawer.vue` | 6 | sì |
@@ -1451,7 +1493,6 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 03-08 | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
 | ✅ 2026-07-31 | `vendite/views/LottiListView.vue` | 9 | sì |
 | ✅ 03-08 | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
-| ⏸ dec.4 | `vendite/components/ContrattoRigheDrawer.vue` | 11 | — |
 | ✅ 03-08 | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ✅ 01-08 | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ✅ 03-08 | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
@@ -1461,6 +1502,14 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 02-09 | `ui/components/ListaPresetPanel.vue` — dal Gruppo B, **non paginata** | 8 | no |
 | ✅ 02-09 | `ui/components/ListaColonnaPanel.vue` — dal Gruppo B, **non paginata** | 9 | no |
 
+> ➡️ **Due file sono USCITI da questa tabella il 2026-09-02** (decisione di
+> Tid): `catalogo/components/ArticoloBomDrawer.vue` (componenti BoM) e
+> `vendite/components/ContrattoRigheDrawer.vue` (righe del contratto). Sono
+> **righe di un master**, quindi Gruppo B: la loro casa è
+> `RigheMasterDetailTable` / `SearchDetailTable`, non `<ListaConfigurabile>`.
+> ⚠️ Il denominatore passa da **39 a 37** per RICLASSIFICAZIONE, non per lavoro
+> fatto: quei due file non sono stati toccati.
+>
 > ✅ **`LottoDrawer` — CONVERTITO il 2026-08-22.** È il **35°** file del
 > gruppo: i tre tab sono ora tre liste configurabili
 > (`vendite.lotto_fatture` 45, `vendite.lotto_task_runs` 46,

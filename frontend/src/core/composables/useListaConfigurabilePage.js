@@ -46,6 +46,7 @@ export function useListaConfigurabilePage(
     exportFn,
     getExportParams = () => ({}),
     newTooltipKey,
+    newLabelKey = null,
     onNew,
     searchTableOptions = {},
     extraActions = null,
@@ -172,7 +173,13 @@ export function useListaConfigurabilePage(
       ...(conNew ? [spegni({
         key: 'new',
         kind: 'primary',
-        label: t('common.new'),
+        // ⚠️ `newLabelKey` esiste perche' il verbo di creazione non si chiama
+        //    sempre «Nuovo»: sul registro del plafond si «FORZA una rettifica»,
+        //    ed e' il nome a dire che da li' non si scrivono fatture. Senza,
+        //    l'unico modo di avere l'etichetta giusta era riscriversi a mano
+        //    l'intera `pageActions` — che e' quello che
+        //    `CanaliIncassoSearchTable` ha fatto, perdendo le utility del BB.
+        label: newLabelKey ? t(newLabelKey) : t('common.new'),
         tooltip: newTooltipKey ? t(newTooltipKey) : t('common.new'),
         icon: MANAGE_ICONS.ADD,
         hideWhenReadonly: true,

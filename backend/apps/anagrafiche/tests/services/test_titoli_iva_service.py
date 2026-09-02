@@ -262,8 +262,10 @@ class TitoliIvaResiduoTests(TestCase):
         residuo resta quello della colonna."""
         repo = repo_cls.return_value
         repo.get_titolo.return_value = _titolo()
-        repo.list_ambiti.return_value = []
-        repo.list_movimenti.return_value = []
+        # ⚠️ `(righe, totale)`: dal 2026-09-02 anche queste due sotto-liste
+        #    consegnano la pagina e il totale nella stessa valutazione.
+        repo.list_ambiti.return_value = ([], 0)
+        repo.list_movimenti.return_value = ([], 0)
         from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
         out = TitoliIvaService().get_titolo(SOGG, 7)
         self.assertEqual(out["residuo"], Decimal("750.00"))
@@ -633,3 +635,75 @@ class TitoliSoggettoPaginazioneTests(TestCase):
         repo.list_titoli_soggetto.assert_called_once_with(
             SOGG, limit=1, offset=0, order_by=None, order_dir=None,
         )
+
+class AmbitiEMovimentiPaginazioneTests(TestCase):
+    """Le due sotto-liste di `TitoloIvaDrawer`, paginate dal 2026-09-02.
+
+    ⭐ Sono le liste 64 e 65 del catalogo, e il loro contratto DIVERGE di
+    proposito: gli ambiti sono limitati per modello (montati `paginata: false`,
+    dove il totale e' l'asserzione che le righe siano tutte), il registro dei
+    movimenti CRESCE a ogni fattura e va impaginato. Un contratto solo per due
+    nature diverse sarebbe comodo e sbagliato.
+    """
+
+    def test_ambiti_senza_limit_non_impaginano(self) -> None:
+        sql, params = _cattura_sql(lambda repo: repo.list_ambiti(7))
+        self.assertNotIn("LIMIT", sql)
+        self.assertEqual(params, [7])
+
+    def test_ambiti_dichiarano_il_totale(self) -> None:
+        # ⛔ Il totale viene dalla query, non da `len(results)`: senza, il guard
+        #    anti-troncamento del BB confronterebbe le righe con se stesse.
+        sql, _ = _cattura_sql(lambda repo: repo.list_ambiti(7))
+        self.assertIn("COUNT(*) OVER ()", sql)
+
+    def test_ambiti_pagina_e_ripiego_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _AMBITI_FROM_WHERE
+
+        sql, _ = _cattura_sql(lambda repo: repo.list_ambiti(7, limit=25))
+        self.assertIn(_AMBITI_FROM_WHERE, sql)
+
+    def test_movimenti_impaginano_con_limit(self) -> None:
+        sql, params = _cattura_sql(
+            lambda repo: repo.list_movimenti(7, limit=25, offset=50),
+        )
+        self.assertIn("LIMIT %s OFFSET %s", sql)
+        self.assertEqual(params, [7, 25, 50])
+
+    # Scopo: senza `limit` il registro arriva INTERO, ed e' il caso dei due
+    #        consumatori interni — il dettaglio del titolo e il controllo di
+    #        appartenenza dell'annullo, che su una pagina guarderebbe meta'
+    #        delle righe.
+    def test_movimenti_senza_limit_arrivano_tutti(self) -> None:
+        sql, params = _cattura_sql(lambda repo: repo.list_movimenti(7))
+        self.assertNotIn("LIMIT", sql)
+        self.assertEqual(params, [7])
+
+    # Scopo: il default resta «il piu' recente per primo» — come si legge un
+    #        registro. E' l'ordine che i due consumatori interni si aspettano.
+    def test_movimenti_default_dal_piu_recente(self) -> None:
+        sql, _ = _cattura_sql(lambda repo: repo.list_movimenti(7))
+        self.assertIn("m.data_movimento DESC", sql)
+
+    def test_movimenti_pagina_e_ripiego_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _MOVIMENTI_FROM_WHERE
+
+        sql, _ = _cattura_sql(lambda repo: repo.list_movimenti(7, limit=25))
+        self.assertIn(_MOVIMENTI_FROM_WHERE, sql)
+
+    # Scopo: gli envelope del service, che il frontend monta con lo stesso
+    #        scaffolding delle altre liste.
+    def test_envelope_results_e_count(self) -> None:
+        from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+
+        repo = MagicMock()
+        repo.get_titolo.return_value = _titolo()
+        repo.list_ambiti.return_value = ([{"id": 1}], 3)
+        repo.list_movimenti.return_value = ([{"id": 9}], 700)
+        svc = TitoliIvaService()
+        svc._repo = repo
+        ambiti = svc.list_ambiti(SOGG, 7)
+        movimenti = svc.list_movimenti(SOGG, 7, limit=1, offset=0)
+        # ⛔ 3 e 700, non 1 e 1: il totale non e' la lunghezza della pagina.
+        self.assertEqual((len(ambiti["results"]), ambiti["count"]), (1, 3))
+        self.assertEqual((len(movimenti["results"]), movimenti["count"]), (1, 700))

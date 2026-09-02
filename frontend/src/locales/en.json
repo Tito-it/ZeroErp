@@ -4731,7 +4731,6 @@
       "ambito_rimosso": "Goods removed from the scope",
       "ambito_ristretto": "Only some goods",
       "ambito_tutto": "All goods",
-      "ambito_vuoto": "No goods listed.",
       "annulla_movimento": "Cancel movement",
       "annullo_blocco": {
         "e_un_annullo": "This is already a cancellation, and a cancellation cannot be cancelled: if the adjustment is still needed, record a new one with its reason.",
@@ -4785,7 +4784,6 @@
       "mov_nota_credito": "Credit note",
       "movimento_annullato": "Movement cancelled",
       "registra_forzatura": "Record the adjustment",
-      "registro_vuoto": "No movement recorded.",
       "section_ambito": "Which goods it applies to",
       "section_plafond": "Ceiling",
       "section_prova": "Supporting document",

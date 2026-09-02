@@ -22,81 +22,27 @@
 // ⚠️ `userScoped: true`: la lista porta dati che l'operatore vede per il suo
 //    perimetro emittente (la RLS filtra i titoli per emittente in whitelist).
 //    Senza, al logout resterebbero in memoria (`feedback_pinia_userscoped`).
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
-
-import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../../core/constants'
+//
+// ⭐ NON E' PIU' SCRITTO A MANO (2026-09-02, regola del 2 · ok Tid): il corpo —
+//    filtri, fetch paginata, cancello empty-state, sospensione, reset — vive in
+//    `createListaStore` / `useListaStoreCore`. Era la seconda di TRE copie, e le
+//    tre avevano gia' lo stesso difetto: nessuna esponeva `fetchSospesa`, quindi
+//    col cancello di perimetro emittente alzato la lista continuava a chiedere
+//    pagine che il backend rifiuta con 422. Il BB la espone per tutte.
+import { createListaStore } from '../../core/stores/createListaStore'
 import { listSoggettoTitoliIva } from '../api/anagrafiche'
 
-export const useSoggettoTitoliIvaStore = defineStore('anagrafiche-soggetto-titoli-iva', () => {
-  // Il soggetto corrente, scritto dal drawer via `parentField` del BB.
-  const soggettoId = ref(null)
-
-  const filters = ref({
-    // Dichiarata perche' fa parte del contratto di `useSearchTable`, che la
-    // scrive su deep-link `?search=`. ⚠️ L'endpoint NON ha ricerca testuale e
-    // `buildParams` la ignora: meglio dichiararla che farla nascere per
-    // assegnazione.
-    search: '',
-    limit: PAGINATION.DEFAULT_ROWS,
-    offset: 0,
-    // ⛔ NESSUN `order_by` di partenza, ed e' voluto: senza indicazioni il
-    //    backend applica l'ordinamento STORICO — validita' piu' lunga per
-    //    prima, titoli senza scadenza in cima. Scrivere qui una colonna
-    //    qualsiasi cambierebbe l'ordine di apertura di una lista che tutti
-    //    leggono dall'alto, e lo farebbe senza che nessuno l'abbia chiesto.
-    order_by: null,
-    order_dir: null,
-  })
-
-  // `alwaysFetch`: non e' una lista che parte vuota in attesa di una ricerca —
-  // il soggetto e' gia' scelto quando il drawer si apre.
-  const {
-    items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota,
-  } = useListaEmptyStateFetch({
-    filters,
-    alwaysFetch: true,
-    buildParams: (f) => {
-      const params = { limit: f.limit, offset: f.offset }
-      // ⚠️ `order_by` si manda solo se c'e': mandarlo vuoto significherebbe
-      //    chiedere al backend un ordinamento che poi lui scarta — la cosa
-      //    giusta per il motivo sbagliato.
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
-      return params
-    },
-    fetchPage: (params) => listSoggettoTitoliIva(soggettoId.value, params),
-  })
-
-  // ⛔ Senza soggetto non si chiama: l'id sta nel PATH dell'endpoint, e una
-  //    fetch con `undefined` non tornerebbe una lista vuota — tornerebbe 404.
-  async function fetchList() {
-    if (!soggettoId.value) return
-    await fetchListBase()
-  }
-
-  function reset() {
-    // `svuota` del BB e non un clear a mano: invalida anche le fetch in volo,
-    // cosi' la risposta del soggetto precedente non ripopola la lista.
-    svuota()
-    soggettoId.value = null
-    filters.value.offset = 0
-    // ⚠️ Anche `search`, che oggi questa lista non usa: il contratto di
-    //    `useSearchTable` la scrive comunque (deep-link `?search=`), e un reset
-    //    parziale e' il posto dove il primo filtro aggiunto domani sopravvive
-    //    al cambio di soggetto — mostrando righe filtrate come se fossero tutte.
-    filters.value.search = ''
-    filters.value.order_by = null
-    filters.value.order_dir = null
-  }
-
-  return {
-    items, totalRecords, loading, hasSearched, filters, soggettoId,
-    fetchList, reset,
-  }
-}, {
-  userScoped: true,
-})
+export const useSoggettoTitoliIvaStore = createListaStore(
+  'anagrafiche-soggetto-titoli-iva',
+  {
+    fetchPage: listSoggettoTitoliIva,
+    parentField: 'soggettoId',
+    // Il soggetto e' gia' scelto quando il drawer si apre.
+    startsEmpty: false,
+    // ⛔ NESSUN ordinamento di partenza: senza indicazioni il backend applica
+    //    quello STORICO — validita' piu' lunga per prima, titoli senza scadenza
+    //    in cima. Scrivere qui una colonna cambierebbe l'ordine di apertura di
+    //    una lista che tutti leggono dall'alto.
+    orderDir: null,
+  },
+)

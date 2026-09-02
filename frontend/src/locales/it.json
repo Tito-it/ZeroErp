@@ -4731,7 +4731,6 @@
       "ambito_rimosso": "Merce tolta dall'ambito",
       "ambito_ristretto": "Solo alcune merci",
       "ambito_tutto": "Tutte le merci",
-      "ambito_vuoto": "Nessuna merce indicata.",
       "annulla_movimento": "Annulla movimento",
       "annullo_blocco": {
         "e_un_annullo": "È già un annullo, e un annullo non si annulla: se la forzatura serve ancora, se ne registra una nuova con il suo motivo.",
@@ -4785,7 +4784,6 @@
       "mov_nota_credito": "Nota di credito",
       "movimento_annullato": "Movimento annullato",
       "registra_forzatura": "Registra la rettifica",
-      "registro_vuoto": "Nessun movimento registrato.",
       "section_ambito": "Su quali merci si applica",
       "section_plafond": "Plafond",
       "section_prova": "Prova documentale",

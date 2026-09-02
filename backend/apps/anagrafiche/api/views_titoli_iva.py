@@ -183,6 +183,15 @@ class SoggettoTitoliIvaDetailView(DomainAPIView):
 class SoggettoTitoloIvaAmbitiView(DomainAPIView):
     """GET righe di ambito, POST aggiunge una riga."""
     area_funzionale = _AREA
+    # ⭐ Cancello di perimetro emittente: la lista e' a catalogo (lotto 3,
+    #    2026-09-02), quindi la view deve dichiarare il suo `lista_codice` — e'
+    #    lui che aggancia `ui.fn_resolve_lista_config`, senza il quale la lista
+    #    non e' configurabile affatto.
+    # ⚠️ Il perimetro qui vale come sul PADRE (`anagrafiche.soggetto_titoli_iva`):
+    #    l'emittente e' quello dell'operatore. Se non lo fosse, il drawer del
+    #    titolo non si sarebbe nemmeno potuto aprire — la lista da cui si arriva
+    #    e' gia' passata dallo stesso cancello.
+    lista_codice = "anagrafiche.titolo_iva_ambiti"
     model_permission = _MODEL
 
     @extend_schema(
@@ -190,10 +199,15 @@ class SoggettoTitoloIvaAmbitiView(DomainAPIView):
             name="TitoloIvaAmbitiListResp", fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Righe di ambito del titolo.
+    # Scopo: Righe di ambito del titolo, con il conteggio accanto.
+    # ⚠️ NON paginata, e il `count` non e' per questo decorativo: la lista 64 si
+    #    monta `:paginata="false"`, dove `total` e' l'asserzione che le righe
+    #    consegnate siano TUTTE — il building block rifiuta di disegnare la
+    #    tabella se non coincide con quante ne ha ricevute.
     def get(self, request: Request, soggetto_id: str, titolo_id: int) -> JsonResponse:
-        results = TitoliIvaService().list_ambiti(soggetto_id, titolo_id)
-        return success_response({"results": results})
+        return success_response(
+            TitoliIvaService().list_ambiti(soggetto_id, titolo_id),
+        )
 
     @extend_schema(
         request=inline_serializer(name="TitoloIvaAmbitoCreateReq", fields={
@@ -241,6 +255,10 @@ class SoggettoTitoloIvaAmbitoDetailView(DomainAPIView):
 class SoggettoTitoloIvaMovimentiView(DomainAPIView):
     """GET registro movimenti, POST registra una FORZATURA manuale."""
     area_funzionale = _AREA
+    # ⭐ Cancello di perimetro emittente, stessa ragione degli ambiti qui sopra
+    #    (lotto 3, 2026-09-02): senza `lista_codice` la lista non e'
+    #    configurabile affatto, e il perimetro vale come sul padre.
+    lista_codice = "anagrafiche.titolo_iva_movimenti"
     model_permission = _MODEL
 
     @extend_schema(
@@ -249,9 +267,22 @@ class SoggettoTitoloIvaMovimentiView(DomainAPIView):
         )},
     )
     # Scopo: Il registro del titolo: fatture, note di credito e forzature.
+    # ⚠️ PAGINATO (lista 65): il registro cresce a ogni fattura.
+    # ⛔ `order_by`/`order_dir` si leggono GREZZI (`qp_str`), non da
+    #    `parse_list_params`: quello normalizza l'assenza a `"asc"` e ha un
+    #    default suo (`"descrizione"`) che qui non e' una colonna di niente —
+    #    e il default vero del repository e' «il piu' recente per primo», che
+    #    non verrebbe mai raggiunto.
     def get(self, request: Request, soggetto_id: str, titolo_id: int) -> JsonResponse:
-        results = TitoliIvaService().list_movimenti(soggetto_id, titolo_id)
-        return success_response({"results": results})
+        qp = request.query_params
+        p = parse_list_params(qp)
+        return success_response(TitoliIvaService().list_movimenti(
+            soggetto_id, titolo_id,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
 
     @extend_schema(
         request=inline_serializer(name="TitoloIvaForzaturaCreateReq", fields={
