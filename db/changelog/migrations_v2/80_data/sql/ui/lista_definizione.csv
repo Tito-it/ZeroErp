@@ -62,3 +62,5 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 61,pagamenti.sistemazioni_fattura,Atti di sistemazione di una fattura,pagamenti,NULL,t,2026-09-02 00:00:00,mctit,f
 62,anagrafiche.soggetto_titoli_iva,Titoli IVA di un soggetto,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
 63,anagrafiche.titoli_iva_sfondati,Titoli IVA eccedenti,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
+64,anagrafiche.titolo_iva_ambiti,Ambiti di un titolo IVA,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
+65,anagrafiche.titolo_iva_movimenti,Registro movimenti di un titolo IVA,anagrafiche,NULL,t,2026-09-02 00:00:00,mctit,f
