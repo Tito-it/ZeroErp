@@ -342,6 +342,7 @@ indistinguibili. Righe invariate, motivazione riscritta.
 | **BE-1** | `pagamenti_repository.list_sistemazioni_fattura` e `titoli_iva_repository.list_titoli_soggetto` | Accettare `order_by`/`order_dir` con una whitelist **chiavata sui `campo_sorgente` fisici**, sul modello di `_ORDER_COLS_SFONDATI`. Chiavi attese: 61 → `destinazione`, `importo`, `stato`, `motivo`, `data_esecuzione`; 62 → `tipo_descrizione`, `emittente_ragione_sociale`, `iva_codice`, `residuo` | Le 9 colonne sono seminate `ordinabile = t` (D-1). Senza, la freccia non risponde — e non lo dice |
 | **BE-2** | `pagamenti_repository.ENTI_INCASSO_SORT_COLUMNS` | La chiave `"centro"` diventa `"centro_descrizione"` (il valore resta `centro_codice`), e il commento sopra va aggiornato: il giorno è arrivato | La 678 è seminata `ordinabile = t` (D-2). Senza, quel click risponde **400** via `validate_order_params` |
 | **FE-1** | `SistemazioneDrawer.vue` | Nel montaggio su `<ListaConfigurabile>`, slot `#body` sulle colonne `destinazione` e `stato`, decodificate da `pagamenti/vocabolari.js` | Senza, la cella mostra `RIPORTO` (D-6) |
+| **BE-3** | `apps/core/tests/test_liste_configurabili_seed.py` | Il **verso mancante** di `test_lo_slot_delle_azioni_si_chiama_actions`: un caller che fornisce lo slot `#actions` (o `v-slot:actions`) su `<ListaConfigurabile codice="X">` pretende che X abbia una colonna `tipo_colonna = 'azione'` a catalogo | ⛔ È il difetto **DB-1**, ed era muto: senza la riga il BB non rende la colonna e non fallisce niente. Stessa forma del test 6 — il frontend come fonte di verità (§9) |
 
 ⚠️ **BE-1 e BE-2 non bloccano il seed**, bloccano la **migrazione delle view**:
 finché il frontend non monta il BB su queste quattro schermate, nessuna delle due
@@ -431,3 +432,79 @@ salire il contatore delle conversioni starebbe misurando la cosa sbagliata.
 🔴 **Il brief resta in `work-in-progress/`** e non passa a `work-done/`: il DB è
 finito, ma §7 ha tre richieste aperte (BE-1, BE-2, FE-1). Si sposta quando quelle
 sono chiuse e la divergenza `63 = 63` è rientrata.
+
+---
+
+## 9. ✅ DB-1 — la colonna `azioni` mancante alla lista 62 (2026-09-02)
+
+Richiesta **BE → DB**, arrivata convertendo le view del lotto. Evasa: due righe
+appese, nessun changeSet, nessun DDL.
+
+### La premessa, ri-verificata qui e non presa per buona
+
+| Cosa dice la richiesta | Verificato |
+| --- | --- |
+| La lista 62 non ha una colonna `azioni` | ✅ a catalogo aveva 687-692, sei colonne, nessuna `azione` |
+| Il consumer ha un elimina per riga | ✅ [`TitoliIvaSoggettoDrawer.vue:169`](../../../../frontend/src/anagrafiche/components/TitoliIvaSoggettoDrawer.vue) — `<Column v-if="!isReadonly" style="width: 4rem">` con dentro un `Button` `MANAGE_ICONS.DELETE` |
+| Il generatore non l'ha vista perché la `<Column>` non ha `header` | ✅ quella `<Column>` non ha `:header`, e `gen_seed_lista.py` riconosce le azioni dall'etichetta |
+
+⭐ **Limite dichiarato del generatore, non un suo difetto**: una colonna senza
+intestazione non è distinguibile, dal solo template, da un dettaglio di layout.
+
+### Le righe
+
+`lista_colonna.csv` — **identica** alle due azioni già seedate (680 sulla 60,
+686 sulla 61) salvo `id` e `lista_id`, quindi `esportabile = f` e il
+`CHECK chk_ui_lista_colonna_azione_non_esportabile` è rispettato:
+
+```csv
+701,62,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
+```
+
+`lista_preset_colonna.csv`:
+
+```csv
+62,701,999,t,f
+```
+
+⚠️ **Inserita nel gruppo `62`, non in coda al file.** `lista_preset_colonna.csv`
+è raggruppato per `preset_id` e appenderla dopo le righe della 63 avrebbe rotto
+l'ordine per una riga sola. L'inserimento tiene tutte le altre righe **byte per
+byte** (`splitlines`/`writelines`): `git diff --numstat` dà `1 0`, che è la prova
+che nessuna riga di qualcun altro è stata riformattata.
+
+⭐ **La riga nel preset non è facoltativa**: omessa, la colonna resterebbe a
+catalogo *fuori* dal preset e accenderebbe il banner DEF-2 «ci sono colonne
+nuove» su una lista che non ne ha — la stessa regola di §2 sulla lista 63.
+
+### ⛔ Il difetto era muto, e il presidio guarda dall'altra parte
+
+`test_lo_slot_delle_azioni_si_chiama_actions` verifica **config dichiara ⇒ il
+caller fornisce lo slot**. Il verso mancante è l'altro: **il caller ha un'azione
+per riga ⇒ la config deve dichiararla**. Senza la riga a catalogo,
+`<ListaConfigurabile>` semplicemente non rende la colonna: il cestino sparisce,
+nessun errore, nessun test rosso, e l'operatore perde un verbo senza che niente
+lo dica.
+
+⚠️ È la stessa famiglia dei difetti che questo repo paga più cari — quelli che
+non danno errore — e qui il seed **è** il contratto: la config non descrive la
+schermata, la decide.
+⇒ Richiesta **BE-3** in §7.
+
+### Stato delle conversioni — cosa risulta in questo tree
+
+⚠️ La richiesta dichiara le altre tre convertite, contatore `DataTable` grezza
+53 → 50, suite 4379 verde ed e2e 61 verdi. **Qui non risulta ancora**, e lo
+scrivo come fatto datato e non come dubbio: al 2026-09-02, su `dev/db-tid`
+(`2120ed21e`), il contatore è **53** e tutte e quattro le view importano ancora
+`primevue/datatable` — due delle tre citano già `<ListaConfigurabile>`, quindi il
+lavoro è in corso e non pubblicato qui.
+
+⇒ **I contatori del [piano](piano-migrazione-primevue-5.md) NON sono stati
+aggiornati a 50**: si aggiornano quando la misura si può rifare, non su
+dichiarazione. Restano `53` e `35 / 39`, e la divergenza `_LISTE` resta a 4.
+
+⭐ **Nota che «suite 4379 OK» implica che BE-1 e BE-2 siano già stati fatti**:
+con le liste 60/61/63 entrate in `_LISTE` e le whitelist vecchie,
+`test_whitelist_copre_le_colonne_ordinabili` sarebbe rosso. Se è verde, il debito
+di §7 è chiuso lato BE — da confermare quando quel ramo arriva.
