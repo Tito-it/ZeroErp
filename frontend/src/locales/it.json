@@ -744,6 +744,7 @@
     },
     "registri_fatturazione": {
       "disattiva_blocco": {
+        "ha_commesse": "Il registro {codice} ha già numerato {quante} commesse: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati. E una commessa non si cancella, quindi da qui in avanti questo registro non si spegne più.",
         "ha_fatture": "Il registro {codice} ha gia' emesso {quante} fatture: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_progressivi": "Il registro {codice} ha {quante} contatori ancora attivi: finche' un contatore e' vivo il registro puo' numerare, e spegnerlo interromperebbe la sequenza. Si spengono prima i contatori.",
         "ha_mapping_tipo_doc": "Il registro {codice} e' assegnato a {quante} tipi di documento: si toglie prima l'assegnazione, altrimenti quei documenti non troverebbero piu' un registro dove nascere.",
