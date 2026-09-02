@@ -9,6 +9,17 @@
 #    che nasce dalle automazioni: quelle girano DOPO, nella seconda invocazione
 #    di Liquibase».
 #
+# DUE FACCE, e la seconda e' arrivata dopo:
+#   (A) DDL incondizionata su quei trigger — `ALTER TRIGGER … RENAME`,
+#       `DROP TRIGGER` senza `IF EXISTS`;
+#   (B) una preCondition `sqlCheck` che li CONTA in `pg_trigger` e ne pretende
+#       un numero. Il 2026-09-02 `20260831-71` chiedeva «i sei guard di
+#       disattivazione sono montati»: su un database ricostruito da zero non ce
+#       n'e' nemmeno uno, `string_agg` su zero righe da' NULL e il migrate muore
+#       con «SQL Precondition failed. Expected '1' got '0'».
+#       ⭐ Ed era un DOPPIONE del test 6 del suo pgTAP, che fa la stessa
+#       identica query — ma gira a `ci_apply` avvenuto.
+#
 # IL MECCANISMO. I trigger di audit, `tx_id` e storico non li scrive nessun
 # changeSet: li genera il framework delle automazioni, che gira con
 # `--contexts=ci_apply` — in CI la SECONDA invocazione di Liquibase, sul
@@ -45,11 +56,19 @@
 #     changeSet ha lasciato apposta il blocco commentato, ed e' sano.
 #
 # ⚠️ LIMITI DICHIARATI:
-#   * guarda le `changes`, non i `rollback`: un rollback si esegue a mano e
-#     raramente, e il rumore costerebbe piu' della copertura;
-#   * riconosce i trigger dai tre suffissi generati dal framework. Un'automazione
-#     nuova con un suffisso nuovo va aggiunta a `SUFFISSI_AUTOMAZIONE`, e finche'
-#     non la si aggiunge non e' guardata — e' l'elenco che fa da perimetro.
+#   * guarda `changes` e `preConditions`, non i `rollback`: un rollback si
+#     esegue a mano e raramente, e il rumore costerebbe piu' della copertura;
+#   * riconosce i trigger da due elenchi — i suffissi dei nomi generati e le
+#     funzioni-trigger montate dalle automazioni. Un'automazione nuova va
+#     aggiunta a `SUFFISSI_AUTOMAZIONE` e/o a `TRGFN_AUTOMAZIONE`, e finche' non
+#     la si aggiunge non e' guardata: sono gli elenchi a fare da perimetro;
+#   * la faccia (B) segnala solo cio' che interroga `pg_trigger`. Una
+#     preCondition che chiedesse le stesse cose per un'altra via — poniamo
+#     `pg_get_triggerdef` su un oid gia' noto — le sfuggirebbe. ⛔ NON si e'
+#     allargata a «qualunque changeSet che NOMINA una trgfn di automazione»:
+#     misurato il 2026-09-02, sarebbero 100+ file, quasi tutti legittimi (chi
+#     monta un trigger a mano su quelle funzioni, o chi le scrive). Un cancello
+#     con quel tasso di falsi positivi si impara a disattivare.
 #
 # Uso (read-only, nessun database):
 #   python scripts/guardrail_ddl_su_trigger_automazione.py
@@ -75,6 +94,21 @@ SUFFISSI_AUTOMAZIONE = (
     "_audit_data_user_upd",
     "_gen_tx_id_ins_upd",
     "_z90_storico_upd_dlt",
+    "_block_deact_upd",
+)
+
+# ⭐ Le funzioni-trigger che il framework MONTA, lette dalle `fn_run_automations_*`
+# il 2026-09-02. Servono alla faccia (B): una preCondition non nomina il trigger,
+# nomina la funzione che ci sta sotto — spesso dentro un `LIKE`, quindi senza il
+# prefisso `trgfn_`.
+# ⚠️ E' un elenco, quindi e' il perimetro: un'automazione nuova va aggiunta qui.
+TRGFN_AUTOMAZIONE = (
+    "audit_data_user_generic",
+    "child_requires_active_parent",
+    "lock_columns",
+    "prevent_deactivate_if_children",
+    "storico_generic",
+    "tx_id_managed",
 )
 
 # `ALTER TRIGGER <nome>` e `DROP TRIGGER <nome>` (quest'ultimo solo senza
@@ -104,6 +138,26 @@ def _on_fail(pre) -> str:
     elif isinstance(pre, dict) and "onFail" in pre:
         return str(pre["onFail"]).strip().upper()
     return "HALT"
+
+
+# Scopo: raccoglie l'SQL dei `sqlCheck` delle preCondition, con l'atteso.
+def _sql_check(pre) -> list[tuple[str, str]]:
+    fuori: list[tuple[str, str]] = []
+
+    def cammina(nodo) -> None:
+        if isinstance(nodo, dict):
+            valore = nodo.get("sqlCheck")
+            if isinstance(valore, dict):
+                atteso = str(valore.get("expectedResult", "")).strip().strip("'\"")
+                fuori.append((str(valore.get("sql", "")), atteso))
+            for v in nodo.values():
+                cammina(v)
+        elif isinstance(nodo, list):
+            for v in nodo:
+                cammina(v)
+
+    cammina(pre)
+    return fuori
 
 
 # Scopo: raccoglie l'SQL delle `changes` di un changeSet.
@@ -155,6 +209,20 @@ def trova_violazioni() -> list[tuple[str, str, str, str]]:
                         for nome in regex.findall(pulito):
                             if nome.lower().endswith(SUFFISSI_AUTOMAZIONE):
                                 fuori.append((rel, cs_id, verbo, nome))
+                # (B) una preCondition che CONTA quei trigger e ne pretende un
+                #     numero. `expectedResult: 0` resta lecito: un database senza
+                #     automazioni applicate lo soddisfa.
+                for sql, atteso in _sql_check(cs.get("preConditions")):
+                    if atteso == "0":
+                        continue
+                    pulito = _senza_commenti(sql).lower()
+                    if "pg_trigger" not in pulito:
+                        continue
+                    marcatori = [m for m in TRGFN_AUTOMAZIONE + SUFFISSI_AUTOMAZIONE
+                                 if m in pulito]
+                    if marcatori:
+                        fuori.append((rel, cs_id, "preCondition sqlCheck",
+                                      ", ".join(sorted(set(marcatori)))))
     return fuori
 
 
@@ -180,7 +248,9 @@ def main() -> int:
         print(f"      changeSet: {cs_id}", file=sys.stderr)
         print(f"      istruzione: {verbo} {nome}", file=sys.stderr)
     print(
-        "\n   Rimedio: portare QUELLA SOLA istruzione in un changeSet suo, con\n"
+        "\n   Rimedio (preCondition): TOGLIERLA. Cio' che voleva difendere e' un\n"
+        "   presidio pgTAP, che gira a `ci_apply` avvenuto — spesso c'e' gia'.\n"
+        "\n   Rimedio (DDL): portare QUELLA SOLA istruzione in un changeSet suo, con\n"
         "   `preConditions: onFail: MARK_RAN` + un `sqlCheck` su pg_trigger che\n"
         "   chiede se il trigger c'e'. Cosi' si rinomina dove serve e ci si segna\n"
         "   dove non serve.\n"

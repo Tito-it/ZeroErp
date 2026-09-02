@@ -1475,7 +1475,7 @@ scrivere.
 
 ---
 
-### 11.5 ⛔ Niente DDL incondizionata su un trigger che nasce da `ci_apply`
+### 11.5 ⛔ Niente DDL né `preCondition` su un trigger che nasce da `ci_apply`
 
 Presidiato da `scripts/guardrail_ddl_su_trigger_automazione.py` in CI.
 
@@ -1533,15 +1533,43 @@ test 3 di `db/pgtap/pagamenti/test-sistemazioni-registro.sql`, e gira a
 `ci_apply` avvenuto — cioè quando la domanda ha una risposta vera. È la stessa
 divisione del §11.4.
 
-✅ Restano leciti: `DROP TRIGGER IF EXISTS`, l'SQL dentro un commento (il
-2026-01-30 un changeSet ha lasciato apposta il blocco commentato), e qualunque
-istruzione in un changeSet il cui `onFail` non sia `HALT`.
+#### La seconda faccia: la `preCondition` che li conta
 
-⚠️ **Limiti del cancello, dichiarati**: guarda le `changes` e non i `rollback`;
-e riconosce i trigger dai tre suffissi del framework
-(`_audit_data_user_upd`, `_gen_tx_id_ins_upd`, `_z90_storico_upd_dlt`). Un'automazione
-nuova con un suffisso nuovo va aggiunta all'elenco, e finché non la si aggiunge
-non è guardata: è l'elenco a fare da perimetro.
+Lo stesso difetto si presenta anche **senza DDL**, ed è arrivato dopo:
+
+> Il 2026-09-02 `20260831-71-update-fn-check-registro-disattivabile-sei-guard`
+> pretendeva, in una `preCondition`, che i **sei** guard
+> `prevent_deactivate_if_children` fossero montati su
+> `vendite.registri_fatturazione`. Li genera `dbops.fn_run_automations_attivo`,
+> cioè `ci_apply`: durante la prima passata non ce n'è **nemmeno uno**,
+> `string_agg` su zero righe dà `NULL`, il confronto è falso e il migrate muore
+> con `Expected '1' got '0'`.
+
+⭐ **Ed era un doppione**: il **test 6** di
+`db/pgtap/script/test-fn-check-registro-disattivabile-v1.sql` fa la *stessa
+identica query* con la stessa stringa attesa — e gira a `ci_apply` avvenuto,
+cioè quando la domanda ha una risposta vera. Il rimedio non è renderla
+condizionale: è **toglierla**, perché il presidio c'è già dove va.
+
+⚠️ È la stessa divisione del §11.4: *una `preCondition` guarda ciò che viene
+prima; un invariante si asserisce in pgTAP.*
+
+✅ Restano leciti: `DROP TRIGGER IF EXISTS`, l'SQL dentro un commento (il
+2026-01-30 un changeSet ha lasciato apposta il blocco commentato), qualunque
+istruzione in un changeSet il cui `onFail` non sia `HALT`, e una `preCondition`
+con `expectedResult: 0` — un database senza automazioni applicate la soddisfa.
+
+⚠️ **Limiti del cancello, dichiarati**: guarda `changes` e `preConditions`, non i
+`rollback`; e riconosce i trigger da **due elenchi** — i suffissi dei nomi
+generati (`_audit_data_user_upd`, `_gen_tx_id_ins_upd`, `_z90_storico_upd_dlt`,
+`_block_deact_upd`) e le sei funzioni-trigger montate dalle automazioni. Sono gli
+elenchi a fare da perimetro: un'automazione nuova va aggiunta.
+
+⛔ **E non si è allargato a «qualunque changeSet che nomina una di quelle
+funzioni»**: misurato il 2026-09-02, sarebbero oltre cento file, quasi tutti
+legittimi — chi monta un trigger a mano su quelle funzioni, o chi le scrive. Un
+cancello con quel tasso di falsi positivi si impara a disattivare, e *un presidio
+spento è peggio di uno assente*.
 
 ---
 

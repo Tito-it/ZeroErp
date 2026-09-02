@@ -319,7 +319,7 @@ Ciò che il cancello voleva difendere («se il `codice_interno` cambiasse, il
 ⚠️ Il verso opposto va invece tenuto: un changeSet di `80_data` **deve**
 precondizionare su `tableExists`.
 
-### ⛔ Niente DDL incondizionata su un trigger che nasce da `ci_apply`
+### ⛔ Niente DDL né `preCondition` su un trigger che nasce da `ci_apply`
 
 Presidiato da `scripts/guardrail_ddl_su_trigger_automazione.py` (CI, `ci-validate.yaml`).
 Regola estesa: [linee-guida-sql.md §11.5](../docs/it/linee-guida-sql.md).
@@ -341,6 +341,14 @@ pattern**, quindi genereranno già il nome nuovo. L'operazione è legittimamente
 `onFail: MARK_RAN` + un `sqlCheck` su `pg_trigger`.
 ⛔ Mai una preCondition sul changeSet intero: `MARK_RAN` salterebbe anche la
 rinomina della tabella, in silenzio.
+
+⚠️ **Seconda faccia, stessa causa**: anche una `preCondition` che **conta** quei
+trigger in `pg_trigger` e ne pretende un numero muore in CI — il 2026-09-02
+`20260831-71` chiedeva «i sei guard di disattivazione sono montati», e su un DB
+nuovo non ce n'è nemmeno uno. ⭐ Lì il rimedio è **toglierla**: era un doppione
+del test 6 del suo pgTAP, che fa la stessa identica query e gira a `ci_apply`
+avvenuto. *Una preCondition guarda ciò che viene prima; un invariante si
+asserisce in pgTAP.*
 
 ### ⛔ I privilegi dei ruoli batch stanno nel provisioning, mai in un changeSet
 
