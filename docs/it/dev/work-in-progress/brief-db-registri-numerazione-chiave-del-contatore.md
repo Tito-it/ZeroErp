@@ -490,6 +490,15 @@ Tre controlli, tutti **derivati**:
 Nessun elenco a mano da nessuna parte. Il giorno che una famiglia nuova entra sui
 registri senza la chiave completa, il test è **rosso prima del merge**.
 
+> ⚠️ **2026-09-02 — e quel test 6 è diventato l'UNICO presidio, per un motivo
+> istruttivo.** `20260831-71` aveva copiato la stessa query in una
+> `preCondition` di migrate. In CI il migrate è morto lì: quei guard li genera
+> `dbops.fn_run_automations_attivo`, cioè `ci_apply`, che gira **dopo** —
+> durante la prima passata non ce n'è nemmeno uno, `string_agg` su zero righe dà
+> `NULL` e il conteggio è 0. La preCondition è stata **tolta** (non resa
+> condizionale): era un doppione, e il posto giusto per un invariante è il
+> pgTAP, che gira a `ci_apply` avvenuto. Regola: `linee-guida-sql.md` §11.5.
+
 ⭐ È la forma del test 6 di `test-fn-check-registro-disattivabile-v1.sql` —
 *«il giorno che ne compare una quarta diventa rosso»* — che su questa stessa
 tabella ha già funzionato una volta.
