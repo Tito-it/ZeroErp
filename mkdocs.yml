@@ -110,14 +110,19 @@ nav:
                   - it/backend/index.md
                   - Aree:
                             - Acquisti: it/backend/acquisti/index.md
+                            - Ai Assistant: it/backend/ai-assistant/index.md
+                            - Amm. Software: it/backend/amm-software/index.md
                             - Anagrafiche: it/backend/anagrafiche/index.md
                             - Catalogo: it/backend/catalogo/index.md
                             - Core: it/backend/core/index.md
                             - Config: it/backend/config/index.md
                             - Contabilita: it/backend/contabilita/index.md
+                            - Documenti: it/backend/documenti/index.md
                             - Magazzino: it/backend/magazzino/index.md
                             - Pagamenti: it/backend/pagamenti/index.md
+                            - Pratiche: it/backend/pratiche/index.md
                             - Storico: it/backend/storico/index.md
+                            - Ui: it/backend/ui/index.md
                             - Vendite: it/backend/vendite/index.md
 
         - Guide:
@@ -147,6 +152,7 @@ nav:
                             - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
                             - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
                             - Sistema numerazione generico per codici e documenti: it/guide/numerazione-documenti-e-codici.md
+                            - Il risolutore IVA di riga: it/guide/iva-risolutore-di-riga.md
                   - Approfondimenti tecnici:
                             - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
                             - Architettura multi face auth: it/guide/architettura-multi-face-auth.md

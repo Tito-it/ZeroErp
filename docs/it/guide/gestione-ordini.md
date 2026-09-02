@@ -48,6 +48,8 @@
 > * [Gestione DDT](/guide/gestione-ddt) — il documento di consegna: l'ordine confermato si **evade** in uno o più DDT (residuo per riga)
 > * [Gestione Commesse](/guide/gestione-commesse) — la destinazione del push (attività fatturabili)
 > * [Fatturazione end-to-end](/guide/fatturazione) — il push a commessa avvia la pipeline di fatturazione
+> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — **il motore che assegna il numero**: è lo stesso di DDT, fatture, resi e commesse
+> * [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga) — **la sede unica** che decide il codice IVA di una riga
 > * [Documenti e stampe](/guide/documenti-e-stampe) — generazione del PDF di conferma d'ordine
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — risoluzione dei prezzi
 
@@ -81,6 +83,14 @@ Caratteristiche di base:
 
 Il numero documento è auto-generato (trigger `trgfn_ordini_gen_numero`) ed è
 **immutabile**: viene assegnato già alla nascita della bozza e non si modifica più.
+
+> ⭐ **Il numero non se lo fabbrica l'ordine.** Il trigger è solo il *momento* in
+> cui l'ordine chiede il numero — alla nascita, a differenza del DDT che lo chiede
+> all'emissione. A produrlo è il **motore dei registri**, lo stesso che numera
+> DDT, fatture, resi e commesse: progressione per azienda emittente, reset
+> annuale, forma (prefisso, cifre, serie) presa dal registro. Come funziona, e
+> perché non è il catalogo dei formati usato per i codici cliente, sta nella guida
+> [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici).
 
 > **Differenza chiave con preventivo/offerta.** L'ordine **non ha revisioni** e
 > **non ha un listino in testata**: i prezzi delle righe sono già "fotografati"
@@ -405,6 +415,18 @@ e i relativi trigger): l'operatore li vede aggiornarsi senza dover fare nulla.
 L'IVA è calcolata **per gruppo di aliquota** (non riga per riga), secondo la regola
 fiscale standard. Il *Riepilogo IVA* dell'ordine mostra una riga per aliquota con
 imponibile, imposta, arrotondamento e totale.
+
+> ⚠️ **Attenzione a non confondere due cose diverse.** Il riepilogo **somma** ciò
+> che le righe già portano; a decidere il codice IVA della **singola riga** è il
+> **risolutore IVA**, una funzione sola condivisa con preventivi, DDT e fatture —
+> articolo, poi uso della fornitura, poi eventuali titoli documentati del cliente.
+> La regola completa, con il motivo per cui l'`iva_id` non si copia dall'articolo,
+> è in [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga).
+>
+> Il riepilogo dell'ordine è inoltre **«live»**, non uno snapshot: si ricalcola a
+> ogni modifica delle righe, perché l'ordine è un documento di lavoro. Lo snapshot
+> appartiene ai documenti con un istante di emissione i cui valori diventano
+> autorevoli (preventivo, fattura).
 
 ---
 
