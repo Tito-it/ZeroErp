@@ -16,11 +16,10 @@ from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
+    sql_order_clause,
     extract_paginated,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 
 
@@ -243,11 +242,12 @@ class ClientiRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = _CLIENTI_ORDER_COLS.get(
-            order_by, _CLIENTI_ORDER_COLS["ragione_sociale_completa"]
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_CLIENTI_ORDER_COLS,
+            default=_CLIENTI_ORDER_COLS["ragione_sociale_completa"],
+            tiebreak="cl.id",
         )
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cl.id,
@@ -311,7 +311,7 @@ class ClientiRepository:
                        )
                      )
                    )
-             ORDER BY {order_col} {direction}, cl.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [

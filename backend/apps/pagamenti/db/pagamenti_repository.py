@@ -541,21 +541,25 @@ class PagamentiRepository:
             params.append(data_a)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = DISTINTE_SORT_COLUMNS.get(order_by, "data_contabile")
         # ⚠️ La direzione la compone l'helper condiviso, e porta con se' la
         # posizione dei NULL: i vuoti vanno dove starebbe lo zero (in coda
         # scendendo, in testa salendo). ⛔ Non si incolla un `NULLS LAST` fisso:
         # sarebbe sintatticamente doppio, e su una lista che si ordina dal piu'
         # recente porterebbe i campi vuoti in cima.
-        direction = sql_order_direction(order_dir, default_desc=True)
         # Tiebreak nella STESSA direzione della colonna primaria: due distinte
         # dello stesso giorno non devono cambiare posto fra una pagina e l'altra.
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=DISTINTE_SORT_COLUMNS,
+            default="data_contabile",
+            tiebreak="id",
+            default_desc=True,
+        )
 
         rows, total = self._lista_paginata(
             select_sql=f"{_DISTINTA_SELECT}{_TOTALI_LATERAL}{where_clause}",
             params=params,
-            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )
@@ -994,14 +998,18 @@ class PagamentiRepository:
             conditions.append("c.data_contabile <= %s")
             params.append(data_a)
 
-        sort_col = RIGHE_SORT_COLUMNS.get(order_by, "data_pagamento")
-        direction = sql_order_direction(order_dir, default_desc=True)
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RIGHE_SORT_COLUMNS,
+            default="data_pagamento",
+            tiebreak="id",
+            default_desc=True,
+        )
 
         rows, total = self._lista_paginata(
             select_sql=f'{_RIGA_CODA_SELECT} WHERE {" AND ".join(conditions)}',
             params=params,
-            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )
@@ -1036,9 +1044,13 @@ class PagamentiRepository:
             params.append(billing_account_id)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = RATE_FUORI_CAPIENZA_SORT_COLUMNS.get(order_by, "data_scadenza")
-        direction = sql_order_direction(order_dir, default_desc=True)
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RATE_FUORI_CAPIENZA_SORT_COLUMNS,
+            default="data_scadenza",
+            tiebreak="scadenza_id",
+            default_desc=True,
+        )
 
         return self._lista_paginata(
             select_sql=(
@@ -1046,7 +1058,7 @@ class PagamentiRepository:
             ),
             params=params,
             order_clause=(
-                f"ORDER BY {sort_col} {direction}, scadenza_id {tiebreak}"
+                f"ORDER BY {ordinamento}"
             ),
             limit=limit,
             offset=offset,
@@ -1087,9 +1099,12 @@ class PagamentiRepository:
             params.append(attivo)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = ENTI_INCASSO_SORT_COLUMNS.get(order_by, "codice")
-        direction = sql_order_direction(order_dir, default_desc=False)
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=ENTI_INCASSO_SORT_COLUMNS,
+            default="codice",
+            tiebreak="id",
+        )
 
         select_sql = f"""
             {_ENTE_INCASSO_SELECT}
@@ -1098,7 +1113,7 @@ class PagamentiRepository:
         return self._lista_paginata(
             select_sql=select_sql,
             params=params,
-            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )

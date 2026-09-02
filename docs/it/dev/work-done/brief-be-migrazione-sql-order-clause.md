@@ -166,18 +166,26 @@ l'ordinamento è logica di dominio, non sintassi ripetuta.
 
 | Riga | Perché resta |
 | --- | --- |
-| 112 `_giornale_order_clause` | tiebreak **gerarchico** (`t.quando DESC` fisso dentro la gravità) e due rami |
+| 112 `_giornale_order_clause` | il secondo criterio non è uno spareggio ma **significato**: `t.quando DESC` sta dentro la gravità e non deve girarsi |
 | 645 lotti di fatturazione | ramo `else` con un ordinamento **diverso** (`fl.data_insert DESC`) che ignora `order_dir` |
-| 933 · 2474 dashboard aperto/backlog | tiebreak **composito** `area ASC, documento_id {dir}` — la prima chiave **raggruppa** e resta ASC, la seconda segue |
-| 1235 · 1386 · 1520 attività e commesse | idem: `commessa_codice ASC` raggruppa, la chiave tecnica segue |
+| 933 · 2474 dashboard aperto/backlog | **due** chiavi di spareggio: `area ASC, documento_id {dir}` — la prima fissa, la seconda che segue |
+| 1235 · 1386 · 1520 attività e commesse | idem: `commessa_codice ASC, <chiave tecnica> {dir}` |
 | 1855 gruppi fatturabili | idem con `gruppo_key ASC, stadio {dir}` |
-| 2714 fondi da decidere | **due** chiavi di spareggio che seguono entrambe la direzione |
+| 2714 fondi da decidere | **due** chiavi di spareggio, che seguono entrambe la direzione |
 
-⛔ **Il BB appende UNA direzione in coda al tiebreak.** Su una chiave che
-raggruppa — e che quindi resta `ASC` qualunque cosa scelga l'operatore — quella
-direzione sarebbe sbagliata: l'elenco «per cliente» sparpaglierebbe i documenti
-dello stesso cliente. Estendere il BB a un tiebreak per-chiave lo farebbe
-descrivere una cosa che non è la sua: la forma ripetuta.
+⛔ **Il BB scrive UNA colonna e UNA chiave di spareggio**, con la seconda nella
+stessa direzione della prima. A questi serve altro — due chiavi, o due chiavi
+con regole diverse — e per dargliela il BB smetterebbe di essere una forma sola.
+
+🔴 **Correzione (2026-09-02, stessa giornata).** La prima stesura di questa nota
+motivava le esclusioni dicendo che una chiave di raggruppamento «resta ASC
+qualunque cosa scelga l'operatore, altrimenti l'elenco per cliente sparpaglia i
+documenti dello stesso cliente». **Non è vero**: ordinare per `commessa_codice`
+in un verso o nell'altro tiene comunque adiacenti le righe con lo stesso valore
+— cambierebbe solo l'ordine dei gruppi. ⚠️ La motivazione era più suggestiva di
+quella vera, ed è il modo in cui una ragione sbagliata sopravvive: sembra
+spiegare, e nessuno la verifica perché la conclusione è giusta lo stesso. La
+ragione vera è strutturale, ed è quella scritta qui sopra.
 
 ### L7 · pagamenti — ✅ 4 migrati, 1 escluso (2026-09-02)
 

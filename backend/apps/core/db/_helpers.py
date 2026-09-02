@@ -245,6 +245,26 @@ def sql_tiebreak_direction(direction: str) -> str:
     return "DESC" if direction.strip().upper().startswith("DESC") else "ASC"
 
 
+def colonne_identita(*colonne: str) -> dict[str, str]:
+    """Whitelist di ordinamento in cui il nome logico E' l'espressione SQL.
+
+    `colonne_identita("codice", "descrizione")` -> `{"codice": "codice", ...}`.
+
+    ⚠️ **Serve a DIRLO, non ad accorciare.** Alcune liste leggono una vista in
+    cui la colonna si chiama gia' come il campo che il frontend manda: li' non
+    c'e' nessuna traduzione da fare, e scrivere il dizionario a mano con le due
+    meta' uguali sembra un errore di copia-incolla. Questa funzione lo rende una
+    dichiarazione.
+
+    Regola del 2 (2026-09-02): `indirizzi_repository` e `geo_repository` (6
+    liste) avevano la stessa comprehension scritta in due forme diverse.
+
+    ⭐ Le chiavi restano leggibili come insieme (`set(_ORDER_COLS)`), quindi i
+    risolutori di whitelist del presidio seed non cambiano.
+    """
+    return {c: c for c in colonne}
+
+
 def sql_order_clause(
     order_by: str | None,
     order_dir: str | None,

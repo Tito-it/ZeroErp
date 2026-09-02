@@ -11,21 +11,28 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.db._helpers import (
+    colonne_identita,
     dynamic_update,
+    sql_order_clause,
     extract_paginated,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 
 from django.db import connection, transaction
 
 
-_ORDER_COLS = {
+# ⚠️ Dizionario e non insieme, e le due meta' sono UGUALI apposta: su questa
+#    vista il nome logico della colonna E' la sua espressione SQL. Scriverlo
+#    come mappa non e' cerimonia — e' la forma che `sql_order_clause` chiede a
+#    tutte le liste, e dirlo esplicitamente evita che il prossimo lettore creda
+#    che qui manchi una traduzione.
+# ⭐ `set(_ORDER_COLS)` continua a funzionare (le chiavi), quindi
+#    `_whitelist_indirizzi` del presidio seed non cambia.
+_ORDER_COLS = colonne_identita(
     "indirizzo_normalizzato", "civico", "descrizione_comune", "cap",
     "provincia", "attivo", "data_insert",
-}
+)
 
 
 class IndirizziRepository:
@@ -46,9 +53,12 @@ class IndirizziRepository:
         order_by: str = "indirizzo_normalizzato",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _ORDER_COLS else "indirizzo_normalizzato"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS,
+            default="indirizzo_normalizzato",
+            tiebreak="vid.indirizzo_dettaglio_id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
 
         sql = f"""
@@ -67,7 +77,7 @@ class IndirizziRepository:
              WHERE (%s::text IS NULL OR vid.indirizzo_normalizzato ILIKE %s
                     OR vid.descrizione_comune ILIKE %s)
                AND (%s::integer IS NULL OR vid.comune_id = %s)
-             ORDER BY {order_col} {direction}, vid.indirizzo_dettaglio_id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
