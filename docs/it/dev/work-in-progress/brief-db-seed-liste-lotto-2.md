@@ -345,7 +345,23 @@ indistinguibili. Righe invariate, motivazione riscritta.
 
 ⚠️ **BE-1 e BE-2 non bloccano il seed**, bloccano la **migrazione delle view**:
 finché il frontend non monta il BB su queste quattro schermate, nessuna delle due
-manca a nessuno. Chi migra guarda prima questa tabella.
+manca a nessuno.
+
+⭐ **E non serve che qualcuno si ricordi di questa tabella**, perché il presidio
+le rende esigibili da solo. `apps/core/tests/test_liste_configurabili_seed.py`
+misura il registro `_LISTE` sul **frontend** (test 6): oggi le quattro liste non
+sono montate, quindi non sono nel registro e la suite è verde **a ragione**, non
+per sottrazione. Il giorno in cui una di quelle view si converte, il registro la
+pretende — e con lei arrivano due rossi già scritti:
+
+| Test che diventa rosso | Lista | Richiesta |
+| --- | --- | --- |
+| `test_whitelist_copre_le_colonne_ordinabili` | 61, 62 | **BE-1** |
+| `test_whitelist_chiavata_sul_campo_sorgente` | 60 | **BE-2** |
+
+⇒ **Il debito è auto-esigente**, ed è il verso giusto: il lavoro BE serve nel
+momento della conversione, non prima. Tracciato anche nel
+[piano PrimeVue 5](piano-migrazione-primevue-5.md), tabella dei denominatori.
 
 ---
 
@@ -394,3 +410,24 @@ table e **rifare l'upsert su TUTTE le righe** dentro una transazione annullata.
 ⚠️ Non è una formalità su questi quattro file: sono mirror `runOnChange` +
 `validCheckSums: ANY`, quindi l'append fa ri-scrivere al database anche le 671
 righe che c'erano già.
+
+### Stato di sviluppo tracciato altrove
+
+⚠️ Il conteggio delle liste **non vive in questo brief**: vive nel
+[piano PrimeVue 5](piano-migrazione-primevue-5.md), tabella dei denominatori.
+Aggiornato il 2026-09-02 con la colonna «02-09 notte»:
+
+| Misura | prima | dopo |
+| --- | --- | --- |
+| codici seedati (`ui.lista_definizione`) | 59 | **63** |
+| righe nel registro `_LISTE` | 59 | 59 — ⏳ divergenza **attesa e datata** |
+| file del Gruppo A convertiti | 35 / 39 | 35 / 39 — invariato |
+| file con `DataTable` grezza | 53 | 53 — invariato |
+
+⭐ **Le ultime due righe invariate sono il punto, non una svista**: questo lotto
+semina il database e **non converte nessuna view**. Un brief di seed che facesse
+salire il contatore delle conversioni starebbe misurando la cosa sbagliata.
+
+🔴 **Il brief resta in `work-in-progress/`** e non passa a `work-done/`: il DB è
+finito, ma §7 ha tre richieste aperte (BE-1, BE-2, FE-1). Si sposta quando quelle
+sono chiuse e la divergenza `63 = 63` è rientrata.

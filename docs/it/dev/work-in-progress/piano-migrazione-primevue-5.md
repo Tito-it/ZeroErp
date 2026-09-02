@@ -916,15 +916,40 @@ wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 > Contro cosa verificarlo, visto che i denominatori in questo documento sono
 > **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
 >
-> | Misura | 02-08 | 03-08 | 02-09 mattina | **02-09 sera** | Cos'è |
-> | --- | --- | --- | --- | --- | --- |
-> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | **59** | le liste configurate a DB |
-> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | **59** ✅ | devono coincidere con la riga sopra — **rientrata in giornata** |
-> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | **60** | più dei codici e non meno: `ResiCodaTable` ne serve **due** con `:codice` dinamico e `DashboardCompetenzaView` ne monta **tre**, ma il conteggio include anche il BB stesso, che si cita nel proprio commento |
-> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | **35 / 39** | il denominatore dell'inventario qui sotto: +4 (i pannelli `ui`) su entrambi i lati |
-> | **liste montate `:paginata="false"`** | — | — | — | **4** | modalità nata il 02-09; il quinto `grep` è il commento del BB, non un montaggio |
-> | file con `DataTable` grezza | 56 | 48 | 57 | **53** | il contatore della regola zero |
+> | Misura | 02-08 | 03-08 | 02-09 mattina | 02-09 sera | **02-09 notte** | Cos'è |
+> | --- | --- | --- | --- | --- | --- | --- |
+> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | 59 | **63** | le liste configurate a DB — +4 col lotto 2 |
+> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | 59 ✅ | **59** ⏳ | ⚠️ divergenza **attesa**: il lotto 2 è seed senza consumer, vedi sotto |
+> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | 60 | **60** | più dei codici e non meno: `ResiCodaTable` ne serve **due** con `:codice` dinamico e `DashboardCompetenzaView` ne monta **tre**, ma il conteggio include anche il BB stesso, che si cita nel proprio commento |
+> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | 35 / 39 | **35 / 39** | invariato: il lotto 2 semina il DB, non converte ancora nessun file |
+> | **liste montate `:paginata="false"`** | — | — | — | 4 | **4** | modalità nata il 02-09; il quinto `grep` è il commento del BB, non un montaggio |
+> | file con `DataTable` grezza | 56 | 48 | 57 | 53 | **53** | il contatore della regola zero |
 >
+> ⏳ **E riaperta la sera stessa, di proposito: 63 seedati contro 59 nel registro**
+> (2026-09-02, lotto 2 — `brief-db-seed-liste-lotto-2.md`). Le quattro sono
+> `pagamenti.canali_incasso`, `pagamenti.sistemazioni_fattura`,
+> `anagrafiche.soggetto_titoli_iva`, `anagrafiche.titoli_iva_sfondati`: **seed
+> arrivato prima del suo consumer**, esattamente la forma già descritta qui sotto
+> per `vendite.famiglie_documento`.
+>
+> ⭐ **Il presidio NON tace per distrazione, e questo è il punto**: `_LISTE` si
+> misura sul **frontend** (test 6, `test_registro_copre_tutte_le_liste_montate_dal_frontend`),
+> e nessuna delle quattro è ancora montata. Quindi oggi la suite è verde a
+> ragione, non per sottrazione.
+>
+> ⛔ **Ma il giorno in cui si converte una di quelle view, il registro la
+> pretende — e con lei arrivano DUE rossi già previsti**, che sono la ragione per
+> cui `brief-db-seed-liste-lotto-2.md` §7 esiste:
+>
+> | Test che diventerà rosso | Su quale lista | Cosa chiede |
+> | --- | --- | --- |
+> | `test_whitelist_copre_le_colonne_ordinabili` | 61 e 62 | I due endpoint non accettano `order_by` affatto: 9 colonne seminate `ordinabile = t` non hanno nessuna whitelist dietro (richiesta **BE-1**) |
+> | `test_whitelist_chiavata_sul_campo_sorgente` | 60 | `ENTI_INCASSO_SORT_COLUMNS` è chiavata su `centro`, il `campo_sorgente` è `centro_descrizione` (richiesta **BE-2**) |
+>
+> ⇒ **Il debito è auto-esigente**: chi converte non può dimenticarlo, perché il
+> presidio glielo mette davanti. È il verso giusto — la conversione è il momento
+> in cui quel lavoro serve davvero, non prima.
+
 > ✅ **RIENTRATA in giornata (2026-09-02, sera): 59 = 59.**
 > `vendite.famiglie_documento` ha preso la sua riga nel registro quando il
 > cantiere dei registri di numerazione l'ha chiusa. Il blocco qui sotto resta
