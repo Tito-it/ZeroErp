@@ -203,11 +203,20 @@ BEGIN
     v_codice   := v_ass.numero;
 
     -- SPECCHIO 3 — INSERT: la commessa nasce con la chiave completa.
-    INSERT INTO vendite.commesse (codice, tipo_commessa, policy_fatturazione, fatturazione_immediata,
+    -- ⭐ rev 2026-09-02: la commessa nasce con gli ASSI DEL CONTATORE nelle
+    --   sue colonne, non solo dentro la stringa del codice. `registro_id` e
+    --   `anno` li ha gia' restituiti il numeratore qui sopra: fino a oggi si
+    --   buttavano via dopo aver composto il codice, ed era l'unica delle
+    --   cinque famiglie a non tenerli.
+    -- ⛔ Non e' un doppione del codice: il codice li porta DENTRO una stringa,
+    --   per convenzione di chi la compone. Qui sono dato, e si interrogano.
+    INSERT INTO vendite.commesse (codice, registro_id, anno,
+        tipo_commessa, policy_fatturazione, fatturazione_immediata,
         priorita_operativa, billing_account_id, utility_id, emittente_soggetto_ruolo_id,
         competenza_dal, competenza_al, meta,
         termine_pagamento_id, modalita_pagamento_id)
-    VALUES (v_codice, p_tipo_commessa, p_policy_fatturazione, p_fatturazione_immediata,
+    VALUES (v_codice, v_registro, v_anno,
+            p_tipo_commessa, p_policy_fatturazione, p_fatturazione_immediata,
         p_priorita_operativa, p_billing_account_id, p_utility_id, v_emittente,
         p_competenza_dal, p_competenza_al, COALESCE(p_meta, '{}'::jsonb),
         p_termine_pagamento_id, p_modalita_pagamento_id)

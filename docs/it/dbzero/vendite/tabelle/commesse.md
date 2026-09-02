@@ -29,6 +29,8 @@
 | stato_commessa_id | bigint | NO | 1 |
 | termine_pagamento_id | bigint | YES |  |
 | modalita_pagamento_id | integer | YES |  |
+| registro_id | bigint | YES |  |
+| anno | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -40,6 +42,7 @@
 | FOREIGN KEY | fk_commesse_billing_account | billing_account_id |
 | FOREIGN KEY | fk_commesse_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_commesse_modalita_pagamento | modalita_pagamento_id |
+| FOREIGN KEY | fk_commesse_registro | registro_id |
 | FOREIGN KEY | fk_commesse_stato_commessa | stato_commessa_id |
 | FOREIGN KEY | fk_commesse_termine_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_commesse_utility | utility_id |
@@ -50,6 +53,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_commesse_ba_utility | `CREATE INDEX ix_commesse_ba_utility ON vendite.commesse USING btree (billing_account_id, utility_id)` |
+| ix_commesse_registro_anno | `CREATE INDEX ix_commesse_registro_anno ON vendite.commesse USING btree (registro_id, anno)` |
 | ix_commesse_stato_commessa_id | `CREATE INDEX ix_commesse_stato_commessa_id ON vendite.commesse USING btree (stato_commessa_id)` |
 | pk_commesse | `CREATE UNIQUE INDEX pk_commesse ON vendite.commesse USING btree (id)` |
 | uq_commesse_codice | `CREATE UNIQUE INDEX uq_commesse_codice ON vendite.commesse USING btree (codice)` |

@@ -44,9 +44,14 @@
 --   rifiutasse SEMPRE passerebbe il 7 esattamente come quello giusto.
 --
 -- ⚠️ COSA QUESTO FILE NON PROVA: che `commesse` sia sana. La commessa dichiara
---   `colonna_serie` NULL, quindi i test 4-5 non la guardano e il 6 la protegge —
---   ma la sua unicita' resta su UNA STRINGA (uq_commesse_codice) che non porta
---   ne' registro ne' serie. E' debito DICHIARATO, non coperto: §4 del brief.
+--   `colonna_serie` NULL, quindi i test 4-5 non la guardano e il 6 la protegge.
+--   ⭐ Dal 2026-09-02 non e' piu' scoperta: registro_id e anno sono COLONNE
+--   (changeSet 20260902-07) e l'invariante ha il suo presidio in
+--   db/pgtap/vendite/test-commessa-chiave-numerazione-v1, che confronta il
+--   codice con gli assi dichiarati.
+--   ⚠️ La sua unicita' resta pero' su UNA STRINGA (uq_commesse_codice), ed e'
+--   voluto: il codice porta la sigla dell'emittente, quindi e' unico
+--   GLOBALMENTE — piu' stretto della chiave per registro delle altre quattro.
 -- ------------------------------------------------------------
 
 BEGIN;

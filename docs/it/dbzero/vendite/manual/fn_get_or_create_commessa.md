@@ -55,3 +55,20 @@ SELECT vendite.fn_get_or_create_commessa(
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---
+
+### 🔄 rev 2026-09-02 — scrive anche registro e anno
+
+Oltre al codice, la funzione salva ora **il registro** da cui quel codice viene e
+**l'anno** del contatore.
+
+⭐ Non fa nessuna domanda in più al database: quei due valori glieli aveva già
+restituiti il numeratore poche righe sopra, e fino a ieri venivano **buttati via**
+dopo aver composto la stringa. La commessa era l'unica delle cinque famiglie di
+documento a non tenerli.
+
+⚠️ Chi riscrivesse questa funzione dimenticandoli farebbe nascere commesse senza
+quei due campi **senza che nessun vincolo lo dica** — per questo un controllo
+automatico verifica che l'inserimento li nomini ancora.
+
