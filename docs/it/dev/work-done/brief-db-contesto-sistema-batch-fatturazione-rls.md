@@ -456,6 +456,44 @@ ed è leggibile da chiunque. E accanto è nato il **test 9, gemello «esiste»**
 lente smettesse di vedere grant, adesso è quello a diventare rosso.
 Il file passa da `plan(18)` a `plan(19)`.
 
+### 11.5 ⛔ 2026-09-02 — 39 `GRANT` al ruolo batch dentro i changeSet, e la regola era già scritta
+
+Il migrate in CI si è fermato su
+`20260825-01-recreate-fn-get-saldo-fattura-tre-numeri` con
+`ERROR: role "zeroerp_batch_fatturazione" does not exist`.
+
+**Perché.** Il §5 di questo brief lo dice già: `BYPASSRLS` richiede superuser,
+quindi il ruolo lo crea `provision_db_role_batch_fatturazione.sql` come
+`postgres` — e `ci.yaml` lo lancia **dopo** le migrazioni standard, con un
+commento che ne spiega il motivo (*«Dopo le migrazioni: le tabelle del perimetro
+esistono»*). Per tutta la durata del migrate quel ruolo **non esiste**.
+
+⭐ **E il `GRANT` era anche inutile**: il provisioning fa
+`GRANT SELECT ON ALL TABLES` + `GRANT EXECUTE ON ALL FUNCTIONS` sui 14 schemi
+applicativi, più `ALTER DEFAULT PRIVILEGES` per gli oggetti futuri. Verificato,
+non dedotto: `vendite.fn_get_registro_documento` (creata il 31 agosto, **zero**
+grant espliciti) risponde già `EXECUTE = true` per il ruolo batch, e
+`pg_default_acl` mostra le default privileges attive su tutti gli schemi.
+
+⚠️ **La cosa che vale la pena registrare non è il difetto: è la sua ripetizione.**
+La regola era già scritta — parola per parola — nell'intestazione di
+`20260727-21-create-vw-indici-ridondanti-prefisso`, messa lì il 2026-07-27 dopo
+lo **stesso identico guasto**:
+
+> *«Regola generale: i privilegi dei ruoli batch stanno nel provisioning, mai in
+> un changeSet.»*
+
+Nei trentasei giorni successivi sono stati scritti **39 `GRANT` in 20 changeSet**
+che la violano. ⛔ Non è distrazione: la riga sbagliata sta **accanto** a quella
+per `zeroerp_app`, che invece ci vuole, ed è identica tranne il nome del ruolo —
+chi aggiunge una funzione al perimetro batch copia la coppia.
+⇒ *Una regola scritta nel commento di un changeSet la legge chi apre quel file.*
+
+**Fatto**: i 39 `GRANT` rimossi (i `zeroerp_app` accanto intatti, verificati uno
+per uno), nuovo cancello `scripts/guardrail_grant_ruolo_batch.py` — verde ora,
+e sulla versione di `HEAD` accusa esattamente 39 righe — regola in
+`linee-guida-sql.md` §11.6 e in `.codex/AGENTS.md`.
+
 ### 11.4 Cosa resta da fare
 
 | # | voce | stato |
@@ -464,4 +502,5 @@ Il file passa da `plan(18)` a `plan(19)`.
 | OPS-2 | `check_db_role_batch_fatturazione.sql` a **[3b]/[3e] zero righe** | 🔴 dopo OPS-1 |
 | DB-1 | perimetro pgTAP riallineato + grado `'d'` | ✅ 2026-09-02 |
 | DB-2 | test 8 su `relacl` + gemello «esiste» | ✅ 2026-09-02 |
+| DB-4 | 39 `GRANT` al ruolo batch tolti dai changeSet + cancello CI (§11.5) | ✅ 2026-09-02 |
 | DB-3 | far confrontare **automaticamente** le tre liste (provision / check / pgTAP) | ⚠️ debito dichiarato — oggi l'allineamento è a mano, ed è già scivolato due volte |

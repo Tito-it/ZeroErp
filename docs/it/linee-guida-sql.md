@@ -1545,6 +1545,59 @@ non è guardata: è l'elenco a fare da perimetro.
 
 ---
 
+### 11.6 ⛔ I privilegi dei ruoli batch stanno nel provisioning, mai in un changeSet
+
+Presidiato da `scripts/guardrail_grant_ruolo_batch.py` in CI.
+
+**Il meccanismo.** I ruoli batch headless (`zeroerp_batch_*`) hanno `BYPASSRLS`,
+che richiede **superuser**: Liquibase gira come `zeroerp` e quindi non può
+crearli. Li crea `scripts/sql/provision_db_role_batch_<job>.sql`, lanciato come
+`postgres` — e il workflow lo lancia **dopo** le migrazioni standard, perché
+quello script concede *sul perimetro* e le tabelle del perimetro devono
+esistere.
+
+⇒ Per tutta la durata del migrate quel ruolo **non esiste**, e un `GRANT` che lo
+nomina ferma la pipeline:
+
+```text
+ERROR: role "zeroerp_batch_fatturazione" does not exist
+```
+
+Su un database di sviluppo il ruolo c'è da settimane e il `GRANT` passa.
+
+⭐ **Ed è anche inutile.** Il provisioning fa `GRANT SELECT ON ALL TABLES` +
+`GRANT EXECUTE ON ALL FUNCTIONS` sui 14 schemi applicativi, più
+`ALTER DEFAULT PRIVILEGES`: l'oggetto è coperto su ogni ambiente **anche se
+nasce dopo**. Misurato il 2026-09-02 — una funzione creata il 31 agosto, senza
+nessun grant esplicito, risponde già `EXECUTE = true` per il ruolo batch.
+
+> La regola era già scritta, parola per parola, nell'intestazione di
+> `20260727-21-create-vw-indici-ridondanti-prefisso`, dopo lo **stesso identico
+> guasto** del 2026-07-27: *«i privilegi dei ruoli batch stanno nel
+> provisioning, mai in un changeSet»*. Nei trentasei giorni successivi sono
+> stati scritti **39 `GRANT` in 20 changeSet** che la violano, bonificati il
+> 2026-09-02. ⚠️ Una regola scritta in un commento la legge chi apre quel file;
+> un cancello la legge per tutti.
+
+⚠️ **E il difetto non è visibile mentre si scrive.** Chi aggiunge una funzione al
+perimetro batch copia il `GRANT` accanto a quello per `zeroerp_app`, che invece
+ci vuole: la riga giusta e la riga sbagliata sono **adiacenti e identiche tranne
+il nome del ruolo**.
+
+**Il rimedio è togliere la riga**, non sostituirla. ⛔ E se un ruolo batch ha
+bisogno di un privilegio *in più* del perimetro ampio — una `INSERT`, una
+`UPDATE` — la sede è il **provisioning**: si aggiunge lì, e si rilancia.
+
+⚠️ **Il perimetro `_perimeter` è duplicato in tre file** — il provisioning che
+concede, `check_db_role_batch_*.sql` che verifica, e il pgTAP di postura.
+Toccarne uno solo non dà errore: dà falsi positivi altrove. Il 2026-09-02 la
+terza lista era indietro di sei tabelle.
+
+⚠️ **Limiti del cancello, dichiarati**: guarda `migrations_v2` e non la vecchia
+storia congelata; e riconosce i ruoli dal prefisso `zeroerp_batch_`.
+
+---
+
 ---
 
 ## 12. Capability: le azioni che il database propone all'operatore

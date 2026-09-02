@@ -250,7 +250,19 @@ databaseChangeLog:
               --   espliciti), perche' lo stato dopo il migrate deve coincidere con
               --   quello prima — o la differenza la scopre chi legge, non chi scrive.
               GRANT EXECUTE ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE) TO zeroerp_app;
-              GRANT EXECUTE ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE) TO zeroerp_batch_fatturazione;
+              -- ⛔ 2026-09-02 — NIENTE GRANT AL RUOLO BATCH IN UN changeSet.
+              --    In CI il ruolo `zeroerp_batch_fatturazione` non esiste ancora: il workflow
+              --    lo provisiona DOPO le migrazioni standard (BYPASSRLS vuole superuser,
+              --    quindi lo crea `postgres` e non Liquibase), e il migrate moriva con
+              --    «role "zeroerp_batch_fatturazione" does not exist».
+              --    ⭐ Ed era anche INUTILE: provision_db_role_batch_fatturazione.sql fa
+              --    GRANT SELECT/EXECUTE ON ALL ... IN SCHEMA sui 14 schemi applicativi piu'
+              --    ALTER DEFAULT PRIVILEGES, quindi l'oggetto e' coperto su ogni ambiente —
+              --    anche se nasce dopo. Verificato: una funzione del 2026-08-31 senza nessun
+              --    GRANT esplicito risponde gia' EXECUTE = true per quel ruolo.
+              --    ⚠️ La regola era gia' scritta il 2026-07-27 in 20260727-21, dopo lo stesso
+              --    guasto: «i privilegi dei ruoli batch stanno nel provisioning, mai in un
+              --    changeSet». linee-guida-sql.md §11.6
 
               -- ═══════════════════════════════════════════════════════════
               -- 3) La vista torna, IDENTICA nelle colonne che espone: il
@@ -341,7 +353,7 @@ databaseChangeLog:
               -- ⚠️ Anche la vista rinasce senza permessi. Si rimettono quelli che
               --   il ciclo di ci_apply le dava, cosi' com'erano.
               GRANT SELECT, INSERT, UPDATE, DELETE ON pagamenti.vw_eccedenze_da_sistemare TO zeroerp_app;
-              GRANT SELECT ON pagamenti.vw_eccedenze_da_sistemare TO zeroerp_batch_fatturazione;
+              -- ⛔ GRANT al ruolo batch rimosso il 2026-09-02 (vedi sopra) — linee-guida-sql §11.6
       rollback:
         - sql:
             dbms: postgresql
@@ -406,7 +418,7 @@ databaseChangeLog:
               $function$;
 
               GRANT EXECUTE ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE) TO zeroerp_app;
-              GRANT EXECUTE ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE) TO zeroerp_batch_fatturazione;
+              -- ⛔ GRANT al ruolo batch rimosso il 2026-09-02 (vedi sopra) — linee-guida-sql §11.6
 
               CREATE OR REPLACE VIEW pagamenti.vw_eccedenze_da_sistemare
               WITH (security_invoker = on) AS
@@ -462,4 +474,4 @@ databaseChangeLog:
                WHERE sign(cs.saldo) = -sign(cs.totale_a_pagare);
 
               GRANT SELECT, INSERT, UPDATE, DELETE ON pagamenti.vw_eccedenze_da_sistemare TO zeroerp_app;
-              GRANT SELECT ON pagamenti.vw_eccedenze_da_sistemare TO zeroerp_batch_fatturazione;
+              -- ⛔ GRANT al ruolo batch rimosso il 2026-09-02 (vedi sopra) — linee-guida-sql §11.6

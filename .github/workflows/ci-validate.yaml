@@ -226,6 +226,34 @@ jobs:
         # Guida: docs/it/linee-guida-sql.md §11.5
         run: python scripts/guardrail_ddl_su_trigger_automazione.py
 
+      - name: Guardrail GRANT ai ruoli batch nei changeSet
+        # ⚠️ POSIZIONE: prima del migrate, per la stessa ragione degli altri.
+        #
+        # Cosa presidia: i ruoli batch headless hanno BYPASSRLS, che vuole
+        # superuser — Liquibase gira come `zeroerp` e non puo' crearli. Li crea
+        # provision_db_role_batch_*.sql come `postgres`, e ci.yaml lo lancia
+        # DOPO le migrazioni standard (deve concedere sul perimetro, e le
+        # tabelle del perimetro devono esistere). Quindi per tutto il migrate
+        # quel ruolo NON esiste, e un GRANT che lo nomina uccide la pipeline con
+        # «role "zeroerp_batch_fatturazione" does not exist».
+        #
+        # ⭐ Ed e' anche inutile: il provisioning fa GRANT SELECT/EXECUTE ON ALL
+        # ... IN SCHEMA sui 14 schemi applicativi piu' ALTER DEFAULT PRIVILEGES,
+        # quindi copre anche gli oggetti che nascono dopo.
+        #
+        # Perche' esiste: la regola era gia' scritta parola per parola nel
+        # changeSet 20260727-21, dopo lo stesso guasto del 2026-07-27. Nei 36
+        # giorni successivi sono stati scritti 39 GRANT in 20 changeSet che la
+        # violano — bonificati il 2026-09-02. Una regola in un commento la legge
+        # chi apre quel file; un cancello la legge per tutti.
+        #
+        # ⚠️ Il GRANT a `zeroerp_app` accanto RESTA: quello e' un ruolo che
+        # esiste durante il migrate, ed e' la riga da cui la sbagliata viene
+        # copiata — sono adiacenti e identiche tranne il nome del ruolo.
+        #
+        # Guida: docs/it/linee-guida-sql.md §11.6
+        run: python scripts/guardrail_grant_ruolo_batch.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \

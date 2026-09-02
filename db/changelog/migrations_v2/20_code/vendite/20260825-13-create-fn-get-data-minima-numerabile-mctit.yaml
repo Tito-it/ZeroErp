@@ -241,12 +241,22 @@ databaseChangeLog:
 
               GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile(
                   vendite.registri_fatturazione.id%TYPE, text) TO zeroerp_app;
-              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile(
-                  vendite.registri_fatturazione.id%TYPE, text) TO zeroerp_batch_fatturazione;
+              -- ⛔ 2026-09-02 — NIENTE GRANT AL RUOLO BATCH IN UN changeSet.
+              --    In CI il ruolo `zeroerp_batch_fatturazione` non esiste ancora: il workflow
+              --    lo provisiona DOPO le migrazioni standard (BYPASSRLS vuole superuser,
+              --    quindi lo crea `postgres` e non Liquibase), e il migrate moriva con
+              --    «role "zeroerp_batch_fatturazione" does not exist».
+              --    ⭐ Ed era anche INUTILE: provision_db_role_batch_fatturazione.sql fa
+              --    GRANT SELECT/EXECUTE ON ALL ... IN SCHEMA sui 14 schemi applicativi piu'
+              --    ALTER DEFAULT PRIVILEGES, quindi l'oggetto e' coperto su ogni ambiente —
+              --    anche se nasce dopo. Verificato: una funzione del 2026-08-31 senza nessun
+              --    GRANT esplicito risponde gia' EXECUTE = true per quel ruolo.
+              --    ⚠️ La regola era gia' scritta il 2026-07-27 in 20260727-21, dopo lo stesso
+              --    guasto: «i privilegi dei ruoli batch stanno nel provisioning, mai in un
+              --    changeSet». linee-guida-sql.md §11.6
               GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
                   vendite.fatturazione_lotti.id%TYPE) TO zeroerp_app;
-              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
-                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_batch_fatturazione;
+              -- ⛔ GRANT al ruolo batch rimosso il 2026-09-02 (vedi sopra) — linee-guida-sql §11.6
       rollback:
         - sql:
             dbms: postgresql

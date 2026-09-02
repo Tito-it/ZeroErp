@@ -342,6 +342,28 @@ pattern**, quindi genereranno già il nome nuovo. L'operazione è legittimamente
 ⛔ Mai una preCondition sul changeSet intero: `MARK_RAN` salterebbe anche la
 rinomina della tabella, in silenzio.
 
+### ⛔ I privilegi dei ruoli batch stanno nel provisioning, mai in un changeSet
+
+Presidiato da `scripts/guardrail_grant_ruolo_batch.py` (CI, `ci-validate.yaml`).
+Regola estesa: [linee-guida-sql.md §11.6](../docs/it/linee-guida-sql.md).
+
+I ruoli `zeroerp_batch_*` hanno `BYPASSRLS`, che vuole **superuser**: Liquibase
+gira come `zeroerp` e non può crearli. Li crea
+`scripts/sql/provision_db_role_batch_<job>.sql` come `postgres`, **dopo** le
+migrazioni standard (concede sul perimetro, e il perimetro deve esistere).
+⇒ Per tutto il migrate quel ruolo **non esiste**, e un `GRANT` che lo nomina
+ferma la pipeline con `role "..." does not exist`. In sviluppo il ruolo c'è e il
+GRANT passa.
+
+⭐ **Ed è inutile**: il provisioning fa `GRANT SELECT/EXECUTE ON ALL … IN SCHEMA`
+sui 14 schemi applicativi più `ALTER DEFAULT PRIVILEGES`, quindi copre anche gli
+oggetti che nascono dopo. Il rimedio è **togliere la riga**.
+
+⚠️ Il `GRANT` a `zeroerp_app` accanto **resta**: è la riga da cui quella
+sbagliata viene copiata — adiacenti e identiche tranne il nome del ruolo.
+⛔ Se serve un privilegio *in più* del perimetro ampio, si aggiunge al
+provisioning e si rilancia.
+
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
 La sede di una tabella di configurazione è il suo CSV in `80_data/sql/...`, letto
