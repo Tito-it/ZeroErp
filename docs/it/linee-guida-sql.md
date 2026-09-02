@@ -1283,11 +1283,12 @@ Prima di attivare RLS su una tabella esistente:
 
 ---
 
-## 11. Ciclo di vita di un changeSet — due divieti
+## 11. Ciclo di vita di un changeSet — i divieti
 
-Queste due regole non riguardano l'SQL che scrivi, ma **quando viene eseguito**.
-Entrambe nascono da difetti reali che si vedevano solo in CI, mai su un database
-di sviluppo, e che hanno richiesto due bonifiche prima di essere scritte qui.
+Queste regole non riguardano l'SQL che scrivi, ma **quando viene eseguito**.
+Nascono tutte da difetti reali che si vedevano solo in CI, mai su un database
+di sviluppo, e che hanno richiesto una bonifica a mano prima di essere scritte
+qui.
 
 ### 11.1 ⛔ `runOnChange: true` è vietato in `00_schema` e `20_code`
 
@@ -1401,6 +1402,76 @@ stesura non lo faceva: un `l'esistenza` dentro un commento apriva un letterale
 fantasma e faceva accusare un `COMMENT` sano 120 righe più in basso. Un cancello
 che sbaglia così viene spento dopo due segnalazioni, e un presidio spento è
 peggio di uno assente.
+
+---
+
+### 11.4 ⛔ Una `preCondition` di `00_schema`/`20_code` non interroga il CONTENUTO di `80_data`
+
+Presidiato da `scripts/guardrail_precondition_seed.py` in CI.
+
+**Il meccanismo.** `changelog-master-v2.yaml` esegue in quest'ordine: vecchia
+storia → `changelog-autogen.yaml` (`00_schema` e `20_code`, mescolati per
+numero) → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
+_«esiste già la riga `RESO_VENDITA` in `config.sorgenti`?»_ dentro `20_code`
+viene valutato **quando `80_data` non è ancora passato**.
+
+Su un database di sviluppo la riga c'è da settimane e il cancello passa. In CI
+il database nasce vuoto a ogni build, e il migrate muore con:
+
+```text
+SQL Precondition failed.  Expected '1' got '0'
+```
+
+⚠️ **Non è un caso di bordo**: la corsa che _introduce_ quel seed è esattamente
+quella in cui la preCondition non lo trova. È l'**unico** modo in cui una riga
+nuova può arrivare in un database ricostruito da zero.
+
+> Il 2026-09-02, ripartita la CI dopo giorni di fermo, il migrate si è fermato
+> su `20260820-12-update-fn-available-actions-reso-accrediti`, che pretendeva
+> `config.stati_doc_reso` con `codice_interno = 'ANNULLATO'`. Dietro c'erano
+> altre **quindici** mine identiche già committate — codici errore, sorgenti,
+> tipi entità, stati contabili — una build ciascuna per scoprirle a mano.
+
+**Perché lo si scrive lo stesso, e sembra prudenza.** «Verifico che il codice
+errore esista prima di creare la funzione che lo solleva» suona come rigore, ed
+è invece un cancello che si chiude da solo. Non serve, e questo è il punto: un
+codice errore, un tipo entità, una sorgente si nominano come **stringa** e si
+risolvono solo **a runtime** — quando la funzione viene chiamata, cioè quando
+`80_data` è passato da un pezzo. Lo stesso vale per un parametro letto dentro
+una funzione, e per una vista che fa `JOIN` su una tabella di catalogo: il
+`JOIN` avviene quando la vista è **interrogata**, non quando è creata.
+
+⭐ **Il rischio che il cancello descriveva resta vero, ma il posto è un altro.**
+«Se `codice_interno` cambiasse, il `CASE` smetterebbe di agganciarsi in
+silenzio» è una preoccupazione legittima: si presidia in **pgTAP**, che gira a
+`80_data` applicato, non con un `sqlCheck` di migrate.
+
+✅ **Restano legittime**, e vanno tenute, le preCondition su ciò che viene
+**prima**: `tableExists`, `columnExists`, `viewExists`,
+`foreignKeyConstraintExists`, l'esistenza di una funzione o di un trigger via
+`pg_proc`/`pg_trigger`/`pg_views`, l'arità di una funzione. Quelle guardano lo
+**schema**, che a quel punto c'è.
+
+✅ Restano legittimi anche due `sqlCheck` che _sembrano_ interrogare dati:
+
+* `expectedResult: 0` — «nessuna riga cattiva». Un database vuoto lo soddisfa,
+  e il senso del controllo è proprio quello;
+* `onFail` diverso da `HALT` (`MARK_RAN`, `CONTINUE`, `WARN`) — è la forma dei
+  **backfill del pregresso**: su un database nuovo non hanno niente da fare e si
+  segnano da soli. Non fermano la build, quindi non sono una mina.
+
+⚠️ **Il verso opposto è invece giusto e va tenuto**: un changeSet di `80_data`
+**deve** precondizionare su `tableExists`. Lì la dipendenza corre nel senso
+dell'esecuzione.
+
+ℹ️ Un changeSet fermato da una preCondition **non lascia traccia** in
+`databasechangelog` — le preCondition si valutano prima delle `changes`. Si
+corregge il file e si rilancia, senza toccare la tabella di stato.
+
+⚠️ **Limite del cancello, dichiarato**: riconosce le tabelle scritte
+**qualificate** (`schema.tabella`) dopo `FROM`/`JOIN`. Un riferimento non
+qualificato appoggiato al `search_path` gli sfugge — ed è comunque da non
+scrivere.
 
 ---
 

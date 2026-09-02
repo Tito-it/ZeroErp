@@ -289,6 +289,36 @@ e non si nota finché `runOnChange` è `true` (il checksum si ricalcola comunque
 diventa un migrate fallito nel momento in cui lo si spegne. Chi spegne un
 `runOnChange` deve correggere anche la chiave.
 
+### ⛔ Una `preCondition` di `00_schema`/`20_code` NON interroga il contenuto di `80_data`
+
+Presidiato da `scripts/guardrail_precondition_seed.py` (CI, `ci-validate.yaml`).
+Regola estesa e casistica: [linee-guida-sql.md §11.4](../docs/it/linee-guida-sql.md).
+
+**Perché**, ed è l'altra cosa che si vede solo in CI. Il changelog esegue
+`00_schema` + `20_code` (mescolati per numero dall'autogen) e **poi** `80_data`.
+Quindi un `sqlCheck` che pretende una riga di seed — un codice errore, una
+`config.sorgenti`, uno stato a catalogo — viene valutato quando quella riga non
+esiste ancora: la corsa che la **introduce** è esattamente quella in cui il
+cancello non la trova, e il migrate muore con
+`SQL Precondition failed. Expected '1' got '0'`. Su un DB di sviluppo la riga c'è
+da settimane e il cancello passa.
+
+Il 2026-09-02, ripartita la CI dopo giorni di fermo, il migrate si è fermato su
+`20260820-12-update-fn-available-actions-reso-accrediti`; dietro c'erano altre
+**quindici** mine identiche già committate, una build ciascuna per scoprirle.
+
+Non serve, ed è il punto: un codice errore o una sorgente si nominano come
+**stringa** e si risolvono **a runtime**, quando `80_data` è passato da un pezzo.
+Ciò che il cancello voleva difendere («se il `codice_interno` cambiasse, il
+`CASE` smetterebbe di agganciarsi in silenzio») è un presidio **pgTAP**.
+
+✅ Restano leciti: le preCondition sullo **schema** (`tableExists`,
+`columnExists`, `viewExists`, `pg_proc`, arità), un `sqlCheck` con
+`expectedResult: 0` («nessuna riga cattiva»), e un `onFail` diverso da `HALT`
+(i backfill del pregresso, che su un DB nuovo si segnano da soli).
+⚠️ Il verso opposto va invece tenuto: un changeSet di `80_data` **deve**
+precondizionare su `tableExists`.
+
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
 La sede di una tabella di configurazione è il suo CSV in `80_data/sql/...`, letto

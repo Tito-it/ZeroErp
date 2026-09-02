@@ -161,16 +161,17 @@ databaseChangeLog:
                    WHERE schemaname = 'vendite'
                      AND viewname   = 'vw_documento_lineage_archi'
                      AND definition LIKE '%''T''::text%'
-            # ⚠️ La chiave del ramo nuovo NON e' una scelta di chi scrive: e' letta da
-            #    config.sorgenti. Se un giorno DDT_VENDITA passasse a key_selector='uid'
-            #    questo ramo azzererebbe i suoi archi in silenzio — meglio fermarsi.
-            - sqlCheck:
-                expectedResult: 1
-                sql: |
-                  SELECT count(*) FROM config.sorgenti
-                   WHERE codice_interno = 'DDT_VENDITA'
-                     AND attivo IS TRUE
-                     AND key_selector = 'id'
+            # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.sorgenti (codice_interno = 'DDT_VENDITA' AND key_selector = 'id').
+            #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+            #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+            #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+            #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+            #    ⚠️ Il rischio che il cancello descriveva resta VERO — se DDT_VENDITA
+            #    passasse a key_selector='uid' il ramo azzererebbe i suoi archi in
+            #    silenzio — ma va presidiato in pgTAP, che gira a 80_data applicato.
+            #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+            #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+            #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
       changes:
         - sql:
             dbms: postgresql

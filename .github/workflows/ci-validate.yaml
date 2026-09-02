@@ -176,6 +176,31 @@ jobs:
         # parser di PostgreSQL, cioe' il migrate qui sotto.
         run: python scripts/guardrail_sql_letterali.py
 
+      - name: Guardrail preCondition sul contenuto di 80_data
+        # ⚠️ POSIZIONE: prima del migrate, e per lo stesso motivo degli altri
+        # tre — il difetto che presidia UCCIDE il migrate, e scoprirlo dopo
+        # significa averlo gia' pagato.
+        #
+        # Cosa presidia: un changeSet di `00_schema`/`20_code` non puo'
+        # pretendere che una riga di seed esista gia'. Il changelog esegue
+        # 00_schema + 20_code, POI 80_data: la corsa che introduce la riga e'
+        # esattamente quella in cui la preCondition non la trova. Su un
+        # database di sviluppo la riga c'e' da settimane e il cancello passa;
+        # qui il database nasce vuoto a ogni build e il migrate muore con
+        # «SQL Precondition failed. Expected '1' got '0'».
+        #
+        # Perche' esiste: il 2026-09-02, ripartita la CI dopo giorni di fermo,
+        # il migrate si e' fermato su 20260820-12 — e dietro c'erano altre
+        # QUINDICI mine identiche gia' committate, una build ciascuna per
+        # scoprirle a mano.
+        #
+        # Restano leciti: `expectedResult: 0` (un DB vuoto lo soddisfa),
+        # `onFail` diverso da HALT (i backfill del pregresso), e tutte le
+        # preCondition sullo SCHEMA — tableExists, columnExists, pg_proc.
+        #
+        # Guida: docs/it/linee-guida-sql.md §11.4
+        run: python scripts/guardrail_precondition_seed.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \

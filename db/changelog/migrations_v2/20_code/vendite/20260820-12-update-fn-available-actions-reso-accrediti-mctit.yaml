@@ -114,14 +114,16 @@ databaseChangeLog:
             - tableExists:
                 schemaName: vendite
                 tableName: resi_righe_accrediti
-            # Lo stato di destinazione su cui il motivo si aggancia deve esistere
-            # col suo codice_interno: se cambiasse, il CASE smetterebbe di
-            # agganciarsi e il bottone tornerebbe acceso IN SILENZIO.
-            - sqlCheck:
-                expectedResult: 1
-                sql: >
-                  SELECT count(*) FROM config.stati_doc_reso
-                  WHERE codice_interno = 'ANNULLATO'
+            # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.stati_doc_reso (codice_interno = 'ANNULLATO').
+            #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+            #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+            #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+            #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+            #    E' il changeSet su cui la CI si e' fermata il 2026-09-02. Il CASE risolve
+            #    'ANNULLATO' quando la funzione viene CHIAMATA, non quando viene creata.
+            #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+            #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+            #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
       changes:
         - sql:
             dbms: postgresql
