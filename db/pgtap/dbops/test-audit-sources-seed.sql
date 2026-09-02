@@ -51,11 +51,14 @@ SELECT plan(7);
 -- =========================================================
 -- 1) Almeno 9 righe attive
 -- =========================================================
+-- ⚠️ Era `>= 9` fino al 2026-09-02: `risorse_umane_auth_user` (riga 5) e'
+--   stata dismessa quel giorno, quindi le attive sono 8. Vedi il test 2, che
+--   dice QUALE e perche'.
 SELECT cmp_ok(
     (SELECT count(*)::int FROM dbops.audit_sources WHERE attivo = true),
     '>=',
-    9,
-    '1) dbops.audit_sources ha almeno 9 righe attive (post dismissione profili_reparto_*)'
+    8,
+    '1) dbops.audit_sources ha almeno 8 righe attive (post dismissione profili_reparto_* e risorse_umane_auth_user)'
 );
 
 -- =========================================================
@@ -69,10 +72,29 @@ SELECT bag_eq(
                   'profili_accesso_aree','profili_accesso_azioni','profili_accesso_bindings')
     $$,
     $$ VALUES ('user_override_aree'),('user_override_azioni'),('user_override_oggetti'),
-              ('user_emittenti_fiscali'),('risorse_umane_auth_user'),('identita_digitali'),
+              ('user_emittenti_fiscali'),('identita_digitali'),
               ('profili_accesso_aree'),('profili_accesso_azioni'),('profili_accesso_bindings') $$,
-    '2) Tutti i 9 codici target presenti e attivi (modello profili_accesso_*)'
+    '2) Gli 8 codici target sono attivi, e risorse_umane_auth_user NON lo e'' piu'''
 );
+
+-- ⭐ NOTA SULLA FORMA, perche' la scelta non e' cosmetica: `risorse_umane_auth_user`
+--   resta nell'`IN (...)` qui sopra — cioe' nel PERIMETRO interrogato — ed e'
+--   uscito solo dalle ATTESE. Cosi' il test non si limita a ignorarlo: se
+--   qualcuno lo riattivasse, il `bag_eq` troverebbe 9 codici contro 8 attesi e
+--   diventerebbe ROSSO. Toglierlo da entrambi i lati avrebbe reso la
+--   riattivazione invisibile, ed e' proprio la decisione che va presidiata.
+--
+-- ⛔ PERCHE' E' STATO DISMESSO (2026-09-02). La sua `storico_table` era
+--   `storico.risorse_umane_auth_user`, che su un database RICOSTRUITO non
+--   nasce piu': `anagrafiche.risorse_umane_auth_user` e' diventata una VISTA
+--   (la tabella e' `_legacy_...`, changeSet 20260429-19a) e l'automazione dello
+--   storico lavora sulle TABELLE. In dev la vecchia sopravvive dalla storia del
+--   database, in CI no — di li' 9 errori Django tutti uguali.
+--   ⚠️ E la strada «puntala alla _legacy» e' stata SCARTATA su una misura:
+--   `storico._legacy_risorse_umane_auth_user` ha ZERO righe, mentre i 12
+--   snapshot pre-cutover stanno nella vecchia. Ripuntarla avrebbe mostrato un
+--   audit VUOTO invece di un errore — la stessa perdita, ma muta.
+--   L'audit AUTH del presente e' coperto da `identita_digitali` (riga 8).
 
 -- =========================================================
 -- 3) Vocabolario controllato area_funzionale
@@ -143,9 +165,18 @@ SELECT bag_eq(
      WHERE table_schema = 'script'
        AND table_name   = 'vw_audit_sources'
     $$,
-    $$ VALUES ('code'), ('label_key'), ('area_funzionale') $$,
-    '7) script.vw_audit_sources espone esattamente (code, label_key, area_funzionale)'
+    $$ VALUES ('code'), ('label_key'), ('area_funzionale'), ('storico_table') $$,
+    '7) script.vw_audit_sources espone esattamente (code, label_key, area_funzionale, storico_table)'
 );
+
+-- ⭐ `storico_table` e' entrata il 2026-09-02 (changeSet 20260902-11) e questo
+--   test e' cambiato NELLO STESSO GIRO. Prima la vista esponeva solo i tre
+--   campi del contratto API, e il backend il nome fisico se lo costruiva
+--   concatenando `code` — che e' l'identita' LOGICA, e alla prima storico
+--   rinominata si separa dal nome fisico senza dare nessun avviso.
+-- ⚠️ Un presidio sulla FORMA va cambiato insieme alla forma, o smette di
+--   essere un presidio e diventa un ostacolo: e' `bag_eq`, quindi una colonna
+--   in piu' lo fa rosso anche quando l'aggiunta e' voluta.
 
 SELECT * FROM finish();
 ROLLBACK;
