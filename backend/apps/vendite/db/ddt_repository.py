@@ -127,6 +127,14 @@ class DdtRepository(
             colonne=_ORDER_COLS_DDT,
             default=_ORDER_COLS_DDT["data"],
             tiebreak="v.id",
+            # ⭐ `default_desc=True`: senza indicazioni si legge dalla piu'
+            #    recente. ⛔ Non e' cosmesi — il frontend apre questa lista a
+            #    `data desc`, e con `removable-sort` esiste uno stato in cui
+            #    l'ordinamento viene TOLTO e il backend applica il proprio: se
+            #    i due default non coincidono, quello stato ribalta l'elenco in
+            #    crescente senza che nessuna freccia lo dica (visto da Tid sui
+            #    DDT il 2026-09-02).
+            default_desc=True,
         )
         # `max_limit`: la lista pagina (cap 200, gia' imposto da
         # parse_list_params), l'export chiede fino a EXPORT_MAX_ROWS+1 per

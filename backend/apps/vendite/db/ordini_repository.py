@@ -124,6 +124,14 @@ class OrdiniRepository(
             colonne=_ORDER_COLS_ORDINI,
             default=_ORDER_COLS_ORDINI["data"],
             tiebreak="v.id",
+            # ⭐ `default_desc=True`: senza indicazioni si legge dalla piu'
+            #    recente. ⛔ Non e' cosmesi — il frontend apre questa lista a
+            #    `data desc`, e con `removable-sort` esiste uno stato in cui
+            #    l'ordinamento viene TOLTO e il backend applica il proprio: se
+            #    i due default non coincidono, quello stato ribalta l'elenco in
+            #    crescente senza che nessuna freccia lo dica (visto da Tid sui
+            #    DDT il 2026-09-02).
+            default_desc=True,
         )
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
