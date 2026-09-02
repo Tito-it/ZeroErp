@@ -764,11 +764,17 @@ dati veri.
 
 ## 12. Roadmap — funzionalità in sviluppo
 
-> **Nota**: questa sezione descrive funzionalità **previste ma non
-> ancora rilasciate**. Sono tracciate nel piano operativo
-> interno con
-> stato, sforzo e decisioni operative aperte. Il riferimento `DEF-N`
-> nei punti seguenti rimanda all'item del piano.
+> **Nota**: questa sezione descrive funzionalità **previste**, con lo stato di
+> ciascuna. Sono tracciate nel piano operativo interno con stato, sforzo e
+> decisioni operative aperte; il riferimento `DEF-N` nei punti seguenti rimanda
+> all'item del piano.
+>
+> ⚠️ **Uno stato scritto in una guida invecchia in silenzio, ed è già successo
+> qui**: la §12.7 ha detto «4/13 liste migrate» per mesi dopo che l'estensione era
+> diventata lo standard del frontend. Uno stato in questa sezione va **verificato
+> contro il codice** prima di citarlo — una roadmap che dice «non c'è» di cose che
+> ci sono è peggio di una sezione mancante, perché chi legge non ha modo di
+> accorgersene. Stati verificati il **2026-09-02**.
 
 ### 12.1 Notifica "Preset aggiornato" (DEF-2)
 
@@ -874,24 +880,37 @@ Da decidere se fondere DEF-7+10 in un unico item con sotto-categorie
 
 ### 12.7 Estensione ad altre liste (DEF-8)
 
-> **Stato**: 🟡 Parziale — 4/13 liste migrate. Sforzo S per lista, incrementale. **Da completare**.
+> **Stato**: ✅ **Superata come voce di roadmap** (verificato 2026-09-02) — non è
+> più un'estensione da pianificare, è **lo standard**. Resta il debito dichiarato
+> qui sotto.
 
-Oggi sono servite dal motore di personalizzazione: `anagrafiche.clienti`,
-`anagrafiche.soggetti`, `anagrafiche.fornitori` e `vendite.contratti` (prima
-lista non-anagrafiche, 2026-06-03). Per ogni altra lista del frontend serve:
-seed catalogo colonne, seed preset di sistema, eventuali nuovi campi nel SELECT
-del repository, refactor del componente Vue da `<DataTable>` statico a
-`<ListaConfigurabile>` (oggi semplificato dal composable
-`useListaConfigurabilePage`). Pattern rodato, tempi prevedibili.
+⛔ **Oggi ogni lista si monta con `<ListaConfigurabile>`**: montare una `DataTable`
+grezza in una view è l'**eccezione**, e va motivata in un commento sopra l'import.
+La regola, le due sole eccezioni ammesse (le righe di un documento dentro il suo
+master, e una tabella di anteprima dentro un dialog) e il registro di ciò che
+ancora non la rispetta stanno in
+[frontend-standards §«Regola zero della lista»](/dev/frontend/frontend-standards).
+⚠️ **Nemmeno «è dentro un drawer» è un'eccezione**: una lista su un tab di drawer
+si monta con `useDrawerTabLista` + `<DrawerTabLista>`.
 
-Liste residue (in ordine di priorità suggerita):
+**Che cosa è cambiato rispetto a questa voce.** Quando fu scritta, le liste servite
+dal motore erano quattro e l'elenco qui sotto era la coda da smaltire —
+`catalogo.articoli`, `vendite.preventivi`, `vendite.listini`,
+`vendite.promo_articoli`, `vendite.approvazioni_prezzo`, `anagrafiche.indirizzi`,
+`catalogo.unita_misura`, `pratiche`. **Sono tutte a catalogo**, e il catalogo
+`ui.lista_definizione` al 2026-09-02 porta **65** definizioni (il seed è in
+`80_data/sql/ui/lista_definizione.csv`, quindi si legge lì, non da questa pagina).
 
-1. `catalogo.articoli` (lista molto frequente)
-2. `vendite.preventivi`
-3. `vendite.listini`, `vendite.promo-articoli`, `vendite.approvazioni-prezzo`
-4. `anagrafiche.indirizzi`
-5. `catalogo.unita-misura`
-6. `pratiche` (dashboard 3 livelli, caso speciale)
+⭐ **La lezione che vale più dell'elenco**: una lista nuova **non richiede un
+brief e non aspetta nessuno**. La sua configurazione è **dato, non DDL** — una
+riga in `ui.lista_definizione` più N in `ui.lista_colonna`, create
+dall'amministrazione in-app oppure con `scripts/gen_seed_lista.py`.
+
+🔴 **Il debito che resta**, ed è dichiarato invece che dimenticato: la **matrice
+slot/override** (editing inline, popolazione dal catalogo) oggi non ha una casa —
+resta una `DataTable` grezza, col debito scritto nel
+[piano di migrazione PrimeVue 5](/dev/work-in-progress/piano-migrazione-primevue-5)
+§Gruppo B, insieme al criterio in tre domande e alla decisione ancora aperta.
 
 ### 12.8 Autocomplete chiavi i18n nel form colonna (DEF-9)
 

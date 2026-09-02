@@ -1512,7 +1512,7 @@ misura. Le misure di questa sezione sono state prese con `SET app.current_user_i
   | Dove | Cosa |
   | --- | --- |
   | ~~`docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md`~~ | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` — ✅ **causa corretta nel generatore il 2026-08-26**, spariscono alla prossima rigenerazione (vedi sotto) |
-  | `docs/it/dev/frontend/i18n-namespace-radici.md` | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` |
+  | ~~`docs/it/dev/frontend/i18n-namespace-radici.md`~~ | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` — ✅ **corretta il 2026-09-02**: l'id vero collassa la lineetta in **un solo** trattino (`#struttura-chiavi-radici-dei-namespace`), letto dall'HTML generato e non dedotto. `frontend-standards.md` non ha ancore esplicite `<a id="">`, quindi il link deve puntare all'id dell'heading. Stesso link corretto anche nelle 2 occorrenze di `brief-i18n-radici-uniformi.md` |
 
   > ℹ️ **I 4 link morti non sono un contenuto sbagliato: è il generatore.**
   > L'index di schema è **auto-generato** (`scripts/gen_db_docs.py`) e ricopia la

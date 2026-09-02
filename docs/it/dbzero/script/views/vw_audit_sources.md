@@ -3,13 +3,14 @@
 
 > 📝 **Descrizione**
 >
-> Vista pubblica delle storico audit-abili dal drawer admin (Fase 5 P1 2026-04-29). Espone solo (code, label_key, area_funzionale) come contratto API: storico_table / storico_pk_col restano colonne tecniche di dbops.audit_sources, lette solo da script.fn_audit_summary per dispatch dinamico.
+> Vista pubblica delle storico audit-abili dal drawer admin. Espone (code, label_key, area_funzionale, storico_table). ⭐ `storico_table` e' entrata il 2026-09-02 e prima non c'era: il backend il nome fisico se lo costruiva concatenando `code`, che e' l'identita' LOGICA della sorgente (ci ordina e ci filtra l'API). Finche' i due coincidono la scorciatoia sembra funzionare; alla prima storico rinominata si separano, e la separazione non da' un avviso — da' un errore a valle su un database ricostruito, che e' esattamente cio' che e' successo con storico.risorse_umane_auth_user quando la sua madre e' diventata una vista. ⚠️ Chi costruisce un `FROM` dinamico deve leggere QUESTA colonna, mai `code`. ⛔ E chi modifica questa vista usi `CREATE OR REPLACE`: un DROP porterebbe via i GRANT di zeroerp_app e zeroerp_batch_fatturazione, e nessun changeSet li ri-concede.
 
 ```sql
 CREATE OR REPLACE VIEW script.vw_audit_sources AS
 SELECT code,
     label_key,
-    area_funzionale
+    area_funzionale,
+    storico_table
    FROM dbops.audit_sources
   WHERE (attivo = true)
   ORDER BY code;

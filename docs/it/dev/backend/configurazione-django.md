@@ -4,7 +4,7 @@ title: 🚀 backend-dev — Django + Nginx + Gunicorn (LAN + Tailscale)
 category: applicazioni
 version: 1.0
 license: GPL-3.0-or-later
--------------------------
+---
 
 # 🚀 backend-dev — Django + Nginx + Gunicorn (LAN + Tailscale)
 

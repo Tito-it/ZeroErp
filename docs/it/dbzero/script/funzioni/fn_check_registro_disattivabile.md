@@ -40,10 +40,13 @@ BEGIN
     --   Un ordine diverso farebbe dire al tooltip «ha fatture» e
     --   all'errore «ha DDT», sullo stesso registro.
     --
-    -- ⛔ SU QUESTA TABELLA I GUARD SONO SEI, ed erano tre fino al
-    --   2026-08-31: ddt, ordini e resi hanno guadagnato
-    --   `registro_id` col trasloco, e l'automazione ha montato il
-    --   guard DA SOLA a partire dalla FK.
+    -- ⛔ SU QUESTA TABELLA I GUARD SONO SETTE, ed erano tre fino al
+    --   2026-08-31 e sei fino al 2026-09-02: ddt, ordini e resi
+    --   hanno guadagnato `registro_id` col trasloco, e `commesse`
+    --   col changeSet 20260902-07. Ogni volta l'automazione ATTIVO
+    --   ha montato il guard DA SOLA a partire dalla FK, al migrate,
+    --   senza annunciarlo — a dirlo e' stato il pgTAP §6, che
+    --   confronta i montati con i coperti.
     --   ⚠️ Quello che sorprende resta il contatore: un registro
     --   che ha numerato anche UN SOLO documento ha una riga di
     --   progressivi viva, quindi non si spegne piu'. Il cestino e'
@@ -51,10 +54,11 @@ BEGIN
     --   video l'operatore lo scopre premendo.
     --
     -- ⚠️ SECURITY DEFINER: si legge vendite.fatture, vendite.ddt,
-    --   vendite.ordini e vendite.resi, che hanno la RLS. Sotto il
-    --   perimetro di un operatore i documenti di un altro
-    --   emittente sono invisibili, e la check concluderebbe «si
-    --   puo' disattivare» PROPRIO nel caso da bloccare.
+    --   vendite.ordini, vendite.resi e vendite.commesse, che hanno
+    --   la RLS. Sotto il perimetro di un operatore i documenti di
+    --   un altro emittente sono invisibili, e la check
+    --   concluderebbe «si puo' disattivare» PROPRIO nel caso da
+    --   bloccare.
     -- =========================================================
 
     -- Guard di parametro: un id assente o non positivo non esce da
@@ -89,10 +93,37 @@ BEGIN
             concat('registro ', p_registro_id, ' inesistente'));
     END IF;
 
-    -- ---- MOTIVO 1 — ha documenti di trasporto ----------------
-    -- ⛔ NUOVO dal 2026-08-31, e primo perche' `ddt` viene prima
-    --   di tutti in ordine alfabetico: e' il guard che scatta per
+    -- ---- MOTIVO 1 — ha commesse ------------------------------
+    -- ⛔ NUOVO dal 2026-09-02, e PRIMO perche' `commesse` precede
+    --   `ddt` in ordine alfabetico: e' il guard che scatta per
     --   primo, quindi e' la frase che l'operatore vedrebbe.
+    -- ⚠️ «ESISTONO» e non «esistono ATTIVE»: vendite.commesse non
+    --   ha la colonna `attivo`, quindi il trigger cade nel ramo
+    --   dell'ESISTENZA (_EXIST). Verificato su pg_attribute, e
+    --   confermato dal messaggio reale del rifiuto.
+    -- ⭐ Da qui discende una durezza che conviene sapere: una
+    --   commessa non si cancella, quindi un registro che ne ha
+    --   numerata anche una sola non si spegne piu'.
+    SELECT count(*) INTO v_n
+      FROM vendite.commesse cm
+     WHERE cm.registro_id = p_registro_id;
+
+    IF v_n > 0 THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+            'reason',     'HA_COMMESSE',
+            'reason_key', 'amministrazione.registri_fatturazione.disattiva_blocco.ha_commesse',
+            'dettaglio',  jsonb_build_object('registro_id', p_registro_id,
+                                             'codice',      v_codice,
+                                             'quante',      v_n),
+            'valori',     jsonb_build_array('vendite.registri_fatturazione',
+                                            'id',
+                                            p_registro_id::text,
+                                            'vendite.commesse'));
+    END IF;
+
+    -- ---- MOTIVO 2 — ha documenti di trasporto ----------------
+    -- ⛔ NUOVO dal 2026-08-31.
     -- ⚠️ «ESISTONO» e non «esistono ATTIVI»: vendite.ddt non ha la
     --   colonna `attivo`, quindi il trigger cade nel ramo
     --   dell'ESISTENZA (_EXIST). Verificato, non dedotto.
@@ -114,7 +145,7 @@ BEGIN
                                             'vendite.ddt'));
     END IF;
 
-    -- ---- MOTIVO 2 — ha fatture -------------------------------
+    -- ---- MOTIVO 3 — ha fatture -------------------------------
     -- ⛔ «ESISTONO», non «esistono ATTIVE»: vendite.fatture NON HA
     --   la colonna `attivo`, quindi dbops.trgfn_prevent_deactivate_if_children
     --   cade nel ramo dell'ESISTENZA e solleva
@@ -143,7 +174,7 @@ BEGIN
                                             'vendite.fatture'));
     END IF;
 
-    -- ---- MOTIVO 3 — ha ordini --------------------------------
+    -- ---- MOTIVO 4 — ha ordini --------------------------------
     -- ⛔ NUOVO dal 2026-08-31. _EXIST: vendite.ordini non ha `attivo`.
     SELECT count(*) INTO v_n
       FROM vendite.ordini o
@@ -163,7 +194,7 @@ BEGIN
                                             'vendite.ordini'));
     END IF;
 
-    -- ---- MOTIVO 4 — ha progressivi ---------------------------
+    -- ---- MOTIVO 5 — ha progressivi ---------------------------
     -- ⭐ E' quello che sorprende: basta UN documento numerato perche'
     --   esista una riga di contatore, e da li' il registro non si
     --   spegne piu'.
@@ -190,7 +221,7 @@ BEGIN
                                             'vendite.registri_fatturazione_progressivi'));
     END IF;
 
-    -- ---- MOTIVO 5 — ha resi ----------------------------------
+    -- ---- MOTIVO 6 — ha resi ----------------------------------
     -- ⛔ NUOVO dal 2026-08-31. _EXIST: vendite.resi non ha `attivo`.
     SELECT count(*) INTO v_n
       FROM vendite.resi re
@@ -210,7 +241,7 @@ BEGIN
                                             'vendite.resi'));
     END IF;
 
-    -- ---- MOTIVO 6 — ha mapping tipo documento ----------------
+    -- ---- MOTIVO 7 — ha mapping tipo documento ----------------
     -- ⚠️ Anche qui ESISTENZA e non «attive»: vendite.tipi_doc_fiscale_registri
     --   non ha la colonna `attivo`.
     SELECT count(*) INTO v_n

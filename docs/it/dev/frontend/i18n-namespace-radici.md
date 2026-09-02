@@ -3,7 +3,7 @@
 > **Tipo**: riferimento di dettaglio · **Stato**: ✅ VIGENTE · **Data**: 2026-07-19
 > · **Ambito**: frontend, backend e database — ogni livello che *emette* o
 > *consuma* una chiave i18n.
-> **La regola vive in** [frontend-standards.md §Multilingua](frontend-standards.md#struttura-chiavi--radici-dei-namespace)
+> **La regola vive in** [frontend-standards.md §Multilingua](frontend-standards.md#struttura-chiavi-radici-dei-namespace)
 > (lettura obbligatoria di progetto): quella è la fonte canonica. Questo
 > documento è il suo **approfondimento** — procedura di classificazione,
 > soglia del 70%, inventario — e le è subordinato.

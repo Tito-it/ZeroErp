@@ -15,6 +15,8 @@
 > * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
 > * [Termini di pagamento](/guide/termini-di-pagamento) — il piano rate della fattura
 > * [Cruscotti fatturazione](/guide/cruscotti-fatturazione) — le stesse operazioni viste dall'operatore
+> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — **il motore dei registri**: la numerazione fiscale della fattura non è un meccanismo suo, è quello condiviso con ordini, DDT, resi e commesse
+> * [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga) — **la sede unica** che decide il codice IVA di una riga, e dove il plafond di un titolo si consuma davvero
 
 ---
 
@@ -768,6 +770,15 @@ che riscrive le righe leggendo le regole correnti.
 `fn_assign_numero_fattura` è il **punto unico** in cui il progressivo viene
 assegnato — `fn_numera_fattura_opz_emessa` delega qui — quindi i controlli messi
 lì valgono per qualunque percorso, senza doverli enumerare.
+
+> ⭐ **«Punto unico» vale per i controlli, non per il meccanismo.** Il progressivo
+> lo produce il **motore dei registri** (`vendite.registri_fatturazione`), che è lo
+> stesso di ordini, DDT, resi e commesse: la fattura non ha una numerazione sua, ha
+> il *proprio registro* su un motore condiviso — con la progressione per azienda
+> emittente, il reset annuale e la forma del numero prese da lì. Il meccanismo, e
+> il criterio per distinguerlo dal catalogo dei formati usato per i codici cliente,
+> sta nella guida
+> [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici).
 
 Rifiuta in due casi, entrambi **prima** di consumare il progressivo:
 
