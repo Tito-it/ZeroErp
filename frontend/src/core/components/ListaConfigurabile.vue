@@ -528,17 +528,29 @@ const campiCronologici = computed(() => new Set(
     .map((c) => c.campo_sorgente),
 ))
 
+// ⛔ MEMORIA DEL CAMPO SU CUI SI STA CICLANDO, e non e' un dettaglio: senza,
+//    il giro DESC qui sotto rende una colonna data NON PIU' ORDINABILE IN
+//    CRESCENTE. Il motivo e' `removable-sort`: PrimeVue alterna
+//    asc -> desc -> NIENTE, e nello stato «niente» il `sortField` applicato
+//    torna `null`. Il click successivo sulla STESSA colonna sembra allora un
+//    primo click — campo diverso da `null` — e viene girato di nuovo a DESC.
+//    ⇒ il ciclo si chiude su desc -> niente -> desc, e l'ASC non si raggiunge
+//    piu'. 🔴 Difetto reale, trovato da Tid in collaudo sulla lista DDT il
+//    2026-09-02.
+// ⚠️ La memoria sopravvive allo stato «niente» apposta: e' l'unica cosa che
+//    distingue «sto ancora ciclando su Data» da «sono passato a un'altra
+//    colonna», e lo stato intermedio cancella l'informazione da `props`.
+const ultimoCampoOrdinato = ref(null)
+
 // Scopo: il verso del PRIMO click su un'intestazione data.
-// ⛔ SOLO IL PRIMO, e la condizione che lo distingue e' `sortField` DIVERSO da
-//    quello applicato ora: PrimeVue alterna asc -> desc -> niente, e girare
-//    anche i click successivi renderebbe la colonna NON INVERTIBILE — il
-//    secondo click ripeterebbe il primo. Con questa guardia il ciclo diventa
-//    desc -> asc -> niente, che e' lo stesso ciclo di prima letto dall'altro
-//    capo.
+// ⛔ SOLO IL PRIMO: girare anche i click successivi renderebbe la colonna non
+//    invertibile. Con la memoria il ciclo e' desc -> niente -> asc -> desc,
+//    cioe' lo stesso ciclo di prima letto dall'altro capo.
 // ⚠️ Non tocca le liste non paginate: la' l'ordine lo calcola PrimeVue in
 //    locale e questo evento non parte nemmeno (vedi la guardia sotto).
 function versoIniziale(event) {
-  const nuovaColonna = event?.sortField && event.sortField !== props.sortField
+  const campoPrecedente = props.sortField ?? ultimoCampoOrdinato.value
+  const nuovaColonna = event?.sortField && event.sortField !== campoPrecedente
   if (
     event?.sortOrder === 1
     && nuovaColonna
@@ -552,7 +564,13 @@ function versoIniziale(event) {
 function onSort(event) {
   if (!props.paginata) return
   resetExpansionSePropria()
-  emit('sort', versoIniziale(event))
+  const risolto = versoIniziale(event)
+  // ⚠️ La memoria si aggiorna DOPO la decisione, e tiene il valore vecchio
+  //    quando l'evento non porta un campo (stato «niente»): e' esattamente il
+  //    caso per cui esiste.
+  ultimoCampoOrdinato.value =
+    event?.sortField ?? props.sortField ?? ultimoCampoOrdinato.value
+  emit('sort', risolto)
 }
 
 function onRowClick(event) {

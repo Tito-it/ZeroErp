@@ -462,6 +462,24 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.amm_software.db.amm_software_repository", "AmmSoftwareRepository"
         ).list_audit_log(limit=1, offset=0, **_ordine(ob, od)),
+        # ⛔ TRE NOMI CHE LA SELECT NON HA, e non e' un difetto: la riga li
+        #    acquista in Python. `list_audit_log` proietta `valid_from`,
+        #    `user_insert` e `code`, e li RIBATTEZZA `timestamp`,
+        #    `user_modifica` e `tabella` mentre compone il dict — `tabella` e'
+        #    l'alias di retrocompatibilita' di `code` per i consumer vecchi.
+        # 🔴 PERCHE' L'ESENZIONE ARRIVA SOLO ORA. Fino al 2026-09-02 questa
+        #    lista non arrivava nemmeno a essere guardata: la query esplodeva
+        #    (`storico.risorse_umane_auth_user` inesistente su un database
+        #    RICOSTRUITO) e il test dava ERRORE, non fallimento. Spento il
+        #    rosso, la query parte — e in CI torna ZERO righe, perche' le
+        #    storico di un database appena costruito sono vuote. Senza righe il
+        #    presidio ripiega sulle colonne del CURSORE, dove i tre nomi
+        #    Python non ci sono. ⇒ Il difetto era latente e nascosto dietro un
+        #    errore piu' rumoroso.
+        # ⭐ L'esenzione resta ONESTA: il test 1-bis pretende che questi tre
+        #    nomi esistano DAVVERO nella riga, quando una riga c'e' — e sullo
+        #    sviluppo c'e'. Un `campi_da_python` invecchiato diventa rosso.
+        campi_da_python=frozenset({"timestamp", "user_modifica", "tabella"}),
     ),
     "dbops.coda_lavori": Esercizio(
         dove="core/services/coda_lavori/repository.py::elenca",

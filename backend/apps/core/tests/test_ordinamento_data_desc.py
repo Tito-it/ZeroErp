@@ -38,6 +38,15 @@
    Il click successivo NON si gira, o la colonna diventerebbe non invertibile:
    il secondo click ripeterebbe il primo.
 
+2-bis. test_la_memoria_sopravvive_allo_stato_senza_ordinamento
+   ⛔ `removable-sort` ha un TERZO stato in cui il campo applicato torna `null`:
+   senza memoria, il click dopo sembra un primo click e l'ASC diventa
+   irraggiungibile. Difetto trovato in collaudo sui DDT.
+
+2-ter. test_lo_stato_senza_ordinamento_non_dichiara_una_direzione
+   Nello stesso terzo stato la direzione e' `null`: dichiararla `desc` teneva
+   la freccia disallineata dai dati.
+
 3. test_esiste_almeno_una_colonna_data_ordinabile_a_catalogo
    Il verso che rende la regola ESIGIBILE: se nessuna colonna data fosse
    ordinabile, i test qui sopra sarebbero verdi su una regola che non tocca
@@ -120,7 +129,7 @@ class OrdinamentoDataDescTests(unittest.TestCase):
         # colonna data resterebbe DESC a ogni click, cioe' NON INVERTIBILE.
         self.assertRegex(
             src,
-            r"event\.sortField\s*!==\s*props\.sortField",
+            r"event\.sortField\s*!==\s*campoPrecedente",
             "manca la guardia sul PRIMO click: girando anche i click "
             "successivi una colonna data non si potrebbe piu' invertire — il "
             "secondo click ripeterebbe il primo",
@@ -129,6 +138,58 @@ class OrdinamentoDataDescTests(unittest.TestCase):
             src,
             r"sortOrder:\s*-1",
             "il verso di partenza non e' piu' DESC",
+        )
+
+    def test_la_memoria_sopravvive_allo_stato_senza_ordinamento(self) -> None:
+        # 🔴 IL DIFETTO CHE QUESTO TEST PRESIDIA E' COSTATO UN COLLAUDO.
+        #    `removable-sort` alterna asc -> desc -> NIENTE, e nel terzo stato
+        #    il `sortField` applicato torna `null`. Confrontando il click
+        #    successivo con le sole `props`, la stessa colonna sembrava NUOVA e
+        #    veniva girata di nuovo a DESC: il ciclo si chiudeva su
+        #    desc -> niente -> desc e l'ASC non si raggiungeva piu'.
+        #    Trovato da Tid sulla lista DDT il 2026-09-02.
+        src = _sorgente_lista_configurabile()
+        self.assertIn(
+            "ultimoCampoOrdinato",
+            src,
+            "manca la memoria del campo su cui si sta ciclando: senza, lo "
+            "stato «ordinamento rimosso» cancella l'informazione e una colonna "
+            "data non torna piu' crescente",
+        )
+        # ⛔ ANCORATO A `campoPrecedente`, cioe' alla riga che DECIDE — non a
+        #    una qualunque riga che nomini la memoria. La prima stesura di
+        #    questo test cercava `props.sortField ?? ultimoCampoOrdinato` e
+        #    trovava la riga che AGGIORNA la memoria in `onSort`: tolta la
+        #    memoria dalla decisione, il test restava verde. Provato per
+        #    mutazione, ed e' cosi' che si e' visto.
+        self.assertRegex(
+            src,
+            r"campoPrecedente\s*=\s*props\.sortField\s*\?\?\s*ultimoCampoOrdinato",
+            "il campo precedente non si legge piu' dalla memoria quando le "
+            "`props` non ce l'hanno: e' proprio il caso dello stato intermedio",
+        )
+
+    def test_lo_stato_senza_ordinamento_non_dichiara_una_direzione(self) -> None:
+        # ⛔ Con l'ordinamento RIMOSSO la direzione e' `null`, non `desc`.
+        #    Scriverla `desc` teneva la prop `sortOrder` a -1 mentre il campo
+        #    era sparito: al click seguente la prop non cambiava valore, il
+        #    watcher di PrimeVue non scattava, e la freccia diceva una cosa
+        #    mentre i dati ne dicevano un'altra.
+        percorso = (
+            _repo_root() / "frontend/src/core/composables/useSearchTable.js"
+        )
+        src = percorso.read_text(encoding="utf-8")
+        self.assertNotRegex(
+            src,
+            r"order_dir\s*=\s*event\.sortOrder\s*===\s*1\s*\?\s*'asc'\s*:\s*'desc'",
+            "lo stato «ordinamento rimosso» torna a dichiarare `desc`: la "
+            "freccia si desincronizza dai dati al click successivo",
+        )
+        self.assertRegex(
+            src,
+            r"store\.filters\.order_dir\s*=\s*event\.sortField",
+            "la direzione non e' piu' condizionata alla PRESENZA del campo: "
+            "senza campo non c'e' nessuna direzione da dichiarare",
         )
 
     def test_esiste_almeno_una_colonna_data_ordinabile_a_catalogo(self) -> None:

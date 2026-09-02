@@ -212,10 +212,23 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
-  // Handler @sort DataTable
+  // Handler @sort DataTable.
+  // ⛔ LO STATO «ORDINAMENTO RIMOSSO» HA UNA SUA DIREZIONE: `null`, non `desc`.
+  //    `removable-sort` alterna asc -> desc -> NIENTE, e nel terzo stato
+  //    PrimeVue emette `sortField` e `sortOrder` nulli. Scriverli come
+  //    `order_dir = 'desc'` — come faceva il ternario precedente, per cui
+  //    «diverso da 1» voleva dire discendente — teneva la prop `sortOrder` a
+  //    `-1` mentre il campo era sparito: al click seguente la prop NON cambiava
+  //    valore, il watcher di PrimeVue non scattava, e la freccia restava a
+  //    dire una cosa mentre i dati ne dicevano un'altra.
+  // 🔴 Difetto reale, visto da Tid in collaudo sulla lista DDT il 2026-09-02:
+  //    freccia ASC su dati DESC. Era latente da prima e non si notava perche'
+  //    la direzione cambiava comunque a ogni click.
   function onSort(event) {
-    store.filters.order_by = event.sortField
-    store.filters.order_dir = event.sortOrder === 1 ? 'asc' : 'desc'
+    store.filters.order_by = event.sortField || null
+    store.filters.order_dir = event.sortField
+      ? (event.sortOrder === -1 ? 'desc' : 'asc')
+      : null
     store.fetchList()
   }
 
