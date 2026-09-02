@@ -1626,6 +1626,95 @@ storia congelata; e riconosce i ruoli dal prefisso `zeroerp_batch_`.
 
 ---
 
+### 11.7 ⛔ In `80_data` convivono due specie di seed: catalogo e macchina
+
+**Il criterio, e sta sul modello.** Un seed è di **catalogo** se il suo contenuto
+è parte del *contratto del software*: vale identico su qualunque installazione, e
+il codice lo nomina per `codice_interno`/`codice`. È di **macchina** se descrive
+*un'installazione*: anagrafiche, utenti, e tutto ciò che le punta.
+
+⭐ **Il discriminante si deriva, non si elenca**: un seed è di macchina se
+**valorizza una FK verso `anagrafiche.*`**. Quelle righe nascono dall'uso, non
+dal software: nessun changeSet le crea, e su un database ricostruito da zero non
+esistono.
+
+⚠️ **La chiusura transitiva non serve e sarebbe fuorviante**: misurato il
+2026-09-02, **181 tabelle** dipendono da `anagrafiche` per qualche cammino di FK.
+Conta la citazione **diretta**.
+
+> **Censimento del 2026-09-02** (fatto datato, non premessa). Su **205** mirror
+> CSV: **204** di catalogo, **1** di macchina —
+> `vendite.registri_fatturazione`, che nomina i `soggetti_ruoli` 72
+> (`PGTAPEF202`, fixture pgTAP) e 159 (`EMITEST`, creato a mano).
+> Su **74** changeSet in SQL puro: **65** non toccano anagrafiche, **9** sì — e
+> quei nove sono di tre nature diverse:
+>
+> | natura | quanti | su un DB vuoto |
+> |---|---|---|
+> | **seed di macchina** (utente `tid`) | 2 | creano dati che non hanno senso |
+> | **backfill del pregresso** | 5 | `UPDATE` su zero righe → **innocui** |
+> | **intestazione registri** | 2 | si fermano: guard *fail-loud* sull'emittente |
+
+⇒ Da marcare sono **cinque-sei file**, non venti. ⛔ **I backfill non si
+marcano**: marcare ciò che non fa danno allarga il perimetro senza aggiungere
+garanzia, e ogni marcatura è una riga che qualcuno dovrà rileggere.
+
+#### Il meccanismo: `context: dati_macchina`
+
+Non è una via nuova — è quella che già filtra sei changeSet a ogni corsa della CI
+(la riga `Context mismatch: 6` in fondo al report).
+
+| dove | invocazione | effetto |
+|---|---|---|
+| sviluppo | `liquibase update` (nessun `--contexts`) | **gira** — il DB di sviluppo resta com'è |
+| CI | `--contexts="!provision"` | filtrato |
+| produzione | invocazione con `--contexts` | filtrato |
+
+🔴 **Perché regga in produzione, l'invocazione di produzione DEVE passare un
+`--contexts`.** Un `liquibase update` nudo farebbe girare anche i seed di
+macchina. Meglio esplicito — `--contexts="!provision and !dati_macchina"` — così
+la regola sta nel comando e non in un effetto collaterale.
+
+⚠️ **Un changeSet già applicato non si de-applica** dandogli un contesto: su
+sviluppo resta applicato, su un database nuovo non parte. È ciò che si vuole, ma
+è controintuitivo abbastanza da doverlo scrivere.
+
+⭐ **E questo NON risolve il CSV stantìo, che è un problema suo.** Riallineare un
+mirror al database — `scripts/export_csv.sh -s <schema> <tabella>` — lo rende
+*vero*; dichiararlo `dati_macchina` lo rende *seminabile solo dove ha senso*. Le
+due cose servono entrambe: un CSV di macchina stantìo resta una mina per chi lo
+edita in sviluppo.
+
+#### ⛔ Un CSV esportato deve portare il TOKEN `NULL`, non la cella vuota
+
+`export_csv.sh` esportava con il default di `\COPY`, che scrive un `NULL` come
+**cella vuota**. I mirror del progetto leggono invece il **token letterale**
+`NULL` (convenzione già in AGENTS §80_data), e la differenza non è di stile:
+
+* su una colonna **numerica** dichiarata `type: STRING` nel changeSet, Liquibase
+  rende la cella vuota come `''` e il migrate muore con
+  `sintassi di input non valida per il tipo integer: ""`;
+* su una **varchar** passa, e scrive `''` dove il database aveva `NULL` — che è
+  **peggio**, perché non lo dice.
+
+> Successo il 2026-09-02 su `vendite.registri_fatturazione.utility_id`, subito
+> dopo la prima riesportazione.
+
+✅ Corretto nello script: `\COPY (SELECT * FROM t ORDER BY <pk>) TO STDOUT WITH
+(FORMAT CSV, HEADER, NULL 'NULL')`. Il giro resta **fedele**: un `NULL` esce come
+`NULL` nudo, una stringa davvero vuota come `""`, quindi le due cose restano
+distinguibili. ⭐ E l'`ORDER BY` sulla chiave primaria toglie il rumore: senza,
+l'export usciva in ordine **fisico** e il diff cambiava a ogni riesportazione
+anche a dati fermi.
+
+⚠️ **Audit fatto il 2026-09-02 sugli altri CSV**: 26 hanno una cella vuota su una
+colonna non testuale, ma **nessuno è una mina** — in 19 la colonna non è
+dichiarata `STRING` (Liquibase la rende `NULL`), e nei 7 restanti è un
+`data_update` con `defaultValue: "NOW()"`, che la sostituisce prima di arrivare
+al database. Il difetto era nello **strumento**, non nei dati.
+
+---
+
 ---
 
 ## 12. Capability: le azioni che il database propone all'operatore
