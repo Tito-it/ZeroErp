@@ -42,12 +42,11 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    sql_order_clause,
     extract_paginated,
     jsonb_out,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 
 _VISTA = "vendite.vw_famiglie_documento_lista"
@@ -179,9 +178,12 @@ class FamiglieDocumentoRepository:
         order_by: str = _ORDER_DEFAULT,
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = _ORDER_COLS.get(order_by, _ORDER_COLS[_ORDER_DEFAULT])
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS,
+            default=_ORDER_COLS[_ORDER_DEFAULT],
+            tiebreak="v.id",
+        )
         pattern = f"%{search.strip()}%" if search and search.strip() else None
         ricerca = " OR ".join(f"v.{c} ILIKE %s" for c in _RICERCA_COLS)
         sql = f"""
@@ -191,7 +193,7 @@ class FamiglieDocumentoRepository:
              WHERE (%s::boolean IS NULL OR v.attivo = %s)
                AND (%s::boolean IS NULL OR v.gestisce_serie = %s)
                AND (%s::text IS NULL OR ({ricerca}))
-             ORDER BY {order_col} {direction}, v.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

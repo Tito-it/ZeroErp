@@ -486,6 +486,19 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("anagrafiche.soggetto_titoli_iva",
      _da_costante("apps.anagrafiche.db.titoli_iva_repository",
                   "_ORDER_COLS_TITOLI_SOGGETTO")),
+    # Lotto 3 (2026-09-02): le due liste dentro `TitoloIvaDrawer`, seedate prima
+    # della conversione del drawer (Gruppo B).
+    # ⭐ Il registro le prende col SEED, come il lotto 2: e' `_LISTE` a dover
+    #    coprire il frontend, non a fotografarlo.
+    ("anagrafiche.titolo_iva_movimenti",
+     _da_costante("apps.anagrafiche.db.titoli_iva_repository",
+                  "_ORDER_COLS_MOVIMENTI")),
+    # ⭐ Gli AMBITI non ordinano lato server, e non e' un debito: a catalogo
+    #    NESSUNA loro colonna e' `ordinabile = t` (il seed lo dichiara), quindi
+    #    non c'e' nessun contratto da esigere. `livello` sta a `f` per disegno —
+    #    l'ordine di un ambito e' la sua gerarchia, non una preferenza — e
+    #    `oggetto` e' composta dal frontend, senza una colonna SQL dietro.
+    ("anagrafiche.titolo_iva_ambiti", ORDINAMENTO_LOCALE),
 )
 
 

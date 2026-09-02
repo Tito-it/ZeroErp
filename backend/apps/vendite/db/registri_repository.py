@@ -34,12 +34,11 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    sql_order_clause,
     extract_paginated,
     jsonb_out,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 
 # Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
@@ -228,9 +227,12 @@ class RegistriRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         if emittenti_sr_ids is not None and not emittenti_sr_ids:
             return [], 0
-        order_col = _ORDER_COLS.get(order_by, _ORDER_COLS[_ORDER_DEFAULT])
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS,
+            default=_ORDER_COLS[_ORDER_DEFAULT],
+            tiebreak="r.id",
+        )
         pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT {_PROIEZIONE},
@@ -246,7 +248,7 @@ class RegistriRepository:
                     OR r.descrizione ILIKE %s
                     OR r.prefisso ILIKE %s
                    ))
-             ORDER BY {order_col} {direction}, r.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

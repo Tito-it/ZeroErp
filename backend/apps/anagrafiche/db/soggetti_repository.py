@@ -13,12 +13,11 @@ import json
 from typing import Any
 
 from apps.core.db._helpers import (
+    sql_order_clause,
     escape_ilike,
     extract_paginated,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 from apps.core.db.parameter_repository import ParameterRepository
 
@@ -144,11 +143,12 @@ class SoggettiRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = _SOGGETTI_ORDER_COLS.get(
-            order_by, _SOGGETTI_ORDER_COLS["ragione_sociale_completa"]
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_SOGGETTI_ORDER_COLS,
+            default=_SOGGETTI_ORDER_COLS["ragione_sociale_completa"],
+            tiebreak="s.id",
         )
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
         # escape_ilike: senza, una search contenente %/_ agisce da wildcard
         # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
         search_pattern = f"%{escape_ilike(search.strip())}%" if search and search.strip() else None
@@ -216,7 +216,7 @@ class SoggettiRepository:
                     OR s.partita_iva ILIKE %s
                    ))
                AND (%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)
-             ORDER BY {order_col} {direction}, s.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [

@@ -1,8 +1,10 @@
 # Brief team DB — `dbops.audit_sources` punta a una storico che non nasce più
 
 > Destinatario: team DB (`dev/db-tid`) · Origine: `dev/backend-tid` · 2026-09-02
+> **Stato: ✅ CHIUSO in giornata** — vedi §7. Il DB ha applicato `B` e `C`, il BE
+> ha fatto la sua metà di `C`. I 9 `errors` sono spenti.
+>
 > Dimensione: **una riga di CSV, e una decisione che ne vale tre.**
-> ⛔ Nessuna modifica applicata: qui si segnala, non si tocca.
 
 ## 1. Il sintomo
 
@@ -127,3 +129,59 @@ allora quei 9 `errors` restano, e sono *questi* — cioè non nascondono nient'a
   `SELECT code, storico_table, to_regclass(storico_table) FROM dbops.audit_sources
   WHERE attivo` su un database ricostruito, e una riga con `to_regclass` a NULL
   è lo stesso difetto che aspetta il suo turno.
+
+---
+
+## 7. ✅ Come è finita (2026-09-02)
+
+### Cosa ha fatto il DB
+
+| Richiesta | Esito |
+| --- | --- |
+| **B** | ✅ `audit_sources.csv` riga 5 → `attivo = f`. Esce da `script.vw_audit_sources` (che filtra `attivo`), la `FROM` non si costruisce più. **È questa che ha spento i 9 errori.** |
+| **A** | ⛔ **Scartata, e con una ragione che il brief non conosceva**: `storico._legacy_risorse_umane_auth_user` ha **0 righe** — i 12 snapshot pre-cutover stanno nella vecchia. Ripuntarla avrebbe mostrato un audit **vuoto** invece di un errore: la stessa perdita della `B`, ma **muta**. ⭐ Il §4 diceva che `A` conserva la storia; non era vero, e lo si poteva sapere solo contando le righe |
+| **C** | ✅ changeSet `20260902-11`: `vw_audit_sources` espone anche `storico_table`, quarta colonna **in coda** (`CREATE OR REPLACE` può solo aggiungere in fondo, e si usa quello per non perdere i GRANT) |
+
+⭐ **Il censimento è stato fatto sul catalogo**: solo la riga 5 aveva una **vista**
+come sorgente, le altre otto sono tabelle. ⇒ Nessun'altra trappola in attesa —
+che era la domanda aperta del §6.
+
+### Cosa ha fatto il BE — la metà di `C`
+
+`amm_software_repository.py`:
+
+* `_list_audit_sources_cached()` legge anche `storico_table` (quarta colonna, per nome);
+* `list_audit_log()` costruisce la `FROM` da **`storico_table`**, e continua a
+  passare **`code`** a `fn_audit_summary` — ⭐ **le due interpolazioni sono
+  diverse apposta**: la chiave di dispatch della funzione è l'identità *logica*,
+  ed è lei a rileggersi il nome fisico dal catalogo. «Uniformarle» romperebbe il
+  lookup;
+* nuova `_AUDIT_STORICO_TABLE_RE` — ⚠️ **serviva una regex sua**: `storico_table`
+  è qualificata (`schema.tabella`) e `_AUDIT_CODE_RE` non ammette il punto,
+  quindi riusarla avrebbe scartato **ogni** riga: un audit log **vuoto**, che
+  non è un errore e non si lamenta. Il primo segmento ammette `_` iniziale
+  apposta — la tabella che ha fatto emergere tutto si chiama `_legacy_...`;
+* ⛔ `list_audit_sources()` **non** espone `storico_table`: è il contratto della
+  tendina del drawer e l'insieme dei codici ammessi. Il nome fisico di una
+  tabella non è un dato che il frontend debba ricevere.
+
+### Il presidio, e perché legge l'SQL invece di eseguirlo
+
+`apps/amm_software/tests/db/test_audit_log_from_storico_table.py`, 4 test.
+
+⛔ **Non tocca il database, ed è la decisione che conta.** Sul catalogo di *oggi*
+`code` e `storico_table` coincidono su tutte le sorgenti attive: una prova
+eseguita contro un database qualsiasi sarebbe verde **anche con il difetto
+dentro** — è esattamente il motivo per cui il dev non vedeva niente. Il test
+sostituisce l'elenco con una sorgente in cui i due nomi **divergono** e legge
+l'SQL generato.
+
+⭐ **Provato per mutazione**: rimesso `FROM storico.{code}`, 2 dei 4 test
+diventano rossi; ripristinato, tornano verdi.
+
+⚠️ **Il test 2 del pgTAP** (`test-audit-sources-seed.sql`) tiene
+`risorse_umane_auth_user` nel perimetro ma fuori dalle attese: se qualcuno la
+riattiva senza sistemare `storico_table`, diventa rosso. È il verso giusto.
+
+**Verifica finale**: suite backend **4397 test OK** con `ZEROERP_TEST_DB_E2E=1`,
+cioè nella stessa modalità della CI.

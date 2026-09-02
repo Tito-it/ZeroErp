@@ -31,10 +31,8 @@
 //   })
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 import { useTabEvents } from '../composables/useTabEvents'
-import { useListaEmptyStateFetch } from '../composables/useListaEmptyStateFetch'
-import { PAGINATION } from '../constants'
+import { useListaStoreCore } from '../composables/useListaStoreCore'
 
 // Params:
 //   - api: { list, detail?, create, update } — fn che ritornano response axios
@@ -65,39 +63,19 @@ export function createCrudStore(storeId, {
   return defineStore(storeId, () => {
     const { emitDataChanged } = useTabEvents()
 
-    const filters = ref({
-      search: '',
-      ...filterDefaults,
-      limit: PAGINATION.DEFAULT_ROWS,
-      offset: 0,
-      order_by: orderBy,
-      order_dir: orderDir,
-    })
-
-    const {
-      items, totalRecords, loading, hasSearched, sospesa: fetchSospesa, fetchList,
-    } = useListaEmptyStateFetch({
-      filters,
-      alwaysFetch: !startsEmpty,
-      hasActiveFilters: (f) => gateKeys.some((k) => f[k] != null),
-      buildParams: (f, searchTerm) => {
-        const params = {}
-        if (searchTerm.length >= 3) params.search = searchTerm
-        // Invia ogni filtro di dominio valorizzato (anche quelli non-gate, es.
-        // articoli.attivo / admin.attivo: default valorizzato, inviato sempre).
-        for (const k of Object.keys(filterDefaults)) {
-          if (f[k] != null) params[k] = f[k]
-        }
-        params.limit = f.limit
-        params.offset = f.offset
-        if (f.order_by) {
-          params.order_by = f.order_by
-          params.order_dir = f.order_dir || 'asc'
-        }
-        return params
-      },
+    // ⭐ LO SCHELETRO DELLA LISTA VIVE IN `useListaStoreCore` dal 2026-09-02
+    //    (regola del 2, ok Tid): filtri, fetch paginata, cancello empty-state,
+    //    sospensione e reset erano scritti qui e ricopiati a mano da tre store
+    //    che il CRUD non ce l'hanno. Qui resta solo cio' che e' CRUD.
+    const lista = useListaStoreCore({
       fetchPage: api.list,
+      filterDefaults,
+      gateKeys,
+      startsEmpty,
+      orderBy,
+      orderDir,
     })
+    const { items, totalRecords, loading, hasSearched, filters, fetchList } = lista
 
     // Scopo: Dettaglio completo dell'entita.
     async function fetchDetail(id) {
@@ -119,14 +97,12 @@ export function createCrudStore(storeId, {
       return res.data.data
     }
 
-    const exposed = {
-      items, totalRecords, loading, hasSearched, filters,
-      // Alzata da chi conosce il motivo (oggi solo il cancello di perimetro
-      // emittente, in `useListaConfigurabilePage`): finche' e' true la lista
-      // non interroga il backend. Si scrive nei DUE versi, mai una volta sola.
-      fetchSospesa,
-      fetchList, create,
-    }
+    // ⚠️ Si riespone TUTTO il core (`fetchSospesa`, `erroreCaricamento`,
+    //    `svuota`, `reset`) e non un sottoinsieme scelto a mano: un'esposizione
+    //    parziale e' il modo in cui `fetchSospesa` era sparita dalle tre copie
+    //    scritte a mano — senza rompere niente, perche' chi la legge lo fa con
+    //    un guard `'fetchSospesa' in store`.
+    const exposed = { ...lista, create }
     // update e fetchDetail esposti solo se l'api relativa esiste (es. comuni
     // e' create-only → niente update).
     if (typeof api.update === 'function') {

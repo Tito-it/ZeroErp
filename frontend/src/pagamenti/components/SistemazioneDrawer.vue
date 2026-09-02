@@ -411,8 +411,17 @@ function buildRowActions(atto) {
         >
           <!-- La frase del dominio al posto dell'empty-state generico: «su
                questo documento non ha ancora deciso nessuno» e' cio' che
-               l'operatore deve sapere per decidere lui. -->
-          <template #empty>{{ t('pagamenti.sistemazioni.nessun_atto') }}</template>
+               l'operatore deve sapere per decidere lui.
+               ⛔ MA SOLO SE LA LETTURA E' RIUSCITA. Con `erroreCaricamento` la
+               tabella e' vuota per un'altra ragione, e affermare «non ce ne
+               sono» sotto un avviso che dice «non sono riuscito a leggerli»
+               sarebbe la contraddizione che quell'avviso esiste per evitare:
+               due frasi, una sola vera, e nessuna indicazione su quale. -->
+          <template #empty>
+            <span v-if="!store.erroreCaricamento">
+              {{ t('pagamenti.sistemazioni.nessun_atto') }}
+            </span>
+          </template>
           <!-- FE-1: `destinazione` e `stato` sono codici grezzi
                (`RIPORTO`/`BOZZA`…), non hanno un display field in JOIN: il
                vocabolario vive in `pagamenti/vocabolari.js`. Senza questi due

@@ -23,12 +23,12 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    sql_order_clause,
     call_jsonb_fn,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     sql_order_direction,
-    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
@@ -149,9 +149,12 @@ class ResiRepository:
         order_dir: str = "desc",
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
-        order_column = _ORDER_COLS_RESI.get(order_by, _ORDER_COLS_RESI["data"])
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_RESI,
+            default=_ORDER_COLS_RESI["data"],
+            tiebreak="v.id",
+        )
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))
@@ -213,7 +216,7 @@ class ResiRepository:
             SELECT v.*
             FROM vendite.vw_resi_lista v
             {where}
-            ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
+            ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
         """  # noqa: S608
 

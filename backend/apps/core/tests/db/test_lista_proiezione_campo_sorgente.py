@@ -762,6 +762,23 @@ _ESERCIZI: dict[str, Esercizio] = {
             "00000000-0000-0000-0000-000000000000", **_ordine(ob, od)
         ),
     ),
+    # ---------- lotto 3 (2026-09-02): le due liste dentro `TitoloIvaDrawer` ----------
+    # ⭐ Anche queste arrivano PRIMA della loro schermata (Gruppo B, drawer non
+    #    ancora convertito), e il presidio le pretende lo stesso: si arma dal
+    #    seed. La query esiste gia', quindi un `campo_sorgente` sbagliato esiste
+    #    gia' anche lui.
+    "anagrafiche.titolo_iva_ambiti": Esercizio(
+        dove="anagrafiche/db/titoli_iva_repository.py::list_ambiti",
+        chiama=lambda ob, od: _r(
+            "apps.anagrafiche.db.titoli_iva_repository", "TitoliIvaRepository"
+        ).list_ambiti(_ID_FINTO),
+    ),
+    "anagrafiche.titolo_iva_movimenti": Esercizio(
+        dove="anagrafiche/db/titoli_iva_repository.py::list_movimenti",
+        chiama=lambda ob, od: _r(
+            "apps.anagrafiche.db.titoli_iva_repository", "TitoliIvaRepository"
+        ).list_movimenti(_ID_FINTO, **_ordine(ob, od)),
+    ),
     "anagrafiche.titoli_iva_sfondati": Esercizio(
         dove="anagrafiche/db/titoli_iva_repository.py::list_titoli_sfondati",
         # ⚠️ Ritorna `(righe, totale)`: al presidio interessa la proiezione, che
