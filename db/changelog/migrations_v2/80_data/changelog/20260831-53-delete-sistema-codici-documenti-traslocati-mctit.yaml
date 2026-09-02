@@ -45,6 +45,91 @@
 databaseChangeLog:
   - logicalFilePath: migrations_v2/80_data/changelog/20260831-53-delete-sistema-codici-documenti-traslocati-mctit.yaml
 
+  # ── ⛔ 2026-09-02 — IL PASSO CHE MANCAVA AL CHANGELOG ─────────────────
+  #
+  #   Il migrate in CI si e' fermato sul changeSet qui sotto:
+  #     SQL Precondition failed.  Expected '0' got '4'
+  #   cioe' «tutte e quattro le righe hanno ancora usa_sequenza = true».
+  #
+  #   ⭐ E la preCondition ha ragione: il commento del changeSet dice «gia'
+  #   smontati quando usa_sequenza e' passato a false», e quel passaggio non
+  #   e' MAI ENTRATO NEL CHANGELOG. Su questa macchina le quattro righe sono
+  #   state spente a mano; su un database ricostruito da zero le crea la
+  #   baseline con `usa_sequenza = true` e nessuno le spegne — il CSV di
+  #   `sistema_codici` non le contiene nemmeno piu'.
+  #   ⚠️ E' la forma classica del difetto: il changelog descrive un mondo che
+  #   esiste solo dove qualcuno ha messo le mani. Non si vede finche' non si
+  #   ricostruisce.
+  #
+  # ── ⛔ PERCHE' SI AGGIUNGE UN PASSO E NON SI RILASSA IL CANCELLO ──────
+  #
+  #   La tentazione era portare la preCondition a MARK_RAN. Sarebbe stato
+  #   sbagliato: su un database nuovo le quattro righe resterebbero ATTIVE, e
+  #   accanto ai trigger nuovi del motore registri vivrebbero i generatori
+  #   generici `gen_codice`. Due motori di numerazione sullo stesso documento —
+  #   la finestra che 20260831-13 dichiara innocua per la durata di UN migrate
+  #   diventerebbe permanente.
+  #   ⇒ Il cancello va lasciato dov'e', e va data la condizione che pretende.
+  #
+  # ── ⭐ SPEGNERE E' LA MOSSA GIUSTA, NON UN AGGIRAMENTO ────────────────
+  #
+  #   `usa_sequenza = false` e' esattamente il meccanismo che il trasloco usa:
+  #   `script.trgfn_config_sistema_codici_sync_gen_codice` scatta e fa DROP del
+  #   trigger e della funzione generati, «senza DDL a mano» (20260831-13).
+  #   ⚠️ Verificato il 2026-09-02 sul database, non dedotto: il trigger di sync
+  #   e' montato `AFTER INSERT OR DELETE OR UPDATE` e la sua funzione guarda
+  #   `TG_OP` e fa `DROP TRIGGER`.
+  #
+  #   ⚠️ Su questa macchina non fa niente — le quattro righe non esistono piu',
+  #   il DELETE e' passato il 2026-08-31 — ed e' la prova che il passo e'
+  #   idempotente: `WHERE usa_sequenza IS TRUE` su zero righe.
+  # ------------------------------------------------------------
+  - changeSet:
+      id: 20260902-53-00-spegni-sistema-codici-documenti-traslocati
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Porta a usa_sequenza = false le quattro righe di config.sistema_codici dei documenti
+        traslocati (ddt, ordine, reso, commessa), prima che il changeSet successivo le cancelli.
+        E'' il passo che il changelog dava per fatto e che non conteneva: su questa macchina era
+        stato eseguito a mano, su un database ricostruito da zero la baseline le crea a true e
+        nessuno le spegne. Spegnerle fa scattare il sync trigger, che fa DROP dei generatori
+        generici — lo stesso meccanismo che il trasloco usa da 20260831-08/-13/-15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sistema_codici
+            - columnExists:
+                schemaName: config
+                tableName: sistema_codici
+                columnName: usa_sequenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il filtro su IS TRUE non e' cosmesi: senza, l'UPDATE
+              --    toccherebbe righe gia' spente e farebbe scattare il sync
+              --    trigger per nulla.
+              UPDATE config.sistema_codici
+                 SET usa_sequenza = false
+               WHERE codice_interno IN ('ddt', 'ordine', 'reso', 'commessa')
+                 AND usa_sequenza IS TRUE;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si riaccende: rimetterle a true farebbe RIGENERARE i
+              --    trigger generici accanto a quelli del motore registri.
+              SELECT 1;
+
   - changeSet:
       id: 20260831-53-delete-sistema-codici-documenti-traslocati
       author: mctit

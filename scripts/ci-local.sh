@@ -84,6 +84,40 @@ fi
 export PGHOST PGPORT
 psql_admin() { sudo -u postgres psql --no-psqlrc -v ON_ERROR_STOP=1 -X -q "$@"; }
 
+# --- L'utenza admin per Liquibase (provision pre/post): serve un SUPERUSER,
+#     perche' quei changeSet creano estensioni (postgis, pgtap, plpgsql_check,
+#     dblink) che non sono «trusted».
+ADMIN_USER="${CI_ADMIN_USER:-postgres}"
+ADMIN_PWD="${PGPASSWORD_POSTGRES:-}"
+
+# ⛔ PRE-VOLO. Liquibase si connette via TCP, non col socket: `sudo -u postgres`
+#   qui non aiuta, serve una PASSWORD. Meglio scoprirlo adesso, in due secondi,
+#   che dopo aver creato il database e macinato meta' provisioning.
+# ⚠️ Si PROVA la connessione invece di pretendere una password: se il cluster ha
+#   `trust` sul TCP locale, una password non serve — e un controllo sulla
+#   variabile vuota direbbe di no a un caso che funziona.
+if ! PGPASSWORD="$ADMIN_PWD" psql -X -q -A -t -w \
+      -h "$PGHOST" -p "$PGPORT" -U "$ADMIN_USER" -d postgres \
+      -c "SELECT 1" >/dev/null 2>&1; then
+  cat >&2 <<MSG
+⛔ Non riesco a connettermi via TCP come '$ADMIN_USER'.
+   Liquibase usa JDBC, quindi il socket e 'sudo -u postgres' non bastano: i passi
+   di provisioning creano ESTENSIONI (postgis, pgtap, plpgsql_check, dblink), che
+   richiedono un superuser con password.
+
+   Due strade:
+     1) se il ruolo '$ADMIN_USER' ha gia' una password, passala:
+          PGPASSWORD_POSTGRES='<password>' CI_DB=$CI_DB $0 ${*:-}
+     2) se hai un ALTRO superuser con password, usalo:
+          CI_ADMIN_USER=<ruolo> PGPASSWORD_POSTGRES='<password>' CI_DB=$CI_DB $0 ${*:-}
+
+   ⚠️ Assegnare una password a 'postgres' e' una modifica al CLUSTER, quindi
+   condivisa col database di sviluppo: falla solo se sai di volerla.
+MSG
+  exit 1
+fi
+echo "── admin per il provisioning: $ADMIN_USER (connessione TCP verificata)"
+
 echo "── database scratch: $CI_DB   (sviluppo: $DEV_DB, intoccato)"
 
 if $FRESH; then
@@ -148,7 +182,7 @@ LB="$SCRIPT_DIR/liquibase5.sh"
 echo "── $("$LB" --version 2>/dev/null | grep -i '^Liquibase Version' || echo 'Liquibase: versione?')"
 
 echo "── provision pre"
-"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username=postgres --password="${PGPASSWORD_POSTGRES:-postgres}" \
+"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username="$ADMIN_USER" --password="$ADMIN_PWD" \
   --changeLogFile=db/changelog/changelog-provision-pre.yaml update --contexts=provision
 
 echo "── passata principale  (--contexts=\"!provision\")"
