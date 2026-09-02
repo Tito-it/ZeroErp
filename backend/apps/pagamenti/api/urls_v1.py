@@ -23,6 +23,7 @@ from apps.pagamenti.api.views import (
     ApiEntiIncasso,
     ApiFatturaRateSaldo,
     ApiFatturaSistemazioni,
+    ApiFatturaSistemazioniExport,
     ApiFatturaSaldo,
     ApiRataSaldo,
     ApiRateFuoriCapienza,
@@ -117,6 +118,14 @@ urlpatterns = [
         "fatture/<int:fattura_id>/sistemazioni/",
         ApiFatturaSistemazioni.as_view(),
         name="pagamenti-fattura-sistemazioni",
+    ),
+    # ⭐ `export/` e' una rotta SORELLA, non una sotto-risorsa dell'atto: sotto
+    #    `sistemazioni/` non c'e' nessun `<int:...>`, quindi non c'e' nemmeno un
+    #    ordine da rispettare — ma la forma resta quella della famiglia.
+    path(
+        "fatture/<int:fattura_id>/sistemazioni/export/",
+        ApiFatturaSistemazioniExport.as_view(),
+        name="pagamenti-fattura-sistemazioni-export",
     ),
     # --- I canali di incasso: da dove arrivano i soldi ---
     # ⚠️ `conti-incasso/` e' una risorsa a se' e non una sotto-risorsa del

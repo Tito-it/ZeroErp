@@ -212,8 +212,21 @@ export function lookupStati() {
 //  Proprietario il soggetto, destinatario l'emittente (D10-bis).
 // ============================================================
 
-export function listSoggettoTitoliIva(soggettoId) {
-  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/`)
+// ⚠️ `params` porta limit/offset/order_by/order_dir: la lista PAGINA dal
+//    2026-09-02, come ogni altra lista configurabile.
+export function listSoggettoTitoliIva(soggettoId, params = {}) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/`, { params })
+}
+
+// Scopo: export CSV/Excel della lista dei titoli IVA del soggetto (DEF-1).
+// ⚠️ `formato` e non `format`: quest'ultimo e' un parametro magico di DRF e
+//    collide col content negotiation (`feedback_drf_format_magic_param`).
+//    Risposta Blob: errore 422 se il dataset supera il cap.
+export function exportSoggettoTitoliIva(soggettoId, params = {}) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/export/`, {
+    params,
+    responseType: 'blob',
+  })
 }
 
 export function getSoggettoTitoloIva(soggettoId, titoloId) {
@@ -267,8 +280,8 @@ export function annullaTitoloIvaMovimento(soggettoId, titoloId, movimentoId, pay
 }
 
 // Presidio cross-soggetto: i titoli il cui consumo ha superato il tetto (Q4).
-export function listTitoliIvaSfondati() {
-  return api.get(`${BASE}/titoli-iva/sfondati/`)
+export function listTitoliIvaSfondati(params = {}) {
+  return api.get(`${BASE}/titoli-iva/sfondati/`, { params })
 }
 
 export function listSoggettoContiBancari(soggettoId) {

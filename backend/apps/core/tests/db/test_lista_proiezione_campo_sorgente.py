@@ -731,6 +731,45 @@ _ESERCIZI: dict[str, Esercizio] = {
             limit=1, offset=0, **_ordine(ob, od, "eccedenza_cliente", "DESC")
         ),
     ),
+    # ── Lotto 2 (2026-09-02). ⭐ Il presidio si e' armato da solo su tutte e
+    #    quattro il giorno del seed: nessuno le ha censite a mano, le ha
+    #    pretese `test_il_registro_copre_ogni_lista_senza_vista` leggendo il
+    #    CSV. Resta a mano solo COME si esercita ciascuna — una query vuole i
+    #    suoi argomenti, e quelli non si deducono.
+    "pagamenti.canali_incasso": Esercizio(
+        dove="pagamenti/db/pagamenti_repository.py::list_enti_incasso",
+        chiama=lambda ob, od: _r(
+            "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
+        ).list_enti_incasso(
+            limit=1, offset=0, **_ordine(ob, od, "codice", "asc")
+        ),
+    ),
+    "pagamenti.sistemazioni_fattura": Esercizio(
+        dove="pagamenti/db/pagamenti_repository.py::list_sistemazioni_fattura",
+        # ⚠️ `fattura_id=1` puo' non esistere: la prova legge
+        #    `cursor.description`, quindi vale anche a zero righe — che e' il
+        #    caso in cui serve di piu', perche' una lista vuota non mostra a
+        #    nessuno che una colonna e' sparita.
+        chiama=lambda ob, od: _r(
+            "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
+        ).list_sistemazioni_fattura(1, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    "anagrafiche.soggetto_titoli_iva": Esercizio(
+        dove="anagrafiche/db/titoli_iva_repository.py::list_titoli_soggetto",
+        chiama=lambda ob, od: _r(
+            "apps.anagrafiche.db.titoli_iva_repository", "TitoliIvaRepository"
+        ).list_titoli_soggetto(
+            "00000000-0000-0000-0000-000000000000", **_ordine(ob, od)
+        ),
+    ),
+    "anagrafiche.titoli_iva_sfondati": Esercizio(
+        dove="anagrafiche/db/titoli_iva_repository.py::list_titoli_sfondati",
+        # ⚠️ Ritorna `(righe, totale)`: al presidio interessa la proiezione, che
+        #    legge dal cursore — la tupla non lo disturba.
+        chiama=lambda ob, od: _r(
+            "apps.anagrafiche.db.titoli_iva_repository", "TitoliIvaRepository"
+        ).list_titoli_sfondati(limit=1, offset=0, **_ordine(ob, od)),
+    ),
 }
 
 

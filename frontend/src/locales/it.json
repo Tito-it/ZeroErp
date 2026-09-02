@@ -256,7 +256,7 @@
       "clienti": "Clienti",
       "fornitori": "Fornitori",
       "indirizzi": "Indirizzi",
-      "titoli-iva-sfondati": "Titoli IVA sfondati"
+      "titoli-iva-sfondati": "Titoli IVA eccedenti"
     },
     "config": {
       "tabelle": "Tabelle",
@@ -3888,6 +3888,7 @@
     "canali": {
       "nuovo": "Nuovo canale",
       "filtro_tipo": "Tipo di canale",
+      "filtro_tipo_tutti": "Tutti",
       "nessun_canale": "Nessun canale di incasso configurato: finché non ce n'è uno, il denaro che arriva prima della fattura non ha un perimetro.",
       "titolo_nuovo": "Nuovo canale di incasso",
       "titolo_modifica": "Canale di incasso",
@@ -3910,8 +3911,9 @@
       "tipo_psp": "PSP",
       "tipo_altro": "Altro",
       "campo_emittente": "Emittente",
-      "campo_emittente_placeholder": "Scegli l'emittente",
       "emittente_dal_permesso": "È il tuo perimetro: serve a mostrare i conti giusti, e non viene salvato sul canale.",
+      "emittente_dal_conto": "Derivato dal conto del canale.",
+      "emittente_dalla_sessione": "Emittente di lavoro della sessione (si cambia dalla barra in alto).",
       "campo_conto": "Conto di incasso",
       "campo_conto_placeholder": "Scegli il conto su cui atterra il denaro",
       "conto_senza_iban": "Senza IBAN",
@@ -4934,6 +4936,7 @@
   },
   "core": {
     "emittente_attivo": {
+      "serve_per_creare": "Stai lavorando su tutti gli emittenti: scegline uno dalla barra in alto per poter creare.",
       "tutti": "Tutti gli emittenti",
       "aria": "Emittente attivo",
       "conferma_titolo": "Cambiare emittente di lavoro?",

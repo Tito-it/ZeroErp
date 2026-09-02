@@ -2,13 +2,13 @@
 
 > Destinatario: team DB (`dev/db-tid`) · Origine: `dev/backend-tid` · 2026-09-02
 > Secondo lotto dopo le 4 liste `ui`
-> ([brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md)).
+> ([brief-db-seed-liste-ui-admin](brief-db-seed-liste-ui-admin.md)).
 > Dimensione: **quattro append a CSV, nessun changeset, nessun DDL.**
 
 ## 1. Scopo
 
 Seedare le quattro liste del Gruppo A emerse dalla classificazione del 2026-09-02
-([piano PrimeVue 5 §Classificazione fatta](piano-migrazione-primevue-5.md)).
+([piano PrimeVue 5 §Classificazione fatta](../work-in-progress/piano-migrazione-primevue-5.md)).
 
 | `lista_id` | codice | consumer FE | col. | paginazione |
 | --- | --- | --- | --- | --- |
@@ -333,7 +333,22 @@ indistinguibili. Righe invariate, motivazione riscritta.
 
 ---
 
-## 7. Richieste al backend — aperte
+## 7. Richieste al backend — ✅ tutte chiuse (BE-1, BE-2, FE-1, BE-3)
+
+> ⚠️ **Stato al 2026-09-02 sera**, dopo la passata BE e la riga DB-2 del team
+> DB: **BE-1, BE-2, FE-1 e BE-3 sono fatte**. BE-3 era la richiesta che il team
+> DB ha aggiunto dopo DB-1, e alla **prima corsa** ha trovato un secondo caso
+> della stessa specie — chiuso da DB-2 (vedi sotto).
+>
+> | # | Stato |
+> | --- | --- |
+> | **BE-1** | ✅ `SISTEMAZIONI_SORT_COLUMNS` (5 colonne) e `_ORDER_COLS_TITOLI_SOGGETTO` (4), chiavate sui campi fisici; ordinamento inoltrato repository → service → view con `qp_str`, **non** `parse_list_params` |
+> | **BE-2** | ✅ `ENTI_INCASSO_SORT_COLUMNS`: chiave `centro` → `centro_descrizione`. ⭐ E il **valore** è passato a `centro_descrizione` (decisione di Tid): si ordina la colonna che si vede, non un codice invisibile |
+> | **FE-1** | ✅ `SistemazioneDrawer.vue` convertito, con gli slot sul vocabolario |
+> | **BE-3** | ✅ `test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo`. ⭐ Alla prima corsa ha trovato **`vendite.registri_numerazione`** (lista 54): il tab forniva `#actions` con un `RowActionsMenu` e il catalogo non aveva la colonna — quel kebab **non si è mai reso**, senza errore |
+> | **DB-2** | ✅ Riga `702` (`azioni`, lista 54) + `lista_preset_colonna 54/702`, arrivata sul DB il 2026-09-02: verificata **sul database vero**, non solo nel CSV. Il registro di debito che teneva verde la suite è stato **tolto**, non azzerato |
+
+
 
 ⚠️ Scritte qui e non fatte: il perimetro DB non modifica `backend/`.
 
@@ -362,7 +377,7 @@ pretende — e con lei arrivano due rossi già scritti:
 
 ⇒ **Il debito è auto-esigente**, ed è il verso giusto: il lavoro BE serve nel
 momento della conversione, non prima. Tracciato anche nel
-[piano PrimeVue 5](piano-migrazione-primevue-5.md), tabella dei denominatori.
+[piano PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md), tabella dei denominatori.
 
 ---
 
@@ -412,26 +427,52 @@ table e **rifare l'upsert su TUTTE le righe** dentro una transazione annullata.
 `validCheckSums: ANY`, quindi l'append fa ri-scrivere al database anche le 671
 righe che c'erano già.
 
+⭐ **Due cose emerse eseguendo BE-1**, e nessuna delle due era nella richiesta:
+
+* **`residuo` (lista 62) si ordina per ALIAS, non per espressione riscritta.**
+  È un `CASE WHEN plafond IS NOT NULL THEN plafond - imponibile_utilizzato END`,
+  quindi **NULL** sui tipi senza tetto. La mia prima stesura aveva
+  `(t.plafond - t.imponibile_utilizzato)` nella whitelist: avrebbe dato un numero
+  anche dove il residuo non significa niente, e l'elenco si sarebbe ordinato
+  **diversamente da come si legge**. PostgreSQL ammette l'alias in `ORDER BY`.
+* **Il default di `list_titoli_soggetto` è stato PRESERVATO**
+  (`COALESCE(valido_al,'infinity') DESC`), perché quel metodo ha un **secondo
+  consumatore**: `soggetti_service` lo incorpora nel dettaglio di un soggetto e
+  non passa ordinamento. Cambiargli il default sotto i piedi avrebbe riordinato
+  una sezione che nessuno stava toccando.
+
+**Verifica**: le 9 colonne seminate `ordinabile = t` sulle liste 61 e 62, per 3
+direzioni ciascuna, eseguite **contro il database vero**. Più un presidio
+temporaneo, `apps/core/tests/test_liste_lotto2_whitelist_ponte.py`, che lega
+seed e whitelist finché il registro `_LISTE` non copre queste liste — ⛔ **da
+cancellare** quel giorno, e la ragione è scritta nel file.
+
+---
+
 ### Stato di sviluppo tracciato altrove
 
 ⚠️ Il conteggio delle liste **non vive in questo brief**: vive nel
-[piano PrimeVue 5](piano-migrazione-primevue-5.md), tabella dei denominatori.
+[piano PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md), tabella dei denominatori.
 Aggiornato il 2026-09-02 con la colonna «02-09 notte»:
 
 | Misura | prima | dopo |
 | --- | --- | --- |
 | codici seedati (`ui.lista_definizione`) | 59 | **63** |
-| righe nel registro `_LISTE` | 59 | 59 — ⏳ divergenza **attesa e datata** |
+| righe nel registro `_LISTE` | 59 | **63** ✅ — rientrata a fine giornata |
 | file del Gruppo A convertiti | 35 / 39 | 35 / 39 — invariato |
-| file con `DataTable` grezza | 53 | 53 — invariato |
+| file con `DataTable` grezza | 53 | **49** |
 
-⭐ **Le ultime due righe invariate sono il punto, non una svista**: questo lotto
-semina il database e **non converte nessuna view**. Un brief di seed che facesse
-salire il contatore delle conversioni starebbe misurando la cosa sbagliata.
+⭐ **Le due righe di mezzo raccontano due momenti diversi, ed è giusto così.** Il
+seed è arrivato **prima** dei suoi consumer: nel momento in cui questo brief è
+stato scritto le conversioni erano ferme, e un brief di seed che avesse fatto
+salire il contatore delle conversioni starebbe misurando la cosa sbagliata. Sono
+salite dopo, nella stessa giornata, ed è per questo che la colonna «dopo» oggi
+legge `63` e `49`.
 
-🔴 **Il brief resta in `work-in-progress/`** e non passa a `work-done/`: il DB è
-finito, ma §7 ha tre richieste aperte (BE-1, BE-2, FE-1). Si sposta quando quelle
-sono chiuse e la divergenza `63 = 63` è rientrata.
+✅ **Il brief passa a `work-done/`** (2026-09-02): il DB è chiuso, §7 non ha più
+richieste aperte (BE-1, BE-2, FE-1, BE-3 tutte fatte), la divergenza `63 = 63` è
+rientrata e le quattro view sono convertite. L'ultimo pezzo — la 61 portata a
+lista paginata — è §10.
 
 ---
 
@@ -489,7 +530,7 @@ lo dica.
 ⚠️ È la stessa famiglia dei difetti che questo repo paga più cari — quelli che
 non danno errore — e qui il seed **è** il contratto: la config non descrive la
 schermata, la decide.
-⇒ Richiesta **BE-3** in §7.
+⇒ Richiesta **BE-3** in §7 — ✅ fatta, e il primo caso che ha trovato (lista 54) è chiuso da **DB-2**.
 
 ### Stato delle conversioni — cosa risulta in questo tree
 
@@ -500,7 +541,7 @@ scrivo come fatto datato e non come dubbio: al 2026-09-02, su `dev/db-tid`
 `primevue/datatable` — due delle tre citano già `<ListaConfigurabile>`, quindi il
 lavoro è in corso e non pubblicato qui.
 
-⇒ **I contatori del [piano](piano-migrazione-primevue-5.md) NON sono stati
+⇒ **I contatori del [piano](../work-in-progress/piano-migrazione-primevue-5.md) NON sono stati
 aggiornati a 50**: si aggiornano quando la misura si può rifare, non su
 dichiarazione. Restano `53` e `35 / 39`, e la divergenza `_LISTE` resta a 4.
 
@@ -508,3 +549,52 @@ dichiarazione. Restano `53` e `35 / 39`, e la divergenza `_LISTE` resta a 4.
 con le liste 60/61/63 entrate in `_LISTE` e le whitelist vecchie,
 `test_whitelist_copre_le_colonne_ordinabili` sarebbe rosso. Se è verde, il debito
 di §7 è chiuso lato BE — da confermare quando quel ramo arriva.
+
+---
+
+## 10. ✅ La 61 portata sullo standard — l'ultimo pezzo (2026-09-02)
+
+`pagamenti.sistemazioni_fattura` era stata convertita **con `:paginata="false"`**,
+e la ragione scritta era: *«gli atti di UNA fattura sono pochi per modello»*.
+
+⛔ **Quella ragione è una previsione sui DATI, e una previsione sui dati non
+decide la forma di una lista** — è la regola zero. Il prezzo non si vedeva ed era
+concreto: il drawer restava senza pagine, senza «Personalizza colonne» e senza
+export, cioè fuori dallo standard delle altre quaranta liste, **senza che niente
+lo dicesse**. Decisione di Tid: sullo standard, come la 62.
+
+| Dove | Cosa |
+| --- | --- |
+| `pagamenti_repository.list_sistemazioni_fattura` | `(righe, totale)` in **una** valutazione (`COUNT(*) OVER()` via `fetch_paged_with_total`), `limit`/`offset` opzionali, `fallback_count_sql` per il rientro su pagina stantia; `FROM`+`WHERE` in `_SISTEMAZIONI_FROM_WHERE`, condiviso fra pagina e ripiego |
+| idem | ⛔ **`count_sistemazioni_fattura` RIMOSSA**: era una seconda query sullo stesso predicato, e due valutazioni possono non concordare — fra l'una e l'altra qualcuno registra un atto e la lista direbbe «3 di 4» avendone in mano 3 su 3. Stessa mossa già fatta su `count_titoli_soggetto` con la 62 |
+| `sistemazioni_service` / `api/views.py` | `limit`/`offset` da `parse_list_params`; ⛔ `order_by`/`order_dir` **grezzi** con `qp_str` — quel bundle normalizza l'assenza di `order_dir` ad `"asc"`, quindi il default del repository non verrebbe **mai** raggiunto |
+| `api/views.py` + `urls_v1.py` | nuova `ApiFatturaSistemazioniExport` su `fatture/<id>/sistemazioni/export/`, stesso `lista_codice` della lista a video |
+| `stores/sistemazioniFattura.js` (nuovo) | store Pinia `userScoped`, contratto `useSearchTable`, padre `fatturaId` |
+| `SistemazioneDrawer.vue` | `useDrawerTabLista` + `<DrawerTabLista>`; spariscono i tre `ref` locali e la fetch a mano |
+
+⭐ **Il terzo caso è sopravvissuto alla conversione, ed è la parte che si sarebbe
+persa senza guardarla.** Il drawer distingueva **tre** stati — atti presenti ·
+nessun atto · **non letti** — e il BB della lista non può distinguere gli ultimi
+due: a lista vuota mostrerebbe lo stesso empty-state. ⇒ lo store tiene
+`erroreCaricamento`, il messaggio di errore resta sopra la lista, e la frase del
+dominio («su questo documento non ha ancora deciso nessuno») è passata allo slot
+`#empty`. Perdere quella distinzione non avrebbe rotto niente: avrebbe solo
+detto «non ce ne sono» dove la verità era «non lo so».
+
+⭐ **E il ponte del lotto 2 è sparito con lei.**
+`apps/core/tests/test_liste_lotto2_whitelist_ponte.py` esisteva per coprire ciò
+che i test 1-3 non raggiungevano — le liste dichiarate `ORDINAMENTO_LOCALE`, che
+una whitelist non la devono avere. La 61 era l'ultima riga rimasta: uscita dalla
+sentinella, il ponte non copriva più niente ed è stato **cancellato**, come il
+suo stesso commento prescriveva. ⛔ Due presidi sullo stesso invariante divergono
+al primo che qualcuno aggiorna.
+
+**Verifiche eseguite**: suite backend completa **4367 test OK**;
+`test_lista_proiezione_campo_sorgente` con `ZEROERP_TEST_DB_E2E=1` verde **contro
+il database vero** (le 5 colonne della 61 × 2 versi producono SQL che parte);
+`eslint` e `vite build` puliti; i tre guard FE (`check-liste-configurabili`,
+`check-pinia-user-scoped-reset`, `check-drawer-width`) verdi.
+⚠️ **Il database di dev non ha atti di sistemazione**: la prova dice che le query
+si pianificano e che le colonne ci sono, **non** che l'ordinamento sia quello
+giusto. Quello si vedrà al primo caso reale, ed è scritto qui perché nessuno lo
+scambi per una verifica di comportamento.

@@ -12,7 +12,7 @@
 #       la parola che l'operatore legge sulla schermata.
 # ------------------------------------------------------------
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    parse_list_params,
     qp_bool_optional,
     qp_int_optional,
     qp_int_strict,
@@ -34,6 +35,8 @@ from apps.pagamenti.services import (
     saldi_service,
     sistemazioni_service,
 )
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 AREA = "pagamenti"
 
@@ -814,6 +817,12 @@ class ApiFatturaSistemazioni(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/ — gli atti su un documento."""
 
     area_funzionale = AREA
+    # ⭐ Cancello di perimetro emittente (2026-09-02, con la conversione della
+    #    lista su `<ListaConfigurabile>`): `perimetro_emittente = t` a catalogo
+    #    (decisione D-3 del lotto 2), quindi vale l'emittente dell'operatore e
+    #    la lista non si assume il compito di dire da quale emittente arriva
+    #    ogni riga.
+    lista_codice = "pagamenti.sistemazioni_fattura"
     # Stessa ragione del saldo: lo consuma il drawer fattura, che vive in
     # `vendite`, e risponde il minimo su un documento già scelto.
     skip_area_check = True
@@ -825,9 +834,77 @@ class ApiFatturaSistemazioni(DomainAPIView):
     # Scopo: Restituisce via GET gli atti registrati su una fattura.
     # ⭐ Sono più di uno per natura: si può rimborsare una parte e riportare il
     #    resto.
+    # ⚠️ PAGINATA dal 2026-09-02, come ogni altra lista configurabile: bundle
+    #    standard `parse_list_params` per `limit`/`offset`.
+    # ⛔ `order_by`/`order_dir` NON vengono da `parse_list_params`, e non e' una
+    #    svista: quel bundle ha un `order_by` di default (`"descrizione"`) che
+    #    qui non e' colonna di niente, e normalizza l'assenza di `order_dir` ad
+    #    `"asc"` — quindi non e' mai `None` e il default del repository non
+    #    verrebbe MAI raggiunto. E' lo stesso difetto gia' corretto sui titoli
+    #    sfondati: nessun errore, solo un elenco ordinato al contrario di come
+    #    qualcuno lo aveva pensato.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(qp)
         return success_response(
-            sistemazioni_service.list_sistemazioni_fattura(fattura_id)
+            sistemazioni_service.list_sistemazioni_fattura(
+                fattura_id,
+                limit=p["limit"],
+                offset=p["offset"],
+                order_by=qp_str(qp.get("order_by")),
+                order_dir=qp_str(qp.get("order_dir")),
+            )
+        )
+
+
+class ApiFatturaSistemazioniExport(DomainAPIView):
+    """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/export/ — CSV/XLSX."""
+
+    area_funzionale = AREA
+    # ⭐ Stesso `lista_codice` della lista a video, ed e' il punto dell'export
+    #    configurabile: le colonne del file sono quelle che l'operatore VEDE
+    #    (preferenza + preset + permessi), non un elenco cablato qui che
+    #    diverge alla prima colonna aggiunta a catalogo.
+    lista_codice = "pagamenti.sistemazioni_fattura"
+    # Stessa ragione della lista: la consuma il drawer dell'eccedenza, che vive
+    # in `vendite`.
+    skip_area_check = True
+
+    @extend_schema(
+        operation_id="pagamenti_fattura_sistemazioni_export",
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file degli atti di UNA fattura.
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1` e non la pagina a video: l'export esporta il
+    #    DATASET, non la pagina. Il `+1` serve al guard di
+    #    `build_export_response`, che rifiuta PRIMA di serializzare invece di
+    #    consegnare un file troncato in silenzio.
+    # ⚠️ `?formato=`, non `?format=`: quest'ultimo e' un parametro magico di DRF
+    #    e collide col content negotiation (`feedback_drf_format_magic_param`).
+    def get(self, request: Request, fattura_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        dati = sistemazioni_service.list_sistemazioni_fattura(
+            fattura_id,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return build_export_response(
+            request,
+            lista_codice=self.lista_codice,
+            results=dati["results"],
+            total=dati["count"],
+            # ⛔ Nessun filtro da dichiarare: questa lista non ne ha — la
+            #    fattura e' nel path, non e' una scelta dell'operatore. Un
+            #    `{"fattura": ...}` scritto qui sarebbe un filtro inventato
+            #    nell'intestazione del file.
+            filtri_applicati=None,
+            fmt=fmt,
         )
 
 
@@ -892,6 +969,11 @@ class ApiEntiIncasso(DomainAPIView):
     """GET/POST /api/v1/pagamenti/enti-incasso/ — i canali di incasso."""
 
     area_funzionale = AREA
+    # ⭐ Cancello di perimetro emittente: `perimetro_emittente = t` a
+    #    catalogo (decisione D-3 del lotto 2, 2026-09-02) — vale
+    #    l'emittente dell'operatore, e la lista non si assume il compito
+    #    di dire da quale emittente arriva ogni riga.
+    lista_codice = "pagamenti.canali_incasso"
     is_search_endpoint = True
 
     @extend_schema(
