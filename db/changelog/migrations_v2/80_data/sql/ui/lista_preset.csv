@@ -58,3 +58,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 57,57,lista_colonna_default,Vista standard catalogo colonne,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
 58,58,lista_preset_default,Vista standard preset,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
 59,59,lista_colonna_permesso_default,Vista standard permessi colonna,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
+60,60,canali_incasso_default,Vista standard canali di incasso,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
+61,61,sistemazioni_fattura_default,Vista standard atti di sistemazione,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
+62,62,soggetto_titoli_iva_default,Vista standard titoli IVA soggetto,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
+63,63,titoli_iva_sfondati_default,Vista standard titoli IVA sfondati,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
