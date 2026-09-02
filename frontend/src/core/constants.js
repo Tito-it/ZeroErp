@@ -347,6 +347,24 @@ export const MANAGE_ICONS = {
   // Competenza, e serve ora anche all'«apri documento» del drill-down Backlog.
   COMMESSA: 'pi pi-briefcase',
   LISTINI: 'app-nav-icon app-nav-icon-listini',
+  // NUMERAZIONE: i registri di numerazione (sezionali) di un emittente. Come
+  // COMMESSA non hanno una voce di navigazione — si aprono dal kebab
+  // dell'emittente — quindi l'icona vive qui e non in NAV_ICONS.
+  // ⭐ Il cancelletto e' il segno del NUMERO, ed e' cio' che quei registri
+  // decidono. ⛔ Non la matita: quella dice «modifica questa riga», mentre
+  // l'azione apre un ELENCO (`feedback_row_actions_menu`). Centralizzata
+  // 2026-09-02 alla 3a occorrenza: l'azione di riga e i due drawer che apre —
+  // e devono portare lo stesso segno, o chi ha cliccato non lo ritrova.
+  NUMERAZIONE: 'pi pi-hashtag',
+  // FAMIGLIA_DOCUMENTO: la regola che il registro applica. Ha una voce di
+  // navigazione (Amministrazione -> Famiglie di documento), quindi ripete la
+  // sua icona — `NAV_ICONS.FILE = pi pi-file` — per la stessa ragione di
+  // SOGGETTO e FATTURE: il drawer che si apre dev'essere riconoscibile come
+  // «quella li'», non come una funzione nuova.
+  // ⚠️ Il valore si RIPETE invece di importarlo: `NAV_ICONS` vive in
+  // `core/navigation.js` e importarlo qui legherebbe le costanti alla
+  // navigazione. E' la stessa scelta gia' fatta per SOGGETTO e FATTURE.
+  FAMIGLIA_DOCUMENTO: 'pi pi-file',
   RIGHE: 'pi pi-list',
   // FATTURE: la stessa icona della voce di navigazione (NAV_ICONS.FATTURE) —
   // le azioni di riga che PORTANO alla lista fatture devono essere

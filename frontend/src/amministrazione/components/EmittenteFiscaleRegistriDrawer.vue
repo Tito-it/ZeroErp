@@ -61,7 +61,7 @@ function chiudi() {
     @update:visible="(v) => emit('update:visible', v)"
   >
     <template #header>
-      <DrawerTitle :icon="MANAGE_ICONS.EDIT" :title="titolo" />
+      <DrawerTitle :icon="MANAGE_ICONS.NUMERAZIONE" :title="titolo" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">

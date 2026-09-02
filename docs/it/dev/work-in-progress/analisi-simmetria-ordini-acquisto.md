@@ -17,7 +17,7 @@
 > * [analisi-db-magazzino-aggancio-documento-e-produzione.md](analisi-db-magazzino-aggancio-documento-e-produzione.md) — D-1 e D-7 nominano acquisti
 > * [brief-design-partita-merce-generalizzata](../work-done/brief-design-partita-merce-generalizzata.md) e
 >   [brief-db-resi-vendita](../work-done/brief-db-resi-vendita.md) — il modello da specchiare per la ricezione
-> * [brief-be-fe-crud-registri-di-numerazione.md](brief-be-fe-crud-registri-di-numerazione.md) — il motore di numerazione, chiuso il 2026-09-01
+> * [brief-be-fe-crud-registri-di-numerazione.md](../work-done/brief-be-fe-crud-registri-di-numerazione.md) — il motore di numerazione, chiuso il 2026-09-01
 
 ---
 

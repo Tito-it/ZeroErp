@@ -95,6 +95,7 @@ from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
     _colonne_attive,
     _seed,
+    ORDINAMENTO_LOCALE,
 )
 
 # Mese di comodo per le liste il cui filtro di competenza e' OBBLIGATORIO.
@@ -219,9 +220,15 @@ def _chiavi_riga(riga: Any) -> set[str] | None:
 # ⭐ RIUSO, non copia: quel registro e' gia' la mappa «lista -> dove vive la sua
 #    whitelist», ed e' gia' presidiato. Riscriverla qui vorrebbe dire tenere
 #    due verita' allineate a mano.
-def _whitelist(codice: str) -> Iterable[str] | None:
+def _whitelist(codice: str) -> Iterable[str] | str | None:
     for registrata, risolvi in _LISTE:
         if registrata == codice:
+            # ⭐ La sentinella non si CHIAMA: e' una dichiarazione, non un
+            #    risolutore. Quelle liste non ordinano lato backend — l'ordine
+            #    lo calcola il browser sulle righe gia' consegnate — quindi una
+            #    whitelist non ce l'hanno e non devono averla.
+            if risolvi == ORDINAMENTO_LOCALE:
+                return ORDINAMENTO_LOCALE
             return sorted(risolvi())
     return None
 
@@ -657,6 +664,37 @@ _ESERCIZI: dict[str, Esercizio] = {
             competenza_mese=_MESE, limit=1, offset=0, **_ordine(ob, od)
         ),
     ),
+    # ---------- ui: i quattro cataloghi delle liste ----------
+    # ⭐ Sono il CRUD delle liste configurabili, seminate il 2026-09-02. Non
+    #    paginano e non ordinano lato backend (`:paginata="false"`), ma la
+    #    domanda di questo presidio vale identica: il catalogo dichiara dei
+    #    `campo_sorgente`, e se la riga non li porta la cella esce VUOTA.
+    # ⚠️ Le tre figlie prendono l'id della lista PADRE: un id che non esiste
+    #    torna zero righe, e le colonne le dichiara comunque il cursore.
+    "ui.lista_definizione": Esercizio(
+        dove="ui/db/ui_admin_repository.py::list_definizioni_admin",
+        chiama=lambda ob, od: _r(
+            "apps.ui.db.ui_admin_repository", "UiAdminRepository"
+        ).list_definizioni_admin(),
+    ),
+    "ui.lista_colonna": Esercizio(
+        dove="ui/db/ui_admin_repository.py::list_colonne_by_lista_admin",
+        chiama=lambda ob, od: _r(
+            "apps.ui.db.ui_admin_repository", "UiAdminRepository"
+        ).list_colonne_by_lista_admin(_ID_FINTO),
+    ),
+    "ui.lista_preset": Esercizio(
+        dove="ui/db/ui_admin_repository.py::list_preset_by_lista",
+        chiama=lambda ob, od: _r(
+            "apps.ui.db.ui_admin_repository", "UiAdminRepository"
+        ).list_preset_by_lista(_ID_FINTO),
+    ),
+    "ui.lista_colonna_permesso": Esercizio(
+        dove="ui/db/ui_admin_repository.py::list_permessi_by_lista",
+        chiama=lambda ob, od: _r(
+            "apps.ui.db.ui_admin_repository", "UiAdminRepository"
+        ).list_permessi_by_lista(_ID_FINTO),
+    ),
     # ---------- pagamenti (cantiere incassi) ----------
     "pagamenti.distinte": Esercizio(
         dove="pagamenti/db/pagamenti_repository.py::list_distinte",
@@ -839,8 +877,17 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
     def test_ogni_ordinamento_dichiarato_produce_sql_valido(self) -> None:
         provate = 0
         senza_whitelist: list[str] = []
+        locali: list[str] = []
         for codice, esercizio in sorted(_ESERCIZI.items()):
             whitelist = _whitelist(codice)
+            # ⭐ Ordinamento LOCALE: non c'e' niente da provare, e non e' un
+            #    buco — e' una proprieta' della lista, dichiarata a registro.
+            #    Sta in un ramo suo perche' «non ha whitelist» e «non ordina
+            #    lato backend» sono due cose diverse, e confonderle
+            #    trasformerebbe una scelta in un debito (o viceversa).
+            if whitelist == ORDINAMENTO_LOCALE:
+                locali.append(codice)
+                continue
             if not whitelist:
                 # ⛔ Non un `continue` silenzioso: una lista che sparisce da
                 #    `_LISTE` uscirebbe da questo ciclo senza dirlo, e il test
@@ -866,3 +913,7 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
         self.assertGreater(
             provate, 0, "nessun ordinamento provato: il raccordo con `_LISTE` e' rotto"
         )
+        # Le liste a ordinamento locale ci sono, e restano contate: se un giorno
+        # sparissero tutte, il ramo sopra sarebbe morto senza che nessuno lo
+        # dica.
+        self.assertLessEqual(len(locali), len(_ESERCIZI))

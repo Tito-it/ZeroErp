@@ -9,7 +9,7 @@
 > un numero che il documento non è in grado di ospitare.
 >
 > **Origine.** Non da un difetto in campo: è emersa il 2026-09-01 scrivendo il
-> guard sulla forma del numero ([brief CRUD registri](brief-be-fe-crud-registri-di-numerazione.md)
+> guard sulla forma del numero ([brief CRUD registri](../work-done/brief-be-fe-crud-registri-di-numerazione.md)
 > §8), chiedendosi *perché* `serie_default` potesse restare fuori dal divieto. La
 > risposta — «perché la serie distingue i documenti» — vale per tre documenti su
 > cinque. Poi le domande di Tid, che hanno spostato il cantiere due volte:

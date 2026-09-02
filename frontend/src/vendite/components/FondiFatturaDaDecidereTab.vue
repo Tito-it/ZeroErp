@@ -250,6 +250,7 @@ onMounted(load)
             :options="motivoOptions"
             option-label="label"
             option-value="value"
+            :placeholder="t('vendite.fondi_fattura_da_decidere.motivo_tutti')"
             @update:model-value="onMotivoChange"
           />
         </div>

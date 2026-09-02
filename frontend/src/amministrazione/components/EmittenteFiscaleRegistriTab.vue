@@ -198,9 +198,17 @@ function motivoForma(data) {
           :placeholder="t('amministrazione.registri_numerazione.filtro_placeholder')"
           style="width: 260px;"
         />
+        <!-- ⚠️ IL PLACEHOLDER PORTA L'ETICHETTA DEL DEFAULT, e non e' cosmetica:
+             il valore di partenza e' `null` = TUTTI, e per PrimeVue `null` e'
+             «niente selezionato» — la combo usciva VUOTA su un filtro che era
+             attivo e valeva «tutti». Con l'etichetta giusta lo stato di
+             partenza e quello scelto a mano si leggono allo stesso modo, che e'
+             la verita': sono lo stesso stato. Rilievo di Tid in collaudo,
+             2026-09-02. -->
         <Select
           :model-value="store.filters.attivo"
           :options="opzioniStato"
+          :placeholder="t('amministrazione.stato_all')"
           option-label="label"
           option-value="value"
           style="width: 170px;"
@@ -237,7 +245,11 @@ function motivoForma(data) {
         />
       </template>
       <template #cell-attivo="{ data }">
-        <AttivoTag :attivo="data.attivo" />
+        <!-- ⛔ Il prop si chiama `active`, NON `attivo`: con il nome sbagliato
+             Vue non solleva niente, il prop resta al suo default `false` e la
+             colonna dice «non attivo» su OGNI riga. Difetto visto in app il
+             2026-09-02, su questa lista e sulla gemella. -->
+        <AttivoTag :active="data.attivo" />
       </template>
       <!-- v-if sul TEMPLATE dello slot: senza slot `actions` la colonna non si
            monta affatto, che è il comportamento voluto in sola lettura. -->

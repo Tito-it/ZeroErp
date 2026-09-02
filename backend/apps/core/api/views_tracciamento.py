@@ -78,7 +78,29 @@ class ApiAuditLog(DomainAPIView):
     # l'area core (>= LETTURA).
     area_funzionale = "core"
     is_search_endpoint = True
-    lista_codice = "storico.audit_log"
+    # ⛔ QUI C'ERA `lista_codice = "storico.audit_log"`, ED E' STATO TOLTO IL
+    #    2026-09-02: questo endpoint NON serve quella lista.
+    #
+    #    Due diari che si chiamano quasi uguale:
+    #      · `storico.audit_log`  — le MODIFICHE alle righe (tabella, tipo
+    #        operazione, chi, quando). La serve `/amm-software/audit-log/`
+    #        (`amm_software.AuditLogView`, AdminAPIView), ed e' quella che il
+    #        frontend monta;
+    #      · `dbops.audit_log`    — le ESECUZIONI di funzione (function_name,
+    #        status, duration_ms). La serve questo endpoint.
+    #    Zero colonne in comune col catalogo di quella lista.
+    #
+    # ⚠️ E il difetto non era solo di etichetta: `lista_codice` accende il
+    #    CANCELLO di perimetro, che leggeva i flag di `storico.audit_log`
+    #    (`perimetro_emittente = true`, `multi_emittente = false`) e avrebbe
+    #    risposto **422 «scegli un emittente»** a un operatore multi-emittente,
+    #    su un endpoint dove l'emittente non c'entra niente. Dormiente solo
+    #    perche' nessuna schermata lo chiama.
+    #
+    # ⚠️ E toglieva il posto alla dichiarazione VERA: `test_perimetro_emittente_
+    #    copertura` trovava il codice qui e considerava la lista «coperta», dove
+    #    invece e' ESENTE — la sua schermata e' `AdminAPIView`, come il log email
+    #    e le altre nove. L'esenzione ora e' scritta li', con la sua ragione.
     throttle_classes = [SearchBurstRateThrottle]
 
     @extend_schema(
