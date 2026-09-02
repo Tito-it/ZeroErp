@@ -97,7 +97,29 @@ databaseChangeLog:
         Caricamento e propagazione stanno nello STESSO changeSet: il checksum comprende il
         CSV, quindi editarlo ri-esegue anche l'eredita'.
       preConditions:
-        - onFail: HALT
+        # ⛔ 2026-09-02 — da HALT a MARK_RAN, e la preCondition NON si toglie.
+        #   Il migrate in CI si fermava qui con «Expected '3' got '0'»: i tre
+        #   registri Front-office / Back-office / NC sono usciti dal seed
+        #   (20260127-57), perche' appartengono a un emittente che su un
+        #   database ricostruito da zero non esiste. Qui non c'e' piu' niente
+        #   da configurare.
+        #
+        #   ⚠️ E la preCondition SERVE, non e' prudenza: il `loadUpdateData`
+        #   qui sotto ha `primaryKey: codice` e porta DUE sole colonne. Senza
+        #   quel cancello, su un database senza quei registri non aggiornerebbe
+        #   niente — proverebbe a INSERIRLI, con `uid`, `emittente_...` e
+        #   `famiglia_documento` vuoti. Toglierla sposterebbe il guasto dentro
+        #   il corpo, dove parlerebbe peggio.
+        #
+        #   ⭐ MARK_RAN e' corretto perche' questo changeSet fa UNA cosa sola —
+        #   dare la politica a tre registri — e non farla quando quei registri
+        #   non ci sono E' la risposta giusta, non una rinuncia.
+        #   ⚠️ Con MARK_RAN anche il `columnExists` diventa parte della
+        #   condizione «niente da fare». La colonna resta presidiata dove va:
+        #   la crea un changeSet di `00_schema`, e il `loadUpdateData` la nomina
+        #   — se sparisse, a fallire sarebbe l'esecuzione, non il silenzio.
+        #   Regola e censimento: docs/it/linee-guida-sql.md §11.7.
+        - onFail: MARK_RAN
         - and:
             - columnExists:
                 schemaName: vendite
