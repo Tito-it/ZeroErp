@@ -1475,6 +1475,76 @@ scrivere.
 
 ---
 
+### 11.5 ⛔ Niente DDL incondizionata su un trigger che nasce da `ci_apply`
+
+Presidiato da `scripts/guardrail_ddl_su_trigger_automazione.py` in CI.
+
+**Il meccanismo.** I trigger di **audit**, **`tx_id`** e **storico** non li
+scrive nessun changeSet: li genera il framework delle automazioni, che gira con
+`--contexts=ci_apply` — in CI la **seconda** invocazione di Liquibase, sul
+migrate manuale il pgagent la sera. Quindi durante la prima passata una tabella
+creata poche centinaia di changeSet prima **non li ha ancora**.
+
+Un `ALTER TRIGGER … RENAME`, o un `DROP TRIGGER` senza `IF EXISTS`, su uno di
+quei nomi passa su un database di sviluppo — dove esistono da settimane — e
+uccide il migrate su un database ricostruito da zero:
+
+```text
+ERROR: trigger "trg_compensazioni_audit_data_user_upd" for table "sistemazioni" does not exist
+```
+
+> Il 2026-09-02 il migrate si è fermato su
+> `20260822-25-rename-compensazioni-in-sistemazioni`. ⭐ Il fatto era **scritto
+> nell'intestazione di quel changeSet**, due paragrafi sopra il difetto: *«una
+> tabella nuova non ha i trigger di audit e `tx_id` finché non passa
+> `ci_apply`»*. Sapere la regola non basta: mentre si scrive la rinomina si
+> guarda il database che si ha davanti, e lì il trigger c'è.
+
+⭐ **E quasi sempre, in quel mondo, l'operazione non serviva.** Le automazioni
+lavorano **per pattern**, non per elenco: quando `ci_apply` passerà, la tabella
+avrà già il nome nuovo e i trigger nasceranno battezzati bene. Il rischio dei
+*due* trigger di audit — quello vecchio più quello nuovo, che scrivono due volte
+senza dare errore — esiste **solo dove il nome vecchio c'è già**.
+⇒ L'operazione è legittimamente **condizionale**: «rinomina se c'è».
+
+**La forma giusta**: quella singola istruzione va in un **changeSet suo**, con
+
+```yaml
+preConditions:
+  - onFail: MARK_RAN
+  - sqlCheck:
+      expectedResult: 1
+      sql: SELECT count(*) FROM pg_trigger tg … WHERE tg.tgname = 'trg_<vecchio>_audit_data_user_upd';
+```
+
+⛔ **Non una `preCondition` sul changeSet intero.** Con `onFail: HALT` si sposta
+solo il punto in cui la CI si ferma; con `MARK_RAN` si salterebbe **tutto** —
+la rinomina della tabella compresa — e il database resterebbe sul nome vecchio
+in silenzio. `MARK_RAN` è corretto **solo** su un changeSet che fa una cosa
+sola, e saltarla è la risposta giusta.
+
+⚠️ **E uno per trigger.** Sono oggetti indipendenti: un unico changeSet con
+«esistono entrambi?» salterebbe in silenzio anche uno stato a metà, lasciando
+addosso il nome vecchio all'altro.
+
+⭐ **L'esito si presidia in pgTAP, non nel migrate.** L'invariante «nessun
+vincolo, trigger o sequenza della tabella nomina ancora il nome vecchio» è il
+test 3 di `db/pgtap/pagamenti/test-sistemazioni-registro.sql`, e gira a
+`ci_apply` avvenuto — cioè quando la domanda ha una risposta vera. È la stessa
+divisione del §11.4.
+
+✅ Restano leciti: `DROP TRIGGER IF EXISTS`, l'SQL dentro un commento (il
+2026-01-30 un changeSet ha lasciato apposta il blocco commentato), e qualunque
+istruzione in un changeSet il cui `onFail` non sia `HALT`.
+
+⚠️ **Limiti del cancello, dichiarati**: guarda le `changes` e non i `rollback`;
+e riconosce i trigger dai tre suffissi del framework
+(`_audit_data_user_upd`, `_gen_tx_id_ins_upd`, `_z90_storico_upd_dlt`). Un'automazione
+nuova con un suffisso nuovo va aggiunta all'elenco, e finché non la si aggiunge
+non è guardata: è l'elenco a fare da perimetro.
+
+---
+
 ---
 
 ## 12. Capability: le azioni che il database propone all'operatore
