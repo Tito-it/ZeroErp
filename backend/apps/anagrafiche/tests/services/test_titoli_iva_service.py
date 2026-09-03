@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
 
@@ -198,16 +198,21 @@ class TitoliIvaAmbitoTests(TestCase):
         L'API lo DICHIARA, cosi' il frontend avvisa senza ri-derivare la regola
         in un template."""
         repo = repo_cls.return_value
-        repo.list_titoli_soggetto.return_value = [
+        # ⚠️ `(righe, totale)`: dal 2026-09-02 il repository consegna la pagina
+        #    e il totale nella stessa valutazione.
+        repo.list_titoli_soggetto.return_value = ([
             _titolo(id=1, ambito="RISTRETTO", ambiti_count=0),
             _titolo(id=2, ambito="RISTRETTO", ambiti_count=2),
             _titolo(id=3, ambito="TUTTO", ambiti_count=0),
-        ]
+        ], 3)
         from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
         out = TitoliIvaService().list_titoli_soggetto(SOGG)
         self.assertEqual(
-            [t["ambito_incompleto"] for t in out], [True, False, False],
+            [t["ambito_incompleto"] for t in out["results"]], [True, False, False],
         )
+        # ⛔ Il totale NON e' `len(results)`: e' quello che la query ha
+        #    dichiarato. Su una pagina il secondo e' un pezzo del primo.
+        self.assertEqual(out["count"], 3)
         # ⭐ E nessun giro extra: il conteggio arriva dalla stessa query.
         repo.list_ambiti.assert_not_called()
 
@@ -257,8 +262,10 @@ class TitoliIvaResiduoTests(TestCase):
         residuo resta quello della colonna."""
         repo = repo_cls.return_value
         repo.get_titolo.return_value = _titolo()
-        repo.list_ambiti.return_value = []
-        repo.list_movimenti.return_value = []
+        # ⚠️ `(righe, totale)`: dal 2026-09-02 anche queste due sotto-liste
+        #    consegnano la pagina e il totale nella stessa valutazione.
+        repo.list_ambiti.return_value = ([], 0)
+        repo.list_movimenti.return_value = ([], 0)
         from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
         out = TitoliIvaService().get_titolo(SOGG, 7)
         self.assertEqual(out["residuo"], Decimal("750.00"))
@@ -393,3 +400,310 @@ class TitoliIvaCatenaUpdateTests(TestCase):
             f"Chiavi accettate dal service che il repository non scrive: "
             f"{non_scrivibili}.",
         )
+
+
+# Scopo: esegue una chiamata di repository con un cursore FINTO e restituisce
+#        `(sql, params)` della PRIMA `execute`.
+#
+# ⭐ Estratto il 2026-09-02 alla seconda copia (regola del 2), e le due
+#    divergevano gia': una registrava l'ULTIMA `execute` e non aveva
+#    `fetchone`. Non e' un dettaglio di stile — con `offset > 0` e zero righe
+#    parte anche il conteggio di RIPIEGO, quindi quella versione verificava la
+#    query sbagliata e, sul percorso del ripiego, sollevava `AttributeError`
+#    invece di misurare. La copia rimasta indietro e' quella che sbaglia in
+#    direzione «verde» (`feedback_duplicazione_nasconde_il_bug`).
+#
+# ⚠️ Si guarda il SQL perche' e' li' che vivono i difetti di questa famiglia:
+#    un ORDER BY sbagliato non solleva niente, ordina e basta.
+def _cattura_sql(chiamata) -> tuple[str, list]:
+    from apps.anagrafiche.db import titoli_iva_repository as m
+
+    catturato: dict = {}
+
+    class _Cursore:
+        description = ()
+
+        def execute(self, sql, params=None):
+            catturato.setdefault("sql", sql)
+            catturato.setdefault("params", params)
+
+        def fetchall(self):
+            return []
+
+        # Il conteggio di ripiego legge una riga sola: senza questo metodo il
+        # percorso «pagina stantia» non si potrebbe nemmeno esercitare.
+        def fetchone(self):
+            return (0,)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    with patch.object(m.connection, "cursor", return_value=_Cursore()):
+        chiamata(m.TitoliIvaRepository())
+    return catturato["sql"], catturato["params"]
+
+
+class TitoliSfondatiPaginazioneTests(TestCase):
+    """La lista di presidio, paginata dal 2026-09-02.
+
+    ⭐ Prima restituiva i primi 500 e non lo diceva: dal 501-esimo caso in poi
+    una forzatura non si vedeva, su una lista che esiste per non farne sfuggire
+    nessuna. Questi test presidiano le due meta' della correzione.
+    """
+
+    def _servizio(self, righe, totale):
+        from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+
+        repo = MagicMock()
+        # ⭐ Il repository ritorna (righe, totale) da UNA valutazione: il totale
+        #    non e' una seconda query, ed e' il motivo per cui non puo'
+        #    divergere dalla pagina.
+        repo.list_titoli_sfondati.return_value = (righe, totale)
+        # ⚠️ `TitoliIvaService` costruisce il proprio repository e non lo accetta
+        #    iniettato: si sostituisce l'attributo, come fanno gli altri test di
+        #    questo modulo. Cambiare la firma del service per i test sarebbe
+        #    farsi dettare il progetto dalla prova.
+        svc = TitoliIvaService()
+        svc._repo = repo
+        return svc, repo
+
+    # Scopo: i parametri di pagina arrivano al repository come li ha dati la
+    #        view — se si perdessero per strada la lista tornerebbe a mostrare
+    #        sempre la prima pagina, e sembrerebbe che i casi siano quelli.
+    def test_i_parametri_di_pagina_arrivano_al_repository(self) -> None:
+        svc, repo = self._servizio([{"id": 1}], 1)
+        svc.list_titoli_sfondati(
+            limit=25, offset=50, order_by="eccedenza", order_dir="desc",
+        )
+        repo.list_titoli_sfondati.assert_called_once_with(
+            limit=25, offset=50, order_by="eccedenza", order_dir="desc",
+        )
+
+    # Scopo: il `count` NON e' `len(results)`. E' il numero che dice quanti casi
+    #        esistono davvero: derivarlo dalla pagina lo farebbe coincidere con
+    #        la pagina, cioe' rifarebbe esattamente il difetto corretto.
+    def test_il_totale_non_e_la_lunghezza_della_pagina(self) -> None:
+        svc, _ = self._servizio([{"id": 1}, {"id": 2}], 700)
+        esito = svc.list_titoli_sfondati(limit=2, offset=0)
+        self.assertEqual(len(esito["results"]), 2)
+        self.assertEqual(esito["count"], 700)
+
+    # Scopo: la whitelist e' chiavata sui `campo_sorgente` FISICI, che sono i
+    #        nomi che `<ListaConfigurabile>` manda in `order_by`. Chiavarla sui
+    #        codici logici e' il difetto trovato su `vendite.lotti` il 07-31.
+    def test_whitelist_chiavata_sui_campi_fisici(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _ORDER_COLS_SFONDATI
+
+        self.assertIn("eccedenza", _ORDER_COLS_SFONDATI)
+        self.assertIn("imponibile_utilizzato", _ORDER_COLS_SFONDATI)
+        # ⛔ Nessuna chiave "logica" che il frontend non manderebbe mai.
+        self.assertNotIn("utilizzato", _ORDER_COLS_SFONDATI)
+
+
+class TitoliSfondatiOrdinamentoSQLTests(TestCase):
+    """L'ORDER BY generato, letto dal SQL invece che dedotto.
+
+    🔴 Nasce da un difetto REALE introdotto e corretto il 2026-09-02: la view
+    passava `parse_list_params()["order_dir"]`, che normalizza l'assenza ad
+    `"asc"` e non e' mai `None` — quindi il `default_desc=True` del repository
+    non veniva mai raggiunto e la lista di presidio si ordinava dalla eccedenza
+    PIU' PICCOLA. Nessun errore: solo il caso piu' grave in ultima pagina, su
+    una schermata che esiste per metterlo davanti.
+    ⭐ Il test guarda il SQL perche' e' li' che il difetto viveva: qualunque
+    prova sui soli valori di ritorno sarebbe passata.
+    """
+
+    def _sql_di(self, **kwargs) -> str:
+        return _cattura_sql(
+            lambda repo: repo.list_titoli_sfondati(limit=25, offset=0, **kwargs),
+        )[0]
+
+    # Scopo: senza indicazioni si ordina dalla PIU' GRAVE. E' il difetto sopra.
+    def test_senza_order_dir_ordina_decrescente(self) -> None:
+        sql = self._sql_di(order_by=None, order_dir=None)
+        self.assertIn("DESC NULLS LAST", sql)
+        self.assertNotIn("ASC NULLS FIRST", sql)
+
+    # Scopo: e se l'operatore chiede il contrario, lo ottiene.
+    def test_order_dir_esplicito_vince(self) -> None:
+        self.assertIn("ASC NULLS FIRST", self._sql_di(order_by=None, order_dir="asc"))
+
+    # Scopo: il tiebreak segue la direzione primaria (decisione Tid 2026-08-03),
+    #        non un `DESC` inchiodato: a parita' di eccedenza l'elenco non deve
+    #        andare al contrario di come e' stato chiesto.
+    def test_il_tiebreak_segue_la_direzione(self) -> None:
+        self.assertRegex(self._sql_di(order_by=None, order_dir="asc"), r"t\.id ASC")
+        self.assertRegex(self._sql_di(order_by=None, order_dir="desc"), r"t\.id DESC")
+
+    # Scopo: pagina e conteggio condividono lo STESSO frammento FROM+WHERE.
+    #        Se divergessero, il totale mentirebbe rispetto alle righe e il guard
+    #        anti-troncamento del frontend suonerebbe (o tacerebbe) a sproposito.
+    def test_pagina_e_conteggio_hanno_lo_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _SFONDATI_FROM_WHERE
+
+        sql = self._sql_di(order_by=None, order_dir=None)
+        self.assertIn(_SFONDATI_FROM_WHERE, sql)
+
+class TitoliSoggettoPaginazioneTests(TestCase):
+    """La lista dei titoli di UN soggetto, paginata dal 2026-09-02.
+
+    ⭐ Prima consegnava TUTTI i titoli in un colpo e il conteggio veniva da una
+    query separata. Due valutazioni dello stesso predicato possono non
+    concordare — una riga che entra fra l'una e l'altra fa dire al totale una
+    popolazione diversa da quella mostrata. Ora sono la stessa valutazione.
+    """
+
+    def _sql_di(self, **kwargs) -> tuple[str, list]:
+        return _cattura_sql(lambda repo: repo.list_titoli_soggetto(SOGG, **kwargs))
+
+    # Scopo: senza `limit` NON si impagina — e' il secondo consumatore
+    #        (`soggetti_service`, che incorpora i titoli nel dettaglio).
+    # ⛔ Se comparisse un LIMIT di default, il dettaglio del soggetto mostrerebbe
+    #    i primi N titoli e nessuno lo direbbe: e' esattamente il difetto
+    #    corretto sulla lista degli sfondati.
+    def test_senza_limit_non_impagina(self) -> None:
+        sql, params = self._sql_di()
+        self.assertNotIn("LIMIT", sql)
+        self.assertEqual(params, [SOGG])
+
+    def test_con_limit_impagina(self) -> None:
+        sql, params = self._sql_di(limit=25, offset=50)
+        self.assertIn("LIMIT %s OFFSET %s", sql)
+        self.assertEqual(params, [SOGG, 25, 50])
+
+    # Scopo: il totale viene dalla stessa valutazione della pagina.
+    def test_il_totale_viaggia_con_la_pagina(self) -> None:
+        sql, _ = self._sql_di(limit=25)
+        self.assertIn("COUNT(*) OVER ()", sql)
+
+    # Scopo: l'ordinamento STORICO regge se nessuno chiede altro. Questo metodo
+    #        ha un secondo consumatore che non passa ordinamento: cambiargli il
+    #        default sotto i piedi riordinerebbe il dettaglio del soggetto.
+    def test_senza_order_by_resta_l_ordinamento_storico(self) -> None:
+        sql, _ = self._sql_di()
+        self.assertIn("COALESCE(t.valido_al, 'infinity'::date) DESC", sql)
+
+    # Scopo: una colonna fuori whitelist non e' un errore, e' un ritorno al
+    #        default — ma NON deve finire nell'SQL.
+    def test_order_by_fuori_whitelist_non_entra_nel_sql(self) -> None:
+        sql, _ = self._sql_di(order_by="drop_table; --")
+        self.assertNotIn("drop_table", sql)
+        self.assertIn("COALESCE(t.valido_al, 'infinity'::date) DESC", sql)
+
+    # Scopo: `residuo` si ordina per ALIAS, non per l'espressione riscritta:
+    #        e' un CASE che vale NULL sui tipi senza tetto, e una riscrittura
+    #        darebbe un numero dove il residuo non significa niente — l'elenco
+    #        si ordinerebbe diversamente da come si legge.
+    def test_residuo_si_ordina_per_alias(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import (
+            _ORDER_COLS_TITOLI_SOGGETTO,
+        )
+
+        self.assertEqual(_ORDER_COLS_TITOLI_SOGGETTO["residuo"], "residuo")
+
+    def test_il_tiebreak_segue_la_direzione(self) -> None:
+        self.assertRegex(self._sql_di(order_by="iva_codice", order_dir="asc")[0],
+                         r"t\.id ASC")
+        self.assertRegex(self._sql_di(order_by="iva_codice", order_dir="desc")[0],
+                         r"t\.id DESC")
+
+    # Scopo: pagina e conteggio di ripiego condividono lo STESSO FROM+WHERE.
+    def test_pagina_e_ripiego_hanno_lo_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import (
+            _TITOLI_SOGGETTO_FROM_WHERE,
+        )
+
+        sql, _ = self._sql_di(limit=25)
+        self.assertIn(_TITOLI_SOGGETTO_FROM_WHERE, sql)
+
+    # Scopo: l'envelope del service e' `results` + `count`, come ogni altra
+    #        lista configurabile — il frontend monta lo stesso scaffolding.
+    def test_envelope_results_e_count(self) -> None:
+        from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+
+        repo = MagicMock()
+        repo.list_titoli_soggetto.return_value = ([_titolo(id=1)], 700)
+        svc = TitoliIvaService()
+        svc._repo = repo
+        esito = svc.list_titoli_soggetto(SOGG, limit=1, offset=0)
+        self.assertEqual(len(esito["results"]), 1)
+        # ⛔ 700, non 1: il totale non e' la lunghezza della pagina.
+        self.assertEqual(esito["count"], 700)
+        repo.list_titoli_soggetto.assert_called_once_with(
+            SOGG, limit=1, offset=0, order_by=None, order_dir=None,
+        )
+
+class AmbitiEMovimentiPaginazioneTests(TestCase):
+    """Le due sotto-liste di `TitoloIvaDrawer`, paginate dal 2026-09-02.
+
+    ⭐ Sono le liste 64 e 65 del catalogo, e il loro contratto DIVERGE di
+    proposito: gli ambiti sono limitati per modello (montati `paginata: false`,
+    dove il totale e' l'asserzione che le righe siano tutte), il registro dei
+    movimenti CRESCE a ogni fattura e va impaginato. Un contratto solo per due
+    nature diverse sarebbe comodo e sbagliato.
+    """
+
+    def test_ambiti_senza_limit_non_impaginano(self) -> None:
+        sql, params = _cattura_sql(lambda repo: repo.list_ambiti(7))
+        self.assertNotIn("LIMIT", sql)
+        self.assertEqual(params, [7])
+
+    def test_ambiti_dichiarano_il_totale(self) -> None:
+        # ⛔ Il totale viene dalla query, non da `len(results)`: senza, il guard
+        #    anti-troncamento del BB confronterebbe le righe con se stesse.
+        sql, _ = _cattura_sql(lambda repo: repo.list_ambiti(7))
+        self.assertIn("COUNT(*) OVER ()", sql)
+
+    def test_ambiti_pagina_e_ripiego_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _AMBITI_FROM_WHERE
+
+        sql, _ = _cattura_sql(lambda repo: repo.list_ambiti(7, limit=25))
+        self.assertIn(_AMBITI_FROM_WHERE, sql)
+
+    def test_movimenti_impaginano_con_limit(self) -> None:
+        sql, params = _cattura_sql(
+            lambda repo: repo.list_movimenti(7, limit=25, offset=50),
+        )
+        self.assertIn("LIMIT %s OFFSET %s", sql)
+        self.assertEqual(params, [7, 25, 50])
+
+    # Scopo: senza `limit` il registro arriva INTERO, ed e' il caso dei due
+    #        consumatori interni — il dettaglio del titolo e il controllo di
+    #        appartenenza dell'annullo, che su una pagina guarderebbe meta'
+    #        delle righe.
+    def test_movimenti_senza_limit_arrivano_tutti(self) -> None:
+        sql, params = _cattura_sql(lambda repo: repo.list_movimenti(7))
+        self.assertNotIn("LIMIT", sql)
+        self.assertEqual(params, [7])
+
+    # Scopo: il default resta «il piu' recente per primo» — come si legge un
+    #        registro. E' l'ordine che i due consumatori interni si aspettano.
+    def test_movimenti_default_dal_piu_recente(self) -> None:
+        sql, _ = _cattura_sql(lambda repo: repo.list_movimenti(7))
+        self.assertIn("m.data_movimento DESC", sql)
+
+    def test_movimenti_pagina_e_ripiego_stesso_perimetro(self) -> None:
+        from apps.anagrafiche.db.titoli_iva_repository import _MOVIMENTI_FROM_WHERE
+
+        sql, _ = _cattura_sql(lambda repo: repo.list_movimenti(7, limit=25))
+        self.assertIn(_MOVIMENTI_FROM_WHERE, sql)
+
+    # Scopo: gli envelope del service, che il frontend monta con lo stesso
+    #        scaffolding delle altre liste.
+    def test_envelope_results_e_count(self) -> None:
+        from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+
+        repo = MagicMock()
+        repo.get_titolo.return_value = _titolo()
+        repo.list_ambiti.return_value = ([{"id": 1}], 3)
+        repo.list_movimenti.return_value = ([{"id": 9}], 700)
+        svc = TitoliIvaService()
+        svc._repo = repo
+        ambiti = svc.list_ambiti(SOGG, 7)
+        movimenti = svc.list_movimenti(SOGG, 7, limit=1, offset=0)
+        # ⛔ 3 e 700, non 1 e 1: il totale non e' la lunghezza della pagina.
+        self.assertEqual((len(ambiti["results"]), ambiti["count"]), (1, 3))
+        self.assertEqual((len(movimenti["results"]), movimenti["count"]), (1, 700))

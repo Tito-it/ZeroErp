@@ -1,0 +1,370 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Repository delle FAMIGLIE DI DOCUMENTO (`vendite.famiglie_documento`)
+#        — la lista del CRUD, il dettaglio, la creazione che passa dalla madre
+#        `fn_crea_famiglia_documento`, l'update delle colonne ammesse e il verbo
+#        `attivo`. Brief: brief-be-fe-crud-registri-di-numerazione §11.10.
+# ------------------------------------------------------------
+#
+# ⛔ SOTTODOMINIO SUO, come `registri_repository`. La famiglia e' la REGOLA che
+#    il registro applica: sono due entita' con due cicli di vita e due elenchi
+#    di guard, e tenerle nello stesso file confonderebbe la piu' piccola con la
+#    piu' grande.
+#
+# ⭐ SI LEGGE UNA VISTA, E LA VISTA E' IL CONTRATTO.
+#    `vendite.vw_famiglie_documento_lista` porta le colonne di catalogo, i due
+#    conteggi dei registri e i due blocchi capability presi dalle `fn_check_*`.
+#    ⛔ Il lookup generico NON basta e non e' un suo difetto: `fn_get_lookup_
+#    codici` da' id/codice/descrizione/attivo e non puo' portare i default della
+#    forma ne' le colonne di natura, che sono proprio cio' che serve al drawer
+#    dei registri (§11.10 BE-F1, decisione di Tid 2026-09-01).
+#
+# ⭐ `SELECT v.*`, E NON UNA PROIEZIONE SCRITTA A MANO. La lista dichiara
+#    `vista_sql = vw_famiglie_documento_lista` a catalogo, quindi il trigger
+#    `ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente` valida OGNI
+#    `campo_sorgente` contro le colonne di questa vista. Elencarle di nuovo qui
+#    creerebbe una TERZA copia dello stesso elenco — catalogo, vista, SELECT —
+#    e quella terza non la guarderebbe nessun presidio: una colonna dimenticata
+#    uscirebbe come cella VUOTA, che e' esattamente il difetto contro cui il
+#    catalogo dichiara la vista. Con la stella la SELECT non puo' divergere.
+#
+# ⛔ NESSUNO SCOPE EMITTENTE, e non e' una dimenticanza: una famiglia di
+#    documento e' GLOBALE — non ha una colonna emittente e vale per tutti.
+#    Il perimetro qui non e' un filtro di righe, e' un cancello di accesso:
+#    il CRUD sta sotto `AdminAPIView` (D6, Tid 2026-09-01).
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import connection
+
+from apps.core.db._helpers import (
+    sql_order_clause,
+    extract_paginated,
+    jsonb_out,
+    row_to_dict,
+    rows_to_list,
+)
+
+_VISTA = "vendite.vw_famiglie_documento_lista"
+
+# Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
+# `vendite.famiglie_documento` (e' quello che <ListaConfigurabile> invia come
+# sortField), valore = espressione SQL.
+# ⛔ Whitelist e non passaggio diretto: il valore arriva dal client e finisce in
+#    un ORDER BY, che non e' parametrizzabile.
+# ⚠️ DEVE COINCIDERE con le colonne `ordinabile = t` del catalogo, nei due versi
+#    (§11.10 BE-F6): una freccia che il catalogo mostra e la whitelist non
+#    riconosce fa ripiegare l'ordinamento sul default IN SILENZIO. A tenerli
+#    allineati e' `test_liste_configurabili_seed`, che confronta questo
+#    dizionario col seed — non la buona volonta'.
+_ORDER_COLS: dict[str, str] = {
+    "codice_interno": "v.codice_interno",
+    "descrizione": "v.descrizione",
+    "tabella_documento": "v.tabella_documento",
+    "colonna_numero": "v.colonna_numero",
+    "colonna_serie": "v.colonna_serie",
+    "colonna_billing_account": "v.colonna_billing_account",
+    "gestisce_serie": "v.gestisce_serie",
+    "presidia_data_documento": "v.presidia_data_documento",
+    "prefisso_default": "v.prefisso_default",
+    "lunghezza_default": "v.lunghezza_default",
+    "n_registri": "v.n_registri",
+    "n_registri_attivi": "v.n_registri_attivi",
+    "attivo": "v.attivo",
+    "data_insert": "v.data_insert",
+}
+_ORDER_DEFAULT = "codice_interno"
+
+# Colonne su cui cade la ricerca libera.
+# ⚠️ Stesso patto della whitelist di ordinamento: sono le `ricercabile_full = t`
+#    del catalogo. Cercare su una colonna che il catalogo non dichiara
+#    ricercabile darebbe risultati che l'operatore non sa spiegare.
+_RICERCA_COLS: tuple[str, ...] = ("codice_interno", "descrizione", "prefisso_default")
+
+# Colonne jsonb: il backend Django per psycopg 3 le consegna come `str`.
+_COLONNE_JSONB: tuple[str, ...] = (
+    "meta",
+    "rimozione_blocco_dettaglio",
+    "struttura_blocco_dettaglio",
+)
+
+# I parametri della madre, NELL'ORDINE della sua firma.
+# ⛔ La creazione non fa un INSERT: passa da `vendite.fn_crea_famiglia_documento`
+#    (§11.10 BE-F4), che scrive la famiglia E provvede i registri mancanti nella
+#    stessa transazione. Un INSERT diretto farebbe nascere una famiglia che non
+#    produce nessun documento finche' qualcuno non se ne accorge.
+_CAMPI_CREATE: tuple[str, ...] = (
+    "codice_interno",
+    "descrizione",
+    "schema_tabella",
+    "nome_tabella",
+    "colonna_numero",
+    "colonna_billing_account",
+    "colonna_serie",
+    "prefisso_default",
+    "lunghezza_default",
+    "attivo",
+    "meta",
+)
+
+# Colonne scrivibili in UPDATE.
+#
+# ⛔ FUORI: `codice_interno` (lo presidia il lock automatico `trgfn_lock_columns`
+#    — D3), `attivo` (ha il suo verbo) e `presidia_data_documento`.
+#
+# ⭐ QUEST'ULTIMA E' LA VOCE CHE VA CAPITA: una famiglia creata dal CRUD nasce
+#    NON FISCALE, e non per prudenza. Il `CHECK chk_registri_fatturazione_
+#    famiglia_regole_fattura` cabla `'FATTURA'` e un `CHECK` non puo' leggere
+#    un'altra tabella; accanto, `fn_get_pavimento_data_documento` e
+#    `fn_get_registro_documento` cablano la stessa stringa. Accendere il
+#    presidio su una famiglia nuova le prometterebbe un comportamento fiscale
+#    che il resto del modello non le da'. ✅ D5 (Tid, 2026-09-01): il `CHECK`
+#    non si tocca, e il limite si dichiara nella maschera (§11.11).
+#
+# ⭐ LE QUATTRO COLONNE STRUTTURALI CI SONO INVECE, ed e' la stessa logica dei
+#    tre campi di forma dei registri: esiste il guard che le rifiuta quando la
+#    famiglia ha gia' dei registri (`trgfn_famiglie_documento_guard_struttura`,
+#    E_FAMIGLIA_DOCUMENTO_CHIAVE_IMMUTABILE). Tenerle fuori sarebbe un divieto
+#    APPLICATIVO accanto a uno di DATABASE — il secondo elenco parallelo che
+#    tutto il cantiere esiste per non avere.
+# ⛔ E `meta` NON e' in UPDATE: e' una colonna tecnica NOT NULL che nessuna
+#    maschera scrive e nessun serializer dichiara. Tenerla scrivibile sarebbe
+#    superficie morta con un difetto dentro — un `meta: ""` normalizzato a NULL
+#    verrebbe respinto dal NOT NULL con un messaggio generico, su un campo che
+#    l'operatore non ha mai visto. In CREATE resta, perche' e' un parametro
+#    della madre e ha il suo default.
+_CAMPI_UPDATE: tuple[str, ...] = (
+    "descrizione",
+    "schema_tabella",
+    "nome_tabella",
+    "colonna_numero",
+    "colonna_billing_account",
+    "colonna_serie",
+    "prefisso_default",
+    "lunghezza_default",
+)
+
+
+# Scopo: decodifica le colonne jsonb della vista, preservando i NULL.
+def _decodifica_jsonb(righe: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for riga in righe:
+        for col in _COLONNE_JSONB:
+            if col in riga:
+                riga[col] = jsonb_out(riga[col])
+    return righe
+
+
+class FamiglieDocumentoRepository:
+    """Accesso DB al catalogo delle famiglie di documento."""
+
+    # =================================================================
+    # Lettura
+    # =================================================================
+
+    # Scopo: lista paginata delle famiglie, con i conteggi dei registri e i due
+    #        blocchi capability che la maschera usa per spegnere i pulsanti.
+    def list_famiglie(
+        self,
+        *,
+        search: str | None = None,
+        attivo: bool | None = None,
+        gestisce_serie: bool | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = _ORDER_DEFAULT,
+        order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS,
+            default=_ORDER_COLS[_ORDER_DEFAULT],
+            tiebreak="v.id",
+        )
+        pattern = f"%{search.strip()}%" if search and search.strip() else None
+        ricerca = " OR ".join(f"v.{c} ILIKE %s" for c in _RICERCA_COLS)
+        sql = f"""
+            SELECT v.*,
+                   COUNT(*) OVER () AS total_count
+              FROM {_VISTA} v
+             WHERE (%s::boolean IS NULL OR v.attivo = %s)
+               AND (%s::boolean IS NULL OR v.gestisce_serie = %s)
+               AND (%s::text IS NULL OR ({ricerca}))
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        params: list[Any] = [
+            attivo, attivo,
+            gestisce_serie, gestisce_serie,
+            pattern, *[pattern] * len(_RICERCA_COLS),
+            limit, offset,
+        ]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            righe, totale = extract_paginated(cursor)
+        return _decodifica_jsonb(righe), totale
+
+    # Scopo: il dettaglio di una famiglia. `None` se non esiste.
+    def get_famiglia(self, famiglia_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT v.* FROM {_VISTA} v WHERE v.id = %s", [famiglia_id])  # noqa: S608
+            riga = row_to_dict(cursor)
+        if riga is None:
+            return None
+        return _decodifica_jsonb([riga])[0]
+
+    # Scopo: la famiglia per codice interno — serve a chi ha in mano il codice e
+    #        non l'id (i registri si agganciano per `codice_interno`).
+    def get_famiglia_per_codice(self, codice_interno: str) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT v.* FROM {_VISTA} v WHERE v.codice_interno = %s",  # noqa: S608
+                [codice_interno],
+            )
+            riga = row_to_dict(cursor)
+        if riga is None:
+            return None
+        return _decodifica_jsonb([riga])[0]
+
+    # Scopo: chi occupa oggi una tabella, fra le famiglie ATTIVE — cioe' la riga
+    #        che `uq_famiglie_documento_tabella_attiva` fa vincere.
+    # ⛔ Legge la TABELLA e non la vista, ed e' voluto: serve un nome per un
+    #    messaggio d'errore, non capability ne' conteggi. Passare dalla vista
+    #    farebbe girare due `fn_check_*` in LATERAL per leggere due stringhe.
+    def get_famiglia_attiva_per_tabella(
+        self, schema_tabella: str, nome_tabella: str
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT codice_interno, descrizione
+              FROM vendite.famiglie_documento
+             WHERE attivo
+               AND schema_tabella = %s
+               AND nome_tabella = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [schema_tabella, nome_tabella])
+            return row_to_dict(cursor)
+
+    # Scopo: «questa famiglia ammette le regole fiscali?» — cioe' i limiti di
+    #        emissione e una politica data non neutra sul suo registro.
+    #
+    # ⛔ NON e' `presidia_data_documento`, che oggi ha la stessa risposta su
+    #    tutte e cinque. Quella dice se la famiglia ha un PAVIMENTO sulla data
+    #    del documento (il cancello di monotonia di `fn_get_next_progressivo`);
+    #    questa dice cosa ammette il `CHECK` dei registri. Due domande diverse
+    #    con la stessa risposta di oggi restano due domande — e la prima
+    #    famiglia creata dal CRUD le separa, perche' nasce presidiata e NON
+    #    fiscale (§12.2, colonna aggiunta dal team DB il 2026-09-02).
+    #
+    # ⭐ E la colonna non e' libera: un `CHECK` la lega allo stesso letterale del
+    #    `CHECK` sui registri, quindi il posto in cui si decide cosa e' fiscale
+    #    resta UNO e la colonna lo dichiara invece di duplicarlo.
+    #
+    # ⛔ Legge la TABELLA e non la vista: serve un booleano, e passare dalla
+    #    vista farebbe girare due `fn_check_*` in LATERAL per leggerlo.
+    # ⚠️ `None` quando la famiglia non esiste, e NON `False`: sono due risposte
+    #    diverse — «non ammette» e «non c'e'» — e a rifiutare la seconda deve
+    #    essere la FK, con il suo messaggio, non un default silenzioso qui.
+    def ammette_regole_fiscali(self, codice_interno: str) -> bool | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ammette_regole_fiscali
+                  FROM vendite.famiglie_documento
+                 WHERE codice_interno = %s
+                """,
+                [codice_interno],
+            )
+            riga = cursor.fetchone()
+        return None if riga is None else bool(riga[0])
+
+    # Scopo: le famiglie da offrire in un Select — le sole ATTIVE, con i default
+    #        della forma e le due colonne di natura che il drawer dei registri
+    #        usa per precompilare e per decidere quali campi mostrare.
+    # ⛔ `ammette_regole_fiscali` e non `presidia_data_documento`: e' la prima a
+    #    rispondere alla domanda «questo registro puo' avere i limiti di
+    #    emissione?». La seconda risponde al pavimento di sequenza, e la
+    #    maschera dei registri non la usa.
+    # ⛔ Non e' un doppione della lista: quella e' paginata, ordinabile e piena
+    #    di capability; questo e' l'elenco che riempie una tendina.
+    def list_lookup(self) -> list[dict[str, Any]]:
+        sql = f"""
+            SELECT v.codice_interno,
+                   v.descrizione,
+                   v.prefisso_default,
+                   v.lunghezza_default,
+                   v.gestisce_serie,
+                   v.ammette_regole_fiscali
+              FROM {_VISTA} v
+             WHERE v.attivo
+             ORDER BY v.descrizione
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            return rows_to_list(cursor)
+
+    # =================================================================
+    # Scrittura
+    # =================================================================
+
+    # Scopo: crea la famiglia PASSANDO DALLA MADRE, e ritorna cio' che la madre
+    #        dichiara: l'id, il codice e quanti registri ha provveduto.
+    # ⭐ `registri_creati` non e' un dettaglio da buttare: e' la meta' del lavoro
+    #    che la creazione ha fatto, e la maschera deve poterlo dire.
+    def crea_famiglia(self, dati: dict[str, Any]) -> dict[str, Any]:
+        # ⛔ ARGOMENTI PER NOME, NON PER POSIZIONE, ed è la differenza fra un
+        #    errore rumoroso e un difetto muto. Con undici `%s` posizionali la
+        #    corrispondenza sta in `_CAMPI_CREATE`: il giorno che la madre
+        #    cambia l'ordine dei parametri — o ne aggiunge uno in mezzo —
+        #    `colonna_serie` riceverebbe il valore di `colonna_billing_account`
+        #    e la famiglia nascerebbe SBAGLIATA senza che niente fallisca (sono
+        #    tutti `text`). Con la notazione nominale un parametro rinominato è
+        #    un errore SQL, e uno spostato non è niente.
+        argomenti = ", ".join(f"p_{c} => %s" for c in _CAMPI_CREATE)
+        sql = f"""
+            SELECT famiglia_id, codice_interno, registri_creati
+              FROM vendite.fn_crea_famiglia_documento({argomenti})
+        """  # noqa: S608
+        params = [dati.get(c) for c in _CAMPI_CREATE]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            riga = row_to_dict(cursor)
+        assert riga is not None, "fn_crea_famiglia_documento non ha ritornato righe"
+        return riga
+
+    # Scopo: aggiorna le colonne ammesse. Ritorna le righe toccate, cosi' il
+    #        service distingue «non esiste» da «fatto».
+    def update_famiglia(self, famiglia_id: int, dati: dict[str, Any]) -> int:
+        colonne = [c for c in _CAMPI_UPDATE if c in dati]
+        if not colonne:
+            return 0
+        set_sql = ", ".join(f"{c} = %s" for c in colonne)
+        sql = f"""
+            UPDATE vendite.famiglie_documento
+               SET {set_sql}
+             WHERE id = %s
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [*[dati[c] for c in colonne], famiglia_id])
+            return cursor.rowcount
+
+    # Scopo: accende o spegne la famiglia — un verbo suo, non un PATCH generico.
+    # ⛔ Qui non si ricontrolla se e' spegnibile: a rifiutare e'
+    #    `trgfn_famiglie_documento_guard_disattivazione`, e la
+    #    `fn_check_famiglia_documento_disattivabile` che la vista legge serve a
+    #    SPEGNERE IL PULSANTE, non a decidere al posto del database.
+    # ⚠️ `IS DISTINCT FROM` rende il verbo idempotente: ri-spegnere una famiglia
+    #    gia' spenta tocca zero righe e non sveglia il guard.
+    def set_attivo(self, famiglia_id: int, attivo: bool) -> int:
+        sql = """
+            UPDATE vendite.famiglie_documento
+               SET attivo = %s
+             WHERE id = %s
+               AND attivo IS DISTINCT FROM %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [attivo, famiglia_id, attivo])
+            return cursor.rowcount

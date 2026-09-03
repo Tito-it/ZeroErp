@@ -86,9 +86,51 @@ _ESENZIONI: dict[str, str] = {
     "anagrafiche.operatori": "AdminAPIView — gestione utenti",
     "config.email_account": "AdminAPIView — configurazione tecnica",
     "config.email_log": "AdminAPIView — diario tecnico di sistema",
+    # ⭐ La schermata che monta questa lista e' `/amm-software/audit-log/`
+    #    (`amm_software.AuditLogView`, AdminAPIView): il diario delle MODIFICHE
+    #    ai dati. ⛔ Fino al 2026-09-02 il presidio la considerava «coperta»
+    #    perche' `core.ApiAuditLog` dichiarava quel `lista_codice` — ma
+    #    quell'endpoint serve `dbops.audit_log`, le ESECUZIONI di funzione,
+    #    che con questo catalogo non hanno una colonna in comune. La
+    #    dichiarazione e' stata tolta di la' e l'esenzione scritta qui, che e'
+    #    il posto in cui e' vera.
+    "storico.audit_log": "AdminAPIView — diario delle modifiche ai dati",
     "config.email_template": "AdminAPIView — configurazione tecnica",
     "config.tipi_ruolo_tipi_indirizzo": "AdminAPIView — matrice di configurazione",
     "config.utilities_tipi_ruolo": "AdminAPIView — matrice di configurazione",
+    # ⭐ E questa non e' «amministrazione» per abitudine: una famiglia di
+    #    documento e' GLOBALE, e dal 2026-09-02 lo DICHIARA —
+    #    `ui.lista_definizione.perimetro_emittente = false` (§12.1). Non c'e'
+    #    nessun perimetro da sciogliere, e il cancello sarebbe una domanda senza
+    #    risposta. Il CRUD sta sotto `AdminAPIView` per decisione esplicita
+    #    (D6, Tid 2026-09-01: «solo amministratore», e il cancello sull'endpoint
+    #    invece che nel database).
+    # ⛔ E NON e' `multi_emittente = true`: quel flag dichiara «so dire da quale
+    #    emittente arriva ogni riga», che su un catalogo globale e' falso — e
+    #    l'avrebbe fatta comparire fra le liste non certificate, che due pgTAP
+    #    vogliono a zero righe.
+    "vendite.famiglie_documento": "AdminAPIView — catalogo globale (perimetro_emittente = false)",
+    # ⭐ Le 4 liste della pagina tecnica `ui` (2026-09-02). ⛔ NON sono esenti
+    #    «perche' sono amministrazione»: quella sarebbe un'abitudine, non una
+    #    ragione, e due delle quattro non stanno nemmeno sotto `AdminAPIView`
+    #    (preset e permessi sono `DomainAPIView` + `skip_area_check`, gated per
+    #    azione di processo). La ragione e' che il perimetro emittente qui **non
+    #    esiste come dimensione**: verificato sulla doc auto-gen, tre di queste
+    #    tabelle non hanno affatto `emittente_fiscale_id`. Un cancello sarebbe
+    #    una domanda senza risposta.
+    "ui.lista_definizione": "catalogo delle liste — nessun `emittente_fiscale_id` in tabella",
+    "ui.lista_colonna": "catalogo delle colonne — nessun `emittente_fiscale_id` in tabella",
+    "ui.lista_colonna_permesso": "grant per colonna/profilo — nessun `emittente_fiscale_id` in tabella",
+    # ⚠️ Questa e' l'ECCEZIONE fra le quattro, e va letta: `ui.lista_preset` HA
+    #    `emittente_fiscale_id` (un preset puo' essere d'emittente). L'ambiguita'
+    #    che il cancello previene esiste quindi davvero — ed e' gia' sciolta a
+    #    video dalla colonna «Riferimento», che mostra il profilo o l'emittente
+    #    di ogni riga. E' la seconda via che la regola stessa ammette
+    #    (P-2c: «su una lista l'etichetta non basta, serve la colonna o il
+    #    blocco»): qui c'e' la colonna.
+    # ⛔ Se un giorno quella colonna sparisse dal preset di default della lista,
+    #    questa esenzione andrebbe TOLTA, non aggiornata.
+    "ui.lista_preset": "ha emittente_fiscale_id, ma la colonna «Riferimento» lo mostra per riga (P-2c)",
 }
 
 
@@ -109,6 +151,24 @@ def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
             albero = ast.parse(percorso.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover - file non parsabile
             continue
+        # ⚠️ Le costanti di MODULO prima delle classi, ed e' la differenza fra
+        #    vedere un cancello e non vederlo: `lista_codice = _LISTA_CODICE`
+        #    e' una dichiarazione come `lista_codice = "..."`, ma per `ast` e'
+        #    un `Name` e `literal_eval` la scarta. Il presidio diceva quindi
+        #    «`vendite.registri_numerazione` non ha nessun cancello» mentre il
+        #    cancello c'era, dichiarato via costante — un rosso su una cosa
+        #    giusta, che e' il modo piu' rapido di far disattivare un test.
+        costanti: dict[str, str] = {}
+        for stmt in albero.body:
+            if (
+                isinstance(stmt, ast.Assign)
+                and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)
+                and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str)
+            ):
+                costanti[stmt.targets[0].id] = stmt.value.value
+
         for nodo in ast.walk(albero):
             if not isinstance(nodo, ast.ClassDef):
                 continue
@@ -119,10 +179,16 @@ def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
                     and isinstance(stmt.targets[0], ast.Name)
                     and stmt.targets[0].id == "lista_codice"
                 ):
-                    try:
-                        codice = ast.literal_eval(stmt.value)
-                    except ValueError:  # pragma: no cover - valore dinamico
-                        continue
+                    if isinstance(stmt.value, ast.Name):
+                        # Costante dello stesso modulo: piu' in la' non si va
+                        # (un import da un altro file resterebbe invisibile, e
+                        # va saputo) — ma il caso vero e' questo.
+                        codice = costanti.get(stmt.value.id)
+                    else:
+                        try:
+                            codice = ast.literal_eval(stmt.value)
+                        except ValueError:  # pragma: no cover - valore dinamico
+                            continue
                     if isinstance(codice, str):
                         cancelli.setdefault(codice, []).append(nodo.name)
     return ({k: tuple(v) for k, v in cancelli.items()}, frozenset(classi))

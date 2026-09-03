@@ -14,7 +14,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
+from apps.core.db._helpers import sql_order_clause, row_to_dict, rows_to_list
 
 
 # Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
@@ -65,9 +65,12 @@ class CategorieClientiRepository:
         order_by: str = "ordinamento",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_column = _ORDER_COLS.get(order_by, _ORDER_COLS["ordinamento"])
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS,
+            default=_ORDER_COLS["ordinamento"],
+            tiebreak="cc.id",
+        )
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 
@@ -109,7 +112,7 @@ class CategorieClientiRepository:
                 SELECT {_SELECT_COLS}
                   FROM anagrafiche.categorie_clienti cc
                 {where_clause}
-                 ORDER BY {order_column} {direction}, cc.id {tiebreak_dir}
+                 ORDER BY {ordinamento}
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608
                 params + [safe_limit, safe_offset],

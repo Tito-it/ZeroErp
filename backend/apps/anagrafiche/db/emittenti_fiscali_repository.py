@@ -15,12 +15,13 @@ from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import (
+    sql_order_clause,
+    sql_order_direction,
+    sql_tiebreak_direction,
     extract_paginated,
     jsonb_out,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 
 
@@ -141,11 +142,12 @@ class EmittentiFiscaliRepository:
         order_by: str = _EMITTENTI_ORDER_DEFAULT,
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = _EMITTENTI_ORDER_COLS.get(
-            order_by, _EMITTENTI_ORDER_COLS[_EMITTENTI_ORDER_DEFAULT]
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_EMITTENTI_ORDER_COLS,
+            default=_EMITTENTI_ORDER_COLS[_EMITTENTI_ORDER_DEFAULT],
+            tiebreak="ef.id",
         )
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT ef.id,
@@ -177,7 +179,7 @@ class EmittentiFiscaliRepository:
                     OR s.partita_iva ILIKE %s
                    ))
                AND (%s::boolean IS NULL OR ef.attivo = %s)
-             ORDER BY {order_col} {direction}, ef.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

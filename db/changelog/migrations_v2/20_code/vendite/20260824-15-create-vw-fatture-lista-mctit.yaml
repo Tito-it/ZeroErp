@@ -134,13 +134,16 @@ databaseChangeLog:
             - viewExists:
                 schemaName: vendite
                 viewName: vw_documento_lineage
-            # La voce di catalogo su cui si aggancia il lineage. Senza, il join
-            # non fallisce: resta muto, che e' peggio.
-            - sqlCheck:
-                expectedResult: 1
-                sql: |
-                  SELECT count(*) FROM config.sorgenti
-                   WHERE codice_interno = 'FATTURA' AND attivo IS TRUE
+            # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.sorgenti (codice_interno = 'FATTURA').
+            #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+            #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+            #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+            #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+            #    La vista JOINa il catalogo quando viene INTERROGATA, non quando viene
+            #    creata: la voce di catalogo e' un fatto di runtime.
+            #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+            #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+            #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
       changes:
         - sql:
             dbms: postgresql

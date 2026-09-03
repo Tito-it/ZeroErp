@@ -209,7 +209,7 @@ non un azzardo — semplicemente non è quella che consiglio a parità di tutto.
 
 ---
 
-## 2. Superficie misurata (2026-07-29 — da ri-verificare)
+## 2. Superficie misurata (2026-07-29 · **ri-verificata il 2026-09-02**)
 
 ```bash
 cd frontend
@@ -221,16 +221,39 @@ grep -rho "from 'primevue/[a-z]*'" src --include=*.vue --include=*.js \
   | sed "s/.*primevue\///;s/'//" | sort | uniq -c | sort -rn
 ```
 
-| Pacchetto | Superficie |
-| --- | --- |
-| `primevue` | **937 import in 260 file** (su 335 `.vue`) — **47 moduli distinti** |
-| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) |
-| `@primeuix/themes` | **1 file** — `src/main.js`, preset `Aura` |
-| `primeicons` | 122 classi `pi-*` distinte + **28 codepoint cablati** in `main.css` |
+| Pacchetto | Superficie 2026-07-29 | **Superficie 2026-09-02** |
+| --- | --- | --- |
+| `primevue` | 937 import in 260 file (su 335 `.vue`) — 47 moduli distinti | **1039 import in 300 file** (su **383** `.vue`) — **47** moduli distinti |
+| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) | non ri-misurato |
+| `@primeuix/themes` | 1 file — `src/main.js`, preset `Aura` | **1 file** (invariato) |
+| `primeicons` | 122 classi `pi-*` distinte + 28 codepoint cablati in `main.css` | non ri-misurato |
 
-I dieci componenti più usati: `tag` (96), `button` (93), `inputtext` (90),
-`column` (86), `datatable` (76), `select` (75), `drawer` (67), `message` (58),
-`toggleswitch` (43), `inputnumber` (43).
+I dieci componenti più usati, **al 2026-09-02** (fra parentesi il 2026-07-29):
+`tag` 117 (96), `button` 111 (93), `inputtext` 97 (90), `select` 93 (75),
+`message` 77 (58), `drawer` 73 (67), `column` 67 (86), `datatable` **57** (76),
+`inputnumber` 48 (43), `datepicker` 45 (—).
+
+⚠️ **Il rapporto fra le due colonne conta più dei valori.** In 35 giorni il
+repo è cresciuto di 48 `.vue` e la superficie PrimeVue di 102 import: `datatable`
+e `column` sono le **uniche due voci in calo** (−19 e −19), tutto il resto sale.
+Sono i due componenti su cui esiste un building block; gli altri non ne hanno
+uno, e crescono col repo.
+
+🔗 **Sulle icone c'è una regola, e NON sta qui.** Dove viva il *nome* di
+un'icona (costante o letterale sul posto) è deciso dal 2026-09-02 in
+[frontend-standards §«Dove vive il NOME di un'icona»](../frontend/frontend-standards.md):
+regola del 2 applicata al **significato**, non campagna. ⛔ La regola generale
+«ogni icona da `MANAGE_ICONS`» è stata valutata e **rifiutata**.
+⚠️ Il rimando esiste perché la centralizzazione abbassa il costo di R2
+(primeicons e i codepoint cablati) — ma **la regola non appartiene a questo
+piano**: un piano è destinato a chiudersi in `work-done/`, e uno standard
+archiviato insieme a lui smette di essere trovabile.
+
+> ℹ️ **Come leggere questi numeri.** Sono una **fotografia datata**, non un
+> argomento: dicono dov'era la superficie in quel giorno, non cosa vada fatto.
+> La ragione per cui una lista passa da `<ListaConfigurabile>` sta nella regola
+> zero di `frontend-standards`, e resterebbe identica se questa tabella dicesse
+> altri numeri ([AGENTS.md §Regola zero](../../../../.codex/AGENTS.md)).
 
 ### 2-bis. La superficie che la prima stesura non aveva contato
 
@@ -246,14 +269,19 @@ grep -rhoE '\-\-p-[a-z0-9-]+' src --include=*.css --include=*.vue --include=*.js
 grep -rhoE '\.p-[a-z0-9-]+' src --include=*.css --include=*.vue | sort | uniq -c | sort -rn
 ```
 
-| Aggancio | Superficie | Se cede |
-| --- | --- | --- |
-| Variabili `--p-*` | **364 usi, 63 distinte, 51 file** | Il colore ripiega sul nulla: testo invisibile, sfondi trasparenti |
-| Classi interne `.p-*` | **187 usi, 48 distinte, 9 file** | Lo stile si stacca e il componente torna nudo |
+| Aggancio | Superficie 2026-07-29 | **Superficie 2026-09-02** | Se cede |
+| --- | --- | --- | --- |
+| Variabili `--p-*` | 364 usi, 63 distinte, 51 file | **374 usi, 65 distinte, 54 file** | Il colore ripiega sul nulla: testo invisibile, sfondi trasparenti |
+| Classi interne `.p-*` | 187 usi, 48 distinte, 9 file | **194 usi, 49 distinte, 11 file** | Lo stile si stacca e il componente torna nudo |
 
-Le più agganciate sono `--p-primary-color` (65), `--p-text-muted-color` (58) e,
-sul fronte classi, `.p-menu-item-link` + `.p-tieredmenu-item-link` (26 fra le
+Le più agganciate **al 2026-09-02** sono `--p-primary-color` (63),
+`--p-text-muted-color` (61) e `--p-text-color` (24); sul fronte classi
+`.p-button` (19) e `.p-menu-item-link` + `.p-tieredmenu-item-link` (26 fra le
 due) — cioè **il kebab**, che sta in ogni riga di ogni lista.
+
+⚠️ Entrambi gli agganci **salgono**, e sono quelli che nessun build segnala. La
+deriva è lenta (+10 usi e +7 usi in 35 giorni) ma il verso è quello: il debito
+di [[feedback_css_centralizzazione]] non si sta riassorbendo da sé.
 
 ⚠️ Nota di merito, non di migrazione: le 364 variabili dirette contraddicono la
 regola di casa «mai `--p-*` diretto, sempre `--app-*` da `theme.css`»
@@ -288,6 +316,11 @@ done
 
 > Questo lo dobbiamo alla migrazione `TabView`→`Tabs` e `Dropdown`/`Calendar`
 > completata il 2026-07-22: ci ha già portati fuori dal campo minato.
+
+✅ **Ri-eseguito il 2026-09-02: tutti e otto a zero**, più i due controlli di
+non-regressione di `frontend-standards` §«Residui PrimeVue 3» (`tabview`,
+`inputswitch`) — anch'essi **zero**. In 35 giorni di sviluppo nessun componente
+rimosso o deprecato è rientrato: il campo resta sgombro.
 
 ---
 
@@ -757,13 +790,63 @@ Obiezione di Tid, giusta. Risposta con numeri invece che con rassicurazioni.
 
 941 import su 47 componenti distinti, ma **11 coprono l'80%**:
 
-| Gruppo | Import | Difficoltà di sostituzione |
-| --- | --- | --- |
-| Primitivi (`tag`, `button`, `inputtext`, `select`, `toggleswitch`, `inputnumber`, `message`) | ~449 | **Bassa** — ce li ha qualunque libreria: rinomina + mappatura prop |
-| `datatable` + `column` | **164 in 77 file** | **Alta** — è il componente che nessuno replica bene |
-| Coda lunga (22 componenti usati in ≤2 posti) | poche decine | Trascurabile |
+| Gruppo | Import 2026-07-29 | **Import 2026-09-02** | Difficoltà di sostituzione |
+| --- | --- | --- | --- |
+| Primitivi (`tag`, `button`, `inputtext`, `select`, `toggleswitch`, `inputnumber`, `message`) | ~449 | **586** | **Bassa** — ce li ha qualunque libreria: rinomina + mappatura prop |
+| `datatable` + `column` | 164 in 77 file | **116 in 53 file** | **Alta** — è il componente che nessuno replica bene |
+| Coda lunga (componenti usati in ≤2 posti) | 22 componenti, poche decine | **21 componenti**, poche decine | Trascurabile |
 
 **Il costo di lasciare PrimeVue è quasi tutto in DataTable.**
+
+⭐ **Ri-misurato il 2026-09-02 (valori di fine giornata), e le due righe si
+muovono in verso opposto.** `datatable`+`column` è calato di 48 import e 24 file
+— è il lavoro del Gruppo A, e si vede: 8 import e 4 file sono caduti nel
+pomeriggio, con le quattro liste `ui`. I primitivi sono saliti di **137**, cioè più di quanto DataTable sia
+sceso: la superficie complessiva **cresce** mentre la parte cara si assottiglia.
+
+⚠️ Non cambia la conclusione della riga in grassetto — la difficoltà dei
+primitivi resta bassa e quella di DataTable resta alta, e sono proprietà dei
+componenti, non dei conteggi. Cambia **dove sta il numero che cresce**, ed è la
+metà del §8-bis che il piano non ha mai sviluppato: vedi la sezione nuova qui
+sotto.
+
+### I primitivi — la riga che questo piano non ha mai sviluppato
+
+Il paragrafo «La mossa» (qui sotto) dice, in una riga sola: *«stessa logica per i
+primitivi, con un sottile strato nostro davanti dove capita di passarci»*.
+**Quella riga non ha mai avuto un inventario, un criterio, né una spunta**, e nel
+frattempo i primitivi sono passati da ~449 a 586 import.
+
+Cosa c'è già davanti ai primitivi, **misurato il 2026-09-02** (file che li usano):
+
+| Strato di casa | Primitivo che copre | File |
+| --- | --- | --- |
+| `FormFooter` | `button` (coppia Annulla/Salva) | 81 |
+| `LookupSelect` | `select` | 72 |
+| `PageActionsBar` | `button` (azioni di pagina) | 70 |
+| `RowActionsMenu` | `button` + `menu` (azioni di riga) | 49 |
+| `AppDialog` | `dialog` | 43 |
+| `AttivoTag` | `tag` (il caso attivo/non attivo) | 28 |
+| `DrawerActionsBar` | `button` (azioni di drawer) | 18 |
+| `NewButton` | `button` | 3 |
+| `AppDrawer` | `drawer` | 2 |
+| `EntityFormField` | `inputtext` & c. | 1 |
+| — | `inputtext` (97), `datepicker` (45), `toggleswitch` (43), `inputnumber` (48), `message` (77), `textarea` (21), `checkbox` (19) | **nessuno** |
+
+⭐ **Lo strato non è assente: è a due velocità.** Dove c'è un building block di
+*comportamento* — una barra di azioni, un footer, un lookup — la copertura è
+larga (70-81 file) e nessuno importa più il primitivo a mano. Dove servirebbe un
+wrapper di *presentazione pura* (`AttivoTag`, `NewButton`, `AppDrawer`,
+`EntityFormField`) la copertura è 1, 2, 3, 28 file: **quei quattro sono estratti
+e non adottati**, che è la forma peggiore — una seconda implementazione della
+stessa cosa accanto alla prima ([[feedback_duplicazione_nasconde_il_bug]]).
+
+⛔ **Non è una lista di lavoro, ed è deliberato.** I sette primitivi senza casa
+sono ~350 import: incapsularli è un progetto di migrazione, cioè esattamente
+quello che «La mossa» dice di **non** aprire. La cosa che questa sezione
+stabilisce è più piccola e più utile: **prima di scrivere un wrapper nuovo, si
+guarda perché i quattro esistenti non sono stati adottati** — un quinto wrapper
+inadottato non abbassa nessun costo, lo raddoppia.
 
 ### Il numero scomodo, ed è anche la leva
 
@@ -817,31 +900,160 @@ mai**.
 Totale file con `DataTable` grezza: **77**, di cui **6** sono i
 wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 
-> 📉 **Ri-misurato: i file con `DataTable` grezza sono scesi a 56 il 2026-08-02
-> e a 48 a fine 03-08.** I 77 sono la fotografia del 2026-07-29 e restano qui
-> perché sono il metro con cui è stato dimensionato il lavoro; il numero vivo è
-> quello sopra. Il calo è più grande del numero di conversioni perché alcune
-> pagine montavano più `DataTable` nello stesso file (`DashboardCompetenzaView`
-> ne aveva tre). Le 48 rimaste sono in larghissima parte **Gruppo B**, che non
-> va convertito: il loro posto è `RigheMasterDetailTable`/`SearchDetailTable`.
+> 📉 **Ri-misurato: i file con `DataTable` grezza sono scesi a 56 il 2026-08-02,
+> a 48 a fine 03-08, risaliti a 57 il 30-08 e ancora 57 al 2026-09-02.** I 77
+> sono la fotografia del 2026-07-29 e restano qui perché sono il metro con cui è
+> stato dimensionato il lavoro; il numero vivo è quello sopra. Il calo di agosto
+> è più grande del numero di conversioni perché alcune pagine montavano più
+> `DataTable` nello stesso file (`DashboardCompetenzaView` ne aveva tre).
+>
+> ⚠️ **Fermo a 57 non vuol dire fermo**: fra il 30-08 e il 02-09 sono state
+> convertite `EmittenteFiscaleBillingAccountTab` (§Gruppo B, 01-09) e ne sono
+> nate altrettante altrove. Il totale sta piatto perché entrate e uscite si
+> compensano — è il motivo per cui questa riga da sola non dice se il lavoro
+> avanza, e vanno guardati i due denominatori separati.
 >
 > Contro cosa verificarlo, visto che i denominatori in questo documento sono
 > **tre e diversi**, e confonderli è il modo più facile di litigare sui numeri:
 >
-> | Misura | 02-08 | **03-08 (fine)** | Cos'è |
-> |---|---|---|---|
-> | codici seedati (`ui.lista_definizione`) | 33 | **43** | le liste configurate a DB |
-> | righe nel registro del presidio (`_LISTE`) | 33 | **43** | devono coincidere con la riga sopra, sempre |
-> | file consumer che montano `<ListaConfigurabile>` | 32 | **40** | meno dei codici: `ResiCodaTable` ne serve **due** con `:codice` dinamico, e `DashboardCompetenzaView` ne monta **tre** |
-> | file del Gruppo A convertiti | 22 / 34 | **30 / 34** | il denominatore dell'inventario qui sotto; i 4 rimasti sono fermi per decisione 4 |
-> | file con `DataTable` grezza | 56 | **48** | scende anche per conversioni fuori Gruppo A |
+> | Misura | 02-08 | 03-08 | 02-09 mattina | 02-09 sera | 02-09 notte | 02-09 chiusura | 02-09 · 61 paginata | **02-09 · lotto 3** | Cos'è |
+> | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+> | codici seedati (`ui.lista_definizione`) | 33 | 43 | 55 | 59 | 63 | 63 | 63 | **65** | le liste configurate a DB — +4 col lotto 2, +2 col lotto 3 (`titolo_iva_ambiti`, `titolo_iva_movimenti`) |
+> | righe nel registro del presidio (`_LISTE`) | 33 | 43 | 54 ⏳ | 59 ✅ | 59 ⏳ | 63 ✅ | 63 ✅ | **65** ✅ | ⭐ divergenza rientrata e RIMASTA tale anche col lotto 3: `comm -23 seed presidio` è vuoto |
+> | file consumer che montano `<ListaConfigurabile>` | 32 | 40 | 55 | 60 | 60 | 62 | 61 | **61** | ⭐ **scende, e non è una regressione**: `SistemazioneDrawer` è passato a `<DrawerTabLista>`, che il BB lo monta per lui. Il `grep` su `<ListaConfigurabile` non lo vede più — è il conteggio a essere parziale, non la conversione a essere tornata indietro |
+> | file del Gruppo A convertiti | 22 / 34 | 30 / 34 | 31 / 35 | 35 / 39 | 35 / 39 | 35 / 39 | 35 / 39 | **35 / 37** | ⭐ cala il DENOMINATORE, non sale il numeratore: BoM e righe contratto passano al Gruppo B (decisione di Tid, 02-09). Le conversioni restano 35 — quei due file non sono stati toccati |
+> | **liste montate `:paginata="false"`** | — | — | — | 4 | 4 | 5 | 4 | **5** | i quattro pannelli `ui.*` più gli **ambiti** del titolo (lista 64, limitata per modello). Il `grep` ne trova sempre uno in più (6), ed è il BB che si cita nel proprio commento |
+> | file con `DataTable` grezza | 56 | 48 | 57 | 53 | 53 | 49 | 49 | **48** | il contatore della regola zero — `TitoloIvaDrawer` convertito (lotto 3) |
 >
-> Comandi per rifare le prime tre in un colpo:
+> ⭐ **SECONDA CODA — il lotto 3 (liste 64 e 65).** Il team DB ha seminato le due
+> liste dentro `TitoloIvaDrawer` (`brief-db-seed-liste-titolo-iva.md`, in
+> `work-done/`), e il drawer **è stato convertito lo stesso giorno**: le sue due
+> `DataTable` grezze sono sparite, `DataTable grezza` scende a **48**.
+>
+> ⛔ **E le due liste sono passate da Gruppo B a Gruppo A**, con la stessa
+> disciplina con cui BoM e righe-contratto hanno fatto il viaggio opposto: la
+> classificazione del 02-09 mattina le aveva lette come *dettaglio del master*
+> perché le righe **arrivavano dal payload del dettaglio** (`detail.ambiti`,
+> `detail.movimenti`). Ma la PRIMA domanda del criterio — *«l'entità ha vita
+> propria: un endpoint suo, una popolazione arbitraria?»* — per entrambe
+> risponde sì, e i due endpoint esistevano già. Il registro dei movimenti, in
+> più, **cresce a ogni fattura**: leggerlo dentro un dettaglio significava una
+> query senza LIMIT che un giorno cade proprio sul titolo più usato.
+>
+> ⚠️ **Le due hanno contratti diversi, e di proposito**: gli ambiti sono
+> limitati per modello (montati `:paginata="false"`, `ordinabile = f` su tutte
+> le colonne, `pagina_dimensione` vuota), il registro è paginato a 25. Un
+> contratto solo per due nature diverse sarebbe stato comodo e sbagliato.
+>
+> ⛔ **Ma il registro sì, e stavolta i presidi che si sono accesi sono TRE**, non
+> due. Vale la pena elencarli perché è la prova che il meccanismo funziona senza
+> che nessuno se ne ricordi:
+>
+> | Presidio | Cosa ha preteso |
+> | --- | --- |
+> | `test_lista_proiezione_campo_sorgente` §2 | una riga in `_ESERCIZI` per ciascuna delle due |
+> | idem §4 | una whitelist per ogni lista esercitata ⇒ `_ORDER_COLS_MOVIMENTI` + `list_movimenti(order_by, order_dir)`. Gli **ambiti** no: a catalogo nessuna colonna è `ordinabile = t`, quindi `ORDINAMENTO_LOCALE` |
+> | `test_perimetro_emittente_copertura` | un `lista_codice` su una view ⇒ dichiarato sulle due view dei titoli |
+>
+> ⭐ **Nessuno dei tre è stato «ricordato»: si sono accesi da soli quando le
+> righe sono arrivate.** È il verso giusto — il lavoro BE serve nel momento in
+> cui il catalogo lo rende raggiungibile, non prima.
+
+> ⭐ **CODA DELLA GIORNATA — la 61 è passata da «non paginata» a paginata**
+> (decisione di Tid, 2026-09-02, dopo la chiusura qui sopra). `SistemazioneDrawer`
+> era stato convertito **con `:paginata="false"`**, e la ragione scritta era «gli
+> atti di UNA fattura sono pochi per modello».
+>
+> ⛔ **Quella ragione è una previsione sui DATI, e una previsione sui dati non
+> decide la forma di una lista** (regola zero). Il prezzo era concreto e non si
+> vedeva: niente pagine, niente «Personalizza colonne», niente export — cioè un
+> drawer fuori dallo standard delle altre quaranta liste, senza che niente lo
+> dicesse. Ora ha lo stesso pacchetto della 62: store Pinia + `useDrawerTabLista`
+> + `<DrawerTabLista>`, e un endpoint di export suo.
+>
+> ⭐ **E la whitelist di BE-1 ha smesso di essere «pronta per domani»**: la 61 è
+> uscita dalla sentinella `ORDINAMENTO_LOCALE` ed è ora esigibile dai test 1-3
+> come ogni altra lista. ⇒ **`test_liste_lotto2_whitelist_ponte.py` è stato
+> cancellato**: esisteva solo per coprire ciò che quei test non raggiungevano, e
+> a zero righe nel suo registro non copriva più niente. Due presidi sullo stesso
+> invariante divergono al primo che qualcuno aggiorna.
+>
+> ⚠️ **Cosa è cambiato anche a BE**: `list_sistemazioni_fattura` restituisce
+> `(righe, totale)` in **una** valutazione (`COUNT(*) OVER ()`) e
+> `count_sistemazioni_fattura` è sparita — era una seconda query sullo stesso
+> predicato, e due valutazioni possono non concordare. Stessa mossa già fatta su
+> `count_titoli_soggetto` con la 62.
+
+> ✅ **E RICHIUSA a fine giornata: 63 = 63** (`comm -23 seed presidio` vuoto). Le
+> quattro liste del lotto 2 sono montate — `CanaliIncassoSearchTable`,
+> `SistemazioneDrawer`, `TitoliIvaSoggettoDrawer`, `TitoliIvaSfondatiView` — e
+> con loro sono rientrate BE-1 e BE-2. ⭐ **Il debito auto-esigente ha funzionato
+> nel verso previsto**: i due rossi annunciati qui sotto si sono presentati alla
+> conversione, non prima, e sono stati pagati in quel momento. Il blocco che
+> segue resta come racconto, non come stato.
+>
+> ⏳ *Era: riaperta la sera stessa, di proposito — 63 seedati contro 59 nel registro*
+> (2026-09-02, lotto 2 — `work-done/brief-db-seed-liste-lotto-2.md`). Le quattro sono
+> `pagamenti.canali_incasso`, `pagamenti.sistemazioni_fattura`,
+> `anagrafiche.soggetto_titoli_iva`, `anagrafiche.titoli_iva_sfondati`: **seed
+> arrivato prima del suo consumer**, esattamente la forma già descritta qui sotto
+> per `vendite.famiglie_documento`.
+>
+> ⭐ **Il presidio NON tace per distrazione, e questo è il punto**: `_LISTE` si
+> misura sul **frontend** (test 6, `test_registro_copre_tutte_le_liste_montate_dal_frontend`),
+> e nessuna delle quattro è ancora montata. Quindi oggi la suite è verde a
+> ragione, non per sottrazione.
+>
+> ⛔ **Ma il giorno in cui si converte una di quelle view, il registro la
+> pretende — e con lei arrivano DUE rossi già previsti**, che sono la ragione per
+> cui `work-done/brief-db-seed-liste-lotto-2.md` §7 esiste:
+>
+> | Test che diventerà rosso | Su quale lista | Cosa chiede |
+> | --- | --- | --- |
+> | `test_whitelist_copre_le_colonne_ordinabili` | 61 e 62 | I due endpoint non accettano `order_by` affatto: 9 colonne seminate `ordinabile = t` non hanno nessuna whitelist dietro (richiesta **BE-1**) |
+> | `test_whitelist_chiavata_sul_campo_sorgente` | 60 | `ENTI_INCASSO_SORT_COLUMNS` è chiavata su `centro`, il `campo_sorgente` è `centro_descrizione` (richiesta **BE-2**) |
+>
+> ⇒ **Il debito è auto-esigente**: chi converte non può dimenticarlo, perché il
+> presidio glielo mette davanti. È il verso giusto — la conversione è il momento
+> in cui quel lavoro serve davvero, non prima.
+
+> ✅ **RIENTRATA in giornata (2026-09-02, sera): 59 = 59.**
+> `vendite.famiglie_documento` ha preso la sua riga nel registro quando il
+> cantiere dei registri di numerazione l'ha chiusa. Il blocco qui sotto resta
+> come **racconto di come si legge una divergenza attesa**, non come stato.
+>
+> ⏳ *Era: le prime due righe divergono di uno, ed è cantiere aperto (confermato
+> da Tid il 2026-09-02).* Lo scarto è `vendite.famiglie_documento` (id 55, seedata il
+> 2026-09-01, `vista_sql = vw_famiglie_documento_lista`): è a catalogo, non è
+> ancora nel registro `_LISTE` di
+> `apps/core/tests/test_liste_configurabili_seed.py`, e non ha ancora un consumer
+> `<ListaConfigurabile codice="…">` — oggi il codice è usato come **vocabolario**
+> da `EmittenteFiscaleBillingAccountTab` e `RegistroNumerazioneDrawer`. Fa parte
+> del cantiere dei **registri di numerazione**, ed è un seed arrivato prima del
+> suo consumer.
+> ⚠️ Le altre due seedate senza consumer statico — `vendite.resi_da_accreditare`,
+> `vendite.resi_da_riconsegnare` — sono i due `:codice` dinamici di
+> `ResiCodaTable`, e sono a posto.
+> ⇒ **La riga di destra resta l'invariante**, ma si verifica a cantiere chiuso:
+> il momento in cui deve tornare a coincidere è quando la lista prende il suo
+> consumer. Fino ad allora la divergenza è **attesa e datata**, non un difetto —
+> e questa nota esiste perché fra un mese non lo sembri.
+>
+> Comandi per rifare le misure, **tutte** (aggiornati il 2026-09-02: la nota sui
+> «+3 falsi positivi in commento» non vale più — oggi il conteggio è netto):
 >
 > ```bash
-> tail -n +2 db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | grep -c .
-> grep -rl "<ListaConfigurabile" frontend/src --include=*.vue | wc -l   # +3 falsi positivi: sono citazioni in commento
+> # i tre denominatori
+> awk 'NR>1 && NF' db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | wc -l
+> grep -rl "<ListaConfigurabile" frontend/src --include=*.vue | wc -l
 > grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue | wc -l
+>
+> # l'invariante seed ↔ presidio, che il 02-09 è rotta di 1
+> awk -F',' 'NR>1 && NF {print $2}' \
+>   db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv | sort > /tmp/seed.txt
+> grep -oE '"[a-z_]+\.[a-z_0-9]+"' backend/apps/core/tests/test_liste_configurabili_seed.py \
+>   | tr -d '"' | sort -u > /tmp/presidio.txt
+> comm -23 /tmp/seed.txt /tmp/presidio.txt      # seedate e NON presidiate
 > ```
 
 #### Cosa serve davvero per convertire una lista (leggere prima di iniziare)
@@ -898,21 +1110,117 @@ contro le 204 colonne delle 11 liste attuali (media 18,5). Il seed finale **più
 che raddoppia** la configurazione esistente — ed è la ragione per cui esiste il
 generatore (più sotto), non per cui va temuto.
 
-**I cinque prerequisiti tecnici**, da verificare riga per riga:
+**I prerequisiti tecnici**, da verificare riga per riga. ⚠️ Erano **cinque**
+fino al 2026-09-02: il primo è caduto quel giorno, e resta scritto **barrato**
+invece che cancellato — un prerequisito che sparisce senza lasciare traccia fa
+sembrare che non ci sia mai stato, e questo aveva dimensionato per un mese il
+costo di ogni conversione.
 
 | # | Prerequisito | Perché |
 | --- | --- | --- |
-| 1 | **Endpoint paginato server-side** | il BB ha `lazy` **fisso**, non parametrico: senza paginazione server-side non si monta |
+| 1 | ~~**Endpoint paginato server-side**~~ → **CADUTO il 2026-09-02** | Diceva: «il BB ha `lazy` **fisso**, non parametrico: senza paginazione server-side non si monta». **Non è più vero**: `lazy` e `paginator` sono governati dalla prop `paginata` (default `true`). Una lista la cui popolazione è limitata **per modello** si monta con `:paginata="false"` — vedi §«La modalità non paginata» |
 | 2 | **Codici colonna == campi dell'API** | il BB rende `data[codice]`: il nome è un contratto, non un'etichetta |
 | 3 | **Display field risolti dal BE** (JOIN) | niente lookup client-side, altrimenti la colonna mostra un id ([[feedback_display_fields_backend]]) |
 | 4 | **Il caller resta padrone dei dati** | fornisce `rows`/`total`/`loading` e gestisce `@page`/`@sort`; il BB **non fa fetch** |
 | 5 | **Rendering custom via slot** | `cell-{codice}` per la cella, `actions` + `RowActionsMenu` per le azioni di riga |
 
-🔴 **Quattro liste del Gruppo A non soddisfano il prerequisito 1** (colonna
-`Lazy` = «—»): richiedono **prima** un endpoint paginato lato BE, quindi non
-sono spuntabili «di passaggio» come le altre —
+🔴 **Quattro liste del Gruppo A non soddisfacevano il prerequisito 1** (colonna
+`Lazy` = «—»): richiedevano **prima** un endpoint paginato lato BE —
 `ArticoloBomDrawer`, `ContrattiBillingAccountDrawer`, `ContrattoRigheDrawer`,
 `OffertaEccezioniDrawer`.
+
+⭐ **Due delle quattro sono uscite dal Gruppo A il 2026-09-02** (decisione di
+Tid): `ArticoloBomDrawer` e `ContrattoRigheDrawer` sono **righe di un master**,
+non liste — vedi la nota qui sotto. Ferme per decisione 4 restano le altre due.
+
+⭐ **Dal 2026-09-02 quel blocco non è più automatico**: se la loro popolazione è
+limitata per modello possono montarsi `:paginata="false"` senza toccare il
+backend. ⚠️ Ma non è un liberi tutti e non le sblocca d'ufficio: le righe di un
+contratto o i componenti di una distinta base **non** sono limitati per modello,
+e per due di esse la domanda vera era un'altra (sono righe di documento →
+Gruppo B: spostate il 2026-09-02, vedi la nota qui sotto).
+
+> ✅ **DECISO DA TID IL 2026-09-02: la coppia passa al Gruppo B.**
+> `ArticoloBomDrawer` **sono** i componenti BoM e `ContrattoRigheDrawer` **sono**
+> le righe del contratto: la seconda domanda del criterio li nomina per esteso
+> (*«righe ordine, **componenti BoM**, righe reso»*), e per loro la risposta è
+> quella — non una lista con un paginator mancante, un **dettaglio del master**.
+> Vanno su `RigheMasterDetailTable` / `SearchDetailTable`, non su
+> `<ListaConfigurabile>`.
+>
+> ⭐ **Ha vinto il criterio, non la tabella**, ed è il verso giusto: la
+> contraddizione stava fra una regola scritta il 01-09 e un inventario più
+> vecchio, e a muoversi è l'inventario. Il denominatore del Gruppo A scende da
+> **39 a 37**, e i convertiti restano 35 — nessuno di quei due file è stato
+> toccato: cambia dove sono attesi, non cosa è stato fatto.
+>
+> ⚠️ **Il denominatore non cala perché il lavoro è finito**: cala perché due
+> file erano contati nel posto sbagliato. Chi legge il numero fra un mese deve
+> vedere questa riga, altrimenti legge un avanzamento che non c'è stato.
+>
+> ℹ️ Le altre due (`ContrattiBillingAccountDrawer`, `OffertaEccezioniDrawer`)
+> restano **Gruppo A**, e non per inerzia: la prima è un tab-lista su entità con
+> vita propria (prima domanda ⇒ Gruppo A, oggi la casa è `useDrawerTabLista`), la
+> seconda è un'eccezione di prezzo con endpoint suo. Sono le uniche due ancora
+> ferme per decisione 4 — cioè in attesa di un endpoint paginato o della scelta
+> di montarle non paginate.
+
+#### ⭐ La modalità non paginata — il cancello che è caduto (2026-09-02)
+
+Fino al 2026-09-02 `<ListaConfigurabile>` aveva `lazy` e `paginator` **cablati
+nel template**. Non era una scelta dichiarata da nessuna parte: era una costante
+rimasta lì. La conseguenza è che il BB **rifiutava** ogni lista senza
+paginazione server-side — cioè, per costruzione, tutto il residuo.
+
+⭐ Il punto che rende la modifica piccola e il guadagno grande: **cinque dei sei
+benefici del BB non c'entrano niente con la paginazione.**
+
+| Cosa dà il BB | Dipende dalla paginazione? |
+| --- | --- |
+| Colonne dal catalogo, etichette, formati | **No** |
+| Personalizzazione colonne dell'operatore + preset | **No** |
+| Ritiro responsive (`useResponsiveColumns`) | **No** |
+| Colonna azioni, slot `cell-*`, colonna selezione | **No** |
+| Export dal catalogo | Quasi |
+| `lazy` + paginator server-side | Sì — ed è l'unica |
+
+⇒ Un cancello che presidiava **una** cosa stava davanti a cinque che non
+riguardava. Ora la prop `paginata` (default `true`) le separa.
+
+##### ⛔ «Non paginata» non vuol dire «senza `total`»
+
+Vuol dire **`rows.length === total`**, e il BB lo **verifica**: se divergono non
+disegna la tabella e mostra un errore al posto suo (`troncamentoSospetto`).
+
+⚠️ È il presidio su **l'unico difetto muto** che la modalità introduce. Con
+`lazy` spento PrimeVue tratta `rows` come il dataset **completo**: un caller che
+continuasse a mandare una pagina mostrerebbe 25 righe su 500 senza paginator e
+**senza errore**, e l'operatore non avrebbe modo di saperlo.
+
+🔴 **E il `total` deve essere INDIPENDENTE dalle righe, o il guard è un'eco.**
+È la trappola dentro la trappola, emersa implementando: gli endpoint di queste
+liste restituivano una lista nuda e lo store faceva
+`totalRecords = items.length` — cioè `rows.length === rows.length`, sempre vero.
+⇒ Regola: **una lista `paginata: false` pretende un endpoint che dichiari il
+conteggio con una query sua**. Forma `{results, count}`, che è la variante
+offset-based già documentata in `api.md` §Paginazione.
+⛔ E `count` **non** si calcola con `len(results)` nel service: sposterebbe la
+tautologia dal frontend al backend senza toglierla.
+
+##### Le altre quattro modalità di guasto, e come sono chiuse
+
+| | Come sta |
+| --- | --- |
+| Doppio ordinamento (PrimeVue ordina in locale **e** emette `@sort`) | `@page`/`@sort` **non** vengono emessi: non c'è niente da rifetchare |
+| `pagina_dimensione` del preset diventa lettera morta | `paginator: false` forzato in coda al merge; nel seed la colonna si lascia **vuota** |
+| Ordine locale ≠ ordine del database (NULL, accenti, numeri-come-testo) | **Non presidiabile: dichiarata.** `nullSortOrder` esplicito, e `ordinamento_default` del preset vuoto. Una lista in cui l'ordine dei NULL è informazione resta `paginata: true` |
+| Il presidio `_LISTE` pretende una whitelist che queste liste non hanno | Sentinella **`ORDINAMENTO_LOCALE`**. ⛔ NON `_DEBITO_WHITELIST_LOGICA`: quello è un registro di debito e deve calare, questa è una proprietà della lista e resta |
+
+⭐ E la sentinella ha il suo cancello (test **8-bis**): una lista dichiarata a
+ordinamento locale **deve** essere montata con `:paginata="false"`. Il difetto
+che previene è una **rimozione** — togliere la prop sembra innocuo e la pagina
+continua a funzionare, ma riaccende l'ordinamento server-side su una lista senza
+whitelist, e la freccia risponde 400 al primo click.
 
 #### Il generatore: `scripts/gen_seed_lista.py`
 
@@ -1030,7 +1338,126 @@ fuori. Fonderle produrrebbe una lista sbagliata e `codice` duplicati.
 - `core/components/RigheMasterDetailTable.vue`
 - `core/components/SearchDrawer.vue`
 
-#### Gruppo A — liste vere (35 file, hanno il paginator)
+#### ⚠️ L'inventario qui sotto è più vecchio del repo — riconciliato il 2026-09-02
+
+Le due tabelle che seguono coprono **46** dei **57** file misurati oggi (35
+Gruppo A + 36 Gruppo B − `LottoDrawer` contato due volte, + 6 dello strato = 76
+righe che valgono 46 file vivi). **Undici file non stanno in nessuna delle due**,
+e la conciliazione va fatta prima di usare l'inventario come lista di spunta:
+
+| File fuori inventario | Da dove arriva |
+| --- | --- |
+| `pagamenti/components/CanaliIncassoSearchTable.vue` | cantiere incassi — porta già in testa il proprio debito dichiarato: *«NON ha un seed in `ui.lista_definizione`»* |
+| `pagamenti/components/DistintaDrawer.vue` | cantiere incassi |
+| `pagamenti/components/RegistraDistintaDialog.vue` | cantiere incassi |
+| `pagamenti/components/SistemazioneDrawer.vue` | cantiere incassi |
+| `anagrafiche/components/TitoliIvaSoggettoDrawer.vue` | titoli IVA (I7/D10) |
+| `anagrafiche/components/TitoloIvaDrawer.vue` | titoli IVA (I7/D10) |
+| `anagrafiche/views/TitoliIvaSfondatiView.vue` | titoli IVA (Q4) |
+| `vendite/resi/components/AccreditoEsitoDialog.vue` | resi — esito giro di accredito (F2) |
+| `vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue` | situazione merce — **quattro** `DataTable` nello stesso file |
+| `vendite/components/ListiniSearchTable.vue` | ✅ già convertita 01-08: **residuo** nella riga di espansione (versioni) |
+| `vendite/components/LottoDrawer.vue` | ✅ già convertito 22-08: **residuo**, motivo dichiarato in commento a riga 17 |
+
+⚠️ **Le ultime due righe non sono un errore di spunta.** Un file può montare
+`<ListaConfigurabile>` **e** una `DataTable` grezza: il `grep` degli import conta
+i file, non le tabelle. ⇒ Il contatore di `frontend-standards` §Regola zero
+resta valido come **campanello** (se sale, hai aggiunto una lista fuori
+standard), ma **non** è il conteggio delle liste da convertire, e non lo è mai
+stato. Confonderli è il quarto denominatore.
+
+#### ✅ Classificazione fatta — 2026-09-02
+
+Applicato il criterio in tre domande a tutti e undici, guardando **da dove
+arrivano le righe** e non dove sta la tabella. ⚠️ Nessuno tocca la terza domanda:
+il timore che `SituazioneMerceContenuto` e `AccreditoEsitoDialog` fossero
+matrici era infondato — sono entrambi dettaglio, non slot/override.
+
+| File | Righe da | Esito |
+| --- | --- | --- |
+| `pagamenti/components/CanaliIncassoSearchTable.vue` | `store.items`, endpoint suo, ha il paginator | **Gruppo A** |
+| `pagamenti/components/SistemazioneDrawer.vue` | `listSistemazioniFattura(fatturaId)` → envelope `results` | **Gruppo A** |
+| `anagrafiche/components/TitoliIvaSoggettoDrawer.vue` | endpoint suo (`results`), e il singolo titolo ha un **drawer autonomo** | **Gruppo A** |
+| `anagrafiche/views/TitoliIvaSfondatiView.vue` | endpoint suo (`results`), è una view di presidio | **Gruppo A** |
+| `pagamenti/components/DistintaDrawer.vue` | `dettaglio.righe` — sono le **righe della distinta** | Gruppo B |
+| `anagrafiche/components/TitoloIvaDrawer.vue` | `ambiti` + `movimenti` **del titolo** che il drawer mostra | ~~Gruppo B~~ → **Gruppo A** (02-09 sera): le righe arrivavano dal dettaglio, ma i due endpoint esistevano già e il registro **cresce**. Convertito col lotto 3 |
+| `vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue` | 4 tabelle di **dettaglio** della stessa situazione | Gruppo B |
+| `pagamenti/components/RegistraDistintaDialog.vue` | `anteprima.righe_non_registrabili` | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
+| `vendite/resi/components/AccreditoEsitoDialog.vue` | `props.esito.falliti` — il referto di un giro | Gruppo B — **anteprima in dialog** (eccezione dichiarata) |
+| `vendite/components/ListiniSearchTable.vue` | riga di espansione (versioni) di una lista **già convertita** | non è un bersaglio |
+| `vendite/components/LottoDrawer.vue` | residuo dichiarato in commento, lista **già convertita** | non è un bersaglio |
+
+⇒ **4 al Gruppo A, 5 al Gruppo B (di cui 2 sono l'eccezione anteprima), 2 non
+sono bersagli.**
+
+⭐ **Il segnale che decide è UNO, ed è ripetibile**: `grep -oE ':value="[^"]+"'`
+sul `.vue`, poi si risale alla variabile. Se viene da un `dettaglio.righe` o da
+una prop del padre è dettaglio; se viene da un endpoint suo con envelope
+`results` è una lista. ⚠️ **Non** decide il contenitore: due dei quattro Gruppo A
+stanno dentro un drawer, ed è esattamente l'errore che il criterio del 01-09 è
+nato per correggere.
+
+⚠️ **`CanaliIncassoSearchTable` è il caso più netto**: porta già in testa il
+proprio debito scritto — *«NON ha un seed in `ui.lista_definizione`»*. Non era
+una svista, era una dichiarazione in attesa di questo momento.
+
+#### ✅ CHIUSA — il legame catalogo ↔ payload ha il suo presidio
+
+> ⚠️ **Questa sezione era sbagliata quando l'ho scritta** (2026-09-02 mattina):
+> la registrai come «consegna aperta al team BE/FE» senza cercare se il presidio
+> esistesse gia'. Esisteva — `apps/core/tests/db/test_lista_proiezione_campo_sorgente.py`
+> — e copre **43 liste**, si **arma da solo** dal seed (una lista nuova senza
+> vista rende rosso `test_il_registro_copre_ogni_lista_senza_vista` il giorno in
+> cui viene seminata) e include gia' le 4 liste `ui`.
+> ⭐ Eseguito contro il database vero il 2026-09-02 (`ZEROERP_TEST_DB_E2E=1`):
+> **4 test verdi**, incluse le 4 liste nuove.
+> ⛔ E' skippato nella corsa normale (vuole un DB), quindi **non si vede** nella
+> suite veloce: chi tocca un seed deve lanciarlo a mano o fidarsi della CI.
+>
+> Il testo originale resta sotto perche' descrive bene il difetto che quel
+> presidio previene — ma **non e' piu' una consegna**.
+
+#### 🕳️ Il difetto che quel presidio previene (era: consegna aperta)
+
+> Rilievo del **team DB**, 2026-09-02, alla chiusura di
+> [brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md).
+> Non appartiene a quel lotto: vale per tutte le liste senza vista.
+
+Il guard DB sui `campo_sorgente`
+(`trgfn_ui_lista_colonna_a10_valida_campo_sorgente`) **si ferma subito quando la
+lista non dichiara una `vista_sql`**. Su quelle liste nessuno verifica che i
+`campo_sorgente` a catalogo esistano davvero nel payload dell'endpoint.
+
+⚠️ **Se un endpoint rinomina un campo non fallisce niente**: cella vuota a video
+e colonna vuota nell'export, in silenzio. È la classe di difetto più cara di
+questo repo — quella che non dà errore. E non è teorica: le quattro liste `ui`
+appena seedate hanno **sei** campi in questa condizione (`colonne_count`,
+`preset_riferimento`, `colonna_etichetta`, `colonna_codice`,
+`profilo_accesso_codice`, `livello_accesso`), tutti prodotti da JOIN o calcolati
+dal service.
+
+⭐ **Perimetro: 43 liste su 59** non dichiarano una vista — solo 16 ce l'hanno
+(misurato il 2026-09-02 su `origin/Tito-dev`, seed `ui` compreso: `vista_sql`
+NULL o vuota in `lista_definizione.csv`). Il presidio possibile è **uno solo ed è
+lato BE**: un test che confronti i `campo_sorgente` a catalogo con le chiavi
+della proiezione del repository che serve quella lista.
+
+```bash
+git show origin/Tito-dev:db/changelog/migrations_v2/80_data/sql/ui/lista_definizione.csv \
+  | awk -F',' 'NR>1 && NF {tot++; if ($5=="NULL" || $5=="") senza++} \
+               END {print senza" senza vista su "tot}'
+```
+
+⇒ **Vale per tutte in una volta.** Farlo lista per lista, mentre si converte,
+significa scriverne 43 versioni e dimenticarne alcune — che è il modo in cui i
+presidi di questo repo diventano verdi per sottrazione. Cantiere suo, non un
+pezzo della conversione.
+
+⚠️ Il rapporto è **il contrario di come suona**: la lista con la vista è
+l'eccezione (16), quella senza è la norma (43). Un presidio che coprisse le sole
+liste «con vista» presidierebbe poco più di un quarto del catalogo.
+
+#### Gruppo A — liste vere (39 file)
 
 Sono il bersaglio naturale di `<ListaConfigurabile>`: ordinate dalla più
 semplice alla più complessa, così le prime servono da rodaggio.
@@ -1047,7 +1474,6 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 01-08 | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
 | ✅ 01-08 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
-| ⏸ dec.4 | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
 | ✅ 01-08 | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
 | ✅ 01-08 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
 | ✅ 03-08 | `vendite/components/VersioneDrawer.vue` | 6 | sì |
@@ -1067,12 +1493,23 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 03-08 | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
 | ✅ 2026-07-31 | `vendite/views/LottiListView.vue` | 9 | sì |
 | ✅ 03-08 | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
-| ⏸ dec.4 | `vendite/components/ContrattoRigheDrawer.vue` | 11 | — |
 | ✅ 03-08 | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ✅ 01-08 | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ✅ 03-08 | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
 | ✅ 22-08 | `vendite/components/LottoDrawer.vue` — **3 liste su 3 tab**, dal Gruppo B | 11 | no |
+| ✅ 02-09 | `ui/components/ListaColonnaPermessoPanel.vue` — dal Gruppo B, **non paginata** | 5 | no |
+| ✅ 02-09 | `ui/components/ListaDefinizionePanel.vue` — dal Gruppo B, **non paginata** | 6 | no |
+| ✅ 02-09 | `ui/components/ListaPresetPanel.vue` — dal Gruppo B, **non paginata** | 8 | no |
+| ✅ 02-09 | `ui/components/ListaColonnaPanel.vue` — dal Gruppo B, **non paginata** | 9 | no |
 
+> ➡️ **Due file sono USCITI da questa tabella il 2026-09-02** (decisione di
+> Tid): `catalogo/components/ArticoloBomDrawer.vue` (componenti BoM) e
+> `vendite/components/ContrattoRigheDrawer.vue` (righe del contratto). Sono
+> **righe di un master**, quindi Gruppo B: la loro casa è
+> `RigheMasterDetailTable` / `SearchDetailTable`, non `<ListaConfigurabile>`.
+> ⚠️ Il denominatore passa da **39 a 37** per RICLASSIFICAZIONE, non per lavoro
+> fatto: quei due file non sono stati toccati.
+>
 > ✅ **`LottoDrawer` — CONVERTITO il 2026-08-22.** È il **35°** file del
 > gruppo: i tre tab sono ora tre liste configurabili
 > (`vendite.lotto_fatture` 45, `vendite.lotto_task_runs` 46,
@@ -2008,7 +2445,7 @@ vede guardando la pagina.
 > whitelist come diceva questa riga. Dettaglio, verifica e **le 4 consegne al
 > team DB** nella voce di registro §9 «Settimo lotto — la passata BE».
 
-#### Gruppo B — tabelle annidate (36 file, senza paginator)
+#### Gruppo B — righe di documento e anteprime (32 file)
 
 Dentro drawer, dialog e pannelli. **Non** vanno su `ListaConfigurabile`:
 il loro equivalente è `RigheMasterDetailTable` / `SearchDetailTable`, o
@@ -2031,6 +2468,74 @@ un wrapper sottile da estrarre alla seconda occorrenza
 > ⚠️ Se ne emergesse un secondo, la regola del 2 dice di **riscrivere il
 > criterio del gruppo**, non di spostare un'altra riga a mano.
 
+> ## ✅ Il secondo è emerso — criterio RISCRITTO (2026-09-01)
+>
+> Il caso è `EmittenteFiscaleRegistriTab`, il tab dei registri di numerazione
+> del drawer emittente
+> ([brief-be-fe-crud-registri-di-numerazione](../work-done/brief-be-fe-crud-registri-di-numerazione.md)
+> §10). ⇒ Come questa nota prescriveva, non si sposta una riga: si riscrive il
+> criterio, e il gruppo si legge da qui in avanti così.
+>
+> ### Il criterio, in tre domande — la prima decide
+>
+> | Domanda | Se sì |
+> | --- | --- |
+> | ⭐ **L'entità ha vita propria** — un endpoint suo, una popolazione arbitraria, un ciclo di vita indipendente dal padre? | **Gruppo A**: `<ListaConfigurabile>` + `useDrawerTabLista` + `DrawerTabLista`. Le manca il paginator, non la natura |
+> | Sono le **righe** del documento che la contiene (righe ordine, componenti BoM, righe reso)? | **Gruppo B**: `RigheMasterDetailTable` / `SearchDetailTable`. È un dettaglio del master, non una lista |
+> | È una **matrice slot/override** — la popolazione la decide il catalogo (LEFT JOIN su tutte le voci ammesse), l'operatore compila le celle? | 🔴 **Nessuna delle due**, vedi il buco qui sotto |
+>
+> ⛔ **«È dentro un drawer» e «non ha il paginator» NON sono più il criterio.**
+> Erano un fatto di forma, e la forma è la conseguenza: un tab-lista non ha il
+> paginator perché nessuno gliel'ha ancora messo, non perché non gli serva.
+>
+> ### ⭐ Il wrapper sottile che questa sezione chiedeva ESISTE
+>
+> Il testo del gruppo diceva *«un wrapper sottile da estrarre alla seconda
+> occorrenza»*. La seconda occorrenza è arrivata, e il wrapper è stato estratto
+> il **2026-09-01** (ok di Tid), in **tre** pezzi separati per mestiere:
+>
+> | Pezzo | Cosa |
+> | --- | --- |
+> | [`core/composables/useDrawerTabLista.js`](../../../../frontend/src/core/composables/useDrawerTabLista.js) | il legame col padre: `watch` immediate, reset filtri, doppia fetch |
+> | [`core/components/DrawerTabLista.vue`](../../../../frontend/src/core/components/DrawerTabLista.vue) | lo scheletro: help + `testata` + toolbar + `<ListaConfigurabile>`, slot inoltrati per nome |
+> | [`core/utils/bloccoMotivo.js`](../../../../frontend/src/core/utils/bloccoMotivo.js) | la frase di un'azione spenta, dalla terna `reason`/`reason_key`/`dettaglio` |
+>
+> ⛔ **`EmittenteFiscaleBillingAccountTab` ci è stato convertito lo stesso
+> giorno**, e non per cortesia: un BB estratto e lasciato accanto alla sua
+> copia sono due implementazioni della stessa regola, e la copia diverge in
+> silenzio ([[feedback_duplicazione_nasconde_il_bug]]).
+>
+> ### 🔴 E resta un buco, che questa riclassificazione fa vedere
+>
+> **La matrice slot/override non ha una casa.** Le due eccezioni della regola
+> zero (`frontend-standards` §Regola zero della lista) sono *righe di un
+> documento* e *anteprima in un dialog*: una matrice non è né l'una né
+> l'altra, eppure `EmittenteFiscaleUtilitiesTab` e `OperatorePermessiTab` sono
+> esattamente questo — popolazione dal catalogo, editing inline multi-riga,
+> nessun paginator.
+>
+> ⇒ Oggi restano `DataTable` grezza **senza una motivazione che la regola
+> ammetta**, ed è un debito da nominare, non da coprire con un'eccezione
+> inventata sul momento. Le due strade, e sono una decisione di Tid:
+>
+> 1. dare a `<ListaConfigurabile>` l'**editing inline di riga** — è la strada
+>    che la regola zero indica quando il BB non basta (*«estendere il BB, non
+>    tornare alla DataTable grezza»*), e sblocca **tutte** le matrici insieme;
+> 2. riconoscere la **matrice** come terza eccezione e darle il suo wrapper,
+>    sul modello di `RigheMasterDetailTable`.
+>
+> ⚠️ Finché non si sceglie, quei file restano dove sono **con il debito
+> scritto**: non è un'omissione, è un rifiuto di chiamare «eccezione» una cosa
+> che non lo è.
+
+> ⭐ **Quattro righe sono uscite di qui il 2026-09-02** — i pannelli `ui/`.
+> Erano in Gruppo B per il criterio VECCHIO («tabella dentro un contenitore,
+> senza paginator»), ma per il criterio in tre domande sono liste a tutti gli
+> effetti: entità con endpoint proprio, popolazione arbitraria, ciclo di vita
+> indipendente. ⚠️ Il paginator non l'avevano perché **il BB non lo permetteva**
+> a chi non paginava lato server — cioè la forma era la conseguenza del cancello,
+> non della natura. Caduto il cancello, la classificazione si è raddrizzata da sé.
+
 | ✓ | File | Col. |
 | --- | --- | --- |
 | ☐ | `amministrazione/components/CollectionEditorPanel.vue` | 2 |
@@ -2047,9 +2552,9 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `vendite/preventivi/components/PreventiviDrawer.vue` | 4 |
 | ☐ | `amministrazione/components/RepartoProfiloEditor.vue` | 5 |
 | ☐ | `core/components/RiepilogoIvaTable.vue` | 5 |
-| ☐ | `ui/components/ListaColonnaPermessoPanel.vue` | 5 |
+| ➡️ | ~~`ui/components/ListaColonnaPermessoPanel.vue`~~ — **al Gruppo A** il 2026-09-02 (`ui.lista_colonna_permesso`, non paginata) | 5 |
 | ☐ | `vendite/preventivi/components/dialogs/PreventiviSmistamentoDialog.vue` | 5 |
-| ☐ | `ui/components/ListaDefinizionePanel.vue` | 6 |
+| ➡️ | ~~`ui/components/ListaDefinizionePanel.vue`~~ — **al Gruppo A** il 2026-09-02 (`ui.lista_definizione`, non paginata) | 6 |
 | ☐ | `vendite/ordini/components/dialogs/OrdineEvasioneDialog.vue` | 6 |
 | ☐ | `amministrazione/views/DefinizioniWorkflowListView.vue` | 7 |
 | ☐ | `catalogo/components/ArticoloUomDrawer.vue` | 7 |
@@ -2058,17 +2563,17 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `documenti/components/DocumentiGeneratiSorgenteList.vue` | 7 |
 | ☐ | `ui/components/ListaPresetColonneDrawer.vue` | 7 |
 | ☐ | `amministrazione/views/DefinizioneEditorView.vue` | 8 |
-| ☐ | `pratiche/components/PraticaFlussiTab.vue` | 8 |
-| ☐ | `ui/components/ListaPresetPanel.vue` | 8 |
+| ☐ | `pratiche/components/PraticaFlussiTab.vue` — due tabelle di **sola lettura**: resta Gruppo B col criterio nuovo | 8 |
+| ➡️ | ~~`ui/components/ListaPresetPanel.vue`~~ — **al Gruppo A** il 2026-09-02 (`ui.lista_preset`, non paginata) | 8 |
 | ☐ | `vendite/_shared/componenti/ComponentiDialog.vue` | 8 |
 | ☐ | `vendite/_shared/componenti/ComponentiPanel.vue` | 8 |
 | ☐ | `vendite/components/FatturaDrawer.vue` | 8 |
 | ☐ | `vendite/ddt/components/DdtResoDialog.vue` | 8 |
 | ☐ | `vendite/resi/components/dialogs/ResoRiconsegnaDialog.vue` | 8 |
-| ☐ | `amministrazione/components/EmittenteFiscaleUtilitiesTab.vue` | 9 |
-| ☐ | `amministrazione/components/OperatorePermessiTab.vue` | 9 |
+| 🔴 | `amministrazione/components/EmittenteFiscaleUtilitiesTab.vue` — **matrice slot/override**: nessuna delle due eccezioni la copre (buco dichiarato sopra) | 9 |
+| 🔴 | `amministrazione/components/OperatorePermessiTab.vue` — **matrice slot/override** (tre tabelle di spunte): stesso buco | 9 |
 | ☐ | `config/components/ImpostazioniSearchTable.vue` | 9 |
-| ☐ | `ui/components/ListaColonnaPanel.vue` | 9 |
+| ➡️ | ~~`ui/components/ListaColonnaPanel.vue`~~ — **al Gruppo A** il 2026-09-02 (`ui.lista_colonna`, non paginata) | 9 |
 | ➡️ | ~~`vendite/components/LottoDrawer.vue`~~ — **spostato al Gruppo A** il 2026-08-21 (3 liste su 3 tab) | 11 |
 
 ### Le opzioni, per quando sarà il momento
@@ -2093,6 +2598,185 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-09-02 · Il drawer dei titoli IVA del soggetto torna sullo standard
+
+Rilievo di Tid in collaudo: *«la lista titoli iva soggetti drawer non è per
+niente standard, non ha neanche la possibilità di fare il download o
+parametrizzare le colonne e neanche la paginazione»*. Ed era vero: la lista era
+una `<ListaConfigurabile>` montata **a mano**, con le righe in due `ref` locali.
+
+⛔ **Il difetto non stava nel componente, stava nel montaggio.** Le tre cose
+mancanti — pagine, «Personalizza colonne», export — non sono tre lavori: sono
+quello che lo **scaffolding** porta con sé, e che chi monta il BB da solo si
+perde tutte insieme. È il motivo per cui una schermata resta indietro **senza
+che niente lo dica**: funziona, mostra dati veri, e nessun test è rosso.
+
+Cosa è cambiato, in ordine di dipendenza:
+
+| Dove | Cosa |
+| --- | --- |
+| `titoli_iva_repository` | `list_titoli_soggetto` accetta `limit`/`offset` e ritorna `(righe, totale)` da **una** valutazione (`fetch_paged_with_total`). ⛔ `count_titoli_soggetto` **cancellata**: era una seconda query sullo stesso predicato, e due valutazioni possono non concordare |
+| `titoli_iva_service` | envelope `{results, count}` come ogni altra lista |
+| `views_titoli_iva` | GET paginata + **nuovo** `GET .../titoli-iva/export/` (DEF-1, `build_export_response`) |
+| `soggettoTitoliIva.js` (nuovo) | store col contratto `useSearchTable` |
+| `TitoliIvaSoggettoDrawer.vue` | `useDrawerTabLista` + `<DrawerTabLista>` |
+| `DrawerTabLista.vue` | ⭐ inoltra `@row-click`: un contenitore che si tiene un evento del componente che avvolge è un buco silenzioso |
+
+⭐ **`limit` assente = nessuna paginazione**, e non è una comodità: quel metodo
+ha un **secondo consumatore** (`SoggettiService`, che incorpora i titoli nel
+dettaglio del soggetto). Un `LIMIT` di default avrebbe troncato quella sezione
+senza dirlo — lo stesso difetto appena corretto sui sfondati, in un altro posto.
+
+⇒ Conseguenza sul registro: `anagrafiche.soggetto_titoli_iva` **esce** dalla
+sentinella `ORDINAMENTO_LOCALE` (ora ordina lato server, quindi i test 1-3 la
+coprono) e la sua riga **esce dal ponte** del lotto 2, che resta con la sola 61.
+
+### 2026-09-02 · Cade il cancello del `lazy`, e le 4 liste `ui` entrano dal Gruppo B
+
+Il cambio strutturale della giornata, e in un certo senso l'unico:
+`<ListaConfigurabile>` aveva `lazy` e `paginator` **cablati nel template**. Non
+era una decisione: era una costante rimasta lì. E finché c'era, il residuo del
+Gruppo A era per costruzione irraggiungibile — **13 delle 15 liste rimaste non
+hanno paginazione server-side**, quindi ciascuna sarebbe stata una fetta backend
+intera (endpoint paginato + whitelist + `count`) per liste che non hanno niente
+da paginare.
+
+⭐ Ora la prop `paginata` (default `true`) le separa. Le 55 liste esistenti sono
+**invariate** — verificato: nessun consumer passava la prop.
+
+**Il pilota e il suo lotto.** Scelte le 4 liste della pagina tecnica `ui`, e il
+pilota è `ui.lista_definizione` per una ragione operativa: è **la lista delle
+liste**, quindi si sa quante righe devono uscire (59, lo dice il CSV stesso) e un
+troncamento si vede a occhio invece che per deduzione. Seed consegnato al team DB
+come richiesta unica per quattro liste e applicato in giornata:
+[brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md).
+⭐ **64 righe su 64 atterrate identiche alla specifica**, verificato
+meccanicamente contro `origin/Tito-dev` invece che dato per buono.
+
+#### 🔴 La trappola dentro la trappola: un `total` che è un'eco
+
+Il guard anti-troncamento confronta `rows.length` con `total`. Sul pilota
+**sarebbe stato una tautologia**: l'endpoint restituiva una lista nuda e lo store
+faceva `totalRecords = items.length`, cioè `rows.length === rows.length`.
+
+⚠️ E la correzione ovvia è sbagliata: `success_response({"results": rows,
+"count": len(rows)})` **sposta** la tautologia sul server invece di toglierla.
+⇒ Il conteggio è una query **sua** (`SELECT count(*)` con lo stesso perimetro
+della lista), su tutti e quattro gli endpoint. Quattro test lo fissano: il repo
+dichiara 40/12/5/57 e consegna 1 riga, e il service deve **riportare** la
+divergenza, non appianarla — sono i test che sarebbero passati lo stesso con
+`len(results)`, ed è per questo che servono.
+
+⭐ **Su `count_permessi_by_lista` il `FROM` è ripetuto per intero, JOIN
+compresi**: quelli della lista sono INNER e possono togliere righe. Un
+`count(*)` sulla sola tabella avrebbe contato di più e acceso il guard su un
+troncamento inesistente. *Il conteggio dev'essere indipendente dalle RIGHE, non
+dal PERIMETRO.*
+
+#### La riclassificazione, che si è raddrizzata da sé
+
+I 4 pannelli erano in **Gruppo B**. Non ci appartenevano: hanno endpoint proprio,
+popolazione arbitraria e ciclo di vita indipendente — prima domanda del criterio
+⇒ Gruppo A. ⚠️ Il paginator non ce l'avevano **perché il BB non lo permetteva a
+chi non paginava lato server**: la forma era la conseguenza del cancello, non
+della natura. Caduto il cancello, la classificazione si è sistemata da sola —
+ed è la prova che il criterio del 01-09 era giusto e il gruppo era sbagliato.
+
+#### Revisione critica del proprio codice: sei difetti, cinque corretti
+
+Passata ostile sul lavoro appena scritto. In ordine di gravità:
+
+1. 🔴 **`onSort` chiudeva le righe espanse anche in ordinamento locale.** L'uscita
+   anticipata stava *dopo* `resetExpansionSePropria()`. Ma in modalità non
+   paginata le righe sono le stesse, solo riordinate: PrimeVue indicizza
+   l'espansione per `dataKey`, quindi restava valida — e il reset la buttava via,
+   chiudendo sotto gli occhi dell'operatore le righe aperte per leggere le
+   colonne ritirate.
+2. 🔴 **Il presidio del perimetro emittente era rosso e non me n'ero accorto**:
+   non avevo rilanciato quella suite dopo le conversioni. Le 4 liste vogliono un
+   cancello o un'esenzione **dichiarata**. ⛔ Scritta per quello che ciascuna è,
+   non copiando la motivazione delle vicine: tre tabelle **non hanno**
+   `emittente_fiscale_id` (nessun perimetro da sciogliere), mentre
+   `ui.lista_preset` ce l'ha — e lì la ragione è che l'ambiguità è già sciolta a
+   video dalla colonna «Riferimento», che è la seconda via ammessa da P-2c.
+3. ⚠️ **Finestra a 800 caratteri nel test 8-bis**: cercava `:paginata="false"` in
+   una finestra fissa. Se fosse caduta oltre, il test sarebbe passato lo stesso —
+   **verde per sottrazione**, su un guard nato contro i difetti silenziosi.
+   Sostituita con un'estrazione esatta del tag che rispetta le virgolette.
+4. **Riscritto quattro volte un BB che esiste**: `fetchone_scalar` in
+   `apps/core/db/_helpers.py`, adottato da 7 repository core. Ora lo importano.
+5. `:null-sort-order="1"` numero magico → costante con nome, **dopo** aver
+   verificato nel sorgente di `@primeuix/utils` che `1` significhi davvero
+   «nulls at bottom» (il commento era accurato, ma l'avevo scritto senza
+   controllarlo).
+6. `eslint-disable no-console` per una regola non attiva — lo diceva ESLint
+   stesso: «Unused eslint-disable directive».
+
+⛔ **Non corretto, e dichiarato**: il cablaggio dei 4 pannelli è identico
+(`listaRef` + `useListaAzioni` + spread + `ListaConfigStatusTag`), 4 volte su 4.
+È la regola del 2 alla quarta occorrenza, ma l'estrazione giusta non è un
+wrapper di 3 righe — tre dei quattro condividono anche filtro sul padre,
+empty-state e readonly, quindi è uno scaffolding tipo `useDrawerTabLista` per
+tab di pagina. Va dichiarato e deciso, non fatto di straforo mentre si correggono
+bug.
+
+#### Verifiche
+
+Suite backend **completa: 4345 test OK**. Build frontend verde, ESLint e oxlint
+puliti, `check-liste-configurabili.mjs` e `check-pinia-user-scoped-reset.mjs`
+verdi. Il guard 8-bis **provato in entrambi i versi**: tolta la prop da un
+pannello diventa rosso sulla lista giusta, rimessa torna verde.
+
+⚠️ **Quello che NON è stato visto**: le quattro liste **a video**. I pannelli
+trovano la configurazione solo dopo il prossimo `migrate`. Il pilota è quello da
+guardare per primo — `ui.lista_definizione` deve mostrare **59 righe**, e un
+numero diverso deve dare un errore rosso al posto della tabella, non una lista
+corta e silenziosa.
+
+### 2026-09-02 · Ri-misura di tutta la superficie, e tre cose che i numeri fanno vedere
+
+Passata di sole **misure**, senza toccare una riga di frontend: §2, §2-bis, §3,
+§8-bis e i denominatori dell'inventario sono stati ri-eseguiti sul repo di oggi.
+I valori stanno nelle rispettive sezioni; qui c'è solo ciò che il confronto con
+il 2026-07-29 mette in evidenza.
+
+**1. La superficie cresce, ma non dove costa.** `datatable`+`column` è passato da
+164 import in 77 file a **124 in 57 file**; i sette primitivi da ~449 a **586**.
+In 35 giorni il repo è cresciuto di 48 `.vue` (335 → 383) e sono le uniche due
+voci in calo di tutta la tabella. ⇒ Il lavoro del Gruppo A si vede nel numero
+caro; la crescita si è spostata sui primitivi, che è il gruppo a difficoltà
+bassa — ma è anche **la riga del piano che non è mai stata sviluppata**, e ora
+ha una sezione sua in §8-bis.
+
+**2. Seed ↔ presidio divergono di 1, ed è cantiere aperto.** 55 codici in
+`ui.lista_definizione`, **54** righe nel registro `_LISTE`: lo scarto è
+`vendite.famiglie_documento`, seedata il 2026-09-01, ancora senza consumer
+`<ListaConfigurabile>` — oggi il codice è vocabolario per il cantiere dei
+registri di numerazione. ⚠️ Confermato da Tid il 02-09: **in costruzione, non una
+regressione**. La riga «devono coincidere» resta l'invariante, ma il momento in
+cui si verifica è la chiusura del cantiere, non oggi.
+
+**3. Il contatore della regola zero non è il conteggio delle liste da
+convertire**, e per tre giorni è sembrato che lo fosse. 57 il 30-08, 57 il 02-09:
+piatto, mentre nel mezzo `EmittenteFiscaleBillingAccountTab` veniva convertita
+(01-09) e altrettante liste nascevano altrove. ⚠️ E **due file già convertiti
+compaiono ancora nel `grep`** — `ListiniSearchTable` (riga di espansione) e
+`LottoDrawer` (residuo dichiarato in commento) — perché un file può montare
+`<ListaConfigurabile>` **e** una `DataTable`: il `grep` conta i file, non le
+tabelle. ⇒ Resta un ottimo **campanello** (se sale, è nata una lista fuori
+standard) e un pessimo denominatore.
+
+⛔ **Nessuna riclassificazione fatta in questa passata**, e non per prudenza: le
+due cose emerse — gli **11 file fuori inventario** e la coppia
+`ArticoloBomDrawer`/`ContrattoRigheDrawer` che il criterio del 01-09 manda in
+Gruppo B mentre la tabella li tiene in Gruppo A — sono **decisioni**, non
+aggiornamenti di conteggio. Stanno scritte dove servono (§Inventario e §Gruppo A)
+come domande aperte.
+
+⚠️ **E vale la regola zero su tutto quanto sopra**: questi numeri sono fatti
+datati. Nessuno di essi è la ragione per convertire una lista — quella sta nella
+regola zero di `frontend-standards`, e reggerebbe identica con altri numeri.
 
 ### 2026-08-24 · La settima sorella — `vendite.vw_fatture_lista` e la lista a catalogo
 

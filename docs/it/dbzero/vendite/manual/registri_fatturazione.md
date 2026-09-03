@@ -27,7 +27,7 @@ dal 31 agosto 2026 qui non vivono più solo le fatture. Vedi la sezione in fondo
 * **Identita`**: `id`, `uid`, `codice`.
 * **Emittente**: `emittente_soggetto_ruolo_id` (ruolo fiscale che emette).
 * **Utility**: `utility_id` (opzionale, per registri specifici di utility).
-* **Numerazione**: `serie_default`, `reset_policy` (es. ANNUALE).
+* **Numerazione**: `serie_default`, `reset_policy` (`ANNUALE` o `NESSUNA`).
 * **Forma del numero**: `prefisso`, `suffisso`, `lunghezza_numero` — vedi la
   revisione «il registro dice anche CHE FORMA ha il numero».
 * **Stato**: `attivo`.
@@ -38,7 +38,7 @@ dal 31 agosto 2026 qui non vivono più solo le fatture. Vedi la sezione in fondo
 ### Relazioni principali
 
 * `vendite.fatture.registro_id` → determina la numerazione.
-* `vendite.registri_fatturazione_progressivi` mantiene i contatori per anno/mese/serie.
+* `vendite.registri_fatturazione_progressivi` mantiene i contatori per anno/serie.
 * `vendite.tipi_doc_fiscale_registri` associa il registro al tipo documento fiscale.
 
 ---
@@ -85,20 +85,48 @@ fattura **già numerata**. ⭐ Per questo la `minDate` esposta al frontend
 ([`fn_get_data_minima_numerabile_lotto`](/dbzero/vendite/funzioni/fn_get_data_minima_numerabile_lotto))
 non è un abbellimento: è ciò che rende vivibile la politica.
 
-#### `reset_policy` scende a **una voce sola**
+#### ~~`reset_policy` scende a **una voce sola**~~ → 🔴 rev 2026-09-01: `NESSUNA` è tornata, e adesso FUNZIONA
 
-Il `CHECK` ammette ora solo `ANNUALE`. Prima accettava anche `NESSUNA` e
-`MENSILE`, che erano **dichiarate e non implementate**: la chiave del contatore
-porta `mese = 0` fisso e `uq_fatture_numero` il mese non lo contiene, quindi
-`NESSUNA` si comportava come `ANNUALE` e `MENSILE` pure.
+> ~~Il `CHECK` ammette ora solo `ANNUALE`. Prima accettava anche `NESSUNA` e
+> `MENSILE`, che erano **dichiarate e non implementate**: la chiave del contatore
+> porta `mese = 0` fisso e `uq_fatture_numero` il mese non lo contiene, quindi
+> `NESSUNA` si comportava come `ANNUALE` e `MENSILE` pure.~~
+>
+> ⛔ **Ma la frase che segue era giusta, ed è quella che conta** — vale ancora,
+> parola per parola: *«un catalogo che promette tre comportamenti e ne fa uno è
+> peggio di un catalogo con una voce sola»*.
 
-⛔ Un catalogo che promette tre comportamenti e ne fa uno è **peggio** di un
-catalogo con una voce sola: prima o poi qualcuno sceglie `MENSILE`, e
-un'implementazione a metà finisce in violazione di `UNIQUE`.
+⭐ **E quella nota conteneva già l'invariante, scritta il 2026-08-25 e non ancora
+riconosciuta come regola generale:**
 
-⚠️ Se un giorno `MENSILE` servisse davvero non basta riaprire il `CHECK`: serve
-il mese **nel contatore** (c'è già) **e in `uq_fatture_numero`** (non c'è), più un
-`fn_get_anno_registro` che riceva il registro.
+> *«se un giorno `MENSILE` servisse davvero non basta riaprire il `CHECK`: serve
+> il mese **nel contatore** (c'è già) **e in `uq_fatture_numero`** (non c'è)»*
+
+Quella è, in un caso particolare, la regola che il 2026-09-01 è stata scritta per
+esteso nella [guida alla numerazione §8-bis](/guide/numerazione-documenti-e-codici):
+
+> **Tutto ciò che discrimina il CONTATORE deve poter discriminare anche il
+> DOCUMENTO.**
+
+**Cosa è cambiato**, e sono tre cose:
+
+| | |
+| --- | --- |
+| `MENSILE` | ⛔ **non torna**. Il mese non ce l'ha *nessun* documento nel proprio vincolo: accenderlo li farebbe collidere tutti e cinque |
+| la colonna `mese` del contatore | 🔴 **tolta**. Stava in chiave e in nessun documento: una dimensione dormiente in una chiave è **armata**, non inutilizzata |
+| `NESSUNA` | ✅ **riammessa, e letta**. `fn_get_next_progressivo` legge la politica: sotto `NESSUNA` l'anno del secchio vale `0`, cioè un secchio solo e numerazione **continua** fra gli anni |
+
+⭐ **Perché una sì e l'altra no**, ed è l'asimmetria della regola: `MENSILE`
+farebbe discriminare il contatore su un asse che il documento **non ha**
+(collisione); `NESSUNA` gli fa usare **meno** assi, non di più — e l'anno ce
+l'hanno tutti i documenti. Il verso innocuo.
+
+⚠️ **E due cose si chiamano «anno»**: quello del **secchio**
+(`progressivi.anno`, che vale `0` sotto `NESSUNA`) e quello del **documento**
+(`fatture.anno`, `ddt.anno`, …), sempre solare. `fn_get_anno_registro` risponde
+alla seconda domanda — per questo **non** ha ricevuto il registro come parametro,
+contrariamente a quanto la nota vecchia prevedeva: la politica si legge dove
+serve, cioè nell'unica funzione che legge `progressivi.anno`.
 
 ⚠️ **Il `serie_default` è portante, non un'etichetta.** È da lì che
 `fn_assign_numero_fattura` risolve la serie di un documento che non ne dichiara

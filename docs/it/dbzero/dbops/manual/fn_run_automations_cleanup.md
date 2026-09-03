@@ -79,4 +79,24 @@ Applica in modo coerente due regole dichiarative:
 * Se `cleanup_at` non esiste nella tabella target, la regola viene **ignorata**.
 * `base_ts_column` è opzionale: se non indicata il runner tenta fallback su
   `data_insert`, `executed_at`, `occurred_at`, `created_at`.
+
+  > ⭐ **E «opzionale» qui non vuol dire «dichiarala per sicurezza»: sulla riga
+  > `*all`/`*all` NON va dichiarata.** È una proprietà **per tabella**, mentre
+  > `params` è **per riga di regola**: un valore unico imposto a ogni tabella
+  > del database sarebbe sbagliato per costruzione. Lì il fallback a catena
+  > **è** il disegno.
+  >
+  > ⚠️ **Si dichiara solo dove il fallback sceglierebbe la colonna sbagliata**,
+  > e oggi il caso è uno: **`vendite.event_log`** (`"base_ts_column":
+  > "event_time"`, dal 2026-09-01). Quella tabella ha **sia** `data_insert`
+  > **sia** `event_time`; il fallback prenderebbe la prima perché è in testa
+  > alla catena, ma il trigger che scrive `cleanup_at` lo calcola da
+  > `event_time`. Erano **due modi di derivare la stessa grandezza che non
+  > concordavano** — indistinguibili sulle righe nate normalmente, divergenti
+  > su un evento importato o ricostruito.
+  >
+  > 📌 Se la colonna dichiarata non esiste, la tabella viene **saltata** con un
+  > audit `WARN` e `skip_reason = MISSING_BASE_TS_COLUMN`: non si rompe niente,
+  > ma la pulizia di quella tabella non gira — un difetto silenzioso, da
+  > cercare negli audit e non fra gli errori.
 * Le esclusioni con `enabled=true` hanno priorità su qualunque regola.

@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LOCK CHE MANCAVA — vendite.famiglie_documento.codice_interno
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3, D3)
+#
+# ── 🔴 IL FATTO, VERIFICATO ─────────────────────────────────────
+#   `vendite.famiglie_documento` e' l'UNICA tabella del database con una
+#   colonna `codice_interno` e SENZA il trigger `script.trgfn_lock_columns`.
+#   Le altre diciotto ce l'hanno. Non e' una scelta: e' un provisioning che non
+#   e' passato — la tabella e' nata il 2026-08-30 e da allora nessuna passata
+#   di `ci_apply` ha ripreso lo schema `vendite`.
+#   ⚠️ Verificato su pg_trigger, non dedotto: audit e tx_id sulla stessa
+#   tabella ci sono, quindi le automazioni NON sono ferme in blocco — manca
+#   proprio questa.
+#
+# ── ⛔ PERCHE' NON SI ASPETTA IL ci_apply ────────────────────────
+#   Il CRUD delle famiglie apre la scrittura a una persona, e `codice_interno`
+#   e' il bersaglio della FK `fk_registri_fatturazione_famiglia`. La FK rifiuta
+#   la rinomina quando ci sono registri — con un 23503 crudo — ma NON protegge
+#   una famiglia che i registri non li ha ancora: li' la rinomina passa e
+#   rompe i seed e i chiamanti che passano il letterale.
+#   ⇒ Il lock deve esserci PRIMA del CRUD, non alla prossima passata.
+#
+# ── ⭐ IL RUNNER, NON UN CREATE TRIGGER A MANO ───────────────────
+#   `dbops.fn_run_automations_lock_columns` e' create-if-not-exists e la regola
+#   `*all/*all` e' gia' attiva: la colonna `codice_interno` e' IMPLICITA — non
+#   serve nessuna riga in `dbops.automation_lock_columns`. Scrivere il CREATE
+#   TRIGGER a mano darebbe un trigger identico ma fuori dall'automazione, che
+#   alla prossima passata ne troverebbe uno con lo stesso nome e non
+#   toccherebbe niente: un oggetto che sembra governato e non lo e'.
+#
+# ── ⚠️ SOLO LO SCHEMA `vendite` ─────────────────────────────────
+#   Un runner a tappeto ri-provisionerebbe righe di altri schemi che con questo
+#   passo non c'entrano, e un loro eventuale fallimento verrebbe attribuito a
+#   noi. E' la stessa scelta di 20260818-23 e 20260821-07.
+#
+# ── ⛔ E IL GUARD DELLA STRUTTURA NON COPRE codice_interno ───────
+#   Le cinque colonne di `trg_famiglie_documento_a10_guard_chiave_struttura_upd`
+#   non includono `codice_interno` PROPRIO perche' parla questo lock, con
+#   E_CODICE_NON_MODIFICABILE. Due presidi sulla stessa colonna con due
+#   messaggi diversi sono la cosa da non fare: chi legge il primo non sa
+#   dell'altro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260901-21-provision-lock-famiglie-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260901-21-provision-lock-famiglie-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Provisiona subito il lock su vendite.famiglie_documento.codice_interno. 🔴 Quella tabella e'' la
+        UNICA del database con una colonna codice_interno e senza il trigger script.trgfn_lock_columns —
+        verificato su pg_trigger: le altre diciotto ce l''hanno, e sulla stessa tabella audit e tx_id ci
+        sono, quindi non e'' un blocco delle automazioni ma questo provisioning che non e'' passato.
+        ⛔ Non si aspetta il ci_apply perche'' il CRUD apre la scrittura a una persona e codice_interno e''
+        il bersaglio di una FK: la FK rifiuta la rinomina se ci sono registri, ma su una famiglia che non
+        ne ha ancora la rinomina passerebbe e romperebbe i seed. ⭐ Si chiama il RUNNER e non si scrive
+        un CREATE TRIGGER a mano: la colonna e'' implicita per l''automazione, e un trigger scritto a mano
+        sembrerebbe governato senza esserlo. Piano: brief-be-fe-crud-registri-di-numerazione, 11.5 (D3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⛔ La colonna che l'automazione blocca deve esistere: e'
+            #    implicita, quindi se non c'e' il runner gira e non fa niente,
+            #    e il changeSet passerebbe verde senza aver provisionato nulla.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.famiglie_documento'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname = 'codice_interno';
+            # ⛔ La regola LOCK_COLUMNS deve essere accesa: senza, il runner
+            #    non crea niente e questo changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM dbops.automation_rules_tbl r
+                   WHERE r.enabled
+                     AND upper(btrim(r.rule_type)) = 'LOCK_COLUMNS'
+                     AND upper(btrim(r.exec_mode)) IN ('AUTO', 'CI');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Solo lo schema `vendite`: un runner a tappeto ri-provisionerebbe
+              -- righe di altri schemi che non c'entrano con questo passo, e un
+              -- loro eventuale fallimento verrebbe attribuito a noi.
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['vendite'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il runner crea, non cancella: il trigger si toglie a mano.
+              -- ⚠️ Non si tocca nessuna riga di dbops.automation_lock_columns:
+              --   `codice_interno` e' implicita per l'automazione, quindi non
+              --   ce n'e' nessuna da togliere.
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_lock_columns_upd
+                ON vendite.famiglie_documento;

@@ -999,22 +999,37 @@ class AmmSoftwareRepository:
     #        migration (no mutazioni runtime), 8 righe immutabili durante
     #        il processo. Evita 2 round-trip DB per ogni `get_audit_summary`
     #        (validazione code + fn call). Test/hot-reload: `cache_clear()`.
+    # ⭐ `storico_table` SI LEGGE DAL 2026-09-02 (changeSet `20260902-11`), ed e'
+    #    la meta' che mancava: e' il NOME FISICO della storico, l'unica sede
+    #    autorevole. Prima la vista non lo esponeva affatto e il nome si
+    #    ricostruiva da `code` — vedi la nota su `list_audit_log`.
+    # ⚠️ Quarta colonna e IN CODA, non in mezzo: la vista e' un
+    #    `CREATE OR REPLACE` (per non perdere i GRANT), e quella forma puo' solo
+    #    aggiungere colonne alla fine. Qui si seleziona per NOME, quindi la
+    #    posizione non ci riguarda — ma sapere perche' e' li' evita di
+    #    «riordinarla» un giorno.
     @staticmethod
     @lru_cache(maxsize=1)
-    def _list_audit_sources_cached() -> tuple[tuple[str, str, str], ...]:
+    def _list_audit_sources_cached() -> tuple[tuple[str, str, str, str], ...]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT code, label_key, area_funzionale
+                SELECT code, label_key, area_funzionale, storico_table
                   FROM script.vw_audit_sources
                 """
             )
-            return tuple((r[0], r[1], r[2]) for r in cursor.fetchall())
+            return tuple((r[0], r[1], r[2], r[3]) for r in cursor.fetchall())
 
+    # ⛔ `storico_table` NON entra in questo payload, ed e' voluto: questo e' il
+    #    contratto API della tendina del drawer (`/amm-software/audit-sources/`)
+    #    e l'insieme dei codici ammessi per `get_audit_summary`. Il nome fisico
+    #    di una tabella non e' un dato che il frontend debba conoscere — e il
+    #    changeSet `20260429-06` lo dichiarava «tecnico» proprio in questo senso.
+    #    Chi dentro il repository ne ha bisogno legge il cache direttamente.
     def list_audit_sources(self) -> list[dict[str, Any]]:
         return [
             {"code": code, "label_key": label_key, "area_funzionale": area}
-            for code, label_key, area in self._list_audit_sources_cached()
+            for code, label_key, area, _storico_table in self._list_audit_sources_cached()
         ]
 
     # Scopo: Calcola summary + diff per uno snapshot audit (Fase 5).
@@ -1053,6 +1068,14 @@ class AmmSoftwareRepository:
     #   - area: enum chiuso UPPERCASE (PERMESSI/AUTH/ANAGRAFICHE/...)
     _AUDIT_CODE_RE: ClassVar = re.compile(r"^[a-z_][a-z0-9_]*$")
     _AUDIT_AREA_RE: ClassVar = re.compile(r"^[A-Z][A-Z_]*$")
+    # ⚠️ `storico_table` e' QUALIFICATA (`schema.tabella`), quindi vuole una sua
+    #    regex: `_AUDIT_CODE_RE` non ammette il punto e scarterebbe OGNI riga —
+    #    cioe' un audit log vuoto invece di un errore. ⭐ E il primo segmento
+    #    ammette `_` iniziale apposta: la tabella che ha fatto emergere tutto
+    #    questo si chiama `_legacy_risorse_umane_auth_user`.
+    _AUDIT_STORICO_TABLE_RE: ClassVar = re.compile(
+        r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$"
+    )
 
     # Scopo: Restituisce la timeline globale degli eventi audit permessi (Fase 5).
     # Paginata, filtri opzionali: data_da, data_a, tabella.
@@ -1069,8 +1092,27 @@ class AmmSoftwareRepository:
     #   - `summary` + `diff` calcolati inline via LATERAL `fn_audit_summary`
     #     (1 query, no N+1 sulle pagine).
     #
+    # ⛔ IL `FROM` SI COSTRUISCE DA `storico_table`, MAI DA `code` (2026-09-02).
+    #    Sono due cose diverse e per un anno hanno coinciso:
+    #      · `code` e' l'IDENTITA' LOGICA — ci si ordina
+    #        (`AUDIT_ORDER_COLUMNS["tabella"]`), ci si filtra l'API (`?tabella=`)
+    #        e lo prende `fn_audit_summary` come chiave di dispatch;
+    #      · `storico_table` e' il NOME FISICO, l'unica sede autorevole, quella
+    #        che `fn_audit_summary` usa per il suo `EXECUTE format(%I)`.
+    #    Finche' coincidono, dedurre il secondo dal primo SEMBRA funzionare.
+    # 🔴 Difetto reale, e non teorico: `anagrafiche.risorse_umane_auth_user` e'
+    #    diventata una vista (la tabella e' `_legacy_...`), su un database
+    #    RICOSTRUITO `storico.risorse_umane_auth_user` non nasce piu' e la CI e'
+    #    andata rossa con 9 errori. Il database di sviluppo no — si portava
+    #    dietro la vecchia dalla propria storia — quindi il difetto era
+    #    invisibile esattamente dove si lavora.
+    # ⚠️ Il rosso l'ha spento il team DB (`attivo = f` sulla riga 5); QUESTA
+    #    riga toglie la TRAPPOLA, cioe' fa in modo che la prossima rinomina non
+    #    ripeta la storia. Sono due cose separate, e nessuna delle due sostituisce
+    #    l'altra.
+    #
     # Whitelist `vw_audit_sources` controllata dal DB + regex paranoia
-    # `_AUDIT_CODE_RE` per defense-in-depth.
+    # (`_AUDIT_CODE_RE`, `_AUDIT_STORICO_TABLE_RE`) per defense-in-depth.
     def list_audit_log(
         self,
         *,
@@ -1082,23 +1124,25 @@ class AmmSoftwareRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        sources = self.list_audit_sources()
+        # ⛔ Il cache GREZZO e non `list_audit_sources()`: quello e' il payload
+        #    pubblico e `storico_table` apposta non ce l'ha.
+        sources = self._list_audit_sources_cached()
         if not sources:
             return [], 0
 
         unions: list[str] = []
-        for src in sources:
-            code = src["code"]
-            area = src["area_funzionale"]
+        for code, _label_key, area, storico_table in sources:
             if tabella and tabella != code:
                 continue
-            # Defensive: code/area arrivano da vw_audit_sources (whitelist DB)
-            # ma sono interpolati in f-string. Regex check come safety net se
-            # la vista esponesse mai un nome anomalo. Salta la sorgente: log
-            # la dropperebbe silenziosamente, ma la vista e' under DB control.
+            # Defensive: i tre valori arrivano da vw_audit_sources (whitelist
+            # DB) ma sono interpolati in f-string. Regex check come safety net
+            # se la vista esponesse mai un nome anomalo. Salta la sorgente: la
+            # dropperebbe silenziosamente, ma la vista e' under DB control.
             if not self._AUDIT_CODE_RE.match(code):
                 continue
             if not self._AUDIT_AREA_RE.match(area):
+                continue
+            if not self._AUDIT_STORICO_TABLE_RE.match(storico_table or ""):
                 continue
             unions.append(
                 f"SELECT '{code}' AS code, "
@@ -1106,8 +1150,12 @@ class AmmSoftwareRepository:
                 f"s.id AS storico_id, "
                 f"s.valid_from, s.tipo_operazione, s.user_insert, "
                 f"s.snapshot, "
+                # ⭐ `fn_audit_summary` prende il `code`, non la tabella: la sua
+                #    chiave di dispatch e' l'identita' logica, ed e' lei che va
+                #    a rileggere `storico_table` dal catalogo. Le due
+                #    interpolazioni qui sotto SONO diverse apposta.
                 f"script.fn_audit_summary('{code}', s.id) AS audit "
-                f"FROM storico.{code} s"  # noqa: S608
+                f"FROM {storico_table} s"  # noqa: S608
             )
 
         if not unions:

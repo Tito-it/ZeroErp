@@ -1283,11 +1283,12 @@ Prima di attivare RLS su una tabella esistente:
 
 ---
 
-## 11. Ciclo di vita di un changeSet — due divieti
+## 11. Ciclo di vita di un changeSet — i divieti
 
-Queste due regole non riguardano l'SQL che scrivi, ma **quando viene eseguito**.
-Entrambe nascono da difetti reali che si vedevano solo in CI, mai su un database
-di sviluppo, e che hanno richiesto due bonifiche prima di essere scritte qui.
+Queste regole non riguardano l'SQL che scrivi, ma **quando viene eseguito**.
+Nascono tutte da difetti reali che si vedevano solo in CI, mai su un database
+di sviluppo, e che hanno richiesto una bonifica a mano prima di essere scritte
+qui.
 
 ### 11.1 ⛔ `runOnChange: true` è vietato in `00_schema` e `20_code`
 
@@ -1401,6 +1402,333 @@ stesura non lo faceva: un `l'esistenza` dentro un commento apriva un letterale
 fantasma e faceva accusare un `COMMENT` sano 120 righe più in basso. Un cancello
 che sbaglia così viene spento dopo due segnalazioni, e un presidio spento è
 peggio di uno assente.
+
+---
+
+### 11.4 ⛔ Una `preCondition` di `00_schema`/`20_code` non interroga il CONTENUTO di `80_data`
+
+Presidiato da `scripts/guardrail_precondition_seed.py` in CI.
+
+**Il meccanismo.** `changelog-master-v2.yaml` esegue in quest'ordine: vecchia
+storia → `changelog-autogen.yaml` (`00_schema` e `20_code`, mescolati per
+numero) → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
+_«esiste già la riga `RESO_VENDITA` in `config.sorgenti`?»_ dentro `20_code`
+viene valutato **quando `80_data` non è ancora passato**.
+
+Su un database di sviluppo la riga c'è da settimane e il cancello passa. In CI
+il database nasce vuoto a ogni build, e il migrate muore con:
+
+```text
+SQL Precondition failed.  Expected '1' got '0'
+```
+
+⚠️ **Non è un caso di bordo**: la corsa che _introduce_ quel seed è esattamente
+quella in cui la preCondition non lo trova. È l'**unico** modo in cui una riga
+nuova può arrivare in un database ricostruito da zero.
+
+> Il 2026-09-02, ripartita la CI dopo giorni di fermo, il migrate si è fermato
+> su `20260820-12-update-fn-available-actions-reso-accrediti`, che pretendeva
+> `config.stati_doc_reso` con `codice_interno = 'ANNULLATO'`. Dietro c'erano
+> altre **quindici** mine identiche già committate — codici errore, sorgenti,
+> tipi entità, stati contabili — una build ciascuna per scoprirle a mano.
+
+**Perché lo si scrive lo stesso, e sembra prudenza.** «Verifico che il codice
+errore esista prima di creare la funzione che lo solleva» suona come rigore, ed
+è invece un cancello che si chiude da solo. Non serve, e questo è il punto: un
+codice errore, un tipo entità, una sorgente si nominano come **stringa** e si
+risolvono solo **a runtime** — quando la funzione viene chiamata, cioè quando
+`80_data` è passato da un pezzo. Lo stesso vale per un parametro letto dentro
+una funzione, e per una vista che fa `JOIN` su una tabella di catalogo: il
+`JOIN` avviene quando la vista è **interrogata**, non quando è creata.
+
+⭐ **Il rischio che il cancello descriveva resta vero, ma il posto è un altro.**
+«Se `codice_interno` cambiasse, il `CASE` smetterebbe di agganciarsi in
+silenzio» è una preoccupazione legittima: si presidia in **pgTAP**, che gira a
+`80_data` applicato, non con un `sqlCheck` di migrate.
+
+✅ **Restano legittime**, e vanno tenute, le preCondition su ciò che viene
+**prima**: `tableExists`, `columnExists`, `viewExists`,
+`foreignKeyConstraintExists`, l'esistenza di una funzione o di un trigger via
+`pg_proc`/`pg_trigger`/`pg_views`, l'arità di una funzione. Quelle guardano lo
+**schema**, che a quel punto c'è.
+
+✅ Restano legittimi anche due `sqlCheck` che _sembrano_ interrogare dati:
+
+* `expectedResult: 0` — «nessuna riga cattiva». Un database vuoto lo soddisfa,
+  e il senso del controllo è proprio quello;
+* `onFail` diverso da `HALT` (`MARK_RAN`, `CONTINUE`, `WARN`) — è la forma dei
+  **backfill del pregresso**: su un database nuovo non hanno niente da fare e si
+  segnano da soli. Non fermano la build, quindi non sono una mina.
+
+⚠️ **Il verso opposto è invece giusto e va tenuto**: un changeSet di `80_data`
+**deve** precondizionare su `tableExists`. Lì la dipendenza corre nel senso
+dell'esecuzione.
+
+ℹ️ Un changeSet fermato da una preCondition **non lascia traccia** in
+`databasechangelog` — le preCondition si valutano prima delle `changes`. Si
+corregge il file e si rilancia, senza toccare la tabella di stato.
+
+⚠️ **Limite del cancello, dichiarato**: riconosce le tabelle scritte
+**qualificate** (`schema.tabella`) dopo `FROM`/`JOIN`. Un riferimento non
+qualificato appoggiato al `search_path` gli sfugge — ed è comunque da non
+scrivere.
+
+---
+
+### 11.5 ⛔ Niente DDL né `preCondition` su un trigger che nasce da `ci_apply`
+
+Presidiato da `scripts/guardrail_ddl_su_trigger_automazione.py` in CI.
+
+**Il meccanismo.** I trigger di **audit**, **`tx_id`** e **storico** non li
+scrive nessun changeSet: li genera il framework delle automazioni, che gira con
+`--contexts=ci_apply` — in CI la **seconda** invocazione di Liquibase, sul
+migrate manuale il pgagent la sera. Quindi durante la prima passata una tabella
+creata poche centinaia di changeSet prima **non li ha ancora**.
+
+Un `ALTER TRIGGER … RENAME`, o un `DROP TRIGGER` senza `IF EXISTS`, su uno di
+quei nomi passa su un database di sviluppo — dove esistono da settimane — e
+uccide il migrate su un database ricostruito da zero:
+
+```text
+ERROR: trigger "trg_compensazioni_audit_data_user_upd" for table "sistemazioni" does not exist
+```
+
+> Il 2026-09-02 il migrate si è fermato su
+> `20260822-25-rename-compensazioni-in-sistemazioni`. ⭐ Il fatto era **scritto
+> nell'intestazione di quel changeSet**, due paragrafi sopra il difetto: *«una
+> tabella nuova non ha i trigger di audit e `tx_id` finché non passa
+> `ci_apply`»*. Sapere la regola non basta: mentre si scrive la rinomina si
+> guarda il database che si ha davanti, e lì il trigger c'è.
+
+⭐ **E quasi sempre, in quel mondo, l'operazione non serviva.** Le automazioni
+lavorano **per pattern**, non per elenco: quando `ci_apply` passerà, la tabella
+avrà già il nome nuovo e i trigger nasceranno battezzati bene. Il rischio dei
+*due* trigger di audit — quello vecchio più quello nuovo, che scrivono due volte
+senza dare errore — esiste **solo dove il nome vecchio c'è già**.
+⇒ L'operazione è legittimamente **condizionale**: «rinomina se c'è».
+
+**La forma giusta**: quella singola istruzione va in un **changeSet suo**, con
+
+```yaml
+preConditions:
+  - onFail: MARK_RAN
+  - sqlCheck:
+      expectedResult: 1
+      sql: SELECT count(*) FROM pg_trigger tg … WHERE tg.tgname = 'trg_<vecchio>_audit_data_user_upd';
+```
+
+⛔ **Non una `preCondition` sul changeSet intero.** Con `onFail: HALT` si sposta
+solo il punto in cui la CI si ferma; con `MARK_RAN` si salterebbe **tutto** —
+la rinomina della tabella compresa — e il database resterebbe sul nome vecchio
+in silenzio. `MARK_RAN` è corretto **solo** su un changeSet che fa una cosa
+sola, e saltarla è la risposta giusta.
+
+⚠️ **E uno per trigger.** Sono oggetti indipendenti: un unico changeSet con
+«esistono entrambi?» salterebbe in silenzio anche uno stato a metà, lasciando
+addosso il nome vecchio all'altro.
+
+⭐ **L'esito si presidia in pgTAP, non nel migrate.** L'invariante «nessun
+vincolo, trigger o sequenza della tabella nomina ancora il nome vecchio» è il
+test 3 di `db/pgtap/pagamenti/test-sistemazioni-registro.sql`, e gira a
+`ci_apply` avvenuto — cioè quando la domanda ha una risposta vera. È la stessa
+divisione del §11.4.
+
+#### La seconda faccia: la `preCondition` che li conta
+
+Lo stesso difetto si presenta anche **senza DDL**, ed è arrivato dopo:
+
+> Il 2026-09-02 `20260831-71-update-fn-check-registro-disattivabile-sei-guard`
+> pretendeva, in una `preCondition`, che i **sei** guard
+> `prevent_deactivate_if_children` fossero montati su
+> `vendite.registri_fatturazione`. Li genera `dbops.fn_run_automations_attivo`,
+> cioè `ci_apply`: durante la prima passata non ce n'è **nemmeno uno**,
+> `string_agg` su zero righe dà `NULL`, il confronto è falso e il migrate muore
+> con `Expected '1' got '0'`.
+
+⭐ **Ed era un doppione**: il **test 6** di
+`db/pgtap/script/test-fn-check-registro-disattivabile-v1.sql` fa la *stessa
+identica query* con la stessa stringa attesa — e gira a `ci_apply` avvenuto,
+cioè quando la domanda ha una risposta vera. Il rimedio non è renderla
+condizionale: è **toglierla**, perché il presidio c'è già dove va.
+
+⚠️ È la stessa divisione del §11.4: *una `preCondition` guarda ciò che viene
+prima; un invariante si asserisce in pgTAP.*
+
+✅ Restano leciti: `DROP TRIGGER IF EXISTS`, l'SQL dentro un commento (il
+2026-01-30 un changeSet ha lasciato apposta il blocco commentato), qualunque
+istruzione in un changeSet il cui `onFail` non sia `HALT`, e una `preCondition`
+con `expectedResult: 0` — un database senza automazioni applicate la soddisfa.
+
+⚠️ **Limiti del cancello, dichiarati**: guarda `changes` e `preConditions`, non i
+`rollback`; e riconosce i trigger da **due elenchi** — i suffissi dei nomi
+generati (`_audit_data_user_upd`, `_gen_tx_id_ins_upd`, `_z90_storico_upd_dlt`,
+`_block_deact_upd`) e le sei funzioni-trigger montate dalle automazioni. Sono gli
+elenchi a fare da perimetro: un'automazione nuova va aggiunta.
+
+⛔ **E non si è allargato a «qualunque changeSet che nomina una di quelle
+funzioni»**: misurato il 2026-09-02, sarebbero oltre cento file, quasi tutti
+legittimi — chi monta un trigger a mano su quelle funzioni, o chi le scrive. Un
+cancello con quel tasso di falsi positivi si impara a disattivare, e *un presidio
+spento è peggio di uno assente*.
+
+---
+
+### 11.6 ⛔ I privilegi dei ruoli batch stanno nel provisioning, mai in un changeSet
+
+Presidiato da `scripts/guardrail_grant_ruolo_batch.py` in CI.
+
+**Il meccanismo.** I ruoli batch headless (`zeroerp_batch_*`) hanno `BYPASSRLS`,
+che richiede **superuser**: Liquibase gira come `zeroerp` e quindi non può
+crearli. Li crea `scripts/sql/provision_db_role_batch_<job>.sql`, lanciato come
+`postgres` — e il workflow lo lancia **dopo** le migrazioni standard, perché
+quello script concede *sul perimetro* e le tabelle del perimetro devono
+esistere.
+
+⇒ Per tutta la durata del migrate quel ruolo **non esiste**, e un `GRANT` che lo
+nomina ferma la pipeline:
+
+```text
+ERROR: role "zeroerp_batch_fatturazione" does not exist
+```
+
+Su un database di sviluppo il ruolo c'è da settimane e il `GRANT` passa.
+
+⭐ **Ed è anche inutile.** Il provisioning fa `GRANT SELECT ON ALL TABLES` +
+`GRANT EXECUTE ON ALL FUNCTIONS` sui 14 schemi applicativi, più
+`ALTER DEFAULT PRIVILEGES`: l'oggetto è coperto su ogni ambiente **anche se
+nasce dopo**. Misurato il 2026-09-02 — una funzione creata il 31 agosto, senza
+nessun grant esplicito, risponde già `EXECUTE = true` per il ruolo batch.
+
+> La regola era già scritta, parola per parola, nell'intestazione di
+> `20260727-21-create-vw-indici-ridondanti-prefisso`, dopo lo **stesso identico
+> guasto** del 2026-07-27: *«i privilegi dei ruoli batch stanno nel
+> provisioning, mai in un changeSet»*. Nei trentasei giorni successivi sono
+> stati scritti **39 `GRANT` in 20 changeSet** che la violano, bonificati il
+> 2026-09-02. ⚠️ Una regola scritta in un commento la legge chi apre quel file;
+> un cancello la legge per tutti.
+
+⚠️ **E il difetto non è visibile mentre si scrive.** Chi aggiunge una funzione al
+perimetro batch copia il `GRANT` accanto a quello per `zeroerp_app`, che invece
+ci vuole: la riga giusta e la riga sbagliata sono **adiacenti e identiche tranne
+il nome del ruolo**.
+
+**Il rimedio è togliere la riga**, non sostituirla. ⛔ E se un ruolo batch ha
+bisogno di un privilegio *in più* del perimetro ampio — una `INSERT`, una
+`UPDATE` — la sede è il **provisioning**: si aggiunge lì, e si rilancia.
+
+⚠️ **Il perimetro `_perimeter` è duplicato in tre file** — il provisioning che
+concede, `check_db_role_batch_*.sql` che verifica, e il pgTAP di postura.
+Toccarne uno solo non dà errore: dà falsi positivi altrove. Il 2026-09-02 la
+terza lista era indietro di sei tabelle.
+
+⚠️ **Limiti del cancello, dichiarati**: guarda `migrations_v2` e non la vecchia
+storia congelata; e riconosce i ruoli dal prefisso `zeroerp_batch_`.
+
+---
+
+### 11.7 ⛔ In `80_data` convivono due specie di seed: catalogo e macchina
+
+**Il criterio, e sta sul modello.** Un seed è di **catalogo** se il suo contenuto
+è parte del *contratto del software*: vale identico su qualunque installazione, e
+il codice lo nomina per `codice_interno`/`codice`. È di **macchina** se descrive
+*un'installazione*: anagrafiche, utenti, e tutto ciò che le punta.
+
+⭐ **Il discriminante si deriva, non si elenca**: un seed è di macchina se
+**valorizza una FK verso `anagrafiche.*`**. Quelle righe nascono dall'uso, non
+dal software: nessun changeSet le crea, e su un database ricostruito da zero non
+esistono.
+
+⚠️ **La chiusura transitiva non serve e sarebbe fuorviante**: misurato il
+2026-09-02, **181 tabelle** dipendono da `anagrafiche` per qualche cammino di FK.
+Conta la citazione **diretta**.
+
+> **Censimento del 2026-09-02** (fatto datato, non premessa). Su **205** mirror
+> CSV: **204** di catalogo, **1** di macchina —
+> `vendite.registri_fatturazione`, che nomina i `soggetti_ruoli` 72
+> (`PGTAPEF202`, fixture pgTAP) e 159 (`EMITEST`, creato a mano).
+> Su **74** changeSet in SQL puro: **65** non toccano anagrafiche, **9** sì — e
+> quei nove sono di tre nature diverse:
+>
+> | natura | quanti | su un DB vuoto |
+> |---|---|---|
+> | **seed di macchina** (utente `tid`) | 2 | creano dati che non hanno senso |
+> | **backfill del pregresso** | 5 | `UPDATE` su zero righe → **innocui** |
+> | **intestazione registri** | 2 | si fermano: guard *fail-loud* sull'emittente |
+
+⇒ Da marcare sono **cinque-sei file**, non venti. ⛔ **I backfill non si
+marcano**: marcare ciò che non fa danno allarga il perimetro senza aggiungere
+garanzia, e ogni marcatura è una riga che qualcuno dovrà rileggere.
+
+#### Il meccanismo, e cosa la prova ha detto davvero
+
+Il primo tentativo è stato: marcare `context: dati_macchina` e contare sul fatto
+che la CI gira `--contexts="!provision"`.
+
+> 🔴 **Provato il 2026-09-02: NON basta.** Il changeSet marcato è stato eseguito
+> lo stesso. Un `--contexts="!provision"` esclude ciò che è `provision`, non ciò
+> che ha un contesto qualsiasi.
+
+⇒ Perché il contesto sia un **filtro** e non un'etichetta, va reso esplicito
+nell'invocazione, in `ci.yaml` e nel comando di produzione:
+
+```text
+--contexts="!provision and !dati_macchina"
+```
+
+| dove | invocazione | effetto |
+|---|---|---|
+| sviluppo | `liquibase update` (nessun `--contexts`) | **gira** — il DB di sviluppo resta com'è |
+| CI / produzione | `--contexts="!provision and !dati_macchina"` | filtrato |
+| CI / produzione | `--contexts="!provision"` (oggi) | ⛔ **NON** filtrato |
+
+⚠️ **Finché quella riga non c'è, `context: dati_macchina` è documentazione, non un
+cancello** — e va detto, perché un'etichetta che sembra proteggere e non protegge
+è peggio di nessuna etichetta.
+
+⭐ **Per i mirror CSV c'è una via che non dipende dal contesto: svuotare il file.**
+Un `loadUpdateData` su un CSV di sola intestazione carica zero righe, ovunque, e
+non cancella niente su un database dove quelle righe esistono già. È ciò che si è
+fatto il 2026-09-02 per `registri_fatturazione.csv` e per i due
+`tipi_doc_fiscale_registri*`. Il contesto **serve** invece per i seed scritti in
+SQL, che non si possono svuotare.
+
+⚠️ **Un changeSet già applicato non si de-applica** dandogli un contesto: su
+sviluppo resta applicato, su un database nuovo non parte. È ciò che si vuole, ma
+è controintuitivo abbastanza da doverlo scrivere.
+
+⭐ **E questo NON risolve il CSV stantìo, che è un problema suo.** Riallineare un
+mirror al database — `scripts/export_csv.sh -s <schema> <tabella>` — lo rende
+*vero*; dichiararlo `dati_macchina` lo rende *seminabile solo dove ha senso*. Le
+due cose servono entrambe: un CSV di macchina stantìo resta una mina per chi lo
+edita in sviluppo.
+
+#### ⛔ Un CSV esportato deve portare il TOKEN `NULL`, non la cella vuota
+
+`export_csv.sh` esportava con il default di `\COPY`, che scrive un `NULL` come
+**cella vuota**. I mirror del progetto leggono invece il **token letterale**
+`NULL` (convenzione già in AGENTS §80_data), e la differenza non è di stile:
+
+* su una colonna **numerica** dichiarata `type: STRING` nel changeSet, Liquibase
+  rende la cella vuota come `''` e il migrate muore con
+  `sintassi di input non valida per il tipo integer: ""`;
+* su una **varchar** passa, e scrive `''` dove il database aveva `NULL` — che è
+  **peggio**, perché non lo dice.
+
+> Successo il 2026-09-02 su `vendite.registri_fatturazione.utility_id`, subito
+> dopo la prima riesportazione.
+
+✅ Corretto nello script: `\COPY (SELECT * FROM t ORDER BY <pk>) TO STDOUT WITH
+(FORMAT CSV, HEADER, NULL 'NULL')`. Il giro resta **fedele**: un `NULL` esce come
+`NULL` nudo, una stringa davvero vuota come `""`, quindi le due cose restano
+distinguibili. ⭐ E l'`ORDER BY` sulla chiave primaria toglie il rumore: senza,
+l'export usciva in ordine **fisico** e il diff cambiava a ogni riesportazione
+anche a dati fermi.
+
+⚠️ **Audit fatto il 2026-09-02 sugli altri CSV**: 26 hanno una cella vuota su una
+colonna non testuale, ma **nessuno è una mina** — in 19 la colonna non è
+dichiarata `STRING` (Liquibase la rende `NULL`), e nei 7 restanti è un
+`data_update` con `defaultValue: "NOW()"`, che la sostituisce prima di arrivare
+al database. Il difetto era nello **strumento**, non nei dati.
 
 ---
 

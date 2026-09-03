@@ -1,0 +1,349 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FAMIGLIA DEVE NOMINARE COSE CHE ESISTONO — ora anche la SERIE
+#   vendite.trgfn_famiglie_documento_guard_riferimenti
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1)
+#
+# ── ⛔ PERCHE' ADESSO ────────────────────────────────────────────
+#   `colonna_serie` e' arrivata il 2026-09-01 (20260901-09) e il guard, scritto
+#   il 30-08, non la conosce: valida tabella, colonna del numero e colonna del
+#   billing account, e la serie no. Finora non e' stato un problema perche' in
+#   quella tabella scriveva solo un seed. Con il CRUD ci scrive una persona.
+#
+# ── ⚠️ E LA DOC MANUALE LO AFFERMAVA GIA' ────────────────────────
+#   «col nome, il controllo automatico verifica che la colonna esista davvero e
+#   che stia nel vincolo di unicita' del numero». Nel database quel controllo
+#   NON c'era: l'unico presidio era il pgTAP
+#   `test-chiave-contatore-assi-dichiarati-v1`, che gira quando qualcuno lo
+#   lancia, non quando qualcuno salva una riga. Questo changeSet rende vera una
+#   frase che era gia' scritta.
+#
+# ── ⭐ DUE DIFETTI DIVERSI, DUE CODICI DIVERSI ───────────────────
+#   * la colonna dichiarata NON ESISTE -> e' un refuso, ed e' lo stesso difetto
+#     delle altre tre: riusa E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE;
+#   * la colonna esiste ma NON DISCRIMINA il numero -> e' il caso peggiore,
+#     perche' il nome e' giusto e si legge: E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA
+#     (nuovo, DATO_ERRATO, con `campo = colonna_serie`).
+#   Riuso dove il difetto e' lo stesso, conio dove e' un altro: il criterio e'
+#   «chi puo' rimediare e come», non «quante condizioni ci sono».
+#
+# ── ⛔ IL PREDICATO E' TESTUALE, ED E' UNA SCELTA VERIFICATA ─────
+#   Si guarda `pg_get_indexdef(...)` con `\m...\M` e NON gli attnum in
+#   `pg_index.indkey`. La versione «precisa» sembra migliore e su questo
+#   database RIFIUTEREBBE LA FATTURA: `uq_fatture_numero` porta la serie come
+#   ESPRESSIONE — `COALESCE(serie, ''::varchar)` — e un'espressione ha attnum 0,
+#   quindi non compare in `indkey`. Una serie che entra nella chiave dentro una
+#   COALESCE discrimina esattamente come una colonna nuda.
+#   ⚠️ Con il predicato per attnum, il primo migrate avrebbe fallito sul mirror
+#   delle famiglie: verificato prima di scrivere, non dedotto.
+#   ⭐ Ed e' lo STESSO predicato del test 5 del pgTAP: due predicati sulla stessa
+#   invariante, prima o poi, dissentono.
+#
+# ── ⚠️ NESSUNA PRECONDITION SUL CODICE ERRORE ────────────────────
+#   `config.messaggi_errore` e' seminata in `80_data`, che gira DOPO `20_code`:
+#   una preCondition sul contenuto del seed farebbe fallire il migrate di un
+#   database ricostruito da zero.
+#
+# ── 🔴 E IL TRIGGER NON NOMINAVA LA COLONNA — trovato PROVANDO ───
+#   `trg_famiglie_documento_a10_guard_riferimenti_ins_upd` era
+#   `BEFORE INSERT OR UPDATE OF schema_tabella, nome_tabella, colonna_numero,
+#   colonna_billing_account, attivo`: `colonna_serie` NON c'e'. Aggiornare la
+#   sola funzione avrebbe prodotto un guard che valida una colonna su cui non
+#   viene mai chiamato — verde in ogni prova che passi dalle altre colonne, muto
+#   proprio sul caso per cui e' stato scritto.
+#   ⇒ Il changeSet ricrea anche il TRIGGER, con `colonna_serie` nella lista.
+#   ⚠️ Si e' visto eseguendo l'UPDATE vero, non leggendo il codice.
+#
+# ── ⚠️ IL MIRROR RISCRIVE QUESTE RIGHE A OGNI MIGRATE ────────────
+#   Qui non serve un'uscita sul no-op: il guard VALIDA la riga, non blocca un
+#   cambiamento — sulle righe di seed passa perche' sono valide. Il no-op serve
+#   ai due guard che vengono dopo (11.4, 11.5), che invece rifiutano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260901-13-update-trgfn-famiglie-guard-riferimenti-serie-mctit.yaml
+
+  - changeSet:
+      id: 20260901-13-update-trgfn-famiglie-guard-riferimenti-serie
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard dei riferimenti di vendite.famiglie_documento valida anche `colonna_serie`, che era
+        arrivata dopo di lui: la colonna deve esistere sul documento E stare in un vincolo di unicita''
+        insieme alla colonna del numero. ⭐ Due difetti diversi, due codici: colonna inesistente riusa
+        E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE, colonna che non discrimina conia
+        E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA. ⛔ Il predicato e'' TESTUALE su pg_get_indexdef e non
+        per attnum: la fattura porta la serie nell''unique come COALESCE(serie, ''''), cioe'' come
+        espressione, e la versione «precisa» la rifiuterebbe facendo fallire il migrate sul mirror.
+        🔴 Ricrea anche il TRIGGER: `colonna_serie` non era nella lista `UPDATE OF`, quindi la funzione
+        nuova non sarebbe stata invocata proprio sulla colonna che valida — trovato provando.
+        Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.famiglie_documento'::regclass
+                     AND NOT a.attisdropped
+                     AND a.attname = 'colonna_serie';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_relid     oid;
+                  v_mancante  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una riga di vendite.famiglie_documento deve nominare
+                  --   oggetti che ESISTONO: la tabella, la colonna del numero,
+                  --   quella del billing account e - dal 2026-09-01 - quella
+                  --   della serie, che in piu' deve DISCRIMINARE il numero.
+                  --
+                  -- ⛔ Perche' serve: il presidio sul cambio emittente del BA
+                  --   compone quei nomi in SQL dinamico. Senza questo guard un
+                  --   refuso resterebbe muto fino al primo spostamento di un
+                  --   billing account, dove uscirebbe come undefined_table —
+                  --   un errore che non nomina la sua causa e arriva in un
+                  --   movimento che con le famiglie non c'entra.
+                  --
+                  -- ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'
+                  --   nominare una tabella che non c'e' piu'. E' storia.
+                  -- =========================================================
+                  IF NOT NEW.attivo THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ to_regclass torna NULL invece di sollevare, anche se lo
+                  --   schema non esiste: e' proprio cio' che serve a un guard
+                  --   che vuole comporre la propria frase.
+                  v_relid := to_regclass(format('%I.%I', NEW.schema_tabella, NEW.nome_tabella));
+
+                  IF v_relid IS NULL THEN
+                      v_mancante := format('%I.%I', NEW.schema_tabella, NEW.nome_tabella);
+
+                  ELSIF NOT EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = v_relid
+                         AND a.attname  = NEW.colonna_numero
+                         AND a.attnum   > 0
+                         AND NOT a.attisdropped
+                  ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_numero);
+
+                  ELSIF NOT EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = v_relid
+                         AND a.attname  = NEW.colonna_billing_account
+                         AND a.attnum   > 0
+                         AND NOT a.attisdropped
+                  ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_billing_account);
+
+                  -- ⭐ La serie e' OPZIONALE: il vuoto e' la dichiarazione che
+                  --   questa famiglia una serie non ce l'ha (resi, commesse).
+                  --   Si guarda il VALORE e non solo il NULL, perche' un form
+                  --   che non compila il campo manda la stringa vuota.
+                  ELSIF COALESCE(btrim(NEW.colonna_serie), '') <> ''
+                        AND NOT EXISTS (
+                            SELECT 1 FROM pg_attribute a
+                             WHERE a.attrelid = v_relid
+                               AND a.attname  = NEW.colonna_serie
+                               AND a.attnum   > 0
+                               AND NOT a.attisdropped
+                        ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_serie);
+                  END IF;
+
+                  IF v_mancante IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_famiglie_documento_guard_riferimenti',
+                          'E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE',
+                          jsonb_build_object(
+                              'codice_interno',          NEW.codice_interno,
+                              'schema_tabella',          NEW.schema_tabella,
+                              'nome_tabella',            NEW.nome_tabella,
+                              'colonna_numero',          NEW.colonna_numero,
+                              'colonna_billing_account', NEW.colonna_billing_account,
+                              'colonna_serie',           NEW.colonna_serie,
+                              'riferimento_mancante',    v_mancante),
+                          NULL::uuid,
+                          NEW.codice_interno::text,
+                          v_mancante);
+                  END IF;
+
+                  -- ---------------------------------------------------------
+                  -- ⭐ LA SERIE DEVE ANCHE DISCRIMINARE IL NUMERO
+                  --   Qui la colonna ESISTE: il difetto e' un altro, e ha un
+                  --   codice suo. La serie entra nella chiave del contatore,
+                  --   quindi apre un secchio che riparte da 1; se il documento
+                  --   non la porta anche nel proprio vincolo di unicita', quel
+                  --   numero collide con uno gia' emesso e il documento non si
+                  --   numera piu'.
+                  --
+                  -- ⛔ Il confronto e' sul TESTO della definizione dell'indice,
+                  --   non sugli attnum di indkey: uq_fatture_numero porta la
+                  --   serie come COALESCE(serie, ''), cioe' un'espressione, e
+                  --   un'espressione ha attnum 0. Il predicato «preciso»
+                  --   rifiuterebbe la FATTURA — verificato.
+                  -- ⭐ E' lo stesso predicato del test 5 di
+                  --   db/pgtap/vendite/test-chiave-contatore-assi-dichiarati-v1.sql.
+                  -- ---------------------------------------------------------
+                  IF COALESCE(btrim(NEW.colonna_serie), '') <> ''
+                     AND NOT EXISTS (
+                         SELECT 1
+                           FROM pg_index x
+                          WHERE x.indrelid = v_relid
+                            AND x.indisunique
+                            AND pg_get_indexdef(x.indexrelid) ~ ('\m' || NEW.colonna_numero || '\M')
+                            AND pg_get_indexdef(x.indexrelid) ~ ('\m' || NEW.colonna_serie  || '\M')
+                     ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_famiglie_documento_guard_riferimenti',
+                          'E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA',
+                          jsonb_build_object(
+                              'codice_interno', NEW.codice_interno,
+                              'schema_tabella', NEW.schema_tabella,
+                              'nome_tabella',   NEW.nome_tabella,
+                              'colonna_numero', NEW.colonna_numero,
+                              'colonna_serie',  NEW.colonna_serie,
+                              -- ⚠️ Il campo che il form deve accendere: la
+                              --   serie e' il valore che l'operatore ha scelto,
+                              --   il numero e' un fatto della tabella.
+                              'campo',          'colonna_serie'),
+                          NULL::uuid,
+                          NEW.codice_interno::text,
+                          NEW.colonna_serie::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
+              IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1).';
+
+              -- ---------------------------------------------------------
+              -- 🔴 IL TRIGGER VA RICREATO, e non e' un dettaglio.
+              --   La lista `UPDATE OF` non nominava `colonna_serie`: un
+              --   UPDATE che tocca solo quella colonna NON sveglia il guard.
+              --   Aggiornare la sola funzione avrebbe lasciato un controllo
+              --   che non viene mai chiamato sul caso per cui esiste.
+              -- ⚠️ Il mirror 20260901-12 scrive esattamente e solo
+              --   `colonna_serie`: senza questa riga, il seed passerebbe
+              --   accanto al guard tutte le volte.
+              -- ---------------------------------------------------------
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  ON vendite.famiglie_documento;
+
+              CREATE TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  BEFORE INSERT OR UPDATE OF schema_tabella, nome_tabella, colonna_numero,
+                                             colonna_billing_account, colonna_serie, attivo
+                  ON vendite.famiglie_documento
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti();
+
+              COMMENT ON TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  ON vendite.famiglie_documento
+              IS 'Una famiglia ATTIVA deve nominare oggetti che esistono. ⛔ `colonna_serie` e'' nella lista `UPDATE OF` dal 2026-09-01: prima non c''era, e un UPDATE che toccava solo quella colonna — cioe'' esattamente quello che fa il mirror 20260901-12 — passava accanto al guard senza svegliarlo. ⚠️ `attivo` resta nella lista perche'' riaccendere una famiglia ne rimette in gioco i riferimenti. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback riporta il corpo del 20260830-13 (senza la serie):
+              --   la funzione ESISTEVA gia', quindi un DROP la toglierebbe
+              --   insieme al trigger che la usa.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_relid     oid;
+                  v_mancante  text;
+              BEGIN
+                  IF NOT NEW.attivo THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_relid := to_regclass(format('%I.%I', NEW.schema_tabella, NEW.nome_tabella));
+
+                  IF v_relid IS NULL THEN
+                      v_mancante := format('%I.%I', NEW.schema_tabella, NEW.nome_tabella);
+                  ELSIF NOT EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = v_relid
+                         AND a.attname  = NEW.colonna_numero
+                         AND a.attnum   > 0
+                         AND NOT a.attisdropped
+                  ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_numero);
+                  ELSIF NOT EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = v_relid
+                         AND a.attname  = NEW.colonna_billing_account
+                         AND a.attnum   > 0
+                         AND NOT a.attisdropped
+                  ) THEN
+                      v_mancante := format('%I.%I.%I',
+                          NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_billing_account);
+                  END IF;
+
+                  IF v_mancante IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_famiglie_documento_guard_riferimenti',
+                          'E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE',
+                          jsonb_build_object(
+                              'codice_interno',          NEW.codice_interno,
+                              'schema_tabella',          NEW.schema_tabella,
+                              'nome_tabella',            NEW.nome_tabella,
+                              'colonna_numero',          NEW.colonna_numero,
+                              'colonna_billing_account', NEW.colonna_billing_account,
+                              'riferimento_mancante',    v_mancante),
+                          NULL::uuid,
+                          NEW.codice_interno::text,
+                          v_mancante);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  ON vendite.famiglie_documento;
+
+              CREATE TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd
+                  BEFORE INSERT OR UPDATE OF schema_tabella, nome_tabella, colonna_numero,
+                                             colonna_billing_account, attivo
+                  ON vendite.famiglie_documento
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti();

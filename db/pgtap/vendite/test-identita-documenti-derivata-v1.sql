@@ -13,12 +13,13 @@
 --       vendite.famiglie_documento  (20260830-13)
 --       Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §6
 -- ------------------------------------------------------------
--- Elenco test (plan 5):
+-- Elenco test (plan 6):
 -- 1) ⭐ Il catalogo non e' vuoto e ogni famiglia attiva punta a una tabella vera
 -- 2) ⭐⭐ STRUTTURALE: l'identita' di ogni famiglia DISTINGUE L'EMITTENTE
--- 3) ⭐ STRUTTURALE: dove esiste la colonna `anno`, l'unicita' la contiene
+-- 3) ⭐ STRUTTURALE: sul ramo per-registro, dove c'e' `anno` l'unicita' lo contiene
 -- 4) ⚠️ DATI: chi e' passato dal motore nuovo porta registro E anno insieme
 -- 5) ⛔ DERIVATO: niente `serie_default` sui registri di famiglie senza `serie`
+-- 6) ⭐ GEMELLO «esiste»: entrambi i rami dell'identita' sono abitati (2026-09-02)
 --
 -- ⛔ COSA NON C'E', E PERCHE': non esiste un test «dove c'e' la colonna `serie`
 --   l'unicita' la contiene». E' stato scritto il 2026-08-31 ed e' stato TOLTO
@@ -47,13 +48,22 @@
 --   billing account si deriva invece di copiarsi.
 --
 --   ⭐ LA BIFORCAZIONE E' DERIVATA, NON SCRITTA. L'identita' di un documento
---   deve distinguere due emittenti, e ci sono due modi legittimi:
---     * la chiave porta `registro_id` — e un registro appartiene a UN
+--   deve distinguere due emittenti, e ci sono due forme legittime:
+--     * l'indice unico porta `registro_id` — e un registro appartiene a UN
 --       emittente (fatture, DDT, ordini, resi);
---     * la tabella quella colonna non ce l'ha, e allora l'identita' e' la
---       STRINGA NUDA, che porta la sigla dell'emittente dentro di se'
---       (commessa: `CMM-<sigla>-<anno>-<progressivo>`).
---   Il test sceglie il ramo guardando `pg_attribute`, non un elenco.
+--     * l'indice unico e' sulla SOLA colonna del numero, e allora l'identita'
+--       e' la STRINGA NUDA — unica nell'intera tabella, quindi due emittenti
+--       non collidono nemmeno volendo
+--       (commessa: `CMM-<sigla>-<anno>-<9 cifre>`).
+--   Il test guarda la FORMA DEGLI INDICI, e ne basta una delle due.
+--
+--   ⛔ 2026-09-02 — E FINO A OGGI LA SCEGLIEVA GUARDANDO LE COLONNE, che e'
+--   un proxy e non la proprieta'. Il giorno in cui `vendite.commesse` ha
+--   ricevuto `registro_id` e `anno` come DATO — gli assi del contatore, che
+--   il codice porta gia' dentro la stringa — il proxy ha cambiato ramo da
+--   solo e ha preteso una chiave piu' LARGA di quella che c'era. Il dettaglio
+--   sta al test 2: e' il caso da ricordare quando si scrive un presidio che
+--   «deriva», perche' derivare dalla cosa sbagliata sembra derivare.
 --
 --   ⚠️ IL TEST 4 GUARDA I DATI, E DA SOLO NON BASTEREBBE: su una tabella
 --   vuota non trova cattivi e passa — e' il difetto del «test che conta i
@@ -73,7 +83,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(5);
+SELECT plan(6);
 
 -- ============================================================
 -- La base: il catalogo, con la tabella risolta e le colonne che ha
@@ -121,6 +131,36 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
          AND a.attnum = ANY (i.indkey::int2[]));
 $$;
 
+-- ⭐ E una terza per l'altro ramo: «l'identita' e' la STRINGA NUDA».
+--   Non basta che un indice unico porti la colonna del numero — un
+--   `UNIQUE (billing_account_id, numero)` la porta e lascia collidere due
+--   emittenti. Serve che l'indice sia su QUELLA COLONNA E BASTA: allora la
+--   stringa e' unica nell'intera tabella, e a maggior ragione fra emittenti.
+--   ⚠️ Tre condizioni, e ognuna toglie un modo di non respingere niente:
+--     * `indnatts = 1`  -> nessun'altra dimensione allarga la chiave;
+--     * NOT NULL (o `indnullsnotdistinct`) -> due vuoti DEVONO collidere. E'
+--       il difetto del 2026-08-31 in forma generale: una chiave che ammette
+--       due NULL non e' una chiave;
+--     * `indpred IS NULL` -> l'indice non e' parziale, quindi vale per TUTTE
+--       le righe e non solo per quelle che passano un filtro.
+CREATE OR REPLACE FUNCTION pg_temp.idd_unique_stringa_nuda(p_relid oid, p_col text)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (
+      SELECT 1
+        FROM pg_index i
+        JOIN pg_attribute a
+          ON a.attrelid = p_relid
+         AND a.attnum   = i.indkey[0]
+         AND NOT a.attisdropped
+       WHERE i.indrelid     = p_relid
+         AND i.indisunique
+         AND i.indnatts     = 1
+         AND i.indnkeyatts  = 1
+         AND i.indpred IS NULL
+         AND a.attname = p_col
+         AND (a.attnotnull OR i.indnullsnotdistinct));
+$$;
+
 -- ============================================================
 -- 1) ⭐ Il catalogo non e' vuoto, e ogni famiglia punta a una tabella vera
 -- ============================================================
@@ -141,21 +181,39 @@ SELECT is(
 -- 2) ⭐⭐ L'IDENTITA' DISTINGUE L'EMITTENTE
 -- ============================================================
 -- La domanda: due emittenti possono avere lo stesso numero senza collidere?
--- Deve poter succedere, e l'unicita' deve saperlo. Due modi legittimi, e il
--- test sceglie da se' quale si applica:
---   * la tabella ha `registro_id` -> l'indice unico deve portarlo;
---   * non ce l'ha -> l'identita' e' la stringa nuda, e l'indice unico deve
---     portare la colonna del numero (dentro cui vive la sigla dell'emittente).
+-- Deve poter succedere, e l'unicita' deve saperlo. Due forme legittime, e ne
+-- basta UNA:
+--   * l'indice unico porta `registro_id` — e un registro appartiene a UN
+--     emittente (fatture, DDT, ordini, resi);
+--   * l'indice unico e' sulla SOLA colonna del numero — allora la stringa e'
+--     unica nell'intera tabella, quindi due emittenti non possono collidere
+--     nemmeno volendo (commessa: `CMM-<sigla>-<anno>-<9 cifre>`).
+--
+-- ⛔ 2026-09-02 — QUESTO TEST SCEGLIEVA IL RAMO NEL MODO SBAGLIATO, e va
+--    raccontato perche' e' il difetto piu' istruttivo del file.
+--    Chiedeva: «la tabella HA la colonna `registro_id`? allora l'unicita'
+--    deve portarla; altrimenti guarda la stringa». Era un PROXY, non la
+--    proprieta': funzionava solo finche' avere quella colonna coincideva con
+--    l'avere l'identita' sul registro.
+--    Il 2026-09-02 `vendite.commesse` ha ricevuto `registro_id` e `anno` come
+--    DATO — gli assi del contatore, prima buttati via dopo aver composto il
+--    codice, «non un doppione: il codice li porta dentro una stringa, qui
+--    sono dato e si interrogano» (fn_get_or_create_commessa, rev 2026-09-02).
+--    Il proxy ha cambiato ramo da solo e ha cominciato a PRETENDERE una
+--    chiave `(registro_id, …)` al posto di `uq_commesse_codice` su `(codice)`
+--    — cioe' a chiedere una chiave piu' LARGA, non piu' stretta: un
+--    peggioramento travestito da rosso.
+--    ⭐ La regola vera non e' «quali colonne esistono» ma «l'unicita' impedisce
+--    a due emittenti di collidere», e ora e' scritta cosi'. La commessa resta
+--    l'unica delle cinque famiglie la cui identita' e' la stringa nuda, ed e'
+--    una decisione dichiarata nel corpo di `fn_get_or_create_commessa`, non
+--    una particolarita' da tollerare.
 SELECT is(
     (SELECT COALESCE(string_agg(f.codice_interno, ', ' ORDER BY f.codice_interno), '')
        FROM tmp_idd_fam f
       WHERE f.relid IS NOT NULL
-        AND NOT pg_temp.idd_unique_porta(
-                f.relid,
-                CASE WHEN pg_temp.idd_ha_colonna(f.relid, 'registro_id')
-                     THEN 'registro_id'
-                     ELSE f.colonna_numero
-                END)),
+        AND NOT pg_temp.idd_unique_porta(f.relid, 'registro_id')
+        AND NOT pg_temp.idd_unique_stringa_nuda(f.relid, f.colonna_numero)),
     '',
     '2) Ogni famiglia ha un''unicita'' che distingue l''emittente (registro in chiave, o stringa nuda)');
 
@@ -166,15 +224,28 @@ SELECT is(
 --   che nessuno riempie, e un vincolo che la porta in chiave — quindi non
 --   respinge niente, perche' due NULL non collidono. Qui si presidia il primo
 --   anello: se l'anno c'e', deve stare nella chiave. Il secondo anello — che
---   sia VALORIZZATO — e' il test 5.
+--   sia VALORIZZATO — e' il test 4.
+--
+-- ⭐ 2026-09-02 — LA REGOLA VALE SUL RAMO PER-REGISTRO, e la condizione e'
+--   scritta dal lato POSITIVO: «l'identita' e' sul registro». Non e' uno
+--   sconto per la commessa, e' la stessa proprieta' del test 2 letta qui:
+--   dove l'identita' e' la STRINGA NUDA l'anno vive gia' DENTRO quella
+--   stringa (`CMM-<sigla>-<anno>-<9 cifre>`), quindi l'unicita' lo contiene
+--   davvero — solo non come colonna separata. Pretenderlo anche in chiave
+--   sarebbe chiedere di ripetere in un indice cio' che la chiave gia' dice,
+--   e allargherebbe la chiave invece di stringerla.
+--   ⚠️ Il difetto originale resta coperto per intero: DDT, ordini, resi e
+--   fatture stanno tutti sul ramo per-registro, che e' dove la colonna `anno`
+--   e' una DIMENSIONE della chiave e non un pezzo di testo.
 SELECT is(
     (SELECT COALESCE(string_agg(f.codice_interno, ', ' ORDER BY f.codice_interno), '')
        FROM tmp_idd_fam f
       WHERE f.relid IS NOT NULL
+        AND pg_temp.idd_unique_porta(f.relid, 'registro_id')
         AND pg_temp.idd_ha_colonna(f.relid, 'anno')
         AND NOT pg_temp.idd_unique_porta(f.relid, 'anno')),
     '',
-    '3) Dove la tabella ha la colonna `anno`, l''unicita'' la contiene');
+    '3) Dove l''identita'' e'' sul registro e c''e'' la colonna `anno`, l''unicita'' la contiene');
 
 -- ============================================================
 -- 4) ⚠️ I DATI: chi e' passato dal motore nuovo porta registro E anno
@@ -257,6 +328,29 @@ SELECT is(
         AND NOT pg_temp.idd_ha_colonna(f.relid, 'serie')),
     '',
     '5) Nessun registro porta una serie_default che il suo documento non puo'' raccontare');
+
+-- ============================================================
+-- 6) ⭐ GEMELLO «ESISTE» DELLA BIFORCAZIONE — entrambi i rami sono abitati
+-- ============================================================
+-- ⚠️ I test 2 e 3 contano i cattivi su due rami diversi, e un ramo VUOTO li
+--   rende muti senza farlo vedere: se un giorno nessuna famiglia avesse piu'
+--   l'identita' sul registro, il test 3 sarebbe verde perche' non ha piu'
+--   niente da guardare — e sarebbe proprio il momento in cui il difetto del
+--   2026-08-31 potrebbe rientrare dalla finestra.
+-- ⛔ Non si asserisce QUANTE famiglie stanno di qua e di la': sarebbe fissare
+--   la fotografia di oggi. Si asserisce che nessuno dei due rami e' vuoto —
+--   che e' una proprieta' del presidio, non della popolazione.
+SELECT is(
+    (SELECT CASE WHEN count(*) FILTER (
+                     WHERE pg_temp.idd_unique_porta(f.relid, 'registro_id')) = 0
+                 THEN 'RAMO REGISTRO VUOTO ' ELSE '' END
+         || CASE WHEN count(*) FILTER (
+                     WHERE pg_temp.idd_unique_stringa_nuda(f.relid, f.colonna_numero)) = 0
+                 THEN 'RAMO STRINGA NUDA VUOTO' ELSE '' END
+       FROM tmp_idd_fam f
+      WHERE f.relid IS NOT NULL),
+    '',
+    '6) Entrambi i rami dell''identita'' sono abitati (i test 2 e 3 hanno candidati)');
 
 SELECT * FROM finish();
 ROLLBACK;

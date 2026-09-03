@@ -101,11 +101,16 @@ databaseChangeLog:
                           schemaName: pagamenti
                           tableName: vendite_contabili
                           columnName: contabile_corretta_id
-                    - sqlCheck:
-                          expectedResult: 1
-                          sql: |
-                              SELECT COUNT(*) FROM pagamenti.vendite_contabili_righe_stati
-                               WHERE codice_interno = 'DA_ABBINARE';
+                    # ⛔ 2026-09-02 — RIMOSSA la preCondition su pagamenti.vendite_contabili_righe_stati (codice_interno = 'DA_ABBINARE').
+                    #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+                    #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+                    #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+                    #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+                    #    Lo stato serve alla funzione QUANDO VIENE CHIAMATA, non quando il corpo
+                    #    viene compilato: e' un fatto di runtime.
+                    #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+                    #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+                    #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
           changes:
               - sql:
                     dbms: postgresql

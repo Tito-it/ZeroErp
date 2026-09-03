@@ -82,3 +82,32 @@ ripetibile senza doversi chiedere ogni volta «l'ho già fatto?».
   i suoi documenti funzionano dal primo minuto;
 * il blocco «senza registro non nasce niente» resta severo dove serve — sulla
   configurazione fiscale — senza trasformarsi in un inciampo su tutto il resto.
+
+---
+
+### 🔄 rev 2026-09-01 — la regola non è più qui dentro
+
+Da oggi questa funzione è un **involucro sottile**: la regola di come nasce un
+registro — il codice, la descrizione, il reset, i default di forma presi dalla
+famiglia — vive in
+[`vendite.fn_provision_registri`](/dbzero/vendite/manual/fn_provision_registri).
+Qui resta il **filtro**, e nient'altro.
+
+⭐ **Perché.** È nata la gemella
+[`fn_provision_registri_famiglia`](/dbzero/vendite/manual/fn_provision_registri_famiglia),
+che fa la stessa cosa dall'altro lato: dà a una famiglia il suo registro su tutti
+gli emittenti. La strada facile era copiare la query.
+
+⚠️ Copiata, la prima correzione che ne tocca una sola produce **due registri
+diversi per la stessa coppia** — e non si vede subito: si vede mesi dopo, su un
+emittente solo, quando qualcuno nota un codice che non segue la regola degli
+altri.
+
+⛔ **La firma non è cambiata, ed è deliberato**: questa funzione la chiama un
+trigger. Un parametro in più sarebbe stato un *overload*, non una modifica — il
+trigger avrebbe continuato a chiamare la versione vecchia, con la regola vecchia
+dentro.
+
+⚠️ Il comportamento visibile è identico: stessi registri, stessi codici, stessa
+idempotenza. Quello che cambia è **dove** si va a leggere la regola quando la si
+deve correggere.

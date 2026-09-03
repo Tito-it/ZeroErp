@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# reset_policy DIVENTA VERA — il CHECK riammette NESSUNA
+#   chk_registri_fatturazione_reset
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 7 (R-1)
+#
+# ── ⛔ IL CASO: UNA COLONNA DICHIARATA E MAI LETTA ────────────────
+#   Censito il 2026-09-01: NESSUNA funzione ramifica su reset_policy.
+#   fn_numera_fattura_opz_emessa e fn_assign_numero_fattura la nominano solo nei
+#   COMMENTI; fn_provision_registri_emittente la SCRIVE e basta; e
+#   vendite.fn_get_anno_registro inchioda l'anno con EXTRACT(YEAR FROM p_data).
+#   ⇒ E' la terza colonna di questa famiglia dichiarata e non implementata, dopo
+#   `mese` e i valori tolti da questo stesso CHECK il 2026-08-25.
+#
+# ── ⭐ PERCHE' QUESTA SI ACCENDE E `mese` INVECE SPARISCE ─────────
+#   E' l'asimmetria dell'invariante (§1 del brief):
+#     · il CONTATORE ha un asse che il DOCUMENTO non ha  -> COLLISIONE
+#     · il DOCUMENTO ha un asse che il CONTATORE non ha  -> innocuo
+#   Accendere MENSILE sarebbe pericoloso: nessun documento porta il mese, quindi
+#   un reset mensile li farebbe collidere tutti e cinque.
+#   Accendere NESSUNA e' SICURO: tutti i documenti portano `anno` nel loro
+#   vincolo di unicita', quindi il contatore userebbe MENO assi, non di piu' —
+#   cade nel verso innocuo. E la numerazione continua fra gli anni e' una cosa
+#   che i gestionali fanno davvero su DDT e ordini.
+#
+# ⛔ MENSILE NON RIENTRA, ed e' deliberato: e' l'asse che il changeSet gemello
+#   (20260901-08) toglie dal contatore. Riammetterlo qui vorrebbe dire dichiarare
+#   di nuovo una cosa che il modello non regge.
+#
+# ⚠️ Questo changeSet da solo NON cambia nessun comportamento: allarga il
+#   vocabolario. A leggerlo e' 20260901-07, che arriva dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260901-06-alter-chk-registri-reset-ammette-nessuna-mctit.yaml
+
+  - changeSet:
+      id: 20260901-06-alter-chk-registri-reset-ammette-nessuna
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        `chk_registri_fatturazione_reset` riammette `NESSUNA` accanto ad `ANNUALE`: la
+        numerazione continua fra gli anni diventa una scelta del sezionale invece di una
+        possibilita'' dichiarata e mai implementata. ⛔ `MENSILE` NON rientra: e'' l''asse che
+        20260901-08 toglie dal contatore, e nessun documento lo porta nel proprio vincolo di
+        unicita''. ⭐ Accendere `NESSUNA` e'' sicuro perche'' fa usare al contatore MENO assi:
+        tutti i documenti portano gia'' `anno`. A leggere la politica sara'' 20260901-07.
+        Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 7 (R-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            # ⛔ Nessun registro deve gia' portare un valore fuori dal vocabolario
+            #    nuovo: allargare un CHECK non convalida il pregresso, e una riga
+            #    fuori vocabolario farebbe fallire l'ADD CONSTRAINT con un errore
+            #    che non nomina la riga.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.registri_fatturazione
+                   WHERE reset_policy IS NULL
+                      OR reset_policy NOT IN ('ANNUALE', 'NESSUNA');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                  DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_reset;
+
+              ALTER TABLE vendite.registri_fatturazione
+                  ADD CONSTRAINT chk_registri_fatturazione_reset
+                  CHECK (reset_policy IN ('ANNUALE', 'NESSUNA'));
+
+              COMMENT ON CONSTRAINT chk_registri_fatturazione_reset
+                  ON vendite.registri_fatturazione
+              IS 'Vocabolario della politica di azzeramento del contatore. ANNUALE: il progressivo riparte a ogni anno solare — il secchio porta l''anno. NESSUNA: non riparte mai, un secchio solo per il sezionale (l''anno del secchio vale 0). ⛔ MENSILE NON C''E'', e non e'' una dimenticanza: il mese e'' stato tolto dalla chiave del contatore il 2026-09-01 (20260901-08) perche'' NESSUN documento lo porta nel proprio vincolo di unicita'' — un reset mensile li farebbe collidere tutti. ⭐ NESSUNA invece e'' sicura per l''asimmetria dell''invariante: fa usare al contatore MENO assi, non di piu'', e tutti i documenti portano gia'' `anno`. ⚠️ Fino al 2026-09-01 questo CHECK ammetteva il solo ANNUALE, e la colonna era DICHIARATA E MAI LETTA: nessuna funzione ci ramificava sopra e vendite.fn_get_anno_registro inchiodava l''anno solare. A leggerla e'' vendite.fn_get_next_progressivo. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 7.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                  DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_reset;
+
+              ALTER TABLE vendite.registri_fatturazione
+                  ADD CONSTRAINT chk_registri_fatturazione_reset
+                  CHECK ((reset_policy)::text = 'ANNUALE'::text);

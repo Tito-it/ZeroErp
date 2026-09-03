@@ -23,19 +23,20 @@
 --   6   : NOT CREATEROLE
 --   7   : nessuna membership (NON membro di zeroerp_app)
 --   8   : nessun DML OLTRE il grado atteso (over-grant; include sopra-grado)
---   9   : nessuna tabella del perimetro ESISTENTE priva dei privilegi del suo grado (buchi)
---   10  : SELECT ampio su tabella RLS fuori perimetro (vendite.ordini)
---   11  : controprova fail-loud: NESSUN DML su vendite.ordini
---   12-13: EXECUTE sulle funzioni run-log (script.fn_job_run_start/end)
---   14  : NESSUN DML diretto su maintenance.job_run_log
---   15  : USAGE sulle sequenze-codice standalone del perimetro (code-seq)
---   16  : controprova append-only: NESSUN DELETE su vendite.event_log
---   17  : shadow storico.* del perimetro con INSERT+UPDATE (trigger trgfn_storico_generic)
---   18  : controprova: NESSUN DELETE sulla shadow storico (snapshot SCD)
+--   9   : gemello «esiste» dell'8 — la lente sui grant vede davvero (2026-09-02)
+--   10  : nessuna tabella del perimetro ESISTENTE priva dei privilegi del suo grado (buchi)
+--   11  : SELECT ampio su tabella RLS fuori perimetro (vendite.ordini)
+--   12  : controprova fail-loud: NESSUN DML su vendite.ordini
+--   13-14: EXECUTE sulle funzioni run-log (script.fn_job_run_start/end)
+--   15  : NESSUN DML diretto su maintenance.job_run_log
+--   16  : USAGE sulle sequenze-codice standalone del perimetro (code-seq)
+--   17  : controprova append-only: NESSUN DELETE su vendite.event_log
+--   18  : shadow storico.* del perimetro con INSERT+UPDATE (trigger trgfn_storico_generic)
+--   19  : controprova: NESSUN DELETE sulla shadow storico (snapshot SCD)
 --
 -- Perimetro GRADUATO (privilege-set per tabella): iud=full DML, iu=INSERT+UPDATE,
 -- i=INSERT only (append-only / upsert DO NOTHING), u=UPDATE only (es. commesse_attivita
--- stato_emissione). Test 8/9 sono privilege-set-aware via _perimeter_priv, che include
+-- stato_emissione). Test 8/10 sono privilege-set-aware via _perimeter_priv, che include
 -- anche lo shadow storico.* (INSERT+UPDATE) derivato dai trigger.
 --
 -- Prerequisito: il ruolo dev'essere stato provisionato (D1/D3). Asserzioni
@@ -52,7 +53,7 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- Perimetro di scrittura atteso (allineato al provisioning), GRADUATO per privilege-set:
 --   iud = full DML (INSERT/UPDATE/DELETE), iu = INSERT+UPDATE, i = INSERT only (append-only).
@@ -76,12 +77,26 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('pagamenti', 'vendite_contabili_righe',        'iud'),
     ('vendite', 'fatturazione_lotti_task_runs',     'iu'),
     ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
+    ('vendite', 'fatture_indirizzi',                'iu'),
     ('vendite', 'event_log',                        'i'),
     ('vendite', 'attivita_fatturabili_log',         'i'),
     ('pagamenti', 'vendite_contabili_lotti',        'i'),
-    ('vendite', 'commesse_attivita',                'u');
+    -- render documentale (C-2b): il worker fa solo INSERT append.
+    ('documenti', 'documenti_generati',             'i'),
+    ('documenti', 'documenti_generati_file',        'i'),
+    ('documenti', 'documenti_generati_eventi',      'i'),
+    -- DELETE only: il cleanup del rollback automatico cancella le note della
+    -- fattura; l'INSERT e' del flusso operatore, non del batch.
+    ('vendite', 'note',                             'd'),
+    ('vendite', 'commesse_attivita',                'u'),
+    -- coda stampa: il drainer fa SOLO claim/marca/reaper (UPDATE).
+    ('vendite', 'fatture_stampa_coda',              'u');
 
--- Espansione grado -> privilegi attesi (single source per test 8/9)
+-- Espansione grado -> privilegi attesi (single source per test 8 e 10)
+-- ⚠️ Il CASE dev'essere COMPLETO sui gradi in uso: un grado non previsto cade
+--   nell'ELSE implicito, `unnest(NULL)` non produce righe e la tabella sparisce
+--   dal perimetro IN SILENZIO — ne' over-grant (test 8) ne' buco (test 10). Il
+--   grado 'd' e' esistito nel provisioning senza esistere qui.
 CREATE TEMP TABLE _perimeter_priv ON COMMIT DROP AS
 SELECT p.nspname, p.relname, unnest(
     CASE p.grade
@@ -89,6 +104,7 @@ SELECT p.nspname, p.relname, unnest(
         WHEN 'iu'  THEN ARRAY['INSERT', 'UPDATE']
         WHEN 'i'   THEN ARRAY['INSERT']
         WHEN 'u'   THEN ARRAY['UPDATE']
+        WHEN 'd'   THEN ARRAY['DELETE']
     END
 ) AS privilege_type
 FROM _perimeter p;
@@ -96,7 +112,7 @@ FROM _perimeter p;
 -- Shadow storico.* del perimetro (derivato dai trigger script.trgfn_storico_generic,
 -- SECURITY INVOKER): l'UPDATE delle tabelle del perimetro storicizzate scrive in
 -- storico.<tabella> -> INSERT (nuovo snapshot) + UPDATE (chiusura valid_to). NO DELETE.
--- Aggiunti all'allow-set: test 8 (over-grant) li sancisce, test 9 (buchi) li pretende.
+-- Aggiunti all'allow-set: test 8 (over-grant) li sancisce, test 10 (buchi) li pretende.
 INSERT INTO _perimeter_priv (nspname, relname, privilege_type)
 SELECT DISTINCT hn.nspname, hc.relname, pv.priv
 FROM _perimeter p
@@ -155,21 +171,54 @@ SELECT is(
 
 -- 8: nessun DML OLTRE il grado atteso (over-grant). Cattura sia il DML fuori perimetro
 --    sia il privilegio sopra-grado (es. DELETE su una tabella append-only INSERT-only).
+--
+-- ⛔ LA SORGENTE E' `pg_class.relacl`, NON `information_schema.role_table_grants`.
+--    Quella vista mostra solo i grant in cui il ruolo CONNESSO e' concedente o
+--    beneficiario: girando come `zeroerp_app` — il default dal 2026-08-07 —
+--    rispondeva ZERO righe per un ruolo batch di cui `zeroerp_app` non sa
+--    niente, e il test era verde per SOTTRAZIONE. Non un caso di bordo: non
+--    poteva vedere NIENTE, quindi non poteva accorgersi di NIENTE.
+--    `relacl` sta nel catalogo ed e' leggibile da chiunque, e `has_table_privilege`
+--    (test 9, 10, 11, 14, 16, 17, 18) non ha mai avuto il problema — e' per
+--    questo che 9 e 17 segnalavano mentre 8 taceva.
+--    ⚠️ `relacl` e' NULL quando la tabella ha i soli privilegi di default: li'
+--    `aclexplode` non produce righe, ed e' corretto — nessun grant al batch.
 SELECT is(
     (SELECT count(*)::int
-     FROM information_schema.role_table_grants g
-     WHERE g.grantee = 'zeroerp_batch_fatturazione'
-       AND g.privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     CROSS JOIN LATERAL aclexplode(c.relacl) a
+     JOIN pg_roles r ON r.oid = a.grantee
+     WHERE c.relkind IN ('r', 'p')
+       AND r.rolname = 'zeroerp_batch_fatturazione'
+       AND a.privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
        AND NOT EXISTS (
            SELECT 1 FROM _perimeter_priv pp
-           WHERE pp.nspname = g.table_schema AND pp.relname = g.table_name
-             AND pp.privilege_type = g.privilege_type
+           WHERE pp.nspname = n.nspname AND pp.relname = c.relname
+             AND pp.privilege_type = a.privilege_type
        )),
     0,
     'zeroerp_batch_fatturazione: nessun DML oltre il grado atteso (no over-grant)'
 );
 
--- 9: nessuna tabella del perimetro ESISTENTE priva dei privilegi del proprio grado (buchi)
+-- 9: gemello «esiste» del test 8. Un test che CONTA I CATTIVI risponde zero
+--    anche quando i candidati sono zero: e' esattamente cosi' che il test 8 e'
+--    stato verde per mesi leggendo una vista che non gli mostrava niente.
+--    Questa riga pretende che la lente veda davvero dei grant DML del ruolo.
+SELECT cmp_ok(
+    (SELECT count(*)::int
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     CROSS JOIN LATERAL aclexplode(c.relacl) a
+     JOIN pg_roles r ON r.oid = a.grantee
+     WHERE c.relkind IN ('r', 'p')
+       AND r.rolname = 'zeroerp_batch_fatturazione'
+       AND a.privilege_type IN ('INSERT', 'UPDATE', 'DELETE')),
+    '>=', 20,
+    'zeroerp_batch_fatturazione: la lente sui grant DML vede davvero (test 8 non e'' muto)'
+);
+
+-- 10: nessuna tabella del perimetro ESISTENTE priva dei privilegi del proprio grado (buchi)
 SELECT is(
     (SELECT count(*)::int
      FROM _perimeter_priv pp
@@ -180,19 +229,19 @@ SELECT is(
     'zeroerp_batch_fatturazione: tutte le tabelle del perimetro presenti hanno i privilegi del grado'
 );
 
--- 10: SELECT ampio su tabella RLS fuori perimetro (vendite.ordini)
+-- 11: SELECT ampio su tabella RLS fuori perimetro (vendite.ordini)
 SELECT ok(
     has_table_privilege('zeroerp_batch_fatturazione', 'vendite.ordini', 'SELECT'),
     'zeroerp_batch_fatturazione: SELECT ampio su vendite.ordini (fuori perimetro)'
 );
 
--- 11: controprova fail-loud: NESSUN DML su vendite.ordini
+-- 12: controprova fail-loud: NESSUN DML su vendite.ordini
 SELECT ok(
     NOT has_table_privilege('zeroerp_batch_fatturazione', 'vendite.ordini', 'INSERT'),
     'zeroerp_batch_fatturazione: NESSUN INSERT su vendite.ordini (fail-loud)'
 );
 
--- 12..13: canale run-log (J2/J3) — EXECUTE sulle funzioni SECURITY DEFINER in script
+-- 13..14: canale run-log (J2/J3) — EXECUTE sulle funzioni SECURITY DEFINER in script
 -- (il ruolo le ottiene via il broad GRANT EXECUTE su schema script del provisioning)
 SELECT ok(
     has_function_privilege('zeroerp_batch_fatturazione',
@@ -205,13 +254,13 @@ SELECT ok(
     'zeroerp_batch_fatturazione: EXECUTE su script.fn_job_run_end'
 );
 
--- 14: NESSUN DML diretto su maintenance.job_run_log (scrive solo via le funzioni)
+-- 15: NESSUN DML diretto su maintenance.job_run_log (scrive solo via le funzioni)
 SELECT ok(
     NOT has_table_privilege('zeroerp_batch_fatturazione', 'maintenance.job_run_log', 'INSERT'),
     'zeroerp_batch_fatturazione: NESSUN INSERT diretto su maintenance.job_run_log'
 );
 
--- 15: USAGE sulla sequenza-codice standalone del perimetro (fn_generate_codice -> nextval).
+-- 16: USAGE sulla sequenza-codice standalone del perimetro (fn_generate_codice -> nextval).
 -- E' il grant che mancava e faceva fallire l'INSERT in fatturazione_lotti (codice).
 SELECT is(
     (SELECT count(*)::int
@@ -223,13 +272,13 @@ SELECT is(
     'zeroerp_batch_fatturazione: USAGE su tutte le sequenze-codice del perimetro'
 );
 
--- 16: controprova append-only: NESSUN DELETE su vendite.event_log (grado INSERT-only)
+-- 17: controprova append-only: NESSUN DELETE su vendite.event_log (grado INSERT-only)
 SELECT ok(
     NOT has_table_privilege('zeroerp_batch_fatturazione', 'vendite.event_log', 'DELETE'),
     'zeroerp_batch_fatturazione: NESSUN DELETE su vendite.event_log (append-only)'
 );
 
--- 17: shadow storico.* del perimetro -> INSERT+UPDATE su tutte (derivato dai trigger,
+-- 18: shadow storico.* del perimetro -> INSERT+UPDATE su tutte (derivato dai trigger,
 -- indipendente da _perimeter_priv). I trigger di storicizzazione scrivono qui all'UPDATE.
 SELECT is(
     (SELECT count(*)::int
@@ -249,7 +298,7 @@ SELECT is(
     'zeroerp_batch_fatturazione: shadow storico del perimetro con INSERT+UPDATE'
 );
 
--- 18: controprova: NESSUN DELETE sulla shadow storico (gli snapshot SCD non si cancellano)
+-- 19: controprova: NESSUN DELETE sulla shadow storico (gli snapshot SCD non si cancellano)
 SELECT ok(
     NOT has_table_privilege('zeroerp_batch_fatturazione', 'storico.fatturazione_lotti', 'DELETE'),
     'zeroerp_batch_fatturazione: NESSUN DELETE su storico.fatturazione_lotti (snapshot SCD)'

@@ -405,7 +405,7 @@ preventivo o sui calcoli.
 ### 6.1 Resolver
 
 Quando l'operatore seleziona articolo + UoM, il backend chiama il
-[resolver pricing v5](/guide/gestione-listini#3-resolver--i-3-stadi-in-dettaglio)
+[resolver pricing v5](/guide/gestione-listini#3-resolver-i-3-stadi-in-dettaglio)
 che valuta in sequenza promo → contratto → categoria/listino e restituisce un
 prezzo candidato + origine. Il frontend pre-compila il campo prezzo nel form.
 

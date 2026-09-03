@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FAMIGLIA DICE SE AMMETTE LE REGOLE FISCALI
+#   vendite.famiglie_documento.ammette_regole_fiscali
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.17
+#
+# ── ⭐ COSA RISOLVE (scelta B, decisa da Tid il 2026-09-02) ──────
+#   Oggi la domanda «questa famiglia ammette il limite di emissione e una
+#   politica data non neutra?» ha la risposta scritta a mano in DUE posti fuori
+#   dal database: `_FAMIGLIA_FISCALE = "FATTURA"` nel service dei registri e
+#   `REGISTRO_FAMIGLIA_FISCALE` nelle costanti del frontend.
+#   ⇒ Da qui in poi la risposta e' una colonna, e quei due letterali spariscono.
+#
+# ── ⛔ IL CHECK NON E' UN DETTAGLIO: E' CIO' CHE RENDE LA COLONNA VERA ──
+#   `chk_registri_fatturazione_famiglia_regole_fattura` continua a nominare
+#   `'FATTURA'`, e non si tocca (decisione D5). Una colonna libera accanto a
+#   quel CHECK sarebbe la classica dichiarazione parallela: qualcuno la mette a
+#   `true` su una famiglia nuova, la maschera offre i tre campi, e il database
+#   li rifiuta al salvataggio — una promessa rotta a valle.
+#   ⇒ Il CHECK qui la lega allo stesso letterale. **Il posto in cui si decide
+#   che cosa e' fiscale resta uno**, e questa colonna lo dichiara invece di
+#   duplicarlo. Il giorno che la fattura smettera' di essere l'unica, i due
+#   CHECK si cambiano insieme — e il pgTAP verifica che concordino.
+#
+# ── ⛔ PERCHE' NON SI RIUSA `presidia_data_documento` ────────────
+#   Sembra la stessa cosa, e oggi ha lo stesso valore su tutte e cinque le
+#   famiglie. Ma risponde a un'ALTRA domanda: «questa famiglia ha un pavimento
+#   sulla data del documento?», e la usa
+#   `vendite.fn_get_pavimento_data_documento` per il pavimento di SEQUENZA —
+#   mentre il limite di emissione, nella stessa funzione, e' gia' gated dal
+#   letterale `'FATTURA'`.
+#   ⚠️ Due domande diverse che oggi hanno la stessa risposta restano due
+#   domande: metterle sullo stesso flag e' il flag composto che poi non si
+#   riesce piu' a invertire, e il giorno che una delle due cambia si scopre
+#   che ne comandava anche un'altra.
+#
+# ── ⚠️ DEFAULT `false`, cioe' il verso che il modello ammette ────
+#   Una famiglia creata dal CRUD nasce NON fiscale, ed e' esattamente il limite
+#   dichiarato al §11.11: il registro della fattura si risolve per (tipo
+#   documento, natura), per una strada tutta sua.
+#
+# ⚠️ Il valore per la FATTURA sta nel CSV (20260902-05), non in un UPDATE qui:
+#   su un database ricostruito da zero questa tabella e' ancora vuota.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260902-04-alter-famiglie-documento-ammette-regole-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20260902-04-alter-famiglie-documento-ammette-regole-fiscali
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge vendite.famiglie_documento.ammette_regole_fiscali: la famiglia DICE se ammette il
+        limite di emissione e una politica data non neutra, invece di farlo dedurre dal letterale
+        ''FATTURA'' scritto a mano nel service e nelle costanti del frontend (scelta B, Tid 2026-09-02).
+        ⛔ Un CHECK la lega allo stesso letterale del CHECK sui registri: senza, sarebbe una
+        dichiarazione parallela — messa a true su una famiglia nuova, la maschera offrirebbe tre campi
+        che il database rifiuta al salvataggio. ⛔ Non si riusa presidia_data_documento: risponde a
+        un''altra domanda (il pavimento di sequenza) e oggi ha solo la stessa risposta.
+        Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.17.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: famiglie_documento
+                    columnName: ammette_regole_fiscali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  ADD COLUMN ammette_regole_fiscali BOOLEAN NOT NULL DEFAULT FALSE;
+
+              -- ⛔ Il letterale e' lo STESSO di
+              --   chk_registri_fatturazione_famiglia_regole_fattura, e sta qui
+              --   perche' la colonna DICHIARI quel CHECK invece di affiancargli
+              --   una seconda verita' che puo' contraddirlo.
+              ALTER TABLE vendite.famiglie_documento
+                  ADD CONSTRAINT chk_famiglie_documento_regole_fiscali_solo_fattura
+                  CHECK (NOT ammette_regole_fiscali OR codice_interno = 'FATTURA');
+
+              COMMENT ON COLUMN vendite.famiglie_documento.ammette_regole_fiscali IS
+              'Questa famiglia ammette i campi che il registro riserva alla fatturazione: il limite di emissione (giorni e giorno del mese) e una politica della data del documento diversa da OGGI. ⭐ ESISTE PER TOGLIERE DUE LETTERALI: fino al 2026-09-02 la risposta era scritta a mano fuori dal database, in apps/vendite/services/registri_service.py e in frontend/src/amministrazione/constants.js, e ogni lettore doveva sapere che «fiscale» voleva dire «FATTURA». ⛔ IL CHECK CHE LA ACCOMPAGNA NON E'' UN DETTAGLIO: chk_registri_fatturazione_famiglia_regole_fattura continua a nominare il letterale ''FATTURA'' e non si tocca (decisione D5), quindi una colonna LIBERA accanto a quel CHECK sarebbe una dichiarazione parallela — messa a true su una famiglia nuova, la maschera offrirebbe tre campi che il database rifiuta al salvataggio, cioe'' una promessa rotta a valle. Il CHECK la lega allo stesso letterale: il posto in cui si decide che cosa e'' fiscale resta UNO, e questa colonna lo dichiara invece di duplicarlo. Il giorno in cui la fattura smettera'' di essere l''unica, i due CHECK si cambiano insieme — e il pgTAP verifica che concordino. ⛔ NON SI RIUSA presidia_data_documento: sembra la stessa cosa e oggi ha lo stesso valore su tutte e cinque le famiglie, ma risponde a un''ALTRA domanda — «questa famiglia ha un pavimento sulla data del documento?» — che vendite.fn_get_pavimento_data_documento usa per il pavimento di SEQUENZA, mentre il limite di emissione nella stessa funzione e'' gated dal letterale. Due domande diverse con la stessa risposta di oggi restano due domande: unirle e'' il flag composto che poi non si riesce piu'' a invertire. ⚠️ Default FALSE: una famiglia creata dal CRUD nasce NON fiscale, ed e'' il limite dichiarato al §11.11 del piano — il registro della fattura si risolve per (tipo documento, natura), per una strada tutta sua. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.17.';
+
+              COMMENT ON CONSTRAINT chk_famiglie_documento_regole_fiscali_solo_fattura
+                  ON vendite.famiglie_documento IS
+              'Solo la famiglia FATTURA puo'' dichiarare di ammettere le regole fiscali. ⛔ Il letterale e'' lo STESSO di chk_registri_fatturazione_famiglia_regole_fattura, di proposito: senza questo vincolo la colonna sarebbe una seconda verita'' che puo'' contraddire quel CHECK, e la contraddizione si scoprirebbe al salvataggio di un registro — cioe'' a valle, addosso a chi compila. I due si cambiano INSIEME, e un pgTAP verifica che concordino.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.famiglie_documento
+                  DROP CONSTRAINT IF EXISTS chk_famiglie_documento_regole_fiscali_solo_fattura;
+              ALTER TABLE vendite.famiglie_documento
+                  DROP COLUMN IF EXISTS ammette_regole_fiscali;

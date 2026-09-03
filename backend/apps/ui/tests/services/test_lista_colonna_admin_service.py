@@ -132,10 +132,26 @@ class ListaColonnaReadTests(SimpleTestCase):
     def test_list_colonne_admin_happy_path(self) -> None:
         repo = _repo_with_lista()
         repo.list_colonne_by_lista_admin.return_value = [_row_colonna()]
+        repo.count_colonne_by_lista_admin.return_value = 1
         svc = ListaColonnaAdminService(repo=repo)
         result = svc.list_colonne_admin(1)
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["codice"], "ragione_sociale")
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["codice"], "ragione_sociale")
+
+    # Scopo: il `count` NON e' `len(results)`. E' l'invariante che rende utile
+    #        il guard anti-troncamento del frontend: derivato dalle righe
+    #        direbbe sempre di si'. Il repo dichiara 40 e consegna 1 riga (il
+    #        caso «qualcuno ha messo un LIMIT»): il service RIPORTA la
+    #        divergenza, non la appiana.
+    def test_count_colonne_non_e_derivato_dalle_righe(self) -> None:
+        repo = _repo_with_lista()
+        repo.list_colonne_by_lista_admin.return_value = [_row_colonna()]
+        repo.count_colonne_by_lista_admin.return_value = 40
+        svc = ListaColonnaAdminService(repo=repo)
+        result = svc.list_colonne_admin(1)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["count"], 40)
 
     def test_get_colonna_inesistente_raises(self) -> None:
         repo = MagicMock()

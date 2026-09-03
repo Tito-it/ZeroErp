@@ -28,6 +28,8 @@ DECLARE
   v_lista_id         ui.lista_definizione.id%TYPE;
   -- P-2b (2026-08-18): la capacita' dichiarata della lista.
   v_multi_emittente  ui.lista_definizione.multi_emittente%TYPE;
+  -- 2026-09-02: la lista ha righe che appartengono a un emittente?
+  v_perimetro_emitt  ui.lista_definizione.perimetro_emittente%TYPE;
   v_config_colonne   JSONB;
   v_ordinamento      JSONB;
   v_filtri           JSONB;
@@ -68,8 +70,8 @@ BEGIN
   -- ⚠️ P-2b: multi_emittente si legge QUI, nella SELECT che c'era gia'.
   --   Una seconda query sulla stessa riga sarebbe un round-trip in piu' su
   --   una funzione che gira a ogni apertura di lista.
-  SELECT id, multi_emittente
-    INTO v_lista_id, v_multi_emittente
+  SELECT id, multi_emittente, perimetro_emittente
+    INTO v_lista_id, v_multi_emittente, v_perimetro_emitt
     FROM ui.lista_definizione
    WHERE codice = p_lista_codice
      AND attivo = TRUE;
@@ -428,7 +430,23 @@ BEGIN
     --   decidono lo scope e la RLS), dice se la SCHERMATA e' leggibile nella
     --   condizione in cui sta per essere aperta. Chi la usa come controllo di
     --   autorizzazione crea una seconda via d'accesso accanto a quella vera.
-    'multi_emittente',   COALESCE(v_multi_emittente, false)
+    'multi_emittente',   COALESCE(v_multi_emittente, false),
+    -- ⭐ 2026-09-02 — IL TERZO CASO, e senza di lui il flag sopra risponde a
+    --   una domanda che per certe liste non esiste. `multi_emittente` dice
+    --   «so dire da quale emittente arriva ogni riga»; su un catalogo GLOBALE
+    --   — le famiglie di documento, le liste tecniche di `ui` — non c'e'
+    --   nessun emittente da dire, e la risposta corretta non e' ne' si' ne' no:
+    --   e' che la domanda non si applica.
+    -- ⛔ Senza questa chiave l'unico modo di far entrare il super admin in una
+    --   lista globale era dichiararla multi_emittente = true, cioe' vantare una
+    --   capacita' che quella lista non ha — e la vista di certificazione
+    --   dbops.vw_liste_multi_emittente_non_certificate lo intercetta, come deve.
+    -- ⚠️ La regola per chi legge: si entra senza scegliere un emittente quando
+    --   la lista SA DIRLO (multi_emittente) OPPURE quando non c'e' niente da
+    --   dire (perimetro_emittente = false). Sono due ragioni diverse per lo
+    --   stesso gesto, e vanno tenute distinte: la prima e' una capacita'
+    --   conquistata, la seconda e' la natura del dato.
+    'perimetro_emittente', COALESCE(v_perimetro_emitt, true)
   );
 
 END;

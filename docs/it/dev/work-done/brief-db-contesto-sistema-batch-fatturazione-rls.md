@@ -363,3 +363,144 @@ repo invariati). Suite core+vendite verde (1347 test). File toccati:
 > **Endpoint on-demand**: `pipeline/run-until-done` **non** usa il canale di sistema →
 > resta nello scope OPERATORE del chiamante. Il canale `system_*` è solo per i percorsi
 > headless (cron/command).
+
+---
+
+## 11. Post-consegna — 2026-09-02: il presidio era cieco su metà, e due grant mancano
+
+> ⚠️ Sezione aggiunta dopo la chiusura del cantiere. Non corregge una decisione:
+> corregge il **presidio** che doveva sorvegliarla, e registra una lacuna di ops
+> ancora aperta.
+
+Il test `db/pgtap/rls/test-role-batch-fatturazione-postura.sql` è stato eseguito e
+ha segnalato due rossi. Cercandone la causa sono emerse **tre cose distinte**, di
+cui solo la prima era visibile.
+
+### 11.1 🔴 APERTO — due shadow `storico.*` senza `INSERT`+`UPDATE`
+
+`zeroerp_batch_fatturazione` non ha `INSERT`/`UPDATE` su:
+
+* `storico.fatture_indirizzi`
+* `storico.fatture_riepiloghi_iva`
+
+Non è un difetto di disegno: il provisioning **deriva** le shadow dai trigger
+`script.trgfn_storico_generic`, quindi le concede da sé. Queste due shadow sono
+semplicemente **più giovani dell'ultima corsa del provisioning** — i loro oid
+(`4 209 553`, e il trigger `4 260 072`) stanno quattro ordini di grandezza sopra
+quelli delle altre sette (`45 209`…`69 827`), che il grant ce l'hanno.
+
+I trigger di storicizzazione arrivano dalle automazioni `ci_apply`, cioè **dopo**
+il changeSet che crea la tabella: è il momento in cui il perimetro concesso e il
+perimetro reale divergono, e nessuno riesegue il provisioning.
+
+**Rimedio** (non applicato qui — serve `superuser`, e
+`ALTER ROLE … PASSWORD` è incondizionato: un segnaposto romperebbe in silenzio il
+canale `system_fatturazione`):
+
+```bash
+sudo -u postgres psql --no-psqlrc -d zeroerp -v ON_ERROR_STOP=1 \
+  -v batch_role=zeroerp_batch_fatturazione \
+  -v batch_password='<quella vera, da DB_SYSTEM_FATTURAZIONE_PASSWORD>' \
+  -v migrator_role=titodb \
+  -f scripts/sql/provision_db_role_batch_fatturazione.sql
+```
+
+Poi `scripts/sql/check_db_role_batch_fatturazione.sql` deve tornare **[3b] e [3e] a
+zero righe**, e il pgTAP a 19/19.
+
+⚠️ **Finché mancano, l'`UPDATE` di `vendite.fatture_indirizzi` e di
+`vendite.fatture_riepiloghi_iva` fatto dal batch fallisce**: il trigger di
+storicizzazione è `SECURITY INVOKER` e scrive nella shadow come il ruolo batch.
+
+### 11.2 ⛔ Il test pgTAP aveva un perimetro STANTIO — vedeva metà del buco
+
+`_perimeter` nel pgTAP elencava **22** tabelle, mentre provisioning e check ne
+elencano **28** e sono identici fra loro. Mancavano:
+`documenti.documenti_generati{,_file,_eventi}`, `vendite.fatture_indirizzi`,
+`vendite.fatture_stampa_coda`, `vendite.note`.
+
+⭐ È il motivo per cui il rosso diceva «una shadow» quando le shadow scoperte sono
+due: `storico.fatture_indirizzi` non era guardata da nessuno, perché la sua madre
+non era in perimetro. La memoria del cantiere parlava di **due** liste da tenere
+allineate a mano — provisioning e check: erano **tre**, e la terza era quella che
+nessuno confrontava.
+
+⚠️ E c'era un secondo canale di silenzio nella stessa tabella: il `CASE` che
+espande il grado in privilegi non prevedeva `'d'` (DELETE-only, `vendite.note`).
+Un grado non previsto cade nell'`ELSE` implicito, `unnest(NULL)` non produce righe
+e **la tabella sparisce dal perimetro senza errore** — né over-grant né buco.
+
+Corretto: perimetro riallineato alle 28 voci, `'d'` aggiunto al `CASE`.
+
+### 11.3 ⛔ Il test 8 (over-grant) era VERDE PER SOTTRAZIONE
+
+Leggeva `information_schema.role_table_grants`, che mostra **solo** i grant in cui
+il ruolo *connesso* è concedente o beneficiario. Dal 2026-08-07 i test girano come
+`zeroerp_app`, che di un ruolo batch non sa niente: la query rispondeva **zero
+righe**, sempre. Misurato il 2026-09-02:
+
+```text
+zeroerp_app  →  SELECT count(*) FROM information_schema.role_table_grants
+                 WHERE grantee = 'zeroerp_batch_fatturazione'   →  0
+```
+
+Non un caso di bordo: non poteva vedere **niente**, quindi non poteva accorgersi
+di **niente**. Era la metà «over-grant» del presidio su un ruolo `BYPASSRLS` —
+cioè la superficie di danno più ampia del sistema.
+
+⭐ Ed è il motivo per cui i test 9/17 segnalavano mentre l'8 taceva:
+`has_table_privilege()` non dipende dal ruolo connesso, `role_table_grants` sì.
+
+Corretto: il test 8 legge `pg_class.relacl` via `aclexplode`, che sta nel catalogo
+ed è leggibile da chiunque. E accanto è nato il **test 9, gemello «esiste»**: se la
+lente smettesse di vedere grant, adesso è quello a diventare rosso.
+Il file passa da `plan(18)` a `plan(19)`.
+
+### 11.5 ⛔ 2026-09-02 — 39 `GRANT` al ruolo batch dentro i changeSet, e la regola era già scritta
+
+Il migrate in CI si è fermato su
+`20260825-01-recreate-fn-get-saldo-fattura-tre-numeri` con
+`ERROR: role "zeroerp_batch_fatturazione" does not exist`.
+
+**Perché.** Il §5 di questo brief lo dice già: `BYPASSRLS` richiede superuser,
+quindi il ruolo lo crea `provision_db_role_batch_fatturazione.sql` come
+`postgres` — e `ci.yaml` lo lancia **dopo** le migrazioni standard, con un
+commento che ne spiega il motivo (*«Dopo le migrazioni: le tabelle del perimetro
+esistono»*). Per tutta la durata del migrate quel ruolo **non esiste**.
+
+⭐ **E il `GRANT` era anche inutile**: il provisioning fa
+`GRANT SELECT ON ALL TABLES` + `GRANT EXECUTE ON ALL FUNCTIONS` sui 14 schemi
+applicativi, più `ALTER DEFAULT PRIVILEGES` per gli oggetti futuri. Verificato,
+non dedotto: `vendite.fn_get_registro_documento` (creata il 31 agosto, **zero**
+grant espliciti) risponde già `EXECUTE = true` per il ruolo batch, e
+`pg_default_acl` mostra le default privileges attive su tutti gli schemi.
+
+⚠️ **La cosa che vale la pena registrare non è il difetto: è la sua ripetizione.**
+La regola era già scritta — parola per parola — nell'intestazione di
+`20260727-21-create-vw-indici-ridondanti-prefisso`, messa lì il 2026-07-27 dopo
+lo **stesso identico guasto**:
+
+> *«Regola generale: i privilegi dei ruoli batch stanno nel provisioning, mai in
+> un changeSet.»*
+
+Nei trentasei giorni successivi sono stati scritti **39 `GRANT` in 20 changeSet**
+che la violano. ⛔ Non è distrazione: la riga sbagliata sta **accanto** a quella
+per `zeroerp_app`, che invece ci vuole, ed è identica tranne il nome del ruolo —
+chi aggiunge una funzione al perimetro batch copia la coppia.
+⇒ *Una regola scritta nel commento di un changeSet la legge chi apre quel file.*
+
+**Fatto**: i 39 `GRANT` rimossi (i `zeroerp_app` accanto intatti, verificati uno
+per uno), nuovo cancello `scripts/guardrail_grant_ruolo_batch.py` — verde ora,
+e sulla versione di `HEAD` accusa esattamente 39 righe — regola in
+`linee-guida-sql.md` §11.6 e in `.codex/AGENTS.md`.
+
+### 11.4 Cosa resta da fare
+
+| # | voce | stato |
+|---|---|---|
+| OPS-1 | ri-eseguire il provisioning (§11.1) | 🔴 aperto — richiede `superuser` e la password vera |
+| OPS-2 | `check_db_role_batch_fatturazione.sql` a **[3b]/[3e] zero righe** | 🔴 dopo OPS-1 |
+| DB-1 | perimetro pgTAP riallineato + grado `'d'` | ✅ 2026-09-02 |
+| DB-2 | test 8 su `relacl` + gemello «esiste» | ✅ 2026-09-02 |
+| DB-4 | 39 `GRANT` al ruolo batch tolti dai changeSet + cancello CI (§11.5) | ✅ 2026-09-02 |
+| DB-3 | far confrontare **automaticamente** le tre liste (provision / check / pgTAP) | ⚠️ debito dichiarato — oggi l'allineamento è a mano, ed è già scivolato due volte |

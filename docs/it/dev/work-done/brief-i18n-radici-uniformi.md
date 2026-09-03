@@ -14,7 +14,7 @@
 > l'archivio i18n ha **due stili di sistemazione conviventi**, e la scelta fra i
 > due era stata lasciata al caso. Deciso di disegnare il perimetro **globale**
 > per non avere ripensamenti futuri.
-> **Regola vigente (fonte canonica)**: [frontend-standards.md §Multilingua](../frontend/frontend-standards.md#struttura-chiavi--radici-dei-namespace)
+> **Regola vigente (fonte canonica)**: [frontend-standards.md §Multilingua](../frontend/frontend-standards.md#struttura-chiavi-radici-dei-namespace)
 > — lettura obbligatoria di progetto; l'approfondimento (procedura, inventario)
 > è in [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md). Questo
 > brief è solo l'ordine di lavoro che ha portato a quella regola: archiviato in
@@ -299,7 +299,7 @@ loro valore si sposta sul dopo — restano la regola per il codice futuro.
 
 ## 7. Riferimenti
 
-- Regola canonica: [frontend-standards.md §Multilingua](../frontend/frontend-standards.md#struttura-chiavi--radici-dei-namespace) · approfondimento: [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md)
+- Regola canonica: [frontend-standards.md §Multilingua](../frontend/frontend-standards.md#struttura-chiavi-radici-dei-namespace) · approfondimento: [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md)
 - Brief d'origine: [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
 - **Precedente identico già riparato** (offerte):
   `docs/it/dev/work-done/addendum-db-stati-doc-offerte-transizioni-label-key.md`

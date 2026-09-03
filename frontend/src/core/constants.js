@@ -89,7 +89,27 @@ export const FIELD_LENGTH = {
   // ⛔ Non e' una regola di business duplicata: e' la validazione UX che evita
   // un giro fino al database. Il rifiuto autorevole resta del DB.
   EMITTENTE_CODICE_MIN: 2,
-  EMITTENTE_CODICE_MAX: 10
+  EMITTENTE_CODICE_MAX: 10,
+  // Registri di numerazione: le lunghezze REALI delle colonne, lette da
+  // `information_schema` il 2026-09-01 e non dedotte dall'auto-gen (che
+  // stampa «character varying» senza la lunghezza).
+  // ⛔ SERVONO DAVVERO, e la prova e' stata un errore vero: `prefisso` e'
+  //    `varchar(4)`, e senza `maxlength` un prefisso di cinque caratteri non
+  //    diventa un 400 parlante — diventa un `DataError`, che NON e' un
+  //    `IntegrityError` e quindi non passa da `map_integrity_error`: arriva
+  //    all'operatore come errore generico di database.
+  REGISTRO_CODICE_MAX: 16,
+  REGISTRO_DESCRIZIONE_MAX: 120,
+  // Famiglie di documento: le tre `varchar` della tabella, verificate sul
+  // database il 2026-09-02. ⛔ Stanno qui e non nel template per la ragione di
+  // sempre — un `maxlength` scritto a mano non e' un limite dichiarato, e' un
+  // numero che nessuno ricontrolla il giorno che la colonna cambia.
+  FAMIGLIA_CODICE_MAX: 16,
+  FAMIGLIA_DESCRIZIONE_MAX: 120,
+  FAMIGLIA_PREFISSO_MAX: 8,
+  REGISTRO_PREFISSO_MAX: 4,
+  REGISTRO_SUFFISSO_MAX: 4,
+  REGISTRO_SERIE_MAX: 8
 }
 
 // Enum ruolo applicativo (allineato a config.ruolo_applicativo nel DB).
@@ -327,6 +347,24 @@ export const MANAGE_ICONS = {
   // Competenza, e serve ora anche all'«apri documento» del drill-down Backlog.
   COMMESSA: 'pi pi-briefcase',
   LISTINI: 'app-nav-icon app-nav-icon-listini',
+  // NUMERAZIONE: i registri di numerazione (sezionali) di un emittente. Come
+  // COMMESSA non hanno una voce di navigazione — si aprono dal kebab
+  // dell'emittente — quindi l'icona vive qui e non in NAV_ICONS.
+  // ⭐ Il cancelletto e' il segno del NUMERO, ed e' cio' che quei registri
+  // decidono. ⛔ Non la matita: quella dice «modifica questa riga», mentre
+  // l'azione apre un ELENCO (`feedback_row_actions_menu`). Centralizzata
+  // 2026-09-02 alla 3a occorrenza: l'azione di riga e i due drawer che apre —
+  // e devono portare lo stesso segno, o chi ha cliccato non lo ritrova.
+  NUMERAZIONE: 'pi pi-hashtag',
+  // FAMIGLIA_DOCUMENTO: la regola che il registro applica. Ha una voce di
+  // navigazione (Amministrazione -> Famiglie di documento), quindi ripete la
+  // sua icona — `NAV_ICONS.FILE = pi pi-file` — per la stessa ragione di
+  // SOGGETTO e FATTURE: il drawer che si apre dev'essere riconoscibile come
+  // «quella li'», non come una funzione nuova.
+  // ⚠️ Il valore si RIPETE invece di importarlo: `NAV_ICONS` vive in
+  // `core/navigation.js` e importarlo qui legherebbe le costanti alla
+  // navigazione. E' la stessa scelta gia' fatta per SOGGETTO e FATTURE.
+  FAMIGLIA_DOCUMENTO: 'pi pi-file',
   RIGHE: 'pi pi-list',
   // FATTURE: la stessa icona della voce di navigazione (NAV_ICONS.FATTURE) —
   // le azioni di riga che PORTANO alla lista fatture devono essere

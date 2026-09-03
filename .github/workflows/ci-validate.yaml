@@ -35,6 +35,18 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 30
 
     env:
+      # ⚠️ Presidio percorsi (aggiunto 02-09-2026, Liquibase 5.0.4). Anticipa il
+      #   default che una major futura adottera'. PERIMETRO MISURATO, non
+      #   dedotto dalla documentazione: fallisce — ValidationFailedException,
+      #   exit 1, con nome del file e del changeSet — sui percorsi con `..`
+      #   risolti sulla RADICE del search path che da essa ESCONO.
+      #   ⛔ RAMO CIECO: i percorsi con `relativeToChangelogFile: true` NON
+      #   sono coperti dal flag, provato sia da argomento CLI sia da env. E'
+      #   la forma dei 192 seed di `80_data`, che infatti passano identici col
+      #   flag attivo (`calculate-checksum` = valore nel databasechangelog).
+      #   Quindi: impedisce che nasca la PRIMA forma, non copre la seconda.
+      LIQUIBASE_ALLOW_PARENT_DIRECTORY_REFERENCES: "false"
+
       # requirements runtime backend
       REQ_FILE: backbase.txt
 
@@ -102,7 +114,7 @@ jobs:
       - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v3.0.0
         with:
-          version: '5.0.3'
+          version: '5.0.4'
           edition: 'oss'
 
       - name: Install PostgreSQL driver for Liquibase 5
@@ -175,6 +187,84 @@ jobs:
         # mai, non quello chiuso nel punto sbagliato. Quello lo vede solo il
         # parser di PostgreSQL, cioe' il migrate qui sotto.
         run: python scripts/guardrail_sql_letterali.py
+
+      - name: Guardrail preCondition sul contenuto di 80_data
+        # ⚠️ POSIZIONE: prima del migrate, e per lo stesso motivo degli altri
+        # tre — il difetto che presidia UCCIDE il migrate, e scoprirlo dopo
+        # significa averlo gia' pagato.
+        #
+        # Cosa presidia: un changeSet di `00_schema`/`20_code` non puo'
+        # pretendere che una riga di seed esista gia'. Il changelog esegue
+        # 00_schema + 20_code, POI 80_data: la corsa che introduce la riga e'
+        # esattamente quella in cui la preCondition non la trova. Su un
+        # database di sviluppo la riga c'e' da settimane e il cancello passa;
+        # qui il database nasce vuoto a ogni build e il migrate muore con
+        # «SQL Precondition failed. Expected '1' got '0'».
+        #
+        # Perche' esiste: il 2026-09-02, ripartita la CI dopo giorni di fermo,
+        # il migrate si e' fermato su 20260820-12 — e dietro c'erano altre
+        # QUINDICI mine identiche gia' committate, una build ciascuna per
+        # scoprirle a mano.
+        #
+        # Restano leciti: `expectedResult: 0` (un DB vuoto lo soddisfa),
+        # `onFail` diverso da HALT (i backfill del pregresso), e tutte le
+        # preCondition sullo SCHEMA — tableExists, columnExists, pg_proc.
+        #
+        # Guida: docs/it/linee-guida-sql.md §11.4
+        run: python scripts/guardrail_precondition_seed.py
+
+      - name: Guardrail DDL su trigger generati da ci_apply
+        # ⚠️ POSIZIONE: prima del migrate, come gli altri quattro — il difetto
+        # che presidia uccide il migrate.
+        #
+        # Cosa presidia: i trigger di audit, tx_id e storico non li scrive
+        # nessun changeSet, li genera il framework delle automazioni con
+        # --contexts=ci_apply, cioe' la SECONDA invocazione di Liquibase (piu'
+        # sotto). Durante la prima passata una tabella appena creata non li ha
+        # ancora: un ALTER TRIGGER ... RENAME o un DROP TRIGGER senza IF EXISTS
+        # su quei nomi passa su un DB di sviluppo — dove esistono da settimane —
+        # e qui muore con «trigger ... does not exist».
+        #
+        # Perche' esiste: il 2026-09-02 il migrate si e' fermato su
+        # 20260822-25-rename-compensazioni-in-sistemazioni, che aveva il fatto
+        # scritto nella propria intestazione due paragrafi sopra il difetto.
+        # Sapere la regola non basta: mentre si scrive la rinomina si guarda il
+        # database che si ha davanti, e li' il trigger c'e'.
+        #
+        # Via d'uscita, e non e' una deroga: quell'istruzione va in un changeSet
+        # suo con onFail: MARK_RAN, perche' l'operazione e' davvero condizionale
+        # — su un DB nuovo le automazioni genereranno gia' il nome giusto.
+        #
+        # Guida: docs/it/linee-guida-sql.md §11.5
+        run: python scripts/guardrail_ddl_su_trigger_automazione.py
+
+      - name: Guardrail GRANT ai ruoli batch nei changeSet
+        # ⚠️ POSIZIONE: prima del migrate, per la stessa ragione degli altri.
+        #
+        # Cosa presidia: i ruoli batch headless hanno BYPASSRLS, che vuole
+        # superuser — Liquibase gira come `zeroerp` e non puo' crearli. Li crea
+        # provision_db_role_batch_*.sql come `postgres`, e ci.yaml lo lancia
+        # DOPO le migrazioni standard (deve concedere sul perimetro, e le
+        # tabelle del perimetro devono esistere). Quindi per tutto il migrate
+        # quel ruolo NON esiste, e un GRANT che lo nomina uccide la pipeline con
+        # «role "zeroerp_batch_fatturazione" does not exist».
+        #
+        # ⭐ Ed e' anche inutile: il provisioning fa GRANT SELECT/EXECUTE ON ALL
+        # ... IN SCHEMA sui 14 schemi applicativi piu' ALTER DEFAULT PRIVILEGES,
+        # quindi copre anche gli oggetti che nascono dopo.
+        #
+        # Perche' esiste: la regola era gia' scritta parola per parola nel
+        # changeSet 20260727-21, dopo lo stesso guasto del 2026-07-27. Nei 36
+        # giorni successivi sono stati scritti 39 GRANT in 20 changeSet che la
+        # violano — bonificati il 2026-09-02. Una regola in un commento la legge
+        # chi apre quel file; un cancello la legge per tutti.
+        #
+        # ⚠️ Il GRANT a `zeroerp_app` accanto RESTA: quello e' un ruolo che
+        # esiste durante il migrate, ed e' la riga da cui la sbagliata viene
+        # copiata — sono adiacenti e identiche tranne il nome del ruolo.
+        #
+        # Guida: docs/it/linee-guida-sql.md §11.6
+        run: python scripts/guardrail_grant_ruolo_batch.py
 
       - name: Generate Liquibase autogen master (timeline)
         run: |

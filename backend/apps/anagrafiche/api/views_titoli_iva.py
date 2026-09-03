@@ -17,15 +17,19 @@
 
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.anagrafiche.db.titoli_iva_repository import SFONDATI_ORDER_DEFAULT
 from apps.anagrafiche.services.titoli_iva_service import TitoliIvaService
+from apps.core.api.payload_validators import parse_list_params, qp_str
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 _AREA = "anagrafiche"
 # ⚠️ Stesso oggetto di permesso del soggetto: un titolo IVA e' un dato
@@ -41,6 +45,11 @@ _MODEL = ("anagrafiche", "soggetto")
 class SoggettoTitoliIvaView(DomainAPIView):
     """GET lista titoli IVA del soggetto, POST registra un titolo."""
     area_funzionale = _AREA
+    # ⭐ Cancello di perimetro emittente: `perimetro_emittente = t` a
+    #    catalogo (decisione D-3 del lotto 2, 2026-09-02) — vale
+    #    l'emittente dell'operatore, e la lista non si assume il compito
+    #    di dire da quale emittente arriva ogni riga.
+    lista_codice = "anagrafiche.soggetto_titoli_iva"
     model_permission = _MODEL
 
     @extend_schema(
@@ -51,9 +60,28 @@ class SoggettoTitoliIvaView(DomainAPIView):
     )
     # Scopo: Titoli IVA del soggetto. Ogni riga porta `residuo` (tetto meno
     #        imponibile gia' applicato) e `ambito_incompleto` (Q2).
+    # ⚠️ PAGINATA dal 2026-09-02, come ogni altra lista configurabile: bundle
+    #    standard `parse_list_params` per `limit`/`offset`/`order_by`.
+    # ⛔ `order_dir` NON viene da `parse_list_params`: quello normalizza
+    #    l'assenza a `"asc"` e non restituisce mai `None`, quindi il default
+    #    STORICO del repository (validita' piu' lunga per prima) non verrebbe
+    #    mai raggiunto — la lista si aprirebbe ordinata al contrario senza che
+    #    nessuno l'abbia chiesto. E' lo stesso difetto corretto sui sfondati.
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
-        results = TitoliIvaService().list_titoli_soggetto(soggetto_id)
-        return success_response({"results": results})
+        qp = request.query_params
+        p = parse_list_params(qp)
+        return success_response(TitoliIvaService().list_titoli_soggetto(
+            soggetto_id,
+            limit=p["limit"],
+            offset=p["offset"],
+            # ⛔ Il grezzo anche per `order_by`, non `p["order_by"]`: il bundle
+            #    ha un default suo (`"descrizione"`) che qui non e' una colonna
+            #    di niente. Passandolo, l'assenza di ordinamento arriverebbe al
+            #    repository come una richiesta — che lui scarta perche' fuori
+            #    whitelist, cioe' la cosa giusta per il motivo sbagliato.
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
 
     @extend_schema(
         request=inline_serializer(name="SoggettoTitoloIvaCreateReq", fields={
@@ -155,6 +183,15 @@ class SoggettoTitoliIvaDetailView(DomainAPIView):
 class SoggettoTitoloIvaAmbitiView(DomainAPIView):
     """GET righe di ambito, POST aggiunge una riga."""
     area_funzionale = _AREA
+    # ⭐ Cancello di perimetro emittente: la lista e' a catalogo (lotto 3,
+    #    2026-09-02), quindi la view deve dichiarare il suo `lista_codice` — e'
+    #    lui che aggancia `ui.fn_resolve_lista_config`, senza il quale la lista
+    #    non e' configurabile affatto.
+    # ⚠️ Il perimetro qui vale come sul PADRE (`anagrafiche.soggetto_titoli_iva`):
+    #    l'emittente e' quello dell'operatore. Se non lo fosse, il drawer del
+    #    titolo non si sarebbe nemmeno potuto aprire — la lista da cui si arriva
+    #    e' gia' passata dallo stesso cancello.
+    lista_codice = "anagrafiche.titolo_iva_ambiti"
     model_permission = _MODEL
 
     @extend_schema(
@@ -162,10 +199,15 @@ class SoggettoTitoloIvaAmbitiView(DomainAPIView):
             name="TitoloIvaAmbitiListResp", fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Righe di ambito del titolo.
+    # Scopo: Righe di ambito del titolo, con il conteggio accanto.
+    # ⚠️ NON paginata, e il `count` non e' per questo decorativo: la lista 64 si
+    #    monta `:paginata="false"`, dove `total` e' l'asserzione che le righe
+    #    consegnate siano TUTTE — il building block rifiuta di disegnare la
+    #    tabella se non coincide con quante ne ha ricevute.
     def get(self, request: Request, soggetto_id: str, titolo_id: int) -> JsonResponse:
-        results = TitoliIvaService().list_ambiti(soggetto_id, titolo_id)
-        return success_response({"results": results})
+        return success_response(
+            TitoliIvaService().list_ambiti(soggetto_id, titolo_id),
+        )
 
     @extend_schema(
         request=inline_serializer(name="TitoloIvaAmbitoCreateReq", fields={
@@ -213,6 +255,10 @@ class SoggettoTitoloIvaAmbitoDetailView(DomainAPIView):
 class SoggettoTitoloIvaMovimentiView(DomainAPIView):
     """GET registro movimenti, POST registra una FORZATURA manuale."""
     area_funzionale = _AREA
+    # ⭐ Cancello di perimetro emittente, stessa ragione degli ambiti qui sopra
+    #    (lotto 3, 2026-09-02): senza `lista_codice` la lista non e'
+    #    configurabile affatto, e il perimetro vale come sul padre.
+    lista_codice = "anagrafiche.titolo_iva_movimenti"
     model_permission = _MODEL
 
     @extend_schema(
@@ -221,9 +267,22 @@ class SoggettoTitoloIvaMovimentiView(DomainAPIView):
         )},
     )
     # Scopo: Il registro del titolo: fatture, note di credito e forzature.
+    # ⚠️ PAGINATO (lista 65): il registro cresce a ogni fattura.
+    # ⛔ `order_by`/`order_dir` si leggono GREZZI (`qp_str`), non da
+    #    `parse_list_params`: quello normalizza l'assenza a `"asc"` e ha un
+    #    default suo (`"descrizione"`) che qui non e' una colonna di niente —
+    #    e il default vero del repository e' «il piu' recente per primo», che
+    #    non verrebbe mai raggiunto.
     def get(self, request: Request, soggetto_id: str, titolo_id: int) -> JsonResponse:
-        results = TitoliIvaService().list_movimenti(soggetto_id, titolo_id)
-        return success_response({"results": results})
+        qp = request.query_params
+        p = parse_list_params(qp)
+        return success_response(TitoliIvaService().list_movimenti(
+            soggetto_id, titolo_id,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
 
     @extend_schema(
         request=inline_serializer(name="TitoloIvaForzaturaCreateReq", fields={
@@ -286,6 +345,11 @@ class SoggettoTitoloIvaMovimentoAnnullaView(DomainAPIView):
 class TitoliIvaSfondatiView(DomainAPIView):
     """GET i titoli il cui consumo ha superato il tetto."""
     area_funzionale = _AREA
+    # ⭐ Cancello di perimetro emittente: `perimetro_emittente = t` a
+    #    catalogo (decisione D-3 del lotto 2, 2026-09-02) — vale
+    #    l'emittente dell'operatore, e la lista non si assume il compito
+    #    di dire da quale emittente arriva ogni riga.
+    lista_codice = "anagrafiche.titoli_iva_sfondati"
     model_permission = _MODEL
 
     @extend_schema(
@@ -298,6 +362,76 @@ class TitoliIvaSfondatiView(DomainAPIView):
     #    forzature: «una forzatura esiste per registrare fatturazioni fuori dal
     #    sistema, e impedire di scriverla impedirebbe di accorgersene». Questa
     #    lista e' l'altra meta' di quella decisione.
+    # ⚠️ PAGINATA: `limit`/`offset`/`order_by`/`order_dir` dal query string, con
+    #    il bundle standard `parse_list_params`. L'ordinamento di default resta
+    #    l'eccedenza decrescente — su un presidio l'ordine non e' una preferenza.
     def get(self, request: Request) -> JsonResponse:
-        results = TitoliIvaService().list_titoli_sfondati()
-        return success_response({"results": results})
+        qp = request.query_params
+        p = parse_list_params(qp, default_order=SFONDATI_ORDER_DEFAULT)
+        dati = TitoliIvaService().list_titoli_sfondati(
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            # ⛔ NON `p["order_dir"]`, ed e' un difetto che ho scritto e corretto
+            #    il 2026-09-02: `parse_list_params` normalizza l'assenza a
+            #    `"asc"` e non restituisce mai `None`, quindi il `default_desc`
+            #    del repository non veniva MAI raggiunto. Effetto: la lista di
+            #    presidio si sarebbe ordinata per eccedenza CRESCENTE — il caso
+            #    piu' grave in ultima pagina, su una schermata che esiste per
+            #    metterlo davanti. Nessun errore, solo l'ordine al contrario.
+            # ⭐ Il valore grezzo (`None` se il client non chiede) e' il pattern
+            #    gia' in uso in `pagamenti` per tutte le liste a default DESC.
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return success_response(dati)
+
+
+# =================================================================
+# Export della lista dei titoli del soggetto (DEF-1)
+# =================================================================
+
+class SoggettoTitoliIvaExportView(DomainAPIView):
+    """GET esporta in CSV/XLSX i titoli IVA del soggetto."""
+    area_funzionale = _AREA
+    # ⭐ Stesso `lista_codice` della lista a video, ed e' il punto dell'export
+    #    configurabile: le colonne del file sono quelle che l'operatore VEDE
+    #    (preferenza + preset + permessi), non un elenco cablato qui che
+    #    diverge alla prima colonna aggiunta a catalogo.
+    lista_codice = "anagrafiche.soggetto_titoli_iva"
+    model_permission = _MODEL
+
+    @extend_schema(
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Il file della lista dei titoli di UN soggetto.
+    # ⚠️ `limit=EXPORT_MAX_ROWS + 1` e non la pagina a video: l'export esporta
+    #    il DATASET, non la pagina. Il `+1` serve al guard di
+    #    `build_export_response`, che rifiuta PRIMA di serializzare invece di
+    #    consegnare un file troncato in silenzio.
+    # ⚠️ `?formato=`, non `?format=`: quest'ultimo e' un parametro magico di DRF
+    #    e collide col content negotiation (`feedback_drf_format_magic_param`).
+    def get(self, request: Request, soggetto_id: str) -> HttpResponse:
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        dati = TitoliIvaService().list_titoli_soggetto(
+            soggetto_id,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+        )
+        return build_export_response(
+            request,
+            lista_codice=self.lista_codice,
+            results=dati["results"],
+            total=dati["count"],
+            # ⛔ Nessun filtro da dichiarare: questa lista non ne ha — il
+            #    soggetto e' nel path, non e' una scelta dell'operatore. Un
+            #    `{"soggetto": ...}` scritto qui sarebbe un filtro inventato
+            #    nell'intestazione del file.
+            filtri_applicati=None,
+            fmt=fmt,
+        )

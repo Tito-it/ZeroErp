@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VISTA ESPONE ANCHE IL NOME FISICO DELLA STORICO
+#   script.vw_audit_sources  +  storico_table
+#   Brief: brief-db-audit-sources-storico-che-non-nasce-piu (richiesta C)
+#
+# ── ⛔ IL DIFETTO, E PERCHE' NON E' UN CAPRICCIO DEL BACKEND ──────────
+#
+#   Il nome della tabella storico oggi si deduce in DUE modi, da due posti che
+#   non si parlano:
+#
+#     * `script.fn_audit_summary` legge `storico_table` — la colonna che esiste
+#       apposta, e che il changeSet 20260429-06 dichiarava «tecnica»;
+#     * il backend concatena `code`: `f"FROM storico.{code}"`.
+#
+#   ⭐ E il backend non puo' fare di meglio: questa vista espone soltanto
+#   (code, label_key, area_funzionale), quindi dallo strato pubblico il nome
+#   fisico NON e' raggiungibile. La deduzione sbagliata non e' una svista, e'
+#   l'unica disponibile.
+#
+#   ⚠️ PERCHE' LA CONFUSIONE DURA: `code` non e' solo un'etichetta — e' anche
+#   la colonna di ordinamento (`AUDIT_ORDER_COLUMNS["tabella"]`) e il filtro
+#   `?tabella=` dell'API, cioe' fa gia' da identita' logica. Finche' identita'
+#   logica e nome fisico coincidono, usarla per il `FROM` sembra funzionare. Il
+#   giorno in cui una storico viene rinominata i due si separano, e la
+#   separazione non produce un avviso: produce un errore a valle, su un
+#   database che qualcun altro ha ricostruito.
+#
+# ── ⭐ COSA HA FATTO EMERGERE IL DIFETTO ─────────────────────────────
+#
+#   `anagrafiche.risorse_umane_auth_user` e' diventata una VISTA (la tabella e'
+#   `anagrafiche._legacy_risorse_umane_auth_user`, changeSet 20260429-19a).
+#   Su un database ricostruito l'automazione dello storico lavora sulle
+#   TABELLE, quindi nasce `storico._legacy_risorse_umane_auth_user` e NON
+#   `storico.risorse_umane_auth_user`. La CI e' andata rossa; il database di
+#   sviluppo no, perche' si porta dietro la vecchia dalla propria storia.
+#
+#   ⛔ QUESTO CHANGESET NON E' LA CURA DI QUEL ROSSO, e conviene dirlo forte
+#   perche' sembra di si': il valore scritto nella riga 5 era
+#   `storico.risorse_umane_auth_user`, quindi un backend che leggesse
+#   `storico_table` invece di `code` avrebbe costruito ESATTAMENTE lo stesso
+#   nome e fallito identico. Il rosso l'ha spento la riga di CSV
+#   (`attivo = f`); qui si toglie la TRAPPOLA, cioe' si fa in modo che la
+#   prossima rinomina non ripeta la storia.
+#
+# ── ⭐ `CREATE OR REPLACE` E NON `DROP` + `CREATE`, ED E' UNA SCELTA ──
+#
+#   ⛔ Un `DROP VIEW` porterebbe via i GRANT insieme alla vista. Misurato sul
+#   `relacl` del 2026-09-02: `zeroerp_app=arwd/titodb` e
+#   `zeroerp_batch_fatturazione=r/titodb`. Ricrearla senza ri-concederli
+#   lascerebbe l'applicazione senza accesso al drawer di audit — e nessun
+#   changeSet qui li ri-concede, perche' non e' questo il posto.
+#   ⇒ `CREATE OR REPLACE` conserva l'oggetto, quindi conserva i privilegi.
+#
+#   ⚠️ CONSEGUENZA SULLA FORMA: `CREATE OR REPLACE VIEW` puo' solo AGGIUNGERE
+#   colonne IN CODA — non rinominarle, non riordinarle, non toglierne. Percio'
+#   `storico_table` va per ultima e le prime tre restano dove sono, nell'ordine
+#   in cui sono. Metterla in mezzo darebbe «cannot change name of view column».
+#
+#   ℹ️ Nessun `security_invoker` da preservare: `reloptions` e' NULL su questa
+#   vista (verificato il 2026-09-02). Se un giorno lo si accende, questo e' il
+#   punto in cui va rimesso — un `CREATE OR REPLACE` non lo eredita da solo.
+#
+# ── ⭐ ADDITIVO PER COSTRUZIONE ──────────────────────────────────────
+#
+#   Il consumatore attuale seleziona le colonne per nome
+#   (`SELECT code, label_key, area_funzionale FROM script.vw_audit_sources`,
+#   `amm_software_repository`), non `SELECT *` ne' per posizione: la quarta
+#   colonna non lo tocca finche' non decide di leggerla.
+#   ⚠️ Il pgTAP `test-audit-sources-seed.sql` §7 invece asserisce il set ESATTO
+#   delle colonne, ed e' aggiornato nello stesso giro: un presidio sulla forma
+#   deve cambiare INSIEME alla forma, o e' solo un ostacolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260902-11-update-vw-audit-sources-espone-storico-table-mctit.yaml
+
+  - changeSet:
+      id: 20260902-11-update-vw-audit-sources-espone-storico-table
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.vw_audit_sources espone anche storico_table, il nome FISICO della tabella di storico.
+        ⛔ Serve perche'' il backend il nome se lo costruiva concatenando `code`, che e'' l''identita''
+        LOGICA: finche'' i due coincidono sembra funzionare, e alla prima rinomina di una storico si
+        separano senza nessun avviso — e'' cosi'' che la CI e'' andata rossa su
+        storico.risorse_umane_auth_user. ⭐ Dallo strato pubblico il nome fisico non era raggiungibile,
+        quindi quella deduzione sbagliata era l''unica disponibile. ⭐ CREATE OR REPLACE e non DROP:
+        un DROP porterebbe via i GRANT (zeroerp_app, zeroerp_batch_fatturazione) e nessuno qui li
+        ri-concede; percio'' la colonna nuova va IN CODA, che e'' l''unica cosa che REPLACE consente.
+        Additivo: il consumatore seleziona per nome. Brief:
+        brief-db-audit-sources-storico-che-non-nasce-piu, richiesta C.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: audit_sources
+            - columnExists:
+                schemaName: dbops
+                tableName: audit_sources
+                columnName: storico_table
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ `storico_table` IN CODA e le prime tre INVARIATE: e' l'unica
+              --   forma che `CREATE OR REPLACE VIEW` accetta, e la ragione per
+              --   cui si usa REPLACE e' che un DROP porterebbe via i grant.
+              CREATE OR REPLACE VIEW script.vw_audit_sources AS
+              SELECT
+                  code,
+                  label_key,
+                  area_funzionale,
+                  storico_table
+                FROM dbops.audit_sources
+               WHERE attivo = true
+               ORDER BY code;
+
+              COMMENT ON VIEW script.vw_audit_sources IS
+                  'Vista pubblica delle storico audit-abili dal drawer admin. Espone (code, label_key, area_funzionale, storico_table). ⭐ `storico_table` e'' entrata il 2026-09-02 e prima non c''era: il backend il nome fisico se lo costruiva concatenando `code`, che e'' l''identita'' LOGICA della sorgente (ci ordina e ci filtra l''API). Finche'' i due coincidono la scorciatoia sembra funzionare; alla prima storico rinominata si separano, e la separazione non da'' un avviso — da'' un errore a valle su un database ricostruito, che e'' esattamente cio'' che e'' successo con storico.risorse_umane_auth_user quando la sua madre e'' diventata una vista. ⚠️ Chi costruisce un `FROM` dinamico deve leggere QUESTA colonna, mai `code`. ⛔ E chi modifica questa vista usi `CREATE OR REPLACE`: un DROP porterebbe via i GRANT di zeroerp_app e zeroerp_batch_fatturazione, e nessun changeSet li ri-concede.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ QUI IL `DROP` E' OBBLIGATO, ed e' l'esatto specchio della
+              --   ragione per cui in andata NON si usa: `CREATE OR REPLACE
+              --   VIEW` sa solo AGGIUNGERE colonne in coda, non toglierne —
+              --   un REPLACE a tre colonne fallirebbe con «cannot drop
+              --   columns from view». Tornare indietro costa quindi la
+              --   distruzione dell'oggetto.
+              -- ⚠️ E il DROP porta via i GRANT: quello di `zeroerp_app` va
+              --   ri-concesso QUI, o il rollback lascerebbe l'applicazione
+              --   senza accesso al drawer di audit.
+              -- ⛔ Quello di `zeroerp_batch_fatturazione` NO, e non e' una
+              --   dimenticanza: in CI il ruolo batch non esiste ancora quando
+              --   girano le migrazioni — lo provisiona `postgres` dopo — e
+              --   nominarlo qui farebbe morire il migrate con «role does not
+              --   exist». Il privilegio glielo ridara'
+              --   `scripts/sql/provision_db_role_batch_<job>.sql`, che concede
+              --   su ALL IN SCHEMA piu' ALTER DEFAULT PRIVILEGES e quindi
+              --   copre anche gli oggetti nati dopo (linee-guida-sql §11.6,
+              --   presidiato da scripts/guardrail_grant_ruolo_batch.py).
+              DROP VIEW IF EXISTS script.vw_audit_sources;
+
+              CREATE VIEW script.vw_audit_sources AS
+              SELECT
+                  code,
+                  label_key,
+                  area_funzionale
+                FROM dbops.audit_sources
+               WHERE attivo = true
+               ORDER BY code;
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON script.vw_audit_sources TO zeroerp_app;

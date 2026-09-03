@@ -69,23 +69,60 @@ const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const {
-  isAdminMode, currentEmittente, emittentiOptions, emittentiError, loadOptions,
+  isAdminMode, currentEmittente, opzioneSessione, emittentiOptions,
+  emittentiError, loadOptions,
 } = useEmittenteFiscaleField()
 
 const isEdit = computed(() => props.canaleId != null)
 
-// ── il filtro dell'emittente: sceglie QUALI conti si vedono ────────
-// ⚠️ Per l'operatore non e' una scelta: e' il suo perimetro. Per l'admin
-//    globale lo e', ed e' l'unico modo che ha di configurare il canale di una
-//    delle due partite IVA senza vedere i conti dell'altra.
+// ── il perimetro dell'emittente: decide QUALI conti si vedono ──────
+// ⛔ NON E' PIU' UNA SCELTA, NEMMENO PER L'ADMIN (decisione di Tid,
+//    2026-09-02). Prima il super admin aveva qui una combo editabile: poteva
+//    configurare il canale di una partita IVA mentre la sessione ne stava
+//    guardando un'altra — due verita' sullo stesso perimetro, e la seconda
+//    invisibile a chi guarda la topbar. L'emittente di lavoro si sceglie una
+//    volta per sessione: qui si MOSTRA, come si e' sempre fatto con
+//    l'operatore.
 const soggettoRuoloEmittente = ref(null)
 
-// ⚠️ Le opzioni senza `soggetto_ruolo_id` si scartano: senza quel valore la
-//    tendina dei conti non si puo' nemmeno chiedere, e proporle darebbe una
-//    voce che non fa niente.
-const opzioniEmittente = computed(() =>
-  (emittentiOptions.value || []).filter((e) => e.soggetto_ruolo_id != null),
+// Il SOGGETTO-RUOLO dell'emittente di sessione — che e' la chiave con cui si
+// chiedono i conti, non la PK.
+// ⛔ Due famiglie di id nella stessa riga, e scambiarle non solleva niente:
+//    filtra su numeri che non corrispondono e l'elenco dei conti esce vuoto
+//    (`feedback_emittente_pk_vs_soggetto_ruolo`). `auth` conosce la PK della
+//    sessione; il soggetto-ruolo lo porta il lookup, che qui e' gia' caricato.
+// ⚠️ Per l'operatore la risposta e' nel profilo e non costa niente; per il
+//    super admin va risolta dall'elenco, e finche' non e' arrivato resta
+//    `null` — cioe' i conti non si chiedono con una chiave sbagliata.
+const soggettoRuoloSessione = computed(
+  () => currentEmittente.value?.soggettoRuoloId
+    ?? opzioneSessione.value?.soggetto_ruolo_id
+    ?? null,
 )
+
+// L'etichetta di CIO' CHE E' IN GIOCO, cioe' di `soggettoRuoloEmittente`.
+// ⛔ NON dell'emittente di sessione, ed e' un difetto che ho scritto e corretto
+//    nella stessa passata: in MODIFICA quel ref porta l'emittente DEL CANALE
+//    (derivato dal conto), che non e' detto sia quello della sessione. Con
+//    l'etichetta presa dalla sessione la riga avrebbe mostrato un nome e
+//    filtrato i conti di un altro — due verita' nello stesso campo, e quella
+//    sbagliata e' la sola che si legge.
+// ⚠️ Una sorgente sola per il valore e per il nome: se il nome non si trova si
+//    lascia vuoto, non si ripiega su un altro emittente.
+const emittenteMostratoLabel = computed(() => {
+  const sr = soggettoRuoloEmittente.value
+  if (sr == null) return ''
+  if (currentEmittente.value?.soggettoRuoloId === sr) {
+    return currentEmittente.value.ragioneSociale
+  }
+  // ⚠️ Si cerca PER soggetto-ruolo, quindi le righe che non ce l'hanno non
+  //    possono corrispondere: il filtro preventivo che stava qui e' caduto
+  //    con la combo che lo motivava — scartava voci «non proponibili» in un
+  //    elenco che non si propone piu' a nessuno.
+  const trovato = (emittentiOptions.value || [])
+    .find((e) => e.soggetto_ruolo_id === sr)
+  return trovato ? formatEmittenteOptionLabel(trovato) : ''
+})
 
 // ⛔ Tre casi, non due: conti presenti · nessun conto di incasso · non letti.
 //    L'ultimo NON si spaccia per il secondo — «questo emittente non ha conti»
@@ -238,15 +275,13 @@ watch(() => [props.visible, props.canaleId], async ([vis]) => {
   soggettoPspObj.value = null
   azzeraConti()
 
+  // ⚠️ Per l'admin l'elenco si carica lo stesso, ma per un altro motivo di
+  //    prima: non per farlo scegliere: per tradurre la PK della sessione nel
+  //    soggetto-ruolo (e in un nome). L'operatore ha entrambi nel profilo.
   if (isAdminMode.value) {
-    // L'admin globale sceglie: l'elenco degli emittenti gli serve davvero.
     await loadOptions().catch(() => { /* il toast lo alza l'interceptor */ })
-    soggettoRuoloEmittente.value = null
-  } else {
-    // ⭐ L'operatore non sceglie: il suo emittente e' un permesso, e il campo
-    //    esiste solo per dirgli su quale perimetro sta configurando.
-    soggettoRuoloEmittente.value = currentEmittente.value?.soggettoRuoloId ?? null
   }
+  soggettoRuoloEmittente.value = soggettoRuoloSessione.value
 
   if (!props.canaleId) return
   const dati = await execute(() => getEnteIncasso(props.canaleId))
@@ -382,32 +417,27 @@ async function onSave() {
 
       <div class="form-field">
         <label>{{ t('pagamenti.canali.campo_emittente') }}</label>
-        <Select
-          v-if="isAdminMode"
-          v-model="soggettoRuoloEmittente"
-          :options="opzioniEmittente"
-          option-value="soggetto_ruolo_id"
-          :option-label="formatEmittenteOptionLabel"
-          :placeholder="t('pagamenti.canali.campo_emittente_placeholder')"
-          :disabled="isReadonly"
-          filter
-        />
+        <!-- ⚠️ Nessuno sceglie qui: si mostra il perimetro e si dice DA DOVE
+             viene — un campo bloccato senza motivo si legge come un difetto. -->
+        <span>{{ emittenteMostratoLabel || '—' }}</span>
+        <!-- ⚠️ Tre didascalie, perche' sono tre provenienze diverse e una sola
+             frase ne mentirebbe due: in modifica l'emittente lo DERIVA il conto
+             del canale, in creazione e' la sessione (admin) o il permesso
+             (operatore). -->
+        <small class="app-text-muted">
+          {{ isEdit
+            ? t('pagamenti.canali.emittente_dal_conto')
+            : (isAdminMode
+              ? t('pagamenti.canali.emittente_dalla_sessione')
+              : t('pagamenti.canali.emittente_dal_permesso')) }}
+        </small>
         <!-- ⛔ Un elenco emittenti non letto NON e' «nessun emittente»: senza
-             questa riga la tendina resterebbe vuota, quella dei conti
+             questa riga il nome resterebbe vuoto, la tendina dei conti
              disabilitata, e non ci sarebbe niente a video che spieghi perche'
              il form non si puo' compilare. -->
         <Message v-if="isAdminMode && emittentiError" severity="warn" :closable="false" size="small">
           {{ t('pagamenti.canali.emittenti_non_letti') }}
         </Message>
-        <!-- ⚠️ L'operatore non sceglie: si mostra il suo perimetro, e si dice
-             che e' un permesso — un campo bloccato senza motivo si legge come
-             un difetto. -->
-        <template v-else>
-          <span>{{ currentEmittente?.ragioneSociale || '—' }}</span>
-          <small class="app-text-muted">
-            {{ t('pagamenti.canali.emittente_dal_permesso') }}
-          </small>
-        </template>
       </div>
 
       <div class="form-field">

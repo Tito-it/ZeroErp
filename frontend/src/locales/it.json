@@ -238,6 +238,7 @@
       "profili-reparto": "Profili Reparto",
       "permessi": "Permessi",
       "emittenti-fiscali": "Emittenti Fiscali",
+      "famiglie-documento": "Famiglie di documento",
       "matrici": "Matrici",
       "matrice-utilities-ruoli": "Matrice Utilities/Ruoli",
       "matrice-indirizzi-ruoli": "Matrice Indirizzi/Ruoli",
@@ -255,7 +256,7 @@
       "clienti": "Clienti",
       "fornitori": "Fornitori",
       "indirizzi": "Indirizzi",
-      "titoli-iva-sfondati": "Titoli IVA sfondati"
+      "titoli-iva-sfondati": "Titoli IVA eccedenti"
     },
     "config": {
       "tabelle": "Tabelle",
@@ -669,14 +670,93 @@
     "filtered_by": "Risultati filtrati per: {name}"
   },
   "amministrazione": {
+    "registri_numerazione": {
+      "slot_occupato": "slot già occupato",
+      "help": "I registri di numerazione di questo emittente: uno per famiglia di documento (DDT, ordini, commesse, resi) e piu' d'uno per le fatture. Qui si governa la FORMA del numero — prefisso, suffisso e quante cifre — che e' l'unico posto in cui si puo' cambiare.",
+      "filtro_placeholder": "Cerca per codice, descrizione o prefisso",
+      "nuovo_tooltip": "Nuovo registro di numerazione",
+      "vuota": "Nessun registro di numerazione per questo emittente.",
+      "stato_tutti": "Tutti",
+      "stato_attivi": "Solo attivi",
+      "stato_disattivati": "Solo disattivati",
+      "disattiva": "Disattiva",
+      "disattiva_confirm": "Disattivare il registro {codice}? Il sezionale resta e continua a occupare il suo slot: non potra' essere sostituito da uno nuovo sulla stessa combinazione, ma solo riattivato.",
+      "disattivato": "Registro disattivato.",
+      "riattiva": "Riattiva",
+      "riattiva_confirm": "Riattivare il registro {codice}?",
+      "riattivato": "Registro riattivato.",
+      "salvato": "Registro salvato.",
+      "drawer_lista_title": "Registri di numerazione",
+      "drawer_title_new": "Nuovo registro di numerazione",
+      "drawer_title_edit": "Registro di numerazione",
+      "sezione_forma": "Forma del numero",
+      "sezione_limiti": "Limiti di emissione",
+      "sezione_contatori": "Contatori",
+      "anteprima": "Anteprima",
+      "anteprima_hint": "Com'e' fatto il primo numero che uscira' da questo registro.",
+      "serie_hint": "La serie del contatore. Non si modifica da qui: cambiarla su un registro vivo sposta il sezionale.",
+      "politica_data": "Politica data documento",
+      "politica_oggi": "Data di oggi",
+      "politica_fine_mese_competenza": "Fine mese di competenza",
+      "limite_giorni": "Limite emissione (giorni)",
+      "limite_giorno_mese": "Limite emissione (giorno del mese)",
+      "col_anno": "Anno",
+      "col_ultimo_numero": "Ultimo numero",
+      "col_ultima_data": "Ultima data"
+    },
+    "famiglie_documento": {
+      "new": "Nuova famiglia",
+      "search_placeholder": "Cerca per codice, descrizione o prefisso",
+      "drawer_title_new": "Nuova famiglia di documento",
+      "drawer_title_edit": "Famiglia di documento",
+      "sezione_dove_vive": "Dove vive il documento",
+      "sezione_forma": "Forma con cui nascono i registri",
+      "sezione_stato": "Stato",
+      "schema_tabella": "Schema",
+      "nome_tabella": "Tabella",
+      "codice_immutabile": "Il codice non si cambia: è il bersaglio del riferimento dei registri, e cambiarlo li staccherebbe tutti.",
+      "serie_hint": "Vuota = questa famiglia non gestisce le serie. Se la compili, quella colonna deve distinguere il numero anche sul documento.",
+      "registri_totali": "Registri, su tutti gli emittenti",
+      "registri_hint": "Il conteggio è su tutti gli emittenti a sistema, non su uno solo: una famiglia è globale, e i suoi registri nascono su ognuno. È anche il motivo per cui le colonne qui sopra non si cambiano più.",
+      "forma_hint": "Sono i valori con cui nasce un nuovo registro di questa famiglia: quello che crei a mano e quello che il sistema crea da sé devono avere la stessa forma del numero.",
+      "ammette_regole_fiscali": "Ammette le regole fiscali",
+      "fiscali_hint": "Solo la fattura ammette i limiti di emissione e una politica data non neutra: una famiglia creata da qui nasce senza, ed è un limite del modello, non della maschera.",
+      "presidia_hint": "Se vera, un documento non prende un numero quando la sua data è anteriore a quella dell'ultimo già numerato sullo stesso sezionale. ⚠️ È una domanda diversa da quella qui sotto, anche quando la risposta coincide.",
+      "attivi_suffisso": "attivi",
+      "serie_assente": "non gestita",
+      "serie_tutte": "Serie: tutte",
+      "serie_si": "Con serie",
+      "serie_no": "Senza serie",
+      "action_disattiva": "Disattiva",
+      "action_attiva": "Riattiva",
+      "conferma_disattiva": "Disattivare la famiglia {codice}? Esce dai presidi che la iterano, e i suoi documenti smettono di trattenere il cliente dove sono stati numerati.",
+      "conferma_attiva": "Riattivare la famiglia {codice}?",
+      "stato_aggiornato": "Stato della famiglia aggiornato.",
+      "salvata": "Famiglia di documento salvata.",
+      "salvata_con_registri": "Famiglia creata, e con lei {registri} registri di numerazione sugli emittenti che non ne avevano uno.",
+      "disattiva_blocco": {
+        "ha_registri_attivi": "La famiglia {codice_interno} ha ancora {registri} registri di numerazione accesi: si spengono prima quelli. Una famiglia spenta esce dai presidi che la iterano, e i suoi registri resterebbero a numerare senza piu' nessuno che li guardi.",
+        "ha_documenti_numerati": "La famiglia {codice_interno} ha gia' {documenti} documenti numerati in {tabella}: spegnerla li farebbe uscire dal presidio sul cambio emittente del cliente, e quei documenti smetterebbero di trattenere il cliente dove sono stati numerati. I numeri gia' usciti non si disfano."
+      },
+      "struttura_blocco": {
+        "ha_registri": "Le colonne che dicono dove vive il documento non si cambiano: {registri} registri di numerazione portano gia' dentro di se' i default della famiglia {codice_interno}. Si cambia prima cio' che dipende da loro, o si crea una famiglia nuova."
+      }
+    },
     "registri_fatturazione": {
       "disattiva_blocco": {
+        "ha_commesse": "Il registro {codice} ha già numerato {quante} commesse: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati. E una commessa non si cancella, quindi da qui in avanti questo registro non si spegne più.",
         "ha_fatture": "Il registro {codice} ha gia' emesso {quante} fatture: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_progressivi": "Il registro {codice} ha {quante} contatori ancora attivi: finche' un contatore e' vivo il registro puo' numerare, e spegnerlo interromperebbe la sequenza. Si spengono prima i contatori.",
         "ha_mapping_tipo_doc": "Il registro {codice} e' assegnato a {quante} tipi di documento: si toglie prima l'assegnazione, altrimenti quei documenti non troverebbero piu' un registro dove nascere.",
         "ha_ordini": "Il registro {codice} ha gia' numerato {quante} ordini: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_ddt": "Il registro {codice} ha gia' numerato {quante} DDT: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati.",
         "ha_resi": "Il registro {codice} ha gia' numerato {quante} resi: disattivarlo lascerebbe quei documenti senza il registro che li ha numerati."
+      },
+      "forma_blocco": {
+        "ha_numerato": "Il registro {codice} ha gia' consegnato dei numeri (ultimo: {ultimo_numero}): la forma del numero non si puo' piu' cambiare. Il contatore non riparte quando cambia la forma, prosegue — quindi sullo stesso sezionale convivrebbero due forme con numeri consecutivi."
+      },
+      "serie_blocco": {
+        "non_gestita": "I documenti della famiglia {famiglia_documento} non registrano la serie da nessuna parte: dare a questo registro la serie {serie} aprirebbe un contatore nuovo, che ripartirebbe da 1 su numeri gia' emessi — e il documento non si numererebbe piu'. La serie si usa solo dove il documento la porta in colonna."
       }
     },
     "matrici": {
@@ -1123,6 +1203,7 @@
       "col_regime_fiscale": "Regime fiscale",
       "action_ba": "Gestisci billing account",
       "action_utilities": "Gestisci utilities",
+      "action_registri": "Registri di numerazione",
       "ba_help": "Mappa l'emittente a uno o piu' billing account specifici, oppure crea il default globale (uno solo per istanza).",
       "ba_search_placeholder": "Cerca billing account...",
       "ba_add_specific": "Aggiungi BA",
@@ -2227,6 +2308,20 @@
       }
     },
     "famiglie_documento": {
+      "col_codice_interno": "Codice",
+      "col_descrizione": "Descrizione",
+      "col_tabella_documento": "Tabella",
+      "col_colonna_numero": "Colonna del numero",
+      "col_colonna_serie": "Colonna della serie",
+      "col_colonna_billing_account": "Colonna del cliente",
+      "col_gestisce_serie": "Gestisce le serie",
+      "col_presidia_data_documento": "Presidia la data",
+      "col_prefisso_default": "Prefisso di nascita",
+      "col_lunghezza_default": "Cifre di nascita",
+      "col_n_registri": "Registri a sistema",
+      "col_n_registri_attivi": "Attivi a sistema",
+      "col_attivo": "Attiva",
+      "col_data_insert": "Creazione",
       "FATTURA": "Fatture",
       "DDT": "DDT",
       "ORDINE": "Ordini",
@@ -3428,6 +3523,18 @@
       "col_tenuti": "Tenuti",
       "col_fatturati": "Fatturati"
     },
+    "registri_numerazione": {
+      "col_codice": "Codice",
+      "col_descrizione": "Descrizione",
+      "col_famiglia_descrizione": "Famiglia",
+      "col_utility_codice": "Utility",
+      "col_prefisso": "Prefisso",
+      "col_suffisso": "Suffisso",
+      "col_lunghezza_numero": "Cifre",
+      "col_serie_default": "Serie",
+      "col_attivo": "Attivo",
+      "col_data_insert": "Creazione"
+    },
     "resi_da_riconsegnare": {
       "col_numero": "Numero",
       "col_data": "Data",
@@ -3782,6 +3889,7 @@
     "canali": {
       "nuovo": "Nuovo canale",
       "filtro_tipo": "Tipo di canale",
+      "filtro_tipo_tutti": "Tutti",
       "nessun_canale": "Nessun canale di incasso configurato: finché non ce n'è uno, il denaro che arriva prima della fattura non ha un perimetro.",
       "titolo_nuovo": "Nuovo canale di incasso",
       "titolo_modifica": "Canale di incasso",
@@ -3804,8 +3912,9 @@
       "tipo_psp": "PSP",
       "tipo_altro": "Altro",
       "campo_emittente": "Emittente",
-      "campo_emittente_placeholder": "Scegli l'emittente",
       "emittente_dal_permesso": "È il tuo perimetro: serve a mostrare i conti giusti, e non viene salvato sul canale.",
+      "emittente_dal_conto": "Derivato dal conto del canale.",
+      "emittente_dalla_sessione": "Emittente di lavoro della sessione (si cambia dalla barra in alto).",
       "campo_conto": "Conto di incasso",
       "campo_conto_placeholder": "Scegli il conto su cui atterra il denaro",
       "conto_senza_iban": "Senza IBAN",
@@ -4412,7 +4521,9 @@
     "export_success": "Esportazione completata",
     "preset_aggiornato_messaggio": "La configurazione di questa lista è stata aggiornata da un amministratore. Le novità non sono ancora visibili nella tua vista personale.",
     "preset_aggiornato_vedi_novita": "Vedi novità",
-    "preset_aggiornato_ignora": "Ignora"
+    "preset_aggiornato_ignora": "Ignora",
+    "troncamento_titolo": "Elenco incompleto — non visualizzato",
+    "troncamento_testo": "La lista è configurata come non paginata, ma sono arrivate {righe} righe su {total}. Mostrarle farebbe passare una parte per il tutto, quindi la tabella non viene disegnata. Segnalare l'anomalia: il dettaglio è nella console del browser."
   },
   "export_dialog": {
     "title": "Esporta lista",
@@ -4621,7 +4732,6 @@
       "ambito_rimosso": "Merce tolta dall'ambito",
       "ambito_ristretto": "Solo alcune merci",
       "ambito_tutto": "Tutte le merci",
-      "ambito_vuoto": "Nessuna merce indicata.",
       "annulla_movimento": "Annulla movimento",
       "annullo_blocco": {
         "e_un_annullo": "È già un annullo, e un annullo non si annulla: se la forzatura serve ancora, se ne registra una nuova con il suo motivo.",
@@ -4675,7 +4785,6 @@
       "mov_nota_credito": "Nota di credito",
       "movimento_annullato": "Movimento annullato",
       "registra_forzatura": "Registra la rettifica",
-      "registro_vuoto": "Nessun movimento registrato.",
       "section_ambito": "Su quali merci si applica",
       "section_plafond": "Plafond",
       "section_prova": "Prova documentale",
@@ -4826,6 +4935,7 @@
   },
   "core": {
     "emittente_attivo": {
+      "serve_per_creare": "Stai lavorando su tutti gli emittenti: scegline uno dalla barra in alto per poter creare.",
       "tutti": "Tutti gli emittenti",
       "aria": "Emittente attivo",
       "conferma_titolo": "Cambiare emittente di lavoro?",

@@ -19,6 +19,7 @@ import { READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constan
 import EmittenteFiscaleDrawer from '../components/EmittenteFiscaleDrawer.vue'
 import EmittenteFiscaleBillingAccountDrawer from '../components/EmittenteFiscaleBillingAccountDrawer.vue'
 import EmittenteFiscaleUtilitiesDrawer from '../components/EmittenteFiscaleUtilitiesDrawer.vue'
+import EmittenteFiscaleRegistriDrawer from '../components/EmittenteFiscaleRegistriDrawer.vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Badge from 'primevue/badge'
@@ -44,6 +45,8 @@ const {
 const drawer = useDrawerState()
 const baDrawer = useDrawerState()
 const utDrawer = useDrawerState()
+// Registri di numerazione (2026-09-01, brief-be-fe-crud-registri-di-numerazione).
+const regDrawer = useDrawerState()
 
 // Provider readonly: livello LETTURA disabilita i pulsanti di scrittura nei drawer figli.
 const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -91,6 +94,15 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.UTILITY,
       command: () => utDrawer.editRow(data, 'id'),
     },
+    // ⭐ La forma del numero dei documenti di questo emittente — prefisso,
+    //    suffisso, cifre — vive sui registri, e fino al 2026-09-01 non aveva
+    //    nessuna schermata da cui leggerla o correggerla.
+    {
+      key: 'registri',
+      label: t('amministrazione.emittenti_fiscali.action_registri'),
+      icon: MANAGE_ICONS.NUMERAZIONE,
+      command: () => regDrawer.editRow(data, 'id'),
+    },
   ]
 }
 </script>
@@ -111,7 +123,7 @@ function buildRowActions(data) {
           :options="attivoOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amministrazione.filter_stato')"
+          :placeholder="t('amministrazione.stato_all')"
           @change="applyExtraFilters"
         />
       </div>
@@ -181,6 +193,17 @@ function buildRowActions(data) {
       :emittente-ragione-sociale="utDrawer.state.itemData?.ragione_sociale_completa || ''"
       :emittente-attivo="utDrawer.state.itemData?.attivo ?? true"
       @close="utDrawer.close"
+    />
+
+    <!-- ⚠️ Qui passa il SOGGETTO-RUOLO e non `itemId` (la PK): e' la colonna
+         su cui `vendite.registri_fatturazione` si aggancia, e la lista la
+         porta gia' in riga. Con la PK la lista uscirebbe vuota senza errori. -->
+    <EmittenteFiscaleRegistriDrawer
+      :visible="regDrawer.state.visible"
+      @update:visible="v => regDrawer.state.visible = v"
+      :emittente-soggetto-ruolo-id="regDrawer.state.itemData?.soggetto_ruolo_id || null"
+      :emittente-ragione-sociale="regDrawer.state.itemData?.ragione_sociale_completa || ''"
+      @close="regDrawer.close"
     />
   </div>
 </template>

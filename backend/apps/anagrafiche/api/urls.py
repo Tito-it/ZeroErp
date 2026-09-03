@@ -76,6 +76,7 @@ from apps.anagrafiche.api.views_titoli_iva import (
     SoggettoTitoloIvaAmbitoDetailView,
     SoggettoTitoloIvaMovimentiView,
     SoggettoTitoloIvaMovimentoAnnullaView,
+    SoggettoTitoliIvaExportView,
     TitoliIvaSfondatiView,
 )
 from apps.anagrafiche.api.views_conti_bancari import (
@@ -196,6 +197,10 @@ urlpatterns = [
     # un `soggetto_id`, quindi vive fuori dal ramo annidato.
     path("titoli-iva/sfondati/", TitoliIvaSfondatiView.as_view(), name="anagrafiche-titoli-iva-sfondati"),
     path("soggetti/<str:soggetto_id>/titoli-iva/", SoggettoTitoliIvaView.as_view(), name="anagrafiche-soggetti-titoli-iva"),
+    # ⭐ `export/` PRIMA della rotta di dettaglio: `<int:titolo_id>` non
+    #    cattura una parola, ma tenere l'ordine giusto e' la regola della
+    #    famiglia (vedi `titoli-iva/sfondati/` qui sopra).
+    path("soggetti/<str:soggetto_id>/titoli-iva/export/", SoggettoTitoliIvaExportView.as_view(), name="anagrafiche-soggetti-titoli-iva-export"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/", SoggettoTitoliIvaDetailView.as_view(), name="anagrafiche-soggetti-titoli-iva-detail"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/", SoggettoTitoloIvaAmbitiView.as_view(), name="anagrafiche-titoli-iva-ambiti"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/<int:ambito_id>/", SoggettoTitoloIvaAmbitoDetailView.as_view(), name="anagrafiche-titoli-iva-ambiti-detail"),

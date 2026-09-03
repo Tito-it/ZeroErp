@@ -85,9 +85,26 @@ Transizioni attualmente in matrice: `BOZZA→{APERTA,PRONTA,ANNULLATA}`,
 `APERTA→{IN_ESECUZIONE,PRONTA,ANNULLATA}`, `IN_ESECUZIONE→{PRONTA,ANNULLATA}`,
 `PRONTA→{IN_ESECUZIONE,CHIUSA,ANNULLATA}`. Il flag `meta.manuale` distingue le
 transizioni *automatiche* (push/ponte emittibilità) da quelle *utente*; il guard non lo
-filtra (valida solo l'ammissibilità della coppia). L'esposizione delle **azioni di stato
-utente** (chiudi/riapri/annulla) + `fn_available_actions_commessa` è pianificata (analisi
-§4.3 #4 / §8 #7).
+filtra (valida solo l'ammissibilità della coppia).
+
+Le **azioni di stato utente** (chiudi / riapri / annulla) sono **esposte**
+(verificato 2026-09-02): le calcola
+[script.fn_available_actions_commessa](/dbzero/script/manual/fn_available_actions_commessa)
+— mirror del pattern di ordini, offerte, contratti e preventivi, **senza azioni
+applicative** (il push è *verso* la commessa, non un'azione della commessa) — e le
+serve l'endpoint [`GET/POST .../commesse/<id>/stato/`](/backend/vendite/manual/api_commessa_stato):
+il `GET` porta stato, contatori e capability, il `POST` applica l'azione.
+
+⭐ **Le azioni sono data-driven, non un elenco nel codice**: escono da
+`vendite.transizioni_stati_commessa` filtrando le transizioni **manuali**
+(`meta.manuale = true`) con `action_key` e `label_key` valorizzate. Le transizioni
+automatiche non compaiono fra le azioni utente. Sugli stati terminali (`CHIUSA`,
+`ANNULLATA`) l'elenco è vuoto e `can_change_state` è `false`.
+
+⚠️ **La capability propone, il guard ammette**: l'enforcement resta su
+`vendite.trgfn_commesse_guard_transizione` (via `fn_cambia_stato_commessa`). La
+funzione delle azioni è di **sola lettura** e non esegue niente — un client che
+non la legge prende il rifiuto del guard, e ha ragione lui.
 
 > Le righe (`commesse_attivita`) hanno due assi indipendenti: `stato_approvazione`
 > (BOZZA→APPROVATA) e `stato_emissione` (NON_EMESSA→EMESSA).

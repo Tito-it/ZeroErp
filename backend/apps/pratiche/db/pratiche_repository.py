@@ -16,8 +16,7 @@ from apps.core.db._helpers import (
     resolve_config_id_by_codice_interno,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
+    sql_order_clause,
 )
 from apps.core.services.error_manager import ErrorManager
 
@@ -194,11 +193,12 @@ class PraticheRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_col = PRATICHE_ORDER_COLS.get(
-            order_by, PRATICHE_ORDER_COLS["data_insert"]
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=PRATICHE_ORDER_COLS,
+            default=PRATICHE_ORDER_COLS["data_insert"],
+            tiebreak="p.id",
         )
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
         params: list[Any] = [emittente_fiscale_id]
@@ -261,7 +261,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             {self._PRATICA_JOINS}
             {where_clause}
-            ORDER BY {order_col} {direction}, p.id {tiebreak_dir}
+            ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
         """
 

@@ -83,9 +83,9 @@
 > `task_run` si chiuda in **ERRORE** e che il rilancio **RITENTI** invece di
 > saltare — coperta da tre test mirati, che però girano **su mock**: per la
 > regola zero è un **presidio**, non una prova. ⇒ **Decisione a Tid**: se il
-> presidio basta, V1 si chiude dichiarandolo tale. Di **V2**: il ramo
+> presidio basta, V1 si chiude dichiarandolo tale. ~~Di **V2**: il ramo
 > `CONFERMATO` di **DL-23** (nessun soggetto, va costruito) e la verifica
-> dell'area RESI qui sopra.
+> dell'area RESI qui sopra.~~ → **V2 chiusa il 2026-09-01**, blocco qui sotto.
 >
 > ✅ **E il §14 non lascia più niente**: la sola voce di sviluppo che
 > conteneva — la visibilità del lotto riaperto — è **caduta il 2026-08-31**
@@ -99,6 +99,45 @@
 >
 > ---
 >
+> ## ✅ STATO AL 2026-09-01 — **V2 È CHIUSA PER INTERO**
+>
+> Il verbale è
+> [collaudo-in-app-v2-dl23-e-area-resi.md](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md),
+> archiviato in `work-done`: **sei prove su sei ✅**, nessun difetto di modello.
+>
+> * **DL-23 ramo `CONFERMATO`** — soggetto costruito (`ORD0036000`, `ARC005474`
+>   10 pz, DDT di 4 non numerato): ORDINI mostra il **pieno**, e l'area DDT
+>   **non mostra il DDT**. L'invariante «la merce vale 10, una volta sola»
+>   regge su **entrambi** i rami. ⭐ Non era un caso fortunato: il resolver
+>   `vw_dash_fatturazione_ddt` esclude per costruzione i DDT di ordini a
+>   trigger `CONFERMATO` (`20260718-07`), ed è **quella riga di codice** che il
+>   §13.2 chiedeva di vedere all'opera;
+> * **area RESI delle card** — c'è, con azione e `valore_fermo` **vuoto**
+>   (DL-11), e il **drill-down apre il drawer del reso**: era l'unico pezzo
+>   non garantito a tavolino, perché la whitelist è condizione necessaria e non
+>   sufficiente;
+> * **ramo `MERCE_RESA_GIA_FATTURATA`** — soggetto ricostruito e **lasciato
+>   lì**, non accreditato: il seed promosso a `RECUPERABILE` produce davvero la
+>   seconda riga nel Backlog. Il soggetto resta disponibile per la prossima
+>   volta, che è ciò che era mancato al giro precedente.
+>
+> 🐛 **E la validazione ha trovato un difetto FE fuori slice, corretto in
+> giornata**: quattro drawer che generano un documento non avvisavano la
+> propria lista — quattro copie dello stesso momento con **tre** comportamenti,
+> nessuna delle quali falliva. Corretto **centralizzando** su
+> `useDrawerSavedListRefresh` (nuovo handler `onDrawerChanged`), non
+> rattoppando i quattro siti: dettaglio nel verbale, sezione «Che cosa ha
+> trovato».
+>
+> 🔴 **Resta SOLO V1**, e con essa la decisione già posta a Tid qui sopra: le
+> **23 caselle** di
+> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
+> (nessuna eseguita), **oppure** la dichiarazione che il presidio a mock basta.
+> ⛔ **Finché una delle due non arriva, questo brief NON va in `work-done`**:
+> è l'ultima cosa viva della linea.
+>
+> ---
+>
 > ## 📋 STATO DI SVILUPPO AL 2026-08-31, sera — zero codice aperto
 >
 > **Non resta niente da scrivere.** Le tre voci vive sono **validazioni a
@@ -107,8 +146,8 @@
 > | Voce | Copione | Stato |
 > | --- | --- | --- |
 > | **V1** · esito parziale del pull (metà pipeline) | [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md) | 🔴 23 caselle su 24 — il prerequisito `RESUME_TASK` è già spuntato |
-> | **V2** · DL-23 ramo `CONFERMATO` | [collaudo-in-app-v2-dl23-e-area-resi.md](collaudo-in-app-v2-dl23-e-area-resi.md) · prova **A** | 🔴 il soggetto va costruito |
-> | **V2** · area RESI delle card | stesso documento · prove **B1/B2** | 🔴 B1 si guarda; B2 vuole un reso ricostruito |
+> | **V2** · DL-23 ramo `CONFERMATO` | [collaudo-in-app-v2-dl23-e-area-resi.md](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md) · prova **A** | ✅ **chiusa il 2026-09-01** — soggetto costruito, invariante retta |
+> | **V2** · area RESI delle card | stesso documento · prove **B1/B2** | ✅ **chiusa il 2026-09-01** — area, azione, `valore_fermo` vuoto, drill-down e secondo motivo |
 >
 > ⭐ **Il lavoro di sviluppo di questa giornata**, tutto nato dal push DB e
 > nessuno chiesto dal brief: `etichetta_key` nel giornale (BE + i **tre** punti
@@ -856,7 +895,8 @@ versione a fine giro.
 > aperti al 95%. Chi cerca «cosa resta sui cruscotti» lo trova qui.
 >
 > **Quando entrambe le validazioni saranno passate, anche questo brief va in `work-done`** e
-> la linea è chiusa per intero.
+> la linea è chiusa per intero. ⭐ **Al 2026-09-01 ne è passata una: V2 è chiusa**
+> ([verbale](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md)). Manca **solo V1**.
 
 ### 13.1 V1 — Esito parziale del pull da commessa (da questo brief)
 
@@ -1070,24 +1110,30 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   dai pushabili); la prima — quella sospesa per due mesi — il **2026-08-27**, esercitata
   in-app dal collaudo delle righe a prezzo zero. Storia della sospensione e del suo
   scioglimento nel riquadro in fondo alla sezione.
-- 🟡 **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
+- ✅ **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
   `SPEDITO/CONSEGNATO` → serbatoio mostra il **residuo**; con `CONFERMATO` → mostra il
-  **pieno**. **Primo ramo fatto il 2026-08-17** (esito in fondo alla sezione); il ramo
-  `CONFERMATO` non ha soggetti e va costruito. ⚠️ **Ricontrollato il 2026-08-31:
-  ancora nessun soggetto**, e i due `PARZIALMENTE_EVASO` esistenti sono entrambi a
-  trigger `SPEDITO`, cioè il ramo già provato.
+  **pieno**. **CHIUSO su entrambi i rami.** Il primo il 2026-08-17 (esito in fondo alla
+  sezione); il ramo `CONFERMATO` il **2026-09-01**, sul soggetto costruito apposta
+  (`ORD0036000` da 10 pz, DDT di 4): ORDINI mostra il pieno e **l'area DDT non mostra il
+  DDT** — la merce resta contata una volta sola. ⭐ **La domanda vera era quest'ultima**, e
+  la risposta non è un caso: il resolver `vw_dash_fatturazione_ddt` esclude per costruzione
+  i DDT degli ordini a trigger `CONFERMATO` (`20260718-07`), scritto proprio contro il
+  doppio conteggio di questo §.
 - ✅ **DL-27 — il contatore**: reso confermato su merce già fatturata → riga in coda accrediti
   con differenza **negativa**; reso in DRAFT → **non** conta. **Entrambi i rami fatti il
   2026-08-17** (caso costruito da zero, esito in fondo alla sezione).
-- 🟡 **Card e drill-down**: le due aree nuove (DDT, RESI) si aprono davvero — la whitelist a 7
+- ✅ **Card e drill-down**: le due aree nuove (DDT, RESI) si aprono davvero — la whitelist a 7
   aree era fail-closed, senza quella le card non erano drillabili. **Parziale al 2026-08-17**:
   l'area **DDT** ha dati, si vede e **il drill-down si apre** (verificato da Tid); ~~l'area
   **RESI resta vuota per progetto** e non è verificabile oggi~~ — vedi il riquadro in fondo.
   ⭐ **Aggiornato il 2026-08-31: l'area RESI ha una riga** (`RESO0005123`,
   `RICONSEGNA_NON_ESEGUITA`, con azione) e le whitelist BE+FE la ammettono con drawer
-  `RESO_VENDITA`. ⛔ Resta da guardare **a video** che il drawer si apra, e il ramo
-  `MERCE_RESA_GIA_FATTURATA` è di nuovo **senza soggetti** (coda accrediti svuotata dal
-  collaudo NC): dettaglio nel riquadro in fondo.
+  `RESO_VENDITA`. ✅ **CHIUSO il 2026-09-01**: il **drill-down apre il drawer** del reso
+  (era l'unico pezzo non garantito a tavolino — la whitelist è necessaria, non sufficiente),
+  `valore_fermo` è **vuoto** e non `0,00` come prescrive DL-11, e il ramo
+  `MERCE_RESA_GIA_FATTURATA` ha di nuovo un soggetto — **ricostruito e non accreditato**,
+  così resta per la prossima volta. Verbale in
+  [work-done](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md).
 - ✅ **DL-24 — accredito dovuto vs facoltativo**: l'etichetta distingue l'obbligo dall'opzione
   (`riapre_residuo` + residuo di riconsegna ancora aperto → FACOLTATIVA). **Provato il
   2026-08-17**, e non era in programma: confermando un `RESO_PER_RICONSEGNA` sulla stessa
@@ -1466,7 +1512,7 @@ misura. Le misure di questa sezione sono state prese con `SET app.current_user_i
   | Dove | Cosa |
   | --- | --- |
   | ~~`docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md`~~ | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` — ✅ **causa corretta nel generatore il 2026-08-26**, spariscono alla prossima rigenerazione (vedi sotto) |
-  | `docs/it/dev/frontend/i18n-namespace-radici.md` | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` |
+  | ~~`docs/it/dev/frontend/i18n-namespace-radici.md`~~ | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` — ✅ **corretta il 2026-09-02**: l'id vero collassa la lineetta in **un solo** trattino (`#struttura-chiavi-radici-dei-namespace`), letto dall'HTML generato e non dedotto. `frontend-standards.md` non ha ancore esplicite `<a id="">`, quindi il link deve puntare all'id dell'heading. Stesso link corretto anche nelle 2 occorrenze di `brief-i18n-radici-uniformi.md` |
 
   > ℹ️ **I 4 link morti non sono un contenuto sbagliato: è il generatore.**
   > L'index di schema è **auto-generato** (`scripts/gen_db_docs.py`) e ricopia la

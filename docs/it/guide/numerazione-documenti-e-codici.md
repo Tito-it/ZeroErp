@@ -142,8 +142,11 @@ si vede solo guardando le colonne:
 * **DDT, ordini e resi** tengono anno e serie in campi propri, ma nel campo «numero»
   scrivono una stringa **già formattata** con prefisso e cifre di riempimento (per
   esempio `DDT0000123`), presa dal registro;
-* **la commessa tiene tutto dentro un campo solo**, il codice, perché non ha campi
-  separati per anno e registro: `CMM-ACME-2026-000000001`.
+* **la commessa tiene la stringa in un campo solo**, il codice —
+  `CMM-ACME-2026-000000001` — e non ha un campo «numero» a parte: quella stringa
+  *è* il suo numero. ⭐ **Dal 2 settembre 2026 ha però anche l'anno e il registro
+  in due colonne proprie**, come gli altri: prima erano leggibili solo spezzando
+  la stringa.
 
 ⚠️ Ne discende una cosa pratica: **chi scrive codice che confronta o ordina i numeri
 non può trattarli tutti allo stesso modo.** Ed è la ragione per cui il controllo
@@ -226,9 +229,9 @@ avrebbe reso impossibile.
 
 ### 6.4 Il codice della commessa contiene la sigla dell'azienda
 
-La commessa non ha un campo «registro» da mostrare: la sua identità è la stringa
-stessa. Quindi la stringa deve bastare a distinguere due aziende, e la sigla ci
-entra dentro:
+La **identità** della commessa è la stringa stessa: è il codice a essere unico,
+non la coppia registro-numero come negli altri documenti. Quindi la stringa deve
+bastare a distinguere due aziende, e la sigla ci entra dentro:
 
 ```
 CMM-ACME-2026-000000001
@@ -246,6 +249,14 @@ l'azienda e dove comincia l'anno.
 
 ⭐ **La commessa è l'unica delle quattro a usare nove cifre**, ed è per questo che è
 stata la sola a rivelare un difetto altrimenti invisibile — se ne parla al §9.
+
+> 🔄 **Aggiornamento del 2 settembre 2026.** Fino a quel giorno il fatto che la
+> sigla e l'anno fossero *dentro* la stringa era una **convenzione di chi la
+> compone**: giusta, e verificabile solo rileggendo il programma. Ora la commessa
+> porta l'anno e il registro anche in **due colonne**, e un controllo automatico
+> confronta le due cose — se un domani qualcuno cambiasse la composizione senza
+> toccare le colonne, o viceversa, se ne accorge un test invece di un cliente.
+> ⚠️ L'identità **non è cambiata**: unico resta il codice, e resta unico da solo.
 
 ### 6.5 Il separatore non è più un campo a sé
 
@@ -350,7 +361,8 @@ contatore, il mio anno, la mia serie — e da fine agosto anche il mio prefisso 
 mio suffisso.
 
 **2. L'uniformità sarebbe stata solo nel nome.** Le tabelle non hanno le stesse
-colonne — i resi non hanno la serie, la commessa ha solo il codice. Sotto un nome
+colonne — i resi non hanno la serie, la commessa non ha un campo «numero» perché
+il suo numero è il codice. Sotto un nome
 uguale ovunque ci sarebbero state **sette formule diverse**. È il tipo di uniformità
 che fa più danno di nessuna uniformità: chi legge un nome uguale smette di chiedersi
 cosa c'è sotto, e trova una regola sola dove ce ne sono sette.
@@ -374,6 +386,153 @@ nuova, il controllo la copre da solo.
 export o in una ricerca trasversale, esporla con una vista — senza toccare nessuna
 tabella. La colonna tornerebbe sul tavolo solo se quell'identità dovesse essere
 **indicizzata**, ed è una ragione che oggi non esiste.
+
+---
+
+## 8-bis. ⭐ La chiave del contatore: gli assi si **dichiarano**, non si assumono
+
+*(rev 2026-09-01)*
+
+Il §8 qui sopra si chiude chiedendo *«un controllo automatico che, per ogni
+famiglia di documento registrata a catalogo, verifichi che l'identità distingua
+l'azienda e che l'anno sia davvero in chiave»*. ⭐ **Quel controllo ora esiste**,
+e per scriverlo è venuta fuori la regola che lo governa.
+
+### La regola
+
+> **Tutto ciò che discrimina il CONTATORE deve poter discriminare anche il
+> DOCUMENTO.**
+
+Il contatore vive su una chiave — oggi `(registro, anno, serie)` — e ogni
+combinazione è un **secchio** che riparte da 1. Se il documento non porta uno di
+quegli assi nel proprio vincolo di unicità, il contatore gli consegna un numero
+che per lui **è già usato**.
+
+⭐ **E i due versi non sono simmetrici** — è questo che dice quale asse va
+dichiarato:
+
+| | Effetto |
+| --- | --- |
+| il **contatore** ha un asse che il **documento** non ha | ⛔ **collisione** |
+| il **documento** ha un asse che il **contatore** non ha | ✅ innocuo — il documento è solo più specifico |
+
+### ⛔ Il difetto che c'era, e il §8 lo aveva già sfiorato
+
+Il §8 osserva che *«i resi non hanno la serie, la commessa non ha un campo
+numero»*.
+Era vero, ed era **più grave di come suonava**: la serie entra nella chiave del
+contatore, quindi cambiare il `serie_default` di un registro `RESO` avrebbe fatto
+ripartire il progressivo da 1 su numeri già emessi — con `uq_resi_anno_numero`
+che non porta la serie, il vincolo rifiuta, e col rollback torna indietro anche
+l'incremento del contatore. ⇒ **Il reso non si numerava più.**
+
+### ✅ La cura: la famiglia dichiara l'asse
+
+Non si è data la colonna `serie` ai resi — sistemava il **sintomo su una
+tabella**, e il sesto documento che entra domani avrebbe avuto lo stesso problema
+senza che nessuno gliel'avesse chiesto.
+
+⭐ La domanda si fa **dove una famiglia entra nei registri**:
+`vendite.famiglie_documento.colonna_serie` — il **nome** della colonna in cui
+quella famiglia registra la serie, `NULL` se non ne ha una.
+
+| Cosa | Dove sta | Che natura ha |
+| --- | --- | --- |
+| `serie` sul documento | `fatture.serie`, `ddt.serie`, `ordini.serie` | **il fatto** |
+| `serie_default` | `registri_fatturazione` | **la scelta** del sezionale |
+| `colonna_serie` | `famiglie_documento` | **la capacità** della famiglia |
+
+> **Sulla FAMIGLIA si dichiara ciò che il documento PUÒ esprimere. Sul REGISTRO
+> si sceglie ciò che quel sezionale FA.**
+
+⭐ **Il nome e non un booleano**, per la stessa ragione di `colonna_numero`: un
+flag «gestisce la serie» messo su una famiglia la cui tabella non ce l'ha
+riporterebbe il difetto senza che nessuno se ne accorga; col nome, il controllo
+verifica che la colonna **esista davvero**.
+
+⛔ E un registro di una famiglia senza serie **non può averne una**: si rifiuta,
+non si ignora. Un campo editabile che non fa niente è il difetto che il trasloco
+del prefisso ha appena finito di togliere (§7).
+
+### 🔴 Due cose sono sparite dal contatore
+
+**`mese` non c'è più.** Stava nella chiave e **in nessun documento**. Era innocua
+solo perché inchiodata: `mese = 0` nella funzione e un `CHECK` che ammetteva il
+solo `ANNUALE`.
+
+⛔ **Una dimensione dormiente in una chiave è ARMATA, non inutilizzata**: il
+giorno che qualcuno avesse acceso un reset mensile sarebbero collidati **tutti e
+cinque** i documenti. E a tenerla chiusa non era un vincolo, era una **rinuncia**
+— che si revoca per distrazione. Se un giorno servirà, l'asse torna **insieme**
+alla colonna sui documenti, dichiarato come lo è `colonna_serie`.
+
+**E con lei un `UNIQUE` ridondante** che nessuno vedeva: con quattro colonne
+`NOT NULL`, i `COALESCE` di `uq_registri_progressivi_scope` erano no-op e la
+chiave era la **stessa** di `uq_regprog_key`. ⚠️ Il presidio degli indici
+duplicati non lo segnalava, perché confronta colonne e lì una chiave era colonne
+e l'altra espressioni.
+
+### ✅ E `reset_policy` adesso funziona davvero
+
+Era **dichiarata e mai letta**: nessuna funzione ci ramificava sopra e l'anno era
+inchiodato nel codice. Ora `fn_get_next_progressivo` la legge:
+
+| `reset_policy` | L'anno del secchio | Effetto |
+| --- | --- | --- |
+| `ANNUALE` | l'anno solare del documento | il numero riparte da 1 a Capodanno |
+| `NESSUNA` | `0` — un secchio solo | numerazione **continua** fra gli anni |
+
+⛔ **`MENSILE` non è rientrata**, ed è l'asimmetria della regola: accenderla
+sarebbe **pericoloso** (nessun documento porta il mese), mentre `NESSUNA` è
+**sicura** perché fa usare al contatore **meno** assi, non di più — e l'anno ce
+l'hanno tutti.
+
+⚠️ **E due cose si chiamano «anno»**: quello del **secchio** (`progressivi.anno`,
+che vale `0` sotto `NESSUNA`) e quello del **documento** (`fatture.anno`,
+`ddt.anno`, …), che è sempre l'anno solare. `fn_get_anno_registro` risponde alla
+seconda domanda, e per questo non è stata toccata.
+
+### Il controllo automatico che il §8 chiedeva
+
+Tre verifiche, tutte **derivate** — nessun elenco scritto a mano:
+
+1. ogni famiglia che dichiara una serie ha **davvero** quella colonna;
+2. ...e quella colonna sta nel **vincolo di unicità del numero**;
+3. nessun registro di una famiglia senza serie porta un `serie_default`.
+
+Una famiglia nuova che entra sui registri senza la chiave completa fa **rosso
+prima del merge**, invece che in campo.
+
+### ✅ E il pezzo che restava scoperto è stato chiuso — 2 settembre 2026
+
+Fino al 2 settembre `vendite.commesse` era **l'unica delle cinque** la cui
+identità è una stringa nuda: dichiarava di non avere una serie — quindi i
+controlli la proteggevano — ma registro e anno stavano solo *dentro* il codice,
+per convenzione di chi lo compone.
+
+⛔ **Perché era un debito e non un dettaglio**: quell'invariante nessuno la
+imponeva. Il giorno che al contatore si fosse aggiunto un asse senza toccare la
+composizione della stringa, il codice sarebbe tornato a ripetersi al primo cambio
+di periodo — e sarebbe uscito come un errore di duplicato, in mezzo a
+un'elaborazione che con la numerazione non c'entra.
+
+⭐ **La cura, ed è più piccola di come sembrava.** Guardando le altre quattro si è
+visto che il loro campo «numero» contiene la **stringa già formattata**, non il
+progressivo nudo: sulla commessa quella stringa è il codice, che c'era già.
+Mancavano solo **due colonne** — registro e anno — e nessun numero da inventare
+per le righe vecchie.
+
+⚠️ **E il riempimento delle righe esistenti non ha ricostruito niente a mano**: il
+registro lo ha *chiesto* alla funzione che già risponde a «quale registro per
+questo documento», invece di riscriverne la regola. Riscrivendola si sarebbe
+sbagliato — le commesse hanno un'utility e i loro registri valgono «per tutte»,
+quindi un accostamento ingenuo non avrebbe trovato **nessuna** riga.
+
+⇒ Oggi l'invariante è **verificata da un controllo automatico**, non affidata a
+chi rilegge: il codice deve portare la sigla e l'anno che le colonne dichiarano.
+L'identità, però, resta il codice — ed è più stretta di quella degli altri
+quattro, perché porta la sigla dell'azienda e quindi non si ripete mai fra
+registri diversi.
 
 ---
 

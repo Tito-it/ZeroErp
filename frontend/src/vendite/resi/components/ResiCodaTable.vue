@@ -392,6 +392,23 @@ const searchPlaceholder = computed(() =>
 )
 
 onMounted(() => store.fetchList())
+
+// Scopo: ricaricare la coda su richiesta di CHI STA SOPRA — serve a ResiView
+//        quando il drawer reso, aperto da questa stessa scheda, ha cambiato la
+//        materia della coda (accredito emesso, ri-consegna generata).
+//
+// ⭐ Si espone un metodo invece di lasciare che la vista chiami `fetchList` sullo
+//    store: e' la stessa regola gia' scritta in `ResiView.applicaDeepLinkCoda`
+//    — *«la fetch la decide il pannello della coda, che e' l'unico a sapere se
+//    e' montato; provare a indovinarlo da fuori produceva una doppia
+//    chiamata»*. Qui il **ref e' il test di montaggio**: i TabPanel sono
+//    `lazy`, quindi la coda non attiva non esiste, il ref e' `null` e non
+//    succede niente — e al suo mount fara' da se'.
+function reload() {
+  return store.fetchList()
+}
+
+defineExpose({ reload })
 </script>
 
 <template>

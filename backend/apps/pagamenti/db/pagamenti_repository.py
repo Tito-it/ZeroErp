@@ -28,6 +28,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     fetch_paged_with_total,
+    sql_order_clause,
     jsonb_out,
     rows_to_list,
     sql_order_direction,
@@ -323,18 +324,58 @@ _COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
      "formato_flusso", "regole_match", "meta"}
 )
 
+# Colonne ordinabili degli ATTI DI SISTEMAZIONE di una fattura (lista 61).
+# ⛔ Chiavata sui `campo_sorgente` FISICI, non sui codici logici: il frontend
+#    monta le Column con `:field="col.campo_sorgente"` e manda QUELLO in
+#    `order_by`. Chiavarla sui codici logici e' il difetto di `vendite.lotti`
+#    (2026-07-31), e qui sarebbe stato peggio: prima di questa modifica il
+#    metodo aveva `ORDER BY s.id` inchiodato e **ignorava** `order_by` in
+#    silenzio — la freccia si girava sopra righe immobili, senza nemmeno un 400
+#    a dirlo.
+# `FROM` + `WHERE` degli ATTI DI SISTEMAZIONE di una fattura, in una sede sola.
+# ⛔ Lo condividono la query di PAGINA e il conteggio di RIPIEGO: sono due
+#    domande sullo stesso insieme, e scritte due volte diventano due insiemi al
+#    primo filtro che se ne aggiunge a una sola delle due.
+_SISTEMAZIONI_FROM_WHERE = """
+              FROM pagamenti.sistemazioni s
+             WHERE s.fattura_origine_id = %s"""
+
+SISTEMAZIONI_SORT_COLUMNS: dict[str, str] = {
+    "destinazione": "s.destinazione",
+    "importo": "s.importo",
+    "stato": "s.stato",
+    "motivo": "s.motivo",
+    "data_esecuzione": "s.data_esecuzione",
+}
+
+# ⭐ Le colonne DATA della lista 61. Il BB `sql_order_clause` le ordina DESC
+#    quando il chiamante non indica un verso: «gli ordinamenti per data hanno
+#    sempre default DESC» (Tid, 2026-09-02). Una data si legge dalla piu'
+#    recente, e chiedere «ordina per data» ricevendo il caso piu' vecchio in
+#    cima e' il contrario di cio' che si e' chiesto.
+# ⚠️ Vive ACCANTO alla whitelist e non altrove: e' un sottoinsieme delle sue
+#    chiavi, e a distanza le due si separerebbero senza che niente lo dica.
+SISTEMAZIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_esecuzione"})
+
 # Colonne ordinabili dell'elenco dei canali di incasso.
-# ⚠️ QUESTA E' ANCORA CHIAVATA SUI CODICI LOGICI, ed e' legittimo **finche'**
-#    l'elenco non diventa una `<ListaConfigurabile>`: non ha un seed in
-#    `ui.lista_colonna`, quindi nessuno le manda un `campo_sorgente` e nessun
-#    presidio la copre. ⛔ Il giorno in cui la schermata dei canali si monta sul
-#    BB, `centro` va riscritta come `centro_descrizione` — o l'intestazione
-#    rispondera' **400** al click, come sarebbe successo alle altre quattro.
+# ⭐ CHIAVATA SUI `campo_sorgente` FISICI dal 2026-09-02, ed e' il giorno che il
+#    commento precedente aveva previsto: *«il giorno in cui la schermata dei
+#    canali si monta sul BB, `centro` va riscritta come `centro_descrizione` — o
+#    l'intestazione rispondera' 400 al click»*. La lista e' seedata
+#    (`pagamenti.canali_incasso`, id 60) con `campo_sorgente = centro_descrizione`,
+#    quindi quel giorno e' arrivato.
+# ⭐ E SI ORDINA PER LA DESCRIZIONE, non per il codice (decisione di Tid,
+#    2026-09-02). Il valore era `centro_codice`: l'intestazione mostra
+#    `centro_descrizione` e ordinava per un campo che a video non c'e'. Se
+#    codice e descrizione non sono correlati l'ordine sembra arbitrario — e un
+#    ordinamento che non corrisponde a cio' che si legge e' un difetto che
+#    l'operatore vede e nessun test prende.
+#    ⇒ **Si ordina la colonna che si vede.**
 ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
     "descrizione": "descrizione",
     "tipo": "tipo",
-    "centro": "centro_codice",
+    "centro_descrizione": "centro_descrizione",
 }
 
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
@@ -500,21 +541,25 @@ class PagamentiRepository:
             params.append(data_a)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = DISTINTE_SORT_COLUMNS.get(order_by, "data_contabile")
         # ⚠️ La direzione la compone l'helper condiviso, e porta con se' la
         # posizione dei NULL: i vuoti vanno dove starebbe lo zero (in coda
         # scendendo, in testa salendo). ⛔ Non si incolla un `NULLS LAST` fisso:
         # sarebbe sintatticamente doppio, e su una lista che si ordina dal piu'
         # recente porterebbe i campi vuoti in cima.
-        direction = sql_order_direction(order_dir, default_desc=True)
         # Tiebreak nella STESSA direzione della colonna primaria: due distinte
         # dello stesso giorno non devono cambiare posto fra una pagina e l'altra.
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=DISTINTE_SORT_COLUMNS,
+            default="data_contabile",
+            tiebreak="id",
+            default_desc=True,
+        )
 
         rows, total = self._lista_paginata(
             select_sql=f"{_DISTINTA_SELECT}{_TOTALI_LATERAL}{where_clause}",
             params=params,
-            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )
@@ -953,14 +998,18 @@ class PagamentiRepository:
             conditions.append("c.data_contabile <= %s")
             params.append(data_a)
 
-        sort_col = RIGHE_SORT_COLUMNS.get(order_by, "data_pagamento")
-        direction = sql_order_direction(order_dir, default_desc=True)
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RIGHE_SORT_COLUMNS,
+            default="data_pagamento",
+            tiebreak="id",
+            default_desc=True,
+        )
 
         rows, total = self._lista_paginata(
             select_sql=f'{_RIGA_CODA_SELECT} WHERE {" AND ".join(conditions)}',
             params=params,
-            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )
@@ -995,9 +1044,13 @@ class PagamentiRepository:
             params.append(billing_account_id)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = RATE_FUORI_CAPIENZA_SORT_COLUMNS.get(order_by, "data_scadenza")
-        direction = sql_order_direction(order_dir, default_desc=True)
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=RATE_FUORI_CAPIENZA_SORT_COLUMNS,
+            default="data_scadenza",
+            tiebreak="scadenza_id",
+            default_desc=True,
+        )
 
         return self._lista_paginata(
             select_sql=(
@@ -1005,7 +1058,7 @@ class PagamentiRepository:
             ),
             params=params,
             order_clause=(
-                f"ORDER BY {sort_col} {direction}, scadenza_id {tiebreak}"
+                f"ORDER BY {ordinamento}"
             ),
             limit=limit,
             offset=offset,
@@ -1046,9 +1099,12 @@ class PagamentiRepository:
             params.append(attivo)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = ENTI_INCASSO_SORT_COLUMNS.get(order_by, "codice")
-        direction = sql_order_direction(order_dir, default_desc=False)
-        tiebreak = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=ENTI_INCASSO_SORT_COLUMNS,
+            default="codice",
+            tiebreak="id",
+        )
 
         select_sql = f"""
             {_ENTE_INCASSO_SELECT}
@@ -1057,7 +1113,7 @@ class PagamentiRepository:
         return self._lista_paginata(
             select_sql=select_sql,
             params=params,
-            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
         )
@@ -1351,19 +1407,72 @@ class PagamentiRepository:
     # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
     #    resto, e l'elenco delle eccedenze conta apposta le bozze e le confermate
     #    separatamente.
-    def list_sistemazioni_fattura(self, fattura_id: int) -> list[dict[str, Any]]:
+    # ⭐ PAGINATA dal 2026-09-02 (decisione di Tid). Prima consegnava TUTTI gli
+    #    atti in un colpo e il totale veniva da una query separata
+    #    (`count_sistemazioni_fattura`, ora sparita): due valutazioni dello
+    #    stesso predicato possono non concordare, una sola non puo'.
+    # ⚠️ `limit=None` NON e' un ripiego per pigrizia: e' il modo in cui un
+    #    chiamante dichiara di volere il dataset intero (l'export). Il totale
+    #    resta quello vero perche' lo dice `COUNT(*) OVER ()`, che non guarda
+    #    la finestra.
+    def list_sistemazioni_fattura(
+        self,
+        fattura_id: int,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         self._guard_canale_sistema("list_sistemazioni_fattura")
-        sql = """
+        # ⭐ `default_desc=True` — decisione di Tid del 2026-09-02: **l'ultimo
+        #    atto deciso sta in cima**. Prima era `s.id ASC`, e finche' la lista
+        #    non impaginava non si vedeva; da quando impagina, un atto appena
+        #    registrato finiva nell'ULTIMA pagina e chi l'aveva appena creato non
+        #    lo vedeva. ⚠️ E' anche il verso del registro gemello qui accanto
+        #    (`list_movimenti`, «il piu' recente per primo, che e' come si legge
+        #    un registro»): due elenchi della stessa cosa non devono leggersi al
+        #    contrario l'uno dell'altro.
+        # ⛔ Il tiebreak `s.id` NON e' estetica da quando la lista impagina:
+        #    senza, a offset diversi PostgreSQL puo' consegnare due volte la
+        #    stessa riga e mai un'altra. Lo scrive il BB, allineato alla
+        #    direzione primaria — e lo OMETTE quando la colonna e' gia' `s.id`.
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=SISTEMAZIONI_SORT_COLUMNS,
+            default="s.id",
+            tiebreak="s.id",
+            default_desc=True,
+            colonne_desc=SISTEMAZIONI_SORT_COLONNE_DATA,
+        )
+        # ⛔ LIMIT/OFFSET solo se il chiamante impagina: una `LIMIT NULL` sarebbe
+        #    legale in PostgreSQL ma legherebbe la query a un parametro in piu'
+        #    senza che serva a nessuno.
+        paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
+        params: list[Any] = [int(fattura_id)]
+        if limit is not None:
+            params += [limit, offset]
+        data_sql = f"""
             SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
                    s.fattura_destinazione_id, s.contabile_id, s.fondo_source_id,
-                   s.data_esecuzione, s.user_esecuzione, s.data_insert
-              FROM pagamenti.sistemazioni s
-             WHERE s.fattura_origine_id = %s
-             ORDER BY s.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
-            return rows_to_list(cursor)
+                   s.data_esecuzione, s.user_esecuzione, s.data_insert,
+                   COUNT(*) OVER () AS total_count
+             {_SISTEMAZIONI_FROM_WHERE}
+             ORDER BY {ordinamento}{paginazione}
+        """  # noqa: S608
+        return fetch_paged_with_total(
+            data_sql,
+            params,
+            # ⛔ Il conteggio di ripiego riusa lo STESSO `FROM`/`WHERE` della
+            #    pagina, e non e' cerimonia: due predicati scritti a mano
+            #    divergono, e il giorno in cui divergono il totale parla di un
+            #    insieme diverso da quello che si sta guardando.
+            fallback_count_sql=(
+                f"SELECT count(*) {_SISTEMAZIONI_FROM_WHERE}"  # noqa: S608
+            ),
+            fallback_params=[int(fattura_id)],
+            offset=offset,
+        )
 
     # Scopo: Esegue l'atto — la decisione diventa un fatto.
     # ⭐ UNA SOLA `SELECT` sulla funzione madre: sceglie la strada (fondo,

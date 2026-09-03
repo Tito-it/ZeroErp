@@ -7,9 +7,19 @@
 > ⛔ **Ma la cosa che ha visto è il sintomo di un'altra**, e sono due lavori
 > distinti che questo brief tiene separati apposta.
 >
-> 🎉 **Stato al 2026-08-31 — CHIUSO lato DB.** Quattordici passi
-> (`20260831-39` → `-54`), applicati, presidi **verdi**
+> 🎉 **Stato al 2026-08-31 — CHIUSO lato DB.** **Sedici** passi
+> (`20260831-39` → `-56`), applicati, presidi **verdi**
 > (`vendite/test-numero-prefisso-registro-v1.sql`, plan 6).
+>
+> 📌 **Archiviato in `work-done/` il 2026-09-01.** Chiusura verificata sul
+> `databasechangelog`: i sedici changeSet risultano `EXECUTED`, gli ultimi due
+> (`-55`, `-56` — P-15 e P-16) alle 21:36 del 2026-08-31.
+> ⚠️ **L'intestazione diceva «quattordici passi (`-39` → `-54`)»**: era stata
+> scritta prima dei due passi della sera, che la §3 elenca e lei no. ⭐ È la forma
+> tipica del documento che invecchia in silenzio — il corpo cresce, il cappello
+> resta fermo, e chi legge solo il cappello conta due passi in meno.
+> ⚠️ **I residui della §6.3 restano aperti e li tiene solo questo brief**: vedi
+> la nota in fondo a quella sezione.
 >
 > ⭐ **La forma del numero ha ora UNA sede sola**: `famiglie_documento` tiene i
 > **default** (del tipo documento), `registri_fatturazione` l'**effettivo** (del
@@ -445,3 +455,22 @@ incongruenze nei documenti ha trovato un difetto nel **codice**.
 3. **`docs/it/dbzero/vendite/index.ci.md`** elenca ancora il file rimosso: è
    auto-generato scansionando `manual/`, quindi si allinea alla prossima
    generazione. ⛔ Non si edita a mano.
+
+#### ⛔ Chi tiene questi residui, dopo l'archiviazione — verificato il 2026-09-01
+
+Il brief è passato in `work-done/`, e allora la domanda che conta non è più «sono
+scritti?» ma **«se questo file non lo apre più nessuno, se ne accorge qualcuno?»**.
+Le tre risposte sono diverse, e vanno lette prima di considerarli sistemati:
+
+| Residuo | Chi lo tiene oltre a questo brief | Serve un'azione |
+| --- | --- | --- |
+| **1 — le quattro sequenze** | ⛔ **nessuno.** Verificate vive il 2026-09-01: `ddt_numero_seq` 25 786, `ordini_numero_seq` 40 689, `resi_numero_seq` 13 055, `fatture_numero_seq` 1 | ⚠️ **sì**: la rimozione è una *decisione*, e una decisione archiviata è una decisione persa |
+| **2 — il nome morto nel commento** | ⛔ **nessuno, e per costruzione.** `dbops.vw_riferimenti_morti_da_sanare` non lo vede: il nome sta in un **commento**, non in una chiamata, e quel presidio guarda i riferimenti *reali* | ⚠️ **sì**, ma vale poco da sola: resta l'occasione della prossima riscrittura di `fn_push_preventivo_a_ordine` |
+| **3 — `index.ci.md`** | ✅ il generatore della doc | ❌ no: si allinea da solo |
+
+⭐ **La lezione, che vale oltre questo brief.** Il presidio dei riferimenti morti
+è nato per i riferimenti che il database può vedere; un nome dentro un
+**commento** non è un riferimento, quindi non è un difetto — ma è comunque una
+persona mandata a cercare qualcosa che non c'è. ⛔ Un residuo che nessun registro
+tiene sopravvive solo finché qualcuno riapre il documento in cui è scritto: è il
+motivo per cui è stato messo in tabella qui, invece che lasciato in prosa.

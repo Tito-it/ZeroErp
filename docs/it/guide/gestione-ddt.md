@@ -43,6 +43,8 @@
 > * [Documenti e stampe](/guide/documenti-e-stampe) — generazione del PDF di trasporto
 > * [Gestione Istanze Utility](/guide/gestione-delle-istanze-utility) — cliente, billing account, istanza
 > * [Gestione Indirizzi documento](/guide/gestione-delle-istanze-utility) — l'indirizzo di consegna del DDT
+> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — **il motore che assegna il numero**: è lo stesso di ordini, fatture, resi e commesse
+> * [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga) — **la sede unica** che decide il codice IVA di una riga
 
 ---
 
@@ -79,6 +81,14 @@ Caratteristiche di base:
 > Da quel momento il numero è **immutabile** (`trgfn_v_ddt_protect_num`). È
 > coerente con la natura fiscale del documento di trasporto: un DDT numerato è un
 > documento "vero" che ha lasciato il magazzino.
+>
+> ⭐ **Il numero però non se lo fabbrica il DDT.** Il trigger è solo il *momento*
+> in cui il DDT chiede il numero: a produrlo è il **motore dei registri**, lo
+> stesso che numera ordini, fatture, resi e commesse — progressione per azienda
+> emittente, reset annuale, forma (prefisso, cifre, serie) presa dal registro.
+> Come funziona, e perché non è il catalogo dei formati usato per i codici
+> cliente, sta nella guida
+> [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici).
 
 ---
 
@@ -160,6 +170,13 @@ Ogni riga è una voce di merce consegnata:
 > DDT documenta solo il movimento della merce e il *Riepilogo IVA* resta vuoto
 > (le righe senza prezzo sono escluse in vista). Con i prezzi valorizzati, il DDT
 > espone anche il riepilogo per aliquota, come gli altri documenti.
+
+> ⛔ **L'`iva_id` della riga non si copia dall'articolo.** Lo decide il
+> **risolutore IVA di riga**, la stessa funzione che serve preventivi, ordini e
+> fatture: guarda l'articolo, poi l'uso della fornitura, poi gli eventuali titoli
+> documentati del cliente (dichiarazione d'intento, agevolazioni), e dice anche
+> **perché** ha scelto quel codice. La regola completa è nella guida
+> [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga).
 
 ### 3.3 Componenti BoM `ddt_righe_componenti`
 
@@ -334,6 +351,16 @@ Quando le righe hanno prezzo, i totali e il **Riepilogo IVA** (una riga per
 aliquota) sono calcolati dal database dalla vista dedicata
 `vw_ddt_riepilogo_iva_dettaglio` (le righe senza prezzo sono escluse). Se il DDT
 è di solo trasporto, il riepilogo resta vuoto e nascosto.
+
+> ⚠️ **Il riepilogo del DDT è «live», non uno snapshot**: si ricalcola a ogni
+> modifica delle righe. È una scelta dichiarata — un documento di lavoro non si
+> congela, congelarlo creerebbe debito di riconciliazione invece di risolverlo.
+> Lo snapshot appartiene ai documenti con un istante di emissione i cui valori
+> diventano autorevoli (preventivo, fattura). Il quadro dei due meccanismi, e
+> perché non si unificano, è nella guida
+> [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga) — che è cosa
+> **diversa** dal riepilogo: decide il codice della **singola riga**, mentre qui
+> si somma quel che le righe già portano.
 
 ---
 

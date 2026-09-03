@@ -114,7 +114,7 @@ Il database e` organizzato per schemi funzionali principali:
 - `vendite`
 - `magazzino`
 - `pagamenti`
-- `contabilita`
+- `contabilita` (⛔ nome di schema, vuoto — vedi nota sotto)
 - `config`
 - `storico`
 - `documenti`
@@ -170,7 +170,11 @@ storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 
 - **Incassi e contabili di pagamento**: il **posting è scritto** (contabile, saldo rata, sistemazioni) — ⛔ ma lo schema ha zero righe: di questo dominio è provato il *percorso*, mai l'*esito*, e il collaudo in-app è aperto
 - **Fatturazione elettronica SDI**: payload pronto, builder XML e persistenza esito da fare
-- **Acquisti, magazzino, contabilità**: DB presente, backend ancora stub
+- **Acquisti, magazzino**: DB presente, backend ancora stub
+- ⛔ **Contabilità: fuori perimetro, e lo schema è vuoto.** `contabilita` non ha
+  tabelle, funzioni né viste: non è un modulo a metà, non c'è niente da finire.
+  Se un giorno servirà, sarà un **aggancio a una contabilità esterna**, e la
+  forma del piano dei conti la detta il **sistema di destinazione**
 - **Integrazione AI v2**: contesto dinamico e nuovi tool (v1 operativa: 11 tool + widget conversazionale)
 
 > Lavori in corso e previsti: vedi la [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#3-roadmap).
@@ -224,7 +228,7 @@ ricostruirlo dal codice.
 ### 📘 Guide — «come funziona questa area, e perché»
 
 Il livello concettuale: cosa fa un dominio, quali regole lo governano, quali
-sono le sue trappole. **42 guide**, raggruppate per area:
+sono le sue trappole. **44 guide**, raggruppate per area:
 
 - **Ciclo attivo** — [preventivi](./guide/gestione-preventivi.md) ·
   [offerte commerciali](./guide/gestione-offerte-commerciali.md) ·
@@ -232,11 +236,27 @@ sono le sue trappole. **42 guide**, raggruppate per area:
   [DDT](./guide/gestione-ddt.md) · [fatturazione](./guide/fatturazione.md) ·
   [cruscotti fatturazione](./guide/cruscotti-fatturazione.md) ·
   [commesse](./guide/gestione-commesse.md) · [listini](./guide/gestione-listini.md)
+- **Regole trasversali ai documenti** — [numerazione: come nasce un numero o un
+  codice](./guide/numerazione-documenti-e-codici.md) ·
+  [il risolutore IVA di riga](./guide/iva-risolutore-di-riga.md) — ⭐ **meccanismi
+  unici** condivisi da tutta la famiglia vendite (e domani dagli acquisti): le
+  guide dei singoli documenti ci **rimandano** invece di rispiegarli, così non
+  nascono tre versioni della stessa regola
+- **Ciclo passivo** — 🔴 **nessuna guida, ed è un buco dichiarato** (2026-09-02).
+  Le decisioni architetturali di fondo (emittente fiscale, motore di stato,
+  numerazione, indirizzi) sono state chiuse il 01-09-2026, ma il primo lotto del
+  cantiere non è atterrato: finché non lo è, una guida racconterebbe
+  un'intenzione. ⚠️ **Dove la documentazione acquisti c'è già, e dove no**: lo
+  schema è disegnato e documentato — [`dbzero/acquisti/`](./dbzero/acquisti/index.md)
+  ha ordini, DDT, note e le loro schede concettuali; l'area
+  [`backend/acquisti/`](./backend/acquisti/index.md) invece è **vuota di
+  proposito**, perché l'app Django è ancora uno scheletro senza endpoint.
+  Materiale di lavoro in `dev/work-in-progress/`:
+  `analisi-simmetria-ordini-acquisto.md`, `sviluppo-preventivi-acquisti.md`.
 - **Anagrafiche e dati di base** — [soggetti e ruoli](./guide/soggetti-e-ruoli-anagrafici.md) ·
   [indirizzi](./guide/gestione-degli-indirizzi.md) · [contatti](./guide/gestione-dei-contatti.md) ·
   [conti bancari](./guide/gestione-conti-bancari.md) ·
   [istanze utility](./guide/gestione-delle-istanze-utility.md)
-- **Numerazione e codici** — [come nasce un numero o un codice](./guide/numerazione-documenti-e-codici.md)
 - **Incassi e pagamenti** — [modello contabile dei pagamenti](./guide/gestione-dei-pagamenti.md)
   (centri di riscossione, contabili, movimenti, compensazioni, fondi fattura)
 - **Processi e orchestrazione** — [pratiche](./guide/gestione-pratiche.md) e la sua

@@ -45,6 +45,210 @@
 databaseChangeLog:
   - logicalFilePath: migrations_v2/80_data/changelog/20260831-53-delete-sistema-codici-documenti-traslocati-mctit.yaml
 
+  # ── ⛔ 2026-09-02 — IL PASSO CHE MANCAVA AL CHANGELOG ─────────────────
+  #
+  #   Il migrate in CI si e' fermato sul changeSet qui sotto:
+  #     SQL Precondition failed.  Expected '0' got '4'
+  #   cioe' «tutte e quattro le righe hanno ancora usa_sequenza = true».
+  #
+  #   ⭐ E la preCondition ha ragione: il commento del changeSet dice «gia'
+  #   smontati quando usa_sequenza e' passato a false», e quel passaggio non
+  #   e' MAI ENTRATO NEL CHANGELOG. Su questa macchina le quattro righe sono
+  #   state spente a mano; su un database ricostruito da zero le crea la
+  #   baseline con `usa_sequenza = true` e nessuno le spegne — il CSV di
+  #   `sistema_codici` non le contiene nemmeno piu'.
+  #   ⚠️ E' la forma classica del difetto: il changelog descrive un mondo che
+  #   esiste solo dove qualcuno ha messo le mani. Non si vede finche' non si
+  #   ricostruisce.
+  #
+  # ── ⛔ PERCHE' SI AGGIUNGE UN PASSO E NON SI RILASSA IL CANCELLO ──────
+  #
+  #   La tentazione era portare la preCondition a MARK_RAN. Sarebbe stato
+  #   sbagliato: su un database nuovo le quattro righe resterebbero ATTIVE, e
+  #   accanto ai trigger nuovi del motore registri vivrebbero i generatori
+  #   generici `gen_codice`. Due motori di numerazione sullo stesso documento —
+  #   la finestra che 20260831-13 dichiara innocua per la durata di UN migrate
+  #   diventerebbe permanente.
+  #   ⇒ Il cancello va lasciato dov'e', e va data la condizione che pretende.
+  #
+  # ── ⭐ SPEGNERE E' LA MOSSA GIUSTA, NON UN AGGIRAMENTO ────────────────
+  #
+  #   `usa_sequenza = false` e' esattamente il meccanismo che il trasloco usa:
+  #   `script.trgfn_config_sistema_codici_sync_gen_codice` scatta e fa DROP del
+  #   trigger e della funzione generati, «senza DDL a mano» (20260831-13).
+  #   ⚠️ Verificato il 2026-09-02 sul database, non dedotto: il trigger di sync
+  #   e' montato `AFTER INSERT OR DELETE OR UPDATE` e la sua funzione guarda
+  #   `TG_OP` e fa `DROP TRIGGER`.
+  #
+  #   ⚠️ Su questa macchina non fa niente — le quattro righe non esistono piu',
+  #   il DELETE e' passato il 2026-08-31 — ed e' la prova che il passo e'
+  #   idempotente: `WHERE usa_sequenza IS TRUE` su zero righe.
+  # ------------------------------------------------------------
+  - changeSet:
+      id: 20260902-53-00-spegni-sistema-codici-documenti-traslocati
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Porta a usa_sequenza = false le quattro righe di config.sistema_codici dei documenti
+        traslocati (ddt, ordine, reso, commessa), prima che il changeSet successivo le cancelli.
+        E'' il passo che il changelog dava per fatto e che non conteneva: su questa macchina era
+        stato eseguito a mano, su un database ricostruito da zero la baseline le crea a true e
+        nessuno le spegne. Spegnerle fa scattare il sync trigger, che fa DROP dei generatori
+        generici — lo stesso meccanismo che il trasloco usa da 20260831-08/-13/-15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sistema_codici
+            - columnExists:
+                schemaName: config
+                tableName: sistema_codici
+                columnName: usa_sequenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il filtro su IS TRUE non e' cosmesi: senza, l'UPDATE
+              --    toccherebbe righe gia' spente e farebbe scattare il sync
+              --    trigger per nulla.
+              UPDATE config.sistema_codici
+                 SET usa_sequenza = false
+               WHERE codice_interno IN ('ddt', 'ordine', 'reso', 'commessa')
+                 AND usa_sequenza IS TRUE;
+
+              -- ⛔ E il residuo che il sync NON riesce a togliere.
+              --   `20260709-14` dichiara: «la funzione trgfn_ddt_gen_codice
+              --   (override di 20260709-07) viene droppata dal sync del
+              --   framework quando usa_sequenza passa a false: atteso e
+              --   corretto». E' l'intenzione giusta appoggiata a un
+              --   meccanismo che su questo percorso non arriva.
+              --
+              --   ⚠️ Il ramo di drop del sync e' GUARDATO:
+              --       IF v_usa_sequenza IS DISTINCT FROM TRUE THEN
+              --         IF v_schema_tabella IS NOT NULL
+              --            AND v_nome_tabella IS NOT NULL THEN  ← qui
+              --   Senza le coordinate della tabella sulla riga di
+              --   config.sistema_codici non droppa niente, e non lo dice:
+              --   `RETURN NULL` e via. Quelle colonne sono nate il 2026-01-18
+              --   (20260118-01), molto dopo la riga della baseline.
+              --
+              --   ⇒ Su un database ricostruito da zero la funzione resta
+              --   ORFANA — senza nessun trigger agganciato — e a trovarla e'
+              --   scripts/sql/guardrail_riferimenti_morti.sql, che la chiama
+              --   «gia' di per se' un residuo». Ha ragione.
+              --   ⭐ Non si registra il debito in
+              --   dbops.riferimenti_morti_esenzioni: quella funzione E' morta
+              --   per progetto, quindi si toglie invece di dichiararla.
+              --
+              -- ℹ️ Idempotente: su una macchina dove il sync ci era arrivato
+              --   (dbdev, dove la funzione non esiste piu') non fa niente.
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_gen_codice();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si riaccende: rimetterle a true farebbe RIGENERARE i
+              --    trigger generici accanto a quelli del motore registri.
+              SELECT 1;
+
+  # ── ⛔ 2026-09-02 — IL SECONDO PASSO MANCANTE, STESSA FAMIGLIA ────────
+  #
+  #   Sistemato il primo cancello, il changeSet qui sotto e' tornato rosso con
+  #   lo STESSO messaggio — «Expected '0' got '4'» — ma su una preCondition
+  #   DIVERSA: ne ha tre, tutte a zero, e la seconda volta parlava la terza.
+  #   ⚠️ E' il motivo per cui un `onFailMessage` per ogni check vale il suo
+  #   costo: senza, due difetti diversi si presentano con la stessa faccia.
+  #
+  #   Il difetto: `vendite.famiglie_documento` nasce SENZA `prefisso_default`.
+  #   `20260831-51` (00_schema) aggiunge la colonna e la riempie leggendo
+  #   `config.sistema_codici` — ma gira in `00_schema`, e le famiglie le semina
+  #   `80_data`, cioe' DOPO. Su un database ricostruito da zero quell'UPDATE
+  #   tocca ZERO righe, poi il CSV di `famiglie_documento` — che quella colonna
+  #   non la porta — le crea tutte vuote.
+  #   ⭐ Su questa macchina funzionava perche' le famiglie c'erano gia' quando
+  #   il backfill e' passato. E' la stessa forma del passo precedente: il
+  #   changelog descrive un mondo che esiste solo dove qualcuno e' passato prima.
+  #
+  # ── ⭐ IL RIMEDIO E' IL DATO, NON L'ORDINE ────────────────────────────
+  #
+  #   Non si sposta il backfill: si mette il valore dove la sua sede dice che
+  #   deve stare — un CSV di `80_data`. E' la regola di casa («i dati di
+  #   80_data si cambiano dal CSV», AGENTS §80_data), e ha gia' un precedente
+  #   ESATTO: `famiglie_documento_colonna_serie.csv`, un CSV dedicato con un
+  #   loader suo per una colonna che il mirror base non porta.
+  #   ⇒ Da qui in avanti il backfill di `20260831-51` resta e non fa danno:
+  #   su un database nuovo trova zero righe, su uno vecchio trova i valori
+  #   gia' giusti.
+  #
+  #   ⚠️ La preCondition sulle cinque famiglie NON e' prudenza: `loadUpdateData`
+  #   ha `primaryKey: codice_interno`, quindi se il mirror base non fosse ancora
+  #   passato INSERIREBBE righe con i soli tre campi del CSV — monche, contro i
+  #   NOT NULL. Copiata dal precedente, che l'aveva gia' imparata.
+  # ------------------------------------------------------------
+  - changeSet:
+      id: 20260902-53-01-seed-famiglie-documento-formato
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Dà a vendite.famiglie_documento il prefisso_default e la lunghezza_default, che il
+        mirror base non porta e che il backfill di 20260831-51 non puo'' scrivere su un database
+        ricostruito da zero: quel changeSet vive in 00_schema e le famiglie le semina 80_data,
+        cioe'' dopo. Senza, i registri del prossimo emittente nascerebbero SENZA prefisso e i
+        numeri uscirebbero nudi, in silenzio. Forma copiata da
+        20260901-12-seed-famiglie-documento-colonna-serie: CSV dedicato, chiave codice_interno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: prefisso_default
+            # ⚠️ Le cinque famiglie devono esserci gia': se il mirror base non
+            #    fosse ancora passato, loadUpdateData le INSERIREBBE con i soli
+            #    tre campi del CSV, cioe' righe monche che violano i NOT NULL.
+            - sqlCheck:
+                expectedResult: 5
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.famiglie_documento
+                   WHERE codice_interno IN ('FATTURA', 'DDT', 'ORDINE', 'RESO', 'COMMESSA');
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/famiglie_documento_formato.csv
+            tableName: famiglie_documento
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            # ⚠️ Il token letterale NULL diventa SQL NULL: e' cosi' che la
+            #    FATTURA dichiara di NON avere un prefisso — il suo numero e'
+            #    nudo, e la stringa 'NULL' le metterebbe davanti quattro
+            #    caratteri che nessuno ha chiesto.
+            nullValue: "NULL"
+            primaryKey: "codice_interno"
+            columns:
+              - column: { name: codice_interno,    type: STRING }
+              - column: { name: prefisso_default,  type: STRING }
+              - column: { name: lunghezza_default, type: NUMERIC }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si azzera il prefisso: lasciarlo vuoto e' proprio lo
+              --    stato che il changeSet successivo rifiuta.
+              SELECT 1;
+
   - changeSet:
       id: 20260831-53-delete-sistema-codici-documenti-traslocati
       author: mctit

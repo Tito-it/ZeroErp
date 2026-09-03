@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUALI LISTE NON HANNO UN PERIMETRO EMITTENTE
+#   ui.lista_definizione.perimetro_emittente
+#   Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.16
+#
+# ── ⭐ CSV DEDICATO, e non una colonna in lista_definizione.csv ──
+#   Il mirror di quel file (20260507-06) e' gia' mergiato e dichiara le
+#   proprie colonne una per una: aggiungerne una vorrebbe dire toccarlo.
+#   Un CSV per sottoinsieme e' gia' il pattern di casa — l'ha usato
+#   20260901-12 per `colonna_serie`.
+#
+# ── ⛔ E NON UN UPDATE IN 00_schema ──────────────────────────────
+#   Li' la tabella e' ancora vuota su un database ricostruito da zero: il
+#   valore andrebbe perso in CI mentre su sviluppo funzionerebbe.
+#
+# ── ⚠️ UNA RIGA SOLA, ED E' UNA SCELTA ──────────────────────────
+#   Il caso portato dal BE e' la lista delle famiglie di documento. Nella
+#   stessa condizione ci sono anche `ui.lista_definizione`, `ui.lista_colonna`
+#   e `ui.lista_colonna_permesso` (56, 57, 59): cataloghi tecnici, nessuna
+#   riga che appartenga a un emittente. Non le si dichiara qui perche' nessuno
+#   ha ancora detto di sbatterci contro, e una riga di seed che nessuno ha
+#   chiesto e' una decisione presa di nascosto: bastera' una riga per ognuna.
+#   ⛔ `ui.lista_preset` (58) NON e' fra queste, ed e' il caso interessante: un
+#   preset PUO' appartenere a un emittente (`ambito = emittente_fiscale`),
+#   quindi quella lista un perimetro ce l'ha. Per lei la strada e' l'altra —
+#   esporre l'emittente nella riga e certificarsi `multi_emittente`.
+#
+# ⚠️ La preCondition sul conteggio non e' burocrazia: `loadUpdateData` con
+#   due sole colonne, su una riga che non esistesse, farebbe un INSERT monco
+#   che viola i NOT NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260902-02-seed-lista-definizione-perimetro-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260902-02-seed-lista-definizione-perimetro-emittente
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Dichiara quali liste NON hanno un perimetro emittente: oggi una sola, `vendite.famiglie_documento`.
+        ⭐ CSV dedicato e non una colonna in lista_definizione.csv, il cui mirror e'' gia'' mergiato e
+        dichiara le colonne una per una — un CSV per sottoinsieme e'' gia'' il pattern di casa. ⛔ E non un
+        UPDATE in 00_schema: li'' la tabella e'' vuota su un database ricostruito da zero. ⚠️ Una riga
+        sola di proposito: 56/57/59 sono nella stessa condizione ma nessuno ha ancora detto di
+        sbatterci contro, e 58 (i preset) un perimetro ce l''ha davvero.
+        Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.16.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: ui
+                tableName: lista_definizione
+                columnName: perimetro_emittente
+            # ⛔ La riga deve esistere: con due sole colonne un INSERT sarebbe
+            #    monco e violerebbe i NOT NULL della tabella.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM ui.lista_definizione
+                   WHERE codice = 'vendite.famiglie_documento';
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/lista_definizione_perimetro_emittente.csv
+            tableName: lista_definizione
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            # ⚠️ Si semina per `codice`, chiave naturale e con il suo UNIQUE, e
+            #    non per id: gli id di questa tabella sono un dettaglio
+            #    implementativo, il codice e' il contratto col frontend.
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice, type: STRING }
+              - column: { name: perimetro_emittente, type: BOOLEAN }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna al default della colonna, non si cancella la riga:
+              --   la lista continua a esistere, e' la sua dichiarazione a
+              --   tornare indietro.
+              UPDATE ui.lista_definizione
+                 SET perimetro_emittente = TRUE
+               WHERE codice = 'vendite.famiglie_documento';

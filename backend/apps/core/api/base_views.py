@@ -61,6 +61,23 @@ class DomainAPIView(APIView):
     #    codice — e nessuno commenta `area_funzionale = "vendite"`.
     lista_codice: str | None = None
 
+    # Nome del parametro di QUERY con cui questo endpoint riceve l'emittente
+    # gia' fissato dal contesto che lo apre — tipicamente un tab-lista dentro
+    # il drawer di un emittente, dove l'emittente e' l'oggetto stesso che si
+    # sta guardando. `None` = l'endpoint non ne ha uno, e il cancello decide
+    # come ha sempre deciso.
+    #
+    # ⚠️ Il nome lo dichiara la VIEW perche' e' l'unica a saperlo: il progetto
+    #    ne usa piu' d'uno (`emittente_soggetto_ruolo_id` e' il soggetto-ruolo,
+    #    `emittente_fiscale_id` e' la PK — non sono la stessa cosa), e un nome
+    #    cablato nella base view sceglierebbe al posto delle sottoclassi.
+    #
+    # ⚠️ Si legge SOLO dalla query string, mai dal payload: sulle scritture
+    #    l'emittente e' gia' verificato dalla view che lo riceve (e li' e' un
+    #    controllo di scope, non di leggibilita'), e leggere il corpo dentro
+    #    `initial()` significherebbe consumarlo prima del `post`.
+    lista_emittente_param: str | None = None
+
     # Scopo: applica il cancello di perimetro emittente PRIMA di servire i
     #        dati, per le view che dichiarano `lista_codice`.
     # Perimetro: solo lettura del perimetro; il rifiuto e' un errore di dominio
@@ -83,7 +100,20 @@ class DomainAPIView(APIView):
             perimetro_emittente.guard_lista_per_codice(
                 user=request.user,
                 lista_codice=self.lista_codice,
+                emittente_esplicito=self._emittente_esplicito(request),
             )
+
+    # Scopo: l'emittente che la richiesta FISSA, quando questo endpoint ne
+    #        dichiara il parametro. `None` se non lo dichiara.
+    # ⭐ La REGOLA (un valore solo, numerico) sta nel building block, non qui:
+    #    la stessa lettura la fa l'endpoint di config della lista, e due letture
+    #    gemelle sono il modo classico di farle divergere.
+    def _emittente_esplicito(self, request) -> int | None:
+        if not self.lista_emittente_param:
+            return None
+        return perimetro_emittente.emittente_esplicito_da_query(
+            request.query_params, nome=self.lista_emittente_param
+        )
 
 
 class AdminAPIView(APIView):

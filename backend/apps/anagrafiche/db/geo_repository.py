@@ -16,19 +16,26 @@ from apps.core.db._helpers import (
     extract_paginated,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
+    colonne_identita,
+    sql_order_clause,
 )
 
 from django.db import connection
 
 
-_TOPONOMASTICA_ORDER_COLS = {"descrizione", "attivo"}
-_COMUNI_ORDER_COLS = {"descrizione", "provincia_sigla", "regione_descrizione"}
-_PROVINCE_ORDER_COLS = {"descrizione", "sigla", "regione_descrizione"}
-_REGIONI_ORDER_COLS = {"descrizione", "stato_descrizione"}
-_STATI_ORDER_COLS = {"descrizione", "codice_iso2", "continente"}
-_CODICI_POSTALI_ORDER_COLS = {"codice", "comune_descrizione"}
+# ⚠️ Mappe e non insiemi, con le due meta' UGUALI apposta: su queste sei liste
+#    il nome logico della colonna E' la sua espressione SQL — nessuna traduzione
+#    da fare. E' la forma che `sql_order_clause` chiede a tutte le liste, e
+#    scriverla esplicitamente evita che il prossimo lettore creda che qui manchi
+#    qualcosa.
+# ⭐ `set(_X_ORDER_COLS)` continua a dare le chiavi: i risolutori di whitelist
+#    del presidio seed non cambiano.
+_TOPONOMASTICA_ORDER_COLS = colonne_identita("descrizione", "attivo")
+_COMUNI_ORDER_COLS = colonne_identita("descrizione", "provincia_sigla", "regione_descrizione")
+_PROVINCE_ORDER_COLS = colonne_identita("descrizione", "sigla", "regione_descrizione")
+_REGIONI_ORDER_COLS = colonne_identita("descrizione", "stato_descrizione")
+_STATI_ORDER_COLS = colonne_identita("descrizione", "codice_iso2", "continente")
+_CODICI_POSTALI_ORDER_COLS = colonne_identita("codice", "comune_descrizione")
 
 
 class GeoRepository:
@@ -43,15 +50,18 @@ class GeoRepository:
         self, *, search: str | None = None, limit: int = 25, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _TOPONOMASTICA_ORDER_COLS else "descrizione"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_TOPONOMASTICA_ORDER_COLS,
+            default="descrizione",
+            tiebreak="id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT id, descrizione, attivo, COUNT(*) OVER () AS total_count
               FROM config.toponomastica
              WHERE (%s::text IS NULL OR descrizione ILIKE %s)
-             ORDER BY {order_col} {direction}, id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -89,9 +99,12 @@ class GeoRepository:
         self, *, search: str | None = None, limit: int = 25, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _COMUNI_ORDER_COLS else "descrizione"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_COMUNI_ORDER_COLS,
+            default="descrizione",
+            tiebreak="c.id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT c.id, c.descrizione,
@@ -103,7 +116,7 @@ class GeoRepository:
               LEFT JOIN config.province p ON p.id = c.provincia_id
               LEFT JOIN config.regioni r ON r.id = p.regione_id
              WHERE (%s::text IS NULL OR c.descrizione ILIKE %s)
-             ORDER BY {order_col} {direction}, c.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -162,9 +175,12 @@ class GeoRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "codice", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _CODICI_POSTALI_ORDER_COLS else "codice"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_CODICI_POSTALI_ORDER_COLS,
+            default="codice",
+            tiebreak="cp.id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cp.id, cp.codice, cp.comune_id,
@@ -174,7 +190,7 @@ class GeoRepository:
               JOIN config.comuni c ON c.id = cp.comune_id
              WHERE (%s::text IS NULL OR cp.codice ILIKE %s OR c.descrizione ILIKE %s)
                AND (%s::integer IS NULL OR cp.comune_id = %s)
-             ORDER BY {order_col} {direction}, cp.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -224,9 +240,12 @@ class GeoRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _PROVINCE_ORDER_COLS else "descrizione"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_PROVINCE_ORDER_COLS,
+            default="descrizione",
+            tiebreak="p.id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT p.id, TRIM(p.descrizione) AS descrizione, TRIM(p.sigla) AS sigla,
@@ -236,7 +255,7 @@ class GeoRepository:
               LEFT JOIN config.regioni r ON r.id = p.regione_id
              WHERE (%s::text IS NULL OR p.descrizione ILIKE %s OR p.sigla ILIKE %s)
                AND (%s::integer IS NULL OR p.regione_id = %s)
-             ORDER BY {order_col} {direction}, p.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -289,9 +308,12 @@ class GeoRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _REGIONI_ORDER_COLS else "descrizione"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_REGIONI_ORDER_COLS,
+            default="descrizione",
+            tiebreak="r.id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT r.id, r.descrizione, r.stato_id, s.descrizione AS stato_descrizione,
@@ -300,7 +322,7 @@ class GeoRepository:
               LEFT JOIN config.stati s ON s.id = r.stato_id
              WHERE (%s::text IS NULL OR r.descrizione ILIKE %s)
                AND (%s::integer IS NULL OR r.stato_id = %s)
-             ORDER BY {order_col} {direction}, r.id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -348,9 +370,12 @@ class GeoRepository:
         self, *, search: str | None = None, limit: int = 25, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _STATI_ORDER_COLS else "descrizione"
-        direction = sql_order_direction(order_dir)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_STATI_ORDER_COLS,
+            default="descrizione",
+            tiebreak="id",
+        )
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT id, descrizione, sigla_stato, codice_iso2, codice_iso3,
@@ -359,7 +384,7 @@ class GeoRepository:
               FROM config.stati
              WHERE (%s::text IS NULL OR descrizione ILIKE %s
                     OR codice_iso2 ILIKE %s OR codice_iso3 ILIKE %s)
-             ORDER BY {order_col} {direction}, id {tiebreak_dir}
+             ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:

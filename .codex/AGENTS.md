@@ -191,6 +191,13 @@ Le uniche due eccezioni: le **righe di un documento** dentro il suo master
 dentro un dialog, non paginata e non configurabile.
 ⛔ Non sono eccezioni: «è piccola», «è solo per l'admin», «faccio prima».
 
+⛔ **Nemmeno «è dentro un drawer»** (2026-09-01). Una lista su un tab di drawer
+è una lista: le manca il paginator, non la natura. Si monta con
+`useDrawerTabLista` + `<DrawerTabLista>`. 🔴 L'unico caso oggi **senza casa** è
+la **matrice slot/override** (editing inline, popolazione dal catalogo): resta
+`DataTable` grezza col debito dichiarato nel piano PrimeVue 5 §Gruppo B, dove
+sta anche il criterio in tre domande e la decisione aperta.
+
 La configurazione della lista è **dato, non DDL** — una riga in
 `ui.lista_definizione` più N in `ui.lista_colonna`, create dall'amministrazione
 in-app o con `scripts/gen_seed_lista.py`. **Non serve un brief e non si aspetta
@@ -281,6 +288,110 @@ che Liquibase ignora: l'`ANY` non vale niente. Il refuso è in centinaia di file
 e non si nota finché `runOnChange` è `true` (il checksum si ricalcola comunque);
 diventa un migrate fallito nel momento in cui lo si spegne. Chi spegne un
 `runOnChange` deve correggere anche la chiave.
+
+### ⛔ Una `preCondition` di `00_schema`/`20_code` NON interroga il contenuto di `80_data`
+
+Presidiato da `scripts/guardrail_precondition_seed.py` (CI, `ci-validate.yaml`).
+Regola estesa e casistica: [linee-guida-sql.md §11.4](../docs/it/linee-guida-sql.md).
+
+**Perché**, ed è l'altra cosa che si vede solo in CI. Il changelog esegue
+`00_schema` + `20_code` (mescolati per numero dall'autogen) e **poi** `80_data`.
+Quindi un `sqlCheck` che pretende una riga di seed — un codice errore, una
+`config.sorgenti`, uno stato a catalogo — viene valutato quando quella riga non
+esiste ancora: la corsa che la **introduce** è esattamente quella in cui il
+cancello non la trova, e il migrate muore con
+`SQL Precondition failed. Expected '1' got '0'`. Su un DB di sviluppo la riga c'è
+da settimane e il cancello passa.
+
+Il 2026-09-02, ripartita la CI dopo giorni di fermo, il migrate si è fermato su
+`20260820-12-update-fn-available-actions-reso-accrediti`; dietro c'erano altre
+**quindici** mine identiche già committate, una build ciascuna per scoprirle.
+
+Non serve, ed è il punto: un codice errore o una sorgente si nominano come
+**stringa** e si risolvono **a runtime**, quando `80_data` è passato da un pezzo.
+Ciò che il cancello voleva difendere («se il `codice_interno` cambiasse, il
+`CASE` smetterebbe di agganciarsi in silenzio») è un presidio **pgTAP**.
+
+✅ Restano leciti: le preCondition sullo **schema** (`tableExists`,
+`columnExists`, `viewExists`, `pg_proc`, arità), un `sqlCheck` con
+`expectedResult: 0` («nessuna riga cattiva»), e un `onFail` diverso da `HALT`
+(i backfill del pregresso, che su un DB nuovo si segnano da soli).
+⚠️ Il verso opposto va invece tenuto: un changeSet di `80_data` **deve**
+precondizionare su `tableExists`.
+
+### ⛔ Niente DDL né `preCondition` su un trigger che nasce da `ci_apply`
+
+Presidiato da `scripts/guardrail_ddl_su_trigger_automazione.py` (CI, `ci-validate.yaml`).
+Regola estesa: [linee-guida-sql.md §11.5](../docs/it/linee-guida-sql.md).
+
+I trigger di **audit**, **`tx_id`** e **storico** non li scrive nessun changeSet:
+li genera il framework delle automazioni con `--contexts=ci_apply`, cioè la
+**seconda** invocazione di Liquibase. Durante la prima passata una tabella appena
+creata **non li ha ancora**: un `ALTER TRIGGER … RENAME` o un `DROP TRIGGER` senza
+`IF EXISTS` su quei nomi passa in sviluppo — dove esistono da settimane — e in CI
+muore con `trigger "…" does not exist`.
+
+Il 2026-09-02 è successo su `20260822-25-rename-compensazioni-in-sistemazioni`,
+che aveva il fatto **scritto nella propria intestazione** due paragrafi sopra il
+difetto.
+
+⭐ E in quel mondo l'operazione non serviva: le automazioni lavorano **per
+pattern**, quindi genereranno già il nome nuovo. L'operazione è legittimamente
+**condizionale** ⇒ va in un changeSet suo, **uno per trigger**, con
+`onFail: MARK_RAN` + un `sqlCheck` su `pg_trigger`.
+⛔ Mai una preCondition sul changeSet intero: `MARK_RAN` salterebbe anche la
+rinomina della tabella, in silenzio.
+
+⚠️ **Seconda faccia, stessa causa**: anche una `preCondition` che **conta** quei
+trigger in `pg_trigger` e ne pretende un numero muore in CI — il 2026-09-02
+`20260831-71` chiedeva «i sei guard di disattivazione sono montati», e su un DB
+nuovo non ce n'è nemmeno uno. ⭐ Lì il rimedio è **toglierla**: era un doppione
+del test 6 del suo pgTAP, che fa la stessa identica query e gira a `ci_apply`
+avvenuto. *Una preCondition guarda ciò che viene prima; un invariante si
+asserisce in pgTAP.*
+
+### ⛔ In `80_data` convivono catalogo e dati di macchina — si dichiarano
+
+Regola estesa e censimento: [linee-guida-sql.md §11.7](../docs/it/linee-guida-sql.md).
+
+**Catalogo** = parte del contratto del software, vale identico su ogni
+installazione, il codice lo nomina per `codice_interno`. **Macchina** = descrive
+*questa* installazione. ⭐ Il discriminante si deriva: un seed è di macchina se
+**valorizza una FK verso `anagrafiche.*`** — quelle righe nascono dall'uso, e su
+un database ricostruito da zero non esistono.
+
+Un seed di macchina si marca `context: dati_macchina`.
+🔴 **Ma provato il 2026-09-02: `--contexts="!provision"` NON lo filtra** — quel
+filtro esclude ciò che è `provision`, non ciò che ha un contesto qualsiasi. Serve
+esplicito, in `ci.yaml` e in produzione: `--contexts="!provision and !dati_macchina"`.
+Finché quella riga non c'è, il contesto è documentazione, non un cancello.
+⭐ Per i **mirror CSV** c'è una via che non dipende dal contesto: **svuotare il
+file** (sola intestazione). Carica zero righe ovunque e non cancella niente dove
+quelle righe già esistono. Il contesto serve per i seed scritti in **SQL**.
+⛔ I **backfill** che nominano un'anagrafica NON si marcano: su un DB vuoto sono
+`UPDATE` su zero righe, quindi innocui.
+
+### ⛔ I privilegi dei ruoli batch stanno nel provisioning, mai in un changeSet
+
+Presidiato da `scripts/guardrail_grant_ruolo_batch.py` (CI, `ci-validate.yaml`).
+Regola estesa: [linee-guida-sql.md §11.6](../docs/it/linee-guida-sql.md).
+
+I ruoli `zeroerp_batch_*` hanno `BYPASSRLS`, che vuole **superuser**: Liquibase
+gira come `zeroerp` e non può crearli. Li crea
+`scripts/sql/provision_db_role_batch_<job>.sql` come `postgres`, **dopo** le
+migrazioni standard (concede sul perimetro, e il perimetro deve esistere).
+⇒ Per tutto il migrate quel ruolo **non esiste**, e un `GRANT` che lo nomina
+ferma la pipeline con `role "..." does not exist`. In sviluppo il ruolo c'è e il
+GRANT passa.
+
+⭐ **Ed è inutile**: il provisioning fa `GRANT SELECT/EXECUTE ON ALL … IN SCHEMA`
+sui 14 schemi applicativi più `ALTER DEFAULT PRIVILEGES`, quindi copre anche gli
+oggetti che nascono dopo. Il rimedio è **togliere la riga**.
+
+⚠️ Il `GRANT` a `zeroerp_app` accanto **resta**: è la riga da cui quella
+sbagliata viene copiata — adiacenti e identiche tranne il nome del ruolo.
+⛔ Se serve un privilegio *in più* del perimetro ampio, si aggiunge al
+provisioning e si rilancia.
 
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 

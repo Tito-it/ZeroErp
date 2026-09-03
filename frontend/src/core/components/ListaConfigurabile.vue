@@ -9,6 +9,38 @@
 // (`rows`), il `total`, il `loading`, e gestisce paginazione/sort
 // reagendo agli eventi `@page`/`@sort`/`@filter`. Tipico:
 //
+// ⭐ DUE MODALITA', e la prop che le separa e' `paginata` (default `true`).
+//
+//   `paginata` (default)   il caller pagina lato server: `rows` e' UNA PAGINA,
+//                          `total` e' il conteggio vero, il BB monta il
+//                          paginator ed emette `@page`/`@sort` perche' sia il
+//                          caller a rifare la fetch.
+//
+//   `:paginata="false"`    la lista NON pagina: `rows` sono TUTTE le righe.
+//                          Niente paginator, ordinamento LOCALE di PrimeVue,
+//                          e `@page`/`@sort` NON vengono emessi (non c'e'
+//                          niente da rifetchare).
+//
+// ⛔ «Non paginata» NON vuol dire «senza `total`»: vuol dire
+//    **`rows.length === total`**, e il BB lo VERIFICA (vedi
+//    `troncamentoSospetto`). E' l'unico difetto muto che questa modalita'
+//    introduce, ed e' il motivo per cui il guard esiste — vedi il blocco
+//    sopra la computed.
+//
+// ⚠️ DIVERGENZA DICHIARATA, non presidiabile: con `paginata: false` l'ordine
+//    lo decide PrimeVue in locale, e non e' l'ordine del database. Su NULL,
+//    accenti e numeri tenuti come testo i due possono differire — e la regola
+//    di casa sulle date (`valido_al DESC` con `COALESCE(col,'infinity')`,
+//    `feedback_ordinamento_validita_infinity`) in locale semplicemente non
+//    esiste. Qui `nullSortOrder` e' impostato ESPLICITAMENTE a 1 (NULL in
+//    fondo) per non lasciarlo a un default implicito, ma resta una scelta del
+//    componente, non la semantica del server.
+//    ⇒ Una lista in cui l'ordinamento dei NULL e' informazione va tenuta
+//      `paginata: true`, oppure vuole un comparatore esplicito — che questo
+//      building block oggi non ha.
+//    ⚠️ In modalita' paginata `nullSortOrder` e' inerte (con `lazy` PrimeVue
+//      non ordina): le liste esistenti non cambiano comportamento.
+//
 //   <ListaConfigurabile
 //     codice="anagrafiche.clienti"
 //     :rows="store.items"
@@ -58,9 +90,14 @@ import ListaColonneModal from './ListaColonneModal.vue'
 // Default paginator allineato al pattern lista standard
 // (paginatorPosition=top, JumpToPageDropdown 1/N, font compatto).
 // Il caller puo' override passando paginatorProps di useSearchTable o
-// un oggetto custom via la prop `paginator-options`. La modalita' lazy +
-// removable-sort + striped + scrollable rimane fissata: sono regole del
+// un oggetto custom via la prop `paginator-options`.
+// `removable-sort` + striped + scrollable restano fissati: sono regole del
 // pattern, non parametriche (vedi frontend-standards.md).
+// ⚠️ `lazy` e `paginator` NON sono piu' fra quelli: li governa la prop
+//    `paginata` (2026-09-02). Erano cablati, e quella costante era l'unica
+//    ragione per cui una lista senza paginazione server-side non poteva usare
+//    il catalogo colonne — cioe' un cancello che presidiava una cosa sola
+//    davanti a cinque benefici che non c'entravano niente.
 const _DEFAULT_PAGINATOR_OPTIONS = Object.freeze({
   paginator: true,
   paginatorPosition: 'top',
@@ -71,13 +108,47 @@ const _DEFAULT_PAGINATOR_OPTIONS = Object.freeze({
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
 })
 
+// Ordine dei NULL nell'ordinamento LOCALE (modalita' non paginata).
+// PrimeVue: `1` = «Excel like sort nulls at bottom» — verificato nel sorgente
+// di `@primeuix/utils` (`sort.ts`), dove e' anche il valore di default.
+// ⭐ Lo passiamo ESPLICITO proprio perche' e' il default: su una lista non
+//    paginata l'ordine lo decide il browser, e una scelta ereditata in silenzio
+//    da una libreria non e' una scelta — e' un default che nessuno ha visto.
+// ⚠️ In modalita' paginata e' inerte (con `lazy` PrimeVue non ordina).
+const NULL_IN_FONDO = 1
+
 const props = defineProps({
   // Codice stabile della lista (es. 'anagrafiche.clienti').
   codice: { type: String, required: true },
+  // Emittente GIA' fissato dal contesto che apre la lista — oggi il tab dentro
+  // il drawer di un emittente. ⭐ Non filtra niente qui: viaggia al backend con
+  // la richiesta di config, ed e' quello che gli permette di rispondere
+  // `richiede_scelta_emittente: false` su una lista non certificata
+  // multi-emittente. Senza, il pannello del cancello chiederebbe di scegliere
+  // l'emittente che l'operatore ha gia' aperto davanti.
+  // ⚠️ I dati della lista li fetcha il CALLER: sta a lui filtrare per lo stesso
+  //    emittente. Qui la prop non tocca le righe.
+  emittenteEsplicito: { type: [String, Number], default: null },
   // Dati riga forniti dal caller (no fetch interno).
+  // ⚠️ Con `paginata: false` sono TUTTE le righe, non una pagina.
   rows: { type: Array, default: () => [] },
-  // Conteggio totale per paginator (server-side).
+  // Conteggio totale.
+  //  - `paginata: true`  → conteggio server-side, alimenta il paginator;
+  //  - `paginata: false` → resta OBBLIGATORIO, e diventa l'ASSERZIONE che le
+  //    righe siano tutte: il BB confronta `rows.length` con questo numero e
+  //    rifiuta di disegnare la tabella se divergono (`troncamentoSospetto`).
   total: { type: Number, default: 0 },
+  // Modalita' di paginazione della lista. `true` (default) = il caller pagina
+  // lato server. `false` = la lista non pagina: niente paginator, ordinamento
+  // locale, nessun evento `@page`/`@sort`.
+  //
+  // ⛔ NON e' un'opzione di comodo per saltare la paginazione. Si mette
+  //    `false` quando la popolazione e' limitata PER MODELLO (una riga per
+  //    voce di catalogo, le utility di un emittente, i reparti), non quando
+  //    «oggi sono poche»: il giorno che diventano molte il guard qui sotto
+  //    accende un errore invece di mostrare una lista troncata, ma la lista
+  //    resta comunque da riportare su `paginata: true`.
+  paginata: { type: Boolean, default: true },
   // Loading flag controllato dal caller.
   loading: { type: Boolean, default: false },
   // Pagina corrente 1-based (display nel paginator).
@@ -137,7 +208,9 @@ const {
   save,
   reset,
   ignorePresetUpdate,
-} = useListaConfig(props.codice)
+} = useListaConfig(props.codice, {
+  emittenteEsplicito: () => props.emittenteEsplicito,
+})
 
 // Stato modale di personalizzazione.
 const modalVisible = ref(false)
@@ -165,6 +238,24 @@ async function loadEdEmetti() {
 }
 
 onMounted(loadEdEmetti)
+
+// ⭐ Si guarda la PRESENZA, non il valore: la risposta del backend dipende dal
+//    fatto che UN emittente sia fissato, non da QUALE. Cambiare emittente
+//    dentro il drawer non cambia `richiede_scelta_emittente`, e ricaricare la
+//    config a ogni cambio sarebbe un round-trip per una risposta identica.
+const emittenteFissato = computed(
+  () => props.emittenteEsplicito !== null
+    && props.emittenteEsplicito !== undefined
+    && props.emittenteEsplicito !== '',
+)
+
+// ⚠️ L'emittente esplicito puo' arrivare DOPO il primo render (il drawer si
+//    apre e poi passa l'id): la config e' gia' stata chiesta senza, e la
+//    risposta era «scegli un emittente». Questa e' l'unica transizione che
+//    cambia qualcosa.
+watch(emittenteFissato, async (ora, prima) => {
+  if (ora && !prima) await loadEdEmetti()
+})
 
 // Re-fetch se il codice cambia (caso raro: tab switch dinamico).
 // ⚠️ Ricaricare SENZA riemettere l'evento era un difetto: il pannello del
@@ -219,6 +310,10 @@ const colonneRender = computed(() => {
         formato: m.formato || null,
         allineamento: m.allineamento || 'left',
         ordinabile: m.ordinabile !== false,
+        // ⭐ Serve al VERSO DI PARTENZA dell'ordinamento (vedi `onSort`): una
+        //    colonna data si legge dalla piu' recente. `c` prima di `m` perche'
+        //    la config arriva a ogni richiesta, il catalogo e' un secondo giro.
+        tipo_dato: c.tipo_dato || m.tipo_dato || null,
       }
     })
     .sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0))
@@ -271,6 +366,48 @@ const expandedRows = computed({
     else _expandedRowsInterno.value = v
   },
 })
+
+// ⛔ IL GUARD DELLA MODALITA' NON PAGINATA — l'unico difetto MUTO che
+//    `paginata: false` introduce, e il motivo per cui `total` resta obbligatorio.
+//
+// Con `lazy` acceso PrimeVue rende esattamente le righe che gli dai e usa
+// `totalRecords` per il paginator. SPENTO, tratta `rows` come il dataset
+// COMPLETO: se il caller continua a mandare una pagina (`limit=25`), la tabella
+// mostra 25 righe, niente paginator, **nessun errore** — e l'operatore non ha
+// modo di sapere che ce n'erano 500. Non fallisce niente: la lista e' solo
+// incompleta, e sembra intera.
+//
+// ⭐ Il confronto costa zero perche' il dato c'e' gia': `total` e' una prop e
+//    l'endpoint lo restituisce comunque. «Non paginata» diventa un CONTRATTO
+//    verificabile — `rows.length === total` — invece di un'assunzione.
+//
+// ⚠️ E vale soprattutto per DOMANI: una lista piccola oggi che cresce a 400
+//    righe fra un anno e' il caso in cui questo si rompe, ed e' l'unico in cui
+//    nessuno starebbe guardando (`feedback_concentrico_no_yagni`).
+//
+// ⚠️ `loading` esclude il transitorio: durante una fetch le due grandezze
+//    possono essere legittimamente disallineate.
+// ⚠️ Lista vuota con `total` a 0 non e' una pretesa: e' il caso «nessun dato».
+const troncamentoSospetto = computed(() => {
+  if (props.paginata) return false
+  if (props.loading || configLoading.value) return false
+  if (props.rows.length === 0 && props.total === 0) return false
+  return props.rows.length !== props.total
+})
+
+// Fail-visible ha due destinatari: l'operatore vede il Message al posto della
+// tabella, lo sviluppatore trova il perche' in console. Senza la seconda meta'
+// il messaggio a video non dice quale lista ne' quali numeri.
+watch(troncamentoSospetto, (sospetto) => {
+  if (!sospetto) return
+  console.error(
+    `[ListaConfigurabile] "${props.codice}" e' montata con paginata=false ma `
+    + `le righe ricevute (${props.rows.length}) non sono tutte quelle `
+    + `dichiarate da total (${props.total}). La lista mostrerebbe un `
+    + 'sottoinsieme facendolo passare per l\'insieme: tabella non renderizzata. '
+    + 'O il caller smette di paginare la fetch, o la lista torna paginata=true.',
+  )
+}, { immediate: true })
 
 // Scopo: azzera l'espansione solo quando e' la lista a possederla. Con
 // `v-model` il proprietario e' il caller: sovrascriverlo qui gli cancellerebbe
@@ -351,14 +488,89 @@ const firstOffset = computed(() => {
 // Eventi DataTable -> il caller decide come gestire (server-side fetch).
 // Azzeriamo lo stato expansion su cambio pagina/sort: le chiavi dataKey della
 // pagina precedente non hanno senso sulla nuova.
+// ⛔ Con `paginata: false` NON si emette. Spento `lazy`, PrimeVue ordina in
+//    locale E continua a emettere `@sort`: un caller che aveva agganciato
+//    `onSort -> refetch` farebbe entrambe le cose — riordina due volte, e su
+//    collation diverse le due passate possono non concordare. Nulla fallisce,
+//    ed e' esattamente la classe di difetto che questa modalita' non deve
+//    portarsi dietro. Qui non c'e' niente da rifetchare: l'evento non parte.
+// ⛔ E l'uscita e' PRIMA di `resetExpansionSePropria()`, non dopo. L'azzeramento
+//    dell'espansione ha senso quando la pagina cambia DAVVERO contenuto: le
+//    chiavi `dataKey` della pagina precedente non esistono piu'. In modalita'
+//    non paginata invece le righe sono le stesse e vengono solo RIORDINATE:
+//    l'espansione resta valida (PrimeVue la indicizza per `dataKey`, non per
+//    posizione), e azzerarla chiuderebbe sotto gli occhi dell'operatore le
+//    righe che aveva aperto per leggere le colonne ritirate.
+//    ⚠️ In modalita' non paginata `onPage` non puo' nemmeno scattare — il
+//    paginator non esiste — ma la guardia sta su entrambi: una simmetria che
+//    non costa niente e non lascia un ramo che dipende da «tanto non capita».
 function onPage(event) {
+  if (!props.paginata) return
   resetExpansionSePropria()
   emit('page', event)
 }
 
+// ⭐ REGOLA DI TID (2026-09-02): «gli ordinamenti per DATA hanno sempre default
+//    DESC». Una data si legge dalla piu' recente — cliccare «Data» e ricevere il
+//    2019 in cima e' il contrario di cio' che si e' chiesto, e su una lista di
+//    presidio e' anche il caso meno utile.
+// ⚠️ QUALI SIANO LE COLONNE DATA NON SI DECIDE QUI: lo dice il catalogo
+//    (`ui.lista_colonna.tipo_dato`), che e' gia' la sede di quel fatto. Un
+//    elenco di nomi scritto nel frontend sarebbe una seconda verita' che
+//    diverge alla prima colonna aggiunta a catalogo.
+const TIPI_DATO_CRONOLOGICI = new Set(['date', 'datetime'])
+
+// I `campo_sorgente` — cioe' i valori che PrimeVue manda in `sortField` — delle
+// colonne cronologiche di QUESTA lista.
+const campiCronologici = computed(() => new Set(
+  colonneRender.value
+    .filter((c) => TIPI_DATO_CRONOLOGICI.has(c.tipo_dato))
+    .map((c) => c.campo_sorgente),
+))
+
+// ⛔ MEMORIA DEL CAMPO SU CUI SI STA CICLANDO, e non e' un dettaglio: senza,
+//    il giro DESC qui sotto rende una colonna data NON PIU' ORDINABILE IN
+//    CRESCENTE. Il motivo e' `removable-sort`: PrimeVue alterna
+//    asc -> desc -> NIENTE, e nello stato «niente» il `sortField` applicato
+//    torna `null`. Il click successivo sulla STESSA colonna sembra allora un
+//    primo click — campo diverso da `null` — e viene girato di nuovo a DESC.
+//    ⇒ il ciclo si chiude su desc -> niente -> desc, e l'ASC non si raggiunge
+//    piu'. 🔴 Difetto reale, trovato da Tid in collaudo sulla lista DDT il
+//    2026-09-02.
+// ⚠️ La memoria sopravvive allo stato «niente» apposta: e' l'unica cosa che
+//    distingue «sto ancora ciclando su Data» da «sono passato a un'altra
+//    colonna», e lo stato intermedio cancella l'informazione da `props`.
+const ultimoCampoOrdinato = ref(null)
+
+// Scopo: il verso del PRIMO click su un'intestazione data.
+// ⛔ SOLO IL PRIMO: girare anche i click successivi renderebbe la colonna non
+//    invertibile. Con la memoria il ciclo e' desc -> niente -> asc -> desc,
+//    cioe' lo stesso ciclo di prima letto dall'altro capo.
+// ⚠️ Non tocca le liste non paginate: la' l'ordine lo calcola PrimeVue in
+//    locale e questo evento non parte nemmeno (vedi la guardia sotto).
+function versoIniziale(event) {
+  const campoPrecedente = props.sortField ?? ultimoCampoOrdinato.value
+  const nuovaColonna = event?.sortField && event.sortField !== campoPrecedente
+  if (
+    event?.sortOrder === 1
+    && nuovaColonna
+    && campiCronologici.value.has(event.sortField)
+  ) {
+    return { ...event, sortOrder: -1 }
+  }
+  return event
+}
+
 function onSort(event) {
+  if (!props.paginata) return
   resetExpansionSePropria()
-  emit('sort', event)
+  const risolto = versoIniziale(event)
+  // ⚠️ La memoria si aggiorna DOPO la decisione, e tiene il valore vecchio
+  //    quando l'evento non porta un campo (stato «niente»): e' esattamente il
+  //    caso per cui esiste.
+  ultimoCampoOrdinato.value =
+    event?.sortField ?? props.sortField ?? ultimoCampoOrdinato.value
+  emit('sort', risolto)
 }
 
 function onRowClick(event) {
@@ -409,12 +621,17 @@ async function onReset() {
   await reset()
 }
 
-// Merge default-pattern + override caller. Lazy/removable-sort/striped/
-// scrollable restano fissati in template (non parametrizzabili: regole
-// del pattern lista, frontend-standards.md §"Pattern lista").
+// Merge default-pattern + override caller. removable-sort/striped/scrollable
+// restano fissati in template (non parametrizzabili: regole del pattern lista,
+// frontend-standards.md §"Pattern lista").
+// ⛔ `paginator: false` in coda al merge, e la posizione e' il punto: vince
+//    sui default E sull'override del caller. Una lista non paginata che
+//    disegnasse il paginator direbbe «1/1» su un dataset troncato — cioe'
+//    la stessa bugia che il guard sopra esiste per impedire.
 const effectivePaginatorOptions = computed(() => ({
   ..._DEFAULT_PAGINATOR_OPTIONS,
   ...props.paginatorOptions,
+  ...(props.paginata ? {} : { paginator: false }),
 }))
 
 // API esposta al caller. `openModal` permette di trasformare il bottone
@@ -501,6 +718,26 @@ defineExpose({
       </Message>
     </div>
 
+    <!-- ⛔ Troncamento silenzioso (`paginata: false` + righe che non sono
+         tutte): si prende il posto della tabella, come il cancello di
+         perimetro. Mostrarla con un avviso sopra sarebbe peggio del difetto —
+         l'operatore leggerebbe comunque righe presentate come l'insieme
+         completo, che e' esattamente la cosa da impedire.
+         ⚠️ severity `error` e non `warn`: qui non manca una scelta
+         dell'utente, c'e' un contratto rotto fra caller e building block, e
+         non e' l'operatore a poterlo sanare. Il dettaglio (quale lista, quali
+         numeri) e' in console per chi sviluppa. -->
+    <div v-else-if="troncamentoSospetto" class="lista-troncamento-gate">
+      <Message severity="error" :closable="false">
+        <div class="lista-troncamento-gate__titolo">
+          {{ t('lista_config.troncamento_titolo') }}
+        </div>
+        <div class="lista-troncamento-gate__testo">
+          {{ t('lista_config.troncamento_testo', { righe: rows.length, total }) }}
+        </div>
+      </Message>
+    </div>
+
     <DataTable
       v-else
       v-bind="effectivePaginatorOptions"
@@ -509,7 +746,8 @@ defineExpose({
       :total-records="total"
       :rows="pageSize"
       :first="firstOffset"
-      lazy
+      :lazy="paginata"
+      :null-sort-order="NULL_IN_FONDO"
       removable-sort
       striped-rows
       scrollable
@@ -644,6 +882,21 @@ defineExpose({
 }
 
 .lista-perimetro-gate__testo {
+  font-size: 0.9rem;
+}
+
+/* Gate di troncamento (`paginata: false` con righe incomplete): stessa forma
+   del gate di perimetro — si prende il posto della tabella. */
+.lista-troncamento-gate {
+  padding: var(--app-space-sm, 0.5rem) 0;
+}
+
+.lista-troncamento-gate__titolo {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.lista-troncamento-gate__testo {
   font-size: 0.9rem;
 }
 

@@ -62,7 +62,7 @@
 > **numerazione**) sono arrivate con lo stesso merge, e ne sono state seminate
 > **sei** invece di tre. `check_i18n_keys.py` è **tutto pulito**.
 > ➡️ Il seguito di quella voce sta in
-> [brief-db-richieste-aperte-dal-backend-2.md](../work-in-progress/brief-db-richieste-aperte-dal-backend-2.md)
+> [brief-db-richieste-aperte-dal-backend-2.md](brief-db-richieste-aperte-dal-backend-2.md)
 > **§A**, che è dove è stata chiusa. ⚠️ *I due cantieri si sono toccati due volte
 > nella stessa serata — le chiavi i18n e il seed della lista 44 — e nessuno dei
 > due documenti nominava l'altro: è la stessa ragione per cui §9.2-e dice che un

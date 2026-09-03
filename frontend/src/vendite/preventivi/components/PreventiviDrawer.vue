@@ -83,7 +83,7 @@ const props = defineProps({
   // { billingAccountId: number|null, istanzaUtilityId: number|null }.
   praticaContext: { type: [Object, null], default: null },
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const emit = defineEmits(['update:visible', 'saved', 'changed', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
 // Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
@@ -807,6 +807,10 @@ async function onSmistato({ ordineId } = {}) {
   if (ordineId) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
   await loadDetail()
   collegamentiRef.value?.reload()
+  // ⭐ `emitDataChanged` avvisa la tab ORDINI, che e' un'ALTRA lista. Anche il
+  // preventivo pero' e' cambiato — ed e' la lista che sta dietro a questo
+  // drawer: senza `changed` restava indietro proprio la piu' vicina.
+  emit('changed')
 }
 
 // Azioni della testata preventivo consumate da DrawerActionsBar.

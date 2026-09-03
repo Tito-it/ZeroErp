@@ -37,11 +37,92 @@ non si distinguono. Gli endpoint girano sempre sotto JWT, quindi il contesto c'�
 | `GET`/`PATCH`/`DELETE` | `.../{titolo_id}/ambiti/{ambito_id}/` | dettaglio ambito |
 | `GET`/`POST` | `.../{titolo_id}/movimenti/` | il registro, e la **forzatura** |
 | `POST` | `.../{titolo_id}/movimenti/{movimento_id}/annulla/` | ⭐ l'**annullo** di una forzatura |
+| `GET` | `soggetti/{soggetto_id}/titoli-iva/export/` | ⭐ export CSV/XLSX della lista del soggetto (DEF-1) |
 | `GET` | `titoli-iva/sfondati/` | presidio cross-soggetto: i titoli oltre il tetto |
 
 ⚠️ **`titoli-iva/sfondati/` sta PRIMA delle rotte con `{soggetto_id}`** nel
 `urlpatterns`: con l'ordine invertito `sfondati` verrebbe letto come un
 `soggetto_id`.
+
+## Le due liste, dal 2026-09-02 — contratto aggiornato
+
+Entrambe alimentano una `<ListaConfigurabile>` e dichiarano il **conteggio**
+accanto alle righe. ⛔ Il `count` viene da una valutazione **indipendente**, mai
+da `len(results)`: vedi [api.md §«Il `count` non si deriva mai dalle righe»](../../../dev/api.md).
+
+### `GET soggetti/{soggetto_id}/titoli-iva/` — 🔴 ORA PAGINATA
+
+```json
+{ "data": { "results": [...], "count": 7 } }
+```
+
+⛔ **Contratto cambiato il 2026-09-02** (rilievo di Tid in collaudo: il drawer
+era fuori standard — niente pagine, niente scelta delle colonne, niente export).
+Ora accetta `limit` / `offset` come ogni altra lista configurabile.
+
+- Pagina e totale arrivano da **una** valutazione (`COUNT(*) OVER()` via
+  `fetch_paged_with_total`), con `fallback_count_sql` per il rientro su una
+  pagina stantia. ⭐ `count_titoli_soggetto` **non esiste più**: era una seconda
+  query sullo stesso predicato, e due valutazioni possono non concordare se una
+  riga entra fra l'una e l'altra — il totale racconterebbe una popolazione
+  diversa da quella mostrata.
+- ⚠️ **`limit` assente = nessuna paginazione**, ed è il caso del **secondo
+  consumatore**: `SoggettiService` incorpora i titoli nel dettaglio del soggetto
+  e li vuole tutti. Il metodo è uno solo, la query è una sola.
+- Ordinamento opzionale: `order_by` / `order_dir`, whitelist
+  `_ORDER_COLS_TITOLI_SOGGETTO` chiavata sui `campo_sorgente` fisici
+  (`tipo_descrizione`, `emittente_ragione_sociale`, `iva_codice`, `residuo`).
+  ⚠️ `residuo` si ordina per **alias** — è un `CASE` che vale NULL sui tipi
+  senza tetto, e riscriverne l'espressione ordinerebbe diversamente da come si
+  legge.
+- ⚠️ **Senza `order_by` resta l'ordine storico** (`COALESCE(valido_al,'infinity')
+  DESC`), e va preservato: `list_titoli_soggetto` ha un **secondo consumatore**,
+  `SoggettiService`, che la incorpora nel dettaglio di un soggetto e non passa
+  ordinamento.
+- ⛔ `order_by` si legge **grezzo** (`qp_str`), non da `parse_list_params`: il
+  bundle ha un default suo (`"descrizione"`) che qui non è una colonna di
+  niente. Passandolo, l'assenza di ordinamento arriverebbe al repository come
+  una richiesta — che lui scarta perché fuori whitelist, cioè la cosa giusta per
+  il motivo sbagliato.
+
+### `GET soggetti/{soggetto_id}/titoli-iva/export/` — il file (DEF-1)
+
+- `?formato=csv|xlsx` (⚠️ **`formato`**, non `format`: quest'ultimo è un
+  parametro magico di DRF e collide col content negotiation).
+- Le colonne del file sono quelle che l'operatore **vede** — preferenza + preset
+  + permessi, risolte da `build_export_response` sulla config runtime della
+  lista `anagrafiche.soggetto_titoli_iva`. ⛔ Non un elenco cablato nella view,
+  che divergerebbe alla prima colonna aggiunta a catalogo.
+- Chiede il **dataset**, non la pagina: `limit = EXPORT_MAX_ROWS + 1`. Il `+1` è
+  quello che permette al guard di rispondere **422
+  `E_UI_EXPORT_LIMIT_EXCEEDED`** invece di consegnare un file troncato in
+  silenzio — che sarebbe indistinguibile da un export corretto.
+- `filtri_applicati = None`: questa lista non ha filtri. Il soggetto è nel
+  **path**, non è una scelta dell'operatore, e dichiararlo come filtro nell'
+  intestazione del file sarebbe inventarne uno.
+
+### `GET titoli-iva/sfondati/` — 🔴 ORA PAGINATA
+
+⛔ **Contratto cambiato.** Prima restituiva i primi **500** (`_SFONDATI_LIMIT`)
+e non lo dichiarava: su una lista di **presidio** — che esiste perché una
+forzatura di plafond non sfugga — dal 501-esimo caso in poi il difetto non si
+vedeva, e nessuno poteva accorgersene. Il cap è stato **rimosso**.
+
+- Query string: `limit` / `offset` / `order_by` / `order_dir`
+  (`parse_list_params`, `default_order="eccedenza"`).
+- ⚠️ `order_dir` si legge **grezzo** (`qp_str`), non da `parse_list_params`, che
+  lo normalizza ad `"asc"` e annullerebbe il default DESC: la lista deve aprirsi
+  dalla **più grave**.
+- Risposta: `{ "results": [...], "count": N }` — pagina e totale in **una**
+  valutazione (`COUNT(*) OVER()` via `fetch_paged_with_total`), con
+  `fallback_count_sql` per il rientro su una pagina stantia. ⚠️ Senza quel
+  fallback la schermata direbbe «nessun caso» a chi è solo rimasto su una pagina
+  che si è accorciata — su un presidio, il difetto che esiste per evitare.
+- ⭐ **`eccedenza` è ora una colonna vera** (alias SQL `imponibile_utilizzato -
+  plafond), non più calcolata dal frontend: è l'ordinamento che dà senso alla
+  lista, e una colonna calcolata dal client non si può ordinare.
+- Whitelist `_ORDER_COLS_SFONDATI`, 7 colonne, chiavata sui campi fisici;
+  tiebreak `t.id` **allineato alla direzione primaria**.
 
 ## ⭐ `POST .../movimenti/{movimento_id}/annulla/`
 

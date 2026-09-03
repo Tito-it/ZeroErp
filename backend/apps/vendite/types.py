@@ -1042,7 +1042,16 @@ class DashCompetenzaGruppoRow(TypedDict):
     gruppo_key: str
     tipo_gruppo: str
     area_documento: str | None
-    riferimento: str | None
+    # Nome leggibile del gruppo. NON nullable, ed e' il CONTRATTO della vista, non
+    # una fortuna dei dati: `riferimento` e'
+    # `COALESCE(documento_numero, commessa_codice, gruppo_key)` e l'ultimo ramo e'
+    # la chiave del gruppo, che esiste sempre. Dichiararlo opzionale legittimava
+    # nel frontend una seconda copia della stessa catena di ripiego — tolta il
+    # 2026-09-01 (brief-db-riferimento-gruppi-lateral-costosa §9 FE-2).
+    # ⚠️ `documento_numero` arriva da vendite.fn_get_sorgente_documento_ref: sui
+    # gruppi SOURCELESS (sorgente senza `config.sorgenti.area`) e' NULL e qui
+    # esce il codice commessa — che per quei gruppi E' il riferimento.
+    riferimento: str
     commessa_id: int | None
     commessa_codice: str | None
     cliente_display: str | None

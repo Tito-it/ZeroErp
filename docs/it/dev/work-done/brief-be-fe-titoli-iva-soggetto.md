@@ -9,7 +9,7 @@
 > 📌 **Resta una promessa, e non è di questo piano**: nessuna fattura consuma
 > ancora il plafond. Il registro si popola solo con le **forzature** manuali
 > finché non arriva il task di pipeline `consuma_plafond_lotto` — voce 1 di
-> [brief-db-richieste-aperte-dal-backend-2.md](../work-in-progress/brief-db-richieste-aperte-dal-backend-2.md),
+> [brief-db-richieste-aperte-dal-backend-2.md](brief-db-richieste-aperte-dal-backend-2.md),
 > e il consumatore è `F3-b2` del
 > [piano di Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md).
 

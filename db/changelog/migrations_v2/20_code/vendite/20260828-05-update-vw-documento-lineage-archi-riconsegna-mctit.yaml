@@ -103,13 +103,16 @@ databaseChangeLog:
         TIPO DIVERSO (FATTURA e DDT): il rango li separa, ed e' quella differenza a rendere
         sicuro il caso che la nota dell'arco S segnalava. ⛔ security_invoker=on ri-specificata:
         un CREATE OR REPLACE che non la ripete la azzera.
-      preConditions:
-        - onFail: HALT
-        - sqlCheck:
-            expectedResult: 1
-            sql: |
-              SELECT COUNT(*) FROM config.sorgenti
-               WHERE codice_interno = 'RESO_VENDITA' AND attivo IS TRUE;
+      # ⛔ 2026-09-02 — RIMOSSA la preCondition su config.sorgenti (codice_interno = 'RESO_VENDITA').
+      #    `20_code` gira PRIMA di `80_data`: su un database ricostruito da zero
+      #    — cioe' in CI — la riga cercata NON esiste ancora, e il migrate muore
+      #    con «SQL Precondition failed. Expected '1' got '0'». Non e' un caso di
+      #    bordo: e' l'UNICO modo in cui un seed nuovo puo' arrivare.
+      #    Era l'UNICA preCondition del changeSet, quindi il blocco sparisce tutto:
+      #    la vista JOINa il catalogo quando viene INTERROGATA, a runtime.
+      #    ⛔ Regola: docs/it/linee-guida-sql.md §11.4. Restano legittime le
+      #    preCondition su cio' che viene PRIMA (tableExists, columnExists,
+      #    pg_proc, arita'); quelle sul CONTENUTO di 80_data no.
       changes:
         - sql:
             dbms: postgresql

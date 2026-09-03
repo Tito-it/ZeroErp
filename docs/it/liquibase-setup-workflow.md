@@ -33,6 +33,37 @@ Descrivere configurazione e workflow di **Liquibase** per **ZeroErp (struttura v
 * Driver JDBC PostgreSQL presente nel classpath
 * Accesso a un DB di sviluppo/test
 
+### 🔴 Il ruolo che lancia Liquibase deve avere `USAGE` sullo schema `pgagent`
+
+La fase `85_pgagent` crea i **job schedulati** (storicizzazione, automazioni,
+sync). Lo schema `pgagent` appartiene a `postgres`, perché lo crea l'estensione;
+il migratore ci scrive dentro, quindi gli servono:
+
+```sql
+GRANT USAGE ON SCHEMA pgagent TO <ruolo_migratore>;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgagent TO <ruolo_migratore>;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA pgagent TO <ruolo_migratore>;
+```
+
+⚠️ **Perché è facile scoprirlo tardi.** I nove changeSet di `85_pgagent` sono
+protetti da `onFail: MARK_RAN` su «esiste l'estensione `pgagent`». Dove
+l'estensione non c'è — l'immagine della CI non ce l'ha — vengono **saltati
+tutti, in silenzio**. Quindi:
+
+| ambiente | cosa succede | perché |
+| --- | --- | --- |
+| **dbdev** | passano | il migratore è `titodb`, che su `pgagent` ha i diritti (l'estensione fu installata a mano dallo stesso utente) |
+| **CI** | 9 × `MARK_RAN` | l'estensione non è disponibile sull'immagine |
+| **produzione** | 🔴 falliscono, se il migratore non ha `USAGE` | è il primo ambiente in cui l'estensione c'è e il migratore è un altro |
+
+⇒ Quella fase **non è mai stata eseguita** né su CI né, nella forma in cui girerà
+in produzione, su dbdev. Misurato il 2026-09-02 costruendo un database da zero
+con `scripts/ci-local.sh`: `has_schema_privilege('zeroerp','pgagent','USAGE')`
+risponde `false`, `titodb` risponde `true`.
+
+ℹ️ I job **devono** esserci in produzione (decisione di Tid, 2026-09-02): non è
+una fase opzionale da lasciare a `MARK_RAN`.
+
 ---
 
 ## 3. Struttura dei Changelog e delle Cartelle (v2)

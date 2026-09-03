@@ -25,10 +25,13 @@
 | presidia_data_documento | boolean | NO | true |
 | prefisso_default | character varying | YES |  |
 | lunghezza_default | integer | NO | 7 |
+| colonna_serie | text | YES |  |
+| ammette_regole_fiscali | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_famiglie_documento_regole_fiscali_solo_fattura |  |
 | PRIMARY KEY | pk_famiglie_documento | id |
 | UNIQUE | uq_famiglie_documento_codice_interno | codice_interno |
 
@@ -37,16 +40,20 @@
 |------|-------------|
 | pk_famiglie_documento | `CREATE UNIQUE INDEX pk_famiglie_documento ON vendite.famiglie_documento USING btree (id)` |
 | uq_famiglie_documento_codice_interno | `CREATE UNIQUE INDEX uq_famiglie_documento_codice_interno ON vendite.famiglie_documento USING btree (codice_interno)` |
+| uq_famiglie_documento_tabella_attiva | `CREATE UNIQUE INDEX uq_famiglie_documento_tabella_attiva ON vendite.famiglie_documento USING btree (schema_tabella, nome_tabella) WHERE attivo` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_famiglie_documento_a10_guard_chiave_struttura_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()` |
+| trg_famiglie_documento_a10_guard_disattivazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()` |
 | trg_famiglie_documento_a10_guard_riferimenti_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()` |
 | trg_famiglie_documento_a10_guard_riferimenti_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()` |
-| trg_famiglie_documento_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_famiglie_documento_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_famiglie_documento_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_famiglie_documento_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_famiglie_documento_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_famiglie_documento_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_famiglie_documento_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -224,6 +224,23 @@ nessun blocco.
 | **Righe di un documento** dentro il suo master (righe ordine, componenti BoM…) | `RigheMasterDetailTable` / `SearchDetailTable`, **non** il BB |
 | Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
 
+⛔ **«È dentro un drawer» NON è un'eccezione, ed è l'errore che si fa più
+spesso.** Una lista su un tab di drawer — un'entità con endpoint suo,
+popolazione arbitraria e ciclo di vita indipendente dal padre — **è una lista**:
+le manca il paginator, non la natura. Si monta con
+`useDrawerTabLista` + `<DrawerTabLista>` (2026-09-01), che sono
+`useListaConfigurabilePage` + `<ListaConfigurabile>` più il legame col padre.
+⭐ Il criterio in tre domande sta nel
+[piano PrimeVue 5 §Gruppo B](../work-in-progress/piano-migrazione-primevue-5.md),
+riscritto il giorno in cui il secondo caso è emerso.
+
+🔴 **E un caso oggi non ha casa: la matrice slot/override** (la popolazione la
+decide il catalogo, l'operatore compila le celle in editing inline —
+`EmittenteFiscaleUtilitiesTab`, `OperatorePermessiTab`). Non è nessuna delle due
+eccezioni sopra, e resta `DataTable` grezza **con il debito dichiarato**, non con
+un'eccezione inventata. La scelta — estendere il BB con l'editing inline, o
+riconoscere la matrice come terza eccezione — è aperta e sta nello stesso §.
+
 ⛔ **Non sono eccezioni**: «è una lista piccola», «è solo per l'admin», «tanto
 non la guarda nessuno», «faccio prima». Una lista che nessuno guarda non è una
 lista senza problemi: è una lista che nessuno ha ancora aperto.
@@ -1180,7 +1197,28 @@ il principio di riuso.
 1. **Esiste gia'?** — controllare `core/components/` e `core/composables/`
 2. **Servira' altrove?** — se si', collocare in `core/`; se no, in `<dominio>/components/`
 3. **Props minimali** — esporre solo cio' che varia tra i contesti
-4. **Emits chiari** — `@saved`, `@row-click`, `@new`, `update:modelValue`
+4. **Emits chiari** — `@saved`, `@changed`, `@row-click`, `@new`, `update:modelValue`
+
+> ⭐ **`saved` e `changed` non sono sinonimi, e il drawer deve sceglierne uno.**
+> `saved` dice *«il lavoro su questo documento è finito»* — la lista si ricarica
+> e il drawer **si chiude**. `changed` dice *«la riga è cambiata, ma sto ancora
+> lavorando qui dentro»* — la lista si ricarica e il drawer **resta aperto**.
+> È il caso di ogni verbo che **genera un documento senza concludere il
+> proprio**: genera DDT da un ordine, genera reso da un DDT, smista un
+> preventivo, ri-consegna un reso.
+>
+> Li implementa entrambi
+> [`useDrawerSavedListRefresh`](catalogo-building-block-frontend.md): la vista
+> scrive `@saved="onDrawerSaved" @changed="onDrawerChanged"` e non riscrive
+> nulla.
+>
+> 🔴 **Perché la regola è scritta qui**: al 2026-09-01 quel momento esisteva in
+> **quattro** domini con **tre** comportamenti diversi — due drawer non
+> avvisavano nessuno (la lista restava ferma, e l'operatore ricaricava a mano
+> senza sapere perché), uno avvisava solo un'altra tab, uno emetteva `saved` e
+> **si chiudeva addosso a chi stava ancora lavorando**. Nessuno dei quattro
+> falliva: è la classe di difetto che nessun test vede, perché la pagina non
+> sbaglia — è solo **ferma**.
 5. **i18n** — tutti i testi tramite `$t()`, mai hardcoded
 6. **Responsive** — testare su mobile (flex-wrap, no larghezze fisse)
 
@@ -2072,6 +2110,71 @@ distinzione si gioca sul **chrome, non sulla tinta**.
 Primo consumatore: `LineagePassaggiContenuto` (corpo "Passaggi", in dialog dai
 chip di `DocumentoCollegamentiBar`) — frecce direzione e `↩` ramo inverso come
 glifi muted.
+
+### ⭐ Dove vive il NOME di un'icona — la regola del 2 applicata al significato
+
+> Decisa con Tid il **2026-09-02**, dopo che una revisione aveva proposto di
+> portare **tutte** le icone scritte a mano dentro `MANAGE_ICONS`.
+
+Le due sezioni sopra dicono *com'è fatta* un'icona (glifo o controllo) e *quali*
+icone sono composite (le entità di dominio). Restava senza risposta la terza
+domanda, ed è quella che si pone chi scrive una cella: **il nome dell'icona lo
+scrivo sul posto o lo metto in una costante?**
+
+**La regola, e non è nuova — è la regola del 2, applicata al *significato*:**
+
+> Un'icona che porta un **senso ripetuto in più di un punto** è un **concetto**:
+> va in `MANAGE_ICONS` e i consumatori la referenziano.
+> Un'icona usata **una volta sola**, decorativa, resta **letterale sul posto**.
+
+⛔ **La regola generale «ogni icona da `MANAGE_ICONS`» è stata VALUTATA E
+RIFIUTATA**, e non per il costo delle modifiche — per il merito. Una costante
+serve a dare un nome a un concetto: darlo a un glifo con **un solo lettore**
+obbliga chi legge la pagina ad aprire un altro file per sapere cosa mostra, e
+produce un nome che deriva dal suo unico uso alla prima modifica. *Una costante
+con un consumatore solo non centralizza niente: sposta.*
+
+⭐ **E il rischio vero non è la centralizzazione, è la DIVERGENZA DI
+SIGNIFICATO.** Se «bloccato» si scrive a mano in sei punti, sei punti possono
+derivare a sei icone diverse **per lo stesso stato** — e quello è un difetto che
+l'operatore vede, che nessun test prende e che nessuno attribuisce alla causa.
+È questo che la costante previene, non il numero di righe.
+
+**Come si applica, in una domanda:**
+
+| Chiedersi | Se sì | Se no |
+| --- | --- | --- |
+| «Questa icona dice una cosa che l'applicazione dice **anche altrove**?» | concetto → `MANAGE_ICONS`, e si sistemano **tutte** le occorrenze di quel senso | letterale sul posto |
+
+⚠️ **Il criterio è il SENSO, non la stringa.** Due `pi pi-check` che significano
+cose diverse (una «riga valida», l'altra «preset di default») sono **due** casi
+da una volta, non un concetto da due: unirli sotto una costante sola creerebbe
+un legame falso, e il giorno in cui una delle due cambia icona cambierebbe anche
+l'altra.
+
+⚠️ **E vale nei due versi**: una costante in `MANAGE_ICONS` che è rimasta con un
+consumatore solo va **riportata sul posto**, non tenuta per simmetria.
+
+**Perimetro, come fatto datato** (misurato il 2026-09-02, e non è la ragione
+della regola — che reggerebbe identica con altri numeri):
+
+```bash
+cd frontend
+# icone scritte a mano nei template
+grep -rho 'class="pi pi-[a-z0-9-]*"' src --include=*.vue | sort | uniq -c | sort -rn
+# quante passano gia' dalla costante
+grep -rho 'MANAGE_ICONS\.[A-Z_]*' src --include=*.vue --include=*.js | wc -l
+```
+
+Al 2026-09-02: **117** occorrenze `class="pi pi-…"` su **53 icone distinte**, di
+cui **26 usate una volta sola** — quelle non sono candidate per costruzione. Il
+perimetro da guardare sono le **27 ripetute**, e solo quelle in cui la
+ripetizione è davvero lo stesso senso. Sull'intera superficie (`class=`, `icon=`,
+stringhe) le occorrenze sono 553 e **267 passano già** da `MANAGE_ICONS`.
+
+⛔ **Non è una campagna da fare in un colpo.** Si consuma come l'inventario delle
+liste: quando si tocca un file per altri motivi, e partendo dai sensi più
+ripetuti.
 
 ### Iconografia di dominio — base documento + overlay-tipo
 

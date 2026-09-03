@@ -59,6 +59,7 @@ class UiService:
         self,
         user: Any,
         lista_codice: str,
+        emittente_esplicito: Any = None,
     ) -> dict[str, Any]:
         emittente_fiscale_id = PermissionResolver.get_emittente_for_user(user)
         try:
@@ -103,11 +104,22 @@ class UiService:
         # nell'envelope), la cardinalita' dello scope costa una query. Scritto
         # al contrario, ogni apertura di una lista CERTIFICATA pagherebbe un
         # round-trip per un risultato che il flag da solo aveva gia' deciso.
-        config["richiede_scelta_emittente"] = (
-            not bool(config.get("multi_emittente"))
-            and perimetro_emittente.scope_multi_emittente(
-                user, cache=self._perm_cache
-            )
+        # ⭐ La formula sta nel building block, non qui: era scritta due volte
+        #    (qui e nel cancello dell'endpoint) ed e' cresciuta di un termine —
+        #    l'emittente esplicito — il 2026-09-01. Due copie della stessa
+        #    conclusione sono il modo classico di far dire cose diverse al
+        #    pannello e all'API.
+        # ⚠️ `perimetro_emittente` con default `True` e non `bool(get(...))`: se
+        #    la chiave mancasse — un risolutore piu' vecchio del backend —
+        #    `bool(None)` direbbe «questa lista non ha perimetro» e APRIREBBE il
+        #    cancello su tutte le liste insieme, in silenzio. Il verso prudente
+        #    e' quello che chiude, ed e' anche il default della colonna.
+        config["richiede_scelta_emittente"] = perimetro_emittente.richiede_scelta_emittente(
+            user=user,
+            multi_emittente=bool(config.get("multi_emittente")),
+            perimetro_emittente=bool(config.get("perimetro_emittente", True)),
+            emittente_esplicito=emittente_esplicito,
+            cache=self._perm_cache,
         )
 
         return config

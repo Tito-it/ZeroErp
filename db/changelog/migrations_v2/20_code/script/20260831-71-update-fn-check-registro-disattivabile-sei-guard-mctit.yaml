@@ -106,31 +106,25 @@ databaseChangeLog:
                 schemaName: vendite
                 tableName: resi
                 columnName: registro_id
-            # ⚠️ E i guard montati devono essere ESATTAMENTE i sei che questa
-            #   versione copre: se ne fosse comparso un settimo mentre si
-            #   scriveva, questo changeSet rimetterebbe la check indietro.
-            - sqlCheck:
-                expectedResult: 1
-                onFailMessage: >-
-                  I guard di disattivazione montati su vendite.registri_fatturazione non sono i
-                  sei attesi (ddt, fatture, ordini, registri_fatturazione_progressivi, resi,
-                  tipi_doc_fiscale_registri). Ne e' comparso o sparito uno: aggiornare la check
-                  E il test 6 del suo pgTAP prima di applicare.
-                sql: |
-                  SELECT COUNT(*) FROM (
-                    SELECT string_agg(DISTINCT x.figlia, ',' ORDER BY x.figlia) AS elenco
-                      FROM pg_trigger t
-                      JOIN pg_class     c ON c.oid = t.tgrelid
-                      JOIN pg_namespace n ON n.oid = c.relnamespace
-                      CROSS JOIN LATERAL (
-                          SELECT (regexp_match(pg_get_triggerdef(t.oid),
-                                               '''[^'']+''\s*,\s*''([^'']+)''')) [1] AS figlia) x
-                     WHERE NOT t.tgisinternal
-                       AND n.nspname = 'vendite'
-                       AND c.relname = 'registri_fatturazione'
-                       AND pg_get_triggerdef(t.oid) LIKE '%prevent_deactivate_if_children%'
-                  ) q
-                  WHERE q.elenco = 'ddt,fatture,ordini,registri_fatturazione_progressivi,resi,tipi_doc_fiscale_registri';
+            # ⛔ 2026-09-02 — RIMOSSA la preCondition «i guard montati sono esattamente
+            #    questi sei». Interrogava `pg_trigger` cercando i trigger
+            #    `prevent_deactivate_if_children`, che NON li scrive nessun changeSet: li
+            #    genera `dbops.fn_run_automations_attivo`, cioe' il framework delle
+            #    automazioni, che gira con `--contexts=ci_apply` — la SECONDA invocazione
+            #    di Liquibase. Durante la prima passata non ce n'e' nemmeno uno:
+            #    `string_agg` su zero righe da' NULL, il confronto e' falso, `COUNT(*)` e'
+            #    0 e il migrate muore con «Expected '1' got '0'». Su un database di
+            #    sviluppo i sei ci sono da giorni e il cancello passa.
+            #    ⭐ Ed era un DOPPIONE: il test 6 di
+            #    db/pgtap/script/test-fn-check-registro-disattivabile-v1.sql fa la
+            #    STESSA IDENTICA query con la stessa stringa attesa — «i guard di
+            #    disattivazione montati sono esattamente quelli che la check copre» — e
+            #    gira a `ci_apply` avvenuto, cioe' quando la domanda ha una risposta vera.
+            #    ⚠️ La preoccupazione resta giusta e resta presidiata: se comparisse un
+            #    settimo guard, quel test diventa rosso. Cambia solo il posto.
+            #    ⛔ Regola: docs/it/linee-guida-sql.md §11.5. Restano le tre
+            #    `columnExists` qui sopra: quelle guardano lo SCHEMA, che a questo punto
+            #    c'e'.
       changes:
         - sql:
             dbms: postgresql

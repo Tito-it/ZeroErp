@@ -36,7 +36,9 @@ from apps.core.services.service_errors import ServiceError
 _MESSAGE = "Payload titolo IVA non valido."
 
 # Tetto dichiarato della lista di presidio dei titoli sfondati (Q4).
-_SFONDATI_LIMIT = 500
+# ⛔ Il cap a 500 e' stato RIMOSSO il 2026-09-02: la lista e' paginata, e un
+# tetto silenzioso sopra una paginazione sarebbe la stessa bugia di prima con un
+# numero diverso. Il tetto per pagina lo impone `parse_list_params` (MAX_LIMIT).
 
 # Ambito dichiarato, mai dedotto da un NULL (D12 + `feedback_null_nelle_chiavi_due_forme`).
 _AMBITI: frozenset[str] = frozenset({"TUTTO", "RISTRETTO"})
@@ -94,22 +96,41 @@ class TitoliIvaService:
     # Titoli
     # =================================================================
 
-    # Scopo: Titoli IVA di un soggetto.
+    # Scopo: Titoli IVA di un soggetto, in envelope `results` + `count`.
     # ⚠️ Ogni titolo porta `ambito_incompleto`: RISTRETTO con zero righe di
     #    ambito. E' la decisione Q2 — il DB ammette apposta quello stato, perche'
     #    il caso si costruisce in due istruzioni; l'API lo DICHIARA, cosi' il
     #    frontend puo' avvisare senza dover ri-derivare la regola in un template.
-    def list_titoli_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
-        titoli = self._repo.list_titoli_soggetto(soggetto_id)
+    # ⭐ PAGINATA dal 2026-09-02: prima consegnava TUTTI i titoli in un colpo e
+    #    il conteggio veniva da una query separata (`count_titoli_soggetto`, ora
+    #    sparita). Due valutazioni dello stesso predicato possono non concordare;
+    #    una sola non puo'.
+    def list_titoli_soggetto(
+        self,
+        soggetto_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> dict[str, Any]:
+        titoli, totale = self._repo.list_titoli_soggetto(
+            soggetto_id,
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
         for t in titoli:
             t["ambito_incompleto"] = self._ambito_incompleto(t)
-        return titoli
+        return {"results": titoli, "count": totale}
 
     # Scopo: Dettaglio di un titolo, con ambiti e registro movimenti.
     def get_titolo(self, soggetto_id: str, titolo_id: int) -> dict[str, Any]:
         titolo = self._require_titolo(soggetto_id, titolo_id)
-        titolo["ambiti"] = self._repo.list_ambiti(titolo_id)
-        titolo["movimenti"] = self._repo.list_movimenti(titolo_id)
+        # ⚠️ Si scartano i totali, e non e' distrazione: qui ambiti e movimenti
+        #    sono SOTTO-LISTE del titolo e arrivano senza `limit`, quindi il
+        #    totale coincide con la lunghezza. Portarselo dietro vorrebbe dire
+        #    dichiarare due conteggi che in questo punto nessuno legge.
+        titolo["ambiti"], _tot_ambiti = self._repo.list_ambiti(titolo_id)
+        titolo["movimenti"], _tot_movimenti = self._repo.list_movimenti(titolo_id)
         titolo["ambito_incompleto"] = self._ambito_incompleto(titolo)
         return titolo
 
@@ -190,17 +211,45 @@ class TitoliIvaService:
     #    schermata proprio quando c'e' piu' da guardare. Le righe sono ordinate
     #    per eccedenza decrescente: se il tetto morde, in cima ci sono comunque i
     #    casi peggiori.
-    def list_titoli_sfondati(self) -> list[dict[str, Any]]:
-        return self._repo.list_titoli_sfondati(limit=_SFONDATI_LIMIT)
+    # ⭐ PAGINATA dal 2026-09-02 (decisione Tid: «così è standard e non ci
+    #    pensiamo più»). Prima restituiva i primi `_SFONDATI_LIMIT` (500) e
+    #    **non lo diceva a nessuno**: su una lista di presidio significava che
+    #    dal 501-esimo caso in poi una forzatura non si vedeva, e nessuno poteva
+    #    accorgersene. Ora la pagina e' una pagina e il totale e' il totale.
+    def list_titoli_sfondati(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+    ) -> dict[str, Any]:
+        # ⭐ UNA chiamata: righe e totale arrivano dalla stessa valutazione
+        #    (`COUNT(*) OVER()`), quindi non possono raccontare due popolazioni
+        #    diverse. Prima erano due query separate — scritte a mano sopra un
+        #    building block che gia' faceva questo.
+        risultati, totale = self._repo.list_titoli_sfondati(
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
+        return {"results": risultati, "count": totale}
 
     # =================================================================
     # Ambiti
     # =================================================================
 
-    # Scopo: Righe di ambito di un titolo.
-    def list_ambiti(self, soggetto_id: str, titolo_id: int) -> list[dict[str, Any]]:
+    # Scopo: Righe di ambito di un titolo, in envelope `results` + `count`.
+    # ⛔ Il `count` viene da una valutazione INDIPENDENTE dalle righe (la stessa
+    #    query, via `COUNT(*) OVER()`), mai da `len(results)`: la lista si monta
+    #    non paginata, e li' il totale e' l'asserzione che le righe siano tutte.
+    def list_ambiti(
+        self, soggetto_id: str, titolo_id: int,
+        *, limit: int | None = None, offset: int = 0,
+    ) -> dict[str, Any]:
         self._require_titolo(soggetto_id, titolo_id)
-        return self._repo.list_ambiti(titolo_id)
+        risultati, totale = self._repo.list_ambiti(
+            titolo_id, limit=limit, offset=offset,
+        )
+        return {"results": risultati, "count": totale}
 
     # Scopo: Aggiunge una riga di ambito.
     def create_ambito(
@@ -227,10 +276,19 @@ class TitoliIvaService:
     # Registro movimenti (D5)
     # =================================================================
 
-    # Scopo: Il registro di un titolo.
-    def list_movimenti(self, soggetto_id: str, titolo_id: int) -> list[dict[str, Any]]:
+    # Scopo: Il registro di un titolo, in envelope `results` + `count`.
+    # ⭐ Paginato (lista 65): un registro append-only cresce a ogni fattura.
+    def list_movimenti(
+        self, soggetto_id: str, titolo_id: int,
+        *, limit: int | None = None, offset: int = 0,
+        order_by: str | None = None, order_dir: str | None = None,
+    ) -> dict[str, Any]:
         self._require_titolo(soggetto_id, titolo_id)
-        return self._repo.list_movimenti(titolo_id)
+        risultati, totale = self._repo.list_movimenti(
+            titolo_id, limit=limit, offset=offset,
+            order_by=order_by, order_dir=order_dir,
+        )
+        return {"results": risultati, "count": totale}
 
     # Scopo: Registra una forzatura manuale sul plafond.
     # ⛔ DALL'API SI SCRIVE SOLO `FORZATURA`, ed e' la decisione Q3 — la piu'
@@ -347,7 +405,11 @@ class TitoliIvaService:
     ) -> dict[str, Any]:
         self._require_titolo(soggetto_id, titolo_id)
 
-        movimenti = {int(m["id"]): m for m in self._repo.list_movimenti(titolo_id)}
+        # ⛔ Senza `limit`: qui il registro serve per VERIFICARE che il
+        #    movimento appartenga a questo titolo, e un controllo di
+        #    appartenenza su una pagina guarda meta' delle righe.
+        righe, _totale = self._repo.list_movimenti(titolo_id)
+        movimenti = {int(m["id"]): m for m in righe}
         ErrorManager.require(
             movimento_id in movimenti,
             code=E_ANAG_NOT_FOUND,

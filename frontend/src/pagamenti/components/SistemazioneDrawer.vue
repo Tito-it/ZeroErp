@@ -26,8 +26,6 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
-import Column from 'primevue/column'
-import DataTable from 'primevue/datatable'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
@@ -37,11 +35,14 @@ import Textarea from 'primevue/textarea'
 
 import AppDialog from '../../core/components/AppDialog.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import FatturaLookup from '../../core/components/FatturaLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -50,8 +51,9 @@ import { statoSistemazioneSeverity } from '../../core/utils/severity'
 import {
   annullaSistemazione,
   creaSistemazione,
-  listSistemazioniFattura,
+  exportSistemazioniFattura,
 } from '../api/pagamenti'
+import { useSistemazioniFatturaStore } from '../stores/sistemazioniFattura'
 import { useEtichettePagamenti } from '../etichette'
 import { formatCurrency } from '../../core/utils/format'
 import {
@@ -75,12 +77,16 @@ const { execute, loading, campiErrati } = useApiHandler()
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const isReadonly = useInjectReadonly()
 
-const atti = ref([])
-const attiLetti = ref(false)
-// ⛔ Tre casi, non due: atti presenti · nessun atto · non letti. L'ultimo NON si
-//    spaccia per il secondo: «su questo documento non ha ancora deciso nessuno»
-//    e' un'affermazione su cui qualcuno prende una decisione.
-const erroreAtti = ref(false)
+// ⭐ La lista degli atti vive in uno STORE dal 2026-09-02 (decisione di Tid):
+//    prima erano tre `ref` locali e una fetch senza parametri — niente pagine,
+//    niente «Personalizza colonne», niente export. La ragione scritta era «gli
+//    atti di UNA fattura sono pochi per modello», che e' una previsione sui
+//    DATI: non decide la forma della lista.
+// ⛔ Tre casi restano tre, non due: atti presenti · nessun atto · non letti.
+//    L'ultimo NON si spaccia per il secondo — «su questo documento non ha
+//    ancora deciso nessuno» e' un'affermazione su cui qualcuno prende una
+//    decisione — ed e' per questo che lo store tiene `erroreCaricamento`.
+const store = useSistemazioniFatturaStore()
 
 const form = ref(defaultForm())
 const fatturaDestinazione = ref(null)
@@ -126,22 +132,41 @@ watch(() => form.value.destinazione, () => {
   if (!serveDestinatario.value) fatturaDestinazione.value = null
 })
 
-async function caricaAtti() {
-  atti.value = []
-  attiLetti.value = false
-  erroreAtti.value = false
-  if (!fatturaId.value) return
-  const dati = await execute(() => listSistemazioniFattura(fatturaId.value))
-  erroreAtti.value = dati === null
-  atti.value = dati?.results || []
-  attiLetti.value = true
-}
+// ⚠️ `parentId` porta l'id SOLO a drawer aperto, e il `null` non e' un
+//    dettaglio: e' quello che dice allo scaffolding di chiamare `store.reset()`
+//    alla chiusura. Senza, gli atti della fattura precedente resterebbero in
+//    memoria e lampeggerebbero sotto la prossima che si apre — righe vere di un
+//    documento sbagliato, che e' il difetto che non fallisce.
+// ⛔ E la fetch NON si scrive piu' qui: il watch dello scaffolding e'
+//    `immediate` e riscrive padre, offset e ricerca nell'ordine giusto. Un
+//    secondo caricamento a mano sarebbe una seconda sede della stessa regola.
+const {
+  onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  exportDialogVisible, exportLoading, onExportConfirm, reloadAll,
+} = useDrawerTabLista(store, {
+  parentId: () => (props.visible ? fatturaId.value : null),
+  parentField: 'fatturaId',
+  exportFn: (params) => exportSistemazioniFattura(fatturaId.value, params),
+  getExportParams: (formato) => {
+    const p = { formato }
+    // L'export segue l'ordinamento a video: il file che scarichi e' la lista
+    // che stai guardando, non un elenco riordinato per conto suo.
+    if (store.filters.order_by) {
+      p.order_by = store.filters.order_by
+      p.order_dir = store.filters.order_dir || 'asc'
+    }
+    return p
+  },
+})
+
+// ⛔ NESSUN «Nuovo» nella barra, e non e' una dimenticanza: qui si registra un
+//    atto dalla form che sta SOTTO la lista, dentro questo stesso drawer. Un
+//    pulsante che aprisse un secondo posto per fare la stessa cosa sarebbe due
+//    strade per un gesto solo.
 
 watch(() => [props.visible, fatturaId.value], ([vis]) => {
-  if (!vis) {
-    atti.value = []
-    return
-  }
+  if (!vis) return
   form.value = defaultForm()
   // ⭐ L'importo nasce sull'INTERA eccedenza: e' il caso normale — si sistema
   //    tutto quello che e' di troppo — e resta modificabile, perche' si puo'
@@ -150,7 +175,6 @@ watch(() => [props.visible, fatturaId.value], ([vis]) => {
     ? Number(props.eccedenza.eccedenza)
     : null
   fatturaDestinazione.value = null
-  caricaAtti()
 }, { immediate: true })
 
 async function onRegistra() {
@@ -170,7 +194,7 @@ async function onRegistra() {
   if (esito === null) return
   form.value = defaultForm()
   fatturaDestinazione.value = null
-  await caricaAtti()
+  reloadAll()
   // ⚠️ Si avvisa la lista anche se la riga NON sparira': i contatori delle
   //    bozze cambiano, e un elenco fermo direbbe «nessuno ci sta lavorando».
   emit('cambiata')
@@ -212,7 +236,7 @@ async function onAnnulla() {
     emit('update:visible', false)
     return
   }
-  await caricaAtti()
+  reloadAll()
 }
 
 // ⛔ Dopo una CONFERMA il drawer si chiude, e non e' pigrizia: il denaro si e'
@@ -346,73 +370,92 @@ function buildRowActions(atto) {
           <h4>{{ t('pagamenti.sistemazioni.sezione_atti') }}</h4>
         </div>
 
-        <Message v-if="erroreAtti" severity="warn" :closable="false" size="small">
-          {{ t('pagamenti.sistemazioni.atti_non_letti') }}
-        </Message>
+        <!-- ⛔ IL TERZO CASO HA LA SUA FRASE. «Non sono riuscito a leggerli»
+             non e' «non ce ne sono»: il secondo e' un'affermazione su cui
+             qualcuno decide di registrarne uno, il primo dice solo che non si
+             sa. Il BB della lista non puo' distinguerli — a lista vuota
+             mostrerebbe lo stesso empty-state — quindi la distinzione vive qui,
+             sopra la lista, e lo stato lo tiene lo store. -->
         <Message
-          v-else-if="attiLetti && !atti.length"
-          severity="info"
+          v-if="store.erroreCaricamento"
+          severity="warn"
           :closable="false"
           size="small"
         >
-          {{ t('pagamenti.sistemazioni.nessun_atto') }}
+          {{ t('pagamenti.sistemazioni.atti_non_letti') }}
         </Message>
 
-        <DataTable
-          v-if="atti.length"
-          :value="atti"
-          class="app-datatable app-datatable--inner"
-          data-key="id"
+        <!-- ⭐ PAGINATA dal 2026-09-02 (decisione di Tid), e col pacchetto
+             standard: pagine, «Personalizza colonne», export. La ragione per
+             cui non lo era — «gli atti di UNA fattura sono pochi» — era una
+             previsione sui dati, e le previsioni sui dati non decidono la forma
+             di una lista.
+             ⚠️ `@row-click` non e' agganciato: la riga non apre niente, le
+             azioni stanno nel kebab. -->
+        <DrawerTabLista
+          ref="listaRef"
+          codice="pagamenti.sistemazioni_fattura"
+          :rows="store.items"
+          :total="store.totalRecords"
+          :loading="store.loading"
+          :paginator-options="paginatorProps"
+          :page="tablePage"
+          :sort-field="paginatorProps.sortField"
+          :sort-order="paginatorProps.sortOrder"
+          :page-actions="pageActions"
+          :dirty="dirty"
+          :perimetro-bloccato="perimetroBloccato"
+          @page="onPage"
+          @sort="onSort"
+          @config-loaded="onConfigLoaded"
         >
-          <Column field="destinazione" :header="t('pagamenti.sistemazioni.col_destinazione')">
-            <template #body="{ data }">{{ etichettaDestinazione(data.destinazione) }}</template>
-          </Column>
-          <Column
-            field="importo"
-            :header="t('pagamenti.sistemazioni.col_importo')"
-            style="text-align: right;"
-          >
-            <template #body="{ data }">{{ formatCurrency(data.importo) }}</template>
-          </Column>
-          <Column field="stato" :header="t('pagamenti.sistemazioni.col_stato')">
-            <template #body="{ data }">
-              <!-- ⚠️ Tradotto e fail-visible: uno stato nuovo si legge come
-                   CODICE, non come una parola inglese lasciata a video. -->
-              <Tag
-                :value="etichettaStato(data.stato)"
-                :severity="statoSistemazioneSeverity(data.stato)"
-              />
-            </template>
-          </Column>
-          <Column field="motivo" :header="t('pagamenti.sistemazioni.col_motivo')">
-            <template #body="{ data }">{{ data.motivo || '—' }}</template>
-          </Column>
-          <Column field="data_esecuzione" :header="t('pagamenti.sistemazioni.col_eseguita')">
-            <template #body="{ data }">
-              <span v-if="data.data_esecuzione">
-                {{ displayTimestamp(data.data_esecuzione) }}
-              </span>
-              <span v-else class="app-text-muted">—</span>
-            </template>
-          </Column>
-          <Column
-            :header="t('common.col_azioni')"
-            class="app-col-actions"
-            :exportable="false"
-          >
-            <!-- ⚠️ Niente componente quando non c'e' nessuna azione: in
-                 variante compatta il kebab si disegna comunque, e aprirebbe un
-                 menu vuoto su un atto terminale. -->
-            <template #body="{ data }">
-              <RowActionsMenu
-                v-if="buildRowActions(data).length"
-                :row="data"
-                :actions="buildRowActions(data)"
-              />
-              <span v-else class="app-text-muted">—</span>
-            </template>
-          </Column>
-        </DataTable>
+          <!-- La frase del dominio al posto dell'empty-state generico: «su
+               questo documento non ha ancora deciso nessuno» e' cio' che
+               l'operatore deve sapere per decidere lui.
+               ⛔ MA SOLO SE LA LETTURA E' RIUSCITA. Con `erroreCaricamento` la
+               tabella e' vuota per un'altra ragione, e affermare «non ce ne
+               sono» sotto un avviso che dice «non sono riuscito a leggerli»
+               sarebbe la contraddizione che quell'avviso esiste per evitare:
+               due frasi, una sola vera, e nessuna indicazione su quale. -->
+          <template #empty>
+            <span v-if="!store.erroreCaricamento">
+              {{ t('pagamenti.sistemazioni.nessun_atto') }}
+            </span>
+          </template>
+          <!-- FE-1: `destinazione` e `stato` sono codici grezzi
+               (`RIPORTO`/`BOZZA`…), non hanno un display field in JOIN: il
+               vocabolario vive in `pagamenti/vocabolari.js`. Senza questi due
+               slot la cella mostrerebbe il codice. -->
+          <template #cell-destinazione="{ data }">
+            {{ etichettaDestinazione(data.destinazione) }}
+          </template>
+          <template #cell-stato="{ data }">
+            <!-- ⚠️ Tradotto e fail-visible: uno stato nuovo si legge come
+                 CODICE, non come una parola inglese lasciata a video. -->
+            <Tag
+              :value="etichettaStato(data.stato)"
+              :severity="statoSistemazioneSeverity(data.stato)"
+            />
+          </template>
+          <template #cell-motivo="{ data }">{{ data.motivo || '—' }}</template>
+          <template #cell-data_esecuzione="{ data }">
+            <span v-if="data.data_esecuzione">
+              {{ displayTimestamp(data.data_esecuzione) }}
+            </span>
+            <span v-else class="app-text-muted">—</span>
+          </template>
+          <!-- ⚠️ Niente componente quando non c'e' nessuna azione: in variante
+               compatta il kebab si disegna comunque, e aprirebbe un menu vuoto
+               su un atto terminale. -->
+          <template #actions="{ data }">
+            <RowActionsMenu
+              v-if="buildRowActions(data).length"
+              :row="data"
+              :actions="buildRowActions(data)"
+            />
+            <span v-else class="app-text-muted">—</span>
+          </template>
+        </DrawerTabLista>
 
         <!-- ══ La decisione ══ -->
         <template v-if="!isReadonly">
@@ -492,6 +535,11 @@ function buildRowActions(atto) {
         </template>
       </template>
     </div>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @confirm="onExportConfirm" />
   </Drawer>
 
   <ConfermaSistemazioneDialog

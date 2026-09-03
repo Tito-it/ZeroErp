@@ -146,6 +146,17 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'emittenti-fiscali' }
         },
         {
+          // Famiglie di documento: il catalogo GLOBALE della regola che i
+          // registri di numerazione applicano. Vive qui e non dentro i
+          // registri — che stanno nel drawer di UN emittente — perche' una
+          // famiglia vale per tutti gli emittenti insieme (decisione di Tid,
+          // 2026-09-02).
+          path: 'amm-software/famiglie-documento',
+          name: 'amm-software-famiglie-documento',
+          component: () => import('../amministrazione/views/FamiglieDocumentoListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'famiglie-documento' }
+        },
+        {
           path: 'amm-software/matrici',
           name: 'amm-software-matrici',
           component: () => import('../amministrazione/views/MatriciListView.vue'),

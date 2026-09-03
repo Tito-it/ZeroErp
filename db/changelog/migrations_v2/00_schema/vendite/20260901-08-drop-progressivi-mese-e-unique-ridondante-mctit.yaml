@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VIA `mese` DALLA CHIAVE DEL CONTATORE — e con lui un UNIQUE ridondante
+#   vendite.registri_fatturazione_progressivi
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 6 (M-2)
+#
+# ── ⛔ PERCHE' SI TOGLIE ──────────────────────────────────────────
+#   `mese` stava nella chiave del contatore e NON compariva in nessun vincolo di
+#   unicita' di nessun documento — verificato il 2026-09-01 su fatture, ddt,
+#   ordini, resi e commesse. Era innocuo solo perche' INCHIODATO: `v_mese := 0`
+#   nella funzione e un CHECK che ammetteva il solo ANNUALE.
+#   ⭐ Una dimensione dormiente in una chiave non e' inutilizzata: e' ARMATA. Il
+#   giorno che qualcuno accendesse un reset mensile, il contatore ripartirebbe da
+#   1 ogni mese e colliderebbero TUTTI E CINQUE i documenti — l'invariante dice
+#   che il contatore non puo' discriminare su un asse che il documento non sa
+#   esprimere.
+#   ⚠️ E a tenerlo chiuso non era un vincolo: era una RINUNCIA, e una rinuncia si
+#   revoca per distrazione.
+#
+# ── ⭐ IL CENSIMENTO DEI LETTORI, 2026-09-01 ─────────────────────
+#   Il censimento si fa sulla LETTURA, non sulla parola: «mese» nel progetto e'
+#   quasi sempre `competenza_mese` o «il primo del mese».
+#     · funzioni PL/pgSQL ... UNA sola: vendite.fn_get_next_progressivo
+#     · viste ............... nessuna
+#     · backend Python ...... nessuno (backend/ non nomina mai la tabella)
+#     · pgTAP ............... nessuno
+#     · CSV di seed ......... nessuno che porti la colonna
+#   ⚠️ vendite.fn_calcola_data_documento la nomina SOLO in un commento.
+#
+# ── ⭐ E SI SCOPRE UN UNIQUE RIDONDANTE CHE IL PRESIDIO NON VEDE ─
+#   registro_id, anno, mese e serie sono tutte e quattro NOT NULL ⇒ i due
+#   COALESCE di `uq_registri_progressivi_scope` sono NO-OP, e quell'indice
+#   esprime ESATTAMENTE la stessa chiave di `uq_regprog_key`.
+#   ⛔ dbops.vw_duplicate_indexes NON lo segnala (verificato: zero righe): il
+#   confronto lavora sulle colonne, e qui una chiave e' una lista di colonne e
+#   l'altra una lista di ESPRESSIONI.
+#   ⭐ Un duplicato nascosto dietro espressioni che non fanno niente e' invisibile
+#   proprio al presidio nato per i duplicati. Se ne va nello stesso giro, e la
+#   cecita' resta scritta qui.
+#
+# ⚠️ ORDINE: 20260901-07 deve essere gia' passato — e' l'unica revisione che
+#   nominava la colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260901-08-drop-progressivi-mese-e-unique-ridondante-mctit.yaml
+
+  - changeSet:
+      id: 20260901-08-drop-progressivi-mese-e-unique-ridondante
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Via `mese` dalla chiave del contatore: era una dimensione DORMIENTE — nella chiave del
+        secchio ma in nessun vincolo di unicita'' di nessun documento — tenuta chiusa da una
+        rinuncia (`v_mese := 0` e il CHECK a un valore solo) e non da un vincolo. Un reset mensile
+        avrebbe fatto collidere tutti e cinque i documenti. ⭐ Censito il 2026-09-01: la leggeva UNA
+        funzione sola, gia'' riscritta da 20260901-07. ⭐ E se ne va anche
+        `uq_registri_progressivi_scope`, che con quattro colonne NOT NULL ha i COALESCE a no-op ed
+        e'' la STESSA chiave di `uq_regprog_key` — un duplicato che
+        dbops.vw_duplicate_indexes non vede, perche'' confronta colonne e qui una chiave e''
+        espressioni. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 6 (M-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⛔ La funzione non deve piu' nominare la colonna: se 20260901-07 non
+            #    fosse passato, il DROP la lascerebbe rotta.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_next_progressivo'
+                     AND p.prosrc ~* '\mv_mese\M';
+            # ⛔ Nessuna riga con mese <> 0: altrimenti righe oggi distinte
+            #    collasserebbero sulla chiave nuova, e il DROP le fonderebbe in
+            #    silenzio prima che l'indice se ne accorga.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.registri_fatturazione_progressivi
+                   WHERE mese <> 0;
+            # ⛔ E nessuna coppia (registro, anno, serie) duplicata: e' la chiave
+            #    che resta, e va verificata PRIMA di crearla.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM (
+                    SELECT registro_id, anno, serie
+                      FROM vendite.registri_fatturazione_progressivi
+                     GROUP BY 1, 2, 3
+                    HAVING COUNT(*) > 1) d;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- 1) Il CHECK che validava i valori del mese non ha piu' oggetto.
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  DROP CONSTRAINT IF EXISTS chk_regprog_mese_valid;
+
+              -- 2) ⭐ L'indice ridondante: stessa chiave di uq_regprog_key, con
+              --    due COALESCE che non fanno niente perche' le colonne sono
+              --    NOT NULL. Se ne va prima, cosi' non serve ricrearlo.
+              DROP INDEX IF EXISTS vendite.uq_registri_progressivi_scope;
+
+              -- 3) La chiave del secchio, senza il mese.
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  DROP CONSTRAINT IF EXISTS uq_regprog_key;
+
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  DROP COLUMN IF EXISTS mese;
+
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  ADD CONSTRAINT uq_regprog_key
+                  UNIQUE (registro_id, anno, serie);
+
+              COMMENT ON CONSTRAINT uq_regprog_key
+                  ON vendite.registri_fatturazione_progressivi
+              IS 'La chiave del SECCHIO: un contatore per (registro, anno, serie). ⛔ Ogni asse che sta qui DEVE poter stare anche nel vincolo di unicita'' del documento che riceve il numero, o il contatore consegna numeri che il documento non sa ospitare. ⚠️ `anno` vale 0 quando il registro ha reset_policy = NESSUNA: li'' il secchio e'' uno solo e la numerazione e'' continua fra gli anni. ⛔ `mese` e'' stato tolto il 2026-09-01: stava qui e in nessun documento, quindi era una dimensione dormiente — e una dimensione dormiente in una chiave e'' ARMATA, non inutilizzata. Se un giorno servira'' un reset mensile, l''asse torna INSIEME alla colonna sui documenti, dichiarato in vendite.famiglie_documento. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 6.';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione_progressivi.anno
+              IS 'Anno del SECCHIO, non del documento. ⛔ Sono due cose diverse che si chiamano uguale: l''anno del documento (fatture.anno, ddt.anno, ...) e'' sempre quello solare e lo compone vendite.fn_assegna_numero_documento; questo e'' una chiave di contatore. ⭐ Vale 0 quando il registro ha reset_policy = NESSUNA: un secchio solo, numerazione continua fra gli anni. ⚠️ Lo 0 NON e'' il vecchio `mese = 0`: quello era un segnaposto per una funzione mai implementata, questo e'' un valore con un lettore vivo — vendite.fn_get_next_progressivo, che legge la politica del registro. ⚠️ La coerenza (anno = 0 <=> registro NESSUNA) non la puo'' tenere un CHECK, perche'' attraversa due tabelle: la tiene la funzione, e la verifica il pgTAP.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  DROP CONSTRAINT IF EXISTS uq_regprog_key;
+
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  ADD COLUMN IF NOT EXISTS mese smallint NOT NULL DEFAULT 0;
+
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  ADD CONSTRAINT chk_regprog_mese_valid
+                  CHECK (mese = 0 OR (mese >= 1 AND mese <= 12));
+
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                  ADD CONSTRAINT uq_regprog_key
+                  UNIQUE (registro_id, anno, mese, serie);
+
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_registri_progressivi_scope
+                  ON vendite.registri_fatturazione_progressivi
+                  (registro_id, anno, COALESCE(mese::integer, 0), COALESCE(serie, ''::character varying));

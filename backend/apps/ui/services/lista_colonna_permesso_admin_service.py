@@ -77,14 +77,19 @@ class ListaColonnaPermessoAdminService:
     # Scopo: Lista permessi colonna per una lista_id, con join arricchiti
     #        per il display fields (codice colonna, profilo). 404 se la
     #        lista non esiste o non e' attiva.
-    def list_permessi(self, lista_id: int) -> list[dict[str, Any]]:
+    # ⭐ Forma `{results, count}` — vedi la nota su `list_colonne_admin`:
+    #    conteggio da query SUA, mai `len(results)`.
+    def list_permessi(self, lista_id: int) -> dict[str, Any]:
         ErrorManager.require(
             self._repo.get_definizione(lista_id) is not None,
             code=E_LISTA_NOT_FOUND,
             message="Lista non trovata.",
             detail=f"lista_id={lista_id}",
         )
-        return self._repo.list_permessi_by_lista(lista_id)
+        return {
+            "results": self._repo.list_permessi_by_lista(lista_id),
+            "count": self._repo.count_permessi_by_lista(lista_id),
+        }
 
     # =================================================================
     # Upsert / Delete

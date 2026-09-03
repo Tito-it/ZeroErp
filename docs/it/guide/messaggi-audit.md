@@ -301,7 +301,7 @@ SELECT dbops.fn_audit_log_once(
   'DRYRUN',
   jsonb_build_object(
     'table', 'anagrafiche.soggetti',
-    'trigger', 'trgx_z90_soggetti_upd_dlt_storico',
+    'trigger', 'trg_soggetti_z90_storico_upd_dlt',
     'action', 'CREATE TRIGGER'
   ),
   p_rule_type := 'STORICO',

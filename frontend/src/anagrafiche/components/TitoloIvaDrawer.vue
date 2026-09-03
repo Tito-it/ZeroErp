@@ -26,6 +26,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
@@ -38,14 +39,21 @@ import {
   annullaTitoloIvaMovimento,
   createTitoloIvaForzatura,
 } from '../api/anagrafiche'
+import {
+  chiaveTitolo,
+  useTitoloIvaAmbitiStore,
+  useTitoloIvaMovimentiStore,
+} from '../stores/titoloIvaSottoliste'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import { toDateString, parseIsoDate, displayDate } from '../../core/utils/date'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import Drawer from 'primevue/drawer'
@@ -57,8 +65,6 @@ import Textarea from 'primevue/textarea'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 
 const { t, te } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -82,7 +88,17 @@ const fv = useFetchVersion()
 
 const form = ref(defaultForm())
 const detail = ref(null)
-const ambiti = ref([])
+
+// ⭐ LE DUE SOTTO-LISTE NON SONO PIU' DUE `ref` ALIMENTATI DAL DETTAGLIO
+//    (2026-09-02, liste 64 e 65 del lotto 3). Erano `DataTable` grezze che
+//    leggevano `detail.ambiti` e `detail.movimenti`: nessuna pagina, nessuna
+//    scelta delle colonne, e per il REGISTRO nemmeno un limite — cresce a ogni
+//    fattura, quindi era una query senza LIMIT che un giorno cade proprio sul
+//    titolo piu' usato. Ora leggono i loro endpoint, che sono sempre esistiti.
+// ⚠️ Il dettaglio continua a portarle: serve ad altri consumatori, e qui resta
+//    la fonte di `imponibile_utilizzato` e `residuo`, che li tiene un trigger.
+const storeAmbiti = useTitoloIvaAmbitiStore()
+const storeMovimenti = useTitoloIvaMovimentiStore()
 
 // Ambito dichiarato, mai dedotto da un NULL (D12).
 const ambitoOptions = computed(() => [
@@ -127,8 +143,62 @@ const mostraPlafond = computed(() => (
 //   Il caso si costruisce in due istruzioni ed e' voluto (Q2): l'avviso compare
 //   al primo rientro, quando c'e' il pulsante per rimediare.
 const ambitoIncompleto = computed(
-  () => isEdit.value && form.value.ambito === 'RISTRETTO' && ambiti.value.length === 0,
+  () => isEdit.value && form.value.ambito === 'RISTRETTO'
+    && storeAmbiti.totalRecords === 0,
 )
+
+// Scaffolding delle due sotto-liste. ⚠️ Deve stare DOPO `form`: il building
+// block ci mette sopra un `watch` **immediate**, e una variabile toccata da un
+// watch immediate dichiarata piu' sotto e' una TDZ silenziosa
+// (`feedback_vue_watch_immediate_tdz`).
+//
+// ⛔ `parentId` porta la chiave SOLO quando la sezione e' davvero a video, e i
+//    `null` non sono un dettaglio: sono quelli che dicono al BB di chiamare
+//    `reset()`. Senza, gli ambiti del titolo precedente resterebbero sotto il
+//    prossimo che si apre — righe vere di un padre sbagliato.
+// ⚠️ Gli ambiti hanno una condizione IN PIU' (`ambito === 'RISTRETTO'`): su un
+//    titolo che vale per tutto la sezione non si rende, e chiedere quelle righe
+//    sarebbe una fetch per una tabella che nessuno guarda.
+// ⚠️ Niente `paginatorProps`/`tablePage` qui: la lista degli ambiti e' montata
+//    `:paginata="false"`, e in quella modalita' il BB non emette `@page`/`@sort`
+//    e non disegna il paginatore. Destrutturarli darebbe l'impressione di un
+//    contratto che non c'e'.
+const {
+  onPage: onPageAmbiti, onSort: onSortAmbiti,
+  listaRef: listaAmbitiRef, dirty: dirtyAmbiti,
+  onConfigLoaded: onConfigLoadedAmbiti, pageActions: azioniAmbiti,
+  perimetroBloccato: perimetroAmbiti, reloadAll: reloadAmbiti,
+} = useDrawerTabLista(storeAmbiti, {
+  parentId: () => (
+    props.visible && isEdit.value && form.value.ambito === 'RISTRETTO'
+      ? chiaveTitolo(props.soggettoId, props.titoloId)
+      : null
+  ),
+  parentField: 'chiaveTitolo',
+  newTooltipKey: 'anagrafiche.titoli_iva.aggiungi_ambito',
+  onNew: () => { ambitoFormAperto.value = true },
+})
+
+const {
+  onPage: onPageMovimenti, onSort: onSortMovimenti,
+  paginatorProps: paginatorMovimenti, tablePage: paginaMovimenti,
+  listaRef: listaMovimentiRef, dirty: dirtyMovimenti,
+  onConfigLoaded: onConfigLoadedMovimenti, pageActions: azioniMovimenti,
+  perimetroBloccato: perimetroMovimenti, reloadAll: reloadMovimenti,
+} = useDrawerTabLista(storeMovimenti, {
+  parentId: () => (
+    props.visible && isEdit.value && mostraPlafond.value
+      ? chiaveTitolo(props.soggettoId, props.titoloId)
+      : null
+  ),
+  parentField: 'chiaveTitolo',
+  // ⛔ Da qui si scrive SOLO una forzatura (Q3), e il pulsante lo dice nel nome:
+  //    fatture e note di credito le produce la fatturazione, dalla primitiva che
+  //    tiene il lock.
+  newLabelKey: 'anagrafiche.titoli_iva.forza_rettifica',
+  newTooltipKey: 'anagrafiche.titoli_iva.forza_rettifica',
+  onNew: () => { forzaturaVisible.value = true },
+})
 
 function defaultForm() {
   return {
@@ -162,13 +232,11 @@ function populateFromDetail(d) {
     attivo: d.attivo,
     note: d.note,
   }
-  ambiti.value = d.ambiti || []
 }
 
 watch(() => props.visible, async (val) => {
   if (!val) { fv.invalidate(); return }
   const v = fv.tag()
-  ambiti.value = []
   if (isEdit.value) {
     const res = await execute(() => getSoggettoTitoloIva(props.soggettoId, props.titoloId))
     if (res === null || !fv.isCurrent(v)) return
@@ -290,6 +358,22 @@ function onDeleteAmbito(riga) {
   })
 }
 
+// Scopo: le azioni di riga di un ambito, nella forma che `RowActionsMenu` si
+//        aspetta.
+// ⚠️ `visible` invece di un `v-if` sulla colonna: la colonna resta a catalogo e
+//    il kebab sparisce da se' in sola lettura (`feedback_row_actions_menu`).
+function azioniRigaAmbito(riga) {
+  return [{
+    key: 'elimina',
+    label: t('common.delete'),
+    icon: MANAGE_ICONS.DELETE,
+    severity: 'danger',
+    visible: !isReadonly.value,
+    allowWhenInactive: true,
+    command: () => onDeleteAmbito(riga),
+  }]
+}
+
 // Scopo: rilegge il dettaglio dal BE dopo una scrittura sui figli.
 // ⚠️ Serve DOPO ogni movimento, non solo dopo gli ambiti: `imponibile_utilizzato`
 //   e `residuo` li ricalcola un trigger, quindi il valore giusto lo sa solo il
@@ -300,7 +384,12 @@ async function ricaricaDettaglio() {
   const res = await execute(() => getSoggettoTitoloIva(props.soggettoId, props.titoloId))
   if (res === null || !fv.isCurrent(v)) return
   detail.value = res.data.data
-  ambiti.value = detail.value.ambiti || []
+  // ⛔ Anche le due liste, e non e' ridondante: leggono i LORO endpoint, quindi
+  //    una scrittura sui figli non le aggiorna da se'. Ricaricare solo il
+  //    dettaglio lascerebbe a video le righe di prima accanto a un residuo gia'
+  //    cambiato — due verita' nella stessa maschera.
+  reloadAmbiti()
+  reloadMovimenti()
   emit('saved')
 }
 
@@ -331,6 +420,26 @@ function onAnnullaMovimento(riga) {
   annulloVisible.value = true
 }
 
+// Scopo: le azioni di riga di un movimento.
+// ⛔ L'annullo NON sparisce quando e' bloccato: resta e DICE PERCHE'. Una voce
+//    che scompare lascia l'operatore a chiedersi se il permesso, il dato o il
+//    programma — e il motivo lo produce la stessa check che la madre interroga
+//    per rifiutare, quindi tooltip e rifiuto non possono divergere.
+function azioniRigaMovimento(riga) {
+  const bloccato = !!riga.annullo_blocco_codice
+  return [{
+    key: 'annulla',
+    label: t('anagrafiche.titoli_iva.annulla_movimento'),
+    icon: MANAGE_ICONS.UNDO,
+    severity: 'danger',
+    visible: !isReadonly.value,
+    allowWhenInactive: true,
+    disabled: bloccato,
+    tooltip: bloccato ? motivoAnnullo(riga) : t('anagrafiche.titoli_iva.annulla_movimento'),
+    command: () => onAnnullaMovimento(riga),
+  }]
+}
+
 const annulloValido = computed(() => !!annullo.value.motivo?.trim())
 
 // Scopo: scrive il CONTRO-MOVIMENTO. Non e' una delete e non e' un update:
@@ -351,7 +460,9 @@ async function onSalvaAnnullo() {
   await ricaricaDettaglio()
 }
 
-const movimenti = computed(() => detail.value?.movimenti || [])
+// ⚠️ Il registro arriva dal suo endpoint, non piu' da `detail.movimenti`:
+//    quello resta nel payload per gli altri consumatori, ma qui e' una lista
+//    paginata e non un pezzo del dettaglio.
 const forzaturaVisible = ref(false)
 const forzatura = ref(nuovaForzatura())
 
@@ -403,9 +514,16 @@ const onClose = useDrawerClose(emit)
 </script>
 
 <template>
+  <!-- ⛔ `DRAWER_WIDTH.WIDE` e non `.LARGE`: quella chiave NON ESISTE in
+       `constants.js`, e per mesi questo drawer e' stato largo **320px** — il
+       default di PrimeVue per un drawer laterale. Nessun errore: `undefined`
+       finisce in `width` e il browser ignora la regola, il build e' verde,
+       ESLint tace. A video le griglie a 2 e 3 colonne collassavano in una e la
+       maschera sembrava «scritta male» quando era solo strizzata.
+       ⇒ Presidiato da `scripts/check-drawer-width.mjs`, che nasce da qui. -->
   <Drawer
     :visible="visible" @update:visible="emit('update:visible', $event)"
-    position="right" :style="{ width: DRAWER_WIDTH.LARGE }" @after-show="onAfterShow">
+    position="right" :style="{ width: DRAWER_WIDTH.WIDE }" @after-show="onAfterShow">
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
@@ -521,30 +639,41 @@ const onClose = useDrawerClose(emit)
           {{ t('anagrafiche.titoli_iva.ambito_hint') }}
         </p>
 
-        <DataTable :value="ambiti" class="app-datatable" data-key="id" size="small">
-          <Column field="livello" :header="t('anagrafiche.titoli_iva.col_livello')">
-            <template #body="{ data }">
-              <Tag :value="t(`anagrafiche.titoli_iva.livello_${data.livello.toLowerCase()}`)"
-                severity="info" />
-            </template>
-          </Column>
-          <Column :header="t('anagrafiche.titoli_iva.col_oggetto')">
-            <template #body="{ data }">{{ descriviAmbito(data) }}</template>
-          </Column>
-          <Column v-if="!isReadonly" style="width: 4rem">
-            <template #body="{ data }">
-              <Button :icon="MANAGE_ICONS.DELETE" text severity="danger"
-                @click="onDeleteAmbito(data)" />
-            </template>
-          </Column>
-          <template #empty>{{ t('anagrafiche.titoli_iva.ambito_vuoto') }}</template>
-        </DataTable>
+        <!-- ⭐ Lista NON paginata: gli ambiti di un titolo sono limitati PER
+             MODELLO — sono gli oggetti su cui si applica, non un registro che
+             cresce. ⛔ `total` resta obbligatorio e arriva da una query sua: e'
+             l'asserzione che le righe siano tutte, e il BB rifiuta di disegnare
+             la tabella se non coincide. -->
+        <DrawerTabLista
+          ref="listaAmbitiRef"
+          codice="anagrafiche.titolo_iva_ambiti"
+          :paginata="false"
+          :rows="storeAmbiti.items"
+          :total="storeAmbiti.totalRecords"
+          :loading="storeAmbiti.loading"
+          :page-actions="azioniAmbiti"
+          :dirty="dirtyAmbiti"
+          :perimetro-bloccato="perimetroAmbiti"
+          @page="onPageAmbiti"
+          @sort="onSortAmbiti"
+          @config-loaded="onConfigLoadedAmbiti"
+        >
+          <template #cell-livello="{ data }">
+            <Tag :value="t(`anagrafiche.titoli_iva.livello_${data.livello.toLowerCase()}`)"
+              severity="info" />
+          </template>
+          <!-- Colonna composta da TRE campi alternativi (articolo, gruppo,
+               tipo): non ha un `campo_sorgente` e il catalogo la dichiara
+               calcolata. -->
+          <template #cell-oggetto="{ data }">{{ descriviAmbito(data) }}</template>
+          <template #actions="{ data, compact }">
+            <RowActionsMenu :row="data" :actions="azioniRigaAmbito(data)"
+              :force-compact="compact" />
+          </template>
+        </DrawerTabLista>
 
         <div v-if="!isReadonly" class="mt-2">
-          <Button v-if="!ambitoFormAperto" :label="t('anagrafiche.titoli_iva.aggiungi_ambito')"
-            :icon="MANAGE_ICONS.ADD" outlined size="small"
-            @click="ambitoFormAperto = true" />
-          <div v-else class="app-drawer-section">
+          <div v-if="ambitoFormAperto" class="app-drawer-section">
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('anagrafiche.titoli_iva.col_livello') }}</label>
@@ -583,50 +712,47 @@ const onClose = useDrawerClose(emit)
            esiste per evitare. -->
       <template v-if="isEdit && mostraPlafond">
         <h4 class="mt-3">{{ t('anagrafiche.titoli_iva.section_registro') }}</h4>
-        <DataTable :value="movimenti" class="app-datatable" data-key="id" size="small">
-          <Column :header="t('anagrafiche.titoli_iva.col_data')">
-            <template #body="{ data }">{{ displayDate(data.data_movimento) }}</template>
-          </Column>
-          <Column :header="t('anagrafiche.titoli_iva.col_movimento')">
-            <template #body="{ data }">
-              <Tag :value="t(`anagrafiche.titoli_iva.mov_${data.tipo_movimento.toLowerCase()}`)"
-                :severity="movimentoSeverity(data.tipo_movimento)" />
-            </template>
-          </Column>
-          <Column :header="t('anagrafiche.titoli_iva.col_imponibile')">
-            <template #body="{ data }">{{ formatCurrency(data.imponibile) }}</template>
-          </Column>
-          <Column :header="t('anagrafiche.titoli_iva.col_documento')">
-            <template #body="{ data }">{{ descriviDocumento(data) }}</template>
-          </Column>
-          <Column field="motivo" :header="t('anagrafiche.titoli_iva.col_motivo')" />
-          <!-- ⭐ L'ANNULLO (Q7), col motivo quando e' spento. Il pulsante non
-               sparisce: resta e SPIEGA — un pulsante grigio che non dice perche'
-               e' indistinguibile da un bug.
+        <!-- ⭐ PAGINATO: un registro append-only cresce a ogni fattura, e la
+             pagina la decide il catalogo (lista 65, `pagina_dimensione = 25`).
+             ⛔ NESSUNO slot per data e imponibile: il catalogo dichiara
+             `date_short` e `currency_eur`, e il formatter di serie li rende
+             gia' cosi'. Uno slot qui sarebbe una seconda regola di formato
+             accanto al catalogo, e piu' povera. -->
+        <DrawerTabLista
+          ref="listaMovimentiRef"
+          codice="anagrafiche.titolo_iva_movimenti"
+          :rows="storeMovimenti.items"
+          :total="storeMovimenti.totalRecords"
+          :loading="storeMovimenti.loading"
+          :paginator-options="paginatorMovimenti"
+          :page="paginaMovimenti"
+          :sort-field="paginatorMovimenti.sortField"
+          :sort-order="paginatorMovimenti.sortOrder"
+          :page-actions="azioniMovimenti"
+          :dirty="dirtyMovimenti"
+          :perimetro-bloccato="perimetroMovimenti"
+          @page="onPageMovimenti"
+          @sort="onSortMovimenti"
+          @config-loaded="onConfigLoadedMovimenti"
+        >
+          <template #cell-movimento="{ data }">
+            <Tag :value="t(`anagrafiche.titoli_iva.mov_${data.tipo_movimento.toLowerCase()}`)"
+              :severity="movimentoSeverity(data.tipo_movimento)" />
+          </template>
+          <!-- Colonna composta da fattura + riga: calcolata, senza
+               `campo_sorgente` a catalogo. -->
+          <template #cell-documento="{ data }">{{ descriviDocumento(data) }}</template>
+          <!-- ⭐ L'ANNULLO (Q7), col motivo quando e' spento. L'azione non
+               sparisce: resta e SPIEGA — una voce grigia che non dice perche'
+               e' indistinguibile da un difetto.
                ⛔ Il motivo arriva dalla vista, e lo produce la STESSA check che
                la madre interroga per rifiutare: tooltip e rifiuto non possono
                divergere. -->
-          <Column v-if="!isReadonly" style="width: 4rem">
-            <template #body="{ data }">
-              <span class="app-action-tooltip-wrap"
-                v-tooltip.top="data.annullo_blocco_codice ? motivoAnnullo(data) : t('anagrafiche.titoli_iva.annulla_movimento')">
-                <Button :icon="MANAGE_ICONS.UNDO" text severity="danger" size="small"
-                  :disabled="!!data.annullo_blocco_codice"
-                  :aria-label="t('anagrafiche.titoli_iva.annulla_movimento')"
-                  @click="onAnnullaMovimento(data)" />
-              </span>
-            </template>
-          </Column>
-          <template #empty>{{ t('anagrafiche.titoli_iva.registro_vuoto') }}</template>
-        </DataTable>
-
-        <!-- ⛔ Da qui si scrive SOLO una forzatura (Q3): i movimenti di fattura e
-             nota di credito li produce la fatturazione, dalla primitiva che
-             tiene il lock. Il pulsante lo dice nel nome. -->
-        <Button v-if="!isReadonly" class="mt-2"
-          :label="t('anagrafiche.titoli_iva.forza_rettifica')"
-          :icon="MANAGE_ICONS.EDIT" outlined size="small"
-          @click="forzaturaVisible = true" />
+          <template #actions="{ data, compact }">
+            <RowActionsMenu :row="data" :actions="azioniRigaMovimento(data)"
+              :force-compact="compact" />
+          </template>
+        </DrawerTabLista>
       </template>
 
       <div v-if="isEdit" class="form-field mt-3">

@@ -118,7 +118,13 @@ class SoggettiService:
         # Titoli IVA (I7/D10): composti qui come le altre sotto-entita', e non
         # chiesti a parte dal drawer. ⭐ Il riepilogo nella sezione del soggetto
         # arriva cosi' senza un round-trip in piu', esattamente come i conti.
-        soggetto["titoli_iva"] = self._titoli_iva.list_titoli_soggetto(soggetto_id)
+        # ⚠️ Si scarta il totale, e non e' distrazione: qui i titoli sono una
+        #    SOTTO-LISTA del soggetto e arrivano SENZA `limit`, quindi il totale
+        #    coincide con `len()` di questa lista. Portarselo dietro in questo
+        #    punto vorrebbe dire dichiarare un conteggio che nessuno legge.
+        soggetto["titoli_iva"], _totale = self._titoli_iva.list_titoli_soggetto(
+            soggetto_id,
+        )
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
         return soggetto
 

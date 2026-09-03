@@ -39,6 +39,12 @@
    non viene resa affatto — nessun kebab e NESSUN errore. Difetto reale su
    `LottoDrawer.vue`, visto solo in app il 2026-08-24.
 
+4-ter. test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo
+   Il VERSO OPPOSTO del 4-bis (BE-3): chi fornisce lo slot pretende che la
+   lista abbia una colonna `azione` a catalogo. Senza, il BB non rende la
+   colonna e le azioni di riga spariscono senza che niente fallisca — e' il
+   difetto DB-1, trovato convertendo e non da un test.
+
 5. test_ogni_lista_del_seed_ha_un_preset_default
    Senza preset `is_default` la lista non ha una configurazione di partenza.
 
@@ -53,6 +59,13 @@
    colonna viene RIMOSSA per tutti, e il badge «colonne nuove» continua a
    contarla. Cancello su un difetto DB noto e non ancora corretto.
 
+8-bis. test_le_liste_locali_sono_montate_non_paginate
+   Chiude il cerchio della sentinella `ORDINAMENTO_LOCALE`: una lista dichiarata
+   «ordina nel browser» DEVE essere montata con `:paginata="false"`. Se qualcuno
+   togliesse la prop, la lista tornerebbe a ordinare lato server — dove non ha
+   nessuna whitelist — e la freccia risponderebbe 400 al primo click, mentre
+   questo registro continuerebbe a dire che va tutto bene.
+
 8. test_il_debito_non_cresce
    `_DEBITO_WHITELIST_LOGICA` e' un registro di debito, non una lista di
    eccezioni: una lista rientrata va tolta, o il debito residuo risulta piu'
@@ -65,6 +78,7 @@ I test 4-6 girano su TUTTE: valgono a prescindere dalla chiave della whitelist.
 import csv
 import re
 import unittest
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -93,6 +107,72 @@ def _senza_commenti(testo: str) -> str:
     senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
     senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
     return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+
+
+# Scopo: TUTTI i montaggi di lista del frontend, letti UNA volta sola.
+#        Per ogni `<ListaConfigurabile codice="X">` / `<DrawerTabLista codice="X">`
+#        ritorna il codice, il TAG DI APERTURA (gli attributi) e il CORPO (gli
+#        slot), che sono le tre cose su cui i test di questo modulo interrogano
+#        il frontend.
+#
+# ⭐ Estratto il 2026-09-02 alla TERZA copia (regola del 2). Le tre erano nello
+#    stesso file e divergevano gia': due cercavano il tag con `_tag_apertura`,
+#    la terza con una finestra a caratteri — cioe' la versione che il 02-09
+#    stesso era stata corretta perche' sbagliava in direzione «verde».
+# ⚠️ E percorrevano `frontend/src` **tre volte**: `lru_cache` perche' un
+#    presidio lento e' un presidio che prima o poi qualcuno toglie dalla corsa
+#    veloce (stessa ragione scritta in `test_perimetro_emittente_copertura`).
+@lru_cache(maxsize=1)
+def _montaggi_lista() -> tuple[tuple[str, str, str, str], ...]:
+    src = _repo_root() / "frontend/src"
+    trovati: list[tuple[str, str, str, str]] = []
+    for percorso in src.rglob("*.vue"):
+        senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
+        # ⛔ DUE componenti, non uno. Una lista si monta con
+        #    `<ListaConfigurabile>` **oppure** con `<DrawerTabLista>`: cercare
+        #    solo il primo rende il censimento cieco sulle liste nate per ultime
+        #    (successo con `vendite.registri_numerazione`, 2026-09-01).
+        for tag in ("ListaConfigurabile", "DrawerTabLista"):
+            for m in re.finditer(rf"<{tag}\b", senza_commenti):
+                apertura = _tag_apertura(senza_commenti, m.start())
+                # `(?<![:@\w-])codice=` esclude i binding DINAMICI
+                # (`:codice="var"`): il loro valore non e' risolvibile
+                # staticamente. Sono coperti lo stesso — `ResiCodaTable` sceglie
+                # fra due costanti, entrambe in `_LISTE`.
+                mc = re.search(r'(?<![:@\w-])codice="([^"]+)"', apertura)
+                if not mc:
+                    continue
+                inizio = m.start() + len(apertura)
+                fine = senza_commenti.find(f"</{tag}>", inizio)
+                corpo = senza_commenti[inizio:fine if fine != -1 else len(senza_commenti)]
+                trovati.append((mc.group(1), apertura, corpo, percorso.name))
+    return tuple(trovati)
+
+
+# Scopo: il TAG DI APERTURA che comincia a `inizio`, fino al `>` che lo chiude.
+#
+# ⛔ Non si puo' usare una regex `[^>]*`: un `>` vive dentro gli attributi
+#    (`v-if="documentiCount > 0"`) e la classe negata si fermerebbe li' — e' il
+#    difetto gia' corretto nel test 6 il 2026-08-03.
+# ⛔ E non si puo' usare una FINESTRA a caratteri, che e' la scorciatoia in cui
+#    ero cascato: se l'attributo cercato cade appena oltre la finestra il test
+#    non lo trova e passa. Un guard che sbaglia in direzione «verde» e' peggio
+#    di uno assente, perche' qualcuno ci conta.
+# ⇒ Si scandisce carattere per carattere tenendo conto delle virgolette: il `>`
+#   dentro un valore quotato non chiude niente. In un template Vue i valori
+#   degli attributi sono sempre quotati, quindi la scansione e' esatta.
+def _tag_apertura(testo: str, inizio: int) -> str:
+    virgoletta: str | None = None
+    for i in range(inizio, len(testo)):
+        c = testo[i]
+        if virgoletta is not None:
+            if c == virgoletta:
+                virgoletta = None
+        elif c in "\"'":
+            virgoletta = c
+        elif c == ">":
+            return testo[inizio:i + 1]
+    return testo[inizio:]
 
 
 # Scopo: whitelist di ordinamento di una lista il cui ORDINE vive nella funzione
@@ -200,6 +280,18 @@ def _da_costante(modulo: str, costante: str):
         return set(getattr(importlib.import_module(modulo), costante))
 
     return risolvi
+
+
+# Sentinella per le liste montate con `:paginata="false"` (2026-09-02).
+# ⭐ Non hanno una whitelist di ordinamento lato backend perche' NON ordinano
+#    lato backend: l'ordine lo calcola PrimeVue nel browser, sulle righe gia'
+#    consegnate. Chiedere loro una whitelist significherebbe pretendere un
+#    contratto con un interlocutore che non esiste.
+# ⛔ NON e' `_DEBITO_WHITELIST_LOGICA`, ed e' una distinzione che va tenuta:
+#    quello e' un REGISTRO DI DEBITO e deve calare, questa e' una PROPRIETA'
+#    della lista e resta. Confonderli farebbe sembrare debito una scelta, e
+#    sparire dal debito una cosa che debito non e'.
+ORDINAMENTO_LOCALE = "ordinamento-locale"
 
 
 # Registro delle liste convertite: `codice` -> risolutore della whitelist di
@@ -339,6 +431,74 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_FUORI_CAPIENZA_SORT_COLUMNS")),
     ("pagamenti.eccedenze",
      _da_costante("apps.pagamenti.db.pagamenti_repository", "ECCEDENZE_SORT_COLUMNS")),
+    # Registri di numerazione (2026-09-01), primo tab dell'emittente fiscale.
+    # ⭐ E' entrata qui insieme all'allargamento del censimento a
+    # `<DrawerTabLista>`: montata solo con quel componente, era invisibile al
+    # test 6 e quindi fuori da tutti i presidi di questo modulo.
+    ("vendite.registri_numerazione",
+     _da_costante("apps.vendite.db.registri_repository", "_ORDER_COLS")),
+    # Famiglie di documento (2026-09-02): il CRUD della REGOLA che il registro
+    # applica. ⭐ E' la prima lista del gruppo con `vista_sql` VALORIZZATA — il
+    # trigger DB le valida i `campo_sorgente` contro la vista — ma la whitelist
+    # di ORDINAMENTO resta materia di questo presidio: la vista non sa niente
+    # di cosa il repository accetta in `ORDER BY`.
+    ("vendite.famiglie_documento",
+     _da_costante("apps.vendite.db.famiglie_repository", "_ORDER_COLS")),
+    # Le 4 liste della pagina tecnica `ui` (2026-09-02) — primo lotto montato
+    # con `:paginata="false"`. ⭐ Nessuna whitelist di ordinamento: non ordinano
+    # lato backend, quindi non c'e' un contratto seed<->repository da esigere.
+    # Restano coperte da TUTTI gli altri test di questo modulo (azione mai
+    # ordinabile, slot `actions`, preset di default, `sensibile` col grant,
+    # censimento dal frontend) piu' il test 9, che pretende che il frontend le
+    # monti davvero come non paginate.
+    ("ui.lista_definizione", ORDINAMENTO_LOCALE),
+    ("ui.lista_colonna", ORDINAMENTO_LOCALE),
+    ("ui.lista_preset", ORDINAMENTO_LOCALE),
+    ("ui.lista_colonna_permesso", ORDINAMENTO_LOCALE),
+    # Lotto 2 (2026-09-02): gli atti di sistemazione di una fattura, montati
+    # nel drawer dell'eccedenza.
+    # ⭐ PAGINATA dal 2026-09-02 (decisione di Tid), dopo esserlo stata per
+    #    mezza giornata no. La ragione per cui era «ordinamento locale» —
+    #    «gli atti di una fattura sono pochi per modello» — e' una previsione
+    #    sui DATI, e le previsioni sui dati non decidono la forma di una lista:
+    #    il drawer restava senza pagine, senza «Personalizza colonne» e senza
+    #    export, cioe' fuori dallo standard delle altre quaranta, e nessuno
+    #    poteva accorgersene perche' non falliva niente.
+    # ⇒ Da qui la whitelist di BE-1 non e' piu' «pronta per domani»: e' la
+    #   whitelist che l'intestazione cliccata usa oggi, ed e' esigibile dai
+    #   test 1-3 come per ogni altra lista. Il ponte del lotto 2 e' sparito
+    #   insieme all'ultima riga che conteneva.
+    ("pagamenti.sistemazioni_fattura",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "SISTEMAZIONI_SORT_COLUMNS")),
+    # Le altre tre del lotto 2. ⭐ Entrano nel registro col SEED e non con la
+    # conversione: `test_lista_proiezione_campo_sorgente` pretende che ogni
+    # lista senza vista abbia qui la sua whitelist, perche' altrimenti «i loro
+    # ordinamenti non li prova nessuno» — ed e' vero anche prima che una view
+    # le monti.
+    ("pagamenti.canali_incasso",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "ENTI_INCASSO_SORT_COLUMNS")),
+    ("anagrafiche.titoli_iva_sfondati",
+     _da_costante("apps.anagrafiche.db.titoli_iva_repository", "_ORDER_COLS_SFONDATI")),
+    # ⭐ PAGINATA dal 2026-09-02 (rilievo di Tid: il drawer era fuori standard —
+    #    niente pagine, niente scelta colonne, niente export). Da quel giorno
+    #    ordina lato SERVER, quindi rientra nei test 1-3 con la sua whitelist e
+    #    la riga corrispondente esce dal ponte del lotto 2.
+    ("anagrafiche.soggetto_titoli_iva",
+     _da_costante("apps.anagrafiche.db.titoli_iva_repository",
+                  "_ORDER_COLS_TITOLI_SOGGETTO")),
+    # Lotto 3 (2026-09-02): le due liste dentro `TitoloIvaDrawer`, seedate prima
+    # della conversione del drawer (Gruppo B).
+    # ⭐ Il registro le prende col SEED, come il lotto 2: e' `_LISTE` a dover
+    #    coprire il frontend, non a fotografarlo.
+    ("anagrafiche.titolo_iva_movimenti",
+     _da_costante("apps.anagrafiche.db.titoli_iva_repository",
+                  "_ORDER_COLS_MOVIMENTI")),
+    # ⭐ Gli AMBITI non ordinano lato server, e non e' un debito: a catalogo
+    #    NESSUNA loro colonna e' `ordinabile = t` (il seed lo dichiara), quindi
+    #    non c'e' nessun contratto da esigere. `livello` sta a `f` per disegno —
+    #    l'ordine di un ambito e' la sua gerarchia, non una preferenza — e
+    #    `oggetto` e' composta dal frontend, senza una colonna SQL dietro.
+    ("anagrafiche.titolo_iva_ambiti", ORDINAMENTO_LOCALE),
 )
 
 
@@ -363,10 +523,18 @@ _LISTE: tuple[tuple[str, object], ...] = (
 _DEBITO_WHITELIST_LOGICA: frozenset[str] = frozenset()
 
 
-# Scopo: liste su cui il contratto seed<->whitelist e' esigibile, cioe' tutte
-#        tranne il debito noto.
+# Scopo: liste su cui il contratto seed<->whitelist e' esigibile: tutte tranne
+#        il debito noto e quelle che ordinano nel browser.
 def _liste_allineate() -> tuple[tuple[str, object], ...]:
-    return tuple((c, w) for c, w in _LISTE if c not in _DEBITO_WHITELIST_LOGICA)
+    return tuple(
+        (c, w) for c, w in _LISTE
+        if c not in _DEBITO_WHITELIST_LOGICA and w is not ORDINAMENTO_LOCALE
+    )
+
+
+# Scopo: i codici delle liste dichiarate a ordinamento locale.
+def _liste_locali() -> tuple[str, ...]:
+    return tuple(c for c, w in _LISTE if w is ORDINAMENTO_LOCALE)
 
 
 # Scopo: righe di un CSV di seed della cartella ui.
@@ -525,40 +693,63 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             f"azioni non viene resa (nessun kebab, nessun errore): {colpevoli}",
         )
 
+    # 4-ter. IL VERSO MANCANTE del 4-bis (richiesta BE-3 del team DB,
+    #        2026-09-02). Quello controlla «la config dichiara l'azione ⇒ il
+    #        caller deve fornire lo slot col nome giusto». Questo controlla
+    #        l'opposto: **il caller fornisce `#actions` ⇒ la lista deve avere
+    #        una colonna `azione` a catalogo**.
+    #
+    # 🔴 E' il difetto DB-1, trovato convertendo e non da un test: la lista
+    #    `anagrafiche.soggetto_titoli_iva` non aveva la colonna a catalogo
+    #    mentre il suo drawer ha un pulsante ELIMINA per riga. Il BB rende la
+    #    colonna delle azioni solo se la config la dichiara: senza la riga, il
+    #    cestino sparisce e **non fallisce niente** — nessun errore, nessun
+    #    rosso, solo un'azione che non c'e' piu'.
+    # ⚠️ Il generatore del seed non poteva vederla: riconosce la colonna azioni
+    #    dall'header `common.col_azioni`, e li' la `<Column v-if="!isReadonly">`
+    #    non aveva header. Il presidio va quindi sul FRONTEND, che e' l'unico
+    #    posto dove quell'intenzione e' scritta.
+    def test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo(self) -> None:
+        # ⭐ Il registro di debito che stava qui e' VUOTO dal 2026-09-02 ed e'
+        #    stato tolto, non azzerato: un registro vuoto che resta e' un posto
+        #    dove la prossima eccezione si infila senza discussione.
+        #    Conteneva `vendite.registri_numerazione` (lista 54) — SECONDO caso
+        #    della specie di DB-1, trovato da questo test alla PRIMA corsa: il
+        #    tab forniva `#actions` con un `RowActionsMenu`, il catalogo non
+        #    aveva la colonna, e quel kebab non si e' mai reso senza che
+        #    fallisse niente. Chiuso dalla riga 702 a catalogo (DB-2).
+        con_slot = {
+            codice: dove
+            for codice, _apertura, corpo, dove in _montaggi_lista()
+            if re.search(r"#actions|v-slot:actions", corpo)
+        }
+        self.assertTrue(
+            con_slot,
+            "nessuno slot `#actions` trovato: il rilevamento e' rotto, non e' "
+            "che nessuna lista abbia azioni di riga.",
+        )
+        senza_colonna = sorted(
+            f"{codice} ({dove})"
+            for codice, dove in con_slot.items()
+            if not any(
+                r["tipo_colonna"] == "azione" for r in _colonne_attive(codice)
+            )
+        )
+        self.assertEqual(
+            senza_colonna, [],
+            "il frontend fornisce lo slot `#actions` ma il catalogo non ha una "
+            "colonna `tipo_colonna = 'azione'`: il building block NON rende la "
+            "colonna e non fallisce niente — le azioni di riga spariscono in "
+            "silenzio. Serve la riga a catalogo (richiesta al team DB).",
+        )
+
     def test_registro_copre_tutte_le_liste_montate_dal_frontend(self) -> None:
         # La fonte di verita' su "quali liste sono convertite" e' il frontend:
         # chi monta `<ListaConfigurabile codice="X">` ha convertito X. Senza
         # questo controllo, dimenticare una riga in `_LISTE` non produce un
         # rosso — produce un presidio che non presidia, che e' peggio di non
         # averlo.
-        src = _repo_root() / "frontend/src"
-        montate: set[str] = set()
-        for percorso in src.rglob("*.vue"):
-            testo = percorso.read_text(encoding="utf-8")
-            # Solo il montaggio reale: i commenti che NOMINANO il componente
-            # (es. GeoSearchTable, che dichiara di non usarlo) sono esclusi.
-            senza_commenti = re.sub(r"^\s*//.*$", "", testo, flags=re.M)
-            # `(?<![:@\w-])codice=` esclude i binding DINAMICI (`:codice="var"`):
-            # il loro valore non e' risolvibile staticamente, e catturare il nome
-            # della variabile produrrebbe un falso "codice lista" inesistente.
-            # Sono comunque coperti: `ResiCodaTable` sceglie fra due costanti,
-            # entrambe presenti in `_LISTE`.
-            #
-            # ⚠️ **Niente `[^>]*` fra il tag e l'attributo** (difetto corretto il
-            # 2026-08-03): un `>` puo' vivere DENTRO un attributo — e ci vive
-            # davvero, in `v-if="documentiCount > 0 || documentiLoading"` sulle
-            # dashboard. La classe negata si fermava li' e quattro liste su sei
-            # risultavano NON MONTATE: il presidio taceva proprio sulle liste
-            # appena convertite, che e' il caso per cui esiste. Ora si cerca
-            # `codice="..."` entro una finestra di caratteri dal nome del tag,
-            # senza pretendere di sapere dove finisce il tag stesso.
-            for m in re.finditer(
-                r"<ListaConfigurabile\b.{0,400}?(?<![:@\w-])codice=\"([^\"]+)\"",
-                senza_commenti,
-                re.S,
-            ):
-                montate.add(m.group(1))
-
+        montate = {codice for codice, _a, _c, _d in _montaggi_lista()}
         self.assertTrue(
             montate,
             "nessun <ListaConfigurabile codice=\"...\"> trovato nel frontend: "
@@ -641,6 +832,51 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             "toglierle dall'insieme, cosi' il registro dice la verita' sul debito "
             "residuo e le protegge dalle regressioni.",
         )
+
+    # 8-bis. La sentinella del registro deve corrispondere a come il frontend
+    #        MONTA la lista. Il registro dice «questa non ordina lato server»;
+    #        se il `.vue` non dice `:paginata="false"`, il registro sta mentendo
+    #        e nessun altro test se ne accorge — le liste locali sono proprio
+    #        quelle escluse dai test 1-3.
+    #
+    # ⚠️ Il difetto che previene e' una RIMOZIONE, non un'aggiunta: togliere la
+    #    prop e' un'operazione che sembra innocua (e la pagina continua a
+    #    funzionare, perche' i dati arrivano tutti lo stesso), ma riaccende
+    #    l'ordinamento server-side su una lista senza whitelist. Il primo click
+    #    su un'intestazione risponde 400.
+    def test_le_liste_locali_sono_montate_non_paginate(self) -> None:
+        locali = _liste_locali()
+        self.assertTrue(
+            locali,
+            "nessuna lista a ordinamento locale nel registro: se e' voluto, "
+            "togliere questo test insieme alla sentinella.",
+        )
+        # codice lista -> TAG DI APERTURA del montaggio. ⚠️ Serve il tag
+        # INTERO: `:paginata` vive fra gli attributi, dopo `codice`.
+        montaggi = {c: apertura for c, apertura, _corpo, _dove in _montaggi_lista()}
+        for codice in locali:
+            with self.subTest(lista=codice):
+                montaggio = montaggi.get(codice)
+                # ⚠️ TERZO STATO, che la prima stesura di questo guard non
+                #    prevedeva (corretto il 2026-09-02): una lista puo' essere
+                #    **seedata e registrata ma non ancora convertita**. Succede
+                #    perche' `test_lista_proiezione_campo_sorgente` pretende la
+                #    riga in `_LISTE` gia' col SEED — «altrimenti i loro
+                #    ordinamenti non li prova nessuno» — mentre la view arriva
+                #    dopo. Non e' un difetto: e' l'ordine in cui si lavora.
+                # ⛔ Qui si esce, NON si fallisce: questo test dice «se la monti,
+                #    montala non paginata», non «devi averla montata».
+                if montaggio is None:
+                    continue
+                self.assertRegex(
+                    montaggio,
+                    r':paginata="false"',
+                    f"`{codice}` e' dichiarata a ordinamento locale nel registro "
+                    "ma il frontend la monta SENZA `:paginata=\"false\"`. Cosi' "
+                    "ordina lato server, dove non ha nessuna whitelist: la "
+                    "freccia risponde 400 al primo click. O si rimette la prop, "
+                    "o la lista esce dalla sentinella e prende una whitelist.",
+                )
 
     def test_ogni_lista_del_seed_ha_un_preset_default(self) -> None:
         preset = _seed("lista_preset.csv")

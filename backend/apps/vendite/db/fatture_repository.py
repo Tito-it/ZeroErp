@@ -27,9 +27,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    sql_order_clause,
     rows_to_list,
-    sql_order_direction,
-    sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 
@@ -96,12 +95,16 @@ class FattureRepository:
         order_dir: str = "desc",
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
-        order_column = _ORDER_COLS_FATTURE.get(order_by, _ORDER_COLS_FATTURE["data"])
-        # NULL = valore MINIMO (BB `sql_order_direction`): `numero` è NULL su
+        # NULL = valore MINIMO (lo mette `sql_order_clause`): `numero` è NULL su
         # tutte le fatture non ancora numerate, e i default PostgreSQL le
         # manderebbero IN CIMA proprio ordinando dal più recente.
-        direction = sql_order_direction(order_dir, default_desc=True)
-        tiebreak_dir = sql_tiebreak_direction(direction)
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=_ORDER_COLS_FATTURE,
+            default=_ORDER_COLS_FATTURE["data"],
+            tiebreak="v.id",
+            default_desc=True,
+        )
         # La pagina si ferma al cap; l'export chiede di più per poter RILEVARE
         # il superamento invece di troncare in silenzio.
         safe_limit = max(1, min(int(limit), max_limit))
@@ -171,7 +174,7 @@ class FattureRepository:
             SELECT v.*
             FROM vendite.vw_fatture_lista v
             {where}
-            ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
+            ORDER BY {ordinamento}
             LIMIT %s OFFSET %s
         """  # noqa: S608
 

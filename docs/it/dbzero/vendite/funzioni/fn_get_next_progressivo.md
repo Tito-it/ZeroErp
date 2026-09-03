@@ -14,9 +14,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_next_progressivo(p_registro_id bigint,
 AS $function$
 DECLARE
     v_anno       vendite.registri_fatturazione_progressivi.anno%TYPE;
-    -- ⚠️ Fermo a 0 finche' MENSILE non esiste: vedi il COMMENT
-    --    della colonna.
-    v_mese       vendite.registri_fatturazione_progressivi.mese%TYPE := 0;
+    -- ⭐ La politica di azzeramento del sezionale, LETTA e non assunta.
+    v_reset      vendite.registri_fatturazione.reset_policy%TYPE;
     v_serie      TEXT := COALESCE(p_serie, '');
     v_last       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
     v_next       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
@@ -80,7 +79,28 @@ BEGIN
     v_competenza := COALESCE(p_competenza_mese,
                              date_trunc('month', p_data)::date);
 
-    v_anno := vendite.fn_get_anno_registro(p_data);
+    -- ─── ⭐ L'ANNO DEL SECCHIO, NON QUELLO DEL DOCUMENTO ──
+    -- ⛔ Sono due cose diverse che si chiamano uguale:
+    --    · l'anno del DOCUMENTO (fatture.anno, ddt.anno, ...) e'
+    --      sempre l'anno solare, e lo compone
+    --      vendite.fn_assegna_numero_documento;
+    --    · l'anno del SECCHIO e' una chiave di contatore, e sotto
+    --      reset_policy = 'NESSUNA' non esiste: c'e' un secchio
+    --      solo, e vale 0.
+    -- ⭐ Per questo vendite.fn_get_anno_registro NON e' stata
+    --    toccata: risponde all'altra domanda, e ha quattro
+    --    chiamanti che non c'entrano con questa.
+    SELECT r.reset_policy INTO v_reset
+      FROM vendite.registri_fatturazione r
+     WHERE r.id = p_registro_id;
+
+    -- ⚠️ Registro inesistente: qui non si decide. Si ripiega sul
+    --    comportamento storico, e a dirlo sara' la FK del contatore
+    --    piu' sotto — che e' il posto giusto.
+    v_anno := CASE
+        WHEN v_reset = 'NESSUNA' THEN 0::smallint
+        ELSE vendite.fn_get_anno_registro(p_data)
+    END;
 
     -- ─── IL LOCK ──────────────────────────────────────────
     -- 🔴 La chiave NON porta l'anno, e non e' una svista: il
@@ -222,14 +242,13 @@ BEGIN
       FROM vendite.registri_fatturazione_progressivi rp
      WHERE rp.registro_id = p_registro_id
        AND rp.anno  = v_anno
-       AND rp.mese  = v_mese
        AND rp.serie = v_serie
        FOR UPDATE;
 
     IF v_last IS NULL THEN
         INSERT INTO vendite.registri_fatturazione_progressivi
-               (registro_id, anno, mese, serie, last_numero, attivo)
-        VALUES (p_registro_id, v_anno, v_mese, v_serie, 0, true)
+               (registro_id, anno, serie, last_numero, attivo)
+        VALUES (p_registro_id, v_anno, v_serie, 0, true)
         RETURNING last_numero INTO v_last;
     END IF;
 
@@ -242,7 +261,6 @@ BEGIN
            ultima_data = GREATEST(COALESCE(ultima_data, p_data), p_data)
      WHERE registro_id = p_registro_id
        AND anno  = v_anno
-       AND mese  = v_mese
        AND serie = v_serie;
 
     RETURN v_next;

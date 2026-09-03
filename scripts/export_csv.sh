@@ -142,9 +142,35 @@ dump_table() {
 
   echo ">> ${SCHEMA}.${tbl}  →  ${out}"
 
+  # --- Ordinamento: la chiave primaria, se c'e'.
+  # ⚠️ Senza ORDER BY, \COPY esce in ordine FISICO: il diff cambia a ogni
+  #   riesportazione anche quando i dati non sono cambiati, e una revisione non
+  #   riesce piu' a distinguere «e' cambiato un valore» da «si sono mosse le
+  #   righe». Fallback: nessun ordinamento se la tabella non ha PK.
+  local pk order_by
+  pk="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "
+      SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY k.ord)
+        FROM pg_constraint c
+        JOIN pg_class t     ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+       WHERE c.contype = 'p' AND n.nspname = '${SCHEMA}' AND t.relname = '${tbl}'" 2>/dev/null || true)"
+  if [[ -n "${pk// }" ]]; then order_by=" ORDER BY ${pk}"; else order_by=""; fi
+
   # Esegui il dump su file temporaneo
+  # ⚠️ NULL 'NULL' — NON e' un dettaglio di formato: i mirror `loadUpdateData`
+  #   del progetto leggono il TOKEN LETTERALE `NULL`, ed e' la convenzione
+  #   scritta in AGENTS §80_data. Con il default di \COPY un NULL esce come
+  #   cella VUOTA, e Liquibase la rende come stringa '' su ogni colonna
+  #   dichiarata STRING: su una colonna numerica il migrate muore con
+  #   «sintassi di input non valida per il tipo integer: ""», su una varchar
+  #   passa e scrive '' dove c'era NULL — che e' peggio, perche' non lo dice.
+  #   Successo il 2026-09-02 su vendite.registri_fatturazione.utility_id.
+  #   ⭐ E il giro e' fedele: un NULL esce come `NULL` nudo, una stringa
+  #   davvero vuota come `""`, quindi le due cose restano distinguibili.
   if ! psql -X -v ON_ERROR_STOP=1 --pset footer=off \
-       -c "\COPY \"${SCHEMA}\".\"${tbl}\" TO STDOUT WITH (FORMAT CSV, HEADER, ENCODING 'UTF8')" \
+       -c "\COPY (SELECT * FROM \"${SCHEMA}\".\"${tbl}\"${order_by}) TO STDOUT WITH (FORMAT CSV, HEADER, NULL 'NULL', ENCODING 'UTF8')" \
        > "$tmp"; then
     echo "!! ERRORE psql su ${SCHEMA}.${tbl}" >&2
     rm -f "$tmp"

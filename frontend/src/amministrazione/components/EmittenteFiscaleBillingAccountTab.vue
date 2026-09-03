@@ -6,24 +6,31 @@
 // Lista paginata con search su ragione_sociale/codice BA/id_fiscale.
 // Nessuna azione "Nuovo": l'inserimento ha una sua form sopra la lista (lookup
 // BA + i due pulsanti), quindi lo scaffolding non riceve `onNew`.
-import { ref, computed, watch } from 'vue'
+//
+// ⭐ CONVERTITO AL BB `DrawerTabLista` + `useDrawerTabLista` il 2026-09-01.
+//    Questo tab ERA il pattern: il legame col padre (watch immediate, reset
+//    filtri, doppia fetch) e lo scheletro di markup vivevano qui, unici
+//    esemplari. Col secondo tab-lista (i registri di numerazione) sarebbero
+//    diventati due copie, quindi il pattern e' salito nel core e questo file
+//    lo CONSUMA. ⛔ Non e' cortesia verso il BB: un building block estratto e
+//    lasciato accanto alla sua copia sono due implementazioni della stessa
+//    regola, e la copia diverge in silenzio.
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliBAStore } from '../stores/emittentiFiscaliBA'
-import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
 import { labelOrCode } from '../../core/utils/i18nLabel'
+import { motivoBloccoRiga, bloccoAttivo } from '../../core/utils/bloccoMotivo'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
-import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
-import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
-import Message from 'primevue/message'
 
 const { t, te } = useI18n()
 const store = useEmittentiFiscaliBAStore()
@@ -38,40 +45,20 @@ const props = defineProps({
 const selectedBA = ref(null)
 const adding = ref(false)
 
+// ⭐ Il `fetchExtra` NON e' un di piu': il summary e' indipendente dalla
+//    pagina corrente (vedi A8/C3 del WIP), e senza di lui `hasDefault`
+//    derivato da `store.items` sbagliava quando il record default era fuori
+//    dalla pagina paginata. Il BB lo tiene allineato in tutti e due i momenti
+//    in cui conta — al cambio di emittente e sul pulsante "Ricarica".
 const {
-  searchText, onPage, onSort, reload: reloadList, paginatorProps, tablePage,
+  searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, {
+} = useDrawerTabLista(store, {
+  parentId: () => props.emittenteId,
+  parentField: 'emittenteId',
+  fetchExtra: () => store.fetchSummary(),
   searchTableOptions: { defaultSortField: 'billing_account_codice' },
-  // Arrow lazy: `reloadAll` e' dichiarata sotto e viene risolta al click.
-  onReload: () => reloadAll(),
 })
-
-// Reload composto: ricarica lista + summary (entrambi necessari per coerenza
-// del pulsante "default", che dipende dal summary indipendente dalla pagina).
-// Passato come `onReload` allo scaffolding, cosi' il pulsante "Ricarica" della
-// PageActionsBar ricarica davvero tutto quello che la pagina mostra.
-function reloadAll() {
-  reloadList()
-  store.fetchSummary()
-}
-
-// Quando l'emittenteId cambia, aggiorna lo store e ricarica lista + summary.
-// Il summary e' indipendente dalla pagina corrente (vedi A8/C3 del WIP):
-// senza summary, `hasDefault` derivato da `store.items` falliva quando il
-// record default era fuori dalla pagina paginata.
-watch(() => props.emittenteId, (id) => {
-  if (!id) {
-    store.reset()
-    return
-  }
-  store.emittenteId = id
-  store.filters.offset = 0
-  store.filters.search = ''
-  searchText.value = ''
-  // Parallelizzato: nessuna dipendenza tra list e summary, riduce latenza.
-  Promise.all([store.fetchList(), store.fetchSummary()])
-}, { immediate: true })
 
 // Pulsante "default" disabilitato se il default esiste a livello di emittente
 // (qualsiasi pagina). La fonte di verita' e' il summary BE, non la pagina FE.
@@ -180,9 +167,11 @@ function nomeFamiglia(voce) {
 //    il cui blocco e' il singleton e non la storia — si degrada da se' alla
 //    sola frase, che li' e' la risposta completa.
 function motivoBlocco(data) {
-  const chiave = data.rimozione_blocco_reason_key
-  const codice = data.rimozione_blocco_reason || ''
-  const frase = chiave ? labelOrCode(t, te, chiave, codice) : codice
+  // ⭐ La frase base la compone il BB `bloccoMotivo` (regola del 2, 2026-09-01):
+  //    e' la stessa lettura che fa la maschera dei registri di numerazione, su
+  //    un verbo diverso. Qui resta solo cio' che e' PROPRIO di questo tab —
+  //    l'elenco dei documenti che bloccano.
+  const frase = motivoBloccoRiga(t, te, data, 'rimozione_blocco')
   // ⚠️ `Array.isArray` e non `?.length`: se un domani il repository smettesse
   //    di decodificare il jsonb, `storia` sarebbe una STRINGA — che ha una
   //    `.length` e si lascia iterare a caratteri. Il guard sul tipo e' l'unico
@@ -201,7 +190,7 @@ function motivoBlocco(data) {
 }
 
 function buildRowActions(data) {
-  const bloccato = data.can_remove === false
+  const bloccato = bloccoAttivo(data, 'rimozione_blocco', 'can_remove')
   return [
     {
       key: 'rimuovi-mapping',
@@ -223,90 +212,88 @@ function buildRowActions(data) {
 </script>
 
 <template>
-  <div class="app-tab-content">
-    <Message severity="info" :closable="false" class="mb-3">
-      {{ t('amministrazione.emittenti_fiscali.ba_help') }}
-    </Message>
+  <DrawerTabLista
+    ref="listaRef"
+    codice="anagrafiche.emittente_billing_account"
+    :emittente-esplicito="emittenteId"
+    :help-text="t('amministrazione.emittenti_fiscali.ba_help')"
+    :rows="store.items"
+    :total="store.totalRecords"
+    :loading="store.loading"
+    :paginator-options="paginatorProps"
+    :page="tablePage"
+    :sort-field="paginatorProps.sortField"
+    :sort-order="paginatorProps.sortOrder"
+    :page-actions="pageActions"
+    :dirty="dirty"
+    :perimetro-bloccato="perimetroBloccato"
+    @page="onPage"
+    @sort="onSort"
+    @config-loaded="onConfigLoaded"
+  >
+    <!-- L'inserimento del mapping ha una form SOPRA la lista, non un drawer:
+         e' il motivo per cui lo scaffolding non riceve `onNew` e per cui il
+         BB espone lo slot `testata`. -->
+    <template #testata>
+      <div v-if="!isReadonly" class="form-grid-2col mb-3">
+        <BillingAccountLookup
+          v-model="selectedBA"
+          :placeholder="t('amministrazione.emittenti_fiscali.ba_search_placeholder')"
+        />
+        <div class="flex gap-2">
+          <Button
+            :label="t('amministrazione.emittenti_fiscali.ba_add_specific')"
+            icon="pi pi-plus"
+            :loading="adding"
+            :disabled="!selectedBA?.id"
+            @click="addSpecificMapping"
+          />
+          <Button
+            :label="t('amministrazione.emittenti_fiscali.ba_add_default')"
+            icon="pi pi-star"
+            severity="secondary"
+            :disabled="hasDefault"
+            @click="addDefaultMapping"
+          />
+        </div>
+      </div>
+    </template>
 
-    <div v-if="!isReadonly" class="form-grid-2col mb-3">
-      <BillingAccountLookup
-        v-model="selectedBA"
-        :placeholder="t('amministrazione.emittenti_fiscali.ba_search_placeholder')"
+    <template #filtri>
+      <InputText
+        v-model="searchText"
+        :placeholder="t('amministrazione.emittenti_fiscali.ba_filter_placeholder')"
+        style="width: 300px;"
       />
-      <div class="flex gap-2">
-        <Button
-          :label="t('amministrazione.emittenti_fiscali.ba_add_specific')"
-          icon="pi pi-plus"
-          :loading="adding"
-          :disabled="!selectedBA?.id"
-          @click="addSpecificMapping"
-        />
-        <Button
-          :label="t('amministrazione.emittenti_fiscali.ba_add_default')"
-          icon="pi pi-star"
-          severity="secondary"
-          :disabled="hasDefault"
-          @click="addDefaultMapping"
-        />
-      </div>
-    </div>
+    </template>
 
-    <div class="app-page-toolbar">
-      <div class="app-page-filters" :inert="perimetroBloccato">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('amministrazione.emittenti_fiscali.ba_filter_placeholder')"
-          style="width: 300px;"
-        />
-      </div>
-      <PageActionsBar :actions="pageActions">
-        <template #suffix>
-          <ListaConfigStatusTag :dirty="dirty" />
-        </template>
-      </PageActionsBar>
-    </div>
+    <!-- `is_default` e' una colonna vera del catalogo (boolean, ordinabile):
+         lo slot serve solo a tenere il Badge al posto del "Si'/No". -->
+    <template #cell-is_default="{ data }">
+      <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
+    </template>
+    <template #cell-billing_account_codice="{ data }">
+      {{ data.billing_account_codice || '—' }}
+    </template>
+    <template #cell-billing_account_ragione_sociale="{ data }">
+      {{ data.billing_account_ragione_sociale || t('amministrazione.emittenti_fiscali.ba_default_label') }}
+    </template>
+    <!-- Slot sul `codice` della colonna (`id_fiscale`), non sul campo letto
+         (`id_fiscale_univoco`): sono due nomi diversi. -->
+    <template #cell-id_fiscale="{ data }">
+      {{ data.id_fiscale_univoco || '—' }}
+    </template>
 
-    <ListaConfigurabile
-      ref="listaRef"
-      codice="anagrafiche.emittente_billing_account"
-      :rows="store.items"
-      :total="store.totalRecords"
-      :loading="store.loading"
-      :paginator-options="paginatorProps"
-      :page="tablePage"
-      :sort-field="paginatorProps.sortField"
-      :sort-order="paginatorProps.sortOrder"
-      @page="onPage"
-      @sort="onSort"
-      @config-loaded="onConfigLoaded"
-    >
-      <!-- `is_default` e' una colonna vera del catalogo (boolean, ordinabile):
-           lo slot serve solo a tenere il Badge al posto del "Si'/No". -->
-      <template #cell-is_default="{ data }">
-        <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
-      </template>
-      <template #cell-billing_account_codice="{ data }">
-        {{ data.billing_account_codice || '—' }}
-      </template>
-      <template #cell-billing_account_ragione_sociale="{ data }">
-        {{ data.billing_account_ragione_sociale || t('amministrazione.emittenti_fiscali.ba_default_label') }}
-      </template>
-      <!-- Slot sul `codice` della colonna (`id_fiscale`), non sul campo letto
-           (`id_fiscale_univoco`): sono due nomi diversi. -->
-      <template #cell-id_fiscale="{ data }">
-        {{ data.id_fiscale_univoco || '—' }}
-      </template>
+    <!-- v-if sul TEMPLATE dello slot: senza slot `actions` ne' il BB ne'
+         <ListaConfigurabile> montano la colonna, come la <Column v-if>
+         pre-conversione. -->
+    <template v-if="!isReadonly" #actions="{ data, compact }">
+      <RowActionsMenu :row="data" :actions="buildRowActions(data)"
+        :force-compact="compact" />
+    </template>
 
-      <!-- v-if sul TEMPLATE dello slot: senza slot `actions` la BB non monta
-           la colonna (haAzioni), come la <Column v-if> pre-conversione. -->
-      <template v-if="!isReadonly" #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)"
-          :force-compact="compact" />
-      </template>
-
-      <template #empty>
-        <div class="app-empty">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
-      </template>
-    </ListaConfigurabile>
-  </div>
+    <template #empty>
+      <div class="app-empty">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
+    </template>
+  </DrawerTabLista>
 </template>

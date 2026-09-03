@@ -175,11 +175,21 @@ la mette in dubbio nessuno.
 
 ### 📌 Stato
 
-La **sede** esiste ed è collaudata. Chi la legge — il risolutore IVA a due stadi —
-è la voce `I2` dello stesso cantiere e **non è ancora scritto**: oggi nessun
-documento cambia aliquota per effetto di un titolo registrato qui.
+(aggiornato 2026-09-02) La **sede** esiste ed è collaudata, e **il lettore adesso
+c'è**: il risolutore IVA a due stadi
+([`vendite.fn_resolve_iva_riga`](/dbzero/vendite/manual/fn_resolve_iva_riga), voce
+`I2`) è scritto e in servizio, e i consumatori applicativi — preventivi, ordini e
+DDT via `IvaResolverService`, più l'anteprima dei form — lo interrogano dal
+2026-08-31.
 
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, `I7` / `D10`.
+⚠️ **La riga precedente di questa sezione diceva il contrario** («non è ancora
+scritto: oggi nessun documento cambia aliquota»), ed è rimasta ferma mentre il
+cantiere andava avanti. È il difetto tipico di un campo «stato» dentro una scheda
+concettuale: descrive il giorno in cui è stato scritto, non oggi.
+
+Quadro d'insieme: [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga).
+Cantieri: `brief-db-be-iva-risolutore-e-regime-cliente.md` (`I7` / `D10`),
+`brief-be-fe-iva-fase-3-consumatori-risolutore.md`.
 
 ---
 
