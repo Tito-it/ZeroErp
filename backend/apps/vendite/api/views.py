@@ -766,6 +766,17 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
         "emittente_soggetto_ruolo_id": optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None,
         "order_by": order_by,
         "order_dir": order_dir,
+        # ⭐ Il perimetro della scheda «Recuperi del mese» sta QUI, insieme agli
+        #    altri filtri, e non piu' solo nella view della lista.
+        # 🔴 Difetto corretto il 2026-09-03: l'export lo riceveva dal frontend
+        #    (`recuperi_mese: true`, con tanto di commento «il file E' la lista»)
+        #    e NESSUNO lo leggeva — questa funzione non lo estraeva e
+        #    `fn_export_lotti` non aveva il parametro. Esportando dalla seconda
+        #    scheda usciva l'elenco ORDINARIO del mese: non un file incompleto,
+        #    un insieme DISGIUNTO da quello a video. Niente falliva.
+        # ⚠️ E' la specie «campo dichiarato e non letto»: sembrava presidiato
+        #    perche' il parametro partiva davvero.
+        "solo_recuperi_mese": as_bool(qp.get("recuperi_mese"), default=False),
     }
 
 
@@ -799,6 +810,12 @@ class ApiLottiList(DomainAPIView):
                             "page_size": serializers.IntegerField(),
                             "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
+                            # Ripartizione per stato del perimetro corrente
+                            # (mese/recuperi compresi, filtro `stato_lotto`
+                            # ESCLUSO): alimenta i pulsanti-filtro della lista.
+                            # Solo gli stati presenti — uno stato a zero non
+                            # diventa un pulsante.
+                            "stati": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -820,14 +837,6 @@ class ApiLottiList(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
             page=page,
             page_size=page_size,
-            # ⭐ La scheda «Recuperi del mese»: STESSA lista, stesse colonne,
-            #    stesse azioni — cambia solo QUALI lotti. Sono quelli di
-            #    competenza precedente che hanno emesso documenti nel mese
-            #    filtrato: chi lavora su agosto li cerca per data documento, e
-            #    per competenza non li trova.
-            solo_recuperi_mese=as_bool(
-                request.query_params.get("recuperi_mese"), default=False
-            ),
         )
         return success_response(data)
 
@@ -895,6 +904,13 @@ class ApiLottiExportView(DomainAPIView):
                 ("utility_id", filtri["utility_id"]),
                 ("area_geografica_id", filtri["area_geografica_id"]),
                 ("tipo_doc_fiscale_id", filtri["tipo_doc_fiscale_id"]),
+                # ⭐ Dichiarato nell'intestazione del file solo quando e' vero:
+                #    due export dello stesso mese con perimetri disgiunti
+                #    sarebbero altrimenti indistinguibili aprendoli.
+                (
+                    "recuperi_mese",
+                    True if filtri["solo_recuperi_mese"] else None,
+                ),
             )
             if valore is not None
         }

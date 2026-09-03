@@ -401,21 +401,38 @@ const TAB_AREA = 'area'
 const TAB_ERRORI = 'errori'
 const tabAttiva = ref(TAB_ERRORI)
 
+// Scopo: click sul corpo di una card = SELEZIONE ESCLUSIVA dello stadio.
+//
+// ⛔ NON e' un toggle, e non deve tornare a esserlo. Un secondo click sulla
+//    stessa card chiudeva la lista: la card si comportava da interruttore, e
+//    qui il difetto era piu' grave che sulla Situazione aperta — quella ha la
+//    card «Tutte le aree» per tornare indietro, questa non ha NESSUN gesto di
+//    ritorno, quindi il toggle-off era l'unico modo di svuotare la pagina e
+//    ri-cliccare l'unico modo di riempirla. Rilievo in-app di Tid.
+//    Stessa regola gia' scritta in `SituazioneApertaView.selezionaArea`
+//    («selezione esclusiva, non piu' toggle»): qui era rimasta indietro.
+//
+// ⚠️ Ma il secondo click NON e' un no-op come li', ed e' la sola differenza:
+//    questa pagina ha i TAB, e la regola «in primo piano cio' che hai scelto»
+//    vale anche quando la selezione non cambia — chi e' passato al tab errori
+//    e ri-clicca la propria card si aspetta di rivedere la propria lista.
+// ⛔ Senza ricaricare, pero': una fetch sulla card gia' scelta perderebbe
+//    pagina, ordinamento, filtri e le spunte gia' messe dall'operatore, che e'
+//    lavoro suo — e su «Da emettere» sono le righe che sta per fatturare.
 function selezionaStadio(stadio) {
-  if (stadioSelezionato.value === stadio) {
+  const cambiaStadio = stadioSelezionato.value !== stadio
+  if (cambiaStadio) {
     store.resetCommesse()
-    return
+    azzeraStatoGruppi()
+    // ⚠️ E la selezione dei residui: e' stato dell'operatore legato a UNA card, e
+    //    sopravvivere al cambio di card la renderebbe invisibile ma ancora
+    //    contata nel pulsante.
+    selezioneResidui.value = []
+    stadioSelezionato.value = stadio
   }
-  store.resetCommesse()
-  azzeraStatoGruppi()
-  // ⚠️ E la selezione dei residui: e' stato dell'operatore legato a UNA card, e
-  //    sopravvivere al cambio di card la renderebbe invisibile ma ancora
-  //    contata nel pulsante.
-  selezioneResidui.value = []
-  stadioSelezionato.value = stadio
   // ⭐ Scegliere un'area la porta davanti: e' il senso della modifica.
   tabAttiva.value = TAB_AREA
-  loadDrillDown()
+  if (cambiaStadio) loadDrillDown()
   // Su schermi piccoli la sezione renderizza sotto il fold: senza auto-scroll
   // il click sembra non fare nulla. Scroll dopo il re-render.
   nextTick(() => commesseSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))

@@ -66,7 +66,28 @@ import { useFetchVersion } from './useFetchVersion'
 //    del default sarebbe solo traffico inutile (righe listino).
 // Ignorato quando `alwaysFetch` e' false: li' la guardia empty-state fa gia'
 // questo e altro.
-export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => false, buildParams, fetchPage, alwaysFetch = false, ricercaCorta = 'fetch' }) {
+// `onPayload(payload)` (2026-09-03, regola del 2 — ok Tid): l'hook per i campi
+// EXTRA che l'endpoint mette ACCANTO a `results`/`count`. Non e' un'invenzione:
+// e' la stessa opzione, con lo stesso nome e lo stesso contratto, che il BB
+// gemello `usePagedDashFetch` ha gia' — i due erano allineati su tutto tranne
+// questo. Omesso = comportamento invariato, e i 19 store esistenti non cambiano
+// di una riga.
+//
+// ⛔ Invocato SOLO dopo il guard di versione, ed e' l'unica ragione per cui
+//    l'hook deve stare QUI e non nel `fetchPage` del caller: tappare la promise
+//    la' fuori applicherebbe quei campi anche alle risposte SCARTATE, e il
+//    riquadro di totali finirebbe a raccontare un contesto diverso dalla lista
+//    sopra di se'. E' la stessa avvertenza scritta nel gemello, e nasce dallo
+//    stesso difetto dei preventivi che ha motivato il guard.
+// ⚠️ Primo consumatore: il registro lotti, che riceve accanto alla lista la
+//    ripartizione per stato dei pulsanti-filtro. Chip e righe vengono dalla
+//    STESSA risposta e non possono divergere.
+// ⚠️ `svuota()` NON invoca l'hook, esattamente come il `reset()` del gemello:
+//    il BB non sa cosa il caller abbia fatto del payload, quindi lo stato extra
+//    lo azzera chi l'ha scritto. Allineamento deliberato — due BB gemelli con
+//    lo stesso nome di opzione e due contratti diversi sarebbero peggio di due
+//    nomi diversi.
+export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => false, buildParams, fetchPage, alwaysFetch = false, ricercaCorta = 'fetch', onPayload = null }) {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
@@ -155,6 +176,8 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
       if (!fv.isCurrent(tag)) return false   // risposta stantia: la lista NON si tocca
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
+      // Campi extra dell'envelope, dopo il guard: vedi la nota su `onPayload`.
+      if (onPayload) onPayload(res.data.data)
       hasSearched.value = true
       // `true` SOLO quando questa chiamata ha davvero scritto `items`: i
       // caller con lavoro derivato (es. listini → preload versioni) devono

@@ -540,9 +540,29 @@ class VenditeRepository:
         "emittente_ragione_sociale": "s_ef.ragione_sociale_completa",
     }
 
-    # Perimetro: solo lettura; nessun side-effect.
-    # Risultato: tuple (lista LottoListRow, conteggio totale).
-    def list_lotti(
+    # Scopo: Costruisce il `WHERE` (clausola + parametri) della lista lotti —
+    #        la SOLA sede del perimetro, condivisa da lista, conteggio totale e
+    #        breakdown per stato.
+    # Obiettivo: che le tre query non possano descrivere insiemi diversi.
+    # Perimetro: pura, nessun I/O.
+    # Risultato: tuple (clausola WHERE gia' composta o stringa vuota, params).
+    #
+    # ⛔ Estratta il 2026-09-03 e NON per togliere righe: api.md §«Il `count`
+    #    non si deriva mai dalle righe» chiede di **condividere** il frammento
+    #    `FROM`+`WHERE` fra la query dei dati e quella che conta, non di
+    #    riscriverlo. Con i chip per stato le query diventano tre, e tre copie
+    #    di un perimetro divergono al primo filtro aggiunto — in silenzio, con i
+    #    numeri dei chip che smettono di tornare con la lista sotto.
+    #
+    # ⭐ `includi_stato=False` serve ai chip, ed e' la ragione per cui il flag
+    #    esiste invece di un secondo costruttore: il breakdown deve contare il
+    #    perimetro SENZA il filtro che i chip stessi pilotano. Contandolo
+    #    dentro, scelto «BOZZA» gli altri stati andrebbero a 0, i loro chip
+    #    sparirebbero (si rendono solo sopra zero) e non ci sarebbe piu' modo di
+    #    tornare indietro con un click — lo stesso interruttore tolto dalle card
+    #    della Lente Competenza. Gli altri filtri (mese, recuperi, utility…)
+    #    restano: sono il contesto, non l'asse dei chip.
+    def _lotti_where(
         self,
         *,
         competenza_mese: date | None,
@@ -551,22 +571,10 @@ class VenditeRepository:
         area_geografica_id: int | None,
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
-        auth_user_id: int | None = None,
-        order_by: str | None = None,
-        order_dir: str | None = None,
-        limit: int,
-        offset: int,
-        max_limit: int = LIST_MAX_LIMIT,
-        solo_recuperi_mese: bool = False,
-    ) -> tuple[list[LottoListRow], int]:
-        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
-        # protegge la lista a video; l'export lo alza esplicitamente (fino a
-        # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
-        # invece di troncare in silenzio). Resta un cap passato dal chiamante:
-        # nessun percorso senza tetto.
-        safe_limit = max(1, min(int(limit), max_limit))
-        safe_offset = max(0, int(offset))
-
+        auth_user_id: int | None,
+        solo_recuperi_mese: bool,
+        includi_stato: bool = True,
+    ) -> tuple[str, list[Any]]:
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -605,7 +613,7 @@ class VenditeRepository:
         if utility_id is not None:
             conditions.append("fl.utility_id = %s")
             params.append(utility_id)
-        if stato_lotto is not None:
+        if includi_stato and stato_lotto is not None:
             conditions.append("fl.stato_lotto = %s")
             params.append(stato_lotto)
         if area_geografica_id is not None:
@@ -623,6 +631,102 @@ class VenditeRepository:
         )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        return where_clause, params
+
+    # Scopo: Conteggio lotti RAGGRUPPATI PER STATO sul perimetro della lista —
+    #        alimenta i pulsanti-filtro «5 Bozza · 4 In esecuzione …» del
+    #        registro lotti (stesso pattern dei chip per area della Lente
+    #        Backlog).
+    # Obiettivo: dare all'operatore, prima di filtrare, la ripartizione di cio'
+    #            che sta guardando.
+    # Perimetro: sola lettura; STESSO `WHERE` della lista — mese e
+    #            `recuperi_mese` compresi, filtro stato escluso (vedi
+    #            `_lotti_where`). Scope emittente identico (RLS + whitelist).
+    # Risultato: dict {stato_lotto: n_lotti}, solo stati presenti.
+    #
+    # ⛔ Non e' derivabile a valle dalle righe consegnate: la lista e' PAGINATA,
+    #    quindi contare i `results` darebbe la ripartizione della pagina e non
+    #    del mese. E' la stessa forma che api.md vieta per il `count` — un
+    #    numero derivato dalle righe non dice niente sulle righe.
+    #
+    # ⚠️ Le JOIN restano anche se il `WHERE` non le usa: oggi sono tutte LEFT e
+    #    non possono togliere righe, ma il giorno in cui una diventasse INNER
+    #    per una decodifica la lista si accorcerebbe e i chip no — e la
+    #    differenza si vedrebbe solo come due numeri che non tornano. Il costo
+    #    e' cinque LEFT JOIN su FK indicizzate; la divergenza silenziosa no.
+    def count_lotti_per_stato(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None = None,
+        area_geografica_id: int | None = None,
+        tipo_doc_fiscale_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        auth_user_id: int | None = None,
+        solo_recuperi_mese: bool = False,
+    ) -> dict[str, int]:
+        where_clause, params = self._lotti_where(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=None,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            includi_stato=False,
+        )
+        sql = f"""
+            SELECT fl.stato_lotto, COUNT(*)
+            FROM vendite.fatturazione_lotti fl
+            {self._LOTTO_JOINS}
+            {where_clause}
+            GROUP BY fl.stato_lotto
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+        # Uno stato NULL non e' uno stato: non ha una voce a catalogo e non
+        # sarebbe filtrabile, quindi non diventa un pulsante.
+        return {row[0]: int(row[1]) for row in rows if row[0] is not None}
+
+    # Perimetro: solo lettura; nessun side-effect.
+    # Risultato: tuple (lista LottoListRow, conteggio totale).
+    def list_lotti(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None,
+        stato_lotto: str | None,
+        area_geografica_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+        emittente_soggetto_ruolo_id: int | None,
+        auth_user_id: int | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+        max_limit: int = LIST_MAX_LIMIT,
+        solo_recuperi_mese: bool = False,
+    ) -> tuple[list[LottoListRow], int]:
+        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
+        # protegge la lista a video; l'export lo alza esplicitamente (fino a
+        # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
+        # invece di troncare in silenzio). Resta un cap passato dal chiamante:
+        # nessun percorso senza tetto.
+        safe_limit = max(1, min(int(limit), max_limit))
+        safe_offset = max(0, int(offset))
+
+        where_clause, params = self._lotti_where(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+        )
 
         joins = self._LOTTO_JOINS
 

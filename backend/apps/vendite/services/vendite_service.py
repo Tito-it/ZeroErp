@@ -232,7 +232,31 @@ def fn_list_lotti(
         offset=offset,
         solo_recuperi_mese=solo_recuperi_mese,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    risposta = _build_list_response(results, total_count, page, page_size)
+    # ⭐ La ripartizione per stato viaggia NELLA STESSA risposta della lista, e
+    #    non su un endpoint suo: cosi' i pulsanti-filtro e le righe sotto
+    #    vengono dalla stessa valutazione del perimetro e non possono
+    #    raccontare due cose diverse. Due chiamate separate potrebbero non
+    #    concordare — basta un lotto che cambia stato fra l'una e l'altra — e i
+    #    chip direbbero 5 dove la lista ne mostra 4.
+    # ⚠️ Il perimetro e' quello della lista MENO il filtro stato: `stato_lotto`
+    #    non si passa. Contandolo, scelto uno stato gli altri andrebbero a zero
+    #    e i loro pulsanti sparirebbero — vedi `_lotti_where`.
+    risposta["stati"] = [
+        {"stato_lotto": stato, "n_lotti": n}
+        for stato, n in sorted(
+            repository.count_lotti_per_stato(
+                competenza_mese=competenza_mese,
+                utility_id=utility_id,
+                area_geografica_id=area_geografica_id,
+                tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+                emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+                auth_user_id=auth_user_id,
+                solo_recuperi_mese=solo_recuperi_mese,
+            ).items()
+        )
+    ]
+    return risposta
 
 
 # Scopo: Estrae i lotti per l'EXPORT (CSV/XLSX), con gli stessi filtri e lo
@@ -259,7 +283,21 @@ def fn_export_lotti(
     order_by: str | None = None,
     order_dir: str | None = None,
     max_rows: int,
+    solo_recuperi_mese: bool = False,
 ) -> tuple[list[LottoListRow], int]:
+    # ⛔ Stesso guard della lista, e per la stessa ragione: «competenza
+    #    precedente» senza un mese non ha un termine di paragone. Senza, il
+    #    predicato diventa `competenza_mese < NULL` — che non e' un errore, e'
+    #    zero righe: un file VUOTO consegnato come se fosse la risposta.
+    ErrorManager.require(
+        not solo_recuperi_mese or competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="competenza_mese obbligatoria per l'export dei recuperi del mese",
+        context={"field": "competenza_mese"},
+        function_name="vendite.vendite_service.fn_export_lotti",
+        log_to_db=False,
+    )
     repository = VenditeRepository()
     return repository.list_lotti(
         competenza_mese=competenza_mese,
@@ -274,6 +312,7 @@ def fn_export_lotti(
         limit=max_rows,
         offset=0,
         max_limit=max_rows,
+        solo_recuperi_mese=solo_recuperi_mese,
     )
 
 

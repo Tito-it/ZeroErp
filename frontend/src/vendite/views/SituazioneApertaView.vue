@@ -338,7 +338,11 @@ onActivated(() => {
       </PageActionsBar>
     </div>
 
-    <div class="app-dash-main">
+    <!-- `--scorrimento-unico`: card e lista sono UNA cosa sola che
+         scorre, come nella Lente Competenza — le card salgono
+         insieme alle righe invece di lasciare la lista incastrata
+         in un riquadro con una barra sua. -->
+    <div class="app-dash-main app-dash-main--scorrimento-unico">
       <!-- Card per area (click = filtro, selezione esclusiva): donut per fase.
            La card "Tutte le aree" azzera il filtro area. -->
       <div class="app-dash-cards">
