@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ARMAMENTO — ENABLE ROW LEVEL SECURITY su vendite.fatture_stampa_coda
+#   Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 8
+#
+# ── ⭐ PERCHE' UN CHANGESET A SE' ───────────────────────────────
+#   Il 20260904-05 crea una policy INERTE: senza ENABLE non filtra nulla e non
+#   puo' rompere niente. Questo e' il momento in cui il comportamento del
+#   database cambia per tutti i lettori della coda stampa. Mescolato alla
+#   creazione della policy sarebbe irriconoscibile in DATABASECHANGELOG e non
+#   rollbackabile da solo; isolato, si disarma con un rollback e la policy resta
+#   dove sta.
+#
+# ── PERCORSI DI ESECUZIONE, verificati il 2026-09-04 ────────────
+#   Nessuno richiede modifiche:
+#     - drainer stampa (`draina_coda_stampa` / stampa_coda_drainer_service)
+#       -> system_process_context, che cambia le CREDENZIALI della connessione
+#          e verifica fail-loud che il ruolo abbia BYPASSRLS. Non e' un
+#          sentinel applicativo: e' un ruolo diverso. Fuori dalla RLS.
+#     - task pipeline stampa_documenti_lotto lanciato dal batch -> stesso canale.
+#     - stesso task lanciato dalla coda lavori (run_as OPERATORE)
+#       -> operator_identity_context: RLS ATTIVA con i GUC dell'operatore.
+#          Passa, perche' lotto, fattura e work-item risolvono allo stesso
+#          emittente — e' l'invariante dichiarato nella policy.
+#     - liste e conteggi da web (elenca_coda_stampa,
+#       count_coda_stampa_per_stato) -> GUC dal middleware JWT. Passano, e il
+#       filtro applicativo add_emittente_scope_condition resta accanto come
+#       difesa in profondita' (linee-guida-sql 10.7: la RLS si somma ai filtri,
+#       non li rimpiazza).
+#     - cancellazione di una fattura -> fk_fatture_stampa_coda_fattura e'
+#       ON DELETE CASCADE: l'azione di integrita' referenziale non e' una DELETE
+#       dell'utente e non chiede privilegi sulla figlia.
+#
+# ── ⚠️ IL CANALE BATCH — due condizioni separate, servono entrambe ─
+#   La preCondition pretende che zeroerp_batch_fatturazione, SE ESISTE, abbia
+#   BYPASSRLS *e* i privilegi sul perimetro: BYPASSRLS salta la RLS ma NON i
+#   GRANT. Il grado nel provisioning e' 'u' (piu' il SELECT ampio), che e'
+#   esattamente cio' che il drainer fa: claim, marca, reaper.
+#   ⭐ La forma e' «nessun ruolo con la postura sbagliata» (expectedResult: 0) e
+#   non «== 1», ed e' una lezione gia' pagata dal 20260729-05: con «== 1» la
+#   guardia confonderebbe l'ambiente SENZA canale batch (CI no-provision: non
+#   c'e' nulla da proteggere, l'armamento e' innocuo) con quello dove il canale
+#   c'e' ma e' sprovvisto (l'unico caso pericoloso) — e bloccherebbe proprio
+#   quello che non fa danno.
+#
+# ── ⚠️ `NO FORCE`, a parita' con tutta la famiglia fatture ──────
+#   L'owner resta esente, cosi' migrazioni e job owner non si bloccano.
+#   ⛔ Non significa «la RLS non morde»: il runtime applicativo e' zeroerp_app,
+#   che NON e' owner ed e' NOBYPASSRLS -> pienamente soggetto.
+#
+# ── KILL-SWITCH ─────────────────────────────────────────────────
+#   ALTER TABLE vendite.fatture_stampa_coda DISABLE ROW LEVEL SECURITY;
+#   riporta al comportamento precedente senza toccare la policy.
+#
+# Dipendenze: la policy del 20260904-05.
+# Verifica: db/pgtap/rls/test-rls-fatture-stampa-coda.sql (i cinque casi di
+#   linee-guida-sql 10.8, compreso il fail-closed senza GUC).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260904-06-enable-rls-fatture-stampa-coda-mctit.yaml
+
+  - changeSet:
+      id: 20260904-06-enable-rls-fatture-stampa-coda
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (NO FORCE) su vendite.fatture_stampa_coda: arma la policy del
+        20260904-05. Isolato di proposito — e'' il momento in cui il comportamento cambia, e si disarma
+        da solo. ⭐ I quattro percorsi di scrittura/lettura sono verificati: il drainer e il batch non
+        passano dalla RLS perche'' cambiano RUOLO (system_process_context, con guard fail-loud su
+        BYPASSRLS); il task lanciato dalla coda lavori e le liste da web ci passano e superano, perche''
+        lotto, fattura e work-item risolvono allo stesso emittente; la CASCADE dalla fattura e'' un''azione
+        di integrita'' referenziale, non una DELETE dell''utente. ⚠️ NO FORCE non significa «non morde»:
+        il runtime e'' zeroerp_app, che non e'' owner ed e'' NOBYPASSRLS.
+        Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 8.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_policies
+                   WHERE schemaname = 'vendite'
+                     AND tablename  = 'fatture_stampa_coda'
+                     AND policyname = 'rls_fatture_stampa_coda_ef_whitelist';
+            # ⚠️ «Nessun ruolo con la postura sbagliata», non «il ruolo esiste
+            #    ed e' a posto»: 0 quando il canale batch non c'e' (CI senza
+            #    provisioning — niente da proteggere) e 0 quando c'e' ed e'
+            #    corretto; 1 solo nel caso pericoloso. E' la forma corretta del
+            #    20260729-05, che nella prima stesura fermava la CI.
+            # ⚠️ has_table_privilege vuole UNA privilege per chiamata: la
+            #    lista 'SELECT,UPDATE' avrebbe semantica OR, cioe' passerebbe
+            #    col solo SELECT — proprio il caso da fermare.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_roles r
+                   WHERE r.rolname = 'zeroerp_batch_fatturazione'
+                     AND NOT (
+                           r.rolbypassrls
+                       AND has_table_privilege(r.oid, 'vendite.fatture_stampa_coda', 'SELECT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_stampa_coda', 'UPDATE')
+                     );
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- NO FORCE: l'owner e i ruoli BYPASSRLS restano esenti. Il runtime
+              -- applicativo (zeroerp_app, NOBYPASSRLS, non owner) e' invece
+              -- pienamente soggetto: da qui in poi vede e scrive solo i
+              -- work-item delle fatture che gli competono.
+              ALTER TABLE vendite.fatture_stampa_coda ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Disarma senza toccare la policy: torna inerte, non sparisce.
+              ALTER TABLE vendite.fatture_stampa_coda DISABLE ROW LEVEL SECURITY;

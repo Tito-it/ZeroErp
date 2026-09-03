@@ -15,7 +15,7 @@ Approfondimento tabelle:
 > [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)
 > [vendite.contratti](/dbzero/vendite/tabelle/contratti)
 > [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
-> [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)
+> [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/articolo_regole_fatturazione)
 >
 ### 🎯 Scopo Principale
 (latest review 09-01-26)

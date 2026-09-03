@@ -8,7 +8,7 @@ Approfondimenti tabelle:
 >
 Approfondimenti funzioni:   
 >
-[config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/trgfn_iva_ins_upd_check_conti_iva)    
+[config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/trgfn_iva_guard_conti_iva)    
 > [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
 
 

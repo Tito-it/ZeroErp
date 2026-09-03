@@ -202,7 +202,7 @@ pratica un termine entrato in uso **non è più disattivabile**.
 Su questa tabella **non esiste** oggi un asse separato per dire «non più
 selezionabile per i nuovi documenti, ma valido per quelli esistenti». Il pattern di
 riferimento per quel bisogno è descritto in
-`docs/it/dev/work-in-progress/brief-db-deprecabilita-catalogo-vs-istanze.md`;
+`docs/it/dev/work-done/brief-db-deprecabilita-catalogo-vs-istanze.md`;
 finché non viene esteso qui, l'unica strada praticabile è **non modificare in place**
 un termine in uso e aggiungerne uno nuovo con codice diverso.
 

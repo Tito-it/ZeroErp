@@ -13,7 +13,7 @@ prezzi v5. Il flag `partecipa_promo` abilita/disabilita l'applicazione della
 promo overlay (STADIO 0).
 
 Vedi anche:
-* [sviluppo-listini-v5.md §4.1](/dev/work-in-progress/sviluppo-listini-v5) — specifica funzionale
+* [sviluppo-listini-v5.md §4.1](/dev/work-done/sviluppo-listini-v5) — specifica funzionale
 * [anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti) — schema DB
 
 ## Contesto

@@ -848,4 +848,4 @@ sono ancora dirette e vanno considerate debito tecnico noto.
 - Fasi 3+4+5 (28-04-2026): endpoint atomico duplica versione BoM,
   fallback `valido_dal=today` lato service, metadata `non_editable_fields`
   su detail/envelope. Vedi
-  [analisi-refactor.frontend-catalogo](/dev/work-in-progress/analisi-refactor.frontend-catalogo).
+  [analisi-refactor.frontend-catalogo](/dev/work-done/analisi-refactor.frontend-catalogo).

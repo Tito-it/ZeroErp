@@ -5,7 +5,7 @@
 **Approfondimento tabelle:**
 >
 • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
-> • [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)  
+> • `vendite.listini_associazioni` — **ritirata** (DROP TABLE `20260415-05`)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 > • [config.listini_tipologie](/dbzero/config/manual/listini_tipologie)  
 > • [config.listini_tipologie_utilities](/dbzero/config/manual/listini_tipologie_utilities)  
@@ -14,7 +14,7 @@
 >
 • [trgfn_listini_guard_tipologia_utility](/dbzero/vendite/manual/trgfn_listini_guard_tipologia_utility)  
 > • [trgfn_listini_righe_guard_stato](/dbzero/vendite/manual/trgfn_listini_righe_guard_stato)  
-> • [fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)  
+> • [fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)  
 
 ### 🎯 Scopo Principale
 La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo

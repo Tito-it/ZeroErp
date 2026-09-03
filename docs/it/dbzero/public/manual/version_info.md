@@ -3,7 +3,7 @@
 > 👀 **Vedi anche**
 >
 Approfondimenti funzioni:   
-> [internal.trgfn_audit_version_info](/dbzero/internal/funzioni/trgfn_audit_version_info)     
+> `internal.trgfn_audit_version_info` — **ritirata** con le migrations legacy (lo schema `internal` non esiste piu')     
 
 ---
 ### 🎯 Scopo Principale

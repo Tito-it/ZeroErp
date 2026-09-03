@@ -1,0 +1,215 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.trgfn_coda_archiviazione — la bandiera «messa via» delle due code
+#   Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9 (voce 3)
+#
+# ── ⭐ UNA FUNZIONE PER DUE TABELLE ─────────────────────────────
+#   Le colonne di dbops.coda_lavori e vendite.fatture_stampa_coda sono
+#   identiche per costruzione (20260904-01/02) e la regola e' una sola. Due
+#   copie divergerebbero al primo che tocca una sola delle due code — che e'
+#   esattamente il difetto che il brief chiede di evitare. Schema e tabella per
+#   il contesto dell'errore vengono da TG_TABLE_SCHEMA/TG_TABLE_NAME.
+#   Precedenti in casa: script.trgfn_audit_data_user_generic,
+#   dbops.trgfn_tx_id_managed.
+#
+# ── ⭐ FA DUE COSE, E SONO LA STESSA REGOLA DAI DUE LATI ────────
+#   1. GUARD: una riga VIVA non si archivia.
+#   2. RESET: una riga archiviata che TORNA viva riabbassa la bandiera.
+#   Il secondo e' il pezzo che si trova solo guardando i verbi vicini:
+#   CodaLavoriRepository.requeue riporta a PENDING da ERRORE e da IN_CORSO
+#   stantio. Una riga archiviata e poi rimessa in coda sarebbe viva e
+#   invisibile — cioe' il difetto del punto 1, rientrato dalla porta di
+#   servizio. Non un rifiuto: una riga che torna al lavoro DEVE tornare
+#   nell'elenco. E' «chi alza la bandiera la abbassa», applicato qui.
+#
+# ── ⛔ IL NOME NON PORTA `guard`, E NON E' ESTETICA ─────────────
+#   Questa funzione SCRIVE NEW (il reset). `fn_guard_*` che torna e
+#   `fn_check_*` che solleva sono l'antipattern nominato in linee-guida-sql 5:
+#   dal nome non si capirebbe piu' se una funzione verifica o modifica. Resta
+#   la fase _a10_ sui trigger, perche' l'unica cosa che puo' FERMARE
+#   un'operazione sta qui.
+#
+# ── ⭐ «VIVA» HA UNA DEFINIZIONE SOLA ───────────────────────────
+#   `stato IN ('PENDING','IN_CORSO')` — la stessa che conta il badge in topbar
+#   (STATI_CODA_VIVI, useQueueCountsPolling.js, dichiarata sede unica). Il
+#   perimetro NON e' l'elenco dei terminali: quello sarebbe una fotografia del
+#   CHECK di oggi, e i due CHECK non hanno lo stesso elenco (coda_lavori ha
+#   ANNULLATO, la coda stampa no).
+#
+# ── ⭐ `archiviato_il` E `archiviato_da` NON SI SCRIVONO A MANO ─
+#   Le deriva questa funzione, in entrambe le direzioni, e nel ramo finale
+#   RIPRISTINA i valori vecchi: mentre la riga resta archiviata quelle due
+#   colonne sono immutabili. Una data scritta dal chiamante potrebbe smentire
+#   la bandiera, e nessuno se ne accorgerebbe.
+#   `archiviato_da` legge la GUC app.jwt_user con ripiego su CURRENT_USER: e'
+#   la stessa espressione di script.trgfn_audit_data_user_generic, cioe'
+#   l'utente REALE del token e non `zeroerp_app`.
+#
+# ── ⛔ NIENTE preCondition SUL SEED DEL CODICE ERRORE ───────────
+#   `20_code` gira PRIMA di `80_data`: un sqlCheck su config.codici_errore da
+#   qui sarebbe falso proprio nella corsa che introduce la riga.
+#   script.fn_log_and_raise_error risolve il codice a RUNTIME, quando 80_data
+#   e' passato da un pezzo; che il codice sia davvero a catalogo lo verifica il
+#   pgTAP, che gira dopo tutto il migrate.
+#
+# Errore: E_CODA_ARCHIVIAZIONE_NON_AMMESSA (CONFLITTO_STATO, 409). ⭐ Non e' un
+#   dato sbagliato — non c'e' nessun campo da correggere — e' la riga che in
+#   questo momento e' ancora viva: e' esattamente il criterio della guida per
+#   distinguere CONFLITTO_STATO da DATO_ERRATO. Si accoda alla famiglia
+#   E_CODA_* gia' a catalogo (E_CODA_IDENTITA_NON_ATTIVA e' gia' 409).
+# ⛔ Nessun `bersaglio` nel contesto: l'operatore sta gia' guardando la riga, e
+#   un bersaglio verso dove uno e' gia' non e' un gesto. E nessuna chiave
+#   `campo`: la classe porta ui_action show_error_banner, non c'e' nessun input
+#   da accendere.
+#
+# Dipendenze: script.fn_log_and_raise_error (6 argomenti + VARIADIC).
+# Verifica: db/pgtap/dbops/test-coda-archiviazione.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-03-create-trgfn-coda-archiviazione-mctit.yaml
+
+  - changeSet:
+      id: 20260904-03-create-trgfn-coda-archiviazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.trgfn_coda_archiviazione: la bandiera «messa via» delle due code, in UNA funzione sola —
+        le colonne sono identiche per costruzione e due copie divergerebbero al primo che tocca una sola
+        delle due. ⭐ Fa due cose e sono la stessa regola dai due lati: rifiuta l''archiviazione di una
+        riga VIVA, e riabbassa la bandiera quando una riga archiviata TORNA viva (il requeue, che e'' il
+        pezzo che si trova solo guardando i verbi vicini). ⛔ Il nome non porta `guard` perche'' la
+        funzione SCRIVE NEW: guard che modifica e check che solleva sono l''antipattern di
+        linee-guida-sql 5. ⭐ `archiviato_il`/`archiviato_da` sono DERIVATE e immutabili mentre la riga
+        e'' archiviata: scritte dal chiamante potrebbero smentire la bandiera.
+        Errore: E_CODA_ARCHIVIAZIONE_NON_AMMESSA (CONFLITTO_STATO).
+        Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: coda_lavori
+                columnName: archiviato
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_stampa_coda
+                columnName: archiviato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_coda_archiviazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS
+              $BODY$
+              -- Scopo: governa la bandiera `archiviato` delle due code —
+              --        dbops.coda_lavori e vendite.fatture_stampa_coda.
+              --        1) GUARD  : una riga VIVA non si archivia;
+              --        2) RESET  : una riga archiviata che torna viva la
+              --                    riabbassa da sola;
+              --        3) DERIVA : `archiviato_il` e `archiviato_da` le scrive
+              --                    questa funzione, mai il chiamante.
+              -- Uso:   BEFORE UPDATE OF archiviato, stato, archiviato_il,
+              --        archiviato_da FOR EACH ROW, con la clausola WHEN che
+              --        tiene la corsia del worker fuori (vedi 20260904-04).
+              DECLARE
+                  -- ⚠️ Nessun %TYPE, e non e' una dimenticanza: questa funzione
+                  --    serve DUE tabelle, quindi non c'e' una colonna sola a cui
+                  --    ancorarsi — ancorarla a una delle due sceglierebbe una
+                  --    delle due come «quella vera». `v_vivo` non riflette
+                  --    comunque nessuna colonna: e' un predicato.
+                  v_vivo   boolean;
+                  v_utente text;
+              BEGIN
+                  -- ⭐ «Viva» ha UNA definizione, ed e' la stessa che conta il
+                  --    badge in topbar: PENDING oppure IN_CORSO. Scritta in
+                  --    NEGATIVO la regola vale su entrambe le code con la
+                  --    stessa parola — i loro elenchi di stati TERMINALI sono
+                  --    invece diversi (qui c'e' ANNULLATO, sulla coda stampa
+                  --    no), e un predicato scritto come elenco sarebbe gia'
+                  --    due predicati.
+                  v_vivo := NEW.stato IN ('PENDING', 'IN_CORSO');
+
+                  -- ── 1) LA RIGA E' VIVA ────────────────────────────────
+                  IF v_vivo AND NEW.archiviato THEN
+                      IF NOT OLD.archiviato THEN
+                          -- Qualcuno sta ARCHIVIANDO una riga viva: si rifiuta.
+                          -- ⚠️ Il rifiuto guarda la DIREZIONE, non la semplice
+                          --    menzione della colonna: `UPDATE OF archiviato`
+                          --    scatta anche riassegnando lo stesso valore, e un
+                          --    guard scritto sulla menzione rifiuterebbe scritture
+                          --    che non archiviano niente.
+                          -- ⭐ Nel VARIADIC va lo STATO, non il nome della
+                          --    colonna: e' la frase che una persona legge.
+                          PERFORM script.fn_log_and_raise_error(
+                              TG_TABLE_SCHEMA,
+                              'trgfn_coda_archiviazione',
+                              'E_CODA_ARCHIVIAZIONE_NON_AMMESSA',
+                              jsonb_build_object('riga_id', NEW.id,
+                                                 'stato',   NEW.stato),
+                              NULL::uuid,
+                              NEW.stato);
+                      END IF;
+
+                      -- ⭐ IL RESET. La riga era archiviata e TORNA al lavoro
+                      --    (requeue admin, reaper, retry del drainer): la
+                      --    bandiera si abbassa da sola. Non un rifiuto — una
+                      --    riga che torna al lavoro deve tornare nell'elenco,
+                      --    altrimenti sarebbe viva e invisibile, cioe' il
+                      --    difetto che il ramo qui sopra impedisce, rientrato
+                      --    dalla porta di servizio.
+                      NEW.archiviato := false;
+                  END IF;
+
+                  -- ── 2) LE DUE DERIVATE ────────────────────────────────
+                  IF NEW.archiviato AND NOT OLD.archiviato THEN
+                      -- Si alza la bandiera: data e nome li mette il database.
+                      v_utente := COALESCE(
+                          NULLIF(current_setting('app.jwt_user', true), ''),
+                          CURRENT_USER);
+                      NEW.archiviato_il := CURRENT_TIMESTAMP;
+                      NEW.archiviato_da := v_utente;
+                  ELSIF NOT NEW.archiviato THEN
+                      -- Si abbassa (ripristino esplicito o reset del ramo 1):
+                      -- le due colonne vengono dietro. Una riga «non
+                      -- archiviata, archiviata il 3 settembre» sarebbe un dato
+                      -- composito spostato a meta'.
+                      NEW.archiviato_il := NULL;
+                      NEW.archiviato_da := NULL;
+                  ELSE
+                      -- ⭐ La riga era archiviata e resta archiviata: le due
+                      --    derivate NON si toccano piu'. Ripristinare i valori
+                      --    vecchi le rende immutabili — chi passasse di qui con
+                      --    una data propria non la vedrebbe attecchire, e non
+                      --    ci sarebbe modo di far dire alla riga una cosa che
+                      --    la bandiera smentisce.
+                      NEW.archiviato_il := OLD.archiviato_il;
+                      NEW.archiviato_da := OLD.archiviato_da;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION dbops.trgfn_coda_archiviazione() IS
+              'Governa la bandiera `archiviato` delle due code (dbops.coda_lavori, vendite.fatture_stampa_coda): rifiuta l''archiviazione di una riga VIVA, riabbassa la bandiera quando una riga archiviata torna viva, e deriva `archiviato_il`/`archiviato_da`. ⭐ UNA funzione per DUE tabelle: le colonne sono identiche per costruzione e due copie divergerebbero al primo che tocca una sola delle due code. ⭐ «Viva» e'' PENDING|IN_CORSO — la stessa definizione che conta il badge in topbar — e il predicato e'' scritto in NEGATIVO e non come elenco dei terminali, che fra le due code sono elenchi diversi. ⭐ Il RESET (una riga che torna al lavoro torna nell''elenco) non e'' cortesia: senza, una riga archiviata e poi rimessa in coda dal requeue sarebbe viva e invisibile, cioe'' il difetto che il guard impedisce, rientrato dalla porta di servizio. ⛔ Il nome non porta `guard` perche'' la funzione scrive NEW. Errore: E_CODA_ARCHIVIAZIONE_NON_AMMESSA (CONFLITTO_STATO): non c''e'' nessun campo da correggere, c''e'' una riga ancora viva. Piano: brief-db-archiviazione-righe-code.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.trgfn_coda_archiviazione();

@@ -3,9 +3,9 @@
 ### Scopo
 
 Vista pubblica delle "tabelle audit-abili" esposte dal drawer admin
-([AuditLogView](/dev/work-in-progress/analisi-refactor.frontend-amm-software))
+([AuditLogView](/dev/work-done/analisi-refactor.frontend-amm-software))
 (Fase 5 P1 2026-04-29). Sostituisce la lista hardcoded oggi in
-[`apps.amm_software.db.amm_software_repository._AUDIT_TABLES`](/backend/amm_software/manual/amm_software_repository)
+`apps.amm_software.db.amm_software_repository._AUDIT_TABLES`
 e le costanti FE `buildAuditTabellaOptions`.
 
 > **Vedi anche**
@@ -74,4 +74,4 @@ pubblica.
 
 - Migration: `db/changelog/migrations_v2/20_code/script/20260429-06-create-vw-audit-sources-mctit.yaml`
 - Tabella sottostante: [dbops.audit_sources](/dbzero/dbops/manual/audit_sources)
-- Brief Fase 5: `docs/it/dev/work-in-progress/analisi-refactor.frontend-amm-software.md`
+- Brief Fase 5: `docs/it/dev/work-done/analisi-refactor.frontend-amm-software.md`

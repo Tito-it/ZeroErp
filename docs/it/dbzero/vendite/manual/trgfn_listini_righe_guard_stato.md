@@ -11,7 +11,7 @@ Tabelle:
 >
 Funzioni:
 >
-[vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)
+[vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
 
 ---
 ### 🎯 Scopo Principale

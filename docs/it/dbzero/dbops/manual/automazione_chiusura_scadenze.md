@@ -15,7 +15,7 @@ Approfondimento funzioni:
 > [dbops.fn_apply_chiusura_scadenze](/dbzero/dbops/funzioni/fn_apply_chiusura_scadenze)
 >
 WIP:
-> [Automazione chiusure per scadenza](/dev/work-in-progress/automazione-chiusure-scadenze)
+> [Automazione chiusure per scadenza](/dev/work-done/automazione-chiusure-scadenze)
 
 ### 🎯 Scopo Principale
 

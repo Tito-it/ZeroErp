@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE TRIGGER DELL'ARCHIVIAZIONE — l'armamento delle due code
+#   trg_coda_lavori_a10_archiviazione_upd            (dbops)
+#   trg_fatture_stampa_coda_a10_archiviazione_upd    (vendite)
+#   Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9 (voce 4)
+#
+# ── ⭐ UN SOLO CHANGESET PER DUE SCHEMI, ED E' IL PUNTO ─────────
+#   Armarne uno solo e' la prima cosa che la simmetria del brief vieta: le due
+#   code hanno la stessa lista, la stessa domanda e la stessa forma di riga, e
+#   una coda con la regola e una senza e' peggio di nessuna delle due — perche'
+#   sembra che la regola ci sia. Due changeSet separati permetterebbero
+#   esattamente quello stato intermedio, e Liquibase non ha modo di dire «o
+#   tutti e due o nessuno» fra file diversi.
+#   ⇒ Il file sta sotto `00_schema/dbops/` perche' li' vive la funzione che i
+#   due trigger condividono; la cartella e' organizzazione, l'ordine di
+#   esecuzione lo da' il numero.
+#
+# ── ⛔ `UPDATE OF` SCATTA SULLA MENZIONE, NON SUL CAMBIO ────────
+#   `UPDATE OF archiviato` scatta se la colonna compare nella SET, anche
+#   riassegnandole lo stesso valore. E' per questo che la direzione la guarda
+#   la FUNZIONE (`NEW.archiviato AND NOT OLD.archiviato`) e non l'elenco delle
+#   colonne: un guard scritto sulla menzione rifiuterebbe scritture che non
+#   archiviano niente.
+#
+# ── ⭐ LE COLONNE SONO QUATTRO, NON DUE ─────────────────────────
+#   `archiviato` e `stato` servono al guard e al reset. `archiviato_il` e
+#   `archiviato_da` ci sono perche' altrimenti sarebbero scrivibili a mano
+#   senza passare di qui: la funzione le RIPRISTINA, quindi con loro
+#   nell'elenco diventano immutabili finche' la riga resta archiviata.
+#
+# ── ⭐ LA CLAUSOLA `WHEN` — non e' un'ottimizzazione, e' una difesa ─
+#   `UPDATE OF stato` e' la CORSIA CALDA del worker: ogni claim, ogni
+#   marca_stampa_fatto, ogni retry di marca_stampa_errore, ogni reap_stale
+#   scrive lo stato. Senza filtro, il trigger verrebbe chiamato su TUTTE le
+#   transizioni di TUTTE le righe per servire un caso che riguarda solo quelle
+#   archiviate — e un BEFORE sulla corsia del drenaggio e' anche una superficie
+#   nuova su cui il drainer puo' morire.
+#   ⭐ La WHEN e' valutata SENZA entrare nella funzione: sul percorso normale
+#   (riga non archiviata, nessuna bandiera in gioco) il costo e' zero.
+#
+# ── ⚠️ ORDINE FRA I BEFORE ROW ──────────────────────────────────
+#   I trigger BEFORE ROW parlano in ordine LESSICOGRAFICO. Su entrambe le
+#   tabelle esistono gia' `..._audit_data_user_...` e `..._gen_tx_id_...`
+#   (li generano le automazioni a ci_apply): `_a10_` viene prima di entrambi
+#   ('1' < 'u' e '1' < 'g'), che e' la posizione giusta per la fase di
+#   verifica/blocco.
+#   ⛔ Nessuna preCondition che CONTI i trigger delle automazioni: su un
+#   database ricostruito da zero, alla prima passata, non esistono ancora.
+#
+# Dipendenze: dbops.trgfn_coda_archiviazione (20260904-03), le colonne dei
+#   20260904-01/02.
+# Verifica: db/pgtap/dbops/test-coda-archiviazione.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260904-04-create-trigger-archiviazione-code-mctit.yaml
+
+  - changeSet:
+      id: 20260904-04-create-trigger-archiviazione-code
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        I due trigger _a10_ dell''archiviazione, su dbops.coda_lavori e vendite.fatture_stampa_coda.
+        ⭐ UN SOLO changeSet per due schemi: armarne uno solo e'' la prima cosa che la simmetria del
+        brief vieta — una coda con la regola e una senza e'' peggio di nessuna delle due, perche'' sembra
+        che la regola ci sia. ⭐ Le colonne di UPDATE OF sono quattro: `archiviato` e `stato` per guard e
+        reset, `archiviato_il` e `archiviato_da` perche'' altrimenti sarebbero scrivibili a mano senza
+        passare dalla funzione che le ripristina. ⭐ La clausola WHEN tiene fuori la CORSIA CALDA del
+        worker (claim, marca, reaper scrivono `stato` su ogni riga): e'' valutata senza entrare nella
+        funzione, quindi sul percorso normale il costo e'' zero — e il drainer non acquista una
+        superficie nuova su cui morire. ⚠️ `_a10_` viene prima di audit e tx_id nell''ordine
+        lessicografico dei BEFORE ROW, che e'' la posizione giusta per la fase di blocco.
+        Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: coda_lavori
+                columnName: archiviato_da
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_stampa_coda
+                columnName: archiviato_da
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'trgfn_coda_archiviazione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_coda_lavori_a10_archiviazione_upd
+                  ON dbops.coda_lavori;
+
+              CREATE TRIGGER trg_coda_lavori_a10_archiviazione_upd
+                  BEFORE UPDATE OF archiviato, stato, archiviato_il, archiviato_da
+                  ON dbops.coda_lavori
+                  FOR EACH ROW
+                  -- ⭐ Fuori la corsia calda: una riga che non e' archiviata,
+                  --    non lo sta diventando e non porta timbri non entra
+                  --    nemmeno nella funzione. E' il 100% delle transizioni del
+                  --    worker.
+                  WHEN (OLD.archiviato
+                        OR NEW.archiviato
+                        OR NEW.archiviato_il IS NOT NULL
+                        OR NEW.archiviato_da IS NOT NULL)
+                  EXECUTE FUNCTION dbops.trgfn_coda_archiviazione();
+
+              COMMENT ON TRIGGER trg_coda_lavori_a10_archiviazione_upd
+                  ON dbops.coda_lavori IS
+              'Fase _a10_ (verifica/blocco): rifiuta l''archiviazione di una riga VIVA e riabbassa la bandiera quando una riga archiviata torna viva. ⭐ La clausola WHEN tiene fuori la corsia del worker — claim, marca esito e reaper scrivono `stato` su ogni riga, e senza filtro questo trigger girerebbe su tutte per servire un caso che riguarda solo le archiviate. ⭐ Quattro colonne in UPDATE OF e non due: con `archiviato_il` e `archiviato_da` nell''elenco, la funzione le ripristina e diventano immutabili finche'' la riga resta archiviata. ⚠️ `_a10_` precede audit e tx_id nell''ordine lessicografico dei BEFORE ROW. Piano: brief-db-archiviazione-righe-code.';
+
+              DROP TRIGGER IF EXISTS trg_fatture_stampa_coda_a10_archiviazione_upd
+                  ON vendite.fatture_stampa_coda;
+
+              CREATE TRIGGER trg_fatture_stampa_coda_a10_archiviazione_upd
+                  BEFORE UPDATE OF archiviato, stato, archiviato_il, archiviato_da
+                  ON vendite.fatture_stampa_coda
+                  FOR EACH ROW
+                  WHEN (OLD.archiviato
+                        OR NEW.archiviato
+                        OR NEW.archiviato_il IS NOT NULL
+                        OR NEW.archiviato_da IS NOT NULL)
+                  EXECUTE FUNCTION dbops.trgfn_coda_archiviazione();
+
+              COMMENT ON TRIGGER trg_fatture_stampa_coda_a10_archiviazione_upd
+                  ON vendite.fatture_stampa_coda IS
+              'Gemello esatto di trg_coda_lavori_a10_archiviazione_upd, stessa funzione: le due code hanno la stessa regola, e una coda con la regola e una senza sarebbe peggio di nessuna delle due. ⚠️ Qui il rifiuto sulla riga VIVA protegge anche la RISTAMPA: una riga viva archiviata occuperebbe lo slot di uq_fatture_stampa_coda_vivo e la fattura non si potrebbe piu'' accodare, restando invisibile. Piano: brief-db-archiviazione-righe-code.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_stampa_coda_a10_archiviazione_upd
+                  ON vendite.fatture_stampa_coda;
+              DROP TRIGGER IF EXISTS trg_coda_lavori_a10_archiviazione_upd
+                  ON dbops.coda_lavori;

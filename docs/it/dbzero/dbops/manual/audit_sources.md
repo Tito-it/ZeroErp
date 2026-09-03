@@ -3,13 +3,13 @@
 ### Scopo
 
 Lookup table delle "tabelle audit-abili" esposte al drawer admin
-([AuditLogView](/dev/work-in-progress/analisi-refactor.frontend-amm-software)).
+([AuditLogView](/dev/work-done/analisi-refactor.frontend-amm-software)).
 Single source of truth della lista "quali storico.* sono navigabili
 da UI" + metadata per l'i18n (`label_key`) e il raggruppamento UI
 (`area_funzionale`).
 
 Sostituisce la lista hardcoded oggi in
-[`apps.amm_software.db.amm_software_repository._AUDIT_TABLES`](/backend/amm_software/manual/amm_software_repository)
+`apps.amm_software.db.amm_software_repository._AUDIT_TABLES`
 e le costanti FE `buildAuditTabellaOptions`.
 
 > **Vedi anche**
@@ -90,4 +90,4 @@ documentato + il test fa fallire il pgTAP — by design.
 - Cleanup legacy: `db/changelog/migrations_v2/80_data/changelog/20260505-01-delete-audit-sources-profili-reparto-mctit.yaml`
 - Loader: `db/changelog/migrations_v2/80_data/changelog/20260429-08-upsert-audit-sources-mctit.yaml`
 - Test pgTAP: `db/pgtap/dbops/test-audit-sources-seed.sql`
-- Brief Fase 5: `docs/it/dev/work-in-progress/analisi-refactor.frontend-amm-software.md`
+- Brief Fase 5: `docs/it/dev/work-done/analisi-refactor.frontend-amm-software.md`

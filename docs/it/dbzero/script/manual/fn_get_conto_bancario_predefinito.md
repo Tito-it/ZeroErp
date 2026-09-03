@@ -11,7 +11,7 @@ Approfondimento Tabelle / Vista:
 >
 Approfondimento vista/funzioni:  
 >
-[anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)   
+[anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo)   
 > [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)   
 
 La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso, istanza_utility_id)`** restituisce, per un determinato **ruolo di soggetto**, un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`) e opzionalmente una **istanza utility**, **al massimo un conto bancario selezionato**, applicando una cascata a **7 livelli** sulla vista flat **`anagrafiche.vw_conti_bancari_per_ruolo`**.

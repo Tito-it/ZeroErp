@@ -10,7 +10,7 @@ Approfondimento tabelle:
 >
 Approfondimento funzioni/trigger:   
 >
-[anagrafiche.trgfn_bank_check_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_check_ruolo_bank_branches)   
+[anagrafiche.trgfn_bank_check_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_guard_ruolo_bank_branches)   
 > 
 Altre guide correlate:
 >

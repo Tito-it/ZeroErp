@@ -11,11 +11,11 @@
 > Funzioni correlate:
 >
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
-> [vendite.trgfn_preventivi_righe_guard_pending](/dbzero/vendite/funzioni/trgfn_preventivi_righe_guard_pending) — guard complementare lato riga
+> [vendite.trgfn_preventivi_righe_guard_pending](/dbzero/script/funzioni/trgfn_righe_guard_pending) — guard complementare lato riga
 >
 > Guide:
 >
-> [Sviluppo Listini v5 §14.6](/dev/work-in-progress/sviluppo-listini-v5) — workflow L3 approvazione out-of-policy
+> [Sviluppo Listini v5 §14.6](/dev/work-done/sviluppo-listini-v5) — workflow L3 approvazione out-of-policy
 
 La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()`** blinda la finalizzazione commerciale del preventivo: **impedisce la transizione allo stato `ACCETTATO`** se esistono righe con `stato_approvazione_prezzo = 'PENDING'` (richieste L3 in attesa di esito).
 
@@ -27,7 +27,7 @@ La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()
 
 - **Garanzia di coerenza commerciale** — un preventivo ACCETTATO e' un impegno vincolante: non puo' essere finalizzato mentre ci sono prezzi "proposti ma non approvati". Il workflow L3 deve esitare (APPROVED o REJECTED) o essere annullato (clear a NULL) prima della accettazione.
 - **Point-of-no-return** — l'accettazione apre la pipeline commerciale (ordini, fatturazione, commesse). Richieste pendenti su prezzi sarebbero ambigue downstream.
-- **Separation of concerns con DB-E-5** — questo trigger presidia il livello preventivo (transizione di stato). Il trigger sorella [`trgfn_preventivi_righe_guard_pending`](/dbzero/vendite/funzioni/trgfn_preventivi_righe_guard_pending) presidia il livello riga (frozen durante PENDING). Insieme garantiscono l'invariante "nessun ACCETTATO con pricing ancora da decidere".
+- **Separation of concerns con DB-E-5** — questo trigger presidia il livello preventivo (transizione di stato). Il trigger sorella [`trgfn_preventivi_righe_guard_pending`](/dbzero/script/funzioni/trgfn_righe_guard_pending) presidia il livello riga (frozen durante PENDING). Insieme garantiscono l'invariante "nessun ACCETTATO con pricing ancora da decidere".
 
 ---
 

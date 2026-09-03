@@ -32,10 +32,15 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| archiviato | boolean | NO | false |
+| archiviato_il | timestamp with time zone | YES |  |
+| archiviato_da | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_coda_lavori_archiviato_coerente |  |
+| CHECK | chk_coda_lavori_archiviato_non_vivo |  |
 | CHECK | chk_coda_lavori_max_tentativi |  |
 | CHECK | chk_coda_lavori_origine |  |
 | CHECK | chk_coda_lavori_run_as |  |
@@ -58,6 +63,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_coda_lavori_a10_archiviazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_coda_archiviazione()` |
 | trg_coda_lavori_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_coda_lavori_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_coda_lavori_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

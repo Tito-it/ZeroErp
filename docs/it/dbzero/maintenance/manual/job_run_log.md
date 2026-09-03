@@ -4,7 +4,7 @@
 >
 Approfondimento tabelle:
 >
-[maintenance.job\_definitions](/dbzero/maintenance/job_definitions) *(ipotetico riferimento a definizione job)*
+`maintenance.job_definitions` *(riferimento ipotetico: la tabella non esiste)*
 >
 Approfondimento funzioni/procedure:
 >

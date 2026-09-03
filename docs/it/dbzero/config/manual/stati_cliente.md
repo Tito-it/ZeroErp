@@ -9,7 +9,7 @@ Approfondimento tabelle:
 Approfondimento funzioni e view:
 >
 [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
-> [script.view_clienti_istanza_states](/dbzero/script/view/view_clienti_istanza_states)
+> [script.view_clienti_istanza_states](/dbzero/script/views/view_clienti_istanza_states)
 
 ---
 ### 🎯 Scopo Principale

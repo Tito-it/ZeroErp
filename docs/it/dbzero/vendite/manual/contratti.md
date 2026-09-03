@@ -344,7 +344,7 @@ Riferimenti:
 
 * [linee-guida-sql §7c](/linee-guida-sql) — pattern "ciclo stato + finestra di validita'"
 * [Catalogo processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — scheda `chiusura_scadenze_daily`
-* [WIP automazione-chiusure-scadenze](/dev/work-in-progress/automazione-chiusure-scadenze)
+* [WIP automazione-chiusure-scadenze](/dev/work-done/automazione-chiusure-scadenze)
 
 ---
 

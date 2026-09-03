@@ -146,7 +146,7 @@ Riferimenti:
 > discriminava piu nulla. La colonna e il check constraint
 > `chk_listini_versioni_priorita` sono stati droppati con la migration
 > `20260409-05-drop-priorita-listini-versioni`. Vedi
-> [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
+> [WIP listini-commercio §5](/dev/work-done/listini-commercio).
 
 ---
 
@@ -192,11 +192,11 @@ di entrata in vigore:
 * **Una versione = una sola valuta**: il modello attuale e implicitamente
   monovaluta (nessuna colonna `valuta_id` su `listini_versioni`). Per supportare
   valuta multipla in futuro andra aggiunta una colonna additiva. Vedi
-  [WIP listini-commercio §6.4](/dev/work-in-progress/listini-commercio).
+  [WIP listini-commercio §6.4](/dev/work-done/listini-commercio).
 * **`pricing_mode` non ancora esplicito**: il modello v1 e dichiaratamente
   `FIXED` per tutte le righe (prezzo unitario costante). I modi `SCAGLIONI` e
   `FORMULA` previsti per v2 non sono ancora rappresentati nello schema. Vedi
-  [WIP listini-commercio §6.6](/dev/work-in-progress/listini-commercio).
+  [WIP listini-commercio §6.6](/dev/work-done/listini-commercio).
 
 ---
 

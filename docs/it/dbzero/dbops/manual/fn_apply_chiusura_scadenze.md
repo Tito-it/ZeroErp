@@ -14,7 +14,7 @@ Approfondimento funzioni:
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 >
 WIP:
-> [Automazione chiusure per scadenza](/dev/work-in-progress/automazione-chiusure-scadenze)
+> [Automazione chiusure per scadenza](/dev/work-done/automazione-chiusure-scadenze)
 
 ### 🎯 Scopo Principale
 

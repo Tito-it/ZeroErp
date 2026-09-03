@@ -181,18 +181,28 @@ copre (§6 e D-5). Quello che si aggiunge qui, verificato sul codice:
 * ⛔ `contabilizza_cdc` punta a un **centro di costo che non esiste** in nessuno
   schema.
 
+📌 **Il vocabolario delle causali per intero** — e le due che mancano — è dal
+2026-09-02 in [analisi-db-magazzino-carico-e-scarico §2 e §3](analisi-db-magazzino-carico-e-scarico.md). Qui resta il
+solo argomento di questa sezione: che la produzione era **nominata** e l'oggetto a
+cui punta non esiste.
+
 ### B. Il motore del magazzino: la struttura c'è, l'alimentatore no
 
-⚠️ **`magazzino.movimenti` non è scritto da nessuno.** Lo schema ha due funzioni
-in tutto (`fn_get_magazzino_note`, `trgfn_magazzini_normalize`), nessuna scrive
-nel ledger, e `backend/apps/magazzino/` è uno scheletro. Il ledger è una
-struttura senza alimentatore — e la produzione ne è il consumatore più pesante:
-non c'è dove versare né da dove prelevare.
+⚠️ **`magazzino.movimenti` non è scritto da nessuno**, e `vw_giacenza` non sottrae
+le prenotazioni: **oggi non esiste una disponibilità**, e senza disponibilità non
+c'è niente su cui un fabbisogno possa decidere.
 
-⚠️ E `vw_giacenza` è `sum(qta) GROUP BY articolo, magazzino`: **non guarda
-`causali.segno`** (già annotato nella mappa) e non sottrae le `reservations`.
-**Oggi non esiste una disponibilità**, e senza disponibilità non c'è niente su
-cui un fabbisogno possa decidere.
+⭐ *(Aggiornato il 2026-09-02: la vista somma `qta` senza guardare la causale, e
+questo **non è più un difetto** — il verso sta nella quantità per decisione presa,
+[analisi carico e scarico §4](analisi-db-magazzino-carico-e-scarico.md). Il buco che resta è la disponibilità, non il
+segno.)*
+
+📌 **Il dettaglio non sta più qui**: dal 2026-09-02 è in
+[analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md) — chi scrive (là §5), il verso
+della quantità (§4), la lettura della giacenza e la valorizzazione ferma (§7).
+Quello che resta di questa sezione è la conseguenza **per la produzione**: il ledger
+è una struttura senza alimentatore, e la produzione ne è il consumatore più pesante
+— non c'è dove versare né da dove prelevare.
 
 ### C. Le dimensioni che al ciclo di vendita mancano comunque
 
@@ -267,7 +277,7 @@ Le due strade, con il loro costo dichiarato:
 
 ⛔ **Oggi non esiste alcuna data di consegna in tutto il modello.** Cercata su
 `vendite`, `acquisti` e `magazzino`, l'unica data di previsione dell'intero
-database è `magazzino.reservations.data_prevista` — in uno schema che non è in
+database è `magazzino.reservations.data_prevista` (dal 2026-09-02 decisa come `magazzino.movimenti_attesi`) — in uno schema che non è in
 esercizio. `ordini.data` è la data **documento**, e `competenza_*` è competenza
 **fiscale**: ⚠️ nessuna delle due va riusata.
 
@@ -361,12 +371,15 @@ quantità/articolo di testata, budget.
 WIP) che oggi non esiste da nessuna parte — `attivita_fatturabili` registra ciò
 che si **fattura**, mai ciò che si **consuma**. Va progettato, non aggiunto.
 
-### 8.6 `magazzino` — le due cose minime, già di quel brief
+### 8.6 `magazzino` — le due cose minime
 
 * ⛔ **la causale del versamento del prodotto finito** (segno `+1`), oggi assente;
 * ⛔ **valorizzare `causali.ambito_causale_id`**, oggi vuoto su tutte le righe —
   altrimenti il vocabolario `ODL` resta debito che sembra struttura (è la **D-8**
-  del brief gemello).
+  dell'analisi aggancio).
+
+📌 Entrambe sono ora trattate in
+[analisi-db-magazzino-carico-e-scarico §3](analisi-db-magazzino-carico-e-scarico.md), che è la sede del vocabolario.
 
 ---
 
@@ -381,7 +394,7 @@ che si **fattura**, mai ciò che si **consuma**. Va progettato, non aggiunto.
 | **1** | La **data di consegna** su riga d'ordine (+ preventivo, + ordine d'acquisto) — §8.1 | ❌ no, serve subito e da sola |
 | **2** | **`modo_approvvigionamento`** + `gestito_a_magazzino` + `lead_time_giorni` su `articoli` — §8.2 | ❌ no: è la colonna che *rende ponibile* la domanda della produzione |
 | **3** | Le tre colonne parlanti su `commesse` — §8.5 | ❌ no |
-| **4** | Il verso della giacenza (`causali.segno` ↔ `movimenti.qta`) e **chi scrive un movimento** — §6.B | ❌ no: senza, non esiste disponibilità |
+| **4** | ✅ **DECISO il 2026-09-02**, non più da fare: il verso sta nella **quantità** (M-1) e «chi scrive» è la **primitiva guidata dalle causali** (M-2) — [analisi carico e scarico §4 e §5-bis](analisi-db-magazzino-carico-e-scarico.md). ⚠️ *Questa riga diceva ancora «da fare» mentre la §6.B era già stata aggiornata lo stesso giorno: il documento è di sola consultazione, ma è **questa tabella** che qualcuno userà come sequenza* | — |
 | **5** | Causale di versamento + `ambito_causale_id` valorizzato — §8.6 | ❌ no (è già D-8 del brief gemello) |
 | **6** | **L'analisi della §7** — commessa unica o commessa di produzione dedicata | — è *lei* la decisione |
 | **7** | ODL, ciclo di lavorazione, consuntivo, fabbisogni | ✅ sì, tutto |
@@ -397,7 +410,7 @@ cui possono partire prima che la §7 abbia una risposta.
 * **L'aggancio del movimento al documento**, l'ODL come sorgente o anello,
   l'unicità del ledger, il guard tipizzato: stanno nell'[analisi
   magazzino](analisi-db-magazzino-aggancio-documento-e-produzione.md),
-  decisioni D-1 → D-8.
+  decisioni D-1 → D-9.
 * **La decisione sulla testata** (§7): analisi separata, per volontà di Tid.
 * **Valorizzazione, lotti, seriali, ubicazioni, RLS su `magazzino`**: §9 del brief
   gemello.

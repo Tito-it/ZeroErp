@@ -10,9 +10,9 @@
 >
 > Vedi anche
 >
-> * [Guida Fatturazione](/fatturazione) — ciclo di vita delle fatture
+> * [Guida Fatturazione](/guide/fatturazione) — ciclo di vita delle fatture
 > * [Guida Gestione Conti Bancari](/guide/gestione-conti-bancari) — IBAN, filiali, SEPA
-> * [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — pipeline e task run
+> * [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — pipeline e task run
 
 ---
 
@@ -1197,7 +1197,7 @@ Questa guida copre il modello contabile dei pagamenti vendite. Per il contesto d
 
 * [Guida Fatturazione](/guide/fatturazione) — ciclo di vita fatture, lotti, pipeline
 * [Guida Gestione Conti Bancari](/guide/gestione-conti-bancari) — IBAN, filiali, mandati SEPA
-* [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — pipeline e task run
+* [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — pipeline e task run
 
 Per il dettaglio delle singole tabelle e funzioni:
 

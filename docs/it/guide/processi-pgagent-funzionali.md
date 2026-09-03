@@ -12,7 +12,7 @@
 > Vedi anche:
 >
 > * [Estensione pgAgent](/postgresql/pgAgent) — concetti base, schedule, step, log
-> * [Guida Tracciamento processi e job](/guide/Analisi-tracciamento-processi-e-job) — tre livelli di tracciamento (audit, job run log, task runs)
+> * [Guida Tracciamento processi e job](/guide/analisi-tracciamento-processi-e-job) — tre livelli di tracciamento (audit, job run log, task runs)
 > * [Framework automazione DB](/guide/automazione-db) — automazioni dichiarative infrastrutturali
 > * [linee-guida-sql §7c](/linee-guida-sql) — pattern "ciclo stato + finestra di validita'"
 

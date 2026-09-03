@@ -20,7 +20,7 @@
 >
 **Approfondimento funzioni:**
 >
-• [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito)
+• `vendite.fn_resolve_prezzo_composito` — **ritirata** (brief `brief-db-drop-fn-resolve-prezzo-composito`)
 > • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---

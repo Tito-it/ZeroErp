@@ -8,7 +8,7 @@
 >
 Approfondimento Funzioni:   
 > 
-[config.trgfn_regioni_ins_upd_clean_fields](/dbzero/config/funzioni/trgfn_regioni_ins_upd_clean_fields) 
+[config.trgfn_regioni_ins_upd_clean_fields](/dbzero/config/funzioni/trgfn_regioni_normalize) 
 
 
 
