@@ -30,12 +30,10 @@
 import { ref, computed, onActivated, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import { useNotify } from '../../core/composables/useNotify'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayTimestamp } from '../../core/utils/date'
 import { statoCodaStampaSeverity } from '../../core/utils/severity'
-import { MANAGE_ICONS } from '../../core/constants'
 import { getFatturazioneEsiti } from '../api/lotti'
 
 const props = defineProps({
@@ -49,7 +47,6 @@ const notify = useNotify()
 
 const giri = ref([])
 const codaStampa = ref({})
-const loading = ref(false)
 // TRUE dopo il primo load riuscito: distingue "nessun giro" da "non ancora
 // caricato", così l'empty state non mente al primo paint.
 const caricato = ref(false)
@@ -92,7 +89,6 @@ function etichettaOrigine(origine) {
 }
 
 async function load() {
-  loading.value = true
   try {
     const res = await getFatturazioneEsiti(props.competenzaMese)
     const data = res.data?.data ?? {}
@@ -102,11 +98,14 @@ async function load() {
   } catch (err) {
     // Fail-visible: un pannello vuoto per errore non deve sembrare "tutto ok".
     notify.error(extractApiError(err, t('common.error')))
-  } finally {
-    loading.value = false
   }
 }
 
+// ⚠️ `refresh` NON e' piu' un aggancio dichiarato e mai collegato: dal
+// 2026-09-03 lo chiama il «Ricarica» della pagina, che e' la ragione per cui il
+// pulsante interno ha potuto sparire. Se un domani il pannello venisse montato
+// altrove, quel caller deve fare lo stesso — senza, il pannello non avrebbe
+// nessun modo di aggiornarsi a comando.
 onActivated(load)
 // Il mese filtrato cambia → i giri mostrati devono seguirlo. Senza questo il
 // pannello resterebbe sui giri del mese precedente accanto a una lista già
@@ -117,19 +116,15 @@ defineExpose({ refresh: load })
 
 <template>
   <div class="app-esiti-panel">
+    <!-- ⛔ Niente pulsante «Ricarica» qui: la pagina ne ha gia' uno nella
+         PageActionsBar, e due comandi identici a mezzo schermo di distanza
+         sono un dubbio su cosa aggiornino («questo solo il pannello?»), non
+         una comodita'. Chi ricarica la pagina ricarica anche questo — vedi
+         `azioniPagina` in LottiListView, che chiama `refresh` sull'istanza. -->
     <div class="app-esiti-header">
       <span class="app-esiti-titolo">
         <i class="pi pi-chart-bar" /> {{ t('vendite.fatturazione.esiti_titolo') }}
       </span>
-      <Button
-        :icon="MANAGE_ICONS.RELOAD"
-        text
-        rounded
-        size="small"
-        :loading="loading"
-        v-tooltip.top="t('common.reload_list')"
-        @click="load"
-      />
     </div>
 
     <div class="app-esiti-body">
@@ -197,14 +192,23 @@ defineExpose({ refresh: load })
 </template>
 
 <style scoped>
+/* ⭐ PANNELLO COMPATTO (2026-09-03, rilievo di Tid): e' un RIASSUNTO sopra la
+   lista, non un contenuto — deve stare in poche righe e cedere l'altezza ai
+   lotti, che sono il lavoro. Si stringe con la tipografia e le spaziature,
+   NON con un'altezza fissa: le righe dei giri vanno a capo per conto loro su
+   schermi stretti, e un `max-height` le taglierebbe invece di accorciarle.
+   ⚠️ Le misure di carattere vengono dai token di theme.css, non da rem
+   inventate: --app-font-size-sm e' la stessa scala delle liste, quindi il
+   pannello e la tabella sotto si leggono come un unico piano. */
 .app-esiti-panel {
   /* Variabili applicative REALI di theme.css (mai --p-* dirette): card
      standard con override dark/light gia' centralizzati. */
   border: 1px solid var(--app-card-border);
   border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.5rem;
   background: var(--app-card-bg);
+  font-size: var(--app-font-size-sm);
 }
 .app-esiti-header {
   display: flex;
@@ -215,35 +219,48 @@ defineExpose({ refresh: load })
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 .app-esiti-body {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
 }
 .app-esiti-coda {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 .app-esiti-giri {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.15rem;
 }
+/* Le righe di DETTAGLIO: sono quelle che pesano di piu' in altezza (una per
+   giro) e quelle che l'occhio consulta di rado — scendono sotto la scala
+   comune. */
 .app-esiti-giro {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 .app-esiti-giro-label {
   font-weight: 500;
 }
 .app-esiti-origine {
   font-size: 0.75em;
+}
+/* :deep() sui Tag di PrimeVue: e' l'unico uso ammesso dagli standard
+   (override di libreria) e serve qui perche' un Tag a dimensione piena
+   riporterebbe da solo l'altezza che il resto del pannello ha appena perso. */
+.app-esiti-panel :deep(.p-tag) {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
 }
 </style>

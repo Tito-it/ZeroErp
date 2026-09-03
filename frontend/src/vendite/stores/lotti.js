@@ -45,11 +45,29 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     order_dir: 'desc',
   })
 
+  // Ripartizione per stato del perimetro corrente — `[{stato_lotto, n_lotti}]`
+  // — che alimenta i pulsanti-filtro sopra la lista.
+  //
+  // ⭐ Arriva ACCANTO a `results`/`count` nella stessa risposta, non da un
+  //    endpoint suo: pulsanti e righe vengono dalla stessa valutazione del
+  //    perimetro, quindi non possono raccontare due cose diverse.
+  // ⚠️ Il BE lo calcola SENZA il filtro stato (mese e recuperi restano): e' cio'
+  //    che permette di passare da uno stato all'altro con un click. Contando
+  //    anche lo stato, scelto «BOZZA» gli altri pulsanti sparirebbero — si
+  //    rendono solo sopra zero — e non ci sarebbe piu' modo di tornare indietro.
+  const stati = ref([])
+
   // `alwaysFetch: true`: il registro lotti non e' una lista che parte vuota in
   // attesa di una ricerca — e' la fotografia di un mese, e il mese c'e' sempre.
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
+    // ⛔ Qui e non nel `fetchPage` qui sotto: il BB invoca l'hook DOPO il guard
+    //    di versione, mentre tappare la promise applicherebbe i conteggi anche
+    //    alle risposte scartate. Con la sidebar dei mesi si cambia periodo in
+    //    fretta, quindi le fetch concorrenti sono la norma, non il caso limite:
+    //    i pulsanti finirebbero a contare un mese diverso da quello a video.
+    onPayload: (payload) => { stati.value = payload.stati ?? [] },
     buildParams: (f) => {
       // limit/offset (lingua del BB) -> page/page_size (lingua dell'endpoint),
       // via `paramsPagina` (`core/utils/listParams`, estratto il 2026-08-28
@@ -69,6 +87,7 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
 
   return {
     items, totalRecords, loading, hasSearched, filters,
+    stati,
     fetchList,
   }
 }, {

@@ -325,8 +325,11 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     await erroriFetch.fetch(competenzaMese)
   }
 
-  // Scopo: azzera il drill-down (cambio mese/anno o deselezione card) e
-  //        invalida le fetch in volo.
+  // Scopo: azzera il drill-down (cambio mese/anno, o passaggio a un'ALTRA card)
+  //        e invalida le fetch in volo.
+  // ⚠️ Non piu' la «deselezione» della card: dal 2026-09-03 la selezione e'
+  //    esclusiva e un secondo click sulla stessa card non chiude piu' la lista
+  //    (vedi `DashboardCompetenzaView.selezionaStadio`).
   function resetCommesse() {
     stadioSelezionato.value = null
     soloRitardo.value = false
