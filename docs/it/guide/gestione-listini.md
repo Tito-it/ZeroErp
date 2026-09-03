@@ -394,7 +394,7 @@ Il resolver calcola il prezzo al **momento del push sorgente → commessa**. Da 
 **Scopo**: permettere all'operatore di forzare un prezzo fuori dalle regole di listino/contratto/promo per una singola riga, con motivo obbligatorio.
 
 Endpoint: `POST /api/v1/vendite/commesse/<commessa_id>/attivita/<att_id>/variazione-prezzo-eccezionale/`
-Service: `fn_variazione_prezzo_eccezionale` ([commesse_service.py](/backend/vendite/manual/commesse_service))
+Service: `commesse_service.fn_variazione_prezzo_eccezionale` — endpoint e regole in [API Commesse pricing](/backend/vendite/manual/api_commesse_pricing)
 
 Effetti:
 

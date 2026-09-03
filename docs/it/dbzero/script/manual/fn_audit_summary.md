@@ -6,7 +6,7 @@ Calcola **al volo** il diff fra uno snapshot storico e il suo
 precedente (stessa riga originale, ordinato per `valid_from`)
 (Fase 5 P1 2026-04-29). Sostituisce la funzione FE locale
 `snapshotSummary` nel drawer admin
-([`AuditLogView.vue:95-107`](/dev/work-in-progress/analisi-refactor.frontend-amm-software))
+([`AuditLogView.vue:95-107`](/dev/work-done/analisi-refactor.frontend-amm-software))
 spostando il calcolo dal client al DB.
 
 **Read-side**, lazy: nessuna modifica al framework di storicizzazione,
@@ -178,7 +178,7 @@ audit log + i18n + codice stabile per il mapping `error_policies.py`.
 
 - Migration: `db/changelog/migrations_v2/20_code/script/20260429-07-create-fn-audit-summary-mctit.yaml`
 - Codici errore: aggiunti id 406-408 in `db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv`
-- Brief Fase 5: `docs/it/dev/work-in-progress/analisi-refactor.frontend-amm-software.md`
+- Brief Fase 5: `docs/it/dev/work-done/analisi-refactor.frontend-amm-software.md`
 
 ## Esempio
 

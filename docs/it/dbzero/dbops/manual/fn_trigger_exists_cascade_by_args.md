@@ -8,7 +8,7 @@ Guide:
 >
 Approfondimeti funzioni e trigger:
 >
-[dbops.trgfn_soft_delete_cascade](/dbzero/dbops/funzioni/trgfn_soft_delete_cascade)
+`dbops.trgfn_soft_delete_cascade` — **ritirata** (DROP `20260101-01-drop-attivo-legacy-objects`)
 > [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
 > [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
 > [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)

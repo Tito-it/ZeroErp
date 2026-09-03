@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# rls_fatture_stampa_coda_ef_whitelist — la policy (INERTE finche' non si arma)
+#   Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 8
+#   Armamento: 20260904-06. Qui non si abilita niente.
+#
+# ── ⭐ PERCHE' ORA, E PERCHE' NON E' «FUORI RICHIESTA» ──────────
+#   `manual/fatture_stampa_coda.md` dice, a proposito della RLS: «in G1 la coda
+#   non ha superficie di lettura -> nessuna policy». Quella premessa era vera e
+#   ha smesso di esserlo in due tempi: prima con la lista a video del brief
+#   gestione-code (elenca_coda_stampa), poi — ed e' questo cantiere — con il
+#   verbo «Archivia», che e' la PRIMA SCRITTURA DELL'OPERATORE su questa
+#   tabella. Verificato il 2026-09-04: oggi su fatture_stampa_coda non esiste
+#   nessun verbo (gli endpoint sono `coda-stampa/`, sola lista; annulla e
+#   requeue vivono solo su coda-lavori), e lo scope e' applicativo — un
+#   add_emittente_scope_condition sul join alla fattura, IN LETTURA.
+#   ⇒ Il momento in cui si aggiunge una scrittura e' il momento in cui la
+#   frase che decide se serve una policy va riscritta. Farlo dopo sarebbe una
+#   correzione di sicurezza su codice vivo invece che un prerequisito.
+#
+# ── ⛔ LO SCOPE E' QUELLO DELLA TESTATA, MAI UN CRITERIO PROPRIO ─
+#   script.fn_scope_ef_whitelist_via_fattura(auth_user_id, sorgente_id): la
+#   stessa funzione di fatture_righe, fatture_scadenze e fatture_riepiloghi_iva.
+#   `sorgente_id` E' l'id della fattura (FK fk_fatture_stampa_coda_fattura), non
+#   una colonna emittente denormalizzata.
+#   ⭐ E' l'invariante di famiglia: condividendo la funzione della testata il
+#   filtro e' TUTTO-O-NIENTE PER FATTURA. Chi vede la fattura vede tutte le sue
+#   righe di coda; chi non la vede non ne vede nessuna. Un criterio proprio
+#   renderebbe possibili gli insiemi PARZIALI, e una coda parziale non da'
+#   errore: fa semplicemente sparire un work-item dal monitoraggio.
+#
+# ── ⭐ `FOR ALL` E NON `FOR SELECT` (lezione Ondata 2) ──────────
+#   Con la sola SELECT ogni scrittura operatore — anche in-scope — fallirebbe,
+#   perche' nessuna policy coprirebbe INSERT/UPDATE/DELETE. Su questa tabella
+#   scrivono, sotto identita' operatore:
+#     - vendite.fn_accoda_stampe_lotto (SECURITY INVOKER), quando il task
+#       stampa_documenti_lotto gira dalla coda lavori in
+#       operator_identity_context;
+#     - il verbo «Archivia» di questo cantiere.
+#   Senza FOR ALL si bloccherebbero entrambi. WITH CHECK = USING, a parita' con
+#   tutta la famiglia: impedisce di spostare una riga fuori dal proprio scope.
+#
+# ── ⛔ NESSUNA POLICY `ba_ownership` ────────────────────────────
+#   La coda stampa non e' una superficie del portale cliente: e' un outbox
+#   tecnico che un cliente non deve nemmeno sapere che esiste.
+#   linee-guida-sql 10.1: «se una tabella non ha uno scope evidente,
+#   probabilmente non va messa in RLS; aggiungere policy preventive genera
+#   falsa sicurezza e costo di manutenzione». Il giorno che nascesse un portale
+#   che mostra lo stato della stampa, si aggiunge li'.
+#
+# ── ⚠️ CHI RESTA FUORI, E DEVE RESTARCI ─────────────────────────
+#   Il gate `ruolo_applicativo = 'OPERATORE'` significa che una sessione con
+#   un'altra veste (CLIENTE_PORTALE, SHOP_CUSTOMER) non vede NESSUNA riga —
+#   fail-closed, ed e' il comportamento voluto. I canali di sistema non passano
+#   di qui: cambiano RUOLO (system_process_context, con guard fail-loud su
+#   BYPASSRLS), non GUC.
+#
+# Dipendenze: vendite.fatture_stampa_coda.sorgente_id (NOT NULL),
+#   script.fn_scope_ef_whitelist_via_fattura (STABLE, inlineable).
+# Verifica: db/pgtap/rls/test-rls-fatture-stampa-coda.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260904-05-create-policy-rls-fatture-stampa-coda-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260904-05-create-policy-rls-fatture-stampa-coda-ef-whitelist
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_fatture_stampa_coda_ef_whitelist su vendite.fatture_stampa_coda (FOR ALL, scope
+        emittente delegato alla TESTATA via fn_scope_ef_whitelist_via_fattura, gate OPERATORE). Mirror
+        esatto di rls_fatture_righe_ef_whitelist. ⭐ Nasce ora perche'' il verbo «Archivia» e'' la PRIMA
+        scrittura dell''operatore su questa tabella: la premessa del manual («in G1 la coda non ha
+        superficie di lettura → nessuna policy») smette di essere vera con questo cantiere, e la si
+        chiude PRIMA che la scrittura esista, non dopo. ⛔ Lo scope resta quello della testata, mai un
+        criterio proprio: e'' cio'' che rende il filtro tutto-o-niente per fattura. ⛔ Nessuna policy
+        ba_ownership: la coda stampa non e'' una superficie del portale cliente.
+        Nessun ENABLE qui: l''armamento e'' nel 20260904-06.
+        Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 8.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_stampa_coda
+                columnName: sorgente_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_stampa_coda_ef_whitelist
+                  ON vendite.fatture_stampa_coda;
+
+              CREATE POLICY rls_fatture_stampa_coda_ef_whitelist
+                  ON vendite.fatture_stampa_coda
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          sorgente_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          sorgente_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_fatture_stampa_coda_ef_whitelist
+                  ON vendite.fatture_stampa_coda IS
+              'RLS operatore: vede e scrive solo i work-item di fatture con emittente in whitelist, scope delegato alla TESTATA (script.fn_scope_ef_whitelist_via_fattura su sorgente_id, che E'' l''id della fattura). ⭐ Nasce col verbo «Archivia», che e'' la prima scrittura dell''operatore su questa tabella: fino a quel momento lo scope era solo applicativo, in lettura. ⛔ INVARIANTE: la funzione di scope deve restare quella della testata, mai un criterio proprio ne'' una colonna emittente denormalizzata — e'' cio'' che rende il filtro TUTTO-O-NIENTE per fattura, e quindi impedisce che il monitoraggio della stampa mostri un insieme PARZIALE di work-item, che non darebbe nessun errore. ⭐ FOR ALL con WITH CHECK = USING: la sola SELECT bloccherebbe sia fn_accoda_stampe_lotto (SECURITY INVOKER, gira in contesto operatore quando il task stampa parte dalla coda lavori) sia l''archiviazione — lezione Ondata 2. ⚠️ Il gate OPERATORE e'' fail-closed per le altre vesti: la coda stampa non e'' una superficie del portale, e non ha (di proposito) nessuna policy ba_ownership. I canali di sistema non passano di qui: cambiano ruolo, non GUC. rev 2026-09-04.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_stampa_coda_ef_whitelist
+                  ON vendite.fatture_stampa_coda;

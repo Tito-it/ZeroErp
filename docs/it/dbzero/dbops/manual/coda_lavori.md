@@ -109,10 +109,54 @@ loop reaper→claim→retry, backend tipizzati distinti. Vedi
 Tabella **multi-writer** (ogni dominio accoda, worker, cancel, requeue): monta
 **entrambi** i trigger `script.trgfn_audit_data_user_generic` (audit
 `data_update`/`user_update`) e `dbops.trgfn_tx_id_managed` (`tx_id`), come
-[dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys) — **non** il
-no-trigger di `fatture_stampa_coda` (single-writer).
+[dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys).
+
+⚠️ **Fino al 2026-09-04 questa riga proseguiva con «*— non il no-trigger di
+`fatture_stampa_coda` (single-writer)*», ed era falsa su entrambi i pezzi.** La
+coda stampa quei due trigger **li ha** — li generano le automazioni a
+`ci_apply`, non un changeSet, quindi non si vedono negli YAML — e ha smesso di
+essere single-writer con il verbo «Archivia», che è la prima scrittura
+dell'operatore su quella tabella. Il residuo di quella premessa è ancora nel
+backend: `claim_stampe_pending` e `marca_stampa_fatto` scrivono a mano
+`data_update`/`user_update`, che il trigger `BEFORE` sovrascrive con l'utente
+JWT vero. Innocuo, ma è codice che crede a una descrizione scaduta.
 
 Brief: `brief-db-coda-lavori-generica` §1.
+
+---
+
+### Archiviare una riga senza toccarne lo stato
+
+Dal 2026-09-04 la coda porta tre colonne — `archiviato`, `archiviato_il`,
+`archiviato_da` — che tolgono una riga **dall'elenco**, non dal lavoro.
+
+**Perché non basta cancellare o annullare.** I conteggi che l'operatore legge
+sono un `GROUP BY` sullo stato **senza filtro di visibilità**: una cancellazione
+li fa calare, un annullamento sposta la ripartizione. Serviva una bandiera che
+leggesse **solo la lista**.
+
+* ⛔ **Un solo lettore: la lista.** Né il claim, né il drainer, né il reaper, né
+  i conteggi. Un lettore in più farebbe dell'archiviazione un annullamento
+  silenzioso, cioè qualcosa di peggio della cancellazione che evita.
+* **Solo una riga NON VIVA si archivia** (`PENDING`/`IN_CORSO` esclusi): lo
+  impongono il `CHECK chk_coda_lavori_archiviato_non_vivo` e il trigger
+  `trg_coda_lavori_a10_archiviazione_upd`
+  ([dbops.trgfn_coda_archiviazione](/dbzero/dbops/funzioni/trgfn_coda_archiviazione)).
+  Una riga viva archiviata resterebbe nel conteggio del badge e fuori
+  dall'elenco, senza nessun modo di arrivarci per rimetterla a posto.
+* ⭐ **Una riga che torna viva riabbassa la bandiera da sola.** È il caso del
+  requeue: senza il reset, un job archiviato e poi rimesso in coda sarebbe vivo
+  e invisibile.
+* **`archiviato_il` e `archiviato_da` sono derivate** dal trigger e immutabili
+  finché la riga resta archiviata: scritte dal chiamante potrebbero dire una
+  cosa che la bandiera smentisce.
+* La regola è **identica** su
+  [vendite.fatture_stampa_coda](/dbzero/vendite/manual/fatture_stampa_coda), con
+  la stessa funzione trigger: un presidio pgTAP confronta le due tabelle
+  (colonne, `CHECK`, trigger) perché la simmetria non resti una promessa.
+
+Errore: `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (`CONFLITTO_STATO`, 409).
+Brief: `brief-db-archiviazione-righe-code`.
 
 ---
 

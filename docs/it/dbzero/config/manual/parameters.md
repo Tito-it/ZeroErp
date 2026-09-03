@@ -12,7 +12,7 @@ Approfondimento funzioni :
 >
 Approfondimento parametri tabellari Vs GUC   
 >
-[parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC))   
+[parametri-personalizzati-(GUC)](/postgresql/parametri-personalizzati-(GUC))   
 > All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
 
 ---

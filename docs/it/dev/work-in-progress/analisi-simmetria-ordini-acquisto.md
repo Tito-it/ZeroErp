@@ -289,6 +289,8 @@ e una raccomandazione da confermare.
 | **D-11** | **`config.ambiti`**: che farne (popolarla per il suo scopo localizzato, o ritirarla)? | ⛔ **fuori da questo cantiere** — §7 dice perché | rinviata |
 | **D-12** | **Il numero della controparte**: dove sta, e come non collide col nostro | ✅ posta da Tid. `numero` = sempre il **nostro**; il riferimento del fornitore ha colonna propria. Su `acquisti.ddt` il `numero` liberato **si toglie**, non si tiene vuoto → **§6, «I DUE numeri»** | **CHIUSA sul principio** |
 | **D-13** | **`acquisti.ddt.serie` e `.anno`**: sono del fornitore o nostri? | ✅ **Del fornitore** (Tid): `serie_fornitore`, `anno_fornitore`. Servono davvero, e servono all'unicità per fornitore — una bolla è identificata da **numero + anno del suo emittente**. La data di ricezione sta in una colonna data, non in un intero: tenerla in `anno` sarebbe la stessa collisione di `numero` un giro dopo → **§6** | **CHIUSA** |
+| **D-16** | **Le date di consegna violano D-12**: `data_consegna_confermata` esiste su vendite (nostra promessa) e acquisti (promessa del fornitore), stesso nome attore opposto — e §7-bis del carico/scarico le legge insieme, dove il nome della tabella sparisce. Proposta: *non marcato = nostro* → **§6, D-16** | ⚠️ tocca il brief, che è la comunicazione unica BE/FE. Nessuna delle 4 colonne esiste ancora | **APERTA — decidere presto** |
+| **D-17** | **La soglia dell'impegno (M-3) dipende dal satellite (D-3)**: M-3 legge la soglia da `config.stati_doc_*.codice_interno`, ma quel catalogo è **condiviso** con acquisti e senza discriminante non può portare **due soglie diverse** per i due cicli → **§7** | dipendenza non dichiarata da nessuna delle due parti fino al 2026-09-02 | **dichiarata, discende da D-3** |
 | **D-13b** | **`acquisti.ddt.data`**: è la data del documento del fornitore o quella di ricezione? | emersa chiudendo D-13: è `NOT NULL DEFAULT CURRENT_DATE`, e **il default è il campanello**. Proposta: `data_documento_fornitore` (sua, senza default) + ricezione su `data_ora_consegna_eff`. ⛔ Sono tre colonne dello stesso documento: farne due su tre lascia la terza a mentire | **APERTA** |
 | **D-14** | **La chiusura del ramo CREDITO** dei resi a fornitore | ⭐ buco individuato in revisione: la coda «da accreditare» non ha porta d'uscita finché non c'è il ciclo passivo. Serve la **dichiarazione esplicita di accredito**, sul modello di `resi_righe_rinunce` → **§8** | **da progettare — è del Lotto 3** |
 | **D-15** | **I presidi della classe «esiste e non è armata»** (3 viste `dbops` che devono restare vuote) | ⭐ proposto in revisione: 4 istanze in 2 analisi, nessuna produce un rosso → **§9-bis**. ⚠️ **cantiere di `dbops`, non di questo** | **proposta, fuori perimetro** |
@@ -489,6 +491,54 @@ stesso documento, e farne due su tre lascia la terza a mentire.
   (un ordine cumulativo). ⇒ nessun UNIQUE finché non è un caso reale: è un dato di
   riferimento, non una chiave.
 
+#### 🔴 D-16 — la convenzione NON è stata applicata alle date nuove (2026-09-02)
+
+**Rilievo in revisione incrociata, ed è fondato.** Il [brief delle modifiche
+certe](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) §2.2 introduce
+`data_consegna_confermata` **su due tabelle**, e l'attore è **opposto**:
+
+| Tabella | `data_consegna_richiesta` la esprime… | `data_consegna_confermata` la promette… |
+| --- | --- | --- |
+| `vendite.ordini_righe` | il **cliente** | **noi** |
+| `acquisti.ordini_righe` | **noi** | il **fornitore** |
+
+⛔ **Stesso nome, proprietario invertito — e per giunta incrociato**: su ogni tabella
+una delle due colonne è nostra e l'altra è della controparte, ma non la stessa. È
+precisamente il caso che D-12 è nata per prevenire, e stavolta **siamo in tempo**:
+nessuna delle quattro colonne esiste ancora.
+
+⚠️ **Perché la prima volta l'ho lasciato passare, e perché era sbagliato.** Avevo
+ragionato che «confermata» è neutro e che *quale* attore conferma si deduce dalla
+tabella. ⭐ **Il contesto che smonta l'argomento è arrivato dopo**: la vista di
+[§7-bis del carico/scarico](analisi-db-magazzino-carico-e-scarico.md) legge
+**entrambe** — l'impegnato dalle righe di vendita, l'in-arrivo da quelle di
+acquisto — e le mette accanto. ⛔ **Dentro una `UNION` o una `JOIN` il nome della
+tabella è esattamente ciò che sparisce**: restano due colonne omonime che
+promettono cose di due soggetti diversi.
+
+**La proposta — è la regola di D-12 applicata alla lettera**: *non marcato = nostro,
+marcato = della controparte.*
+
+| Tabella | Colonna nostra | Colonna della controparte |
+| --- | --- | --- |
+| `vendite.ordini_righe` | `data_consegna_confermata` | `data_consegna_richiesta_cliente` |
+| `acquisti.ordini_righe` | `data_consegna_richiesta` | `data_consegna_confermata_fornitore` |
+
+⭐ **Il guadagno si vede proprio nella vista di §7-bis**: chi la legge trova
+`data_consegna_confermata` accanto a `data_consegna_confermata_fornitore` e sa
+**a colpo d'occhio** quale promessa è nostra e quale del fornitore, senza risalire
+alla tabella d'origine.
+
+⚠️ **Costo, e va detto perché non è zero**: rinomina anche una colonna del **lato
+vendita** (`data_consegna_richiesta` → `_cliente`) che il brief già dichiara, ed è la
+comunicazione unica verso BE/FE. ⛔ **Non la applico d'ufficio**: è una decisione di
+naming che tocca il brief. Ma è il momento più economico possibile — dopo, sono
+quattro colonne in esercizio e due viste.
+
+📌 Ricadute: il brief §2.2 (le quattro colonne) e §5 (la parte BE/FE).
+
+---
+
 ⭐ E la simmetria che ne esce **vale anche per la vendita**: il «vostro riferimento» del
 cliente sull'ordine di vendita è lo stesso concetto, non ce l'ha nessuno, e il giorno che
 servirà avrà già la sua convenzione. Non lo faccio qui — è fuori perimetro — ma la regola
@@ -633,6 +683,33 @@ condizione che le due funzioni preservino il proprio contratto d'uscita. ⚠️ 
 condizione da **provare**, non da assumere: se una delle due cambia la forma del blob, il
 lotto «solo DB» rompe il dominio che funziona.
 
+### 🔴 D-17 — e c'è un consumatore che il satellite non sapeva di avere (2026-09-02)
+
+**Emerso dalla revisione incrociata.** La formula di «disponibile» decisa in
+[carico e scarico §7-bis, M-3](analisi-db-magazzino-carico-e-scarico.md) dice — e fa
+bene — che *«la soglia non va inventata: è già dato, viene da
+`config.stati_doc_*.codice_interno`»*.
+
+⛔ **Ma quel catalogo è proprio quello condiviso di ③.** E la conseguenza non è che
+le righe si mescolino — quelle restano distinte dalla tabella di provenienza — è più
+sottile e più seria:
+
+> La soglia dell'**impegno in uscita** (da quale stato un ordine di vendita blocca
+> merce) e la soglia dell'**atteso in entrata** (da quale stato un ordine di acquisto
+> conta come merce in arrivo) sono **due domande diverse**, e non c'è nessuna ragione
+> perché la risposta sia lo stesso stato. ⛔ **Oggi non c'è dove scriverle
+> separatamente**: `CONFERMATO` è una riga sola, e vale per tutti e due i cicli.
+
+⭐ **È esattamente ciò che la colonna `ordine` sul paio è nata per portare** (§7): il
+satellite non serve solo a dire *quali* stati un ciclo ammette, ma anche *da quale
+punto in poi* quel ciclo considera l'impegno preso. Senza, M-3 può leggere una
+soglia sola e spacciarla per due.
+
+⇒ **La dipendenza va dichiarata da entrambe le parti** — fatto il 2026-09-02 — e
+l'ordine è quello: **D-3 (la forma del satellite) precede l'implementazione di
+M-3**, non il contrario. ⚠️ Non blocca la *decisione* M-3, che è presa: blocca la
+vista che la realizza.
+
 ### E lo stesso trattamento serve a `config.stati_doc_ddt`
 
 ⚠️ È la seconda occorrenza della stessa cosa, e conviene farle **insieme**: gli stati del DDT
@@ -759,8 +836,12 @@ Sono quelle che hai descritto, con il nome del gemello di vendita accanto:
 1. **CARICO** — la merce entra in magazzino. Causale `CARICO_ACQ` (segno `+1`) **esiste già** a
    seed in `magazzino.causali`.
 2. **RESO AL FORNITORE, a credito** — torna indietro e ci aspettiamo una nota di credito.
-   ⛔ La causale di scarico per reso a fornitore **non esiste** nel seed: c'è `SCARICO_VEN` (DDT
-   vendita) ma nessuna `SCARICO_RESO_FORN`.
+   ⛔ La causale di scarico per reso a fornitore **non esiste** nel seed.
+
+📌 **Il vocabolario delle causali, e le due che mancano, non stanno più qui**: dal 2026-09-02
+sono in [analisi-db-magazzino-carico-e-scarico §2 e §3](analisi-db-magazzino-carico-e-scarico.md). Di questa sezione resta il
+**ciclo del documento** — le quattro destinazioni di una riga ricevuta; il *movimento* che ne
+consegue è di là.
 3. **RESO AL FORNITORE, per ri-consegna** — torna indietro e deve tornare. ⭐ Il residuo
    dell'ordine si riapre: è `riapre_residuo` applicato a `ordini_righe_fulfillment`.
 4. **RINUNCIA** — la quarta, che c'è in vendita e serve anche qui: si dichiara che quella quota
@@ -779,12 +860,17 @@ l'asse «fatturato dal fornitore» arriva col ciclo passivo. Va dichiarato nel m
 lasciato come colonna sempre vuota: una colonna che nessuno riempie, a video, si legge come un
 difetto (è la stessa lezione di ⑩).
 
-**b) Il carico dipende da decisioni che stanno in un altro brief.** `magazzino.movimenti` ha
-oggi **due** modi di dire da dove viene un movimento, e il DDT di acquisto **non è una
-sorgente registrata**. Sono D-1 e D-7 di
+**b) Il carico dipende da decisioni e da un meccanismo che stanno altrove, e sono due cose
+diverse.** Le **decisioni** — `magazzino.movimenti` ha due modi di dire da dove viene un
+movimento, e il DDT di acquisto **non è una sorgente registrata** — sono D-1 e D-7 di
 [analisi-db-magazzino-aggancio-documento-e-produzione.md](analisi-db-magazzino-aggancio-documento-e-produzione.md),
-e sono **aperte**. ⇒ La ricezione si può progettare, ma il momento in cui il carico tocca il
-ledger va concordato con quel cantiere, non deciso qui.
+e sono **aperte**. Il **meccanismo** del carico — verso della quantità, chi scrive, e come non
+caricare due volte lo stesso ricevimento parziale — è in
+[analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md).
+⭐ Da lì viene un fatto che questa sezione deve sapere: **il ricevimento parziale è il caso che
+smaschera l'identità sbagliata** di un movimento (là §6), ed è nato proprio guardando gli
+acquisti. ⇒ La ricezione si può progettare, ma il momento in cui il carico tocca il ledger va
+concordato con quei due documenti, non deciso qui.
 
 **c) Gli stati del DDT ricevuto sono altri.** `EMESSO`/`SPEDITO` non hanno senso per un
 documento che riceviamo: servono qualcosa come *RICEVUTO → VERIFICATO → CARICATO*, più
@@ -971,3 +1057,4 @@ volte.
 | 2026-09-01 | 🔴 **Revisione — il Lotto 1 non era tutto su terreno vuoto** (rilievo di Tid). ① Il satellite degli ambiti sta in `config`, su tabelle che **`vendite` usa in esercizio**: senza il backfill `VENDITE` completo il guard rifiuta il primo cambio di stato di un ordine di vendita. Il Lotto 1 è stato **spaccato in 1a (terreno vuoto, solo `acquisti`) e 1b (migrazione su dominio vivo)**, con l'invariante «nessuno stato senza ambito» da provare in pgTAP — il seed incompleto non fallisce, *non fa niente*. ② Verificata la **coda fuori dal DB**: cambiano **due** funzioni (`fn_available_actions_ordine`/`_ddt`), BE e FE **zero righe** perché il contratto è il campo emesso `stato_info_key` e non la colonna — ⚠️ ma la proprietà nel satellite deve restare `nessuna_azione_key`, o `check_i18n_keys.py` diventa verde per cecità. ③ **D-13 chiusa**: `serie` e `anno` sono del fornitore, e ne esce **D-13b** su `data` |
 | 2026-09-02 | 🔴 **Corretto un fatto sbagliato al §6** (rilievo di Tid), e **verificato sul DB** invece che ragionato: `format('%I', NULL)` **solleva** (`22004`, «i valori vuoti non possono essere formattati come un identificativo SQL»), non produce l'identificatore letterale. Era falso in tutte e due le metà. ⭐ La regola — saltare nella query che sceglie le famiglie — **non cambia**, e il motivo migliora: si fallirebbe con un errore **di PostgreSQL**, senza codice di dominio, dentro uno spostamento di billing account che con le famiglie non c'entra. ⚠️ Il ramo muto vive su `%s` (stringa vuota), non su `%I`. Allineato al [brief](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md) §3-bis, che era già stato corretto: i due documenti dicevano due cose opposte sullo stesso fatto |
 | 2026-09-02 | 🔴 **Tolta la cerimonia da produzione** (Tid: «i dati sono solo di test, possiamo fare quello che vogliamo»). Il §7 chiamava il Lotto 1b «migrazione su dominio vivo con dati veri» e ne faceva una cautela sui **dati**: registro sbagliato. ⭐ Riscritto sul punto vero, che ne esce **più forte** — il satellite non mette a rischio delle righe, mette a rischio **una funzione di vendita che gira**: un catalogo incompleto impedisce a *qualunque* ordine di cambiare stato, anche su un DB appena rifatto. ⇒ La distinzione da tenere: «niente produzione» toglie il rischio **sui dati**, non quello **funzionale**. Da tre obblighi a due, e il Lotto 1b rinominato |
+| 2026-09-02 | 🔴 **Revisione incrociata fra i quattro documenti — cinque contraddizioni, tutte verificate.** ① *riferimento morto*: la D-4 dell'analisi aggancio puntava a un §8-quater traslocato → ora punta a carico/scarico §6. ② *off-by-one*: cappello e §10 dell'analisi aggancio (e §10 della commessa) dicevano «D-1 → D-8» con la D-9 esistente → corretti. ③ il **passo 4** della sequenza nell'analisi commessa elencava ancora come da fare il verso della giacenza e «chi scrive», **decisi lo stesso giorno** (M-1, M-2) mentre la §6.B era già aggiornata → allineato. ④ ⭐ **D-16, e avevo sbagliato io**: `data_consegna_confermata` nasce su due tabelle con l'attore **invertito e incrociato**; avevo giudicato il nome neutro perché la tabella disambigua — ma la vista di §7-bis le legge **insieme**, e lì il nome della tabella sparisce. Proposta la regola di D-12 alla lettera (non marcato = nostro). ⑤ **D-17**: la soglia di M-3 legge un catalogo di stati **condiviso senza discriminante**, e le due soglie (impegno in uscita / atteso in entrata) sono due domande diverse che oggi hanno una riga sola → dipendenza dichiarata **da entrambe le parti**, D-3 precede la vista di M-3 |

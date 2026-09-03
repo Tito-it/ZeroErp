@@ -17,7 +17,7 @@ Approfondimento Tabelle:
 >
 Approfondimento funzioni:   
 >
-[anagrafiche.trgfn_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_dettaglio_normalize)    
+[anagrafiche.trgfn_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize)    
 > [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 

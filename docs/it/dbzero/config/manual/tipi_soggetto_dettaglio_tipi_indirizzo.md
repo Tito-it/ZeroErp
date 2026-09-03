@@ -11,7 +11,7 @@
 >
 **Funzioni / trigger collegati:**
 >
-[`anagrafiche.trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo) 
+[`anagrafiche.trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo) 
 > [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)
 
 ---

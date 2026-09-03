@@ -4,7 +4,6 @@
 >
 Approfondimenti tabelle note e messaggi:
 >
-[config.note_tipologie](/dbzero/config/tabelle/note_tipologie)
 > [config.lingue](/dbzero/config/tabelle/lingue)
 > [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
 >

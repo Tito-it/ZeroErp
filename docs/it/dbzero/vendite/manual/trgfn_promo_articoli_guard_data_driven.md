@@ -8,7 +8,7 @@ Approfondimento tabelle:
 >
 Approfondimento funzioni:
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
-> [script.trgfn_set_validita](/dbzero/script/funzioni/trgfn_set_validita)
+> `script.trgfn_set_validita` — **ritirata** (DROP `20260514-33`; `validita` e' oggi una colonna generata)
 > [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
 >
 Pattern correlato:

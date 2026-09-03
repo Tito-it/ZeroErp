@@ -73,7 +73,7 @@ serve a due cantieri indipendenti non dipende dalla forma di nessuno dei due.
 
 ⛔ **Non esiste alcuna data di consegna in tutto il database.** Cercata su
 `vendite`, `acquisti` e `magazzino` il 2026-09-01: l'unica data di previsione
-dell'intero modello è `magazzino.reservations.data_prevista`, in uno schema che
+dell'intero modello è `magazzino.reservations.data_prevista` (dal 2026-09-02 decisa come `magazzino.movimenti_attesi`), in uno schema che
 non è in esercizio.
 
 ⚠️ **Nessuna delle date esistenti serve, e vanno nominate per non farsele
@@ -121,6 +121,40 @@ preventivo non c'è ancora niente da confermare.
 
 ⛔ **`vendite.offerte_commerciali` NON entra**: non ha righe articolo (ha
 utilities ed eccezioni), quindi non c'è la riga a cui la data apparterrebbe.
+
+> 🔴 **I NOMI di queste quattro colonne sono in discussione — D-16, 2026-09-02.**
+> `data_consegna_confermata` compare **su due tabelle con l'attore invertito**: su
+> vendite la promessa è **nostra**, su acquisti è del **fornitore**. E la proprietà è
+> pure **incrociata**, perché `data_consegna_richiesta` su vendite la esprime il
+> *cliente* mentre su acquisti la esprimiamo *noi*.
+>
+> ⛔ È il caso che la convenzione **D-12** dell'[analisi
+> acquisti](analisi-simmetria-ordini-acquisto.md) è nata per prevenire — e il posto
+> dove morde è la vista di [carico e scarico
+> §7-bis](analisi-db-magazzino-carico-e-scarico.md), che legge **entrambe** per
+> comporre impegnato e in-arrivo: lì il nome della tabella sparisce e restano due
+> omonime che promettono cose di soggetti diversi.
+>
+> **Proposta** (*non marcato = nostro, marcato = della controparte*):
+>
+> | Tabella | Nostra | Della controparte |
+> | --- | --- | --- |
+> | `vendite.ordini_righe` | `data_consegna_confermata` | `data_consegna_richiesta_cliente` |
+> | `acquisti.ordini_righe` | `data_consegna_richiesta` | `data_consegna_confermata_fornitore` |
+>
+> ⚠️ **Da confermare prima di P-3**, ed è il momento più economico: nessuna delle
+> quattro colonne esiste. ⭐ Dopo sarebbero quattro colonne in esercizio più due viste
+> — e questo brief è la comunicazione unica verso BE/FE, quindi il nome che esce di
+> qui è quello su cui l'altro lato scriverà.
+
+⭐ **E sull'ordine d'acquisto la data non è «utile»: è necessaria** *(2026-09-02)*.
+La richiesta di mostrare la **merce in arrivo** sulla giacenza — [analisi carico e
+scarico §7-bis](analisi-db-magazzino-carico-e-scarico.md) — si realizza solo a metà
+senza `acquisti.ordini_righe.data_consegna_confermata`: *«ne arrivano 40»* non
+risponde a *«faccio in tempo a promettere la consegna di giovedì?»*. È il **secondo
+cantiere indipendente** che chiede la stessa colonna, e vale l'argomento della §1:
+una voce che serve a due cantieri che non si parlano non dipende dalla forma di
+nessuno dei due.
 
 ### 2.3 ⛔ Nessun CHECK fra le due date, ed è una scelta
 
@@ -491,7 +525,7 @@ non vengono da qui.
 | --- | --- | --- |
 | **P-1** | `config.modi_approvvigionamento`: tabella + seed + lock su `codice_interno` + `fk_index_policy` | `00_schema` + `80_data` |
 | **P-2** | `catalogo.articoli`: le tre colonne (FK, boolean, integer). ⚠️ **§4-bis**: decidere se il default di `modo_approvvigionamento_id` è `ACQUISTO` (il caso comune) o `NON_APPLICABILE` (quello che non mente) | `00_schema` |
-| **P-3** | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date | `00_schema` |
+| **P-3** | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ⚠️ **D-16 (§2.2) va confermata PRIMA**: decide i nomi | `00_schema` |
 | **P-4** | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_soggetto_ruolo_id`. ⚠️ **§4-bis**: `data_apertura` è `NOT NULL` o nullable? Se `NOT NULL`, il valore iniziale si prende da `data_insert`, non da «oggi» | `00_schema` |
 | **P-5** | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento) | `20_code` |
 | **P-6** | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` | `20_code` |
@@ -585,7 +619,7 @@ che forse non parte.
 | `uom_id` del componente e **sfrido** sulla BoM | analisi commessa §8.4 | dipendono dal fatto che la distinta di produzione sia o no `articoli_componenti`, che è **immutabile** per un altro motivo |
 | **Consuntivo**, ODL, ciclo di lavorazione | analisi commessa §6 e §7 | sono **strutture**, non colonne, e stanno di là dalla decisione |
 | Cliente proprio, budget, data di chiusura prevista sulla commessa | analisi commessa §8.5 ⏸️ | dipendono dalla §7 |
-| `vw_giacenza` (il segno) e la **causale di versamento** | analisi magazzino §5, §6, §9 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì |
+| `vw_giacenza` (il segno) e la **causale di versamento** | ⭐ *aggiornato 2026-09-02*: hanno una sede loro, [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md) §4, §3 e §7 | ⚠️ **il fatto è certo, la forma è una decisione**: che vadano toccati non è in dubbio, *come* sì. ✅ *2026-09-02*: la **scelta sul verso è presa** (sta nella quantità), quindi `vw_giacenza` **resta com'è**; di lei resta da scrivere il `COMMENT` che dice perché. La causale di versamento è ancora aperta |
 | `uq_mag_movimenti_docref` | analisi magazzino **§8-quater** (D-4) | ⭐ *aggiornato 2026-09-01 sera*: la forma ora **c'è** — chiave dell'operazione, colonna e non tabella. Resta fuori di qui perché è `magazzino` e perché la D-4 è di Tid, non perché manchi il disegno |
 | `causali.ambito_causale_id` | analisi magazzino D-8 | ⭐ *aggiornato*: gli appunti di revisione lo chiudono («valorizzare», + `NOT NULL` perché l'undicesima causale non rinasca vuota). ⇒ smetterà di essere una decisione, ma resta `magazzino`: andrà in un piano suo, non qui |
 | Chi scrive un movimento di magazzino | analisi magazzino D-1 | la forma del riferimento al documento è la prima decisione aperta |

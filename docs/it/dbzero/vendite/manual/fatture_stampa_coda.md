@@ -29,6 +29,8 @@ di numerazione e **non** tiene il lock del registro fiscale.
   `ultimo_errore` (dettaglio JSONB dell'ultimo fallimento).
 * **Esito**: `documento_id` (documento prodotto a `FATTO`).
 * **Override**: `template_documento_id` (opzionale; `NULL` = default per sorgente/emittente/output).
+* **Visibilità nell'elenco**: `archiviato`, `archiviato_il`, `archiviato_da` (dal 2026-09-04)
+  — la riga è **messa via dall'elenco**, non spenta. Vedi «Archiviare una riga» più sotto.
 * **Governance**: audit standard + `tx_id`.
 
 ---
@@ -44,8 +46,43 @@ di numerazione e **non** tiene il lock del registro fiscale.
 * **Satellite della fattura**: `sorgente_id` FK a `vendite.fatture` (`ON DELETE CASCADE`). La
   RLS operatori (scope emittente) **delega alla fattura** via
   `script.fn_scope_ef_whitelist_via_fattura(sorgente_id)`, senza colonna emittente
-  denormalizzata; l'attivazione RLS segue il playbook della famiglia fatture con ondata
-  dedicata (in G1 la coda non ha superficie di lettura → nessuna policy).
+  denormalizzata.
+  ⭐ **Dal 2026-09-04 la policy c'è ed è armata**: `rls_fatture_stampa_coda_ef_whitelist`,
+  `FOR ALL` con `WITH CHECK = USING`, gate `OPERATORE`, `NO FORCE` a parità con la famiglia
+  fatture.
+  ⚠️ **Fin qui questa riga diceva «*in G1 la coda non ha superficie di lettura → nessuna
+  policy*», e quella premessa è scaduta in due tempi**: prima con la lista a video della
+  scheda «Coda stampa» di Strumenti (`elenca_coda_stampa`), poi — ed è ciò che l'ha resa
+  urgente — con il verbo «Archivia», che è la **prima scrittura dell'operatore** su questa
+  tabella. Una frase che decide se serve una policy, e che descrive un mondo che non c'è più,
+  è il genere di riga che resta vera in archivio e falsa nel prodotto.
+* ⛔ **Nessuna policy `ba_ownership`**: la coda stampa non è una superficie del portale
+  cliente. Il giorno che lo diventasse, si aggiunge lì.
+* **Non è più single-writer**: oltre al drainer scrive l'operatore (archiviazione). I trigger
+  di audit e `tx_id` questa tabella **ce li ha** — li generano le automazioni a `ci_apply`,
+  quindi non compaiono in nessun changeSet.
+
+---
+
+### Archiviare una riga senza toccarne lo stato
+
+Vale la regola condivisa con [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori), stessa
+funzione trigger (`dbops.trgfn_coda_archiviazione`) e stesso codice errore
+`E_CODA_ARCHIVIAZIONE_NON_AMMESSA`: **si archivia solo una riga non viva**, e una riga che
+torna viva riabbassa la bandiera da sola.
+
+⭐ **Qui la ragione del limite è più concreta che altrove, e non dipende dal badge**: una riga
+**viva** archiviata occuperebbe lo slot di `uq_fatture_stampa_coda_vivo` e
+**bloccherebbe la ristampa** di quella fattura restando invisibile — l'operatore chiede la
+ristampa, non succede niente, e non c'è nessun posto dove guardare. Sulle righe **terminali**
+il problema non esiste per costruzione: l'indice parziale non le vede, quindi
+`vendite.fn_accoda_stampe_lotto` fa nascere una **riga nuova** e non tocca quella archiviata.
+
+⛔ **Il flag lo legge solo la lista.** In particolare **non** lo legge
+`VenditePipelineRepository.count_coda_stampa_per_stato`, che alimenta il pannello Esiti
+fatturazione: è esattamente il punto per cui l'archiviazione esiste.
+
+Brief: `brief-db-archiviazione-righe-code`.
 
 ---
 

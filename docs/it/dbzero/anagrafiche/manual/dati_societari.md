@@ -9,7 +9,7 @@ Approfondimento Tabelle:
 >
 Approfondimento funzioni e trigger:   
 >   
-[anagrafiche.trgfn_dati_societari_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_gauard_tipo_soggetto)
+[anagrafiche.trgfn_dati_societari_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto)
 > [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 > [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 

@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ARCHIVIARE UNA RIGA DI CODA SENZA TOCCARNE LO STATO — coda stampa
+#   vendite.fatture_stampa_coda, gemello del 20260904-01
+#   Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9 (voce 2)
+#
+# ── ⭐ SIMMETRICHE DAL PRIMO GIORNO, NON «PRIMA UNA POI L'ALTRA» ─
+#   Le due code sono gemelle: stesso scheletro di lista (CodaTabBase), stessa
+#   domanda dell'operatore, stessa forma di riga. Un'asimmetria qui si paga al
+#   primo che tocca una sola delle due — e il modo per non pagarla non e'
+#   ricordarsene: e' il presidio pgTAP che CONFRONTA le due tabelle (colonne,
+#   tipi, vincoli, trigger). Finche' la simmetria resta prosa in un brief, la
+#   prima divergenza passa.
+#
+# ── ⭐ LA REGOLA E' LA STESSA PAROLA, GLI STATI NO ──────────────
+#   chk_fatture_stampa_coda_stato ammette PENDING, IN_CORSO, FATTO, ERRORE:
+#   NON ha ANNULLATO, che invece dbops.coda_lavori ha (li' l'annullo esiste
+#   come verbo, qui no). Un CHECK scritto come ELENCO DEI TERMINALI sarebbe
+#   quindi diverso fra le due tabelle, e la simmetria del §2.1 sarebbe subito
+#   una simmetria apparente.
+#   ⇒ Scritto in negativo — «non viva» — e' la STESSA riga su entrambe, e resta
+#   vera se un giorno la coda stampa imparasse ad annullare.
+#
+# ── ⭐ L'ARGOMENTO CHE VALE SOLO QUI, ed e' il piu' forte ───────
+#   Su questa tabella una riga VIVA archiviata occuperebbe lo slot dell'indice
+#   unico parziale uq_fatture_stampa_coda_vivo (sorgente_tipo_id, sorgente_id)
+#   WHERE stato IN ('PENDING','IN_CORSO'), e quindi BLOCCHEREBBE LA RISTAMPA di
+#   quella fattura restando invisibile. Non «l'operatore legge 2 e vede 0»:
+#   l'operatore chiede una ristampa, non succede niente, e non c'e' nessun posto
+#   dove guardare.
+#   ⭐ Sulle righe TERMINALI il problema non esiste per costruzione — l'indice
+#   parziale non le vede — quindi ri-accodamento e ristampa restano intatti:
+#   vendite.fn_accoda_stampe_lotto fa ON CONFLICT ... WHERE stato IN
+#   ('PENDING','IN_CORSO') DO NOTHING, cioe' la ristampa di una riga terminale
+#   nasce come RIGA NUOVA e non tocca quella archiviata.
+#
+# ── ⚠️ QUESTA TABELLA STA PER DIVENTARE MULTI-WRITER ────────────
+#   `manual/fatture_stampa_coda.md` e `manual/coda_lavori.md` la descrivono
+#   come SINGLE-WRITER (il solo drainer). Il verbo «Archivia» e' la PRIMA
+#   scrittura dell'operatore su questa tabella, e con essa quella premessa
+#   scade — insieme all'altra, «in G1 la coda non ha superficie di lettura ->
+#   nessuna policy», che il 20260904-05/06 chiude armando la RLS.
+#   Entrambe le doc si aggiornano in questo cantiere.
+#
+# Dipendenze: nessuna. Il trigger che le governa arriva col 20260904-04.
+# Verifica: db/pgtap/dbops/test-coda-archiviazione.sql (compreso il presidio di
+#   simmetria fra le due code).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260904-02-alter-fatture-stampa-coda-archiviazione-mctit.yaml
+
+  - changeSet:
+      id: 20260904-02-alter-fatture-stampa-coda-archiviazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fatture_stampa_coda prende `archiviato`, `archiviato_il`, `archiviato_da`: gemello
+        esatto del 20260904-01 su dbops.coda_lavori. ⭐ Simmetriche dal primo giorno, non «prima una poi
+        l''altra»: le due code hanno lo stesso scheletro di lista e la stessa domanda, e un''asimmetria
+        si paga al primo che tocca una sola delle due — a presidiarla e'' un pgTAP che CONFRONTA le due
+        tabelle. ⭐ Il CHECK e'' scritto in negativo («non viva») e non come elenco dei terminali proprio
+        perche'' qui gli stati sono QUATTRO e non cinque (manca ANNULLATO): in negativo e'' la stessa
+        riga su entrambe. ⭐ E qui l''argomento e'' piu'' forte del badge: una riga viva archiviata
+        occuperebbe lo slot di uq_fatture_stampa_coda_vivo e bloccherebbe la RISTAMPA della fattura
+        restando invisibile. Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_stampa_coda
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_stampa_coda
+                    columnName: archiviato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_stampa_coda
+                  ADD COLUMN archiviato    BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN archiviato_il TIMESTAMPTZ,
+                  ADD COLUMN archiviato_da TEXT;
+
+              -- ⭐ Identico, PAROLA PER PAROLA, a quello di dbops.coda_lavori:
+              --    e' il punto della simmetria. Se fosse scritto come elenco
+              --    dei terminali sarebbe gia' diverso, perche' qui ANNULLATO
+              --    non esiste.
+              ALTER TABLE vendite.fatture_stampa_coda
+                  ADD CONSTRAINT chk_fatture_stampa_coda_archiviato_non_vivo
+                  CHECK (NOT archiviato OR stato NOT IN ('PENDING', 'IN_CORSO'));
+
+              ALTER TABLE vendite.fatture_stampa_coda
+                  ADD CONSTRAINT chk_fatture_stampa_coda_archiviato_coerente
+                  CHECK ((archiviato_il IS NOT NULL) = archiviato
+                     AND (archiviato_da IS NOT NULL) = archiviato);
+
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.archiviato IS
+              'La riga e'' stata MESSA VIA dall''elenco, non spenta. ⭐ Esiste perche'' l''operatore deve poter ripulire la coda stampa senza spostare i numeri del pannello Esiti fatturazione, che sono un GROUP BY sullo stato SENZA filtro di visibilita'' (VenditePipelineRepository.count_coda_stampa_per_stato): una cancellazione li fa calare, un annullamento sposta la ripartizione. ⛔ UN SOLO LETTORE: la lista (elenca_coda_stampa). Ne'' il claim, ne'' il drainer, ne'' il reaper, ne'' i conteggi — un lettore in piu'' e'' un annullamento silenzioso. ⚠️ Solo una riga NON VIVA si archivia: una riga viva archiviata occuperebbe lo slot di uq_fatture_stampa_coda_vivo e BLOCCHEREBBE LA RISTAMPA della fattura restando invisibile — l''operatore chiede la ristampa, non succede niente, e non c''e'' nessun posto dove guardare. Sulle terminali il problema non esiste per costruzione: l''indice parziale non le vede, e fn_accoda_stampe_lotto fa nascere una riga NUOVA. ⭐ Gemella di dbops.coda_lavori.archiviato, stessa regola e stesso trigger. Piano: brief-db-archiviazione-righe-code.';
+
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.archiviato_il IS
+              'Quando la riga e'' stata messa via. ⭐ DERIVATA: la scrive dbops.trgfn_coda_archiviazione, non chi archivia. ⛔ `data_update` non e'' un sostituto e sembra esserlo — qui e'' anche la chiave di ORDINAMENTO DI DEFAULT della lista («Aggiornato»), cioe'' risponde gia'' a una domanda sua: «quando e'' stata toccata l''ultima volta». Questa risponde a «quando e'' stata messa via». Due domande, due colonne. ⚠️ Torna NULL quando la bandiera si abbassa. Piano: brief-db-archiviazione-righe-code.';
+
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.archiviato_da IS
+              'Chi ha messo via la riga: la GUC app.jwt_user (l''utente reale del token) con ripiego su CURRENT_USER, la stessa espressione di script.trgfn_audit_data_user_generic. ⭐ DERIVATA come archiviato_il, dallo stesso trigger. ⚠️ Esiste perche'' l''argomento contro `data_update` vale identico contro `user_update` (decisione di Tid, 2026-09-04). ⚠️ L''archiviazione vale per TUTTI: la riga sparisce dall''elenco di chiunque, e il verbo e'' percio'' riservato a code_manage. Piano: brief-db-archiviazione-righe-code.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_stampa_coda
+                  DROP CONSTRAINT IF EXISTS chk_fatture_stampa_coda_archiviato_coerente,
+                  DROP CONSTRAINT IF EXISTS chk_fatture_stampa_coda_archiviato_non_vivo;
+              ALTER TABLE vendite.fatture_stampa_coda
+                  DROP COLUMN IF EXISTS archiviato_da,
+                  DROP COLUMN IF EXISTS archiviato_il,
+                  DROP COLUMN IF EXISTS archiviato;

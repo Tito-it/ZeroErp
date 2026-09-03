@@ -9,7 +9,7 @@
 > * [Linee guida SQL](/linee-guida-sql) — convenzioni di naming obbligatorie per il corretto funzionamento del framework
 > * [Guida Storicizzazione Tabelle](/guide/storicizzazione-tabelle)
 > * [Guida tx_id](/guide/tx_id_implementation_guide)
-> * [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job)
+> * [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job)
 
 ---
 

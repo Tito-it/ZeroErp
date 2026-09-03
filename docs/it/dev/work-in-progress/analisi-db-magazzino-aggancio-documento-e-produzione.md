@@ -23,7 +23,7 @@
 > `brief-db-…` a `analisi-db-…`: ⭐ è la stessa distinzione già usata dal cantiere
 > numerazione, dove l'**analisi** dice *perché* e il **brief** dice *cosa si fa*.
 > ⛔ **Di questo documento non esce nessuna modifica certa**, ed è il suo esito
-> vero: ogni voce qui dentro è agganciata a una delle D-1 → D-8. Il piano
+> vero: ogni voce qui dentro è agganciata a una delle D-1 → D-9. Il piano
 > operativo delle sole modifiche **certe** vive in
 > [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
 > e sta quasi tutto su `vendite` e `catalogo`.
@@ -85,6 +85,12 @@ per dire che un caso non esiste.
 | --- | --- | --- |
 | **Sorgente polimorfa a catalogo** | `sorgente_tipo_id` → `config.sorgenti` (FK) + la chiave del record puntato | `rettifiche`, `trasferimenti`, `inventari`, `eventi_assets` |
 | **Riferimento testuale libero** | `doc_schema` + `doc_table` + `doc_id` + `doc_riga_id`, tutte stringhe/bigint **senza FK e senza catalogo** | ⛔ `movimenti` (il ledger) e `reservations` |
+
+📌 **`reservations` è decisa come `magazzino.movimenti_attesi`** dal 2026-09-02
+(generica sui due versi, gemella del ledger): la decisione e le sue ragioni stanno
+in [analisi-db-magazzino-carico-e-scarico §7-bis](analisi-db-magazzino-carico-e-scarico.md). ⚠️ In questo documento
+resta il nome di oggi, perché qui si descrive la struttura **esistente** — ma il
+punto della D-1 vale identico sotto il nome nuovo.
 
 ⛔ **Il paradosso è nella colonna di destra.** Le tabelle di *testata* — una
 rettifica, un trasferimento, un inventario — puntano al catalogo. **Il ledger,
@@ -206,6 +212,13 @@ riferimento a vuoto, e nessun vincolo se ne accorgerebbe.**
 causali del seed la colonna `ambito_causale_id` è **vuota**. Il vocabolario dei
 sei ambiti esiste e **non è collegato a niente**.
 
+📌 **Il vocabolario delle causali per intero** — tutte e dieci, con segno,
+valorizzazione e ambito, più le due che **mancano** (il versamento del prodotto
+finito e lo scarico per reso a fornitore) — sta in
+[analisi-db-magazzino-carico-e-scarico §2 e §3](analisi-db-magazzino-carico-e-scarico.md). Qui restano le sole due
+causali `ODL_*`, perché servono all'argomento di questa sezione: che la produzione
+era stata **nominata** e l'oggetto a cui punta non esiste.
+
 ---
 
 ## 7. Perché la produzione non è «un consumatore in più»
@@ -243,7 +256,7 @@ si fa quando il dominio ha un ciclo di vita che il magazzino non deve conoscere.
 | **D-1** | **Un modello solo o due?** `movimenti`/`reservations` passano alla sorgente a catalogo, oppure `doc_schema/doc_table/doc_id` resta ed è **il** modello del ledger — e allora sono le quattro testate a doversi allineare a lui. ⛔ Quello che non regge è **tenerli entrambi senza una regola** | è una scelta di architettura del dominio, e vale anche per `acquisti`, che ha lo stesso doppio |
 | **D-2** | **Le quattro testate prendono `sorgente_riga`?** Se sì, diventano capaci di riferire le otto sorgenti `id` e il guard tipizzato ha finalmente dove agganciarsi. Se no, va scritto **quali sorgenti sono ammesse** e presidiato | dipende da D-1 |
 | **D-3** | **Si aggancia il guard tipizzato** alle tabelle del modello A, in `magazzino` e altrove? ⭐ Oggi non presidia niente: o trova i suoi consumatori o è codice morto | il roll-out tocca 15 tabelle: è un perimetro, non una riga |
-| **D-4** | **`uq_mag_movimenti_docref`: che cosa deve vincolare davvero?** Le tre forme sono: toglierlo, renderlo `NULLS NOT DISTINCT` con dentro `causale_id` o `transfer_uid`, oppure spostare l'unicità su una **chiave dell'operazione**. ⭐ La terza è scritta per intero al **§8-quater**, con le due condizioni senza cui non funziona | ⛔ oggi il vincolo dice due cose opposte a seconda di un NULL: qualunque scelta è meglio, ma va scelta. ⚠️ E toglierlo porta via anche una protezione buona non dichiarata (il doppio scarico): la sostituzione si decide **insieme** alla rimozione |
+| **D-4** | **`uq_mag_movimenti_docref`: che cosa deve vincolare davvero?** Le tre forme sono: toglierlo, renderlo `NULLS NOT DISTINCT` con dentro `causale_id` o `transfer_uid`, oppure spostare l'unicità su una **chiave dell'operazione**. ⭐ La terza è scritta per intero — con le due condizioni senza cui non funziona — in [analisi-db-magazzino-carico-e-scarico §6](analisi-db-magazzino-carico-e-scarico.md). ⚠️ *Fino al 2026-09-02 questo puntatore diceva «§8-quater», sezione che nel frattempo è stata traslocata: era un riferimento morto* | ⛔ oggi il vincolo dice due cose opposte a seconda di un NULL: qualunque scelta è meglio, ma va scelta. ⚠️ E toglierlo porta via anche una protezione buona non dichiarata (il doppio scarico): la sostituzione si decide **insieme** alla rimozione |
 | **D-5** | **L'ODL è una sorgente o un anello?** (§7). Da questa discende se `config.sorgenti` cresce di 1 riga o se nasce uno schema `produzione` | è la decisione di dominio, e la prende Tid |
 | **D-6** | **Il movimento senza documento è ammesso?** Se sì, `doc_*` smette di essere NOT NULL e serve una regola su chi può ometterlo; se no, ogni movimento deve avere un documento **che esiste**, e allora serve il catalogo | ⚠️ oggi la risposta è «obbligatorio, ma non verificato»: il peggiore dei tre mondi |
 | **D-7** | **Acquisti entra nel catalogo delle sorgenti?** `CARICO_ACQ` è la prima causale del seed e il DDT di acquisto non è una sorgente registrata | tocca `acquisti`, che è un altro dominio fermo |
@@ -302,221 +315,22 @@ nessuna vista di orfani lo intercetta.
 
 ---
 
-## 8-ter. L'ordine in cui conviene costruire
+## 8-ter. L'ordine di costruzione e la regola anti-doppio — **traslocati**
 
-> Anche questo dalla nota di revisione del 2026-09-01, ed è la parte che
-> sottoscrivo per intera.
+📌 **Spostati il 2026-09-02 in [analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md)**,
+insieme al resto di ciò che riguarda **come si scrive un movimento**.
 
-| # | Passo | Perché in questo punto |
-| --- | --- | --- |
-| 1 | **Sistemare il segno delle causali** *prima* della prima riga | è la cosa che, sbagliata, falsa ogni numero a valle — e correggerla dopo vuol dire ricalcolare tutto (⚠️ perimetro dell'analisi successiva, §9) |
-| 2 | **Inventario iniziale** come primo carico | è la sorgente più semplice: **non ha un documento a monte**, quindi collauda il registro senza dipendere da nessuna catena |
-| 3 | **Scarico da bolla di vendita** come primo consumo | il primo caso con un documento vero dietro, su una catena che esiste già ed è collaudata |
-| 4 | **Acquisti** come seconda sorgente | entra su un registro già provato, e porta con sé la sua decisione (D-7) |
-| 5 | **Produzione** come terza | ⭐ se i punti sopra sono stati decisi bene, è *una sorgente in più e un set di causali*, non una riscrittura |
+* la sequenza in cui conviene costruire i carichi e gli scarichi (inventario →
+  scarico da bolla → acquisti → produzione) è ora la sua **§8**;
+* la regola anti-doppio — l'identità di un movimento, cioè la risposta alla
+  **D-4** di questo documento — è la sua **§6**.
 
-⚠️ **Il passo 3 è il primo che ha bisogno del §8-quater**: è lì che nasce il
-doppio scarico, e la chiave dell'operazione va decisa prima di scriverlo — non
-dopo aver tolto l'indice.
+⭐ **Il motivo del trasloco**: quel ragionamento non era di questo documento. Qui
+si decide **come un movimento dichiara la propria origine** (D-1 → D-9); là si
+descrive **come il movimento si scrive**. Erano due argomenti in un documento
+solo, e il secondo non si ritrovava perché nessun titolo lo nominava.
 
-⚠️ **Ma il passo 2 è già la prova della D-6, e va saputo prima di farlo.**
-L'inventario iniziale è proprio il caso del **movimento senza documento
-commerciale** — mentre oggi le tre caselle del riferimento sono **obbligatorie**.
-Quindi la primissima riga che si scriverà in magazzino è esattamente quella che
-mette alla prova la decisione che nessuno ha ancora preso. È un ottimo collaudo
-e una pessima sorpresa: **D-6 va decisa prima del passo 2**, non durante.
-
-⚠️ **E una nota sul passo 5**, per non lasciare in piedi una rassicurazione
-sbagliata: *«la produzione sarà una sorgente in più, non una riscrittura»* è vero
-**solo se D-4 e D-6 vengono decise adesso**. Se il vincolo di §5 resta com'è, la
-produzione — che preleva e versa **in più riprese**, quindi molti movimenti per
-una sola riga di ordine — quel vincolo lo riscrive. E il «nuovo set di causali»
-in buona parte **c'è già** (§6): quello che manca è l'ordine di lavoro, non le
-causali.
-
----
-
-## 8-quater. La chiave dell'operazione — dove vive la regola anti-doppio (D-4)
-
-> **Origine:** appunti di revisione portati da Tid il 2026-09-01 (*«quell'indice va
-> tolto, non riparato: è una chiave di idempotenza travestita da vincolo
-> semantico»*) e la domanda che ne è seguita — *«la stessa colonna potrebbe
-> impedire anche il doppio carico, quando riceveremo gli acquisti?»*. Sì, e la
-> risposta completa è questa sezione.
->
-> ⚠️ **È una proposta, non una decisione presa.** La D-4 resta di Tid: qui c'è la
-> terza delle sue tre forme, scritta per intero perché sia scegliibile.
-
-### Il difetto non è che l'indice sia sbagliato: è che risponde a un'altra domanda
-
-`uq_mag_movimenti_docref` guarda il **documento**. Ma il documento è il
-*contesto* di un movimento, non la sua *identità*: da una riga di documento
-possono nascere legittimamente N movimenti, e già oggi ne nascono due (il
-trasferimento). ⛔ Vincolare sul documento significa scrivere «una riga di
-documento, un movimento», che è una frase **falsa adesso**, non fra due cantieri.
-
-⭐ E c'è una protezione buona nascosta là dentro che nessuno aveva dichiarato: di
-rimbalzo, quell'indice impedisce anche il **doppio scarico** della stessa riga di
-bolla. Togliendolo si porta via anche quella. ⚠️ **Per questo la sostituzione va
-decisa insieme alla rimozione, non a valle**: toglierlo e basta lascia scoperto un
-caso che capita davvero.
-
-### Il precedente è già in esercizio, e non è una tabella
-
-Lo stesso identico problema — *un batch rilanciato non deve spingere due volte la
-stessa riga* — è già risolto nella pipeline di fatturazione, ed è risolto con una
-**colonna**: `vendite.commesse_attivita.segment_key`, con
-`uq_commesse_attivita_commessa_segment` su `(commessa_id, segment_key)`. Le chiavi
-sono composte a mano e ricalcolabili — verificato il 2026-09-01, i prefissi in uso
-sono `ORD`, `DDT`, `PREV`, `MAN` (es. `ORD:{uid}:R:{riga}`).
-
-⛔ **Una tabella dedicata «registro degli scarichi» è la versione debole**, e va
-scartata per una ragione di modello: esisterebbe **solo per reggere un vincolo**,
-non risponde a nessuna domanda che qualcuno farebbe, e crea **due sedi dello
-stesso fatto** — il ledger dice «questa riga ha scaricato», il registro pure. Chi
-scrive un movimento senza passare di lì le separa in silenzio.
-
-⭐ **Quando invece una tabella è giusta**: quando la relazione *è* un dato che
-qualcuno legge. È il caso di `vendite.ordini_righe_fulfillment`, che esiste perché
-«quanto manca da evadere?» è una domanda vera — e l'unicità gli viene in regalo.
-Per lo scarico quella domanda non c'è: **il movimento stesso è la risposta**.
-
-### La proposta
-
-🔴 **Riscritta il 2026-09-02 dopo un rilievo di Tid**, e il rilievo cambia la
-forma. La prima stesura proponeva una **chiave testuale composta a mano**
-(`operazione_key`). ⛔ Se la D-1 atterra sul catalogo, il movimento porta **già**
-`sorgente_tipo_id` più la chiave del record: una stringa che ripete quelle
-informazioni è una **seconda sede dello stesso fatto** — precisamente ciò che
-questo documento contesta al §2 e che l'analisi acquisto contesta a
-`ddt.ordine_id`. *Non si può denunciare un doppio e poi introdurne uno.*
-
-⭐ **La forma giusta è derivata, non parallela**: l'identità di un movimento è
-**la sua sorgente più il verbo dell'operazione**.
-
-| Cosa | Come |
-| --- | --- |
-| Identità del movimento | `(sorgente_tipo_id, chiave della sorgente, verbo)` — nessuna colonna nuova che *ripeta* le prime due |
-| Colonna nuova | solo il **verbo**: `operazione_verbo` (`SCARICO`, `CARICO`, `OUT`, `IN`, `PRELIEVO`, `VERSAMENTO`, …) |
-| Il vincolo | `UNIQUE` **parziale** sulle tre, attivo dove la sorgente è valorizzata |
-| `uq_mag_movimenti_docref` | ⛔ si **toglie** |
-| `transfer_uid` | resta, e fa il lavoro **opposto**: raggruppa i due movimenti di un trasferimento (il suo indice è **non** unico, apposta). Una dice «questi vanno insieme», l'altra «questo esiste una volta sola» |
-
-⭐ **Dove l'operazione è essa stessa un record, la sorgente È l'operazione** — e
-allora non c'è più niente da comporre: il ricevimento, il prelievo, la riga
-d'inventario hanno un id, e quello è la chiave. ⚠️ Ne discende che il catalogo
-deve conoscere anche le **operazioni**, non solo i documenti commerciali: è
-esattamente l'allargamento che la D-6 già richiede, non un costo nuovo.
-⭐ E il precedente c'è: `config.sorgenti` porta già **cinque sorgenti di riga** —
-`DDT_VENDITA_RIGA`, `ORDINE_VENDITA_RIGA`, `FATTURA_RIGA`, `CONTRATTO_RIGA`,
-`PREVENTIVO_RIGA`, tutte con `key_selector = 'id'`.
-
-⚠️ **Perché resta tutto nullable, e non è pigrizia.** Ci saranno movimenti senza
-un'operazione a monte (una correzione a mano, un caso nuovo). Con le colonne
-obbligatorie, chi non ha una sorgente **se la inventa** — ed è esattamente il modo
-in cui il riferimento libero di §2 si sporca il primo giorno. Chi ha una sorgente
-è protetto; chi non ce l'ha passa, e **si vede** che non ce l'ha.
-
-#### ⛔ E la stringa leggibile? Non può essere una colonna generata
-
-La tentazione successiva è tenere anche una stringa parlante — `DDT:47:SCARICO` —
-come colonna **generata**, così non può contraddire le altre. ⛔ **Non è
-possibile, ed è verificato il 2026-09-02**: una `GENERATED ALWAYS AS … STORED` non
-ammette sottoquery (*«non è possibile utilizzare la sottoquery nell'espressione di
-generazione di colonne»*), e il prefisso vive in `config.sorgenti` — cioè
-richiede un join.
-
-⇒ Delle due l'una, e vanno tenute distinte:
-
-| | Dove sta l'identità | Il prefisso | Il rischio |
-| --- | --- | --- | --- |
-| **A — consigliata** | sulle **colonne** `(sorgente, chiave, verbo)` | non serve: nessuna stringa da comporre | ⭐ la contraddizione è **impossibile**, non «rilevabile» |
-| **B** | su una stringa scritta dalla funzione madre | dal `codice_interno` del catalogo | ⚠️ la stringa può **divergere** dalle colonne, e serve un presidio che lo scopra |
-
-⭐ **Si può avere anche la leggibilità, senza pagarla**: la stringa parlante la
-compone una **vista** (che il join lo può fare), non una colonna. Nessun dato
-duplicato, nessuna divergenza possibile, e chi legge il ledger vede
-`DDT_VENDITA_RIGA:47:SCARICO` lo stesso.
-
-### ⛔ Le due condizioni senza cui non funziona
-
-**1. La chiave la compone l'OPERAZIONE, non il documento.**
-Sul ricevimento di acquisto la stessa riga di bolla del fornitore può caricare
-**più volte, legittimamente**: arrivano 100 pezzi, se ne accettano 60 oggi e 40
-dopo il controllo. E c'è la **ri-consegna**, dove la stessa riga d'ordine riceve
-merce una seconda volta. ⛔ Una chiave `BOLLA-ACQ:{riga}:CARICO` respingerebbe il
-secondo carico legittimo — cioè riprodurrebbe il difetto di partenza con un nome
-più bello. **Il documento entra nella chiave come contesto; l'identità è
-l'operazione** («il ricevimento numero 3 della riga 47», non «la riga 47»).
-
-**2. La chiave è RICALCOLABILE, non estratta a caso.**
-Un identificativo casuale generato a ogni chiamata produrrebbe una chiave **nuova**
-a ogni tentativo ripetuto: nessuna collisione, doppio movimento, e una protezione
-che *sembra* esserci. Deve valere *dagli stessi fatti esce sempre la stessa
-chiave* — è precisamente la proprietà per cui `segment_key` funziona.
-⇒ Ne discende **chi la compone**: la funzione madre che scrive il movimento, in
-modo deterministico. ⚠️ Non un valore che arriva dal backend a ogni chiamata.
-
-### Che cosa copre, senza aggiungere niente per ogni caso nuovo
-
-> ⚠️ La colonna di mezzo mostra la **forma leggibile** (quella che compone la
-> vista). L'identità vera è la terna `(sorgente, chiave, verbo)`: sotto ogni riga
-> di questa tabella c'è quella, non una stringa memorizzata.
-
-| Operazione | Come si legge | Nota |
-| --- | --- | --- |
-| Scarico da riga di bolla di vendita | `DDT_VENDITA_RIGA:{riga}:SCARICO` | ⭐ la sorgente **esiste già** a catalogo |
-| Carico da bolla del fornitore, anche **parziale e ripetuto** | sorgente = il **ricevimento**, non la riga di bolla | ⭐ è il caso che smaschera l'identità sbagliata |
-| Reso al fornitore | sorgente = il reso | |
-| Ri-consegna sullo stesso ordine | sorgente = la ri-consegna | non collide col primo carico |
-| Trasferimento | stessa sorgente, verbo `OUT` e verbo `IN` | ⭐ due righe distinte: **il caso che l'indice di oggi sbaglia** |
-| Prelievi e versamenti di produzione | sorgente = il prelievo / il versamento | N legittimi, nessuno blocca l'altro |
-| Inventario, rettifica | sorgente = la propria riga | |
-| Correzione a mano, senza operazione | sorgente vuota | ⚠️ il vincolo parziale non si applica: passa, e **si vede** che è così |
-
-⭐ **È il vero argomento per togliere l'indice**: non «era sbagliato», ma
-*rispondeva alla domanda sbagliata*. Spostata la domanda sull'operazione, il
-trasferimento smette di essere un'eccezione, il ricevimento parziale funziona, e
-la produzione non ha bisogno di niente di nuovo.
-
-### Che cosa questa colonna NON fa
-
-* ⛔ **Non dice chi può scrivere un movimento**, né se il documento citato esiste:
-  quelle sono D-1 e i due presidi di §8-bis.
-* ⛔ **Non sostituisce il controllo dentro la funzione**, che resta e serve a
-  un'altra cosa: dare un messaggio comprensibile («questa riga ha già scaricato
-  il …»).
-* 🔴 **E NON è «la rete per chi non passa dalla funzione».** *(Frase della prima
-  stesura, corretta il 2026-09-02 su rilievo di Tid: era sbagliata.)* Chi scrive
-  in `movimenti` scavalcando la funzione madre **non compone nemmeno la
-  sorgente**: lascia i campi vuoti, e con il vincolo parziale passa liscio.
-  ⇒ Il `UNIQUE` protegge dalla **funzione chiamata due volte** — batch rilanciato,
-  retry, doppio click — che è protezione vera e sufficiente per il caso che
-  capita. Ma è **un'altra cosa**, e crederla più larga di così vuol dire sentirsi
-  coperti su uno scenario che resta scoperto.
-  ⭐ **Lo scrittore estraneo non si ferma con un vincolo: si ferma con i
-  permessi.** «In `magazzino.movimenti` non scrive nessuno se non attraverso la
-  funzione» è una regola di `GRANT` e di `SECURITY DEFINER`, e va nel perimetro
-  RLS/permessi che la §9 dichiara ancora assente.
-* ⛔ **Non è un sostituto della macchina a stati**: che un DDT vada in `EMESSO`
-  una volta sola resta compito del guard di transizione.
-
-### Quel che resta da fissare, ed è piccolo
-
-* il **nome** e il vocabolario del verbo (`operazione_verbo`): CHECK a valori
-  chiusi, oppure lookup — la seconda se i verbi dovranno portare attributi;
-* lo **scope dell'unicità**: **globale**, e va scritto come **dipendenza, non
-  come preferenza**. ⭐ È globale *perché la terna contiene già la sorgente*,
-  quindi il magazzino non aggiunge identità. ⚠️ Il giorno in cui una chiave non
-  contenesse più la sorgente, l'unicità globale diventerebbe **sbagliata in
-  silenzio** — quindi la ragione va nel `COMMENT`, non lasciata al lettore;
-* ⭐ **la grammatica dei prefissi non è più un problema aperto**, ed è il
-  guadagno della forma A: se l'identità sta sulle colonne, non c'è nessuna
-  stringa da comporre e **nessun quinto vocabolario parallelo** da tenere
-  allineato. ⚠️ Nella forma B invece il prefisso deve venire dal
-  `codice_interno` di `config.sorgenti` — mai da un elenco scritto a mano
-  accanto: è la trappola in cui il gemello acquisto è appena caduto con gli
-  «ambiti», quattro assi diversi con lo stesso nome.
+⚠️ **Le due cose si leggono insieme**: la D-4 vive qui, la sua risposta là.
 
 ---
 
@@ -525,23 +339,31 @@ la produzione non ha bisogno di niente di nuovo.
 Concordato con Tid: qui c'è **solo l'aggancio al documento di origine**. Resta
 fuori, per l'**analisi successiva** su «cosa serve / cosa manca a magazzino»:
 
-- il rapporto fra `causali.segno` e il segno di `movimenti.qta` — ⚠️ già
-  annotato come aperto nella mappa: `vw_giacenza` somma **senza guardare il
-  segno della causale**. ⛔ **Fuori da questo brief ma non dopo di esso**: è il
-  **passo 1** di §8-ter, e va chiuso prima della prima riga;
-- valorizzazione e costo medio (`costo_medio`, `vw_costo_medio*`,
-  `impatto_valorizzazione` sulle causali);
-- lotti, seriali, ubicazioni e `reservations` come impianto di disponibilità;
-- il perimetro emittente / RLS su `magazzino`, oggi assente;
+📌 **Tutto ciò che segue ha trovato una sede il 2026-09-02**, ed è
+[analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md) — che le raccoglie e dichiara,
+nella sua §9, quali sono ancora da scrivere:
+
+- il rapporto fra `causali.segno` e il segno di `movimenti.qta` — ✅ **deciso il
+  2026-09-02** ([là §4](analisi-db-magazzino-carico-e-scarico.md)): **il verso sta nella quantità**, la causale lo
+  dichiara e lo valida. ⚠️ Ne discende un guard nuovo su `movimenti`, e che
+  `vw_giacenza` **è corretta** com'è — chi la vedesse incompleta e le aggiungesse
+  il join alle causali **raddoppierebbe il segno**;
+- valorizzazione e costo medio (là §7 e M-4);
+- lotti, seriali, ubicazioni e `reservations` come impianto di disponibilità
+  (M-3, M-5);
+- il perimetro emittente / RLS su `magazzino`, oggi assente (M-6);
 - la copertura pgTAP: il dominio ha **un solo file**
   (`test-movimenti-vincoli-v1.sql`, nato il 21-08) e la sorgente polimorfa non è
-  presidiata da nulla.
+  presidiata da nulla (M-7).
+
+⛔ **Restano fuori da questo documento** — non da quello: qui si decide solo
+l'aggancio al documento di origine.
 
 ---
 
 ## 10. Perimetro e regole del cantiere
 
-- ⛔ **Niente è stato applicato**, e niente va applicato prima che D-1 → D-8
+- ⛔ **Niente è stato applicato**, e niente va applicato prima che D-1 → D-9
   abbiano una risposta: **cambiare il modello dopo** costerebbe più che deciderlo
   adesso, ed è l'unico momento in cui non c'è una riga da bonificare.
 - **Lato BE/FE non si chiede nulla in questa fase**: `backend/apps/magazzino`

@@ -6,8 +6,8 @@
 >
 > Vedi anche
 >
-> * [Brief – Deprecabilità del catalogo](/dev/work-in-progress/brief-db-deprecabilita-catalogo-vs-istanze)
-> * [Brief – Filtro lookup + guard `obsoleto_dal`](/dev/work-in-progress/brief-db-obsoleto-dal-filtro-lookup-e-guard)
+> * [Brief – Deprecabilità del catalogo](/dev/work-done/brief-db-deprecabilita-catalogo-vs-istanze)
+> * [Brief – Filtro lookup + guard `obsoleto_dal`](/dev/work-done/brief-db-obsoleto-dal-filtro-lookup-e-guard)
 > * [Linee guida SQL](/linee-guida-sql)
 > * [Guida – Configurazione delle pratiche](/guide/gestione-pratiche-configurazione)
 

@@ -88,10 +88,11 @@ Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non av
 * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona fisica o giuridica
 * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli del soggetto (es. RIS_UMANA)
 * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori) — il soggetto gestore (l'azienda)
-* [django.auth_user](/dbzero/django/tabelle/auth_user) — l'utente Django
+* `django.auth_user` — l'utente Django (tabella creata e gestita dal migratore Django, non documentata in `dbzero`)
 * [config.qualifiche](/dbzero/config/tabelle/qualifiche) — mansioni e posizioni
 * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti e uffici
-* [config.ruolo_sistema](/dbzero/config/tabelle/ruolo_sistema) — classificazione utente (ADMIN, OPERATIVO, DISABILITATO)
+* [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il bridge multi-veste: `ruolo_applicativo` + `attivo` sono la classificazione utente (OPERATIVO / DISABILITATO)
+* [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — i binding profilo↔identita': il binding `SUPER_ADMIN` e' cio' che un tempo era `ruolo_sistema = 'ADMIN'`
 * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — scope emittenti fiscali per operatore
 * [config.token_monouso](/dbzero/config/tabelle/token_monouso) — token sicuri per inviti e reset password
 * [config.email_account](/dbzero/config/tabelle/email_account) — account SMTP per invio email (vedi [Guida Gestione Mail](/guide/gestione-mail))

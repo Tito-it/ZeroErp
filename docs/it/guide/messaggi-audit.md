@@ -13,7 +13,7 @@
 >
 > * [Guida Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — error logging e dblink
 > * [Guida Framework di Automazione DB](/guide/automazione-db) — il principale utilizzatore dell'audit log
-> * [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — job scheduling e task runtime
+> * [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — job scheduling e task runtime
 
 ---
 
@@ -392,7 +392,7 @@ Questa guida copre il sistema di audit logging come componente autonomo. Per i c
 
 * [Guida Framework di Automazione DB](/guide/automazione-db) — il framework che produce la maggior parte dei record di audit
 * [Guida Messaggi di Errore](/guide/Messaggi-di-Errore-e-Generazione-Log) — il sistema di error logging (complementare)
-* [Guida Tracciamento Processi e Job](/guide/Analisi-tracciamento-processi-e-job) — job scheduling e task tracking
+* [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job) — job scheduling e task tracking
 
 ---
 

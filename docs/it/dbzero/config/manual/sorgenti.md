@@ -4,12 +4,12 @@
 >
 Approfondimenti tabelle/domìni collegati:
 >
-[config.note_tipologie](/dbzero/config/tabelle/note_tipologie)
+[config.note_stili](/dbzero/config/tabelle/note_stili)
 > [config.note_stili](/dbzero/config/tabelle/note_stili)
 >
 Approfondimenti funzioni/trigger:
 >
-[config.trgfn_sorgenti_norm](/dbzero/config/funzioni/trgfn_sorgenti_norm)
+[config.trgfn_sorgenti_norm](/dbzero/config/funzioni/trgfn_sorgenti_normalize)
 
 ---
 

@@ -4,7 +4,7 @@
 
 Riga di **dettaglio operatore + capability** per il drawer admin
 "Operatore" (P1 2026-04-29). Sostituisce la query SQL inline che viveva
-in [`apps.amm_software.db.amm_software_repository.get_operatore_detail`](/backend/amm_software/manual/amm_software_repository),
+in `apps.amm_software.db.amm_software_repository.get_operatore_detail`,
 spostando in DB l'unica fonte di verità per il dettaglio operatore — in
 linea con la filosofia DB-first del progetto.
 

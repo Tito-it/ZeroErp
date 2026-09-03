@@ -8,7 +8,7 @@ seleziona il `listino_id` attivo e, opzionalmente, una variazione globale
 (`PERCENTUALE` o `VALORE_FISSO`) sul prezzo base del listino.
 
 Riferimento concettuale:
-[sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo-listini-v5) §4.2.
+[sviluppo-listini-v5.md](/dev/work-done/sviluppo-listini-v5) §4.2.
 
 ## Contesto
 
