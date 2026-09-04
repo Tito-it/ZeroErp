@@ -536,6 +536,21 @@ export const TAB_ENTITIES = {
   UTILITIES_TIPI_RUOLO: 'utilities_tipi_ruolo',
 }
 
+// Schede della vista «Code di lavoro» (Strumenti → Code di lavoro).
+//
+// ⚠️ Sono un CONTRATTO fra due file che non si vedono: il drawer rapido del
+//    badge in topbar (`CodeLavoroDrawer`, producer del deep-link `?tab=`) e la
+//    vista che lo consuma (`CodeLavoroView`). Scritte come literal, un refuso
+//    non fallisce: la vista aprirebbe la scheda di default e il click sulla
+//    sezione «Coda stampa» porterebbe in silenzio sui lavori.
+// ⛔ Stanno in `core/` e non in `strumenti/constants.js` perche' il producer e'
+//    un componente di `core/`: un modulo di core che importasse da un dominio
+//    invertirebbe gli anelli.
+export const CODE_TABS = Object.freeze({
+  LAVORI: 'lavori',
+  STAMPA: 'stampa',
+})
+
 // Keyboard shortcuts
 export const SHORTCUTS = {
   SEARCH: { key: 'k', ctrl: true, shift: false },

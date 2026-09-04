@@ -146,6 +146,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CLIENTE_NON_ATTIVO": "Il cliente non e' in stato attivo.",
     "E_CLIENTE_NON_TROVATO": "Cliente non trovato.",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "Utility non coerente con il billing account del cliente.",
+    # ⚠️ SENZA segnaposto, mentre il messaggio a catalogo ha un `%s` con lo
+    # STATO della riga: è proprio quando gli argomenti non arrivano che il
+    # segnaposto finirebbe a video in chiaro.
+    "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": (
+        "La riga della coda sta ancora lavorando: si mette via solo quando ha "
+        "finito."
+    ),
     "E_CODA_HANDLER_NON_REGISTRATO": "Tipo di lavoro non cablato nel sistema.",
     "E_CODA_IDENTITA_NON_ATTIVA": "Identità operatore non più attiva: lavoro non eseguibile.",
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "Lavoro accodato con scope operatore incompleto.",
@@ -458,6 +465,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_JOB_TYPE_NON_ATTIVO": "Tipo di job non attivo.",
     "E_JOB_TYPE_NON_TROVATO": "Tipo di job non registrato nel registry.",
     "E_JWT_SENZA_IDENTITA": "Sessione scaduta: effettua nuovamente l'accesso.",
+    "E_JWT_SENZA_SID": "La sessione in corso non e' identificabile: esci e rientra per continuare.",
     "E_KIT_QUANTITA_DISOMOGENEE": "Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile.",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "Riga listino componenti incoerente con la distinta base.",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",

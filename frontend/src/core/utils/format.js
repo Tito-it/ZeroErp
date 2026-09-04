@@ -116,3 +116,37 @@ export function formatIvaLabel(row, opts = {}) {
   if (row.iva_codice) return String(row.iva_codice)
   return placeholder
 }
+
+/**
+ * Numero leggibile di una fattura a partire dai campi denormalizzati che le
+ * righe satellite portano con se' (`fattura_anno`, `fattura_serie`,
+ * `fattura_numero`, `fattura_id`): `"2026/A n. 815"`.
+ *
+ * ⭐ Estratto il 2026-09-04 (regola del 2, ok Tid) da `CodaStampaTab`, quando
+ *    il drawer rapido delle code ha dovuto nominare le STESSE righe: la riga di
+ *    coda deve leggersi identica nella scheda e nel pannello che la richiama —
+ *    scritta due volte, il giorno in cui una delle due cambia le due divergono
+ *    senza che niente fallisca.
+ * ⚠️ Il ripiego e' `#<id>`, non un vuoto: finche' la fattura e' in BOZZA il
+ *    numero e' NULL per costruzione (lo assegna il trigger alla numerazione), e
+ *    una cella vuota si leggerebbe come un dato perso invece che come «non
+ *    ancora numerata».
+ *
+ * @param {object} row - Riga con i campi `fattura_*`.
+ * @param {object} [opts]
+ * @param {string} [opts.placeholder='—'] - Usato se manca anche l'id.
+ * @returns {string}
+ */
+export function formatFatturaNumero(row, opts = {}) {
+  const { placeholder = '—' } = opts
+  if (row == null) return placeholder
+  if (row.fattura_numero == null) {
+    return row.fattura_id != null ? `#${row.fattura_id}` : placeholder
+  }
+  // ⚠️ Anno e serie si compongono e POI si uniscono con uno spazio solo: la
+  //    forma `${anno}${serie} n. ${numero}` lasciava un'etichetta che comincia
+  //    con uno spazio quando l'anno manca — invisibile in una cella, non in un
+  //    messaggio di conferma dove finisce fra virgolette.
+  const anno = `${row.fattura_anno ?? ''}${row.fattura_serie ? `/${row.fattura_serie}` : ''}`
+  return [anno, `n. ${row.fattura_numero}`].filter(Boolean).join(' ')
+}

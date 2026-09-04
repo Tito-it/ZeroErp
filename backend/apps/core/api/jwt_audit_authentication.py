@@ -27,12 +27,14 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from apps.core.services.auth_constants import (
     JWT_CLAIM_EMITTENTE_ATTIVO_ID,
     JWT_CLAIM_IDENTITA_ID,
+    JWT_CLAIM_SID,
 )
 
 logger = logging.getLogger(__name__)
 
 
 E_JWT_SENZA_IDENTITA = "E_JWT_SENZA_IDENTITA"
+E_JWT_SENZA_SID = "E_JWT_SENZA_SID"
 E_IDENTITA_NON_ATTIVA = "E_IDENTITA_NON_ATTIVA"
 
 
@@ -76,6 +78,32 @@ class JwtSenzaIdentitaError(AuthenticationFailed):
     status_code = status.HTTP_401_UNAUTHORIZED
     default_code = E_JWT_SENZA_IDENTITA
     default_detail = "Token senza identita: rigenera sessione."
+
+
+class JwtSenzaSidError(AuthenticationFailed):
+    """JWT validato ma privo del claim `sid` (identificativo di sessione).
+
+    ⭐ Il `sid` e' il terzo claim obbligatorio del JWT interno, con
+    `identita_id` e `ruolo_applicativo` (`api_multi_veste_token.md`). Fino al
+    2026-09-04 era l'unico dei tre che nessuno verificava, e l'assenza non
+    faceva rumore: si fermava piu' avanti, per caso, perche' a quei token
+    mancava ANCHE `identita_id`.
+
+    ⛔ Cosa rompe un token senza `sid`, se arriva alle view: la revoca delle
+    altre sessioni non sa quale risparmiare e revoca anche la propria; il
+    rifiuto «non puoi revocare la sessione corrente» viene scavalcato; il
+    diario delle sessioni non sa a quale riga attribuire logout e refresh.
+    Sono tre danni silenziosi su una funzione di sicurezza — per questo il
+    controllo sta QUI, una volta, e non in ciascuna delle view che leggono il
+    sid: un guard per view ne copre una su tre.
+
+    401 come il fratello: il token e' incompleto e l'unico rimedio e' un
+    accesso nuovo, che l'operatore fa da solo.
+    """
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    default_code = E_JWT_SENZA_SID
+    default_detail = "Token senza identificativo di sessione: rigenera sessione."
 
 
 class IdentitaNonAttivaError(AuthenticationFailed):
@@ -264,6 +292,17 @@ class JwtAuditAuthentication(JWTAuthentication):
                 "security.jwt_senza_identita user_id=%s", user_id
             )
             raise JwtSenzaIdentitaError()
+
+        # Terzo claim obbligatorio del JWT interno, verificato qui insieme al
+        # primo (`ruolo_applicativo` lo risolve il PermissionResolver). Vedi
+        # `JwtSenzaSidError` per cosa rompe la sua assenza a valle.
+        # ⚠️ Un claim valorizzato con la stringa VUOTA e' assente a tutti gli
+        #    effetti, e `not` li tratta gia' uguali: e' la stessa lettura che
+        #    fanno le view (`str(auth.get(JWT_CLAIM_SID, ""))`), che senza questo guard
+        #    vedevano "" e ci confrontavano i sid degli altri.
+        if not validated_token.get(JWT_CLAIM_SID):
+            logger.warning("security.jwt_senza_sid user_id=%s", user_id)
+            raise JwtSenzaSidError()
 
         # Popolazione GUC + verifica identita in singola query CTE.
         # Se non trovata attiva per questa coppia (user, identita),

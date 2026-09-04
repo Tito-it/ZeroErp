@@ -61,7 +61,7 @@ import { approvaCompetenza } from '../api/commesse'
 import { getFatturazioneRun, runFatturazione } from '../api/lotti'
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
-import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
+import { useSelezioneToggle } from '../../core/composables/useSelezioneToggle'
 import { checkRiportabili, riportaDaEmettere } from '../api/attivitaFatturabili'
 import {
   GRUPPI_CLIENTE_NON_DETERMINABILE,

@@ -31,8 +31,15 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { statoCodaLavoriSeverity, STATO_CODA_LAVORI_MAP } from '../../core/utils/severity'
-import { annullaCodaLavoro, requeueCodaLavoro } from '../../core/api/tracciamento'
+import {
+  annullaCodaLavoro,
+  archiviaCodaLavoro,
+  requeueCodaLavoro,
+  ripristinaCodaLavoro,
+} from '../../core/api/tracciamento'
+import { useCodaArchiviazione } from '../composables/useCodaArchiviazione'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
+import { useSelezioneCoda } from '../composables/useSelezioneCoda'
 import { useCodaLavoriStore } from '../stores/codeJobs'
 import CodaTabBase from './CodaTabBase.vue'
 import JobDettaglioDrawer from './JobDettaglioDrawer.vue'
@@ -52,6 +59,30 @@ const baseRef = ref(null)
 function ricarica() {
   baseRef.value?.load()
 }
+
+// Selezione multipla per l'archiviazione di massa. ⚠️ Abilitata solo con
+// `code_manage` e fuori readonly: senza, niente caselle — il permesso nasconde.
+const selezione = useSelezioneCoda({
+  righeVisibili: computed(() => store.items),
+  abilitata: computed(() => canManage.value && !isReadonly.value),
+})
+
+// Archivia / Ripristina: le voci di riga E il verbo di massa vivono nel
+// composable condiviso con la coda stampa — stessa bandiera, stesso trigger,
+// stesso codice errore.
+const { azioniArchiviazione, archiviaRighe, loading: archiviazioneLoading } =
+  useCodaArchiviazione({
+    archivia: archiviaCodaLavoro,
+    ripristina: ripristinaCodaLavoro,
+    ricarica,
+    etichettaRiga: (row) => `#${row.id} (${row.job_type})`,
+    // Le righe archiviate escono dall'elenco: una selezione che le contasse
+    // ancora mentirebbe al pulsante.
+    // Le righe archiviate escono dall'elenco: una selezione che le contasse
+    // ancora mentirebbe. ⭐ Si tengono spuntate le sole FALLITE — sono
+    // esattamente quelle su cui l'operatore deve tornare.
+    onArchiviato: (idsFalliti) => selezione.tieniSolo(idsFalliti),
+  })
 
 // Drawer dettaglio (FE-6).
 const dettaglioVisible = ref(false)
@@ -125,6 +156,12 @@ function buildRowActions(row) {
       visible: azionabile && (row.stato === 'IN_CORSO' || row.stato === 'ERRORE'),
       command: () => requeueJob(row),
     },
+    // ⚠️ L'archiviazione NON passa da `azionabile`: quel predicato e'
+    //    l'ownership di annulla/requeue («e' mio, oppure ho code_manage»), e
+    //    qui non c'entra — il verbo ha effetto globale e vuole `code_manage`
+    //    e basta. Il gate lo porta la voce stessa (`action`), il readonly lo
+    //    guarda il composable.
+    ...azioniArchiviazione(row),
   ]
 }
 
@@ -135,7 +172,7 @@ function onRowClick(data) {
 
 // Prop del base: si passa la FUNZIONE, non il booleano — il base la invoca per
 // riga. `computed` solo per il loading, che è reattivo.
-const loadingAzione = computed(() => azioneLoading.value)
+const loadingAzione = computed(() => azioneLoading.value || archiviazioneLoading.value)
 </script>
 
 <template>
@@ -151,6 +188,8 @@ const loadingAzione = computed(() => azioneLoading.value)
     :extra-loading="loadingAzione"
     :build-row-actions="buildRowActions"
     :on-row-click="onRowClick"
+    :selezione="selezione"
+    :on-archivia-selezione="archiviaRighe"
   >
     <template #cell-job_type="{ data }">
       <span class="app-code-tipo">{{ data.job_type }}</span>

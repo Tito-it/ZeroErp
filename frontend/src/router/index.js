@@ -7,6 +7,7 @@ import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import { CODE } from '../pagamenti/vocabolari'
+import { UOM_TABS } from '../catalogo/constants'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
 
@@ -303,17 +304,22 @@ const router = createRouter({
           component: () => import('../catalogo/views/UnitaMisuraView.vue'),
           meta: { domain: 'catalogo', menuKey: 'unita-misura' }
         },
+        // Conversioni e Tipi UdM sono diventati due SCHEDE di
+        // `catalogo/unita-misura` il 2026-09-04 (le tre tabelle sono un
+        // soggetto solo). ⛔ I due indirizzi restano come redirect, e non e'
+        // cortesia verso i vecchi link: i PREFERITI dell'operatore sono path
+        // salvati in localStorage (`useNavigationFavorites`) — chi aveva messo
+        // «Tipi UdM» fra i preferiti se lo ritroverebbe rotto, e nessun test lo
+        // vedrebbe. Il `?tab=` porta sulla scheda giusta.
         {
           path: 'catalogo/conversioni-uom',
           name: 'catalogo-conversioni-uom',
-          component: () => import('../catalogo/views/ConversioniUomView.vue'),
-          meta: { domain: 'catalogo', menuKey: 'conversioni-uom' }
+          redirect: { name: 'catalogo-unita-misura', query: { tab: UOM_TABS.CONVERSIONI } }
         },
         {
           path: 'catalogo/uom-tipi',
           name: 'catalogo-uom-tipi',
-          component: () => import('../catalogo/views/UomTipiView.vue'),
-          meta: { domain: 'catalogo', menuKey: 'uom-tipi' }
+          redirect: { name: 'catalogo-unita-misura', query: { tab: UOM_TABS.TIPI } }
         },
 
         // --- Vendite ---
@@ -548,7 +554,21 @@ router.beforeEach(async (to) => {
 
   // Rotte pubbliche (login, reset, attivazione)
   if (to.meta.public) {
-    if (to.name === 'login' && auth.isAuthenticated) {
+    // ⛔ «Sei già dentro, torna alla home» NON vale quando è l'applicazione
+    //    stessa a dichiarare la sessione morta (`reason=session_expired`, che
+    //    mandano l'interceptor 401 e questo guard). `isAuthenticated` guarda la
+    //    SCADENZA dei token in memoria, non se il server li accetta ancora: una
+    //    sessione revocata lato server ha token non scaduti, quindi il rimbalzo
+    //    scattava e il login diventava irraggiungibile — l'operatore restava su
+    //    una home che rispondeva 401 a ogni gesto e ne usciva solo ricaricando
+    //    (rilievo di Tid, 2026-09-04).
+    // ⚠️ È la seconda metà della correzione, non un doppione: la prima azzera
+    //    lo stato nello store (`redirectToLogin` in `core/api.js`), questa
+    //    impedisce che un `isAuthenticated` sbagliato per qualunque ALTRA
+    //    ragione ci rimandi indietro. Chi ha una sessione viva e digita /login
+    //    continua a essere riportato alla home.
+    const sessioneDichiarataMorta = to.query.reason === 'session_expired'
+    if (to.name === 'login' && auth.isAuthenticated && !sessioneDichiarataMorta) {
       return { name: 'home' }
     }
     return

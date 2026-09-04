@@ -6,6 +6,11 @@
 //        nel tab coda lavori, sulle sole righe proprie (o con code_manage).
 //        Accesso primario dal badge top bar; questa è la via sidebar
 //        (Strumenti → Code di lavoro).
+//
+// ⭐ Dal 2026-09-04 la scheda attiva è DEEP-LINKABILE (`?tab=lavori|stampa`):
+//    il drawer rapido del badge in topbar ha un blocco per coda, e il titolo di
+//    ogni blocco apre questa vista GIÀ sulla coda che si stava guardando —
+//    prima portava sempre sulla scheda di default.
 import { useI18n } from 'vue-i18n'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -14,12 +19,22 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { useTabDaQuery } from '../../core/composables/useTabDaQuery'
+import { CODE_TABS, READONLY_DOMAINS } from '../../core/constants'
 import CodaLavoriTab from '../components/CodaLavoriTab.vue'
 import CodaStampaTab from '../components/CodaStampaTab.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.STRUMENTI)
+
+// La scheda attiva, pilotabile da fuori con `?tab=` (il drawer del badge in
+// topbar apre la coda su cui si e' cliccato). Guard sulla rotta, pulizia della
+// query e i due agganci KeepAlive vivono nel BB.
+const activeTab = useTabDaQuery({
+  nomeRotta: 'strumenti-code-lavoro',
+  ammessi: CODE_TABS,
+  iniziale: CODE_TABS.LAVORI,
+})
 </script>
 
 <template>
@@ -40,20 +55,20 @@ useReadonlyMode(READONLY_DOMAINS.STRUMENTI)
          vista la TabList: i tab comparivano al primo paint e sparivano appena
          la tabella si popolava. Sintomo dipendente dai DATI (chi vedeva più
          righe non vedeva più i tab) — bug 2026-07-22. -->
-    <Tabs value="lavori" lazy>
+    <Tabs v-model:value="activeTab" lazy>
       <TabList>
-        <Tab value="lavori">
+        <Tab :value="CODE_TABS.LAVORI">
           <i class="pi pi-inbox" /> {{ t('strumenti.code.tab_lavori') }}
         </Tab>
-        <Tab value="stampa">
+        <Tab :value="CODE_TABS.STAMPA">
           <i class="pi pi-print" /> {{ t('strumenti.code.tab_stampa') }}
         </Tab>
       </TabList>
       <TabPanels>
-        <TabPanel value="lavori">
+        <TabPanel :value="CODE_TABS.LAVORI">
           <CodaLavoriTab />
         </TabPanel>
-        <TabPanel value="stampa">
+        <TabPanel :value="CODE_TABS.STAMPA">
           <CodaStampaTab />
         </TabPanel>
       </TabPanels>

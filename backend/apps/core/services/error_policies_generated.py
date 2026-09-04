@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 835, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 837, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -203,6 +203,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CLIENTE_UTILITY_MISMATCH_BA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
+    # dbops.trgfn_coda_archiviazione: una riga di coda ancora VIVA (PENDING o IN_CORSO) non si archivia. L'archiviazione è la bandiera che toglie una riga dall'elenco senza toccarne lo stato, e vale solo su una riga che ha finito: archiviarne una viva la lascerebbe nel conteggio del badge in topbar - che conta esattamente PENDING e IN_CORSO - e fuori dalla lista, senza nessun modo di arrivarci per rimetterla a posto. Sulla coda stampa il danno è più concreto: la riga occuperebbe lo slot di uq_fatture_stampa_coda_vivo e bloccherebbe la ristampa della fattura restando invisibile. Classe CONFLITTO_STATO e non DATO_ERRATO: non c'è nessun campo che l'operatore possa correggere, c'è una riga che in questo momento sta ancora lavorando - ed è esattamente il criterio della guida. Si accoda alla famiglia E_CODA_*, dove E_CODA_IDENTITA_NON_ATTIVA è già CONFLITTO_STATO. Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+    "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_CODA_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_CODA_IDENTITA_NON_ATTIVA": "CONFLITTO_STATO",
     # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
@@ -628,6 +630,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # `dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il · backend accoda ma nessuno ha registrato. E' il gemello esatto di · `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non · risorsa mancante.
     "E_JOB_TYPE_NON_TROVATO": "TECNICO",
     "E_JWT_SENZA_IDENTITA": "NON_AUTENTICATO",
+    # apps/core/api/jwt_audit_authentication.py: il JWT è valido e porta identita_id, ma non porta il claim sid. Il sid è ciò che distingue una sessione dall'altra: senza, la revoca delle altre sessioni non sa quale risparmiare e revoca anche quella di chi ha premuto, e il diario delle sessioni non sa a quale riga attribuire logout e refresh. La classe è NON_AUTENTICATO come per il fratello E_JWT_SENZA_IDENTITA e per la stessa ragione: il token è incompleto e l'unico rimedio è un accesso nuovo, che l'operatore fa da solo; TECNICO direbbe «non puoi farci niente» a chi invece deve solo rientrare, e il messaggio che accompagna questo codice dice l'opposto. NON si riusa E_JWT_SENZA_IDENTITA: quello è il claim identita_id, e due condizioni diverse sotto lo stesso codice sono la definizione di accumulatore. La ui_action redirect_login si dichiara come override lato BE e non arriva dal default: sul 401 il default è il banner, perché buttare l'operatore fuori dall'applicazione si decide riga per riga. Il nome segue la sede: il claim si verifica una volta in autenticazione, dove il contratto del JWT interno pretende identita_id, ruolo_applicativo e sid, non in ciascuna delle view che leggono il sid. Origine: guard di SessioniRevocaTutteView, analisi del 2026-09-04.
+    "E_JWT_SENZA_SID": "NON_AUTENTICATO",
     "E_KIT_QUANTITA_DISOMOGENEE": "CONFLITTO_STATO",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "DATO_ERRATO",
     # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validita' della BoM).

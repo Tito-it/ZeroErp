@@ -16,6 +16,8 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
+from apps.core.services.auth_constants import JWT_CLAIM_SID
+
 
 class SidTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Aggiunge `sid` (session ID) al refresh token al momento del login.
@@ -32,7 +34,7 @@ class SidTokenObtainPairSerializer(TokenObtainPairSerializer):
     # il JWT salvato nell'OutstandingToken per includere il claim sid.
     def get_token(cls, user):
         token = super().get_token(user)
-        token["sid"] = str(uuid.uuid4())
+        token[JWT_CLAIM_SID] = str(uuid.uuid4())
         # Aggiorna l'OutstandingToken con il JWT che ora include sid.
         jti = token[api_settings.JTI_CLAIM]
         OutstandingToken.objects.filter(jti=jti).update(token=str(token))

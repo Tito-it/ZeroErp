@@ -59,10 +59,14 @@ from apps.core.api.views_parameters import (
 from apps.core.api.views_tracciamento import (
     ApiAuditLog,
     ApiCodaLavoriAnnulla,
+    ApiCodaLavoriArchivia,
     ApiCodaLavoriDetail,
     ApiCodaLavoriList,
     ApiCodaLavoriRequeue,
+    ApiCodaLavoriRipristina,
+    ApiCodaStampaArchivia,
     ApiCodaStampaList,
+    ApiCodaStampaRipristina,
     ApiCodeConteggi,
     ApiDominiTask,
     ApiJobRuns,
@@ -252,10 +256,35 @@ urlpatterns = [
         ApiCodaLavoriRequeue.as_view(),
         name="core-coda-lavori-requeue",
     ),
+    # Archiviazione: toglie le righe dall'ELENCO senza toccarne lo stato, cosi'
+    # i conteggi restano fermi (brief-db-archiviazione-righe-code, 2026-09-04).
+    # ⭐ Rotte di COLLEZIONE con l'elenco nel corpo (`{"ids": [...]}`): il menu
+    # di riga manda un elenco di uno. Un verbo di massa e uno singolo sarebbero
+    # due contratti da tenere allineati per lo stesso rifiuto, che e' per riga.
+    path(
+        "tracciamento/coda-lavori/archivia/",
+        ApiCodaLavoriArchivia.as_view(),
+        name="core-coda-lavori-archivia",
+    ),
+    path(
+        "tracciamento/coda-lavori/ripristina/",
+        ApiCodaLavoriRipristina.as_view(),
+        name="core-coda-lavori-ripristina",
+    ),
     path(
         "tracciamento/coda-stampa/",
         ApiCodaStampaList.as_view(),
         name="core-coda-stampa-list",
+    ),
+    path(
+        "tracciamento/coda-stampa/archivia/",
+        ApiCodaStampaArchivia.as_view(),
+        name="core-coda-stampa-archivia",
+    ),
+    path(
+        "tracciamento/coda-stampa/ripristina/",
+        ApiCodaStampaRipristina.as_view(),
+        name="core-coda-stampa-ripristina",
     ),
     # --- Config CRUD generico ---
     path("config/tables/", ConfigTablesListView.as_view(), name="core-config-tables"),

@@ -18,12 +18,16 @@ from django.db import connection, transaction
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
     coerce_jsonb_dict,
+    conta_con_perimetro,
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
     rows_to_list,
 )
-from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.emittente_scope_helpers import (
+    add_emittente_scope_condition,
+    add_emittente_scope_condition_risolta,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.commesse_repository import (
@@ -223,6 +227,12 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
     # ristampe singole) — in DESC finirebbero in testa.
     "lotto_id": "c.lotto_id {dir} NULLS LAST",
     "data_update": "c.data_update",
+    # `archiviato_il` (2026-09-04, brief-db-archiviazione-righe-code): a
+    # catalogo e` `ordinabile = t`, e seed e whitelist sono confrontati da
+    # `test_liste_configurabili_seed` — accenderla la` senza metterla qui
+    # sarebbe una colonna che il frontend offre e il backend rifiuta con un
+    # 400. NULLS LAST: la data e` NULL su ogni riga NON archiviata.
+    "archiviato_il": "c.archiviato_il {dir} NULLS LAST",
 }
 
 
@@ -2600,9 +2610,19 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        di defense-in-depth. Default `data_update DESC` («aggiornato»: la
     #        riga lavorata piu` di recente in testa); tiebreaker `c.id DESC`
     #        per un ordine stabile. E` una lista di monitoraggio, non la corsia
-    #        del worker. Ritorna `{items, total}` via BB
+    #        del worker. Ritorna `{items, total, archiviate}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
     #        auto-svuota sotto l'utente a ogni drain).
+    #
+    #        ⭐ ARCHIVIAZIONE (2026-09-04, brief-db-archiviazione-righe-code),
+    #        gemella della coda lavori parola per parola. Le righe archiviate
+    #        sono NASCOSTE di default; `includi_archiviate=True` le chiede.
+    #        ⛔ La bandiera la legge SOLO questa lista: claim, reaper, `marca_*`
+    #        e soprattutto `count_coda_stampa_per_stato` — i conteggi del
+    #        pannello «Esiti fatturazione», che sono la RAGIONE per cui la
+    #        bandiera esiste — non la nominano.
+    #        ⚠️ `archiviate` dice quante ne restano fuori: senza quel numero
+    #        «coda pulita» e «tre righe messe via» si leggono uguali.
     def elenca_coda_stampa(
         self,
         *,
@@ -2612,28 +2632,36 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         lotto_id: int | None = None,
         data_da: Any = None,
         data_a: Any = None,
+        includi_archiviate: bool = False,
         limit: int = 50,
         offset: int = 0,
         sort_by: str = "data_update",
         sort_dir: str = "DESC",
     ) -> dict[str, Any]:
-        conditions: list[str] = []
-        params: list[Any] = []
+        # `base_*` = il perimetro SENZA la bandiera: frammento condiviso fra le
+        # righe e il conteggio delle archiviate, che devono avere lo stesso
+        # perimetro (scritto due volte, divergerebbe).
+        base_conditions: list[str] = []
+        base_params: list[Any] = []
         if stati:
-            conditions.append("c.stato = ANY(%s)")
-            params.append(list(stati))
+            base_conditions.append("c.stato = ANY(%s)")
+            base_params.append(list(stati))
         if lotto_id is not None:
-            conditions.append("c.lotto_id = %s")
-            params.append(int(lotto_id))
+            base_conditions.append("c.lotto_id = %s")
+            base_params.append(int(lotto_id))
         if data_da is not None:
-            conditions.append("c.data_insert >= %s")
-            params.append(data_da)
+            base_conditions.append("c.data_insert >= %s")
+            base_params.append(data_da)
         if data_a is not None:
-            conditions.append("c.data_insert < %s")
-            params.append(data_a)
+            base_conditions.append("c.data_insert < %s")
+            base_params.append(data_a)
         if operatore is not None:
-            conditions.append("c.user_insert = %s")
-            params.append(str(operatore))
+            base_conditions.append("c.user_insert = %s")
+            base_params.append(str(operatore))
+        conditions = list(base_conditions)
+        params = list(base_params)
+        if not includi_archiviate:
+            conditions.append("NOT c.archiviato")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
@@ -2658,6 +2686,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                    ef.codice AS emittente_codice,
                    c.lotto_id, c.stato, c.tentativi, c.ultimo_errore,
                    c.documento_id, c.data_insert, c.data_update,
+                   c.archiviato, c.archiviato_il, c.archiviato_da,
                    c.user_insert AS operatore,
                    (c.user_insert = %s) AS is_mio,
                    COUNT(*) OVER() AS total_count
@@ -2677,6 +2706,13 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             ),
             fallback_params=list(params),
             offset=safe_offset,
+        )
+        # Le nascoste, con lo STESSO perimetro della lista meno la bandiera —
+        # `from_join` e' lo stesso frammento della query di pagina, non una
+        # copia riscritta. Zero quando sono incluse: li' non c'e' niente di
+        # nascosto da dichiarare.
+        archiviate = 0 if includi_archiviate else conta_con_perimetro(
+            from_join, [*base_conditions, "c.archiviato"], base_params,
         )
         items = [
             {
@@ -2703,10 +2739,63 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 # può indicare il cliente/utenza — glossario di progetto.)
                 "operatore": r["operatore"],
                 "is_mio": bool(r["is_mio"]),
+                "archiviato": bool(r["archiviato"]),
+                "archiviato_il": iso_or_none(r["archiviato_il"]),
+                "archiviato_da": r["archiviato_da"],
             }
             for r in rows
         ]
-        return {"items": items, "total": int(total)}
+        return {"items": items, "total": int(total), "archiviate": archiviate}
+
+    # Scopo: alza o abbassa la bandiera `archiviato` di una riga della coda
+    #        stampa — l'ARCHIVIAZIONE, che toglie la riga dall'ELENCO senza
+    #        toccarne lo stato (brief-db-archiviazione-righe-code). Ritorna
+    #        True se la riga esiste ED è nel perimetro del chiamante (0 righe =
+    #        inesistente o fuori scope, indistinguibili → 404 no-leak).
+    #
+    #        ⚠️ È la PRIMA scrittura dell'operatore su questa tabella. Dal
+    #        2026-09-04 la difende anche la policy RLS
+    #        `rls_fatture_stampa_coda_ef_whitelist`, ma il filtro applicativo
+    #        va messo lo stesso: la RLS si SOMMA ai filtri, non li sostituisce.
+    #        Lo scope vive sulla FATTURA (la coda non ha colonna emittente),
+    #        quindi passa dal JOIN — stessa forma di
+    #        `count_coda_stampa_per_stato`.
+    #        ⛔ Il criterio «solo una riga non viva si archivia» NON si ricopia
+    #        qui: vive nel trigger `trg_fatture_stampa_coda_a10_archiviazione_upd`
+    #        (`E_CODA_ARCHIVIAZIONE_NON_AMMESSA`, 409) e nel `CHECK`. Una copia
+    #        in Python sarebbe un secondo elenco di stati destinato a sfilarsi.
+    #        ⛔ `archiviato_il`/`archiviato_da` le deriva il trigger dalla GUC
+    #        `app.jwt_user`: da qui non si scrivono.
+    #        ⚠️ Il perimetro arriva GIA' RISOLTO (`emittenti_sr_ids`) e non come
+    #        `auth_user_id`, ed e' la differenza fra un metodo isolato e uno
+    #        dentro un giro: questo lavora su UNA riga ma viene chiamato N volte
+    #        per una sola richiesta, e risolvere il perimetro a ogni giro
+    #        sarebbe una query per riga per un dato che dentro la richiesta non
+    #        cambia. Lo risolve una volta chi apre il giro.
+    #        Semantica invariata: `None` = nessuna restrizione, `[]` =
+    #        fail-closed (`= ANY('{}')` non matcha nulla).
+    def imposta_archiviato_stampa(
+        self, coda_id: int, *, archiviato: bool, emittenti_sr_ids: list[int] | None,
+    ) -> bool:
+        conditions: list[str] = ["c.id = %s", "f.id = c.sorgente_id"]
+        params: list[Any] = [bool(archiviato), int(coda_id)]
+        add_emittente_scope_condition_risolta(
+            conditions, params,
+            scope_ids=emittenti_sr_ids,
+            column="f.emittente_soggetto_ruolo_id",
+        )
+        where = " AND ".join(conditions)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE vendite.fatture_stampa_coda c
+                   SET archiviato = %s
+                  FROM vendite.fatture f
+                 WHERE {where}
+                """,  # noqa: S608 — where da condizioni whitelisted
+                params,
+            )
+            return cursor.rowcount > 0
 
     # Scopo: Gestisce `sync_lotto_fatture_stato` nel flusso applicativo del modulo.
     def sync_lotto_fatture_stato(
