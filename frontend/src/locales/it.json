@@ -635,7 +635,7 @@
     "revoke_all": "Revoca tutte",
     "revoke_all_confirm_title": "Revocare tutte le sessioni",
     "revoke_all_confirm_message": "Vuoi revocare tutte le {count} sessioni attive remote? La sessione corrente resterà attiva.",
-    "revoke_all_success": "Sessioni remote revocate",
+    "revoke_all_success": "Revocate {count} sessioni remote",
     "revoke_confirm_title": "Conferma revoca sessione",
     "revoke_confirm_message": "Vuoi revocare la sessione da {device} ({ip})?",
     "revoke_success": "Sessione revocata",

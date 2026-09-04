@@ -17,6 +17,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.services import session_audit_service
+from apps.core.services.auth_constants import JWT_CLAIM_SID
 from apps.core.services.service_errors import ServiceError
 
 
@@ -42,7 +43,7 @@ class LogoutView(DomainAPIView):
             payload = jwt.decode(
                 refresh_token, options={"verify_exp": False, "verify_signature": False}
             )
-            sid = payload.get("sid", "")
+            sid = payload.get(JWT_CLAIM_SID, "")
         except Exception:
             pass
 

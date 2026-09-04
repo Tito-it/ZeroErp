@@ -465,6 +465,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_JOB_TYPE_NON_ATTIVO": "Tipo di job non attivo.",
     "E_JOB_TYPE_NON_TROVATO": "Tipo di job non registrato nel registry.",
     "E_JWT_SENZA_IDENTITA": "Sessione scaduta: effettua nuovamente l'accesso.",
+    "E_JWT_SENZA_SID": "La sessione in corso non e' identificabile: esci e rientra per continuare.",
     "E_KIT_QUANTITA_DISOMOGENEE": "Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile.",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "Riga listino componenti incoerente con la distinta base.",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",

@@ -24,6 +24,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
+from apps.core.services.auth_constants import JWT_CLAIM_SID
 from apps.core.services.auth_helpers import (
     apply_new_password,
     extract_identita_id_from_request,
@@ -99,7 +100,7 @@ class ChangePasswordView(DomainAPIView):
             session_audit_service.record_login(
                 user_id=user.id,
                 request=request._request if hasattr(request, "_request") else request,
-                jti=str(refresh.get("sid", refresh.get("jti", ""))),
+                jti=str(refresh.get(JWT_CLAIM_SID, refresh.get("jti", ""))),
             )
             logger.info("security.password_changed user_id=%s", user.id)
 

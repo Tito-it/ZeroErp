@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfirmAction } from '../composables/useConfirmAction'
 import { useNotify } from '../composables/useNotify'
@@ -15,6 +15,10 @@ const notify = useNotify()
 
 const sessioni = ref([])
 const loading = ref(false)
+// ⚠️ La revoca non e' istantanea (blacklist di N token + diario): senza uno
+//    stato a video l'operatore preme, non vede niente e conclude che il
+//    pulsante non funziona — che e' esattamente quello che e' successo.
+const azioneInCorso = ref(false)
 const expanded = ref(false)
 
 async function fetchSessioni() {
@@ -23,7 +27,11 @@ async function fetchSessioni() {
     const response = await api.get('/core/me/sessioni/')
     sessioni.value = response.data.data.sessioni || []
   } catch {
-    sessioni.value = []
+    // ⛔ NON si azzera la lista: `sessioni = []` fa sparire tutto il pannello
+    //    (`v-if="sessioni.length > 0"`), cioe' dice «non hai altre sessioni
+    //    attive» quando la verita' e' «non lo so, la lettura e' fallita». Su un
+    //    pannello di sicurezza e' la bugia peggiore: si tiene l'ultimo dato
+    //    noto e non si afferma niente di nuovo.
   } finally {
     loading.value = false
   }
@@ -85,27 +93,45 @@ function confermaRevocaTutte() {
 }
 
 async function revocaSessione(jti) {
+  azioneInCorso.value = true
   try {
     await api.post(`/core/me/sessioni/${jti}/revoca/`)
     notify.success(t('sessions.revoke_success'))
     await fetchSessioni()
   } catch {
     notify.error()
+  } finally {
+    azioneInCorso.value = false
   }
 }
 
+// ⭐ Il conteggio lo DICE il backend (`revoked`), e fino al 2026-09-04 era un
+//    campo emesso e mai letto: il toast diceva «sessioni remote revocate» senza
+//    dire quante. E' l'informazione che distingue «ne ha revocata una» da «le
+//    ha revocate tutte» — cioe' esattamente il dubbio da cui e' partita questa
+//    correzione.
+// ⛔ E il pannello NON si richiude piu' (`expanded = false`): chiudere la lista
+//    subito dopo l'azione nasconde il suo risultato, e a video l'effetto e'
+//    indistinguibile da «non e' successo niente».
 async function revocaTutteSessioni() {
+  azioneInCorso.value = true
   try {
-    await api.post('/core/me/sessioni/revoca-tutte/')
-    notify.success(t('sessions.revoke_all_success'))
-    expanded.value = false
+    const res = await api.post('/core/me/sessioni/revoca-tutte/')
+    const revocate = res.data?.data?.revoked ?? 0
+    notify.success(t('sessions.revoke_all_success', { count: revocate }))
     await fetchSessioni()
   } catch {
     notify.error()
+  } finally {
+    azioneInCorso.value = false
   }
 }
 
+// ⚠️ `onActivated` oltre a `onMounted`: la home vive sotto KeepAlive, quindi
+//    tornandoci il componente non si rimonta e l'elenco resterebbe quello
+//    dell'ultimo mount — su un pannello di sessioni attive, vecchio di ore.
 onMounted(fetchSessioni)
+onActivated(fetchSessioni)
 </script>
 
 <template>
@@ -123,6 +149,8 @@ onMounted(fetchSessioni)
           severity="danger"
           text
           size="small"
+          :loading="azioneInCorso"
+          :disabled="azioneInCorso"
           @click="confermaRevocaTutte"
         />
         <Button
@@ -160,6 +188,7 @@ onMounted(fetchSessioni)
             severity="danger"
             size="small"
             text
+            :disabled="azioneInCorso"
             @click="confermaRevoca(data)"
           />
         </template>

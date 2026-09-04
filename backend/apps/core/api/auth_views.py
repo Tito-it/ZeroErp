@@ -34,6 +34,7 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_EMITTENTE_ATTIVO_ID,
     JWT_CLAIM_IDENTITA_ID,
     JWT_CLAIM_RUOLO_APPLICATIVO,
+    JWT_CLAIM_SID,
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
     RUOLO_APPLICATIVO_FORNITORE_PORTALE,
     RUOLO_APPLICATIVO_OPERATORE,
@@ -235,7 +236,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return 0, None
         try:
             token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0)), str(token.get("sid", ""))
+            return int(token.get("user_id", 0)), str(token.get(JWT_CLAIM_SID, ""))
         except Exception:
             return 0, None
 
@@ -400,7 +401,7 @@ class AuditTokenRefreshView(TokenRefreshView):
             return 0, None
         payload = _decode_refresh_payload(refresh_str)
         raw_user_id = payload.get("user_id")
-        raw_sid = payload.get("sid")
+        raw_sid = payload.get(JWT_CLAIM_SID)
         try:
             user_id = int(raw_user_id) if raw_user_id is not None else 0
         except (TypeError, ValueError):

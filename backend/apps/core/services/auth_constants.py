@@ -100,6 +100,15 @@ SUPER_ADMIN_PROFILO_CODICE = "SUPER_ADMIN"
 # Centralizzare i nomi qui evita typo cross-file (producer/consumer).
 JWT_CLAIM_IDENTITA_ID = "identita_id"
 JWT_CLAIM_RUOLO_APPLICATIVO = "ruolo_applicativo"
+# ⭐ `sid` — identificativo STABILE della sessione: sopravvive alla rotazione del
+#    refresh (che cambia `jti` a ogni giro) ed e' quindi l'unica cosa con cui si
+#    puo' dire «questa sessione» invece di «questo token». Lo mette
+#    `SidTokenObtainPairSerializer` al login e SimpleJWT lo copia sull'access.
+#    Con gli altri due e' un claim OBBLIGATORIO del JWT interno
+#    (`api_multi_veste_token.md`): senza, la revoca delle altre sessioni non sa
+#    quale risparmiare e il diario non sa a quale riga attribuire logout e
+#    refresh — verificato in autenticazione, non nelle singole view.
+JWT_CLAIM_SID = "sid"
 
 # Scopo: Emittente fiscale ATTIVO della sessione (impersonazione di scope,
 # brief-db-impersonazione-scope-emittente). Porta la PK reale
