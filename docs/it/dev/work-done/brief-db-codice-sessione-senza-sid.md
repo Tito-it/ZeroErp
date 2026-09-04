@@ -1,10 +1,16 @@
 # Brief DB — Codice errore per il guard sul claim `sid`
 
-> **STATO (2026-09-04)**: ✅ **seminato dal team DB** come **`E_JWT_SENZA_SID`**,
-> classe **`NON_AUTENTICATO`**, messaggio id 1044 senza segnaposto. Righe nei CSV
-> su `dev/db-tid`, applicate sul DB di sviluppo, **non ancora su `Tito-dev`**.
-> ✅ **Lato BE il lavoro è fatto** (vedi §5) — con una **dipendenza d'ordine sul
-> merge**, §6.
+> ✅ **CHIUSO (2026-09-04)** — codice seminato dal team DB come
+> **`E_JWT_SENZA_SID`** (classe `NON_AUTENTICATO`, messaggio id 1044 senza
+> segnaposto) e lavoro BE completo (§5). Archiviato in `work-done`.
+>
+> ⚠️ **Due cose restano vive e NON sono in questo brief** — si chiude il
+> cantiere del codice errore, non loro:
+>
+> 1. **§6 — l'ordine di merge**: i CSV sono su `dev/db-tid` e non ancora su
+>    `Tito-dev`, mentre `error_policies_generated.py` contiene già il codice.
+>    **Il DB entra per primo**, o la CI va rossa. Vale finché la PR DB non entra.
+> 2. **§7 — i token del cambio password**: difetto vivo, cantiere separato.
 >
 > **Per**: team DB (`dev/db-tid`). · **Da**: backend agent. · **Priorità**: 🟢 BASSA.
 > **Data**: 2026-09-04. · **Correlato**: `api_multi_veste_token.md`.
@@ -87,10 +93,32 @@ un registro in pari non si riapre per una riga.
   `logger.warning("security.jwt_senza_sid …")` gemello.
   ⚠️ `sid` **vuoto = assente**: le view leggono `str(auth.get("sid", ""))`, quindi
   un claim vuoto e uno mancante producono a valle lo stesso danno.
-* ✅ `JWT_CLAIM_SID` in `auth_constants.py`, accanto agli altri due.
+* ✅ `JWT_CLAIM_SID` in `auth_constants.py`, accanto agli altri due — e
+  **usata in tutti e otto i punti** che scrivevano `"sid"` a mano, produttore
+  compreso. ⚠️ Introdotta e usata in un punto solo sarebbe stata la costante che
+  *sposta invece di centralizzare*: quella riga di commento — «centralizzare i
+  nomi qui evita typo cross-file» — sarebbe stata falsa il giorno stesso.
 * ✅ Nelle view sessioni: tolto il tampone `revoked: 0` e corretti i due
   confronti `current_sid and …` che il sid vuoto scavalcava.
-* ✅ Due test nuovi (`sid` assente, `sid` vuoto): 883 test core verdi.
+* ✅ Estratto `_blocca_token_sessioni(user_id, vale_sid)`: le due view di revoca
+  facevano lo stesso giro sui token con **due difetti diversi ciascuna** — nella
+  revoca singola il `try` avvolgeva anche la scrittura (un errore di
+  `get_or_create` inghiottito diventava «sessione non trovata», cioè un guasto
+  travestito da 404) e faceva una `get_or_create` **per token**, ~1400 SELECT sul
+  database di sviluppo per revocarne uno. Ora una query e una `bulk_create`.
+* ⛔ **Regressione trovata e corretta nella revisione critica**: la prima stesura
+  di quell'helper contava le SCRITTURE invece dei token corrispondenti, quindi
+  revocare una sessione già revocata rispondeva 404 — l'idempotenza persa, e un
+  doppio click bastava a vederla. Presidiata da un test suo.
+* ✅ Quattro test nuovi (`sid` assente, `sid` vuoto, revoca idempotente, sessione
+  attiva senza token): **4444 test verdi su tutta la suite** — non solo `core`,
+  perché il guard nuovo rifiuta ogni token senza `sid` e il rischio era romperne
+  altre app.
+* ✅ Verificato che nessuna strada legittima emetta token senza `sid`: i tre
+  canali di login ereditano dal serializer che lo mette, il cambio emittente
+  attivo ricostruisce il token e conserva i claim, la rotazione del refresh li
+  preserva (controllato anche sui token veri a database). L'unica eccezione è
+  §7.
 
 ## 6. ⚠️ Dipendenza d'ordine sul merge
 

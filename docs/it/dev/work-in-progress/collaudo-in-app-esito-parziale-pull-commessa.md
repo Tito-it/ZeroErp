@@ -6,8 +6,36 @@
 > §13.1 (voce **V1**); qui c'è solo **cosa fare, cosa deve succedere, e cosa
 > fare se non succede**.
 >
-> **Stato**: 🔴 **APERTO** — nessuna prova eseguita. · **Ambiente**: sviluppo
+> **Stato**: 🔴 **SOSPESO** — prova 1 verde, prova 2 rossa per un difetto a
+> valle (vedi la revisione del 2026-09-04). · **Ambiente**: sviluppo
 > (`dbdev`). · **Pagine**: `Vendite → Fatturazione` (cockpit) e `vendite/lotti`.
+>
+> 🔴 **Esecuzione del 2026-09-04 — prova 1 VERDE, prova 2 ROSSA, collaudo
+> SOSPESO.** Il pull ha rifiutato la commessa guastata e lo ha scritto per
+> esteso (`E_PULL_COMMESSA`, `commesse_fallite: [34137]`, segnalazione critica
+> sul log di lotto): **prova 1 spuntata**. Ma il lavoro della commessa respinta
+> è finito in fattura lo stesso, e la prova 2 non ha misurato il savepoint —
+> ha misurato un **residuo** di `attivita_fatturabili` sopravvissuto alla
+> riapertura del giro precedente. Cinque difetti, due di modello, in
+> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
+> ⛔ **La prova 2 va rifatta dopo D1 e D2**: finché il perimetro di un giro è
+> «tutto ciò che è libero in competenza» e non «ciò che il pull consegna», la
+> prova misura il residuo e non il savepoint.
+>
+> **Revisione del 2026-09-04 — materia rifatta su `2026-09`, e un `SET` che
+> mancava.** Tre cose:
+>
+> - 🔴 **corretto il contesto operatore delle query**: i `SET` sono **due**, non
+>   uno. Senza `app.ruolo_applicativo = 'OPERATORE'` la RLS di `vendite.commesse`
+>   svuota `vw_dash_competenza_gruppi` (che è `security_invoker=on`) e il copione
+>   fa concludere «nessuna materia» su un mese che ce l'ha — successo davvero, il
+>   2026-09-04. Vale anche per il **controllo finale** della prova 5, dove il
+>   fail-closed è peggio: un «tutto a posto» su una commessa lasciata senza ROOT;
+> - ✅ **materia nuova su `2026-09`**, costruita da push su tre clienti diversi
+>   (34136 · 34137 · 34138). Quella di agosto è **scaduta in quattro giorni**:
+>   `3939` era già emessa e `3941` irreperibile. La vecchia tabella resta in
+>   fondo alla sezione, richiusa, come fatto datato;
+> - ✅ **prerequisito `RESUME_TASK` ri-verificato** (pipeline 1 e 8).
 >
 > **Revisione del 2026-08-31 — il copione è pronto per essere eseguito.** Tre
 > cose sono cambiate, e la prima è un difetto che sarebbe emerso solo a metà
@@ -84,15 +112,19 @@ cuore (il rilancio che ritenta); la **4** ripristina e chiude il giro; la **5**
 
 ## La materia
 
-> ~~⚠️ **I soggetti NON sono stati misurati, ed è dichiarato.**~~ ✅ **Misurati
-> il 2026-08-31**, e la tabella è qui sotto. Resta valida la ragione per cui
-> l'avvertenza c'era: *un id inventato in un copione è peggio di un id assente,
-> perché sembra verificato*. Per questo la sezione dice ancora **quali proprietà**
-> deve avere la materia — gli id sono un aiuto, non il contratto.
+> ~~⚠️ **I soggetti NON sono stati misurati, ed è dichiarato.**~~ ✅ **Rimisurati
+> il 2026-09-04** su materia costruita apposta, e la tabella è qui sotto. Resta
+> valida la ragione per cui l'avvertenza c'era: *un id inventato in un copione è
+> peggio di un id assente, perché sembra verificato*. Per questo la sezione dice
+> ancora **quali proprietà** deve avere la materia — gli id sono un aiuto, non il
+> contratto.
 >
 > ⚠️ **E i numeri qui sotto sono una fotografia**: se al momento della prova il
 > mese non mostra più quelle commesse, si ricontrolla con la query, non si
-> insegue l'id.
+> insegue l'id. ⭐ **La fotografia del 2026-08-31 è scaduta in quattro giorni**:
+> `3939`, la candidata di allora, il 2026-09-04 risultava **già emessa** — e
+> `3941`, il ripiego, nemmeno più reperibile a video. È il motivo per cui la
+> materia di settembre è stata **costruita**, non cercata.
 
 ### Cosa serve
 
@@ -104,74 +136,119 @@ card **«Da emettere»** ne mostra almeno due. In alternativa, la lista
 **gruppi fatturabili** dello stesso cruscotto elenca le unità dell'emissione e
 dice a quale commessa appartengono.
 
-#### I soggetti, misurati il 2026-08-31
+#### Se la materia non c'è: si COSTRUISCE, e da documento
+
+⛔ **Le commesse devono nascere dal push di un documento, non essere create a
+mano.** La riga `ROOT` in `commesse_sorgenti` la scrive
+`vendite.fn_link_commessa_sorgente`: la **prima** sorgente di una commessa prende
+`ROOT`, le successive `COLLEGATO`. Una commessa creata a mano non ha **nessuna**
+riga sorgente — e allora non è solo che il guasto non ha niente da guastare:
+**anche le commesse sane fallirebbero** con lo stesso `E_VALORE_MANCANTE`, e la
+prova 1 degraderebbe nella prova 5 (`E_PULL_COMMESSA_ALL_FAILED`) senza che tu
+abbia toccato niente.
+
+⚠️ **E non bastano tre documenti: servono tre CLIENTI diversi.**
+`vendite.fn_get_or_create_commessa` **riusa** la commessa esistente quando
+coincidono le dimensioni della chiave — billing account, utility, tipo, policy,
+competenza e condizioni di pagamento. Tre ordini sullo stesso cliente con le
+stesse condizioni danno **una** commessa sola, cioè un perimetro su cui il
+collaudo non è eseguibile.
+
+Le attività devono arrivare in stadio **`DA_EMETTERE`**: `stato_approvazione =
+APPROVATA`, `stato_emissione = NON_EMESSA`, `tipo_doc_fiscale_id` valorizzato. Se
+il push le lascia `DA_APPROVARE` vanno **approvate**, o il mese resta vuoto.
+
+#### I soggetti, misurati il 2026-09-04
 
 ⛔ **Prima della query, il contesto operatore — o leggi uno zero che non è un
-dato.** `vw_dash_competenza_gruppi` filtra su
+dato. E i `SET` sono DUE.** Il primo è quello che il copione dichiarava fin
+dall'inizio: `vw_dash_competenza_gruppi` filtra su
 `script.fn_get_emittenti_scope_sr_ids(current_setting('app.current_user_id'))`,
 che **senza contesto ritorna `{}`** (array vuoto, non NULL): il predicato
 `= ANY('{}')` è falso per ogni riga e la vista risponde **zero righe a chiunque**.
-Un `psql` aperto e via dà «nessuna materia» su un database che ne ha in
-abbondanza — è **fail-closed**, non una misura.
+
+🔴 **Il secondo mancava, e da solo bastava a far dire «nessuna materia» su un mese
+che ce l'ha** — è successo il 2026-09-04, sulle tre commesse appena caricate.
+`vendite.commesse` porta la policy RLS `rls_commesse_ef_whitelist`, che pretende
+**anche** `app.ruolo_applicativo = 'OPERATORE'`; la vista è `security_invoker=on`,
+quindi la RLS della **tabella base** svuota il risultato prima ancora che il
+filtro sullo scope emittente entri in gioco. Un `psql` aperto e via dà «nessuna
+materia» su un database che ne ha in abbondanza — è **fail-closed**, non una
+misura.
 
 ```sql
-SET app.current_user_id = '1';   -- ⛔ senza questo, zero righe sempre
+SET app.ruolo_applicativo = 'OPERATORE';   -- ⛔ RLS di vendite.commesse
+SET app.current_user_id   = '1';           -- ⛔ scope emittente della vista
 
-SELECT competenza_mese,
-       count(DISTINCT commessa_id) FILTER (WHERE commessa_emittibile) AS commesse_emittibili,
-       count(*) AS gruppi, sum(n_attivita) AS attivita
+-- ⭐ Il filtro sullo STADIO non è un dettaglio: senza, commessa_emittibile
+--    conta anche le commesse il cui lavoro è già FATTURATO — è lo stato della
+--    commessa, non la presenza di lavoro da emettere. È l'inganno su cui è
+--    caduta 3939.
+SELECT competenza_mese, commessa_id, commessa_codice, cliente_display,
+       count(*) AS gruppi, sum(n_attivita) AS attivita, sum(valore) AS valore
   FROM vendite.vw_dash_competenza_gruppi
- WHERE commessa_id IS NOT NULL
- GROUP BY 1 ORDER BY 1 DESC;
+ WHERE commessa_emittibile
+   AND stadio = 'DA_EMETTERE'
+ GROUP BY 1, 2, 3, 4
+ ORDER BY 1 DESC, 2;
 ```
 
-| Competenza | Commesse emittibili | Gruppi | Attività |
-| --- | --- | --- | --- |
-| ⭐ **2026-08** | **7** | 9 | 17 |
-| 2026-07 | 9 | 20 | 30 |
-| 2026-06 | 6 | 48 | 52 |
-
-⭐ **Il mese consigliato è `2026-08`**: sette commesse emittibili (più che
-sufficienti per la controprova) su soli **9 gruppi**, cioè un perimetro che si
-tiene sotto controllo a occhio. `2026-06` ha 48 gruppi e la prova 2 —
-«confronta con l'elenco che ti eri annotato» — diventa impraticabile.
-
-Le sette commesse di `2026-08`, tutte in `PRONTA_FATTURAZIONE`, con la riga di
+Le tre commesse di `2026-09`, costruite il 2026-09-04 da tre clienti diversi,
+tutte in `PRONTA_FATTURAZIONE` e tutte nate da push, con la riga di
 `commesse_sorgenti` da guastare:
 
-| Commessa | Codice | Cliente | Attività | Valore | ROOT (`id` riga) | COLLEGATO |
-| --- | --- | --- | --- | --- | --- | --- |
-| 322 | `CMM-20260719090755356-a2b9f9` | Azienda PG Test Natura | 3 | **−17,00** | 248 | 0 |
-| ⭐ 3939 | `CMM-20260802230720152-e574f8` | Azienda ConTutto | 1 | 700,00 | **2039** | 0 |
-| 3941 | `CMM-20260802231427331-a33197` | Titini Michele Carlo | 1 | 264,00 | 2040 | 0 |
-| ⚠️ 4277 | `CMM-20260803100729415-ee7090` | Azienda PG Test Natura | 4 | 1.820,00 | 2211 | **1** |
-| 15370 | `CMM-20260816224228686-b9946f` | Azienda ConTutto | 3 | 32,50 | 7789 | 0 |
-| 25092 | `CMM-20260823232717992-e46ded` | Titini Michele Carlo | 1 | 408,00 | 12795 | 0 |
-| ⛔ 32899 | `CMM-PGTAPEF202-2026-000000001` | Titini Michele Carlo | 4 | 74,00 | 16433 | 0 |
+| Commessa    | Codice                          | Cliente (BA)                 | Attività `DA_EMETTERE` | Valore | ROOT (`id` riga) | COLLEGATO     |
+| ----------- | ------------------------------- | ---------------------------- | ---------------------- | ------ | ---------------- | ------------- |
+| 34136       | `CMM-PGTAPEF202-2026-000000003` | Azienda PG Test Natura (169) | 3                      | 53,00  | 17003            | **1** (17004) |
+| ⭐ **34137** | `CMM-PGTAPEF202-2026-000000004` | Azienda ConTutto (173)       | 1                      | 15,00  | **17005**        | 0             |
+| 34138       | `CMM-PGTAPEF202-2026-000000005` | Titini Michele Carlo (155)   | 1                      | 10,00  | 17006            | 0             |
+
+ℹ️ Nel perimetro di `2026-09` compare anche **33285**, ma è in stadio
+`FATTURATA`: non partecipa al pull e non va contata fra le sane.
 
 **Quale guastare, e perché non le altre:**
 
-- ⭐ **3939** è la candidata: una sola attività, valore netto, sorgente unica —
-  «è entrata / non è entrata» si legge senza contare;
-- ⚠️ **4277** ha già un COLLEGATO suo: usala solo se vuoi esercitare anche il
-  ripristino per `id`, che su di lei è **obbligatorio** (è il caso descritto
-  sopra);
-- ⛔ **32899** è la commessa dell'emittente `PGTAP-EF…`, che è **voluto e non è
-  residuo di test**: non è sbagliato guastarla, ma un fallimento su quella riga
-  si confonde con il rumore dei pgTAP. Lasciala fra le sane;
-- **322** porta valore **negativo** (−17,00): è una rettifica, e come
-  controprova «le sane sono passate» è la meno leggibile delle sei.
+- ⭐ **34137** è la candidata: una sola attività, valore positivo, sorgente unica
+  — «è entrata / non è entrata» si legge senza contare;
+- **34138** è il ripiego con le stesse proprietà, se 34137 nel frattempo è stata
+  consumata;
+- ⭐ **34136 va lasciata SANA di proposito**, ed è il guadagno di questa materia
+  rispetto a quella di agosto: è **multi-sorgente** (1 ROOT + 1 COLLEGATO), quindi
+  la controprova della prova 2 esercita quel caso sul lato che deve **passare**.
+  Guastala solo se vuoi provare anche il ripristino per `id`, che su di lei è
+  **obbligatorio**.
+
+<details>
+<summary>La materia di <code>2026-08</code>, misurata il 2026-08-31 — ⛔ scaduta, non usarla</summary>
+
+Tenuta come fatto datato: dice quanto in fretta una fotografia di materia
+smette di valere. `3939` era la candidata; il 2026-09-04 risultava già emessa.
+
+| Commessa | Codice                          | Cliente                | Attività | Valore     | ROOT (`id` riga) | COLLEGATO |
+| -------- | ------------------------------- | ---------------------- | -------- | ---------- | ---------------- | --------- |
+| 322      | `CMM-20260719090755356-a2b9f9`  | Azienda PG Test Natura | 3        | **−17,00** | 248              | 0         |
+| ⛔ 3939   | `CMM-20260802230720152-e574f8`  | Azienda ConTutto       | 1        | 700,00     | 2039             | 0         |
+| ⛔ 3941   | `CMM-20260802231427331-a33197`  | Titini Michele Carlo   | 1        | 264,00     | 2040             | 0         |
+| 4277     | `CMM-20260803100729415-ee7090`  | Azienda PG Test Natura | 4        | 1.820,00   | 2211             | **1**     |
+| 15370    | `CMM-20260816224228686-b9946f`  | Azienda ConTutto       | 3        | 32,50      | 7789             | 0         |
+| 25092    | `CMM-20260823232717992-e46ded`  | Titini Michele Carlo   | 1        | 408,00     | 12795            | 0         |
+| 32899    | `CMM-PGTAPEF202-2026-000000001` | Titini Michele Carlo   | 4        | 74,00      | 16433            | 0         |
+
+⚠️ Quel conteggio («7 commesse emittibili» su `2026-08`) era fatto **senza** il
+filtro sullo stadio: comprendeva commesse il cui lavoro era già fatturato.
+
+</details>
 
 ### Il guasto: togliere la ROOT source a **una** commessa
 
 `vendite.fn_emit_attivita_fatturabili_da_commessa` può sollevare in tre punti.
 Ne serve **uno solo**, e la scelta è motivata:
 
-| Strada | Perché sì / no |
-| --- | --- |
-| ⭐ **ROOT source mancante** → `E_VALORE_MANCANTE` | **questa.** Condizione **di dato**, mirata su **una** commessa, e **reversibile** con un `UPDATE` che rimette tutto com'era |
-| `E_RIGA_GIA_FATTURATA` | serve una riga già fatturata: si costruisce solo passando da un giro precedente, ed è più intricata da disfare |
-| `E_CODICE` su `config.sorgenti` COMMESSA | ⛔ **no**: è configurazione **globale**, farebbe fallire *tutte* le commesse e romperebbe il sistema per chiunque altro stia lavorando |
+| Strada                                           | Perché sì / no                                                                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ⭐ **ROOT source mancante** → `E_VALORE_MANCANTE` | **questa.** Condizione **di dato**, mirata su **una** commessa, e **reversibile** con un `UPDATE` che rimette tutto com'era           |
+| `E_RIGA_GIA_FATTURATA`                           | serve una riga già fatturata: si costruisce solo passando da un giro precedente, ed è più intricata da disfare                        |
+| `E_CODICE` su `config.sorgenti` COMMESSA         | ⛔ **no**: è configurazione **globale**, farebbe fallire *tutte* le commesse e romperebbe il sistema per chiunque altro stia lavorando |
 
 **Perché funziona** — righe 73-85 della funzione: la ROOT è obbligatoria, e se
 manca solleva `E_VALORE_MANCANTE` con dettaglio *«ROOT source mancante per
@@ -198,12 +275,18 @@ sulle commesse per cui il guasto era più interessante.
 > dove per caso funziona. *(Fatto datato, 2026-08-31: delle 31 commesse con
 > sorgenti, **5** hanno più di un COLLEGATO — una ne ha 31.)*
 
+ℹ️ **Qui il contesto operatore non serve, e la differenza conta.**
+`vendite.commesse_sorgenti` **non ha RLS** — quindi il `RETURNING` è affidabile
+alla lettera: zero righe significa davvero *«questa commessa non ha ROOT»*, non
+*«non stai vedendo niente»*. È l'opposto delle query sulla vista e del controllo
+finale della prova 5, che leggono `vendite.commesse` e vanno fatte con i `SET`.
+
 ```sql
 -- GUASTO — sostituisci <commessa_id>. ⭐ ANNOTA l'id che RETURNING ti stampa:
 --          è l'unica cosa che serve al ripristino.
 UPDATE vendite.commesse_sorgenti
    SET ruolo_link = 'COLLEGATO'
- WHERE commessa_id = <commessa_id>
+ WHERE commessa_id = 34137
    AND ruolo_link = 'ROOT'
 RETURNING id, commessa_id, sorgente_tipo_id, sorgente_uid;
 ```
@@ -213,7 +296,7 @@ RETURNING id, commessa_id, sorgente_tipo_id, sorgente_uid;
 -- <riga_id> è l'id stampato dal RETURNING del guasto.
 UPDATE vendite.commesse_sorgenti
    SET ruolo_link = 'ROOT'
- WHERE id = <riga_id>
+ WHERE id = 17005
 RETURNING id, commessa_id, ruolo_link;
 ```
 
@@ -252,8 +335,10 @@ SELECT pipeline_id, task_code, resume_mode, annullabile
 ```
 
 - [x] `resume_mode` = **`RESUME_TASK`** su tutte le righe — ✅ **verificato il
-      2026-08-31**: due righe, pipeline **1** e **8**, entrambe `RESUME_TASK`
-      (`annullabile = false` su entrambe).
+      2026-08-31 e ri-verificato il 2026-09-04**: due righe, pipeline **1** e
+      **8**, entrambe `RESUME_TASK` (`annullabile = false` su entrambe).
+      ℹ️ `fatturazione_pipeline_task_policy` non ha RLS: qui il contesto
+      operatore non serve.
 
 > 📌 Al seed è `RESUME_TASK` per la pipeline **1** (MASSIVO) e la **8**
 > (GIORNALIERO). Il controllo serve a escludere che sia stato cambiato dopo, e
@@ -389,7 +474,15 @@ step fermo — segnala.
 - [ ] tutte le commesse toccate hanno di nuovo `ruolo_link = 'ROOT'`;
 - [ ] il mese di competenza torna a mostrare le commesse da emettere.
 
+⛔ **Il controllo finale è quello che il fail-closed tradisce peggio**: legge
+`vendite.commesse`, che ha la RLS, e **senza i due `SET` torna zero righe** —
+cioè esattamente l'esito che stai sperando di vedere. Un «tutto a posto» che è
+solo assenza di contesto, su una commessa lasciata senza ROOT.
+
 ```sql
+SET app.ruolo_applicativo = 'OPERATORE';   -- ⛔ o lo zero non è un dato
+SET app.current_user_id   = '1';
+
 -- Controllo finale: nessuna commessa deve essere rimasta senza ROOT.
 SELECT c.id
   FROM vendite.commesse c
@@ -406,14 +499,14 @@ SELECT c.id
 
 **Chiuso il**: — · **Da**: — · **Ambiente**: sviluppo (`dbdev`)
 
-| # | Prova | Scrive | Esito | Note |
-| --- | --- | --- | --- | --- |
-| 0 | La policy del task è `RESUME_TASK` | no | | |
-| 1 | Il giro non si ferma, il task_run va in **ERRORE** | **sì** | | |
-| 2 | ⭐ Le commesse sane sono passate **e rimaste** (savepoint) | no | | |
-| 3 | 🔴 Il rilancio **RITENTA**, non salta | **sì** | | |
-| 4 | Rimosso il guasto, il lavoro torna a casa senza doppioni | **sì** | | |
-| 5 | Tutto-rosso → `E_PULL_COMMESSA_ALL_FAILED`, step fermo | **sì** | | |
+| #   | Prova                                                     | Scrive | Esito | Note |
+| --- | --------------------------------------------------------- | ------ | ----- | ---- |
+| 0   | La policy del task è `RESUME_TASK`                        | no     |       |      |
+| 1   | Il giro non si ferma, il task_run va in **ERRORE**        | **sì** |       |      |
+| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint) | no     |       |      |
+| 3   | 🔴 Il rilancio **RITENTA**, non salta                      | **sì** |       |      |
+| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni  | **sì** |       |      |
+| 5   | Tutto-rosso → `E_PULL_COMMESSA_ALL_FAILED`, step fermo    | **sì** |       |      |
 
 ### Che cosa ha trovato il collaudo
 
