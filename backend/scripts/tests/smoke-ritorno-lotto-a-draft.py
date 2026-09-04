@@ -192,19 +192,26 @@ with transaction.atomic():
                 data_attivita, quantita, uom_id, qta_operativa, uom_operativa_id,
                 factor_to_base, prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
                 competenza_mese, competenza_dal, competenza_al,
-                commessa_id, commessa_attivita_id, lock_batch_id,
+                commessa_id, commessa_attivita_id, lock_batch_id, emit_batch_id,
                 lock_in_fatturazione, approvato, stato_esecuzione,
                 prezzo_bloccato, meta
             ) VALUES (
                 %s, %s, %s, %s, 1, %s, 1, %s, 1, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, TRUE, TRUE, 'PENDING', TRUE,
+                %s, %s, %s, %s, %s, %s, %s, TRUE, TRUE, 'PENDING', TRUE,
                 '{}'::jsonb
             ) RETURNING id
             """,
+            # ⛔ 2026-09-04 (changeSet 20260904-50): `fn_select_attivita_fatturabili`
+            #   prende SOLO le righe marchiate col proprio giro
+            #   (`a.emit_batch_id = p_lock_batch_id`). Senza marchio la select
+            #   torna zero, il rilancio non rigenera righe e i test 3-4-6
+            #   falliscono — non e' un difetto da aggirare, e' l'effetto voluto
+            #   dal cantiere «esito parziale». La fixture si marchia col PROPRIO
+            #   giro, come fa il backend nel task di pull.
             [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],
              competenza, t["uom_id"], t["uom_id"], Decimal("250.00"),
              t["valuta_id"], t["tipo_doc_fiscale_id"], competenza, competenza,
-             competenza, commessa_id, ca_id, lock_batch_id],
+             competenza, commessa_id, ca_id, lock_batch_id, lock_batch_id],
         )
         af_id = cur.fetchone()[0]
         print(f"lotto {lotto_id} · commessa {commessa_id} · attivita' {af_id}\n")
