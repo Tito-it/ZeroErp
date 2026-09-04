@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_run_senza_attore.md" %}
 # 🔍 View `vw_run_senza_attore`
 
 > 📝 **Descrizione**

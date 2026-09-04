@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/processi.md" %}
 # 📚 Tabella `processi`
 
 > 📝 **Descrizione**

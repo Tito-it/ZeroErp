@@ -13,8 +13,11 @@
 > emittente**: `dbops.vw_emittenti_non_serviti` e `dbops.vw_operatori_senza_emittente`
 > sono vuote. ✅ La coda rifiuta un lavoro di dominio senza operatore, e ogni
 > bersaglio della chiusura scadenze dichiara la propria classe.
-> ⛔ **Resta la sola fase 6**, che è bloccata da una cosa che non sta in `db/`:
-> il ritiro del ruolo `BYPASSRLS` (provisioning). Avanzamento nel §10,
+> ✅ **LAVORO DB COMPLETO** (2026-09-04). Tutte e sette le fasi applicate, fase 6
+> compresa: il ramo «nessun utente → passa» è chiuso, e il criterio è
+> `row_security_active()`. ⛔ Non era bloccata dal ritiro di `BYPASSRLS` — vedi
+> §12.5. Baseline pgTAP su **491 file: nessuna regressione**.
+> ✅ **Documentazione allineata** (§12.10). Avanzamento nel §10,
 > ⭐ **e tutto ciò che resta aperto — nostro e altrui — nel §12**.
 >
 > ⚠️ **Perimetro:** solo `db/`. ⛔ Il backend (worker, dispatch, command che accodano)
@@ -512,7 +515,7 @@ attribuire un rosso a questo lavoro.
 | **3b** | ✅ applicata | La fabbrica `fn_crea_utente_tecnico` + gli utenti tecnici **per processo × emittente**, con il loro perimetro. ⛔ Senza profilo (non serve) | `-26`…`-30`, `-36`…`-39` | no |
 | **4** | ✅ applicata | Coda: `processo_codice` sui tipi (hard FK) + guard di classe in `fn_accoda_lavoro` + `NOT NULL` in `90_end` + commento `run_as` | `-40`…`-42` | ✅ **no — verificato**: `CodaLavoriRepository.accoda` è l'**unico** punto che accoda, e passa `run_as=OPERATORE`. Il guard vincola il futuro, non rompe il presente |
 | **5** | ✅ applicata | Chiusura scadenze: `classe` sul BERSAGLIO + CHECK + `NOT NULL` in `90_end` + `fn_apply_chiusura_scadenze(p_classe)` con default | `-43`…`-45` | ⚠️ parziale |
-| **6** | 🔵 **prossima** | Il guard di scrittura — ⛔ **bloccata**: prima va ritirato `BYPASSRLS`, che è provisioning, non un changeSet | — | ⛔ sì: ultimo in assoluto |
+| **6** | ✅ **applicata** | Il guard di scrittura: `row_security_active()` al posto del ramo «nessun utente», più `E_SCOPE_SENZA_UTENTE`. ⭐ `test-guard-emittente-senza-utente` **6/6**, ed era rosso su 4-5 prima della migrazione | `-51` + CSV | ✅ no: il batch bypassa, il drenatore imposta la GUC |
 
 ⚠️ **La 3b è separata dalla 3a per una ragione, non per comodità:** creare righe in
 `anagrafiche.soggetti` attraversa dieci trigger e una FK su `stato_id`. Indovinare
@@ -605,11 +608,11 @@ Non sono cronaca: sono le cose che, ripetute, romperebbero di nuovo.
 ⭐ **Dove c'è un presidio, la voce si verifica da sola**: non si va a memoria, si
 interroga la vista. Dove non c'è, la colonna lo dice.
 
-### 12.1 🗄️ DB — una voce sola, e non è pronta
+### 12.1 🗄️ DB — ✅ niente di aperto
 
 | # | Residuo | Blocco | Come si vede che è chiuso |
 | --- | --- | --- | --- |
-| **R-1** | **Fase 6** — `script.trgfn_guard_emittente_scope`: il ramo *«nessun utente → passa»* diventa *«bypasserebbe la RLS? allora passa; altrimenti errore»* (§7) | ⚠️ **NON è R-2** (vedi §12.5, misurato 2026-09-04). Il costo vero: **12 file pgTAP** da riscrivere, più la decisione sui **cinque trigger gemelli** | i 12 file verdi, poi il changeSet |
+| **R-1** | ✅ **CHIUSA — fase 6 applicata il 2026-09-04** (changeSet `-51`). I 12 pgTAP riscritti e verdi; i cinque trigger gemelli restano come sono, col perché nel changeSet | — | fatto: `test-guard-emittente-senza-utente` **6/6**, e la baseline su 491 file non registra **nessuna regressione** |
 
 ### 12.2 ⚙️ Provisioning e backend — il perimetro non è nostro
 
@@ -631,6 +634,15 @@ perché nessuno faceva la domanda. Ora una vista li elenca.
 | **R-7** | **`config.email_outbox` non ha la colonna emittente** — quindi `send_pending_emails` è un processo di `DOMINIO` **senza percorso al perimetro** | una email fiscale è di un emittente; senza colonna non c'è niente su cui filtrare | `dbops.vw_processi_dominio_senza_emittente` **vuota** |
 | **R-8** | **`vendite.listini*` senza policy RLS**, benché il listino sia stato dichiarato di dominio | il percorso all'emittente c'è (`listino_id → emittente_soggetto_ruolo_id`), ma **nessuno lo applica** | `dbops.vw_processi_dominio_senza_difesa` **vuota** |
 | **R-9** | ✅ **CHIUSA — non è un debito, è una decisione dichiarata.** La matrice `config.tipi_ruoli_nature_ammesse` è **vuota** per `PROC_AUTO` (§4.0: le nature `PG` esigono partita IVA e codice fiscale, che un processo non ha) | sta qui solo perché **sembra** un buco da tappare, e fra sei mesi qualcuno proverà a tapparlo | è già presidiata: l'asserzione *«non vincola la natura»* in `db/pgtap/anagrafiche/test-identita-tecnica.sql` si rompe se qualcuno riempie la matrice |
+
+### 12.4 ⛔ Fuori perimetro dichiarato — non sono residui
+
+**Magazzino e acquisti** sono in ristrutturazione: le loro misure sono state **tolte**
+dall'analisi apposta, e non rientrano da questa porta.
+
+---
+
+---
 
 ### 12.5 ⛔ Correzione — la fase 6 NON è bloccata dal ritiro del ruolo
 
@@ -694,10 +706,121 @@ nessuno. ⇒ Si misura lanciando la suite BE **dopo** il changeSet, non prima.
 
 ---
 
-### 12.4 ⛔ Fuori perimetro dichiarato — non sono residui
+### 12.7 ✅ Fase 6 — che cosa è stato fatto, nell'ordine
 
-**Magazzino e acquisti** sono in ristrutturazione: le loro misure sono state **tolte**
-dall'analisi apposta, e non rientrano da questa porta.
+**1. I dodici pgTAP, prima del changeSet.** Rimosso lo svuotamento di
+`app.current_user_id`; il contesto operatore del preambolo resta valido per tutto il
+file. ⭐ **Dieci sono passati senza altro**, perché le loro fixture già ordinavano la
+scelta dell'emittente e pescavano quello dell'operatore.
+
+Due hanno chiesto una decisione, e sono i due che insegnano qualcosa:
+
+* **`test-ordini-riepilogo-iva-totali.sql`** — il passo 15 sposta un ordine su un
+  **altro** emittente per far scattare `trg_ordini_z90_ricalcola_totali_upd`, che
+  scatta **solo** su `AFTER UPDATE OF emittente_fiscale_id` (verificato su
+  `pg_get_triggerdef`): non c'è un'altra scrittura che lo accenda. ⚠️ Ma spostare un
+  documento fra emittenti è precisamente ciò che il guard nega a un operatore — la
+  relazione utente/emittente è 1-a-1, quindi **nessun** operatore ha entrambi.
+  ⇒ Il passo si mette nei panni del **super admin**, l'unico attore che può farlo, e
+  poi torna operatore. ⭐ E l'asserzione resta nel contesto del super admin: appena il
+  documento è passato all'altro emittente, **l'operatore di partenza non lo vede più**,
+  e il confronto tornava `NULL` — un rosso che sembra un trigger rotto ed è invece la
+  policy che funziona.
+* **`test-trgfn-preventivi-default-emittente-e-guard-coerenza.sql`** — qui svuotare la
+  GUC **resta giusto**: la GUC vuota *è il caso in prova*, non una scorciatoia. ⚠️ E
+  regge dopo la fase 6 per una ragione fragile, ora scritta nel file: i trigger
+  `BEFORE ROW` scattano in **ordine alfabetico**, e `…_default_emittente_ins` viene
+  prima di `…_guard_emittente_scope_ins_upd`. ⛔ Una rinomina invertirebbe l'ordine e il
+  test diventerebbe **verde sull'altro errore** — entrambi passano da
+  `fn_log_and_raise_error`, quindi entrambi sono `P0001`.
+
+⚠️ Il tredicesimo file, `test-seed-stati-doc-ordini-evaso-v1.sql`, resta col rosso che
+aveva: **gli stessi due test 4 e 6**, verificato rieseguendo la versione precedente.
+Sta in `baseline-rossi.tsv` e non c'entra con questa fase.
+
+**2. Due difetti trovati in un test della fase 3a** (`test-identita-tecnica.sql`), che
+nessuno aveva più eseguito dopo la 3b:
+
+* il test 7 costruiva il caso mettendo `tecnica = true` su una **persona**. Dal
+  changeSet `-28` quell'UPDATE non passa più: un'identità tecnica pretende un
+  `soggetto_ruolo` `PROC_AUTO`. ⭐ **È il DB che ha imparato a impedire proprio l'abuso
+  che il test temeva.** La fixture ora costruisce il caso che *resta possibile* — un
+  utente tecnico vero il cui legame col processo viene disattivato: il residuo di un
+  processo ritirato male;
+* il test 8 **diceva il falso** dopo la riscrittura `-38`: pretendeva che
+  `vw_emittenti_non_serviti` non nominasse un processo senza utente tecnico. Con la
+  domanda nuova — *«per la coppia (processo, emittente) esiste un utente?»* — la
+  risposta è «no» su **ogni** emittente. ⇒ Ora asserisce ciò che serve sapere: la vista
+  nomina **ogni emittente attivo rimasto scoperto**.
+
+**3. Il changeSet `-51`** e il codice errore `E_SCOPE_SENZA_UTENTE` (classe `TECNICO`:
+non c'è una persona a cui negare qualcosa, c'è un processo senza identità).
+⭐ `CREATE OR REPLACE`, non `DROP`+`CREATE`: la firma non cambia, quindi l'ACL resta
+attaccata — la lezione di `-21` applicata prima che costasse.
+
+**4. Il test della fase, `db/pgtap/script/test-guard-emittente-senza-utente.sql`** —
+⭐ **era ROSSO sui test 4 e 5 prima della migrazione, e doveva esserlo**:
+*«caught: no exception»* era la porta aperta, misurata. ✅ **6/6 dopo.**
+Il test 2 è il presidio del test stesso: asserisce che la sessione **subisce** la RLS —
+girando da owner, i test 4-5 sarebbero verdi *perché non succede niente*.
+
+---
+
+### 12.8 ⚠️ Due regressioni arrivate da FUORI questo cantiere, mentre lo si chiudeva
+
+Nessuna delle due è della fase 6, e distinguerle è costato meno di ripararle.
+
+* **`test-fatturazione-draft.sql`** — cadeva sui test 3-4-5 (*selezione*), non su 1-2
+  (*inserimento*): il changeSet **`-50`** di un altro cantiere fa filtrare
+  `fn_select_attivita_fatturabili` su `emit_batch_id = p_lock_batch_id`. La fixture
+  creava l'attività **senza marchio** e poi chiedeva il lock col proprio giro: zero
+  righe, che è l'effetto voluto da quel cantiere. ⇒ Ora la fixture si marchia col
+  proprio giro, come farà il backend.
+* **CI rossa su `20260904-47`** (`GRANT … TO zeroerp_batch_fatturazione` in un
+  changeSet). ⚠️ Il messaggio del guardrail dava una ragione **inesatta** per questa
+  riga: *«il migrate muore»* — non sarebbe morto, il `GRANT` stava dentro un
+  `IF EXISTS (… pg_roles …)` che il guardrail, testuale, non vede. Rossa era la
+  **verifica**, non il migrate. ⭐ Ma la riga andava tolta per l'altra ragione: il
+  provisioning fa già `GRANT SELECT ON ALL TABLES` + `ALTER DEFAULT PRIVILEGES`, quindi
+  copriva già la vista. Duplicare un permesso è come duplicare un dato.
+  ✅ Il checksum non è stato un problema: quel changeSet ha già
+  `runOnChange: false` + `validCheckSums: [ANY]`, quindi accetta il nuovo checksum e
+  **non ri-esegue**. ⚠️ Con `runOnChange: true`, `ANY` l'avrebbe fatto ri-eseguire.
+
+---
+
+### 12.9 ✅ Documentazione — che cosa è stato scritto
+
+⛔ **Solo `manual/`**: le pagine sotto `tabelle/`, `funzioni/` e `views/` sono
+auto-generate e non si toccano a mano.
+
+**Dieci pagine nuove**
+
+| Dove | Pagine |
+| --- | --- |
+| `dbops/manual/` | `processi` · `processi_bersagli` · `processi_identita` |
+| `dbops/manual/` | le sei viste di presidio |
+| `script/manual/` | `fn_crea_utente_tecnico` |
+
+**Nove pagine esistenti allineate** — gli oggetti che il cantiere ha modificato:
+`coda_lavori_tipi`, `fn_accoda_lavoro`, `automazione_chiusura_scadenze`,
+`fn_apply_chiusura_scadenze`, `job_run_log`, `fn_run_and_log`,
+`fn_job_run_start`, `identita_digitali`,
+`trgfn_identita_digitali_guard_coerenza`.
+
+⛔ **Una era diventata FALSA, non solo vecchia:**
+`script/manual/trgfn_guard_emittente_scope` descriveva ancora il passo 1 come
+*«nessun utente in sessione → skip»* — cioè la porta che la fase 6 aveva appena
+chiuso. ⚠️ Una pagina incompleta si perdona; una che descrive un varco che non
+esiste più manda qualcuno nella direzione sbagliata. Corretta (§12.7 il resto), insieme al conteggio
+delle tabelle presidiate (erano dodici, sono **quindici**).
+
+⚠️ **Un passo resta a chi genera la doc**: il generatore inserisce la riga
+`{% include-markdown %}` nella pagina auto-gen **solo se il file manuale esisteva
+quando ha girato**. ⇒ Dopo aver scritto un `manual/` nuovo va rilanciato
+`scripts/gen_db_docs.py`, o la pagina resta scritta e **non agganciata**.
+
+---
 
 ---
 

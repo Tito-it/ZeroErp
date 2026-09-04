@@ -32,7 +32,6 @@ BEGIN
   --                      perimetro si deriva dal CONTO DI INCASSO
   --                      della distinta (D5)
   --
-  -- Se app.current_user_id non e' settato (batch job) -> skip.
   -- Se emittente non risolvibile -> skip (nessun padrone).
   --
   -- ⭐ Rev 2026-08-22 (lotto 6, S3-4). La risoluzione era QUI, e
@@ -45,6 +44,13 @@ BEGIN
   --   security — non si opponeva: la riga entrava.
   --   Adesso la risoluzione la fa una SECURITY DEFINER, che legge
   --   tutto; qui resta solo l'applicazione della decisione.
+  --
+  -- ⛔ Rev 2026-09-04 (fase 6, brief processi automatici). Il
+  --   ramo «utente NULL -> RETURN NEW» diceva «batch job, nessun
+  --   filtro»: era l'ultima porta da cui un processo applicativo
+  --   scriveva senza dire chi fosse, e bastava NON impostare una
+  --   GUC per aprirla. Adesso passa solo chi bypasserebbe
+  --   comunque la RLS.
   -- =========================================================
 
   -- 1. Leggi user_id dalla sessione PG
@@ -53,7 +59,39 @@ BEGIN
   )::integer;
 
   IF v_auth_user_id IS NULL THEN
-    RETURN NEW;  -- batch job, nessun filtro
+    -- ⭐ UN CRITERIO SOLO, E NON E' NOSTRO.
+    --   row_security_active() risponde per la tabella in gioco e
+    --   per QUESTA sessione: false per il proprietario (senza
+    --   FORCE ROW LEVEL SECURITY), per un superuser e per un
+    --   ruolo BYPASSRLS. Sono esattamente le sessioni che le
+    --   policy non filtrano: se la RLS le lascia passare, questo
+    --   guard non ha titolo per fermarle — e viceversa.
+    --   ⛔ Non si elenca a mano «proprietario o superuser o
+    --   bypassrls»: sarebbe una SECONDA scrittura della stessa
+    --   regola, e due scritture prima o poi dissentono.
+    IF NOT row_security_active(TG_RELID::regclass) THEN
+      RETURN NEW;
+    END IF;
+
+    -- Sessione applicativa senza identita': si ferma. Non e'
+    -- «permesso negato a qualcuno» — non c'e' nessuno a cui
+    -- negarlo: e' un processo configurato senza identita'.
+    PERFORM script.fn_log_and_raise_error(
+      TG_TABLE_SCHEMA::text,
+      'trgfn_guard_emittente_scope',
+      'E_SCOPE_SENZA_UTENTE',
+      jsonb_build_object(
+        'detail', 'Scrittura senza utente in sessione su tabella con perimetro emittente',
+        'modo', v_mode,
+        'colonna', v_col_name,
+        'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+        'db_user', current_user,
+        'operazione', TG_OP
+      ),
+      NULL::uuid,
+      TG_TABLE_SCHEMA::text,
+      TG_TABLE_NAME::text
+    );
   END IF;
 
   -- 2. Leggi valore colonna da NEW
@@ -109,7 +147,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
-IS 'Difesa in profondita'': blocca INSERT/UPDATE se l''utente non ha scope sull''emittente fiscale della riga. Modalita'' TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta) | contabile (perimetro dal conto di incasso, D5). ⭐ Rev 2026-08-22: la risoluzione dell''emittente e'' passata a script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER. Prima stava qui, e il guard e'' SECURITY INVOKER: nel modo fattura leggeva vendite.fatture sotto row security, e per un utente fuori perimetro la lettura dava zero righe -> emittente NULL -> ramo «non risolvibile» -> passa. Il guard si spegneva esattamente nel caso che esiste per coprire. ⚠️ Il ramo «non risolvibile» resta e serve: una distinta interna (fondo fattura, compensazione) non e'' il canale di nessuno.';
+IS 'Difesa in profondita'': blocca INSERT/UPDATE se l''utente non ha scope sull''emittente fiscale della riga. Modalita'' TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta) | contabile (perimetro dal conto di incasso, D5). ⭐ Rev 2026-08-22: la risoluzione dell''emittente e'' passata a script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER. Prima stava qui, e il guard e'' SECURITY INVOKER: nel modo fattura leggeva vendite.fatture sotto row security, e per un utente fuori perimetro la lettura dava zero righe -> emittente NULL -> ramo «non risolvibile» -> passa. ⛔ Rev 2026-09-04 (fase 6): il ramo «nessun utente in sessione -> passa» e'' chiuso. Passa solo chi bypasserebbe comunque la RLS, e il criterio e'' row_security_active() sulla tabella in gioco — la stessa regola che PostgreSQL applica alle policy, chiesta a lui invece che riscritta. Una sessione applicativa senza app.current_user_id ora alza E_SCOPE_SENZA_UTENTE. ⚠️ Il ramo «emittente non risolvibile» resta e serve: una distinta interna (fondo fattura, compensazione) non e'' il canale di nessuno. Brief: brief-db-processi-automatici-identita-e-perimetro §7.';
 ```
 
 ---

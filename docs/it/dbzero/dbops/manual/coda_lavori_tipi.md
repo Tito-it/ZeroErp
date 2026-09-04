@@ -38,7 +38,33 @@ applicato alla coda generica.
 * `max_tentativi_default`: default per `coda_lavori.max_tentativi`.
 * `attivo`: se `false`, `fn_accoda_lavoro` **rifiuta** l'enqueue del tipo
   (`E_JOB_TYPE_NON_ATTIVO`).
+* `processo_codice`: **di quale processo** è questo tipo di job (hard FK verso
+  [dbops.processi](/dbzero/dbops/manual/processi)). Vedi sotto — è il campo da
+  cui dipende il guard di classe.
 * `meta`: estensioni JSONB per-tipo.
+
+---
+
+### ⭐ Rev 2026-09-04 — ogni tipo dichiara di quale PROCESSO è
+
+`processo_codice` è **obbligatorio**, e serve a una cosa sola: far sapere alla
+coda se il lavoro che sta accodando **appartiene a un'azienda** o no.
+
+⛔ **Il buco che chiude.** `run_as_default` è un *suggerimento*: chi accoda può
+sovrascriverlo passando `p_run_as`. Un tipo di dominio accodato come `SISTEMA`
+passava tutti i controlli e girava **senza perimetro** — cioè senza sapere per
+conto di quale azienda stesse lavorando.
+
+⭐ **La classe NON è duplicata qui.** Sarebbe stata una seconda scrittura dello
+stesso fatto, e due scritture prima o poi dissentono: si mette il puntatore al
+processo, e la classe si **legge** da `dbops.processi`. Fonte unica.
+
+⚠️ Il `CHECK` di tabella non prende quel caso, e non è un difetto suo: controlla
+la coerenza fra `run_as` e `scope`, non la **natura** del lavoro. Sono due
+domande diverse, e servono due presidi.
+
+⇒ Registrare un tipo nuovo vuol dire adesso: **prima** il processo in
+`dbops.processi`, poi il tipo che lo cita.
 
 ---
 
@@ -63,6 +89,10 @@ applicato alla coda generica.
 | codice | handler_code | run_as_default | descrizione |
 | --- | --- | --- | --- |
 | `FATTURAZIONE_GIRO` | `fatturazione_giro_default` | `OPERATORE` | Giro fatturazione on-demand (C-3). |
+| `FATTURAZIONE_NUMERA` | `fatturazione_numera_default` | `OPERATORE` | Numerazione di perimetro (C-4). |
+
+⭐ Entrambi appartengono a un processo di classe `DOMINIO`: la coda li accetta
+**solo** come `OPERATORE`, con lo scope di chi li richiede.
 
 Brief: `brief-db-coda-lavori-generica` §2 e §4.
 

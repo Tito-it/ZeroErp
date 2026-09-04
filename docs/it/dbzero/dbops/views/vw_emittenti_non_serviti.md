@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_emittenti_non_serviti.md" %}
 # 🔍 View `vw_emittenti_non_serviti`
 
 > 📝 **Descrizione**

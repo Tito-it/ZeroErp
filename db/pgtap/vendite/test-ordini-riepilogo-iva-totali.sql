@@ -43,7 +43,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(18);
 
-SELECT set_config('app.current_user_id', '', true);
+-- ⛔ 2026-09-04 — QUI IL TEST SPEGNEVA IL GUARD, e adesso non piu'.
+--   La riga rimossa era `set_config('app.current_user_id', '', true)`: senza
+--   utente in sessione `script.trgfn_guard_emittente_scope` usciva subito con
+--   RETURN NEW, e le fixture entravano senza che nessuno guardasse l'emittente.
+--   La fase 6 di `brief-db-processi-automatici-identita-e-perimetro` chiude quel
+--   ramo — una sessione applicativa senza utente non scrive piu'.
+--   ⇒ Il contesto operatore del preambolo RESTA valido per tutto il file, e le
+--     fixture prendono l'emittente su cui quell'operatore puo' davvero scrivere
+--     (`script.fn_pgtap_emittente_operatore()`).
+--   ⭐ Non e' una riparazione di comodo: prima questo file collaudava il
+--     comportamento di una porta aperta, adesso attraversa il guard come lo
+--     attraversa l'applicazione.
 
 -- ============================================================
 -- 1) View base presente
@@ -458,12 +469,52 @@ UPDATE vendite.ordini
        totale_doc = -777
  WHERE id = (SELECT id FROM tmp_ordiva_ordine);
 
+-- ⛔ 2026-09-04 — QUESTO PASSO CAMBIA ATTORE, e non e' una scorciatoia.
+--   `trg_ordini_z90_ricalcola_totali_upd` scatta SOLO su
+--   `AFTER UPDATE OF emittente_fiscale_id` (verificato su `pg_get_triggerdef`):
+--   non c'e' un'altra scrittura di testata che lo faccia partire, quindi il
+--   passo non si puo' riscrivere su un'altra colonna.
+--   ⚠️ E spostare un documento su un ALTRO emittente e' precisamente cio' che
+--   `script.trgfn_guard_emittente_scope` nega a un operatore: la relazione
+--   utente/emittente e' 1-a-1 (`config.user_emittenti_fiscali`), quindi nessun
+--   operatore ha entrambi nel proprio perimetro. Non e' un limite della
+--   fixture: e' la regola.
+--   ⇒ L'unico attore che PUO' farlo e' il super admin, e il test si mette nei
+--     suoi panni per il tempo di quella riga, poi torna operatore. Cosi' il
+--     passo 15 collauda il trigger **attraverso** il guard invece che a guard
+--     spento, e dice anche di chi e' quel potere.
+DO $sa$
+DECLARE
+    v_super integer;
+BEGIN
+    SELECT u.id INTO v_super
+      FROM django.auth_user u
+     WHERE script.fn_is_super_admin(u.id)
+     -- Ordine stabile: un contesto che cambia da solo produrrebbe un test
+     -- che passa a giorni alterni.
+     ORDER BY u.id
+     LIMIT 1;
+
+    IF v_super IS NOT NULL THEN
+        PERFORM script.fn_pgtap_set_contesto_operatore(v_super);
+    END IF;
+END
+$sa$;
+
 UPDATE vendite.ordini o
    SET emittente_fiscale_id = r.emittente_fiscale_id_alt
   FROM tmp_ordiva_refs r
  WHERE o.id = (SELECT id FROM tmp_ordiva_ordine)
    AND r.emittente_fiscale_id_alt IS NOT NULL;
 
+-- ⚠️ L'asserzione RESTA nel contesto del super admin, e il motivo e' il
+--   secondo insegnamento di questo passo: appena il documento e' passato
+--   all'altro emittente, l'operatore di partenza NON LO VEDE PIU' — la RLS lo
+--   toglie dal suo perimetro. Letto da lui, il confronto non trovava righe e
+--   `ok()` riceveva NULL: un rosso che sembra un trigger rotto e invece e' la
+--   policy che funziona.
+--   ⇒ Chi ha spostato il documento e' anche l'unico che puo' verificarne
+--     l'esito. Il ritorno all'operatore avviene DOPO.
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_ordiva_ordine)
   THEN skip('15. riferimenti insufficienti: ordine test non creato')
@@ -484,6 +535,10 @@ SELECT CASE
     '15. trigger UPDATE emittente_fiscale_id ricalcola i totali testata'
   )
 END;
+
+-- Si torna all'operatore normale: i passi 16..18 devono girare come gira
+-- l'applicazione, non con i poteri del super admin.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 -- ============================================================
 -- 16) BoM: la view base non legge direttamente i componenti

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_processi_che_bypassano.md" %}
 # 🔍 View `vw_processi_che_bypassano`
 
 > 📝 **Descrizione**

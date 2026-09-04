@@ -13,10 +13,11 @@
 
 ---
 ### 🎯 Scopo Principale
-(rev 2026-08-22 — la **risoluzione** esce dal guard e passa a una `SECURITY
-DEFINER`, chiudendo un fail-open; aggiunte le modalità `ente_incasso` e
-`contabile`. Prima: rev 2026-06-01, modalità `fiscale` PK e delega alla canonica
-`fn_check_user_emittente_scope`)
+(rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il
+criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione**
+esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e
+arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità
+`fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`)
 La trigger function **`script.trgfn_guard_emittente_scope`** implementa il
 defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità
 sull'emittente fiscale della riga.
@@ -88,10 +89,53 @@ solo ciò che davvero non ha padrone, non i documenti altrui.
 
 ---
 
+### ⛔ La porta chiusa il 2026-09-04
+
+Fino a questa data il primo passo diceva: *«nessun utente in sessione? è un job
+batch, passa»*. Era l'**ultima via** per cui un processo automatico scriveva su
+un documento senza dire per conto di chi: bastava **non impostare una GUC**.
+
+> ⛔ Un cartello, non un cancello. Chiunque poteva non impostarla.
+
+⭐ **Il criterio nuovo è uno solo, e non è nostro**: `row_security_active()`
+sulla tabella in gioco.
+
+| Chi | Esito |
+| --- | --- |
+| il **proprietario** delle tabelle (le migrazioni Liquibase) | ✅ passa — la row level security non lo filtra |
+| un **superuser** (lo scheduler pgAgent) | ✅ passa |
+| un ruolo con **BYPASSRLS** (oggi il batch fatturazione) | ✅ passa |
+| una **sessione applicativa senza utente** | ⛔ **si ferma** |
+
+⇒ Chi passa dalle policy passa anche di qui; chi le subisce deve dichiarare chi
+agisce. ⛔ Non si riscrive la regola elencando a mano *«proprietario o superuser
+o bypassrls»*: sarebbe una **seconda scrittura** dello stesso fatto, e due
+scritture prima o poi dissentono. Si chiede a PostgreSQL quella che sta già
+applicando alla stessa riga, nello stesso istante.
+
+⚠️ **Deroga dichiarata** alle linee guida §10.4 (le funzioni di scope non
+guardano il ruolo DB): qui non si identifica l'utente dal ruolo, si
+**rispecchia** una decisione che il motore ha già preso. L'alternativa — una GUC
+che una migrazione imposta per dire «sono io» — sarebbe di nuovo un cartello.
+
+⚠️ **E non ferma il batch fatturazione**, che è il contrario di come lo si
+racconta di solito: quel ruolo ha `BYPASSRLS`, quindi è proprio ciò che continua
+a passare. Sarà il **ritiro del ruolo** (nel provisioning) a rendere questo
+cancello efficace anche su di lui.
+
+⭐ **Gli altri sette trigger che leggono `app.current_user_id` non sono stati
+toccati**, ed è una scelta: i cinque `*_default_emittente` non *concedono*
+niente — riempiono un valore di comodo, e poi è questo guard a decidere se la
+riga entra.
+
+---
+
 ### Logica di controllo
 
 1. Legge `app.current_user_id` dalla sessione PostgreSQL (`current_setting`).
-   Se `NULL` (job batch) → **skip** (RETURN NEW).
+   Se `NULL`, **non passa più in automatico** (vedi la sezione qui sotto):
+   passa solo chi bypasserebbe comunque la row level security, altrimenti
+   errore `E_SCOPE_SENZA_UTENTE`.
 2. Legge il valore della colonna da `NEW` (via `to_jsonb`).
    Se `NULL` → **skip**.
 3. Su `UPDATE`, se il valore colonna non e cambiato → **skip**.
@@ -151,10 +195,11 @@ CREATE TRIGGER trg_vendite_contabili_righe_a10_guard_scope_conto_ins_upd
   che presidiano le stesse tabelle: *la policy nasconde, il trigger rifiuta*. Un
   `WITH CHECK` da solo direbbe «new row violates row-level security policy», che
   è vero e inservibile.
-* ⚠️ **Presidia dodici tabelle**: rendendolo più restrittivo si tocca tutto quel
-  perimetro in una volta. La revisione del 2026-08-22 è stata misurata con la
-  baseline pgTAP completa — `vendite`, `pratiche`, `documenti`, `anagrafiche`,
-  `script`, `rls`: nessuna regressione.
+* ⚠️ **Presidia quindici tabelle**: rendendolo più restrittivo si tocca tutto
+  quel perimetro in una volta. Le due revisioni sono state misurate con la
+  baseline pgTAP completa (`vendite`, `pratiche`, `documenti`, `anagrafiche`,
+  `pagamenti`, `dbops`, `maintenance`, `script`): nessuna regressione — 491 file
+  il 2026-09-04.
 
 ---
 

@@ -24,6 +24,9 @@
 - [messaggi_errore_codici_legacy](manual/messaggi_errore_codici_legacy.md) — (rev 2026-08-21)
 - [pipeline_task_registry](manual/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](manual/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
+- [processi](manual/processi.md) — (latest review 04-09-2026)
+- [processi_bersagli](manual/processi_bersagli.md) — (latest review 04-09-2026)
+- [processi_identita](manual/processi_identita.md) — (latest review 04-09-2026)
 - [request_log](manual/request_log.md) — (latest review 05-03-2026)
 - [riferimenti_morti_esenzioni](manual/riferimenti_morti_esenzioni.md) — (rev 2026-08-21)
 - [sec_functions_owner](manual/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
@@ -104,6 +107,7 @@
 - [vw_codici_errore_forme_condizione](manual/vw_codici_errore_forme_condizione.md) — (rev 2026-08-21)
 - [vw_diag_v_clienti_links](manual/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](manual/vw_duplicate_indexes.md) — (latest review 27-07-26)
+- [vw_emittenti_non_serviti](manual/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
@@ -112,6 +116,11 @@
 - [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_operatori_senza_emittente](manual/vw_operatori_senza_emittente.md) — (latest review 18-08-26)
 - [vw_parameter_fk_surrogate_dangling](manual/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
+- [vw_processi_che_bypassano](manual/vw_processi_che_bypassano.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_senza_difesa](manual/vw_processi_dominio_senza_difesa.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_senza_emittente](manual/vw_processi_dominio_senza_emittente.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_senza_identita](manual/vw_processi_dominio_senza_identita.md) — (latest review 04-09-2026)
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
+- [vw_run_senza_attore](manual/vw_run_senza_attore.md) — (latest review 04-09-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:
