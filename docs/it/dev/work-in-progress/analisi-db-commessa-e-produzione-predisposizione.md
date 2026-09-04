@@ -272,8 +272,8 @@ Le due strade, con il loro costo dichiarato:
 
 | Colonna proposta | Tipo | Perché |
 | --- | --- | --- |
-| `data_consegna_richiesta` | `date` | Quando il cliente la vuole |
-| `data_consegna_confermata` | `date` | Quando l'azienda si impegna a darla — **è un'altra cosa**, e la differenza fra le due è la promessa |
+| `data_consegna_richiesta_cliente` | `date` | Quando il cliente la vuole — ⭐ suffisso da **D-16** (2026-09-02): il nome dice di chi è la data |
+| `data_consegna_confermata` | `date` | Quando l'azienda si impegna a darla — non marcata perché è **nostra** — **è un'altra cosa**, e la differenza fra le due è la promessa |
 
 ⛔ **Oggi non esiste alcuna data di consegna in tutto il modello.** Cercata su
 `vendite`, `acquisti` e `magazzino`, l'unica data di previsione dell'intero

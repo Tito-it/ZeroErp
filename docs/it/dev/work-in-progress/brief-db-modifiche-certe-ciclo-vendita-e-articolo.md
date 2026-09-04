@@ -94,11 +94,11 @@ evasione, nessun indicatore di puntualità.
 
 | Tabella | Colonna | Tipo | Null |
 | --- | --- | --- | --- |
-| `vendite.ordini_righe` | `data_consegna_richiesta` | `date` | sì |
+| `vendite.ordini_righe` | `data_consegna_richiesta_cliente` | `date` | sì |
 | `vendite.ordini_righe` | `data_consegna_confermata` | `date` | sì |
-| `vendite.preventivi_righe` | `data_consegna_richiesta` | `date` | sì |
+| `vendite.preventivi_righe` | `data_consegna_richiesta_cliente` | `date` | sì |
 | `acquisti.ordini_righe` | `data_consegna_richiesta` | `date` | sì |
-| `acquisti.ordini_righe` | `data_consegna_confermata` | `date` | sì |
+| `acquisti.ordini_righe` | `data_consegna_confermata_fornitore` | `date` | sì |
 
 **Le due date sono due cose diverse** e la differenza fra loro *è* la promessa:
 la prima è quando il cliente la vuole, la seconda quando ci si impegna a darla.
@@ -111,7 +111,7 @@ pronta e un'altra no. È esattamente il caso «questa riga richiede produzione»
 è anche il caso banale «il pezzo grosso arriva a marzo, il resto subito».
 
 ⛔ **Niente colonna di testata.** La data della testata è
-`min(data_consegna_richiesta)` sulle righe attive: una colonna sarebbe una
+`min(data_consegna_richiesta_cliente)` sulle righe attive: una colonna sarebbe una
 **seconda sorgente di verità** che va fuori sincrono al primo cambio di riga.
 Dove serve come dato — la lista ordini — si espone dalla vista (§5.2), non dalla
 tabella.
@@ -122,43 +122,38 @@ preventivo non c'è ancora niente da confermare.
 ⛔ **`vendite.offerte_commerciali` NON entra**: non ha righe articolo (ha
 utilities ed eccezioni), quindi non c'è la riga a cui la data apparterrebbe.
 
-> 🔴 **I NOMI di queste quattro colonne sono in discussione — D-16, 2026-09-02.**
-> `data_consegna_confermata` compare **su due tabelle con l'attore invertito**: su
+> ✅ **I NOMI seguono la convenzione D-12 — DECISO da Tid il 2026-09-02.**
+> `data_consegna_confermata` sarebbe nata **su due tabelle con l'attore invertito**: su
 > vendite la promessa è **nostra**, su acquisti è del **fornitore**. E la proprietà è
-> pure **incrociata**, perché `data_consegna_richiesta` su vendite la esprime il
-> *cliente* mentre su acquisti la esprimiamo *noi*.
+> pure **incrociata**, perché la data *richiesta* su vendite la esprime il **cliente**
+> mentre su acquisti la esprimiamo **noi**.
 >
-> ⛔ È il caso che la convenzione **D-12** dell'[analisi
-> acquisti](analisi-simmetria-ordini-acquisto.md) è nata per prevenire — e il posto
-> dove morde è la vista di [carico e scarico
-> §7-bis](analisi-db-magazzino-carico-e-scarico.md), che legge **entrambe** per
-> comporre impegnato e in-arrivo: lì il nome della tabella sparisce e restano due
-> omonime che promettono cose di soggetti diversi.
+> ⛔ Il posto dove il difetto sarebbe morso è la vista di [carico e scarico
+> §7-bis](analisi-db-magazzino-carico-e-scarico.md), che legge **entrambe** per comporre
+> impegnato e in-arrivo: lì il nome della tabella sparisce e restano due omonime che
+> promettono cose di soggetti diversi.
 >
-> **Proposta** (*non marcato = nostro, marcato = della controparte*):
+> **Regola applicata** — *non marcato = nostro, marcato = della controparte*, la stessa
+> di `numero` / `numero_fornitore`:
 >
 > | Tabella | Nostra | Della controparte |
 > | --- | --- | --- |
 > | `vendite.ordini_righe` | `data_consegna_confermata` | `data_consegna_richiesta_cliente` |
+> | `vendite.preventivi_righe` | — | `data_consegna_richiesta_cliente` |
 > | `acquisti.ordini_righe` | `data_consegna_richiesta` | `data_consegna_confermata_fornitore` |
 >
-> ⚠️ **Da confermare prima di P-3**, ed è il momento più economico: nessuna delle
-> quattro colonne esiste. ⭐ Dopo sarebbero quattro colonne in esercizio più due viste
-> — e questo brief è la comunicazione unica verso BE/FE, quindi il nome che esce di
-> qui è quello su cui l'altro lato scriverà.
-
-⭐ **E sull'ordine d'acquisto la data non è «utile»: è necessaria** *(2026-09-02)*.
-La richiesta di mostrare la **merce in arrivo** sulla giacenza — [analisi carico e
-scarico §7-bis](analisi-db-magazzino-carico-e-scarico.md) — si realizza solo a metà
-senza `acquisti.ordini_righe.data_consegna_confermata`: *«ne arrivano 40»* non
-risponde a *«faccio in tempo a promettere la consegna di giovedì?»*. È il **secondo
-cantiere indipendente** che chiede la stessa colonna, e vale l'argomento della §1:
-una voce che serve a due cantieri che non si parlano non dipende dalla forma di
-nessuno dei due.
+> ⚠️ **Ricadono anche i nomi derivati**: la colonna di testata della vista diventa
+> `data_consegna_richiesta_cliente_min`, e con lei la chiave i18n (§5.2, §5.4). ⭐ È
+> lunga, ed è il prezzo giusto: dice **di chi è la data** senza che si debba risalire
+> alla tabella.
+>
+> ⭐ **Decisa prima di P-3**, cioè quando nessuna delle colonne esisteva: dopo sarebbero
+> state quattro colonne in esercizio, due viste e una comunicazione già partita verso
+> BE/FE. Origine: [analisi acquisti §6, D-12 e D-16](analisi-simmetria-ordini-acquisto.md).
 
 ### 2.3 ⛔ Nessun CHECK fra le due date, ed è una scelta
 
-La tentazione è `data_consegna_confermata >= data_consegna_richiesta`. **È
+La tentazione è `data_consegna_confermata >= data_consegna_richiesta_cliente`. **È
 falsa**: si può confermare *prima* di quanto chiesto, ed è una buona notizia, non
 un errore.
 
@@ -383,15 +378,16 @@ stessa cosa:
 | Colonna | Che cosa afferma il default | Verdetto sul modello |
 | --- | --- | --- |
 | `articoli.gestito_a_magazzino = false` | «non movimenta giacenza» | ✅ **fail-safe**: dice *nel dubbio non fare*, ed è sempre una risposta legittima. `NOT NULL` è corretto. ⚠️ Resta il registro del §7, che non è una bonifica ma un **presidio**: la colonna a `false` ovunque è indistinguibile da «nessuno l'ha ancora marcata» |
-| `articoli.modo_approvvigionamento_id = ACQUISTO` | «questo articolo si compra» | ⚠️ **afferma un fatto positivo**. Per una prestazione è falso, e il vocabolario ha `NON_APPLICABILE` apposta. ⇒ da decidere: il default giusto è `ACQUISTO` o `NON_APPLICABILE`? Il primo è il caso comune, il secondo è quello che **non mente mai** |
-| `commesse.data_apertura` | «questa commessa è stata aperta oggi» | ⛔ **una data inventata non è un default**: è un valore che sembra un fatto. Se una commessa può esistere senza che si sappia quando è stata aperta, la colonna è **nullable** |
+| `articoli.modo_approvvigionamento_id = ACQUISTO` | «questo articolo si compra» | ✅ **DECISO `ACQUISTO`** (Tid, 2026-09-02). Afferma un fatto positivo, e per una prestazione è falso — ma il vocabolario è **modificabile dall'operatore** e la marcatura è un lavoro di dato che si fa comunque (come per `gestito_a_magazzino`). `NON_APPLICABILE` non avrebbe mentito, ma avrebbe reso *obbligatoria* la marcatura di ogni articolo prima di poterlo comprare |
+| `commesse.data_apertura` | «questa commessa è stata aperta oggi» | ✅ **DECISO: `NOT NULL`, con valore iniziale da `data_insert`** (Tid, 2026-09-02) — non da «oggi». ⭐ La colonna nasce per essere letta in lista, e un `NULL` lì sarebbe una cella vuota per sempre; `data_insert` non è la data di apertura *reale* ma è **un fatto**, non un'invenzione |
 
-⭐ **E su `data_apertura` c'è un'alternativa che non richiede di scegliere**:
-`commesse.data_insert` esiste ed è `NOT NULL` per convenzione. Non è la data di
-apertura *reale*, ma è **un fatto** — se si vuole `NOT NULL`, il valore iniziale
-si prende da lì invece di inventarlo. ⚠️ È un `UPDATE` di comodo, non una
-bonifica: lo si fa perché è più utile di «oggi», non perché ci siano dati da
-salvare.
+✅ **Entrambe decise il 2026-09-02.** Su `data_apertura` il valore iniziale si prende
+da `commesse.data_insert`, che esiste ed è `NOT NULL` per convenzione. ⚠️ È un `UPDATE`
+di **comodo**, non una bonifica: si fa perché «quando la riga è stata scritta» è più
+utile di «oggi», non perché ci siano dati da salvare — quelli sono di test.
+
+⚠️ **E il `DEFAULT fn_data_operativa()` resta**, perché serve alle commesse **future**,
+dove è la risposta giusta. Quello che non doveva fare è rispondere anche per il passato.
 
 ## 5. ⭐ La predisposizione BE/FE — la parte che va letta dall'altro lato
 
@@ -409,8 +405,8 @@ configurazione: devono **consumare** e, sul FE, tradurre le chiavi i18n.
 
 | Vista | Colonne aggiunte | A cosa serve |
 | --- | --- | --- |
-| `vendite.vw_ordini_lista` | `data_consegna_richiesta_min` | ⭐ è la vista **canonica lista *e* dettaglio** degli ordini: la stessa colonna serve la lista e il drawer di testata |
-| `vendite.vw_situazione_merce_ordine` | `data_consegna_richiesta`, `data_consegna_confermata`, `giorni_ritardo` | è la vista **per riga** che già tiene ordinato / consegnato / `da_spedire` con la soglia dell'impegno |
+| `vendite.vw_ordini_lista` | `data_consegna_richiesta_cliente_min` | ⭐ è la vista **canonica lista *e* dettaglio** degli ordini: la stessa colonna serve la lista e il drawer di testata |
+| `vendite.vw_situazione_merce_ordine` | `data_consegna_richiesta_cliente`, `data_consegna_confermata`, `giorni_ritardo` | è la vista **per riga** che già tiene ordinato / consegnato / `da_spedire` con la soglia dell'impegno |
 | `catalogo.vw_articoli_dettaglio` | `modo_approvvigionamento_id`, `modo_approvvigionamento_codice_interno`, `modo_approvvigionamento_descrizione`, `gestito_a_magazzino`, `lead_time_giorni` | è la vista della lista **e** del drawer articolo (lista `catalogo.articoli`, id 26) |
 
 ⭐ **`giorni_ritardo` sta lì e non altrove**, ed è la scelta che evita un difetto:
@@ -445,7 +441,7 @@ appesa al CSV `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv`.
 
 | Lista | `lista_id` | Colonne nuove |
 | --- | --- | --- |
-| `vendite.ordini` | **7** | `data_consegna_richiesta_min` |
+| `vendite.ordini` | **7** | `data_consegna_richiesta_cliente_min` |
 | `catalogo.articoli` | **26** | `modo_approvvigionamento`, `gestito_a_magazzino`, `lead_time_giorni` |
 
 Per ogni riga vanno dati: `codice`, `etichetta`, `campo_sorgente` (il nome della
@@ -472,8 +468,8 @@ Le chiavi seguono la convenzione già in uso (`vendite.contratti.col_data`,
 `vendite.ordini.col_data`). Sono queste, e il FE deve solo aggiungere il testo:
 
 ```
-vendite.ordini.col_data_consegna_richiesta_min
-vendite.ordini_righe.col_data_consegna_richiesta
+vendite.ordini.col_data_consegna_richiesta_cliente_min
+vendite.ordini_righe.col_data_consegna_richiesta_cliente
 vendite.ordini_righe.col_data_consegna_confermata
 catalogo.articoli.col_modo_approvvigionamento
 catalogo.articoli.col_gestito_a_magazzino
@@ -524,9 +520,9 @@ non vengono da qui.
 | # | Passo | Fase |
 | --- | --- | --- |
 | **P-1** | `config.modi_approvvigionamento`: tabella + seed + lock su `codice_interno` + `fk_index_policy` | `00_schema` + `80_data` |
-| **P-2** | `catalogo.articoli`: le tre colonne (FK, boolean, integer). ⚠️ **§4-bis**: decidere se il default di `modo_approvvigionamento_id` è `ACQUISTO` (il caso comune) o `NON_APPLICABILE` (quello che non mente) | `00_schema` |
-| **P-3** | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ⚠️ **D-16 (§2.2) va confermata PRIMA**: decide i nomi | `00_schema` |
-| **P-4** | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_soggetto_ruolo_id`. ⚠️ **§4-bis**: `data_apertura` è `NOT NULL` o nullable? Se `NOT NULL`, il valore iniziale si prende da `data_insert`, non da «oggi» | `00_schema` |
+| **P-2** | `catalogo.articoli`: le tre colonne (FK, boolean, integer). ✅ **§4-bis**: default `ACQUISTO` (deciso 2026-09-02) | `00_schema` |
+| **P-3** | `vendite.ordini_righe` + `vendite.preventivi_righe` + `acquisti.ordini_righe`: le date. ✅ nomi da **D-16** (§2.2), decisa | `00_schema` |
+| **P-4** | `vendite.commesse`: `descrizione`, `data_apertura`, `responsabile_soggetto_ruolo_id`. ✅ **§4-bis**: `data_apertura` **NOT NULL**, valore iniziale da `data_insert` (deciso 2026-09-02) | `00_schema` |
 | **P-5** | `fn_push_preventivo_a_ordine` porta avanti la data richiesta (+ toglie il nome morto nel commento) | `20_code` |
 | **P-6** | `catalogo.vw_articoli_dettaglio` + `vendite.vw_ordini_lista` + `vendite.vw_situazione_merce_ordine` | `20_code` |
 | **P-7** | `ui.lista_colonna`: le righe nuove, append al CSV | `80_data` |
