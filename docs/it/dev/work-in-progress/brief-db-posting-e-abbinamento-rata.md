@@ -1662,7 +1662,7 @@ perché non possa essere un changeSet.
 | Le decisioni di dominio | [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md) §2-bis |
 | Il modello pagamenti in prosa | [gestione-dei-pagamenti.md](/guide/gestione-dei-pagamenti) |
 | Le rate: struttura e cosa NON sono | [dbzero/vendite/manual/fatture_scadenze.md](/dbzero/vendite/manual/fatture_scadenze) |
-| Il cantiere fondi (chiuso tranne la Fase D) | [brief-db-fondo-fattura-ricalcolo-e-governo.md](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
+| Il cantiere fondi (chiuso tranne la Fase D) | [brief-db-fondo-fattura-ricalcolo-e-governo.md](../work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | Il vincolo difettoso di C-1 | `db/changelog/migrations_v2/00_schema/pagamenti/20260211-14-create-centri-riscossione-mctit.yaml` |
 | Le due funzioni da correggere | `vendite.fn_sync_contabili_fondo_fattura` · `vendite.fn_saldo_sorgente_fondo` |
 | Il modello di una matrice di transizioni | `vendite.transizioni_stati_commessa` + `vendite.trgfn_commesse_guard_transizione` |

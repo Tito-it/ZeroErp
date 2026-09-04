@@ -830,16 +830,15 @@ Le fonti, nell'ordine in cui esisteranno:
 ⭐⭐ **E qui le due cose che stiamo facendo si incontrano**: «in arrivo» senza una
 data attesa è un numero che non serve a decidere niente — *«ne arrivano 40»* non
 risponde a *«faccio in tempo a promettere la consegna di giovedì?»*. La data
-attesa sull'ordine di acquisto è **`acquisti.ordini_righe.data_consegna_confermata`**,
+attesa sull'ordine di acquisto è **`acquisti.ordini_righe.data_consegna_confermata_fornitore`**,
 cioè una delle colonne del [brief delle modifiche
 certe](brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
 
-⚠️ **Il NOME di quella colonna è in discussione (D-16, 2026-09-02)**: l'omonima esiste
-anche su `vendite.ordini_righe`, dove però la promessa è **nostra** e non del
-fornitore. ⛔ **È questa vista il posto dove il difetto morde**, perché qui le due si
-incontrano e il nome della tabella sparisce. Proposta in
-[analisi acquisti §6, D-16](analisi-simmetria-ordini-acquisto.md):
-`data_consegna_confermata_fornitore` per il lato acquisto.
+✅ **Il nome è `acquisti.ordini_righe.data_consegna_confermata_fornitore`** — D-16,
+decisa il 2026-09-02. L'omonima non marcata esiste su `vendite.ordini_righe`, dove la
+promessa è **nostra**. ⭐ **È questa vista il posto per cui la distinzione è stata
+fatta**: qui le due si incontrano e il nome della tabella sparisce, quindi il suffisso
+è l'unica cosa che dice di chi è la promessa.
 
 ⇒ Quella colonna smette di essere «utile» e diventa **necessaria**: senza, questa
 richiesta si può realizzare a metà.
@@ -1284,10 +1283,21 @@ magazzino** sembra il candidato — ma sotto il modello a coppie esce e rientra 
 **stesso** magazzino, quindi il valore si compensa da sé e `none` sarebbe
 un'ottimizzazione, non una necessità.
 
-⇒ **Da decidere, e non lasciare così:** o si trova il caso che resta `none`, o la
-colonna diventa un **booleano** — o sparisce, visto che oggi la risposta è «sempre
-sì». ⛔ La forma peggiore è tenerla a tre valori: sarebbe la quarta istanza della
-classe «esiste e non è armata» in un documento che ne ha già ritirate tre.
+### ✅ DECISO (Tid, 2026-09-04): `impatto_valorizzazione` **si ritira**
+
+Tutte e dieci le causali valorizzano ⇒ la colonna ha **una risposta sola**. Una
+colonna con una risposta sola non è una colonna: è una frase.
+
+⚠️ **Un caso futuro va nominato, perché prima o poi arriva**: la **merce di terzi**
+— conto lavoro, conto deposito, merce in visione. Quella si muove e **non è nostra**,
+quindi non deve entrare nel nostro valore di magazzino.
+
+⭐ **Ma nemmeno lì la colonna sarebbe la risposta giusta**: *«di chi è questa
+merce»* è una domanda di **proprietà**, non di valorizzazione. Il giorno che arriva
+si modella la proprietà, e la valorizzazione **ne discende**. Tenere oggi un flag
+«non valorizzare» sarebbe rispondere in anticipo alla domanda sbagliata — ed è
+esattamente il difetto che questa sezione ha appena corretto sulla stessa colonna,
+che teneva insieme *se* e *con che metodo*.
 
 ⚠️ **E una distinzione che vale la pena scritta**, perché è la fonte di un equivoco
 comune: *«in magazzino facciamo FIFO»* in Italia si dice quasi sempre della
@@ -1771,20 +1781,58 @@ esiste il mezzo.**
 potuto contenere righe di due emittenti, e la somma sarebbe stata monca. ⇒ È una
 conferma che quella scelta risolve anche un problema che non stavamo guardando.
 
-🔴 **Ma vale solo alla grana del magazzino — rilievo del 2026-09-04.** L'argomento
-regge per `vw_giacenza` (articolo × magazzino). ⛔ **Non regge per la vista chiesta
-dalla §7-bis**, che è **per articolo**, cioè sommata su tutti i magazzini: sotto RLS
-quella somma è **parziale**, e non è un caso di coda — è **la vista principale del
-cantiere**.
+🔴 **Il rilievo del 2026-09-04 diceva che vale solo alla grana del magazzino, e che
+la vista per articolo — sommata su tutti i magazzini — sarebbe parziale. ✅ Verificato
+il meccanismo, NON è così**, e la ragione è più solida della convenzione che stavo per
+proporre.
 
-⇒ Va deciso come si presenta: o dichiara di essere *«dentro il tuo perimetro»* — e
-allora il numero è completo **per chi guarda** — o resta alla grana del magazzino.
-⭐ La prima è probabilmente giusta, visto che i magazzini sono per emittente e «tutti
-i miei magazzini» **è** l'universo dell'operatore; ma va **scritto**, o quel numero
-sembra un totale assoluto e non lo è.
+⭐⭐ **Esiste un emittente ATTIVO di sessione.** Il corpo di
+`script.fn_check_user_emittente_scope` lo dichiara nella sua seconda regola:
+*«emittente attivo diverso da quello richiesto → false — restringe **CHIUNQUE**, anche
+il super admin»*.
 
-⚠️ **Ed è lo stesso residuo** di `vw_costo_medio_globale`, che somma su tutti i
-magazzini e quindi attraversa gli emittenti. Sotto RLS diventa *«la media dei magazzini che
+⇒ **Qualunque query, di chiunque, vede un emittente solo.** La *whitelist* può
+contenerne più d'uno — un operatore può **cambiare** emittente — ma in una sessione ne
+è attivo uno: non può abbracciarne due insieme.
+
+⭐⭐ **Ed è una regola generale del progetto, non una peculiarità del magazzino**
+(Tid, 2026-09-04): *«tutte le attività legate all'emittente obbligano alla scelta di
+un emittente — anche il super admin, e lo facciamo già in altre attività»*. Il
+meccanismo del DB e la prassi applicativa dicono quindi la stessa cosa, e la seconda
+regola della funzione — *«restringe chiunque, anche il super admin»* — non è una
+difesa teorica: è come si lavora.
+
+⇒ Ne discende una semplificazione che vale per tutto questo documento: **nessuna
+operazione di magazzino attraversa mai due emittenti** — né una lettura, né la
+primitiva, né la utility di storno.
+
+⇒ Ne discende che la giacenza **per articolo**, sommata su tutti i magazzini, è
+**completa**: sono tutti i magazzini dell'emittente attivo, cioè **tutto ciò che c'è
+per chi sta guardando**. ⭐ E lo stesso vale per `vw_costo_medio_globale`: dentro un
+emittente, «globale» vuol dire davvero *tutti i miei magazzini*.
+
+⛔ **E raggruppare per emittente sarebbe inutile**: darebbe sempre una riga sola.
+
+### ⚠️ Ma resta un caso, ed è la PRIMA regola della stessa funzione
+
+*«`p_auth_user_id` NULL → true (job batch)»*: un **processo automatico** non ha un
+utente, quindi **vede tutto, attraverso gli emittenti**.
+
+⇒ Per le letture non cambia niente. ⛔ Ma `valore_giacenza` è una **copia ricostruita
+da una funzione** (§7-ter): se quel ricalcolo girasse come job, calcolerebbe
+**attraversando gli emittenti**.
+
+⭐ **Due rimedi, e sono entrambi già nel modello:**
+
+1. la copia è per **articolo × magazzino**, e il magazzino porta l'emittente ⇒ finché
+   il ricalcolo scrive a quella grana **non mescola nulla**;
+2. ⭐ e, coerentemente con la regola generale qui sopra, **anche un processo
+   automatico legato all'emittente sceglie l'emittente**: un ricalcolo che serve N
+   emittenti li **itera**, non li somma.
+
+⚠️ **Va scritto lo stesso**: la tentazione di fare un aggregato «per articolo» dentro
+un batch — dove nessuna sessione lo restringe — è precisamente quella che romperebbe
+il confine **senza che nessuno se ne accorga**. Sotto RLS diventa *«la media dei magazzini che
 posso vedere»* — corretto, ma il nome «globale» promette un'altra cosa: va chiarito
 nel `COMMENT` o rinominato.
 
@@ -2004,3 +2052,5 @@ DOCUMENTO che lo causa e le decisioni di dominio.*
 | 2026-09-02 | ✅ **M-6 chiusa — §7-sexies, parte policy.** Perimetro su **tutto ciò che porta merce o valore** (fuori i vocabolari e l'articolo); **solo `OPERATORE`** — ⚠️ perché aprire il magazzino a una controparte le mostrerebbe **il costo medio (cioè il margine)**, le quantità e **i blocchi degli altri clienti col loro nome**: non è una questione di emittente, è che il magazzino contiene informazione interna. ⭐ Ma il portale **non resta al buio**: *«disponibile per consegna immediata»* glielo dice una **vista dedicata** — la differenza fra rispondere a una domanda e aprire un archivio (decisione di Tid). ⚠️ Accensione vera, anche per il proprietario (il precedente di `acquisti`: due policy ferme da mesi), e viste che leggono coi diritti di chi interroga, ⛔ ricordando che quella marcatura **si azzera a ogni riscrittura**. ⭐⭐ E chiarito che **l'aggregato non è mai parziale**: l'ancora sul **magazzino** rende il perimetro tutto-o-niente, mentre con l'emittente sul movimento la somma sarebbe stata monca — la scelta di ieri risolve un problema che non stavamo guardando. ⚠️ Residuo: `vw_costo_medio_globale` è «globale» solo dentro il perimetro |
 | 2026-09-02 | ✅ **M-9 chiusa — §7-septies, e chiusa *invece che rinviata***. Era il prerequisito dell'avviso sull'impegno derivato: avendo deciso di non farlo, **non ha più un consumatore** — ⭐ la precedenza non serve calcolarla, perché un blocco esplicito l'ha già decisa una persona. ⭐ Censito che cosa esiste (data ordine ✅, `commesse.priorita_operativa` ALTA/NORMALE/BASSA ⭐ ma sulla **commessa**, `categoria_cliente_id` sul **BA** e nata per i listini) e che cosa **manca**: una **priorità sul cliente**. ⚠️ Sulla proposta di Tid di un algoritmo per emittente: **forma giusta, momento sbagliato** — precedente `pratiche`, motore generico rimasto senza consumatori — e nella maggior parte dei casi reali la priorità **non è un algoritmo ma un elenco ordinato di criteri**, una riga di configurazione per criterio. ⛔ Chiusa e non lasciata aperta: una voce senza innesco resta anni e fa sembrare incompiuto un lavoro finito |
 | 2026-09-04 | 🔴 **REVISIONE ESTERNA — 18 rilievi, tutti accolti.** Due **bloccanti**, nati fra sezioni scritte lo stesso giorno che non si erano guardate: (1) l'identità *(sorgente, chiave, verbo)* **non regge** 30 pezzi serializzati dalla stessa riga di DDT, né una riga servita da due lotti o prelevata da due ubicazioni ⇒ **il discriminante fisico entra nella chiave** (`asset_id`/`lotto_id`/`ubicazione_id`, colonne che §7-quater mette già lì), e resta dichiarato il caso scoperto (stesso prelievo in due riprese senza discriminante ⇒ servirebbe un progressivo); (2) `assets.magazzino_id` NOT NULL **contraddiceva** §7-quater («l'asset non è il suo GPS») e costringeva a mentire su `ASSET_INSTALL` ⇒ l'asset prende un **`emittente_fiscale_id` proprio**. **Sezioni rese stale**: la tabella «guidata dalle causali» era smentita per metà ⇒ riscritta come «guidata da **due** cataloghi»; `impatto_valorizzazione = none` **non ha più consumatori** dopo M-4 ⇒ da ridurre a booleano o togliere; la «formula unica» della giacenza prevista **ritirata**; la formula di `disponibile` riscritta **in colonne**, perché con le quantità firmate la sottrazione dava il segno rovesciato. **Puntuali**: ⛔ il `CHECK` del «per chi» **non teneva** (`FALSE OR NULL` = NULL, e un CHECK passa sul NULL — **provato**) ⇒ `coalesce`; `costo_unitario` ha **tre** significati (l'entrata di trasferimento prende il valore dall'uscita gemella); «ricalcolare» è **ri-sommare**, non ri-eseguire, o si contraddice M-8; l'aggregato non-parziale vale **solo alla grana del magazzino**, non per la vista **per articolo** che è quella principale; `lotti` **esce** dal perimetro RLS (è una definizione, e non ha l'ancora); lo storno doppio è impedito **solo dove la sorgente è valorizzata**; l'impegno derivato si calcola a **due salti**, via il ponte di evasione; **D-6 → D-7/D-1** (riferimento sbagliato, due volte); mancano **due causali in più** (carico da reso cliente, inventario iniziale); `abilita_billing` **verificato morto** (quarto flag); `vw_giacenza_valorizzata` è diventata **tautologica**; §9 riordinata |
+| 2026-09-04 | ✅ **`impatto_valorizzazione` ritirata** (Tid): dopo M-4 tutte le causali valorizzano ⇒ una colonna con una risposta sola. ⚠️ Nominato il caso futuro della **merce di terzi**, con la ragione per cui nemmeno lì la colonna sarebbe la risposta: è una domanda di **proprietà**, non di valorizzazione. ⭐⭐ **E chiuso il residuo dell'aggregato parziale, ma NON come stavo per proporre**: verificato nel corpo di `fn_check_user_emittente_scope` che esiste un **emittente ATTIVO di sessione** che *«restringe chiunque, anche il super admin»* ⇒ ogni query vede **un emittente solo**, la giacenza per articolo è **completa** e raggruppare sarebbe inutile (una riga sola). ⚠️ Resta però la **prima** regola della stessa funzione — *utente NULL → vede tutto* — quindi un **ricalcolo eseguito come job attraversa gli emittenti**: finché scrive alla grana articolo × magazzino non mescola, ma va scritto, perché un aggregato «per articolo» dentro un batch romperebbe il confine in silenzio |
+| 2026-09-04 | ⭐⭐ **Precisazione di Tid che vale oltre questo documento**: *«tutte le attività legate all'emittente obbligano alla scelta di un emittente — anche il super admin, e lo facciamo già in altre attività»*. ⇒ Il meccanismo del DB (la seconda regola di `fn_check_user_emittente_scope`) e la **prassi applicativa** dicono la stessa cosa, quindi **nessuna operazione di magazzino attraversa mai due emittenti** — né una lettura, né la primitiva, né lo storno. ⇒ E il caso del **job** si chiude allo stesso modo: un ricalcolo che serve più emittenti li **itera**, non li somma |
