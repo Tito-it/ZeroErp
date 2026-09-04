@@ -53,3 +53,7 @@ databaseChangeLog:
               - column: { name: fk_lookup_id_col, type: STRING }
               - column: { name: attivo, type: BOOLEAN }
               - column: { name: descrizione, type: STRING }
+              # ⭐ 2026-09-04: la natura del BERSAGLIO (D-10). Il mirror e'
+              #   runOnChange: la colonna si aggiunge qui, non con un secondo
+              #   loader sullo stesso CSV.
+              - column: { name: classe, type: STRING }

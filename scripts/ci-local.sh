@@ -24,7 +24,7 @@
 #   * di conseguenza la passata `--contexts=ci_apply`, che da quel ruolo
 #     dipende, gira solo con `--ci-apply` e sapendo cosa si sta facendo;
 #   * i test Django e la build della documentazione: non c'entrano col migrate.
-#   ⇒ Copre la passata `--contexts="!provision"`, che e' dove il migrate si
+#   ⇒ Copre la passata `--contexts="!provision and !dati_macchina"`, che e' dove il migrate si
 #   ferma ogni volta.
 #
 # ── ⚠️ ISOLAMENTO DAL DATABASE DI SVILUPPO ────────────────────────────
@@ -298,10 +298,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA pgagent
 SQL
 fi
 
-echo "── passata principale  (--contexts=\"!provision\")"
+echo "── passata principale  (--contexts=\"!provision and !dati_macchina\")"
 echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
 "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_APP" --username=zeroerp --password=secret \
-  --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts="!provision"
+  --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts="!provision and !dati_macchina"
 
 if $CI_APPLY; then
   echo "── automazioni  (--contexts=ci_apply)"

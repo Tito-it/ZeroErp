@@ -75,4 +75,43 @@ perimetro-emittente §7, decisione 3). Il controllo automatico
 
 ---
 
+### 🆕 `commesse_fallite` e `n_commesse_fallite` *(D3, 04-09-2026)*
+
+Un `TASK_ERRORE` del pull dice «una su tre è fallita» e non diceva **quale**.
+Queste due colonne portano l'elenco delle commesse respinte da **quel** giro,
+ognuna con il suo motivo:
+
+```json
+[{"commessa_id": 34137, "commessa_codice": "CMM-…-000000004",
+  "error_code": "E_PULL_COMMESSA",
+  "messaggio": "Errore emissione commessa 34137",
+  "dettaglio":  "ROOT source mancante per commessa 34137 …"}]
+```
+
+⭐ **In coda, e la grana NON cambia**: una riga resta un **evento**. È una
+decisione, non una comodità — il badge del calendario conta le righe di questa
+vista, e farne una per commessa respinta l'avrebbe fatto passare da «quante
+volte devo aprire un lotto» a «quanto lavoro è rimasto indietro»: due domande
+buone, ma diverse.
+⚠️ E la vista somma **già** due unità (`TASK_ERRORE` per (lotto × task),
+`FATTURA_CRITICA` per fattura). Una terza avrebbe reso il totale la somma di tre
+cose diverse: «4» avrebbe voluto dire «2 task + 1 fattura + 1 commessa».
+⇒ Il conteggio resta sugli eventi; l'elenco per commessa vive nel **dettaglio**,
+e in forma di lista in [vw_dash_commesse_respinte](vw_dash_commesse_respinte.md).
+
+⛔ **La sorgente non è `task_run.meta -> 'commesse_fallite'`**, che il backend
+scrive **troncato a cinque** dichiarandolo una traccia per il cockpit: con sei
+respinte la sesta sparirebbe in silenzio. Si legge il **log di lotto**, che è
+completo e porta il `commessa_id` in un campo strutturato.
+
+⚠️ Tre filtri portanti, che sembrano dettagli: **stesso task** (il log di un
+lotto contiene le righe di tutti gli step), **stesso tentativo**
+(`data_ora >= data_evento`, o un lotto rilanciato si porterebbe dietro le
+respinte del giro precedente) e **cast protetto** da un test di forma, perché
+una sola riga di log sporca non deve poter spegnere il cruscotto.
+
+* Test: `db/pgtap/vendite/test-vw-dash-commesse-respinte-v1.sql`.
+
+---
+
 {% include-markdown "signature-core.md" %}

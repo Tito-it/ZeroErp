@@ -3,17 +3,25 @@
 > **Tipo**: brief di difetti emersi in collaudo (DB + BE + FE) · **Data**: 2026-09-04 ·
 > **Owner**: Tid · **Branch**: `dev/backend-tid`
 >
-> **Stato**: 🔴 **APERTO** — cinque difetti, nessuno corretto. Due sono di
-> **modello** e vanno prima degli altri.
+> **Stato**: 🟡 **il DB ha finito, tranne un passo che aspetta il backend**
+> — aggiornato la sera del 2026-09-04. **Otto changeSet applicati**, dettaglio
+> e verifiche in §10-bis.
 >
-> ✅ **Le due decisioni sono prese (Tid, 2026-09-04)** e il brief è pronto per il
-> team DB su `dev/db-tid`. Non c'è nessun bivio residuo da sciogliere: **§9**
-> descrive una forma sola.
+> | Difetto | Stato |
+> | --- | --- |
+> | **D1+D2** | 🟡 **completo lato DB**: il pull firma, la select filtra (-50), c'è il presidio. 🔴 Il -50 **non è applicato**: applicarlo ferma la fatturazione finché il BE non passa il batch al pull — **una riga**, il valore è già in `LottoContext` |
+> | **D3** | ✅ **chiuso lato DB** (changeSet -47, -48, -49): il pannello porta l'elenco delle commesse respinte, e ognuna ha la sua riga con il suo motivo |
+> | **D4** | ✅ **chiuso**: l'annullo chiude i task run con l'esito `ANNULLATO`. ⚠️ *«disattiva»* era il verbo sbagliato — corretto in §5 e §9.4 |
+> | **D5** | 🔵 aperto, ed è una verifica **a video** (§6) |
+> | **§7** | ✅ chiuso: era la mirata, non un terzo difetto |
 >
-> - **D1+D2 → il perimetro si consegna A MONTE**: il pull marchia col batch del
->   giro ciò che accetta, la select fattura solo quello;
-> - **D4 → simmetria**: `fn_annulla_lotto_da_draft` disattiva i task run, come
->   già fa la sorella `fn_riporta_lotto_a_draft`.
+> ✅ **Le decisioni sono prese (Tid, 2026-09-04)**: il perimetro si consegna a
+> monte; l'annullo abbassa la bandiera per esito; e il **badge del calendario
+> resta sugli eventi**, con le commesse respinte nel dettaglio.
+>
+> 🔎 **Il brief è stato riletto contro il database vivo** (§11): D1, D2 e D3
+> reggevano, **§7 si è chiuso**, e ⭐ la ri-adozione dei residui — che §9 dava
+> per scontata — è stata verificata e regge **anche sulle righe sourceless**.
 >
 > **Da dove viene.** Eseguendo
 > [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
@@ -140,7 +148,11 @@ niente dia errore.
 
 ---
 
-## 4 · D3 🟡 · Il cruscotto non dice **quale** commessa è fallita
+## 4 · D3 ✅ · Il cruscotto non diceva **quale** commessa è fallita
+
+> ✅ **Chiuso lato DB il 2026-09-04** (changeSet -47, -48, -49). Il difetto resta
+> descritto qui com'era; la forma con cui è stato chiuso — e perché non è quella
+> prevista — sta in §10-bis.
 
 **Il fatto.** Il dato esiste, in due posti (`task_run.meta.commesse_fallite` e
 il log di lotto con `status = 'C'`), e **nessuna delle due superfici del
@@ -165,7 +177,10 @@ riga non c'era **nessun** indizio — né dell'errore, né della fattura.
 
 ---
 
-## 5 · D4 🟡 · L'errore di un lotto annullato resta «vivo»
+## 5 · D4 ✅ · L'errore di un lotto annullato restava «vivo»
+
+> ✅ **Chiuso il 2026-09-04** (changeSet -33). Il difetto resta descritto qui
+> com'era: sotto, il verbo giusto e la ragione per cui non è `attivo = false`.
 
 **Il fatto.** Dopo l'annullo del lotto 10141 la segnalazione sul calendario di
 settembre è rimasta accesa. È **fedele al dato**: la CTE `task_err` di
@@ -184,6 +199,35 @@ non è più lavoro in corso: il suo errore è storia, non una cosa da rimediare.
 Chi annulla deve abbassare la bandiera — disattivando il run, o chiudendolo con
 un esito, o escludendo dalla vista i lotti che non sono più in lavorazione. Da
 decidere quale delle tre, ma non «nessuna».
+
+⭐ **Delle tre, la seconda: la sorella l'ha già scelta, e ha scritto perché**
+(verificato il 2026-09-04). `fn_riporta_lotto_a_draft` chiude i run con
+`fn_cancel_lotto_task_run` → `task_stato = 'ANNULLATO'`, e nel proprio corpo
+respinge la prima:
+
+> ⚠️ NON basta `attivo = false`: quella SELECT non filtra su `attivo`. La leva
+> è l'**ESITO**, e la funzione per scriverlo esiste già.
+
+Il dato lo conferma: gli otto run del lotto **10140**, riportato in lavorazione,
+sono `task_stato = ANNULLATO` **con `attivo = t`**. E `task_err` filtra su
+`task_stato = 'ERRORE'`, quindi cadono **per esito**, senza toccare la vista.
+⇒ La terza strada — filtrare la vista sullo stato del lotto — resta possibile ma
+non serve più, e la prima **non funzionerebbe**.
+
+⚠️ **E `attivo` non va caricato di questa domanda.** Oggi risponde a *«questo è
+il tentativo valido»*; usarlo anche per *«il lotto non è più in lavorazione»* è
+un flag che risponde a due domande, e il giorno che dissentono non c'è scritto
+da nessuna parte quale vince.
+
+ℹ️ `fn_annulla_lotto_da_draft` **oggi non nomina mai i task run**: non c'è un
+ramo da correggere, c'è un passo da aggiungere.
+
+⚠️ **Come si rimisura questa vista, o si legge uno zero che non è un dato.**
+`vw_dash_competenza_errori` apre con
+`fn_get_emittenti_scope_sr_ids(current_setting('app.current_user_id'))`: senza
+quella GUC la vista restituisce **zero righe** ed è **fail-closed**, non una
+bandiera abbassata. Con il contesto impostato, al 2026-09-04 la riga del lotto
+10141 **c'è ancora**.
 
 ---
 
@@ -204,17 +248,50 @@ guardato a parte.
 
 ---
 
-## 7 · Aperta · il gruppo dell'ordine ROOT di 34136 non viene mai pullato
+## 7 · ✅ CHIUSA · il gruppo ROOT di 34136 non è un difetto: era la mirata
 
-Le attività **64553 e 64554** (ordine `ORD0036003`, che è la sorgente **ROOT**
-di 34136) non sono state pullate in **nessuno dei due giri**, pur essendo
-`APPROVATA` / `NON_EMESSA`, con `tipo_doc_fiscale_id` valorizzato, e pur
-risultando alla lane (`fn_list_commesse_emittibili` → `total_non_emesse = 2`).
-Di 34136 passa solo il gruppo del COLLEGATO (`ORD0036006`).
+Le attività **64553 e 64554** (ordine `ORD0036003`, sorgente **ROOT** di 34136)
+non sono state pullate in **nessuno dei due giri**, pur essendo `APPROVATA` /
+`NON_EMESSA` e con `tipo_doc_fiscale_id` valorizzato. Di 34136 passa solo il
+gruppo del COLLEGATO (`ORD0036006`).
 
-Può essere un'emissione mirata che escludeva quel gruppo. È successo però due
-volte su due, e la seconda il giro era sul mese: **da chiarire prima di
-richiudere il collaudo**, perché se non è la mirata è un terzo difetto.
+**La risposta sta in `vendite.fatturazione_lotti_gruppi`** (letto il
+2026-09-04): i due lotti portano **esattamente tre gruppi**, e quello dell'ordine
+ROOT non c'è in nessuno dei due.
+
+```text
+10140 · 17:18:08.010974   ORDINE_VENDITA:01a06ce5-…f136b8   (COLLEGATO di 34136)
+                          ORDINE_VENDITA:01a06ce4-b46a-…    (34137)
+                          ORDINE_VENDITA:01a06ce4-35a6-…    (34138)
+10141 · 17:32:37.982875   gli stessi tre
+
+assente in entrambi:      ORDINE_VENDITA:01a06cb9-8f47-73c4-aafb-ad0f24171e42
+```
+
+⭐ **Le righe dei gruppi nascono alla creazione del lotto** (`…08.010974`),
+**prima** che il pull scriva (`…08.062578`): il perimetro era già deciso quando
+il pull è partito. E sono gli stessi tre nei due giri — quindi «due volte su
+due» è **una selezione ripetuta uguale**, non un difetto che si ripete.
+
+**E non è che la lane lo nascondesse.** `fn_diagnostica_gruppi_fatturabili` su
+quel gruppo risponde: commessa `PRONTA_FATTURAZIONE`, `commessa_emittibile = t`,
+**2 righe, 2 pronte**, zero escluse per approvazione o competenza, e la **stessa
+terna** del gruppo che è passato (`utility 5, tipo_doc 1, emittente 72`). Niente
+lo escludeva: semplicemente non era nel perimetro scelto.
+
+### ⛔ E non è un prerequisito di D1
+
+Sembrerebbe: *«se il perimetro lo consegna il pull, un gruppo mai pullato diventa
+lavoro non fatturabile in silenzio»*. **Non è così**, e la ragione è strutturale:
+le attività 64553/64554 **non hanno mai prodotto una riga di
+`attivita_fatturabili`** — per 34136 esiste solo la 26828, del gruppo COLLEGATO.
+Non sono residui invisibili: sono lavoro che in fatturazione non è **mai
+entrato**, che nemmeno oggi la select prenderebbe — legge solo `attivita_fatturabili` —
+e che la lane continua a mostrare.
+
+⇒ Il §7 si chiude scrivendo che era la mirata, e **non cambia l'ordine dei
+lavori di §9**. ⚠️ Il presidio di §9 ha quindi un perimetro preciso: le **AF
+esistenti e non marchiate**, non le commesse mai pullate.
 
 ---
 
@@ -264,6 +341,68 @@ la **aggiorna** invece di inserirne una nuova. Quindi marchiare sul ramo di
 update è sufficiente: un residuo di un giro disfatto viene ripreso e rimarchiato
 dal primo giro in cui quella commessa passa, e **niente lavoro va perso**.
 
+⭐ **Verificato il 2026-09-04, ed è il punto dove il disegno poteva rompersi in
+silenzio.** Sull'AF la sorgente è **sempre la commessa**: la ricerca è
+`sorgente_tipo_id = COMMESSA AND sorgente_uid = md5(segment_key)`, mentre il
+documento d'origine viaggia a parte in `sorgente_origine_tipo_id`. È l'unica
+ragione per cui la ri-adozione tiene anche su **RETTIFICA e ONERE**, che sono
+sourceless per progetto (`chk_commesse_attivita_sorgente_pair`: la coppia è
+tutta-NULL o tutta-piena) — con una chiave costruita sul documento d'origine
+quelle righe non si sarebbero mai ritrovate, e ogni giro avrebbe inserito un
+doppione di nota di credito **senza un errore**.
+
+### ✅ Tre cose da decidere prima di scrivere il codice — decise
+
+> **Esito, 2026-09-04.** ① Colonna **nuova** (`emit_batch_id`), non
+> `lock_batch_id` — fatto. ② Il canale `p_gruppi`: **scartato** a favore del
+> marchio, che è per riga e non fa ricomporre una chiave al backend; qui sotto
+> il confronto per intero. ③ Il presidio: **fatto**
+> (`dbops.vw_af_senza_giro`). Il ragionamento resta perché è la ragione per cui
+> quelle scelte sono quelle, non per rifarle.
+
+**1 · La colonna del marchio va NOMINATA, e quella ovvia è già occupata.**
+`attivita_fatturabili.lock_batch_id` **esiste già**: porta il batch del lotto, la
+scrive `fn_select_attivita_fatturabili` e la **azzera**
+`fn_libera_attivita_fatturabili`. La frase qui sopra — *«il backend il
+`lock_batch_id` ce l'ha in mano»* — letta in fretta autorizza a riusare quella
+colonna. Sarebbe lo stesso valore per **due domande con cicli di vita opposti**:
+*chi ti ha consegnato* deve sopravvivere alla liberazione, *chi ti ha
+lucchettato* deve morire con essa. ⇒ **Colonna nuova**, e scritto qui perché non
+lo decida chi implementa.
+
+**2 · Il canale del perimetro forse esiste già, e va detto perché non basta.**
+`p_gruppi text[]` è parametro di **entrambe** le funzioni, e la select lo applica
+già via `fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid,
+ca.commessa_id)`. Se il pull restituisse i gruppi delle commesse **accettate** e
+il BE li passasse alla select, D1 si chiuderebbe **senza toccare lo schema**: il
+gruppo di 34137 non entrerebbe nell'elenco e il suo residuo non verrebbe
+fatturato. Il marchio resta più fine — è per riga, e non fa ricomporre una chiave
+al backend — ma una proposta che aggiunge una colonna e cambia due funzioni deve
+**dire perché** il canale già in servizio non basta.
+
+**3 · Manca il presidio, e il rimedio cambia il RUMORE del danno.** Oggi una riga
+libera di troppo produce una fattura in più: **si vede**. Domani una riga che
+nessun giro ri-marchia non viene fatturata, per sempre, **senza errore** — è lo
+stesso «FATTO, 0 elaborate» che nessuno nota. ⇒ Serve una vista che deve restare
+vuota: *attività fatturabili libere, in competenza, che nessun giro ha
+marchiato*. Perimetro: le **AF esistenti** e non marchiate — non le commesse mai
+pullate, che hanno già la lane (§7).
+
+### ⚠️ Un punto minore, sulla stessa crepa
+
+Il pull scrive `ok` / `totale` / `falliti` / `commesse_fallite` **solo quando
+qualcosa fallisce**: il run in `ERRORE` li porta, i run `COMPLETATO` portano solo
+`{"rollback": false}`. Quindi di un giro **riuscito** non si sa quante commesse
+siano state accettate — lo si deduce dai gruppi del lotto, che sono il perimetro
+**chiesto**, non quello **consegnato**. Con D1 che fa del perimetro consegnato la
+cosa portante, quei contatori servono anche in caso di successo, o la promessa
+resta verificabile **solo quando si rompe**.
+
+⛔ **Non è una sovrascrittura, ed è stato controllato**:
+`fn_set_runtime_task_run_esito` fa già `meta = COALESCE(meta,'{}') || v_meta`, e
+infatti il `rollback` del pull riuscito è **sopravvissuto** all'annullo sul run
+2828. Il payload non viene cancellato: non viene mai scritto.
+
 ### Il resto, in ordine
 
 1. **D1+D2** nella forma qui sopra — è tutto dentro due funzioni SQL; il backend
@@ -273,11 +412,17 @@ dal primo giro in cui quella commessa passa, e **niente lavoro va perso**.
 3. **D3** — `commessa_id` (e codice) su `vw_dash_competenza_errori`; una colonna
    d'esito sulle righe del drill-down, così la riga rifiutata si riconosce a
    video. A cascata: riga BE, catalogo lista, colonna FE;
-4. **D4 · simmetria** — `fn_annulla_lotto_da_draft` disattiva i task run del
-   lotto, esattamente come già fa `fn_riporta_lotto_a_draft` (che infatti
-   restituisce `annullati_task_run`). Due sorelle non possono comportarsi
-   diversamente sulla stessa cosa. La vista `task_err` non si tocca;
-5. **D5** e il **§7** — verificare a video, e riclassificare.
+4. **D4 · simmetria** — `fn_annulla_lotto_da_draft` chiude i task run del lotto
+   **con l'esito `ANNULLATO`**, per la via che la sorella usa già
+   (`fn_cancel_lotto_task_run`, che infatti fa restituire a
+   `fn_riporta_lotto_a_draft` il contatore `annullati_task_run`). Due sorelle non
+   possono comportarsi diversamente sulla stessa cosa. La vista `task_err` non si
+   tocca — e non serve toccarla, perché filtra su `task_stato`.
+   ⛔ **Non `attivo = false`**: la sorella lo respinge nel proprio corpo, e non
+   basterebbe (§5). Oggi `fn_annulla_lotto_da_draft` non nomina mai i task run:
+   è un passo da aggiungere, non un ramo da correggere;
+5. **D5** — verificare a video, e riclassificare. Il **§7 è chiuso** (era la
+   mirata) e non richiede più niente.
 
 ℹ️ Le tre righe 26828/26829/26830 **non vanno cancellate**: sono lavoro
 legittimo da fatturare. Vanno però tenute presenti nel rifare il collaudo, o
@@ -295,3 +440,274 @@ riprodurranno D1 finché D1 non è chiuso.
 4. guasta una commessa (ROOT → COLLEGATO) e rilancia;
 5. il task del pull chiude in `ERRORE` con quella commessa fra le
    `commesse_fallite` — **e la sua fattura c'è lo stesso**.
+
+---
+
+## 10-bis · Stato DB — costruito il 2026-09-04
+
+> 🟡 **D4 è CHIUSO lato DB. D1+D2 è costruito a metà, e la metà che manca è
+> volutamente ferma: aspetta il backend.**
+
+| # | changeSet | Che cosa fa | Stato |
+| --- | --- | --- | --- |
+| 31 | `00_schema/vendite` · `alter-attivita-fatturabili-emit-batch` | la colonna `emit_batch_id`: il giro che ha **consegnato** la riga | ✅ applicato |
+| 32 | `20_code/vendite` · `update-fn-emit-attivita-fatturabili-batch` | il pull prende `p_emit_batch_id` e **marchia su entrambi i rami** | ✅ applicato |
+| 33 | `20_code/vendite` · `update-fn-annulla-lotto-da-draft-task-runs` | **D4**: l'annullo chiude i task run con l'esito `ANNULLATO` | ✅ applicato |
+| 34 | `20_code/dbops` · `create-vw-af-senza-giro` | il presidio: lavoro libero che nessun giro rivendica | ✅ applicato |
+| 35 | `90_end` · `grant-vw-af-senza-giro-app` | `SELECT` a `zeroerp_app` sul presidio | ✅ applicato |
+| 47 | `20_code/vendite` · `update-vw-dash-competenza-errori-commesse` | **D3**: il pannello errori porta `commesse_fallite` e `n_commesse_fallite`, **a grana invariata** | ✅ applicato |
+| 48 | `20_code/vendite` · `create-vw-dash-commesse-respinte` | **D3**: una riga per commessa respinta, con il suo motivo | ✅ applicato |
+| 49 | `90_end` · `grant-vw-dash-commesse-respinte-app` | `SELECT` a `zeroerp_app` sulla vista nuova | ✅ applicato |
+| 50 | `20_code/vendite` · `update-fn-select-attivita-perimetro` | **D1+D2**: la select sceglie per **marchio**, non piu' per sole coordinate | 🔴 **scritto, NON applicato** |
+
+pgTAP: `test-af-emit-batch-marchio-v1.sql` (7/7),
+`test-annulla-lotto-task-runs-v1.sql` (7/7) e
+`test-vw-dash-commesse-respinte-v1.sql` (6/6), **nessuna asserzione saltata**.
+
+### 🔴 L'ultimo passo è scritto, e va applicato CON il backend
+
+**`fn_select_attivita_fatturabili` filtra per il marchio** (changeSet -50).
+Da quel momento un giro fattura **solo** ciò che il proprio pull ha consegnato,
+e il rifiuto per-commessa decide davvero.
+
+> 🔴🔴 **Applicarlo ferma la fatturazione finché il backend non passa il
+> `lock_batch_id` del lotto al pull.** Nessuna riga è marchiata ⇒ la select non
+> trova niente ⇒ il giro chiude con **zero fatture, senza errore** — «zero righe
+> eleggibili» è un esito legittimo.
+
+⭐ **Decisione di Tid, 2026-09-04, presa sapendolo.** La forma con l'interruttore
+(`p_solo_marchiate`, applicabile subito e inerte) è stata **scartata**: avrebbe
+reso la correttezza *opt-in* e lasciato in casa un'impalcatura da togliere.
+Meglio una fatturazione ferma e visibile che un perimetro facoltativo.
+
+⭐ **E così non si può dimenticare.** Non c'è nessun parametro nuovo: chi
+lucchetta è già obbligato a dichiarare il proprio giro (il guard pretende
+`p_lock_batch_id` quando `p_lock`), e da adesso **dichiarare il giro significa
+prendersene il perimetro** — sono lo stesso parametro, non possono divergere.
+
+⚠️ La condizione è sulla **presenza del giro**, non su `p_lock`: così
+un'anteprima che dichiara il proprio giro vede *esattamente* ciò che il giro
+vero prenderà. Una chiamata senza giro resta senza filtro — non lucchetta, non
+fattura, non può fare danni.
+
+⇒ **Lo sblocco lato BE è una riga**, e il valore è già in `LottoContext`.
+
+### ⚠️ Il registro del debito è già leggibile
+
+`dbops.vw_af_senza_giro` al 2026-09-04 elenca **5 righe** — lavoro libero, in
+competenza, che nessun giro rivendica; fra queste le tre del collaudo
+(26828/26829/26830). ⭐ È un **fatto datato, non un motivo**: cala da sé quando
+il pull ri-adotta quelle righe, e ciò che resta dopo qualche giro è la domanda
+vera.
+
+### ✅ D3, la metà DB — costruita, e in una forma diversa da quella prevista
+
+Il brief prevedeva `commessa_id` su `vw_dash_competenza_errori` e una colonna
+d'esito su `vw_dash_competenza_gruppi`. La prima è stata fatta; **la seconda no,
+ed è stata sostituita** — la ragione è nel riquadro più sotto.
+
+⚠️ **E dentro c'è una decisione che questo brief non scioglie.** Il difetto è
+descritto come *«manca `commessa_id`»*, ma l'unità del fallimento **non è una
+commessa: è un elenco**. Il pull scrive
+
+```text
+meta  { totale: 3, ok: 2, falliti: 1, commesse_fallite: [34137] }
+```
+
+e la vista ha **una riga per errore di task**. Quindi «aggiungere `commessa_id`»
+si può fare in due modi, e non sono equivalenti:
+
+| Forma | Cosa comporta |
+| --- | --- |
+| una colonna **array/jsonb** `commesse_fallite` | la riga resta una; il frontend deve saper mostrare N codici in una cella |
+| **fan-out**: una riga per commessa fallita | si legge meglio, ⛔ ma il **conteggio** degli errori vivi smette di contare i giri e comincia a contare le commesse — e quel conteggio è il badge del calendario |
+
+⚠️ **E il fan-out non cambia niente finché a fallire è una commessa sola.** Sul
+giro del collaudo `commesse_fallite` ha **un** elemento (`falliti = 1`; il `3` è
+`totale`, cioè le commesse *processate*): una riga prima, una riga dopo. Il
+conteggio si sposta solo quando in **uno stesso giro** ne fallisce più d'una —
+caso che il modello ammette per costruzione, `falliti` può arrivare a `totale`.
+
+### ⛔ E «mostrare la prima» non è una scelta di visualizzazione
+
+Sembrerebbe la via d'uscita: una riga per giro, con dentro **la prima** commessa
+fallita. ⛔ Ma qui **non c'è nessuna sequenza, e nessun colpevole**. Il savepoint
+per-commessa esiste apposta perché ogni commessa fallisca **da sola**: la prima
+non ha causato le altre, e le altre possono essere fallite per motivi diversi.
+«La prima» è solo l'`id` più basso.
+
+⇒ Mostrarla da sola nasconde le altre **in silenzio**, ed è la stessa forma del
+difetto che questo brief racconta: la superficie dice meno di quanto il dato
+sappia. L'operatore ripara 34137, rilancia, e il giro fallisce di nuovo su una
+commessa che nell'elenco non c'era mai stata.
+
+### ⭐⭐ Il requisito vero (Tid, 2026-09-04) e la sorgente che già lo serve
+
+**Decisione di Tid:** *«le commesse in errore devono vedersi tutte, e ognuna
+mostrare il problema, per poter cercare di risolvere»*. (L'idea di «mostrare il
+primo» valeva per **più errori sulla stessa attività** — un caso diverso, che
+qui non si presenta.)
+
+⭐ **Quel dato esiste già, per commessa, e non è il `meta` del task.** È in
+`vendite.fatturazione_lotti_log`: una riga per commessa fallita, `status = 'C'`,
+con il `commessa_id` in un campo **strutturato** — non solo dentro la frase:
+
+```text
+id 6613 · messaggio  «Errore emissione commessa 34137»
+          status     C
+          meta       { error_code: 'E_PULL_COMMESSA',
+                       context: { task: 'pull_attivita_da_commessa',
+                                  commessa_id: 34137 },
+                       detail:  'ROOT source mancante per commessa 34137 …' }
+```
+
+⇒ **D3 si costruisce su questa sorgente**, e il dilemma array-contro-fan-out si
+scioglie da sé: il log è **già** per commessa, e ogni riga porta la propria
+causa. Non serve nessun cambio al `meta`.
+
+### ⛔ E la sorgente da NON usare è proprio `commesse_fallite`
+
+`pipeline_step_executor` scrive nel meta `[e.item for e in esito.errori][:5]`.
+**Tronca a cinque**, e lo dichiara: *«il meta è una traccia per il cockpit, il
+dettaglio completo sta sui log di lotto»*. Costruirci sopra la vista
+significherebbe che con **sei** commesse fallite l'operatore ne vede cinque —
+e la sesta sparisce senza che niente lo dica. È il difetto di questo brief in
+miniatura: una superficie che dice meno di quanto il dato sappia.
+
+### ⚠️ Il buco che resta, ed è lato BE
+
+Il log risponde a *«quale commessa»* con un campo pulito, ma a *«quale
+problema»* risponde solo dentro `meta.detail`, che oggi è un **dump tecnico**:
+messaggio Python, `DETAIL`, `HINT`, `CONTEXT` e lo stack PL/pgSQL, tutto in una
+stringa. Il `messaggio` della riga dice *quale* commessa, non *perché*.
+
+⇒ Perché «ognuna mostri il problema» sia vero **a video**, il motivo di dominio
+— qui *«ROOT source mancante per commessa 34137»* — deve arrivare in un campo
+suo, invece di essere sepolto nel dump. È una riga in `_messaggio_pull` /
+`item_failed`, ed è lavoro di backend: il database può esporre solo ciò che
+riceve.
+
+### ✅ Deciso (Tid, 2026-09-04): il badge resta sui giri, le commesse nel dettaglio
+
+Il conteggio del calendario continua a contare **gli eventi** — «quante volte
+devo aprire un lotto» — e le commesse vivono nel dettaglio, dove la domanda
+«su cosa agisco» ha senso. ⚠️ La vista somma già **due** unità (`TASK_ERRORE`
+per (lotto × task) e `FATTURA_CRITICA` per fattura): una terza avrebbe reso il
+totale la somma di tre cose diverse, e «4» avrebbe voluto dire «2 task + 1
+fattura + 1 commessa».
+
+⇒ Per questo il **-47** aggiunge le colonne **in coda** e non tocca la grana.
+
+### ⛔ E la colonna su `vw_dash_competenza_gruppi` è stata SOSTITUITA da una vista
+
+La strada prevista era `respinta_il` sulle righe del drill-down. L'apply
+funziona; **il rollback no**, e la prova l'ha mostrato prima che il changeSet
+esistesse:
+
+```text
+ERRORE: non è possibile eliminare colonne da una vista
+```
+
+Una vista non perde colonne con `CREATE OR REPLACE`: per tornare indietro
+servirebbe un `DROP`. E da `vw_dash_competenza_gruppi` **dipende**
+`vw_dash_competenza_gruppi_riepilogo`, quindi il `DROP` andrebbe in `CASCADE` e
+il rollback dovrebbe **ricreare anche il riepilogo da una copia congelata**.
+
+⛔ Cioè: per potersi ritirare, il changeSet avrebbe piantato in casa una copia
+della vista di qualcun altro, che invecchia in silenzio dal giorno dopo. *Un
+rollback che introduce un debito è peggio di un rollback assente.*
+
+⭐ **Sostituita da `vendite.vw_dash_commesse_respinte`** (changeSet -48): una
+riga per commessa respinta, con codice, `error_code`, messaggio, dettaglio e
+quando. Nessun dipendente, si ritira con un `DROP`, e nasce già nella grana che
+una lista sa mostrare. ℹ️ Il drill-down mostra la bandiera con un **join** a
+questa vista: una riga di backend, senza toccare una vista da 30 colonne.
+
+⇒ Non resta nessuna decisione aperta su D3 lato DB.
+
+### Cosa resta, e a chi tocca
+
+#### Lato DB
+
+- ✅ **D3** — fatto e applicato (changeSet -47, -48, -49);
+- ✅ **il filtro nella select** — scritto (changeSet -50). ⚠️ **Da applicare
+  insieme alla release BE**: prima, la fatturazione emette zero fatture.
+  ⇒ Lato DB non resta altro.
+
+#### Lato BE
+
+- passare il `lock_batch_id` del lotto a `pull_attivita_da_commessa` — è **una
+  riga**, e il valore è già in `LottoContext`. È tutto ciò che serve per
+  accendere il meccanismo: senza, il marchio resta NULL e il filtro della select
+  non si può applicare;
+- ⚠️ far scrivere al pull i contatori **anche quando il giro riesce** (oggi
+  `ok`/`totale`/`falliti` compaiono solo in caso di fallimento): con il
+  perimetro consegnato come cosa portante, la promessa dev'essere verificabile
+  anche quando regge, non solo quando si rompe;
+- ⭐ **il motivo di dominio fuori dal dump.** `dettaglio` porta oggi eccezione
+  Python, `DETAIL`, `HINT`, `CONTEXT` e stack PL/pgSQL in una stringa sola: il
+  motivo utile — *«ROOT source mancante per commessa 34137»* — c'è dentro, ma a
+  metà. Perché *«ognuna mostra il problema»* sia vero **a video** va portato in
+  un campo suo da `item_failed`. Il database espone ciò che riceve, e la
+  colonna è già pronta ad accoglierlo;
+- gli endpoint: `commesse_fallite` / `n_commesse_fallite` sul pannello errori, e
+  il **join** a `vw_dash_commesse_respinte` per la bandiera sulle righe del
+  drill-down.
+
+#### Lato FE
+
+- **D5** — ricaricare la pagina e riselezionare il mese, poi riclassificare: se
+  la riga riappare è il `reset()` del pannello, se resta vuota col badge acceso
+  è altro (§6);
+- quando D3 avrà la sua forma: la colonna a video e la voce nel **catalogo
+  lista**. ⚠️ Una colonna di lista con `campo_sorgente` nasce `attivo = false`
+  finché il BE non la proietta: va seminata spenta e accesa dopo.
+
+#### Collaudo
+
+- **rifare la prova 2** su materia pulita — è l'unica che dice se il savepoint
+  per-commessa regge, e va fatta **dopo** che il filtro della select è attivo, o
+  misura di nuovo il residuo.
+
+---
+
+## 11 · Verifiche lato DB — 2026-09-04
+
+Il brief è stato riletto contro il **database vivo** e i **corpi delle funzioni**
+subito dopo il push. ⚠️ Sono letture di **struttura** (firme, predicati, corpi,
+definizione di vista) più alcune **istantanee datate** sulla materia del
+collaudo: le prime dicono che cosa il progetto ammette, le seconde portano
+controesempi. Nessuna delle due decide la forma di §9.
+
+### Che cosa regge, verificato
+
+| Affermazione del brief | Esito |
+| --- | --- |
+| `fn_select_attivita_fatturabili` sceglie per **coordinate** | ✅ i predicati sono `approvato`, `fatturato`, `sospesa`, `lock_in_fatturazione`, `posticipa_al`, `competenza_mese`, `tipo_doc_fiscale_id` più i facoltativi. **Nessun predicato di provenienza** |
+| `fn_emit_attivita_fatturabili_da_commessa` non ha parametro di batch | ✅ firma `(p_commessa_id, p_only_approved, p_dry_run, p_gruppi)` |
+| le righe liberate **non si cancellano** | ✅ `fn_libera_attivita_fatturabili` azzera lucchetto, `lock_batch_id`, `fattura_riga_id`, `stato_esecuzione`, e riporta le `commesse_attivita` a `NON_EMESSA` |
+| il pull **ri-adotta** i residui | ✅ e tiene anche sulle righe sourceless — §9 |
+| D3: il cruscotto non porta la commessa fallita | ✅ `vw_dash_competenza_errori` ha **15 colonne** e **nessuna** che nomini la commessa; `vw_dash_competenza_gruppi` ne ha **30**, nessuna d'esito |
+| le tre righe residue sono ancora lì | ✅ 26828/26829/26830, libere, `lock_batch_id` NULL, `data_insert` 17:18:08 |
+| l'errore del lotto annullato è ancora vivo | ✅ run 2836 `ERRORE` + `attivo = t`, e la vista lo restituisce ancora per `2026-09` |
+
+### Che cosa è stato corretto
+
+| Diceva | Verificato |
+| --- | --- |
+| D4: *«`fn_annulla_lotto_da_draft` **disattiva** i task run, come già fa la sorella»* | la sorella **non disattiva**: scrive l'**esito** `ANNULLATO`, e nel proprio corpo respinge `attivo = false` perché quella SELECT non filtra su `attivo`. Implementare «disattiva» alla lettera produce un **terzo** comportamento (§5, §9.4) |
+| §7: *«da chiarire, se non è la mirata è un terzo difetto»* | **era la mirata**: i gruppi del lotto sono tre in entrambi i giri e quello ROOT non c'è; le righe di gruppo nascono **prima** del pull. §7 chiuso |
+| §7 come possibile prerequisito di D1 | **non lo è**: quelle attività non hanno mai prodotto una riga di `attivita_fatturabili`, quindi nemmeno oggi la select le prenderebbe |
+| §9: *«il BE il `lock_batch_id` ce l'ha in mano»* | vero, ma quella colonna **esiste già** con un altro significato e un ciclo di vita opposto: il marchio vuole una **colonna nuova** (§9.1) |
+
+### ⚠️ Come si rimisura, per non leggere uno zero al posto di un dato
+
+`vw_dash_competenza_errori` apre con
+`fn_get_emittenti_scope_sr_ids(current_setting('app.current_user_id'))`: senza
+quella GUC restituisce **zero righe**, ed è **fail-closed**. Chi la interroga da
+`psql` senza contesto conclude che la bandiera è stata abbassata. Con il contesto
+impostato, al 2026-09-04 la riga c'è ancora.
+
+⛔ **E nessuno dei numeri qui sopra è un motivo.** «Le righe residue sono tre» e
+«il run è ancora attivo» sono **controesempi**: dicono che un caso esiste e non è
+gestito. La forma di §9 sta in piedi anche se domani quelle righe sono zero.

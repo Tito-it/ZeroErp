@@ -8,7 +8,14 @@
 > ⛔ **Questo brief non le rispiega e non le riapre**: le traduce in DDL, funzioni,
 > seed, viste di presidio e test, nell'ordine in cui vanno scritte.
 >
-> **Stato:** 🔵 **APERTO — piano scritto, nessun changeSet, niente applicato.**
+> **Stato:** 🟢 **IN CORSO — fasi 0, 1, 2, 3a, 3b, 4 e 5 APPLICATE su dbdev, pgTAP
+> verdi, baseline ripristinata.** ✅ Gli utenti tecnici esistono **col loro
+> emittente**: `dbops.vw_emittenti_non_serviti` e `dbops.vw_operatori_senza_emittente`
+> sono vuote. ✅ La coda rifiuta un lavoro di dominio senza operatore, e ogni
+> bersaglio della chiusura scadenze dichiara la propria classe.
+> ⛔ **Resta la sola fase 6**, che è bloccata da una cosa che non sta in `db/`:
+> il ritiro del ruolo `BYPASSRLS` (provisioning). Avanzamento nel §10,
+> ⭐ **e tutto ciò che resta aperto — nostro e altrui — nel §12**.
 >
 > ⚠️ **Perimetro:** solo `db/`. ⛔ Il backend (worker, dispatch, command che accodano)
 > ha il suo brief: qui si dichiara **cosa il DB gli offre** e **cosa smette di offrirgli**.
@@ -44,7 +51,7 @@ Più le **viste di presidio**, che devono restare vuote, e i **test**.
   privilegi dei ruoli batch non stanno mai in Liquibase;
 * la **colonna emittente su `config.email_outbox`** e le **policy mancanti su
   `vendite.listini*`**: sono debiti che questo brief **fa emergere** (§8, livello 2) e
-  non progetta;
+  non progetta — ⇒ registrati in **§12.3** con la vista che li verifica;
 * **magazzino e acquisti**, in ristrutturazione.
 
 ---
@@ -250,6 +257,40 @@ oggi indipendenti, e in più costringerebbe a stringere il `bigint` di `p_lock_k
 
 ## 4. Fase 3 — Gli utenti tecnici (D-6)
 
+> **3a ✅ applicata** — tipo ruolo `PROC_AUTO`, flag `tecnica`, le due viste di
+> presidio, GRANT, pgTAP. **3b 🔵 prossima** — la fabbrica e i 4 utenti veri.
+
+### 4.0 ⛔ Tre vincoli scoperti applicando la 3a, che cambiano il disegno
+
+* ⛔ **Un solo soggetto «sistema» per N processi è IMPOSSIBILE.**
+  `uq_soggetto_ruolo (soggetto_id, tipo_ruolo_id)` ammette una riga sola per coppia, e
+  `uq_identita_digitali_sr_ruolo_attivo` una sola identità `OPERATORE` per
+  `soggetto_ruolo`. ⇒ **un soggetto per processo**. D-6b regge — «non l'azienda
+  emittente» — ma nella forma che la struttura impone.
+* ⛔ **La matrice delle nature resta VUOTA, ed è una decisione.** Volevo dichiarare `PG`
+  per impedire strutturalmente che il ruolo-processo finisse su una persona; ma le
+  nature `PG` disponibili (`SC`, `SP`) impongono **partita IVA e codice fiscale**, che
+  un processo non ha. Vincolarla costringerebbe a inventare una categoria anagrafica per
+  una cosa che anagrafica non è. ⭐ L'assenza è **fissata da un test** (§9), altrimenti
+  fra sei mesi sembra un buco da tappare.
+* 🔴 **Un utente ha UN SOLO emittente**, e questo ha riscritto D-6.
+  `config.user_emittenti_fiscali` è `UNIQUE(auth_user_id)` — non è una whitelist, è
+  1-a-1 (changeSet 20260408-11), e *«solo il super admin è multi-emittente»*.
+  ⇒ Un utente tecnico **per processo × emittente**: oggi con un emittente sono
+  quattro, con tre ne sarebbero dodici. ⛔ Non è l'`automatico_<emittente>` scartato
+  nell'analisi §6: quello moltiplicava le identità di una **persona**; questo è un
+  badge per **posto di lavoro**, e nel modello il posto di lavoro è l'emittente.
+* ⛔ **Il profilo non si punta al reparto, e non serve.** Un profilo `REPARTO`
+  raggiunge una persona via `anagrafiche.risorse_umane` — il rapporto di lavoro. E i
+  profili valgono per liste, dashboard e API: un processo headless non ci passa.
+  **Zero capability è minimo privilegio.**
+* ⭐ **Non tutti i processi DOMINIO vogliono un utente tecnico.** I tipi della **coda**
+  sono accodati da un operatore e girano con lo scope catturato all'enqueue: hanno già
+  un'identità, ed è quella della **persona**. Dargliene una tecnica ne cancellerebbe il
+  nome. ⇒ Servono un utente i soli `DOMINIO` su canale `PGAGENT` o `COMMAND`: **quattro**,
+  non sei. Entrambe le viste escludono `canale = 'CODA'`.
+
+
 Dipende dalla fase 1. È il prerequisito per smettere di bypassare.
 
 ### 4.1 Il tipo ruolo — catalogo
@@ -260,8 +301,12 @@ si aggancia). Seed CSV.
 ⚠️ **E la matrice delle nature va DICHIARATA.**
 `anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa` applica *«matrice assente =
 nature libere»*: non scrivere righe in `config.tipi_ruoli_nature_ammesse` **è** una
-decisione, e presa per omissione non si vede. O la riga, o un commento che dice perché
+decisione, e presa per omissione non si vede. O la riga, o qualcosa che dice perché
 è libero.
+✅ **Fatto, e non con un commento:** l'assenza è fissata da un'asserzione in
+`db/pgtap/anagrafiche/test-identita-tecnica.sql` (il perché in §4.0). ⭐ Un commento si
+cancella senza che nessuno se ne accorga; un test che pretende la matrice **vuota** si
+rompe se qualcuno la riempie — cioè parla nel momento in cui la decisione cambia.
 
 ### 4.2 Il soggetto «sistema» e le identità — dati di macchina
 
@@ -396,7 +441,8 @@ PostgreSQL applica già.
 | --- | --- |
 | Liquibase (proprietario `titodb`) — **18 changeSet** fanno backfill sulle 15 tabelle col guard | ✅ passa, come passa già dalla RLS |
 | pgAgent (superuser) | ✅ passa |
-| processo applicativo senza utente (dopo il ritiro del bypass) | ⛔ **si ferma** |
+| `zeroerp_batch_fatturazione` (`BYPASSRLS`) | ✅ passa — ⚠️ **finché il ruolo esiste**: è il motivo per cui R-2 rende efficace questa fase, non il suo prerequisito |
+| `zeroerp_app` **senza utente in sessione** | ⛔ **si ferma** — ⭐ è il bersaglio |
 
 ⚠️ **Deroga dichiarata** alle linee guida §10.4 (le funzioni di scope non guardano il
 ruolo DB): qui non si identifica l'utente, si **rispecchia** la regola di bypass.
@@ -405,6 +451,8 @@ non un cancello: chiunque può impostarla. È la ragione per cui il progetto ha 
 scartato il sentinel applicativo del canale di sistema.
 
 ⚠️ **Perché è ultima**: prima che i processi abbiano identità, chiuderla li ferma.
+✅ **Ora l'identità c'è** (fase 3b). ⇒ Il blocco residuo **non è il ritiro del ruolo**:
+sono i 12 file pgTAP e la decisione sui trigger gemelli — **§12.5 e §12.6**.
 
 ---
 
@@ -455,15 +503,21 @@ attribuire un rosso a questo lavoro.
 
 ## 10. L'ordine, e che cosa può partire subito
 
-| Fase | Contenuto | Dipende da | Blocca il backend? |
-| --- | --- | --- | --- |
-| **0** | `vw_processi_che_bypassano` | — | no |
-| **1** | Il registro (3 tabelle + seed + 2 viste) | — | no — è tutto nuovo |
-| **2** | L'attore sui run (2 colonne + 2 funzioni + vista) | — | no — parametri con default |
-| **3** | Utenti tecnici (tipo ruolo, soggetto, identità, flag, profili, whitelist + 2 viste) | 1 | no |
-| **4** | Coda: `processo_codice` sui tipi + guard in `fn_accoda_lavoro` + commento | 1, 3 | ⚠️ sì: il dispatch BE va allineato |
-| **5** | Chiusura scadenze: `classe` + `p_classe` | 1 | ⚠️ parziale |
-| **6** | Il guard di scrittura | 3, **e il ritiro del bypass** | ⛔ sì: ultimo in assoluto |
+| Fase | Stato | Contenuto | changeSet | Blocca il backend? |
+| --- | --- | --- | --- | --- |
+| **0** | ✅ applicata | `vw_processi_che_bypassano` | `-10` | no |
+| **1** | ✅ applicata | Il registro: 3 tabelle + 2 CSV di catalogo + 2 viste + GRANT | `-07`…`-15` | no — è tutto nuovo |
+| **2** | ✅ applicata | L'attore sui run: 2 colonne + 2 funzioni + vista + GRANT, e la correttiva dei privilegi | `-16`…`-21` | no — parametri con default |
+| **3a** | ✅ applicata | Il contratto degli utenti tecnici: tipo ruolo `PROC_AUTO`, flag `tecnica`, 2 viste, GRANT | `-22`…`-25` | no |
+| **3b** | ✅ applicata | La fabbrica `fn_crea_utente_tecnico` + gli utenti tecnici **per processo × emittente**, con il loro perimetro. ⛔ Senza profilo (non serve) | `-26`…`-30`, `-36`…`-39` | no |
+| **4** | ✅ applicata | Coda: `processo_codice` sui tipi (hard FK) + guard di classe in `fn_accoda_lavoro` + `NOT NULL` in `90_end` + commento `run_as` | `-40`…`-42` | ✅ **no — verificato**: `CodaLavoriRepository.accoda` è l'**unico** punto che accoda, e passa `run_as=OPERATORE`. Il guard vincola il futuro, non rompe il presente |
+| **5** | ✅ applicata | Chiusura scadenze: `classe` sul BERSAGLIO + CHECK + `NOT NULL` in `90_end` + `fn_apply_chiusura_scadenze(p_classe)` con default | `-43`…`-45` | ⚠️ parziale |
+| **6** | 🔵 **prossima** | Il guard di scrittura — ⛔ **bloccata**: prima va ritirato `BYPASSRLS`, che è provisioning, non un changeSet | — | ⛔ sì: ultimo in assoluto |
+
+⚠️ **La 3b è separata dalla 3a per una ragione, non per comodità:** creare righe in
+`anagrafiche.soggetti` attraversa dieci trigger e una FK su `stato_id`. Indovinare
+lascia spazzatura in un'anagrafica vera, quindi quella parte vuole il suo giro di
+verifica.
 
 ⭐ **Le fasi 0, 1 e 2 si possono scrivere e applicare senza che il backend cambi una
 riga**: non tolgono niente a nessuno.
@@ -471,6 +525,54 @@ riga**: non tolgono niente a nessuno.
 ---
 
 ## 11. Trappole note, da tenere davanti mentre si scrive
+
+### 11.1 ⛔ Trovate applicando le fasi 0–5 — valgono per tutte quelle che restano
+
+Non sono cronaca: sono le cose che, ripetute, romperebbero di nuovo.
+
+* 🔴 **`DROP FUNCTION` porta via anche i PRIVILEGI.** La `CREATE` successiva riparte dal
+  default di PostgreSQL, che per le funzioni è **`EXECUTE` a `PUBLIC`**. Il
+  `REVOKE ... FROM PUBLIC` di un changeSet vecchio è attaccato alla **firma vecchia** e
+  sparisce con lei. Su una `SECURITY DEFINER` è un buco: è successo su
+  `fn_job_run_start` (corretto da `-21`). ⇒ **Chi fa `DROP+CREATE` ricostruisce l'ACL
+  nello stesso changeSet**, non nel successivo.
+  ✅ Il `GRANT` ai ruoli batch invece si ricrea da solo: il provisioning imposta
+  `ALTER DEFAULT PRIVILEGES FOR ROLE <migrator>`, che copre gli oggetti futuri.
+* ⛔ **I privilegi sugli oggetti NUOVI non arrivano da soli** fuori dalla CI: ogni
+  tabella o vista nuova vuole un `GRANT` mirato in `90_end`. ⚠️ E il difetto è
+  **invisibile da `information_schema`**, che è filtrata per privilegi: gli oggetti
+  risultano *inesistenti*, non *inaccessibili*.
+* ⚠️ **La doc auto-gen non mostra la LUNGHEZZA dei `varchar`**: la riga dice
+  `character varying` e basta. `config.tipi_ruoli.codice` è `varchar(10)`, e un codice
+  di 13 caratteri ha fatto fallire il migrate. ⇒ Per una colonna `varchar` si guarda il
+  DDL, oppure — più rapido — le lunghezze **già in uso nel seed**.
+* ⛔ **Un `DROP` porta via i PRIVILEGI — di funzioni E di viste.** La `CREATE`
+  successiva riparte dal default. ⚠️ E non basta contare su un `GRANT` in `90_end`
+  marcato `runOnChange`: quello ri-esegue solo se **il suo file cambia**, e non cambia.
+  ⇒ Il `GRANT`/`REVOKE` si rimette **nello stesso changeSet** del `DROP`.
+* ⚠️ **`CREATE OR REPLACE VIEW` non sa TOGLIERE colonne** (aggiungerle in coda sì).
+  Cambiare la forma di una vista è `DROP` + `CREATE` — con la riga sopra che ne segue.
+* ⚠️ **Un presidio deve poter arrivare a ZERO, o è rumore.** La prima versione di
+  `vw_run_senza_attore` contava *tutte* le righe storiche, che hanno l'attore `NULL` per
+  sempre e non sono sanabili: non sarebbe mai stata vuota. Riscritta sull'**ultima
+  corsa**, un job sparisce appena dichiara. ⇒ Prima di scrivere una vista di presidio:
+  *«che cosa la fa arrivare a zero?»* — se non c'è risposta, la vista è sbagliata.
+* ⚠️ **Un `NOT NULL` nuovo rompe le fixture pgTAP che seminano su quella tabella —
+  ed è il presidio che funziona.** Le fasi 4 e 5 hanno fatto cadere 4 file pgTAP
+  preesistenti: creavano tipi di coda senza processo e bersagli senza classe, cioè
+  righe che il modello nuovo non ammette più. ⛔ **Non si rilassa il vincolo**: la
+  fixture si adegua. ⭐ E si adegua **fabbricandosi il proprio processo** invece di
+  appoggiarsi a uno del catalogo — dichiarato `MANUTENZIONE`, così il guard di classe
+  non entra in gioco e quel file continua a collaudare *ciò che collaudava*, non altro.
+  ⇒ Prima di scrivere un `NOT NULL`: `grep -rn "INSERT INTO <schema>.<tabella>" db/pgtap/`.
+* ⚠️ **`has_function_privilege` con la firma scritta a mano si rompe quando la firma
+  cambia.** Aggiungere un parametro a `fn_job_run_start` ha fatto fallire un test che
+  citava la vecchia stringa di 5 tipi — *«la funzione non esiste»*, non *«manca il
+  privilegio»*. ⇒ Il privilegio si chiede sull'**OID cercato per nome**, così il test
+  misura il privilegio e non la firma.
+
+### 11.2 Le regole di sempre
+
 
 * ⛔ **`runOnChange: true` è vietato** in `00_schema` e `20_code` — presidiato in CI. E
   se si spegne un `runOnChange` altrove, si corregge anche `validCheckSums` (**al
@@ -494,7 +596,112 @@ riga**: non tolgono niente a nessuno.
 
 ---
 
-## 12. Riferimenti
+## 12. ⭐ Registro dei residui — che cosa resta quando questo brief chiude
+
+> ⛔ **Questa sezione non progetta niente**: elenca ciò che il cantiere ha lasciato
+> aperto o fatto emergere, con **chi lo chiude** e **come si vede che è chiuso**.
+> Serve a non doverlo ricostruire leggendo il brief da capo.
+
+⭐ **Dove c'è un presidio, la voce si verifica da sola**: non si va a memoria, si
+interroga la vista. Dove non c'è, la colonna lo dice.
+
+### 12.1 🗄️ DB — una voce sola, e non è pronta
+
+| # | Residuo | Blocco | Come si vede che è chiuso |
+| --- | --- | --- | --- |
+| **R-1** | **Fase 6** — `script.trgfn_guard_emittente_scope`: il ramo *«nessun utente → passa»* diventa *«bypasserebbe la RLS? allora passa; altrimenti errore»* (§7) | ⚠️ **NON è R-2** (vedi §12.5, misurato 2026-09-04). Il costo vero: **12 file pgTAP** da riscrivere, più la decisione sui **cinque trigger gemelli** | i 12 file verdi, poi il changeSet |
+
+### 12.2 ⚙️ Provisioning e backend — il perimetro non è nostro
+
+| # | Residuo | Dove | Come si vede che è chiuso |
+| --- | --- | --- | --- |
+| **R-2** | **Ritiro del ruolo `zeroerp_batch_fatturazione`** (`BYPASSRLS`). ⛔ Non è un changeSet: i privilegi dei ruoli batch stanno nel provisioning. ⚠️ **Indipendente da R-1**, non un suo prerequisito | `scripts/sql/provision_db_role_batch_fatturazione.sql` + `backend/apps/core/services/system_context.py`, `run_fatturazione_batch.py`, `draina_coda_stampa.py`, `zeroerp_backend/settings.py` | `dbops.vw_processi_che_bypassano` **vuota** — ⭐ è il presidio della fase 0, acceso apposta |
+| **R-3** | **I command passano il processo** a `script.fn_job_run_start` / `maintenance.fn_run_and_log` (`p_processo_codice`, `p_auth_user_id`). ⚠️ **Non urgente**: i 12 job pgAgent si autodichiarano già per derivazione dal jobname (§3.3); questo serve ai **command**, che jobname non hanno | backend | `SELECT * FROM dbops.vw_run_senza_attore` → **vuota** |
+| **R-4** | **Riscrittura di `_guard_canale_sistema`** — il canale di sistema applicativo, dopo il ritiro del bypass | backend | nessun presidio DB: lo copre il test BE |
+| **R-5** | **UI utenti tecnici / identità digitali**: oggi si vedono solo da SQL. ⚠️ Concordata a voce, **non ancora briefata** | BE + FE | — |
+| **R-6** | ✅ **Dispatch coda: NON serve.** *Verificato 2026-09-04*: `CodaLavoriRepository.accoda` è l'**unico** punto che accoda e passa già `run_as=OPERATORE`. Il guard di classe vincola il futuro senza rompere il presente | — | — |
+
+### 12.3 🕳️ Debiti che questo brief **fa emergere** e non progetta
+
+⚠️ Non sono regressioni introdotte qui: erano scoperti **prima**, ed erano invisibili
+perché nessuno faceva la domanda. Ora una vista li elenca.
+
+| # | Debito | Perché è un debito | Come si vede che è chiuso |
+| --- | --- | --- | --- |
+| **R-7** | **`config.email_outbox` non ha la colonna emittente** — quindi `send_pending_emails` è un processo di `DOMINIO` **senza percorso al perimetro** | una email fiscale è di un emittente; senza colonna non c'è niente su cui filtrare | `dbops.vw_processi_dominio_senza_emittente` **vuota** |
+| **R-8** | **`vendite.listini*` senza policy RLS**, benché il listino sia stato dichiarato di dominio | il percorso all'emittente c'è (`listino_id → emittente_soggetto_ruolo_id`), ma **nessuno lo applica** | `dbops.vw_processi_dominio_senza_difesa` **vuota** |
+| **R-9** | ✅ **CHIUSA — non è un debito, è una decisione dichiarata.** La matrice `config.tipi_ruoli_nature_ammesse` è **vuota** per `PROC_AUTO` (§4.0: le nature `PG` esigono partita IVA e codice fiscale, che un processo non ha) | sta qui solo perché **sembra** un buco da tappare, e fra sei mesi qualcuno proverà a tapparlo | è già presidiata: l'asserzione *«non vincola la natura»* in `db/pgtap/anagrafiche/test-identita-tecnica.sql` si rompe se qualcuno riempie la matrice |
+
+### 12.5 ⛔ Correzione — la fase 6 NON è bloccata dal ritiro del ruolo
+
+> **Fatto datato 2026-09-04.** Era scritto — anche a voce — che chiudere la fase 6
+> prima del ritiro di `zeroerp_batch_fatturazione` avrebbe fermato la fatturazione.
+> ⛔ **È falso, e il verso è esattamente opposto.**
+
+La regola nuova è *«se questa sessione bypasserebbe comunque la RLS, salta»*. E
+`zeroerp_batch_fatturazione` **ha `BYPASSRLS`**: è quindi la sessione che **continua a
+passare**, non quella che si ferma. Il ritiro del ruolo (R-2) non è un prerequisito
+di R-1: è ciò che **rende R-1 efficace** su quel processo, ed è indipendente.
+
+⚠️ **Perché mi era sfuggito:** avevo letto la tabella del §7 senza guardare la
+condizione della sua terza riga — *«processo applicativo senza utente **(dopo il
+ritiro del bypass)**»*. La riga diceva già la cosa giusta.
+
+**Chi passa oggi, misurato** (`pg_roles`, `pg_class`, `pgagent.pga_jobstep`, e la
+`.service` del demone):
+
+| Sessione | Passa? | Perché |
+| --- | --- | --- |
+| Liquibase — `titodb` | ✅ | è **proprietario** di tutte e 15 le tabelle, e nessuna ha `FORCE ROW LEVEL SECURITY` |
+| pgAgent | ✅ | il demone si connette `user=postgres`, superuser |
+| `zeroerp_batch_fatturazione` | ✅ | `rolbypassrls = true` |
+| **`zeroerp_app` senza utente in sessione** | ⛔ **si ferma** | ⭐ è il bersaglio della fase |
+
+**Il backend a runtime regge** — verificato, non supposto: i due command che scrivono
+sotto guard (`run_fatturazione_batch`, `draina_coda_stampa`) usano la connessione di
+sistema col ruolo di bypass; il drenatore della coda **imposta `app.current_user_id`**
+dallo `scope` (`coda_lavori/context.py`); `send_pending_emails` scrive su
+`config.email_outbox`, che il guard non copre.
+
+### 12.6 ⚠️ Il costo vero della fase 6, misurato
+
+**a) Dodici file pgTAP svuotano `app.current_user_id` e poi scrivono** su una delle 15
+tabelle — ~51 scritture. Non è un difetto delle fixture: quei test **si appoggiano al
+ramo che la fase 6 chiude**, e uno lo dichiara nell'intestazione
+(*«…quando la GUC `app.current_user_id` è vuota»*).
+
+⭐ Quindi non si riparano con una fixture: vanno **riscritti perché dichiarino un
+operatore**. È lavoro che ha valore anche se la fase 6 slittasse — oggi quei file
+collaudano il comportamento di una porta aperta.
+
+⚠️ Altri **6** file toccano le stesse tabelle svuotando la GUC ma girano `owner`
+(`titodb`, proprietario) e **non sono toccati**.
+
+**b) ⛔ Il ramo «nessun utente» non è solo nel guard: sono OTTO funzioni trigger.**
+`trgfn_contratti_default_emittente`, `…ddt…`, `…ordini…`, `…preventivi…`,
+`trgfn_event_log_deriva_scope`, più due su `billing_account`.
+
+⇒ Chiudere **una sola** delle otto lascia sette che rispondono ancora *«nessun utente,
+va bene lo stesso»*. È la trappola già registrata: **un `CHECK` allargato e un guard
+che dissentono**. La fase 6 deve decidere se i cinque «default emittente» restano come
+sono (⭐ tesi difendibile: **non concedono niente**, riempiono un default e poi il
+guard decide) o se seguono. **Da decidere prima di scrivere il changeSet, non dopo.**
+
+**c) 🕳️ Non misurato: la suite Django.** 59 file di test toccano i modelli guardati,
+**5** impostano il contesto utente. Dipende da chi è proprietario delle tabelle nel
+database di test: se è `zeroerp_app`, passa da proprietario e non se ne accorge
+nessuno. ⇒ Si misura lanciando la suite BE **dopo** il changeSet, non prima.
+
+---
+
+### 12.4 ⛔ Fuori perimetro dichiarato — non sono residui
+
+**Magazzino e acquisti** sono in ristrutturazione: le loro misure sono state **tolte**
+dall'analisi apposta, e non rientrano da questa porta.
+
+---
+
+## 13. Riferimenti
 
 * [analisi-db-be-processi-automatici-identita-e-perimetro.md](analisi-db-be-processi-automatici-identita-e-perimetro.md)
   — **le decisioni e il perché**: classi (§2), porta in scrittura (§4, §4.1), utenti

@@ -27,10 +27,12 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| classe | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_automazione_chiusura_scadenze_classe |  |
 | CHECK | chk_automazione_chiusura_scadenze_fk_coerente |  |
 | CHECK | chk_automazione_chiusura_scadenze_tipo_stato |  |
 | PRIMARY KEY | pk_automazione_chiusura_scadenze | id |

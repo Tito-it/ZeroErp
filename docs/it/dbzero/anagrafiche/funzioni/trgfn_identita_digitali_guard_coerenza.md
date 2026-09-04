@@ -20,29 +20,26 @@ BEGIN
     -- Trigger function: guard coerenza ruolo_applicativo <-> soggetto_ruolo
     -- su anagrafiche.identita_digitali (fase a10, BEFORE INSERT/UPDATE).
     --
-    -- Logica (ottimizzata):
+    -- Logica:
     --   - API_CLIENT / DISABILITATO: early-exit, nessuna query.
-    --   - OPERATORE: SELECT soggetto_id + guard RIS_UMANA + guard PF pura.
+    --   - OPERATORE: SELECT soggetto_id, poi DUE mondi disgiunti
+    --     secondo il flag `tecnica` (rev 2026-09-04):
+    --       persona  -> RIS_UMANA + PF pura
+    --       processo -> PROC_AUTO
     --   - Altri ruoli: delega a fn_guard_soggetto_ruolo passando NULL
     --     come p_soggetto_id (parametro opzionale supportato dalla
     --     funzione) — evita una query ridondante.
     -- ------------------------------------------------------------
 
     -- 1) Early-exit per ruoli senza vincoli di coerenza.
-    --    Evita SELECT e chiamate inutili nel caso piu' frequente
-    --    di disattivazione (DISABILITATO) o integrazione API.
     IF NEW.ruolo_applicativo IN ('API_CLIENT', 'DISABILITATO') THEN
         RETURN NEW;
     END IF;
 
     -- 2) Dispatch per gli altri ruoli applicativi.
-    --    fn_guard_soggetto_ruolo verifica che il soggetto_ruolo
-    --    abbia tipo_ruolo.codice_interno == valore atteso; solleva
-    --    eccezione E_SOGGETTI_RUOLI se non coerente.
     CASE NEW.ruolo_applicativo
         WHEN 'OPERATORE' THEN
-            -- Operatore interno: serve anche il soggetto_id per
-            -- verificare che sia persona fisica pura. Unica query.
+            -- Serve il soggetto_id in entrambi i rami. Unica query.
             SELECT sr.soggetto_id
               INTO v_soggetto_id
               FROM anagrafiche.soggetti_ruoli sr
@@ -50,7 +47,7 @@ BEGIN
 
             IF NOT FOUND THEN
                 -- Caso limite (record cancellato da altra transazione):
-                -- la FK lo impedirebbe, ma fail-fast esplicito per chiarezza.
+                -- la FK lo impedirebbe, ma fail-fast esplicito.
                 PERFORM script.fn_log_and_raise_error(
                     'database',
                     TG_NAME,
@@ -61,39 +58,47 @@ BEGIN
                         'nota', 'soggetto_ruolo_id non trovato in anagrafiche.soggetti_ruoli'
                     ),
                     NULL::uuid,
-                    -- ⚠️ ARITA' (2026-08-18): E_SOGGETTI_RUOLI ha tre segnaposto
-                    --   (id, soggetto_id, ruolo_id) e qui ne arrivava uno solo
-                    --   -> format() alzava 22023 al posto del P0001.
-                    --   Gli altri due NON si possono valorizzare, ed e' il punto:
-                    --   si arriva qui **perche' la riga non e' stata trovata**,
-                    --   quindi soggetto_id e ruolo_id non esistono da leggere.
-                    --   Si passa 'NULL' esplicito, che e' la convenzione gia' in
-                    --   uso in script.fn_guard_soggetto_ruolo — l'altro
-                    --   chiamante di questo stesso codice.
-                    --   ⚠️ Resta un difetto di MERITO, non toccato qui: la
-                    --   condizione e' «soggetto_ruolo_id non trovato», mentre il
-                    --   messaggio dice «non e' stata assegnata la relazione».
-                    --   E' materia del quarto lato
-                    --   (scripts/sql/check_messaggio_vs_condizione.sql).
+                    -- ⚠️ ARITA' (2026-08-18): E_SOGGETTI_RUOLI ha tre
+                    --   segnaposto e qui ne arrivava uno solo -> format()
+                    --   alzava 22023 al posto del P0001. Gli altri due non
+                    --   si possono valorizzare: si arriva qui PERCHE' la
+                    --   riga non e' stata trovata.
                     NEW.soggetto_ruolo_id::text,
                     'NULL',
                     'NULL'
                 );
             END IF;
 
-            PERFORM script.fn_guard_soggetto_ruolo(
-                v_soggetto_id,
-                NEW.soggetto_ruolo_id,
-                'RIS_UMANA'
-            );
-            PERFORM script.fn_guard_soggetto_pf_pura(v_soggetto_id);
+            IF NEW.tecnica THEN
+                -- ⭐ PROCESSO AUTOMATICO (rev 2026-09-04).
+                --   Un processo non e' una persona e non deve
+                --   fingersi tale: si pretende il ruolo dedicato
+                --   PROC_AUTO. ⛔ Niente fn_guard_soggetto_pf_pura:
+                --   non c'e' nessuna persona fisica da verificare.
+                --   ⚠️ Questo ramo NON e' piu' permissivo dell'altro:
+                --   scambia un requisito chiuso con un altro. Con
+                --   tecnica=true NON si puo' appendere un'identita'
+                --   operatore a un soggetto qualsiasi.
+                PERFORM script.fn_guard_soggetto_ruolo(
+                    v_soggetto_id,
+                    NEW.soggetto_ruolo_id,
+                    'PROC_AUTO'
+                );
+            ELSE
+                -- PERSONA: invariato dal 2026-04.
+                PERFORM script.fn_guard_soggetto_ruolo(
+                    v_soggetto_id,
+                    NEW.soggetto_ruolo_id,
+                    'RIS_UMANA'
+                );
+                PERFORM script.fn_guard_soggetto_pf_pura(v_soggetto_id);
+            END IF;
 
         WHEN 'CLIENTE_PORTALE', 'SHOP_CUSTOMER' THEN
             -- Entrambi i ruoli condividono lo stesso tipo_ruolo
             -- anagrafico 'CL': la differenza tra portale B2B e
             -- shop self-service e' solo a livello di namespace API
             -- e profilo capability, non di anagrafica.
-            -- NULL come p_soggetto_id: la funzione non lo verifica.
             PERFORM script.fn_guard_soggetto_ruolo(
                 NULL,
                 NEW.soggetto_ruolo_id,
@@ -110,8 +115,8 @@ BEGIN
 
         ELSE
             -- Nuovo valore enum senza regola qui: fail-fast esplicito
-            -- (evita bypass silenzioso quando si estende l'enum in
-            -- futuro — il guard non deve "aprire" per omissione).
+            -- (evita bypass silenzioso quando si estende l'enum —
+            -- il guard non deve "aprire" per omissione).
             PERFORM script.fn_log_and_raise_error(
                 'database',
                 TG_NAME,
@@ -131,7 +136,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
-IS 'Guard a10 BEFORE INSERT/UPDATE su anagrafiche.identita_digitali: verifica coerenza tra ruolo_applicativo e codice_interno del tipo_ruolo del soggetto_ruolo; per OPERATORE richiede anche che il soggetto sia persona fisica pura. Dispatch esplicito per ogni valore dell''enum config.ruolo_applicativo.';
+IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali. Rev 2026-09-04: il ramo OPERATORE si sdoppia sul flag `tecnica` in DUE MONDI DISGIUNTI — una PERSONA vuole RIS_UMANA piu'' persona fisica pura (invariato), un PROCESSO vuole il ruolo dedicato PROC_AUTO e nessun controllo di persona fisica. ⛔ Il flag NON apre il ramo: scambia un requisito chiuso con un altro, quindi con tecnica=true non si puo'' appendere un''identita'' operatore a un soggetto qualsiasi. ⭐ Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: senza questo sdoppiamento un processo automatico non potrebbe avere un perimetro emittente, e prima del 2026-09-04 il database dichiarava di fatto che solo un essere umano poteva averne uno. Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
 ```
 
 ---

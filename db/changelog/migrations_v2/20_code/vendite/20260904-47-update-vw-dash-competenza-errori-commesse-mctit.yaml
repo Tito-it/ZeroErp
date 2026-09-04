@@ -1,0 +1,413 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D3 pezzo 1 — LE COMMESSE RESPINTE ARRIVANO A VIDEO
+#   vendite.vw_dash_competenza_errori + commesse_fallite, n_commesse_fallite
+#   Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 4 e 9
+#
+# ── ⭐ IL REQUISITO (Tid, 2026-09-04) ──────────────────────────────
+#   «le commesse in errore devono vedersi tutte, e ognuna mostrare il problema,
+#   per poter cercare di risolvere».
+#   Oggi il cruscotto dice «una su tre e' fallita» e non dice QUALE: il dato
+#   esiste, e si perde per strada verso la schermata da cui si lavora.
+#
+# ── ⭐ LA GRANA NON CAMBIA, ED E' UNA DECISIONE ────────────────────
+#   Le due colonne stanno IN CODA e la vista continua a emettere UN EVENTO PER
+#   RIGA. Il badge del calendario conta le righe di questa vista: farne una per
+#   commessa respinta l'avrebbe fatto passare da «quante volte devo aprire un
+#   lotto» a «quanto lavoro e' rimasto indietro» — due domande buone, ma
+#   diverse, e mescolate in un numero solo non ne resta nessuna.
+#   ⚠️ La vista somma gia' due unita' (TASK_ERRORE per (lotto x task) e
+#   FATTURA_CRITICA per fattura). Una terza avrebbe reso il totale la somma di
+#   tre cose diverse: «4» avrebbe voluto dire «2 task + 1 fattura + 1 commessa».
+#   ⇒ Il conteggio resta sugli eventi; le commesse stanno nel DETTAGLIO, che e'
+#   la superficie dove la domanda «su cosa agisco» ha senso.
+#
+# ── ⛔⛔ LA SORGENTE NON E' `task_run.meta->'commesse_fallite'` ─────
+#   Sembra la scelta ovvia — e' li' che il pull scrive l'elenco — ed e' quella
+#   sbagliata: `pipeline_step_executor` scrive
+#       "commesse_fallite": [e.item for e in esito.errori][:5]
+#   cioe' TRONCA A CINQUE, e lo dichiara nel proprio commento («il meta e' una
+#   traccia per il cockpit, il dettaglio completo sta sui log di lotto»).
+#   Con sei commesse respinte l'operatore ne vedrebbe cinque, e la sesta
+#   sparirebbe senza che niente lo dica — che e' il difetto di questo brief
+#   ripetuto un livello piu' in su.
+#   ⭐ Il log di lotto e' invece completo: una riga per commessa, con il
+#   `commessa_id` in un campo STRUTTURATO (`meta->'context'->>'commessa_id'`) e
+#   non solo dentro la frase del messaggio — quindi si aggancia per chiave, non
+#   leggendo del testo.
+#
+# ── ⚠️ TRE FILTRI CHE SEMBRANO DETTAGLI E NON LO SONO ──────────────
+#   1. `meta->'context'->>'task' = e.task_code` — il log di un lotto contiene
+#      le righe di TUTTI i task; senza, un errore del pull si porterebbe dietro
+#      le commesse respinte da un altro step;
+#   2. `ll.data_ora >= e.data_evento` — `data_evento` e' lo `started_at` della
+#      corsa: senza, un lotto RILANCIATO mostrerebbe anche le commesse respinte
+#      dal tentativo precedente, che nel frattempo possono essere passate;
+#   3. `~ '^[0-9]+$'` sul cast — una sola riga di log con un `commessa_id` non
+#      numerico farebbe fallire la vista INTERA, cioe' spegnerebbe il cruscotto
+#      per un dato sporco. Il presidio non deve poter rompere la pagina.
+#
+# ── ⚠️ IL PEZZO CHE MANCA, ED E' DI BACKEND ────────────────────────
+#   `dettaglio` porta oggi un DUMP TECNICO: eccezione Python, DETAIL, HINT,
+#   CONTEXT e lo stack PL/pgSQL in una stringa sola. Il motivo di dominio —
+#   «ROOT source mancante per commessa 34137» — c'e' dentro, ma a meta'.
+#   ⇒ Perche' «ognuna mostra il problema» sia vero A VIDEO, quel motivo deve
+#   arrivare in un campo suo da `item_failed`. Il database puo' esporre solo
+#   cio' che riceve, e lo espone: la colonna c'e' gia', va riempita meglio.
+#
+# ── ⚠️ security_invoker si AZZERA su CREATE OR REPLACE ─────────────
+#   La vista lo porta (`security_invoker=on`) e va ripetuto nella stessa
+#   istruzione: un ALTER separato sopravvivrebbe fino alla prossima riscrittura
+#   e poi sparirebbe in silenzio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260904-47-update-vw-dash-competenza-errori-commesse-mctit.yaml
+
+  - changeSet:
+      id: 20260904-47-update-vw-dash-competenza-errori-commesse
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_errori porta `commesse_fallite` (una voce per commessa respinta, con codice,
+        error_code, messaggio e dettaglio) e `n_commesse_fallite`. ⭐ Grana INVARIATA — una riga resta un
+        evento — cosi'' il badge del calendario continua a contare «quante volte devo aprire un lotto» e
+        non comincia a contare le commesse: la vista somma gia'' due unita'', una terza avrebbe reso il
+        totale la somma di tre cose diverse. ⛔ La sorgente NON e'' task_run.meta->''commesse_fallite'',
+        che il backend TRONCA A CINQUE dichiarandolo una traccia: con sei commesse respinte la sesta
+        sparirebbe in silenzio. Si legge il log di lotto, che e'' completo e porta il commessa_id in un
+        campo strutturato. ⚠️ Tre filtri portanti: stesso task, stesso tentativo (data_ora >= started_at)
+        e cast protetto, perche'' un dato sporco non deve poter spegnere il cruscotto.
+        Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 4 e 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_dash_competenza_errori
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+                  WITH (security_invoker = on) AS
+              WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids(NULLIF(current_setting('app.current_user_id'::text, true), ''::text)::integer) AS sr_ids
+                      ), task_err AS (
+                       SELECT tr.lotto_id,
+                          tr.task_code,
+                          tr.tentativo,
+                          tr.error_code,
+                          tr.error_message,
+                          tr.started_at
+                         FROM vendite.fatturazione_lotti_task_runs tr
+                        WHERE tr.task_stato::text = 'ERRORE'::text AND tr.attivo IS TRUE AND NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_task_runs tr2
+                                WHERE tr2.lotto_id = tr.lotto_id AND NOT tr2.stato_doc_fiscale_id IS DISTINCT FROM tr.stato_doc_fiscale_id AND tr2.task_code::text = tr.task_code::text AND tr2.tentativo > tr.tentativo AND tr2.task_stato::text = 'COMPLETATO'::text AND tr2.attivo IS TRUE))
+                      ), fatture_critiche AS (
+                       SELECT f.id,
+                          f.anno,
+                          f.serie,
+                          f.numero,
+                          f.data,
+                          f.emittente_soggetto_ruolo_id,
+                          ll.messaggio,
+                          ll.data_ora
+                         FROM vendite.fatture f
+                           LEFT JOIN LATERAL ( SELECT fl.messaggio,
+                                  fl.data_ora
+                                 FROM vendite.fatture_log fl
+                                WHERE fl.fattura_id = f.id AND fl.disabilitato IS FALSE
+                                ORDER BY fl.data_ora DESC
+                               LIMIT 1) ll ON true
+                        WHERE f.critical IS TRUE
+                      ), fatture_competenze AS (
+                       SELECT fc.id AS fattura_id,
+                          l.competenza_mese,
+                          lf.lotto_id
+                         FROM fatture_critiche fc
+                           JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = fc.id
+                           JOIN vendite.fatturazione_lotti l ON l.id = lf.lotto_id
+                      UNION
+                       SELECT fc.id,
+                          af.competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                           JOIN vendite.fatture_righe fr ON fr.fattura_id = fc.id
+                           JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                        WHERE NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf2
+                                WHERE lf2.fattura_id = fc.id))
+                      UNION
+                       SELECT fc.id,
+                          date_trunc('month'::text, fc.data::timestamp with time zone)::date AS competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                        WHERE NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf3
+                                WHERE lf3.fattura_id = fc.id)) AND NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatture_righe fr2
+                                   JOIN vendite.attivita_fatturabili af2 ON af2.fattura_riga_id = fr2.id
+                                WHERE fr2.fattura_id = fc.id))
+                      ), eventi AS (
+                       SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+                          l.competenza_mese,
+                          l.id AS lotto_id,
+                          l.codice AS lotto_codice,
+                          l.stato_lotto,
+                          NULL::bigint AS fattura_id,
+                          NULL::smallint AS fattura_anno,
+                          NULL::character varying AS fattura_serie,
+                          NULL::bigint AS fattura_numero,
+                          te.task_code,
+                          te.error_code,
+                          te.error_message AS messaggio,
+                          te.started_at AS data_evento,
+                          l.emittente_soggetto_ruolo_id
+                         FROM task_err te
+                           JOIN vendite.fatturazione_lotti l ON l.id = te.lotto_id
+                           CROSS JOIN escope
+                        WHERE escope.sr_ids IS NULL OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))
+                      UNION ALL
+                       SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+                          fk.competenza_mese,
+                          fk.lotto_id,
+                          l2.codice AS lotto_codice,
+                          l2.stato_lotto,
+                          fc.id AS fattura_id,
+                          fc.anno AS fattura_anno,
+                          fc.serie AS fattura_serie,
+                          fc.numero AS fattura_numero,
+                          NULL::character varying AS task_code,
+                          NULL::character varying AS error_code,
+                          fc.messaggio,
+                          fc.data_ora AS data_evento,
+                          fc.emittente_soggetto_ruolo_id
+                         FROM fatture_critiche fc
+                           JOIN fatture_competenze fk ON fk.fattura_id = fc.id
+                           LEFT JOIN vendite.fatturazione_lotti l2 ON l2.id = fk.lotto_id
+                           CROSS JOIN escope
+                        WHERE escope.sr_ids IS NULL OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))
+                      )
+               SELECT e.tipo_evento,
+                  e.competenza_mese,
+                  e.lotto_id,
+                  e.lotto_codice,
+                  e.stato_lotto,
+                  e.fattura_id,
+                  e.fattura_anno,
+                  e.fattura_serie,
+                  e.fattura_numero,
+                  e.task_code,
+                  e.error_code,
+                  e.messaggio,
+                  e.data_evento,
+                  e.emittente_soggetto_ruolo_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  -- D3 — le commesse respinte da QUESTO giro, ognuna con il suo motivo.
+                  -- ⭐ Colonne in coda e grana INVARIATA: una riga resta un evento, quindi
+                  --    il badge del calendario continua a contare le stesse cose. Il
+                  --    dettaglio si apre da qui, non moltiplica le righe.
+                  COALESCE(cf.commesse, '[]'::jsonb) AS commesse_fallite,
+                  COALESCE(cf.n, 0) AS n_commesse_fallite
+                 FROM eventi e
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = e.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   -- ⛔ La sorgente NON e' `task_run.meta->'commesse_fallite'`, ed e' una
+                   --    scelta: il backend lo scrive TRONCATO a cinque
+                   --    (`[e.item for e in esito.errori][:5]`) e lo dichiara una traccia per
+                   --    il cockpit. Con sei commesse respinte l'operatore ne vedrebbe cinque
+                   --    e la sesta sparirebbe senza che niente lo dica.
+                   --    Il log di lotto invece e' completo: una riga per commessa, con il
+                   --    `commessa_id` in un campo STRUTTURATO (`meta->'context'`) e non solo
+                   --    dentro la frase.
+                   LEFT JOIN LATERAL (
+                       SELECT jsonb_agg(jsonb_build_object(
+                                  'commessa_id',     (ll.meta -> 'context' ->> 'commessa_id')::bigint,
+                                  'commessa_codice', c.codice,
+                                  'error_code',      ll.meta ->> 'error_code',
+                                  'messaggio',       ll.messaggio,
+                                  'dettaglio',       ll.meta ->> 'detail')
+                                  ORDER BY (ll.meta -> 'context' ->> 'commessa_id')::bigint) AS commesse,
+                              count(*)::integer AS n
+                         FROM vendite.fatturazione_lotti_log ll
+                         LEFT JOIN vendite.commesse c
+                                ON c.id = (ll.meta -> 'context' ->> 'commessa_id')::bigint
+                        WHERE e.tipo_evento::text = 'TASK_ERRORE'
+                          AND ll.lotto_id = e.lotto_id
+                          AND ll.disabilitato IS FALSE
+                          AND ll.status = 'C'
+                          -- ⚠️ Il cast e' protetto dal test di forma: una riga di log con un
+                          --    `commessa_id` non numerico farebbe fallire la VISTA INTERA,
+                          --    cioe' spegnerebbe il cruscotto per un dato sporco.
+                          AND ll.meta -> 'context' ->> 'commessa_id' ~ '^[0-9]+$'
+                          -- Lo stesso task dell'evento, e non un task qualunque del lotto.
+                          AND ll.meta -> 'context' ->> 'task' = e.task_code::text
+                          -- ⚠️ E lo stesso TENTATIVO: `data_evento` e' lo `started_at` della
+                          --    corsa, quindi un lotto rilanciato non si porta dietro le
+                          --    commesse respinte dal giro precedente.
+                          AND ll.data_ora >= e.data_evento
+                   ) cf ON true;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP + CREATE, e non CREATE OR REPLACE: una vista non puo' PERDERE
+              --    colonne con REPLACE (PostgreSQL rifiuta, «non e' possibile eliminare
+              --    colonne da una vista»). Il rollback deve quindi ricostruirla.
+              -- ⭐ Sicuro qui perche' NESSUNA vista dipende da questa: verificato il
+              --    2026-09-04 su pg_depend. Sulla sorella dei gruppi non lo sarebbe, ed e'
+              --    la ragione per cui quel pezzo e' stato fatto come vista NUOVA.
+              -- ⚠️ Il DROP porta via anche i privilegi: vanno rimessi, o la vista torna ma
+              --    l'applicazione non la legge piu'.
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_errori;
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+                  WITH (security_invoker = on) AS
+              WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids(NULLIF(current_setting('app.current_user_id'::text, true), ''::text)::integer) AS sr_ids
+                      ), task_err AS (
+                       SELECT tr.lotto_id,
+                          tr.task_code,
+                          tr.tentativo,
+                          tr.error_code,
+                          tr.error_message,
+                          tr.started_at
+                         FROM vendite.fatturazione_lotti_task_runs tr
+                        WHERE tr.task_stato::text = 'ERRORE'::text AND tr.attivo IS TRUE AND NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_task_runs tr2
+                                WHERE tr2.lotto_id = tr.lotto_id AND NOT tr2.stato_doc_fiscale_id IS DISTINCT FROM tr.stato_doc_fiscale_id AND tr2.task_code::text = tr.task_code::text AND tr2.tentativo > tr.tentativo AND tr2.task_stato::text = 'COMPLETATO'::text AND tr2.attivo IS TRUE))
+                      ), fatture_critiche AS (
+                       SELECT f.id,
+                          f.anno,
+                          f.serie,
+                          f.numero,
+                          f.data,
+                          f.emittente_soggetto_ruolo_id,
+                          ll.messaggio,
+                          ll.data_ora
+                         FROM vendite.fatture f
+                           LEFT JOIN LATERAL ( SELECT fl.messaggio,
+                                  fl.data_ora
+                                 FROM vendite.fatture_log fl
+                                WHERE fl.fattura_id = f.id AND fl.disabilitato IS FALSE
+                                ORDER BY fl.data_ora DESC
+                               LIMIT 1) ll ON true
+                        WHERE f.critical IS TRUE
+                      ), fatture_competenze AS (
+                       SELECT fc.id AS fattura_id,
+                          l.competenza_mese,
+                          lf.lotto_id
+                         FROM fatture_critiche fc
+                           JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = fc.id
+                           JOIN vendite.fatturazione_lotti l ON l.id = lf.lotto_id
+                      UNION
+                       SELECT fc.id,
+                          af.competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                           JOIN vendite.fatture_righe fr ON fr.fattura_id = fc.id
+                           JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                        WHERE NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf2
+                                WHERE lf2.fattura_id = fc.id))
+                      UNION
+                       SELECT fc.id,
+                          date_trunc('month'::text, fc.data::timestamp with time zone)::date AS competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                        WHERE NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf3
+                                WHERE lf3.fattura_id = fc.id)) AND NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatture_righe fr2
+                                   JOIN vendite.attivita_fatturabili af2 ON af2.fattura_riga_id = fr2.id
+                                WHERE fr2.fattura_id = fc.id))
+                      ), eventi AS (
+                       SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+                          l.competenza_mese,
+                          l.id AS lotto_id,
+                          l.codice AS lotto_codice,
+                          l.stato_lotto,
+                          NULL::bigint AS fattura_id,
+                          NULL::smallint AS fattura_anno,
+                          NULL::character varying AS fattura_serie,
+                          NULL::bigint AS fattura_numero,
+                          te.task_code,
+                          te.error_code,
+                          te.error_message AS messaggio,
+                          te.started_at AS data_evento,
+                          l.emittente_soggetto_ruolo_id
+                         FROM task_err te
+                           JOIN vendite.fatturazione_lotti l ON l.id = te.lotto_id
+                           CROSS JOIN escope
+                        WHERE escope.sr_ids IS NULL OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))
+                      UNION ALL
+                       SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+                          fk.competenza_mese,
+                          fk.lotto_id,
+                          l2.codice AS lotto_codice,
+                          l2.stato_lotto,
+                          fc.id AS fattura_id,
+                          fc.anno AS fattura_anno,
+                          fc.serie AS fattura_serie,
+                          fc.numero AS fattura_numero,
+                          NULL::character varying AS task_code,
+                          NULL::character varying AS error_code,
+                          fc.messaggio,
+                          fc.data_ora AS data_evento,
+                          fc.emittente_soggetto_ruolo_id
+                         FROM fatture_critiche fc
+                           JOIN fatture_competenze fk ON fk.fattura_id = fc.id
+                           LEFT JOIN vendite.fatturazione_lotti l2 ON l2.id = fk.lotto_id
+                           CROSS JOIN escope
+                        WHERE escope.sr_ids IS NULL OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))
+                      )
+               SELECT e.tipo_evento,
+                  e.competenza_mese,
+                  e.lotto_id,
+                  e.lotto_codice,
+                  e.stato_lotto,
+                  e.fattura_id,
+                  e.fattura_anno,
+                  e.fattura_serie,
+                  e.fattura_numero,
+                  e.task_code,
+                  e.error_code,
+                  e.messaggio,
+                  e.data_evento,
+                  e.emittente_soggetto_ruolo_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM eventi e
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = e.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id;
+
+              -- Il DROP ha portato via i privilegi: si rimettono quelli fotografati il
+              -- 2026-09-04. Guardato sui ruoli, cosi' un ambiente senza provisioning non
+              -- si ferma.
+              DO $regrant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT, INSERT, UPDATE, DELETE
+                         ON vendite.vw_dash_competenza_errori TO zeroerp_app;
+                  END IF;
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_batch_fatturazione') THEN
+                      GRANT SELECT ON vendite.vw_dash_competenza_errori TO zeroerp_batch_fatturazione;
+                  END IF;
+              END
+              $regrant$;
