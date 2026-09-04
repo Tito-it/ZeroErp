@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §4.3 (fase 3) — il flag che
+# distingue l'identita' di un PROCESSO da quella di una PERSONA.
+#
+# ⚠️ PERCHE' UN FLAG E NON UNA CONVENZIONE DI NOME (decisione D-6a). Un prefisso
+# tipo `svc_` non e' un cancello: salta in silenzio al primo utente creato senza,
+# e non si puo' scrivere una vista che lo verifichi. Il flag si'.
+#
+# ⛔ E SERVE PER FORZA, perche' per la RLS un processo e' INDISTINGUIBILE da una
+# persona: ogni policy `rls_*_ef_whitelist` pretende
+# `app.ruolo_applicativo = 'OPERATORE'` in AND, quindi l'identita' tecnica DEVE
+# essere OPERATORE — con qualunque altro ruolo applicativo il processo vedrebbe
+# zero righe, in silenzio. Il flag e' l'unico posto in cui la differenza e'
+# scritta.
+#
+# ⚠️ Due verifiche fatte PRIMA di scrivere questo ALTER, non dedotte:
+#  1. lo storico di anagrafiche.identita_digitali salva uno SNAPSHOT JSONB
+#     (`to_jsonb(OLD)` in script.trgfn_storico_generic), non colonna per
+#     colonna ⇒ una colonna nuova NON rompe la tabella shadow, e non serve
+#     aspettare la rigenerazione notturna;
+#  2. la tabella non ha un trigger di lock_columns ⇒ niente DROP+rigenera.
+#
+# ⛔ Nessun DDL sui trigger di audit/tx_id/storico di questa tabella: li genera
+# il framework con --contexts=ci_apply, cioe' la SECONDA invocazione di
+# Liquibase, e in CI alla prima passata non esistono ancora.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260904-22-alter-identita-digitali-tecnica-mctit.yaml
+
+  - changeSet:
+      id: 20260904-22-alter-identita-digitali-tecnica
+      author: mctit
+      failOnError: true
+      comment: >
+        Aggiunge anagrafiche.identita_digitali.tecnica: dichiara che
+        l'identita' e' quella di un processo automatico e non di una persona.
+        Default false — il pregresso resta di persone.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: anagrafiche, tableName: identita_digitali }
+            - not:
+                - columnExists:
+                    { schemaName: anagrafiche, tableName: identita_digitali, columnName: tecnica }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  ADD COLUMN tecnica boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN anagrafiche.identita_digitali.tecnica IS
+                  'true = identita'' di un PROCESSO automatico (utente tecnico), non di una persona. ⛔ Non e'' una convenzione di nome: un prefisso salta in silenzio al primo utente creato senza, e non si puo'' verificare con una vista. Serve perche'' per la RLS un processo e'' indistinguibile da una persona — ogni policy pretende ruolo_applicativo = OPERATORE in AND, quindi anche l''identita'' tecnica DEVE essere OPERATORE. Presidiato in doppio senso da dbops.vw_processi_dominio_senza_identita: un''identita'' col flag senza processo nel registro, e un processo DOMINIO senza identita'' col flag, sono entrambe righe rosse. ⛔ Un''identita'' tecnica non ha MAI il profilo SUPER_ADMIN: bypasserebbe lo scope prima della whitelist. Brief: brief-db-processi-automatici-identita-e-perimetro §4.3.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  DROP COLUMN IF EXISTS tecnica;

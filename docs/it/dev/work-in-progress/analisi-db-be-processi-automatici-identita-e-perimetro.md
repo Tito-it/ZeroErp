@@ -378,8 +378,10 @@ Nessuno è bloccante da solo; tre cambiano il piano.
 * **B. ⛔ D-3 tocca DUE funzioni** — `script.fn_job_run_start` e
   `maintenance.fn_run_and_log`. Una colonna attore `NOT NULL` subito fermerebbe i 12 job
   pgAgent al primo giro: *un `NOT NULL` va dove il dato si può fornire*.
-* **C. ⚠️ Le due funzioni di run usano forme diverse di advisory lock** (2 argomenti con
-  namespace vs 1 argomento). Non collidono, ma la convenzione è una sola.
+* **C. ✅ [chiuso 04-09 — non si fa] Le due funzioni di run usano forme diverse di
+  advisory lock.** Allinearle **accoppierebbe** due canali oggi indipendenti per
+  costruzione: le due forme stanno in spazi di lock **distinti**, quindi un job
+  pgAgent e un comando headless non si bloccano a vicenda. Motivo esteso nel brief DB §3.4.
 * **D. ⚠️ `system_process_context` scambia le credenziali in un dict condiviso dal
   processo** ⇒ mai parallelizzare in thread *finché il canale esiste*. ⭐ **Decade con
   D-2/b** (§10.4): i lavori `OPERATORE` non usano quel canale.

@@ -140,6 +140,20 @@ restano `plpgsql` e senza `%TYPE` (il tipo si scrive esteso).
 registro descrive ciò che il processo **è**, non ciò che è già stato messo a posto. La
 vista del §8 lo segnalerà, ed è corretto che lo faccia.
 
+⚠️ **`loadUpdateData` non cancella.** Togliere una riga dal CSV — un processo ritirato,
+un bersaglio che non si scrive più — **non** la toglie dal database. Per questo
+`dbops.processi` ha `obsoleto_dal`: un processo si ritira **per data**. Per un
+**bersaglio** che sparisce davvero serve un `DELETE` SQL forward-only, ed è l'unica
+eccezione legittima alla regola «si cambia dal CSV».
+
+⚠️ **E i privilegi non arrivano da soli.** Le `ALTER DEFAULT PRIVILEGES` del
+provisioning valgono per il ruolo che le ha impostate: fuori dalla CI il ruolo
+applicativo **non riceve** privilegi sulle tabelle nuove. Serve un `GRANT` mirato in
+`90_end`, o `zeroerp_app` non vede nemmeno il registro — e le viste di presidio
+sarebbero inutilizzabili proprio da chi deve leggerle. ⭐ Il difetto è **invisibile da
+`information_schema`**, che è filtrata per privilegi: le tabelle risultano
+*inesistenti*, non *inaccessibili*.
+
 ---
 
 ## 3. Fase 2 — L'attore sul giornale dei run (D-3)
@@ -169,17 +183,68 @@ fermerebbe tutti e dodici i job al primo giro. Il `NOT NULL` arriva quando la vi
 
 | Funzione | Cosa cambia |
 | --- | --- |
-| `script.fn_job_run_start` | `+ p_processo_codice text DEFAULT NULL`, `+ p_auth_user_id integer DEFAULT NULL` |
+| `script.fn_job_run_start` | `+ p_processo_codice`, `+ p_auth_user_id`, entrambi `DEFAULT NULL` |
 | `maintenance.fn_run_and_log` | idem, e li scrive nella propria `INSERT` |
+
+⛔ **`%TYPE` è obbligatorio, e nei TRE punti** — firma, `DECLARE` e `RETURNS TABLE`:
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_job_run_start(
+    …,
+    p_processo_codice maintenance.job_run_log.processo_codice%TYPE DEFAULT NULL,
+    p_auth_user_id    maintenance.job_run_log.auth_user_id%TYPE    DEFAULT NULL)
+ RETURNS TABLE(id       maintenance.job_run_log.id%TYPE,
+               run_uuid maintenance.job_run_log.run_uuid%TYPE,
+               acquired boolean)
+```
+
+⚠️ Tre trappole, tutte su questa funzione:
+
+* **`CREATE OR REPLACE` non cambia il `RETURNS TABLE`** ⇒ se si tocca il ritorno serve
+  un `DROP` prima, nello stesso changeSet;
+* **aggiungere parametri crea un OVERLOAD**, non una sostituzione: la vecchia firma va
+  `DROP`ata esplicitamente, o restano due funzioni e il backend chiama a caso;
+* ⚠️ il `%TYPE` in firma **è una fotografia**: si scioglie al momento della creazione, e
+  la doc auto-gen mostrerà i tipi risolti. È corretto — ma non ci si può fare
+  affidamento per «seguire» un cambio di tipo della colonna.
 
 ⚠️ **`fn_job_run_start` ritorna `TABLE(...)`**: un `CREATE OR REPLACE` non cambia il tipo
 di ritorno. Qui il ritorno non cambia, ma **aggiungere parametri crea un overload**: il
 vecchio va `DROP`ato esplicitamente nello stesso changeSet, o restano due firme e il
 backend chiama a caso.
 
-⭐ **Occasione da non sprecare** (difetto C dell'analisi): `fn_run_and_log` usa la forma
-advisory lock a **un argomento**, contro la convenzione a due con namespace. Si allinea
-qui, mentre la si tocca — non merita un changeSet suo.
+### 3.3 ⭐ La derivazione dal jobname — i 12 job pgAgent senza toccare `85_pgagent`
+
+I job pgAgent non chiamano `fn_run_and_log` direttamente: passano da wrapper
+`maintenance.proc_*_job` che invocano `p_jobname := 'automations_tx_id'` — **esattamente
+il codice seedato** in `dbops.processi`.
+
+⇒ Se il chiamante non passa il codice e il jobname **corrisponde** a un processo
+registrato, `fn_run_and_log` usa quello. I dodici job diventano conformi **senza una
+riga** in `85_pgagent`, che è la fase mai eseguita in CI (`MARK_RAN`) e quindi la più
+scomoda da collaudare.
+
+⚠️ **È lecito perché qui la derivazione è COMPLETA.** Nel dominio di quella funzione —
+i job pgAgent — il jobname *è* l'identità del processo. Dove non lo è, non si deriva:
+`fn_job_run_start` riceve nomi come `run_fatturazione_batch:immediata`, con la corsia
+attaccata, e lì il codice lo passa il chiamante. ⛔ *Una derivazione incompleta è peggio
+di nessuna derivazione*: copre una parte dei casi e tace sull'altra.
+
+⇒ Un jobname che non corrisponde a nessun processo **resta `NULL`** e compare in
+`vw_run_senza_attore`. Niente è mascherato — ed è coperto da un test suo.
+
+### 3.4 ⛔ L'advisory lock NON si allinea — correzione
+
+Questo brief diceva *«`fn_run_and_log` usa la forma a un argomento contro la convenzione
+a due: si allinea qui, mentre la si tocca»* (difetto C dell'analisi). **Sbagliato, e il
+ragionamento era superficiale — coerenza di forma senza guardare la semantica.**
+
+Le due forme occupano **spazi di lock distinti** in PostgreSQL, e questo tiene
+**indipendenti** i due canali: un job pgAgent e un comando headless non si bloccano a
+vicenda, per costruzione. Allineare non sarebbe coerenza: **accoppierebbe** due canali
+oggi indipendenti, e in più costringerebbe a stringere il `bigint` di `p_lock_key` in un
+`int`. ⇒ Nessun vantaggio, due rischi. **Resta com'è**, e il difetto C si chiude come
+*«non si fa, e questo è il motivo»*.
 
 ---
 

@@ -1,0 +1,21 @@
+id,codice,descrizione,classe,canale,attivo,obsoleto_dal
+1,automations_attivo,Framework automazioni: propaga la colonna attivo e i guard di disattivazione.,MANUTENZIONE,PGAGENT,t,NULL
+2,automations_audit_update,Framework automazioni: genera i trigger di audit data_update/user_update.,MANUTENZIONE,PGAGENT,t,NULL
+3,automations_storico,Framework automazioni: genera i trigger di storicizzazione.,MANUTENZIONE,PGAGENT,t,NULL
+4,automations_storico_provision,Framework automazioni: predispone le tabelle shadow dello storico.,MANUTENZIONE,PGAGENT,t,NULL
+5,automations_tx_id,Framework automazioni: genera i trigger di transaction id.,MANUTENZIONE,PGAGENT,t,NULL
+6,automations_overlap,Framework automazioni: genera i vincoli di non sovrapposizione sulle finestre di validita.,MANUTENZIONE,PGAGENT,t,NULL
+7,automations_cleanup_weekly,Framework automazioni: pulizia settimanale degli oggetti generati e non piu riferiti.,MANUTENZIONE,PGAGENT,t,NULL
+8,automations_apply_fk_indexes_policy,Applica la policy degli indici sulle chiavi esterne (dbops.apply_fk_index_policy).,MANUTENZIONE,PGAGENT,t,NULL
+9,apply_storicizza_weekly,Applica i default di storicizzazione sulle tabelle marcate.,MANUTENZIONE,PGAGENT,t,NULL
+10,sync_storico_set_storicizza,Allinea il flag storicizza fra tabelle vive e tabelle shadow.,MANUTENZIONE,PGAGENT,t,NULL
+11,sync_auth_user_expired_daily,Disattiva gli utenti Django la cui identita e scaduta.,AMMINISTRAZIONE,PGAGENT,t,NULL
+12,chiusura_scadenze_daily,Chiude per scadenza lo stato gestionale delle tabelle configurate in dbops.automazione_chiusura_scadenze.,DOMINIO,PGAGENT,t,NULL
+20,run_fatturazione_batch,Driver batch della fatturazione: scoperta commesse emittibili e pipeline lotto per emittente.,DOMINIO,COMMAND,t,NULL
+21,draina_coda_stampa,Worker di drenaggio della coda stampa documentale (vendite.fatture_stampa_coda).,DOMINIO,COMMAND,t,NULL
+22,send_pending_emails,Invio delle email in coda (config.email_outbox) inclusi i documenti fiscali ai clienti.,DOMINIO,COMMAND,t,NULL
+23,sync_auth_user_active,Sincronizzazione batch dello stato attivo degli utenti Django.,AMMINISTRAZIONE,COMMAND,t,NULL
+24,listen_cambio_reparto,Listener dei cambi di reparto delle risorse umane.,AMMINISTRAZIONE,COMMAND,t,NULL
+25,draina_coda_lavori,Worker di drenaggio della coda lavori generica: claim e dispatch dei work item.,MANUTENZIONE,COMMAND,t,NULL
+40,FATTURAZIONE_GIRO,Giro di fatturazione per un perimetro: discovery terne piu lotto piu pipeline.,DOMINIO,CODA,t,NULL
+41,FATTURAZIONE_NUMERA,Numerazione di perimetro: passo DEFINITIVA sui lotti EMESSA di una competenza.,DOMINIO,CODA,t,NULL

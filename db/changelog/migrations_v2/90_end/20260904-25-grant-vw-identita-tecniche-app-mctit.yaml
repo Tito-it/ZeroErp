@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro fase 3 — GRANT sulle due
+# viste di presidio nuove.
+#
+# ⚠️ Fuori dalla CI il ruolo applicativo non riceve privilegi sugli oggetti
+# nuovi, e il difetto e' invisibile da information_schema (filtrata per
+# privilegi: gli oggetti risultano *inesistenti*, non *inaccessibili*).
+#
+# ⚠️ La colonna `tecnica` di anagrafiche.identita_digitali NON serve un GRANT:
+# il privilegio a livello di TABELLA copre anche le colonne aggiunte dopo. E'
+# l'opposto del GRANT per colonna, che invece non tiene.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260904-25-grant-vw-identita-tecniche-app-mctit.yaml
+
+  - changeSet:
+      id: 20260904-25-grant-vw-identita-tecniche-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT a zeroerp_app su dbops.vw_processi_dominio_senza_identita
+        e dbops.vw_emittenti_non_serviti. Idempotente e difensivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              DECLARE
+                  v_obj text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltati';
+                      RETURN;
+                  END IF;
+                  FOREACH v_obj IN ARRAY ARRAY[
+                      'dbops.vw_processi_dominio_senza_identita',
+                      'dbops.vw_emittenti_non_serviti'
+                  ]
+                  LOOP
+                      IF to_regclass(v_obj) IS NOT NULL THEN
+                          EXECUTE format('GRANT SELECT ON %s TO zeroerp_app', v_obj);
+                      END IF;
+                  END LOOP;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $revoke$
+              DECLARE
+                  v_obj text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+                  FOREACH v_obj IN ARRAY ARRAY[
+                      'dbops.vw_processi_dominio_senza_identita',
+                      'dbops.vw_emittenti_non_serviti'
+                  ]
+                  LOOP
+                      IF to_regclass(v_obj) IS NOT NULL THEN
+                          EXECUTE format('REVOKE SELECT ON %s FROM zeroerp_app', v_obj);
+                      END IF;
+                  END LOOP;
+              END
+              $revoke$;

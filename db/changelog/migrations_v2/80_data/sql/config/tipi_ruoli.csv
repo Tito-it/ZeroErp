@@ -10,3 +10,4 @@ id,codice,descrizione,codice_interno,data_insert,user_insert,data_update,user_up
 9,VETTORE,Vettore,VT,2025-11-21 16:57:34.735213+01,titodb,2026-02-13 11:03:40.859153+01,titodb,true
 4,VENDITORE,Venditore,VE,2025-04-05 21:01:33.884337+02,postgres,2026-02-13 11:03:40.859153+01,titodb,true
 15,PSP,Payment service provider,PSP,2026-02-13 10:30:00+01,titodb,2026-02-13 10:30:00+01,titodb,false
+16,PROC_AUTO,Processo automatico,PROC_AUTO,2026-09-04 00:00:00+02,titodb,2026-09-04 00:00:00+02,titodb,false

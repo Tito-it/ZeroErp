@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §6.4 / §8 (fase 3) — il
+# presidio che copre il guasto SILENZIOSO della decisione D-9.
+#
+# ⛔ IL GUASTO, e merita di essere scritto per esteso perche' non assomiglia a
+# un errore. Nasce un emittente nuovo. Nessuno aggiunge la riga in
+# config.user_emittenti_fiscali per l'utente tecnico della fatturazione. Il
+# comando accoda comunque il lavoro per quell'emittente; il lavoro parte, la
+# RLS gli mostra ZERO righe, e il run finisce con «FATTO, 0 elaborate».
+# **Nessun errore, nessun rosso, nessun log.** Quell'emittente non viene
+# fatturato, e nessuno lo sa.
+#
+# ⭐ E' il contro-esempio alla frase «tolto il bypass, un processo che sbaglia
+# non fa danni: al massimo non fa niente». Vero — ma «non fa niente» lo nota
+# solo chi si aspettava qualcosa. Questa vista e' chi se lo aspetta.
+#
+# ⚠️ Il perimetro NON si popola da solo (D-9: lo aggiunge una persona). Questa
+# vista non concede niente: dice soltanto che cosa manca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-24-create-vw-emittenti-non-serviti-mctit.yaml
+
+  - changeSet:
+      id: 20260904-24-create-vw-emittenti-non-serviti
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_emittenti_non_serviti: emittenti fiscali attivi assenti
+        dalla whitelist dell'utente tecnico di un processo DOMINIO headless.
+        Copre il «FATTO, 0 elaborate» silenzioso. Deve restare vuota.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - tableExists:
+                { schemaName: config, tableName: user_emittenti_fiscali }
+            - tableExists:
+                { schemaName: anagrafiche, tableName: emittenti_fiscali }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Prodotto cartesiano fra i processi DOMINIO headless che
+              --   hanno un utente tecnico e gli emittenti fiscali ATTIVI,
+              --   meno le righe di whitelist esistenti. Cio' che resta e' il
+              --   lavoro che quel processo non fara' mai, senza dirlo.
+              --
+              -- Solo i processi che hanno GIA' un utente: quelli che non ce
+              --   l'hanno sono affare di vw_processi_dominio_senza_identita.
+              --   Un processo senza utente comparirebbe qui una volta per
+              --   emittente, seppellendo il segnale.
+              --
+              -- Solo gli emittenti ATTIVI: uno disattivato non va servito, e
+              --   tenerlo qui terrebbe la vista rossa per sempre.
+              -- =========================================================
+              CREATE OR REPLACE VIEW dbops.vw_emittenti_non_serviti AS
+              SELECT p.codice        AS processo_codice,
+                     p.canale,
+                     pi.auth_user_id,
+                     ef.id           AS emittente_fiscale_id,
+                     ef.codice       AS emittente_codice
+                FROM dbops.processi p
+                JOIN dbops.processi_identita pi
+                  ON pi.processo_id = p.id AND pi.attivo
+               CROSS JOIN anagrafiche.emittenti_fiscali ef
+               WHERE p.classe = 'DOMINIO'
+                 AND p.attivo
+                 AND p.obsoleto_dal IS NULL
+                 AND p.canale IN ('PGAGENT', 'COMMAND')
+                 AND ef.attivo
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM config.user_emittenti_fiscali uef
+                          WHERE uef.auth_user_id         = pi.auth_user_id
+                            AND uef.emittente_fiscale_id = ef.id);
+
+              COMMENT ON VIEW dbops.vw_emittenti_non_serviti IS
+                  'Emittenti fiscali ATTIVI assenti dalla whitelist dell''utente tecnico di un processo DOMINIO headless. DEVE restare VUOTA. ⛔ Copre un guasto che non assomiglia a un errore: senza la riga in config.user_emittenti_fiscali il lavoro parte lo stesso, la RLS mostra zero righe e il run chiude con «FATTO, 0 elaborate» — nessun errore, e quell''emittente non viene mai fatturato. ⭐ E'' il contro-esempio alla frase «tolto il bypass, al massimo non fa niente»: «non fa niente» lo nota solo chi si aspettava qualcosa, e questa vista e'' chi se lo aspetta. ⚠️ Non concede niente: il perimetro lo aggiunge una PERSONA (decisione D-9), la vista dice solo che cosa manca. Esclusi i processi su canale CODA (girano con lo scope dell''operatore) e quelli ancora senza utente tecnico (affare di vw_processi_dominio_senza_identita). Brief: brief-db-processi-automatici-identita-e-perimetro §6.4.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_emittenti_non_serviti;

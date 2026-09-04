@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §2.3 — le tabelle che ogni
+# processo SCRIVE, e come quelle righe raggiungono l'emittente.
+#
+# Perche' serve: le scritture di un processo non stanno in nessun catalogo di
+# PostgreSQL. Senza questa tabella il presidio «dichiarato DOMINIO ma senza
+# percorso verso un emittente» non e' costruibile, ed e' l'unico modo di
+# prendere PRIMA l'omissione di progetto — a runtime non c'e' niente da fare:
+# la RLS non puo' filtrare su una colonna che non esiste.
+#
+# `emittente_via` usa lo stesso vocabolario del guard gia' in esercizio
+# (script.trgfn_guard_emittente_scope, TG_ARGV[0]), piu' `padre` per le figlie
+# che raggiungono l'emittente attraverso la propria testata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260904-08-create-processi-bersagli-mctit.yaml
+
+  - changeSet:
+      id: 20260904-08-create-processi-bersagli
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.processi_bersagli: le tabelle scritte da ogni processo e il
+        percorso con cui quelle righe raggiungono l'emittente. Alimenta le viste
+        vw_processi_dominio_senza_emittente (livello 1) e
+        vw_processi_dominio_senza_difesa (livello 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+            - not:
+                - tableExists:
+                    { schemaName: dbops, tableName: processi_bersagli }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Per ogni processo, dove scrive e come quella riga arriva
+              --   all'emittente. Obbligatoria per i processi DOMINIO: un
+              --   DOMINIO senza bersagli dichiarati compare nella vista di
+              --   presidio come «nessun bersaglio dichiarato».
+              --
+              -- ⚠️ Limite dichiarato: e' un elenco DICHIARATO. Prova che
+              --   qualcuno ha detto dove il processo scrive, non che il
+              --   processo scriva solo li'. Un processo che comincia a
+              --   scrivere altrove e non aggiorna la riga sfugge. E' lo
+              --   stesso limite di dbops.vw_liste_multi_emittente_non_certificate,
+              --   ed e' il prezzo di un presidio che esiste invece di uno
+              --   perfetto che non esiste.
+              --
+              -- Id assegnati a mano nel CSV: catalogo, come il padre.
+              -- =========================================================
+              CREATE TABLE dbops.processi_bersagli (
+                  id                 int  NOT NULL
+                                       CONSTRAINT pk_processi_bersagli PRIMARY KEY,
+                  processo_id        int  NOT NULL,
+                  schema_tabella     text NOT NULL,
+                  nome_tabella       text NOT NULL,
+                  emittente_via      text NULL,
+                  emittente_colonna  text NULL,
+                  note               text NULL,
+                  data_insert        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert        text NOT NULL DEFAULT CURRENT_USER,
+                  data_update        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update        text NOT NULL DEFAULT CURRENT_USER,
+                  tx_id              uuid NULL,
+                  CONSTRAINT fk_processi_bersagli_processi
+                      FOREIGN KEY (processo_id) REFERENCES dbops.processi (id),
+                  CONSTRAINT uq_processi_bersagli_target
+                      UNIQUE (processo_id, schema_tabella, nome_tabella),
+                  CONSTRAINT chk_processi_bersagli_via
+                      CHECK (emittente_via IS NULL
+                             OR emittente_via IN ('fiscale', 'soggetto_ruolo',
+                                                  'fattura', 'contabile', 'padre')),
+                  -- Un percorso dichiarato deve dire anche SU QUALE COLONNA:
+                  -- senza, la vista di presidio non potrebbe verificarlo e
+                  -- passerebbe a vuoto (verde per sottrazione).
+                  CONSTRAINT chk_processi_bersagli_via_colonna
+                      CHECK ((emittente_via IS NULL AND emittente_colonna IS NULL)
+                             OR (emittente_via IS NOT NULL AND emittente_colonna IS NOT NULL))
+              );
+
+              COMMENT ON TABLE dbops.processi_bersagli IS
+                  'Le tabelle che ogni processo SCRIVE, con il percorso che porta all''emittente. Serve al presidio «dichiarato DOMINIO ma senza percorso» (dbops.vw_processi_dominio_senza_emittente), che prende l''omissione di progetto PRIMA che il processo giri — a runtime non e'' recuperabile. ⚠️ E'' un elenco DICHIARATO: prova che qualcuno ha detto dove il processo scrive, non che scriva solo li''. Brief: brief-db-processi-automatici-identita-e-perimetro §2.3.';
+              COMMENT ON COLUMN dbops.processi_bersagli.emittente_via IS
+                  'Come la riga raggiunge l''emittente. Stesso vocabolario di script.trgfn_guard_emittente_scope (TG_ARGV[0]): fiscale (la colonna E'' gia'' emittente_fiscale_id) | soggetto_ruolo | fattura | contabile, piu'' padre (la figlia lo raggiunge tramite la FK verso la propria testata). NULL = nessun percorso dichiarato: per un processo DOMINIO e'' una riga rossa nella vista di presidio.';
+              COMMENT ON COLUMN dbops.processi_bersagli.emittente_colonna IS
+                  'La colonna che porta il riferimento (per via=padre: la FK verso il padre). Verificata contro pg_catalog dalla vista di presidio: un percorso dichiarato su una colonna inesistente e'' una riga rossa, non un silenzio.';
+
+              CREATE INDEX ix_processi_bersagli_processo_id
+                  ON dbops.processi_bersagli (processo_id);
+
+              CREATE TRIGGER trg_processi_bersagli_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.processi_bersagli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+              CREATE TRIGGER trg_processi_bersagli_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.processi_bersagli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.processi_bersagli;

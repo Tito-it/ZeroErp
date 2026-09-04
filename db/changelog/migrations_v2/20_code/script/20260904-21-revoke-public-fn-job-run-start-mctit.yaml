@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ CORRETTIVA di 20260904-17 — ripristina la postura dei privilegi che il
+# DROP+CREATE aveva portato via.
+#
+# ⚠️ LA TRAPPOLA, e vale per ogni futuro DROP di funzione:
+#   `DROP FUNCTION` cancella anche l'ACL dell'oggetto. La CREATE successiva
+#   riparte dal DEFAULT di PostgreSQL, che per le funzioni e' **EXECUTE a
+#   PUBLIC**. Il REVOKE messo dal changeSet 20260618-02 sulla firma vecchia e'
+#   sparito insieme alla firma vecchia, e la funzione nuova e' nata APERTA.
+#   ⛔ E' `SECURITY DEFINER`: chiunque poteva aprire righe su
+#   maintenance.job_run_log con i privilegi del definer.
+#
+# ⭐ Chi l'ha trovato: il pgTAP preesistente
+#   db/pgtap/maintenance/test-job-run-registrazione.sql (test 20, «PUBLIC senza
+#   EXECUTE»). Il presidio ha fatto esattamente il suo mestiere — segnalare una
+#   cosa che nessuno stava guardando — ed e' il motivo per cui quel test
+#   esisteva.
+#
+# ⚠️ Non si corregge editando 20260904-17: e' gia' applicato, e cambiarne il
+#   corpo romperebbe il checksum Liquibase. Correttiva in un file nuovo.
+#
+# ✅ NON serve invece ripristinare il GRANT a zeroerp_batch_fatturazione: il
+#   provisioning imposta `ALTER DEFAULT PRIVILEGES FOR ROLE <migrator>
+#   GRANT EXECUTE ON FUNCTIONS`, quindi le funzioni create DOPO dal migratore
+#   lo ricevono da sole. Verificato in
+#   scripts/sql/provision_db_role_batch_fatturazione.sql.
+#   ⛔ E comunque un GRANT a un ruolo batch non andrebbe in un changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260904-21-revoke-public-fn-job-run-start-mctit.yaml
+
+  - changeSet:
+      id: 20260904-21-revoke-public-fn-job-run-start
+      author: mctit
+      failOnError: true
+      comment: >
+        Ripristina REVOKE EXECUTE FROM PUBLIC su script.fn_job_run_start dopo il
+        DROP+CREATE del changeSet -17, che aveva azzerato l'ACL e fatto nascere
+        la funzione (SECURITY DEFINER) aperta a PUBLIC.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_job_run_start'
+                 AND p.pronargs = 7;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma per esteso e non ricavata da pg_proc: se un giorno non
+              -- corrispondesse, questo changeSet deve FALLIRE, non revocare
+              -- silenziosamente su una funzione diversa.
+              -- ⚠️ Nota il `character varying` in seconda posizione: viene dal
+              --   %TYPE su job_run_log.origine, che varchar e'.
+              REVOKE EXECUTE ON FUNCTION
+                script.fn_job_run_start(text, character varying, text, text,
+                                        text, text, integer)
+              FROM PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              GRANT EXECUTE ON FUNCTION
+                script.fn_job_run_start(text, character varying, text, text,
+                                        text, text, integer)
+              TO PUBLIC;

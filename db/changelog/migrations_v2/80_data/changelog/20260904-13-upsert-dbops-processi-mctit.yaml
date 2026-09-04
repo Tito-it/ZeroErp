@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §2.5 — seed di CATALOGO del
+# registro dei processi: i 12 job pgAgent, i 6 management command e i 2 tipi
+# della coda, con la classe di ciascuno.
+#
+# ⚠️ chiusura_scadenze_daily entra come DOMINIO PRIMA di essere sistemato: il
+# registro descrive cio' che il processo E', non cio' che e' gia' stato messo a
+# posto. La vista di presidio lo segnalera', ed e' corretto che lo faccia.
+#
+# ⚠️ send_pending_emails entra come DOMINIO e il suo bersaglio (config.email_outbox)
+# non porta l'emittente: e' un DEBITO DICHIARATO, non una svista.
+#
+# Mirror CSV con loadUpdateData: la sede del dato e' il CSV. ⛔ Le modifiche si
+# fanno editando il file, mai con UPDATE SQL a parte — due sorgenti divergono
+# fra sviluppo e CI.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260904-13-upsert-dbops-processi-mctit.yaml
+
+  - changeSet:
+      id: 20260904-13-upsert-dbops-processi
+      author: mctit
+      runOnChange: true
+      failOnError: true
+      comment: >
+        Seed di catalogo di dbops.processi dal CSV (mirror loadUpdateData):
+        20 processi automatici con classe e canale. Catalogo puro — nessuna FK
+        verso anagrafiche/django, quindi nessun context dati_macchina.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: processi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/processi.csv
+            tableName: processi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: classe, type: STRING }
+              - column: { name: canale, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: obsoleto_dal, type: DATE }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.processi;

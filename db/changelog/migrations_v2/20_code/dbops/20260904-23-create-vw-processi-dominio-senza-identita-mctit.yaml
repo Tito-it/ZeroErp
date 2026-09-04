@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §8 (fase 3) — flag e
+# registro devono dire la stessa cosa.
+#
+# Il flag `tecnica` e la riga in dbops.processi_identita sono DUE scritture
+# dello stesso fatto, e due scritture possono dissentire. La vista le confronta
+# nei DUE sensi.
+#
+# ⭐ E c'e' un terzo verso che vale quanto gli altri due: un processo DOMINIO
+# che gira SENZA persona e non ha ancora un utente tecnico.
+#
+# ⛔ Ma NON tutti i processi DOMINIO ne vogliono uno, ed e' la scoperta che ha
+# corretto il perimetro di questa vista: i tipi della CODA
+# (FATTURAZIONE_GIRO, FATTURAZIONE_NUMERA) sono accodati da un OPERATORE e
+# girano con lo scope catturato all'enqueue — l'identita' ce l'hanno gia', ed
+# e' quella della persona che ha chiesto il lavoro. Dargli anche un utente
+# tecnico sarebbe sbagliato: cancellerebbe il nome di chi ha chiesto il giro.
+# ⇒ Servono un utente tecnico i soli DOMINIO su canale PGAGENT o COMMAND, cioe'
+#   quelli che partono senza che nessuno prema un pulsante.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-23-create-vw-processi-dominio-senza-identita-mctit.yaml
+
+  - changeSet:
+      id: 20260904-23-create-vw-processi-dominio-senza-identita
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_processi_dominio_senza_identita: confronta nei due sensi
+        il flag identita_digitali.tecnica e il registro processi_identita, e
+        segnala i processi DOMINIO headless ancora senza utente tecnico.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - columnExists:
+                { schemaName: anagrafiche, tableName: identita_digitali, columnName: tecnica }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Tre disaccordi, tutti da tenere a zero.
+              --     1. processo DOMINIO headless senza utente tecnico;
+              --     2. processo con utente tecnico la cui identita' NON ha il
+              --        flag (o non esiste, o non e' OPERATORE);
+              --     3. identita' col flag `tecnica` che nessun processo
+              --        rivendica — cioe' un utente che si dichiara processo
+              --        senza esserlo.
+              --
+              -- Il verso 3 e' quello che protegge dal caso peggiore: qualcuno
+              --   che marca tecnica=true su un'identita' di PERSONA per farla
+              --   sparire dai conteggi. Guardare solo il verso 1 lo lascerebbe
+              --   passare.
+              -- =========================================================
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_identita AS
+              -- 1. Il processo headless che non ha ancora un utente tecnico.
+              SELECT p.codice        AS processo_codice,
+                     p.canale,
+                     NULL::integer   AS auth_user_id,
+                     'processo DOMINIO headless senza utente tecnico'::text AS motivo
+                FROM dbops.processi p
+               WHERE p.classe = 'DOMINIO'
+                 AND p.attivo
+                 AND p.obsoleto_dal IS NULL
+                 -- ⛔ I tipi della coda sono esclusi di proposito: girano con
+                 --   l'identita' dell'operatore che li ha accodati.
+                 AND p.canale IN ('PGAGENT', 'COMMAND')
+                 AND NOT EXISTS (SELECT 1
+                                   FROM dbops.processi_identita pi
+                                  WHERE pi.processo_id = p.id
+                                    AND pi.attivo)
+              UNION ALL
+              -- 2. L'utente c'e' ma la sua identita' non lo dichiara tecnico,
+              --    o non e' OPERATORE (con altro ruolo vedrebbe zero righe).
+              SELECT p.codice,
+                     p.canale,
+                     pi.auth_user_id,
+                     'utente tecnico senza identita'' OPERATORE con flag tecnica'::text
+                FROM dbops.processi p
+                JOIN dbops.processi_identita pi
+                  ON pi.processo_id = p.id AND pi.attivo
+               WHERE NOT EXISTS (
+                         SELECT 1
+                           FROM anagrafiche.identita_digitali idg
+                          WHERE idg.auth_user_id = pi.auth_user_id
+                            AND idg.attivo
+                            AND idg.tecnica
+                            AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
+              UNION ALL
+              -- 3. L'identita' si dichiara processo, ma nessun processo la
+              --    rivendica: il verso che protegge dall'uso del flag per far
+              --    sparire una persona dai conteggi.
+              SELECT NULL::text,
+                     NULL::text,
+                     idg.auth_user_id,
+                     'identita'' con flag tecnica non rivendicata da nessun processo'::text
+                FROM anagrafiche.identita_digitali idg
+               WHERE idg.tecnica
+                 AND idg.attivo
+                 AND NOT EXISTS (SELECT 1
+                                   FROM dbops.processi_identita pi
+                                  WHERE pi.auth_user_id = idg.auth_user_id
+                                    AND pi.attivo);
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_identita IS
+                  'Disaccordi fra il flag anagrafiche.identita_digitali.tecnica e il registro dbops.processi_identita, nei DUE sensi, piu'' i processi DOMINIO headless ancora senza utente tecnico. DEVE restare VUOTA. ⛔ Esclusi i processi su canale CODA: sono accodati da un operatore e girano con lo scope catturato all''enqueue — un utente tecnico li'' cancellerebbe il nome di chi ha chiesto il lavoro. ⭐ Il terzo verso (identita'' col flag che nessun processo rivendica) protegge dal caso peggiore: marcare tecnica=true sull''identita'' di una PERSONA per farla sparire dai conteggi. Brief: brief-db-processi-automatici-identita-e-perimetro §8.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_dominio_senza_identita;
