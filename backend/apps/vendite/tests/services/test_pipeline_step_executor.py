@@ -66,6 +66,10 @@ from apps.core.tests.db_error_fakes import make_db_error
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
+# Identita' del giro di fatturazione usata dai test del pull: e' il valore che
+# `fn_select_attivita_fatturabili` cerchera' poi come marchio sulle righe.
+_LOCK_BATCH_GIRO = "01a06d0c-e9e1-72a1-a4d1-54020186de27"
+
 
 class PipelineStepExecutorUnitTests(SimpleTestCase):
     # Scopo: ⚠️ `transaction.atomic` NEUTRALIZZATO per tutta la classe.
@@ -847,6 +851,10 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         task_run = MagicMock()
         task_run.task_run_id = task_run_id
         repo.start_lotto_task_run.return_value = task_run
+        # Il giro ha un'IDENTITA', ed e' quella che il pull deve consegnare
+        # alle righe che accetta. Un MagicMock nudo passerebbe l'assert per
+        # identita' d'oggetto senza dire niente sul valore trasportato.
+        repo.get_lotto_context.return_value.lock_batch_id = _LOCK_BATCH_GIRO
         commesse_repo = MagicMock()
         commesse_repo.list_commesse_emittibili.return_value = list(commesse_ids)
         executor.commesse_repository = commesse_repo
@@ -890,6 +898,10 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
     # Scopo: simmetrico — nessuna commessa fallita chiude il task_run in
     #        COMPLETATO. Serve a provare che il parziale non e' diventato la
     #        regola: un giro pulito deve restare pulito.
+    # ⭐ E il giro pulito DICHIARA i suoi contatori (2026-09-04): un COMPLETATO
+    #        muto non distingue «due commesse passate» da «non ho provato», e
+    #        col perimetro consegnato il secondo caso esiste davvero — marchio
+    #        assente, zero righe, nessun errore.
     @patch("apps.core.services.fan_out.transaction")
     def test_pull_attivita_da_commessa_tutte_ok_completa_task_run(self, _mock_txn):
         executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=556)
@@ -902,8 +914,130 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             dry_run=False,
         )
 
-        repo.complete_lotto_task_run.assert_called_once_with(556)
+        repo.complete_lotto_task_run.assert_called_once_with(
+            556,
+            meta={
+                "task": "pull_attivita_da_commessa",
+                "totale": 2,
+                "ok": 2,
+                "falliti": 0,
+            },
+        )
         repo.fail_lotto_task_run.assert_not_called()
+
+    # Scopo: 🔴 IL PERIMETRO SI CONSEGNA — il pull riceve l'identita' DEL GIRO
+    #        (`context.lock_batch_id`) e la porta alle righe che accetta.
+    # ⛔ Questo test non presidia una comodita': senza quel valore il pull firma
+    #        NULL, `fn_select_attivita_fatturabili` (changeSet 20260904-50)
+    #        filtra sul marchio e non trova NIENTE, e il giro emette ZERO
+    #        fatture SENZA sollevare. E' il difetto peggiore della famiglia:
+    #        non un errore, ma un lotto vuoto che sembra un mese senza lavoro.
+    #        Una regressione qui e' invisibile a ogni altro test del file, che
+    #        guardano gli esiti e non gli argomenti.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_consegna_al_db_l_identita_del_giro(self, _mock_txn):
+        executor, _repo, commesse_repo, _ = self._build_executor_pull([10, 20])
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        self.assertEqual(commesse_repo.emit_attivita_fatturabili.call_count, 2)
+        for chiamata in commesse_repo.emit_attivita_fatturabili.call_args_list:
+            self.assertEqual(chiamata.kwargs["emit_batch_id"], _LOCK_BATCH_GIRO)
+
+    # Scopo: ⛔ un giro SENZA identita' non parte, invece di emettere zero
+    #        fatture in silenzio. E' la scelta fra un errore che si vede e un
+    #        lotto vuoto indistinguibile da un mese senza lavoro.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_si_ferma_se_il_giro_non_ha_identita(self, _mock_txn):
+        executor, _repo, commesse_repo, _ = self._build_executor_pull([10, 20])
+        _repo.get_lotto_context.return_value.lock_batch_id = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PIPELINE_SCOPE_INCOMPLETE")
+        # ⭐ E soprattutto: NESSUNA commessa e' stata toccata. Un pull partito a
+        #    meta' avrebbe firmato righe con marchio nullo, cioe' seminato il
+        #    difetto invece di fermarlo.
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()
+
+    # Scopo: ⭐ IL MOTIVO DI DOMINIO, non il dump. `vw_dash_commesse_respinte`
+    #        mostra a video `meta->>'detail'`: se li' dentro finisce l'impasto
+    #        di eccezione Python + DETAIL + stack PL/pgSQL, la promessa «ognuna
+    #        mostra il problema» e' vera sulla carta e falsa a video.
+    # ⚠️ Il dump non si perde — resta nel `context` come `dettaglio_tecnico`:
+    #        serve a chi diagnostica, non a chi lavora. Il test presidia
+    #        entrambe le meta', perche' spostare il motivo buttando via il
+    #        tecnico sarebbe uno scambio, non una correzione.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_scrive_il_motivo_di_dominio_e_conserva_il_dump(self, _mock_txn):
+        executor, _repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        # ⛔ LA FORMA E' QUELLA VERA, misurata sul DB il 2026-09-04: il motivo
+        #    di dominio sta nel MESSAGGIO (`message_primary`), mentre `DETAIL`
+        #    porta il testo generico della policy — uguale per ogni
+        #    `E_VALORE_MANCANTE` del sistema. Un finto che invertisse i due
+        #    farebbe passare il test con l'ordine di lettura SBAGLIATO: e'
+        #    successo, ed e' il motivo per cui questo commento esiste.
+        commesse_repo.emit_attivita_fatturabili.side_effect = make_db_error(
+            "Indicare un valore per ROOT source mancante per commessa 10. "
+            "Dato obbligatorio.",
+            codice="E_VALORE_MANCANTE",
+            detail="Non e' stato assegnato un valore all'informazione richiesta.",
+        )
+
+        with self.assertRaises(Exception):
+            # Una commessa sola, e fallisce: e' il ramo «tutte fallite», che
+            # solleva. Al diario per-commessa non cambia niente — il run logger
+            # ha gia' scritto prima che l'esito venisse aggregato.
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        error_logger.log_error.assert_called_once()
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertIn("ROOT source mancante per commessa 10", kwargs["detail"])
+        # ⛔ E NON il testo generico della policy: quella frase e' vera per ogni
+        #    E_VALORE_MANCANTE del sistema e non dice su cosa agire.
+        self.assertNotIn("informazione richiesta", kwargs["detail"])
+        self.assertEqual(kwargs["context"]["commessa_id"], 10)
+        self.assertIn("dettaglio_tecnico", kwargs["context"])
+        self.assertIn("commessa_id=10", kwargs["context"]["dettaglio_tecnico"])
+
+    # Scopo: il ripiego quando il database non ha detto niente di leggibile —
+    #        un errore nato in Python non ha campi `diag`, e restare senza
+    #        motivo sarebbe peggio di un motivo tecnico.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_senza_campi_diag_ripiega_sul_messaggio_normalizzato(self, _mock_txn):
+        executor, _repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+
+        with self.assertRaises(Exception):
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        kwargs = error_logger.log_error.call_args.kwargs
+        self.assertIn("emit ko", kwargs["detail"])
 
     # Scopo: il caso «tutte fallite» resta un RAISE e non un parziale — con zero
     #        commesse emesse proseguire costruirebbe un lotto VUOTO. E' la sola

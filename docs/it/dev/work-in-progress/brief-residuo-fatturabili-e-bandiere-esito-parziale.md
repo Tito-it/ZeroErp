@@ -9,7 +9,7 @@
 >
 > | Difetto | Stato |
 > | --- | --- |
-> | **D1+D2** | 🟡 **completo lato DB**: il pull firma, la select filtra (-50), c'è il presidio. 🔴 Il -50 **non è applicato**: applicarlo ferma la fatturazione finché il BE non passa il batch al pull — **una riga**, il valore è già in `LottoContext` |
+> | **D1+D2** | ✅ **chiuso lato DB e lato BE**: il pull firma, la select filtra (-50, `EXECUTED` il 2026-09-04 22:45:58), c'è il presidio, e il backend consegna `context.lock_batch_id` al pull. ⚠️ La finestra in cui il -50 era applicato **senza** il BE — fatturazione a zero fatture e nessun errore — è durata dalle 22:45 alla release BE della stessa sera |
 > | **D3** | ✅ **chiuso lato DB** (changeSet -47, -48, -49): il pannello porta l'elenco delle commesse respinte, e ognuna ha la sua riga con il suo motivo |
 > | **D4** | ✅ **chiuso**: l'annullo chiude i task run con l'esito `ANNULLATO`. ⚠️ *«disattiva»* era il verbo sbagliato — corretto in §5 e §9.4 |
 > | **D5** | 🔵 aperto, ed è una verifica **a video** (§6) |
@@ -630,29 +630,117 @@ questa vista: una riga di backend, senza toccare una vista da 30 colonne.
 #### Lato DB
 
 - ✅ **D3** — fatto e applicato (changeSet -47, -48, -49);
-- ✅ **il filtro nella select** — scritto (changeSet -50). ⚠️ **Da applicare
-  insieme alla release BE**: prima, la fatturazione emette zero fatture.
-  ⇒ Lato DB non resta altro.
+- 🔴 **il filtro nella select** — scritto **e APPLICATO** (changeSet -50,
+  `EXECUTED` il 2026-09-04 22:45:58). L'intenzione era di applicarlo insieme
+  alla release BE; è entrato prima, quindi **la finestra è aperta adesso**: il
+  pull scrive `emit_batch_id` NULL (il BE non gli passa niente), la select
+  filtra su quel marchio e non trova nulla ⇒ **zero fatture e nessun errore**,
+  esattamente il rumore silenzioso che il presidio `vw_af_senza_giro` esiste per
+  rendere visibile. ⇒ Lato DB non resta altro: **si chiude dal BE**, e va fatto
+  subito.
 
-#### Lato BE
+#### Lato BE — ✅ fatto il 2026-09-04 sera (2793 test verdi)
 
-- passare il `lock_batch_id` del lotto a `pull_attivita_da_commessa` — è **una
-  riga**, e il valore è già in `LottoContext`. È tutto ciò che serve per
-  accendere il meccanismo: senza, il marchio resta NULL e il filtro della select
-  non si può applicare;
-- ⚠️ far scrivere al pull i contatori **anche quando il giro riesce** (oggi
-  `ok`/`totale`/`falliti` compaiono solo in caso di fallimento): con il
-  perimetro consegnato come cosa portante, la promessa dev'essere verificabile
-  anche quando regge, non solo quando si rompe;
-- ⭐ **il motivo di dominio fuori dal dump.** `dettaglio` porta oggi eccezione
-  Python, `DETAIL`, `HINT`, `CONTEXT` e stack PL/pgSQL in una stringa sola: il
-  motivo utile — *«ROOT source mancante per commessa 34137»* — c'è dentro, ma a
-  metà. Perché *«ognuna mostra il problema»* sia vero **a video** va portato in
-  un campo suo da `item_failed`. Il database espone ciò che riceve, e la
-  colonna è già pronta ad accoglierlo;
-- gli endpoint: `commesse_fallite` / `n_commesse_fallite` sul pannello errori, e
-  il **join** a `vw_dash_commesse_respinte` per la bandiera sulle righe del
-  drill-down.
+- ✅ **il `lock_batch_id` del lotto arriva al pull.**
+  `CommesseRepository.emit_attivita_fatturabili` ha ora `emit_batch_id`, e
+  `_handle_pull_attivita_da_commessa_task` gli passa `context.lock_batch_id`.
+  È la riga che riapre la fatturazione dopo il -50.
+  ⛔ Presidiata da un test suo (`test_pull_consegna_al_db_l_identita_del_giro`)
+  e non lasciata agli esiti: una regressione qui non solleva niente — emette
+  zero fatture. Nessun altro test del file guarda gli **argomenti**;
+- ✅ **i contatori si scrivono anche quando il giro riesce.** Nuovo
+  `TaskEsitoOk`: il task_run chiude in `COMPLETATO` come sempre, ma il `meta`
+  porta `totale`/`ok`/`falliti`. Il DB fonde (`meta || v_meta`), quindi
+  `rollback` resta. ⭐ Serviva proprio per il caso che il perimetro consegnato
+  rende possibile: «ok: 0 su 3» si legge, invece di doverlo dedurre da un
+  COMPLETATO muto;
+- ✅ **il motivo di dominio è fuori dal dump.** `_PullCommesseRunLogger.item_failed`
+  scrive in `detail` — cioè in ciò che `vw_dash_commesse_respinte` mostra come
+  `dettaglio` — il motivo letto da `diagnostica_db` (`message_detail`, poi
+  `message_primary`), con ripiego sul messaggio normalizzato del BB per gli
+  errori nati in Python. Il dump non si perde: va in
+  `context.dettaglio_tecnico`;
+- ✅ **gli endpoint.** `list_dash_competenza_errori` porta `commesse_fallite` e
+  `n_commesse_fallite` **in coda** (il mapping è per indice: in mezzo
+  sposterebbe tutto in silenzio); `list_dash_competenza_gruppi` ha la LATERAL su
+  `vw_dash_commesse_respinte` con `respinta_il` / `respinta_motivo`, legata al
+  **mese della riga** e con `LIMIT 1` — senza, una commessa respinta due volte
+  duplicherebbe la riga del gruppo e falserebbe il conteggio della lista.
+
+⚠️ **Due presidi esistenti sono stati corretti, non aggirati**: la guardia di
+larghezza della lista gruppi contava le sole colonne `g.` e sarebbe rimasta
+verde-e-sbagliata con la LATERAL (ora conta anche `resp.`), e
+`assertNotIn("LATERAL")` vietava la parola mentre la regola da presidiare è che
+l'id del documento non torni a essere risolto una seconda volta lì — ora dice
+proprio quello. Aggiunta la guardia gemella sulla lista errori, che non l'aveva.
+
+#### 🔴 Tre difetti trovati rivedendo il codice appena scritto (2026-09-04, tarda sera)
+
+La suite era **verde su tutti e tre**. Vale la pena leggerli perché sono, uno per
+uno, un esemplare della famiglia di questo cantiere: *difetti che non danno
+errore*.
+
+**1 · La `LATERAL` costava 41 volte tanto.** La bandiera del §D3 era nata come
+`LEFT JOIN LATERAL` dentro la proiezione della lista gruppi — la forma ovvia. Ma
+`query_paged_view` **materializza** la CTE per contare il totale, quindi la
+LATERAL si valutava su **tutto il perimetro del mese** e non sulla pagina.
+Misurato su `2026-06` (48 gruppi): **27 ms senza, 1073 ms con**, e in crescita
+con lo storico perché la chiave del join esce da un `jsonb`
+(`meta->'context'->>'commessa_id'`) che nessun indice copre.
+⇒ Sostituita da **una seconda lettura** ristretta agli id della sola pagina
+(`_applica_bandiera_respinta`, `DISTINCT ON` per prendere l'ultimo rifiuto):
+**0,4 ms**. Nessun test lo avrebbe mai detto — misuravano il risultato, non il
+costo.
+
+**2 · Il `jsonb` arrivava al frontend come STRINGA.** `commesse_fallite` era
+mappato con `row[15] or []`: Django/psycopg 3 in questa configurazione **non
+decodifica** il jsonb fuori dall'ORM, quindi l'endpoint restituiva
+`"[{...}]"` invece di un array — nessun errore, una lista che non si può
+ciclare. La suite era verde perché il finto consegnava già una lista.
+⇒ Corretto con il BB `jsonb_out`, e **il finto ora consegna una stringa**, cioè
+la forma che il driver produce davvero. ⭐ Trovato solo da uno **smoke sul
+database vero**.
+
+**3 · Il motivo di dominio veniva letto dal campo sbagliato.**
+`_motivo_dominio` preferiva `message_detail`. Facendo fallire davvero il pull
+sulla commessa 34137 si legge invece:
+
+```text
+message_primary → «Indicare un valore per ROOT source mancante per commessa
+                   34137. Dato obbligatorio.»        ← il motivo
+message_detail  → «Non è stato assegnato un valore all'informazione
+                   richiesta.»                       ← il testo della POLICY
+```
+
+`fn_log_and_raise_error` compone il **messaggio** con il dettaglio di dominio;
+`DETAIL` e `HINT` portano il testo generico dell'errore, identico per ogni
+`E_VALORE_MANCANTE` del sistema. A video sarebbe finita la frase inutile.
+⇒ Ordine invertito (`messaggio` prima di `detail`), e **il finto corretto**: la
+prima stesura metteva il motivo in `DETAIL`, cioè in un posto in cui il sistema
+non lo mette — la trappola che `apps/core/tests/db_error_fakes` dichiara nel
+proprio docstring.
+
+#### Due cose aggiunte nella stessa revisione
+
+- ⛔ **un giro senza identità non parte.** Se `context.lock_batch_id` è assente,
+  il pull si ferma con `E_PIPELINE_SCOPE_INCOMPLETE` (codice esistente, policy
+  già a catalogo) invece di firmare NULL e far nascere un lotto vuoto senza
+  errore. Fra un giro che non parte e un giro che non emette niente in silenzio,
+  il primo è l'unico recuperabile;
+- ♻️ **tolta una terza copia** della decodifica jsonb in
+  `vendite_repository` (una funzioncina locale `_dati` che rifaceva `jsonb_out`).
+
+🔎 **Resta da provare in applicazione**: il giro di fatturazione su `2026-09`.
+Il backend di sviluppo è stato ricaricato (`kill -HUP` sul master gunicorn).
+
+#### Documentazione API aggiornata
+
+[api_dashboard_competenza.md](../../backend/vendite/manual/api_dashboard_competenza.md)
+porta ora i due blocchi nuovi: `respinta_il` / `respinta_motivo` sulla lista
+gruppi (con la ragione per cui **non** sono colonne della vista, quindi non
+ordinabili né esportabili) e `commesse_fallite` / `n_commesse_fallite` sulla
+lista errori, con l'esempio di payload e l'avvertenza di **non sommarle** al
+badge del calendario.
 
 #### Lato FE
 

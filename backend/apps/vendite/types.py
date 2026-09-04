@@ -1134,6 +1134,17 @@ class DashCompetenzaGruppoRow(TypedDict):
     # `fattura_riga_id IS NULL`. ⚠️ Il discriminante e' la riga di fattura, non
     # lo stadio — `EMESSA_NON_FATTURATA` un documento non ce l'ha ancora.
     data_documento_prevista: str | None
+    # ⭐ D3 (changeSet 20260904-48, brief-residuo-fatturabili-e-bandiere):
+    # l'ULTIMO rifiuto del pull su questa commessa in questo mese, e il suo
+    # motivo di dominio. `None` = nessun rifiuto noto.
+    # ⛔ Non e' una colonna di `vw_dash_competenza_gruppi` ma un JOIN a
+    #    `vw_dash_commesse_respinte`: quella vista ha un dipendente e non
+    #    saprebbe perdere una colonna in rollback.
+    # ⚠️ `respinta_motivo` vale quanto vale cio' che il pull ha scritto in
+    #    `meta->>'detail'`: e' il campo che `_PullCommesseRunLogger` riempie
+    #    con il motivo di dominio, non con il dump tecnico.
+    respinta_il: str | None
+    respinta_motivo: str | None
 
 
 class DashCompetenzaGruppoRegistroRow(TypedDict):
@@ -1259,6 +1270,15 @@ class DashCompetenzaErroreRow(TypedDict):
     # serve a chi ha piu' di un emittente davanti. La chiave e' il
     # `campo_sorgente` dichiarato in `ui.lista_colonna`.
     emittente_ragione_sociale: str | None
+    # ⭐ D3 (changeSet 20260904-47, brief-residuo-fatturabili-e-bandiere):
+    # QUALI commesse ha respinto il giro — una voce per commessa, con il suo
+    # motivo — e non solo quante volte c'e' stato un errore. Vuoto sugli
+    # eventi FATTURA_CRITICA, che commesse non ne hanno.
+    # ⛔ Il badge del calendario continua a contare gli EVENTI: queste due
+    #    colonne vivono nel dettaglio. Sommarle al conteggio farebbe di «4»
+    #    la somma di tre unita' diverse (task, fatture, commesse).
+    commesse_fallite: list[dict[str, Any]]
+    n_commesse_fallite: int
 
 
 class LineageSorgenteRow(TypedDict):

@@ -60,7 +60,7 @@ Indice test eseguiti:
 31) DashCompetenzaFatturePerCellaTests.test_errore_solo_dove_ci_sono_attivita
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
@@ -1370,6 +1370,165 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
         )
         self.assertNotIn("registri_ids", righe[0])
+
+
+class DashCompetenzaRespintaEErroriRepositoryTests(TestCase):
+    """D3 · le commesse respinte arrivano fino alla riga.
+
+    Due superfici, due presidi. Sulla lista GRUPPI la bandiera arriva da una
+    LATERAL su `vw_dash_commesse_respinte`; sulla lista ERRORI arrivano
+    l'elenco delle commesse respinte e il loro numero, in coda alle colonne
+    esistenti.
+
+    ⛔ Entrambe le liste mappano per INDICE. Il modo in cui si rompono non e'
+    un'eccezione: e' una data nel campo del task e un messaggio in quello della
+    data, senza nessun errore. Per questo i test guardano la LARGHEZZA oltre ai
+    valori.
+    """
+
+    # Scopo: la bandiera si accende SOLO sulle commesse respinte, e le altre
+    #        righe restano pulite. Il caso NULL e' la stragrande maggioranza:
+    #        una bandiera che si accende ovunque non e' una bandiera.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_la_bandiera_si_accende_solo_su_chi_e_stato_respinto(self, mock_conn):
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [
+            (34137, datetime(2026, 9, 4, 17, 32, 38, tzinfo=UTC),
+             "ROOT source mancante per commessa 34137"),
+        ]
+        righe = [
+            {"commessa_id": 34136, "respinta_il": None, "respinta_motivo": None},
+            {"commessa_id": 34137, "respinta_il": None, "respinta_motivo": None},
+            {"commessa_id": None, "respinta_il": None, "respinta_motivo": None},
+        ]
+        VenditeRepository()._applica_bandiera_respinta(
+            righe, competenza_mese=date(2026, 9, 1),
+        )
+        self.assertIsNone(righe[0]["respinta_il"])
+        self.assertTrue(righe[1]["respinta_il"].startswith("2026-09-04"))
+        self.assertEqual(
+            righe[1]["respinta_motivo"], "ROOT source mancante per commessa 34137"
+        )
+        self.assertIsNone(righe[2]["respinta_il"])
+
+    # Scopo: ⛔ IL PRESIDIO DI COSTO. La forma ovvia — una LATERAL nella
+    #        proiezione — si valuta su TUTTO il perimetro del mese e non sulla
+    #        pagina, perche' `query_paged_view` materializza la CTE per contare
+    #        il totale. Misurato il 2026-09-04 su `2026-06` (48 gruppi): 27 ms
+    #        senza, 1073 ms con. Questo test dice che la lettura resta UNA,
+    #        fuori dal SELECT paginato e ristretta agli id della pagina.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_la_bandiera_non_entra_nel_select_paginato(self, mock_query, _mock_band):
+        mock_query.return_value = (DashCompetenzaGruppiRepositoryTests()._rows(1), 1)
+        VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio=None, limit=25, offset=0,
+        )
+        sql = mock_query.call_args.kwargs["select_sql"]
+        self.assertNotIn("vw_dash_commesse_respinte", sql)
+
+    # Scopo: la lettura e' ristretta al MESE della riga e prende l'ULTIMO
+    #        rifiuto. Senza il mese, un rifiuto di agosto accenderebbe la
+    #        bandiera su una riga di settembre; senza il collasso, una commessa
+    #        respinta due volte porterebbe due righe e vincerebbe quella
+    #        arrivata per ultima nel dizionario — cioe' il caso.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_la_bandiera_e_legata_al_mese_e_prende_l_ultimo_rifiuto(self, mock_conn):
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = []
+        VenditeRepository()._applica_bandiera_respinta(
+            [{"commessa_id": 34137, "respinta_il": None, "respinta_motivo": None}],
+            competenza_mese=date(2026, 9, 1),
+        )
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("DISTINCT ON (commessa_id)", sql)
+        self.assertIn("ORDER BY commessa_id, respinta_il DESC", sql)
+        self.assertIn("competenza_mese = %s", sql)
+        self.assertEqual(params[0], date(2026, 9, 1))
+        self.assertEqual(params[1], [34137])
+
+    # Scopo: nessuna commessa nella pagina = nessuna interrogazione. Un giro a
+    #        vuoto su `= ANY('{}')` costerebbe una lettura per non trovare mai
+    #        niente — e le liste dei cruscotti si pagano a query.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_la_bandiera_non_interroga_il_db_senza_commesse(self, mock_conn):
+        VenditeRepository()._applica_bandiera_respinta(
+            [{"commessa_id": None, "respinta_il": None, "respinta_motivo": None}],
+            competenza_mese=date(2026, 9, 1),
+        )
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: le due colonne nuove della lista errori arrivano in fondo e sono
+    #        mappate. ⛔ IN FONDO e' il contratto: infilarle in mezzo
+    #        sposterebbe di una casella tutto cio' che segue, in silenzio.
+    # ⚠️ Riga finta UNICA per i due test qui sotto: la sua larghezza e' cio' che
+    #    `test_larghezza_riga_errori_uguale_al_select` confronta col SELECT
+    #    vero. Scriverla due volte, o scrivere il numero a mano, rimetterebbe in
+    #    piedi proprio la doppia verita' che il presidio esiste per togliere.
+    def _riga_errore(self):
+        return (
+            "TASK_ERRORE", date(2026, 9, 1), 10141, "LTF-0009181", "ERRORE",
+            None, None, None, None, None,
+            "pull_attivita_da_commessa", "E_PULL_COMMESSA",
+            "Pull attivita' completato con 1 commesse su 3 in errore",
+            datetime(2026, 9, 4, 17, 32, 38, tzinfo=UTC),
+            "Gestore Test pgTAP",
+            # 🔴 STRINGA, non lista: e' la forma che il driver consegna
+            #    davvero (psycopg 3 in questa configurazione non decodifica il
+            #    jsonb fuori dall'ORM). Un finto che passasse gia' una lista
+            #    farebbe passare il test per una ragione diversa da quella per
+            #    cui passa il sistema — ed e' esattamente cosi' che, il
+            #    2026-09-04, la suite era verde mentre l'endpoint restituiva
+            #    una stringa al posto dell'array.
+            '[{"commessa_id": 34137, "commessa_codice": "CMM-…-004", '
+            '"error_code": "E_PULL_COMMESSA", '
+            '"messaggio": "Errore emissione commessa 34137", '
+            '"dettaglio": "ROOT source mancante per commessa 34137"}]',
+            1,
+        )
+
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_errori_mappano_le_commesse_respinte_in_coda(self, mock_query):
+        mock_query.return_value = ([self._riga_errore()], 1)
+        righe, _ = VenditeRepository().list_dash_competenza_errori(
+            competenza_mese=date(2026, 9, 1), limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["n_commesse_fallite"], 1)
+        # ⛔ Una LISTA, non la stringa che il driver ha consegnato: e' il campo
+        #    su cui il frontend cicla. Senza decodifica non ci sarebbe nessun
+        #    errore — solo una lista che non si puo' ciclare.
+        self.assertIsInstance(righe[0]["commesse_fallite"], list)
+        self.assertEqual(righe[0]["commesse_fallite"][0]["commessa_id"], 34137)
+        self.assertEqual(
+            righe[0]["commesse_fallite"][0]["dettaglio"],
+            "ROOT source mancante per commessa 34137",
+        )
+        # I campi preesistenti non si sono spostati di una casella.
+        self.assertEqual(righe[0]["task_code"], "pull_attivita_da_commessa")
+        self.assertEqual(righe[0]["emittente_ragione_sociale"], "Gestore Test pgTAP")
+
+    # Scopo: il presidio del presidio, come per i gruppi — la riga finta e il
+    #        SELECT vero devono avere la stessa larghezza, o tutti i test di
+    #        mapping qui sopra girano su una forma che il database non produce.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_larghezza_riga_errori_uguale_al_select(self, mock_query):
+        mock_query.return_value = ([self._riga_errore()], 1)
+        VenditeRepository().list_dash_competenza_errori(
+            competenza_mese=date(2026, 9, 1), limit=25, offset=0,
+        )
+        sql = mock_query.call_args.kwargs["select_sql"]
+        proiezione = sql.split("FROM vendite.vw_dash_competenza_errori")[0]
+        # Le colonne della proiezione sono `e.<nome>` piu' la chiamata alla
+        # sede unica del numero documento, che colonna della vista non e'.
+        colonne = [
+            r for r in (x.strip() for x in proiezione.splitlines())
+            if r.startswith("e.") or r.startswith("vendite.fn_numero_documento_fattura")
+        ]
+        self.assertEqual(
+            len(colonne), len(self._riga_errore()),
+            "la riga finta non ha piu' la larghezza del SELECT: i test di "
+            "mapping stanno girando su una forma che il database non produce.",
+        )
 
 
 class DashCompetenzaGruppiExportParitaTests(TestCase):

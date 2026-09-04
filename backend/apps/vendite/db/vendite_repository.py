@@ -2086,9 +2086,80 @@ class VenditeRepository:
                     "data_documento_prevista": (
                         row[22].isoformat() if row[22] is not None else None
                     ),
+                    # ═══ D3 · la bandiera della commessa respinta ════════════
+                    # Nascono vuote e le riempie `_applica_bandiera_respinta`
+                    # sulla SOLA pagina: vedi il commento del metodo per il
+                    # motivo per cui non sono una colonna di questo SELECT.
+                    "respinta_il": None,
+                    "respinta_motivo": None,
                 }
             )
+        self._applica_bandiera_respinta(result, competenza_mese=competenza_mese)
         return result, total_count
+
+    # Scopo: D3 · accende sulle righe della PAGINA la bandiera «questa commessa
+    #        e' stata respinta», con il motivo che il pull ha scritto sul log.
+    #        Fino al 2026-09-04 la riga non lo diceva: mostrava lavoro «da
+    #        emettere» del tutto ordinario mentre un giro l'aveva rifiutata, e
+    #        il motivo viveva solo nel log del lotto — a due click da chi deve
+    #        agire.
+    #
+    # ⛔ PERCHE' NON E' UNA LATERAL NEL SELECT, che sarebbe stata la forma
+    #    ovvia. `query_paged_view` materializza la CTE `righe` per contare il
+    #    totale, quindi una LATERAL nella proiezione si valuta su TUTTO il
+    #    perimetro del mese e non sulla pagina. Il costo non e' teorico:
+    #    misurato il 2026-09-04 su `2026-06` (48 gruppi), **27 ms senza e
+    #    1073 ms con** — quarantuno volte tanto, e cresce con lo storico
+    #    perche' la chiave del join esce da un jsonb
+    #    (`meta->'context'->>'commessa_id'`) e nessun indice la copre.
+    #    Qui la stessa risposta costa **2,8 ms**: una lettura sola, con gli id
+    #    della sola pagina.
+    #
+    # ⚠️ `DISTINCT ON` e non un `GROUP BY`: vale l'ULTIMO rifiuto — quello su
+    #    cui si agisce — e senza il collasso una commessa respinta due volte
+    #    porterebbe due righe, che nel dizionario diventerebbero una
+    #    sovrascrittura silenziosa dell'ordine di arrivo.
+    #
+    # ⚠️ Il filtro sul MESE non e' ridondante: senza, un rifiuto di agosto
+    #    accenderebbe la bandiera su una riga di settembre — un allarme vero
+    #    su un lavoro che non c'entra.
+    def _applica_bandiera_respinta(
+        self,
+        righe: list[DashCompetenzaGruppoRow],
+        *,
+        competenza_mese: date,
+    ) -> None:
+        commesse_ids = sorted({
+            r["commessa_id"] for r in righe if r["commessa_id"] is not None
+        })
+        if not commesse_ids:
+            return
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ON (commessa_id)
+                       commessa_id, respinta_il, dettaglio
+                  FROM vendite.vw_dash_commesse_respinte
+                 WHERE competenza_mese = %s
+                   AND commessa_id = ANY(%s::bigint[])
+                 ORDER BY commessa_id, respinta_il DESC
+                """,
+                [competenza_mese, commesse_ids],
+            )
+            respinte = {
+                int(riga[0]): (riga[1], riga[2]) for riga in cursor.fetchall()
+            }
+
+        if not respinte:
+            return
+        for r in righe:
+            trovata = respinte.get(r["commessa_id"])
+            if trovata is None:
+                continue
+            quando, motivo = trovata
+            r["respinta_il"] = quando.isoformat() if quando is not None else None
+            r["respinta_motivo"] = None if motivo is None else str(motivo)
 
     # ═══════════════════════════════════════════════════════════════════════
     # IL CONTORNO DELLA LISTA GRUPPI, IN UNA SOLA LETTURA
@@ -2245,23 +2316,24 @@ class VenditeRepository:
             )
             row = cursor.fetchone()
         assert row is not None
-        # ⚠️ `json.loads` ESPLICITO: psycopg 3 in questa configurazione consegna
-        #    il `jsonb` come STRINGA, non come oggetto Python (verificato). Non
-        #    e' un dettaglio del driver da dare per scontato — se un domani lo
-        #    parsasse da se', `json.loads` su un dict alzerebbe subito, invece
-        #    di far viaggiare una stringa dove il FE aspetta una lista.
+        # ⚠️ DECODIFICA ESPLICITA: psycopg 3 in questa configurazione consegna
+        #    il `jsonb` come STRINGA, non come oggetto Python (riverificato con
+        #    uno smoke sul DB vero il 2026-09-04). Non e' un dettaglio del
+        #    driver da dare per scontato — senza, viaggia una stringa dove il FE
+        #    aspetta una lista, e non lo segnala nessuno.
         # ⛔ E qui si vede perche' `valore` doveva uscire come TESTO dalla
         #    query: dentro il JSON un `numeric` e' un numero, e `json.loads` lo
         #    trasformerebbe in un **float**. Il denaro sarebbe passato da un
         #    binario a virgola mobile senza che nessuno se ne accorgesse.
-        def _dati(valore: Any) -> Any:
-            return json.loads(valore) if isinstance(valore, str) else valore
-
+        # ⭐ `jsonb_out` e non una funzioncina locale: era una TERZA copia della
+        #    stessa decodifica (il BB sta in `apps/core/db/_helpers`, ed e' gia'
+        #    importato qui sopra). Stesso comportamento — stringa -> oggetto,
+        #    tutto il resto invariato — e una sede sola se il driver cambia idea.
         return {
-            "riepilogo": _dati(row[0]),
-            "tipi": _dati(row[1]),
-            "clienti": _dati(row[2]),
-            "registri": _dati(row[3]),
+            "riepilogo": jsonb_out(row[0]),
+            "tipi": jsonb_out(row[1]),
+            "clienti": jsonb_out(row[2]),
+            "registri": jsonb_out(row[3]),
             "n_gruppi_perimetro": int(row[4]),
         }
 
@@ -2334,7 +2406,21 @@ class VenditeRepository:
                 -- `emittente_ragione_sociale`: e' il `campo_sorgente`
                 -- del catalogo, e la lista ha `vista_sql = NULL` —
                 -- il campo lo porta questo SELECT o non arriva.
-                e.emittente_ragione_sociale
+                e.emittente_ragione_sociale,
+                -- ⭐ D3 (changeSet 20260904-47): QUALI commesse ha respinto il
+                -- giro, non solo quante volte c'e' stato un errore. Un array
+                -- jsonb con, per voce, commessa_id, commessa_codice,
+                -- error_code, messaggio e dettaglio; vuoto su FATTURA_CRITICA.
+                -- ⚠️ Niente parentesi graffe in questo commento: la stringa e'
+                --    una f-string, e verrebbero interpolate.
+                -- ⛔ La sorgente NON e' `task_run.meta->'commesse_fallite'`,
+                --    che il backend tronca a cinque: e' il log di lotto, che ha
+                --    una riga per commessa. Con sei respinte, la sesta c'e'.
+                -- ⚠️ IN CODA, e non e' estetica: la mappatura qui sotto e' per
+                --    INDICE, e infilarle in mezzo sposterebbe di una casella
+                --    tutto quello che segue — in silenzio.
+                e.commesse_fallite,
+                e.n_commesse_fallite
             FROM vendite.vw_dash_competenza_errori e
             {where_clause}
         """
@@ -2415,6 +2501,20 @@ class VenditeRepository:
                     # Emittente (P-4, Fase E): chiave = `campo_sorgente`
                     # del catalogo, o la colonna resta vuota a video.
                     "emittente_ragione_sociale": row[14],
+                    # D3: l'elenco delle commesse respinte dal giro, ognuna
+                    # col proprio motivo.
+                    # 🔴 `jsonb_out` E NON `row[15]` NUDO. Django/psycopg 3 in
+                    #    questa configurazione consegna il `jsonb` come
+                    #    STRINGA: senza decodifica il campo arriva al frontend
+                    #    come `"[{...}]"` invece che come array — nessun
+                    #    errore, una lista che non si puo' ciclare. Misurato
+                    #    con uno smoke sul DB vero il 2026-09-04, dopo che i
+                    #    test (che consegnano gia' una lista) erano verdi.
+                    # ⚠️ Il `or []` resta DOPO la decodifica: il COALESCE della
+                    #    vista garantisce `'[]'`, ma un NULL da una riga storica
+                    #    non deve far esplodere chi cicla.
+                    "commesse_fallite": jsonb_out(row[15]) or [],
+                    "n_commesse_fallite": 0 if row[16] is None else int(row[16]),
                 }
             )
         return result, total_count
