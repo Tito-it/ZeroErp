@@ -8,17 +8,21 @@
 > ⛔ **Questo brief non le rispiega e non le riapre**: le traduce in DDL, funzioni,
 > seed, viste di presidio e test, nell'ordine in cui vanno scritte.
 >
-> **Stato:** 🟢 **IN CORSO — fasi 0, 1, 2, 3a, 3b, 4 e 5 APPLICATE su dbdev, pgTAP
-> verdi, baseline ripristinata.** ✅ Gli utenti tecnici esistono **col loro
-> emittente**: `dbops.vw_emittenti_non_serviti` e `dbops.vw_operatori_senza_emittente`
-> sono vuote. ✅ La coda rifiuta un lavoro di dominio senza operatore, e ogni
-> bersaglio della chiusura scadenze dichiara la propria classe.
-> ✅ **LAVORO DB COMPLETO** (2026-09-04). Tutte e sette le fasi applicate, fase 6
-> compresa: il ramo «nessun utente → passa» è chiuso, e il criterio è
-> `row_security_active()`. ⛔ Non era bloccata dal ritiro di `BYPASSRLS` — vedi
-> §12.5. Baseline pgTAP su **491 file: nessuna regressione**.
-> ✅ **Documentazione allineata** (§12.10). Avanzamento nel §10,
-> ⭐ **e tutto ciò che resta aperto — nostro e altrui — nel §12**.
+> **Stato:** ✅ **LAVORO DB COMPLETO — 2026-09-04.** Tutte e sette le fasi
+> applicate su dbdev (0, 1, 2, 3a, 3b, 4, 5, 6).
+>
+> * gli **utenti tecnici** esistono col loro emittente — `vw_emittenti_non_serviti`
+>   e `vw_processi_dominio_senza_identita` sono vuote;
+> * la **coda** rifiuta un lavoro di dominio senza operatore, e ogni bersaglio
+>   della chiusura scadenze dichiara la propria classe;
+> * la **porta è chiusa**: il ramo «nessun utente in sessione → passa» non c'è
+>   più, e il criterio è `row_security_active()`. ⛔ Non era bloccata dal ritiro
+>   di `BYPASSRLS`, come si era creduto — §12.5;
+> * baseline pgTAP su **491 file: nessuna regressione**;
+> * ✅ **documentazione allineata** — §12.9.
+>
+> ⭐ **Tutto ciò che resta aperto — nostro e altrui — sta nel §12.**
+> Avanzamento fase per fase nel §10.
 >
 > ⚠️ **Perimetro:** solo `db/`. ⛔ Il backend (worker, dispatch, command che accodano)
 > ha il suo brief: qui si dichiara **cosa il DB gli offre** e **cosa smette di offrirgli**.
