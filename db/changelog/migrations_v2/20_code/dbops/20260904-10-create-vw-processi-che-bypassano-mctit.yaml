@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §8 (fase 0) — impedire che
+# i ruoli applicativi con BYPASSRLS diventino tre.
+#
+# ⚠️ «Nessuno bypassa piu'» sarebbe falso: pgAgent gira come superuser e
+# Liquibase come proprietario (titodb), e bypassano la RLS per superuser e per
+# proprieta' — devono, perche' fanno DDL. La frase esatta e' «nessun processo
+# APPLICATIVO bypassa», e la vista guarda quello.
+#
+# ⭐ La colonna `stato` esiste per non nascere rossa: oggi
+# zeroerp_batch_fatturazione ha il bypass ed e' un DEBITO DICHIARATO, con la
+# data in cui si chiude (fase 6-bis del brief). La regola che si presidia e':
+# nessuna riga NON_DICHIARATO. Un presidio permanentemente rosso viene
+# ignorato, e allora non presidia piu' nemmeno il caso per cui e' nato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-10-create-vw-processi-che-bypassano-mctit.yaml
+
+  - changeSet:
+      id: 20260904-10-create-vw-processi-che-bypassano
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_processi_che_bypassano: ruoli applicativi (login, non
+        superuser) con BYPASSRLS. stato = DEBITO_DICHIARATO per quelli attesi,
+        NON_DICHIARATO per gli altri. Regola presidiata: nessuna riga
+        NON_DICHIARATO.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'dbops';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Elenca i ruoli APPLICATIVI che bypassano la RLS.
+              --
+              -- Escluso di proposito chi bypassa per natura del mestiere:
+              --   * i superuser (pgAgent) — bypassano per superuser;
+              --   * i ruoli senza LOGIN (ruoli di gruppo).
+              -- Il proprietario delle tabelle (titodb) non ha BYPASSRLS: non
+              --   gli serve, la RLS non si applica al proprietario. Per la
+              --   stessa ragione zeroerp_app, che proprietario NON e', e'
+              --   davvero soggetto alle policy — ed e' il motivo per cui
+              --   togliere il ruolo di bypass chiude davvero il buco invece di
+              --   spostare un cartello.
+              --
+              -- ⛔ Niente information_schema / role_table_grants qui: sono
+              --   filtrati dai privilegi del ruolo connesso e renderebbero la
+              --   vista cieca fuori da quel ruolo. pg_roles no.
+              -- =========================================================
+              CREATE OR REPLACE VIEW dbops.vw_processi_che_bypassano AS
+              SELECT r.rolname AS ruolo,
+                     CASE
+                         WHEN r.rolname = ANY (ARRAY['zeroerp_batch_fatturazione'])
+                             THEN 'DEBITO_DICHIARATO'
+                         ELSE 'NON_DICHIARATO'
+                     END AS stato,
+                     'Ritiro previsto alla fase 6-bis del brief processi automatici'::text
+                         AS nota
+                FROM pg_catalog.pg_roles r
+               WHERE r.rolbypassrls
+                 AND r.rolcanlogin
+                 AND NOT r.rolsuper;
+
+              COMMENT ON VIEW dbops.vw_processi_che_bypassano IS
+                  'Ruoli APPLICATIVI (login, non superuser) con BYPASSRLS. ⚠️ NON dice «nessuno bypassa la RLS»: pgAgent bypassa per superuser e il proprietario delle tabelle per proprieta'', e devono, perche'' fanno DDL. Regola presidiata: ZERO righe con stato = NON_DICHIARATO. Le righe DEBITO_DICHIARATO sono la porta registrata come porta, con la fase in cui si chiude (6-bis): a regime la vista deve restare del tutto vuota. Brief: brief-db-processi-automatici-identita-e-perimetro §8.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_che_bypassano;

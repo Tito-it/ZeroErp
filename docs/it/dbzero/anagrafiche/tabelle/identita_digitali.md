@@ -27,6 +27,7 @@
 | tentativi_falliti | smallint | NO | 0 |
 | bloccato_fino_a | timestamp with time zone | YES |  |
 | totp_obbligatorio | boolean | NO | false |
+| tecnica | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

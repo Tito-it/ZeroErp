@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro fase 1 — GRANT runtime al
+# ruolo applicativo sulle tre tabelle del registro e sulle tre viste di
+# presidio.
+#
+# ⚠️ PERCHE' SERVE UN CHANGESET, e non basta creare le tabelle. Le ALTER DEFAULT
+# PRIVILEGES del provisioning valgono per il ruolo che le ha impostate: fuori
+# dalla CI il ruolo applicativo NON riceve privilegi sulle tabelle nuove. Senza
+# questo GRANT, `zeroerp_app` non vedrebbe nemmeno il registro — e le viste di
+# presidio sarebbero inutilizzabili proprio da chi deve leggerle.
+#
+# ⚠️ NOTA DI METODO (dal caso ui.dashboard_*, 2026-07-22): il difetto e'
+# invisibile da information_schema, che e' FILTRATA PER PRIVILEGI — a
+# zeroerp_app le tabelle risultano *inesistenti*, non *inaccessibili*. Solo
+# pg_catalog le mostra. Se un apply "non risulta", controllare i GRANT prima di
+# sospettare che il DDL non sia passato.
+#
+# PERIMETRO — minimo necessario, non mirror cieco:
+#   SELECT  -> processi, processi_bersagli (CATALOGO: li popola il seed
+#              Liquibase, non il backend e nessuna funzione DB a runtime)
+#   SELECT  -> processi_identita (dati di macchina, scritti dall'amministrazione
+#              in migrazione; se nascera' una UI admin si allarga qui: una riga)
+#   SELECT  -> le tre viste di presidio
+# ⛔ Nessun USAGE su sequence: il ruolo non fa INSERT da nessuna parte, quindi
+#    non servirebbe a niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260904-15-grant-dbops-processi-app-mctit.yaml
+
+  - changeSet:
+      id: 20260904-15-grant-dbops-processi-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT a zeroerp_app sulle tabelle del registro processi
+        (dbops.processi, processi_bersagli, processi_identita) e sulle tre viste
+        di presidio. Idempotente e difensivo (skip se il ruolo manca).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Difensivo: su un'installazione dove il ruolo applicativo non
+              -- esiste ancora (bootstrap, ambiente di sola migrazione) il
+              -- changeSet non deve fermare la pipeline.
+              DO $grant$
+              DECLARE
+                  v_obj text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltati';
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_obj IN ARRAY ARRAY[
+                      'dbops.processi',
+                      'dbops.processi_bersagli',
+                      'dbops.processi_identita',
+                      'dbops.vw_processi_che_bypassano',
+                      'dbops.vw_processi_dominio_senza_emittente',
+                      'dbops.vw_processi_dominio_senza_difesa'
+                  ]
+                  LOOP
+                      -- to_regclass: salta in silenzio un oggetto non ancora
+                      -- creato invece di far morire il giro (le viste nascono
+                      -- in 20_code, che gira prima, ma l'ordine non si assume).
+                      IF to_regclass(v_obj) IS NOT NULL THEN
+                          EXECUTE format('GRANT SELECT ON %s TO zeroerp_app', v_obj);
+                      END IF;
+                  END LOOP;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $revoke$
+              DECLARE
+                  v_obj text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+                  FOREACH v_obj IN ARRAY ARRAY[
+                      'dbops.processi',
+                      'dbops.processi_bersagli',
+                      'dbops.processi_identita',
+                      'dbops.vw_processi_che_bypassano',
+                      'dbops.vw_processi_dominio_senza_emittente',
+                      'dbops.vw_processi_dominio_senza_difesa'
+                  ]
+                  LOOP
+                      IF to_regclass(v_obj) IS NOT NULL THEN
+                          EXECUTE format('REVOKE SELECT ON %s FROM zeroerp_app', v_obj);
+                      END IF;
+                  END LOOP;
+              END
+              $revoke$;

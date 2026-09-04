@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §3.1 (fase 2) — l'attore
+# sul giornale dei run.
+#
+# Oggi maintenance.job_run_log dice QUALE job e' girato, non PER CONTO DI CHI:
+# non c'e' nessuna colonna per l'attore. E' il buco concreto rispetto al
+# «sempre» della richiesta di Tid.
+#
+# DUE colonne, e portano cose diverse:
+#   processo_codice -> l'ATTORE (decisione D-8: e' sempre il codice del
+#                      processo, per tutte e tre le classi). HARD FK verso
+#                      dbops.processi: un processo non dichiarato non puo'
+#                      nemmeno registrare un run — un cancello, non un referto.
+#   auth_user_id    -> l'utente tecnico QUANDO C'E' (solo classe DOMINIO).
+#                      ⛔ NON e' l'operatore per-item della coda, che sta gia'
+#                      in dbops.coda_lavori.scope: quello e' un altro livello
+#                      (un worker registra UN run ed esegue N item).
+#
+# ⚠️ NULLABLE, e non e' una tappa: un NOT NULL adesso fermerebbe tutti e dodici
+# i job pgAgent al primo giro, perche' nessuno passa ancora il parametro. Il
+# dato si rende obbligatorio DOVE SI PUO' FORNIRE — quando
+# dbops.vw_run_senza_attore e' vuota, e sara' un changeSet suo.
+#
+# ⚠️ Nessuna FK su auth_user_id, ed e' una scelta: la FK su processo_codice
+# esiste per rendere strutturalmente impossibile un processo non dichiarato;
+# per l'utente non c'e' un'invariante equivalente, e questo e' un LOG — una
+# riga di giornale non deve poter fallire perche' un'anagrafica e' cambiata.
+#
+# ⚠️ Indice FK: NON si crea a mano. dbops.fn_populate_fk_index_policy() lo
+# registrera' con consentito=false (opt-in). Se emergera' un pattern di query
+# per processo, si ribalta quella riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20260904-16-alter-job-run-log-attore-mctit.yaml
+
+  - changeSet:
+      id: 20260904-16-alter-job-run-log-attore
+      author: mctit
+      failOnError: true
+      comment: >
+        Aggiunge maintenance.job_run_log.processo_codice (FK verso
+        dbops.processi.codice, l'attore) e auth_user_id (utente tecnico dei
+        processi DOMINIO). Entrambe nullable: il NOT NULL arriva quando la
+        vista di presidio e' vuota.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: maintenance, tableName: job_run_log }
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+            - not:
+                - columnExists:
+                    { schemaName: maintenance, tableName: job_run_log, columnName: processo_codice }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  ADD COLUMN processo_codice text    NULL,
+                  ADD COLUMN auth_user_id    integer NULL;
+
+              -- Hard FK verso il registro: un codice non dichiarato non si
+              -- scrive. E' la differenza fra un cancello e un elenco da
+              -- guardare il giorno dopo.
+              ALTER TABLE maintenance.job_run_log
+                  ADD CONSTRAINT fk_job_run_log_processi
+                      FOREIGN KEY (processo_codice)
+                      REFERENCES dbops.processi (codice);
+
+              COMMENT ON COLUMN maintenance.job_run_log.processo_codice IS
+                  'L''ATTORE del run: il codice del processo in dbops.processi (hard FK). Vale per tutte e tre le classi — anche i job di manutenzione devono dire chi e'' girato (decisione D-8). NULL solo durante la transizione: diventera'' NOT NULL quando dbops.vw_run_senza_attore sara'' vuota. Brief: brief-db-processi-automatici-identita-e-perimetro §3.1.';
+              COMMENT ON COLUMN maintenance.job_run_log.auth_user_id IS
+                  'Utente tecnico che ha eseguito il run, quando c''e'' (solo processi di classe DOMINIO: gli altri hanno un attore ma non un utente). ⛔ NON e'' l''operatore per-item della coda lavori, che sta in dbops.coda_lavori.scope: un worker registra UN run ed esegue N item, ognuno con il proprio operatore. Nessuna FK di proposito: questo e'' un giornale, e una riga di log non deve poter fallire perche'' un''anagrafica e'' cambiata.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  DROP CONSTRAINT IF EXISTS fk_job_run_log_processi;
+              ALTER TABLE maintenance.job_run_log
+                  DROP COLUMN IF EXISTS processo_codice,
+                  DROP COLUMN IF EXISTS auth_user_id;

@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §3.2 (fase 2) — il canale
+# HEADLESS del registro dei run prende l'attore.
+#
+# Corpo preso dalla doc auto-gen (l'oggetto vivo), non da uno YAML storico.
+#
+# ⚠️ DROP PRIMA DEL CREATE, e per DUE ragioni indipendenti:
+#   1. aggiungere parametri crea un OVERLOAD, non una sostituzione: senza DROP
+#      resterebbero due firme e il backend chiamerebbe quella vecchia (che
+#      scrive NULL nell'attore) senza che nessuno se ne accorga;
+#   2. `CREATE OR REPLACE` non puo' cambiare il tipo di ritorno, e qui il
+#      RETURNS TABLE passa ai %TYPE.
+#
+# ⚠️ La firma DROPpata si scrive con i soli TIPI: pg_proc identifica la
+# funzione per (nome, tipi degli argomenti), non per i nomi dei parametri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260904-17-update-fn-job-run-start-attore-mctit.yaml
+
+  - changeSet:
+      id: 20260904-17-update-fn-job-run-start-attore
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_job_run_start prende p_processo_codice e p_auth_user_id e li
+        scrive su job_run_log (entrambi i rami: skip per lock occupato e run
+        vero). DROP della firma a 5 argomenti per non lasciare un overload.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: maintenance, tableName: job_run_log, columnName: processo_codice }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_job_run_start';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La vecchia firma a 5 argomenti se ne va: se restasse, un
+              -- chiamante non aggiornato continuerebbe a registrare run senza
+              -- attore e la vista di presidio non lo distinguerebbe da un
+              -- job non ancora migrato.
+              DROP FUNCTION IF EXISTS script.fn_job_run_start(text, text, text, text, text);
+
+              CREATE OR REPLACE FUNCTION script.fn_job_run_start(
+                  p_jobname         maintenance.job_run_log.jobname%TYPE,
+                  p_origine         maintenance.job_run_log.origine%TYPE
+                                        DEFAULT 'CRON',
+                  p_stepname        maintenance.job_run_log.stepname%TYPE
+                                        DEFAULT NULL,
+                  p_lock_key        text DEFAULT NULL,
+                  p_agent_host      maintenance.job_run_log.agent_host%TYPE
+                                        DEFAULT NULL,
+                  p_processo_codice maintenance.job_run_log.processo_codice%TYPE
+                                        DEFAULT NULL,
+                  p_auth_user_id    maintenance.job_run_log.auth_user_id%TYPE
+                                        DEFAULT NULL)
+               RETURNS TABLE(id       maintenance.job_run_log.id%TYPE,
+                             run_uuid maintenance.job_run_log.run_uuid%TYPE,
+                             acquired boolean)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                c_lock_class constant int := hashtext('zeroerp:job_run_log');  -- namespace lock headless
+                v_acquired boolean := true;
+                v_id   maintenance.job_run_log.id%TYPE;
+                v_uuid maintenance.job_run_log.run_uuid%TYPE;
+              BEGIN
+                -- origine e' validata dal CHECK colonna (chk_job_run_log_origine) all'INSERT.
+                -- p_processo_codice e' validato dalla FK fk_job_run_log_processi: un
+                -- codice non registrato in dbops.processi fa fallire l'INSERT (fail-loud
+                -- voluto). ⚠️ NULL resta ammesso finche' dura la transizione dei chiamanti.
+                IF p_lock_key IS NOT NULL THEN
+                  v_acquired := pg_try_advisory_lock(c_lock_class, hashtext(p_lock_key));
+                  IF NOT v_acquired THEN
+                    -- ⚠️ L'attore va scritto ANCHE sulla riga di skip: senza, ogni
+                    --   sovrapposizione lascerebbe un run senza attore e terrebbe
+                    --   accesa la vista di presidio per un caso che non e' un difetto.
+                    INSERT INTO maintenance.job_run_log
+                        (jobname, stepname, origine, ok, ended_at, message, agent_host,
+                         processo_codice, auth_user_id)
+                    VALUES (p_jobname, p_stepname, p_origine, TRUE, clock_timestamp(),
+                            'skip: another run in progress',
+                            COALESCE(p_agent_host, inet_client_addr()::text),
+                            p_processo_codice, p_auth_user_id)
+                    RETURNING job_run_log.id, job_run_log.run_uuid INTO v_id, v_uuid;
+                    RETURN QUERY SELECT v_id, v_uuid, FALSE;
+                    RETURN;
+                  END IF;
+                END IF;
+
+                INSERT INTO maintenance.job_run_log
+                    (jobname, stepname, origine, agent_host,
+                     processo_codice, auth_user_id)
+                VALUES (p_jobname, p_stepname, p_origine,
+                        COALESCE(p_agent_host, inet_client_addr()::text),
+                        p_processo_codice, p_auth_user_id)
+                RETURNING job_run_log.id, job_run_log.run_uuid INTO v_id, v_uuid;
+                RETURN QUERY SELECT v_id, v_uuid, TRUE;
+              END;
+              $function$;
+
+              -- ⚠️ Qui i tipi vanno SCIOLTI, non in %TYPE: PostgreSQL risolve
+              --   i %TYPE al momento della CREATE, quindi pg_proc conserva i
+              --   tipi reali ed e' su quelli che COMMENT ON FUNCTION cerca la
+              --   funzione. Nota il `character varying` di p_origine: viene da
+              --   job_run_log.origine, che varchar e' — la firma precedente
+              --   diceva `text`, ed e' cambiata proprio grazie al %TYPE.
+              COMMENT ON FUNCTION script.fn_job_run_start(
+                  text, character varying, text, text, text, text, integer)
+              IS 'Apre una riga su maintenance.job_run_log per un processo HEADLESS (management command / cron / systemd), con advisory lock anti-overlap opzionale. Rev 2026-09-04: prende p_processo_codice (l''ATTORE, hard FK verso dbops.processi) e p_auth_user_id (utente tecnico dei soli processi DOMINIO), e li scrive su ENTRAMBI i rami — anche sulla riga di «skip», altrimenti ogni sovrapposizione lascerebbe un run senza attore. Brief: brief-db-processi-automatici-identita-e-perimetro §3.2.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_job_run_start(
+                  text, character varying, text, text, text, text, integer);

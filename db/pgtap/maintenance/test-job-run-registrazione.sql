@@ -128,7 +128,15 @@ SELECT ok(
 -- ---- 20..21: REVOKE EXECUTE FROM PUBLIC ----
 SELECT ok(
     NOT has_function_privilege('public',
-        'script.fn_job_run_start(text,text,text,text,text)', 'EXECUTE'),
+        -- ⚠️ Funzione cercata per NOME, non per firma letterale: la firma
+        --   cambia quando si aggiungono parametri (2026-09-04: +attore), e
+        --   un test che la scrive a mano fallisce per il MOTIVO SBAGLIATO —
+        --   segnala la firma invece del privilegio che deve presidiare.
+        (SELECT p.oid
+           FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'script' AND p.proname = 'fn_job_run_start'),
+        'EXECUTE'),
     'fn_job_run_start: PUBLIC senza EXECUTE'
 );
 SELECT ok(

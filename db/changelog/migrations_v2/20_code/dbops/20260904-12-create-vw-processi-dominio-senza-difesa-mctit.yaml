@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §8 — LIVELLO 2 del
+# presidio: il bersaglio HA il percorso verso l'emittente, ma non ha nessuna
+# difesa che lo applichi.
+#
+# ⚠️ Perche' e' un livello a parte, e non un secondo motivo del livello 1.
+# Il livello 1 e' un ERRORE: un processo che non puo' rispettare un perimetro.
+# Questo e' un DEBITO: il perimetro esiste, ma su quella tabella un filtro
+# dimenticato passerebbe lo stesso — cioe' il «Caso A» (il difetto si ferma da
+# solo) li' NON vale. Deve calare, non deve essere zero domani.
+#
+# Prime righe attese: vendite.listini / listini_versioni (hanno il percorso
+# tramite listini.emittente_soggetto_ruolo_id, non hanno ne' policy ne' guard).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-12-create-vw-processi-dominio-senza-difesa-mctit.yaml
+
+  - changeSet:
+      id: 20260904-12-create-vw-processi-dominio-senza-difesa
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_processi_dominio_senza_difesa: bersagli DOMINIO col
+        percorso all'emittente ma senza policy RLS ne' write-guard. Registro di
+        DEBITO, deve calare.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+            - tableExists:
+                { schemaName: dbops, tableName: processi_bersagli }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Bersagli di processi DOMINIO che hanno il percorso verso
+              --   l'emittente ma nessuna difesa che lo applichi: ne' una
+              --   policy RLS sulla tabella, ne' un trigger che monti
+              --   script.trgfn_guard_emittente_scope.
+              --
+              -- La colonna `manca` distingue i due lati, perche' non sono
+              --   intercambiabili: la policy difende la LETTURA, il guard la
+              --   SCRITTURA. Una tabella con la sola policy resta scoperta
+              --   sulle scritture.
+              --
+              -- Guardato dai cataloghi (pg_policy, pg_trigger), non da un
+              --   elenco a mano: qui la struttura E' la fonte giusta.
+              -- =========================================================
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_difesa AS
+              WITH bersagli AS (
+                  SELECT p.codice AS processo_codice,
+                         b.schema_tabella,
+                         b.nome_tabella,
+                         b.emittente_via,
+                         c.oid AS rel_oid
+                    FROM dbops.processi p
+                    JOIN dbops.processi_bersagli b ON b.processo_id = p.id
+                    JOIN pg_catalog.pg_class c ON c.relname = b.nome_tabella
+                    JOIN pg_catalog.pg_namespace n
+                      ON n.oid = c.relnamespace
+                     AND n.nspname = b.schema_tabella
+                   WHERE p.classe = 'DOMINIO'
+                     AND p.attivo
+                     AND p.obsoleto_dal IS NULL
+                     -- ⛔ I processi PGAGENT NON si escludono, ed e' una
+                     --   scelta. Girano come superuser, quindi oggi ne' la
+                     --   policy ne' il guard li toccherebbero — ma un processo
+                     --   DOMINIO su pgAgent e' proprio l'anomalia da sanare
+                     --   (deve migrare sulla coda), e i suoi bersagli saranno
+                     --   raggiunti dal ruolo applicativo il giorno dopo.
+                     --   Escluderli nasconderebbe esattamente il caso per cui
+                     --   la vista esiste.
+                     AND b.emittente_via IS NOT NULL
+                     AND c.relkind IN ('r', 'p')
+              ), difese AS (
+                  SELECT b.*,
+                         EXISTS (SELECT 1 FROM pg_catalog.pg_policy pol
+                                  WHERE pol.polrelid = b.rel_oid)   AS ha_policy,
+                         EXISTS (SELECT 1
+                                   FROM pg_catalog.pg_trigger t
+                                   JOIN pg_catalog.pg_proc pr ON pr.oid = t.tgfoid
+                                  WHERE t.tgrelid = b.rel_oid
+                                    AND NOT t.tgisinternal
+                                    AND pr.proname = 'trgfn_guard_emittente_scope')
+                                                                    AS ha_guard
+                    FROM bersagli b
+              )
+              SELECT processo_codice,
+                     schema_tabella,
+                     nome_tabella,
+                     emittente_via,
+                     CASE
+                         WHEN NOT ha_policy AND NOT ha_guard THEN 'policy RLS e write-guard'
+                         WHEN NOT ha_policy                  THEN 'policy RLS (lettura scoperta)'
+                         ELSE                                     'write-guard (scrittura scoperta)'
+                     END AS manca
+                FROM difese
+               WHERE NOT ha_policy
+                  OR NOT ha_guard;
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_difesa IS
+                  'LIVELLO 2 del presidio sui processi: bersagli di processi DOMINIO che HANNO il percorso verso l''emittente ma non hanno la difesa che lo applica — policy RLS (lettura) e/o write-guard trgfn_guard_emittente_scope (scrittura). ⚠️ E'' un registro di DEBITO, non un errore: deve CALARE, non essere vuoto domani. Dove compare una riga, il «Caso A» non vale — un filtro dimenticato su quella tabella passerebbe invece di fermarsi da solo. ⛔ I processi PGAGENT NON sono esclusi: un DOMINIO su pgAgent e'' l''anomalia da sanare, e i suoi bersagli saranno raggiunti dal ruolo applicativo appena migra. Brief: brief-db-processi-automatici-identita-e-perimetro §8.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_dominio_senza_difesa;
