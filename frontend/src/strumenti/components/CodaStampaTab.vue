@@ -35,6 +35,7 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import { computed, ref } from 'vue'
 import { statoCodaStampaSeverity, STATO_CODA_STAMPA_MAP } from '../../core/utils/severity'
+import { formatFatturaNumero } from '../../core/utils/format'
 import { archiviaCodaStampa, ripristinaCodaStampa } from '../../core/api/tracciamento'
 import { useCodaArchiviazione } from '../composables/useCodaArchiviazione'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
@@ -49,13 +50,6 @@ const store = useCodaStampaStore()
 const baseRef = ref(null)
 function ricarica() {
   baseRef.value?.load()
-}
-
-// Scopo: numero fattura leggibile (anno/serie/numero, campi opzionali).
-function fatturaLabel(row) {
-  if (row.fattura_numero == null) return `#${row.fattura_id}`
-  const serie = row.fattura_serie ? `/${row.fattura_serie}` : ''
-  return `${row.fattura_anno ?? ''}${serie} n. ${row.fattura_numero}`
 }
 
 // Scopo: messaggio sintetico dall'ultimo_errore jsonb (fail-visible in lista).
@@ -85,7 +79,7 @@ const { azioniArchiviazione, archiviaRighe, loading: archiviazioneLoading } =
     ricarica,
     // La riga si nomina con la sua FATTURA, non col proprio id: e' quello che
     // l'operatore sta guardando.
-    etichettaRiga: (row) => fatturaLabel(row),
+    etichettaRiga: (row) => formatFatturaNumero(row),
     // Le righe archiviate escono dall'elenco: una selezione che le contasse
     // ancora mentirebbe. ⭐ Si tengono spuntate le sole FALLITE — sono
     // esattamente quelle su cui l'operatore deve tornare.
@@ -120,7 +114,7 @@ function buildRowActions(row) {
          colonna e' su `fattura_numero` (campo_sorgente del seed, NULLS LAST
          lato BE: e' NULL finche' la fattura e' in bozza). -->
     <template #cell-fattura="{ data }">
-      {{ fatturaLabel(data) }}
+      {{ formatFatturaNumero(data) }}
     </template>
     <template #cell-emittente="{ data }">
       {{ data.emittente_codice ?? '—' }}

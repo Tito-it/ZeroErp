@@ -186,9 +186,11 @@ export const DOMAIN_MENUS = {
   ],
   'catalogo': [
     { key: 'articoli', icon: NAV_ICONS.CATALOGO, to: '/catalogo/articoli' },
-    { key: 'unita-misura', icon: NAV_ICONS.ARROWS_H, to: '/catalogo/unita-misura' },
-    { key: 'conversioni-uom', icon: NAV_ICONS.SYNC, to: '/catalogo/conversioni-uom' },
-    { key: 'uom-tipi', icon: NAV_ICONS.TAGS, to: '/catalogo/uom-tipi' }
+    // Una voce sola per tutto l'impianto delle UdM: unita', conversioni e tipi
+    // sono tre schede della stessa vista dal 2026-09-04 (erano tre voci, cioe'
+    // tre quarti del menu di dominio, con l'articolo — il soggetto vero del
+    // catalogo — ridotto a una voce fra quattro).
+    { key: 'unita-misura', icon: NAV_ICONS.ARROWS_H, to: '/catalogo/unita-misura' }
   ],
   'vendite': [
     { key: 'situazione-aperta', icon: NAV_ICONS.SITUAZIONE_APERTA, to: '/vendite/situazione-aperta' },
