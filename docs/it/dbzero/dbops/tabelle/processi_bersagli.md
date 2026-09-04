@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/processi_bersagli.md" %}
 # 📚 Tabella `processi_bersagli`
 
 > 📝 **Descrizione**

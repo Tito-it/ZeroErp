@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_processi_dominio_senza_difesa.md" %}
 # 🔍 View `vw_processi_dominio_senza_difesa`
 
 > 📝 **Descrizione**

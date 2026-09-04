@@ -85,7 +85,18 @@ SELECT
 
 -- GUC vuota: gli INSERT su vendite.ordini (test 11-15) superano i guard
 -- emittente/scope senza restrizione (stesso approccio del test fn_aa_ordine).
-SELECT set_config('app.current_user_id', '', true);
+-- ⛔ 2026-09-04 — QUI IL TEST SPEGNEVA IL GUARD, e adesso non piu'.
+--   La riga rimossa era `set_config('app.current_user_id', '', true)`: senza
+--   utente in sessione `script.trgfn_guard_emittente_scope` usciva subito con
+--   RETURN NEW, e le fixture entravano senza che nessuno guardasse l'emittente.
+--   La fase 6 di `brief-db-processi-automatici-identita-e-perimetro` chiude quel
+--   ramo — una sessione applicativa senza utente non scrive piu'.
+--   ⇒ Il contesto operatore del preambolo RESTA valido per tutto il file, e le
+--     fixture prendono l'emittente su cui quell'operatore puo' davvero scrivere
+--     (`script.fn_pgtap_emittente_operatore()`).
+--   ⭐ Non e' una riparazione di comodo: prima questo file collaudava il
+--     comportamento di una porta aperta, adesso attraversa il guard come lo
+--     attraversa l'applicazione.
 
 -- Riferimenti per creare ordini reali (test genera_ordine + indice).
 -- BA=NULL + emittente esplicito = niente guard emittente<->BA da soddisfare.

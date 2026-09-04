@@ -152,6 +152,7 @@ WITH ins AS (
     sorgente_riga,
     commessa_id,
     commessa_attivita_id,
+    emit_batch_id,
     meta
   )
   SELECT
@@ -172,6 +173,17 @@ WITH ins AS (
     NULL,
     (SELECT id FROM tmp_commessa_fd),
     (SELECT id FROM tmp_ca_fd),
+    -- ⛔ 2026-09-04 (changeSet 20260904-50). Da qui in poi
+    --   `vendite.fn_select_attivita_fatturabili` prende SOLO le righe marchiate
+    --   col proprio giro: `a.emit_batch_id = p_lock_batch_id`. Una riga senza
+    --   marchio non e' piu' eleggibile, e la select tornava zero — che e'
+    --   esattamente l'effetto voluto dal cantiere «esito parziale», non un
+    --   difetto da aggirare.
+    --   ⇒ La fixture si marchia col PROPRIO giro, che e' cio' che fara' il
+    --     backend quando il pull passera' il lock_batch_id del lotto. Deve
+    --     essere lo STESSO uuid che il test 2 passa come p_lock_batch_id, o il
+    --     filtro escluderebbe la riga appena creata.
+    (SELECT lock_batch_id FROM tmp_costanti_fd),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_fd))
   FROM tmp_refs_fd r
   RETURNING id

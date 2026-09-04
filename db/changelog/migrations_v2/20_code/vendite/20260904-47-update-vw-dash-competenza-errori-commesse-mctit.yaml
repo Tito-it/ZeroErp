@@ -400,14 +400,23 @@ databaseChangeLog:
               -- Il DROP ha portato via i privilegi: si rimettono quelli fotografati il
               -- 2026-09-04. Guardato sui ruoli, cosi' un ambiente senza provisioning non
               -- si ferma.
+              --
+              -- ⛔ 2026-09-04 — TOLTO IL GRANT A `zeroerp_batch_fatturazione`.
+              --   I privilegi dei ruoli batch NON stanno in un changeSet: la sede e'
+              --   `scripts/sql/provision_db_role_batch_fatturazione.sql`, che fa
+              --   `GRANT SELECT ON ALL TABLES` sui schemi applicativi piu'
+              --   `ALTER DEFAULT PRIVILEGES` — quindi copre anche gli oggetti che
+              --   nascono dopo, questa vista inclusa. Il GRANT qui non aggiungeva
+              --   niente e duplicava un'autorita' che vive altrove.
+              --   Regola: docs/it/linee-guida-sql.md §11.6, presidiata in CI da
+              --   `scripts/guardrail_grant_ruolo_batch.py`.
+              --   ⚠️ Il GRANT a `zeroerp_app` accanto RESTA: quel ruolo esiste durante
+              --   il migrate, ed e' la riga da cui l'altro era stato copiato.
               DO $regrant$
               BEGIN
                   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
                       GRANT SELECT, INSERT, UPDATE, DELETE
                          ON vendite.vw_dash_competenza_errori TO zeroerp_app;
-                  END IF;
-                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_batch_fatturazione') THEN
-                      GRANT SELECT ON vendite.vw_dash_competenza_errori TO zeroerp_batch_fatturazione;
                   END IF;
               END
               $regrant$;

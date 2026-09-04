@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_crea_utente_tecnico.md" %}
 # ⚙️ Funzione `fn_crea_utente_tecnico`
 
 ```sql

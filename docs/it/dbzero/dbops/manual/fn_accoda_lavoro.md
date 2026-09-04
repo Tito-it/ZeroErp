@@ -55,6 +55,11 @@ dbops.fn_accoda_lavoro(
   `E_JOB_TYPE_NON_ATTIVO`.
 * **Risoluzione default**: `run_as` e `max_tentativi`, se NULL, sono presi dai
   default del tipo (`run_as_default`, `max_tentativi_default`).
+* ⛔ **Guard di CLASSE** *(dal 2026-09-04)*: se il processo del tipo è di classe
+  `DOMINIO`, il lavoro può essere accodato **solo** come `OPERATORE` →
+  altrimenti `E_JOB_DOMINIO_SENZA_OPERATORE`. La classe si legge da
+  [dbops.processi](/dbzero/dbops/manual/processi) passando per
+  `coda_lavori_tipi.processo_codice`; non è duplicata sul tipo.
 * **Guard coerenza scope**: `run_as='OPERATORE'` richiede `p_scope` NOT NULL
   (messaggio parlante `E_PARAMETRO_INVALIDO` prima del CHECK di tabella); il caso
   simmetrico (SISTEMA con scope) lo copre `chk_coda_lavori_run_as_scope`.

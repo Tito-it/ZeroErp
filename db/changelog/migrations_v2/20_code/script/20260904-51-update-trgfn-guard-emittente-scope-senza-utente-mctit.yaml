@@ -1,0 +1,299 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §7 (fase 6) — LA PORTA.
+#
+# ⛔ IL BUCO CHE CHIUDE. `script.trgfn_guard_emittente_scope` usciva con
+# `RETURN NEW` appena `app.current_user_id` era vuota, col commento «batch job,
+# nessun filtro». Era l'ultima via per cui un processo applicativo scriveva su
+# una tabella con perimetro emittente senza dire chi fosse: bastava non
+# impostare una GUC. Un cartello, non un cancello.
+#
+# ⭐ IL CRITERIO NUOVO E' UNO SOLO, E NON E' NOSTRO: `row_security_active()`.
+# Chi passa dalla RLS passa anche di qui; chi la subisce deve dichiarare chi
+# agisce. Non si reimplementa la regola (ruolo proprietario? superuser?
+# BYPASSRLS? GUC row_security?): si CHIEDE A POSTGRESQL quella che sta gia'
+# applicando alla stessa riga, nello stesso istante. Due presidi che rispondono
+# alla stessa domanda con due criteri diversi prima o poi dissentono.
+#
+# Misurato su dbdev il 2026-09-04, non dedotto:
+#   titodb (migratore, PROPRIETARIO delle 15 tabelle) -> false -> passa
+#   zeroerp_app (applicativo)                         -> true  -> deve dichiararsi
+# Per superuser e BYPASSRLS il comportamento e' quello documentato da
+# PostgreSQL (RLS non applicata => la funzione risponde false): il demone
+# pgAgent si connette `user=postgres` e `zeroerp_batch_fatturazione` ha
+# `rolbypassrls`, quindi oggi entrambi passano.
+#   ⚠️ E' il verso opposto di come era stato raccontato: questa fase NON ferma
+#   il batch fatturazione — quel ruolo bypassa, ed e' proprio cio' che continua
+#   a passare. Il ritiro del ruolo (provisioning) e' quello che rendera'
+#   efficace questo cancello anche su di lui, e non e' un suo prerequisito.
+#
+# ⚠️ DEROGA DICHIARATA alle linee guida §10.4 (le funzioni di scope non
+# guardano il ruolo DB). Qui non si identifica l'utente dal ruolo: si
+# RISPECCHIA la decisione di bypass che il motore ha gia' preso. L'alternativa
+# — una GUC che una migrazione imposta per dire «sono io» — sarebbe di nuovo un
+# cartello: chiunque puo' impostarla. E' la stessa ragione per cui il progetto
+# ha gia' scartato il sentinel applicativo del canale di sistema.
+#
+# ⭐ `CREATE OR REPLACE`, non `DROP` + `CREATE`: la firma non cambia, quindi
+# l'ACL della funzione resta attaccata. Un `DROP` l'avrebbe portata via — la
+# lezione del changeSet 20260904-21, applicata prima che costasse.
+#
+# ⛔ Gli altri SETTE trigger che leggono `app.current_user_id` NON si toccano, e
+# la scelta e' motivata: i cinque `*_default_emittente` non CONCEDONO nulla —
+# riempiono un valore di comodo e poi e' questo guard a decidere se la riga
+# entra. Su vendite.preventivi l'ordine alfabetico dei trigger `BEFORE ROW`
+# fa alzare prima E_PREV_EMITTENTE_NON_RISOLTO, che e' il messaggio giusto per
+# chi lo legge. Chiuderli tutti sarebbe simmetria per estetica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260904-51-update-trgfn-guard-emittente-scope-senza-utente-mctit.yaml
+
+  - changeSet:
+      id: 20260904-51-update-trgfn-guard-emittente-scope-senza-utente
+      author: mctit
+      failOnError: true
+      comment: >
+        script.trgfn_guard_emittente_scope: il ramo «nessun utente in sessione
+        -> passa» diventa «se questa sessione bypasserebbe comunque la RLS
+        passa, altrimenti errore E_SCOPE_SENZA_UTENTE». Il criterio e'
+        row_security_active() sulla tabella in gioco, cioe' la stessa regola che
+        PostgreSQL applica alle policy.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_guard_emittente_scope'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_resolve_emittente_fiscale_id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_auth_user_id         anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+                v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+                v_col_value            bigint;
+                v_mode                 text := TG_ARGV[0];
+                v_col_name             text := TG_ARGV[1];
+              BEGIN
+                -- =========================================================
+                -- Difesa in profondita': verifica che l'utente corrente abbia
+                -- scope sull'emittente fiscale della riga.
+                --
+                -- Modalita' (TG_ARGV[0]) — la risoluzione vive tutta in
+                -- script.fn_resolve_emittente_fiscale_id:
+                --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id
+                --   'fattura'        = la colonna contiene fattura_id
+                --   'fiscale'        = la colonna E' gia' emittente_fiscale_id
+                --   'contabile'      = la colonna contiene contabile_id, e il
+                --                      perimetro si deriva dal CONTO DI INCASSO
+                --                      della distinta (D5)
+                --
+                -- Se emittente non risolvibile -> skip (nessun padrone).
+                --
+                -- ⭐ Rev 2026-08-22 (lotto 6, S3-4). La risoluzione era QUI, e
+                --   il guard e' SECURITY INVOKER: nel modo 'fattura' leggeva
+                --   vendite.fatture sotto row security, e per un utente fuori
+                --   perimetro quella lettura dava ZERO RIGHE. Emittente NULL ->
+                --   ramo «non risolvibile» -> RETURN NEW. Il guard si spegneva
+                --   esattamente nel caso che esiste per coprire, e il controllo
+                --   di integrita' referenziale — che gira fuori dalla row
+                --   security — non si opponeva: la riga entrava.
+                --   Adesso la risoluzione la fa una SECURITY DEFINER, che legge
+                --   tutto; qui resta solo l'applicazione della decisione.
+                --
+                -- ⛔ Rev 2026-09-04 (fase 6, brief processi automatici). Il
+                --   ramo «utente NULL -> RETURN NEW» diceva «batch job, nessun
+                --   filtro»: era l'ultima porta da cui un processo applicativo
+                --   scriveva senza dire chi fosse, e bastava NON impostare una
+                --   GUC per aprirla. Adesso passa solo chi bypasserebbe
+                --   comunque la RLS.
+                -- =========================================================
+
+                -- 1. Leggi user_id dalla sessione PG
+                v_auth_user_id := NULLIF(
+                  current_setting('app.current_user_id', true), ''
+                )::integer;
+
+                IF v_auth_user_id IS NULL THEN
+                  -- ⭐ UN CRITERIO SOLO, E NON E' NOSTRO.
+                  --   row_security_active() risponde per la tabella in gioco e
+                  --   per QUESTA sessione: false per il proprietario (senza
+                  --   FORCE ROW LEVEL SECURITY), per un superuser e per un
+                  --   ruolo BYPASSRLS. Sono esattamente le sessioni che le
+                  --   policy non filtrano: se la RLS le lascia passare, questo
+                  --   guard non ha titolo per fermarle — e viceversa.
+                  --   ⛔ Non si elenca a mano «proprietario o superuser o
+                  --   bypassrls»: sarebbe una SECONDA scrittura della stessa
+                  --   regola, e due scritture prima o poi dissentono.
+                  IF NOT row_security_active(TG_RELID::regclass) THEN
+                    RETURN NEW;
+                  END IF;
+
+                  -- Sessione applicativa senza identita': si ferma. Non e'
+                  -- «permesso negato a qualcuno» — non c'e' nessuno a cui
+                  -- negarlo: e' un processo configurato senza identita'.
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_SENZA_UTENTE',
+                    jsonb_build_object(
+                      'detail', 'Scrittura senza utente in sessione su tabella con perimetro emittente',
+                      'modo', v_mode,
+                      'colonna', v_col_name,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'db_user', current_user,
+                      'operazione', TG_OP
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_SCHEMA::text,
+                    TG_TABLE_NAME::text
+                  );
+                END IF;
+
+                -- 2. Leggi valore colonna da NEW
+                v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+
+                IF v_col_value IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Su UPDATE, skip se la colonna non e' cambiata
+                IF TG_OP = 'UPDATE' AND
+                   v_col_value = (to_jsonb(OLD) ->> v_col_name)::bigint THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3. Risolvi l'emittente FUORI dalla row security.
+                v_emittente_fiscale_id :=
+                    script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+
+                IF v_emittente_fiscale_id IS NULL THEN
+                  -- ⭐ Nessun padrone: dati non ancora collegati, oppure una
+                  --   distinta INTERNA (fondo fattura, compensazione) che non e'
+                  --   il canale di nessuno. Prima questo ramo raccoglieva anche
+                  --   i documenti altrui; adesso no.
+                  RETURN NEW;
+                END IF;
+
+                -- 4. Verifica scope (canonica auth_user_id, bypass SUPER_ADMIN)
+                IF NOT script.fn_check_user_emittente_scope(
+                         v_auth_user_id, v_emittente_fiscale_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_EMITTENTE',
+                    jsonb_build_object(
+                      'detail', 'Utente non autorizzato per emittente fiscale',
+                      'auth_user_id', v_auth_user_id,
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'modo', v_mode,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    format(
+                      'Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                      v_auth_user_id, v_emittente_fiscale_id,
+                      TG_TABLE_SCHEMA, TG_TABLE_NAME
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
+              IS 'Difesa in profondita'': blocca INSERT/UPDATE se l''utente non ha scope sull''emittente fiscale della riga. Modalita'' TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta) | contabile (perimetro dal conto di incasso, D5). ⭐ Rev 2026-08-22: la risoluzione dell''emittente e'' passata a script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER. Prima stava qui, e il guard e'' SECURITY INVOKER: nel modo fattura leggeva vendite.fatture sotto row security, e per un utente fuori perimetro la lettura dava zero righe -> emittente NULL -> ramo «non risolvibile» -> passa. ⛔ Rev 2026-09-04 (fase 6): il ramo «nessun utente in sessione -> passa» e'' chiuso. Passa solo chi bypasserebbe comunque la RLS, e il criterio e'' row_security_active() sulla tabella in gioco — la stessa regola che PostgreSQL applica alle policy, chiesta a lui invece che riscritta. Una sessione applicativa senza app.current_user_id ora alza E_SCOPE_SENZA_UTENTE. ⚠️ Il ramo «emittente non risolvibile» resta e serve: una distinta interna (fondo fattura, compensazione) non e'' il canale di nessuno. Brief: brief-db-processi-automatici-identita-e-perimetro §7.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Ritorno alla forma precedente: si rilancia il corpo di
+              --   20260822-17. Riaprire questo ramo RIAPRE LA PORTA — e' una
+              --   manovra di emergenza, non una configurazione.
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_auth_user_id         anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+                v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+                v_col_value            bigint;
+                v_mode                 text := TG_ARGV[0];
+                v_col_name             text := TG_ARGV[1];
+              BEGIN
+                v_auth_user_id := NULLIF(
+                  current_setting('app.current_user_id', true), ''
+                )::integer;
+
+                IF v_auth_user_id IS NULL THEN
+                  RETURN NEW;  -- batch job, nessun filtro
+                END IF;
+
+                v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+
+                IF v_col_value IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF TG_OP = 'UPDATE' AND
+                   v_col_value = (to_jsonb(OLD) ->> v_col_name)::bigint THEN
+                  RETURN NEW;
+                END IF;
+
+                v_emittente_fiscale_id :=
+                    script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+
+                IF v_emittente_fiscale_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF NOT script.fn_check_user_emittente_scope(
+                         v_auth_user_id, v_emittente_fiscale_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_EMITTENTE',
+                    jsonb_build_object(
+                      'detail', 'Utente non autorizzato per emittente fiscale',
+                      'auth_user_id', v_auth_user_id,
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'modo', v_mode,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    format(
+                      'Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                      v_auth_user_id, v_emittente_fiscale_id,
+                      TG_TABLE_SCHEMA, TG_TABLE_NAME
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;

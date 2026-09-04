@@ -35,6 +35,20 @@ end sono spezzati attorno al corpo applicativo.
 | `p_stepname`   | `maintenance.job_run_log.stepname%TYPE`    | `NULL`     | Step opzionale.                                                        |
 | `p_lock_key`   | `text`                                     | `NULL`     | Identità **logica** del job (es. `run_fatturazione_batch:immediata`) per l'anti-overlap. Non è una colonna. |
 | `p_agent_host` | `maintenance.job_run_log.agent_host%TYPE`  | `NULL`     | Host sorgente; default `inet_client_addr()`.                          |
+| `p_processo_codice` | `maintenance.job_run_log.processo_codice%TYPE` | `NULL` | ⭐ *(dal 2026-09-04)* quale processo di [dbops.processi](/dbzero/dbops/manual/processi) sta girando. **Hard FK**: un codice inventato viene respinto. |
+| `p_auth_user_id` | `integer`                              | `NULL`     | ⭐ *(dal 2026-09-04)* l'utente tecnico con cui il processo gira, quando ne ha uno. |
+
+⚠️ **I due parametri nuovi stanno in CODA e hanno un default**: le chiamate
+esistenti continuano a funzionare senza modifiche. ⛔ Aggiungere un parametro a
+una funzione ne crea però un **overload**: la firma a cinque argomenti è stata
+`DROP`ata esplicitamente, o sarebbero rimaste due funzioni e il backend avrebbe
+chiamato a caso.
+
+🔴 **E il `DROP` porta via i privilegi.** La `CREATE` successiva riparte dal
+default di PostgreSQL, che per le funzioni è `EXECUTE` a `PUBLIC`: su una
+`SECURITY DEFINER` è un buco. Il `REVOKE ... FROM PUBLIC` è stato rimesso con
+una correttiva. ⇒ Chi rifà `DROP` + `CREATE` **ricostruisce l'ACL nello stesso
+changeSet**.
 
 ---
 

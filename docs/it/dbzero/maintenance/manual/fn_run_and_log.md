@@ -61,6 +61,27 @@ FUNCTION maintenance.fn_run_and_log(
 
 ---
 
+### ⭐ Rev 2026-09-04 — due parametri in coda, e la derivazione dal jobname
+
+La firma cresce di due parametri **facoltativi**, `p_processo_codice` e
+`p_auth_user_id`, che finiscono nelle colonne omonime di
+[job_run_log](/dbzero/maintenance/manual/job_run_log).
+
+⭐ **Ma i dodici job pgAgent non li passano, e si dichiarano lo stesso.** Se il
+codice del processo non è indicato, la funzione lo **cerca per nome**: il
+`jobname` e il codice del processo in
+[dbops.processi](/dbzero/dbops/manual/processi) sono per convenzione la stessa
+stringa.
+
+⇒ Nessuna modifica alla configurazione dello scheduler — che è una fase che in
+CI **non gira mai**, e dove un errore si scoprirebbe solo di notte.
+
+⚠️ Un `jobname` che non corrisponde a nessun processo resta **senza attore**, e
+compare in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore). Non
+si inventa un attore: si dice che manca.
+
+---
+
 ### Concorrenza & Idempotenza
 
 * L’uso di `p_lock_key` consente di evitare sovrapposizioni del medesimo job/step.

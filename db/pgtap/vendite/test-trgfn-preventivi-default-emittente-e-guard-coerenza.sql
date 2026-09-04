@@ -14,6 +14,8 @@
 --       -> trigger NON sovrascrive
 --    4. Coppia (istanza, utility) coerente -> INSERT ok (lives_ok)
 --    5. GUC vuota + payload senza emittente -> raise P0001
+--       ⭐ unico punto in cui svuotare app.current_user_id resta legittimo:
+--          la GUC vuota e' il caso in prova, non una scorciatoia (nota al 5)
 --    6. Coppia (istanza, utility) incoerente -> raise P0001
 --
 -- IMPORTANTE: nessun SAVEPOINT/ROLLBACK TO SAVEPOINT.
@@ -176,6 +178,24 @@ SELECT lives_ok(
 -- ============================================================
 -- 5) GUC vuota + payload senza emittente -> P0001
 -- ============================================================
+-- ⭐ 2026-09-04 — QUI SVUOTARE LA GUC RESTA GIUSTO, ed e' l'eccezione.
+--   Negli altri file la GUC vuota era una scorciatoia per spegnere
+--   `script.trgfn_guard_emittente_scope`, e la fase 6 di
+--   `brief-db-processi-automatici-identita-e-perimetro` chiude quel ramo.
+--   Qui invece la GUC vuota E' IL CASO IN PROVA: il trigger di default deve
+--   rifiutare un preventivo di cui non sa dire l'emittente.
+--
+-- ⚠️ E regge dopo la fase 6 per una ragione fragile, che va detta: i trigger
+--   `BEFORE ROW` scattano in ordine ALFABETICO, e su vendite.preventivi
+--     trg_preventivi_a10_default_emittente_ins       <-- primo
+--     trg_preventivi_a10_guard_emittente_scope_ins_upd
+--   quindi il default alza `E_PREV_EMITTENTE_NON_RISOLTO` prima che il guard
+--   di scope veda la riga. (Verificato su `pg_trigger`, non supposto.)
+--   ⛔ Se qualcuno rinomina uno dei due, l'ordine si inverte e questo test
+--   diventa VERDE SULL'ALTRO ERRORE: entrambi passano da
+--   `script.fn_log_and_raise_error`, quindi entrambi sono `P0001`, e
+--   `throws_ok` non sa distinguerli. Il messaggio non e' asseribile alla
+--   lettera perche' porta dentro il numero, che e' casuale a ogni giro.
 SELECT set_config('app.current_user_id', '', true);
 
 SELECT throws_ok(

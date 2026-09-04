@@ -49,6 +49,34 @@ BEGIN
         || ' AND a.competenza_mese <= ' || quote_literal(v_competenza)
         || ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
 
+    -- 🔴 D1+D2 — IL PERIMETRO CONSEGNATO, e da qui in poi il rifiuto DECIDE.
+    --   Fino al 2026-09-04 il perimetro di un giro era «tutto cio' che e'
+    --   libero e in competenza»: una riga liberata da un giro disfatto era
+    --   indistinguibile da una appena consegnata dal pull, quindi la commessa
+    --   che il pull aveva RESPINTO finiva in fattura lo stesso — e senza
+    --   nessun errore, perche' quella fattura di troppo e' una fattura
+    --   normale.
+    --   ⇒ Adesso si fattura solo cio' che il pull di QUESTO giro ha firmato.
+    --
+    -- ⭐ IL PERIMETRO NON SI PUO' DIMENTICARE, ed e' il punto della forma.
+    --   Non c'e' nessun interruttore da ricordarsi di accendere: chi lucchetta
+    --   e' gia' OBBLIGATO a dichiarare il proprio giro (il guard qui sopra
+    --   pretende `p_lock_batch_id` quando `p_lock`), e dichiarare il giro
+    --   SIGNIFICA prendersi il suo perimetro. Le due cose non possono piu'
+    --   divergere perche' sono lo stesso parametro.
+    --
+    -- ⚠️ La condizione e' sulla PRESENZA del giro e non su `p_lock`, e non e'
+    --   la stessa cosa: cosi' anche un'anteprima che dichiara il proprio giro
+    --   vede ESATTAMENTE cio' che il giro vero prendera'. Un'anteprima
+    --   filtrata diversamente dal giro e' peggio di nessuna anteprima —
+    --   mostra un elenco che poi non si avvera.
+    --   Una chiamata senza giro (`p_lock_batch_id` NULL, quindi per forza
+    --   senza lucchetto) resta senza filtro: non fattura niente e non puo'
+    --   fare danni.
+    IF p_lock_batch_id IS NOT NULL THEN
+        v_where := v_where || ' AND a.emit_batch_id = ' || quote_literal(p_lock_batch_id);
+    END IF;
+
     IF p_billing_account_id IS NOT NULL THEN v_where := v_where || ' AND a.billing_account_id = ' || quote_literal(p_billing_account_id); END IF;
     IF p_utility_id IS NOT NULL THEN v_where := v_where || ' AND ba.utility_id = ' || quote_literal(p_utility_id); END IF;
     IF p_valuta_id IS NOT NULL THEN v_where := v_where || ' AND a.valuta_id = ' || quote_literal(p_valuta_id); END IF;
