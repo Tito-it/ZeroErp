@@ -900,6 +900,20 @@ versione a fine giro.
 
 ### 13.1 V1 — Esito parziale del pull da commessa (da questo brief)
 
+> 🔴 **Aggiornamento del 2026-09-04 — eseguita, e ha trovato dell'altro.** Il
+> primo dei tre punti qui sotto è **verde**: con una commessa guastata su tre il
+> giro non si è fermato, lo step ha chiuso in `ERRORE` con `E_PULL_COMMESSA` e
+> `commesse_fallite: [34137]`, e le altre due sono passate (lotto `LTF-0009181`).
+>
+> ⛔ **Ma il lavoro della commessa respinta è finito in fattura lo stesso**, e la
+> proprietà per cui questo cantiere esiste — il savepoint per item — **non è
+> stata misurata**: le fatture nascevano da righe `attivita_fatturabili` residue
+> di un giro precedente, non dal pull. Cinque difetti (due di modello) in
+> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](brief-residuo-fatturabili-e-bandiere-esito-parziale.md);
+> il copione è in
+> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md),
+> ora **SOSPESO**. V1 resta aperta.
+
 Prerequisito: `kill -HUP` sul master gunicorn — il backend di sviluppo non ha autoreload,
 senza il segnale in-app gira ancora il codice vecchio.
 
