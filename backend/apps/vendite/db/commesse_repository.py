@@ -1098,6 +1098,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         only_approved: bool = True,
         dry_run: bool = False,
         gruppi: tuple[str, ...] | list[str] | None = None,
+        emit_batch_id: str | None = None,
     ) -> CommessaEmitResult:
         """Pull commessa → attivita_fatturabili (step 0 pipeline fatturazione).
         Idempotente. Restituisce contatori candidati/inseriti/aggiornati.
@@ -1109,7 +1110,22 @@ class CommesseRepository(EventLogRepositoryMixin):
         fatturabili richiesti — senza, le righe degli altri gruppi della stessa
         commessa passerebbero a `stato_emissione = EMESSA` uscendo dalla card
         «Da emettere» pur non essendo state chieste. None = nessuna
-        restrizione (comportamento storico)."""
+        restrizione (comportamento storico).
+
+        ⭐ `emit_batch_id` è L'IDENTITÀ DEL GIRO che sta chiedendo il pull, e da
+        essa dipende se il giro fattura qualcosa (changeSet 20260904-31/-32/-50,
+        brief-residuo-fatturabili-e-bandiere-esito-parziale D1+D2). Il pull
+        FIRMA con questo valore le righe che accetta — su entrambi i rami,
+        insert e update — e `fn_select_attivita_fatturabili` sceglie poi per
+        quel marchio invece che per sole coordinate. Il perimetro lo CONSEGNA
+        chi lo ha calcolato, così una commessa respinta non può farsi fatturare
+        da una riga rimasta libera da un giro precedente.
+
+        🔴 Passarlo NULL non è un default innocuo: la firma resta vuota, la
+        select non trova nulla e il giro emette ZERO fatture SENZA nessun
+        errore. Il chiamante di pipeline deve passare `context.lock_batch_id`.
+        Resta `None` solo per gli usi fuori pipeline (backfill, riconciliazioni),
+        dove il DB tiene il marchio che la riga aveva già."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1118,7 +1134,8 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_commessa_id => %s,
                     p_only_approved => %s,
                     p_dry_run => %s,
-                    p_gruppi => %s::text[]
+                    p_gruppi => %s::text[],
+                    p_emit_batch_id => %s::uuid
                 )
                 """,
                 # ⚠️ `if gruppi` e non `is not None`: una lista VUOTA diventerebbe
@@ -1127,7 +1144,8 @@ class CommesseRepository(EventLogRepositoryMixin):
                 # restrizione (convenzione DB dell'emissione mirata). Stessa
                 # forma nelle due discovery sotto.
                 [commessa_id, only_approved, dry_run,
-                 list(gruppi) if gruppi else None],
+                 list(gruppi) if gruppi else None,
+                 emit_batch_id],
             )
             row = cursor.fetchone()
         assert row is not None

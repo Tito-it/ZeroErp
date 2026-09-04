@@ -52,14 +52,72 @@ class TaskEsitoParziale:
     meta: dict[str, Any] = field(default_factory=dict)
 
 
-# Scopo: Messaggio per-commessa del pull, con l'id davanti al tipo di errore.
-#        Sede unica: lo stesso testo va sui log di lotto (detail) e nel
-#        `context.errors` del raise all-fail — due copie che divergerebbero.
+# Scopo: Esito di un task RIUSCITO che ha comunque qualcosa da dichiarare nel
+#        diario. Il task_run si chiude in COMPLETATO come sempre: cambia solo
+#        che il `meta` porta i contatori del giro invece di restare muto.
+# ⭐ Serve perche' una promessa va verificata anche quando REGGE. Fino al
+#        2026-09-04 il pull scriveva `totale`/`ok`/`falliti` solo quando
+#        qualcuno falliva: un giro riuscito e un giro che non ha nemmeno
+#        provato producevano lo stesso diario vuoto, cioe' proprio il caso che
+#        il perimetro consegnato (D1+D2) rende possibile — marchio assente,
+#        zero righe, nessun errore. Con i contatori sempre scritti, «ok: 0 su
+#        3» si legge invece di doverlo dedurre.
+# ⚠️ Il `meta` viene FUSO con quello scritto all'avvio del run
+#        (`fn_set_runtime_task_run_esito` fa `meta || v_meta`), quindi non
+#        travolge `rollback`.
+@dataclass(frozen=True)
+class TaskEsitoOk:
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+# Scopo: Messaggio TECNICO per-commessa del pull, con l'id davanti al tipo di
+#        errore. Sede unica del formato: lo stesso testo va nel
+#        `context.dettaglio_tecnico` del log di lotto e nel `context.errors`
+#        del raise all-fail — due copie che divergerebbero.
 #        La normalizzazione dell'eccezione NON e' rifatta qui: e' quella del BB
-#        (`messaggio_eccezione` / `FanOutItemErrore.messaggio`), cosi' detail e
-#        meta del task_run restano la stessa stringa per costruzione.
+#        (`messaggio_eccezione` / `FanOutItemErrore.messaggio`).
+# ⚠️ DAL 2026-09-04 QUESTO NON E' PIU' IL `detail` DEL LOG, e la differenza e'
+#        voluta: `detail` porta il motivo di DOMINIO (`_motivo_dominio`), che e'
+#        cio' che l'operatore legge in `vw_dash_commesse_respinte`; questo resta
+#        la stringa per chi diagnostica. Le due superfici hanno lettori diversi,
+#        e prima erano la stessa cosa solo perche' la seconda non esisteva.
 def _messaggio_pull(commessa_id: Any, messaggio: str) -> str:
     return f"Errore emit commessa_id={commessa_id}: {messaggio}"
+
+
+# Scopo: IL MOTIVO DI DOMINIO, separato dal dump tecnico.
+#        `vendite.vw_dash_commesse_respinte` mostra a video `meta->>'detail'`
+#        di ogni riga respinta, e la promessa di Tid — «ognuna mostra il
+#        problema, per poter cercare di risolvere» — e' vera solo se li' dentro
+#        c'e' *«ROOT source mancante per commessa 34137»* e non un impasto di
+#        eccezione Python, DETAIL, HINT, CONTEXT e stack PL/pgSQL.
+# ⭐ La lettura NON e' fatta a mano: `diagnostica_db` e' la sede unica dei campi
+#        strutturati di un errore DB (`apps/core/services/db_error_fields`), la
+#        stessa che il resto della pipeline usa per il codice.
+# 🔴 L'ORDINE E' `messaggio` PRIMA DI `detail`, ed e' il contrario di quello che
+#        sembra. Misurato sul database vero il 2026-09-04, facendo fallire
+#        davvero il pull sulla commessa 34137:
+#
+#          message_primary -> «Indicare un valore per ROOT source mancante
+#                              per commessa 34137. Dato obbligatorio.»
+#          message_detail  -> «Non e' stato assegnato un valore
+#                              all'informazione richiesta.»
+#
+#        `fn_log_and_raise_error` compone il MESSAGGIO con il dettaglio di
+#        dominio che la funzione madre gli passa, mentre `DETAIL` e `HINT`
+#        portano il testo generico della POLICY dell'errore — identico per ogni
+#        `E_VALORE_MANCANTE` del sistema. Preferire `detail` metteva a video una
+#        frase vera e inutile al posto del motivo.
+# ⛔ La prima stesura lo faceva, e i test erano VERDI: il finto
+#        (`make_db_error(detail=...)`) metteva il motivo in DETAIL, cioe' in un
+#        posto in cui il sistema non lo mette. E' esattamente la trappola che
+#        `apps/core/tests/db_error_fakes` dichiara nel proprio docstring.
+# ⚠️ Il ripiego finale e' il messaggio normalizzato del BB: un errore nato in
+#        Python (non un `DatabaseError`) non ha nessun campo diag, e restare
+#        senza motivo sarebbe peggio di un motivo tecnico.
+def _motivo_dominio(exc: BaseException, *, ripiego: str) -> str:
+    diag = diagnostica_db(exc)
+    return (diag.messaggio or diag.detail or ripiego).strip()
 
 
 # Scopo: Diario per-commessa del pull da commessa — l'unica parte di DOMINIO del
@@ -76,17 +134,27 @@ class _PullCommesseRunLogger(FanOutRunLogger):
     stato_doc_fiscale_id: int
 
     # Scopo: Registra sui log di lotto la commessa che non e' passata.
+    # ⭐ `detail` porta il MOTIVO DI DOMINIO e non piu' il dump: e' il campo che
+    #    `vw_dash_commesse_respinte` mostra a video come `dettaglio`, cioe' cio'
+    #    che l'operatore legge per capire su cosa agire. Il dump non si perde —
+    #    va nel `context` sotto `dettaglio_tecnico`, dove serve a chi diagnostica
+    #    e non a chi lavora.
     def item_failed(self, *, item: Any, indice: int, exc: Exception) -> None:
-        messaggio = _messaggio_pull(item, messaggio_eccezione(exc))
+        tecnico = _messaggio_pull(item, messaggio_eccezione(exc))
+        motivo = _motivo_dominio(exc, ripiego=tecnico)
         self.error_logger.log_error(
             scope="LOTTO",
             severity="C",
             code="E_PULL_COMMESSA",
             message=f"Errore emissione commessa {item}",
-            detail=messaggio,
+            detail=motivo,
             lotto_id=self.lotto_id,
             stato_doc_fiscale_id=self.stato_doc_fiscale_id,
-            context={"commessa_id": item, "task": self.task},
+            context={
+                "commessa_id": item,
+                "task": self.task,
+                "dettaglio_tecnico": tecnico,
+            },
             function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
         )
 
@@ -495,6 +563,12 @@ class PipelineStepExecutor:
                     handler_result.error_code,
                     handler_result.error_message,
                     meta=handler_result.meta,
+                )
+            elif isinstance(handler_result, TaskEsitoOk):
+                # Giro riuscito CHE HA QUALCOSA DA DIRE: stesso esito
+                # COMPLETATO di sempre, ma il diario porta i contatori.
+                self.repository.complete_lotto_task_run(
+                    task_run_id, meta=handler_result.meta
                 )
             else:
                 self.repository.complete_lotto_task_run(task_run_id)
@@ -1079,7 +1153,7 @@ class PipelineStepExecutor:
         context: LottoContext,
         params: dict[str, Any],
         dry_run: bool,
-    ) -> TaskEsitoParziale | None:
+    ) -> TaskEsitoParziale | TaskEsitoOk | None:
         self._validate_task_function_name(
             task=task,
             fn_name=fn_name,
@@ -1106,6 +1180,33 @@ class PipelineStepExecutor:
             # handler — vedi il test dedicato.)
             return None
 
+        # ⛔ SENZA L'IDENTITA' DEL GIRO SI FERMA QUI, e non e' difensivo.
+        # Il pull firmerebbe NULL, `fn_select_attivita_fatturabili` filtrerebbe
+        # su un marchio che nessuna riga porta, e il lotto nascerebbe VUOTO
+        # senza un errore: indistinguibile, a video, da un mese senza lavoro.
+        # Fra un giro che non parte e un giro che non emette niente in
+        # silenzio, il primo e' l'unico recuperabile.
+        # ℹ️ `lock_batch_id` e' NOT NULL sulla tabella: se qui e' None il
+        # contesto non e' stato caricato, che e' un difetto di programma e non
+        # un dato mancante. Codice riusato (`E_PIPELINE_SCOPE_INCOMPLETE`, gia'
+        # a policy DATO_ERRATO) invece di uno nuovo: dice esattamente questo.
+        if not context.lock_batch_id:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_SCOPE_INCOMPLETE",
+                message="Contesto lotto senza identita' del giro.",
+                detail=(
+                    "lock_batch_id assente sul lotto "
+                    f"{lotto_id}: il pull non potrebbe firmare le righe e il "
+                    "giro emetterebbe zero fatture senza errore."
+                ),
+                context={"lotto_id": lotto_id, "task": task},
+                function_name=(
+                    "vendite.pipeline_step_executor."
+                    "_handle_pull_attivita_da_commessa_task"
+                ),
+                log_to_db=True,
+            )
+
         # Isolamento per commessa: il BB apre un savepoint per ogni emit, cattura
         # l'errore e prosegue. Il diario per-commessa (log di lotto) e' l'unica
         # parte di dominio, e sta nel run logger.
@@ -1118,6 +1219,13 @@ class PipelineStepExecutor:
                 # degli altri gruppi passerebbero a EMESSA pur non essendo
                 # state chieste (A2.3 del brief DB).
                 gruppi=context.gruppi,
+                # ⭐ IL PERIMETRO SI CONSEGNA (D1+D2): il pull firma con
+                # l'identita' di QUESTO giro le righe che accetta, e la select
+                # a valle fatturera' solo quelle. Senza questa riga il marchio
+                # resta NULL, `fn_select_attivita_fatturabili` non trova nulla,
+                # e il giro emette zero fatture SENZA errore — il caso che il
+                # presidio `dbops.vw_af_senza_giro` esiste per rendere visibile.
+                emit_batch_id=context.lock_batch_id,
             ),
             run_logger=_PullCommesseRunLogger(
                 error_logger=self.error_logger,
@@ -1127,8 +1235,19 @@ class PipelineStepExecutor:
             ),
         )
 
+        # ⭐ Giro riuscito: il diario porta comunque i contatori. La promessa
+        # del perimetro consegnato dev'essere verificabile anche quando regge —
+        # e «ok: 0 su 3» e' esattamente il segnale che un marchio non arrivato
+        # produrrebbe, che senza contatori resterebbe un COMPLETATO muto.
         if not esito.errori:
-            return None
+            return TaskEsitoOk(
+                meta={
+                    "task": task,
+                    "totale": esito.totale,
+                    "ok": esito.ok,
+                    "falliti": esito.falliti,
+                }
+            )
 
         # Se tutte le commesse falliscono, il task e` fallito.
         if esito.tutti_falliti:
