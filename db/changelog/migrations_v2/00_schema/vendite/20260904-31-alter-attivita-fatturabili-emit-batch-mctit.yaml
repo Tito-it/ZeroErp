@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1+D2 pezzo 1 — LA RIGA RICORDA CHI L'HA CONSEGNATA
+#   vendite.attivita_fatturabili.emit_batch_id
+#   Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9
+#
+# ── ⭐ IL DIFETTO, IN UNA RIGA ─────────────────────────────────────
+#   Una riga liberata da un giro disfatto non porta nessuna memoria di quale
+#   giro l'abbia prodotta, e nessuno gliela chiede. Da li' in poi e'
+#   indistinguibile da una riga appena consegnata dal pull, e la select la
+#   raccoglie per COORDINATE — competenza, tipo documento, emittente. Cosi' la
+#   commessa che il pull ha RESPINTO viene fatturata lo stesso, e senza nessun
+#   errore: il lotto e' in ERRORE per il task del pull, ma la fattura di troppo
+#   e' una fattura normale.
+#
+# ── ⛔ NON E' `lock_batch_id`, ED E' LA COSA DA NON SBAGLIARE ──────
+#   La colonna che sembra gia' fare questo lavoro esiste, si chiama
+#   `lock_batch_id`, e risponde a UN'ALTRA DOMANDA:
+#
+#     lock_batch_id  →  «CHI TI HA LUCCHETTATO in questo giro»
+#                       la scrive fn_select_attivita_fatturabili quando prende
+#                       la riga, e fn_libera_attivita_fatturabili la AZZERA
+#                       quando la riga torna disponibile.
+#     emit_batch_id  →  «CHI TI HA CONSEGNATA»
+#                       la scrive il pull, e deve SOPRAVVIVERE alla
+#                       liberazione.
+#
+#   ⭐ I due valori possono essere lo STESSO uuid — il batch del lotto — ma
+#   hanno cicli di vita opposti: uno muore con il lucchetto, l'altro no. Se il
+#   marchio vivesse in `lock_batch_id`, la prima liberazione lo cancellerebbe e
+#   il residuo tornerebbe anonimo: saremmo al punto di prima, con in piu' la
+#   convinzione di avere risolto. Due domande, due colonne.
+#
+# ── ⭐ E PER QUESTO fn_libera_attivita_fatturabili NON SI TOCCA ────
+#   La primitiva azzera lucchetto, `lock_batch_id`, `fattura_riga_id` e
+#   `stato_esecuzione` — cioe' tutto cio' che dice «sono dentro un giro». Il
+#   marchio non e' quello: dice «sono nata da un giro», ed e' vero anche dopo.
+#   Lasciarlo intatto e' la ragione per cui un residuo, alla prossima corsa di
+#   un ALTRO lotto, non e' piu' confondibile con una consegna fresca.
+#
+# ── ⚠️ NULLABLE, E NON E' UNA MEZZA MISURA ────────────────────────
+#   Le righe che esistono oggi non hanno un giro, e NON e' possibile
+#   attribuirgliene uno a posteriori senza inventarlo — un NOT NULL con un
+#   DEFAULT sarebbe una bugia scritta nello schema.
+#   ⭐ Il NULL e' percio' un'informazione, non un buco: significa «nessun giro
+#   rivendica questo lavoro», ed e' esattamente cio' che dbops.vw_af_senza_giro
+#   (20260904-34) elenca. Il registro parte pieno e si svuota da se': il primo
+#   giro che ri-adotta una riga ci scrive sopra il proprio nome. Cio' che
+#   resta dopo qualche giro e' la domanda vera — lavoro che nessuno rivendica.
+#   ⛔ La scorciatoia da non prendere e' il ramo «se emit_batch_id IS NULL
+#   allora passa»: farebbe passare per sempre proprio le righe del pregresso,
+#   cioe' nasconderebbe il difetto invece di misurarlo.
+#
+# ── ℹ️ Storicizzazione e automazioni ──────────────────────────────
+#   trgfn_storico_generic scrive uno snapshot JSONB (to_jsonb della riga): una
+#   colonna in piu' ci entra da sola, non c'e' nessuna tabella di storico da
+#   allineare. La colonna NON entra fra quelle bloccate: e' scritta dal pull a
+#   ogni ri-adozione, ed e' il suo mestiere.
+#
+# Verifica: db/pgtap/vendite/test-af-emit-batch-marchio-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260904-31-alter-attivita-fatturabili-emit-batch-mctit.yaml
+
+  - changeSet:
+      id: 20260904-31-alter-attivita-fatturabili-emit-batch
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.attivita_fatturabili prende `emit_batch_id`: il GIRO che ha consegnato la riga. ⛔ Non e''
+        `lock_batch_id`, che esiste gia'' e risponde a un''altra domanda — quello dice chi ti ha
+        LUCCHETTATO e viene azzerato dalla liberazione, questo dice chi ti ha CONSEGNATA e le
+        sopravvive. Possono portare lo stesso uuid, ma hanno cicli di vita opposti: se il marchio
+        vivesse nella colonna del lucchetto, la prima liberazione lo cancellerebbe e il residuo
+        tornerebbe anonimo. ⭐ Per la stessa ragione fn_libera_attivita_fatturabili NON si tocca.
+        ⚠️ Nullable perche'' alle righe di oggi un giro non si puo'' attribuire senza inventarlo, e il
+        NULL e'' un''informazione: «nessun giro rivendica questo lavoro», che e'' cio'' che
+        dbops.vw_af_senza_giro elenca. Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: attivita_fatturabili
+                    columnName: emit_batch_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD COLUMN emit_batch_id UUID;
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.emit_batch_id IS
+              'Il GIRO DI FATTURAZIONE che ha CONSEGNATO questa riga: lo scrive vendite.fn_emit_attivita_fatturabili_da_commessa (il task `pull_attivita_da_commessa`) su ogni riga che accetta, sia quando la inserisce sia quando ri-adotta una riga gia'' esistente. ⛔ NON e'' `lock_batch_id`, e la differenza e'' il punto: quello dice CHI TI HA LUCCHETTATO — lo scrive la select, lo azzera fn_libera_attivita_fatturabili — questa dice CHI TI HA CONSEGNATA e sopravvive alla liberazione. I due possono portare lo stesso uuid (il batch del lotto) ma hanno cicli di vita opposti: un marchio che muore col lucchetto lascia il residuo anonimo, che e'' il difetto D1. ⭐ Esiste perche'' il perimetro di un giro dev''essere «cio'' che il pull ha consegnato» e non «tutto cio'' che e'' libero e in competenza»: senza, una commessa che il pull RESPINGE viene fatturata lo stesso, e senza nessun errore. ⚠️ NULL significa «nessun giro rivendica questo lavoro» — non e'' un buco, e'' cio'' che dbops.vw_af_senza_giro elenca; il registro si svuota da se'' perche'' il primo giro che ri-adotta la riga ci scrive sopra. ⛔ Non trattare il NULL come «passa comunque»: farebbe passare per sempre il pregresso, cioe'' nasconderebbe il difetto invece di misurarlo. Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP COLUMN IF EXISTS emit_batch_id;

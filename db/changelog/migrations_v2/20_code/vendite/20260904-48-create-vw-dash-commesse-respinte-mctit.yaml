@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D3 pezzo 2 — UNA RIGA PER COMMESSA RESPINTA, CON IL SUO MOTIVO
+#   vendite.vw_dash_commesse_respinte
+#   Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 4 e 9
+#
+# ── ⭐ IL REQUISITO (Tid, 2026-09-04) ──────────────────────────────
+#   «le commesse in errore devono vedersi tutte, e ognuna mostrare il problema,
+#   per poter cercare di risolvere». Il -47 lo serve nel pannello degli errori,
+#   dentro l'evento; questa vista lo serve in forma di ELENCO, che e' cio' che
+#   una lista sa mostrare.
+#
+# ── ⭐⭐ PERCHE' UNA VISTA NUOVA, E NON DUE COLONNE SUL DRILL-DOWN ──
+#   La prima stesura aggiungeva `respinta_il` e `respinta_error_code` a
+#   vendite.vw_dash_competenza_gruppi. L'apply funzionava; **il rollback no**,
+#   e la prova lo ha mostrato prima che il file esistesse:
+#
+#     ERRORE: non e' possibile eliminare colonne da una vista
+#
+#   Una vista non perde colonne con CREATE OR REPLACE: per tornare indietro
+#   servirebbe un DROP. E da `vw_dash_competenza_gruppi` dipende
+#   `vw_dash_competenza_gruppi_riepilogo`, quindi il DROP andrebbe in CASCADE e
+#   il rollback dovrebbe **ricreare anche il riepilogo da una copia congelata**.
+#   ⛔ Cioe' per potersi ritirare il changeSet avrebbe piantato in casa una
+#   copia della vista di qualcun altro, che invecchia in silenzio dal giorno
+#   dopo. Un rollback che introduce un debito e' peggio di un rollback assente.
+#   ⇒ Una vista sua non ha dipendenti, si ritira con un DROP, e nasce gia'
+#   nella grana giusta: una riga per commessa.
+#   ℹ️ Il drill-down mostra la bandiera con un join a questa vista — lavoro di
+#   backend, una riga, senza toccare una vista da 30 colonne.
+#
+# ── ⛔ LA SORGENTE NON E' `task_run.meta->'commesse_fallite'` ───────
+#   `pipeline_step_executor` lo scrive TRONCATO a cinque
+#   (`[e.item for e in esito.errori][:5]`) e lo dichiara una traccia per il
+#   cockpit. Con sei commesse respinte l'operatore ne vedrebbe cinque e la
+#   sesta sparirebbe senza che niente lo dica — il difetto di questo brief,
+#   ripetuto un livello piu' in su.
+#   ⭐ Il log di lotto e' completo e porta il `commessa_id` in un campo
+#   STRUTTURATO: ci si aggancia per chiave, non leggendo il numero dentro la
+#   frase «Errore emissione commessa 34137», che e' prosa e puo' cambiare.
+#
+# ── ⚠️ IL DETTAGLIO E' ANCORA UN DUMP, ED E' LAVORO DI BACKEND ─────
+#   `dettaglio` porta eccezione Python, DETAIL, HINT, CONTEXT e lo stack
+#   PL/pgSQL in una stringa sola. Il motivo di dominio — «ROOT source mancante
+#   per commessa 34137» — c'e' dentro, ma a meta'. Perche' «ognuna mostra il
+#   problema» sia vero A VIDEO va portato in un campo suo da `item_failed`:
+#   il database espone cio' che riceve, e la colonna e' pronta.
+#
+# ── ⚠️ Fail-closed, come la sorella ────────────────────────────────
+#   Lo scope e' `fn_get_emittenti_scope_sr_ids(app.current_user_id)`: senza la
+#   GUC l'insieme e' VUOTO. Chi la interroga da psql senza contesto legge zero
+#   righe e non deve scambiarlo per «nessuna commessa respinta».
+#
+# Verifica: db/pgtap/vendite/test-vw-dash-commesse-respinte-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260904-48-create-vw-dash-commesse-respinte-mctit.yaml
+
+  - changeSet:
+      id: 20260904-48-create-vw-dash-commesse-respinte
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_dash_commesse_respinte: una riga per COMMESSA respinta da un giro, con codice,
+        error_code, messaggio, dettaglio e quando. ⭐ Vista NUOVA e non due colonne su
+        vw_dash_competenza_gruppi: li'' l''apply passa ma il rollback no — una vista non perde colonne con
+        CREATE OR REPLACE, e il DROP andrebbe in CASCADE su vw_dash_competenza_gruppi_riepilogo,
+        costringendo il rollback a ricreare da una COPIA CONGELATA la vista di qualcun altro. ⛔ La
+        sorgente non e'' task_run.meta->''commesse_fallite'', che il backend tronca a cinque: si legge il
+        log di lotto, completo, agganciandosi al commessa_id STRUTTURATO e non al numero dentro la frase.
+        ⚠️ Fail-closed sullo scope emittente: senza GUC zero righe, che non significa «nessuna respinta».
+        Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 4 e 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_commesse_respinte
+                  WITH (security_invoker = on) AS
+              -- =========================================================
+              -- Scopo:
+              --   Una riga per COMMESSA RESPINTA da un giro di fatturazione, con il suo
+              --   motivo. E' la superficie che risponde alla richiesta di Tid del
+              --   2026-09-04: «le commesse in errore devono vedersi tutte, e ognuna
+              --   mostrare il problema, per poter cercare di risolvere».
+              --
+              -- ⭐ PERCHE' UNA VISTA NUOVA E NON DUE COLONNE SUL DRILL-DOWN.
+              --   La strada diretta era aggiungere `respinta_il` a
+              --   vendite.vw_dash_competenza_gruppi. L'APPLY funziona; il ROLLBACK no —
+              --   una vista non puo' perdere colonne con CREATE OR REPLACE, servirebbe un
+              --   DROP, e da quella vista dipende vw_dash_competenza_gruppi_riepilogo:
+              --   il DROP andrebbe in CASCADE e il rollback dovrebbe ricreare anche il
+              --   riepilogo da una COPIA CONGELATA. Cioe' per poter tornare indietro
+              --   avremmo piantato una copia di una vista di qualcun altro, che invecchia
+              --   in silenzio dal giorno dopo.
+              --   ⇒ Una vista sua non ha dipendenti, si ritira con un DROP, e per di piu'
+              --   e' gia' nella forma che una lista sa mostrare: una riga per commessa.
+              --
+              -- ⛔ LA SORGENTE NON E' `task_run.meta->'commesse_fallite'`.
+              --   Il backend lo scrive TRONCATO a cinque
+              --   (`[e.item for e in esito.errori][:5]`) e lo dichiara una traccia per il
+              --   cockpit. Con sei commesse respinte la sesta sparirebbe senza che niente
+              --   lo dica. Il log di lotto e' completo, e porta il `commessa_id` in un
+              --   campo STRUTTURATO — quindi ci si aggancia per chiave, non leggendo il
+              --   numero dentro la frase «Errore emissione commessa 34137».
+              --
+              -- ⚠️ Il cast e' protetto dal test di forma: una sola riga di log con un
+              --   `commessa_id` non numerico farebbe fallire la vista INTERA, cioe'
+              --   spegnerebbe la pagina per un dato sporco.
+              --
+              -- ⚠️ `dettaglio` porta oggi un DUMP TECNICO (eccezione, DETAIL, HINT,
+              --   CONTEXT, stack PL/pgSQL). Il motivo di dominio c'e' dentro, ma a meta':
+              --   perche' «ognuna mostra il problema» sia vero a video, quel motivo deve
+              --   arrivare in un campo suo da `item_failed`. Il database espone cio' che
+              --   riceve, e la colonna e' gia' pronta ad accoglierlo.
+              --
+              -- Scope: lo stesso della sorella vw_dash_competenza_errori — gli emittenti
+              --   dell'utente collegato. Senza GUC l'insieme e' vuoto (fail-closed).
+              -- =========================================================
+              WITH escope AS (
+                  SELECT script.fn_get_emittenti_scope_sr_ids(
+                             NULLIF(current_setting('app.current_user_id', true), '')::integer) AS sr_ids
+              )
+              SELECT fl.competenza_mese,
+                     fl.id                                        AS lotto_id,
+                     fl.codice                                    AS lotto_codice,
+                     fl.stato_lotto,
+                     (ll.meta -> 'context' ->> 'commessa_id')::bigint AS commessa_id,
+                     c.codice                                     AS commessa_codice,
+                     ll.meta -> 'context' ->> 'task'              AS task_code,
+                     ll.meta ->> 'error_code'                     AS error_code,
+                     ll.messaggio,
+                     ll.meta ->> 'detail'                         AS dettaglio,
+                     ll.data_ora                                  AS respinta_il,
+                     fl.emittente_soggetto_ruolo_id,
+                     s_ef.ragione_sociale_completa                AS emittente_ragione_sociale
+                FROM vendite.fatturazione_lotti_log ll
+                JOIN vendite.fatturazione_lotti fl ON fl.id = ll.lotto_id
+                LEFT JOIN vendite.commesse c
+                       ON c.id::text = ll.meta -> 'context' ->> 'commessa_id'
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = fl.emittente_soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                CROSS JOIN escope
+               WHERE ll.disabilitato IS FALSE
+                 AND ll.status = 'C'
+                 AND ll.meta -> 'context' ->> 'commessa_id' ~ '^[0-9]+$'
+                 AND (escope.sr_ids IS NULL OR fl.emittente_soggetto_ruolo_id = ANY (escope.sr_ids));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⭐ Un DROP e basta: nessuna vista dipende da questa. E' la
+              --    ragione per cui il pezzo e' stato fatto cosi'.
+              DROP VIEW IF EXISTS vendite.vw_dash_commesse_respinte;

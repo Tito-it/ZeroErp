@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_emit_attivita_fatturabili_da_commessa`
 
 ```sql
-CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[])
+CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[], p_emit_batch_id uuid)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false, p_gruppi text[] DEFAULT NULL::text[])
+CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false, p_gruppi text[] DEFAULT NULL::text[], p_emit_batch_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(total_candidate integer, inserted_rows integer, updated_rows integer, skipped_rows integer)
  LANGUAGE plpgsql
 AS $function$
@@ -35,6 +35,27 @@ AS $function$
 --        deve arrivare fino alla TESTATA (e' li' che la FatturaPA
 --        chiedera' TD01 o TD04): se si fermasse qui, la chiave
 --        documento non avrebbe cosa separare.
+-- rev 2026-09-04 (brief-residuo-fatturabili-e-bandiere-esito-parziale,
+--        D1+D2): `p_emit_batch_id` e' l'IDENTITA' DEL GIRO che sta
+--        consegnando queste righe, e la funzione la scrive su ogni
+--        riga che accetta — su ENTRAMBI i rami.
+--        ⭐ Il ramo che conta e' l'UPDATE: e' li' che passano i
+--        RESIDUI, cioe' le righe prodotte da un giro poi disfatto,
+--        rimaste libere e in competenza. Senza il marchio quelle
+--        righe sono indistinguibili da una consegna appena fatta, e
+--        lo step a valle le fattura anche quando il pull di quella
+--        commessa, in QUESTO giro, e' stato respinto.
+--        ⛔ NON e' `lock_batch_id`, che esiste gia' e risponde a
+--        un'altra domanda: quello dice CHI TI HA LUCCHETTATO e viene
+--        azzerato da fn_libera_attivita_fatturabili; questo dice CHI
+--        TI HA CONSEGNATO e deve sopravvivere alla liberazione — se
+--        non sopravvivesse, un residuo tornerebbe anonimo e saremmo
+--        al punto di prima.
+--        ⚠️ Sul ramo di UPDATE il marchio si scrive solo se il giro
+--        ce l'ha: con `p_emit_batch_id` NULL si TIENE quello di prima
+--        invece di cancellarlo. Un chiamante che non passa il giro
+--        (i pgTAP storici, il backend finche' non passa il
+--        parametro) non deve poter smarchiare righe gia' marchiate.
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
@@ -166,7 +187,8 @@ BEGIN
                 natura_doc_id, fattura_riga_rettificata_id,
                 prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata,
                 valore_variazione_applicata, promo_id, contratto_id,
-                categoria_cliente_id_snapshot, classe_utenza_id_snapshot
+                categoria_cliente_id_snapshot, classe_utenza_id_snapshot,
+                emit_batch_id
             )
             VALUES (
                 v_row.articolo_id, v_commessa.billing_account_id, v_row.istanza_utility_id,
@@ -186,7 +208,10 @@ BEGIN
                 v_row.natura_doc_id, v_row.fattura_riga_rettificata_id,
                 v_row.prezzo_base_snapshot, v_row.origine_prezzo, v_row.tipo_variazione_applicata,
                 v_row.valore_variazione_applicata, v_row.promo_id, v_row.contratto_id,
-                v_row.categoria_cliente_id_snapshot, v_row.classe_utenza_id_snapshot
+                v_row.categoria_cliente_id_snapshot, v_row.classe_utenza_id_snapshot,
+                -- Il giro che consegna questa riga. NULL = nessun giro l'ha
+                -- rivendicata: e' cio' che la vista di presidio elenca.
+                p_emit_batch_id
             );
             inserted_rows := inserted_rows + 1;
         ELSE
@@ -241,7 +266,15 @@ BEGIN
                    promo_id = v_row.promo_id,
                    contratto_id = v_row.contratto_id,
                    categoria_cliente_id_snapshot = v_row.categoria_cliente_id_snapshot,
-                   classe_utenza_id_snapshot = v_row.classe_utenza_id_snapshot
+                   classe_utenza_id_snapshot = v_row.classe_utenza_id_snapshot,
+                   -- ⭐ IL RAMO CHE CHIUDE D1+D2. Questa e' la ri-adozione di
+                   --   un residuo: la riga c'era gia', il giro la riprende e
+                   --   ci scrive sopra il PROPRIO nome. Da qui in poi non e'
+                   --   piu' «una riga libera in competenza», e' «la riga che
+                   --   il giro X ha consegnato».
+                   -- ⚠️ COALESCE e non assegnazione secca: un chiamante senza
+                   --   giro non smarchia cio' che un giro aveva marchiato.
+                   emit_batch_id = COALESCE(p_emit_batch_id, a.emit_batch_id)
              WHERE a.id = v_existing_id;
             updated_rows := updated_rows + 1;
         END IF;
@@ -252,9 +285,6 @@ BEGIN
     RETURN NEXT;
 END;
 $function$
-
-COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[])
-IS 'Emette righe da vendite.commesse_attivita verso vendite.attivita_fatturabili, idempotente su (sorgente COMMESSA, hash del segment_key). Propaga 1:1 lo snapshot audit pricing v5, tipo_movimento (dal 2026-07-17) e, dal 2026-08-18, natura_doc_id e fattura_riga_rettificata_id (brief-design-note-credito-resi N1b+N5). ⭐ La natura deve arrivare fino alla TESTATA — e'' li'' che il builder XML della FatturaPA chiedera'' se sta trasmettendo un TD01 o un TD04 — quindi fermarla qui avrebbe lasciato la chiave documento senza nulla da separare, e fatture e note di credito sarebbero finite sulla stessa testata. rev 2026-08-18.';
 ```
 
 ---

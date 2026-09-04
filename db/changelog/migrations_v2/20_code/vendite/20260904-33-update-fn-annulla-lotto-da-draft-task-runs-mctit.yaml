@@ -1,0 +1,310 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D4 — CHI ANNULLA ABBASSA LA BANDIERA
+#   vendite.fn_annulla_lotto_da_draft: chiude i task run del lotto ad ANNULLATO
+#   Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 5 e 9.4
+#
+# ── ⭐ IL DIFETTO ──────────────────────────────────────────────────
+#   Dopo l'annullo di un lotto la segnalazione sul calendario di competenza
+#   restava accesa. Ed era FEDELE AL DATO: la CTE `task_err` di
+#   vw_dash_competenza_errori prende i task_run in ERRORE ancora `attivo` che
+#   non abbiano un tentativo successivo COMPLETATO — e non guarda lo stato del
+#   lotto. Il run resta ERRORE, quindi l'evento resta.
+#   ⛔ Ma la lista si chiama «errori vivi»: un lotto annullato non e' piu'
+#   lavoro in corso, il suo errore e' storia, non una cosa da rimediare.
+#
+# ── ⭐ LA SIMMETRIA, E IL VERBO GIUSTO ─────────────────────────────
+#   La sorella fn_riporta_lotto_a_draft fa gia' esattamente questo. Non
+#   «disattiva» i run: scrive l'ESITO `ANNULLATO` con la primitiva condivisa
+#   fn_cancel_lotto_task_run, e nel proprio corpo respinge per iscritto
+#   l'alternativa:
+#       ⚠️ NON basta `attivo = false`: quella SELECT non filtra su `attivo`.
+#          La leva e' l'ESITO, e la funzione per scriverlo esiste gia'.
+#   Verificato sui dati il 2026-09-04: gli otto run di un lotto riportato in
+#   lavorazione sono `task_stato = ANNULLATO` con `attivo = t`.
+#   ⇒ Qui si fa la stessa cosa, con la stessa primitiva. Nessun meccanismo
+#   nuovo, e la vista NON si tocca: i run cadono da soli, perche' `task_err`
+#   filtra su `task_stato = 'ERRORE'`.
+#
+# ── ⛔ PERCHE' NON `attivo = false` ────────────────────────────────
+#   Oltre a non bastare per la ragione qui sopra, `attivo` risponde gia' a una
+#   domanda sua — «questo e' il tentativo valido». Caricarlo anche di «il lotto
+#   non e' piu' in lavorazione» sono DUE domande su un flag solo: finche'
+#   concordano non si vede niente, e il giorno che dissentono non c'e' scritto
+#   da nessuna parte quale delle due vince.
+#
+# ── ⚠️ DROP + CREATE, e il backend non se ne accorge ───────────────
+#   Cambia la RETURNS TABLE (+ `annullati_task_run`, come la sorella), e
+#   CREATE OR REPLACE non puo' cambiarla. Il chiamante di backend
+#   (VenditePipelineRepository.annulla_lotto_da_draft) elenca le quattro
+#   colonne per nome nella SELECT: una quinta colonna in coda non lo tocca.
+#
+# ── ⭐ RESTA IDEMPOTENTE ───────────────────────────────────────────
+#   `task_stato IS DISTINCT FROM 'ANNULLATO'` esclude le corse gia' chiuse
+#   cosi': un secondo annullo non le riscrive, e il contatore dice quante ne
+#   ha chiuse DAVVERO questa chiamata.
+#
+# Verifica: db/pgtap/vendite/test-annulla-lotto-task-runs-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260904-33-update-fn-annulla-lotto-da-draft-task-runs-mctit.yaml
+
+  - changeSet:
+      id: 20260904-33-update-fn-annulla-lotto-da-draft-task-runs
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_annulla_lotto_da_draft chiude i task run del lotto con l''esito ANNULLATO, e restituisce
+        `annullati_task_run`. ⭐ Simmetria con la sorella fn_riporta_lotto_a_draft, che lo fa gia'' con la
+        stessa primitiva: senza, un lotto annullato restava fra gli «errori vivi» del cruscotto, perche''
+        la CTE task_err guarda il run e non lo stato del lotto. ⛔ NON `attivo = false`: non basterebbe
+        (la SELECT di fn_resolve_lotto_task_execution_mode non filtra su `attivo`, e lo dice la sorella
+        nel proprio corpo) e caricherebbe quel flag di una seconda domanda. ⭐ La vista non si tocca: i
+        run cadono per ESITO. ⚠️ DROP + CREATE perche'' cambia la RETURNS TABLE; il backend elenca le
+        quattro colonne per nome, una quinta in coda non lo tocca.
+        Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 5 e 9.4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_cancel_lotto_task_run';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_annulla_lotto_da_draft';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP prima: cambia la RETURNS TABLE, e CREATE OR REPLACE
+              --    non puo' cambiarla (42P13).
+              DROP FUNCTION IF EXISTS vendite.fn_annulla_lotto_da_draft(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS TABLE(updated_lotti integer, updated_attivita integer,
+                             deleted_fatture integer, deleted_righe integer,
+                             annullati_task_run integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rollback tecnico di un lotto in DRAFT — cancella le
+              --        fatture PRE-FISCALI (DRAFT/EMESSA), ripristina le
+              --        attivita' e CHIUDE il lotto portandolo ad ANNULLATA.
+              -- Perimetro (D-L pt.2 + D-T): vale per MASSIVO **e** GIORNALIERO.
+              --        Il vincolo al solo MASSIVO e' caduto quando D-T ha reso
+              --        lecita la transizione DRAFT->ANNULLATA per entrambi.
+              -- rev 2026-09-04 (brief-residuo-fatturabili-e-bandiere-esito-parziale,
+              --        D4): l'annullo CHIUDE anche i task run del lotto, con
+              --        l'esito ANNULLATO. Prima non li nominava affatto, e un
+              --        lotto annullato continuava a comparire fra gli «errori
+              --        vivi» del cruscotto: la CTE task_err di
+              --        vw_dash_competenza_errori prende i run in ERRORE ancora
+              --        attivi e NON guarda lo stato del lotto.
+              --        ⭐ SIMMETRIA con la sorella fn_riporta_lotto_a_draft, che
+              --        fa gia' esattamente questo — stessa primitiva
+              --        (fn_cancel_lotto_task_run), stesso esito, stesso contatore
+              --        di ritorno. Due sorelle non possono comportarsi
+              --        diversamente sulla stessa cosa.
+              --        ⛔ E NON con `attivo = false`, che sembra la strada ovvia:
+              --        la SELECT di fn_resolve_lotto_task_execution_mode non
+              --        filtra su `attivo`, quindi non basterebbe — e' la sorella
+              --        stessa a dirlo nel proprio corpo. Inoltre `attivo` risponde
+              --        gia' a «questo e' il tentativo valido»: caricarlo anche di
+              --        «il lotto non e' piu' in lavorazione» sono due domande su
+              --        un flag solo, e il giorno che dissentono non c'e' scritto
+              --        da nessuna parte quale vince.
+              --        ⚠️ La vista non si tocca: i run cadono da soli, PER ESITO.
+              -- rev 2026-08-04: le precondizioni NON si scrivono piu' qui.
+              --        Arrivano da script.fn_check_lotto_annullabile, la stessa
+              --        che alimenta enabled/reasons di
+              --        script.fn_available_actions_lotto. Il pulsante e la
+              --        funzione non possono piu' divergere.
+              DECLARE
+                  v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+                  v_motivi               jsonb;
+                  v_fatture_ids          BIGINT[];
+                  v_updated_lotti        INTEGER := 0;
+                  v_updated_attivita     INTEGER := 0;
+                  v_deleted_fatture      INTEGER := 0;
+                  v_deleted_righe        INTEGER := 0;
+                  v_annullati_task_run   INTEGER := 0;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- PRECONDIZIONI — sede unica. Il check verifica anche
+                  -- l'esistenza del lotto (E_LOTTO_NON_TROVATO) e solleva
+                  -- il codice del PRIMO motivo; il context porta l'elenco
+                  -- completo, cosi' il BE puo' mostrarli tutti.
+                  v_motivi := script.fn_check_lotto_annullabile(p_lotto_id);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_annulla_lotto_da_draft',
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object('lotto_id', p_lotto_id, 'motivi', v_motivi),
+                          NULL::uuid,
+                          v_motivi -> 0 ->> 'dettaglio');
+                  END IF;
+
+                  SELECT fl.lock_batch_id
+                    INTO v_lock_batch_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_annullata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'ANNULLATA'), NULL::uuid, 'stato ANNULLATA non configurato');
+                  END IF;
+
+                  SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
+                    FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+                  IF v_fatture_ids IS NULL THEN v_fatture_ids := ARRAY[]::BIGINT[]; END IF;
+
+                  -- ⚠️ Qui il lock_batch_id SI passa, ed e' corretto: il reset
+                  -- globale deve liberare anche le attivita' agganciate al lotto
+                  -- che non sono mai diventate riga. E' il per-fattura che deve
+                  -- passare NULL (C-22).
+                  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                    FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                  -- 🔴 D4 — la bandiera si abbassa QUI, e per ESITO.
+                  -- Stessa forma della sorella fn_riporta_lotto_a_draft: si
+                  -- chiudono le corse di TUTTI gli step, non solo di quello
+                  -- fallito. La pulizia qui sopra ha cancellato tutto cio' che
+                  -- quelle corse avevano prodotto — nessuna deve piu' avere voce
+                  -- sul cruscotto, e nemmeno sul giro successivo.
+                  -- ⚠️ `task_stato IS DISTINCT FROM 'ANNULLATO'` tiene fuori le
+                  --    corse gia' chiuse cosi': la funzione resta idempotente, e
+                  --    il contatore dice quante ne ha chiuse DAVVERO questa
+                  --    chiamata, non quante ce n'erano.
+                  WITH da_annullare AS (
+                    SELECT r.id
+                      FROM vendite.fatturazione_lotti_task_runs r
+                     WHERE r.lotto_id = p_lotto_id
+                       AND r.attivo IS TRUE
+                       AND r.task_stato IS DISTINCT FROM 'ANNULLATO'
+                  ), annullati AS (
+                    SELECT vendite.fn_cancel_lotto_task_run(
+                             d.id,
+                             jsonb_build_object('motivo', 'annullo_lotto', 'lotto_id', p_lotto_id)
+                           )
+                      FROM da_annullare d
+                  )
+                  SELECT count(*)::INTEGER INTO v_annullati_task_run FROM annullati;
+
+                  UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, stato_lotto = 'COMPLETATO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                  GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe, v_annullati_task_run;
+              END;
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Torna alla forma a quattro colonne, senza chiusura dei run.
+              DROP FUNCTION IF EXISTS vendite.fn_annulla_lotto_da_draft(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rollback tecnico di un lotto in DRAFT — cancella le
+              --        fatture PRE-FISCALI (DRAFT/EMESSA), ripristina le
+              --        attivita' e CHIUDE il lotto portandolo ad ANNULLATA.
+              -- Perimetro (D-L pt.2 + D-T): vale per MASSIVO **e** GIORNALIERO.
+              --        Il vincolo al solo MASSIVO e' caduto quando D-T ha reso
+              --        lecita la transizione DRAFT->ANNULLATA per entrambi.
+              -- rev 2026-08-04: le precondizioni NON si scrivono piu' qui.
+              --        Arrivano da script.fn_check_lotto_annullabile, la stessa
+              --        che alimenta enabled/reasons di
+              --        script.fn_available_actions_lotto. Il pulsante e la
+              --        funzione non possono piu' divergere.
+              DECLARE
+                  v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+                  v_motivi               jsonb;
+                  v_fatture_ids          BIGINT[];
+                  v_updated_lotti        INTEGER := 0;
+                  v_updated_attivita     INTEGER := 0;
+                  v_deleted_fatture      INTEGER := 0;
+                  v_deleted_righe        INTEGER := 0;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- PRECONDIZIONI — sede unica. Il check verifica anche
+                  -- l'esistenza del lotto (E_LOTTO_NON_TROVATO) e solleva
+                  -- il codice del PRIMO motivo; il context porta l'elenco
+                  -- completo, cosi' il BE puo' mostrarli tutti.
+                  v_motivi := script.fn_check_lotto_annullabile(p_lotto_id);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_annulla_lotto_da_draft',
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object('lotto_id', p_lotto_id, 'motivi', v_motivi),
+                          NULL::uuid,
+                          v_motivi -> 0 ->> 'dettaglio');
+                  END IF;
+
+                  SELECT fl.lock_batch_id
+                    INTO v_lock_batch_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_annullata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_annulla_lotto_da_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'ANNULLATA'), NULL::uuid, 'stato ANNULLATA non configurato');
+                  END IF;
+
+                  SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
+                    FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+                  IF v_fatture_ids IS NULL THEN v_fatture_ids := ARRAY[]::BIGINT[]; END IF;
+
+                  -- ⚠️ Qui il lock_batch_id SI passa, ed e' corretto: il reset
+                  -- globale deve liberare anche le attivita' agganciate al lotto
+                  -- che non sono mai diventate riga. E' il per-fattura che deve
+                  -- passare NULL (C-22).
+                  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                    FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                  UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, stato_lotto = 'COMPLETATO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                  GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+              END;
+              $function$;
+

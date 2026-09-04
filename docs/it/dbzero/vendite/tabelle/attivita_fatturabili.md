@@ -62,6 +62,7 @@
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |
 | fatturato | boolean | NO |  |
+| emit_batch_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

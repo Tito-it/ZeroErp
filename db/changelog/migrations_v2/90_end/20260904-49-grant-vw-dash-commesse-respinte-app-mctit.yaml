@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GRANT — vendite.vw_dash_commesse_respinte a zeroerp_app
+#   Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9
+#
+#   Solo SELECT e solo all'applicativo: e' una vista di lettura per il
+#   cruscotto. ⚠️ La vista e' security_invoker, quindi il GRANT apre la vista,
+#   non i dati sotto — e lo scope emittente continua a valere.
+#   ⛔ Niente al ruolo batch: la coda di stampa e la fatturazione non hanno
+#   ragione di leggere un pannello di cruscotto, e un privilegio dato «per
+#   simmetria» e' un perimetro allargato senza motivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260904-49-grant-vw-dash-commesse-respinte-app-mctit.yaml
+
+  - changeSet:
+      id: 20260904-49-grant-vw-dash-commesse-respinte-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT a zeroerp_app su vendite.vw_dash_commesse_respinte. Idempotente e
+        difensivo (skip se il ruolo o la vista mancano).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                      RETURN;
+                  END IF;
+                  IF to_regclass('vendite.vw_dash_commesse_respinte') IS NOT NULL THEN
+                      GRANT SELECT ON vendite.vw_dash_commesse_respinte TO zeroerp_app;
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $revoke$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+                  IF to_regclass('vendite.vw_dash_commesse_respinte') IS NOT NULL THEN
+                      REVOKE SELECT ON vendite.vw_dash_commesse_respinte FROM zeroerp_app;
+                  END IF;
+              END
+              $revoke$;

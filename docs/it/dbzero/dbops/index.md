@@ -110,6 +110,7 @@
 - [trgfn_tx_id_managed](funzioni/trgfn_tx_id_managed.md) — (latest review 01-01-26) La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
 
 ## 🔍 Views
+- [vw_af_senza_giro](views/vw_af_senza_giro.md) — (latest review 04-09-2026)
 - [vw_bersagli_non_dichiarati](views/vw_bersagli_non_dichiarati.md)
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
