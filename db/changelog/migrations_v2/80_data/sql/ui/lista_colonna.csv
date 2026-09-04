@@ -710,5 +710,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 710,65,motivo,Motivo,,motivo,informazione,string,,240,50,left,,10,f,t,t,f,f,t,2026-09-02 00:00:00,mctit,anagrafiche.titoli_iva.col_motivo,40
 711,65,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-09-02 00:00:00,mctit,common.col_azioni,50
 712,35,azioni,Azioni,,,azione,string,,70,999,center,,,f,f,f,f,f,t,2026-09-04 00:00:00,mctit,common.col_azioni,100
-713,34,archiviato_il,Archiviata il,,archiviato_il,informazione,datetime,datetime_short,,80,left,,,f,t,t,f,f,f,2026-09-04 00:00:00,mctit,strumenti.code.col_archiviata_il,20
-714,35,archiviato_il,Archiviata il,,archiviato_il,informazione,datetime,datetime_short,,95,left,,,f,t,t,f,f,f,2026-09-04 00:00:00,mctit,strumenti.code.col_archiviata_il,20
+713,34,archiviato_il,Archiviata il,,archiviato_il,informazione,datetime,datetime_short,,80,left,,,f,t,t,f,f,t,2026-09-04 00:00:00,mctit,strumenti.code.col_archiviata_il,20
+714,35,archiviato_il,Archiviata il,,archiviato_il,informazione,datetime,datetime_short,,95,left,,,f,t,t,f,f,t,2026-09-04 00:00:00,mctit,strumenti.code.col_archiviata_il,20

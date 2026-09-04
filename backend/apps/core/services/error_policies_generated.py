@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 835, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 836, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -203,6 +203,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CLIENTE_UTILITY_MISMATCH_BA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
+    # dbops.trgfn_coda_archiviazione: una riga di coda ancora VIVA (PENDING o IN_CORSO) non si archivia. L'archiviazione è la bandiera che toglie una riga dall'elenco senza toccarne lo stato, e vale solo su una riga che ha finito: archiviarne una viva la lascerebbe nel conteggio del badge in topbar - che conta esattamente PENDING e IN_CORSO - e fuori dalla lista, senza nessun modo di arrivarci per rimetterla a posto. Sulla coda stampa il danno è più concreto: la riga occuperebbe lo slot di uq_fatture_stampa_coda_vivo e bloccherebbe la ristampa della fattura restando invisibile. Classe CONFLITTO_STATO e non DATO_ERRATO: non c'è nessun campo che l'operatore possa correggere, c'è una riga che in questo momento sta ancora lavorando - ed è esattamente il criterio della guida. Si accoda alla famiglia E_CODA_*, dove E_CODA_IDENTITA_NON_ATTIVA è già CONFLITTO_STATO. Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
+    "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_CODA_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_CODA_IDENTITA_NON_ATTIVA": "CONFLITTO_STATO",
     # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.

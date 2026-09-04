@@ -11,8 +11,11 @@
 > conteggio**; vale **per tutti**, non per operatore.
 > **Stato:** 🟢 **DB APPLICATO il 2026-09-04** (sei changeSet `EXECUTED`, seed
 > caricati, pgTAP verdi, doc rigenerata). Le tre decisioni aperte sono chiuse.
-> ⛔ **Il prerequisito non c'è più: BE e FE possono partire.** Cosa resta a
-> loro: PARTE DB §11.4.
+> 🟢 **BE e FE scritti il 2026-09-04**: il debito del §11.4 è chiuso — il
+> registro delle attività è la **PARTE BE/FE** in fondo (§12).
+> ⚠️ **Non ancora applicato a database il solo mirror CSV di `ui.lista_colonna`**
+> (le righe 713/714 passate ad `attivo = t`): è un `runOnChange`, ri-esegue al
+> prossimo migrate, che **lo lancia Tid**.
 > **La risposta del team DB — analisi, correzioni, piano e registro delle
 > attività — è la PARTE DB in fondo a questo documento.**
 
@@ -615,3 +618,199 @@ esiste e non serve a niente.
 ⛔ E la riga che vale più di tutte: **`archiviato` non entra nel `WHERE` di
 claim, drainer, reaper, `mark_*` e `count_*`.** Il §3 è il contratto di questo
 cantiere, non una raccomandazione.
+
+---
+
+# PARTE BE/FE — registro delle attività, 2026-09-04
+
+> **Chi scrive:** BE/FE (`dev/backend-tid`), 2026-09-04.
+> **Esito:** i quattro punti del §11.4 sono chiusi. Sotto: cosa è entrato, cosa
+> è stato provato e come, e le due cose che restano fuori con la loro ragione.
+
+## 12. Cosa è entrato
+
+### 12.1 Le due `elenca` — filtro, proiezione, conteggio
+
+| Dove | Cosa |
+| --- | --- |
+| `CodaLavoriRepository.elenca` | `includi_archiviate` (default `False` → `NOT archiviato` nel `WHERE`), proiezione di `archiviato`/`archiviato_il`/`archiviato_da`, e `archiviate` nel ritorno |
+| `VenditePipelineRepository.elenca_coda_stampa` | speculare, parola per parola |
+| `gestione_service.elenca_coda_*` | pass-through del flag + **`archiviate_count`** nell'envelope |
+| `views_tracciamento` | query param `?archiviate=` (`qp_bool_optional`, strict) su entrambe le liste |
+
+⭐ **Il conteggio ha un perimetro suo, ed è il punto che si sbaglia.** Le righe
+archiviate sono escluse dal `WHERE` della lista, quindi non c'è modo di contarle
+con un `FILTER` sulla stessa valutazione. Il frammento di `WHERE` **senza la
+bandiera** (`base_conditions`) è condiviso fra le due query invece di essere
+riscritto: due copie divergerebbero al primo filtro nuovo, e il numero
+racconterebbe un perimetro diverso dalla lista sopra di sé.
+⚠️ Vale **0** quando le archiviate sono incluse — lì non c'è niente di nascosto
+da dichiarare — ed è la stessa semantica di `ritirate_count`.
+
+### 12.2 I due verbi — di COLLEZIONE, con esito parziale
+
+Quattro rotte, `POST`, `Idempotency-Key` obbligatoria, corpo `{"ids": [...]}`:
+
+```text
+/core/tracciamento/coda-lavori/archivia/     ·  /ripristina/
+/core/tracciamento/coda-stampa/archivia/     ·  /ripristina/
+```
+
+* ⭐ **Rotte di collezione anche per una riga sola**: il menu di riga manda un
+  elenco di uno. Un verbo di massa e uno singolo sarebbero **due contratti da
+  tenere allineati per lo stesso rifiuto**, che è per riga. Tetto **200** (lo
+  stesso della paginazione, stessa ragione di `MAX_ATTIVITA_RIPORTO`) e dedup
+  con ordine preservato — il database tratterebbe due volte lo stesso id come
+  una riga sola, ma il conteggio a video direbbe un numero diverso da quello
+  spuntato.
+* ⛔ **Esito PARZIALE, non tutto-o-niente**, sul BB `run_fan_out`: un savepoint
+  per riga, l'errore isolato, `{esito, richieste, riuscite, falliti[]}`. Il
+  rifiuto è **per riga**, quindi una transazione unica farebbe fallire venti
+  archiviazioni buone per una riga sola — e chi guarda non saprebbe quale.
+  ⚠️ Risponde **200 anche a PARZIALE**: chi legge guarda `esito`.
+* ⛔ **E per questo NON un solo `UPDATE … WHERE id = ANY(…)`** col predicato di
+  stato nella `WHERE`: sarebbe più veloce, ma scriverebbe la **seconda copia**
+  di «riga viva» — che ha una sede sola, il trigger.
+* ⚠️ Il codice e la frase del rifiuto si conservano in un dizionario Python
+  popolato **dentro** il savepoint e letto **dopo** il rollback: un rollback
+  annulla le righe di database, non un assegnamento in memoria. È l'unico modo
+  di dare all'operatore la frase del catalogo invece della stringa normalizzata
+  del BB, che è buona per un log e non per una persona.
+
+* **Gate `code_manage`** nel **service** (`_guard_archiviazione` →
+  `E_PERMESSO_NEGATO`, 403). ⛔ **Nessun ramo owner-scoped**, per la decisione ②
+  (§7.2): effetto globale, permesso globale.
+  ⛔ **E non un `post_permission` sulla view, che è dove era finito alla prima
+  stesura.** `ZeroERPPermission`, trovando un `<metodo>_permission`, ritorna
+  l'esito dell'azione di processo e **salta il controllo di area**: un operatore
+  con `code_manage` e area `strumenti` in sola `LETTURA` sarebbe passato, mentre
+  annulla e requeue — che quel campo non lo dichiarano — cadono su
+  `METHOD_REQUIRES['POST']` e pretendono `TUTTO`. ⚠️ Due POST adiacenti **nella
+  stessa schermata** con due contratti d'area diversi non danno nessun errore:
+  danno un permesso che «funziona» finché qualcuno non lo restringe e non
+  capisce perché non ha effetto. Senza `post_permission` valgono entrambi i
+  controlli, e c'è un test che lo presidia.
+* ⭐ **Due verbi e non un flag nel corpo**: archiviare può essere rifiutato,
+  ripristinare no, e un endpoint il cui esito dipende da un booleano nel payload
+  nasconde quella differenza a chi legge le rotte.
+* ⛔ **Il backend non ricopia il criterio di stato.** `imposta_archiviato*` fa un
+  `UPDATE` sulla sola chiave e lascia rifiutare al trigger. C'è un test che lo
+  presidia *in negativo* (§12.5, test 22): con una riga dichiarata `PENDING` dal
+  repository l'archiviazione passa comunque, perché a decidere è il database.
+  Se un domani qualcuno aggiungesse un controllo qui, quel test diventerebbe
+  rosso e direbbe perché.
+* ⛔ **Né scrive i due timbri**: `archiviato_il`/`archiviato_da` le deriva il
+  trigger. Verificato dal vivo: con la GUC `app.jwt_user` valorizzata la riga
+  porta `tid`, senza porta `zeroerp_app` (il `COALESCE` del ramo di ripiego).
+* ⚠️ **Sulla coda stampa il filtro applicativo di emittente c'è lo stesso**
+  (`add_emittente_scope_condition` sul JOIN alla fattura, dentro l'`UPDATE …
+  FROM`): la RLS armata il 2026-09-04 **si somma** ai filtri, non li
+  sostituisce. Fuori perimetro → 0 righe → 404, indistinguibile da inesistente.
+* Il 404 riusa **`E_JOB_NON_TROVATO`** su entrambe le code: la *condizione* è la
+  stessa — una riga di coda che non c'è, o che il perimetro non lascia vedere —
+  e un codice si spezza quando i significati portano a **reazioni diverse della
+  pagina**, non perché le tabelle sono due.
+
+### 12.3 `archiviato_il` a video
+
+`ui.lista_colonna` **713**/**714** passate ad `attivo = t` **nello stesso
+commit** in cui la colonna entra nella proiezione dei due `elenca` e nelle due
+whitelist di ordinamento (`ELENCA_SORT_SQL`, `CODA_STAMPA_SORT_SQL`, con
+`NULLS LAST`: la data è `NULL` su ogni riga non archiviata, e in `DESC`
+finirebbe in testa). Più la chiave i18n `strumenti.code.col_archiviata_il` nei
+due `locales`.
+
+⚠️ **Sono TRE cancelli e non uno**, e vanno tutti insieme:
+`test_lista_proiezione_campo_sorgente` (la colonna attiva dev'essere una chiave
+che il repository consegna davvero), `test_liste_configurabili_seed` (seed e
+whitelist di ordinamento devono coincidere) e il test che fa **partire** l'SQL
+di ogni colonna ordinabile in entrambi i versi. Verdi.
+
+### 12.4 Il codice errore
+
+`./manage-env.sh genera_error_policies` → una voce sola aggiunta
+(`E_CODA_ARCHIVIAZIONE_NON_AMMESSA` → `CONFLITTO_STATO`), più la sua frase in
+`error_messages_fallback.py` — **senza segnaposto**, mentre quella a catalogo ha
+un `%s` con lo stato: è proprio quando gli argomenti non arrivano che il
+segnaposto finirebbe a video in chiaro.
+
+### 12.5 Il frontend
+
+* interruttore **«mostra archiviate»** in `CodaFiltriToolbar` — **una volta**,
+  le due schede lo ereditano da `CodaTabBase` — con accanto **il conteggio** di
+  ciò che resta fuori (`archiviate_count`, letto via l'hook `onPayload` di
+  `useListaEmptyStateFetch`: dentro il BB, quindi **dopo** il guard anti-race,
+  altrimenti il numero racconterebbe un contesto diverso dalla lista);
+* verbi **«Archivia» / «Ripristina»** nel kebab di **entrambe** le code, dal
+  composable condiviso `useCodaArchiviazione` — estratto **prima** di scrivere
+  la seconda copia;
+* ⭐ **selezione multipla** (richiesta di Tid, 2026-09-04): caselle di riga +
+  seleziona-tutto **di pagina** e un «Archivia N righe» nella barra delle
+  azioni, che compare solo con qualcosa spuntato. `useSelezioneCoda` sopra il
+  BB `useSelezioneToggle`. ⛔ La casella spenta è una **comodità, non un
+  presidio**: il perimetro lo applica il database. ⚠️ Il **prune** serve qui più
+  che altrove — le due schede si ricaricano da sole ogni 15 s, e una riga
+  spuntata può smettere di essere archiviabile sotto le mani. ⭐ La selezione
+  serve al **solo «Archivia»**: il gesto di massa è ripulire l'elenco, mentre
+  «Ripristina» è la correzione su una riga che si sta guardando — una selezione
+  per entrambi i verbi ammetterebbe insiemi misti e il pulsante non saprebbe
+  più cosa promettere;
+* il predicato è **`!rigaCodaViva(row.stato)`** (§7.4): il BB che già esiste, non
+  un terzo elenco di stati;
+* **il permesso nasconde** (`action: 'code_manage'`), **lo stato disabilita col
+  motivo** (`disabled` + `tooltip`, che nel kebab compare come riga sotto la
+  label: su touch non c'è hover);
+* tag «archiviata» accanto allo stato, col tooltip *chi* e *quando* dai due
+  timbri — visibile solo con l'interruttore acceso, perché con l'interruttore
+  spento quelle righe non ci sono e un tag che non può mai apparire è rumore.
+
+⚠️ **La coda stampa smette di essere di sola lettura**, e la colonna del kebab su
+quella lista è nata col seed **712**: senza quella riga lo slot `#actions` non
+avrebbe avuto dove attaccarsi — silenziosamente, senza errore.
+
+## 13. Cosa è stato provato, e come
+
+**Suite Django completa: 4409 test verdi.** Più i cancelli che vogliono il
+database vero (`ZEROERP_TEST_DB_E2E=1`): proiezione dei `campo_sorgente`, seed
+delle liste configurabili, terzo lato dei codici errore, campi diagnostici — 30
+verdi.
+
+**Sette test nuovi** in
+`apps/core/tests/services/test_coda_lavori_gestione_service.py` (16→22): il
+default nascosto e il flag su entrambe le code, la simmetria delle due,
+la direzione che arriva al repository, i due 404, il passaggio di
+`auth_user_id`, e il presidio in negativo del §12.2.
+
+⭐ **E una prova dal vivo sul database di sviluppo, in transazione annullata**,
+perché ciò che il contratto dichiara ammesso va provato **per intero**: un
+binding sbagliato non è un errore educato, è un 500.
+
+| Cosa | Esito |
+| --- | --- |
+| `elenca` su **ogni** colonna delle due whitelist × 2 versi × 2 valori del flag | tutte partono |
+| archivio + ripristino su una riga vera di `coda_lavori` | timbri derivati, poi riazzerati |
+| archivio su una riga vera di `fatture_stampa_coda`, **in contesto operatore** | `total` 26 → 25, `archiviate` 0 → 1; con il flag acceso 26 e 0 |
+| riga **viva** su entrambe le code | `E_CODA_ARCHIVIAZIONE_NON_AMMESSA`, **409**, messaggio a catalogo con lo stato e `hint` con la soluzione |
+| id inesistente, entrambe le code | `False` → 404 |
+
+⚠️ **Il primo giro della coda stampa dava zero righe, e lo zero sembrava un
+dato**: con la RLS armata, una connessione senza le GUC `app.*` vede una tabella
+vuota. La prova che conta è la seconda, quella con il contesto operatore — senza,
+il verbo sulla coda stampa non sarebbe stato esercitato affatto.
+
+## 14. Cosa resta fuori, e perché
+
+1. ⚠️ **Il migrate.** Il mirror CSV di `ui.lista_colonna` è `runOnChange` e
+   ri-esegue al prossimo `db-migrate`, che **lo lancia Tid**: finché non gira, a
+   database le righe 713/714 restano `attivo = f` e la colonna «Archiviata il»
+   non compare. Tutto il resto (colonne, trigger, policy, codice errore) è già
+   applicato dal 2026-09-04.
+2. ⚠️ **Le scritture a mano di `data_update`/`user_update`** in
+   `claim_stampe_pending`, `marca_stampa_fatto`, `marca_stampa_errore` e
+   `reset_stale_stampe_in_corso` — segnalate dal team DB al §8.1. Sono
+   **innocue** (il trigger di audit le sovrascrive con lo stesso istante e con
+   l'utente JWT vero) ma sono codice che crede a una doc scaduta, e il commento
+   che le accompagna dice *«la tabella NON ha trigger audit»*, che oggi è falso.
+   ⛔ Non toccate qui: `reset_stale_stampe_in_corso` **ragiona** su `data_update`
+   come istante del claim, quindi la pulizia va fatta guardando quel reaper e
+   non in coda a un cantiere che parla d'altro.

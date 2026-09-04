@@ -49,11 +49,42 @@ def fetch_emittenti_scope_ids(
     return None
 
 
+# Scopo: Appende la condizione di scope a partire da un perimetro GIA' RISOLTO.
+#        Semantica di `scope_ids`: `None` = nessuna restrizione, `[]` = nessun
+#        accesso (fail-closed: `col = ANY('{}')` non matcha nulla), lista =
+#        whitelist.
+#
+# ⭐ Esiste per i GIRI che ripetono la STESSA condizione su N righe: senza,
+#    ogni riga ririsolverebbe con una query il perimetro dell'operatore — che
+#    dentro una richiesta non cambia. Un verbo di massa da 200 righe faceva 200
+#    risoluzioni inutili (corretto il 2026-09-04 sull'archiviazione delle code).
+#
+# ⛔ E' una funzione SUA e non un parametro opzionale di quella sotto, ed e' una
+#    scelta di sicurezza: rendere `auth_user_id` facoltativo avrebbe fatto di
+#    «me ne sono dimenticato» un `None`, cioe' NESSUNO SCOPE — un fail-OPEN
+#    silenzioso al posto di un `TypeError` rumoroso. Due nomi espliciti, e chi
+#    non passa niente non compila.
+def add_emittente_scope_condition_risolta(
+    conditions: list[str],
+    params: list[Any],
+    *,
+    scope_ids: list[int] | None,
+    column: str,
+) -> None:
+    if not _IDENT_RE.match(column):
+        raise ValueError(f"colonna scope non valida: {column!r}")
+    if scope_ids is None:
+        return
+    conditions.append(f"{column} = ANY(%s)")  # noqa: S608 — colonna da whitelist regex
+    params.append(scope_ids)
+
+
 # Scopo: Appende a conditions/params la condizione di scope emittente per la
-#        colonna indicata, con l'array risolto una volta in Python. No-op se
+#        colonna indicata, risolvendo il perimetro con una query. No-op se
 #        auth_user_id e' None (superuser a livello API) o se la fn ritorna
-#        NULL (nessuna restrizione). Un array vuoto viene bindato comunque:
-#        `col = ANY('{}')` non matcha nulla -> fail-closed preservato.
+#        NULL (nessuna restrizione).
+# ⚠️ Dentro un giro su N righe usare `add_emittente_scope_condition_risolta`
+#    con il perimetro risolto una volta sola: qui ogni chiamata e' una query.
 def add_emittente_scope_condition(
     conditions: list[str],
     params: list[Any],
@@ -64,10 +95,8 @@ def add_emittente_scope_condition(
 ) -> None:
     if auth_user_id is None:
         return
-    if not _IDENT_RE.match(column):
-        raise ValueError(f"colonna scope non valida: {column!r}")
-    scope_ids = fetch_emittenti_scope_ids(auth_user_id, convention=convention)
-    if scope_ids is None:
-        return
-    conditions.append(f"{column} = ANY(%s)")  # noqa: S608 — colonna da whitelist regex
-    params.append(scope_ids)
+    add_emittente_scope_condition_risolta(
+        conditions, params,
+        scope_ids=fetch_emittenti_scope_ids(auth_user_id, convention=convention),
+        column=column,
+    )

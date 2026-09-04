@@ -383,6 +383,40 @@ def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:
     return results, total_count
 
 
+def conta_con_perimetro(
+    from_sql: str, conditions: list[str], params: list[Any],
+) -> int:
+    """Conteggio scalare su un perimetro DICHIARATO a pezzi (FROM + condizioni).
+
+    Serve al caso «quante righe il filtro lascia FUORI dalla lista»: un numero
+    che la lista non puo' produrre da se', perche' quelle righe il suo `WHERE`
+    le ha gia' escluse. Il chiamante passa il PROPRIO frammento `FROM` (join
+    compresi) e le proprie condizioni, cosi' il conteggio ha lo stesso
+    perimetro delle righe consegnate.
+
+    ⛔ Non e' un doppione di `fetch_paged_with_total`: quello risponde a
+    «quante ne sto consegnando», questo a «quante ne sto nascondendo». Sono due
+    domande e due valutazioni — `len(results)` non risponde a nessuna delle
+    due, e un `COUNT(*) FILTER` sulla query di pagina non potrebbe vedere le
+    righe che il `WHERE` ha tolto.
+
+    ⚠️ `from_sql` e `conditions` sono SQL del chiamante: come ovunque nei
+    repository, devono venire da frammenti costanti e whitelist, mai da input
+    libero. I VALORI viaggiano in `params`.
+
+    Regola del 2 (2026-09-04, archiviazione delle righe di coda): lo stesso
+    conteggio serve alle due code — `dbops.coda_lavori` e
+    `vendite.fatture_stampa_coda` — che vivono in due repository diversi.
+    """
+    where = " AND ".join(conditions)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT COUNT(*)::int {from_sql} WHERE {where}",  # noqa: S608
+            list(params),
+        )
+        return int(fetchone_scalar(cursor))
+
+
 def fetch_paged_with_total(
     data_sql: str,
     params: list[Any],

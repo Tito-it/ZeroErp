@@ -457,14 +457,23 @@ _OFFSET_PARAM = OpenApiParameter(
 _SORT_BY_PARAM = OpenApiParameter(
     name="sort_by", type=str, location=OpenApiParameter.QUERY,
     required=False, description=(
-        "Colonna di ordinamento. Coda lavori: id, job_type, started_at, "
-        "ended_at (default started_at). Coda stampa: fattura_id, lotto_id, "
-        "data_update (default data_update)."
+        "Colonna di ordinamento. Coda lavori: id, job_type, stato, "
+        "proprietario, started_at, ended_at, archiviato_il (default "
+        "started_at). Coda stampa: id, fattura_numero, emittente_codice, "
+        "operatore, stato, lotto_id, data_update, archiviato_il (default "
+        "data_update)."
     ),
 )
 _SORT_DIR_PARAM = OpenApiParameter(
     name="sort_dir", type=str, location=OpenApiParameter.QUERY,
     required=False, description="Direzione: ASC | DESC (default DESC).",
+)
+_ARCHIVIATE_PARAM = OpenApiParameter(
+    name="archiviate", type=bool, location=OpenApiParameter.QUERY,
+    required=False, description=(
+        "Includi anche le righe ARCHIVIATE (default false: sono nascoste). "
+        "Quante ne restano fuori lo dice `archiviate_count` nell'envelope."
+    ),
 )
 
 _LISTA_CODE_RESPONSE = inline_serializer(
@@ -474,6 +483,11 @@ _LISTA_CODE_RESPONSE = inline_serializer(
             name="CodeListaData",
             fields={
                 "count": serializers.IntegerField(),
+                # Quante righe l'archiviazione lascia FUORI dall'elenco (0 se
+                # sono incluse: li' non c'e' niente di nascosto da dichiarare).
+                # Senza questo numero «coda pulita» e «tre righe messe via» si
+                # leggono uguali — stessa lezione di `ritirate_count`.
+                "archiviate_count": serializers.IntegerField(),
                 "results": serializers.ListField(child=serializers.DictField()),
             },
         ),
@@ -494,6 +508,11 @@ def _parse_code_list_params(qp) -> dict:
         "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
         "data_a": qp_iso_date_optional(qp.get("data_a"), "data_a"),
         "solo_vivi": qp_bool_optional(qp.get("solo_vivi"), "solo_vivi") or False,
+        # Le archiviate sono NASCOSTE di default: l'interruttore «mostra
+        # archiviate» della toolbar le chiede (brief-db-archiviazione-righe-code).
+        "includi_archiviate": (
+            qp_bool_optional(qp.get("archiviate"), "archiviate") or False
+        ),
         "limit": min(qp_int(qp.get("limit"), 50), LIST_MAX_LIMIT),
         "offset": qp_int(qp.get("offset"), 0),
         # Whitelist e default vivono nel service (differiscono per coda):
@@ -551,8 +570,8 @@ class ApiCodaLavoriList(DomainAPIView):
                 name="tipo", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Filtra per job_type (es. FATTURAZIONE_GIRO).",
             ),
-            _DATA_DA_PARAM, _DATA_A_PARAM, _LIMIT_PARAM, _OFFSET_PARAM,
-            _SORT_BY_PARAM, _SORT_DIR_PARAM,
+            _DATA_DA_PARAM, _DATA_A_PARAM, _ARCHIVIATE_PARAM,
+            _LIMIT_PARAM, _OFFSET_PARAM, _SORT_BY_PARAM, _SORT_DIR_PARAM,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )
@@ -586,8 +605,8 @@ class ApiCodaStampaList(DomainAPIView):
                 name="lotto_id", type=int, location=OpenApiParameter.QUERY,
                 required=False, description="Filtra per lotto di fatturazione.",
             ),
-            _DATA_DA_PARAM, _DATA_A_PARAM, _LIMIT_PARAM, _OFFSET_PARAM,
-            _SORT_BY_PARAM, _SORT_DIR_PARAM,
+            _DATA_DA_PARAM, _DATA_A_PARAM, _ARCHIVIATE_PARAM,
+            _LIMIT_PARAM, _OFFSET_PARAM, _SORT_BY_PARAM, _SORT_DIR_PARAM,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )
@@ -698,3 +717,139 @@ class ApiCodaLavoriRequeue(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+# ══════════════════════════════════════════════════════════════
+#  ARCHIVIAZIONE delle righe di coda (2026-09-04,
+#  brief-db-archiviazione-righe-code)
+# ══════════════════════════════════════════════════════════════
+#
+# ⛔ IL GATE E' `code_manage`, NON l'ownership degli altri due verbi. Annulla e
+#    requeue sono owner-scoped — un operatore agisce sui PROPRI job e il
+#    permesso serve solo ad allargare agli altrui. L'archiviazione ha effetto
+#    GLOBALE: chi archivia toglie la riga dall'elenco anche all'amministratore.
+#    Effetto globale, permesso globale (decisione di Tid, brief §7.2).
+# ⛔ E il gate lo verifica il SERVICE, non un `post_permission` qui: la catena
+#    dei permessi, trovando un `<metodo>_permission`, ritorna l'esito
+#    dell'azione di processo e SALTA il controllo di area — cioe' un operatore
+#    con `code_manage` e area `strumenti` in sola LETTURA passerebbe, mentre i
+#    due verbi accanto (che quel permesso non lo dichiarano) cadono su
+#    `METHOD_REQUIRES['POST'] = 'add'` e pretendono `TUTTO`. Senza
+#    `post_permission` valgono ENTRAMBI i controlli: l'area dalla catena, il
+#    `code_manage` dal service.
+# ⭐ Due verbi e non un flag nel corpo: le due direzioni hanno esiti diversi —
+#    archiviare una riga ancora VIVA e' un rifiuto del database
+#    (`E_CODA_ARCHIVIAZIONE_NON_AMMESSA`, 409), ripristinare non fallisce mai —
+#    e un endpoint il cui esito dipende da un booleano nel payload nasconde
+#    quella differenza a chi legge le rotte.
+# ⚠️ Il perimetro dell'ARCHIVIAZIONE non e' il perimetro della LISTA: la lista
+#    e' visibilita' e la vede ogni operatore, qui si scrive.
+
+_ARCHIVIAZIONE_REQUEST = inline_serializer(
+    name="CodaArchiviazioneRequest",
+    fields={"ids": serializers.ListField(child=serializers.IntegerField())},
+)
+
+_ARCHIVIAZIONE_RESPONSE = inline_serializer(
+    name="CodaArchiviazioneResponse",
+    fields={
+        "data": inline_serializer(
+            name="CodaArchiviazioneData",
+            fields={
+                # COMPLETATO | PARZIALE | ERRORE: chi legge DEVE guardarlo,
+                # perche' un 200 non dice che sono passate tutte.
+                "esito": serializers.CharField(),
+                "archiviato": serializers.BooleanField(),
+                "richieste": serializers.IntegerField(),
+                "riuscite": serializers.IntegerField(),
+                "falliti": serializers.ListField(child=serializers.DictField()),
+            },
+        ),
+        "meta": serializers.DictField(required=False),
+    },
+)
+
+
+class _ArchiviazioneCodaBaseView(DomainAPIView):
+    """Telaio comune dei quattro verbi di archiviazione delle due code.
+
+    Le sottoclassi dichiarano solo `esegui` (quale coda, quale direzione).
+    ⭐ Il telaio esiste perche' lo stesso endpoint va scritto DUE volte per coda
+    e DUE volte per direzione: quattro copie della stessa decorazione, dello
+    stesso gate e dello stesso `handle_post_json` sono quattro posti in cui la
+    prossima modifica ne dimentica uno.
+    ⭐ Rotte di COLLEZIONE, con l'elenco nel corpo: un verbo di massa e uno
+    per singola riga sarebbero due contratti da tenere allineati per lo stesso
+    identico rifiuto, che e' per riga. Il menu di riga manda un elenco di uno.
+    """
+
+    area_funzionale = "strumenti"
+
+    # Scopo: esegue il verbo sulle righe indicate. La implementa la
+    #        sottoclasse, che sa a quale coda appartengono e in che direzione
+    #        va la bandiera.
+    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+        raise NotImplementedError
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=_ARCHIVIAZIONE_REQUEST,
+        responses={200: _ARCHIVIAZIONE_RESPONSE},
+    )
+    # Scopo: Alza o abbassa la bandiera `archiviato` sulle righe indicate. Il
+    #        guard di stato («solo una riga non viva si archivia») e la
+    #        derivazione dei timbri sono del DATABASE: qui non se ne tiene una
+    #        copia. ⚠️ Risponde 200 anche a esito PARZIALE — la riga che il
+    #        database ha rifiutato sta in `falliti`, col suo codice e la sua
+    #        frase: chi legge deve guardare `esito`, non lo status.
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return self.esegui(request, payload.get("ids"))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiCodaLavoriArchivia(_ArchiviazioneCodaBaseView):
+    """Archivia un job TERMINALE della coda lavori: la riga esce dall'elenco,
+    lo stato non si tocca e i conteggi restano fermi. Riga ancora viva → 409
+    `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` dal trigger."""
+
+    # Scopo: alza la bandiera sui job indicati.
+    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+        return gestione_service.imposta_archiviazione_job(
+            request.user, ids, archiviato=True,
+        )
+
+
+class ApiCodaLavoriRipristina(_ArchiviazioneCodaBaseView):
+    """Rimette in elenco un job archiviato della coda lavori."""
+
+    # Scopo: abbassa la bandiera sui job indicati.
+    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+        return gestione_service.imposta_archiviazione_job(
+            request.user, ids, archiviato=False,
+        )
+
+
+class ApiCodaStampaArchivia(_ArchiviazioneCodaBaseView):
+    """Archivia una riga TERMINALE della coda stampa. ⚠️ E' la prima scrittura
+    dell'operatore su `vendite.fatture_stampa_coda`: oltre alla policy RLS
+    armata il 2026-09-04, il repository applica anche il filtro applicativo di
+    emittente — la RLS si somma ai filtri, non li sostituisce. Fuori perimetro
+    → 404, indistinguibile da inesistente."""
+
+    # Scopo: alza la bandiera sulle righe di coda stampa indicate.
+    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+        return gestione_service.imposta_archiviazione_stampa(
+            request.user, ids, archiviato=True,
+            auth_user_id=get_scope_user_id(request),
+        )
+
+
+class ApiCodaStampaRipristina(_ArchiviazioneCodaBaseView):
+    """Rimette in elenco una riga archiviata della coda stampa."""
+
+    # Scopo: abbassa la bandiera sulle righe di coda stampa indicate.
+    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+        return gestione_service.imposta_archiviazione_stampa(
+            request.user, ids, archiviato=False,
+            auth_user_id=get_scope_user_id(request),
+        )
