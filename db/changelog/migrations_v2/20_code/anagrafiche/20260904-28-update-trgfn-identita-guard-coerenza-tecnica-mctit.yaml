@@ -1,0 +1,258 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §4 (fase 3b) — il ramo
+# OPERATORE del guard di coerenza impara che esistono i PROCESSI.
+#
+# ⛔ IL MURO, ed e' una cosa che il database dice bene e che nessuno aveva
+# scritto altrove: **un OPERATORE e' una persona fisica.** Il ramo OPERATORE di
+# questo guard lo impone con DUE controlli in fila —
+#   fn_guard_soggetto_ruolo(..., 'RIS_UMANA')  → dev'essere una risorsa umana
+#   fn_guard_soggetto_pf_pura(...)             → e una persona fisica pura
+#
+# ⚠️ E la RLS dice l'altra meta': ogni policy rls_*_ef_whitelist pretende
+# `app.ruolo_applicativo = 'OPERATORE'` in AND. ⇒ Messe insieme, le due regole
+# dicono che **solo un essere umano puo' avere un perimetro emittente** — che e'
+# esattamente cio' che il cantiere «nessun processo senza operatore» deve
+# cambiare.
+#
+# ⭐ LA SOLUZIONE NON APRE NIENTE, SCAMBIA. Il flag `tecnica` non e' un bypass:
+# sceglie QUALE coppia di requisiti si applica, ed entrambe restano chiuse.
+#
+#   tecnica = false  →  RIS_UMANA + persona fisica pura   (invariato: le persone)
+#   tecnica = true   →  PROC_AUTO                         (i processi)
+#
+# ⇒ I due mondi non si sovrappongono: una persona non puo' essere PROC_AUTO, e
+# un processo non puo' essere RIS_UMANA. Mettere `tecnica = true` non permette
+# di appendere un'identita' operatore a un soggetto qualsiasi — obbliga a un
+# soggetto di processo. ⛔ Il flag RESTRINGE quel ramo, non lo allarga.
+#
+# ⚠️ Le due alternative scartate, e perche':
+#   ⛔ fare del processo una persona fisica finta → mentirebbe nell'anagrafica,
+#      comparirebbe negli elenchi del personale, ed e' l'«alias da una persona»
+#      gia' rifiutato nell'analisi §6.1 — anzi peggio, una persona INVENTATA;
+#   ⛔ un ruolo_applicativo nuovo per i processi → ogni policy RLS mette
+#      OPERATORE in AND, quindi il processo vedrebbe zero righe finche' non si
+#      riscrivono tutte le policy. Gia' rifiutata nell'analisi.
+#
+# ⚠️ `CREATE OR REPLACE` di una trigger function: stessa firma, quindi NIENTE
+# DROP — e l'ACL resta dov'e'. (Il DROP e' il caso che porta via i privilegi:
+# lezione di 20260904-21, qui verificata come non applicabile.)
+#
+# Corpo preso dalla doc auto-gen (l'oggetto vivo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260904-28-update-trgfn-identita-guard-coerenza-tecnica-mctit.yaml
+
+  - changeSet:
+      id: 20260904-28-update-trgfn-identita-guard-coerenza-tecnica
+      author: mctit
+      failOnError: true
+      comment: >
+        Il ramo OPERATORE di anagrafiche.trgfn_identita_digitali_guard_coerenza
+        si sdoppia sul flag tecnica: le persone restano RIS_UMANA + PF pura, i
+        processi devono essere PROC_AUTO. Nessun ramo si apre: si scambia un
+        requisito chiuso con un altro.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: anagrafiche, tableName: identita_digitali, columnName: tecnica }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'trgfn_identita_digitali_guard_coerenza';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE sulle colonne sorgente per coerenza automatica col DDL.
+                  v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Trigger function: guard coerenza ruolo_applicativo <-> soggetto_ruolo
+                  -- su anagrafiche.identita_digitali (fase a10, BEFORE INSERT/UPDATE).
+                  --
+                  -- Logica:
+                  --   - API_CLIENT / DISABILITATO: early-exit, nessuna query.
+                  --   - OPERATORE: SELECT soggetto_id, poi DUE mondi disgiunti
+                  --     secondo il flag `tecnica` (rev 2026-09-04):
+                  --       persona  -> RIS_UMANA + PF pura
+                  --       processo -> PROC_AUTO
+                  --   - Altri ruoli: delega a fn_guard_soggetto_ruolo passando NULL
+                  --     come p_soggetto_id (parametro opzionale supportato dalla
+                  --     funzione) — evita una query ridondante.
+                  -- ------------------------------------------------------------
+
+                  -- 1) Early-exit per ruoli senza vincoli di coerenza.
+                  IF NEW.ruolo_applicativo IN ('API_CLIENT', 'DISABILITATO') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 2) Dispatch per gli altri ruoli applicativi.
+                  CASE NEW.ruolo_applicativo
+                      WHEN 'OPERATORE' THEN
+                          -- Serve il soggetto_id in entrambi i rami. Unica query.
+                          SELECT sr.soggetto_id
+                            INTO v_soggetto_id
+                            FROM anagrafiche.soggetti_ruoli sr
+                           WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                          IF NOT FOUND THEN
+                              -- Caso limite (record cancellato da altra transazione):
+                              -- la FK lo impedirebbe, ma fail-fast esplicito.
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_SOGGETTI_RUOLI',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                                      'nota', 'soggetto_ruolo_id non trovato in anagrafiche.soggetti_ruoli'
+                                  ),
+                                  NULL::uuid,
+                                  -- ⚠️ ARITA' (2026-08-18): E_SOGGETTI_RUOLI ha tre
+                                  --   segnaposto e qui ne arrivava uno solo -> format()
+                                  --   alzava 22023 al posto del P0001. Gli altri due non
+                                  --   si possono valorizzare: si arriva qui PERCHE' la
+                                  --   riga non e' stata trovata.
+                                  NEW.soggetto_ruolo_id::text,
+                                  'NULL',
+                                  'NULL'
+                              );
+                          END IF;
+
+                          IF NEW.tecnica THEN
+                              -- ⭐ PROCESSO AUTOMATICO (rev 2026-09-04).
+                              --   Un processo non e' una persona e non deve
+                              --   fingersi tale: si pretende il ruolo dedicato
+                              --   PROC_AUTO. ⛔ Niente fn_guard_soggetto_pf_pura:
+                              --   non c'e' nessuna persona fisica da verificare.
+                              --   ⚠️ Questo ramo NON e' piu' permissivo dell'altro:
+                              --   scambia un requisito chiuso con un altro. Con
+                              --   tecnica=true NON si puo' appendere un'identita'
+                              --   operatore a un soggetto qualsiasi.
+                              PERFORM script.fn_guard_soggetto_ruolo(
+                                  v_soggetto_id,
+                                  NEW.soggetto_ruolo_id,
+                                  'PROC_AUTO'
+                              );
+                          ELSE
+                              -- PERSONA: invariato dal 2026-04.
+                              PERFORM script.fn_guard_soggetto_ruolo(
+                                  v_soggetto_id,
+                                  NEW.soggetto_ruolo_id,
+                                  'RIS_UMANA'
+                              );
+                              PERFORM script.fn_guard_soggetto_pf_pura(v_soggetto_id);
+                          END IF;
+
+                      WHEN 'CLIENTE_PORTALE', 'SHOP_CUSTOMER' THEN
+                          -- Entrambi i ruoli condividono lo stesso tipo_ruolo
+                          -- anagrafico 'CL': la differenza tra portale B2B e
+                          -- shop self-service e' solo a livello di namespace API
+                          -- e profilo capability, non di anagrafica.
+                          PERFORM script.fn_guard_soggetto_ruolo(
+                              NULL,
+                              NEW.soggetto_ruolo_id,
+                              'CL'
+                          );
+
+                      WHEN 'FORNITORE_PORTALE' THEN
+                          -- Fornitore portale: ruolo FORNITORE (codice interno 'FO').
+                          PERFORM script.fn_guard_soggetto_ruolo(
+                              NULL,
+                              NEW.soggetto_ruolo_id,
+                              'FO'
+                          );
+
+                      ELSE
+                          -- Nuovo valore enum senza regola qui: fail-fast esplicito
+                          -- (evita bypass silenzioso quando si estende l'enum —
+                          -- il guard non deve "aprire" per omissione).
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_RUOLO_APPLICATIVO_NON_GESTITO',
+                              jsonb_build_object(
+                                  'table', TG_TABLE_NAME,
+                                  'ruolo_applicativo', NEW.ruolo_applicativo,
+                                  'nota', 'Ruolo applicativo sconosciuto al guard di coerenza'
+                              ),
+                              NULL::uuid,
+                              NEW.ruolo_applicativo::text
+                          );
+                  END CASE;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
+              IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali. Rev 2026-09-04: il ramo OPERATORE si sdoppia sul flag `tecnica` in DUE MONDI DISGIUNTI — una PERSONA vuole RIS_UMANA piu'' persona fisica pura (invariato), un PROCESSO vuole il ruolo dedicato PROC_AUTO e nessun controllo di persona fisica. ⛔ Il flag NON apre il ramo: scambia un requisito chiuso con un altro, quindi con tecnica=true non si puo'' appendere un''identita'' operatore a un soggetto qualsiasi. ⭐ Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: senza questo sdoppiamento un processo automatico non potrebbe avere un perimetro emittente, e prima del 2026-09-04 il database dichiarava di fatto che solo un essere umano poteva averne uno. Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: il ramo OPERATORE torna monolitico (solo persone).
+              -- ⚠️ Con questo rollback le identita' tecniche gia' create NON si
+              --   possono piu' aggiornare: vanno disattivate prima.
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+              BEGIN
+                  IF NEW.ruolo_applicativo IN ('API_CLIENT', 'DISABILITATO') THEN
+                      RETURN NEW;
+                  END IF;
+                  CASE NEW.ruolo_applicativo
+                      WHEN 'OPERATORE' THEN
+                          SELECT sr.soggetto_id INTO v_soggetto_id
+                            FROM anagrafiche.soggetti_ruoli sr
+                           WHERE sr.id = NEW.soggetto_ruolo_id;
+                          IF NOT FOUND THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', TG_NAME, 'E_SOGGETTI_RUOLI',
+                                  jsonb_build_object('table', TG_TABLE_NAME,
+                                      'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                                      'nota', 'soggetto_ruolo_id non trovato in anagrafiche.soggetti_ruoli'),
+                                  NULL::uuid, NEW.soggetto_ruolo_id::text, 'NULL', 'NULL');
+                          END IF;
+                          PERFORM script.fn_guard_soggetto_ruolo(
+                              v_soggetto_id, NEW.soggetto_ruolo_id, 'RIS_UMANA');
+                          PERFORM script.fn_guard_soggetto_pf_pura(v_soggetto_id);
+                      WHEN 'CLIENTE_PORTALE', 'SHOP_CUSTOMER' THEN
+                          PERFORM script.fn_guard_soggetto_ruolo(NULL, NEW.soggetto_ruolo_id, 'CL');
+                      WHEN 'FORNITORE_PORTALE' THEN
+                          PERFORM script.fn_guard_soggetto_ruolo(NULL, NEW.soggetto_ruolo_id, 'FO');
+                      ELSE
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_RUOLO_APPLICATIVO_NON_GESTITO',
+                              jsonb_build_object('table', TG_TABLE_NAME,
+                                  'ruolo_applicativo', NEW.ruolo_applicativo,
+                                  'nota', 'Ruolo applicativo sconosciuto al guard di coerenza'),
+                              NULL::uuid, NEW.ruolo_applicativo::text);
+                  END CASE;
+                  RETURN NEW;
+              END;
+              $function$;

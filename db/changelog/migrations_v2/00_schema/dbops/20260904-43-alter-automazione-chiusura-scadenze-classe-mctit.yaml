@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §6 (fase 5) — la classe di
+# `chiusura_scadenze_daily` sta sul BERSAGLIO, non sul job (decisione D-10).
+#
+# ⭐ PERCHE'. Questo job non ha un elenco di tabelle nel codice: lo legge da
+# `dbops.automazione_chiusura_scadenze`. La sua natura quindi non e' una
+# proprieta' del job — e' una proprieta' di ogni riga di configurazione. Una
+# riga in piu' nel CSV cambierebbe cosa fa il giro notturno **senza che nessuno
+# riapra la domanda sull'identita'**.
+#
+# ⚠️ Oggi entrambi i bersagli sono di DOMINIO — `vendite.contratti` (colonna
+# emittente diretta) e `vendite.listini_versioni` (l'emittente arriva dal
+# listino, `vendite.listini.emittente_soggetto_ruolo_id NOT NULL`). Quindi la
+# colonna oggi non separa niente: separera' la riga PROSSIMA, ed e' il punto.
+#
+# ⚠️ Nasce NULLABLE: la riempie il mirror CSV in `80_data`, che gira DOPO
+# `00_schema`. Il `NOT NULL` arriva in `90_end` (changeSet -45) — un `NOT NULL`
+# va dove il dato SI PUO' FORNIRE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/dbops/20260904-43-alter-automazione-chiusura-scadenze-classe-mctit.yaml
+
+    - changeSet:
+          id: 20260904-43-alter-automazione-chiusura-scadenze-classe
+          author: mctit
+          failOnError: true
+          comment: >
+              Aggiunge dbops.automazione_chiusura_scadenze.classe: ogni bersaglio
+              del framework di chiusura dichiara la propria natura
+              (MANUTENZIONE|AMMINISTRAZIONE|DOMINIO). Nullable finche' il mirror
+              CSV non l'ha riempita (NOT NULL nel changeSet -45).
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - tableExists:
+                          { schemaName: dbops, tableName: automazione_chiusura_scadenze }
+                    - not:
+                          - columnExists:
+                                { schemaName: dbops, tableName: automazione_chiusura_scadenze, columnName: classe }
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        ALTER TABLE dbops.automazione_chiusura_scadenze
+                            ADD COLUMN classe text NULL;
+
+                        -- Stesso vocabolario di dbops.processi: e' la stessa
+                        -- domanda («questa scrittura sta dentro il perimetro di
+                        -- un emittente?»), posta a una riga invece che a un job.
+                        ALTER TABLE dbops.automazione_chiusura_scadenze
+                            ADD CONSTRAINT chk_automazione_chiusura_scadenze_classe
+                                CHECK (classe IS NULL
+                                       OR classe IN ('MANUTENZIONE', 'AMMINISTRAZIONE', 'DOMINIO'));
+
+                        COMMENT ON COLUMN dbops.automazione_chiusura_scadenze.classe IS
+                            'La natura di QUESTO bersaglio: MANUTENZIONE | AMMINISTRAZIONE | DOMINIO, stesso vocabolario di dbops.processi. ⭐ Sta sulla riga e non sul job (decisione D-10) perche'' il framework legge le tabelle da qui: la natura del giro notturno e'' quella dei suoi bersagli, e una riga nuova la cambierebbe senza che nessuno riapra la domanda sull''identita''. dbops.fn_apply_chiusura_scadenze la usa per lavorare solo i bersagli della classe con cui viene chiamata. ⚠️ Oggi entrambe le righe sono DOMINIO: la colonna non separa nulla adesso, separa la riga prossima. Brief: brief-db-processi-automatici-identita-e-perimetro §6.';
+          rollback:
+              - sql:
+                    splitStatements: false
+                    sql: |
+                        ALTER TABLE dbops.automazione_chiusura_scadenze
+                            DROP CONSTRAINT IF EXISTS chk_automazione_chiusura_scadenze_classe;
+                        ALTER TABLE dbops.automazione_chiusura_scadenze
+                            DROP COLUMN IF EXISTS classe;

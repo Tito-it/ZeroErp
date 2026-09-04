@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ CORRETTIVA di 20260904-24 — la vista contava la cosa sbagliata.
+#
+# Era scritta sull'idea che un utente tecnico avesse una LISTA di emittenti:
+# prendeva l'unico utente del processo e cercava le righe di whitelist mancanti.
+# Con il modello vero — `config.user_emittenti_fiscali` 1-a-1 sull'utente — la
+# domanda cambia:
+#
+#   PRIMA:  «a questo utente manca la riga per l'emittente X?»
+#   ORA:    «per la coppia (processo, emittente X) esiste UN UTENTE?»
+#
+# ⚠️ Non e' una sfumatura: la vista vecchia sarebbe rimasta rossa per sempre.
+# Un utente puo' avere una riga sola, quindi «le righe mancanti» sono tutte
+# tranne una, per costruzione. Un presidio che non puo' arrivare a zero e'
+# rumore — la stessa regola gia' applicata a vw_run_senza_attore.
+#
+# ⛔ DROP + CREATE, non CREATE OR REPLACE: la vista nuova ha una colonna in MENO
+# (`auth_user_id`, che con N utenti per processo non identificava piu' niente), e
+# `CREATE OR REPLACE VIEW` sa aggiungere colonne in coda, non toglierne.
+#   ⚠️ E il DROP porta via il GRANT, come il DROP di una funzione porta via
+#   l'ACL: il `GRANT SELECT` va rimesso QUI. ⛔ Non basta contare su
+#   `90_end/20260904-25`, che e' `runOnChange: true` ma NON ri-esegue se il suo
+#   file non cambia — e non cambia. Lezione di 20260904-21, applicata prima che
+#   costasse una correttiva invece che dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260904-38-update-vw-emittenti-non-serviti-per-utente-mctit.yaml
+
+  - changeSet:
+      id: 20260904-38-update-vw-emittenti-non-serviti-per-utente
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_emittenti_non_serviti: elenca le coppie (processo DOMINIO
+        headless, emittente attivo) per cui non esiste un utente tecnico.
+        Riscritta sul modello 1-a-1 utente/emittente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - tableExists:
+                { schemaName: config, tableName: user_emittenti_fiscali }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Ogni processo DOMINIO headless deve avere UN utente tecnico
+              --   per OGNI emittente attivo. Qui compare cio' che manca:
+              --   una riga per coppia scoperta.
+              --
+              -- ⛔ Il guasto che copre non assomiglia a un errore: senza
+              --   l'utente per quell'emittente il lavoro parte lo stesso, la
+              --   RLS mostra zero righe e il run chiude con «FATTO, 0
+              --   elaborate». Nessun errore, e quell'emittente non viene mai
+              --   fatturato.
+              --
+              -- Solo emittenti ATTIVI: uno disattivato non va servito, e
+              --   tenerlo qui terrebbe la vista rossa per sempre.
+              -- Esclusi i processi su canale CODA: girano con l'identita'
+              --   dell'operatore che li accoda.
+              -- =========================================================
+              DROP VIEW IF EXISTS dbops.vw_emittenti_non_serviti;
+
+              CREATE VIEW dbops.vw_emittenti_non_serviti AS
+              SELECT p.codice  AS processo_codice,
+                     p.canale,
+                     ef.id      AS emittente_fiscale_id,
+                     ef.codice  AS emittente_codice
+                FROM dbops.processi p
+               CROSS JOIN anagrafiche.emittenti_fiscali ef
+               WHERE p.classe = 'DOMINIO'
+                 AND p.attivo
+                 AND p.obsoleto_dal IS NULL
+                 AND p.canale IN ('PGAGENT', 'COMMAND')
+                 AND ef.attivo
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM dbops.processi_identita pi
+                           JOIN config.user_emittenti_fiscali uef
+                             ON uef.auth_user_id = pi.auth_user_id
+                          WHERE pi.processo_id = p.id
+                            AND pi.attivo
+                            AND uef.emittente_fiscale_id = ef.id);
+
+              COMMENT ON VIEW dbops.vw_emittenti_non_serviti IS
+                  'Coppie (processo DOMINIO headless, emittente fiscale attivo) per cui NON esiste un utente tecnico. DEVE restare VUOTA. ⭐ Rev 2026-09-04: riscritta sul modello vero — config.user_emittenti_fiscali e'' 1-a-1 sull''utente, quindi la domanda non e'' «a questo utente manca la riga per l''emittente X» (che sarebbe vera per costruzione su tutti tranne uno, e la vista non sarebbe mai arrivata a zero) ma «per la coppia processo/emittente esiste un utente?». ⛔ Copre un guasto che non assomiglia a un errore: senza l''utente il lavoro parte, la RLS mostra zero righe e il run chiude con «FATTO, 0 elaborate» — e quell''emittente non viene mai fatturato. ⚠️ Non concede niente: il perimetro lo decide una persona creando l''utente (D-9). Esclusi i processi su canale CODA. Brief: brief-db-processi-automatici-identita-e-perimetro §6.4.';
+              -- ⛔ Il GRANT che il DROP ha portato via. Difensivo: su
+              --   un'installazione senza ruolo applicativo non deve fermare
+              --   la pipeline.
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_emittenti_non_serviti TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Si torna alla forma di 20260904-24 rilanciando quel changeSet.
+              DROP VIEW IF EXISTS dbops.vw_emittenti_non_serviti;

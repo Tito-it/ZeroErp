@@ -171,7 +171,7 @@ jobs:
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
-            update --contexts="!provision"
+            update --contexts="!provision and !dati_macchina"
 
       # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
       # -> provisioning come 'postgres' (non Liquibase, che gira come 'zeroerp').

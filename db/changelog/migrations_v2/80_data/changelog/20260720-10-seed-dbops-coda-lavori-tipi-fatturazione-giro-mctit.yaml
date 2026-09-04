@@ -47,3 +47,9 @@ databaseChangeLog:
               - column: { name: run_as_default, type: STRING }
               - column: { name: max_tentativi_default, type: NUMERIC }
               - column: { name: attivo, type: BOOLEAN }
+              # ⭐ 2026-09-04: il tipo dichiara di quale processo e'
+              #   (dbops.processi, hard FK). Il mirror e' runOnChange senza
+              #   validCheckSums: e' fatto per essere riletto, quindi la
+              #   colonna si aggiunge QUI e non con un secondo loader sullo
+              #   stesso CSV — due mirror sulla stessa sorgente divergono.
+              - column: { name: processo_codice, type: STRING }

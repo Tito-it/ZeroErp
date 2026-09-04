@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ CORRETTIVA di 20260904-09 — un processo ha un utente tecnico PER EMITTENTE,
+# non uno in tutto.
+#
+# 🔴 LA SCOPERTA, ed e' di modello. `config.user_emittenti_fiscali` ha
+# `UNIQUE(auth_user_id)`: un utente puo' avere **UN SOLO** emittente. Non e' un
+# caso — il changeSet 20260408-11 lo dichiara: *«ogni utente puo' avere AL PIU'
+# una riga (1-a-1)»*, e ha sostituito apposta il vincolo composito che
+# permetteva la lista. `script.fn_check_user_emittente_scope` lo conferma
+# dall'altro lato: *«super admin -> l'UNICO attore legittimamente
+# multi-emittente»*.
+#
+# ⇒ La frase «all'utente tecnico si danno TUTTI gli emittenti», scritta
+#   nell'analisi §6.2 e nel brief §4.5, e' **impossibile**. Era ereditata dalla
+#   parola «whitelist» e mai verificata contro il vincolo. Oggi non si vede
+#   perche' l'emittente e' uno: si vedrebbe tutta insieme il giorno del secondo.
+#
+# ⭐ DECISIONE DI TID (2026-09-04): un utente tecnico per **processo x
+# emittente**. Non tocca il modello di nessun altro, resta vera la frase «solo
+# il super admin e' multi-emittente», ed e' la stessa forma della coda, dove lo
+# `scope` porta utente **e** emittente insieme.
+#   ⛔ E non e' l'`automatico_<emittente>` scartato nell'analisi §6: quello
+#   moltiplicava le identita' di una PERSONA per un dato che il contesto gia'
+#   portava. Questo e' un badge per posto di lavoro, e il posto di lavoro nel
+#   modello di questo database E' l'emittente.
+#
+# ⇒ Il vincolo si sposta: NON piu' «un utente per processo», ma «un processo per
+#   utente». Un processo puo' avere N utenti (uno per emittente); un utente
+#   tecnico serve un processo solo.
+# ⚠️ L'emittente NON si duplica qui: sta gia' in config.user_emittenti_fiscali,
+#   una riga sola per utente. Riportarlo sarebbe una seconda sorgente di verita'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260904-36-alter-processi-identita-uno-per-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260904-36-alter-processi-identita-uno-per-emittente
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.processi_identita: il vincolo passa da UNIQUE(processo_id) a
+        UNIQUE(auth_user_id). Un processo puo' avere N utenti tecnici (uno per
+        emittente, perche' user_emittenti_fiscali e' 1-a-1); un utente tecnico
+        serve un processo solo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_constraint
+                   WHERE conname = 'uq_processi_identita_processo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi_identita
+                  DROP CONSTRAINT uq_processi_identita_processo;
+
+              -- Un utente tecnico serve UN processo: e' la meta' del vincolo
+              -- che resta vera. L'altra meta' («un processo, un utente») cade,
+              -- perche' l'emittente e' 1-a-1 sull'utente.
+              ALTER TABLE dbops.processi_identita
+                  ADD CONSTRAINT uq_processi_identita_auth_user UNIQUE (auth_user_id);
+
+              COMMENT ON TABLE dbops.processi_identita IS
+                  'Legame processo -> utente tecnico (django.auth_user.id). ⭐ Rev 2026-09-04: un processo ha un utente PER EMITTENTE, non uno in tutto — perche'' config.user_emittenti_fiscali e'' 1-a-1 sull''utente (UNIQUE(auth_user_id), changeSet 20260408-11) e in questo modello solo il super admin e'' multi-emittente. Il vincolo qui e'' quindi UNIQUE(auth_user_id): un utente tecnico serve un processo solo, un processo puo'' averne N. ⛔ L''emittente NON si ripete in questa tabella: sta in config.user_emittenti_fiscali, e duplicarlo sarebbe una seconda sorgente di verita''. Meta'' di MACCHINA del registro: il suo seed va marcato context: dati_macchina. Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi_identita
+                  DROP CONSTRAINT IF EXISTS uq_processi_identita_auth_user;
+              ALTER TABLE dbops.processi_identita
+                  ADD CONSTRAINT uq_processi_identita_processo UNIQUE (processo_id);

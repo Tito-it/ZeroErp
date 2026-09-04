@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-automatici-identita-e-perimetro §6 (fase 5) — ⭐ IL VERO
+# CANCELLO della fase: `classe` diventa obbligatoria.
+#
+# Il filtro `p_classe` della funzione sceglie cosa lavorare in un giro; QUESTO
+# decide cosa puo' entrare in tabella. Senza, una riga nuova nel CSV
+# arruolerebbe un'altra tabella nel giro notturno **senza dichiarare di che
+# natura e'** — che e' esattamente il difetto per cui la fase 5 esiste.
+#
+# ⚠️ In `90_end` perche' la colonna la riempie il mirror CSV di `80_data`, che
+# gira DOPO `00_schema`. Un `NOT NULL` accanto alla colonna fallirebbe sulle
+# righe gia' presenti, e in CI fallirebbe comunque perche' il seed non e'
+# ancora passato. Sede gia' usata dal progetto per lo stesso motivo
+# (20260501-18, 20260526-08, 20260601-25).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/90_end/20260904-45-alter-automazione-chiusura-scadenze-classe-not-null-mctit.yaml
+
+    - changeSet:
+          id: 20260904-45-alter-automazione-chiusura-scadenze-classe-not-null
+          author: mctit
+          failOnError: true
+          comment: >
+              dbops.automazione_chiusura_scadenze.classe diventa NOT NULL, dopo
+              che il mirror CSV di 80_data l'ha riempita. E' il cancello della
+              fase 5: una riga nuova deve dichiarare la propria natura.
+          preConditions:
+              - onFail: HALT
+              - columnExists:
+                    { schemaName: dbops, tableName: automazione_chiusura_scadenze, columnName: classe }
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DO $notnull$
+                        DECLARE
+                            v_scoperti integer;
+                        BEGIN
+                            SELECT count(*) INTO v_scoperti
+                              FROM dbops.automazione_chiusura_scadenze
+                             WHERE classe IS NULL;
+
+                            IF v_scoperti > 0 THEN
+                                RAISE EXCEPTION
+                                  'Impossibile rendere NOT NULL: % bersagli non dichiarano la classe. '
+                                  'Aggiungere la colonna classe nel CSV 80_data/sql/dbops/automazione_chiusura_scadenze.csv.',
+                                  v_scoperti;
+                            END IF;
+
+                            -- Idempotente: se il NOT NULL c'e' gia', non si rifa'.
+                            IF EXISTS (
+                                SELECT 1
+                                  FROM pg_attribute a
+                                  JOIN pg_class c ON c.oid = a.attrelid
+                                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                                 WHERE n.nspname = 'dbops'
+                                   AND c.relname = 'automazione_chiusura_scadenze'
+                                   AND a.attname = 'classe'
+                                   AND NOT a.attnotnull) THEN
+                                ALTER TABLE dbops.automazione_chiusura_scadenze
+                                    ALTER COLUMN classe SET NOT NULL;
+                                RAISE NOTICE 'classe ora e'' NOT NULL: ogni bersaglio dichiara la propria natura.';
+                            END IF;
+                        END
+                        $notnull$;
+          rollback:
+              - sql:
+                    splitStatements: false
+                    sql: |
+                        ALTER TABLE dbops.automazione_chiusura_scadenze
+                            ALTER COLUMN classe DROP NOT NULL;

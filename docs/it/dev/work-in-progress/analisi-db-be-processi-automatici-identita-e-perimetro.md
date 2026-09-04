@@ -314,8 +314,16 @@ solo programma.
    Mario uno: la whitelist andrebbe riscritta comunque;
 5. ⚠️ **il perimetro slitterebbe** con la carriera di Mario, senza che nessuno decida.
 
-⭐ **Il risparmio che l'alias prometteva si ottiene puntando al profilo del reparto**
-(`config.profili_accesso_bindings`): i permessi seguono il *ruolo*, non la *persona*.
+⛔ **[corretto in sede di progetto] Il «profilo puntato al reparto» non è realizzabile
+— e non serve.** Il guard dei binding impone che il **tipo** del profilo scelga la
+colonna (`REPARTO` → unità organizzativa, `AD_HOC` → identità), e un profilo di reparto
+raggiunge una persona passando da `anagrafiche.risorse_umane`: **attraverso il rapporto
+di lavoro**, che un processo non ha.
+⭐ Ma la domanda cade: i profili alimentano liste, dashboard e resolver delle **API**, e
+un processo headless non passa da nessuno di quei percorsi. **Zero capability è minimo
+privilegio, non una mancanza** — dare a `send_pending_emails` i permessi di fatturare
+sarebbe stato regalare potere che nessuno aveva chiesto. Il parametro resta facoltativo
+e, se usato, pretende un profilo `AD_HOC`.
 
 ### 6.2 ✅ D-6 — La forma
 
@@ -329,8 +337,8 @@ tutti non può essere il dipendente di uno).
 | il tipo ruolo dei processi | `config.tipi_ruoli` — riga nuova | 📚 catalogo |
 | il `soggetto_ruolo` di ogni processo | `anagrafiche.soggetti_ruoli` | 🔧 macchina |
 | l'identità del processo | `anagrafiche.identita_digitali`, con il **flag** | 🔧 macchina |
-| il profilo | **puntato** a quello del reparto, non copiato | 🔧 macchina |
-| la whitelist emittenti | `config.user_emittenti_fiscali`, **tutti** gli emittenti | 🔧 macchina |
+| il profilo | ⛔ **nessuno** (§6.2); se serve, `AD_HOC` | 🔧 macchina |
+| l'emittente | `config.user_emittenti_fiscali`, ⛔ **UNO SOLO** — la tabella è 1-a-1 sull'utente | 🔧 macchina |
 
 ⚠️ **Il tipo ruolo nuovo e la matrice delle nature**: il guard
 `trgfn_soggetti_ruoli_guard_natura_ammessa` applica *«matrice assente = nature
@@ -461,7 +469,7 @@ restano tecnici con il nome come attore; `chiusura_scadenze` migra sulla coda.
 | **D-3** | L'attore su `job_run_log`: **il codice del processo** (D-8), in **entrambe** le funzioni, colonna facoltativa finché la vista di presidio non è vuota, poi `NOT NULL`. ⚠️ Resta da decidere se accanto al codice si registra anche l'`auth_user_id` quando c'è | 🔵 quasi chiusa |
 | **D-4** | La porta di `trgfn_guard_emittente_scope` si chiude **rispecchiando il bypass della RLS**: chi bypasserebbe la policy (proprietario, superuser) salta il guard; un processo applicativo senza utente si ferma (§4.1). Quando: passo 7, per conseguenza | ✅ chiusa 04-09 |
 | **D-5** | I 12 job pgAgent: dieci restano tecnici con il nome; `sync_auth_user_expired` idem; `chiusura_scadenze_daily` è di dominio e **migra intero sulla coda** (§8.2) | ✅ chiusa per conseguenza di D-8 + D-10 |
-| **D-6** | Un utente tecnico **per processo**, **flag** dichiarato, **soggetto «sistema»** dedicato, profilo **puntato** al reparto; ⛔ né per emittente, né alias, né super admin | ✅ chiusa 04-09 |
+| **D-6** ⚠️ *rivista 04-09* | Un utente tecnico **per processo × EMITTENTE**, **flag** dichiarato, **soggetto** dedicato (uno per coppia). ⛔ Né per emittente-solo (§6), né alias (§6.1), né super admin. ⛔ E **nessun profilo**: non serve (§6.2). ⚠️ La revisione è forzata dal modello: `config.user_emittenti_fiscali` è **1-a-1** sull'utente, e «solo il super admin è multi-emittente» | ✅ chiusa 04-09 |
 | **D-7** | Il vincolo `run_as` per tipo di coda | ✅ assorbita dal passo 6 (§10.2) |
 | **D-8** | **L'attore è sempre un nome**; l'utente tecnico c'è in più solo per il DOMINIO (§2.3) | ✅ chiusa 04-09 |
 | **D-9** | L'emittente nuovo lo aggiunge **una persona**; il sistema **segnala** il mancante (§6.4) | ✅ chiusa 04-09 |
@@ -676,6 +684,9 @@ stato verificato.
 | «zero righe: si vede» (§13.1) | zero righe è silenzioso; serve il presidio *emittente non servito* (D-9) |
 | il parallelismo «fa nascere» la sovrapposizione fra corsie dello stesso emittente | già possibile oggi (lucchetto per corsia); la novità è stessa corsia, emittenti diversi, ed è sicura (§10.1) |
 | «misurare il costo prima di generalizzare» | con D-1 senza eccezioni la misura non può decidere nulla: **tolta** |
+| ⛔ «all'utente tecnico si danno TUTTI gli emittenti» (§6.3, §6.4, D-1) | **impossibile**: `config.user_emittenti_fiscali` ha `UNIQUE(auth_user_id)` — il changeSet 20260408-11 lo dichiara *«al più una riga, 1-a-1»*, e `fn_check_user_emittente_scope` conferma *«super admin = l'unico attore multi-emittente»*. ⇒ **D-6 rivista**: un utente per processo **× emittente**. La frase era ereditata dalla parola «whitelist» e mai verificata contro il vincolo |
+| «i permessi si riusano puntando al profilo del reparto» (§6.2) | un profilo `REPARTO` raggiunge una persona via `anagrafiche.risorse_umane`, cioè il **rapporto di lavoro**; e il guard dei binding lega solo `AD_HOC` a un'identità. ⭐ Ma non serve: i profili valgono per liste, dashboard e API, percorsi che un processo headless non attraversa |
+| «un `OPERATORE` può essere un processo» (implicito in D-6) | il database dichiara il contrario in tre punti — `RIS_UMANA`, persona fisica pura, contatti obbligatori. I processi ci entrano **dichiarandosi tali a ogni passo**; una sola barriera ha richiesto di toccare un guard, e lì il flag *scambia* un requisito chiuso con un altro |
 | numeri su RLS in `magazzino`/`acquisti` | cantieri in ristrutturazione: **non si misurano** (§1, §11) |
 | la ridefinizione di `run_as` «tocca cinque punti, fra cui il `CHECK`» | il `CHECK` **resta valido**: `SISTEMA` continua a non avere emittente ⇒ `scope` nullo. I punti sono **quattro**, e uno solo non è DB (§10.2, brief DB §5.1) |
 | `listini_versioni` classificato AMMINISTRAZIONE «perché non porta l'emittente» (Tid, rileggendo: *«il listino andrebbe legato all'emittente»*) | **lo è già**: `vendite.listini.emittente_soggetto_ruolo_id NOT NULL`, e la versione lo raggiunge via `listino_id`. È **DOMINIO**; `chiusura_scadenze` migra intero (§8.2). ⚠️ Stesso errore di `send_pending_emails`: giudicare la colonna della figlia invece di seguire il percorso (§2.4). E il listino non ha policy né guard: primo caso del livello 2 del presidio (§13) |

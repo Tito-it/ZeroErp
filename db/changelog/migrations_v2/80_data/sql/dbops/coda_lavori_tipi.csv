@@ -1,3 +1,3 @@
-codice,handler_code,descrizione,run_as_default,max_tentativi_default,attivo
-FATTURAZIONE_GIRO,fatturazione_giro_default,"Giro fatturazione on-demand (C-3): discovery terne + lotto + pipeline fino a fino_a_stato.",OPERATORE,5,true
-FATTURAZIONE_NUMERA,fatturazione_numera_default,"Numerazione di perimetro (C-4): step DEFINITIVA (numera + accoda stampa) sui lotti EMESSA di un mese di competenza.",OPERATORE,3,true
+codice,handler_code,descrizione,run_as_default,max_tentativi_default,attivo,processo_codice
+FATTURAZIONE_GIRO,fatturazione_giro_default,"Giro fatturazione on-demand (C-3): discovery terne + lotto + pipeline fino a fino_a_stato.",OPERATORE,5,true,FATTURAZIONE_GIRO
+FATTURAZIONE_NUMERA,fatturazione_numera_default,"Numerazione di perimetro (C-4): step DEFINITIVA (numera + accoda stampa) sui lotti EMESSA di un mese di competenza.",OPERATORE,3,true,FATTURAZIONE_NUMERA

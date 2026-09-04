@@ -1,0 +1,242 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ CORRETTIVA di 20260904-26 — il profilo diventa FACOLTATIVO, e quando c'e'
+# dev'essere AD_HOC.
+#
+# ⛔ IL SECONDO MURO, e smentisce §6.2 dell'analisi. Il piano diceva: «i
+# permessi non si copiano, si PUNTA al profilo del reparto — cosi' quando il
+# profilo del reparto cambia, il processo lo segue». Non e' realizzabile, e la
+# ragione e' nel modello, non nell'implementazione:
+#
+#   * config.trgfn_profili_accesso_bindings_guard_coerenza impone che il TIPO
+#     del profilo scelga la colonna del binding: REPARTO -> unita_organizzativa,
+#     PORTALE -> ruolo_applicativo, AD_HOC -> identita_digitale. Un profilo di
+#     reparto NON si lega a un'identita';
+#   * e il ramo 3 di script.fn_get_profili_accesso_applicabili mostra perche':
+#     un profilo REPARTO raggiunge un'identita' passando da
+#     anagrafiche.risorse_umane -> unita_organizzativa. Cioe' **attraverso il
+#     rapporto di lavoro**.
+#
+#   ⇒ Per «puntare al reparto» un processo dovrebbe essere una RISORSA UMANA
+#     dell'azienda. E' lo stesso errore di categoria del «processo persona
+#     fisica», un piano piu' in la'.
+#
+# ⭐ MA LA DOMANDA CADE: a un processo headless un profilo NON SERVE.
+# Verificato cercando i consumatori: i profili alimentano ui.fn_resolve_lista_config,
+# fn_resolve_dashboard_config e il resolver dei permessi delle API. I quattro
+# processi non passano da nessuno di quei percorsi — girano in SQL e Python. Il
+# loro potere viene dal PERIMETRO (la whitelist emittenti sotto RLS), non dalle
+# capability.
+#   ⇒ Nessun binding: zero capability, che e' il minimo privilegio, non una
+#     mancanza. Dare a `send_pending_emails` i permessi di fatturare sarebbe
+#     stato regalare potere che nessuno gli aveva chiesto.
+#
+# ⚠️ Il parametro resta, FACOLTATIVO, come punto di estensione dichiarato: se un
+# giorno un processo dovra' passare da un percorso capability-gated, gli si da'
+# un profilo — e il guard pretende che sia AD_HOC, l'unico tipo legabile a
+# un'identita'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260904-29-update-fn-crea-utente-tecnico-profilo-adhoc-mctit.yaml
+
+  - changeSet:
+      id: 20260904-29-update-fn-crea-utente-tecnico-profilo-adhoc
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_crea_utente_tecnico: il profilo diventa facoltativo (di norma
+        NESSUNO: un processo headless non passa da percorsi capability-gated) e
+        quando indicato dev'essere AD_HOC, l'unico tipo legabile a un'identita'.
+        DROP della firma a 2 argomenti obbligatori per non lasciare un overload.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_crea_utente_tecnico';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Stessa firma (text, varchar) ma il secondo argomento prende un
+              -- DEFAULT: un CREATE OR REPLACE basta, non nasce un overload.
+              -- ⚠️ L'ACL resta dov'e' (niente DROP): il REVOKE da PUBLIC messo
+              --   in 20260904-26 sopravvive. Verificato, non assunto.
+              CREATE OR REPLACE FUNCTION script.fn_crea_utente_tecnico(
+                  p_processo_codice dbops.processi.codice%TYPE,
+                  p_profilo_codice  config.profili_accesso.codice%TYPE DEFAULT NULL)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ Niente %TYPE su django.*.
+                  v_auth_user_id   integer;
+                  v_processo       dbops.processi%ROWTYPE;
+                  v_profilo        config.profili_accesso%ROWTYPE;
+                  v_tipo_ruolo_id  config.tipi_ruoli.id%TYPE;
+                  v_stato_id       anagrafiche.soggetti.stato_id%TYPE;
+                  v_soggetto_id    anagrafiche.soggetti.id%TYPE;
+                  v_sog_ruolo_id   anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_identita_id    anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =====================================================
+                  -- Guard 1: il processo vuole davvero un utente tecnico.
+                  --   Eleggibili i soli DOMINIO headless. ⛔ I processi su
+                  --   canale CODA no: girano con lo scope dell'operatore che
+                  --   li accoda, e hanno gia' un nome — quello di una persona.
+                  -- =====================================================
+                  SELECT * INTO v_processo
+                    FROM dbops.processi
+                   WHERE codice = p_processo_codice;
+
+                  IF NOT FOUND
+                     OR NOT v_processo.attivo
+                     OR v_processo.obsoleto_dal IS NOT NULL
+                     OR v_processo.classe <> 'DOMINIO'
+                     OR v_processo.canale NOT IN ('PGAGENT', 'COMMAND') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_crea_utente_tecnico',
+                          'E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid, p_processo_codice);
+                  END IF;
+
+                  -- =====================================================
+                  -- Guard 2: il profilo, SE indicato.
+                  --   ⭐ Di norma non lo e': un processo headless non passa da
+                  --   percorsi capability-gated, quindi zero capability e'
+                  --   minimo privilegio, non una mancanza.
+                  --   ⛔ Se c'e', dev'essere AD_HOC: e' l'unico tipo che il
+                  --   guard dei binding lascia legare a un'identita'. Un
+                  --   REPARTO raggiunge le persone passando da
+                  --   anagrafiche.risorse_umane, cioe' dal rapporto di lavoro,
+                  --   che un processo non ha. E ⛔ mai SUPER_ADMIN, che
+                  --   bypasserebbe lo scope prima della whitelist.
+                  -- =====================================================
+                  IF p_profilo_codice IS NOT NULL THEN
+                      SELECT * INTO v_profilo
+                        FROM config.profili_accesso
+                       WHERE codice = p_profilo_codice;
+
+                      IF NOT FOUND
+                         OR NOT v_profilo.attivo
+                         OR v_profilo.tipo <> 'AD_HOC'::config.tipo_profilo_accesso THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_crea_utente_tecnico',
+                              'E_UTENTE_TECNICO_PROFILO_VIETATO',
+                              jsonb_build_object('profilo_codice', p_profilo_codice),
+                              NULL::uuid, p_profilo_codice);
+                      END IF;
+                  END IF;
+
+                  -- =====================================================
+                  -- Guard 3: uno per processo. Ci si ferma prima dell'unique:
+                  --   un 23505 nudo non direbbe QUALE regola e' stata infranta.
+                  -- =====================================================
+                  IF EXISTS (SELECT 1 FROM dbops.processi_identita
+                              WHERE processo_id = v_processo.id AND attivo) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_crea_utente_tecnico',
+                          'E_UTENTE_TECNICO_GIA_ESISTE',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid, p_processo_codice);
+                  END IF;
+
+                  SELECT id INTO v_tipo_ruolo_id
+                    FROM config.tipi_ruoli
+                   WHERE codice_interno = 'PROC_AUTO';
+
+                  -- Lo stato e' un NOT NULL da riempire, ma per un processo non
+                  -- significa niente: si usa quello dell'installazione.
+                  SELECT id INTO v_stato_id
+                    FROM config.stati
+                   WHERE codice_iso2 = 'IT';
+
+                  -- =====================================================
+                  -- 1. L'utente Django, con password INUTILIZZABILE: il
+                  --   prefisso '!' e' la convenzione Django per «non puo'
+                  --   autenticarsi». Un processo non fa login, e nessuno deve
+                  --   poterlo fare al posto suo.
+                  -- =====================================================
+                  INSERT INTO django.auth_user
+                      (password, is_superuser, username, first_name, last_name,
+                       email, is_staff, is_active, date_joined)
+                  VALUES ('!' || md5(random()::text || clock_timestamp()::text),
+                          false, p_processo_codice, '', '',
+                          '', false, true, now())
+                  RETURNING id INTO v_auth_user_id;
+
+                  -- =====================================================
+                  -- 2. Il soggetto: UNO PER PROCESSO (uq_soggetto_ruolo non
+                  --   ammette N processi sullo stesso soggetto). `codice` resta
+                  --   NULL: lo genera trgfn_soggetti_gen_codice.
+                  --   `tipo_soggetto_dettaglio_id` resta NULL: il guard cf/piva
+                  --   in quel caso passa, e la matrice delle nature per questo
+                  --   tipo ruolo e' volutamente vuota.
+                  -- =====================================================
+                  INSERT INTO anagrafiche.soggetti
+                      (ragione_sociale, stato_id)
+                  VALUES ('Processo automatico: ' || p_processo_codice, v_stato_id)
+                  RETURNING id INTO v_soggetto_id;
+
+                  -- Padre e figlio in ISTRUZIONI SEPARATE: una CTE unica
+                  -- condividerebbe la stessa snapshot e i guard che risolvono
+                  -- dal padre non lo troverebbero.
+                  INSERT INTO anagrafiche.soggetti_ruoli
+                      (soggetto_id, tipo_ruolo_id)
+                  VALUES (v_soggetto_id, v_tipo_ruolo_id)
+                  RETURNING id INTO v_sog_ruolo_id;
+
+                  -- =====================================================
+                  -- 3. L'identita': OPERATORE obbligatorio (ogni policy RLS lo
+                  --   pretende in AND) + flag tecnica, che sceglie il ramo
+                  --   PROC_AUTO del guard di coerenza (20260904-28).
+                  -- =====================================================
+                  INSERT INTO anagrafiche.identita_digitali
+                      (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, tecnica)
+                  VALUES (v_sog_ruolo_id, v_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo, true)
+                  RETURNING id INTO v_identita_id;
+
+                  -- 4. Il binding SOLO se un profilo e' stato chiesto.
+                  IF p_profilo_codice IS NOT NULL THEN
+                      INSERT INTO config.profili_accesso_bindings
+                          (profilo_accesso_id, identita_digitale_id)
+                      VALUES (v_profilo.id, v_identita_id);
+                  END IF;
+
+                  -- 5. Il legame processo -> utente.
+                  INSERT INTO dbops.processi_identita
+                      (processo_id, auth_user_id)
+                  VALUES (v_processo.id, v_auth_user_id);
+
+                  -- ⛔ NON si scrive config.user_emittenti_fiscali: il perimetro
+                  --   lo aggiunge una PERSONA (D-9), e
+                  --   dbops.vw_emittenti_non_serviti dice che cosa manca.
+                  RETURN v_auth_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_crea_utente_tecnico(text, character varying)
+              IS 'Crea l''utente tecnico di un processo automatico: utente Django con password inutilizzabile, soggetto dedicato (UNO per processo), soggetto_ruolo PROC_AUTO, identita'' OPERATORE con flag tecnica, riga in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ Rev 2026-09-04: il profilo e'' FACOLTATIVO e di norma NON si passa — i profili alimentano le liste, le dashboard e il resolver delle API, percorsi da cui un processo headless non passa: zero capability e'' minimo privilegio, non una mancanza. Se indicato dev''essere AD_HOC, l''unico tipo che il guard dei binding lega a un''identita'': un profilo REPARTO raggiunge le persone attraverso anagrafiche.risorse_umane, cioe'' il rapporto di lavoro, che un processo non ha. ⛔ Mai SUPER_ADMIN. ⛔ NON scrive config.user_emittenti_fiscali (D-9). Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Torna alla forma di 20260904-26 (profilo obbligatorio): non si
+              -- ricostruisce qui il corpo, si rilancia quel changeSet.
+              DROP FUNCTION IF EXISTS
+                script.fn_crea_utente_tecnico(text, character varying);

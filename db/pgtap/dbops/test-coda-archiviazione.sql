@@ -61,8 +61,20 @@ SELECT plan(18);
 -- ============================================================
 -- Fixture
 -- ============================================================
-INSERT INTO dbops.coda_lavori_tipi (codice, handler_code, run_as_default, attivo)
-VALUES ('PGTAP_ARCHIVIAZIONE', 'pgtap.archiviazione', 'SISTEMA', true);
+-- ⚠️ 2026-09-04: `dbops.coda_lavori_tipi.processo_codice` e' NOT NULL — ogni
+--   tipo di coda dichiara di quale PROCESSO e', e da li' il guard di classe in
+--   dbops.fn_accoda_lavoro legge se il lavoro e' di dominio. Un tipo senza
+--   processo non avrebbe una classe, quindi niente da controllare.
+--   ⇒ La fixture si fabbrica il proprio processo invece di appoggiarsi a uno
+--     del catalogo: MANUTENZIONE, cosi' il guard di classe non entra in gioco e
+--     questo file continua a collaudare cio' che collaudava.
+INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+VALUES (9701, 'PGTAP_PROC_ARCHIVIAZIONE', 'processo di prova per test-coda-archiviazione', 'MANUTENZIONE', 'CODA');
+
+INSERT INTO dbops.coda_lavori_tipi
+  (codice, handler_code, run_as_default, attivo, processo_codice)
+VALUES ('PGTAP_ARCHIVIAZIONE', 'pgtap.archiviazione', 'SISTEMA', true,
+        'PGTAP_PROC_ARCHIVIAZIONE');
 
 INSERT INTO dbops.coda_lavori (job_type, run_as, origine)
 VALUES ('PGTAP_ARCHIVIAZIONE', 'SISTEMA', 'API');
