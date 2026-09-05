@@ -10,12 +10,15 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { useNotify } from '../../core/composables/useNotify'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayTimestamp } from '../../core/utils/date'
 import { statoCodaLavoriSeverity } from '../../core/utils/severity'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { getCodaLavoroDettaglio } from '../../core/api/tracciamento'
+
+
 
 const { t } = useI18n()
 const notify = useNotify()
@@ -24,6 +27,11 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   jobId: { type: Number, default: null },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'changed'])
 const onClose = useDrawerClose(emit)
 
@@ -66,8 +74,9 @@ function pretty(value) {
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :header="t('strumenti.code.dettaglio_titolo', { id: props.jobId ?? '' })"
     @update:visible="(v) => emit('update:visible', v)"
+    @after-show="onAfterShow"
   >
-    <div class="app-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content">
       <template v-if="job">
         <!-- Testata -->
         <div class="app-job-testata">

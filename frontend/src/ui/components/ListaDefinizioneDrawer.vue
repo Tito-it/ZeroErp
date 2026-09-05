@@ -21,7 +21,10 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useUiDefinizioneAdminStore } from '../stores/uiDefinizioneAdmin'
+
+
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -29,6 +32,11 @@ const props = defineProps({
   recordId: { type: Number, default: null },
   recordData: { type: Object, default: null },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -127,6 +135,7 @@ function onCancel() {
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :modal="true"
     :dismissable-mask="false"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -136,7 +145,7 @@ function onCancel() {
       />
     </template>
 
-    <div class="app-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content">
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">
@@ -199,7 +208,7 @@ function onCancel() {
       </div>
     </div>
 
-    <FormFooter
+    <FormFooter v-if="contentReady"
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"

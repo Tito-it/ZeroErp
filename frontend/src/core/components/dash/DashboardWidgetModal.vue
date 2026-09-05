@@ -23,6 +23,9 @@ import Tag from 'primevue/tag'
 import FormFooter from '../FormFooter.vue'
 import { DRAWER_WIDTH } from '../../constants'
 import { useConfirmAction } from '../../composables/useConfirmAction'
+import { useDrawerContentReady } from '../../composables/useDrawerContentReady'
+
+
 
 const { confirmAction } = useConfirmAction()
 
@@ -37,6 +40,11 @@ const props = defineProps({
   // Loading lato composable (save/reset in corso).
   loading: { type: Boolean, default: false },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'apply', 'reset'])
 const { t, te } = useI18n()
@@ -123,6 +131,7 @@ function onReset() {
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @update:visible="emit('update:visible', $event)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <div class="dash-config-header">
@@ -135,7 +144,7 @@ function onReset() {
       </div>
     </template>
 
-    <div class="dash-config-body">
+    <div v-if="contentReady" class="dash-config-body">
       <p class="dash-config-hint">
         {{ t('home.personalizza_hint', { max: dimensioneMax }) }}
       </p>

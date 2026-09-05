@@ -9,6 +9,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -26,6 +27,8 @@ import Column from 'primevue/column'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import Message from 'primevue/message'
 
+
+
 const { t } = useI18n()
 const store = useUtilitiesTipiRuoloStore()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -38,6 +41,11 @@ const props = defineProps({
   // Prop esplicita: si combina con inject readonly del parent.
   readonly: { type: Boolean, default: false }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -159,6 +167,7 @@ function close() {
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -167,7 +176,7 @@ function close() {
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
       <Tabs v-model:value="activeTab">
         <TabList>
           <Tab value="dati">{{ t('amministrazione.matrice_utilities_ruoli.tab_dati') }}</Tab>

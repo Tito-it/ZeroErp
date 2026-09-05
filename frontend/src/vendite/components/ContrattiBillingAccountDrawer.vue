@@ -6,6 +6,7 @@ import { ref, computed, watch } from 'vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
@@ -27,6 +28,8 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
+
+
 const { t } = useI18n()
 const store = useContrattiStore()
 const isReadonly = useInjectReadonly()
@@ -39,6 +42,11 @@ const props = defineProps({
   canCreate: { type: Boolean, default: true },
   disabledCreateReason: { type: String, default: '' },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 
 const items = ref([])
@@ -179,6 +187,7 @@ const onClose = useDrawerClose(emit)
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
     :dismissable="true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -187,7 +196,7 @@ const onClose = useDrawerClose(emit)
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- Badge ragione sociale + utility -->
       <div class="mb-2">

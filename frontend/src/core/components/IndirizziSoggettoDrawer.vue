@@ -25,6 +25,9 @@ import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -48,6 +51,11 @@ const props = defineProps({
   selectable: { type: Boolean, default: false },
   selectTooltip: { type: String, default: '' },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const isRuolo = computed(() => props.context === 'ruolo')
 
@@ -310,12 +318,13 @@ const onClose = useDrawerClose(emit)
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`anagrafiche.indirizzo_soggetto.context_${context}`)" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
       <div v-if="listLoading" class="app-loading">
         <i class="pi pi-spin pi-spinner" />

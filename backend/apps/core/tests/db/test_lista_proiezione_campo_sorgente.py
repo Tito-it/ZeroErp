@@ -494,6 +494,17 @@ _ESERCIZI: dict[str, Esercizio] = {
             **_ordine(ob, od, chiavi=("sort_by", "sort_dir")),
         ),
     ),
+    # ⚠️ Il registro dei processi automatici sta fra le liste di TRACCIAMENTO
+    #    anche se il suo codice comincia per `amm.`: il dato e' `dbops`, e il
+    #    repository e' in `core` perche' il roster serve anche a `vendite` (una
+    #    chiamata laterale fra domini non si fa). Il prefisso dice DOVE si
+    #    guarda la lista, non di chi e' il dato.
+    "amm.processi": Esercizio(
+        dove="core/db/processi_repository.py::list_processi",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.processi_repository", "ProcessiRepository"
+        ).list_processi(limit=1, offset=0, **_ordine(ob, od)),
+    ),
     # ---------- vendite ----------
     "vendite.lotti": Esercizio(
         dove="vendite/db/vendite_repository.py::list_lotti",

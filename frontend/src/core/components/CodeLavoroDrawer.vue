@@ -36,6 +36,9 @@ import { statoCodaLavoriSeverity, statoCodaStampaSeverity } from '../utils/sever
 import { CODE_TABS, DRAWER_WIDTH } from '../constants'
 import { getCodeConteggi, listCodaLavori, listCodaStampa } from '../api/tracciamento'
 import { STATI_CODA_VIVI, contaVivi, workerOkDaConteggi } from '../composables/useQueueCountsPolling'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 
 const { t } = useI18n()
 const notify = useNotify()
@@ -44,6 +47,11 @@ const router = useRouter()
 const props = defineProps({
   visible: { type: Boolean, default: false },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 const onClose = useDrawerClose(emit)
 
@@ -189,8 +197,9 @@ function apriCoda(tab) {
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
     :header="t('strumenti.code.drawer_titolo')"
     @update:visible="(v) => emit('update:visible', v)"
+    @after-show="onAfterShow"
   >
-    <div class="app-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content">
       <!-- Stato worker: giù (nessun run recente) / coda impegnata / tutto scorre -->
       <Message v-if="workerOk === false" severity="warn" :closable="false">
         {{ t('strumenti.code.banner_worker_giu') }}

@@ -6,6 +6,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
@@ -20,6 +21,8 @@ import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Message from 'primevue/message'
 
+
+
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -29,6 +32,11 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   listino: { type: Object, default: null }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref({})
@@ -112,12 +120,14 @@ function close() {
 
 <template>
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
-    position="right" :style="{ width: DRAWER_WIDTH.STANDARD }">
+    position="right" :style="{ width: DRAWER_WIDTH.STANDARD }"
+    @after-show="onAfterShow"
+  >
     <template #header>
       <DrawerTitle :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="listino" class="app-drawer-section">
         <h4>{{ t('vendite.listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
       </div>

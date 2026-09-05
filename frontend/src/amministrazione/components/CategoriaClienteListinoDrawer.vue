@@ -9,6 +9,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiListiniStore } from '../stores/categorieClientiListini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
@@ -26,6 +27,8 @@ import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
+
+
 
 const { t } = useI18n()
 const store = useCategorieClientiListiniStore()
@@ -52,6 +55,11 @@ const props = defineProps({
   // Prop esplicita: si combina con inject readonly del parent.
   readonly: { type: Boolean, default: false }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -217,6 +225,7 @@ function close() {
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -225,7 +234,7 @@ function close() {
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
       <div class="form-grid">
         <!-- === Dimensioni (Fase 4: immutabilita' data-driven da BE non_editable_fields) === -->
         <div class="form-field">

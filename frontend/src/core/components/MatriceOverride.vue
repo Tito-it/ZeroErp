@@ -122,7 +122,6 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
       :value="vociVisibili"
       class="app-datatable"
       size="small"
-      :data-key="null"
     >
       <Column :header="labelVoce">
         <template #body="{ data }">

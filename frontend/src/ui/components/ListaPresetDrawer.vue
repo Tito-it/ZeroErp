@@ -23,8 +23,11 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
+
+
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -34,6 +37,11 @@ const props = defineProps({
   listaId: { type: Number, default: null },
   readonly: { type: Boolean, default: false },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -169,6 +177,7 @@ function onCancel() {
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :modal="true"
     :dismissable-mask="false"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -178,7 +187,7 @@ function onCancel() {
       />
     </template>
 
-    <div
+    <div v-if="contentReady"
       class="app-drawer-content"
       :class="{ 'app-readonly': isReadonlyEffective }"
     >

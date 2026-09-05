@@ -17,6 +17,9 @@ import { NAV_ICONS } from '../navigation'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 import { useAuthStore } from '../../stores/auth'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 
 const { t } = useI18n()
 const router = useRouter()
@@ -27,6 +30,11 @@ const context = useContextStore()
 const props = defineProps({
   visible: { type: Boolean, required: true }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 
 // Stato ricerca
@@ -218,11 +226,12 @@ watch(() => props.visible, (newVal) => {
     :modal="true"
     :dismissable="true"
     @update:visible="emit('update:visible', $event)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :title="t('search.title')" :icon="NAV_ICONS.SEARCH" />
     </template>
-    <div class="app-drawer-content search-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content search-drawer-content">
       <!-- Filtri ricerca -->
       <div class="search-filters">
         <div class="search-row-primary">

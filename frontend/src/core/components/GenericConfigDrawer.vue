@@ -16,6 +16,9 @@ import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Textarea from 'primevue/textarea'
 import api from '../api'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -24,6 +27,11 @@ const props = defineProps({
   label: { type: String, default: '' },
   recordId: { type: Number, default: null }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -143,11 +151,12 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="label" :icon="NAV_ICONS.TABELLE" />
     </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <template v-for="col in editableColumns" :key="col.name">
           <!-- Text -->
