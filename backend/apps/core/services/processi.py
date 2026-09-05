@@ -15,7 +15,7 @@
 #        ⚠️ Solo i processi che il BACKEND avvia. I dodici job pgAgent si
 #        dichiarano da soli: `maintenance.fn_run_and_log` deriva il codice dal
 #        jobname, e li' la derivazione e' COMPLETA (il jobname *e'* il codice).
-#        Brief: work-in-progress/piano-be-fe-processi-automatici-identita-e-perimetro.md §1.2
+#        Brief: work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md §1.2
 # ------------------------------------------------------------
 
 from __future__ import annotations

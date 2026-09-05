@@ -123,7 +123,7 @@ SELECT * FROM dbops.vw_processi_dominio_senza_identita;
 SELECT * FROM dbops.vw_emittenti_non_serviti;
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §4.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §4.
 
 ---
 

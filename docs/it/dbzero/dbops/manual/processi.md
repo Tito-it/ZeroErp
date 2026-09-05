@@ -124,7 +124,7 @@ restare vuote**.
   [job_run_log](/dbzero/maintenance/manual/job_run_log): rinominare un processo
   è un'operazione di migrazione, non una modifica di catalogo.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §2.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §2.
 
 ---
 

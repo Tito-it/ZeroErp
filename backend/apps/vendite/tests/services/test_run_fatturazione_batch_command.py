@@ -26,12 +26,13 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from io import StringIO
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
+
+from apps.core.tests.job_run_fakes import fake_registered_job
 
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
 _PROD = "apps.vendite.services.fatturazione_produttore_service"
@@ -47,18 +48,6 @@ def _badge(codice: str, *, auth_user_id: int, emittente_id: int) -> dict:
         "emittente_codice": codice,
         "emittente_soggetto_ruolo_id": emittente_id * 100,
     }
-
-
-# Scopo: patch di `registered_job` con un handle controllabile (acquired).
-def _registered_job_cm(*, acquired: bool = True):
-    handle = MagicMock()
-    handle.acquired = acquired
-
-    @contextmanager
-    def _cm(*_args, **_kwargs):
-        yield handle
-
-    return _cm, handle
 
 
 # Scopo: monta i due repository del produttore con un roster dato.
@@ -82,7 +71,7 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
 
     # 1. Un lavoro per badge, con la corsia nel payload.
     def test_accoda_un_lavoro_per_azienda(self):
-        cm, _h = _registered_job_cm()
+        cm, _h, _catturato = fake_registered_job()
         p_proc, p_coda, _proc, coda = _patch_produttore([
             _badge("ACME", auth_user_id=7, emittente_id=3),
             _badge("BETA", auth_user_id=8, emittente_id=4),
@@ -114,7 +103,7 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
     def test_la_corsia_distingue_la_chiave_di_dedup(self):
         chiavi = {}
         for modalita in ("immediata", "differita"):
-            cm, _h = _registered_job_cm()
+            cm, _h, _catturato = fake_registered_job()
             p_proc, p_coda, _proc, coda = _patch_produttore([
                 _badge("ACME", auth_user_id=7, emittente_id=3),
             ])
@@ -142,7 +131,7 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
 
     # 4. Le aziende scoperte si vedono: «2 accodati» da solo sembrerebbe completo.
     def test_aziende_non_servite_finiscono_a_video(self):
-        cm, _h = _registered_job_cm()
+        cm, _h, _catturato = fake_registered_job()
         p_proc, p_coda, _proc, _coda = _patch_produttore(
             [_badge("ACME", auth_user_id=7, emittente_id=3)],
             non_serviti=("BETA", "GAMMA"),
@@ -161,21 +150,14 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
 
     # 5. Attore, lock per corsia, meta.
     def test_registra_il_run_con_attore_e_lock_per_corsia(self):
-        catturato = {}
-
-        @contextmanager
-        def _cm(job_id, **kwargs):
-            handle = MagicMock()
-            handle.acquired = True
-            catturato["job_id"] = job_id
-            catturato["kwargs"] = kwargs
-            catturato["handle"] = handle
-            yield handle
+        # ⭐ Stessa fabbrica degli altri test: `catturato` porta gia' job_id e
+        #    kwargs, quindi non serve un secondo context manager scritto a mano.
+        cm, handle, catturato = fake_registered_job()
 
         p_proc, p_coda, _proc, _coda = _patch_produttore([
             _badge("ACME", auth_user_id=7, emittente_id=3),
         ])
-        with p_proc, p_coda, patch(f"{_CMD}.registered_job", _cm):
+        with p_proc, p_coda, patch(f"{_CMD}.registered_job", cm):
             call_command(
                 "run_fatturazione_batch", "--modalita", "immediata",
                 stdout=StringIO(),
@@ -188,11 +170,11 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
         self.assertEqual(
             catturato["kwargs"]["processo_codice"], "run_fatturazione_batch",
         )
-        catturato["handle"].set_rows_affected.assert_called_once_with(1)
+        handle.set_rows_affected.assert_called_once_with(1)
 
     # 6. Lock occupato → non si accoda niente.
     def test_skip_su_lock_occupato(self):
-        cm, _h = _registered_job_cm(acquired=False)
+        cm, _h, _catturato = fake_registered_job(acquired=False)
         p_proc, p_coda, _proc, coda = _patch_produttore([
             _badge("ACME", auth_user_id=7, emittente_id=3),
         ])
@@ -213,7 +195,7 @@ class RunFatturazioneBatchProduttoreTests(TestCase):
                 raise RuntimeError("coda irraggiungibile")
             return 99
 
-        cm, _h = _registered_job_cm()
+        cm, _h, _catturato = fake_registered_job()
         p_proc, p_coda, _proc, coda = _patch_produttore(
             [
                 _badge("ACME", auth_user_id=7, emittente_id=3),

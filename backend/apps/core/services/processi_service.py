@@ -13,7 +13,7 @@
 #        `script.fn_crea_utente_tecnico`, che ne ha quattro e solleva codici
 #        registrati. Qui si traduce e si passa. Duplicarli in Python vorrebbe
 #        dire due sedi della stessa regola, e la seconda diverge.
-#        Brief: work-in-progress/piano-be-fe-processi-automatici-identita-e-perimetro.md §6
+#        Brief: work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md §6
 # ------------------------------------------------------------
 
 from __future__ import annotations

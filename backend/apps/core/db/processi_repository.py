@@ -18,7 +18,7 @@
 #        l'avesse, questa lettura tornerebbe ZERO righe e il produttore
 #        accoderebbe zero lavori chiudendo con «FATTO, 0» — un guasto che non
 #        assomiglia a un errore ([[feedback_rls_conteggio_zero_non_e_un_dato]]).
-#        Brief: work-in-progress/piano-be-fe-processi-automatici-identita-e-perimetro.md
+#        Brief: work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -68,13 +68,18 @@ _ORDER_COLS_PROCESSI: dict[str, str] = {
 # ⚠️ E il loro NUMERO non si scrive da nessuna parte, per la stessa ragione: e'
 #    passato da sei a otto il 2026-09-05, e ogni commento che diceva «i sei
 #    presidi» era gia' una riga da correggere.
+# ⚠️ QUALIFICATI COLLO SCHEMA, e non e' pedanteria: fino al 2026-09-05 il
+#    prefisso `dbops.` era interpolato nel repository, quindi questa tupla
+#    poteva ospitare SOLO viste di quello schema. Il presidio nuovo del giornale
+#    dei run vive in `maintenance`, e per aggiungerlo bisognava toccare l'SQL —
+#    cioe' l'elenco non era davvero un elenco.
 PRESIDI_PROCESSI: tuple[str, ...] = (
-    "vw_processi_che_bypassano",
-    "vw_processi_dominio_senza_emittente",
-    "vw_processi_dominio_senza_difesa",
-    "vw_processi_dominio_senza_identita",
-    "vw_emittenti_non_serviti",
-    "vw_run_senza_attore",
+    "dbops.vw_processi_che_bypassano",
+    "dbops.vw_processi_dominio_senza_emittente",
+    "dbops.vw_processi_dominio_senza_difesa",
+    "dbops.vw_processi_dominio_senza_identita",
+    "dbops.vw_emittenti_non_serviti",
+    "dbops.vw_run_senza_attore",
     # ⭐ 2026-09-05, con la migrazione della chiusura scadenze sulla coda.
     #    `..._su_pgagent` verifica la regola presa quel giorno — nessun processo
     #    di DOMINIO su pgAgent — e `..._da_guardare` e' il prezzo di quella
@@ -82,8 +87,14 @@ PRESIDI_PROCESSI: tuple[str, ...] = (
     #    un lavoro che nessuno prende ha lo stesso effetto di un job morto.
     #    ⛔ Va letto anche quando tutto sembra a posto: la sua riga piu'
     #    pericolosa e' «mai preso», che si legge solo se il worker e' spento.
-    "vw_processi_dominio_su_pgagent",
-    "vw_coda_lavori_da_guardare",
+    "dbops.vw_processi_dominio_su_pgagent",
+    "dbops.vw_coda_lavori_da_guardare",
+    # ⭐ 2026-09-05: il giornale dei run sa finalmente registrare un fallimento.
+    #    Fino al changeSet `20260905-36` non poteva: `fn_run_and_log` scriveva la
+    #    riga rossa e il `RAISE` ne faceva il rollback, quindi NESSUNO dei dodici
+    #    job poteva lasciare traccia di un errore. Questa vista e' cio' che si
+    #    vede adesso che la traccia resta.
+    "maintenance.vw_job_run_da_guardare",
 )
 
 # ⚠️ MIRROR DICHIARATO, non una seconda definizione. «Un processo vuole un
@@ -351,10 +362,9 @@ class ProcessiRepository:
     #    quanto sta fuori dalle prime venti.
     def stato_presidi(self, righe_per_presidio: int = _RIGHE_PRESIDIO) -> list[dict[str, Any]]:
         esito: list[dict[str, Any]] = []
-        for vista in PRESIDI_PROCESSI:
+        for qualificata in PRESIDI_PROCESSI:
             # ⛔ Il nome viene da una tupla COSTANTE del modulo, mai
             #    dall'esterno: qui e' interpolato nell'SQL.
-            qualificata = f"dbops.{vista}"
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT obj_description(%s::regclass, 'pg_class')", [qualificata],
@@ -372,7 +382,10 @@ class ProcessiRepository:
                 righe = rows_to_list(cursor)
 
             esito.append({
-                "vista": vista,
+                # ⚠️ Il nome esce QUALIFICATO anche a video: due schemi diversi
+                #    possono avere viste omonime, e un pannello che ne mostra
+                #    una sola meta' manderebbe a guardare quella sbagliata.
+                "vista": qualificata,
                 "descrizione": descrizione,
                 "conteggio": conteggio,
                 "righe": righe,

@@ -70,7 +70,7 @@ SELECT * FROM dbops.vw_processi_che_bypassano;
 ⇒ Quando questa query non restituisce niente, il ritiro del ruolo batch è
 completo e il guard di scrittura diventa efficace anche su quel processo.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §8.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §8.
 
 ---
 

@@ -22,12 +22,13 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from io import StringIO
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.core.management import call_command
+
+from apps.core.tests.job_run_fakes import fake_registered_job
 
 _CMD = "apps.vendite.management.commands.draina_coda_stampa"
 _SVC_FN = f"{_CMD}.draina_coda_stampa_per_roster"
@@ -40,17 +41,6 @@ _SUMMARY = {
 }
 
 
-def _registered_job_cm(*, acquired: bool = True):
-    handle = MagicMock()
-    handle.acquired = acquired
-
-    @contextmanager
-    def _cm(*_args, **_kwargs):
-        yield handle
-
-    return _cm, handle
-
-
 class DrainaCodaStampaCommandTests(TestCase):
 
     # 1. ⛔ NIENTE canale di sistema. È il cuore del cantiere: finché il worker
@@ -59,7 +49,7 @@ class DrainaCodaStampaCommandTests(TestCase):
     def test_nessun_canale_di_sistema(self):
         import apps.vendite.management.commands.draina_coda_stampa as modulo
 
-        cm, _h = _registered_job_cm()
+        cm, _h, _catturato = fake_registered_job()
         with patch(_SVC_FN, return_value=_SUMMARY), \
              patch(f"{_CMD}.registered_job", cm):
             call_command("draina_coda_stampa", stdout=StringIO())
@@ -73,7 +63,7 @@ class DrainaCodaStampaCommandTests(TestCase):
     #    video, «nessuna stampa in coda» e «tre aziende senza utente tecnico»
     #    si leggono uguali — ed è il guasto silenzioso della D-9.
     def test_emittenti_non_serviti_finiscono_a_video(self):
-        cm, _h = _registered_job_cm()
+        cm, _h, _catturato = fake_registered_job()
         summary = {**_SUMMARY, "claimate": 0,
                    "emittenti_non_serviti": ["ACME", "BETA"]}
         with patch(_SVC_FN, return_value=summary), \
@@ -90,19 +80,10 @@ class DrainaCodaStampaCommandTests(TestCase):
     #    viene scritto come meta.
     def test_registers_run_with_meta(self):
         from apps.core.services.job_run import ORIGINE_CRON
-        captured = {}
-
-        @contextmanager
-        def _cm(job_id, **kwargs):
-            handle = MagicMock()
-            handle.acquired = True
-            captured["job_id"] = job_id
-            captured["kwargs"] = kwargs
-            captured["handle"] = handle
-            yield handle
-
+        # ⭐ Stessa fabbrica condivisa: `captured` porta job_id e kwargs.
+        cm, handle, captured = fake_registered_job()
         with patch(_SVC_FN, return_value=_SUMMARY), \
-             patch(f"{_CMD}.registered_job", _cm):
+             patch(f"{_CMD}.registered_job", cm):
             call_command("draina_coda_stampa", stdout=StringIO())
 
         self.assertEqual(captured["job_id"], "draina_coda_stampa")
@@ -112,12 +93,12 @@ class DrainaCodaStampaCommandTests(TestCase):
         self.assertEqual(
             captured["kwargs"].get("processo_codice"), "draina_coda_stampa",
         )
-        captured["handle"].set_meta.assert_called_once_with(_SUMMARY)
-        captured["handle"].set_rows_affected.assert_called_once_with(2)
+        handle.set_meta.assert_called_once_with(_SUMMARY)
+        handle.set_rows_affected.assert_called_once_with(2)
 
     # 3. I parametri CLI passati sovrascrivono i default del core.
     def test_passa_parametri_al_core(self):
-        cm, _h = _registered_job_cm()
+        cm, _h, _catturato = fake_registered_job()
         with patch(_SVC_FN, return_value=_SUMMARY) as mock_core, \
              patch(f"{_CMD}.registered_job", cm):
             call_command(
@@ -133,7 +114,7 @@ class DrainaCodaStampaCommandTests(TestCase):
 
     # 4. Lock occupato (acquired=False) → il core NON viene eseguito (skip).
     def test_skip_when_lock_busy(self):
-        cm, _h = _registered_job_cm(acquired=False)
+        cm, _h, _catturato = fake_registered_job(acquired=False)
         with patch(_SVC_FN) as mock_core, \
              patch(f"{_CMD}.registered_job", cm):
             out = StringIO()

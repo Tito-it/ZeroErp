@@ -646,7 +646,7 @@ solo chi si aspettava qualcosa. Per questo esistono la vista *emittente non serv
 
 ## 15. Riferimenti
 
-* [analisi-db-magazzino-carico-e-scarico.md](analisi-db-magazzino-carico-e-scarico.md)
+* [analisi-db-magazzino-carico-e-scarico.md](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
   — §7-sexies e §7-ter: da dove nasce la richiesta, e il vincolo sul ricalcolo
 * Building block dei processi headless: `apps/core/services/system_context.py`,
   `apps/core/services/job_run.py` — e la loro scheda nel catalogo backend

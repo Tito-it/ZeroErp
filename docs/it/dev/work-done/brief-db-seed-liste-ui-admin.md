@@ -17,7 +17,7 @@ Seedare la configurazione delle quattro liste della pagina tecnica
 *Personalizzazioni Liste* (`/amm-software/personalizzazioni-liste-tecniche`), che
 sono il **primo lotto** della modalità non paginata di `<ListaConfigurabile>`
 introdotta il 2026-09-02
-([piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md) §8-bis).
+([piano-migrazione-primevue-5.md](../work-in-progress/piano-migrazione-primevue-5.md) §8-bis).
 
 | `lista_id` | codice | consumer FE (oggi `DataTable` grezza) | col. |
 | --- | --- | --- | --- |
@@ -236,7 +236,7 @@ i `campo_sorgente` a catalogo con le chiavi della proiezione del repository.
 ⇒ **Vale per tutte in una volta, e conviene farlo una volta sola.**
 
 🔵 **Consegna aperta al team BE/FE**, tracciata nel
-[piano PrimeVue 5 §Gruppo A](piano-migrazione-primevue-5.md): non appartiene più
+[piano PrimeVue 5 §Gruppo A](../work-in-progress/piano-migrazione-primevue-5.md): non appartiene più
 a questo brief, che è chiuso.
 
 ### Nota 3 — operativa

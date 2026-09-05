@@ -17,7 +17,7 @@
 #        emittenti che hanno un utente tecnico. Chi non ce l'ha NON viene
 #        servito, e il produttore lo DICE — senza quella riga sarebbe un giro
 #        che chiude «FATTO» avendo saltato un'azienda intera (D-9).
-#        Brief: work-in-progress/piano-be-fe-processi-automatici-identita-e-perimetro.md §lotto 3
+#        Brief: work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md §lotto 3
 # ------------------------------------------------------------
 
 from __future__ import annotations
