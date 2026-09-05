@@ -632,6 +632,7 @@ del §6, che non sono decisioni: sono lavoro di un altro ramo.
 | --- | --- | --- |
 | `./manage-env.sh genera_error_policies --check` | esce 0 | ✅ allineato |
 | suite Django | verde | ✅ **4442 test** |
+| suite Django con `ZEROERP_TEST_DB_E2E=1` | verde | ✅ gli **88 test opt-in** passano — ⚠️ **spenti** senza la variabile: è così che è sfuggita la riga mancante in `_ESERCIZI` (§9) |
 | `scripts/smoke-baseline.sh` | nessuna regressione | ✅ 3 non-verdi, **tutti noti** |
 | `dbops.vw_run_senza_attore` | vuota | 🟡 **4 righe** (era 7): ⭐ le **due del backend sono uscite** — il lotto 1 funziona. 3 sono i job pgAgent di **DB-7**, che non si toglieranno mai da soli; 1 (`apply_storicizza_weekly`) si toglie alla prossima corsa |
 | `dbops.vw_processi_che_bypassano` | vuota | 🟡 **una riga**: il ruolo esiste ancora a database, ma non lo usa più nessuno — manca il `DROP ROLE` (§6-ter) |
@@ -664,6 +665,17 @@ non è stato eseguito: finché non gira, la schermata del lotto 6 risponde
 * ⚠️ **`useApiHandler.execute()` solo per response axios**: le chiamate che passano da uno
   store vanno dirette. E i blob non passano da lì.
 * ⚠️ **Drawer**: `if (result !== null)`, non `if (result)`.
+* 🔴 **La suite locale è verde anche quando la CI è rossa, e non è un caso strano:
+  i presidi che vogliono il DB vero sono **opt-in** su `ZEROERP_TEST_DB_E2E=1`
+  (acceso in CI su ogni PR, spento in sviluppo). In locale si **saltano** — e uno
+  `skipped` non si distingue da un verde se si guarda solo la riga finale.
+  ⇒ Chi tocca una **lista configurabile** o un **codice errore** rilancia con
+  `ZEROERP_TEST_DB_E2E=1` prima di dire che è verde: sono 88 test in 9 secondi.
+  ⚠️ **Caso vissuto (2026-09-05):** `amm.processi` è una lista **senza vista**, e
+  quelle il trigger DB non le guarda (non c'è una vista contro cui validare). Le
+  guarda `test_lista_proiezione_campo_sorgente`, che **si arma da solo leggendo il
+  seed** e pretende una riga in `_ESERCIZI` con la chiamata che esegue la query.
+  Il seed c'era, la riga no: rosso in CI, silenzio in locale.
 * ⛔ **Padre e figlia di una famiglia protetta non si scrivono nella stessa
   istruzione** (dal DB, 2026-09-05, trovata accendendo la RLS sui listini). La policy
   della figlia risolve il perimetro leggendo il padre, e in un'unica `WITH` lo legge

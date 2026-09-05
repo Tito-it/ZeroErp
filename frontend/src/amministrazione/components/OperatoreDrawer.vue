@@ -37,13 +37,14 @@ import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Button from 'primevue/button'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
-const isReadonly = useInjectReadonly()
+const injectedReadonly = useInjectReadonly()
 
 // Building block: auth user (solo creazione)
 const auth = useAuthUser()
@@ -58,12 +59,22 @@ const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const props = defineProps({
   visible: Boolean,
   mode: { type: String, default: 'create' },
-  authUserId: { type: Number, default: null }
+  authUserId: { type: Number, default: null },
+  // Sola lettura CUMULATIVA con quella iniettata (standard drawer admin): il
+  // chiamante può imporla anche dove il contesto non la fornisce, e non può
+  // toglierla dove il contesto la impone.
+  readonly: { type: Boolean, default: false }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
+const isReadonly = computed(() => props.readonly || injectedReadonly.value)
 const invitaLoading = ref(false)
 const emailEditInvalid = ref(false)
 
@@ -104,6 +115,7 @@ function resetForm() {
   auth.reset()
   form.value = { ...INITIAL_FORM }
 }
+
 
 // Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
@@ -298,12 +310,13 @@ const onClose = useDrawerClose(emit, 'cancelled')
     position="right"
     :style="{ width: larghezzaDrawer }"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
     </template>
 
-    <div :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
     <Tabs v-model:value="activeTab">
       <TabList>
         <Tab value="dati">{{ t('amministrazione.tab_dati') }}</Tab>
@@ -473,7 +486,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
       <!-- Tab Permessi: solo modifica -->
       <TabPanel v-if="isEdit" value="permessi">
-        <OperatorePermessiTab :auth-user-id="props.authUserId" />
+        <OperatorePermessiTab :auth-user-id="props.authUserId" :readonly="isReadonly" />
       </TabPanel>
       </TabPanels>
     </Tabs>

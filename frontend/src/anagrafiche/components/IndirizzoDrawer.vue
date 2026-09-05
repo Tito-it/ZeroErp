@@ -6,6 +6,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useIndirizzoBase, buildCivicoPart } from '../../core/composables/useIndirizzoBase'
@@ -25,11 +26,18 @@ import Checkbox from 'primevue/checkbox'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 
+
+
 const props = defineProps({
   visible: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
   itemId: { type: Number, default: null }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -121,11 +129,12 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Localizzazione -->
       <div class="form-grid">
         <template v-if="isCreate">

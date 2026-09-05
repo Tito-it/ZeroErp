@@ -33,7 +33,10 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useUiColonnaAdminStore } from '../stores/uiColonnaAdmin'
+
+
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -42,6 +45,11 @@ const props = defineProps({
   recordData: { type: Object, default: null },
   listaId: { type: Number, default: null },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -226,6 +234,7 @@ function onCancel() {
     :style="{ width: DRAWER_WIDTH.WIDE }"
     :modal="true"
     :dismissable-mask="false"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -235,7 +244,7 @@ function onCancel() {
       />
     </template>
 
-    <div class="app-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content">
       <Tabs v-model:value="activeTab">
         <TabList>
           <Tab value="generale">{{ t('ui.admin.colonna_tab_generale') }}</Tab>
@@ -434,7 +443,7 @@ function onCancel() {
       </Tabs>
     </div>
 
-    <FormFooter
+    <FormFooter v-if="contentReady"
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"

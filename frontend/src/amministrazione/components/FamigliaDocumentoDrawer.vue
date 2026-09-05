@@ -47,6 +47,7 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -59,14 +60,16 @@ const props = defineProps({
   // due sorgenti di verità divergono (`feedback_drawer_autonomi`).
   famigliaId: { type: Number, default: null },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref(defaultForm())
 const dettaglio = ref(null)
 const salvando = ref(false)
-// `contentReady` + `@after-show`: il contenuto si monta a pannello aperto, così
-// il drawer non "rimbalza" mentre carica (`feedback_content_ready_after_show`).
-const contentReady = ref(false)
 
 const isEdit = computed(() => props.famigliaId != null)
 
@@ -127,7 +130,6 @@ async function carica() {
 
 watch(() => props.visible, async (aperto) => {
   if (!aperto) {
-    contentReady.value = false
     return
   }
   await carica()
@@ -201,13 +203,13 @@ const titolo = computed(() => (isEdit.value
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="contentReady = true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle :icon="MANAGE_ICONS.FAMIGLIA_DOCUMENTO" :title="titolo" />
     </template>
 
-    <div v-if="contentReady" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('vendite.famiglie_documento.col_codice_interno') }} *</label>

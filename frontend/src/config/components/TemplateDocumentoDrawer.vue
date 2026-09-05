@@ -23,6 +23,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -39,6 +40,8 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 import Divider from 'primevue/divider'
 
+
+
 const { t } = useI18n()
 const store = useTemplateDocumentiStore()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -51,6 +54,11 @@ const props = defineProps({
   recordId: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 // `mode` evolve da create a edit dopo il primo save (memoria
@@ -216,6 +224,7 @@ function close() {
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -224,7 +233,7 @@ function close() {
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">

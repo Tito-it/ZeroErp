@@ -32,6 +32,9 @@ import LookupSelect from './LookupSelect.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
 import PageActionsBar from './PageActionsBar.vue'
+import { useDrawerContentReady } from '../composables/useDrawerContentReady'
+
+
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -47,6 +50,11 @@ const props = defineProps({
   // Il caller costruisce l'array dalle righe gia' caricate nel drawer padre.
   righeOptions: { type: Array, default: () => [] },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // `saved` porta il TOTALE note del documento dopo l'operazione (create, update
 // o delete): il drawer lo conosce già dalla lista appena ricaricata, così il
 // padre può aggiornare un badge counter senza una seconda chiamata. Il
@@ -236,6 +244,7 @@ function rigaLabel(n) {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.WIDE }"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -245,7 +254,7 @@ function rigaLabel(n) {
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="!formMode" class="app-page-toolbar">
         <div class="app-page-filters"></div>
         <PageActionsBar :actions="pageActions" />

@@ -36,16 +36,24 @@ import Button from 'primevue/button'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { getProcesso, listProcessoRun, creaUtenteTecnico } from '../api/amministrazione'
 import { displayTimestamp } from '../../core/utils/date'
 
+
+
 const props = defineProps({
   visible: { type: Boolean, default: false },
   codice: { type: String, default: null },
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'identita-creata'])
 
 // ⛔ Quante corse si mostrano. Sede UNICA: prima il numero stava nella
@@ -137,6 +145,7 @@ async function creaIdentita() {
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @update:visible="v => emit('update:visible', v)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -146,7 +155,7 @@ async function creaIdentita() {
       />
     </template>
 
-    <div class="app-drawer-content">
+    <div v-if="contentReady" class="app-drawer-content">
       <template v-if="dettaglio">
         <div class="app-proc-testa">
           <Tag :value="dettaglio.classe" severity="info" />

@@ -943,6 +943,14 @@ class AmmSoftwareRepository:
     #    stessa domanda, con due posti in cui sbagliarla.
     # ℹ️ Voce ASSENTE = nessun profilo copre quell'area/azione ⇒ vale il default
     #    (`BLOCCATO` / azione negata). La lista vuota e' un dato, non un buco.
+    # ⚠️ PARITA' A PRIORITA' UGUALE: `PORTALE` e `REPARTO` valgono entrambi 2,
+    #    quindi un utente bindato a tutti e due ha due profili indistinguibili
+    #    per lo spareggio, e `DISTINCT ON` ne prende uno arbitrario — esattamente
+    #    come fa il resolver col suo `ORDER BY h.priorita LIMIT 1`. Le due
+    #    letture restano quindi coerenti fra loro, ma su quella coppia il
+    #    risultato non e' DETERMINATO: e' un'ambiguita' del modello dei
+    #    bindings, non di questa query, e va risolta li' (una terza chiave di
+    #    ordinamento, o priorita' distinte) se un giorno si presentera'.
     def get_permessi_ereditati(self, auth_user_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(

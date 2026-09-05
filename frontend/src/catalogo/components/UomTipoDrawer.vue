@@ -4,6 +4,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUomTipiStore } from '../stores/uomTipi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -11,6 +12,8 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
+
+
 
 const { t } = useI18n()
 const store = useUomTipiStore()
@@ -22,6 +25,11 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   tipoId: { type: Number, default: null }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -91,12 +99,14 @@ function close() {
 
 <template>
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
-    position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true">
+    position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }" :dismissable="true"
+    @after-show="onAfterShow"
+  >
     <template #header>
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.uom_tipo')" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('catalogo.field_codice') }}</label>

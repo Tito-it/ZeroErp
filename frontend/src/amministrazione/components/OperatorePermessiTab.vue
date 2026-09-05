@@ -34,10 +34,15 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = useOperatoriStore()
 const notify = useNotify()
-// Readonly inject: il tab puo' essere usato dentro OperatoreDrawer in modalita'
-// readonly o dentro OperatorePermessiDrawer; in entrambi i casi i pulsanti
-// add/save/trash e i Select/ToggleSwitch di riga vanno disattivati.
-const isReadonly = useInjectReadonly()
+// Readonly: il tab vive dentro OperatoreDrawer o dentro
+// OperatorePermessiDrawer; in entrambi i casi i controlli di riga e i pulsanti
+// di salvataggio vanno disattivati.
+// ⛔ CUMULATIVA con la prop, e non solo iniettata: i due drawer espongono una
+//    prop `readonly` propria (standard drawer admin), e senza questo la prop
+//    si fermerebbe al loro bordo — l'intestazione direbbe «sola lettura» e le
+//    tendine dentro sarebbero premibili. Una guardia che sembra presente e non
+//    lo è.
+const injectedReadonly = useInjectReadonly()
 
 // Lookup via useLookup (non piu' dallo store)
 const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
@@ -46,8 +51,11 @@ const modelOverrides = useLookup(getModelOverridesLookup, { immediate: true })
 const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
-  authUserId: { type: Number, required: true }
+  authUserId: { type: Number, required: true },
+  readonly: { type: Boolean, default: false }
 })
+
+const isReadonly = computed(() => props.readonly || injectedReadonly.value)
 
 const livelloOptions = buildLivelloOptions(t)
 
@@ -99,9 +107,12 @@ async function loadAll(userId) {
 
 watch(() => props.authUserId, loadAll, { immediate: true })
 
-// Chiave di un oggetto override: `app_label.model_name`. Sede unica — la
-// stessa stringa indicizza la mappa locale, il lookup dei model riservati e la
-// riga del catalogo.
+// Chiave di un oggetto override: `app_label.model_name`. ⛔ SEDE UNICA, e va
+// usata anche dal template: la stessa stringa indicizza la mappa degli
+// override, il lookup dei model riservati e la riga del catalogo. Tre posti che
+// la ricostruiscono a mano sono tre posti in cui può divergere — e una chiave
+// che non combacia non dà nessun errore: la riga risulta «senza override» e il
+// salvataggio la lascia dov'è.
 const chiaveOggetto = (o) => `${o.app_label}.${o.model_name}`
 
 function syncLocal() {
@@ -257,33 +268,6 @@ const saveEmittenti = () => {
 // override che ripete il valore ereditato CONGELA la riga — da quel momento
 // non segue piu' il profilo, quindi il giorno che il reparto cambia livello
 // quell'utente resta indietro, e nessuno lo segnala.
-function setOverrideArea(areaId, livello) {
-  overrideAree.value = {
-    ...overrideAree.value,
-    [areaId]: { ...(overrideAree.value[areaId] || {}), area_id: areaId, livello },
-  }
-}
-
-function setOverrideAzione(azioneId, abilitata) {
-  overrideAzioni.value = {
-    ...overrideAzioni.value,
-    [azioneId]: { ...(overrideAzioni.value[azioneId] || {}), azione_id: azioneId, abilitata },
-  }
-}
-
-function setOverrideOggetto(voce, livello) {
-  const k = chiaveOggetto(voce)
-  overrideOggetti.value = {
-    ...overrideOggetti.value,
-    [k]: {
-      ...(overrideOggetti.value[k] || {}),
-      app_label: voce.app_label,
-      model_name: voce.model_name,
-      livello,
-    },
-  }
-}
-
 // Rimozione per chiave, con riassegnazione dell'oggetto: mutare in-place con
 // `delete` non e' reattivo su un `ref` di oggetto semplice.
 function _senzaChiave(mappa, chiave) {
@@ -295,6 +279,40 @@ function _senzaChiave(mappa, chiave) {
 const resetArea = (areaId) => { overrideAree.value = _senzaChiave(overrideAree.value, areaId) }
 const resetAzione = (azioneId) => { overrideAzioni.value = _senzaChiave(overrideAzioni.value, azioneId) }
 const resetOggetto = (chiave) => { overrideOggetti.value = _senzaChiave(overrideOggetti.value, chiave) }
+
+// ⚠️ Un valore NULLO non si scrive: significa «nessuna scelta», ed è il
+//    ritorno al valore ereditato — cioè un `reset`, non un override con dentro
+//    `null`. Senza questa guardia una `Select` svuotata manderebbe al backend
+//    un livello nullo, che è un errore là dove qui era solo un click di troppo.
+function setOverrideArea(areaId, livello) {
+  if (livello == null) return resetArea(areaId)
+  overrideAree.value = {
+    ...overrideAree.value,
+    [areaId]: { ...(overrideAree.value[areaId] || {}), area_id: areaId, livello },
+  }
+}
+
+function setOverrideAzione(azioneId, abilitata) {
+  if (abilitata == null) return resetAzione(azioneId)
+  overrideAzioni.value = {
+    ...overrideAzioni.value,
+    [azioneId]: { ...(overrideAzioni.value[azioneId] || {}), azione_id: azioneId, abilitata },
+  }
+}
+
+function setOverrideOggetto(voce, livello) {
+  const k = chiaveOggetto(voce)
+  if (livello == null) return resetOggetto(k)
+  overrideOggetti.value = {
+    ...overrideOggetti.value,
+    [k]: {
+      ...(overrideOggetti.value[k] || {}),
+      app_label: voce.app_label,
+      model_name: voce.model_name,
+      livello,
+    },
+  }
+}
 
 // ═══ L'AVVISO: un override che ripete l'ereditato ═════════════════════════
 // Non serve a niente e congela la riga. E' il guadagno vero della colonna
@@ -328,10 +346,10 @@ const avvisoOggetto = (voce) => {
 const vociOggetti = computed(() => {
   const conOverride = new Set(Object.keys(overrideOggetti.value))
   return modelOverrides.items.value
-    .filter(m => m.can_override === true || conOverride.has(`${m.app_label}.${m.model_name}`))
+    .filter(m => m.can_override === true || conOverride.has(chiaveOggetto(m)))
     .map(m => ({
       ...m,
-      label: `${m.app_label}.${m.model_name}`
+      label: chiaveOggetto(m)
     }))
 })
 
@@ -341,7 +359,7 @@ const vociOggetti = computed(() => {
 const modelOverrideIndex = computed(() => {
   const m = new Map()
   for (const row of modelOverrides.items.value) {
-    m.set(`${row.app_label}.${row.model_name}`, row)
+    m.set(chiaveOggetto(row), row)
   }
   return m
 })
@@ -352,7 +370,7 @@ const modelOverrideIndex = computed(() => {
 //        via la mappa indicizzata.
 function modelOverrideReason(row) {
   if (!row.app_label || !row.model_name) return null
-  const entry = modelOverrideIndex.value.get(`${row.app_label}.${row.model_name}`)
+  const entry = modelOverrideIndex.value.get(chiaveOggetto(row))
   if (!entry || entry.can_override === true) return null
   return entry.reason ? t(entry.reason) : null
 }
@@ -447,7 +465,7 @@ const azioneOptions = computed(() => [
     <h4>{{ t('amministrazione.override_oggetti_title') }}</h4>
     <MatriceOverride
       :voci="vociOggetti"
-      :chiave="o => `${o.app_label}.${o.model_name}`"
+      :chiave="chiaveOggetto"
       :overrides="overrideOggetti"
       :label-voce="t('amministrazione.col_model')"
       :avviso="avvisoOggetto"

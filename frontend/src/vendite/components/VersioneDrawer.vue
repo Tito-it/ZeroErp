@@ -15,6 +15,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -49,6 +50,8 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 
+
+
 const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmDelete } = useConfirmAction()
@@ -63,6 +66,11 @@ const props = defineProps({
   listinoUtilityId: { type: [Number, null], default: null },
   versione: { type: Object, required: true }
 })
+
+// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
+// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
+// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 
 // Scaffolding lista configurabile: search/sort/page + azioni pagina standard
@@ -436,12 +444,14 @@ const onClose = useDrawerClose(emit)
 
 <template>
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
-    position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen">
+    position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen"
+    @after-show="onAfterShow"
+  >
     <template #header>
       <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- === Intestazione contesto versione === -->
       <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: end;">
