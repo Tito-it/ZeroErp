@@ -19,7 +19,15 @@
 >   più, e il criterio è `row_security_active()`. ⛔ Non era bloccata dal ritiro
 >   di `BYPASSRLS`, come si era creduto — §12.5;
 > * baseline pgTAP su **491 file: nessuna regressione**;
-> * ✅ **documentazione allineata** — §12.9.
+> * ✅ **documentazione allineata** — §12.10.
+> * 📨 **il BE ha risposto** con cinque richieste — §12.9.
+>
+> 🔴 **Correzione 2026-09-05 — il migrate della CI si fermava sulla fase 4.**
+> Il mirror di `dbops.coda_lavori_tipi` è ancorato a **luglio** e la colonna
+> `processo_codice` gli era stata aggiunta lì: su un database ricostruito da zero
+> scriveva la FK **prima** che `20260904-13` seminasse `dbops.processi`. Corretto
+> con un mirror ri-ancorato — §11.1, ultima trappola. Il lavoro sul DB resta
+> completo: era un difetto di **posizione nella timeline**, non di modello.
 >
 > ⭐ **Tutto ciò che resta aperto — nostro e altrui — sta nel §12.**
 > Avanzamento fase per fase nel §10.
@@ -394,6 +402,12 @@ scrittura dello stesso fatto**, e due scritture dissentono.
 ✅ `dbops.coda_lavori_tipi.processo_codice text NOT NULL`, FK → `dbops.processi(codice)`.
 La classe si **legge** da lì. Fonte unica.
 
+⚠️ **Chi scrive la colonna non è il mirror di luglio.** La sede del dato resta il CSV
+`80_data/sql/dbops/coda_lavori_tipi.csv`, ma il loader che lo porta a bordo è
+`20260905-01-riancora-mirror-coda-lavori-tipi-processo`: l'ancora originale
+(`20260720-10`) sta **prima** del seme di `dbops.processi` nella timeline e la colonna
+lì è dichiarata `type: SKIP`. Il perché per esteso è la trappola in fondo al §11.1.
+
 ### 5.3 Il guard in `fn_accoda_lavoro`
 
 Oggi `v_run_as := COALESCE(p_run_as, v_tipo.run_as_default)`: il default per-tipo è un
@@ -533,7 +547,7 @@ riga**: non tolgono niente a nessuno.
 
 ## 11. Trappole note, da tenere davanti mentre si scrive
 
-### 11.1 ⛔ Trovate applicando le fasi 0–5 — valgono per tutte quelle che restano
+### 11.1 ⛔ Trovate applicando (fasi 0–6, più DB-4) — valgono per tutto ciò che resta
 
 Non sono cronaca: sono le cose che, ripetute, romperebbero di nuovo.
 
@@ -572,11 +586,52 @@ Non sono cronaca: sono le cose che, ripetute, romperebbero di nuovo.
   appoggiarsi a uno del catalogo — dichiarato `MANUTENZIONE`, così il guard di classe
   non entra in gioco e quel file continua a collaudare *ciò che collaudava*, non altro.
   ⇒ Prima di scrivere un `NOT NULL`: `grep -rn "INSERT INTO <schema>.<tabella>" db/pgtap/`.
+* ⛔ **Accendere la RLS su una famiglia PADRE-FIGLIO rompe chi li scrive INSIEME.**
+  La policy della figlia risolve il perimetro leggendo il padre, e in un'unica
+  istruzione lo legge con **lo snapshot di quell'istruzione** — che non contiene la
+  riga appena scritta dalla CTE sorella. Padre invisibile ⇒ perimetro `NULL` ⇒ *«la
+  nuova riga viola la regola di sicurezza»*. ⇒ **Due istruzioni.** Trovato applicando
+  DB-4 ai listini; vale per qualunque famiglia protetta, backend compreso.
+* ⛔ **I vincoli DIFFERITI si chiudono nei panni di chi c'è in quel momento, non di chi
+  ha scritto.** `trgfn_child_requires_active_parent` legge il padre **sotto la RLS**, e
+  scatta al `SET CONSTRAINTS` — non all'`INSERT`. Una fixture che crea come super admin
+  e poi torna operatore si vede alzare *«Padre non attivo»* su una riga perfettamente
+  attiva: sembra un difetto della fixture ed è la RLS che funziona. ⇒ I vincoli
+  differiti si chiudono **prima** di cambiare attore.
+* ⛔ **Un test che asserisce la PRESENZA di una riga in un presidio si rompe quando il
+  debito viene pagato.** `test-processi-registro` pretendeva che
+  `vw_processi_dominio_senza_difesa` nominasse `vendite.listini_versioni`: chiudendo
+  R-8 è diventato rosso **per il motivo giusto**. ⭐ Un presidio ha il compito di
+  arrivare a zero. ⇒ Un test sul presidio **costruisce il proprio caso**, così misura il
+  meccanismo e resta verde qualunque debito reale ci sia — o non ci sia.
 * ⚠️ **`has_function_privilege` con la firma scritta a mano si rompe quando la firma
   cambia.** Aggiungere un parametro a `fn_job_run_start` ha fatto fallire un test che
   citava la vecchia stringa di 5 tipi — *«la funzione non esiste»*, non *«manca il
   privilegio»*. ⇒ Il privilegio si chiede sull'**OID cercato per nome**, così il test
   misura il privilegio e non la firma.
+* 🔴 **Una colonna con FK aggiunta a un mirror VECCHIO lo manda a scrivere prima del
+  proprio bersaglio** (2026-09-05, migrate CI fermo). `processo_codice` è entrata nel
+  CSV di `dbops.coda_lavori_tipi` e nel suo loader, che però è ancorato a **luglio**
+  (`20260720-10`), mentre il catalogo `dbops.processi` lo semina `20260904-13`. In
+  `80_data` l'ordine è quello dei nomi dei file: su un database ricostruito da zero il
+  mirror gira prima, e il migrate muore con *«violates foreign key constraint
+  "fk_coda_lavori_tipi_processi" — Key (processo_codice)=(FATTURAZIONE_GIRO) is not
+  present in table "processi"»*.
+  ⚠️ **Su dev non si vede, e il motivo è la solita divergenza CI-vs-DEV**: lì il seme
+  dei processi e la colonna nel CSV sono atterrati in **due migrate diversi**, e al
+  secondo `dbops.processi` era già pieno. Un solo giro, e il difetto salta fuori.
+  ⇒ **Il numero di un changeSet è la sua posizione nella timeline**: un fatto nato a
+  settembre non può essere scritto da un'ancora di luglio. Il rimedio è un **mirror
+  ri-ancorato** dopo il seme (`20260905-01`), stessa forma dei ri-ancoraggi
+  `20260806-13`/`-14` — si duplica un'ancora, non una sorgente.
+  ⛔ **E togliere la riga `- column:` NON basta**: una colonna presente
+  nell'intestazione del CSV e non dichiarata viene caricata lo stesso, perché Liquibase
+  mappa dall'header e la lista `columns` sono solo *override*. L'unica forma che non la
+  scrive è `type: SKIP` — verificato con `updateSQL` offline su Liquibase 5.0.4, non
+  supposto.
+  ⭐ **La domanda da farsi prima**, ogni volta che si aggiunge una colonna a un CSV già
+  a bordo: *«il valore che ci metto ha una FK, e il suo bersaglio è seminato prima o
+  dopo questo loader?»*
 
 ### 11.2 Le regole di sempre
 
@@ -636,7 +691,8 @@ perché nessuno faceva la domanda. Ora una vista li elenca.
 | # | Debito | Perché è un debito | Come si vede che è chiuso |
 | --- | --- | --- | --- |
 | **R-7** | **`config.email_outbox` non ha la colonna emittente** — quindi `send_pending_emails` è un processo di `DOMINIO` **senza percorso al perimetro** | una email fiscale è di un emittente; senza colonna non c'è niente su cui filtrare | `dbops.vw_processi_dominio_senza_emittente` **vuota** |
-| **R-8** | **`vendite.listini*` senza policy RLS**, benché il listino sia stato dichiarato di dominio | il percorso all'emittente c'è (`listino_id → emittente_soggetto_ruolo_id`), ma **nessuno lo applica** | `dbops.vw_processi_dominio_senza_difesa` **vuota** |
+| **R-8** | ✅ **CHIUSA — 2026-09-05.** `vendite.listini` e `listini_versioni` hanno policy RLS + write-guard (changeSet `20260905-02`…`-06`) | era il **prerequisito** della chiusura scadenze per emittente, non un debito parallelo: `fn_apply_chiusura_scadenze` è `SECURITY INVOKER`, quindi il perimetro arriva dall'identità — ma solo dove c'è una policy che lo applichi | fatto: `dbops.vw_processi_dominio_senza_difesa` non nomina più la famiglia listino, e `db/pgtap/rls/test-rls-listini-ef-whitelist-write.sql` è 8/8 |
+| **R-10** | ⭐ **NUOVO (2026-09-05, trovato rispondendo al BE):** `vendite.fatture_stampa_coda` ha il percorso all'emittente (`fattura`) ma **nessun write-guard** | `draina_coda_stampa` sta per ricevere un'identità tecnica: senza la difesa avrebbe **mezzo perimetro**, come i listini (R-8) | `dbops.vw_processi_dominio_senza_difesa` vuota — dal 2026-09-05 nomina **una riga sola**, questa |
 | **R-9** | ✅ **CHIUSA — non è un debito, è una decisione dichiarata.** La matrice `config.tipi_ruoli_nature_ammesse` è **vuota** per `PROC_AUTO` (§4.0: le nature `PG` esigono partita IVA e codice fiscale, che un processo non ha) | sta qui solo perché **sembra** un buco da tappare, e fra sei mesi qualcuno proverà a tapparlo | è già presidiata: l'asserzione *«non vincola la natura»* in `db/pgtap/anagrafiche/test-identita-tecnica.sql` si rompe se qualcuno riempie la matrice |
 
 ### 12.4 ⛔ Fuori perimetro dichiarato — non sono residui
@@ -793,7 +849,41 @@ Nessuna delle due è della fase 6, e distinguerle è costato meno di ripararle.
 
 ---
 
-### 12.9 ✅ Documentazione — che cosa è stato scritto
+### 12.9 📨 Il backend ha risposto — cinque richieste, e due decisioni congiunte
+
+Il BE ha consumato il contratto e ha aperto
+[brief-db-processi-automatici-residui-be.md](brief-db-processi-automatici-residui-be.md)
+con cinque richieste. ⭐ **La risposta del team DB sta nel §1-bis di quel brief**, non
+qui: si risponde dove è stato chiesto.
+
+Quello che ricade su questo registro:
+
+* ✅ **R-8 (listini) — CHIUSA il 2026-09-05**, ed è stata la prima cosa fatta proprio
+  perché non era «un debito che deve calare»: era il **prerequisito** della migrazione
+  della chiusura scadenze sulla coda. Misurato: `fn_apply_chiusura_scadenze` è
+  `SECURITY INVOKER`, quindi il perimetro arriva **gratis** dall'identità con cui il
+  lavoro gira — ma solo dove una policy lo applica, e `listini_versioni` non ne aveva
+  nessuna. ⇒ Nessun parametro nuovo sulla funzione: due policy e due guard;
+* **R-10 è nuovo** (sopra), stessa forma di R-8;
+* **R-7 (email_outbox) ha una forma obbligata**: `ambito` è `NOT NULL` e oggi tutte le
+  righe sono `SISTEMA`. ⇒ La colonna emittente dev'essere **nullable con un CHECK legato
+  ad `ambito`** — un'email di sistema non ha emittente. ⚠️ E il presidio va insegnato a
+  non contare le righe `SISTEMA`, o nasce già rosso.
+
+⛔ **Due cose non le decide il DB da solo**, e vanno chiuse prima che uno dei due lati
+scriva:
+
+1. **La derivazione del processo dal jobname non copre quattro job vivi** — fra cui
+   `run_fatturazione_batch:immediata`, il cui nome porta un **suffisso** che non
+   combacerà mai. Rendere obbligatoria la colonna oggi **pianterebbe quei job**.
+2. **Un processo di coda accodato da una MACCHINA** non esiste nel modello: i presidi
+   escludono i processi `CODA` dal bisogno di identità perché assumono che chi accoda sia
+   una persona. Ma `fn_accoda_lavoro` pretende uno scope con un `auth_user_id`, quindi
+   l'utente tecnico servirebbe comunque — per riempire lo scope, non per eseguire.
+
+---
+
+### 12.10 ✅ Documentazione — che cosa è stato scritto
 
 ⛔ **Solo `manual/`**: le pagine sotto `tabelle/`, `funzioni/` e `views/` sono
 auto-generate e non si toccano a mano.

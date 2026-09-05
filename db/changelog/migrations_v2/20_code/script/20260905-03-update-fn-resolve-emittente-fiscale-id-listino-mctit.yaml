@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 (pezzo 2 di 5) — il modo `listino` per il guard di SCRITTURA.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, sezione DB-4 (R-8)
+#
+# ⭐ PERCHE' SERVE UN MODO NUOVO, e non basta l'adapter del changeSet -02.
+# Sono due domande diverse, e il progetto le tiene separate apposta:
+#
+#   fn_scope_ef_whitelist_via_listino  -> «questo utente PUO' vederlo?»  (policy)
+#   fn_resolve_emittente_fiscale_id    -> «di CHI e' questa riga?»       (guard)
+#
+# ⛔ E la seconda deve rispondere anche quando la prima direbbe di no. Il guard
+# di scrittura e' SECURITY INVOKER: dal changeSet -04 `vendite.listini` ha la
+# RLS accesa, quindi letta da un utente fuori perimetro **la riga non c'e'** —
+# l'emittente resterebbe NULL, e il guard interpreta «non risolvibile» come
+# «lascia passare». Si spegnerebbe esattamente nel caso che esiste per coprire.
+# E' il fail-open gia' trovato e chiuso il 2026-08-22 sul modo `fattura`: qui si
+# evita di rifarlo, prima che costi.
+#   ⇒ Per questo la risoluzione vive in una SECURITY DEFINER, che legge tutto.
+#
+# ⭐ `CREATE OR REPLACE`, non un DROP seguito da CREATE: la firma non cambia,
+# quindi l'ACL resta attaccata. Un DROP l'avrebbe portata via — su una SECURITY
+# DEFINER e' un buco (lezione del changeSet 20260904-21).
+#
+# ⚠️ Il corpo e' quello VIVO, estratto da `pg_get_functiondef` e non ricopiato
+# dallo YAML precedente, che e' quasi sempre stantio. L'unica aggiunta e' il ramo
+# `listino`, piu' il messaggio d'errore dei modi ammessi — che senza
+# l'aggiornamento avrebbe mentito al primo modo sbagliato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260905-03-update-fn-resolve-emittente-fiscale-id-listino-mctit.yaml
+
+  - changeSet:
+      id: 20260905-03-update-fn-resolve-emittente-fiscale-id-listino
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_resolve_emittente_fiscale_id: nuovo modo `listino`, che risolve
+        l'emittente di una versione di listino passando dal listino padre. Serve
+        al guard di scrittura su vendite.listini_versioni, che e' SECURITY
+        INVOKER e non puo' leggere sotto la RLS che il changeSet -04 accende.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: listini }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_resolve_emittente_fiscale_id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' una riga, e nient'altro. Risponde un id di
+                  --   emittente fiscale, o NULL se il riferimento non porta a
+                  --   nessun emittente.
+                  --
+                  -- ⭐ Perche' SECURITY DEFINER (ed e' il punto):
+                  --   il chiamante e' un guard di scrittura, che gira con i
+                  --   permessi di chi scrive. Due delle catene passano da
+                  --   tabelle con la ROW SECURITY ACCESA (vendite.fatture,
+                  --   pagamenti.vendite_contabili): letta da un utente fuori
+                  --   perimetro, la riga NON C'E' — e un guard che non trova
+                  --   l'emittente lascia passare. Il guard si spegnerebbe
+                  --   esattamente nel caso che esiste per coprire.
+                  --   La domanda di FATTO («di chi e'») e la domanda di
+                  --   PERMESSO («posso scriverci») sono due domande diverse:
+                  --   qui si risponde solo alla prima, la seconda resta a
+                  --   script.fn_check_user_emittente_scope.
+                  --
+                  -- ⚠️ Dipende dal fatto che le tabelle abbiano la RLS
+                  --   ABILITATA ma NON FORZATA: il proprietario la salta. Con
+                  --   un FORCE ROW LEVEL SECURITY questa funzione tornerebbe a
+                  --   leggere filtrata e andrebbe rivista. Stessa nota su
+                  --   script.fn_check_scadenza_di_fattura.
+                  --
+                  -- ⚠️ search_path bloccato: una SECURITY DEFINER senza
+                  --   search_path fisso e' un'iniezione che aspetta.
+                  -- =========================================================
+
+                  IF p_valore IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF p_modo = 'fiscale' THEN
+                      -- Convenzione PK: la colonna E' gia' emittente_fiscale_id.
+                      -- Si verifica comunque che esista: un id che non c'e' non
+                      -- deve valere come «emittente noto».
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.id = p_valore;
+
+                  ELSIF p_modo = 'soggetto_ruolo' THEN
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.soggetto_ruolo_id = p_valore;
+
+                  ELSIF p_modo = 'fattura' THEN
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM vendite.fatture f
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                       WHERE f.id = p_valore;
+
+                  ELSIF p_modo = 'ente_incasso' THEN
+                      -- ⭐ D5: il canale conosce il CONTO su cui atterra il suo
+                      --   denaro, e quel conto ha un solo padrone (lo garantisce
+                      --   ex_src_bancari_conto_incasso_un_solo_soggetto).
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM pagamenti.enti_incasso e
+                        JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+                          ON src.id = e.soggetto_ruolo_conto_bancario_id
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+                       WHERE e.id = p_valore;
+
+                  ELSIF p_modo = 'contabile' THEN
+                      -- ⭐ D5: una riga ancora DA ABBINARE non ha fattura — ed e'
+                      --   il caso normale, non l'eccezione. Il padrone di quel
+                      --   denaro lo dice il CONTO su cui e' arrivato, e la riga
+                      --   lo raggiunge passando dalla sua testata.
+                      -- ⚠️ JOIN interne apposta: una distinta INTERNA (fondo
+                      --   fattura, compensazione) nasce senza canale e risolve a
+                      --   NULL. E' giusto: non e' il canale di nessuno, e
+                      --   pretendere un perimetro da li' rifiuterebbe la prima
+                      --   riga scritta dalla pipeline dei fondi.
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM pagamenti.vendite_contabili c
+                        JOIN pagamenti.enti_incasso e
+                          ON e.id = c.ente_incasso_id
+                        JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+                          ON src.id = e.soggetto_ruolo_conto_bancario_id
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+                       WHERE c.id = p_valore;
+
+                  ELSIF p_modo = 'listino' THEN
+                      -- ⭐ DB-4: una VERSIONE di listino non porta l'emittente — lo porta il
+                      --   listino padre, con `emittente_soggetto_ruolo_id` NOT NULL. Un salto
+                      --   solo, come il modo 'fattura'.
+                      -- ⚠️ JOIN interna: un listino il cui soggetto_ruolo non e' (piu') un
+                      --   emittente risolve a NULL, cioe' «nessun padrone». Oggi non ne
+                      --   esistono (misurato: zero orfani il 2026-09-05), ed e' il
+                      --   comportamento giusto se ne nascesse uno — non si inventa un
+                      --   padrone.
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM vendite.listini l
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+                       WHERE l.id = p_valore;
+
+                  ELSE
+                      -- ⛔ Non si restituisce NULL: NULL vuol dire «lascia
+                      --    passare», e un errore di battitura in un CREATE
+                      --    TRIGGER spegnerebbe il guard in silenzio.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_resolve_emittente_fiscale_id',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'Modo di risoluzione sconosciuto',
+                              'modo',   p_modo,
+                              'valore', p_valore
+                          ),
+                          NULL::uuid,
+                          format(
+                              'il modo di risoluzione dell''emittente «%s» non esiste: '
+                              'sono ammessi fiscale, soggetto_ruolo, fattura, listino, ente_incasso e contabile',
+                              p_modo
+                          )
+                      );
+                  END IF;
+
+                  RETURN v_emittente_fiscale_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(text, bigint)
+              IS 'Risolve l''emittente fiscale di una riga FUORI dalla row security, e risponde un id. ⭐ Esiste perche'' il guard di scope in scrittura e'' SECURITY INVOKER e alcune catene passano da tabelle con la RLS accesa (vendite.fatture, pagamenti.vendite_contabili, e dal 2026-09-05 vendite.listini): letta da un utente fuori perimetro la riga non c''e'', l''emittente resta NULL, e il guard interpreta «non risolvibile» come «lascia passare» — cioe'' si spegne esattamente nel caso che esiste per coprire. La domanda di FATTO («di chi e''») e quella di PERMESSO («posso scriverci») sono due domande diverse: qui si risponde solo alla prima. ⚠️ Dipende dal fatto che la RLS sia abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista, come script.fn_check_scadenza_di_fattura. Modi: fiscale | soggetto_ruolo | fattura | listino | ente_incasso | contabile. ⭐ Rev 2026-09-05: aggiunto il modo listino per vendite.listini_versioni, che non porta l''emittente ma lo eredita dal listino padre (brief-db-processi-automatici-residui-be §DB-4). ⛔ Un modo sconosciuto SOLLEVA: restituire NULL spegnerebbe il guard in silenzio.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna alla forma precedente rilanciando 20260822-16.
+              --   Togliere il modo `listino` mentre i trigger del changeSet -06
+              --   sono in piedi li farebbe SOLLEVARE a ogni scrittura: si
+              --   disfa in ordine inverso, prima i trigger.
+              SELECT 1;

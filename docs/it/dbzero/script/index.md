@@ -137,6 +137,7 @@
 - [fn_scope_ef_whitelist_via_efba](funzioni/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
 - [fn_scope_ef_whitelist_via_ente_incasso](funzioni/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_fattura](funzioni/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_listino](funzioni/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.

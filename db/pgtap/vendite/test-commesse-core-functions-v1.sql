@@ -356,11 +356,26 @@ SELECT ok(
   'Upsert commessa_attivita insert'
 );
 
-CREATE TEMP TABLE tmp_upsert_core_update AS
+-- ⛔ 2026-09-05 — LISTINO E VERSIONE IN DUE ISTRUZIONI, e non e' stile.
+--   Dal changeSet 20260905-05 `vendite.listini_versioni` ha una policy RLS che
+--   risolve il perimetro passando dal LISTINO PADRE. Il padre e la figlia
+--   stavano in due CTE della STESSA istruzione, e li' non funziona: la policy
+--   legge `vendite.listini` con lo snapshot dell'istruzione, che non contiene
+--   la riga appena scritta dalla CTE sorella. Padre invisibile -> perimetro
+--   NULL -> «la nuova riga viola la regola di sicurezza per riga».
+--   ⚠️ Non e' un difetto della policy ne' della fixture: e' la regola
+--   `reference_rls_cte_stessa_snapshot`, e vale per chiunque — backend
+--   compreso — scriva padre e figlio in un colpo solo su una famiglia protetta.
+--   ⇒ Il listino si crea PRIMA, in un'istruzione sua.
+-- ⚠️ L'INSERT resta dentro una CTE perche' `CREATE TABLE AS` non accetta
+--   un'istruzione di scrittura al primo livello. Cio' che conta e' che le DUE
+--   scritture stiano in DUE istruzioni: e' il salto di snapshot che serve alla
+--   policy, non la forma della CTE.
+CREATE TEMP TABLE tmp_lst_core_update AS
 WITH codice AS (
   SELECT ('LRC_CORE_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS code
 ),
-lst AS (
+ins AS (
   INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
   SELECT c.code, 'listino test override documento',
          l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
@@ -373,12 +388,21 @@ lst AS (
     LIMIT 1
   ) l
   RETURNING id
-),
-lst_v AS (
+)
+SELECT id FROM ins;
+
+CREATE TEMP TABLE tmp_lst_v_core_update AS
+WITH ins AS (
   INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
   SELECT l.id, 'V1', DATE '2026-01-01', DATE '2026-12-31', 'ATTIVA'
-  FROM lst l
+  FROM tmp_lst_core_update l
   RETURNING id
+)
+SELECT id FROM ins;
+
+CREATE TEMP TABLE tmp_upsert_core_update AS
+WITH lst_v AS (
+  SELECT id FROM tmp_lst_v_core_update
 )
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(

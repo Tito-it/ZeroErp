@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 (pezzo 5 di 5) — I GUARD DI SCRITTURA sulla famiglia listino.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, sezione DB-4 (R-8)
+#
+# ⭐ PERCHE' SERVONO, se c'e' gia' la policy del changeSet -04/-05.
+# Perche' rispondono in modo diverso, e la differenza la legge una persona:
+#
+#     la policy NASCONDE          -> «new row violates row-level security policy»
+#     il guard RIFIUTA E SPIEGA   -> «Utente 5 non autorizzato per emittente 44
+#                                     su vendite.listini»
+#
+# ⛔ E non e' solo cortesia. `dbops.vw_processi_dominio_senza_difesa` chiede
+# ENTRAMBI — «policy RLS e write-guard» — perche' una policy senza guard lascia
+# scoperto il caso in cui la RLS non morde: una `SECURITY DEFINER` di proprieta'
+# di `titodb` che scriva su queste tabelle passerebbe senza che nessuno guardi
+# l'emittente.
+#
+# ── ⚠️ IL NOME DECIDE L'ORDINE, e qui l'ordine conta ────────────────
+#   I trigger `BEFORE ROW` scattano in ordine ALFABETICO. Con questi nomi:
+#     trg_listini_versioni_a10_guard_emittente_scope_ins_upd   <- questo
+#     trg_listini_versioni_a10_guard_transizione_stato_upd
+#   ⇒ Il perimetro parla PRIMA della transizione di stato, ed e' il verso
+#   giusto: «non puoi toccare questa riga» viene prima di «non puoi fare questa
+#   transizione». Invertiti, un operatore fuori perimetro riceverebbe un
+#   messaggio sulle transizioni di un documento che non e' suo — cioe' una
+#   spiegazione che conferma l'esistenza della riga.
+#
+# ── ⭐ I DUE MODI SONO DIVERSI, e non per simmetria mancata ─────────
+#   `listini`          -> modo `soggetto_ruolo` su `emittente_soggetto_ruolo_id`
+#   `listini_versioni` -> modo `listino` su `listino_id`  (nuovo, changeSet -03)
+#   La figlia non ha una colonna emittente e non deve averla: sarebbe una
+#   seconda scrittura dello stesso fatto.
+#
+# ── ⚠️ SU UPDATE IL GUARD GUARDA SOLO LA COLONNA DICHIARATA ─────────
+#   `trgfn_guard_emittente_scope` esce subito se la colonna indicata non e'
+#   cambiata. Su `listini_versioni` significa che cambiare il PREZZO di una
+#   versione altrui non passa da qui: lo ferma la policy (`WITH CHECK` +
+#   `USING`), che valuta ogni riga. Il guard copre il caso peggiore — spostare
+#   una versione sotto il listino di un altro — e la policy copre il resto.
+#   Scritto perche' non sembri una svista.
+#
+# Dipendenze: script.trgfn_guard_emittente_scope, e il modo `listino` del
+#             changeSet 20260905-03.
+# Verifica: db/pgtap/rls/test-rls-listini-ef-whitelist-write.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260905-06-create-trg-listini-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260905-06-create-trg-listini-guard-emittente-scope
+      author: mctit
+      failOnError: true
+      comment: >
+        Due trigger BEFORE INSERT OR UPDATE che applicano
+        script.trgfn_guard_emittente_scope alla famiglia listino: su vendite.listini
+        col modo soggetto_ruolo, su vendite.listini_versioni col modo listino
+        (introdotto dal changeSet -03). Affiancano le policy dei changeSet -04/-05:
+        la policy nasconde, il guard rifiuta e spiega — ed e' cio' che
+        dbops.vw_processi_dominio_senza_difesa chiede per smettere di nominarli.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: listini }
+            - tableExists:
+                { schemaName: vendite, tableName: listini_versioni }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_guard_emittente_scope'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_resolve_emittente_fiscale_id'
+                     AND p.prosrc LIKE '%''listino''%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- vendite.listini — la colonna E' il soggetto_ruolo dell'emittente
+              -- =========================================================
+              DROP TRIGGER IF EXISTS trg_listini_a10_guard_emittente_scope_ins_upd
+                  ON vendite.listini;
+              CREATE TRIGGER trg_listini_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.listini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                      'soggetto_ruolo', 'emittente_soggetto_ruolo_id');
+
+              COMMENT ON TRIGGER trg_listini_a10_guard_emittente_scope_ins_upd
+                  ON vendite.listini IS
+                  'Difesa in profondita'' sul perimetro emittente del listino. Affianca '
+                  'rls_listini_ef_whitelist: la policy nasconde, il trigger RIFIUTA E '
+                  'SPIEGA (E_SCOPE_EMITTENTE), e copre anche il caso in cui la RLS non '
+                  'morde — una SECURITY DEFINER di titodb che scriva qui. ⚠️ Il nome lo '
+                  'colloca PRIMA di trg_listini_a10_guard_tipologia_utility_ins_upd: i '
+                  'BEFORE ROW scattano in ordine alfabetico, e il perimetro deve parlare '
+                  'prima delle regole di merito. Brief: '
+                  'brief-db-processi-automatici-residui-be, sezione DB-4. rev 2026-09-05.';
+
+              -- =========================================================
+              -- vendite.listini_versioni — l'emittente arriva dal PADRE
+              -- =========================================================
+              DROP TRIGGER IF EXISTS
+                  trg_listini_versioni_a10_guard_emittente_scope_ins_upd
+                  ON vendite.listini_versioni;
+              CREATE TRIGGER trg_listini_versioni_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.listini_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                      'listino', 'listino_id');
+
+              COMMENT ON TRIGGER
+                  trg_listini_versioni_a10_guard_emittente_scope_ins_upd
+                  ON vendite.listini_versioni IS
+                  'Difesa in profondita'' sul perimetro emittente delle versioni di '
+                  'listino, risolto dal LISTINO PADRE (modo listino di '
+                  'script.fn_resolve_emittente_fiscale_id, changeSet 20260905-03). '
+                  '⚠️ Su UPDATE il guard esce se listino_id non e'' cambiato: copre il '
+                  'caso peggiore — spostare una versione sotto il listino di un altro — '
+                  'mentre le modifiche di merito (il prezzo) le ferma la policy, che '
+                  'valuta ogni riga. ⚠️ Il nome lo colloca PRIMA di '
+                  'trg_listini_versioni_a10_guard_transizione_stato_upd: «non puoi '
+                  'toccare questa riga» viene prima di «non puoi fare questa '
+                  'transizione», o la spiegazione confermerebbe l''esistenza di un '
+                  'documento altrui. rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS
+                  trg_listini_versioni_a10_guard_emittente_scope_ins_upd
+                  ON vendite.listini_versioni;
+              DROP TRIGGER IF EXISTS trg_listini_a10_guard_emittente_scope_ins_upd
+                  ON vendite.listini;
