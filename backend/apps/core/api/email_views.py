@@ -22,6 +22,9 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_outbox_service import EmailOutboxService, _get_attachments_root
+from apps.core.services.auth_helpers import (
+    extract_emittente_attivo_from_request,
+)
 from apps.core.services.error_manager import ErrorManager
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
@@ -57,6 +60,13 @@ def _check_outbox_access(request: Request, outbox: dict[str, Any]) -> None:
     )
 
 
+# Vocabolario di `config.email_outbox.ambito` (`chk_email_outbox_ambito`).
+# ⚠️ Mirror dichiarato del CHECK: serve a rifiutare un valore inventato con un
+#    400 parlante invece di lasciarlo arrivare al database come violazione di
+#    vincolo. La regola resta la', e un test la confronta col catalogo.
+AMBITI_OUTBOX = ("SISTEMA", "REPARTO", "OPERATORE")
+
+
 class EmailPrepareView(DomainAPIView):
     """POST: prepara bozza email da template + variabili."""
 
@@ -65,6 +75,16 @@ class EmailPrepareView(DomainAPIView):
 
     @extend_schema(responses={200: dict})
     # Scopo: Prepara una bozza email renderizzando un template con variabili.
+    #
+    # ⛔ `ambito` E' OBBLIGATORIO, e dal 2026-09-05 non ha piu' un default.
+    #    Valeva `SISTEMA` quando il client taceva — cioe' «nessuno ha detto
+    #    l'ambito» e «email di sistema» erano lo stesso valore. Su quella
+    #    colonna il database sta per montare una policy di lettura che tratta
+    #    `SISTEMA` come segreto di sistema (reset password, alert): un valore di
+    #    RIPIEGO non puo' fare da cancello di sicurezza, o basta un campo
+    #    dimenticato per classificare come segreta una bozza qualunque.
+    #    ⇒ Chi crea una bozza dichiara di che cosa e'. Brief:
+    #    brief-db-processi-automatici-residui-be §1-octies, punto 1.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             codice_template = (payload.get("codice_template") or "").strip()
@@ -73,15 +93,64 @@ class EmailPrepareView(DomainAPIView):
             destinatario = (payload.get("destinatario") or "").strip()
             ErrorManager.require(bool(destinatario), code=E_EMAIL_OP, message="destinatario obbligatorio.")
 
+            ambito = (payload.get("ambito") or "").strip().upper()
+            ErrorManager.require(
+                ambito in AMBITI_OUTBOX,
+                code=E_EMAIL_OP,
+                message=(
+                    "Indicare l'ambito della bozza: "
+                    f"{', '.join(AMBITI_OUTBOX)}."
+                ),
+                context={"field": "ambito"},
+            )
+
+            # ⭐ L'emittente della bozza e' quello ATTIVO di chi la crea, letto
+            #    dal claim del token — la stessa fonte che la RLS usa per
+            #    filtrare. ⛔ Non si deduce dal template ne' dall'unita'
+            #    organizzativa: sarebbe una seconda regola di perimetro accanto
+            #    a quella vera.
+            # ⚠️ Per `SISTEMA` resta `None`: quelle righe non appartengono a
+            #    nessuna azienda, e il CHECK del database lo pretende
+            #    (`chk_email_outbox_ambito_emittente`). Sugli altri ambiti
+            #    l'emittente c'e' per forza — se manca, si ferma qui con una
+            #    frase, invece di sbattere sul vincolo.
+            emittente_fiscale_id = (
+                None if ambito == "SISTEMA"
+                else extract_emittente_attivo_from_request(request)
+            )
+            ErrorManager.require(
+                ambito == "SISTEMA" or emittente_fiscale_id is not None,
+                code=E_EMAIL_OP,
+                message=(
+                    "Nessuna azienda attiva: una bozza che non e' di sistema "
+                    "appartiene all'azienda per cui si sta lavorando."
+                ),
+            )
+
+            # ⛔ `REPARTO` senza unita' organizzativa lo rifiuta il database
+            #    (`chk_email_outbox_reparto_uo`). Prima non capitava — nessuno
+            #    mandava `REPARTO`, perche' il default copriva tutto; da quando
+            #    l'ambito si dichiara, quel ramo e' raggiungibile e va chiuso
+            #    QUI, con una frase, invece di far arrivare l'operatore a una
+            #    violazione di vincolo.
+            unita_organizzativa_id = optional_int(payload, "unita_organizzativa_id")
+            ErrorManager.require(
+                ambito != "REPARTO" or unita_organizzativa_id is not None,
+                code=E_EMAIL_OP,
+                message="Una bozza di reparto deve indicare l'unita' organizzativa.",
+                context={"field": "unita_organizzativa_id"},
+            )
+
             service = EmailOutboxService()
             return service.prepare_draft(
                 codice_template=codice_template,
                 destinatario=destinatario,
                 variabili=payload.get("variabili") or {},
-                unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
+                unita_organizzativa_id=unita_organizzativa_id,
                 tipo_prestazione_id=optional_int(payload, "tipo_prestazione_id"),
                 lingua=(payload.get("lingua") or "it").strip(),
-                ambito=(payload.get("ambito") or "SISTEMA").strip(),
+                ambito=ambito,
+                emittente_fiscale_id=emittente_fiscale_id,
                 pratica_id=optional_int(payload, "pratica_id"),
                 auth_user_id=optional_int(payload, "auth_user_id"),
                 creato_da_user_id=request.user.id,

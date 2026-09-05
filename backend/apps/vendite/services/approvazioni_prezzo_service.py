@@ -854,7 +854,17 @@ def _invia_email_richiesta_approvazione(
                 **meta,
             },
             pratica_id=pratica_id,
-            ambito="WORKFLOW_APPROVAZIONE_PREZZO",
+            # 🔴 QUI C'ERA `ambito="WORKFLOW_APPROVAZIONE_PREZZO"` (corretto il
+            #    2026-09-05). ⛔ Non e' nel vocabolario di `config.email_log`
+            #    (`chk_email_log_ambito`: SISTEMA / REPARTO / OPERATORE), quindi
+            #    l'accodamento violava il vincolo — e l'except best-effort qui
+            #    sotto ingoiava l'errore: la notifica all'approvatore NON e' mai
+            #    partita, e a dirlo c'era solo una riga di log.
+            # ⚠️ `ambito` classifica A CHI APPARTIENE l'email, non a che cosa
+            #    serve: lo scopo lo porta gia' il template. Questa non appartiene
+            #    a nessuna azienda — il destinatario e' l'indirizzo di un ruolo,
+            #    preso da un parametro — quindi e' `SISTEMA`.
+            ambito="SISTEMA",
         )
     except Exception as exc:  # noqa: BLE001 - best-effort, log + continue
         logger.warning(

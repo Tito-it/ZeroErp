@@ -599,56 +599,46 @@ la schermata in `amm-software` (§6.0): `AdminAPIView` è già il gate.
 
 ---
 
-## 6-quater. Email di `SISTEMA`: deciso chi le legge, aperto chi le spedisce
+## 6-quater. ✅ Email di `SISTEMA`: deciso, e il backend ha fatto la sua parte
 
-✅ **Decisione di Tid (2026-09-05): le email di ambito `SISTEMA` le legge solo il
-super admin.** Non appartengono a nessuna azienda e valgono quanto una
-credenziale. La policy per questa regola il team DB l'ha **già scritta**
-(brief-db §12.15): ramo su `ambito`, `fn_is_super_admin` per le `SISTEMA`,
-whitelist emittente per le altre.
+✅ **Decisione di Tid (2026-09-05): le email `SISTEMA` le legge il super admin
+fra le persone, e l'identità tecnica del processo che spedisce fra le macchine.**
+Nel database *portare è leggere*: non esiste un modo di spedire una riga senza
+vederla.
 
-⛔ **Ma quella regola non dice come fa a spedirle chi le spedisce**, e la
-distinzione non è formale: *leggere* e *consegnare* sono due verbi diversi. Il
-postino non ha titolo a leggere la lettera, e deve comunque poterla portare.
+⇒ Il team DB ha **scritto e applicato** la policy di `config.email_outbox`
+(`20260905-32`), lasciando la RLS **spenta** in attesa del backend. Restava una
+riga — `ENABLE ROW LEVEL SECURITY` — più il write-guard di famiglia.
 
-**Misurato il 2026-09-05:**
+### Quello che il backend ha consegnato
 
-| | |
+| # | Fatto |
 | --- | --- |
-| `send_pending_emails` gira come management command | le GUC `app.current_user_id` / `app.ruolo_applicativo` le scrive il JWT: in un command **non ci sono** |
-| il ruolo `zeroerp_app` | **niente `BYPASSRLS`** |
-| le due identità tecniche del processo | `fn_is_super_admin` = **false** su entrambe |
+| **1** | ⛔ **`ambito` non ha più un default.** Valeva `SISTEMA` quando il client taceva: «nessuno l'ha dichiarato» e «email di sistema» erano lo **stesso valore**, proprio sulla colonna su cui la policy decide chi può leggere. Un valore di ripiego non può fare da cancello — bastava un campo dimenticato per classificare come segreta una bozza qualunque. Ora l'API lo pretende e lo valida sul vocabolario |
+| **2** | `create_outbox` **valorizza `emittente_fiscale_id`**, risolto dal claim del token (`extract_emittente_attivo_from_request`) — la stessa fonte su cui la RLS filtra. `None` solo per `SISTEMA`, come pretende `chk_email_outbox_ambito_emittente` |
+| **3** | `send_pending_emails` **dichiara la propria identità al database**: itera il roster e serve un'azienda alla volta dentro `operator_identity_context` |
 
-⇒ Accesa la RLS, il command vedrebbe **zero righe** e chiuderebbe verde: i reset
-password non partirebbero e nessun log lo direbbe.
+⭐ **Nessuna UI si è rotta**: verificato che il frontend non chiama mai
+`email/prepare/` — l'outbox oggi è una superficie di solo backend.
 
-### 🔵 Quello che resta da decidere, ed è una riga sola
+### ⚠️ Quello che il punto 3 NON fa ancora, e va detto
 
-Il team DB aveva posto l'alternativa: *«o l'identità tecnica porta il profilo
-super admin, o la policy nomina esplicitamente il processo»*.
+`config.email_log` — la coda che il command drena — non porta l'emittente e non
+ha policy. ⇒ L'identità **non separa ancora il lavoro**: la prima azienda del
+roster si porta via tutta la coda, le altre non trovano niente. È il **punto 4**
+del team DB, e quando la colonna arriva questo codice diventa per-azienda senza
+cambiare una riga.
 
-⛔ **La prima è chiusa dal database stesso**, e non per caso:
-`script.fn_crea_utente_tecnico` rifiuta qualunque profilo che non sia `AD_HOC`
-(`E_UTENTE_TECNICO_PROFILO_VIETATO`), e il catalogo spiega perché — SUPER_ADMIN è
-*«la scorciatoia ovvia per "deve servire tutti gli emittenti", e bypasserebbe lo
-scope PRIMA della whitelist»*. È la porta che questo cantiere esiste per chiudere.
+⛔ I numeri per azienda non vanno letti come un perimetro finché è così: dicono
+chi ha girato, non di chi era il lavoro. È scritto nel command.
 
-⇒ **Resta la seconda**: la policy aggiunge un ramo per l'identità tecnica **di
-quel processo** — i pezzi ci sono già (`identita_digitali.tecnica`,
-`dbops.processi_identita`). Il super admin resta l'unica **persona** che legge;
-la macchina che spedisce fa il suo lavoro senza diventare super admin.
+### 🔴 E un rischio che il ciclo introduceva, chiuso
 
-⚠️ **E prima ancora, un fatto da mettere sul tavolo**: il command legge
-`config.email_log`, mentre la colonna emittente nuova e il bersaglio dichiarato
-del processo sono su `config.email_outbox`. Sono **due tabelle**. Una policy su
-`email_outbox` non toccherebbe nemmeno il command che spedisce.
-
-### Che cosa fa il backend, quando la riga è decisa
-
-`send_pending_emails` dichiara la propria identità anche al database — le GUC
-dell'utente tecnico dal roster, un'azienda alla volta, come già fa
-`draina_coda_stampa`. È lavoro piccolo e pronto: aspetta solo di sapere **su
-quale tabella** e **con quale ramo**.
+Su un database ricostruito da zero gli utenti tecnici **non esistono** (seed
+`dati_macchina`). Un ciclo sul roster vuoto avrebbe spedito **zero email** —
+reset password compresi — chiudendo verde. ⇒ Roster vuoto: si spedisce lo stesso
+e **lo si dichiara** su `stderr`, invece di trasformare un'identità mancante nel
+silenzio totale.
 
 ---
 

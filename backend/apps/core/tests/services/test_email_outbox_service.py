@@ -75,11 +75,37 @@ class PrepareDraftTests(TestCase):
             codice_template="TEST",
             destinatario="dest@test.com",
             variabili={"nome": "Mario"},
+            # ⛔ `ambito` non ha piu' un default (2026-09-05): su quella colonna
+            #    il database decide chi puo' leggere, e un valore di ripiego non
+            #    puo' fare da cancello.
+            ambito="OPERATORE",
+            emittente_fiscale_id=7,
         )
 
         self.assertEqual(result["id"], 10)
         repo.create_outbox.assert_called_once()
         dispatch.resolve_and_render.assert_called_once()
+        # ⭐ L'azienda arriva fino all'INSERT. Senza, la riga non sarebbe di
+        #    nessuno: il CHECK del database la rifiuta, e la policy RLS non
+        #    avrebbe su cosa filtrare.
+        kwargs = repo.create_outbox.call_args.kwargs
+        self.assertEqual(kwargs["ambito"], "OPERATORE")
+        self.assertEqual(kwargs["emittente_fiscale_id"], 7)
+
+    # ⛔ Il contratto: chi crea una bozza DEVE dire di che cosa e'. Il test
+    #    guarda la FIRMA e non una chiamata, perche' e' li' che il default
+    #    tornerebbe — reintrodurlo non romperebbe nessuna chiamata esistente, e
+    #    passerebbe inosservato.
+    def test_ambito_non_ha_un_default(self):
+        import inspect
+
+        firma = inspect.signature(EmailOutboxService.prepare_draft)
+        self.assertIs(
+            firma.parameters["ambito"].default, inspect.Parameter.empty,
+            "`ambito` ha di nuovo un default: «non dichiarato» e «di sistema» "
+            "tornerebbero a essere lo stesso valore, e la policy di lettura "
+            "classificherebbe come segreta ogni bozza a cui manca un campo.",
+        )
 
     # Scopo: Verifica che template non trovato lanci ServiceError.
     @patch(_DISPATCH)
@@ -97,6 +123,7 @@ class PrepareDraftTests(TestCase):
                 codice_template="INESISTENTE",
                 destinatario="dest@test.com",
                 variabili={},
+                ambito="SISTEMA",
             )
 
 

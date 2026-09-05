@@ -639,7 +639,13 @@ class EmailRepository:
         destinatari_cc: list[str] | None = None,
         email_account_id: int | None = None,
         email_template_id: int | None = None,
-        ambito: str = "SISTEMA",
+        # ⛔ Nessun default: lo dichiara chi crea la bozza. Vedi `EmailPrepareView`.
+        ambito: str,
+        # ⭐ L'azienda a cui la bozza appartiene. Obbligatoria per il database su
+        #    tutto cio' che non e' `SISTEMA` (`chk_email_outbox_ambito_emittente`),
+        #    ed e' la colonna su cui la policy RLS filtra: senza, la riga non
+        #    sarebbe di nessuno e nessun operatore la vedrebbe.
+        emittente_fiscale_id: int | None = None,
         unita_organizzativa_id: int | None = None,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
@@ -648,15 +654,15 @@ class EmailRepository:
     ) -> int:
         sql = """
             INSERT INTO config.email_outbox
-                (email_account_id, email_template_id, ambito,
+                (email_account_id, email_template_id, ambito, emittente_fiscale_id,
                  unita_organizzativa_id, pratica_id,
                  destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo,
                  stato, contesto_json, auth_user_id, creato_da_user_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'DRAFT', %s::jsonb, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'DRAFT', %s::jsonb, %s, %s)
             RETURNING id
         """
         params = [
-            email_account_id, email_template_id, ambito,
+            email_account_id, email_template_id, ambito, emittente_fiscale_id,
             unita_organizzativa_id, pratica_id,
             destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo,
             json.dumps(contesto_json or {}), auth_user_id, creato_da_user_id,

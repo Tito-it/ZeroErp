@@ -45,8 +45,6 @@
 
 from __future__ import annotations
 
-import re
-
 from unittest import TestCase
 
 from django.db import connection
@@ -57,7 +55,7 @@ from apps.core.db.processi_repository import (
 )
 from apps.core.services.coda_lavori.handler_registry import registered_handlers
 from apps.core.services.processi_service import _CANALI, _CLASSI
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
 
 
 # Scopo: le righe di una query, senza cerimonie (qui si legge soltanto).
@@ -67,17 +65,12 @@ def _righe(sql: str) -> list[tuple]:
         return cur.fetchall()
 
 
-# Scopo: i valori ammessi da un CHECK di `dbops.processi`, letti dal catalogo.
-# ⚠️ Si legge il vincolo, non si riscrive l'elenco: un valore nuovo che nessuno
-#    dei due lati conosce passerebbe verde.
+# Scopo: i valori ammessi da un CHECK di `dbops.processi`. ⭐ La lettura sta nel
+#        building block condiviso (`db_e2e.valori_check`): i due CHECK del
+#        progetto scrivono i letterali con cast diversi, e due letture separate
+#        ne coprirebbero una ciascuna.
 def _valori_check(conname: str) -> set[str]:
-    vincolo = _righe(
-        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
-        f"WHERE conrelid = 'dbops.processi'::regclass AND conname = '{conname}'"
-    )[0][0]
-    valori = set(re.findall(r"'([A-Z_]+)'::text", vincolo))
-    assert valori, f"CHECK {conname} non interpretabile: {vincolo}"
-    return valori
+    return valori_check("dbops.processi", conname)
 
 
 class CodaLavoriTipiHandlerGuardrail(TestCase):

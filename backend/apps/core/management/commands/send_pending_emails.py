@@ -15,6 +15,8 @@ from django.core.management.base import BaseCommand
 from django.db import connection
 
 from apps.core.db.email_repository import EmailRepository
+from apps.core.db.processi_repository import ProcessiRepository
+from apps.core.services.coda_lavori.context import operator_identity_context
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.processi import PROCESSO_SEND_PENDING_EMAILS
@@ -43,14 +45,28 @@ class Command(BaseCommand):
     # ⚠️ NIENTE `lock_key`: questo command non ne aveva uno prima, e aggiungerlo
     #    ora cambierebbe il comportamento di un processo in esercizio dentro un
     #    cantiere che parla di identita', non di concorrenza.
-    # 🔴 QUESTO PROCESSO E' DI DOMINIO E NON HA UN PERIMETRO. `config.email_outbox`
-    #    non porta l'emittente, quindi non si puo' lavorare «un'azienda alla
-    #    volta»: gli si da' l'ATTORE e basta. Il resto sta nel debito R-7 /
-    #    richiesta DB-3 (brief-db-processi-automatici-residui-be) — dichiarato,
-    #    non dimenticato.
+    # ⭐ DAL 2026-09-05 IL PROCESSO DICE CHI E' ANCHE AL DATABASE. Prima si
+    #    registrava soltanto nel giornale dei run: le GUC `app.current_user_id` e
+    #    `app.ruolo_applicativo` le scrive l'autenticazione JWT, e in un command
+    #    non ci sono — quindi a database questa connessione era anonima. Adesso
+    #    il giro passa dal ROSTER e ogni azienda viene servita dentro l'identita'
+    #    del proprio utente tecnico. Brief: brief-db-processi-automatici-residui-be
+    #    §1-octies, punto 3.
     def handle(self, *args, **options):
         if options["dry_run"]:
-            self._esegui(options)
+            # ⚠️ IL DRY-RUN NON PASSA DAL ROSTER, ed e' voluto. `config.email_log`
+            #    non ha ancora un perimetro: iterando le aziende ogni giro
+            #    vedrebbe le STESSE righe, e l'anteprima direbbe «3 email» due
+            #    volte facendone sembrare sei. Un'anteprima che non torna e'
+            #    peggio di nessuna anteprima.
+            # ⇒ Una passata sola, che e' esattamente cio' che la coda contiene.
+            #    Quando la colonna emittente arrivera' (punto 4 del team DB),
+            #    anche questa diventera' per azienda.
+            self.stdout.write(
+                "[DRY-RUN] la coda non ha ancora un perimetro per azienda: "
+                "quella che segue e' la coda intera."
+            )
+            self._esegui_giro(options)
             return
         with registered_job(
             PROCESSO_SEND_PENDING_EMAILS,
@@ -61,10 +77,101 @@ class Command(BaseCommand):
             job.set_meta(esito)
             job.set_rows_affected(esito.get("processate", 0))
 
+    # Scopo: Il giro completo — un'azienda alla volta, ciascuna con l'identita'
+    #        del proprio utente tecnico. Ritorna il riepilogo aggregato.
+    #
+    # ⚠️ CHE COSA CAMBIA OGGI, E CHE COSA NO. `config.email_log` — la coda che
+    #    questo command drena — non porta ancora l'emittente e non ha policy:
+    #    quindi l'identita' NON separa ancora il lavoro, e la prima azienda del
+    #    roster si porta via tutta la coda mentre le altre non trovano niente.
+    #    ⭐ Non e' un difetto di questo ciclo: e' il perimetro che manca nel
+    #    DATO, ed e' il punto 4 del team DB. Quando la colonna arriva, questo
+    #    codice diventa per-azienda senza cambiare una riga.
+    # ⛔ E i numeri per azienda NON vanno letti come un perimetro finche' e'
+    #    cosi': dicono chi ha girato, non di chi era il lavoro.
+    #
+    # 🔴 ROSTER VUOTO: SI SPEDISCE LO STESSO, ad alta voce. Su un database
+    #    ricostruito da zero gli utenti tecnici non ci sono (seed
+    #    `dati_macchina`): fermarsi trasformerebbe un'identita' mancante nel
+    #    silenzio totale delle email — reset password compresi — che e'
+    #    esattamente il guasto-per-assenza che questo cantiere esiste per
+    #    togliere. ⇒ Si esegue senza identita' e lo si DICE.
+    def _esegui(self, options) -> dict:
+        processi_repo = ProcessiRepository()
+        roster = processi_repo.roster_processo(PROCESSO_SEND_PENDING_EMAILS)
+
+        if not roster:
+            self.stderr.write(self.style.WARNING(
+                "⚠️  Nessun utente tecnico per send_pending_emails: il giro "
+                "parte SENZA identita' a database. Le email vengono spedite "
+                "lo stesso; il perimetro no."
+            ))
+            esito = self._esegui_giro(options)
+            esito["senza_identita"] = True
+            return esito
+
+        totali = {"processate": 0, "inviate": 0, "fallite": 0}
+        per_emittente: list[dict] = []
+        # ⛔ UN'AZIENDA CHE FALLISCE NON PORTA VIA LE ALTRE, ed e' la stessa
+        #    forma gia' provata in `draina_coda_stampa_per_roster`. Senza,
+        #    bastava un badge con l'identita' spenta — `operator_identity_context`
+        #    solleva `E_CODA_IDENTITA_NON_ATTIVA` — per fermare l'INTERO giro:
+        #    zero email spedite, reset password compresi. Sarebbe stato lo stesso
+        #    guasto-per-assenza che il ramo «roster vuoto» qui sopra evita,
+        #    lasciato aperto dall'altro lato.
+        badge_falliti: list[dict] = []
+        for badge in roster:
+            try:
+                with operator_identity_context(
+                    badge["auth_user_id"],
+                    username=badge["username"],
+                    identita_id=badge["identita_id"],
+                    emittente_attivo_id=badge["emittente_fiscale_id"],
+                ):
+                    parziale = self._esegui_giro(options)
+            except Exception as exc:  # noqa: BLE001 — isolamento per azienda voluto
+                logger.warning(
+                    "send_pending_emails.azienda_fallita emittente=%s badge=%s errore=%s",
+                    badge["emittente_codice"], badge["username"], exc, exc_info=True,
+                )
+                badge_falliti.append({
+                    "emittente_codice": badge["emittente_codice"], "errore": str(exc),
+                })
+                self.stderr.write(self.style.ERROR(
+                    f"⛔ {badge['emittente_codice']}: giro non eseguito — {exc}"
+                ))
+                continue
+            for chiave in totali:
+                totali[chiave] += parziale.get(chiave, 0)
+            per_emittente.append({
+                "emittente_codice": badge["emittente_codice"], **parziale,
+            })
+        scoperti = processi_repo.emittenti_non_serviti(PROCESSO_SEND_PENDING_EMAILS)
+        if scoperti:
+            # ⭐ Il numero che rompe il silenzio, come per la fatturazione: senza
+            #    badge quell'azienda non viene servita, e il giro chiuderebbe
+            #    «FATTO» avendola saltata.
+            self.stderr.write(self.style.WARNING(
+                "⚠️  Aziende senza utente tecnico, non servite: "
+                + ", ".join(e["emittente_codice"] for e in scoperti)
+            ))
+        return {
+            **totali,
+            "per_emittente": per_emittente,
+            # ⭐ Due assenze DIVERSE, e tenerle separate e' il punto: «non ha un
+            #    badge» si ripara creando l'utente tecnico, «il badge non ha
+            #    funzionato» si ripara guardando l'errore. Un elenco solo
+            #    manderebbe a fare la cosa sbagliata.
+            "badge_falliti": badge_falliti,
+            "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
+        }
+
     # Scopo: Processa email in coda PENDING/RETRY, con retry automatico
     #        per i FAILED con tentativi < max_tentativi. Ritorna il riepilogo
     #        del giro (vuoto sul dry-run, che non e' un'esecuzione).
-    def _esegui(self, options) -> dict:
+    # ⚠️ Gira DENTRO l'identita' impostata dal chiamante: qui non si apre nessun
+    #    contesto, o sarebbero due sedi a deciderlo.
+    def _esegui_giro(self, options) -> dict:
         dry_run = options["dry_run"]
         limit = options["limit"]
 
