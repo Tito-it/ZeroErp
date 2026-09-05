@@ -1,115 +1,95 @@
-## 📘 Documentazione Concettuale – Procedura `maintenzance.proc_apply_storicizza_defaults()`
+## 📘 Documentazione Concettuale – Procedura `maintenance.proc_apply_storicizza_defaults()`
 
 > **Collegamenti utili**
 >
-Approfondimenti tabelle: 
+Approfondimenti tabelle:
 >
 [`config.storico_set_storicizza`](/dbzero/config/tabelle/storico_set_storicizza)
 >
-Scheduler:
-> [Processi pgAgent](/postgresql/pgAgent)
+Approfondimenti funzioni:
+>
+[`maintenance.proc_sync_storico_set_storicizza`](/dbzero/maintenance/manual/proc_sync_storico_set_storicizza) ·
+[`maintenance.fn_run_and_log`](/dbzero/maintenance/manual/fn_run_and_log)
 
 ---
 ### 🎯 Scopo Principale
-(latest review 07/01/26)
-La procedura `maintenzance.proc_apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
+(latest review 05-09-2026)
+
+Rimette `DEFAULT true` sulla colonna `storicizza` di ogni tabella elencata in
+`config.storico_set_storicizza`, così che le righe nuove nascano storicizzate.
+
+È il **consumatore** di un insieme derivato: chi lo popola e lo pota è
+[`proc_sync_storico_set_storicizza`](/dbzero/maintenance/manual/proc_sync_storico_set_storicizza).
 
 ---
 
-### Dettaglio Funzionale
+### ⛔ Il guasto che questa procedura ha causato per sei mesi
 
-Per ogni record della tabella `config.storico_set_storicizza`, la procedura:
+Fino al 5 settembre 2026 il giro era tutto-o-niente: un `ALTER TABLE` per riga,
+in un ciclo unico. **Una sola riga che puntava a una tabella ritirata sollevava
+`undefined_table` e fermava il lavoro per tutte le altre cento.**
 
-1. Estrae il nome completo della tabella nel formato `schema.tabella`.
-2. Divide il nome nelle due parti `schema` e `tabella`.
-3. Esegue dinamicamente un comando SQL `ALTER TABLE` per settare `DEFAULT true` sulla colonna `storicizza`.
-
-
----
-
-### 🕒 Esecuzione Programmata (pgAgent)
-
-La procedura è **eseguita automaticamente ogni sabato alle ore 07:00** tramite un job pgAgent denominato `apply_storicizza_defaults_weekly`.
-
-#### 🧩 Dettagli del job pgAgent
-
-* **Classe job**: `Routine Maintenance`
-* **Nome job**: `apply_storicizza_defaults_weekly`
-* **Descrizione**: Setta `DEFAULT=true` su colonne `storicizza` ogni sabato alle 07:00
-* **Step**: esegue `SELECT maintenance.proc_apply_storicizza_defaults();`
-* **Schedule**: ogni **sabato** alle **07:00** (solo al minuto 0)
-
-#### 🧾 Codice job
-
-```plpgsql
-DO $$
-DECLARE
-  v_jobid   INTEGER;
-  v_classid INTEGER;
-BEGIN
-  SELECT jclid INTO v_classid
-    FROM pgagent.pga_jobclass
-   WHERE jclname = 'Routine Maintenance'
-   LIMIT 1;
-
-  IF v_classid IS NULL THEN
-    RAISE EXCEPTION 'Job class "Routine Maintenance" non trovata';
-  END IF;
-
-  DELETE FROM pgagent.pga_job WHERE jobname = 'apply_storicizza_defaults_weekly';
-
-  INSERT INTO pgagent.pga_job(
-    jobjclid, jobname, jobdesc, jobenabled
-  ) VALUES (
-    v_classid,
-    'apply_storicizza_defaults_weekly',
-    'Setta DEFAULT=true su colonne storicizza ogni sabato ore 07:00',
-    TRUE
-  ) RETURNING jobid INTO v_jobid;
-
-  DELETE FROM pgagent.pga_schedule WHERE jscjobid = v_jobid;
-
-  INSERT INTO pgagent.pga_schedule(
-    jscjobid, jscname, jscenabled,
-    jscminutes, jschours, jscweekdays,
-    jscmonthdays, jscmonths, jscstart
-  ) VALUES (
-    v_jobid,
-    'sat_07',
-    TRUE,
-    (SELECT array_agg((i = 0)::boolean) FROM generate_series(0,59) AS g(i)),
-    (SELECT array_agg((i = 7)::boolean) FROM generate_series(0,23) AS g(i)),
-    ARRAY[FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, TRUE]::boolean[],
-    array_fill(TRUE, ARRAY[32])::boolean[],
-    array_fill(TRUE, ARRAY[12])::boolean[],
-    now()
-  );
-
-  INSERT INTO pgagent.pga_jobstep(
-    jstjobid, jstname, jstenabled, jstkind,
-    jstcode, jstdbname, jstonerror
-  ) VALUES (
-    v_jobid,
-    'run_apply_storicizza',
-    TRUE,
-    's',
-    $$
-      SELECT maintence.proc_apply_storicizza_defaults();
-    $$,
-    current_database(),
-    FALSE
-  );
-END
-$$;
-```
+⭐ Ed è successo: il job settimanale è morto ogni settimana **dal 21 febbraio al
+5 settembre 2026**. Nessuno se n'è accorto, e non per distrazione — il giornale
+delle esecuzioni continuava a dire *«done»*, perché il verbale del fallimento
+veniva scritto e poi buttato via insieme alla transazione.
 
 ---
 
-### Sicurezza & Best Practice
+### ⭐ Che cosa fa adesso
 
-* È buona norma testare la procedura manualmente prima di attivare il job.
-* Verificare che la colonna `storicizza` esista in tutte le tabelle dichiarate.
-* Utilizzare la tabella `config.storico_set_storicizza` come unico punto di controllo per le tabelle storicizzate.
+1. una riga che **non risolve** a nessun oggetto viene **saltata**, e lo dice;
+2. un `ALTER` che fallisce per un altro motivo isola **quella riga sola**;
+3. il giro finisce sempre con un riepilogo: *quante applicate, saltate, fallite*.
+
+> ⚠️ **Non è «ingoiare gli errori»**: cambia il **posto** dove il guasto si
+> racconta. Un'eccezione dentro un job pgAgent non la legge nessuno — è
+> esattamente ciò che questi sei mesi dimostrano. Un `WARNING` nel log del
+> server, sì.
+
+---
+
+### ⭐ Perché l'isolamento serve anche dopo la potatura
+
+Non è una toppa sulle tre righe morte di quel giorno.
+
+Chi popola e chi consuma sono **due job pgAgent distinti, su due schedulazioni
+diverse**. Se l'apply gira prima del sync — e prima o poi capita, è l'ordine di
+due sveglie indipendenti — la riga stantia **c'è**.
+
+⇒ È una possibilità **strutturale**: chi consuma un insieme derivato non può
+morire perché una riga non è ancora stata potata.
+
+---
+
+### ⚠️ Il messaggio distingue due casi, perché hanno rimedi opposti
+
+| Riga saltata | Che cosa succederà |
+| --- | --- |
+| **derivata** | la poterà il prossimo sync, da sola |
+| **manuale** | ⛔ il sync non la tocca mai: è una decisione che ha perso il suo bersaglio, e va guardata da una persona |
+
+Promettere una potatura che non arriverà sarebbe peggio che non dire niente.
+
+---
+
+### 🕒 Esecuzione programmata
+
+Job pgAgent **`apply_storicizza_weekly`**, step `run_apply_storicizza`, che
+chiama il wrapper
+[`proc_apply_storicizza_defaults_job`](/dbzero/maintenance/manual/proc_apply_storicizza_defaults_job)
+— il wrapper passa da `maintenance.fn_run_and_log`, che registra la corsa nel
+giornale.
+
+> ⚠️ Il job vive in `85_pgagent`, che in CI è `MARK_RAN`: su un ambiente
+> ricostruito da zero **non viene creato**, e nessun test lo direbbe.
+
+---
+
+### Verifica
+
+`db/pgtap/maintenance/test-storicizza-set-potatura.sql` — in particolare il test
+che chiama la procedura con una riga stantia **davvero presente**, non simulata.
 
 ---
 

@@ -9,7 +9,8 @@ Approfondimenti tabelle:
 Approfondimenti funzioni:
 >
 [dbops.fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze) ·
-[script.fn_riattiva_utente_tecnico](/dbzero/script/manual/fn_riattiva_utente_tecnico)
+[script.fn_riattiva_utente_tecnico](/dbzero/script/manual/fn_riattiva_utente_tecnico) ·
+[script.fn_get_auth_user_stato](/dbzero/script/manual/fn_get_auth_user_stato)
 
 ---
 ### 🎯 Scopo Principale
@@ -61,6 +62,24 @@ lavoro partirebbe per fermarsi subito dopo — o, peggio, girerebbe a vuoto.
 ⭐ È la stessa terna che `script.fn_riattiva_utente_tecnico` riaccende tutta
 insieme: **spegnerne uno basta a fermare, quindi guardarne uno solo basta a
 sbagliare.**
+
+---
+
+### ⚠️ La condizione su Django arriva da un'altra strada
+
+La quarta condizione — *l'utente Django è attivo* — non viene letta collegando
+direttamente la tabella di Django, ma chiedendola a
+[script.fn_get_auth_user_stato](/dbzero/script/manual/fn_get_auth_user_stato).
+
+Il motivo non ha nulla a che vedere con il significato della condizione, che
+resta identica: le tabelle di Django le crea Django, **dopo** le migrazioni del
+database, quindi una vista che le nomini non si riesce a creare su una macchina
+ricostruita da zero. È successo il 5 settembre 2026, e ha fermato la build.
+
+⛔ La condizione **non è stata sacrificata** per aggirare il problema, e sarebbe
+stata la scorciatoia ovvia: *«tanto lo dice già l'identità applicativa»*. Non lo
+dice: l'allineamento fra le due va in una direzione sola, quindi un utente
+disattivato **dentro Django** risulterebbe ancora attivo per il database.
 
 ---
 

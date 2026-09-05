@@ -25,6 +25,13 @@
 > * ✅ **decisioni del 2026-09-05** — §12.10.
 > * 📨 **il BE ha risposto** con cinque richieste — §12.9.
 >
+> 🔴 **Correzione 2026-09-05 (b) — il migrate della CI si fermava su
+> `20260905-23`**: `dbops.vw_processi_roster` faceva `JOIN django.auth_user`, e
+> una **vista** si risolve alla `CREATE` mentre le tabelle di Django le crea
+> `manage.py migrate`, dopo. Il riferimento passa ora da un accessore plpgsql
+> (`script.fn_get_auth_user_stato`), le cinque condizioni restano cinque —
+> §11.1, penultima trappola. Definizione viva: `20260905-30`.
+>
 > 🔴 **Correzione 2026-09-05 — il migrate della CI si fermava sulla fase 4.**
 > Il mirror di `dbops.coda_lavori_tipi` è ancorato a **luglio** e la colonna
 > `processo_codice` gli era stata aggiunta lì: su un database ricostruito da zero
@@ -680,6 +687,57 @@ Non sono cronaca: sono le cose che, ripetute, romperebbero di nuovo.
   ⭐ **La regola:** finché un CSV ha due mirror, ogni riga nuova va a chi arriva prima —
   cioè a chi ne sa di meno. **Una sorgente, un'ancora.**
 
+* 🔴 **Una VISTA non può nominare `django.*` — una funzione sì** (2026-09-05,
+  secondo migrate CI fermo). `dbops.vw_processi_roster` faceva
+  `JOIN django.auth_user` e la CI si è fermata con *«la relazione
+  "django.auth_user" non esiste»*.
+  ⛔ **Non è un ordine da sistemare**: quelle tabelle **non esistono in nessun
+  momento** del migrate. Lo schema `django` lo crea Liquibase (`90_end`,
+  `20250924-01`), le TABELLE dentro le crea `manage.py migrate` — un passo che in
+  `ci.yaml` non c'è affatto e in `ci-validate.yaml` viene dopo (sta scritto nella
+  CI stessa, `ci-validate.yaml:509`).
+  ⭐ **La differenza è il momento in cui il riferimento si risolve**: il corpo di
+  una funzione **plpgsql** non viene risolto alla `CREATE`, una **vista** sì. È
+  per questo che le ~40 funzioni del progetto che leggono `django.*` non hanno
+  mai dato problemi — ed è la stessa ragione della regola già scritta *«funzioni
+  che citano `django.*`: plpgsql, mai `%TYPE`»*, di cui questa è la seconda metà
+  mancante.
+  ⇒ **La regola: il DB può CHIAMARE dentro `django.*`, non può DIPENDERNE
+  strutturalmente** — vista, FK, colonna generata. Il precedente c'era già e non
+  era stato letto: `anagrafiche.risorse_umane_auth_user`, una vista che si chiama
+  così, passa da `identita_digitali` e non da Django.
+  ⇒ Rimedio: un **accessore plpgsql** (`script.fn_get_auth_user_stato`) e un
+  `JOIN LATERAL` sopra di esso. Il join resta INNER, quindi il comportamento non
+  cambia di una riga — provato sul DB in transazione annullata: stesse 8 righe,
+  stesso ordine, e spegnendo `is_active` la coppia sparisce come pretende il
+  test 6 del pgTAP.
+  ⛔ **Non si sacrifica la condizione**, e sarebbe stata la scorciatoia ovvia
+  («tanto `idg.attivo` la rispecchia»): la sincronia è a senso unico
+  (identità → Django), quindi un utente disattivato **dentro Django** resterebbe
+  attivo per il DB.
+  ⚠️ **E il changeSet era già applicato su dbdev**: correggerlo e basta avrebbe
+  lasciato due definizioni dello stesso oggetto su due macchine — e la doc
+  auto-gen, che si genera da dbdev, avrebbe raccontato quella sbagliata. Serve
+  `validCheckSums: ANY` sul vecchio (perché da zero deve creare la forma giusta,
+  anche per la preCondition del `-24`) **più** un changeSet nuovo che allinei
+  dbdev: `20260905-30`.
+
+* 🔴 **«La vista è vuota» è lo STESSO errore che fissa un debito, girato al
+  contrario** (2026-09-05, unica regressione pgTAP dopo il migrate).
+  `test-processi-registro` t.10 fissava `send_pending_emails` come riga attesa;
+  corretto in `is_empty` sull'intera vista, è tornato rosso al primo migrate.
+  ⛔ Fissare l'**assenza** di un debito è fragile quanto fissarne la presenza.
+  ⚠️ E il debito non era stato pagato: si era **spostato**. Il `-18` ha dato
+  l'emittente a `config.email_outbox`, ma quella tabella la scrive l'interfaccia
+  — il processo legge `config.email_log`, che la colonna non ce l'ha. *Un debito
+  pagato e uno spostato, da fuori, si assomigliano.*
+  ⭐ L'invariante stabile è **«nessuna riga `NON_DICHIARATO`»**, ed era già
+  scritta due volte nello stesso perimetro: t.13 dello stesso file (bypass RLS) e
+  t.4 di `test-presidi-debito-dichiarato`. È la ragione per cui la colonna
+  `stato` esiste (`20260905-19`).
+  ⚠️ Il prezzo si dichiara: dichiarare un debito **zittisce** quel test. Lo
+  tengono onesto i casi COSTRUITI (t.11, t.12, e t.6 dell'altro file).
+
 ### 11.2 Le regole di sempre
 
 
@@ -724,7 +782,7 @@ interroga la vista. Dove non c'è, la colonna lo dice.
 
 | # | Residuo | Dove | Come si vede che è chiuso |
 | --- | --- | --- | --- |
-| **R-2** | **Ritiro del ruolo `zeroerp_batch_fatturazione`** (`BYPASSRLS`). ⛔ Non è un changeSet: i privilegi dei ruoli batch stanno nel provisioning. ⚠️ **Indipendente da R-1**, non un suo prerequisito | `scripts/sql/provision_db_role_batch_fatturazione.sql` + `backend/apps/core/services/system_context.py`, `run_fatturazione_batch.py`, `draina_coda_stampa.py`, `zeroerp_backend/settings.py` | `dbops.vw_processi_che_bypassano` **vuota** — ⭐ è il presidio della fase 0, acceso apposta |
+| **R-2** | **Ritiro del ruolo `zeroerp_batch_fatturazione`** (`BYPASSRLS`). ⛔ Non è un changeSet: i privilegi dei ruoli batch stanno nel provisioning. ⚠️ **Indipendente da R-1**, non un suo prerequisito. ✅ **La metà DB è pronta (2026-09-05)**: `scripts/sql/retire_db_role_batch_fatturazione.sql`, con tre cancelli (sessioni aperte, oggetti posseduti, ruolo già assente) e la verifica sul presidio. ⛔ Si lancia **dopo** il backend: prima, ferma la fatturazione | `scripts/sql/provision_db_role_batch_fatturazione.sql` + `backend/apps/core/services/system_context.py`, `run_fatturazione_batch.py`, `draina_coda_stampa.py`, `zeroerp_backend/settings.py` | `dbops.vw_processi_che_bypassano` **vuota** — ⭐ è il presidio della fase 0, acceso apposta |
 | **R-3** | **I command passano il processo** a `script.fn_job_run_start` / `maintenance.fn_run_and_log` (`p_processo_codice`, `p_auth_user_id`). ⚠️ **Non urgente**: i 12 job pgAgent si autodichiarano già per derivazione dal jobname (§3.3); questo serve ai **command**, che jobname non hanno | backend | `SELECT * FROM dbops.vw_run_senza_attore` → **vuota** |
 | **R-4** | **Riscrittura di `_guard_canale_sistema`** — il canale di sistema applicativo, dopo il ritiro del bypass | backend | nessun presidio DB: lo copre il test BE |
 | **R-5** | **UI utenti tecnici / identità digitali**: oggi si vedono solo da SQL. ⚠️ Concordata a voce, **non ancora briefata** | BE + FE | — |
@@ -1296,37 +1354,183 @@ USING (
 )
 ```
 
-⚠️ **Il ramo si sceglie su `ambito`, non su `emittente_fiscale_id IS NULL`**, ed
-è una scelta: il `CHECK` di DB-3 permette a una riga `SISTEMA` di **avere** un
-emittente (una mail di reset «marchiata»). Scegliendo sulla colonna nulla,
-quella riga finirebbe nella whitelist dell'azienda — cioè un operatore
-leggerebbe un link di reset. ⇒ Si sceglie sull'**etichetta**, che è
-fail-closed.
+⇒ Scritta il 2026-09-05 (`20260905-32`), con la **row level security ancora
+spenta** — e il presidio lo dice invece di tacere, perché dal `-26` conta una
+policy solo se è **in vigore**.
 
-#### ⛔ La scorciatoia che NON si è presa — e che ha trovato un buco nel presidio
+⇒ Scritta il 2026-09-05 (`20260905-32`), con la **row level security ancora
+spenta** — e il presidio lo dice invece di tacere, perché dal `-26` conta una
+policy solo se è **in vigore**.
 
-Si poteva **scrivere la policy senza abilitare la RLS**: il presidio sarebbe
-andato a zero, l'invio avrebbe continuato a funzionare, e la riga sarebbe
-sparita dall'elenco.
+#### ⛔ Il ramo della macchina è uscito da questa policy (`20260905-33`)
 
-⛔ Ma PostgreSQL **conserva** le policy di una tabella con la row level security
-disabilitata e **non le applica**. La tabella sarebbe rimasta aperta a tutti,
-con il presidio che diceva di no.
+La prima stesura dava lettura, sul ramo `SISTEMA`, anche all'identità tecnica di
+`send_pending_emails`. Il ragionamento era giusto — *portare è leggere* — ma
+applicato alla **tabella sbagliata**.
 
-⚠️ Perché era possibile: `vw_processi_dominio_senza_difesa` chiedeva
-`EXISTS (… pg_policy …)` — cioè **«è stata scritta una policy?»** invece di
-**«questa tabella è difesa?»**.
+⭐ Misurato sui due soli percorsi che potevano smentirlo:
 
-⇒ **changeSet `20260905-26`**: una policy conta solo se `relrowsecurity` è vera,
-e il `manca` distingue i due casi — «la policy non c'è» è una decisione di
-sicurezza da prendere, «la policy c'è ma la RLS è spenta» è un `ALTER TABLE` di
-una riga.
+* **inviare una bozza** (`EmailOutboxSendView` → `confirm_and_send`) gira **dentro
+  la richiesta HTTP**, con una persona vera: crea l'`email_log`, spedisce,
+  aggiorna la bozza. Nessuna coda, nessuna identità tecnica;
+* **il ritentativo** del command (`retry_log_entry`) tocca **solo**
+  `config.email_log` — non scrive mai la riga di outbox.
 
-⭐ **Misurato: nessun bersaglio era in quello stato**, quindi la vista non cambia
-di una riga. ⛔ Non nasce da un dato: nasce dal fatto che la domanda posta era
-la domanda sbagliata. Verificato costruendo il caso (RLS spenta su
-`vendite.listini_versioni`, poi riaccesa) — `test-presidi-debito-dichiarato`
-test 8.
+⛔ E il problema non è che il permesso sia «inutile»: è che **non si può
+collaudare**. Non «non ancora testato» — *non esercitabile*, perché nessun codice
+ci arriva. Un ramo così si scopre sbagliato il giorno in cui serve.
+
+⚠️ E in più afferma una cosa **falsa dentro una regola di sicurezza** — «chi
+spedisce legge le bozze» — cioè lo stesso errore del bersaglio dichiarato che
+puntava alla tabella sbagliata, ma in un posto che si legge quando si indaga un
+incidente.
+
+⇒ Il ramo va sulla policy di `config.email_log`, dove quel processo legge
+davvero e dove un collaudo funzionale lo esercita.
+
+⭐ **`script.fn_scope_identita_processo` (`20260905-31`) resta**, ed è la
+distinzione che conta: ciò che non si poteva collaudare era il **ramo** dentro
+una policy che nessun codice raggiunge — non la funzione, che un test esercita
+per davvero, livello per livello. Nasce per togliere due copie dello stesso
+`EXISTS` da `USING` e `WITH CHECK`, e la regola è **più stretta** di quella che
+sostituisce: guarda tutti e cinque i livelli dell'identità invece del solo
+legame. Un'identità **revocata** avrebbe continuato a leggere i reset password —
+`db/pgtap/script/test-fn-scope-identita-processo.sql` test 6 costruisce quel caso.
+
+⚠️ La simmetria fra le due tabelle è tentante (stesso tipo di contenuto), ma due
+tabelle con **lettori diversi** si somigliano per caso: `email_log` la apre una
+macchina, `email_outbox` solo delle persone.
+
+#### 🔴 E c'è un fatto in più, trovato dal backend: **sono due tabelle**
+
+`send_pending_emails` seleziona da **`config.email_log`**. `config.email_outbox`
+non compare nel giro di invio: è l'area delle **bozze**, che scrive e legge
+l'interfaccia.
+
+| | `config.email_outbox` | `config.email_log` |
+| --- | --- | --- |
+| a che serve | bozze, scritte dall'UI | il registro degli invii |
+| chi la legge in automatico | ⛔ nessuno | ✅ `send_pending_emails` |
+| `emittente_fiscale_id` | ✅ c'è (DB-3, `20260905-18`) | ⛔ **non c'è** |
+
+⛔ **Quindi il bersaglio dichiarato in `dbops.processi_bersagli` è sbagliato.**
+Dice che `send_pending_emails` tocca `email_outbox`, e quel processo non la apre
+mai. ⇒ Il presidio di livello 2 sorveglia la tabella **sbagliata** per quel
+processo, e la tabella che il processo tocca davvero **non è sorvegliata da
+nessuno** — non compare nemmeno nel livello 1, perché non è dichiarata.
+
+⭐ **Nessuno dei due lati poteva vederlo da solo**: noi guardavamo il registro,
+loro il codice. È il caso che dà ragione al censimento — e insieme il caso che
+mostra il suo limite: un bersaglio dichiarato è un'**affermazione**, e il
+presidio verifica che quella tabella sia difesa, non che sia **la tabella
+giusta**.
+
+⚠️ Il lavoro di DB-3 non è sprecato: `email_outbox` ha comunque bisogno del
+perimetro, perché le bozze sono di un'azienda. È il **censimento** ad aver
+sbagliato bersaglio, non la colonna.
+
+#### ✅ La decisione che mancava (2026-09-05, Tid)
+
+> **Sì: un utente tecnico può leggere le email di ambito `SISTEMA`.**
+
+⇒ Il quadro è completo: le legge **il super admin** fra le persone, e
+**l'identità tecnica del processo che le spedisce** fra le macchine. Nel
+database *portare è leggere* — non esiste un modo di spedire una riga senza
+vederla — quindi senza questa autorizzazione la posta di sistema non partirebbe.
+
+⚙️ Da qui discende, e non è una scelta: **la policy nomina il processo**. L'altra
+strada è chiusa dal database stesso — `fn_crea_utente_tecnico` rifiuta qualunque
+profilo non `AD_HOC` (`E_UTENTE_TECNICO_PROFILO_VIETATO`), e le due identità di
+`send_pending_emails` hanno `fn_is_super_admin = false` e **nessun profilo di
+accesso legato**. Verificato misurando.
+
+---
+
+#### 🔴 E il blocco si è SPOSTATO, non è sparito
+
+⚠️ Con la scoperta delle due tabelle sembrava che `config.email_outbox` fosse
+sbloccata: chi spedisce legge `email_log`, quindi accendere la RLS sull'outbox
+non lo tocca. ⛔ **Non è così**, e il motivo è nel codice che ci **scrive**:
+
+```python
+# apps/core/api/email_views.py:84
+ambito=(payload.get("ambito") or "SISTEMA").strip(),
+```
+
+L'API mette `SISTEMA` **per default** quando il client non manda l'ambito — e il
+frontend non lo manda. In più l'`INSERT` di `create_outbox` **non valorizza
+`emittente_fiscale_id`**.
+
+⇒ Con la policy accesa oggi:
+
+| | |
+| --- | --- |
+| bozza senza ambito esplicito → `SISTEMA` | ⛔ un operatore non la può più creare né vedere: è roba da super admin |
+| bozza con un ambito vero | ⛔ viola `chk_email_outbox_ambito_emittente`: la colonna emittente non viene popolata |
+
+**La funzione bozze si romperebbe in tutte e due le direzioni.**
+
+> ⛔ **Il difetto vero, e vale oltre questo caso:** `SISTEMA` in questa tabella
+> oggi significa *«nessuno ha detto quale ambito»*, non *«email di sistema»*.
+> ⭐ Un valore di **default** non può fare da cancello di sicurezza: la policy
+> classificherebbe come segreto di sistema ogni bozza a cui un client ha
+> dimenticato un campo.
+>
+> ⇒ Prima della policy, `ambito` deve diventare un'**affermazione**.
+
+---
+
+#### ✅ Intanto il censimento smette di mentire
+
+`config.email_log` è ora dichiarata come bersaglio di `send_pending_emails`
+(riga 51 del CSV, `debito_dichiarato = true`).
+
+⛔ Prima il registro diceva che quel processo tocca `email_outbox` — che non apre
+mai. Il presidio sorvegliava **con sicurezza la tabella sbagliata**, e quella
+vera non compariva da nessuna parte.
+
+⭐ Adesso il livello 1 la nomina — *«percorso verso l'emittente non
+dichiarato»*, `DEBITO_DICHIARATO` — e gli allarmi restano **zero**. Il debito è
+visibile, ha un nome, e aspetta il pezzo del backend.
+
+⚠️ Ne segue che anche `test-presidi-debito-dichiarato` test 4 passa da «il
+livello 1 è **vuoto**» a «nessuna riga **NON_DICHIARATO**»: la terza volta che
+questa correzione si paga, e stavolta perché un presidio ha cominciato a dire il
+vero.
+
+🔵 **Resta una sotto-domanda**: `config.email_outbox` deve **restare** un
+bersaglio dichiarato? Un bersaglio afferma *«un processo automatico tocca questa
+tabella»*, e per le bozze non è vero — le scrive l'interfaccia. La riga 30 non è
+stata tolta: è una decisione, non una pulizia.
+
+#### ✅ La policy è SCRITTA — changeSet `20260905-31` (2026-09-05)
+
+`rls_email_outbox_ambito` su `config.email_outbox`, `FOR ALL`, con il ramo scelto
+sull'**etichetta**: `SISTEMA` → super admin **oppure** un'identità tecnica attiva
+di `send_pending_emails` (letta da `dbops.processi_identita`, così una revoca ha
+effetto lo stesso giorno); tutto il resto → `script.fn_scope_ef_whitelist` sulla
+colonna emittente, che fuori da `SISTEMA` il `CHECK` garantisce non nulla.
+
+🔴 **La `ROW LEVEL SECURITY` resta SPENTA, e non è una dimenticanza.** Restano due
+gesti, che sono lo stesso gesto:
+
+| | |
+| --- | --- |
+| `ALTER TABLE config.email_outbox ENABLE ROW LEVEL SECURITY;` | una riga |
+| il **write-guard** di famiglia | ⛔ è un **trigger**: morde anche con la RLS spenta, quindi montarlo oggi fermerebbe la creazione delle bozze subito |
+
+⛔ **E non è la scorciatoia che era stata rifiutata.** Quella era scartata perché
+lasciava la tabella aperta *con il presidio che diceva di no*; dal `20260905-26`
+la vista chiede `relrowsecurity`, quindi il presidio **non va a zero** e dirà
+*«la policy c'è ma la ROW LEVEL SECURITY non è attiva sulla tabella, e manca il
+write-guard»*. Lo stato in cui siamo, detto ad alta voce.
+
+⚠️ **Fatto datato 2026-09-05**: le righe di `config.email_outbox` sono **6, tutte
+`SISTEMA`** — cioè la fotografia del difetto che blocca l'accensione, non un
+argomento per accenderla.
+
+Verifica: `db/pgtap/rls/test-rls-email-outbox-ambito.sql` (5 test — forma della
+decisione, non collaudo funzionale: con la RLS spenta la policy non filtra).
 
 #### Il prerequisito, ed è del backend
 
@@ -1379,27 +1583,29 @@ test lo direbbe.
 #### ✅ Fatto e applicato — il piano, per intero
 
 Fasi 0–6 · DB-1 … DB-8 · R-8 · R-10 · R-E · R-F, più l'irrigidimento del
-presidio (`20260905-26`). **Baseline pgTAP: nessuna regressione.**
+presidio (`20260905-26`), il commento restituito (`-27`), R-12 (`-28`/`-29`), il
+ri-ancoraggio del roster (`-30`) e la policy sulle email (`-31` … `-33`).
+**Baseline pgTAP: nessuna regressione.**
 
 #### I sei presidi, misurati dopo l'ultimo apply
 
 | Presidio | | |
 | --- | --- | --- |
-| `vw_processi_dominio_senza_emittente` | **0** | ✅ |
+| `vw_processi_dominio_senza_emittente` | **1** | 🟡 `email_log`, `DEBITO_DICHIARATO` — righe `NON_DICHIARATO`: **0** (rimisurato 2026-09-05 sera, dopo la riga 51 del censimento) |
 | `vw_processi_dominio_su_pgagent` | **0** | ✅ |
 | `vw_processi_dominio_senza_identita` | **0** | ✅ |
 | `vw_emittenti_non_serviti` | **0** | ✅ |
 | `vw_processi_dominio_senza_difesa` | **1** | 🟡 `email_outbox`, `DEBITO_DICHIARATO` |
 | `vw_processi_che_bypassano` | **1** | ⚙️ R-2, provisioning — non è DB |
 | `vw_run_senza_attore` | **4** | ⚠️ residuo **storico congelato**: dal `20260905-16` un run senza attore non può più nascere |
-| `vw_coda_lavori_da_guardare` | **4** | ⚠️ i quattro lavori falliti da 32–45 giorni, che ora **hanno un nome** |
+| `vw_coda_lavori_da_guardare` | **0** | ✅ i quattro lavori falliti da 32–45 giorni sono stati **archiviati** (rimisurato 2026-09-05 sera) |
 
 #### ⚠️ Che cosa resta sul DB, e non è poco
 
 | | Che cos'è | Chi |
 | --- | --- | --- |
-| 🔴 **R-12** | `apply_storicizza_weekly` è **ancora morto**: ultimo run **21 febbraio 2026**, e le tre righe morte in `config.storico_set_storicizza` ci sono tutte — `config.profili_reparto_aree`, `config.profili_reparto_azioni`, `vendite.attivita_fatturabili_lotti`. ⛔ È un **bug vivo**, ed è lavoro DB | **noi**, in un cantiere suo |
-| 🟡 **Policy `config.email_outbox`** | decisa (solo super admin) e **scritta** in §12.15. Bloccata: abilitare la RLS oggi fermerebbe l'invio | DB, **dopo** il BE |
+| 🟢 **R-12** | ✅ **ripreso e risolto** il 2026-09-05 nel suo brief — [brief-db-storicizzazione-bersagli-spariti.md](brief-db-storicizzazione-bersagli-spariti.md) §4: la sincronizzazione impara a **potare** (`20260905-28`) e il consumatore a **sopravvivere a una riga stantia** (`-29`). 🔵 Resta aperta la domanda larga: `fn_run_and_log` scrive il fallimento e il `RAISE` lo butta via — **nessun job può lasciare una riga rossa** | DB |
+| 🟡 **Policy sulle email** | decisa, **scritta e applicata** (`20260905-32`, ripulita dal `-33`) — ⛔ ma con la **RLS spenta**: accenderla oggi romperebbe le bozze, perché l'API scrive `ambito = 'SISTEMA'` per default e non valorizza l'emittente. ✅ Il censimento nel frattempo è stato corretto: il bersaglio è `config.email_log`, che aspetta la sua colonna | DB, **dopo** il BE |
 
 ⭐ **E non è un caso che restino queste due.** Sono entrambe la stessa forma di
 guasto — quella che il cantiere esisteva per rendere visibile: **un lavoro che
@@ -1410,13 +1616,60 @@ policy di `email_outbox` è il caso che stavamo per introdurre.
 scopo: le prime quattro righe della tabella qui sopra sono zero, e le altre
 quattro hanno un nome, un motivo e un padrone.
 
-#### ⚠️ I quattro lavori falliti nella coda
+#### ✅ I quattro lavori falliti nella coda — archiviati
 
 `FATTURAZIONE_GIRO` ×2 e `FATTURAZIONE_NUMERA` ×2, fermi da **32 e 45 giorni**,
-tentativi esauriti. Non sono un residuo di questo cantiere — erano lì prima,
-**invisibili**. ⇒ Vanno guardati e poi **archiviati**: è l'archiviazione a far
-tornare vuoto il presidio (changeSet della fase «archiviare una riga di coda»,
-già applicato). Finché restano, la vista non distingue il vecchio dal nuovo.
+tentativi esauriti. Non erano un residuo di questo cantiere — erano lì prima,
+**invisibili**. Guardati e archiviati: `vw_coda_lavori_da_guardare` è tornata
+vuota (rimisurato il 2026-09-05 in serata), quindi da domani la vista distingue
+il nuovo dal vecchio invece di mostrare sempre gli stessi quattro.
+
+---
+
+---
+
+### 12.18 ✅ Decisioni del 2026-09-05, sera — le email e il ramo della macchina
+
+> Registro compatto: **che cosa si è deciso**, e che cosa ne è seguito. Le
+> conseguenze non sono decisioni, e tenerle separate serve a non doverle
+> ridiscutere.
+
+| | Decisione | Chi |
+| --- | --- | --- |
+| **D1** | ✅ **Un utente tecnico può leggere le email di ambito `SISTEMA`.** Nel database **portare è leggere**: non esiste un modo di spedire una riga senza vederla, e senza questa autorizzazione la posta di sistema non partirebbe — in silenzio, perché una coda vuota è identica a «niente da fare» | Tid |
+| **D2** | ⛔ **Il ramo della macchina NON sta sulla policy di `config.email_outbox`.** Misurato: quel processo legge `config.email_log`, e l'outbox non la apre mai — né inviando una bozza (gira dentro la richiesta HTTP) né ritentando | DB, condivisa |
+| **D3** | ⛔ **La `ROW LEVEL SECURITY` resta spenta** finché il backend non rende `ambito` un'**affermazione** e non valorizza l'emittente | Tid |
+| **D4** | ⚙️ **Forma forward-only anche qui**: `-32` è già applicato, quindi non si corregge sul posto — si scrive `-33`. Il `-32` diventa copia storica | standard di progetto |
+
+#### Le conseguenze, che non sono scelte
+
+| | |
+| --- | --- |
+| **da D1** | la policy **nomina un processo** — l'altra strada è chiusa dal DB stesso: `fn_crea_utente_tecnico` rifiuta qualunque profilo non `AD_HOC` |
+| **da D1** | la domanda diventa una **funzione** (`script.fn_scope_identita_processo`, `-31`) invece di un `EXISTS` copiato in `USING` e `WITH CHECK`. ⭐ E più **stretta**: cinque livelli invece del solo legame — un'identità **revocata** avrebbe continuato a leggere i reset password |
+| **da D2** | la funzione **resta** e aspetta il suo consumatore: la policy di `config.email_log`. ⚠️ Non è codice morto — ciò che non si poteva collaudare era il **ramo dentro una policy irraggiungibile**, non la funzione, che un test esercita livello per livello |
+| **da D2** | i test 4 e 5 di `test-rls-email-outbox-ambito` si **spostano**, non spariscono: presidiavano il ramo, e il ramo è altrove. ⭐ Il rischio della rinomina resta coperto da `test-fn-scope-identita-processo` |
+
+#### ⭐ Il criterio che ha deciso D2, e vale oltre questo caso
+
+> ⛔ **Un permesso che nessun codice esercita non è «inutile»: è
+> *incollaudabile*.** Non «non ancora testato» — non raggiungibile. Un ramo così
+> si scopre sbagliato **il giorno in cui serve**, che è troppo tardi.
+
+⚠️ E c'è un secondo motivo che pesa quanto il primo: quel ramo **affermava una
+cosa falsa dentro una regola di sicurezza** — *«chi spedisce legge le bozze»*. È
+lo stesso errore del bersaglio dichiarato che puntava alla tabella sbagliata, ma
+in un posto che si legge **quando si indaga un incidente**.
+
+⚠️ La simmetria fra le due tabelle era tentante — stesso tipo di contenuto — ma
+due tabelle con **lettori diversi** si somigliano per caso.
+
+#### 🔵 Che cosa resta da decidere
+
+| | |
+| --- | --- |
+| 🔵 | `config.email_outbox` deve **restare** un bersaglio dichiarato? Un bersaglio afferma *«un processo automatico tocca questa tabella»*, e per le bozze non è vero — le scrive l'interfaccia. La riga 30 non è stata tolta: è una decisione, non una pulizia |
+| 🔵 | `fn_run_and_log` scrive il fallimento e il `RAISE` lo butta via ⇒ **nessuno dei dodici job può lasciare una riga rossa**. Tre strade, tutte con conseguenze sui dodici insieme (brief storicizzazione §4) |
 
 ---
 

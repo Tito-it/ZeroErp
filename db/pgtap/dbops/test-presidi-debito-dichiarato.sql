@@ -15,7 +15,7 @@
 --  1) il flag esiste, e il default e' false
 --  2) ⛔ DB-3: un'email non di SISTEMA senza emittente si ferma
 --  3) ✅ DB-3: un'email di SISTEMA entra SENZA emittente, come deve
---  4) ⭐ il livello 1 e' VUOTO: il percorso di email_outbox adesso c'e'
+--  4) ⭐ il livello 1 non ha ALLARMI (nessuna riga NON_DICHIARATO)
 --  5) ⭐ DB-2: la riga del livello 2 DICE di essere attesa
 --  6) ⛔ DB-2: un bersaglio nuovo e rotto e' un ALLARME, non un debito
 --  7) le due viste parlano la stessa lingua
@@ -76,13 +76,30 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 4. ⭐ Il livello 1 e' vuoto
+-- 4. ⭐ Il livello 1 non ha ALLARMI
 -- ============================================================
--- Qui la regola resta «deve restare VUOTA» senza eccezioni: al livello 1 ci
--- finisce chi non sa dire DI CHI E' una riga, e non c'e' piu' nessuno.
+-- ⚠️ ASSERZIONE CAMBIATA il 2026-09-05, ed era «il livello 1 e' VUOTO».
+--   Era vera, e ha smesso di esserlo per un motivo che e' un miglioramento:
+--   `config.email_log` — la tabella che `send_pending_emails` LEGGE davvero, e
+--   che non ha nessuna colonna emittente — e' stata dichiarata come bersaglio.
+--   ⛔ Prima il censimento nominava `config.email_outbox`, che quel processo non
+--   apre mai: il presidio sorvegliava con sicurezza la tabella sbagliata, e
+--   quella vera non compariva da nessuna parte.
+--   ⇒ Dichiararla la fa comparire qui, ed e' giusto che compaia: il percorso
+--     verso l'emittente non esiste ancora.
+--
+-- ⭐ L'invariante che resta vera — e che vale per entrambi i livelli — e'
+--   **«nessuna riga NON_DICHIARATO»**: un debito con un nome e' un lavoro, una
+--   riga che nessuno ha dichiarato e' un allarme.
+-- ⚠️ E il rischio si dichiara: dichiarare un debito ZITTISCE questo test. Lo
+--   tiene onesto il test 6 qui sotto, che costruisce un bersaglio NUOVO e rotto
+--   e pretende che esca NON_DICHIARATO — cioe' che il flag sia un gesto e non
+--   l'impostazione di fabbrica.
 SELECT is_empty(
-    $$SELECT processo_codice FROM dbops.vw_processi_dominio_senza_emittente$$,
-    '4. il livello 1 e'' vuoto: ogni bersaglio di dominio sa dire di chi e'''
+    $$SELECT processo_codice, nome_tabella
+        FROM dbops.vw_processi_dominio_senza_emittente
+       WHERE stato = 'NON_DICHIARATO'$$,
+    '4. nessun bersaglio di dominio senza percorso che non sia DICHIARATO'
 );
 
 -- ============================================================
