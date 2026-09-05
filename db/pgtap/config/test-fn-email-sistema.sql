@@ -18,7 +18,7 @@
 --  3) ⛔ un destinatario vuoto si ferma
 --  4) la gemella CHIUDE, e (4-bis) scrive esito, tentativi+1 e la data
 --  5) ⛔ `PENDING` non e' un esito ammesso
---  6) ⛔ un identificativo inesistente si ferma, e lo dice
+--  6) ⛔ un identificativo inesistente si ferma con un codice suo (TECNICO)
 --  7) ⛔ una riga NON di sistema non si chiude da questa porta — ed e' il caso
 --     pericoloso, con parole sue
 --
@@ -127,11 +127,20 @@ SELECT throws_ok(
 
 -- ⚠️ Un UPDATE che non trova niente e' muto per natura, e il chiamante
 --   crederebbe di aver chiuso qualcosa.
+-- ⚠️ Non basta `throws_ok` col solo SQLSTATE: tutti gli errori applicativi sono
+--   `P0001`, quindi sarebbe verde anche se a fermare la chiamata fosse un guard
+--   qualunque. Si chiede il MESSAGGIO, che e' l'unica cosa che distingue questo
+--   caso dagli altri due.
+-- ⭐ E il codice e' suo, non `E_VALIDAZIONE`: quello e' DATO_ERRATO, «hai
+--   sbagliato i dati». Ma questo id non arriva da una persona — e' quello che il
+--   chiamante ha scritto un istante prima. ⛔ E nemmeno NON_TROVATO, che porta un
+--   404: qui non c'e' nessuno che cerca una risorsa, c'e' del codice che passa un
+--   valore inesistente. Segnalato dal classificatore dei codici il 2026-09-06.
 SELECT throws_ok(
     $$SELECT config.fn_chiudi_email_sistema(999999999, 'SENT')$$,
     'P0001',
-    NULL,
-    '6. un identificativo inesistente si ferma invece di tacere'
+    'Nessuna email di sistema con identificativo 999999999.',
+    '6. un identificativo inesistente si ferma con un codice SUO, non con «dati errati»'
 );
 
 -- ⛔ IL CASO PERICOLOSO: qualcuno usa la porta di sistema per una email che

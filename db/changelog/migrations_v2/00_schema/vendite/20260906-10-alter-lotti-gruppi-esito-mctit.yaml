@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il gruppo di un lotto impara a dire COM'E' ANDATO.
+#
+# ── 🔴 IL CASO CHE LO FA NASCERE (lotto LTF-0009578, 2026-09-06) ────
+#   Un lotto massivo prende in carico TRE ordini e ne fattura DUE. Il terzo —
+#   ORD0036005 — cade al primo passo (`pull_attivita_da_commessa`): alla sua
+#   commessa manca un dato obbligatorio.
+#   ⛔ Risultato per chi guarda:
+#     * nel lotto compaiono due documenti, e una segnalazione che parla di una
+#       commessa che li' dentro non c'e' — la segnalazione sembra sbagliata;
+#     * il terzo documento resta fra quelli DA EMETTERE, senza un segno:
+#       sembra fatturabile e non lo e' stato.
+#
+# ── ⭐ E IL LOTTO NON L'AVEVA PERSO ─────────────────────────────────
+#   La riga di ORD0036005 in `fatturazione_lotti_gruppi` c'e' — scritta quando
+#   il lotto ha deciso cosa lavorare, insieme alle altre due. Il legame non
+#   manca: manca la VOCE. Quella riga ha solo la chiave del documento e un
+#   `meta` vuoto, e nessuna colonna puo' dire «questo qui e' andato male».
+#   ⇒ Non si costruisce un legame nuovo: si da' una voce a quello che c'e'.
+#
+# ── ⚠️ PERCHE' NON BASTAVA LA TABELLA DELLE FATTURE DEL LOTTO ───────
+#   `fatturazione_lotti_fatture` ha gia' `stato_esecuzione`, ed e' il posto
+#   giusto per una fattura andata male. Ma si aggancia a `fattura_id`, e qui
+#   il fallimento arriva PRIMA che una fattura esista: non c'e' niente da
+#   agganciare. Il piano giusto e' un gradino piu' su, ed e' questo.
+#   ⭐ Il vocabolario e' lo STESSO della sorella (PENDING, RUNNING, COMPLETED,
+#   ERRORE): due colonne che dicono la stessa cosa a due livelli diversi non
+#   possono parlare due lingue.
+#
+# ── ⚠️ NASCE NULLABILE, E IL NULL VUOL DIRE QUALCOSA ────────────────
+#   `NULL` = «nessuno l'ha ancora detto». E' lo stato di tutte le righe scritte
+#   prima di oggi, ed e' la verita': di quei gruppi non sappiamo com'e' andata.
+#   ⛔ Mettere `PENDING` di default direbbe «in attesa» di lavori chiusi mesi
+#   fa — una risposta inventata al posto di nessuna risposta.
+#
+# ── ⛔ QUESTO NON TOGLIE IL DOCUMENTO DALLA COMPETENZA (decisione di Tid) ──
+#   Un gruppo in `ERRORE` resta DA EMETTERE e la sua commessa resta emittibile.
+#   Il segno non dice «non e' fatturabile»: dice «ci ho provato e non ci sono
+#   riuscito, ecco perche'». Sono due informazioni diverse — se il rosso
+#   spegnesse l'emittibilita', il documento sparirebbe dall'elenco e si
+#   tornerebbe al problema di partenza, dall'altra parte.
+#
+# Chi scrive queste colonne: `vendite.fn_segna_esito_gruppo_lotto` (changeSet
+# 20260906-11). ⛔ Non si scrivono con UPDATE sparsi: la regola sta in un posto.
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260906-10-alter-lotti-gruppi-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260906-10-alter-lotti-gruppi-esito
+      author: mctit
+      failOnError: true
+      comment: >
+        Aggiunge a vendite.fatturazione_lotti_gruppi l'esito del gruppo
+        (stato_esecuzione, errore_codice, errore_messaggio, errore_quando): un
+        documento che il lotto ha preso in carico e non e' riuscito a fatturare
+        resta dentro il lotto e dice perche'. Vocabolario identico a
+        fatturazione_lotti_fatture. Nullabile: NULL = nessuno l'ha detto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_gruppi }
+            - not:
+                - columnExists:
+                    { schemaName: vendite, tableName: fatturazione_lotti_gruppi, columnName: stato_esecuzione }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  ADD COLUMN stato_esecuzione  text        NULL,
+                  ADD COLUMN errore_codice     text        NULL,
+                  ADD COLUMN errore_messaggio  text        NULL,
+                  ADD COLUMN errore_quando     timestamptz NULL;
+
+              -- Stesso vocabolario di fatturazione_lotti_fatture: e' la stessa
+              -- domanda posta a un gruppo invece che a una fattura.
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  ADD CONSTRAINT chk_lotti_gruppi_stato_esecuzione
+                      CHECK (stato_esecuzione IS NULL
+                             OR stato_esecuzione IN ('PENDING', 'RUNNING', 'COMPLETED', 'ERRORE'));
+
+              -- ⛔ Un errore muto non serve a nessuno: se lo stato dice ERRORE,
+              --    almeno una fra la causa registrata e la frase deve esserci.
+              -- ⚠️ Basta UNA delle due, non tutte e due: chi scrive la riga la
+              --    chiama da dentro un gestore d'eccezione, e pretendere il
+              --    codice registrato la farebbe fallire proprio quando serve.
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  ADD CONSTRAINT chk_lotti_gruppi_errore_parlante
+                      CHECK (stato_esecuzione IS DISTINCT FROM 'ERRORE'
+                             OR errore_codice IS NOT NULL
+                             OR errore_messaggio IS NOT NULL);
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_gruppi.stato_esecuzione IS
+                  'Com''e'' andato QUESTO documento dentro il lotto: PENDING, RUNNING, '
+                  'COMPLETED, ERRORE — stesso vocabolario di '
+                  'vendite.fatturazione_lotti_fatture.stato_esecuzione, che risponde alla '
+                  'stessa domanda un gradino piu'' sotto. ⭐ Esiste perche'' un documento '
+                  'che cade PRIMA di diventare fattura non ha una riga fra le fatture del '
+                  'lotto: senza questa colonna il lotto mostrava due documenti e una '
+                  'segnalazione che ne nominava un terzo, e quel terzo restava fra i '
+                  'documenti da emettere senza un segno. ⚠️ NULL non e'' PENDING: vuol '
+                  'dire che nessuno l''ha detto, ed e'' lo stato di tutte le righe '
+                  'anteriori al 2026-09-06. ⛔ ERRORE non toglie il documento dalla '
+                  'competenza e non spegne l''emittibilita'' della commessa (decisione di '
+                  'Tid, 2026-09-06): dice che un tentativo e'' fallito, non che il '
+                  'documento non si possa fatturare.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_gruppi.errore_codice IS
+                  'Il codice errore registrato che ha fermato questo gruppo (es. '
+                  'E_PULL_COMMESSA). ⭐ E'' il codice a dire a chi legge che cosa puo'' '
+                  'fare: il messaggio racconta, il codice indirizza.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_gruppi.errore_messaggio IS
+                  'La frase che una persona legge. ⚠️ Deve nominare la cosa da sistemare '
+                  '(la commessa, il dato mancante), non il punto del programma in cui e'' '
+                  'esplosa: chi vede il segno rosso deve poter arrivare al documento da '
+                  'correggere.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_gruppi.errore_quando IS
+                  'Quando il tentativo e'' fallito. ⭐ Serve a distinguere un errore di '
+                  'oggi da uno rimasto scritto da un giro precedente: senza, un gruppo '
+                  'rosso non dice se il rosso e'' ancora attuale.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  DROP CONSTRAINT IF EXISTS chk_lotti_gruppi_errore_parlante;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  DROP CONSTRAINT IF EXISTS chk_lotti_gruppi_stato_esecuzione;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  DROP COLUMN IF EXISTS errore_quando,
+                  DROP COLUMN IF EXISTS errore_messaggio,
+                  DROP COLUMN IF EXISTS errore_codice,
+                  DROP COLUMN IF EXISTS stato_esecuzione;
