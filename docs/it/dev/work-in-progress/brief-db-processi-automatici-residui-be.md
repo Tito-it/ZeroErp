@@ -8,7 +8,10 @@
 > [piano-be-fe-processi-automatici-identita-e-perimetro.md](piano-be-fe-processi-automatici-identita-e-perimetro.md).
 > Leggendo il contratto sono emerse **cinque cose che il BE non può darsi da solo**.
 >
-> **Stato:** 🔵 **RICHIESTA — niente scritto, niente applicato.**
+> **Stato:** 🟢 **IN CORSO — 1 su 6 fatta.** ✅ **DB-4 applicata il 2026-09-05**
+> (era il prerequisito di DB-1). La risposta del team DB è nel **§1-bis**, e
+> corregge l'ordine del §1.
+> ⛔ Due punti vanno decisi insieme prima che uno dei due lati scriva (R-B e R-E).
 >
 > ⛔ **Questo brief dice che cosa serve e perché, non come farlo.** Forma, DDL, numerazione
 > dei changeSet, seed e test sono decisioni di chi scrive: se il *cosa* qui sotto si
@@ -42,6 +45,215 @@ BE avrà finito il suo pezzo.
 | **DB-3** | dare un perimetro a `send_pending_emails` | ⛔ sì, per la parte «un emittente alla volta» | **DB** |
 | **DB-4** | far valere davvero il perimetro sui listini | ⚠️ non blocca il codice, blocca la **dichiarazione** che il lotto 4 è chiuso | **DB** |
 | **DB-5** | rendere obbligatorio l'attore sui run | — | **BE**, poi DB |
+
+⛔ **Questa tabella è stata corretta dal team DB il 2026-09-05** — l'ordine reale è nel
+§1-bis qui sotto: **DB-4 non è parallela a DB-1, è il suo prerequisito**, e DB-5 non
+dipende solo dal BE.
+
+---
+
+## 1-bis. Risposta del team DB (2026-09-05)
+
+> **Le cinque richieste sono legittime e ben argomentate**, e tre premesse su cinque sono
+> state verificate corrette. ⛔ Le altre non reggono alla misura, e ne manca una sesta.
+>
+> ⚠️ Tutto ciò che segue è **misurato sul database**, non dedotto dal testo: dove c'è un
+> numero, viene da una query.
+
+### ✅ Quello che il brief ha visto giusto
+
+* **DB-1** — `chiusura_scadenze_daily` è davvero l'**unico** processo `DOMINIO` su
+  pgAgent.
+* **DB-2** — la contraddizione **esiste**, e le due frasi sono entrambe nel codice. ⭐ E il
+  precedente citato è esatto: `vw_processi_che_bypassano` porta una colonna `stato` con
+  `DEBITO_DICHIARATO` e la nota di chiusura. Applicarlo alle due viste sorelle è la strada
+  giusta.
+* **DB-3 / DB-4** — le premesse sono corrette: `config.email_outbox` non porta l'emittente,
+  e `vendite.listini*` non ha **nessuna** difesa.
+
+---
+
+### ✅ DB-4 — FATTA E APPLICATA (2026-09-05)
+
+> Era il prerequisito di DB-1, quindi è partita per prima. `vendite.listini` e
+> `vendite.listini_versioni` hanno ora **policy RLS + write-guard**, come la
+> famiglia dei documenti.
+>
+> ⭐ `dbops.vw_processi_dominio_senza_difesa` **non nomina più la famiglia
+> listino**: da due righe è scesa a una, ed è DB-6.
+
+| changeSet | Che cosa fa |
+| --- | --- |
+| `20260905-02` | `script.fn_scope_ef_whitelist_via_listino` — l'adapter per la figlia, che delega alla canonica invece di riscrivere la regola |
+| `20260905-03` | il modo `listino` in `fn_resolve_emittente_fiscale_id` — serve al **guard di scrittura**, che è `SECURITY INVOKER` e non può leggere sotto la RLS appena accesa |
+| `20260905-04` | policy + `ENABLE ROW LEVEL SECURITY` su `vendite.listini` |
+| `20260905-05` | idem su `vendite.listini_versioni`, col perimetro preso **dal listino padre** |
+| `20260905-06` | i due write-guard: la policy nasconde, il guard rifiuta **e spiega** |
+
+**Verifica:** `db/pgtap/rls/test-rls-listini-ef-whitelist-write.sql` — **8/8**.
+
+⚠️ **Da sapere applicandolo altrove:** su dbdev tutti i listini erano di un
+emittente solo, quindi nessuno ha perso visibilità. Su un database con più
+aziende popolate l'effetto è reale e voluto: chi prima vedeva tutti i listini
+vedrà i propri.
+
+---
+
+### ⚠️ R-F. Una conseguenza di DB-4 che tocca il VOSTRO codice
+
+> **Da leggere prima di toccare i listini.** Non era deducibile dal contratto, e
+> l'abbiamo trovata solo perché ha rotto un test.
+
+⛔ **Scrivere un listino e la sua prima versione nella STESSA istruzione non
+funziona più.**
+
+```sql
+-- ⛔ Da oggi fallisce
+WITH lst AS (
+    INSERT INTO vendite.listini (...) RETURNING id
+),
+lst_v AS (
+    INSERT INTO vendite.listini_versioni (listino_id, ...)
+    SELECT id FROM lst RETURNING id
+)
+SELECT ...;
+```
+
+**Perché.** La policy di `listini_versioni` risolve il perimetro passando dal
+listino padre, e legge `vendite.listini` con **lo snapshot dell'istruzione** —
+che non contiene la riga appena scritta dalla CTE sorella. Padre invisibile →
+perimetro `NULL` → *«la nuova riga viola la regola di sicurezza per riga»*.
+
+⇒ **Due istruzioni separate.** Il padre prima, la figlia poi.
+
+⚠️ **Non è un difetto della policy, e non si aggira**: è la regola generale
+`RLS + CTE` del progetto, e vale per qualunque coppia padre-figlio su una
+famiglia protetta — non solo per i listini.
+
+⭐ E c'è un secondo caso, che abbiamo incontrato scrivendo il collaudo: i
+**vincoli differiti** (`trgfn_child_requires_active_parent`) non scattano
+all'`INSERT` ma alla verifica dei vincoli, e lì leggono **col contesto attivo in
+quel momento**. Se il vostro codice cambia utente fra la scrittura e il commit,
+il padre può diventare invisibile e il guard alza *«Padre non attivo»* su una
+riga perfettamente attiva. ⇒ I vincoli differiti si chiudono **nei panni di chi
+ha scritto**.
+
+---
+
+### 🔴 R-A. DB-4 non è parallela a DB-1: **è il suo prerequisito** — ✅ risolta
+
+Il brief la classifica *«non blocca il codice, blocca la dichiarazione»*. È il contrario.
+
+⭐ **Buona notizia prima**: `dbops.fn_apply_chiusura_scadenze` è **`SECURITY INVOKER`**.
+Il perimetro non ha quindi bisogno di nessun parametro nuovo — se il lavoro gira con
+l'utente tecnico dell'azienda X, **la RLS filtra da sola**. È già così su
+`vendite.contratti`.
+
+⛔ **Ma non su tutti i bersagli:**
+
+| Bersaglio | RLS | policy | write-guard |
+| --- | --- | --- | --- |
+| `vendite.contratti` | ✅ | 1 | 1 |
+| `vendite.listini_versioni` | ⛔ **no** | **0** | **0** |
+
+⇒ Girando «per l'azienda X», la metà *contratti* verrebbe filtrata e la metà *listini*
+**no**: il lavoro direbbe X e toccherebbe i listini di tutti. Non manca la dichiarazione —
+**è il codice a non poter fare ciò che dice**.
+
+⇒ **DB-4 va prima di DB-1.**
+
+---
+
+### 🔴 R-B. DB-5 non è sicura nemmeno dopo il lotto 1 del BE
+
+Misurato su `maintenance.job_run_log`: **quattro jobname vivi non hanno un processo
+omonimo**. La vista lo dice già da sé, con la colonna `processo_registrato`:
+
+| jobname | run | perché la derivazione non aggancia |
+| --- | --- | --- |
+| `run_fatturazione_batch:immediata` · `:differita` | 4 · 25 | ⭐ il nome porta un **suffisso**: `codice = jobname` non combacerà mai |
+| `apply_fk_index_policy` | 45 | il job pgAgent si chiama `automations_apply_fk_indexes_policy` |
+| `automations_cleanup` | 35 | il job pgAgent si chiama `automations_cleanup_weekly` |
+| `automations_lock_columns` | 3 | ⚠️ **non esiste** un job pgAgent con quel nome |
+
+⇒ Con il `NOT NULL` quei run **falliscono l'INSERT, e il job si pianta**. Un'etichetta
+mancante diventerebbe un'interruzione — e su `run_fatturazione_batch:immediata` è la
+fatturazione on-demand.
+
+⛔ **Due decisioni prima del vincolo**, e non sono del solo DB:
+
+1. la derivazione **strappa il suffisso** `:variante`, oppure quei command passano il
+   codice esplicito?
+2. `automations_lock_columns` **di quale processo è**? Non ha nemmeno un job pgAgent —
+   potrebbe essere un passo interno, o un residuo da ritirare.
+
+---
+
+### ⚠️ R-C. DB-3 non può essere una colonna obbligatoria
+
+`config.email_outbox.ambito` è `NOT NULL`, e **tutte** le righe di oggi sono `SISTEMA`.
+Un'email di sistema — reset password, alert — non ha un emittente e non può averlo.
+
+⇒ Colonna **nullable** con un CHECK legato ad `ambito`, non un `NOT NULL`: *un `NOT NULL`
+va dove il dato si può fornire.*
+
+⚠️ **E il presidio va insegnato a non contare le righe `SISTEMA`**, o resta rosso per
+sempre — che è **esattamente il difetto di DB-2, ripetuto sulla soluzione di DB-3**.
+⇒ I due si progettano insieme, o il secondo ricrea il primo.
+
+---
+
+### ⭐ R-D. C'è un sesto residuo, e non era nell'elenco
+
+`dbops.vw_processi_dominio_senza_difesa` nomina **due** righe, non una:
+
+```text
+chiusura_scadenze_daily | vendite.listini_versioni    | policy RLS e write-guard          <- DB-4
+draina_coda_stampa      | vendite.fatture_stampa_coda | write-guard (scrittura scoperta)  <- nuovo
+```
+
+La seconda ha la stessa forma di DB-4 — e `draina_coda_stampa` è **uno dei processi a cui
+il lotto 1 sta per dare un'identità tecnica**. Dargli l'identità senza la difesa produce
+lo stesso mezzo-perimetro dei listini.
+
+⇒ Lo registriamo come **DB-6**.
+
+---
+
+### ⭐ R-E. DB-1 nasconde una domanda di MODELLO, non solo «chi accoda»
+
+Un processo ha **un** canale. Se `chiusura_scadenze_daily` diventa `CODA`:
+
+* i presidi **escludono** i processi di coda dal bisogno di utente tecnico — l'assunto è
+  *«chi accoda è una persona»*;
+* ma qui chi accoda è una **macchina**, e `dbops.fn_accoda_lavoro` pretende
+  `run_as = OPERATORE` **con scope**, cioè un `auth_user_id` da metterci dentro.
+
+⇒ L'utente tecnico serve **comunque**, ma per riempire lo scope invece che per eseguire.
+Il modello di oggi non prevede questo caso.
+
+⛔ Quindi la domanda *«chi accoda»* **non è simmetrica**: non cambia «poco al DB e parecchio
+al BE» — cambia il modello dei processi. Le due strade:
+
+| | |
+| --- | --- |
+| **A** | il processo resta su `COMMAND` (produttore) e ne nasce un **secondo** su `CODA` (esecutore) |
+| **B** | si allarga il presidio: un processo di coda **accodato da una macchina** vuole comunque l'identità |
+
+⇒ È la prima cosa da decidere insieme, prima che uno dei due lati scriva.
+
+---
+
+### L'ordine reale
+
+| # | Blocca | Quando |
+| --- | --- | --- |
+| **DB-2** | non blocca, ma è la più economica | ⭐ **prima**, e progettata **insieme a DB-3** |
+| **DB-4** | ✅ **FATTA** il 2026-09-05 | changeSet `20260905-02`…`-06`, pgTAP 8/8 |
+| **DB-1** | blocca il lotto 4 BE | dopo DB-4, e dopo la decisione R-E |
+| **DB-3** | blocca «un emittente alla volta» | indipendente, con la forma di R-C |
+| **DB-5** | — | ⛔ non basta il lotto 1: prima le due decisioni di R-B |
+| **DB-6** | — | nuovo (R-D), stessa forma di DB-4 |
 
 ---
 

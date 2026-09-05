@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ri-ancora il mirror di dbops.coda_lavori_tipi DOPO il 20260904-13, che semina
+# il catalogo dbops.processi.
+#
+# ⚠️ IL PROBLEMA, ED E' UNA DIVERGENZA CI-vs-DEV, NON UN DUBBIO DI STILE.
+#   Il 2026-09-04 `coda_lavori_tipi` ha preso `processo_codice` con una FK dura
+#   verso `dbops.processi` (00_schema/20260904-40), e la colonna e' stata
+#   aggiunta al mirror che gia' c'era:
+#     20260720-10  loadUpdateData del CSV        (mirror vivo, runOnChange)
+#     20260904-13  loadUpdateData di dbops.processi   (il BERSAGLIO della FK)
+#   Nella timeline il primo viene PRIMA del secondo. Su un database ricostruito
+#   da zero — la CI — il mirror di luglio prova a scrivere
+#   `processo_codice = 'FATTURAZIONE_GIRO'` quando `dbops.processi` e' ancora
+#   vuoto, e il migrate muore:
+#     «insert or update on table "coda_lavori_tipi" violates foreign key
+#      constraint "fk_coda_lavori_tipi_processi" — Key (processo_codice)=
+#      (FATTURAZIONE_GIRO) is not present in table "processi"».
+#   Su dev non si vedeva perche' le due modifiche sono atterrate in DUE migrate
+#   diversi: al giro in cui il CSV ha preso la colonna, `dbops.processi` era
+#   pieno dal giro prima. Due macchine, due ordini di eventi.
+#
+# ℹ️ PERCHE' UN MIRROR NUOVO E NON UNA CORREZIONE DEL 20260720-10. Quello e'
+#   mergiato e la regola del progetto e' forward-only: si aggiunge dopo, non si
+#   riscrive prima. E soprattutto non c'e' niente da riscrivere — il numero di
+#   un changeSet e' la sua posizione nella timeline, e un fatto nato a settembre
+#   non puo' essere scritto da un'ancora di luglio. Nel 20260720-10 la colonna
+#   resta dichiarata `type: SKIP`: quel mirror continua a fare il suo lavoro su
+#   tutto il resto, e dichiara di non essere la sede di questa colonna.
+#   ⚠️ `SKIP` e' l'unica forma che funziona: una colonna presente
+#   nell'intestazione del CSV e NON dichiarata viene caricata lo stesso —
+#   Liquibase mappa dall'header e la lista `columns` sono solo override.
+#   Verificato con `updateSQL` offline su Liquibase 5.0.4, non supposto.
+#
+# ℹ️ E' lo STESSO CSV del 20260720-10, con TUTTE le colonne: non duplica un
+#   dato, duplica un'ancora — stessa forma dei ri-ancoraggi 20260806-13 e
+#   20260806-14. Il mirror completo e non il solo `processo_codice` perche' un
+#   loader parziale genera un `INSERT` monco (`codice`, `processo_codice`) che
+#   viola i `NOT NULL` della tabella nel ramo «riga assente»: oggi quel ramo non
+#   si raggiunge, e un ramo rotto che oggi non si raggiunge e' esattamente cio'
+#   che si scopre il giorno sbagliato.
+#
+# ⚠️ La sede del dato e' e resta il CSV
+#   `80_data/sql/dbops/coda_lavori_tipi.csv`. Chi deve cambiare un tipo di job
+#   tocca quello: nessun UPDATE nuovo su questa tabella.
+#
+# ⭐ Catalogo puro: nessuna FK verso `anagrafiche.*`/`django.*`, quindi nessun
+#   `context: dati_macchina` — questi due tipi di job fanno parte del contratto
+#   del software, non di questa installazione.
+#
+# Brief: brief-db-processi-automatici-identita-e-perimetro §5.2 (fase 4).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260905-01-riancora-mirror-coda-lavori-tipi-processo-mctit.yaml
+
+  - changeSet:
+      id: 20260905-01-riancora-mirror-coda-lavori-tipi-processo
+      author: mctit
+      runOnChange: true
+      failOnError: true
+      comment: >
+        Ri-ancora il mirror CSV di dbops.coda_lavori_tipi dopo il seme di
+        dbops.processi (20260904-13): la colonna processo_codice porta una FK
+        dura verso quel catalogo e l'ancora di luglio gira prima del bersaglio
+        su un database ricostruito da zero. Stesso CSV, stesse colonne.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: coda_lavori_tipi }
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+            - columnExists:
+                { schemaName: dbops, tableName: coda_lavori_tipi, columnName: processo_codice }
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/coda_lavori_tipi.csv
+            tableName: coda_lavori_tipi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice, type: STRING }
+              - column: { name: handler_code, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: run_as_default, type: STRING }
+              - column: { name: max_tentativi_default, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }
+              # ⭐ La colonna per cui esiste questo changeSet: qui la FK verso
+              #   dbops.processi e' soddisfatta, perche' il catalogo e' stato
+              #   seminato dal 20260904-13, che nella timeline sta prima.
+              - column: { name: processo_codice, type: STRING }

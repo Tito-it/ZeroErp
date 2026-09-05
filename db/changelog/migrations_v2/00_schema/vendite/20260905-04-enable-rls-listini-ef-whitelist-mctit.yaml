@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 (pezzo 3 di 5) — IL PERIMETRO SUL LISTINO.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, sezione DB-4 (R-8)
+#   Debito: R-8 del brief-db-processi-automatici-identita-e-perimetro, sezione 12.3
+#
+# ⛔ IL BUCO CHE CHIUDE. `vendite.listini` porta l'emittente
+# (`emittente_soggetto_ruolo_id`, NOT NULL) e non lo usa nessuno: misurato il
+# 2026-09-05, **zero policy e zero guard**. Un operatore di un'azienda vede e
+# scrive i listini — cioe' i PREZZI — di tutte le altre.
+#
+# ── ⭐ E NON E' SOLO UNA FALLA DI LETTURA ───────────────────────────
+#   `chiusura_scadenze_daily` e' un processo di DOMINIO con due bersagli:
+#   `vendite.contratti`, che ha policy e guard, e `vendite.listini_versioni`,
+#   che non ha niente. Il backend sta per farlo girare **un'azienda alla
+#   volta**, con l'utente tecnico di quell'azienda.
+#     ⇒ Sui contratti il perimetro lo garantirebbe il database; sui listini
+#     **soltanto la query**. Il lavoro direbbe «azienda X» e chiuderebbe le
+#     versioni di listino di tutti.
+#   ⚠️ Per questo DB-4 non e' «un debito che deve calare»: e' il PREREQUISITO
+#   della migrazione sulla coda. Il brief del BE la classificava «non blocca il
+#   codice»: e' il contrario — e' il codice a non poter fare cio' che dice.
+#
+# ── ⚠️ SULLA FORMA `FOR ALL` ────────────────────────────────────────
+#   linee-guida-sql 10.2 sconsiglia `FOR ALL` quando servono semantiche diverse
+#   fra SELECT e scrittura. Qui la semantica e' **la stessa**, e una `FOR SELECT`
+#   sarebbe attivamente sbagliata: e' deny-all in scrittura, e
+#   `INSERT ... RETURNING` passa comunque dalla `USING`. Quindi `FOR ALL`, come
+#   tutta la famiglia.
+#
+# ── ⚠️ `ENABLE` SENZA `FORCE`, come le sorelle ──────────────────────
+#   L'owner delle tabelle `vendite` e' `titodb`; l'applicazione gira come
+#   `zeroerp_app`, che non e' owner, non e' superuser e non ha BYPASSRLS: la RLS
+#   morde gia' sul canale web. Un `FORCE` inciderebbe solo su `titodb` e
+#   romperebbe le SECURITY DEFINER di sua proprieta' che leggono fuori dalla row
+#   security — in testa `script.fn_resolve_emittente_fiscale_id`, che il guard
+#   del changeSet -06 usa per derivare il perimetro di questa stessa famiglia.
+#
+# ── ✅ IMPATTO MISURATO PRIMA, non dopo ─────────────────────────────
+#   Il 2026-09-05 su dbdev: **26 listini e 31 versioni, tutti dell'emittente 32**,
+#   e **zero listini orfani** (nessun listino il cui soggetto_ruolo non sia un
+#   emittente — quelli diventerebbero invisibili a chiunque).
+#   ⚠️ Su un database con piu' aziende popolate l'effetto e' reale e voluto: chi
+#   prima vedeva tutti i listini vedra' i propri. E' il punto della modifica, non
+#   un effetto collaterale — ma va detto a chi applica.
+#
+# Dipendenze: script.fn_scope_ef_whitelist_via_sr (gia' in essere).
+# Verifica: db/pgtap/rls/test-rls-listini-ef-whitelist-write.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260905-04-enable-rls-listini-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260905-04-create-policy-rls-listini-ef-whitelist
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy rls_listini_ef_whitelist su vendite.listini (FOR ALL, scope emittente
+        operatore via fn_scope_ef_whitelist_via_sr) + ENABLE ROW LEVEL SECURITY (NO
+        FORCE), a parita' con la famiglia. Chiude R-8: la tabella portava l'emittente
+        e non lo usava nessuno, quindi i prezzi di ogni azienda erano leggibili e
+        scrivibili da tutte.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_ef_whitelist_via_sr'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_listini_ef_whitelist ON vendite.listini;
+              CREATE POLICY rls_listini_ef_whitelist ON vendite.listini
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_listini_ef_whitelist ON vendite.listini IS
+                  'RLS: l''operatore vede e scrive solo i listini il cui emittente e'' '
+                  'nella sua whitelist (adapter SR fn_scope_ef_whitelist_via_sr), gate '
+                  'OPERATORE fail-closed. Mirror di rls_commesse_ef_whitelist. ⛔ Chiude '
+                  'R-8: la colonna emittente c''era dal principio e non la usava nessuno, '
+                  'quindi i PREZZI di ogni azienda erano leggibili e scrivibili da tutte. '
+                  '⭐ Ed e'' il prerequisito della chiusura scadenze per emittente: senza, '
+                  'quel lavoro filtrerebbe i contratti e non le versioni di listino, '
+                  'dicendo un''azienda e toccandole tutte. rev 2026-09-05.';
+
+              -- Parita' con contratti/ddt/ordini/preventivi/fatture/commesse
+              -- (relrowsecurity=t, relforcerowsecurity=f). ⚠️ Un FORCE qui
+              -- romperebbe script.fn_resolve_emittente_fiscale_id, che e'
+              -- SECURITY DEFINER di titodb e deve leggere fuori dalla row
+              -- security per derivare il perimetro di questa stessa famiglia.
+              ALTER TABLE vendite.listini ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_listini_ef_whitelist ON vendite.listini;

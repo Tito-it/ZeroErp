@@ -62,6 +62,7 @@ Chiedere entrambe allo stesso lettore fa dare la risposta sbagliata alla prima.
 | `fiscale` | già `emittente_fiscale_id` | si verifica solo che esista |
 | `soggetto_ruolo` | `emittente_soggetto_ruolo_id` | via `anagrafiche.emittenti_fiscali` |
 | `fattura` | `fattura_id` | via `vendite.fatture` |
+| `listino` | `listino_id` | ⭐ *(dal 2026-09-05)* via `vendite.listini`, per le **versioni di listino** |
 | `ente_incasso` | `ente_incasso_id` | ⭐ via il **conto di incasso** (D5) |
 | `contabile` | `contabile_id` | ⭐ la distinta, poi il suo canale |
 

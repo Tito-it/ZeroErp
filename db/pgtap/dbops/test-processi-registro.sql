@@ -26,7 +26,8 @@
 -- 11) un DOMINIO senza bersagli finisce nella vista (caso COSTRUITO)
 -- 12) un percorso su colonna inesistente finisce nella vista (caso COSTRUITO)
 -- 13) vw_processi_che_bypassano non ha righe NON_DICHIARATO
--- 14) vw_processi_dominio_senza_difesa vede vendite.listini_versioni (debito noto)
+-- 14) ⭐ un bersaglio col percorso ma SENZA difesa finisce nel livello 2 (COSTRUITO,
+--     non appoggiato a un debito reale: quello prima o poi si paga)
 --
 -- Scopo:
 --  - collaudare i cancelli del registro COSTRUENDO i casi cattivi, non
@@ -204,14 +205,45 @@ SELECT is_empty(
 );
 
 -- ============================================================
--- 14. Il livello 2 vede il debito noto
+-- 14. Il livello 2 si accende — caso COSTRUITO
 -- ============================================================
--- vendite.listini_versioni ha il percorso verso l'emittente (via il listino)
--- ma non ha ne' policy ne' guard: li' un filtro dimenticato passerebbe.
+-- ⛔ 2026-09-05 — QUESTO TEST ERA SCRITTO AL CONTRARIO, e la correzione vale
+--   piu' del test. Asseriva che la vista NOMINASSE `vendite.listini_versioni`,
+--   cioe' pretendeva la PRESENZA di un debito reale. Il giorno in cui quel
+--   debito e' stato pagato — policy e guard, changeSet 20260905-04/-06 — il
+--   test e' diventato rosso **per il motivo giusto**, che e' assurdo:
+--   ⇒ un presidio ha il compito di arrivare a ZERO, e un test che pretende una
+--     sua riga si rompe quando il lavoro riesce.
+--   La forma giusta e' la stessa dei test 11 e 12: si COSTRUISCE il caso,
+--   cosi' il test misura il MECCANISMO e resta verde qualunque debito reale
+--   ci sia — o non ci sia.
+DO $senza_difesa$
+DECLARE
+    v_processo_id dbops.processi_bersagli.processo_id%TYPE := 9103;
+    v_bersaglio   dbops.processi_bersagli.id%TYPE          := 9103;
+BEGIN
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    VALUES (v_processo_id, 'PGTAP-BERSAGLIO-SCOPERTO',
+            'processo di prova con percorso dichiarato e nessuna difesa',
+            'DOMINIO', 'COMMAND');
+
+    -- ⭐ Il bersaglio e' `dbops.processi` stessa: ha la colonna dichiarata,
+    --   quindi il percorso e' valido — ed e' una tabella senza RLS e senza
+    --   guard di scope, che e' esattamente il caso da intercettare. Sceglierla
+    --   fra le tabelle di dominio vere avrebbe legato di nuovo il test a un
+    --   debito che qualcuno prima o poi paga.
+    -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
+    -- snapshot e la FK non troverebbe il padre.
+    INSERT INTO dbops.processi_bersagli
+        (id, processo_id, schema_tabella, nome_tabella, emittente_via, emittente_colonna)
+    VALUES (v_bersaglio, v_processo_id, 'dbops', 'processi', 'fiscale', 'id');
+END
+$senza_difesa$;
+
 SELECT isnt_empty(
     $$SELECT nome_tabella FROM dbops.vw_processi_dominio_senza_difesa
-       WHERE schema_tabella = 'vendite' AND nome_tabella = 'listini_versioni'$$,
-    'vw_processi_dominio_senza_difesa registra vendite.listini_versioni'
+       WHERE processo_codice = 'PGTAP-BERSAGLIO-SCOPERTO'$$,
+    'un bersaglio col percorso ma senza policy ne'' guard finisce nel livello 2'
 );
 
 SELECT * FROM finish();

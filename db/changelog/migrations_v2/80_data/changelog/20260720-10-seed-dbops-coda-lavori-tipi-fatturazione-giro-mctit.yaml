@@ -15,6 +15,11 @@
 # nessuna finestra di dispatch orfano. Upsert su codice (chiave naturale
 # stabile referenziata in FK da coda_lavori.job_type); id (identity) e meta
 # (default '{}') omessi.
+#
+# ⚠️ 2026-09-05 — QUESTO MIRROR NON SCRIVE `processo_codice`: la colonna e' nel
+# CSV ma qui e' dichiarata `type: SKIP`, perche' la sua FK punta a un catalogo
+# (`dbops.processi`) seminato piu' avanti nella timeline. La scrive il mirror
+# ri-ancorato `20260905-01`. Il perche' per esteso e' sulla colonna, in fondo.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -47,9 +52,26 @@ databaseChangeLog:
               - column: { name: run_as_default, type: STRING }
               - column: { name: max_tentativi_default, type: NUMERIC }
               - column: { name: attivo, type: BOOLEAN }
-              # ⭐ 2026-09-04: il tipo dichiara di quale processo e'
-              #   (dbops.processi, hard FK). Il mirror e' runOnChange senza
-              #   validCheckSums: e' fatto per essere riletto, quindi la
-              #   colonna si aggiunge QUI e non con un secondo loader sullo
-              #   stesso CSV — due mirror sulla stessa sorgente divergono.
-              - column: { name: processo_codice, type: STRING }
+              # ⛔ 2026-09-05: `processo_codice` sta nel CSV ma QUI SI SALTA.
+              #   Non e' una questione di stile: e' la TIMELINE. La colonna
+              #   porta una FK dura verso `dbops.processi`, e quel catalogo lo
+              #   semina `20260904-13`. Questo mirror e' ancorato a LUGLIO,
+              #   quindi su un database ricostruito da zero — la CI — gira
+              #   PRIMA del proprio bersaglio e il migrate muore con
+              #   «viola il vincolo di chiave esterna
+              #   "fk_coda_lavori_tipi_processi" … Key (processo_codice)=
+              #   (FATTURAZIONE_GIRO) is not present in table "processi"».
+              #   ⚠️ Su dev non si vedeva, ed e' la solita divergenza CI-vs-DEV:
+              #   li' il seme dei processi e la colonna nel CSV sono atterrati
+              #   in DUE migrate diversi, e al secondo `dbops.processi` era gia'
+              #   pieno. Un solo giro, e il difetto salta fuori.
+              # ⚠️ TOGLIERE la riga non basterebbe: una colonna presente
+              #   nell'intestazione del CSV e non dichiarata viene caricata lo
+              #   stesso (Liquibase mappa dall'header, la lista `columns` sono
+              #   solo override). Verificato con `updateSQL` offline su
+              #   Liquibase 5.0.4. L'unico modo di non scriverla e' `type: SKIP`.
+              # ⇒ La colonna la scrive il mirror RI-ANCORATO
+              #   `20260905-01-riancora-mirror-coda-lavori-tipi-processo`, che
+              #   sta dopo il seme dei processi. Stesso CSV, stessa sede del
+              #   dato: si duplica un'ancora, non una sorgente.
+              - column: { name: processo_codice, type: SKIP }
