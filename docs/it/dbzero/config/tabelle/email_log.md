@@ -31,14 +31,17 @@
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_email_log_ambito |  |
+| CHECK | chk_email_log_ambito_emittente |  |
 | CHECK | chk_email_log_stato |  |
 | FOREIGN KEY | fk_email_log_email_account | email_account_id |
 | FOREIGN KEY | fk_email_log_email_template | email_template_id |
+| FOREIGN KEY | fk_email_log_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_email_log_outbox | email_outbox_id |
 | FOREIGN KEY | fk_email_log_pratica | pratica_id |
 | FOREIGN KEY | fk_email_log_unita_organizzativa | unita_organizzativa_id |
@@ -60,8 +63,10 @@
 | trg_email_log_a10_email_account_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'email_account', 'attivo', 'email_account_id', 'id')` |
 | trg_email_log_a10_email_template_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'email_template', 'attivo', 'email_template_id', 'id')` |
 | trg_email_log_a10_email_template_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'email_template', 'attivo', 'email_template_id', 'id')` |
-| trg_email_log_a10_unita_organizzative_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_email_log_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_email_log_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_email_log_a10_unita_organizzative_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_email_log_a10_unita_organizzative_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_email_log_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_email_log_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

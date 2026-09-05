@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_scope_identita_processo.md" %}
 # ⚙️ Funzione `fn_scope_identita_processo`
 
 ```sql

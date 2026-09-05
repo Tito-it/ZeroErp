@@ -134,6 +134,7 @@
 - [fn_scope_ef_whitelist_via_listino](manual/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
 - [fn_scope_ef_whitelist_via_sr](manual/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_fornitore_ownership](manual/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
+- [fn_scope_identita_processo](manual/fn_scope_identita_processo.md) — (latest review 05-09-2026)
 - [fn_search_soggetti_universale](manual/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](manual/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.

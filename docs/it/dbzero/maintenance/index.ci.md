@@ -4,6 +4,7 @@
 - [job_run_log](manual/job_run_log.md) — (latest review 18-06-2026) La tabella `maintenance.job_run_log` memorizza i log di esecuzione dei job schedulati o lanciati manualmente all’interno del sistema Zero ERP. Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni di stato, tempi di inizio/fine, eventuali errori e dettagli di esecuzione.
 
 ## ⚙️ Funzioni (manuale)
+- [fn_job_run_log_failure](manual/fn_job_run_log_failure.md) — (latest review 05-09-2026)
 - [fn_run_and_log](manual/fn_run_and_log.md) — (latest review 07-01-26) `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
 - [proc_apply_fk_index_policy_job](manual/proc_apply_fk_index_policy_job.md) — (latest review 16-01-26) * **Eseguire in modo schedulato** l’applicazione della **policy indici FK** incapsulando la chiamata a `dbops.apply_fk_index_policy()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 - [proc_apply_storicizza_defaults](manual/proc_apply_storicizza_defaults.md) — (latest review 05-09-2026)
@@ -21,3 +22,6 @@
 - [proc_bump_toponomastica](manual/proc_bump_toponomastica.md) — (latest review 02-01-26) Consentire la correzione controllata di un toponimo **in uso**, forzando la rinormalizzazione di `config.stradario_generale` tramite i trigger esistenti.
 - [proc_sync_storico_set_storicizza](manual/proc_sync_storico_set_storicizza.md) — (latest review 05-09-2026)
 - [proc_sync_storico_set_storicizza_job](manual/proc_sync_storico_set_storicizza_job.md) — (last review 07-01-26) Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `maintenance.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
+
+## 🔍 Views (manuale)
+- [vw_job_run_da_guardare](manual/vw_job_run_da_guardare.md) — (latest review 05-09-2026)
