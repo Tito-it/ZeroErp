@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA POLICY SULLA TABELLA GIUSTA — e qui il ramo della macchina SERVE.
+#   Decisione: brief-db-processi-automatici-identita-e-perimetro §12.15, D1
+#
+# Stessa regola di `rls_email_outbox_ambito`, con **una differenza che e' tutto
+# il punto**: qui il ramo per l'identita' tecnica c'e', perche' qui il processo
+# legge davvero.
+#
+# ── ⭐ PERCHE' QUI SI NOMINA IL PROCESSO E SULL'OUTBOX NO ───────────
+#   `send_pending_emails` seleziona da **questa** tabella. Nel database
+#   **portare e' leggere**: non esiste un modo di spedire una riga senza vederla.
+#   ⇒ Senza questo ramo la posta di sistema non partirebbe — e non lo direbbe a
+#     nessuno, perche' una coda vuota e' identica a «niente da fare».
+#   ⛔ Sull'outbox lo stesso ramo era stato **ritirato** (`20260905-33`): li' quel
+#   processo non entra mai, e un permesso che nessun codice esercita non si puo'
+#   collaudare. Qui invece un collaudo funzionale lo esercita.
+#   ⚠️ E' la stessa decisione di sicurezza, dichiarata: **chi spedisce un reset
+#   password lo puo' leggere.**
+#
+# ── ⚠️ IL RAMO SI SCEGLIE SU `ambito` ──────────────────────────────
+#   Come sull'outbox: il `CHECK` permette a una riga `SISTEMA` di avere un
+#   emittente, e scegliere il ramo su `emittente_fiscale_id IS NULL` darebbe quella
+#   riga in lettura all'azienda. Si sceglie sull'ETICHETTA, che e' fail-closed.
+#   🔴 **E l'etichetta dev'essere un'affermazione**: al 2026-09-05
+#   `email_repository.insert_log` ha ancora `ambito: str = "SISTEMA"` in firma.
+#   Finche' c'e', su questa tabella `SISTEMA` significa «nessuno ha detto» — e un
+#   valore di default non puo' fare da cancello di sicurezza. E' il pezzo che il
+#   backend deve togliere, e se l'e' segnalato da solo.
+#
+# ── 🔴 LA RLS RESTA SPENTA, E LA ACCENDE IL `20260905-44` ───────────
+#   Perche' accenderla oggi romperebbe il **reset password**: i due
+#   `password_reset_views` girano senza autenticazione, quindi senza GUC, e
+#   l'`INSERT` verrebbe respinto. La porta per loro e'
+#   `config.fn_accoda_email_sistema` (`20260905-42`), e va usata prima.
+#   ⭐ Il presidio non tace nel frattempo: dal `20260905-26` una policy conta solo
+#   se la row level security e' ATTIVA, quindi
+#   `dbops.vw_processi_dominio_senza_difesa` dira'
+#   *«la policy c'e' ma la ROW LEVEL SECURITY non e' attiva»*.
+#
+# Verifica: db/pgtap/rls/test-rls-email-log-ambito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260905-43-create-policy-rls-email-log-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20260905-43-create-policy-rls-email-log-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy rls_email_log_ambito su config.email_log (FOR ALL): le righe di
+        ambito SISTEMA le legge il super admin PIU' l'identita' tecnica di
+        send_pending_emails — qui il ramo della macchina serve, perche' qui quel
+        processo legge davvero. Le altre seguono la whitelist emittente. ⛔ La RLS
+        resta spenta: la accende il -44, dopo che il backend usa
+        config.fn_accoda_email_sistema per il reset password.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: email_log
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 3
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('fn_is_super_admin', 'fn_scope_ef_whitelist',
+                                       'fn_scope_identita_processo')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_log_ambito ON config.email_log;
+
+              CREATE POLICY rls_email_log_ambito ON config.email_log
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          -- ⚠️ Il ramo si sceglie sull'ETICHETTA, non sulla
+                          --   colonna nulla: una riga SISTEMA puo' avere un
+                          --   emittente, e sceglierlo sul NULL la darebbe in
+                          --   lettura all'azienda.
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              -- ⭐ QUI il ramo della macchina serve: e'
+                              --   send_pending_emails a leggere questa tabella,
+                              --   e portare e' leggere.
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND CASE
+                          WHEN ambito = 'SISTEMA' THEN
+                              script.fn_is_super_admin(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer)
+                              OR script.fn_scope_identita_processo(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  'send_pending_emails')
+                          ELSE
+                              script.fn_scope_ef_whitelist(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  emittente_fiscale_id)
+                          END
+                  );
+
+              COMMENT ON POLICY rls_email_log_ambito ON config.email_log IS
+                  'RLS: le email di ambito SISTEMA — reset password, alert — le leggono il '
+                  'SUPER ADMIN e l''identita'' tecnica di send_pending_emails. Le altre '
+                  'seguono la whitelist emittente dell''operatore. Gate OPERATORE '
+                  'fail-closed. ⭐ Il ramo per l''identita'' tecnica c''e'' QUI e non su '
+                  'config.email_outbox (dove e'' stato ritirato dal changeSet 20260905-33): '
+                  'e'' questa la tabella che send_pending_emails legge, e nel database '
+                  'PORTARE E'' LEGGERE — senza, la posta di sistema non partirebbe e una '
+                  'coda vuota e'' identica a «niente da fare». E'' una decisione di '
+                  'sicurezza dichiarata: chi spedisce un reset password lo puo'' leggere. '
+                  '⚠️ Il ramo si sceglie su `ambito` e non su `emittente_fiscale_id IS '
+                  'NULL`: il CHECK permette a una riga SISTEMA di avere un emittente, e '
+                  'sceglierlo sulla colonna nulla la darebbe in lettura a quell''azienda. '
+                  '🔴 E l''etichetta dev''essere un''AFFERMAZIONE: finche'' '
+                  'email_repository.insert_log ha ambito = "SISTEMA" per default, su '
+                  'questa tabella SISTEMA significa «nessuno ha detto» — e un valore di '
+                  'default non puo'' fare da cancello di sicurezza. rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_email_log_ambito ON config.email_log;

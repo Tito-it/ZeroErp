@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/maintenance/manual/fn_job_run_log_failure.md" %}
 # ⚙️ Funzione `fn_job_run_log_failure`
 
 ```sql

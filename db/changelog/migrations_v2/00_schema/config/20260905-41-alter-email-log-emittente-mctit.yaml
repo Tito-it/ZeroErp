@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ `config.email_log` IMPARA DI CHI E' — il punto 4, la tabella giusta.
+#   Brief: brief-db-processi-automatici-identita-e-perimetro §12.15 · R-7
+#
+# ⛔ DB-3 aveva dato la colonna a `config.email_outbox`, che e' l'area delle
+# BOZZE e la scrive l'interfaccia. Il processo `send_pending_emails` legge
+# **questa** tabella, e questa non aveva nessun modo di dire di chi fosse una
+# riga: il censimento la nomina come debito dichiarato dal `20260905-34`.
+#
+# ── ⚠️ NULLABLE, E IL VINCOLO E' LEGATO AD `ambito` ─────────────────
+#   Stessa forma di `config.email_outbox` (`20260905-18`), e per lo stesso
+#   motivo: un'email di **sistema** — reset password, alert — non appartiene a
+#   nessuna azienda e non puo' avere un emittente. ⛔ Un `NOT NULL` secco
+#   pretenderebbe un dato che per quelle righe non esiste.
+#   ⇒ `CHECK (ambito = 'SISTEMA' OR emittente_fiscale_id IS NOT NULL)`: la
+#     colonna e' obbligatoria esattamente dove il dato si puo' fornire.
+#
+# ── ✅ SUI DATI GIA' A BORDO ────────────────────────────────────────
+#   Misurato: 14 righe, **tutte** `SISTEMA`. Il `CHECK` le accetta tutte, quindi
+#   nasce `VALID` senza bonifiche.
+#
+# ⚠️ La FK punta a `anagrafiche.emittenti_fiscali(id)`, come sull'outbox:
+# l'emittente **fiscale**, non il soggetto_ruolo — e' la chiave che
+# `script.fn_scope_ef_whitelist` sa leggere direttamente, senza adattatori.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260905-41-alter-email-log-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260905-41-alter-email-log-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.email_log prende emittente_fiscale_id (nullable + FK) e il CHECK
+        legato ad ambito, come config.email_outbox. E' la tabella che
+        send_pending_emails legge davvero: senza questa colonna quel processo non
+        puo' avere un perimetro, e la prima azienda drena tutta la coda.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: email_log }
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.email_log
+                  ADD COLUMN emittente_fiscale_id bigint;
+
+              ALTER TABLE config.email_log
+                  ADD CONSTRAINT fk_email_log_emittente_fiscale
+                  FOREIGN KEY (emittente_fiscale_id)
+                  REFERENCES anagrafiche.emittenti_fiscali (id);
+
+              -- ⭐ Il vincolo sta dove il dato si puo' fornire: un'email di
+              --   sistema non ha un'azienda, tutte le altre si'.
+              ALTER TABLE config.email_log
+                  ADD CONSTRAINT chk_email_log_ambito_emittente
+                  CHECK (ambito = 'SISTEMA' OR emittente_fiscale_id IS NOT NULL);
+
+              COMMENT ON COLUMN config.email_log.emittente_fiscale_id IS
+                  'L''azienda a cui appartiene questa email. ⚠️ NULL solo per ambito '
+                  'SISTEMA — reset password, alert: quelle non appartengono a nessuno e '
+                  'non possono avere un emittente. Lo impone chk_email_log_ambito_emittente, '
+                  'che e'' un CHECK condizionato e non un NOT NULL secco: il vincolo sta '
+                  'dove il dato si puo'' fornire. ⭐ E'' la tabella che send_pending_emails '
+                  'LEGGE davvero (config.email_outbox e'' l''area delle bozze, la scrive '
+                  'l''interfaccia): senza questa colonna quel processo non ha un perimetro '
+                  'e la prima azienda drena tutta la coda. rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.email_log
+                  DROP CONSTRAINT IF EXISTS chk_email_log_ambito_emittente;
+              ALTER TABLE config.email_log
+                  DROP CONSTRAINT IF EXISTS fk_email_log_emittente_fiscale;
+              ALTER TABLE config.email_log
+                  DROP COLUMN IF EXISTS emittente_fiscale_id;

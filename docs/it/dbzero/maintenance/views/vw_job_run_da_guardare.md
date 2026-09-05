@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/maintenance/manual/vw_job_run_da_guardare.md" %}
 # 🔍 View `vw_job_run_da_guardare`
 
 > 📝 **Descrizione**

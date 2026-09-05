@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA PORTA PER LE EMAIL DI SISTEMA — e senza di lei la RLS su
+#   `config.email_log` non si puo' accendere senza rompere il reset password.
+#   Brief: brief-db-processi-automatici-identita-e-perimetro §12.15
+#
+# ── 🔴 IL PROBLEMA, MISURATO SUL CODICE ────────────────────────────
+#   `PasswordResetRequestView` e `PasswordResetConfirmView` sono
+#   `permission_classes = [AllowAny]` e `authentication_classes = []`: girano
+#   **senza autenticazione**, ed e' giusto — chi ha perso la password non puo'
+#   fare il login per chiederne una nuova.
+#   ⇒ In quelle richieste le GUC `app.current_user_id` e `app.ruolo_applicativo`
+#     **non esistono**. Con la RLS accesa, l'`INSERT` della mail di reset
+#     verrebbe respinto dal gate `OPERATORE` della policy.
+#   ⛔ E non e' una funzione che non usa nessuno: il reset password **e'** la
+#     ragione per cui le email di ambito SISTEMA esistono.
+#
+# ── ⛔ LA STRADA CHE NON SI PRENDE ──────────────────────────────────
+#   Far passare nella policy anche «nessun utente in sessione» sarebbe
+#   riaprire la porta che la fase 6 ha chiuso: un processo scriverebbe senza
+#   dire chi e', e basterebbe NON impostare una GUC per aggirare il perimetro.
+#
+# ── ⭐ LA STRADA CHE SI PRENDE: UNA PORTA STRETTA E DICHIARATA ──────
+#   Una funzione `SECURITY DEFINER` che sa scrivere **una cosa sola**: una email
+#   di ambito `SISTEMA`, senza emittente. Chi la chiama non decide l'ambito —
+#   lo decide la funzione, ed e' scritto nel suo corpo.
+#   ⚠️ Non prende `ambito` come parametro **di proposito**: se lo prendesse
+#   sarebbe una porta per scrivere qualunque email aggirando la policy, cioe' il
+#   contrario di cio' che serve.
+#
+# ── ⚠️ OWNER: BASTA IL PROPRIETARIO DELLA TABELLA, NON SERVE UN SUPERUSER
+#   La RLS e' `ENABLE` senza `FORCE`, quindi il proprietario (`titodb`) non la
+#   subisce. Una `SECURITY DEFINER` di sua proprieta' scrive senza bisogno di
+#   privilegi speciali — nessuna riga in `dbops.sec_functions_owner`, nessun
+#   canale dblink, niente.
+#   ⭐ E' la ragione per cui questa e' la strada piu' piccola: il permesso che
+#   serve ce l'ha gia' chi possiede la tabella.
+#
+# ── ⚠️ CHE COSA DEVE FARE IL BACKEND ───────────────────────────────
+#   Nei due `password_reset_views` (e in qualunque altro percorso non
+#   autenticato che mandi email di sistema) l'`INSERT` diretto su
+#   `config.email_log` diventa una chiamata a questa funzione. **Una riga.**
+#   ⛔ Finche' non lo fanno, il changeSet che ACCENDE la RLS (`20260905-44`) non
+#   va applicato: e' scritto e aspetta, e il perche' e' nella sua intestazione.
+#
+# Verifica: db/pgtap/config/test-fn-accoda-email-sistema.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260905-42-create-fn-accoda-email-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20260905-42-create-fn-accoda-email-sistema
+      author: mctit
+      failOnError: true
+      comment: >
+        config.fn_accoda_email_sistema: la porta per le email di ambito SISTEMA
+        scritte da un percorso NON autenticato (reset password). SECURITY DEFINER
+        del proprietario della tabella, che non subisce la RLS. Non prende ambito
+        come parametro: sa scrivere una cosa sola.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: email_log
+            columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_accoda_email_sistema(
+                  p_destinatario       config.email_log.destinatario%TYPE,
+                  p_oggetto            config.email_log.oggetto%TYPE,
+                  p_corpo_html         config.email_log.corpo_inviato_html%TYPE,
+                  p_corpo_testo        config.email_log.corpo_inviato_testo%TYPE DEFAULT NULL,
+                  p_email_account_id   config.email_log.email_account_id%TYPE   DEFAULT NULL,
+                  p_email_template_id  config.email_log.email_template_id%TYPE  DEFAULT NULL,
+                  p_auth_user_id       config.email_log.auth_user_id%TYPE       DEFAULT NULL,
+                  p_contesto_json      config.email_log.contesto_json%TYPE      DEFAULT '{}'::jsonb)
+               RETURNS config.email_log.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_id config.email_log.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Accodare una email di SISTEMA — reset password, alert —
+                  --   da un percorso che NON ha un utente in sessione.
+                  --
+                  -- ⛔ `ambito` NON e' un parametro, ed e' il punto: se lo
+                  --   fosse, questa sarebbe una porta per scrivere qualunque
+                  --   email aggirando la policy. Sa scrivere una cosa sola.
+                  -- ⛔ Nemmeno `emittente_fiscale_id`: un'email di sistema non
+                  --   appartiene a nessuna azienda, per definizione.
+                  -- =========================================================
+
+                  -- ⚠️ Un destinatario vuoto qui non e' un caso di frontiera: e'
+                  --   una email che non partira' mai e che nessuno colleghera' a
+                  --   niente. Si rifiuta subito, con un nome.
+                  IF p_destinatario IS NULL OR btrim(p_destinatario) = '' THEN
+                      -- ⚠️ Cinque argomenti fissi PIU' almeno un valore
+                      --   variadico: il messaggio a catalogo e' «Validazione
+                      --   fallita: %s» e senza il valore format() non avrebbe
+                      --   niente da mettere. Fermarsi a quattro non risolve
+                      --   nemmeno la funzione.
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_accoda_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('oggetto', p_oggetto),
+                          NULL::uuid,
+                          'destinatario obbligatorio per una email di sistema');
+                  END IF;
+
+                  INSERT INTO config.email_log
+                      (email_account_id, email_template_id, destinatario,
+                       oggetto, corpo_inviato_html, corpo_inviato_testo,
+                       stato, ambito, emittente_fiscale_id,
+                       auth_user_id, contesto_json)
+                  VALUES (p_email_account_id, p_email_template_id, p_destinatario,
+                          p_oggetto, p_corpo_html, p_corpo_testo,
+                          'PENDING', 'SISTEMA', NULL,
+                          p_auth_user_id, COALESCE(p_contesto_json, '{}'::jsonb))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_accoda_email_sistema(varchar, text, text, text, integer, integer, integer, jsonb)
+              IS 'Accoda una email di ambito SISTEMA (reset password, alert) da un percorso NON autenticato. ⭐ Esiste perche'' PasswordResetRequestView e PasswordResetConfirmView girano con AllowAny e authentication_classes = []: in quelle richieste le GUC app.current_user_id e app.ruolo_applicativo NON esistono, e con la row level security accesa su config.email_log l''INSERT verrebbe respinto dal gate OPERATORE della policy — cioe'' il reset password si romperebbe, che e'' proprio la ragione per cui le email di SISTEMA esistono. ⛔ La strada scartata era far passare nella policy anche «nessun utente in sessione»: sarebbe riaprire la porta chiusa dalla fase 6, dove bastava NON impostare una GUC per scrivere senza dire chi si e''. ⛔ `ambito` NON e'' un parametro, e nemmeno l''emittente: se lo fossero questa sarebbe una porta per scrivere QUALUNQUE email aggirando la policy. Sa scrivere una cosa sola. ⚠️ SECURITY DEFINER del proprietario della tabella e non di un superuser: la RLS e'' ENABLE senza FORCE, quindi l''owner non la subisce — nessun privilegio speciale, nessun canale separato. ⚠️ Al backend: nei due password_reset_views l''INSERT diretto diventa una chiamata a questa funzione.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION config.fn_accoda_email_sistema(
+                          varchar, text, text, text, integer, integer, integer, jsonb)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.fn_accoda_email_sistema(
+                  varchar, text, text, text, integer, integer, integer, jsonb);

@@ -296,6 +296,29 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "CREATE ROLE zeroerp_app LOGIN PASSWORD 'secret-app';"
 
+          # ── Il ruolo del canale di log fuori transazione (dblink) ──────
+          # ⭐ STESSA RAGIONE del commento qui sopra, e vale la pena dirla due
+          # volte: `90_end/20260905-38` concede a `zeroerp_log` USAGE su
+          # `maintenance` e INSERT sul giornale dei job, ma e' scritto
+          # «skip se il ruolo manca» — e in CI mancava sempre. Quindi quel GRANT
+          # non e' mai stato applicato, e i test 3, 4 e 5 di
+          # `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql`
+          # facevano `skip()`: tre asserzioni che sembravano coperte e non lo
+          # erano. Creandolo QUI — prima di Liquibase — diventano verdi veri.
+          # ⛔ Il ruolo deve nascere PRIMA del migrate: i GRANT stanno in
+          # `90_end`, cioe' dentro la corsa di Liquibase.
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
+          # ⚠️ DSN ESPLICITO, non `service=zeroerp_log` come sul database di
+          # sviluppo: la forma `service=` si risolve da `pg_service.conf` sul
+          # SERVER, e nel container della CI quel file non esiste — il canale
+          # sembrerebbe configurato e non si aprirebbe.
+          # ⚠️ E l'utente del DSN e' `zeroerp_log`, non il migratore: e' l'unico
+          # con i privilegi minimi giusti (scrive il giornale, non lo legge).
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "ALTER ROLE zeroerp     IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';
+             ALTER ROLE zeroerp_app IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
+
       - name: Installa plpgsql_check nel container Postgres
         # Serve al guardrail «riferimenti morti» in fondo a questo workflow.
         # Il changeSet che crea l'estensione (20260804-36) e' CONDIZIONALE su
