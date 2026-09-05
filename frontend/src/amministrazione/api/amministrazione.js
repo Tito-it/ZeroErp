@@ -112,17 +112,34 @@ export function listProcessoRun(codice, params = {}) {
   return api.get(`${BASE}/processi/${encodeURIComponent(codice)}/run/`, { params })
 }
 
-// Scopo: crea l'utente tecnico di un processo PER UN'AZIENDA.
+// Scopo: un verbo sull'utente tecnico di un processo PER UN'AZIENDA. I due verbi
+//        pubblici (crea, riattiva) differiscono solo per il segmento finale
+//        dell'URL: corpo e header sono gli stessi, e stanno qui una volta sola.
 // ⛔ L'azienda si passa, non si deduce: il sistema non concede perimetri da solo
 //    (D-9) — il pannello mostra chi non è servito, la decisione resta di chi
 //    guarda.
-// ⚠️ L'endpoint dichiara `require_idempotency_key`: senza header risponde 400.
-export function creaUtenteTecnico(codice, emittenteCodice) {
+// ⚠️ Gli endpoint dichiarano `require_idempotency_key`: senza header 400.
+function postIdentita(codice, azione, emittenteCodice) {
   return api.post(
-    `${BASE}/processi/${encodeURIComponent(codice)}/identita/`,
+    `${BASE}/processi/${encodeURIComponent(codice)}/identita/${azione}`,
     { emittente_codice: emittenteCodice },
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
+}
+
+// Scopo: crea l'utente tecnico di un processo per un'azienda.
+export function creaUtenteTecnico(codice, emittenteCodice) {
+  return postIdentita(codice, '', emittenteCodice)
+}
+
+// Scopo: riaccende l'utente tecnico SPENTO di un processo per un'azienda.
+// ⭐ Verbo SEPARATO, non un flag su `creaUtenteTecnico`: «non c'è» e «c'è ed è
+//    spento» sono due stati del mondo diversi, e un solo endpoint che sceglie da
+//    sé quale dei due fare non direbbe a chi lo chiama che cosa è successo.
+// ⚠️ Ci si arriva da un rifiuto: la fabbrica risponde
+//    `E_UTENTE_TECNICO_DA_RIATTIVARE` e manda qui.
+export function riattivaUtenteTecnico(codice, emittenteCodice) {
+  return postIdentita(codice, 'riattiva/', emittenteCodice)
 }
 
 export function getAuditLog(params = {}) {

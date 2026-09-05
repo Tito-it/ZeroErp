@@ -59,12 +59,15 @@ _ORDER_COLS_PROCESSI: dict[str, str] = {
     "ultimo_run": "ur.ultimo_run",
 }
 
-# ⭐ I SEI PRESIDI del cantiere «nessun processo senza operatore», nell'ordine in
+# ⭐ I PRESIDI del cantiere «nessun processo senza operatore», nell'ordine in
 #    cui conviene leggerli. ⛔ Qui c'e' SOLO il nome: che natura abbia ciascuno
 #    — «deve restare vuota» oppure «registro di debito che deve calare» — lo
 #    dichiara il DATABASE nel commento della vista, e si legge da li'
 #    (`obj_description`). Scriverlo anche qui sarebbe la seconda sede dello
 #    stesso fatto, e la seconda sede e' quella che diverge.
+# ⚠️ E il loro NUMERO non si scrive da nessuna parte, per la stessa ragione: e'
+#    passato da sei a otto il 2026-09-05, e ogni commento che diceva «i sei
+#    presidi» era gia' una riga da correggere.
 PRESIDI_PROCESSI: tuple[str, ...] = (
     "vw_processi_che_bypassano",
     "vw_processi_dominio_senza_emittente",
@@ -72,6 +75,15 @@ PRESIDI_PROCESSI: tuple[str, ...] = (
     "vw_processi_dominio_senza_identita",
     "vw_emittenti_non_serviti",
     "vw_run_senza_attore",
+    # ⭐ 2026-09-05, con la migrazione della chiusura scadenze sulla coda.
+    #    `..._su_pgagent` verifica la regola presa quel giorno — nessun processo
+    #    di DOMINIO su pgAgent — e `..._da_guardare` e' il prezzo di quella
+    #    scelta: spostando il lavoro nella coda si sposta anche il SILENZIO, e
+    #    un lavoro che nessuno prende ha lo stesso effetto di un job morto.
+    #    ⛔ Va letto anche quando tutto sembra a posto: la sua riga piu'
+    #    pericolosa e' «mai preso», che si legge solo se il worker e' spento.
+    "vw_processi_dominio_su_pgagent",
+    "vw_coda_lavori_da_guardare",
 )
 
 # ⚠️ MIRROR DICHIARATO, non una seconda definizione. «Un processo vuole un
@@ -85,7 +97,16 @@ PRESIDI_PROCESSI: tuple[str, ...] = (
 # ⛔ Se un giorno la regola cambia, cambia LA'; questa riga la segue, non la
 #    decide. E' lo stesso patto di `_STATI_FLUSSO_TERMINALI` in `pratiche`.
 _CLASSE_CON_IDENTITA = "DOMINIO"
-_CANALI_CON_IDENTITA = ("PGAGENT", "COMMAND")
+# ⚠️ `CODA_AUTOMATICA` e' entrato il 2026-09-05 con la decisione R-E, e NON e'
+#    un terzo caso: e' la correzione del modello. Un processo di coda accodato
+#    da una MACCHINA vuole l'identita' come gli altri — chi lo sveglia non ha un
+#    nome da prestargli. ⛔ `CODA` resta fuori, e li' la ragione regge: lo accoda
+#    una persona, e l'identita' e' la sua.
+#    ⭐ Letto dal verso autoritativo (`dbops.vw_processi_dominio_senza_identita`
+#    e `vw_emittenti_non_serviti`, che elencano gli stessi tre canali), non
+#    dedotto dal nome: fosse rimasto a due, `chiusura_scadenze_daily` sarebbe
+#    apparso a video come «non ne vuole» proprio mentre ne usa una.
+_CANALI_CON_IDENTITA = ("PGAGENT", "COMMAND", "CODA_AUTOMATICA")
 
 # Quante righe di esempio si consegnano per presidio: il pannello serve a dire
 # CHE c'e' qualcosa e a farsi un'idea, non a essere una lista paginata.
@@ -104,41 +125,36 @@ class ProcessiRepository:
     #    emittente senza badge non viene servito, e il presidio
     #    `dbops.vw_emittenti_non_serviti` lo dice — invece di lasciarlo scoprire
     #    a una fattura che non esce.
-    # ⚠️ `config.user_emittenti_fiscali` e' 1-a-1 sull'utente (UNIQUE), quindi
-    #    ogni riga qui e' una coppia distinta (utente, emittente): il JOIN non
-    #    puo' moltiplicare.
     # ⚠️ Si filtra su TUTTA la catena viva — legame attivo, identita' attiva,
-    #    utente attivo, emittente attivo: un solo anello spento e il lavoro
-    #    girerebbe con un'identita' che `operator_identity_context` rifiuta a
-    #    meta' strada (`E_CODA_IDENTITA_NON_ATTIVA`), cioe' dopo aver gia'
-    #    accodato.
+    #    ruolo OPERATORE, utente Django attivo, emittente attivo: un solo anello
+    #    spento e il lavoro girerebbe con un'identita' che
+    #    `operator_identity_context` rifiuta a meta' strada
+    #    (`E_CODA_IDENTITA_NON_ATTIVA`), cioe' dopo aver gia' accodato.
+    #
+    # ⭐ LE CINQUE CONDIZIONI NON SONO PIU' QUI, ed e' il punto di questo metodo.
+    #    Stavano in una stringa SQL dentro Python finche' il roster serviva a un
+    #    solo consumatore; dal 2026-09-05 lo legge anche il database — il job
+    #    notturno che accoda la chiusura scadenze — e riscriverlo di la' avrebbe
+    #    fatto due copie della stessa regola. ⛔ Due copie della stessa regola
+    #    non restano uguali: si spegne un anello in una e l'altra continua a
+    #    servire un'azienda che non andava piu' servita, senza dirlo.
+    #    ⇒ La sede e' `dbops.vw_processi_roster`, e qui c'e' solo il filtro.
+    # ⚠️ L'ORDER BY e' ripetuto qui anche se la vista ne ha uno: l'ordine di una
+    #    vista non e' un contratto quando la si filtra da fuori, e i consumatori
+    #    (produttore, drawer) leggono il roster in sequenza.
     def roster_processo(self, processo_codice: str) -> list[RigaRoster]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT idg.auth_user_id,
-                       au.username,
-                       idg.id                AS identita_id,
-                       ef.id                 AS emittente_fiscale_id,
-                       ef.codice             AS emittente_codice,
-                       ef.soggetto_ruolo_id  AS emittente_soggetto_ruolo_id
-                  FROM dbops.processi p
-                  JOIN dbops.processi_identita pi
-                    ON pi.processo_id = p.id AND pi.attivo
-                  JOIN anagrafiche.identita_digitali idg
-                    ON idg.auth_user_id = pi.auth_user_id
-                   AND idg.attivo
-                   AND idg.ruolo_applicativo = 'OPERATORE'
-                  JOIN auth_user au
-                    ON au.id = pi.auth_user_id AND au.is_active
-                  JOIN config.user_emittenti_fiscali uef
-                    ON uef.auth_user_id = pi.auth_user_id
-                  JOIN anagrafiche.emittenti_fiscali ef
-                    ON ef.id = uef.emittente_fiscale_id AND ef.attivo
-                 WHERE p.codice = %s
-                   AND p.attivo
-                   AND p.obsoleto_dal IS NULL
-                 ORDER BY ef.codice, idg.auth_user_id
+                SELECT auth_user_id,
+                       username,
+                       identita_id,
+                       emittente_fiscale_id,
+                       emittente_codice,
+                       emittente_soggetto_ruolo_id
+                  FROM dbops.vw_processi_roster
+                 WHERE processo_codice = %s
+                 ORDER BY emittente_codice, auth_user_id
                 """,
                 [processo_codice],
             )
@@ -319,7 +335,7 @@ class ProcessiRepository:
     #  I presidi: le viste che devono restare vuote
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Lo stato dei SEI presidi in un round-trip: per ognuno il conteggio,
+    # Scopo: Lo stato dei presidi in un round-trip: per ognuno il conteggio,
     #        le prime righe e — ⭐ letta dal DATABASE, non riscritta qui — la
     #        DESCRIZIONE che dice che natura ha quel presidio.
     #

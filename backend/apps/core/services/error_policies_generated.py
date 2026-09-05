@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 843, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 846, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -862,6 +862,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRICING_SCONTO_ECCESSIVO": "NON_PERMESSO",
     # script.fn_crea_utente_tecnico: si e' chiesto un utente tecnico per un processo che non ne vuole uno. Eleggibili SOLO i processi di dbops.processi con classe DOMINIO, attivi, non obsoleti e su canale PGAGENT o COMMAND. ⛔ I processi su canale CODA sono esclusi di proposito: sono accodati da un OPERATORE e girano con lo scope catturato all'enqueue: hanno gia' un'identita', ed e' quella della persona che ha chiesto il lavoro. Dargliene una tecnica ne cancellerebbe il nome dall'audit. ⛔ TECNICO e non DATO_ERRATO: quella chiamata non la fa un operatore in un form, la fa una migrazione o l'amministrazione - quindi niente chiave campo. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
     "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": "TECNICO",
+    # Il codice processo indicato non esiste in dbops.processi. ⭐ Nasce per il dettaglio di un processo automatico (schermata Amm. Software) e per il guard 1 di script.fn_crea_utente_tecnico, che prima diceva «non eleggibile» anche quando il processo NON C''ERA: due situazioni diverse mandano a cercare in due posti diversi. ⛔ Non si riusa E_JOB_NON_TROVATO, che parla del LAVORO in coda numero N: un processo e un lavoro sono due cose diverse. Un codice usato per due cose si spezza a monte, non si rimappa a valle. Brief: brief-db-processi-automatici-residui-be, DB-8.
+    "E_PROCESSO_NON_TROVATO": "NON_TROVATO",
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "DATO_ERRATO",
     "E_PROFILO_ACCESSO_NON_TROVATO": "NON_TROVATO",
     # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un · valore nuovo dell'enum senza regola. Il guard non apre per omissione.
@@ -1168,10 +1170,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
+    # script.fn_crea_utente_tecnico: per la coppia (processo, emittente) lo username deterministico processo@emittente e'' gia'' preso, ma il legame in dbops.processi_identita e'' SPENTO. ⛔ Prima ci si sbatteva contro un 23505 NUDO su auth_user_username_key: il guard sul duplicato guarda processi_identita.attivo, e lo username no — quindi disattivare il legame (la via che la documentazione indicava per sostituire l''utente di un processo) liberava il guard e lasciava in piedi il muro. ⚠️ NON e'' E_UTENTE_TECNICO_GIA_ESISTE, che dice «ha gia'' un utente ATTIVO» e il cui rimedio e'' «non serve fare niente». Qui l''utente c''e'' ed e'' spento, e il rimedio e'' l''opposto: RIATTIVARLO con script.fn_riattiva_utente_tecnico. Due situazioni diverse mandano a fare due cose diverse. ⭐ CONFLITTO_STATO: i parametri sono giusti, e'' lo STATO del mondo che non ammette questa operazione. Brief: brief-db-processi-automatici-residui-be, DB-6.
+    "E_UTENTE_TECNICO_DA_RIATTIVARE": "CONFLITTO_STATO",
     # script.fn_crea_utente_tecnico: l'emittente fiscale indicato per l'utente tecnico non esiste o non e' attivo. ⭐ L'emittente e' OBBLIGATORIO e costitutivo, non un permesso aggiunto dopo: config.user_emittenti_fiscali e' 1-a-1 sull'utente (UNIQUE(auth_user_id), changeSet 20260408-11), quindi un utente tecnico nasce PER un emittente e un utente senza non potrebbe fare niente, mai. ⛔ TECNICO e non DATO_ERRATO: la chiamata la fa una migrazione o l'amministrazione, non un operatore in un form.
     "E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO": "TECNICO",
     # script.fn_crea_utente_tecnico: il processo ha gia' un utente tecnico attivo per quell'emittente, e la regola e' UNO per processo PER EMITTENTE (decisione D-6, rivista il 2026-09-04: config.user_emittenti_fiscali e' 1-a-1 sull'utente). ⭐ La fn si ferma prima invece di lasciar sollevare uq_processi_identita_processo: un 23505 nudo non direbbe QUALE regola e' stata infranta, e questa e' una regola di dominio, non un incidente di chiave. Per sostituire l'utente di un processo si disattiva la riga esistente e se ne crea una nuova: la storia dei run che lo nominano resta leggibile. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
     "E_UTENTE_TECNICO_GIA_ESISTE": "TECNICO",
+    # script.fn_riattiva_utente_tecnico: non esiste un utente tecnico da riattivare per la coppia (processo, emittente). ⚠️ E'' il verso opposto di E_UTENTE_TECNICO_GIA_ESISTE, e i due insieme rendono percorribile la sostituzione: se c''e'' si riattiva, se non c''e'' si crea. Un solo codice per entrambi avrebbe lasciato chi legge senza sapere quale dei due verbi usare. Brief: brief-db-processi-automatici-residui-be, DB-6.
+    "E_UTENTE_TECNICO_NON_TROVATO": "NON_TROVATO",
     # script.fn_crea_utente_tecnico: il profilo di accesso chiesto per un utente tecnico non e' utilizzabile - non esiste, non e' attivo, oppure non e' di tipo AD_HOC (l'unico legabile a una singola identita'; SUPER_ADMIN vi rientra ed e' escluso). ⛔ Il divieto su SUPER_ADMIN e' il punto: e' la scorciatoia ovvia per «deve servire tutti gli emittenti», e bypasserebbe lo scope PRIMA della whitelist in script.fn_check_user_emittente_scope - riaprendo con un nome rassicurante la porta che tutto il cantiere esiste per chiudere. Il perimetro di un processo si scrive riga per riga in config.user_emittenti_fiscali. ⚠️ Su un TECNICO la chiave campo esce dal contesto. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
     "E_UTENTE_TECNICO_PROFILO_VIETATO": "TECNICO",
     "E_UTILITY_RUOLO_NON_AMMESSO": "DATO_ERRATO",

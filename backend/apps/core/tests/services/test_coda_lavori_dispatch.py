@@ -97,13 +97,32 @@ class DispatchTests(SimpleTestCase):
         self.assertEqual(result, {"ok": 2})
 
 
+# Scopo: toglie un handler dal registry globale. ⚠️ Il registry non espone un
+#        `unregister` — e non deve: in esercizio un handler non si ritira a
+#        runtime. Qui si tocca il dizionario interno di proposito, ed e' l'unico
+#        punto che lo fa.
+def _dimentica_handler(codice: str) -> None:
+    from apps.core.services.coda_lavori import handler_registry
+
+    handler_registry._REGISTRY.pop(codice, None)  # noqa: SLF001
+
+
 class RegistryTests(SimpleTestCase):
 
     # 3. register_handler + get_handler + registered_handlers.
+    #
+    # ⚠️ IL REGISTRY E' GLOBALE E VIVE OLTRE IL TEST, quindi si ripulisce. Non e'
+    #    igiene formale: il finto `test_handler_xyz` restava registrato per tutta
+    #    la corsa e faceva rosso il presidio degli handler orfani
+    #    (`apps/core/tests/db/test_coda_lavori_tipi_handler_guardrail.py`), che
+    #    cerca proprio gli handler che nessun tipo di coda nomina. Un test che
+    #    sporca uno stato condiviso rompe un ALTRO test, e il rosso compare dove
+    #    il difetto non e'.
     def test_registry_register_e_get(self) -> None:
         def _h(payload, *, scope):  # noqa: ARG001
             return {}
         register_handler("test_handler_xyz", _h)
+        self.addCleanup(_dimentica_handler, "test_handler_xyz")
         self.assertIn("test_handler_xyz", registered_handlers())
         self.assertIs(get_handler("test_handler_xyz"), _h)
 

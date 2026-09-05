@@ -6,8 +6,8 @@
 > §13.1 (voce **V1**); qui c'è solo **cosa fare, cosa deve succedere, e cosa
 > fare se non succede**.
 >
-> **Stato**: 🔴 **SOSPESO** — prova 1 verde, prova 2 rossa per un difetto a
-> valle (vedi la revisione del 2026-09-04). · **Ambiente**: sviluppo
+> **Stato**: 🟡 **RIAPERTO — la prova 2 è di nuovo eseguibile, ma la materia va
+> RICOSTRUITA** (revisione del 2026-09-05). · **Ambiente**: sviluppo
 > (`dbdev`). · **Pagine**: `Vendite → Fatturazione` (cockpit) e `vendite/lotti`.
 >
 > 🔴 **Esecuzione del 2026-09-04 — prova 1 VERDE, prova 2 ROSSA, collaudo
@@ -21,6 +21,26 @@
 > ⛔ **La prova 2 va rifatta dopo D1 e D2**: finché il perimetro di un giro è
 > «tutto ciò che è libero in competenza» e non «ciò che il pull consegna», la
 > prova misura il residuo e non il savepoint.
+>
+> ✅ **Revisione del 2026-09-05 — il blocco è caduto, la materia no.**
+> **D1 e D2 sono chiusi** su entrambi i lati (DB e BE): il pull firma il
+> perimetro, la select filtra, e il backend consegna `context.lock_batch_id`.
+> ⇒ La prova 2 misurerebbe finalmente il **savepoint** e non il residuo.
+>
+> ⛔ **Ma la materia di `2026-09` è consumata**, misurata oggi: delle tre
+> commesse ne resta **una**, ed è proprio quella che doveva fare da **guasto**
+> (34137). Le due sane — 34136 e 34138 — non ci sono più.
+>
+> ⭐ **E non è invecchiamento: è il difetto stesso.** La fotografia di agosto
+> era scaduta in quattro giorni «da sola»; questa è durata **un giorno**, e a
+> mangiarsela è stato il giro del 2026-09-04 — quello che il collaudo stava
+> misurando. Il lavoro delle commesse sane è finito in fattura, che è
+> esattamente ciò che D1 e D2 descrivono. La materia non è un contorno della
+> prova: è la prima cosa che il difetto tocca.
+>
+> ⇒ **La materia si costruisce SUBITO PRIMA di eseguire, non in anticipo.**
+> Costruirla oggi per una prova di domani vuol dire rifare la stessa misura su
+> una fotografia scaduta — il copione lo ha già imparato due volte.
 >
 > **Revisione del 2026-09-04 — materia rifatta su `2026-09`, e un `SET` che
 > mancava.** Tre cose:
@@ -193,18 +213,48 @@ SELECT competenza_mese, commessa_id, commessa_codice, cliente_display,
  ORDER BY 1 DESC, 2;
 ```
 
-Le tre commesse di `2026-09`, costruite il 2026-09-04 da tre clienti diversi,
-tutte in `PRONTA_FATTURAZIONE` e tutte nate da push, con la riga di
-`commesse_sorgenti` da guastare:
+#### ⛔ Stato della materia al 2026-09-05: **non eseguibile così com'è**
 
-| Commessa    | Codice                          | Cliente (BA)                 | Attività `DA_EMETTERE` | Valore | ROOT (`id` riga) | COLLEGATO     |
-| ----------- | ------------------------------- | ---------------------------- | ---------------------- | ------ | ---------------- | ------------- |
-| 34136       | `CMM-PGTAPEF202-2026-000000003` | Azienda PG Test Natura (169) | 3                      | 53,00  | 17003            | **1** (17004) |
-| ⭐ **34137** | `CMM-PGTAPEF202-2026-000000004` | Azienda ConTutto (173)       | 1                      | 15,00  | **17005**        | 0             |
-| 34138       | `CMM-PGTAPEF202-2026-000000005` | Titini Michele Carlo (155)   | 1                      | 10,00  | 17006            | 0             |
+Rimisurata oggi con la query qui sopra. Questo è tutto ciò che il database ha
+in stadio `DA_EMETTERE`, su **ogni** mese:
 
-ℹ️ Nel perimetro di `2026-09` compare anche **33285**, ma è in stadio
-`FATTURATA`: non partecipa al pull e non va contata fra le sane.
+| Mese | Commessa | Cliente (BA) | Attività | Valore |
+| --- | --- | --- | --- | --- |
+| `2026-09` | **34137** | Azienda ConTutto | 1 | 15,00 |
+| `2026-08` | 15370 | Azienda ConTutto | 2 | **−20,00** |
+| `2026-08` | 32899 | Titini Michele Carlo | 4 | 74,00 |
+| `2026-06` | 113 | Azienda PG Test Natura | 31 | 1.390,00 |
+
+⛔ **Nessun mese ha ciò che serve.** `2026-09` ne ha **una** — e per giunta è la
+candidata al **guasto**: senza commesse sane la prova 2 non ha controprova e
+degrada nella prova 5. `2026-08` ne ha due, di due clienti diversi: è il minimo
+sindacale, e una delle due ha valore **negativo**. `2026-06` ne ha una sola.
+
+⇒ **Prima di eseguire si costruisce**, con la procedura del paragrafo qui sopra
+(tre clienti diversi, commesse nate da push, attività portate a `DA_EMETTERE`).
+
+<details>
+<summary>La materia di <code>2026-09</code>, costruita il 2026-09-04 — ⛔ consumata in <b>un giorno</b></summary>
+
+Tenuta come fatto datato, e vale più di quella di agosto: dice **da che cosa**
+una materia viene consumata.
+
+| Commessa    | Codice                          | Cliente (BA)                 | Attività `DA_EMETTERE` | Valore | ROOT (`id` riga) | COLLEGATO     | Oggi |
+| ----------- | ------------------------------- | ---------------------------- | ---------------------- | ------ | ---------------- | ------------- | ---- |
+| 34136       | `CMM-PGTAPEF202-2026-000000003` | Azienda PG Test Natura (169) | 3                      | 53,00  | 17003            | **1** (17004) | ⛔ consumata |
+| ⭐ **34137** | `CMM-PGTAPEF202-2026-000000004` | Azienda ConTutto (173)       | 1                      | 15,00  | **17005**        | 0             | ✅ c'è ancora |
+| 34138       | `CMM-PGTAPEF202-2026-000000005` | Titini Michele Carlo (155)   | 1                      | 10,00  | 17006            | 0             | ⛔ consumata |
+
+⭐ **Le due che mancano sono le SANE, e quella che resta è il GUASTO.** È il
+ritratto esatto di D1+D2: il giro del 2026-09-04 ha rifiutato 34137 — e ha
+consumato il lavoro delle altre due, che il pull non gli aveva consegnato. La
+materia non è invecchiata: è stata mangiata dal difetto che il collaudo stava
+misurando.
+
+ℹ️ Nel perimetro di `2026-09` compariva anche **33285**, in stadio `FATTURATA`:
+non partecipava al pull e non andava contata fra le sane.
+
+</details>
 
 **Quale guastare, e perché non le altre:**
 

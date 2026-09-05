@@ -1315,6 +1315,8 @@
       "scegli_azienda": "Choose the company",
       "crea_identita": "Create technical user",
       "identita_creata": "Technical user created.",
+      "identita_riattivata": "Technical user reactivated.",
+      "riattiva_identita": "Reactivate technical user",
       "run_help": "The last {n} recorded runs for this process.",
       "run_nessuno": "No run recorded: the process has not run yet, or it runs without declaring itself.",
       "col_quando": "When",
