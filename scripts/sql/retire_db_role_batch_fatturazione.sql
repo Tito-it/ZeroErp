@@ -3,7 +3,7 @@
 -- ============================================================================
 -- ZeroErp — RITIRO del ruolo batch: zeroerp_batch_fatturazione   (R-2)
 -- ----------------------------------------------------------------------------
--- Vedi: docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md
+-- Vedi: docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md
 --       §12.2 (R-2) e §12.5 — provisioning: scripts/sql/provision_db_role_batch_fatturazione.sql
 --
 -- ── ⭐ CHE COSA SI STA TOGLIENDO, E PERCHE' ORA SI PUO' ─────────────────────

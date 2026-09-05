@@ -88,7 +88,7 @@ subito invece di lasciarlo scoprire alla prima fatturazione muta.
 * [vw_emittenti_non_serviti](/dbzero/dbops/manual/vw_emittenti_non_serviti)
   — dice **quale azienda** è rimasta scoperta.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §2.4 e §4.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §2.4 e §4.
 
 ---
 

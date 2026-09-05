@@ -1061,6 +1061,59 @@ changeSet nostro.
 
 ---
 
+## 1-decies. ✅ Il BE ha chiuso i tre punti, e anche il quarto (2026-09-05, sera)
+
+> ⚠️ **Una nota di merge, perché non si perda due volte.** La risposta del
+> backend al §1-octies era stata scritta anche lei come «1-nonies» e il merge
+> l'ha **mangiata**: due sezioni aggiunte allo stesso punto del file, una sola
+> sopravvissuta. È il motivo per cui questa riparte da `1-decies`.
+
+### I tre punti del §1-octies
+
+| # | Chiesto | Fatto |
+| --- | --- | --- |
+| **1** | `ambito` diventa un'affermazione | ✅ `EmailPrepareView` lo pretende e lo valida sul vocabolario; il default è sparito dalle firme di `prepare_draft` e `create_outbox` — ⭐ presidiato da un test **sulla firma**, perché rimettere un default non romperebbe nessun chiamante e passerebbe inosservato |
+| **2** | `create_outbox` valorizza l'emittente | ✅ risolto dal claim del token, la stessa fonte su cui la vostra policy filtra |
+| **3** | `send_pending_emails` dichiara l'identità | ✅ itera `vw_processi_roster`, un'azienda alla volta, **con isolamento per azienda**: un badge rotto non ferma le altre |
+
+### ✅ E il prerequisito del §1-nonies: **fatto anche quello**
+
+Il default `SISTEMA` è sparito **anche dal percorso `email_log`**:
+`EmailDispatchService.send_email`, `.send_raw` e `EmailRepository.create_log`.
+Verificato prima di toccarli che **tutti** i chiamanti lo dichiarano già (5 call
+site, più il passaggio interno `send_email → send_raw` e
+`confirm_and_send → send_raw`, che porta l'ambito della bozza dentro il log).
+
+⇒ **Potete scrivere la policy su `config.email_log`**: da parte nostra la colonna
+non ha più un valore di ripiego.
+
+### 🔴 Un difetto vivo trovato per strada, e corretto
+
+`apps/vendite/services/approvazioni_prezzo_service.py` accodava con
+`ambito="WORKFLOW_APPROVAZIONE_PREZZO"` — **fuori dal vocabolario**, quindi
+violazione di `chk_email_log_ambito`. E la chiamata sta dentro un
+`except Exception: log + continue`: ⇒ **la notifica all'approvatore non è mai
+partita**, e a dirlo c'era una riga di log.
+
+⭐ Si vedeva solo nel **codice**: le righe sbagliate non esistono in tabella — il
+vincolo le ha sempre rifiutate — quindi qualunque controllo sui dati sarebbe
+stato verde per sottrazione. Ora un presidio guarda i sorgenti del percorso
+email (`test_email_outbox_ambito_guardrail`).
+
+### ✅ La finestra di rottura del §1-nonies è chiusa — misurato
+
+Scrivevate che, con la RLS accesa e la nostra rimozione non ancora arrivata,
+creare una bozza falliva. Il nostro ramo è entrato: rimisurato oggi come
+`zeroerp_app`, con la RLS **attiva**:
+
+| | |
+| --- | --- |
+| `SISTEMA` (super admin) | ✅ creata |
+| `OPERATORE` + emittente | ✅ creata |
+| `REPARTO` senza unità organizzativa | ⛔ rifiutata dal `CHECK` — ed è il caso che la view intercetta **prima**, con una frase leggibile invece di una violazione di vincolo |
+
+---
+
 ## DB-1 — La chiusura scadenze ha bisogno di una casa nella coda
 
 **Che cosa serve.** Un tipo di lavoro della coda con cui il backend possa accodare

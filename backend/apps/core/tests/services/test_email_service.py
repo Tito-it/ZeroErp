@@ -80,6 +80,7 @@ class SendEmailTests(TestCase):
 
         service = EmailDispatchService()
         log_id, success = service.send_email(
+            ambito="SISTEMA",
             codice_template="TEST",
             destinatario="dest@example.com",
             variabili={"nome": "Mario"},
@@ -104,6 +105,7 @@ class SendEmailTests(TestCase):
         service = EmailDispatchService()
         with self.assertRaises(ServiceError):
             service.send_email(
+                ambito="SISTEMA",
                 codice_template="INESISTENTE",
                 destinatario="dest@example.com",
                 variabili={},
@@ -125,6 +127,7 @@ class SendEmailTests(TestCase):
         service = EmailDispatchService()
         with self.assertRaises(ServiceError):
             service.send_email(
+                ambito="SISTEMA",
                 codice_template="TEST",
                 destinatario="dest@example.com",
                 variabili={},
@@ -151,6 +154,7 @@ class SendEmailTests(TestCase):
 
         service = EmailDispatchService()
         service.send_email(
+            ambito="SISTEMA",
             codice_template="TEST",
             destinatario="dest@example.com",
             variabili={},

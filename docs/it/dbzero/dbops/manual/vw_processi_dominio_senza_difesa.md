@@ -69,7 +69,7 @@ FROM dbops.vw_processi_dominio_senza_difesa
 ORDER BY schema_tabella, nome_tabella;
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §8.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §8.
 
 ---
 

@@ -71,7 +71,7 @@ FROM dbops.vw_processi_dominio_senza_identita
 ORDER BY motivo, processo_codice;
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §4 e §8.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §4 e §8.
 
 ---
 

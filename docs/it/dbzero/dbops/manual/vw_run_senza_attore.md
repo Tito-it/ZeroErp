@@ -75,7 +75,7 @@ SELECT * FROM dbops.vw_run_senza_attore;
   di backend, ed è la ragione principale per cui questa vista oggi non è
   ancora vuota.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §3.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §3.
 
 ---
 

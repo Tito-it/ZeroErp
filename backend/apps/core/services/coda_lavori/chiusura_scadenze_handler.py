@@ -22,7 +22,7 @@
 #        guasto non e' piu' un job che muore, e' un lavoro che nessuno prende:
 #        lo nomina `dbops.vw_coda_lavori_da_guardare` (riga «mai preso»), che il
 #        pannello dei processi mostra.
-#        Brief: work-in-progress/piano-be-fe-processi-automatici-identita-e-perimetro.md §lotto 4
+#        Brief: work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md §lotto 4
 # ------------------------------------------------------------
 
 from __future__ import annotations

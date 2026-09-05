@@ -93,7 +93,7 @@ lungo, sempre indietro rispetto al codice, e **nessuno l'avrebbe letto** — che
 è il modo in cui una documentazione smette di essere un presidio e diventa
 arredamento.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §2.3.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §2.3.
 
 ---
 

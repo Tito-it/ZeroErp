@@ -118,7 +118,14 @@ class EmailDispatchService:
         unita_organizzativa_id: int | None = None,
         tipo_prestazione_id: int | None = None,
         lingua: str = "it",
-        ambito: str = "SISTEMA",
+        # ⛔ Nessun default, come su `create_outbox` (2026-09-05). `ambito`
+        #    classifica A CHI APPARTIENE l'email, ed e' la colonna su cui il
+        #    database sta per montare una policy di lettura: un valore di
+        #    RIPIEGO non puo' fare da cancello di sicurezza, o basta un campo
+        #    dimenticato per classificare come segreta una riga qualunque.
+        #    Prerequisito dichiarato dal team DB per la policy su
+        #    `config.email_log` (brief residui §1-nonies).
+        ambito: str,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         destinatari_cc: list[str] | None = None,
@@ -160,7 +167,14 @@ class EmailDispatchService:
         corpo_testo: str | None = None,
         email_account_id: int | None = None,
         email_template_id: int | None = None,
-        ambito: str = "SISTEMA",
+        # ⛔ Nessun default, come su `create_outbox` (2026-09-05). `ambito`
+        #    classifica A CHI APPARTIENE l'email, ed e' la colonna su cui il
+        #    database sta per montare una policy di lettura: un valore di
+        #    RIPIEGO non puo' fare da cancello di sicurezza, o basta un campo
+        #    dimenticato per classificare come segreta una riga qualunque.
+        #    Prerequisito dichiarato dal team DB per la policy su
+        #    `config.email_log` (brief residui §1-nonies).
+        ambito: str,
         unita_organizzativa_id: int | None = None,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,

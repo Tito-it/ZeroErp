@@ -89,7 +89,7 @@ FROM dbops.vw_emittenti_non_serviti
 ORDER BY processo_codice, emittente_codice;
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-identita-e-perimetro.md` §4.5 e §8.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §4.5 e §8.
 
 ---
 

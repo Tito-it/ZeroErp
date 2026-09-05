@@ -102,7 +102,7 @@ rifiutata.
 
 **Due istruzioni separate**: il padre prima, la figlia poi.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-processi-automatici-residui-be.md`, DB-4.
+Origine: `docs/it/dev/work-done/brief-db-processi-automatici-residui-be.md`, DB-4.
 
 ---
 
