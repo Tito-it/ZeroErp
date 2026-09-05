@@ -9,8 +9,8 @@
 > Leggendo il contratto — e provando a scrivere il primo presidio — sono emerse **otto
 > cose che il BE non può darsi da solo**.
 >
-> **Stato:** 🟢 **IN CORSO — 1 su 6 fatta.** ✅ **DB-4 applicata il 2026-09-05**
-> (era il prerequisito di DB-1). La risposta del team DB è nel **§1-bis**, e
+> **Stato:** 🟢 **IN CORSO — 2 su 6 fatte.** ✅ **DB-4 e DB-6 applicate il 2026-09-05**
+> (DB-4 era il prerequisito di DB-1; DB-6 porta a ZERO il presidio livello 2). La risposta del team DB è nel **§1-bis**, e
 > corregge l'ordine del §1.
 > ⛔ Due punti vanno decisi insieme prima che uno dei due lati scriva (R-B e R-E).
 >
@@ -209,7 +209,37 @@ sempre — che è **esattamente il difetto di DB-2, ripetuto sulla soluzione di 
 
 ---
 
-### ⭐ R-D. C'è un sesto residuo, e non era nell'elenco
+### ✅ DB-6 — FATTA E APPLICATA (2026-09-05)
+
+> Il residuo che non era nel vostro elenco. `vendite.fatture_stampa_coda` aveva
+> la policy ma non il write-guard: changeSet `20260905-07`.
+>
+> ⭐ **`dbops.vw_processi_dominio_senza_difesa` è VUOTA.** È il primo presidio di
+> questo cantiere ad arrivare davvero a zero.
+
+**Perché serviva anche con la policy in piedi.** Sull'`INSERT` il `WITH CHECK`
+si valuta **dopo** i trigger `BEFORE ROW`. Misurato prima di applicare:
+
+```
+senza guard →  42501 | «la nuova riga viola la regola di sicurezza per riga»
+con guard   →  P0001 | «Utente N non autorizzato per emittente M su vendite.fatture_stampa_coda»
+```
+
+⇒ La riga si fermava già; quello che mancava era **poter dire perché**.
+
+⚠️ **Un assunto che ora è presidiato.** La tabella porta `sorgente_tipo_id` e
+`sorgente_uid`, cioè la forma delle sorgenti **polimorfe** — dove il portante
+può essere l'`uid` e puntare `sorgente_id` a una tabella sola sarebbe sbagliato.
+Qui è lecito **solo** perché una FK dura fissa `sorgente_id` a `vendite.fatture`.
+⛔ Se quella FK cadesse, guard **e** policy assumerebbero entrambi una cosa
+falsa, e nessuno dei due se ne accorgerebbe: il test 3 di
+`db/pgtap/rls/test-rls-fatture-stampa-coda-write-guard.sql` la tiene ferma.
+
+**Verifica:** quel file — **6/6**, ed era **3 rossi su 6** prima della migrazione.
+
+---
+
+### ⭐ R-D. C'è un sesto residuo, e non era nell'elenco — ✅ risolta
 
 `dbops.vw_processi_dominio_senza_difesa` nomina **due** righe, non una:
 
@@ -259,7 +289,7 @@ al BE» — cambia il modello dei processi. Le due strade:
 | **DB-1** | blocca il lotto 4 BE | dopo DB-4, e dopo la decisione R-E |
 | **DB-3** | blocca «un emittente alla volta» | indipendente, con la forma di R-C |
 | **DB-5** | — | ⛔ non basta il lotto 1: prima le due decisioni di R-B |
-| **DB-6** | — | nuovo (R-D), stessa forma di DB-4 |
+| **DB-6** | ✅ **FATTA** il 2026-09-05 | changeSet `20260905-07`, pgTAP 6/6 — il presidio livello 2 è a ZERO |
 
 ---
 
