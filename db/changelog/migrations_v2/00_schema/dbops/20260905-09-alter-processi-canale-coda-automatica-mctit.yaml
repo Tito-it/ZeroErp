@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-E / strada B (pezzo 1 di 4) — IL QUARTO CANALE.
+#   Decisione: brief-db-processi-automatici-residui-be.md §1-quater (R-E)
+#
+# ⛔ L'ASSUNZIONE CHE SI CORREGGE, ed e' nostra. I presidi del cantiere danno per
+# scontato che un processo su canale `CODA` porti con se' l'identita' di CHI LO
+# HA ACCODATO, perche' chi accoda e' una persona. Per i due giri di fatturazione
+# e' vero. Per la chiusura scadenze — che sta per migrare sulla coda — **non lo
+# e'**: a metterla in coda sara' una sveglia, e una sveglia non ha un nome.
+#
+# ⭐ E' il caso in cui non si piega la realta' allo strumento: si e' scartata la
+# strada A — un processo «produttore» piu' un processo «esecutore» — perche'
+# avrebbe messo a catalogo DUE voci per UN lavoro solo, per far quadrare un
+# controllo scritto da noi. Il registro esiste per rispondere «che cosa fa il
+# sistema da solo»: spaccare la risposta in due e' adattare il modello al
+# presidio.
+#
+# ── ⭐ PERCHE' UN VALORE DEL `canale`, E NON UNA COLONNA NUOVA ──────
+#   `canale` risponde a UNA domanda: **chi lo fa partire**.
+#     PGAGENT          lo scheduler del database
+#     COMMAND          una persona o un cron
+#     CODA             un operatore che lo accoda dall'applicazione
+#     CODA_AUTOMATICA  ⭐ passa dalla coda, ma a metterlo in coda e' un automatismo
+#   Una colonna `accodato_da` sarebbe stata vuota per tre canali su quattro —
+#   un campo che significa qualcosa solo a volte — e avrebbe dovuto CONCORDARE
+#   col canale: due scritture dello stesso fatto, che prima o poi dissentono.
+#
+# ── ⚠️ `CODA_AUTOMATICA`, NON `CODA_SISTEMA` ───────────────────────
+#   Il nome col vocabolario della coda (`SISTEMA` / `OPERATORE`) sarebbe stato
+#   fuorviante: un lavoro di dominio va accodato con `run_as = OPERATORE` anche
+#   qui — lo pretende il guard di classe in `dbops.fn_accoda_lavoro`, e non
+#   cambia. ⇒ Cio' che distingue non e' COME gira, ma CHI lo mette in coda.
+#
+# ── ✅ COSA NON CAMBIA ─────────────────────────────────────────────
+#   Nessuna riga esistente si tocca: i due tipi di fatturazione restano `CODA`,
+#   e per loro il presidio continua a non chiedere un utente tecnico — perche'
+#   la persona che li accoda c'e' davvero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260905-09-alter-processi-canale-coda-automatica-mctit.yaml
+
+  - changeSet:
+      id: 20260905-09-alter-processi-canale-coda-automatica
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.processi: il CHECK sul canale ammette CODA_AUTOMATICA, cioe' un
+        processo che passa dalla coda ma che a metterlo in coda e' un automatismo
+        e non una persona. Corregge l'assunzione «coda implica un operatore che
+        porta la propria identita'», che vale per i giri di fatturazione e non
+        varra' per la chiusura scadenze.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'chk_processi_canale'
+                     AND conrelid = 'dbops.processi'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT chk_processi_canale;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_canale
+                      CHECK (canale = ANY (ARRAY['PGAGENT'::text,
+                                                 'COMMAND'::text,
+                                                 'CODA'::text,
+                                                 'CODA_AUTOMATICA'::text]));
+
+              COMMENT ON COLUMN dbops.processi.canale IS
+                  'Chi fa partire il processo. PGAGENT: lo scheduler del database. '
+                  'COMMAND: una persona o un cron. CODA: un operatore che lo accoda '
+                  'dall''applicazione, e il lavoro porta la SUA identita''. '
+                  '⭐ CODA_AUTOMATICA (rev 2026-09-05): passa dalla coda, ma a metterlo '
+                  'in coda e'' un automatismo — quindi nessuno gli presta un nome, e '
+                  'l''identita'' tecnica gli serve come a un job di pgAgent. '
+                  '⚠️ Non e'' CODA_SISTEMA: un lavoro di dominio va accodato con '
+                  'run_as = OPERATORE anche qui (lo pretende il guard di classe in '
+                  'dbops.fn_accoda_lavoro). Cio'' che distingue non e'' COME gira, ma '
+                  'CHI lo mette in coda. Brief: brief-db-processi-automatici-residui-be, '
+                  'sezione 1-quater (R-E, strada B).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Fallisce, e giustamente, se nel frattempo esiste una riga
+              --   CODA_AUTOMATICA: il rollback non deve cancellare un fatto.
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT chk_processi_canale;
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_canale
+                      CHECK (canale = ANY (ARRAY['PGAGENT'::text,
+                                                 'COMMAND'::text,
+                                                 'CODA'::text]));

@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-E / strada B (pezzo 2 di 4) — il presidio smette di escludere la coda.
+#   Decisione: brief-db-processi-automatici-residui-be.md, sezione 1-quater (R-E)
+#
+# ⛔ COSA CAMBIA, in una riga: il filtro sul canale passa da un'ESCLUSIONE a
+# un'INCLUSIONE. Prima diceva «guarda PGAGENT e COMMAND», cioe' «la coda si
+# arrangia»; adesso guarda anche `CODA_AUTOMATICA`, cioe' i lavori di coda che
+# **nessuna persona accoda**.
+#
+# ⭐ E' il presidio che sbagliava, non il processo. Dava per scontato che dietro
+# una coda ci fosse sempre qualcuno: e' vero per i due giri di fatturazione, e
+# non lo sara' per la chiusura scadenze, che a metterla in coda sara' una
+# sveglia.
+#
+# ✅ I processi `CODA` «umani» restano fuori, ed e' giusto: per loro l'identita'
+# la porta l'operatore che preme il pulsante, e dargliene una tecnica
+# cancellerebbe il suo nome.
+#
+# ⭐ `CREATE OR REPLACE VIEW`: le colonne non cambiano, quindi l'ACL resta
+# attaccata. Un `DROP` l'avrebbe portata via — lezione del changeSet 20260904-38.
+# ⚠️ Il corpo e' quello VIVO, estratto da `pg_get_viewdef`: un singolo YAML
+# precedente e' quasi sempre stantio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-10-update-vw-processi-dominio-senza-identita-coda-automatica-mctit.yaml
+
+  - changeSet:
+      id: 20260905-10-update-vw-processi-dominio-senza-identita-coda-automatica
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_dominio_senza_identita: il filtro sul canale include
+        CODA_AUTOMATICA. Un processo di coda che nessuna persona accoda non ha
+        un'identita' prestata, quindi ne vuole una propria come un job di pgAgent.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'chk_processi_canale'
+                     AND conrelid = 'dbops.processi'::regclass
+                     AND pg_get_constraintdef(oid) LIKE '%CODA_AUTOMATICA%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_identita AS
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  NULL::integer AS auth_user_id,
+                  'processo DOMINIO headless senza utente tecnico'::text AS motivo
+                 FROM dbops.processi p
+                WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                        WHERE pi.processo_id = p.id AND pi.attivo))
+              UNION ALL
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  pi.auth_user_id,
+                  'utente tecnico senza identita'' OPERATORE con flag tecnica'::text AS motivo
+                 FROM dbops.processi p
+                   JOIN dbops.processi_identita pi ON pi.processo_id = p.id AND pi.attivo
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM anagrafiche.identita_digitali idg
+                        WHERE idg.auth_user_id = pi.auth_user_id AND idg.attivo AND idg.tecnica AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo))
+              UNION ALL
+               SELECT NULL::text AS processo_codice,
+                  NULL::text AS canale,
+                  idg.auth_user_id,
+                  'identita'' con flag tecnica non rivendicata da nessun processo'::text AS motivo
+                 FROM anagrafiche.identita_digitali idg
+                WHERE idg.tecnica AND idg.attivo AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                        WHERE pi.auth_user_id = idg.auth_user_id AND pi.attivo));
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_identita IS
+                  'Processi DOMINIO che non possono dire CHI agisce, guardato nei TRE versi: processo senza utente tecnico, utente tecnico senza identita'' OPERATORE col flag, identita'' col flag che nessun processo rivendica. DEVE restare VUOTA. ⭐ Rev 2026-09-05 (R-E, strada B): il filtro sul canale include CODA_AUTOMATICA — un lavoro di coda messo in coda da una MACCHINA non ha un''identita'' prestata da nessuno, quindi ne vuole una propria. ⚠️ I processi CODA «umani» restano esclusi, ed e'' voluto: li'' l''identita'' la porta l''operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si torna alla forma precedente rilanciando il changeSet che
+              -- l'ha definita. ⚠️ Riportare l'esclusione della coda rende il
+              -- presidio cieco sui processi CODA_AUTOMATICA.
+              SELECT 1;

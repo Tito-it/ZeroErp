@@ -141,23 +141,25 @@ SELECT is(
 );
 
 -- ⭐ E il contro-caso: la derivazione NON deve inventare. Un jobname che non
---   corrisponde a nessun processo resta senza attore e finisce nel presidio —
---   e' la differenza fra derivare e indovinare.
-DO $sconosciuto$
-BEGIN
-    PERFORM maintenance.fn_run_and_log(
-        p_jobname  => 'PGTAP-JOBNAME-SCONOSCIUTO',
-        p_stepname => 'pgtap-step',
-        p_sql      => 'SELECT 1');
-END
-$sconosciuto$;
-
-SELECT is(
-    (SELECT jrl.processo_codice
-       FROM maintenance.job_run_log jrl
-      WHERE jrl.jobname = 'PGTAP-JOBNAME-SCONOSCIUTO'),
+--   corrisponde a nessun processo non riceve un attore a caso.
+--
+-- ⛔ 2026-09-05 — LA CONSEGUENZA E' CAMBIATA, il principio no. Fino a DB-5 un
+--   jobname sconosciuto lasciava l'attore NULL: la riga entrava MUTA e finiva
+--   nel presidio. Adesso `chk_job_run_log_processo_dichiarato` la rifiuta,
+--   quindi **il job si ferma**.
+--   ⭐ E' la scelta, non un effetto collaterale: un processo che non sa dire chi
+--     e' non deve girare, e fallire rumorosamente e' meglio che lasciare una
+--     riga muta — che e' il difetto per cui questo cantiere esiste.
+--   ⚠️ Il principio resta identico: la funzione non INVENTA un attore. Cambia
+--     che adesso non lo fa passare nemmeno vuoto.
+SELECT throws_ok(
+    $$SELECT maintenance.fn_run_and_log(
+          p_jobname  => 'PGTAP-JOBNAME-SCONOSCIUTO',
+          p_stepname => 'pgtap-step',
+          p_sql      => 'SELECT 1')$$,
+    '23514',
     NULL,
-    'fn_run_and_log non inventa: un jobname sconosciuto resta senza attore'
+    'fn_run_and_log non inventa: un jobname sconosciuto non entra affatto'
 );
 
 -- ============================================================
@@ -186,14 +188,30 @@ SELECT is(
 );
 
 -- ============================================================
--- 11. Il presidio vede il run senza attore
+-- 11. ⭐ Che cosa E' DIVENTATO il presidio, dopo DB-5
 -- ============================================================
-SELECT is(
-    (SELECT v.run_senza_attore
-       FROM dbops.vw_run_senza_attore v
-      WHERE v.jobname = 'PGTAP-JOBNAME-SCONOSCIUTO'),
-    1::bigint,
-    'vw_run_senza_attore aggrega per jobname il run rimasto senza attore'
+-- ⛔ 2026-09-05 — QUESTO TEST NON POTEVA PIU' ESSERE VERDE, e la ragione vale
+--   piu' del test. Chiedeva che la vista contasse un run rimasto senza attore.
+--   Dopo `chk_job_run_log_processo_dichiarato` **un run senza attore non puo'
+--   piu' nascere**: l'INSERT viene rifiutato (test 8).
+--
+-- ⇒ La vista ha cambiato natura, e va detto perche' nessuno la legga piu' come
+--   prima. Non e' piu' «chi non si e' ancora dichiarato», che era una domanda
+--   sul presente: e' **il residuo storico che non si dichiarera' mai**, scritto
+--   prima che la colonna esistesse. ⭐ Una volta che quei job saranno girati di
+--   nuovo, si svuota — e resta vuota per costruzione, non per disciplina.
+--
+-- ⚠️ Quindi il test giusto non e' «la vista vede una riga nuova» — non ce ne
+--   saranno piu' — ma «la vista guarda l'ULTIMA corsa». E' la proprieta' che le
+--   permette di arrivare a zero: contando tutte le righe storiche non sarebbe
+--   mai stata vuota, e un presidio che non puo' arrivare a zero e' rumore.
+SELECT is_empty(
+    $$SELECT v.jobname
+        FROM dbops.vw_run_senza_attore v
+        JOIN maintenance.job_run_log l ON l.jobname = v.jobname
+       WHERE l.processo_codice IS NOT NULL
+         AND l.started_at > v.ultimo_run$$,
+    'vw_run_senza_attore guarda l''ULTIMA corsa: un job che si e'' dichiarato dopo non compare'
 );
 
 -- ============================================================

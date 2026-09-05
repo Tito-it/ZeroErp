@@ -1,0 +1,140 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-2 (pezzo 2 di 3) — il LIVELLO 1 dice se la riga era attesa.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, DB-2
+#
+# ⛔ COSA CAMBIA: la vista smette di essere un elenco muto e dice, per ogni
+# riga, se la sua comparsa era ATTESA. Due colonne nuove:
+#
+#     stato   DEBITO_DICHIARATO | NON_DICHIARATO
+#     nota    il perche', preso da dbops.processi_bersagli.note
+#
+# ⭐ E' la forma di `dbops.vw_processi_che_bypassano`, che il backend cita come
+# precedente — con una differenza che conta: li' l'elenco dei debiti sta DENTRO
+# la vista, qui sta nel DATO. I ruoli con BYPASSRLS sono una manciata e non
+# cambiano; i bersagli crescono coi processi, e un elenco dentro una vista
+# invecchierebbe il giorno dopo.
+#
+# ── ⭐ CHE COSA PERMETTE DI FARE, che prima non si poteva ───────────
+#   Rispondere a **«c'e' qualcosa di NUOVO?»** senza sapere a memoria quali
+#   righe erano previste. Il frontend mostra le sei viste in un pannello solo:
+#   se una dice «zero o allarme» e l'altra «cala», deve poterlo leggere dal
+#   dato, non da una tabella di eccezioni scritta a mano nel codice.
+#
+# ── ⚠️ LA REGOLA RESTA «DEVE RESTARE VUOTA» ────────────────────────
+#   Dichiarare un debito non lo assolve: `debito_dichiarato` dice «sappiamo
+#   perche' e'  qui», non «va bene che ci sia». Una riga DEBITO_DICHIARATO
+#   e' un lavoro con un nome; una NON_DICHIARATO e' un allarme.
+#
+# ⛔ `DROP` + `CREATE`, non `CREATE OR REPLACE`: le colonne cambiano, e una
+# REPLACE sa solo aggiungerne in coda. ⚠️ E il DROP porta via il GRANT, che va
+# rimesso NELLO STESSO changeSet.
+# ⚠️ Il corpo di partenza e' quello VIVO, estratto da `pg_get_viewdef`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-19-update-vw-processi-dominio-senza-emittente-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260905-19-update-vw-processi-dominio-senza-emittente-stato
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_dominio_senza_emittente porta `stato` e `nota`: una riga
+        DEBITO_DICHIARATO e' un lavoro con un nome, una NON_DICHIARATO e' un
+        allarme. Chiude la contraddizione fra «deve restare vuota» e «questa riga
+        e' attesa», che rendeva il presidio ignorabile.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: dbops
+            tableName: processi_bersagli
+            columnName: debito_dichiarato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_dominio_senza_emittente;
+
+              CREATE VIEW dbops.vw_processi_dominio_senza_emittente AS
+               WITH dominio AS (
+                       SELECT p.id,
+                          p.codice,
+                          p.canale
+                         FROM dbops.processi p
+                        WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL
+                      )
+               SELECT d.codice AS processo_codice,
+                  d.canale,
+                  NULL::text AS schema_tabella,
+                  NULL::text AS nome_tabella,
+                  NULL::text AS emittente_via,
+                  NULL::text AS emittente_colonna,
+                  'nessun bersaglio dichiarato'::text AS motivo,
+                  -- ⚠️ Qui NON c'e' una riga di bersaglio su cui dichiarare niente:
+                  --   il processo non ne ha nessuno. E' sempre un allarme.
+                  'NON_DICHIARATO'::text AS stato,
+                  NULL::text AS nota
+                 FROM dominio d
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_bersagli b
+                        WHERE b.processo_id = d.id))
+              UNION ALL
+               SELECT d.codice AS processo_codice,
+                  d.canale,
+                  b.schema_tabella,
+                  b.nome_tabella,
+                  b.emittente_via,
+                  b.emittente_colonna,
+                      CASE
+                          WHEN NOT (EXISTS ( SELECT 1
+                             FROM pg_class c
+                               JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])))) THEN 'tabella inesistente'::text
+                          WHEN b.emittente_via IS NULL THEN 'percorso verso l''emittente non dichiarato'::text
+                          ELSE 'colonna del percorso inesistente'::text
+                      END AS motivo,
+                  CASE WHEN b.debito_dichiarato THEN 'DEBITO_DICHIARATO'::text
+                       ELSE 'NON_DICHIARATO'::text END AS stato,
+                  b.note AS nota
+                 FROM dominio d
+                   JOIN dbops.processi_bersagli b ON b.processo_id = d.id
+                WHERE NOT (EXISTS ( SELECT 1
+                         FROM pg_class c
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])))) OR b.emittente_via IS NULL OR NOT (EXISTS ( SELECT 1
+                         FROM pg_attribute a
+                           JOIN pg_class c ON c.oid = a.attrelid
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = b.schema_tabella AND c.relname = b.nome_tabella AND a.attname = b.emittente_colonna AND a.attnum > 0 AND NOT a.attisdropped));
+
+              -- ⛔ Il GRANT che il DROP ha portato via. Non basta contare su un
+              --   `runOnChange` in 90_end: quello ri-esegue solo se il SUO file
+              --   cambia, e non cambia (lezione di 20260904-21/-38).
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_dominio_senza_emittente TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna alla forma precedente rilanciando il changeSet che
+              --   l'ha definita: togliere `stato` rende di nuovo indistinguibile
+              --   una riga attesa da una nuova.
+              DROP VIEW IF EXISTS dbops.vw_processi_dominio_senza_emittente;

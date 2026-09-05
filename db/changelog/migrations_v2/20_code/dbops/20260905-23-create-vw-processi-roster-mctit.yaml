@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL ROSTER — con quale identita' un processo lavora OGNI azienda.
+#
+# ── ⛔ PERCHE' NASCE ADESSO, E NON E' UN'AGGIUNTA DI COMODO ─────────
+#   Questo fatto ESISTE GIA', ma vive in una **stringa SQL dentro Python**
+#   (`backend/apps/core/db/processi_repository.py`, `roster_processo`). Serviva
+#   solo al produttore della fatturazione, che e' backend.
+#   ⚠️ Da adesso serve anche al DB: il job pgAgent che accoda la chiusura
+#   scadenze deve sapere, per ogni azienda, con quale identita' accodare.
+#   ⛔ Riscriverlo in una funzione plpgsql sarebbe stata una SECONDA scrittura
+#   dello stesso fatto — e due scritture prima o poi dissentono, per esempio il
+#   giorno in cui si aggiunge una condizione a una sola delle due.
+#   ⇒ Il fatto diventa una vista, e i due lati la leggono.
+#
+# ── ⚠️ AL BACKEND: la query inline puo' sparire ─────────────────────
+#   `roster_processo` puo' diventare un `SELECT * FROM dbops.vw_processi_roster
+#   WHERE processo_codice = %s`. Non e' urgente e non lo facciamo noi — ma
+#   finche' restano due copie, sono due copie.
+#
+# ── ⭐ LE CINQUE CONDIZIONI SONO TUTTE NECESSARIE, e vale dirlo ─────
+#   Un'identita' vale come «con questa il processo puo' lavorare» solo se:
+#     pi.attivo          il legame processo-utente non e' stato spento
+#     idg.attivo         l'identita' applicativa e' viva
+#     ruolo OPERATORE    e' la veste che le policy RLS riconoscono
+#     au.is_active       l'utente Django non e' stato disattivato
+#     ef.attivo          l'azienda e' ancora da servire
+#   ⛔ Toglierne una lascerebbe passare un'identita' spenta a un livello solo, e
+#   il lavoro partirebbe per fermarsi dopo — o peggio, girerebbe a vuoto.
+#   ⚠️ E' la stessa terna che `script.fn_riattiva_utente_tecnico` riaccende
+#   tutta insieme: spegnerne uno basta a fermare, quindi guardarne uno solo
+#   basta a sbagliare.
+#
+# ── ⚠️ `ORDER BY` STABILE ──────────────────────────────────────────
+#   Il produttore accoda nell'ordine in cui legge. Senza un ordine, due giri
+#   accoderebbero le stesse aziende in ordine diverso, e un confronto fra due
+#   corse diventerebbe illeggibile.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-roster.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-23-create-vw-processi-roster-mctit.yaml
+
+  - changeSet:
+      id: 20260905-23-create-vw-processi-roster
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_roster: per ogni processo, con quale identita' lavora
+        ciascuna azienda. Il fatto esisteva gia' ma viveva in una stringa SQL
+        dentro Python; da adesso serve anche al DB (il produttore della chiusura
+        scadenze), e riscriverlo sarebbe stata una seconda scrittura dello stesso
+        fatto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: identita_digitali
+                columnName: tecnica
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_roster AS
+              SELECT p.codice              AS processo_codice,
+                     p.classe,
+                     p.canale,
+                     idg.auth_user_id,
+                     au.username,
+                     idg.id                AS identita_id,
+                     ef.id                 AS emittente_fiscale_id,
+                     ef.codice             AS emittente_codice,
+                     ef.soggetto_ruolo_id  AS emittente_soggetto_ruolo_id
+                FROM dbops.processi p
+                JOIN dbops.processi_identita pi
+                  ON pi.processo_id = p.id
+                 AND pi.attivo
+                JOIN anagrafiche.identita_digitali idg
+                  ON idg.auth_user_id = pi.auth_user_id
+                 AND idg.attivo
+                 AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                JOIN django.auth_user au
+                  ON au.id = pi.auth_user_id
+                 AND au.is_active
+                JOIN config.user_emittenti_fiscali uef
+                  ON uef.auth_user_id = pi.auth_user_id
+                JOIN anagrafiche.emittenti_fiscali ef
+                  ON ef.id = uef.emittente_fiscale_id
+                 AND ef.attivo
+               WHERE p.attivo
+                 AND p.obsoleto_dal IS NULL
+               -- ⚠️ Ordine stabile: il produttore accoda nell'ordine in cui
+               --   legge, e due corse devono essere confrontabili.
+               ORDER BY p.codice, ef.codice, idg.auth_user_id;
+
+              COMMENT ON VIEW dbops.vw_processi_roster IS
+                  'Per ogni processo automatico, con quale IDENTITA'' lavora ciascuna '
+                  'azienda: la terna (auth_user_id, username, identita_id) piu'' '
+                  'l''emittente. ⭐ Il fatto esisteva gia'' ma viveva in una stringa SQL '
+                  'dentro Python (processi_repository.roster_processo): serviva solo al '
+                  'produttore della fatturazione. Da quando anche il DB deve accodare — il '
+                  'job pgAgent della chiusura scadenze — riscriverlo sarebbe stata una '
+                  'SECONDA scrittura dello stesso fatto. ⚠️ Le cinque condizioni sono '
+                  'tutte necessarie (legame attivo, identita'' attiva, ruolo OPERATORE, '
+                  'utente Django attivo, emittente attivo): spegnerne uno basta a fermare '
+                  'il processo, quindi guardarne uno solo basta a sbagliare — e'' la stessa '
+                  'terna che script.fn_riattiva_utente_tecnico riaccende tutta insieme. '
+                  '⚠️ Al backend: roster_processo puo'' diventare un SELECT su questa '
+                  'vista. Finche'' restano due copie, sono due copie.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_roster TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_roster;

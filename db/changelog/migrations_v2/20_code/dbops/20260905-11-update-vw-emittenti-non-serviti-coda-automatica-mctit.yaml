@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-E / strada B (pezzo 3 di 4) — il presidio smette di escludere la coda.
+#   Decisione: brief-db-processi-automatici-residui-be.md, sezione 1-quater (R-E)
+#
+# ⛔ COSA CAMBIA, in una riga: il filtro sul canale passa da un'ESCLUSIONE a
+# un'INCLUSIONE. Prima diceva «guarda PGAGENT e COMMAND», cioe' «la coda si
+# arrangia»; adesso guarda anche `CODA_AUTOMATICA`, cioe' i lavori di coda che
+# **nessuna persona accoda**.
+#
+# ⭐ E' il presidio che sbagliava, non il processo. Dava per scontato che dietro
+# una coda ci fosse sempre qualcuno: e' vero per i due giri di fatturazione, e
+# non lo sara' per la chiusura scadenze, che a metterla in coda sara' una
+# sveglia.
+#
+# ✅ I processi `CODA` «umani» restano fuori, ed e' giusto: per loro l'identita'
+# la porta l'operatore che preme il pulsante, e dargliene una tecnica
+# cancellerebbe il suo nome.
+#
+# ⭐ `CREATE OR REPLACE VIEW`: le colonne non cambiano, quindi l'ACL resta
+# attaccata. Un `DROP` l'avrebbe portata via — lezione del changeSet 20260904-38.
+# ⚠️ Il corpo e' quello VIVO, estratto da `pg_get_viewdef`: un singolo YAML
+# precedente e' quasi sempre stantio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-11-update-vw-emittenti-non-serviti-coda-automatica-mctit.yaml
+
+  - changeSet:
+      id: 20260905-11-update-vw-emittenti-non-serviti-coda-automatica
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_emittenti_non_serviti: il filtro sul canale include CODA_AUTOMATICA,
+        cosi' un processo di coda accodato da una macchina viene contato fra quelli
+        che devono avere un utente tecnico per ogni emittente attivo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'chk_processi_canale'
+                     AND conrelid = 'dbops.processi'::regclass
+                     AND pg_get_constraintdef(oid) LIKE '%CODA_AUTOMATICA%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_emittenti_non_serviti AS
+               SELECT p.codice AS processo_codice,
+                  p.canale,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_codice
+                 FROM dbops.processi p
+                   CROSS JOIN anagrafiche.emittenti_fiscali ef
+                WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND ef.attivo AND NOT (EXISTS ( SELECT 1
+                         FROM dbops.processi_identita pi
+                           JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = pi.auth_user_id
+                        WHERE pi.processo_id = p.id AND pi.attivo AND uef.emittente_fiscale_id = ef.id));
+
+              COMMENT ON VIEW dbops.vw_emittenti_non_serviti IS
+                  'Coppie (processo DOMINIO senza operatore che lo lanci, emittente fiscale attivo) per cui NON esiste un utente tecnico. DEVE restare VUOTA. ⛔ Copre un guasto che non assomiglia a un errore: senza l''utente il lavoro parte, la RLS mostra zero righe e il run chiude con «FATTO, 0 elaborate» — e quell''emittente non viene mai fatturato. ⚠️ Non concede niente: il perimetro lo decide una persona creando l''utente (D-9). ⭐ Rev 2026-09-05 (R-E, strada B): include CODA_AUTOMATICA, cioe'' i lavori di coda che nessuna persona accoda. I processi CODA «umani» restano esclusi: girano con l''identita'' dell''operatore che li accoda. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si torna alla forma precedente rilanciando il changeSet che
+              -- l'ha definita. ⚠️ Riportare l'esclusione della coda rende il
+              -- presidio cieco sui processi CODA_AUTOMATICA.
+              SELECT 1;

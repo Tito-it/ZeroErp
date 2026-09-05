@@ -35,6 +35,7 @@
 
 ## ⚙️ Funzioni (manuale)
 - [apply_fk_index_policy](manual/apply_fk_index_policy.md) — (latest update 27-07-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
+- [fn_accoda_chiusura_scadenze](manual/fn_accoda_chiusura_scadenze.md) — (latest review 05-09-2026)
 - [fn_accoda_lavoro](manual/fn_accoda_lavoro.md) — (latest review 20-07-2026)
 - [fn_admin_merge_comune](manual/fn_admin_merge_comune.md) — (rev 2026-08-21)
 - [fn_admin_merge_stradario](manual/fn_admin_merge_stradario.md) — (rev 2026-08-21)
@@ -103,6 +104,7 @@
 ## 🔍 Views (manuale)
 - [vw_af_senza_giro](manual/vw_af_senza_giro.md) — (latest review 04-09-2026)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
+- [vw_coda_lavori_da_guardare](manual/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
 - [vw_codici_errore_da_dichiarare](manual/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
 - [vw_codici_errore_forme_condizione](manual/vw_codici_errore_forme_condizione.md) — (rev 2026-08-21)
 - [vw_diag_v_clienti_links](manual/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
@@ -120,6 +122,8 @@
 - [vw_processi_dominio_senza_difesa](manual/vw_processi_dominio_senza_difesa.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_senza_emittente](manual/vw_processi_dominio_senza_emittente.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_senza_identita](manual/vw_processi_dominio_senza_identita.md) — (latest review 04-09-2026)
+- [vw_processi_dominio_su_pgagent](manual/vw_processi_dominio_su_pgagent.md) — (latest review 05-09-2026)
+- [vw_processi_roster](manual/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_run_senza_attore](manual/vw_run_senza_attore.md) — (latest review 04-09-2026)

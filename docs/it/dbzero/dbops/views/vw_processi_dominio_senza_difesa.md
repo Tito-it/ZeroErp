@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> LIVELLO 2 del presidio sui processi: bersagli di processi DOMINIO che HANNO il percorso verso l'emittente ma non hanno la difesa che lo applica — policy RLS (lettura) e/o write-guard trgfn_guard_emittente_scope (scrittura). ⚠️ E' un registro di DEBITO, non un errore: deve CALARE, non essere vuoto domani. Dove compare una riga, il «Caso A» non vale — un filtro dimenticato su quella tabella passerebbe invece di fermarsi da solo. ⛔ I processi PGAGENT NON sono esclusi: un DOMINIO su pgAgent e' l'anomalia da sanare, e i suoi bersagli saranno raggiunti dal ruolo applicativo appena migra. Brief: brief-db-processi-automatici-identita-e-perimetro §8.
+> Tabelle di dominio in cui si SA dove sta l'emittente ma nessuno lo usa per filtrare: manca la policy RLS, manca il write-guard, o entrambi. ⛔ Una policy conta solo se la ROW LEVEL SECURITY e' ATTIVA sulla tabella (rev 2026-09-05): PostgreSQL conserva le policy di una tabella con la RLS disabilitata e non le applica, quindi prima bastava SCRIVERE una policy per far sparire la riga da qui lasciando la tabella aperta a tutti. ⭐ Non e' nato da una misura — nessun bersaglio era in quello stato — ma dalla scorciatoia che si stava per prendere sulla policy di config.email_outbox: un presidio che si spegne con una decorazione e' peggio di nessun presidio. ⚠️ FORCE ROW LEVEL SECURITY NON entra nel criterio: in questo database nessuna tabella lo usa, perche' l'owner deve poter leggere fuori dalla row security per le SECURITY DEFINER che derivano il perimetro. ⚠️ La regola resta «deve restare VUOTA», ma l'invariante verificabile e' «nessuna riga NON_DICHIARATO»: dichiarare un debito dice «sappiamo perche' e' qui», non «va bene che ci sia».
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_difesa AS
@@ -12,7 +12,10 @@ WITH bersagli AS (
             b.schema_tabella,
             b.nome_tabella,
             b.emittente_via,
-            c.oid AS rel_oid
+            b.debito_dichiarato,
+            b.note,
+            c.oid AS rel_oid,
+            c.relrowsecurity AS rls_attiva
            FROM (((dbops.processi p
              JOIN dbops.processi_bersagli b ON ((b.processo_id = p.id)))
              JOIN pg_class c ON ((c.relname = b.nome_tabella)))
@@ -23,10 +26,13 @@ WITH bersagli AS (
             b.schema_tabella,
             b.nome_tabella,
             b.emittente_via,
+            b.debito_dichiarato,
+            b.note,
             b.rel_oid,
+            b.rls_attiva,
             (EXISTS ( SELECT 1
                    FROM pg_policy pol
-                  WHERE (pol.polrelid = b.rel_oid))) AS ha_policy,
+                  WHERE (pol.polrelid = b.rel_oid))) AS ha_policy_scritta,
             (EXISTS ( SELECT 1
                    FROM (pg_trigger t
                      JOIN pg_proc pr ON ((pr.oid = t.tgfoid)))
@@ -38,12 +44,19 @@ WITH bersagli AS (
     nome_tabella,
     emittente_via,
         CASE
-            WHEN ((NOT ha_policy) AND (NOT ha_guard)) THEN 'policy RLS e write-guard'::text
-            WHEN (NOT ha_policy) THEN 'policy RLS (lettura scoperta)'::text
+            WHEN ((NOT ha_policy_scritta) AND (NOT ha_guard)) THEN 'policy RLS e write-guard'::text
+            WHEN (ha_policy_scritta AND (NOT rls_attiva) AND (NOT ha_guard)) THEN 'la policy c''e'' ma la ROW LEVEL SECURITY non e'' attiva sulla tabella, e manca il write-guard'::text
+            WHEN (ha_policy_scritta AND (NOT rls_attiva)) THEN 'la policy c''e'' ma la ROW LEVEL SECURITY non e'' attiva sulla tabella: non filtra niente'::text
+            WHEN (NOT ha_policy_scritta) THEN 'policy RLS (lettura scoperta)'::text
             ELSE 'write-guard (scrittura scoperta)'::text
-        END AS manca
+        END AS manca,
+        CASE
+            WHEN debito_dichiarato THEN 'DEBITO_DICHIARATO'::text
+            ELSE 'NON_DICHIARATO'::text
+        END AS stato,
+    note AS nota
    FROM difese
-  WHERE ((NOT ha_policy) OR (NOT ha_guard));
+  WHERE ((NOT (ha_policy_scritta AND rls_attiva)) OR (NOT ha_guard));
 ```
 
 

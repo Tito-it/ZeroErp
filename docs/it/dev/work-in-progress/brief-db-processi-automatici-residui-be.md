@@ -9,12 +9,18 @@
 > Leggendo il contratto — e provando a scrivere il primo presidio — sono emerse **otto
 > cose che il BE non può darsi da solo**.
 >
-> **Stato:** 🟢 **IN CORSO — 1 su 8 fatta.** ✅ **DB-4 applicata il 2026-09-05**
-> (era il prerequisito di DB-1). La risposta del team DB è nel **§1-bis**, e
-> corregge l'ordine del §1; la **risposta del backend, misurata dopo il vostro
-> push**, è nel **§1-ter**.
-> ⛔ Due punti vanno decisi insieme prima che uno dei due lati scriva (R-B e R-E):
-> del primo il §1-ter porta la risposta del BE, il secondo è una decisione di Tid.
+> **Stato:** 🟢 **IN CORSO — 5 su 8 APPLICATE, DB-5 scritta, DB-2/DB-3 in
+> lavorazione.** Lo stato per riga è nel **§1-quinquies**.
+> ✅ **Le tre domande aperte sono chiuse**: le decisioni e il perché stanno nel
+> **§1-quater**.
+>
+> La risposta del team DB è nel **§1-bis** (e corregge l'ordine del §1); la
+> **risposta del backend, misurata dopo quel push**, è nel **§1-ter**.
+>
+> 🔴 **Una cosa da sapere subito:** `apply_storicizza_weekly` fallisce da sei
+> mesi, e non c'entra con questo cantiere — ma è **la sola cosa che separa
+> `vw_run_senza_attore` dallo zero**, cioè dal vostro criterio per DB-5.
+> Dettagli nel §1-quinquies.
 > 🔴 **DB-6, DB-7 e DB-8 non erano nella versione che il team DB ha letto** — sono
 > arrivate con la PR #1507, dopo la loro risposta: §1-ter, ultimo punto.
 >
@@ -411,6 +417,346 @@ così che una delle due sparisce.
 
 ⚠️ E la vostra tabella **«L'ordine reale» si ferma a DB-6**: DB-7 e DB-8 non ci
 sono. DB-7 è la sola cosa che separa DB-5 dall'essere fattibile.
+
+---
+
+## 1-quater. Decisioni prese (2026-09-05, Tid) — e cosa cambia per voi
+
+> ⭐ Le tre domande aperte sono chiuse. Qui c'è **cosa si è deciso e perché**;
+> il come lo trovate nei changeSet.
+
+### ⚠️ Prima: una vostra misura è superata di un'ora
+
+`dbops.vw_processi_dominio_senza_difesa` per voi ha **una riga**
+(`fatture_stampa_coda`). Avete misurato dopo il merge `6fd2266ed`, cioè **prima**
+del changeSet `20260905-07`. ⇒ Adesso è **VUOTA**. È il primo presidio del
+cantiere ad arrivare a zero.
+
+✅ **Numerazione**: accettata la vostra proposta. Il write-guard su
+`fatture_stampa_coda` si chiama **R-10**, e **DB-6 resta la fabbrica**.
+
+---
+
+### ✅ R-E → **strada B**: si corregge il modello, non si spacca il processo
+
+Resta **una voce sola** nel registro per la chiusura scadenze, e si cambia la
+regola dei presidi:
+
+> Un processo di coda **accodato da una macchina** vuole comunque un'identità
+> tecnica.
+
+⛔ La strada A (produttore `COMMAND` + esecutore `CODA`) è stata scartata pur
+essendo già lastricata, e la ragione è quella che avete scritto voi: *«che una
+strada sia già lastricata non dice che sia quella giusta»*.
+
+⭐ **Il motivo di fondo**: il presidio che assume «coda ⇒ c'è una persona» è
+nostro, ed è **lui** a sbagliare. Spaccare un lavoro in due per far quadrare un
+controllo scritto da noi significa piegare la realtà allo strumento — e fra sei
+mesi qualcuno chiederebbe perché la chiusura scadenze è a catalogo due volte.
+
+⇒ **Per il backend non cambia niente rispetto ad A**: l'utente tecnico serve
+comunque, e lo scope si riempie allo stesso modo. Cambia che il registro dice la
+verità su chi accoda.
+
+---
+
+### ✅ R-B seconda domanda → `lock_columns` e `delete_block` sono una DIMENTICANZA
+
+Misurato: **non sono abbandonate.** Girano a ogni migrazione, dentro
+`ci_apply`, insieme alle altre cinque automazioni — e hanno **31** e **8**
+configurazioni attive.
+
+⛔ Quello che manca è il **giro notturno**:
+
+| automazione | alla migrazione | di notte |
+| --- | --- | --- |
+| audit, storico, tx_id, attivo, … | ✅ | ✅ |
+| `lock_columns`, `delete_block` | ✅ | ⛔ **no** |
+
+⇒ Una tabella creata **fra due migrazioni** riceve le altre cinque protezioni la
+notte stessa, e queste due solo alla migrazione dopo: nel frattempo quelle
+colonne non hanno lucchetto e quelle righe si possono cancellare.
+
+**Decisione: si creano i due job notturni mancanti**, e i due processi si
+registrano come gli altri.
+
+⚠️ **E c'è un motivo pratico oltre a quello di merito**: se li avessimo
+*ritirati*, `dbops.vw_run_senza_attore` non sarebbe arrivata a zero lo stesso.
+`automations_lock_columns` ha **tre corse storiche** senza attore, l'ultima del
+4 giugno; la vista guarda l'ultima corsa di ogni job, e un job ritirato **non
+gira più**, quindi non si dichiara mai e non sparisce mai. Sarebbe stato di
+nuovo un presidio incapace di arrivare a zero. Registrandoli, la riga si toglie
+da sé alla prima corsa notturna.
+
+---
+
+### ✅ DB-7 → si **allineano i nomi**, e si aggiunge il presidio che mancava
+
+⛔ **Non** si passa il codice esplicito ai 13 wrapper, che era la nostra prima
+proposta. Misurato il costo reale, la proposta era sbagliata:
+
+| | |
+| --- | --- |
+| rinominare i 2 codici | ⭐ **solo il CSV** — nessuno li referenzia, né `job_run_log` né i tipi di coda |
+| codice esplicito | **13 wrapper** da riscrivere |
+
+⚠️ **E l'argomento a favore del codice esplicito non morde qui.** È vero che
+jobname e codice del processo sono due fatti diversi — lo prova il vostro
+`run_fatturazione_batch:immediata`, dove il jobname porta la **corsia**. Ma i
+jobname dei wrapper di manutenzione **non portano nessuna corsia**: lì i due
+fatti coincidono. Applicare quell'argomento a questo caso era simmetria col
+backend, non un ragionamento sul modello.
+
+⭐ **E soprattutto: entrambe le strade lasciano lo stesso buco.** Col codice
+esplicito, un wrapper nuovo che si dimentica di dichiararsi ricade sulla
+derivazione — e se il nome non combacia resta senza attore, esattamente come
+adesso. ⇒ Il presidio serve comunque; e se la garanzia è la stessa, vince la
+strada che costa una riga di CSV.
+
+**Cosa si fa:**
+
+| # | |
+| --- | --- |
+| 1 | `automations_cleanup_weekly` → **`automations_cleanup`** — *weekly* è schedulazione, non il nome di un processo |
+| 2 | `automations_apply_fk_indexes_policy` → **`apply_fk_index_policy`** — pura deriva di nome |
+| 3 | due righe nuove: `automations_lock_columns`, `automations_delete_block` |
+| 4 | ⭐ **il presidio**: ogni `jobname` che un wrapper `maintenance.proc_*_job` passa a `fn_run_and_log` **esiste** in `dbops.processi` |
+
+⭐ Il presidio si legge dal **codice vivo** delle funzioni, e il suo perimetro non
+è un elenco scritto a mano: è `proname LIKE 'proc_%_job'`. Un wrapper nuovo ci
+finisce dentro da solo. **È il presidio che oggi manca**, ed è la ragione per cui
+questo difetto è arrivato fino a voi.
+
+---
+
+### ✅ R-B prima domanda → **il suffisso non si strappa**, come dite voi
+
+Accettato senza riserve, e la ragione che date è quella giusta: *«la derivazione
+è il ripiego per chi non sa dichiararsi, e chi si dichiara ha già dato la
+risposta giusta»*. Strappare il suffisso farebbe **sembrare** dichiarato chi non
+lo è.
+
+---
+
+### ✅ DB-6 → confermato PROVANDOLO, ed è un difetto nostro
+
+Non creduto sulla parola: riprodotto in transazione.
+
+```
+legame disattivato  →  fn_crea_utente_tecnico(...)  →  23505 auth_user_username_key
+```
+
+⇒ Avete ragione su tutto: lo username è `processo@emittente`, il `UNIQUE` è
+incondizionato, e disattivare il legame libera il nostro guard 4 lasciando in
+piedi il muro. **La via che il nostro §12.7 documenta non è percorribile.**
+
+⛔ **Non la ripareremo riusando l'utente in silenzio.** Riattivare un utente che
+qualcuno aveva ritirato *per un motivo* è peggio di un `23505`. ⇒ Un errore con
+un codice registrato che dice *«esiste già un utente per questa coppia: riattiva
+il legame invece di rifarlo»*, e il verbo «riattiva il legame» reso possibile.
+
+⚠️ **Una cosa che sospettavamo e abbiamo verificato essere falsa**: i quattro
+utenti senza emittente rimasti dal vecchio modello (`chiusura_scadenze_daily`,
+`draina_coda_stampa`, …) **non** sono un residuo scoperto — hanno identità
+inattiva e nessun perimetro, e il presidio ha ragione a non nominarli.
+
+---
+
+### ✅ DB-8 → accettato
+
+`E_PROCESSO_NON_TROVATO`, classe `NON_TROVATO`. La vostra ragione per non
+riusare `E_JOB_NON_TROVATO` è corretta e la sottoscriviamo: *un codice usato per
+due cose si spezza a monte, non si rimappa a valle.*
+
+---
+
+### ⚠️ Un debito che la decisione sui job notturni CREA, e va detto subito
+
+I due job pgAgent nuovi vivono in `85_pgagent`, e quella fase in CI è
+**`MARK_RAN`**: viene segnata come eseguita **senza essere eseguita**.
+
+⇒ I due job nasceranno su dbdev, ma su un ambiente ricostruito da zero **non
+esisterebbero**, e nessun test lo direbbe. Non è un motivo per non farli: è un
+motivo per non scoprirlo fra sei mesi. Registrato fra i residui.
+
+---
+
+## 1-quinquies. Stato dei lavori DB (2026-09-05, fine giornata)
+
+| # | Stato | changeSet |
+| --- | --- | --- |
+| **DB-4** | ✅ applicata — RLS + write-guard sulla famiglia listino | `20260905-02`…`-06` |
+| **R-10** (era «DB-6» nel nostro §1-bis) | ✅ applicata — write-guard su `fatture_stampa_coda`. ⭐ `vw_processi_dominio_senza_difesa` è **VUOTA** | `20260905-07` |
+| **R-E** | ✅ applicata — **strada B**: il canale `CODA_AUTOMATICA`, e i tre presidi che assumevano «coda ⇒ persona» | `20260905-09`…`-12` |
+| **DB-7** | ✅ applicata — 2 rinomine, 2 righe nuove, **i due job notturni mancanti**, e il presidio che chiude il buco per sempre | CSV + `20260905-08` |
+| **DB-6** + **DB-8** | ✅ applicate — i due rifiuti parlano, e `fn_riattiva_utente_tecnico` è il verbo che mancava | `20260905-13`…`-15` |
+| **DB-5** | ✅ applicata — `CHECK … NOT VALID` sull'attore dei run | `20260905-16` |
+| **DB-2** + **DB-3** | ✅ applicate — il debito si **dichiara**, e l'email sa di chi è | `20260905-17`…`-20` |
+| **DB-1** | ✅ applicata e collaudata — pgAgent **sveglia e non lavora** | `20260905-21`…`-25` + CSV |
+
+> ⭐ **Sviluppo DB chiuso** per questo cantiere. Baseline pgTAP su 581 file:
+> **nessuna regressione** (19 rossi, tutti già noti). Tutti i guardrail verdi.
+
+---
+
+### ✅ DB-1 — risposta alla vostra domanda aperta: **pgAgent, ma sveglia e non lavora**
+
+Nel §DB-1 chiedevate chi accoda: *«il job pgAgent di stasera, che smetterebbe di
+eseguire e comincerebbe a produrre, oppure un comando Django su cron?»*
+
+⭐ **Il job pgAgent**, e la decisione è più larga della domanda. La regola presa
+il 2026-09-05 è:
+
+> ⛔ **Nessun processo di classe `DOMINIO` su pgAgent.**
+
+⚠️ Non «gli applicativi via da pgAgent», che è vago: è il **perimetro emittente**
+a fare la differenza, e la classe già lo dice. `sync_auth_user_expired_daily`
+resta dov'è — è applicativo in senso lato, ma non ha un emittente.
+
+⇒ Su un processo di dominio **pgAgent sveglia e non lavora**: il job chiama
+`fn_accoda_lavoro` e basta. Se muore non ha toccato nessun documento, e il
+lavoro vero resta tracciato nella coda.
+
+⛔ **Perché non cron/systemd**: avrebbe lo stesso problema di visibilità di
+`85_pgagent` — configurazione fuori dal repo, invisibile ai test — solo spostato.
+
+**L'argomento è sperimentale, ed è il vostro stesso R-12 al contrario:**
+`apply_storicizza_weekly` è morto per sei mesi perché pgAgent non racconta i
+propri fallimenti. Un lavoro di coda che fallisce lascia `ultimo_errore` e
+`tentativi` in una tabella che voi mostrate.
+
+⚠️ **Ma abbiamo cambiato l'ordine**, e vale la pena dirlo: il silenzio si
+**trasferisce** se il worker è giù. Misurato: la coda aveva **4 lavori in
+`ERRORE`** e **nessuna vista** che li nominasse. ⇒ `dbops.vw_coda_lavori_da_guardare`
+viene **prima** della migrazione — falliti, presi e mai chiusi (worker morto),
+mai presi (⛔ worker spento). Senza, staremmo comprando una visibilità non
+ancora costruita.
+
+---
+
+#### ✅ Fatto — e che cosa trovate adesso nel database
+
+| Oggetto | A che cosa vi serve |
+| --- | --- |
+| `dbops.vw_coda_lavori_da_guardare` | ⭐ **il presidio da mettere a video**: falliti, presi e mai chiusi, **mai presi** (worker spento). Porta `motivo` e `da_quanto` già pronti |
+| `dbops.vw_processi_dominio_su_pgagent` | la regola, verificabile. Oggi **0 righe** |
+| `dbops.vw_processi_roster` | ⚠️ **è la vostra query**: `processi_repository.roster_processo` può diventare un `SELECT … WHERE processo_codice = %s`. Finché restano due copie, sono due copie |
+| `dbops.fn_accoda_chiusura_scadenze()` | il produttore. La chiama il job notturno; a voi non serve chiamarla |
+
+**Che cosa cambia a runtime, e va detto chiaro:** dalla notte in cui questo è
+attivo, la chiusura scadenze **non avviene più dentro il job**. Avviene nel
+drenatore, minuti dopo. ⇒ **Se `draina_coda_lavori` non gira, le scadenze non
+si chiudono** — ed è esattamente il caso che `vw_coda_lavori_da_guardare` è
+stata scritta per nominare (riga `PENDING` da oltre un'ora, motivo *«mai preso:
+il worker non sta girando»*).
+
+⚠️ **Il lavoro arriva con `run_as = OPERATORE`** e lo scope pieno: `auth_user_id`,
+`username`, `identita_id` e l'**emittente congelato** all'accodamento. Il vostro
+handler non deve risolverlo: deve **usarlo**.
+
+⚠️ **R-11 vale anche qui**: `85_pgagent` è `MARK_RAN` in CI. Su un ambiente
+ricostruito da zero il job resterebbe alla forma vecchia — **eseguirebbe invece
+di accodare** — e nessun test lo direbbe.
+
+---
+
+### 🔴 DB-3, seconda metà — la policy è decisa ma **non la scriviamo**, e vi riguarda
+
+**Decisione di Tid (2026-09-05):** le email di ambito `SISTEMA` le legge **solo
+il super admin**. Non appartengono a nessuna azienda e il loro contenuto vale
+quanto una credenziale. Le altre seguono la whitelist emittente, come tutta la
+famiglia.
+
+⛔ **Ma la policy non è stata scritta, e il motivo è vostro.**
+
+`send_pending_emails` è un **management command**: le GUC `app.current_user_id`
+e `app.ruolo_applicativo` le imposta l'autenticazione JWT, quindi lì **non ci
+sono**. E `zeroerp_app` non ha `BYPASSRLS` (ce l'hanno solo `postgres` e
+`zeroerp_batch_fatturazione`, in ritiro).
+
+> ⇒ Abilitando la RLS oggi, **chi spedisce vedrebbe zero righe**. E non se ne
+> accorgerebbe nessuno: una coda vuota è indistinguibile da «niente da fare».
+> Il command girerebbe verde, il giornale direbbe «0 processate», e le email di
+> **reset password non partirebbero più**.
+>
+> ⭐ È la forma esatta di R-12 — un guasto che si manifesta come **assenza** —
+> introdotto da noi, dentro il cantiere che esiste per toglierla.
+
+⚠️ Il commento nel vostro command lo diceva già: *«questo processo è di DOMINIO
+e non ha un perimetro … gli si dà l'ATTORE e basta»*. Con DB-3 la colonna adesso
+c'è. **Chi la usa, no.**
+
+#### Che cosa serve da voi
+
+| | |
+| --- | --- |
+| 1 | `send_pending_emails` **dice chi è anche al database**: `app.current_user_id` + `app.ruolo_applicativo` con l'identità tecnica del processo — che **esiste già**, la trovate in `dbops.vw_processi_roster` (`send_pending_emails@<azienda>`) |
+| 2 | ⚠️ **Per le email `SISTEMA` serve una decisione**, non un'implementazione: o l'identità tecnica porta il profilo super admin, o la policy nomina esplicitamente il processo. Chi spedisce un reset password lo può **leggere** — è una scelta di sicurezza, ditecela |
+
+⭐ Quando i due punti ci sono, la policy è **già scritta e pronta**: la trovate in
+`brief-db-processi-automatici-identita-e-perimetro` §12.15.
+
+#### ⛔ E la scorciatoia che non abbiamo preso, perché vi riguarda leggere il perché
+
+Si poteva scrivere la policy **senza abilitare la RLS**: il presidio sarebbe
+andato a zero e l'invio avrebbe continuato a funzionare. ⛔ Ma PostgreSQL
+**conserva** le policy di una tabella con la row level security disabilitata e
+**non le applica**: la tabella sarebbe rimasta aperta a tutti, col presidio che
+diceva di no.
+
+⇒ Abbiamo invece **irrigidito il presidio** (`20260905-26`): una policy conta
+solo se la RLS è **attiva**. ⭐ Misurato: nessun bersaglio era in quello stato,
+quindi non cambia una riga. Non nasce da un dato — nasce dal fatto che la
+domanda posta era la domanda sbagliata.
+
+---
+
+### ⚠️ DB-5: il vincolo c'è, ma il VOSTRO criterio non è ancora soddisfatto
+
+Il vincolo è scritto, ed è **un `CHECK … NOT VALID`, non un `SET NOT NULL`**.
+Il motivo è un numero misurato: `maintenance.job_run_log` ha **99.775 righe
+senza attore** su 100.738 — il giornale di ieri, scritto prima che la colonna
+esistesse.
+
+> ⛔ Riempirle «per far passare il vincolo» sarebbe **inventare un attore per
+> corse che non l'avevano**.
+
+⇒ Il `CHECK` vale su ciò che si scrive **da adesso**, e lascia la storia dov'è.
+✅ Verificato che i due scrittori veri continuano a funzionare: `fn_run_and_log`
+(derivazione) e `fn_job_run_start` (codice esplicito, come lo passate voi).
+
+⛔ **Ma `dbops.vw_run_senza_attore` non si svuoterà a breve, e non è colpa del
+cantiere.**
+
+---
+
+### 🔴 Il guasto che abbiamo trovato guardando la vostra vista
+
+**`apply_storicizza_weekly` fallisce ogni settimana dal 21 febbraio 2026.**
+
+Il job pgAgent è acceso e gira — verificato su `pgagent.pga_joblog`, ultima
+corsa oggi — e muore sempre allo stesso punto:
+
+```
+ERRORE: la relazione "vendite.attivita_fatturabili_lotti" non esiste
+```
+
+⚠️ **Muore prima di scrivere**, quindi non lascia traccia: la sua ultima riga in
+`job_run_log` è di febbraio. Un guasto che dura da sei mesi e che nessun log
+racconta.
+
+**La causa**: `config.storico_set_storicizza` ha **tre** righe che puntano a
+tabelle sparite (`vendite.attivita_fatturabili_lotti`,
+`config.profili_reparto_aree`, `config.profili_reparto_azioni`). Il job muore
+sulla prima, quindi le altre due non si vedono nemmeno.
+
+⭐ **Come è saltato fuori**: non da un allarme, ma chiedendosi **perché una riga
+della vista non se ne andava**. La vista diceva «questo job non si è ancora
+dichiarato»; la risposta vera era «questo job non gira da sei mesi».
+
+⇒ Registrato come **R-12** nel nostro registro dei residui. È di un altro
+cantiere e non lo progettiamo qui, ma lo diciamo subito perché è **la sola cosa
+che separa la vostra vista dallo zero**.
 
 ---
 

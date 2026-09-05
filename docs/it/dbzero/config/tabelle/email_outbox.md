@@ -31,11 +31,13 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_email_outbox_ambito |  |
+| CHECK | chk_email_outbox_ambito_emittente |  |
 | CHECK | chk_email_outbox_reparto_uo |  |
 | CHECK | chk_email_outbox_stato |  |
 | FOREIGN KEY | email_outbox_email_account_id_fkey | email_account_id |
@@ -43,6 +45,7 @@
 | FOREIGN KEY | email_outbox_pratica_id_fkey | pratica_id |
 | FOREIGN KEY | email_outbox_unita_organizzativa_id_fkey | unita_organizzativa_id |
 | FOREIGN KEY | fk_email_outbox_email_log | email_log_id |
+| FOREIGN KEY | fk_email_outbox_emittente_fiscale | emittente_fiscale_id |
 | PRIMARY KEY | email_outbox_pkey | id |
 
 ## 📑 Indici
