@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ I DUE JOB PASSANO DAL GIORNALE — l'altra meta' del `20260906-06`.
+#
+#   chiusura_scadenze_daily
+#     prima:  SELECT dbops.fn_accoda_chiusura_scadenze();
+#     dopo:   CALL maintenance.proc_accoda_chiusura_scadenze_job();
+#
+#   sync_auth_user_expired_daily
+#     prima:  SELECT anagrafiche.fn_sync_auth_user_expired();
+#     dopo:   CALL maintenance.proc_sync_auth_user_expired_job();
+#
+# ⚠️ **Cambia solo CHI viene chiamato, non che cosa succede**: il wrapper esegue
+# la stessa identica istruzione, e in piu' la registra. Nessun lavoro cambia
+# comportamento — cambia che se ne sappia qualcosa.
+#
+# ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' `MARK_RAN` ────────
+#   Questo changeSet e' segnato come eseguito **senza essere eseguito**. Su un
+#   ambiente ricostruito da zero i due job resterebbero alla forma vecchia — cioe'
+#   di nuovo senza giornale — e nessun test lo direbbe.
+#   ⭐ Ma stavolta qualcosa lo direbbe: `dbops.vw_processi_programmazione` li
+#   nominerebbe `GIRA_E_NON_REGISTRA` al primo giro. E' la prima volta che questo
+#   debito ha un guardiano.
+#
+# ⚠️ La schedulazione non si tocca: si sostituisce solo il corpo dello step,
+# come nel `20260905-25`. Rifare i job da zero perderebbe gli orari senza motivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/85_pgagent/20260906-07-step-job-passano-dal-giornale-mctit.yaml
+
+  - changeSet:
+      id: 20260906-07-step-job-passano-dal-giornale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        chiusura_scadenze_daily e sync_auth_user_expired_daily chiamano il loro
+        wrapper invece della funzione diretta: stessa istruzione, ma registrata
+        nel giornale. Senza, quei due job sono invisibili a ogni presidio.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance'
+                     AND p.proname IN ('proc_accoda_chiusura_scadenze_job',
+                                       'proc_sync_auth_user_expired_job')
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = $step$
+                        CALL maintenance.proc_accoda_chiusura_scadenze_job();
+                     $step$
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jstjobid
+                 AND j.jobname = 'chiusura_scadenze_daily';
+
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = $step$
+                        CALL maintenance.proc_sync_auth_user_expired_job();
+                     $step$
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jstjobid
+                 AND j.jobname = 'sync_auth_user_expired_daily';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna alle chiamate dirette, cioe' a due job che girano senza
+              --   lasciare traccia. Manovra di emergenza, non una configurazione.
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = $step$
+                        SELECT dbops.fn_accoda_chiusura_scadenze();
+                     $step$
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jstjobid
+                 AND j.jobname = 'chiusura_scadenze_daily';
+
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = $step$
+                        SELECT anagrafiche.fn_sync_auth_user_expired();
+                     $step$
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jstjobid
+                 AND j.jobname = 'sync_auth_user_expired_daily';
+
+  - changeSet:
+      id: 20260906-90-tag-step-job-passano-dal-giornale
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260906-07-step-job-passano-dal-giornale

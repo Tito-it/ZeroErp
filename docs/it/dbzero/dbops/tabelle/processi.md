@@ -21,12 +21,14 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| jobname_pgagent | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_processi_canale |  |
 | CHECK | chk_processi_classe |  |
+| CHECK | chk_processi_jobname_pgagent_non_vuoto |  |
 | PRIMARY KEY | pk_processi | id |
 | UNIQUE | uq_processi_codice | codice |
 
@@ -35,6 +37,7 @@
 |------|-------------|
 | pk_processi | `CREATE UNIQUE INDEX pk_processi ON dbops.processi USING btree (id)` |
 | uq_processi_codice | `CREATE UNIQUE INDEX uq_processi_codice ON dbops.processi USING btree (codice)` |
+| uq_processi_jobname_pgagent | `CREATE UNIQUE INDEX uq_processi_jobname_pgagent ON dbops.processi USING btree (jobname_pgagent) WHERE (jobname_pgagent IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

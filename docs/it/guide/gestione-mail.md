@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> (latest review 31-03-2026)
+> (latest review 06-09-2026)
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >
@@ -42,6 +42,7 @@ in base al contesto, con fallback sull'account di sistema.
 * [config.email_template](/dbzero/config/tabelle/email_template) — template parametrizzabili
 * [config.email_log](/dbzero/config/tabelle/email_log) — log immutabile di ogni invio
 * [config.email_outbox](/dbzero/config/tabelle/email_outbox) — bozze editabili prima dell'invio
+* [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — `send_pending_emails` è un lavoro **di dominio**: gira per conto di un'azienda, non in incognito
 * [config.email_allegato](/dbzero/config/tabelle/email_allegato) — allegati per outbox e log
 * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti
 
@@ -271,6 +272,40 @@ Le email collegate a una **pratica** (`pratica_id`) sono visibili anche dalla
 scheda pratica, indipendentemente dall'ambito. Questo permette di ricostruire
 la storia comunicativa di una pratica.
 
+### ⭐ Dal 06-09-2026 questa tabella non è più solo una regola dell'applicazione
+
+Fino a settembre l'ambito era una convenzione: a farlo rispettare era il codice
+che leggeva le email. Ora lo fa **il database**, su tutte e due le tabelle — le
+bozze e il registro degli invii.
+
+Cambia poco per chi legge la tabella qui sopra, e cambia molto per chi scrive
+codice: non c'è più modo di dimenticarsi il filtro.
+
+⚠️ **E si aggiunge una seconda dimensione: l'azienda.** Le email che non sono di
+sistema appartengono a un'azienda, e si vedono solo se quell'azienda è fra
+quelle di chi guarda. Prima l'ambito diceva *quale gruppo di persone*; adesso
+dice anche *di chi è la posta*.
+
+⛔ Le email di **sistema** (reset password, inviti, alert) restano fuori da
+questa seconda regola, ed è voluto: non appartengono a nessuna azienda, e il
+loro contenuto vale quanto una password. Le legge solo un amministratore.
+
+### ⚠️ La porta per i percorsi senza utente
+
+Un reset password parte **prima** che qualcuno abbia fatto l'accesso: in quel
+momento non c'è nessun utente in sessione. Con il filtro acceso, la scrittura
+dell'email verrebbe rifiutata — cioè il reset non partirebbe, e nessuno se ne
+accorgerebbe.
+
+Per questo esistono due funzioni dedicate, ed è l'unico modo previsto di
+scrivere una email di sistema da un percorso non autenticato:
+[fn_accoda_email_sistema](/dbzero/config/funzioni/fn_accoda_email_sistema) la
+mette in coda, [fn_chiudi_email_sistema](/dbzero/config/funzioni/fn_chiudi_email_sistema)
+ne registra l'esito.
+
+⛔ Non sono una scorciatoia da usare altrove: fanno una cosa sola, e solo per le
+email di sistema.
+
 ---
 
 ## Allegati
@@ -312,6 +347,7 @@ usa l'account SMTP originale (quello con cui l'email era stata preparata).
 
 ## Sicurezza
 
+* **Filtro nel database** su bozze e registro invii: l'ambito e l'azienda non sono più solo una regola applicativa — vedi [Ambito e visibilità](#ambito-e-visibilita)
 * **Password SMTP crittografata** con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
 * **Ownership check** su tutte le operazioni outbox e allegati — fail-closed se nessun outbox padre
 * **Path traversal guard** su download allegati

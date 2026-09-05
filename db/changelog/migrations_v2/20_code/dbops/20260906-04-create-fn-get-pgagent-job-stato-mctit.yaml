@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ CHE COSA SA pgAgent DI UN JOB — letto in modo che il migrate regga.
+#   Serve a: dbops.vw_processi_programmazione (20260906-05)
+#
+# pgAgent tiene due date che noi non abbiamo: **quando il job ha girato
+# l'ultima volta** e **quando girera' la prossima**. Sono la meta' mancante per
+# rispondere a «tutti i lavori hanno una programmazione, e stanno partendo?».
+#
+# ── ⛔ MA `pgagent.*` NON SI PUO' NOMINARE IN UNA VISTA ─────────────
+#   `85_pgagent` in CI e' `MARK_RAN`: su un database ricostruito da zero
+#   l'estensione **non c'e'**. Una vista si risolve alla `CREATE` e il migrate si
+#   fermerebbe li' — ed e' esattamente quello che e' successo il 2026-09-05 con
+#   `JOIN django.auth_user` dentro `vw_processi_roster` (changeSet `20260905-30`).
+#   ⭐ La regola presa allora vale identica qui: **il DB puo' CHIAMARE dentro uno
+#     schema che non controlla, non puo' DIPENDERNE strutturalmente.**
+#   ⇒ Una funzione plpgsql: il corpo non viene risolto alla creazione.
+#
+# ── ⚠️ E LA GUARDIA SERVE DAVVERO, non e' per scaramanzia ──────────
+#   Su `django.*` le tabelle mancano solo durante il migrate; qui l'estensione
+#   puo' mancare **per sempre** (un ambiente senza pgAgent e' legittimo).
+#   ⇒ Se `pgagent.pga_job` non esiste la funzione **esce senza righe**, e chi la
+#     chiama in `LEFT JOIN LATERAL` vede semplicemente colonne vuote.
+#   ⭐ Zero righe e' la risposta giusta: «di questo job non so niente» non e' un
+#     errore, e far fallire una vista di panorama per un'estensione assente
+#     sarebbe peggio del problema.
+#
+# ── ⚠️ PERCHE' `RETURNS TABLE` E NON TRE FUNZIONI ──────────────────
+#   Le tre informazioni si leggono dalla stessa riga: chiederle una alla volta
+#   vorrebbe dire tre letture della stessa tabella per ogni processo.
+#
+# ⚠️ `SECURITY INVOKER` (il default): chi legge la vista deve avere il diritto di
+# sapere quando girano i job. Non si presta un privilegio che il chiamante non ha.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260906-04-create-fn-get-pgagent-job-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260906-04-create-fn-get-pgagent-job-stato
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.fn_get_pgagent_job_stato: legge da pgagent.pga_job se il job esiste,
+        se e' abilitato, quando ha girato e quando girera'. plpgsql (late-bound)
+        perche' una vista che nomina pgagent.* fallirebbe il migrate dove
+        l'estensione non c'e' — stessa regola presa per django.* col 20260905-30.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: processi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_get_pgagent_job_stato(
+                  p_jobname text)
+               RETURNS TABLE (
+                   abilitato           boolean,
+                   ultima_esecuzione   timestamptz,
+                   prossima_esecuzione timestamptz)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire che cosa sa pgAgent di un job: se e' acceso, quando
+                  --   ha girato, quando girera'.
+                  --
+                  -- ⛔ Zero righe significa «non so niente di questo job»:
+                  --   l'estensione manca, oppure il job non c'e'. Chi chiama e'
+                  --   un LEFT JOIN LATERAL e vede colonne vuote — che e' la
+                  --   risposta giusta, non un errore.
+                  -- =========================================================
+
+                  IF p_jobname IS NULL THEN
+                      RETURN;   -- il processo non dichiara nessun job
+                  END IF;
+
+                  -- ⚠️ La guardia non e' per scaramanzia: su un ambiente senza
+                  --   pgAgent quella tabella non esiste, e senza questo controllo
+                  --   la funzione fallirebbe alla PRIMA chiamata — cioe' la vista
+                  --   di panorama sarebbe inutilizzabile proprio dove serve di
+                  --   piu' capire che cosa manca.
+                  IF to_regclass('pgagent.pga_job') IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT j.jobenabled, j.joblastrun, j.jobnextrun
+                    FROM pgagent.pga_job j
+                   WHERE j.jobname = p_jobname;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_get_pgagent_job_stato(text)
+              IS 'Che cosa sa pgAgent di un job: se e'' abilitato, quando ha girato l''ultima volta, quando girera'' la prossima. ⭐ Sono le due date che il nostro giornale non ha, e servono a rispondere a «tutti i lavori hanno una programmazione, e stanno partendo?». ⛔ E'' una FUNZIONE plpgsql e non un JOIN dentro una vista perche'' 85_pgagent in CI e'' MARK_RAN: su un database ricostruito da zero l''estensione non c''e'', una vista si risolve alla CREATE e il migrate si fermerebbe — e'' successo il 2026-09-05 con JOIN django.auth_user dentro vw_processi_roster (changeSet 20260905-30). La regola e'' la stessa: il DB puo'' CHIAMARE dentro uno schema che non controlla, non puo'' DIPENDERNE strutturalmente. ⚠️ Torna ZERO RIGHE se l''estensione manca, se il jobname e'' NULL o se quel job non esiste: «non so niente di questo job» non e'' un errore, e far fallire una vista di panorama per un''estensione assente sarebbe peggio del problema. ⚠️ SECURITY INVOKER: chi legge deve avere il diritto di sapere quando girano i job, non glielo si presta.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION dbops.fn_get_pgagent_job_stato(text)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_get_pgagent_job_stato(text);

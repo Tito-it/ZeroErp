@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL PANORAMA: ogni processo, la sua programmazione, la sua ultima corsa.
+#   Richiesta: Tid, 2026-09-06 — «una tabella dove per ogni job vedere la
+#   programmazione e data e ora dell'ultima esecuzione».
+#
+# ── ⭐ LA COLONNA CHE VALE PIU' DI TUTTE E' `stato` ─────────────────
+#   Non e' l'elenco a servire: e' il **confronto**. pgAgent sa quando un job ha
+#   girato; il nostro giornale sa che cosa ha fatto. ⛔ Quando le due cose non
+#   coincidono, il job **e' girato e non l'ha detto** — che e' la firma esatta di
+#   R-12, il lavoro morto per sei mesi con l'ultimo verdetto a «done».
+#   ⇒ Questo confronto lo avrebbe trovato **in un giorno**.
+#
+# ── ⚠️ IL GIORNALE SI LEGGE PER PROCESSO, NON PER NOME DEL JOB ──────
+#   `job_run_log.processo_codice` e' obbligatorio dal `20260905-16`, quindi per le
+#   corse nuove il legame e' certo. ⚠️ Le corse **storiche** hanno quella colonna
+#   vuota, e vanno ripescate dal `jobname` — che per la maggior parte dei
+#   processi coincide col codice. ⇒ Si guarda l'uno **o** l'altro: senza il
+#   ripiego, ogni processo sembrerebbe non aver mai girato prima di settembre.
+#
+# ── ⭐ E' UN PANORAMA, NON UN PRESIDIO ──────────────────────────────
+#   Elenca **tutti** i processi attivi, anche quelli sani: e' la tabella che si
+#   apre per capire, non la lista delle cose da fare.
+#   ⇒ Il presidio e' una riga di SQL sopra questa vista:
+#     `WHERE stato NOT IN ('OK', 'FUORI_PORTATA')`.
+#   ⚠️ Tenerli separati e' voluto: un elenco che mostra solo i guasti non fa
+#   vedere **quanti** sono i sani, e senza quel confronto un guasto sembra la
+#   norma.
+#
+# ── ⚠️ `FUORI_PORTATA` NON E' «TUTTO BENE» ─────────────────────────
+#   I processi `COMMAND` li programma crontab e i `CODA` li sveglia il backend:
+#   di loro il database **non puo' sapere** se stanno partendo. ⛔ Dire `OK`
+#   sarebbe una bugia; dire «guasto» sarebbe un allarme falso. ⇒ Si dice la
+#   verita': *non e' misurabile da qui*. Sono sei processi su ventidue, e restano
+#   il pezzo scoperto.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260906-05-create-vw-processi-programmazione-mctit.yaml
+
+  - changeSet:
+      id: 20260906-05-create-vw-processi-programmazione
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione: per ogni processo attivo, quale job lo
+        sveglia, quando girera', quando ha girato secondo pgAgent e secondo il
+        giornale — e uno `stato` che dice se le due cose coincidono. Il confronto
+        e' il punto: «pgAgent dice che e' girato, il giornale non lo sa» e' la
+        firma di un job che muore senza parlare.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: processi
+                columnName: jobname_pgagent
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'fn_get_pgagent_job_stato'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione AS
+              SELECT p.codice            AS processo_codice,
+                     p.classe,
+                     p.canale,
+                     p.jobname_pgagent,
+                     -- Che cosa ne sa pgAgent. ⚠️ Colonne vuote = «di questo job
+                     -- non so niente»: estensione assente, o job inesistente.
+                     g.abilitato           AS job_abilitato,
+                     g.prossima_esecuzione AS prossima_corsa,
+                     g.ultima_esecuzione   AS pgagent_ultima_corsa,
+                     -- Che cosa ne sa il nostro giornale.
+                     l.ultima_corsa        AS giornale_ultima_corsa,
+                     l.ultimo_esito,
+                     CASE
+                         -- ⚠️ Il database non puo' sapere se questi stanno
+                         --   partendo: la loro sveglia vive fuori.
+                         WHEN p.canale IN ('COMMAND', 'CODA')
+                             THEN 'FUORI_PORTATA'
+                         -- ⛔ Nessun job dichiarato su un canale che pgAgent
+                         --   dovrebbe svegliare: o non lo sveglia nessuno, o non
+                         --   l'abbiamo scritto. In entrambi i casi non si sa.
+                         WHEN p.jobname_pgagent IS NULL
+                             THEN 'NON_PROGRAMMATO'
+                         -- Il processo dichiara un job che pgAgent non ha.
+                         WHEN g.abilitato IS NULL
+                             THEN 'JOB_ASSENTE'
+                         WHEN g.abilitato IS FALSE
+                             THEN 'JOB_SPENTO'
+                         -- ⭐ IL CASO PER CUI QUESTA VISTA ESISTE: pgAgent dice
+                         --   che e' girato, il giornale non lo sa. E' un lavoro
+                         --   che muore prima di riuscire a raccontarlo.
+                         --   ⚠️ Un'ora di tolleranza: le due scritture non sono
+                         --   simultanee, e un job partito da poco puo' non aver
+                         --   ancora chiuso la sua riga.
+                         WHEN g.ultima_esecuzione IS NOT NULL
+                              AND COALESCE(l.ultima_corsa, '-infinity'::timestamptz)
+                                  < g.ultima_esecuzione - interval '1 hour'
+                             THEN 'GIRA_E_NON_REGISTRA'
+                         -- Programmato, acceso, e non ha mai girato.
+                         WHEN g.ultima_esecuzione IS NULL
+                             THEN 'MAI_PARTITO'
+                         ELSE 'OK'
+                     END AS stato
+                FROM dbops.processi p
+                -- ⛔ LATERAL su una funzione, non un JOIN su pgagent.*: una vista
+                --   che nomina quello schema non si crea dove l'estensione manca
+                --   (85_pgagent e' MARK_RAN in CI).
+                LEFT JOIN LATERAL dbops.fn_get_pgagent_job_stato(p.jobname_pgagent) g
+                       ON true
+                -- ⚠️ Il giornale si legge per PROCESSO (obbligatorio dal
+                --   20260905-16) **oppure** per jobname, che e' come si
+                --   riconoscono le corse storiche: quelle hanno processo_codice
+                --   vuoto, e senza il ripiego ogni processo sembrerebbe non aver
+                --   mai girato prima di settembre.
+                LEFT JOIN LATERAL (
+                    SELECT max(r.started_at) AS ultima_corsa,
+                           (SELECT r2.ok
+                              FROM maintenance.job_run_log r2
+                             WHERE (r2.processo_codice = p.codice
+                                    OR r2.jobname = p.codice)
+                             ORDER BY r2.started_at DESC, r2.id DESC
+                             LIMIT 1) AS ultimo_esito
+                      FROM maintenance.job_run_log r
+                     WHERE r.processo_codice = p.codice
+                        OR r.jobname = p.codice
+                ) l ON true
+               WHERE p.attivo
+                 AND p.obsoleto_dal IS NULL
+               ORDER BY p.canale, p.codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione IS
+                  'PANORAMA: per ogni processo automatico attivo — quale job pgAgent lo '
+                  'sveglia, quando girera'', quando ha girato secondo pgAgent e secondo il '
+                  'nostro giornale. ⭐ La colonna che vale piu'' di tutte e'' `stato`, e il '
+                  'valore che conta e'' GIRA_E_NON_REGISTRA: pgAgent dice che il job e'' '
+                  'girato, il giornale non lo sa — e'' la firma esatta di un lavoro che '
+                  'muore prima di riuscire a raccontarlo, cioe'' di R-12, il job morto per '
+                  'sei mesi con l''ultimo verdetto a «done». Questo confronto lo avrebbe '
+                  'trovato in un giorno. ⚠️ Il legame col job NON e'' il nome: si legge da '
+                  'dbops.processi.jobname_pgagent, perche'' due job su quattordici si '
+                  'chiamano diversamente dal processo che registrano. ⚠️ Il giornale si '
+                  'legge per processo_codice OPPURE per jobname: le corse storiche hanno '
+                  'la prima colonna vuota, e senza il ripiego ogni processo sembrerebbe '
+                  'non aver mai girato prima di settembre 2026. ⚠️ FUORI_PORTATA non '
+                  'significa «tutto bene»: i COMMAND li programma crontab e i CODA li '
+                  'sveglia il backend, e di loro il database non puo'' sapere se stanno '
+                  'partendo — dirlo OK sarebbe una bugia, dirlo guasto un falso allarme. '
+                  '⭐ E'' un panorama, non un presidio: elenca anche i sani, perche'' senza '
+                  'sapere quanti sono i sani un guasto sembra la norma. Il presidio e'' '
+                  'WHERE stato NOT IN (OK, FUORI_PORTATA).';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_programmazione TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_programmazione;

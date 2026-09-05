@@ -120,6 +120,7 @@
 
 ## ⚙️ Funzioni
 - [fn_accoda_email_sistema](funzioni/fn_accoda_email_sistema.md)
+- [fn_chiudi_email_sistema](funzioni/fn_chiudi_email_sistema.md)
 - [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md) — Pulizia periodica dei token monouso scaduti o gia' utilizzati. Pensata per esecuzione automatica come job pgAgent notturno, elimina i record che non hanno piu' utilita' operativa.
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](funzioni/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)

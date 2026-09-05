@@ -1,6 +1,6 @@
 # Guida – Framework di Automazione DB
 
-> (latest review 02-03-26)
+> (latest review 06-09-2026)
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
@@ -10,6 +10,7 @@
 > * [Guida Storicizzazione Tabelle](/guide/storicizzazione-tabelle)
 > * [Guida tx_id](/guide/tx_id_implementation_guide)
 > * [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job)
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — le automazioni sono lavori di **manutenzione**: qui c'è il registro che le elenca
 
 ---
 
@@ -668,6 +669,33 @@ Se hai un trigger manuale che fa la stessa cosa (es. audit) e il framework ne cr
 
 * Se il trigger manuale e obsoleto, rimuovilo e lascia quello del framework
 * Se il trigger manuale ha logica specifica, ~~aggiungi la tabella in `automation_fk_exclusions`~~ ⛔ (quella tabella non esiste più) → **disabilita la regola** per quella tabella, o restringi l'`automation_scope`
+
+### 🔴 Un trigger scritto a mano che *sembra* generato dal framework
+
+È il caso opposto al precedente, ed è peggio perché non si vede.
+
+Si scrive un trigger a mano usando la **stessa funzione** del framework e lo
+**stesso stile di nome**, ma senza registrare la riga nella tabella di
+configurazione. Il risultato funziona: il trigger c'è e fa il suo lavoro.
+
+⛔ Ma il framework **non sa che esiste**. Quindi:
+
+* non lo ricrea, se sparisce;
+* alla passata successiva ne trova uno con quel nome e non tocca niente.
+
+⇒ È un oggetto che **sembra governato e non lo è**. Il giorno in cui viene tolto
+— da una pulizia, da una ricostruzione, da chiunque — nessuno lo rimette, e non
+c'è nessun controllo che se ne accorga.
+
+**È successo davvero**: il blocco che rendeva immutabile l'importo di un fondo
+fattura era stato montato così. Quando è sparito, quell'importo è tornato
+modificabile e in nessun registro è comparso niente. Se n'è accorto un test,
+mesi dopo.
+
+**Cosa fare:** registrare la riga nella tabella di configurazione e lasciare che
+sia il framework a creare il trigger. Se serve provisionarlo subito senza
+aspettare il giro notturno, si chiama il *runner* — non si scrive il trigger a
+mano.
 
 ### Il dry-run non mostra modifiche attese
 

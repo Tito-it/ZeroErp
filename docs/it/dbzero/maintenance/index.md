@@ -7,6 +7,7 @@
 ## ⚙️ Funzioni
 - [fn_job_run_log_failure](funzioni/fn_job_run_log_failure.md) — (latest review 05-09-2026)
 - [fn_run_and_log](funzioni/fn_run_and_log.md) — (latest review 07-01-26) `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
+- [proc_accoda_chiusura_scadenze_job](funzioni/proc_accoda_chiusura_scadenze_job.md)
 - [proc_apply_fk_index_policy_job](funzioni/proc_apply_fk_index_policy_job.md) — (latest review 16-01-26) * **Eseguire in modo schedulato** l’applicazione della **policy indici FK** incapsulando la chiamata a `dbops.apply_fk_index_policy()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 - [proc_apply_storicizza_defaults](funzioni/proc_apply_storicizza_defaults.md) — (latest review 05-09-2026)
 - [proc_apply_storicizza_defaults_job](funzioni/proc_apply_storicizza_defaults_job.md) — (latest review 07-01-26) * **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `maintenance.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
@@ -21,6 +22,7 @@
 - [proc_automations_tx_id_job](funzioni/proc_automations_tx_id_job.md) — (latest review 07-01-26) * **Eseguire in modo schedulato** l’orchestrazione delle **automazioni TX_ID** (policy di transazione su tabelle nell'ambito) incapsulando la chiamata a `dbops.fn_run_automations_tx_id(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 - [proc_bump_indirizzi_dettaglio](funzioni/proc_bump_indirizzi_dettaglio.md) — (latest review 02-01-26) Riallineare la normalizzazione degli indirizzi di dettaglio quando cambia la via (stradario) in modo controllato e tracciato.
 - [proc_bump_toponomastica](funzioni/proc_bump_toponomastica.md) — (latest review 02-01-26) Consentire la correzione controllata di un toponimo **in uso**, forzando la rinormalizzazione di `config.stradario_generale` tramite i trigger esistenti.
+- [proc_sync_auth_user_expired_job](funzioni/proc_sync_auth_user_expired_job.md)
 - [proc_sync_storico_set_storicizza](funzioni/proc_sync_storico_set_storicizza.md) — (latest review 05-09-2026)
 - [proc_sync_storico_set_storicizza_job](funzioni/proc_sync_storico_set_storicizza_job.md) — (last review 07-01-26) Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `maintenance.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
 

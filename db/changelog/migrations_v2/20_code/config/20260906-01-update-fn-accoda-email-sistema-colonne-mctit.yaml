@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ LA PORTA PERDEVA TRE COLONNE — e le avrebbe perse in SILENZIO.
+#   Richiesta: brief-db-email-perimetro-e-invio-di-sistema.md §4.2
+#
+# `config.fn_accoda_email_sistema` non accettava `unita_organizzativa_id`,
+# `destinatari_cc` e `pratica_id`. ⚠️ Ma i chiamanti li passano: misurato,
+# **tutti** i percorsi di sistema valorizzano `unita_organizzativa_id` — reset
+# password (due punti), invito operatore, invito portale.
+#
+# ⇒ Instradare lì senza allargarla avrebbe fatto sparire quell'informazione
+#   **senza un errore**. ⛔ Un dato che si perde in silenzio e' peggio di un
+#   rifiuto: il rifiuto lo vedi.
+#
+# ── ⭐ SI ACCETTANO, NON SI DICHIARANO INUTILI ─────────────────────
+#   Il brief lasciava aperte due strade: allargare la funzione, oppure dire che
+#   su una email di SISTEMA quei campi non servono e toglierli dai chiamanti.
+#   ⇒ Si allarga, e il motivo e' che **non sono perimetro, sono contesto**:
+#     l'unita' organizzativa di un invito dice a chi apparteneva la persona
+#     invitata, e serve a chi legge il giornale, non a chi decide i permessi.
+#   ⚠️ Toglierli dai chiamanti avrebbe significato buttare via
+#     un'informazione che qualcuno aveva deciso di scrivere — una decisione di
+#     dominio, presa per comodita' nostra.
+#
+# ── ⛔ `DROP` E POI `CREATE`, NON UN SEMPLICE `REPLACE` ─────────────
+#   Tre parametri nuovi, tutti con un valore di default, farebbero nascere un
+#   **overload**: la vecchia forma a tre argomenti e la nuova sarebbero entrambe
+#   chiamabili con tre argomenti, e PostgreSQL rifiuterebbe la chiamata come
+#   ambigua. ⇒ La vecchia firma si toglie.
+#   ⚠️ E' anche il motivo per cui il `rollback` rimette la firma corta: un
+#   `DROP` di questa lascerebbe il backend senza porta.
+#
+# ── ⚠️ `destinatari_cc` NON usa `%TYPE` ────────────────────────────
+#   Su una colonna array `%TYPE` non e' affidabile: si scrive il tipo,
+#   `text[]`, che e' quello che la colonna ha davvero.
+#
+# ⭐ Che cosa NON cambia: la funzione continua a non prendere `ambito` ne'
+# `emittente_fiscale_id`. Sa scrivere una cosa sola, ed e' tutto il suo valore.
+#
+# Verifica: db/pgtap/config/test-fn-email-sistema.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260906-01-update-fn-accoda-email-sistema-colonne-mctit.yaml
+
+  - changeSet:
+      id: 20260906-01-update-fn-accoda-email-sistema-colonne
+      author: mctit
+      failOnError: true
+      comment: >
+        config.fn_accoda_email_sistema accetta unita_organizzativa_id,
+        destinatari_cc e pratica_id: i chiamanti di sistema li passano, e
+        instradare senza accettarli avrebbe fatto sparire quel dato in silenzio.
+        DROP + CREATE perche' tre parametri con default avrebbero reso ambigua la
+        chiamata a tre argomenti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config'
+                 AND p.proname = 'fn_accoda_email_sistema'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ La firma vecchia se ne va: con i tre parametri nuovi le due
+              --   forme sarebbero entrambe chiamabili con tre argomenti, e la
+              --   chiamata diventerebbe ambigua.
+              DROP FUNCTION IF EXISTS config.fn_accoda_email_sistema(
+                  varchar, text, text, text, integer, integer, integer, jsonb);
+
+              CREATE OR REPLACE FUNCTION config.fn_accoda_email_sistema(
+                  p_destinatario          config.email_log.destinatario%TYPE,
+                  p_oggetto               config.email_log.oggetto%TYPE,
+                  p_corpo_html            config.email_log.corpo_inviato_html%TYPE,
+                  p_corpo_testo           config.email_log.corpo_inviato_testo%TYPE DEFAULT NULL,
+                  p_email_account_id      config.email_log.email_account_id%TYPE    DEFAULT NULL,
+                  p_email_template_id     config.email_log.email_template_id%TYPE   DEFAULT NULL,
+                  p_auth_user_id          config.email_log.auth_user_id%TYPE        DEFAULT NULL,
+                  p_contesto_json         config.email_log.contesto_json%TYPE       DEFAULT '{}'::jsonb,
+                  -- ⭐ I tre che mancavano. Non sono perimetro: sono CONTESTO,
+                  --   e servono a chi legge il giornale.
+                  -- ⚠️ `destinatari_cc` scrive il tipo e non `%TYPE`: su una
+                  --   colonna array quella forma non e' affidabile.
+                  p_unita_organizzativa_id config.email_log.unita_organizzativa_id%TYPE DEFAULT NULL,
+                  p_destinatari_cc         text[]                                      DEFAULT NULL,
+                  p_pratica_id             config.email_log.pratica_id%TYPE            DEFAULT NULL)
+               RETURNS config.email_log.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_id config.email_log.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Accodare una email di SISTEMA — reset password, alert,
+                  --   inviti — da un percorso che NON ha un utente in sessione.
+                  --
+                  -- ⛔ `ambito` NON e' un parametro, e nemmeno l'emittente: se
+                  --   lo fossero questa sarebbe una porta per scrivere
+                  --   qualunque email aggirando la policy. Sa scrivere una cosa
+                  --   sola, ed e' tutto il suo valore.
+                  -- =========================================================
+
+                  -- ⚠️ Un destinatario vuoto non e' un caso di frontiera: e' una
+                  --   email che non partira' mai e che nessuno colleghera' a
+                  --   niente. Si rifiuta subito, con un nome.
+                  IF p_destinatario IS NULL OR btrim(p_destinatario) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_accoda_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('oggetto', p_oggetto),
+                          NULL::uuid,
+                          'destinatario obbligatorio per una email di sistema');
+                  END IF;
+
+                  INSERT INTO config.email_log
+                      (email_account_id, email_template_id, destinatario,
+                       destinatari_cc, oggetto, corpo_inviato_html,
+                       corpo_inviato_testo, stato, ambito, emittente_fiscale_id,
+                       unita_organizzativa_id, pratica_id,
+                       auth_user_id, contesto_json)
+                  VALUES (p_email_account_id, p_email_template_id, p_destinatario,
+                          p_destinatari_cc, p_oggetto, p_corpo_html,
+                          p_corpo_testo, 'PENDING', 'SISTEMA', NULL,
+                          p_unita_organizzativa_id, p_pratica_id,
+                          p_auth_user_id, COALESCE(p_contesto_json, '{}'::jsonb))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_accoda_email_sistema(varchar, text, text, text, integer, integer, integer, jsonb, integer, text[], bigint)
+              IS 'Accoda una email di ambito SISTEMA (reset password, alert, inviti) da un percorso NON autenticato. ⭐ Esiste perche'' i percorsi di reset e invito girano con AllowAny e authentication_classes = []: senza utente in sessione, con la row level security accesa su config.email_log l''INSERT verrebbe respinto — cioe'' il reset password si romperebbe, che e'' proprio la ragione per cui le email di SISTEMA esistono. ⛔ `ambito` NON e'' un parametro, e nemmeno l''emittente: se lo fossero questa sarebbe una porta per scrivere QUALUNQUE email aggirando la policy. Sa scrivere una cosa sola. ⭐ Rev 2026-09-06: accetta anche unita_organizzativa_id, destinatari_cc e pratica_id — i chiamanti li passavano e senza di essi quel dato sarebbe sparito IN SILENZIO, che e'' peggio di un rifiuto. Non sono perimetro ma CONTESTO: servono a chi legge il giornale, non a chi decide i permessi. ⚠️ SECURITY DEFINER del proprietario della tabella e non di un superuser: la RLS e'' ENABLE senza FORCE, quindi l''owner non la subisce. ⚠️ La gemella che CHIUDE la riga (esito dell''invio) e'' config.fn_chiudi_email_sistema: instradare solo l''INSERT sposterebbe la rottura sull''UPDATE.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION config.fn_accoda_email_sistema(
+                          varchar, text, text, text, integer, integer, integer,
+                          jsonb, integer, text[], bigint)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si rimette la firma corta: un semplice DROP lascerebbe il
+              --   backend senza porta, e il reset password di nuovo rotto.
+              DROP FUNCTION IF EXISTS config.fn_accoda_email_sistema(
+                  varchar, text, text, text, integer, integer, integer, jsonb,
+                  integer, text[], bigint);
+
+              CREATE OR REPLACE FUNCTION config.fn_accoda_email_sistema(
+                  p_destinatario       config.email_log.destinatario%TYPE,
+                  p_oggetto            config.email_log.oggetto%TYPE,
+                  p_corpo_html         config.email_log.corpo_inviato_html%TYPE,
+                  p_corpo_testo        config.email_log.corpo_inviato_testo%TYPE DEFAULT NULL,
+                  p_email_account_id   config.email_log.email_account_id%TYPE   DEFAULT NULL,
+                  p_email_template_id  config.email_log.email_template_id%TYPE  DEFAULT NULL,
+                  p_auth_user_id       config.email_log.auth_user_id%TYPE       DEFAULT NULL,
+                  p_contesto_json      config.email_log.contesto_json%TYPE      DEFAULT '{}'::jsonb)
+               RETURNS config.email_log.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_id config.email_log.id%TYPE;
+              BEGIN
+                  IF p_destinatario IS NULL OR btrim(p_destinatario) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_accoda_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('oggetto', p_oggetto),
+                          NULL::uuid,
+                          'destinatario obbligatorio per una email di sistema');
+                  END IF;
+
+                  INSERT INTO config.email_log
+                      (email_account_id, email_template_id, destinatario,
+                       oggetto, corpo_inviato_html, corpo_inviato_testo,
+                       stato, ambito, emittente_fiscale_id,
+                       auth_user_id, contesto_json)
+                  VALUES (p_email_account_id, p_email_template_id, p_destinatario,
+                          p_oggetto, p_corpo_html, p_corpo_testo,
+                          'PENDING', 'SISTEMA', NULL,
+                          p_auth_user_id, COALESCE(p_contesto_json, '{}'::jsonb))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END
+              $function$;
