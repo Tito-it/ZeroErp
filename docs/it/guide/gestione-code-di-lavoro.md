@@ -1,6 +1,6 @@
 # Guida – Gestione delle code di lavoro
 
-> (latest review 20-07-26)
+> (latest review 06-09-2026)
 >
 > Destinatari: sviluppatori backend e database, analisti funzionali
 >
@@ -8,7 +8,8 @@
 >
 > * [Tracciamento processi e job](/guide/analisi-tracciamento-processi-e-job) — dove si osservano le esecuzioni del lavoratore che svuota la coda
 > * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — dove finiscono gli errori
-> * [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — i lavori *schedulati* (cron), che la coda **non** sostituisce
+> * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — **da leggere prima**: dice quali lavori devono passare di qui e con quale identità
+> * [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — l'elenco dei lavori a orario
 > * [Gestione mail](/guide/gestione-mail) — il secondo utilizzatore naturale (invio asincrono)
 > * [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori) e [dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro) — il dettaglio tecnico
 
@@ -68,10 +69,24 @@ Chi vuole il dettaglio tecnico (colonne, stati, indici) lo trova in
 **Non usarla quando** l'operazione:
 
 * è **istantanea** (una semplice lettura o un piccolo salvataggio): falla e basta;
-* è un **lavoro schedulato a orari fissi** (ogni notte, ogni ora): quello resta
-  gestito dagli strumenti di pianificazione già in uso
-  ([pgAgent + timer di sistema](/guide/processi-pgagent-funzionali)). La coda
-  gestisce lavori **su richiesta**, non l'orologio.
+* è un **lavoro schedulato a orari fissi** che riguarda la manutenzione del
+  sistema o gli accessi (ogni notte, ogni ora): quello resta gestito dagli
+  strumenti di pianificazione già in uso
+  ([pgAgent + timer di sistema](/guide/processi-pgagent-funzionali)).
+
+> 🔴 **Correzione del 06-09-2026, e ribalta la riga qui sopra per metà dei
+> casi.** Qui c'era scritto che i lavori a orario la coda «non li sostituisce».
+> Per i lavori che toccano i dati di un'azienda **li sostituisce**: l'orologio
+> si limita a **svegliare** — accoda un lavoro per ogni azienda — e a eseguirlo
+> è la coda, con l'identità di quell'azienda addosso.
+>
+> Il motivo in due righe: dentro l'orologio un lavoro non ha un nome, quindi le
+> protezioni che si basano sul nome non possono fare niente; e un suo fallimento
+> non arriva a nessuno. ⇒ [I lavori automatici — capitolo 4](/guide/processi-automatici-classe-e-identita)
+>
+> ⚠️ Ne segue una regola pratica: **un lavoro di dominio non si può accodare
+> senza un operatore**. Il sistema lo rifiuta, ed è voluto — è ciò che gli
+> impedisce di tornare a girare in incognito.
 
 ## Perché è stata costruita sul database, e non con Celery/RQ
 

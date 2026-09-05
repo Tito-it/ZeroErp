@@ -6,6 +6,19 @@
 > Riguarda i controlli che oggi esistono — i **riferimenti morti** nelle funzioni
 > del database, la **baseline dei test rossi** e il **codice errore che arriva al
 > backend** — e la forma che hanno in comune.
+>
+> ⭐ **Ce n'è una famiglia in più, nata a settembre 2026 e descritta altrove**:
+> gli otto controlli sui **lavori automatici** (chi non dice di chi sono i dati
+> che tocca, chi non ha un'identità, chi si è fermato senza che nessuno se ne
+> accorgesse). Sono fatti con la stessa forma raccontata nel §2 e portano un
+> pezzo in più — il **debito dichiarato** —, quindi vale la pena leggerli
+> insieme: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).
+>
+> ⚠️ Il pezzo in più è questo: in quei controlli una riga può restare **di
+> proposito**, se qualcuno ha scritto perché. Cambia la domanda a cui il
+> controllo risponde — non più «è vuoto?» ma «c'è qualcosa che *nessuno si
+> aspettava*?» — e cambia il prezzo: dichiarare un debito **zittisce** il
+> controllo su quel caso.
 > Il §4 spiega perché alcuni girano da soli e uno va lanciato a mano, che è la
 > domanda che si fanno tutti.
 

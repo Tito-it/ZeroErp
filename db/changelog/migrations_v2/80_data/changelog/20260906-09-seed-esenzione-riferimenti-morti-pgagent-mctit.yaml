@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ UN FALSO POSITIVO STRUTTURALE, non un debito.
+#   Presidio: db/pgtap/dbops/test-riferimenti-morti-v1.sql, test 2
+#
+# `dbops.fn_get_pgagent_job_stato` legge `pgagent.pga_job`. E' `SECURITY
+# DEFINER` del proprietario, che su quello schema i permessi ce li ha — e infatti
+# **a runtime funziona**: verificato leggendo `dbops.vw_processi_programmazione`
+# come `zeroerp_app`, 22 righe di cui 14 con le date di pgAgent.
+#
+# ⛔ Ma `plpgsql_check` **compila** il corpo con il ruolo di chi lancia il
+# controllo — la suite gira come `zeroerp_app` — e quel ruolo su `pgagent` non ha
+# `USAGE`. ⇒ `42501: permesso negato per lo schema pgagent`.
+#
+# ── ⭐ LA DOMANDA CHE IL CONTROLLO FA E' LA DOMANDA SBAGLIATA, QUI ──
+#   Chiede *«il chiamante puo' risolvere questo riferimento?»*. Per una
+#   `SECURITY DEFINER` la risposta giusta e' un'altra: *«puo' risolverlo il suo
+#   PROPRIETARIO?»* — e quella e' si'.
+#   ⚠️ E vale oltre questo caso: **ogni `SECURITY DEFINER` che legge uno schema
+#   non concesso al chiamante dara' lo stesso falso positivo.** Chi ne trovera'
+#   un altro sappia che e' questo, non un difetto nuovo.
+#
+# ── ⛔ LE DUE STRADE SCARTATE, e perche' ────────────────────────────
+#   * `GRANT USAGE ON SCHEMA pgagent TO zeroerp_app` — farebbe tacere il
+#     controllo aprendo all'applicazione **tutto** pgAgent, `pga_joblog`
+#     compreso, che contiene l'output dei comandi eseguiti. Per far tacere un
+#     test si concederebbe un archivio.
+#   * riscrivere la lettura in SQL **dinamico**, che `plpgsql_check` non analizza
+#     — cioe' scrivere codice peggiore per compiacere un controllo, e perdere
+#     l'unica verifica statica che quella query ha.
+#
+# ── ⚠️ IL PATTERN NON PUO' ESSERE IL MESSAGGIO ────────────────────
+#   `permesso negato per lo schema pgagent` e' **tradotto**: su un server con
+#   un'altra lingua il testo cambia, l'esenzione smetterebbe di agganciare e il
+#   presidio tornerebbe rosso per un motivo che non c'entra.
+#   ⇒ Si aggancia su cio' che non cambia: `%42501:%RETURN QUERY%` — il codice
+#     dell'errore **e l'istruzione** che lo produce.
+#   ⭐ E il registro stesso ha insegnato una cosa, rifiutando il primo tentativo:
+#     `chk_riferimenti_morti_esenzioni_pattern` pretende **almeno otto caratteri**
+#     tolti i `%`. Il solo `%42501%` (cinque) non passa — ed e' giusto: un
+#     pattern generico coprirebbe anche un difetto DIVERSO nella stessa funzione,
+#     e un'esenzione troppo larga e' un presidio spento a meta'.
+#   ⇒ Nominando anche l'istruzione, se un domani fosse un'ALTRA riga della
+#     funzione a dare 42501, l'esenzione non la coprirebbe.
+#
+# ── ✅ QUANDO ESCE DA QUESTO REGISTRO ───────────────────────────────
+#   Il giorno in cui `dbops.fn_get_pgagent_job_stato` smettesse di essere
+#   `SECURITY DEFINER`, o smettesse di leggere `pgagent.*`. ⛔ Non «quando
+#   qualcuno dara' i permessi a zeroerp_app»: quella e' la strada scartata, e
+#   riaprirla per togliere una riga di registro sarebbe un pessimo scambio.
+#
+# ⚠️ `INSERT` guardato da `NOT EXISTS`, non `DELETE` + reinserimento come il
+# `20260804-65`: quel changeSet riscriveva l'intero registro perche' era il primo.
+# Rifarlo qui cancellerebbe la voce di D6, che e' viva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260906-09-seed-esenzione-riferimenti-morti-pgagent-mctit.yaml
+
+  - changeSet:
+      id: 20260906-09-seed-esenzione-riferimenti-morti-pgagent
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Registra dbops.fn_get_pgagent_job_stato fra le esenzioni del presidio sui
+        riferimenti morti: e' SECURITY DEFINER e a runtime funziona (verificato
+        come zeroerp_app), ma plpgsql_check compila col ruolo di chi lancia la
+        suite, che su pgagent non ha USAGE. E' un falso positivo strutturale di
+        ogni SECURITY DEFINER che legge uno schema non concesso al chiamante.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: riferimenti_morti_esenzioni }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'fn_get_pgagent_job_stato'
+                     AND p.prosecdef
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Guardato da NOT EXISTS: il changeSet 20260804-65 riscriveva
+              --   l'intero registro perche' era il primo. Rifarlo qui
+              --   cancellerebbe la voce di D6, che e' viva.
+              INSERT INTO dbops.riferimenti_morti_esenzioni
+                     (schema_nome, funzione, esito_like, motivo, data_registrazione)
+              SELECT 'dbops',
+                     'fn_get_pgagent_job_stato',
+                     -- ⚠️ Lo SQLSTATE, non il messaggio: «permesso negato per lo
+                     --   schema pgagent» e' tradotto: su un server con un'altra
+                     --   lingua l'esenzione smetterebbe di agganciare. Si nomina
+                     --   anche l'ISTRUZIONE, cosi' un 42501 su un'altra riga
+                     --   della funzione non sarebbe coperto.
+                     '%42501:%RETURN QUERY%',
+                     'FALSO POSITIVO STRUTTURALE, non un debito. La funzione e'' SECURITY '
+                     'DEFINER del proprietario, che su pgagent ha i permessi: a runtime '
+                     'funziona — verificato leggendo dbops.vw_processi_programmazione come '
+                     'zeroerp_app (22 righe, 14 con le date di pgAgent). Ma plpgsql_check '
+                     'COMPILA il corpo con il ruolo di chi lancia la suite, che su pgagent '
+                     'non ha USAGE, e la domanda che pone — «il chiamante puo'' risolvere '
+                     'questo riferimento?» — per una SECURITY DEFINER e'' la domanda '
+                     'sbagliata: quella giusta e'' «puo'' risolverlo il suo PROPRIETARIO?», '
+                     'e la risposta e'' si''. ⚠️ Vale oltre questo caso: OGNI SECURITY '
+                     'DEFINER che legge uno schema non concesso al chiamante dara'' lo '
+                     'stesso falso positivo. ⛔ Scartato il GRANT USAGE su pgagent a '
+                     'zeroerp_app: aprirebbe anche pga_joblog, che contiene l''output dei '
+                     'comandi eseguiti — per far tacere un test si concederebbe un '
+                     'archivio. Scartata anche la riscrittura in SQL dinamico, che '
+                     'plpgsql_check non analizza: sarebbe codice peggiore per compiacere '
+                     'un controllo. ✅ Esce da questo registro il giorno in cui la funzione '
+                     'smette di essere SECURITY DEFINER o smette di leggere pgagent.*, NON '
+                     'il giorno in cui qualcuno desse i permessi all''applicazione.',
+                     DATE '2026-09-06'
+               WHERE NOT EXISTS (
+                     SELECT 1 FROM dbops.riferimenti_morti_esenzioni e
+                      WHERE e.schema_nome = 'dbops'
+                        AND e.funzione    = 'fn_get_pgagent_job_stato');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.riferimenti_morti_esenzioni
+               WHERE schema_nome = 'dbops'
+                 AND funzione    = 'fn_get_pgagent_job_stato';

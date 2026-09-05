@@ -10,10 +10,9 @@
 > intitolato «gli otto residui», sette dei quali chiusi. Un filo vivo dentro un
 > archivio non si legge: si perde.
 >
-> **Stato:** 🔴 **DUE PERCORSI SONO ROTTI ADESSO** (misurato su `dbdev`,
-> 2026-09-05): il reset password e gli inviti fatti da chi non è super admin.
-> È l'effetto della RLS accesa su `config.email_log` — attesa e voluta, ma la
-> metà che la rende percorribile non c'è ancora.
+> **Stato:** 🟢 **DB completo e applicato** (`20260906-01`, `-02`), test verdi —
+> §6. ⇒ Resta **solo** il pezzo del §5: un punto del backend, e i due percorsi
+> tornano a funzionare.
 
 ---
 
@@ -42,15 +41,21 @@ minuto dopo è un reset password che l'utente ha già chiesto due volte.
 | --- | --- |
 | `config.email_log` | RLS **accesa**, policy che ramifica su `ambito` (`20260905-41`…`-44`) |
 | `config.email_outbox` | idem (`20260905-32`, `-37`) |
-| `config.fn_accoda_email_sistema` | `SECURITY DEFINER`, scrive **solo** `ambito='SISTEMA'` con emittente `NULL` — ⭐ non è parametrica apposta: non è una porta per aggirare la policy |
+| `config.fn_accoda_email_sistema` | `SECURITY DEFINER`, scrive **solo** `ambito='SISTEMA'` con emittente `NULL` — ⭐ non è parametrica apposta: non è una porta per aggirare la policy. ✅ Dal `20260906-01` accetta anche `unita_organizzativa_id`, `destinatari_cc` e `pratica_id` |
+| `config.fn_chiudi_email_sistema` | ✅ **nuova** (`20260906-02`): la gemella che scrive l'ESITO dell'invio. Tocca **solo** righe `SISTEMA` e **solo** i campi dell'esito |
 | `script.fn_scope_identita_processo` | il ramo che fa leggere le `SISTEMA` all'identità tecnica di `send_pending_emails` |
 | lato BE | `ambito` non ha più default in nessuna firma; `create_outbox` valorizza l'emittente; `send_pending_emails` gira col roster, un'azienda alla volta |
 
 ---
 
-## 3. 🔴 Che cosa è rotto, misurato
+## 3. 🔴 Che cosa era rotto, misurato — *e che cosa manca perché non lo sia più*
 
-Chi riesce a scrivere una riga `SISTEMA` su `config.email_log`, oggi:
+> ⚠️ **Rilettura del 2026-09-06**: la tabella qui sotto è ancora vera, ma **non è
+> più un vicolo cieco**. Le due porte che mancavano ci sono (§6): dal momento in
+> cui il backend le usa (§5), il percorso senza sessione passa e le due righe
+> rosse diventano verdi. Non serve altro dal database.
+
+Chi riesce a scrivere una riga `SISTEMA` su `config.email_log`:
 
 | percorso | esito |
 | --- | --- |
@@ -109,7 +114,164 @@ rottura di due righe più in là, sull'`UPDATE`.
 
 ---
 
-## 6. Da dove viene
+## 6. ✅ Risposta del team DB (2026-09-06)
+
+> Fatte tutte e due. **Non serve altro dal database.**
+
+### ✅ §4.1 — `config.fn_chiudi_email_sistema` (`20260906-02`)
+
+La gemella che **chiude** la riga: `stato`, `errore`, `inviato_at`,
+`tentativi + 1`. ⭐ Avete ragione che sono una cosa sola — instradare solo
+l'`INSERT` avrebbe spostato la rottura di due righe più in là.
+
+⛔ **E non è una porta di servizio**, in due modi che non si possono dimenticare:
+
+* tocca **solo** righe di ambito `SISTEMA` — sta nella `WHERE`, non in un
+  controllo che qualcuno può saltare;
+* tocca **solo** i campi dell'esito. Non il destinatario, non il corpo, non
+  l'ambito, non l'emittente.
+
+⛔ **`PENDING` non è un esito ammesso**: questa chiude, non rimette in coda.
+Ammetterlo vorrebbe dire poter **resuscitare** una email già chiusa.
+
+⚠️ **E se la riga non è quella giusta, alza la voce** — un `UPDATE` che non trova
+niente è muto per natura, e chi chiama crederebbe di aver chiuso qualcosa. I due
+casi hanno **parole diverse**, perché hanno significati diversi:
+
+| | |
+| --- | --- |
+| la riga non esiste | un identificativo sbagliato |
+| esiste ma **non** è `SISTEMA` | ⛔ qualcuno sta usando la porta di sistema per una email di un'azienda |
+
+⭐ Il secondo è il caso pericoloso, ed è l'**unico momento** in cui lo si può
+notare: dirlo con la stessa frase del primo l'avrebbe sprecato.
+
+⚠️ `tentativi + 1` lo fa la funzione **perché lo faceva `update_log_stato`**:
+instradare dev'essere un cambio di indirizzo, non di comportamento. Se il
+conteggio cambiasse, ve ne accorgereste dai numeri e non da un errore.
+
+### ✅ §4.2 — le tre colonne: **si accettano** (`20260906-01`)
+
+`unita_organizzativa_id`, `destinatari_cc`, `pratica_id`.
+
+⭐ Delle due strade che lasciavate aperte abbiamo preso quella di allargare, e il
+motivo è che **non sono perimetro, sono contesto**: l'unità organizzativa di un
+invito dice a chi apparteneva la persona invitata, e serve a chi legge il
+giornale — non a chi decide i permessi.
+
+⛔ Toglierle dai chiamanti avrebbe voluto dire buttare via un'informazione che
+qualcuno aveva deciso di scrivere: una decisione di dominio, presa per comodità
+nostra.
+
+⚠️ **Nota tecnica**: è stato un `DROP` + `CREATE`, non un aggiornamento. Tre
+parametri nuovi con valore di default avrebbero reso **ambigua** la chiamata a
+tre argomenti — le due forme sarebbero state entrambe valide. La firma vecchia
+non esiste più.
+
+### I test
+
+| | |
+| --- | --- |
+| `db/pgtap/config/test-fn-email-sistema.sql` | **8** — le due porte, compreso il tentativo di chiudere una email di un'azienda |
+| `db/pgtap/rls/test-rls-email-log-ambito.sql` | **6** — gira **come l'applicazione**, con la RLS attiva: l'operatore non vede le `SISTEMA`, scrive le proprie, e una di un'altra azienda si ferma **spiegando** |
+
+⚠️ Il secondo file dichiara ciò che **non** prova: che l'identità tecnica veda
+davvero le righe — servirebbe girare nei suoi panni. Prova che il ramo **ci sia**,
+perché se sparisse la posta di sistema smetterebbe di partire in silenzio. Che
+funzioni livello per livello lo prova `test-fn-scope-identita-processo.sql`.
+
+### 🔵 Che cosa resta, ed è tutto vostro
+
+Il §5: **un punto solo** — `EmailRepository.create_log` instrada su
+`fn_accoda_email_sistema` quando `ambito = 'SISTEMA'`, e `update_log_stato` su
+`fn_chiudi_email_sistema`. ⚠️ Insieme, come dite voi.
+
+---
+
+## 6-bis. 📌 Fuori tema: la programmazione dei job (2026-09-06)
+
+> ⚠️ **Questo non è del cantiere email.** Sta qui perché è stato fatto lo stesso
+> giorno e Tid ha chiesto di registrarlo, non perché c'entri.
+> ⭐ Se cresce merita un brief suo — è la lezione scritta in cima a questo stesso
+> documento: *un filo vivo dentro un documento che parla d'altro non si legge, si
+> perde*.
+
+### La domanda
+
+*«Come ci assicuriamo che tutti i lavori abbiano una programmazione per essere
+avviati?»* — l'unico buco che il cantiere dei processi automatici aveva lasciato
+**dichiarato e scoperto**: i presidi guardano le **corse**, e un lavoro che
+nessuno sveglia non ne produce.
+
+### ⭐ La risposta non è dichiarare la cadenza: è confrontare due fonti
+
+pgAgent sa **quando un job ha girato e quando girerà**. Il nostro giornale sa
+**che cosa ha fatto**. ⇒ Quando le due cose non coincidono, **il job è girato e
+non l'ha detto** — la firma esatta di R-12.
+
+⛔ Dichiarare la cadenza su `dbops.processi` sarebbe stata una **seconda
+scrittura** di ciò che pgAgent già sa, e due scritture prima o poi dissentono.
+
+**`dbops.vw_processi_programmazione`** (`20260906-03`…`-05`, `-08`): per ogni
+processo attivo — chi lo sveglia, quando girerà, quando ha girato secondo
+pgAgent e secondo il giornale, e uno `stato` che dice se concordano.
+
+| | |
+| --- | --- |
+| **11** | `OK` |
+| **8** | `FUORI_PORTATA` — COMMAND e CODA: la loro sveglia vive fuori dal database |
+| **3** | `GIRA_E_NON_REGISTRA` |
+
+⚠️ `FUORI_PORTATA` **non significa «tutto bene»**: significa che il database non
+può saperlo. Dirlo `OK` sarebbe una bugia rassicurante, ed è il modo più efficace
+di non far guardare più nessuno.
+
+### 🔴 Che cosa ha trovato, appena accesa
+
+* **`apply_storicizza_weekly`** — R-12 confermato dal verso opposto: pgAgent dice
+  che ha girato il 5 settembre, il giornale è fermo al **21 febbraio**. ⇒ Le corse
+  ci sono state **tutte**: fallivano, e il `RAISE` cancellava il verbale.
+* **`chiusura_scadenze_daily`** — ⛔ **buco mio**: il `20260905-25`, trasformandolo
+  da esecutore a sveglia, ha messo una `SELECT` diretta e ha perso il wrapper.
+  Il lavoro veniva accodato bene; della sveglia non restava traccia. ⚠️ Nessun
+  test poteva prenderlo: guardavano tutti che il lavoro fosse accodato, e lo era.
+* **`sync_auth_user_expired_daily`** — così da sempre: non ha **mai** scritto una
+  riga di corsa.
+
+⇒ I due wrapper mancanti sono stati scritti (`-06`, `-07`). ⚠️ I tre restano a
+video finché non girano di nuovo: la vista riporta l'**ultima corsa nota**. Se
+sabato mattina il panorama è verde, R-12 è chiuso anche sul campo.
+
+### ⚠️ E un difetto che ho introdotto io, trovato da un presidio
+
+`fn_get_pgagent_job_stato` era `SECURITY INVOKER`, con tanto di motivazione
+scritta: *«chi legge deve avere il diritto, non glielo si presta»*. ⛔ Il
+principio è giusto in generale; qui rendeva **la vista illeggibile proprio da chi
+l'ha chiesta** — `zeroerp_app` non ha `USAGE` su `pgagent`.
+
+⭐ L'ha trovato `test-riferimenti-morti-v1`, che compila le funzioni con
+`plpgsql_check`. **Nessuna delle mie prove l'aveva visto**, perché giravano tutte
+da `titodb`, che quei permessi ce li ha.
+
+⇒ `-08` la porta a `SECURITY DEFINER` — porta stretta: tre campi innocui di un
+job nominato. ⛔ Scartato il `GRANT` sullo schema `pgagent` all'applicazione:
+avrebbe aperto anche `pga_joblog`, che contiene l'**output dei comandi eseguiti**.
+
+⚠️ E resta un falso positivo **strutturale**, registrato con il suo perché
+(`-09`): `plpgsql_check` compila col ruolo di chi lancia la suite, quindi **ogni**
+`SECURITY DEFINER` che legge uno schema non concesso al chiamante darà lo stesso
+errore. Chi ne troverà un altro sa che è questo.
+
+### ⛔ Che cosa resta scoperto
+
+**Il lavoro che non parte affatto, sui canali che pgAgent non sveglia.** Otto
+processi su ventidue: `COMMAND` programmati da crontab, `CODA` svegliati dal
+backend. Il panorama li nomina `FUORI_PORTATA` invece di darli per buoni — che è
+tutto quello che il database può onestamente fare.
+
+---
+
+## 7. Da dove viene
 
 Tutti in `work-done/`, archiviati il 2026-09-05:
 

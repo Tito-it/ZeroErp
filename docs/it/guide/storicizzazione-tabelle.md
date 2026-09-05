@@ -1,6 +1,6 @@
 # Guida – Storicizzazione delle Tabelle
 
-> (latest review 05-03-26)
+> (latest review 06-09-2026)
 >
 > Destinatari: sviluppatori database e backend
 >
@@ -64,6 +64,7 @@ Il modello e completamente automatizzato: il framework di automazione DB crea si
 **Manutenzione:**
 
 * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) — sincronizzazione catalogo
+* [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — il registro dei lavori a orario, e perché uno di questi è rimasto rotto sei mesi
 * [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — applicazione default settimanale
 
 ---
@@ -398,13 +399,32 @@ validazione.
 
 Scansiona il catalogo PostgreSQL per rilevare automaticamente tutte le tabelle con colonna `storicizza` il cui DEFAULT e `true`, e le registra in `config.storico_set_storicizza` con `insert_manuale = false`.
 
-Usa `ON CONFLICT (table_name) DO NOTHING` per idempotenza.
+> ⭐ **Dal 06-09-2026 la sincronizzazione fa anche il contrario: POTA.**
+> Prima sapeva solo aggiungere. Quando una tabella veniva ritirata, la sua riga
+> restava — a puntare a niente, per sempre, finché qualcuno non la notava.
+>
+> ⛔ E non era un dettaglio: tre righe rimaste così hanno fatto fallire il lavoro
+> notturno **ogni sabato per sei mesi**, senza che nessuno lo sapesse.
+>
+> ⚠️ Si pota **solo** ciò che la scansione ha smesso di produrre. Le righe
+> inserite a mano (`insert_manuale = true`) non si toccano: quelle non sono un
+> risultato della derivazione, sono una decisione di qualcuno.
 
 **Job wrapper:** `proc_sync_storico_set_storicizza_job` — esecuzione schedulata con advisory lock e logging via `fn_run_and_log`.
 
 ### Applicazione default: `proc_apply_storicizza_defaults`
 
 Itera tutte le tabelle registrate in `config.storico_set_storicizza` e applica `ALTER TABLE ... ALTER COLUMN storicizza SET DEFAULT true`.
+
+> ⭐ **Dal 06-09-2026 una riga guasta non ferma più le altre.**
+> Prima bastava una riga che puntava a una tabella inesistente per interrompere
+> il giro per tutte le altre cento.
+>
+> ⚠️ E non è la conseguenza della potatura qui sopra: chi produce l'elenco e chi
+> lo consuma sono **due lavori distinti su due orari diversi**. Se l'applicazione
+> gira prima della sincronizzazione — e prima o poi capita — la riga vecchia c'è
+> ancora. Chi consuma un elenco costruito da altri non può morire perché una
+> riga non è ancora stata ripulita.
 
 **Scheduling:** ogni sabato alle 07:00 UTC tramite pgAgent job `apply_storicizza_weekly`.
 

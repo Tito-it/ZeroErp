@@ -1,13 +1,18 @@
 # Guida — Processi pgAgent funzionali
 
-> (latest review 2026-04-24)
+> (latest review 06-09-2026)
 >
 > Destinatari: sviluppatori database, backend, analisti funzionali
 >
-> Questa guida cataloga i **job pgAgent di dominio** (business-driven):
-> processi notturni/periodici che operano sui dati operativi per
-> sincronizzare stato, chiudere finestre temporali, allineare flag
-> governativi con le regole di workflow.
+> Questa guida è l'**elenco dei lavori a orario**: quali esistono, quando
+> partono, che cosa fanno, come se ne aggiunge uno.
+>
+> 🔴 **Dal 06-09-2026 non è più qui che si decide la natura di un lavoro.**
+> La divisione «funzionale / infrastrutturale» che questa guida usava è stata
+> sostituita da tre nature dichiarate in un registro, e da una regola che cambia
+> il mestiere dell'orologio: **un lavoro che tocca i dati di un'azienda non viene
+> più eseguito dentro pgAgent — viene messo in coda.**
+> ⇒ [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita)
 >
 > Vedi anche:
 >
@@ -18,19 +23,17 @@
 
 ---
 
-## Funzionale vs infrastrutturale
+## Funzionale vs infrastrutturale — ⛔ superata
 
-In Zero ERP convivono due tipologie di job pgAgent.
+> La divisione a **due** che stava qui non si usa più: metteva nello stesso
+> mucchio la pulizia del database e la chiusura dei contratti di un'azienda.
+> Oggi le nature sono **tre** (manutenzione, amministrazione, dominio) e si
+> scelgono rispondendo a una domanda sola: *«questo lavoro scrive dati che
+> appartengono a un'azienda in particolare?»*.
+>
+> ⇒ [I lavori automatici — capitolo 3](/guide/processi-automatici-classe-e-identita)
 
-**Infrastrutturali** — non operano su dati di dominio, fanno manutenzione del DB:
-applicazione policy indici FK, storicizzazione tecnica, cleanup framework
-automazioni. Documentati in [framework automazione DB](/guide/automazione-db).
-
-**Funzionali** — agiscono su entita' di dominio per mantenere la coerenza
-del workflow di business (es. chiudere stati, disattivare utenti,
-scadere finestre). Sono quelli di cui si occupa questa guida.
-
-Ogni job funzionale rispetta il principio **"fonte di verita' =
+Resta valido, e vale per tutti, il principio **"fonte di verita' =
 dato operativo, job sincronizza flag derivati"**: il job non decide
 la logica, applica il workflow gia' codificato nei trigger/funzioni.
 Se il job non scatta (DB down, disabilitato), la logica operativa
@@ -44,7 +47,7 @@ corretta.
 | Job | Schedule | Scopo | Dominio | Migration |
 |---|---|---|---|---|
 | `sync_auth_user_expired_daily` | daily 06:00 | Disattiva `auth_user` per risorse umane con finestra temporale scaduta | anagrafiche | `85_pgagent/20260302-04-...` |
-| `chiusura_scadenze_daily` | daily 00:05 | Framework parametrico: chiude lo stato gestionale (CHIUSA/CESSATO) sulle tabelle configurate in `dbops.automazione_chiusura_scadenze` quando `valido_al < CURRENT_DATE` | dbops (cross-dominio) | `85_pgagent/20260426-06-...` |
+| `chiusura_scadenze_daily` | daily 00:05 | 🔴 **Non chiude più niente da sé: ACCODA.** Mette in coda un lavoro per ogni azienda, che poi viene eseguito con l'identità di quell'azienda. Vedi [fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze) | vendite (per azienda) | `85_pgagent/20260905-25-...` |
 
 > **Nota storica (26-04-2026)**: il job `listini_versioni_close_scadute_daily` (creato il 24-04-2026 per chiudere le sole versioni listino) e' stato sostituito dal job parametrico `chiusura_scadenze_daily`. La funzione specifica `vendite.fn_listini_versioni_close_scadute()` e' stata droppata. Aggiungere nuove tabelle al pattern non richiede piu' nuovo codice DB: basta una INSERT seed in `dbops.automazione_chiusura_scadenze`.
 
@@ -102,6 +105,17 @@ corretta.
 
 ## Pattern raccomandato per nuovi job funzionali
 
+> 🔴 **Prima di seguirlo, una domanda: questo lavoro tocca i dati di
+> un'azienda?** Se sì, i punti qui sotto **non bastano**, e il punto 2 in
+> particolare descrive ciò che oggi non si fa più: un lavoro di dominio non
+> esegue dentro l'orologio, lo mette in **coda** e a eseguirlo è la coda, con
+> l'identità dell'azienda addosso.
+> ⇒ [I lavori automatici — capitoli 4 e 5](/guide/processi-automatici-classe-e-identita)
+>
+> ✅ I punti restano validi per i lavori di **manutenzione** e
+> **amministrazione**, e per il job-sveglia di un lavoro di dominio (che è un
+> job pgAgent a tutti gli effetti: si limita ad accodare).
+
 1. **Funzione incapsulata in `20_code/<schema>/`**: il job non deve contenere SQL business inline. Creare `schema.fn_<operazione>()` che ritorna un conteggio o un JSON di risultato, richiamabile anche manualmente per test e recovery fuori schedulazione.
 2. **Logica nel trigger, non nel job**: le regole (quali righe modificare, a quale condizione) vivono nei trigger/funzioni di dominio. Il job esegue UPDATE/SELECT che **attraversa** i guard e li soddisfa per costruzione. Evitare bypass via GUC o SECURITY DEFINER salvo necessita' dimostrata.
 3. **Fonte di verita' = dato primario**: il flag sincronizzato (es. `stato`, `is_active`) **non** deve essere usato dalla logica operativa. Il resolver/consumer legge il dato primario (date, ranges, eventi) e lo stato resta "cosmetico" per UI/reportistica. Se il job salta, la logica operativa resta corretta.
@@ -117,15 +131,31 @@ corretta.
 
 * **pgAgent interno**: `pgagent.pga_joblog` (esito esecuzione job) e `pgagent.pga_jobsteplog` (esito singolo step).
 * **Log applicativo**: se la funzione chiamata esegue `script.fn_log_and_raise_error` o `script.fn_log_error_only` in caso di problemi, il log finisce in `dbops.error_log` via dblink.
-* **Framework job run log**: `maintenance.job_run_log` — usato dai wrapper `maintenance.run_and_log(...)` per i job che adottano quel pattern (oggi principalmente i job infrastrutturali).
+* **Giornale delle esecuzioni**: [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) — ogni corsa lascia una riga con **chi era** (quale lavoro, con quale identità), non solo com'è andata.
 
-Per i job funzionali elencati qui, il tracciamento primario e' `pga_joblog`. L'adozione del wrapper `maintenance.run_and_log` e' una best practice futura per uniformare il log.
+> ⛔ **Aggiornato il 06-09-2026.** Qui c'era scritto che per questi job il
+> tracciamento primario era `pga_joblog` e che il giornale era «una best
+> practice futura». Non è più così, e la differenza non è formale:
+>
+> * il giornale ora dice **chi** ha eseguito, e chi non lo dice finisce in
+>   [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore);
+> * fino a settembre **un fallimento non lasciava traccia**: la riga «è andata
+>   male» veniva annullata insieme all'errore. Oggi il verbale viaggia su una
+>   linea separata e sopravvive. È il motivo per cui un lavoro è rimasto rotto
+>   sei mesi senza che nessuno lo sapesse.
+>
+> Il racconto per esteso: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).
 
 ---
 
 ## Quando NON usare un job pgAgent
 
-Un job notturno e' appropriato quando:
+> 🔴 **La prima risposta oggi è una sola: quando il lavoro tocca i dati di
+> un'azienda.** In quel caso l'orologio può soltanto **svegliare**, e il lavoro
+> lo fa la coda. Dentro l'orologio nessuno ha un nome, e un fallimento non
+> arriva a nessuno.
+
+Per il resto, un job notturno e' appropriato quando:
 
 * l'allineamento puo' essere **asincrono** (ritardo ore accettabile);
 * la logica operativa **non dipende** dal flag sincronizzato (altrimenti diventa un single point of failure);

@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 CORRETTIVA DEL `20260906-04`: la vista era illeggibile per chi doveva usarla.
+#
+# `fn_get_pgagent_job_stato` era `SECURITY INVOKER`, e nel suo changeSet c'era
+# scritto il perche': *«chi legge deve avere il diritto di sapere quando girano
+# i job, non glielo si presta»*. ⚠️ Il principio e' giusto in generale. Qui era
+# sbagliato, e per un motivo che si vede solo provando:
+#
+#     zeroerp_app -> USAGE su schema pgagent: FALSE
+#     SELECT * FROM dbops.vw_processi_programmazione;
+#       ERRORE: permesso negato per lo schema pgagent
+#
+# ⇒ Non e' che il chiamante «non avesse il diritto»: e' che **il panorama non si
+#   poteva aprire**, proprio da chi l'ha chiesto. Un privilegio negato che rende
+#   inutilizzabile la funzione non protegge niente — toglie una funzione.
+#
+# ── ⭐ CHI L'HA TROVATO ─────────────────────────────────────────────
+#   `db/pgtap/dbops/test-riferimenti-morti-v1.sql`, il presidio che compila le
+#   funzioni con `plpgsql_check`:
+#     `dbops.fn_get_pgagent_job_stato -> 42501: permesso negato per lo schema pgagent`
+#   ⚠️ Nessuna delle mie prove l'aveva visto, perche' giravano tutte da `titodb`,
+#   che su `pgagent` i permessi ce li ha. ⭐ Il presidio ha fatto esattamente il
+#   mestiere per cui esiste: guardare una funzione dal punto di vista di chi non
+#   e' il proprietario.
+#
+# ── ⛔ LA STRADA SCARTATA: dare i permessi all'applicazione ─────────
+#   `GRANT USAGE ON SCHEMA pgagent TO zeroerp_app` avrebbe funzionato, e avrebbe
+#   aperto all'applicazione **tutto** lo schema di pgAgent — job, step,
+#   schedulazioni e `pga_joblog`, che contiene l'**output** dei comandi eseguiti.
+#   ⇒ Per far leggere tre date si sarebbe concesso un archivio.
+#
+# ── ⭐ LA STRADA PRESA: la porta stretta ────────────────────────────
+#   `SECURITY DEFINER`, come `config.fn_accoda_email_sistema`. La funzione
+#   restituisce **tre campi innocui** — acceso, ultima corsa, prossima corsa — di
+#   **un job nominato**, e niente altro. Non c'e' un parametro che permetta di
+#   farle dire altro.
+#   ⚠️ E basta il proprietario degli oggetti (`titodb`), che su `pgagent` ha gia'
+#   i permessi: nessun superuser, nessuna riga in `dbops.sec_functions_owner`.
+#
+# ── ⚠️ `SET search_path` OBBLIGATORIO ──────────────────────────────
+#   Una `SECURITY DEFINER` senza `search_path` fissato e' una funzione che si
+#   puo' dirottare cambiando il percorso di ricerca del chiamante.
+#
+# ⭐ `CREATE OR REPLACE` basta: firma e tipo di ritorno non cambiano, cambia solo
+# per conto di chi la funzione legge.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260906-08-fix-fn-get-pgagent-job-stato-definer-mctit.yaml
+
+  - changeSet:
+      id: 20260906-08-fix-fn-get-pgagent-job-stato-definer
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.fn_get_pgagent_job_stato diventa SECURITY DEFINER: era INVOKER, e
+        zeroerp_app non ha USAGE sullo schema pgagent — la vista di panorama era
+        illeggibile proprio da chi deve usarla. L'alternativa (GRANT sullo schema
+        pgagent all'applicazione) avrebbe aperto anche pga_joblog, che contiene
+        l'output dei comandi. Trovato da test-riferimenti-morti-v1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname = 'fn_get_pgagent_job_stato'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_get_pgagent_job_stato(
+                  p_jobname text)
+               RETURNS TABLE (
+                   abilitato           boolean,
+                   ultima_esecuzione   timestamptz,
+                   prossima_esecuzione timestamptz)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY DEFINER
+               -- ⚠️ Obbligatorio su una SECURITY DEFINER: senza, la si dirotta
+               --   cambiando il search_path del chiamante.
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire che cosa sa pgAgent di un job: se e' acceso, quando
+                  --   ha girato, quando girera'.
+                  --
+                  -- ⭐ SECURITY DEFINER, e la porta e' STRETTA: torna tre campi
+                  --   innocui di UN job nominato. L'alternativa era dare
+                  --   all'applicazione l'accesso all'intero schema pgagent —
+                  --   compreso pga_joblog, che contiene l'output dei comandi.
+                  --   Per far leggere tre date si sarebbe concesso un archivio.
+                  --
+                  -- ⛔ Zero righe significa «non so niente di questo job»:
+                  --   l'estensione manca, oppure il job non c'e'. Chi chiama e'
+                  --   un LEFT JOIN LATERAL e vede colonne vuote — che e' la
+                  --   risposta giusta, non un errore.
+                  -- =========================================================
+
+                  IF p_jobname IS NULL THEN
+                      RETURN;   -- il processo non dichiara nessun job
+                  END IF;
+
+                  -- ⚠️ La guardia non e' per scaramanzia: su un ambiente senza
+                  --   pgAgent quella tabella non esiste, e senza questo controllo
+                  --   la funzione fallirebbe alla PRIMA chiamata — cioe' la vista
+                  --   di panorama sarebbe inutilizzabile proprio dove serve di
+                  --   piu' capire che cosa manca.
+                  IF to_regclass('pgagent.pga_job') IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT j.jobenabled, j.joblastrun, j.jobnextrun
+                    FROM pgagent.pga_job j
+                   WHERE j.jobname = p_jobname;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_get_pgagent_job_stato(text)
+              IS 'Che cosa sa pgAgent di un job: se e'' abilitato, quando ha girato l''ultima volta, quando girera'' la prossima. Sono le due date che il nostro giornale non ha, e servono a rispondere a «tutti i lavori hanno una programmazione, e stanno partendo?». ⛔ E'' una FUNZIONE plpgsql e non un JOIN dentro una vista perche'' 85_pgagent in CI e'' MARK_RAN: una vista si risolve alla CREATE e il migrate si fermerebbe dove l''estensione non c''e'' — stessa regola presa per django.* col changeSet 20260905-30. ⭐ SECURITY DEFINER dal 20260906-08, ed e'' una CORREZIONE: era INVOKER, e zeroerp_app non ha USAGE sullo schema pgagent — la vista di panorama era illeggibile proprio da chi deve usarla («permesso negato per lo schema pgagent»). L''alternativa era un GRANT sullo schema all''applicazione, che avrebbe aperto anche pga_joblog (l''output dei comandi eseguiti): per far leggere tre date si sarebbe concesso un archivio. ⇒ Porta stretta: tre campi innocui di UN job nominato. ⚠️ Basta il proprietario degli oggetti, che su pgagent ha gia'' i permessi: nessun superuser. ⚠️ Torna ZERO RIGHE se l''estensione manca, se il jobname e'' NULL o se quel job non esiste. ⭐ Il difetto l''ha trovato test-riferimenti-morti-v1, compilando la funzione con plpgsql_check: nessuna prova manuale l''aveva visto, perche'' giravano tutte da titodb.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna a SECURITY INVOKER, cioe' a una vista che
+              --   l'applicazione non riesce ad aprire.
+              ALTER FUNCTION dbops.fn_get_pgagent_job_stato(text) SECURITY INVOKER;

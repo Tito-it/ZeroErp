@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ QUALE JOB pgAgent SVEGLIA QUESTO PROCESSO — e non e' derivabile.
+#   Serve a: dbops.vw_processi_programmazione (20260906-05)
+#
+# ── ⛔ PERCHE' NON BASTA IL NOME ────────────────────────────────────
+#   Sembrava che `pga_job.jobname` e `dbops.processi.codice` fossero la stessa
+#   cosa. **Misurato il 2026-09-06: due job su quattordici no.**
+#
+#     job pgAgent `automations_cleanup_weekly`
+#       -> chiama  maintenance.proc_automations_cleanup_job()
+#       -> che registra come  `automations_cleanup`
+#
+#   ⇒ L'allineamento di DB-7 ha sistemato il registro e cio' che i wrapper
+#     scrivono nel giornale, **non l'etichetta dei job**. Niente e' rotto: il
+#     giornale e il registro concordano. ⛔ Ma un presidio costruito sul join per
+#     nome sarebbe nato con **due falsi allarmi**, e un presidio che grida a
+#     vuoto viene spento.
+#
+# ── ⚠️ NULLABLE, E IL NULL DICE QUALCOSA ───────────────────────────
+#   La riempiono solo i processi che un job pgAgent sveglia. Per `COMMAND` la
+#   programmazione vive in crontab, fuori dal database; per `CODA` la sveglia il
+#   backend. ⇒ `NULL` non e' un dato mancante: e' **«questo processo non lo
+#   sveglia pgAgent»**, ed e' la verita'.
+#   ⛔ Un `NOT NULL` con un valore finto avrebbe fatto sembrare misurabile cio'
+#   che non lo e'.
+#
+# ── ⚠️ NESSUNA FK, E NON SI PUO' AVERE ─────────────────────────────
+#   Il bersaglio sarebbe `pgagent.pga_job`, che in CI **non esiste** (`85_pgagent`
+#   e' `MARK_RAN`) e che comunque e' una tabella di un'estensione: una FK la
+#   renderebbe un prerequisito strutturale del nostro schema.
+#   ⇒ Il legame resta una dichiarazione, e chi lo verifica e' la vista: se il job
+#     nominato non c'e', la riga lo dice invece di sparire.
+#
+# ⭐ E la colonna serve anche al verso opposto: un job pgAgent **acceso** che
+# nessun processo dichiara e' un lavoro che gira senza essere a catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260906-03-alter-processi-jobname-pgagent-mctit.yaml
+
+  - changeSet:
+      id: 20260906-03-alter-processi-jobname-pgagent
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi prende jobname_pgagent (nullable): quale job pgAgent
+        sveglia il processo. Non e' derivabile dal codice — misurato, due job su
+        quattordici hanno un nome diverso da quello che registrano nel giornale,
+        e un presidio costruito sul join per nome nascerebbe con due falsi
+        allarmi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi }
+            - not:
+                - columnExists:
+                    schemaName: dbops
+                    tableName: processi
+                    columnName: jobname_pgagent
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN jobname_pgagent text;
+
+              -- ⚠️ Un nome vuoto non e' «nessun job»: e' un dato scritto male.
+              --   `NULL` dice «non lo sveglia pgAgent», la stringa vuota non dice
+              --   niente e passerebbe per un legame dichiarato.
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_jobname_pgagent_non_vuoto
+                  CHECK (jobname_pgagent IS NULL OR btrim(jobname_pgagent) <> '');
+
+              -- ⛔ Due processi non possono dichiarare lo stesso job: sarebbe
+              --   ambiguo di chi e' la corsa che quel job produce.
+              CREATE UNIQUE INDEX uq_processi_jobname_pgagent
+                  ON dbops.processi (jobname_pgagent)
+               WHERE jobname_pgagent IS NOT NULL;
+
+              COMMENT ON COLUMN dbops.processi.jobname_pgagent IS
+                  'Il nome del job pgAgent che sveglia questo processo. ⛔ NON e'' '
+                  'derivabile dal codice: misurato il 2026-09-06, due job su quattordici '
+                  'hanno un nome diverso da quello che registrano nel giornale — il job '
+                  'automations_cleanup_weekly chiama un wrapper che registra come '
+                  'automations_cleanup. Niente e'' rotto (giornale e registro concordano), '
+                  'ma un presidio costruito sul join per nome sarebbe nato con due falsi '
+                  'allarmi, e un presidio che grida a vuoto viene spento. ⚠️ NULL non e'' '
+                  'un dato mancante: significa «questo processo non lo sveglia pgAgent» — '
+                  'i COMMAND li programma crontab, fuori dal database, e i CODA li sveglia '
+                  'il backend. ⚠️ Nessuna FK verso pgagent.pga_job: in CI quella tabella '
+                  'non esiste (85_pgagent e'' MARK_RAN) e una FK la renderebbe un '
+                  'prerequisito strutturale. Il legame lo verifica '
+                  'dbops.vw_processi_programmazione: se il job nominato non c''e'', la riga '
+                  'lo dice invece di sparire.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS dbops.uq_processi_jobname_pgagent;
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_jobname_pgagent_non_vuoto;
+              ALTER TABLE dbops.processi
+                  DROP COLUMN IF EXISTS jobname_pgagent;

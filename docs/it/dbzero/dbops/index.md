@@ -65,6 +65,7 @@
 - [fn_get_lookup_codici](funzioni/fn_get_lookup_codici.md) — (rev 2026-06-30 — filtro asse `obsoleto_dal`; rev 2026-05-20 — override dichiarativi via automation_overrides_cols)
 - [fn_get_or_create_session_tx_id](funzioni/fn_get_or_create_session_tx_id.md) — (latest review 22-07-2026) * **Unicità per transazione**: restituisce un `tx_id` costante per la durata della transazione. La GUC è impostata con `set_config(..., TRUE)`, quindi **locale**: ogni nuova transazione ottiene il proprio identificativo. È coerente col nome — un identificativo *di transazione* non deve sopravvivere alla transazione. * **Fallback sicuro**: se il canale di log non è disponibile, restituisce l’UUID “nil” per non bloccare i processi. * **Contesto centralizzato**: memorizza il `tx_id` nella GUC `dbops.tx_id` per gli accessi successivi.
 - [fn_get_override_col](funzioni/fn_get_override_col.md) — (latest review 10-01-26) La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`** permette di ottenere in modo centralizzato il nome di una colonna “override” per un ruolo specifico, qualora sia stato definito nella tabella di configurazione `dbops.automation_overrides_cols`. Se non esiste un override registrato, viene restituito il valore di default passato come parametro.
+- [fn_get_pgagent_job_stato](funzioni/fn_get_pgagent_job_stato.md)
 - [fn_get_pipeline_task_implementation](funzioni/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
 - [fn_grant_storico_shadows](funzioni/fn_grant_storico_shadows.md)
 - [fn_list_indices](funzioni/fn_list_indices.md) — (rev 2026-08-21)
@@ -134,6 +135,7 @@
 - [vw_processi_dominio_senza_emittente](views/vw_processi_dominio_senza_emittente.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_senza_identita](views/vw_processi_dominio_senza_identita.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_su_pgagent](views/vw_processi_dominio_su_pgagent.md) — (latest review 05-09-2026)
+- [vw_processi_programmazione](views/vw_processi_programmazione.md)
 - [vw_processi_roster](views/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
