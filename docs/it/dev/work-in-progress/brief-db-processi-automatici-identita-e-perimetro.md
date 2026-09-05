@@ -1640,6 +1640,8 @@ il nuovo dal vecchio invece di mostrare sempre gli stessi quattro.
 | **D2** | ⛔ **Il ramo della macchina NON sta sulla policy di `config.email_outbox`.** Misurato: quel processo legge `config.email_log`, e l'outbox non la apre mai — né inviando una bozza (gira dentro la richiesta HTTP) né ritentando | DB, condivisa |
 | **D3** | ⛔ **La `ROW LEVEL SECURITY` resta spenta** finché il backend non rende `ambito` un'**affermazione** e non valorizza l'emittente | Tid |
 | **D4** | ⚙️ **Forma forward-only anche qui**: `-32` è già applicato, quindi non si corregge sul posto — si scrive `-33`. Il `-32` diventa copia storica | standard di progetto |
+| **D6** | ✅ **La RLS su `config.email_outbox` si accende** (`20260905-37`), write-guard compreso — accettando che le bozze restino inutilizzabili finché il backend non toglie il default di `ambito` | Tid |
+| **D5** | ⛔ **`config.email_outbox` NON è più un bersaglio dichiarato** (`20260905-34`): le bozze le scrive **l'interfaccia**, non un processo automatico. Una riga di `processi_bersagli` afferma *«questo processo tocca questa tabella»*, e quella era **falsa** | Tid |
 
 #### Le conseguenze, che non sono scelte
 
@@ -1664,11 +1666,63 @@ in un posto che si legge **quando si indaga un incidente**.
 ⚠️ La simmetria fra le due tabelle era tentante — stesso tipo di contenuto — ma
 due tabelle con **lettori diversi** si somigliano per caso.
 
+#### ⚠️ Che cosa comporta D5, e va detto invece che scoperto
+
+Con la riga 30 fuori, `dbops.vw_processi_dominio_senza_difesa` va a **ZERO** — e
+la row level security su `config.email_outbox` è ancora **spenta**.
+
+⛔ Non è un debito messo sotto il tappeto: è un debito che **non apparteneva a
+quel presidio**. La domanda che fa è *«i processi automatici rispettano il
+perimetro emittente?»*, non *«ogni tabella del database è difesa?»*. Rispondere
+alla seconda con lo strumento della prima significa tenere una riga **falsa** per
+non perdere una spia — e una riga falsa in un censimento è esattamente il difetto
+che ci è costato due giorni.
+
+⭐ Il debito resta scritto dove è vero: qui in §12.15, e soprattutto nella **riga
+51** — `config.email_log`, il bersaglio vero, che il livello 1 nomina come
+`DEBITO_DICHIARATO` finché non ha la colonna emittente. *Quello* sì è un debito
+di processo.
+
+⚠️ E ne segue una correzione al test: `test-presidi-debito-dichiarato` test 5
+chiedeva che `email_outbox` comparisse nel livello 2 — cioè **si appoggiava a un
+debito reale**. È la quarta volta che questa lezione si paga. Ora il caso lo
+**costruisce**, simmetrico al test 6 che costruisce quello opposto.
+
+#### ✅ D6 — la RLS si accende (`20260905-37`)
+
+**Decisione di Tid, 2026-09-05 sera.** Verificato sui dati: le 6 righe a bordo
+sono tutte `SISTEMA` senza emittente — nate quando `SISTEMA` voleva dire
+*«nessuno ha detto»* — e sono tutte **`CANCELLED`, di prova** («Test», «Test
+smoke»), dell'utente 1. ⇒ Accendere non nasconde niente che qualcuno stia usando.
+
+Il changeSet accende la row level security **e** monta il write-guard: sono lo
+stesso gesto, perché un guard è un trigger e morde anche con la RLS spenta.
+
+> 🔴 **Ma il blocco del write path non è stato tolto, e va detto.** Misurato
+> stasera sul codice: `email_views.py:84` scrive ancora
+> `ambito=(payload.get("ambito") or "SISTEMA")` — il default c'è — e
+> `create_outbox` **non valorizza** `emittente_fiscale_id`.
+>
+> ⇒ Da quando `-37` è applicato, **un operatore non può più creare una bozza**:
+> quella `SISTEMA` la respinge il `WITH CHECK` della policy, quella con un ambito
+> vero violerebbe `chk_email_outbox_ambito_emittente` — e quest'ultimo caso
+> fallisce **già oggi**, senza RLS (verificato eseguendolo).
+
+⚠️ **Il costo è delimitato, ed è la ragione per cui si accende lo stesso**: la
+funzione bozze oggi non la usa nessuno, e non siamo in produzione. ⭐ Si sblocca
+con **una riga** di Python — punti 1 e 2 della lista al backend.
+
+⛔ Chi incontrerà quell'errore ha trovato questo, non un difetto nuovo: sta
+scritto nell'intestazione del changeSet, che è dove lo si cerca.
+
+⭐ **E il livello 2 va a zero per il motivo giusto**: non perché la riga di
+censimento sia stata tolta (quella è D5), ma perché da qui la tabella è
+**davvero difesa** — misurato in transazione, il presidio esce vuoto.
+
 #### 🔵 Che cosa resta da decidere
 
 | | |
 | --- | --- |
-| 🔵 | `config.email_outbox` deve **restare** un bersaglio dichiarato? Un bersaglio afferma *«un processo automatico tocca questa tabella»*, e per le bozze non è vero — le scrive l'interfaccia. La riga 30 non è stata tolta: è una decisione, non una pulizia |
 | 🔵 | `fn_run_and_log` scrive il fallimento e il `RAISE` lo butta via ⇒ **nessuno dei dodici job può lasciare una riga rossa**. Tre strade, tutte con conseguenze sui dodici insieme (brief storicizzazione §4) |
 
 ---

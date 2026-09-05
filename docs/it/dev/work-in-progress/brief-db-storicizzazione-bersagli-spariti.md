@@ -9,9 +9,9 @@
 > §1-quinquies). Qui c'è la **misura del backend**, che aggiunge tre fatti che
 > cambiano la forma del problema.
 >
-> **Stato:** 🟢 **§2.1 e §2.2 fatte** (changeSet `20260905-28` / `-29`, da
-> applicare). 🔵 **§2.3 misurata e diagnosticata** — la causa è più precisa di
-> quella scritta qui, e sta nel §4. ⚠️ **Non blocca il backend**, e non è di questo cantiere:
+> **Stato:** 🟢 **CHIUSO — §2.1, §2.2 e §2.3 fatte e applicate** il 2026-09-05
+> (changeSet `-28`, `-29`, `-35`, `-36`, `-38`, `-39`), test verdi. Resta
+> scoperto un solo caso, dichiarato nel §5: **il job che non parte affatto**. ⚠️ **Non blocca il backend**, e non è di questo cantiere:
 > lo scriviamo perché è la **sola cosa** che tiene `dbops.vw_run_senza_attore`
 > lontana dallo zero, cioè dal criterio con cui voi stessi chiudete **DB-5**.
 >
@@ -250,6 +250,87 @@ far finta che sia generale.
 
 **Verifica:** `db/pgtap/maintenance/test-storicizza-set-potatura.sql` — 7 test,
 fra cui i tre casi della potatura costruiti uno per uno.
+
+---
+
+## 5. ✅ §2.3 chiusa — e la diagnosi era più grave della domanda (2026-09-05, notte)
+
+### Che cosa è stato fatto
+
+| changeSet | |
+| --- | --- |
+| `20260905-35` | `maintenance.fn_job_run_log_failure` — scrive il verbale del run fallito su una **connessione separata** (dblink), dove il rollback non arriva |
+| `20260905-36` | `fn_run_and_log` la chiama **prima del `RAISE`**. Il `RAISE` resta: il lavoro si annulla, il verbale no |
+| `20260905-38` | i due `GRANT` a `zeroerp_log` — `USAGE` su `maintenance`, `INSERT` sul giornale. **Niente `SELECT`** |
+| `20260905-39` | `maintenance.vw_job_run_da_guardare` — **il posto dove guardare** |
+
+⭐ **Il canale non è stato inventato: c'era già.** `script.fn_log_error_only`
+scrive in `dbops.error_log` fuori transazione dal 2026-02, e le sue 143.000
+righe — fra cui 262 di un guard che esiste **solo** per sollevare eccezioni — sono
+la prova che sopravvive al `RAISE`.
+
+### 🔴 Due guasti che nessun test avrebbe preso dal lato del chiamante
+
+La funzione è fatta per **non sollevare**: se non riesce a scrivere emette un
+`WARNING` e tira dritto, perché non si fa fallire due volte un lavoro già
+fallito. ⇒ Un test che guardasse «la chiamata non esplode» sarebbe stato verde
+mentre non scriveva niente. **Ed è successo due volte:**
+
+1. la funzione era di `titodb`, non superuser → `dblink` rifiutava la
+   connessione (*«password or GSSAPI delegated credentials required»*);
+2. `zeroerp_log` non aveva `USAGE` su `maintenance` → *«permesso negato»*.
+
+⇒ Trovati **solo** andando a guardare dove la riga sarebbe dovuta arrivare.
+⭐ È la regola che resta: **un canale che tace quando non funziona non si
+collauda guardando chi lo chiama, si collauda guardando dove dovrebbe arrivare.**
+
+### ⭐ La misura che dimostra il difetto
+
+| origine | run rossi nel giornale, prima |
+| --- | --- |
+| **PGAGENT** | **0** |
+| CRON | 31 |
+
+Zero contro trentuno: il difetto era **solo** sul percorso pgAgent — i command
+Django passano da `fn_job_run_start`/`fn_job_run_end`, dove è Python a governare
+la transazione e può committare il fallimento.
+
+### La vista, e la scelta che la tiene leggibile
+
+Si guarda **l'ultima corsa di ogni job**, non tutti i rossi: così un job che
+torna a funzionare **esce da solo**, senza colonne «visto» né finestre
+arbitrarie.
+
+⛔ Ma la sola «ultima corsa» apriva un buco, e l'ha detto il dato:
+`sync_auth_user_active` aveva **29 fallimenti in un giorno e l'ultima corsa
+verde** — sarebbe stato invisibile. ⇒ Un terzo motivo prende l'**intermittenza**
+(ultima OK, almeno un rosso negli ultimi sette giorni), che si auto-pulisce
+anch'esso.
+
+⚠️ Ne segue che il rientro **non è immediato**: ci vogliono sette giorni
+tranquilli. Ed è giusto — un job che ha fallito cinque minuti fa ha appena
+fallito.
+
+**Test:** `test-vw-job-run-da-guardare.sql` (6) e
+`test-job-run-log-failure-out-of-tx.sql` (6), verdi. Il secondo dichiara ciò che
+**non** prova: che la riga venga scritta davvero — una scrittura fuori
+transazione sopravvive al `ROLLBACK` del test, e quel file sporcherebbe il
+giornale a ogni giro.
+
+### ⛔ Che cosa resta scoperto, e non va dimenticato
+
+**Il job che non parte affatto.** Se nessuno lo sveglia non c'è nessuna corsa da
+guardare. Servirebbe che ogni processo dichiarasse **ogni quanto** deve girare, e
+`dbops.processi` non ce l'ha. ⚠️ È R-12 vista dall'altro lato: la forma di
+guasto che questo brief racconta non è chiusa del tutto.
+
+### E la vista non è nata vuota
+
+Alla prima apertura nominava già `sync_auth_user_active` — **29 fallimenti,
+l'ultimo alle 22:51 di oggi**, in mezzo a 86 corse riuscite. Nessuno se n'era
+accorto, perché non c'era dove accorgersene.
+⚠️ È `origine = CRON`, quindi un command del backend: da segnalare a loro, non
+nostro da riparare.
 
 ---
 

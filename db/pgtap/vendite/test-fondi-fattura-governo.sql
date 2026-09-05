@@ -490,15 +490,26 @@ SELECT lives_ok(
 -- 13) D-6 — l'atto e' immutabile
 -- ------------------------------------------------------------
 -- ⚠️ P0001: e' script.trgfn_lock_columns a sollevare, non un vincolo.
-SELECT throws_ok(
+-- ⛔ 2026-09-05 — L'ASSERZIONE ORA NOMINA LA FRASE, e il motivo e' successo.
+--   Il lock era stato montato con un CREATE TRIGGER A MANO (20260815-15) e non
+--   registrato in dbops.automation_lock_columns: un oggetto che sembrava
+--   governato dall'automazione e non lo era. Quando e' sparito, nessuno l'ha
+--   rimesso — e questo test e' stato l'unico ad accorgersene.
+--   ⚠️ Ma con `throws_ok(..., 'P0001', NULL, ...)` sarebbe bastato un QUALUNQUE
+--   errore di dominio per tornare verde: su questa tabella ci sono altri due
+--   guard BEFORE ROW che parlano prima in ordine alfabetico
+--   (`_a10_guard_importo_`, `_a10_guard_transizione_`), e uno di loro avrebbe
+--   coperto il lock ancora mancante.
+--   ⇒ Si asserisce la FRASE del codice E_FONDO_ATTO_IMMUTABILE: cosi' il verde
+--     dice che ha parlato QUEL presidio, non che qualcuno si e' lamentato.
+SELECT throws_like(
     format($$
       UPDATE vendite.fatture_fondi_fattura_source
          SET importo = 70.00
        WHERE fattura_sorgente_id = %s AND origine = 'AUTOMATICA';
     $$, (SELECT id FROM tmp_src_pos)),
-    'P0001',
-    NULL,
-    'D-6: l''importo di un atto gia'' compiuto non si modifica'
+    '%atto gia%compiuto: la colonna%',
+    'D-6: l''importo di un atto gia'' compiuto non si modifica (E_FONDO_ATTO_IMMUTABILE)'
   );
 
 -- 14) e 15) D-5 e D-7 — annullamento e terminalita'

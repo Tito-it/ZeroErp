@@ -1024,41 +1024,40 @@ decisione, non una pulizia.
 
 ---
 
-## 1-nonies. ✅ I tre punti del §1-octies sono fatti (2026-09-05, sera)
+## 1-nonies. ✅ Ricevuto: `ambito` è su DUE tabelle (2026-09-05, notte)
 
-| # | Che cosa avete chiesto | Fatto |
-| --- | --- | --- |
-| **1** | `ambito` diventa un'affermazione | ✅ `EmailPrepareView` non mette più il default: lo pretende e lo valida sul vocabolario (`AMBITI_OUTBOX`), con un 400 parlante. `prepare_draft` e `create_outbox` hanno perso il default in firma — ⭐ presidiato da un test **sulla firma**, non su una chiamata: reintrodurre un default non romperebbe nessun chiamante e passerebbe inosservato |
-| **2** | `create_outbox` valorizza l'emittente | ✅ risolto dal claim del token (`extract_emittente_attivo_from_request`), cioè la stessa fonte su cui la vostra policy filtra. `None` solo per `SISTEMA`, come pretende `chk_email_outbox_ambito_emittente`; per gli altri ambiti, se manca si ferma con una frase invece di sbattere sul vincolo |
-| **3** | `send_pending_emails` dichiara la propria identità | ✅ itera `dbops.vw_processi_roster` e serve un'azienda alla volta dentro `operator_identity_context` |
+> *«`ambito` esiste su due tabelle con lo stesso CHECK, e `send_email` ha ancora
+> il default `SISTEMA` in firma. Se la policy su `email_log` deve ramificare su
+> quella colonna, lì il default va tolto come l'ho tolto sull'outbox.»*
 
-⇒ **Potete accendere la RLS su `config.email_outbox`** — resta la vostra riga
-`ENABLE ROW LEVEL SECURITY` più il write-guard di famiglia.
+✅ **Verificato, e avete ragione su tutto.** `config.email_log` e
+`config.email_outbox` hanno lo **stesso** `CHECK` su `ambito`
+(`SISTEMA | REPARTO | OPERATORE`). E i default in firma ci sono ancora:
+`email_repository.py:481` (il log) e `:642` (l'outbox), più
+`email_outbox_service.py:74`.
 
-⭐ **Nessuna UI si è rotta**: verificato che il frontend non chiama mai
-`email/prepare/`. L'outbox oggi è una superficie di solo backend, quindi il punto
-1 non è il cambio di contratto rischioso che sembrava.
+⭐ **È la stessa trappola, e vale la pena dirla una volta sola perché resti:**
 
-### ⚠️ Due cose da sapere prima di accendere
+> ⛔ Una colonna che ha un **valore di default** non può fare da **cancello di
+> sicurezza**. Se il client non la manda e qualcuno la riempie per lui, quella
+> colonna smette di dire *«questa è un'email di sistema»* e comincia a dire
+> *«nessuno ha detto niente»* — e la policy classificherebbe come segreto ogni
+> riga a cui un client ha dimenticato un campo.
 
-**a) Le sei righe già a bordo.** `config.email_outbox` ha 6 righe, tutte
-`SISTEMA` e tutte senza emittente. Con la policy accesa le vedrà **solo il super
-admin** — che è la decisione, ma sono righe nate quando `SISTEMA` significava
-«non dichiarato». Se una di quelle era la bozza di un operatore, sparisce dalla
-sua vista. ⇒ Vale la pena guardarle prima di accendere.
+⇒ Quando scriveremo la policy su `email_log` ramificheremo su `ambito`, come su
+`email_outbox`. **Prima serve che il default sparisca anche lì.** Registrato
+come prerequisito, accanto alla colonna emittente.
 
-**b) Il punto 3 non separa ancora niente, e lo diciamo noi per primi.**
-`config.email_log` non porta l'emittente: l'identità c'è, il perimetro no, e la
-prima azienda del roster drena tutta la coda. È il vostro punto 4. Quando la
-colonna arriva, il nostro codice diventa per-azienda **senza cambiare una riga**.
+⚠️ **Una nota di sincronia, non un disaccordo.** La vostra rimozione del default
+non è ancora arrivata su `dev/db-tid` — non è ancora stata pushata — mentre la
+RLS su `config.email_outbox` è già **accesa** (`20260905-37`).
 
-### 🔴 E un rischio che il ciclo introduceva, chiuso subito
-
-Su un database ricostruito da zero gli utenti tecnici non esistono (seed
-`dati_macchina`). Un ciclo sul roster vuoto avrebbe spedito **zero email** —
-reset password compresi — chiudendo verde: il guasto-per-assenza che questo
-cantiere esiste per togliere, reintrodotto da noi. ⇒ Roster vuoto: si spedisce lo
-stesso e **lo si dichiara** ad alta voce.
+⇒ Nel frattempo, misurato eseguendolo come `zeroerp_app`: creare una bozza
+**fallisce**, con *«la nuova riga viola la regola di sicurezza per riga»*. È il
+costo dichiarato nell'intestazione del `-37` ed è accettato — la funzione bozze
+non la usa nessuno — ma è **reale in questa finestra**, non un rischio futuro.
+⭐ Si chiude da sé nel momento in cui il vostro ramo entra: non serve nessun
+changeSet nostro.
 
 ---
 
