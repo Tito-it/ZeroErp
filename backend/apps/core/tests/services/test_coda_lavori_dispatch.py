@@ -45,21 +45,30 @@ def _item(run_as, scope) -> QueueItem:
 
 class DispatchTests(SimpleTestCase):
 
-    # 1. SISTEMA → apre il canale di sistema (BYPASSRLS), handler con scope=None.
-    @patch(f"{_MOD}.system_process_context")
+    # 1. ⛔ SISTEMA → NESSUN canale di sistema (R-2, 2026-09-05). Il test e'
+    #    stato GIRATO, non tolto: prima verificava che il canale `BYPASSRLS`
+    #    venisse aperto, adesso che non esista piu' nulla da aprire.
+    #    ⭐ `SISTEMA` ha cambiato significato: voleva dire «col bypass», adesso
+    #    vuole dire «senza emittente». L'handler gira sul ruolo applicativo
+    #    normale con `scope=None`, quindi puo' toccare solo cio' che non ha un
+    #    perimetro.
     @patch(f"{_MOD}.get_handler")
-    def test_dispatch_sistema_apre_canale_sistema_scope_none(
-        self, get_handler_mock, sys_ctx,
+    def test_dispatch_sistema_senza_canale_scope_none(
+        self, get_handler_mock,
     ) -> None:
+        import apps.core.services.coda_lavori.drainer_service as modulo
+
         handler = MagicMock(return_value={"ok": 1})
         get_handler_mock.return_value = handler
 
         result = _dispatch_item(_item("SISTEMA", None))
 
         get_handler_mock.assert_called_once_with("h")
-        sys_ctx.assert_called_once()  # canale di sistema aperto
         handler.assert_called_once_with({"a": 1}, scope=None)
         self.assertEqual(result, {"ok": 1})
+        # ⭐ Si guarda il MODULO, non una chiamata: un gateway importato e non
+        #    ancora usato sarebbe il primo passo per rimetterlo.
+        self.assertFalse(hasattr(modulo, "system_process_context"))
 
     # 2. OPERATORE → apre il contesto operatore con l'identità COMPLETA
     #    (auth_user_id + username + identita_id) dallo scope catturato.

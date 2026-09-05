@@ -19,7 +19,8 @@ import {
   getOverrideOggetti,
   putOverrideOggetti,
   getEmittentiScope,
-  putEmittentiScope
+  putEmittentiScope,
+  getPermessiEreditati,
 } from '../api/amministrazione'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -51,6 +52,10 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const overrideAree = ref([])
   const overrideAzioni = ref([])
   const overrideOggetti = ref([])
+  // Livelli ereditati dal profilo (sola lettura). Le due liste vuote sono lo
+  // stato iniziale E la risposta legittima di un utente senza profili: il
+  // pannello le legge come «default», non come «non ancora caricato».
+  const permessiEreditati = ref({ aree: [], azioni: [] })
   // Fase 2 multi-face: shape dichiarativo da fn DB
   // `script.fn_get_user_emittenti_scope`. Sostituisce la vecchia lista grezza.
   const emittentiScope = ref({
@@ -159,6 +164,15 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
+  // --- Livelli ereditati dal profilo (sola lettura) ---
+  // Serve al pannello permessi per mostrare cosa l'operatore ha GIA' senza
+  // override. ⚠️ Liste vuote = nessun profilo copre la voce ⇒ default
+  // (BLOCCATO / azione negata): e' un dato, non un caricamento mancato.
+  async function fetchPermessiEreditati(authUserId) {
+    const res = await getPermessiEreditati(authUserId)
+    permessiEreditati.value = res.data.data
+  }
+
   // --- Emittenti scope (Fase 2 multi-face: scope dichiarativo) ---
   async function fetchEmittentiScope(authUserId) {
     const res = await getEmittentiScope(authUserId)
@@ -202,6 +216,8 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     saveOverrideAzioni,
     fetchOverrideOggetti,
     saveOverrideOggetti,
+    permessiEreditati,
+    fetchPermessiEreditati,
     fetchEmittentiScope,
     saveEmittentiScope
   }

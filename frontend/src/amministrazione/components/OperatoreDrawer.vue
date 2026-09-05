@@ -231,6 +231,19 @@ async function onSave() {
 // valore residuo punterebbe a un tab inesistente (nessun pannello reso).
 const activeTab = ref('dati')
 
+// ⭐ La larghezza segue il TAB, e non è un vezzo: i due tab chiedono due
+// stanze diverse. «Dati» è un form a colonna singola — a 1360px sarebbe una
+// riga di campi persi in mezzo al bianco. «Permessi» è una matrice
+// slot/override a cinque colonne (voce, ereditato, override, stato, azione)
+// per 13 aree, 34 azioni e 12 oggetti: a 800px le colonne si strizzano
+// proprio dove la schermata esiste per farsi leggere.
+// ℹ️ `XLARGE` è la taglia che la costante dedica alle «matrici
+// parametri-per-entità (utility, slot/override)»; il drawer dedicato
+// `OperatorePermessiDrawer` usa la stessa.
+const larghezzaDrawer = computed(() =>
+  activeTab.value === 'permessi' ? DRAWER_WIDTH.XLARGE : DRAWER_WIDTH.COMPLEX
+)
+
 // Computed: form creazione completo
 const canSaveCreate = computed(() =>
   !!soggettoSelezionato.value
@@ -283,7 +296,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
   <Drawer
     :visible="props.visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :style="{ width: larghezzaDrawer }"
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>

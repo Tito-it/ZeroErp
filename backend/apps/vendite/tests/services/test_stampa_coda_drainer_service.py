@@ -32,6 +32,12 @@ from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.stampa_coda_drainer_service import draina_coda_stampa
 
 
+# L'emittente per cui il giro sta lavorando: nei mock e' lo stesso della
+# fattura (11), perche' il caso normale e' che la coda mostri le proprie
+# righe — la RLS ci pensa a monte.
+_EMITTENTE = 11
+
+
 def _item(coda_id: int, fattura_id: int, *, template_id=None) -> dict[str, Any]:
     """Work-item come lo ritorna claim_stampe_pending."""
     return {
@@ -70,7 +76,10 @@ class DrainerHappyPathTests(SimpleTestCase):
     # 0. Coda vuota: nessun render, summary a zero.
     def test_claim_vuota_nessun_lavoro(self) -> None:
         repo, vr, ds = _mocks(claim=[])
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
         self.assertEqual(summary["claimate"], 0)
         self.assertEqual(summary["fatto"], 0)
         ds.genera_documento.assert_not_called()
@@ -78,7 +87,10 @@ class DrainerHappyPathTests(SimpleTestCase):
     # 1. Happy path: numera backstop → genera → marca FATTO col documento.
     def test_happy_path_numera_genera_sistema_fatto(self) -> None:
         repo, vr, ds = _mocks(claim=[_item(1, 42)])
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         self.assertEqual(summary["fatto"], 1)
         self.assertEqual(summary["errore"], 0)
@@ -87,15 +99,20 @@ class DrainerHappyPathTests(SimpleTestCase):
         repo.marca_stampa_fatto.assert_called_once_with(1, 100)
         repo.marca_stampa_errore.assert_not_called()
 
-    # 2. Il render passa dal contesto sistema: user=None, emittente_scope=None,
-    #    parametri estratti da coda + fattura.
-    def test_genera_contesto_sistema_kwargs(self) -> None:
+    # 2. ⭐ Il render riceve il PERIMETRO dell'utente tecnico, non piu' `None`
+    #    (2026-09-05): user=None resta — il worker non e' una richiesta web —
+    #    ma «per conto di chi» adesso c'e', ed e' quello che rende il guard
+    #    `guard_emittente_in_scope` capace di dire qualcosa.
+    def test_genera_con_perimetro_esplicito_kwargs(self) -> None:
         repo, vr, ds = _mocks(claim=[_item(1, 42, template_id=5)])
-        draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         args, kwargs = ds.genera_documento.call_args
         self.assertIsNone(args[0])  # user posizionale = None
-        self.assertIsNone(kwargs["emittente_scope"])
+        self.assertEqual(kwargs["emittente_scope"], [_EMITTENTE])
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 10)
         self.assertEqual(kwargs["sorgente_id"], 42)
@@ -113,7 +130,10 @@ class DrainerErrorPathTests(SimpleTestCase):
         )
         repo.marca_stampa_errore.return_value = "ERRORE"
 
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         self.assertEqual(summary["errore"], 1)
         self.assertEqual(summary["riprovabili"], 0)
@@ -127,7 +147,10 @@ class DrainerErrorPathTests(SimpleTestCase):
         ds.genera_documento.side_effect = RuntimeError("weasy down")
         repo.marca_stampa_errore.return_value = "PENDING"
 
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         self.assertEqual(summary["riprovabili"], 1)
         self.assertEqual(summary["errore"], 0)
@@ -137,7 +160,10 @@ class DrainerErrorPathTests(SimpleTestCase):
         repo, vr, ds = _mocks(claim=[_item(1, 42)], entity=None)
         vr.get_fattura_for_documento_generation.return_value = None
 
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         ds.genera_documento.assert_not_called()
         repo.numera_fattura_backstop.assert_not_called()
@@ -153,7 +179,10 @@ class DrainerErrorPathTests(SimpleTestCase):
             "id": 42, "uid": "42", "emittente_fiscale_id": None,
         }
 
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         ds.genera_documento.assert_not_called()
         repo.numera_fattura_backstop.assert_not_called()
@@ -170,7 +199,10 @@ class DrainerErrorPathTests(SimpleTestCase):
         ]
         repo.marca_stampa_errore.return_value = "ERRORE"
 
-        summary = draina_coda_stampa(repo=repo, vendite_repo=vr, doc_service=ds)
+        summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
 
         self.assertEqual(summary["claimate"], 2)
         self.assertEqual(summary["fatto"], 1)
@@ -187,6 +219,7 @@ class DrainerReaperTests(SimpleTestCase):
         repo.reset_stale_stampe_in_corso.return_value = 3
 
         summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE,
             repo=repo, vendite_repo=vr, doc_service=ds,
             stale_minuti=15, soglia_tentativi=4,
         )
@@ -200,6 +233,7 @@ class DrainerReaperTests(SimpleTestCase):
     def test_reaper_disabilitato_con_stale_zero(self) -> None:
         repo, vr, ds = _mocks(claim=[])
         summary = draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE,
             repo=repo, vendite_repo=vr, doc_service=ds, stale_minuti=0,
         )
         repo.reset_stale_stampe_in_corso.assert_not_called()

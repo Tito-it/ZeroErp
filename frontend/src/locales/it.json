@@ -274,7 +274,8 @@
       "email-accounts": "Account Email",
       "email-templates": "Template Email",
       "email-log": "Log Email",
-      "personalizzazioni-liste-tecniche": "Personalizzazioni liste (tecnica)"
+      "personalizzazioni-liste-tecniche": "Personalizzazioni liste (tecnica)",
+      "processi-automatici": "Processi automatici"
     },
     "anagrafiche": {
       "soggetti": "Soggetti",
@@ -1277,6 +1278,53 @@
       "ut_parent_inactive_warn": "L'emittente fiscale e' disattivato: le configurazioni utility possono essere salvate solo come non attive. Riattiva l'emittente per abilitare le righe.",
       "ut_parent_inactive_tooltip": "Emittente disattivato: figlio non puo' essere attivo",
       "avviso_registri": "Dopo aver creato l'emittente servono anche i suoi registri di numerazione e le mappature tipo documento/natura: senza, la sua prima fattura si ferma con «configurazione mancante». Non esiste un registro generico di ripiego — è voluto: meglio fermarsi che numerare sul progressivo di un'altra azienda."
+    },
+    "permessi_nota": "Sono elencate tutte le voci: se non hai impostato un override vale il valore ereditato dal profilo. Un override che ripete l'ereditato non serve, e da quel momento la voce non segue più il profilo.",
+    "ereditato_default": "default (nessun profilo)",
+    "ereditato_da_area": "dall'area {area}",
+    "ereditato_da_override_area": "dall'override sull'area",
+    "override_non_impostato": "— non impostato",
+    "override_ridondante": "Ripete il valore ereditato: non serve, e da ora questa voce non seguirà più il profilo.",
+    "azione_abilitata": "Abilitata",
+    "azione_negata": "Negata",
+    "cerca_azione": "Cerca azione…",
+    "cerca_model": "Cerca oggetto…",
+    "processi": {
+      "search_placeholder": "Cerca processo (codice o descrizione)…",
+      "classe_tutte": "Tutte le classi",
+      "canale_tutti": "Tutti i canali",
+      "mai_girato": "mai girato",
+      "esito_ok": "OK",
+      "esito_ko": "Errore",
+      "esito_in_corso": "in corso",
+      "errore_caricamento": "Non è stato possibile leggere il registro dei processi. La lista qui sotto non è vuota: non è stata letta.",
+      "drawer_action": "Dettaglio",
+      "tab_bersagli": "Dove scrive",
+      "tab_identita": "Con quale identità",
+      "tab_run": "Ultime corse",
+      "bersagli_help": "Le tabelle che questo processo dichiara di scrivere, e come ogni riga raggiunge l'azienda emittente. È un elenco dichiarato: dice dove qualcuno ha detto che il processo scrive, non che scriva solo lì.",
+      "senza_percorso": "nessun percorso",
+      "col_tabella": "Tabella",
+      "col_percorso": "Percorso all'azienda",
+      "col_colonna": "Colonna",
+      "identita_help": "Questo processo lavora i dati di un'azienda alla volta, e per ognuna serve un utente tecnico dedicato.",
+      "identita_non_serve": "Questo processo non ha bisogno di un utente tecnico: viene avviato da una persona e lavora con l'identità di chi lo ha chiesto.",
+      "col_utente": "Utente tecnico",
+      "col_azienda": "Azienda",
+      "aziende_scoperte": "{n} azienda/e attiva/e non hanno un utente tecnico per questo processo: il loro lavoro non viene fatto, e nessun errore lo segnala.",
+      "scegli_azienda": "Scegli l'azienda",
+      "crea_identita": "Crea utente tecnico",
+      "identita_creata": "Utente tecnico creato.",
+      "run_help": "Le ultime {n} corse registrate per questo processo.",
+      "run_nessuno": "Nessuna corsa registrata: il processo non è ancora girato, oppure gira senza dichiararsi.",
+      "col_quando": "Quando",
+      "col_jobname": "Job",
+      "col_origine": "Origine",
+      "col_esito": "Esito",
+      "presidi_titolo": "Controlli che devono restare vuoti",
+      "presidi_help": "Ogni riga qui sotto è una cosa da sistemare. La spiegazione di ciascun controllo arriva dal database, che è dove quella regola è scritta.",
+      "presidi_errore": "Non è stato possibile leggere i controlli. «Nessuna riga» qui sotto significherebbe «tutto a posto»: non è quello che sta succedendo.",
+      "presidi_troncato": "prime {n} righe"
     }
   },
   "indirizzi": {
@@ -4992,5 +5040,15 @@
     "senza_numero": "Senza numero",
     "nessun_risultato": "Nessuna fattura trovata",
     "affina": "Mostrate {shown} di {total}: affina la ricerca"
+  },
+  "matrice_override": {
+    "cerca": "Cerca…",
+    "col_ereditato": "Ereditato",
+    "col_override": "Override",
+    "col_stato": "Stato",
+    "stato_override": "Override",
+    "stato_ereditato": "Ereditato",
+    "reset_tooltip": "Togli l'override: la voce torna a seguire il valore ereditato",
+    "nessuna_voce": "Nessuna voce"
   }
 }

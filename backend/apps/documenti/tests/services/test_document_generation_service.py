@@ -988,17 +988,24 @@ def _patch_bypassrls(value: bool):
 class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
     """C-0: `emittente_scope` esplicito separa chi autorizza da cosa genera.
 
+    ⭐ Riscritti il 2026-09-05 (R-4). Il «path sistema» non e' piu' «nessun
+    utente e nessun perimetro su una connessione BYPASSRLS»: e' un processo
+    che ha un'IDENTITA' e dichiara il PERIMETRO su cui sta lavorando
+    (`emittente_scope=[id]`, quello del suo utente tecnico). La vecchia
+    combinazione era la porta da cui un worker generava il documento di
+    qualunque azienda.
+
     Indice test (27..30):
-     27. path sistema (user=None, scope=None, canale BYPASSRLS) -> pipeline
-         completa, audit a None, PermissionResolver MAI interpellato
-     28. user=None + scope=None su canale NON di sistema -> VALIDATION
-         fail-loud, nessun accesso repo/storage
+     27. path processo (user=None, scope esplicito) -> pipeline completa,
+         audit a None, PermissionResolver MAI interpellato
+     28. ⛔ user=None + scope=None -> VALIDATION fail-loud SEMPRE, su qualsiasi
+         canale: niente accesso repo/storage
      29. scope esplicito lista: guard emittente si applica senza auth guard
-     30. template override in path sistema -> repo.get_template (non reader)
+     30. template override in path processo -> repo.get_template (non reader)
     """
 
-    # 27. path sistema: pipeline completa senza utente.
-    def test_genera_documento_path_sistema_completo_audit_none(self) -> None:
+    # 27. path processo: pipeline completa senza utente, ma CON perimetro.
+    def test_genera_documento_path_processo_completo_audit_none(self) -> None:
         template = _template_row()
         versione = _versione_row()
         svc, repo, _, storage = _service_with_mocks(
@@ -1013,12 +1020,13 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
             },
             storage_methods={"write": "fs:sys"},
         )
-        with _patch_scope([1]) as scope_mock, _patch_bypassrls(True), \
+        with _patch_scope([1]) as scope_mock, \
                 _patch_get_builder({"numero": 7}), _patch_render():
             with _patch_transaction_atomic_noop():
                 result = svc.genera_documento(
                     None,
-                    emittente_scope=None,
+                    # ⭐ Il perimetro dell'utente tecnico, non «vedo tutto».
+                    emittente_scope=[11],
                     **_GENERA_DEFAULT,
                 )
         self.assertEqual(result["id"], 99)
@@ -1030,12 +1038,14 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
         self.assertIsNone(evento_data["user_id"])
         storage.write.assert_called_once()
 
-    # 28. user=None + scope=None su canale web -> fail-loud, niente DB.
-    def test_genera_documento_scope_none_senza_canale_sistema_raises(self) -> None:
+    # 28. ⛔ user=None + scope=None -> fail-loud SEMPRE (R-4, 2026-09-05).
+    #     Prima dipendeva dal canale: su una connessione BYPASSRLS passava, ed
+    #     era la porta. Adesso non c'e' nessun canale che la apra: o si dice chi
+    #     si e', o si dice per quale azienda si genera.
+    def test_genera_documento_senza_utente_e_senza_perimetro_raises(self) -> None:
         svc, repo, _, storage = _service_with_mocks()
-        with _patch_bypassrls(False):
-            with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(None, emittente_scope=None, **_GENERA_DEFAULT)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.genera_documento(None, emittente_scope=None, **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.find_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
@@ -1052,9 +1062,9 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
         repo.find_template_applicabile.assert_not_called()
         storage.write.assert_not_called()
 
-    # 30. override template in path sistema: repo.get_template con lo scope
+    # 30. override template in path processo: repo.get_template con lo scope
     #     del chiamante, il reader (che pretende auth) non viene toccato.
-    def test_genera_documento_path_sistema_template_override_usa_repo(self) -> None:
+    def test_genera_documento_path_processo_template_override_usa_repo(self) -> None:
         template = _template_row(template_id=42)
         versione = _versione_row()
         svc, repo, reader, _ = _service_with_mocks(
@@ -1069,14 +1079,14 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
             },
             storage_methods={"write": "fs:sys"},
         )
-        with _patch_bypassrls(True), _patch_get_builder({"numero": 7}), _patch_render():
+        with _patch_get_builder({"numero": 7}), _patch_render():
             with _patch_transaction_atomic_noop():
                 svc.genera_documento(
                     None,
-                    emittente_scope=None,
+                    emittente_scope=[11],
                     template_documento_id=42,
                     **_GENERA_DEFAULT,
                 )
-        repo.get_template.assert_called_once_with(42, emittente_ids_scope=None)
+        repo.get_template.assert_called_once_with(42, emittente_ids_scope=[11])
         reader.get_template.assert_not_called()
         repo.find_template_applicabile.assert_not_called()

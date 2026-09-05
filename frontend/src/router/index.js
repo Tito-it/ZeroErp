@@ -203,6 +203,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'matrice-categorie-listini' }
         },
         {
+          path: 'amm-software/processi-automatici',
+          name: 'amm-software-processi-automatici',
+          component: () => import('../amministrazione/views/ProcessiAutomaticiListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'processi-automatici' }
+        },
+        {
           path: 'amm-software/audit-log',
           name: 'amm-software-audit-log',
           component: () => import('../amministrazione/views/AuditLogView.vue'),

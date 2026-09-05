@@ -32,8 +32,10 @@ from typing import Any
 from apps.core.services.coda_lavori.drain_engine import contesto_terminale
 from apps.core.services.error_manager import ServiceError
 from apps.vendite.services._fatturazione_job_helpers import (
+    JOB_TYPE_FATTURAZIONE_GIRO,
     MOTIVO_ESECUZIONE_FALLITA,
     TernaKey,
+    corsia_del_giro,
     messaggio_gruppi_non_serviti,
     parse_competenza_mese,
     parse_data_iso,
@@ -46,9 +48,6 @@ logger = logging.getLogger(__name__)
 
 # handler_code seedato in dbops.coda_lavori_tipi per il tipo FATTURAZIONE_GIRO.
 HANDLER_CODE = "fatturazione_giro_default"
-
-# Corsia del giro on-demand di MASSA: differita → fermata a EMESSA (D-1).
-_MODALITA_ONDEMAND = "differita"
 
 # La corsia dell'EMISSIONE MIRATA (BF-1) NON e' ridichiarata qui: si importa
 # dal driver, che ne e' l'owner (`_MODALITA`). Un secondo letterale "mirata"
@@ -105,12 +104,16 @@ def fatturazione_giro_handler(
     # Import locale: evita di caricare la catena driver al boot del modulo
     # (registrato in ready()); il core è l'unico punto di verità I-1.
     from apps.vendite.services.fatturazione_driver_service import (
-        MODALITA_MIRATA,
         esegui_giro_fatturazione,
     )
 
     kwargs: dict[str, Any] = {
-        "modalita": MODALITA_MIRATA if gruppi else _MODALITA_ONDEMAND,
+        # ⭐ La corsia arriva dal PAYLOAD quando chi accoda l'ha scelta (il batch
+        #    notturno produce sia «immediata» sia «differita»); altrimenti la
+        #    decide la regola condivisa — la stessa che l'accodamento ha usato
+        #    per comporre la chiave di dedup, cosi' le due non possono divergere.
+        "modalita": payload.get("modalita")
+        or corsia_del_giro(JOB_TYPE_FATTURAZIONE_GIRO, gruppi=gruppi),
         "competenza": competenza,
     }
     if gruppi:

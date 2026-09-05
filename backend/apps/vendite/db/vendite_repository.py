@@ -2853,9 +2853,12 @@ class VenditeRepository:
     # applica la RLS di `vendite.fatture` con l'identita' dell'utente della
     # richiesta. Il filtro applicativo qui sotto e' DEFENSE-IN-DEPTH e si somma,
     # com'e' la convenzione del progetto. 🔴 Ne discende che questo metodo NON
-    # va chiamato da un canale di sistema (`system_process_context`, ruolo
-    # BYPASSRLS): li' la vista perderebbe il suo unico cancello e l'elenco
-    # mostrerebbe i fondi di tutti gli emittenti.
+    # va chiamato su una connessione con ruolo `BYPASSRLS`: li' la vista
+    # perderebbe il suo unico cancello e l'elenco mostrerebbe i fondi di tutti
+    # gli emittenti. ⚠️ Il gateway applicativo che apriva un canale simile e'
+    # stato ritirato il 2026-09-05, ma il guard resta: difende dalla
+    # CONFIGURAZIONE (un `DB_USER` puntato al ruolo sbagliato), non solo da un
+    # chiamante distratto.
     def list_fondi_fattura_da_decidere(
         self,
         *,
@@ -2869,10 +2872,9 @@ class VenditeRepository:
         # 🔴 Guard strutturale, non un commento: su un ruolo BYPASSRLS il
         # `security_invoker` della vista non filtra niente e il filtro
         # applicativo sotto no-opa con auth_user_id=None (che e' anche il
-        # valore legittimo del superuser: non discrimina). Un futuro consumer
-        # headless dentro `system_process_context` leggerebbe i fondi di TUTTI
-        # gli emittenti senza che nulla fallisca. Stesso presidio (inverso) di
-        # `_guard_canale_sistema` nel motore documentale.
+        # valore legittimo del superuser: non discrimina). Un consumer headless
+        # su un ruolo `BYPASSRLS` leggerebbe i fondi di TUTTI gli emittenti
+        # senza che nulla fallisca.
         self._require_canale_utente(
             gesto="Elenco fondi da decidere",
             oggetto="La vista vw_fondi_fattura_da_decidere e' security_invoker e",

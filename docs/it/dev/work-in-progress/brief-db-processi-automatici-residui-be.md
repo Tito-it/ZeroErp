@@ -1,4 +1,4 @@
-# Brief DB — i cinque residui che il backend chiede per chiudere i processi automatici
+# Brief DB — gli otto residui che il backend chiede per chiudere i processi automatici
 
 > **Destinatario:** team DB (`dev/db-tid`).
 >
@@ -6,7 +6,8 @@
 > pushato** ([brief-db-processi-automatici-identita-e-perimetro.md](brief-db-processi-automatici-identita-e-perimetro.md),
 > merge `e09a4c2cf`). Il backend lo sta ora consumando, secondo
 > [piano-be-fe-processi-automatici-identita-e-perimetro.md](piano-be-fe-processi-automatici-identita-e-perimetro.md).
-> Leggendo il contratto sono emerse **cinque cose che il BE non può darsi da solo**.
+> Leggendo il contratto — e provando a scrivere il primo presidio — sono emerse **otto
+> cose che il BE non può darsi da solo**.
 >
 > **Stato:** 🔵 **RICHIESTA — niente scritto, niente applicato.**
 >
@@ -14,9 +15,9 @@
 > dei changeSet, seed e test sono decisioni di chi scrive: se il *cosa* qui sotto si
 > ottiene meglio in un altro modo, il modo giusto è il vostro.
 >
-> ⚠️ **Nessuna delle cinque è urgente allo stesso modo.** Tre bloccano un lotto del piano
-> BE, due sono debiti già vostri che il BE **eredita** e che vale la pena datare. La
-> colonna «blocca» lo dice riga per riga.
+> ⚠️ **Nessuna delle otto è urgente allo stesso modo.** Tre bloccano qualcosa del piano
+> BE, due sono debiti già vostri che il BE **eredita** e che vale la pena datare, due non
+> bloccano niente. La colonna «blocca» lo dice riga per riga.
 
 ---
 
@@ -25,11 +26,13 @@
 Il registro dei processi funziona: il backend adesso sa nominare i processi, il giornale
 dei run ha l'attore, la coda rifiuta un lavoro di dominio senza operatore.
 
-Restano cinque cose. Una serve a far **migrare la chiusura scadenze** sulla coda; una
-serve perché un presidio **non nasca già rumoroso**; due sono i debiti che il vostro
-brief ha fatto emergere (`email_outbox` e `listini*`) e che adesso hanno un consumatore
-che ci sbatte contro; l'ultima è la **stretta finale** su una colonna, da fare quando il
-BE avrà finito il suo pezzo.
+Restano sette cose. Una serve a far **migrare la chiusura scadenze** sulla coda; una perché
+un presidio **non nasca già rumoroso**; due sono debiti del vostro registro che adesso hanno un consumatore
+che ci sbatte contro — uno è `email_outbox`, l'altro **non era quello che credevo**
+(§DB-4); una è la **stretta finale** su una colonna, da fare quando il BE avrà finito il
+suo pezzo. L'ultima è un **buco piccolo nella fabbrica** degli utenti tecnici, trovato
+provando a usarla, e la settima e' un disallineamento di nomi
+che impedisce a un presidio di arrivare a zero — trovata guardando il presidio.
 
 ---
 
@@ -40,8 +43,11 @@ BE avrà finito il suo pezzo.
 | **DB-1** | far diventare la chiusura scadenze un lavoro di coda | ⛔ sì, il lotto 4 del piano BE | **DB** |
 | **DB-2** | rendere leggibile il presidio «dominio senza emittente» | ⚠️ non blocca, ma peggiora ogni giorno che passa | **DB** |
 | **DB-3** | dare un perimetro a `send_pending_emails` | ⛔ sì, per la parte «un emittente alla volta» | **DB** |
-| **DB-4** | far valere davvero il perimetro sui listini | ⚠️ non blocca il codice, blocca la **dichiarazione** che il lotto 4 è chiuso | **DB** |
+| **DB-4** | ⚠️ *riscritta* — il **write-guard** su `vendite.fatture_stampa_coda`, ultima riga del livello 2 | ⚠️ no | **DB** |
 | **DB-5** | rendere obbligatorio l'attore sui run | — | **BE**, poi DB |
+| **DB-6** | poter rifare l'utente tecnico di un processo ritirato male | ⚠️ no — ma il caso oggi esce con un errore che non parla | **DB** |
+| **DB-7** | 🔴 far coincidere i nomi dei job pgAgent col registro: **quattro non si dichiareranno mai** | ⛔ sì, impedisce a `vw_run_senza_attore` di arrivare a zero (DB-5) | **DB** |
+| **DB-8** | un codice errore per «processo non trovato nel registro» | ⚠️ no — c'è un ripiego dichiarato | **DB** |
 
 ---
 
@@ -133,28 +139,34 @@ richiesta nuova, aggiungo **il consumatore** che ci sbatte contro e una data.
 
 ---
 
-## DB-4 — I listini hanno il percorso ma nessuno lo applica (R-8)
+## DB-4 — ⚠️ *Riscritta*: il write-guard manca su `vendite.fatture_stampa_coda`
 
-**Che cosa serve.** Che il perimetro emittente valga davvero su `vendite.listini*`.
+> 🔴 **Questa richiesta diceva un'altra cosa, ed era sbagliata.** Diceva «le policy
+> mancano su `vendite.listini*` (R-8)», copiando il vostro registro dei residui.
+> **Interrogato il presidio il 2026-09-05: `vendite.listini_versioni` la policy ce
+> l'ha**, e non compare in `dbops.vw_processi_dominio_senza_difesa`. R-8, per quel
+> bersaglio, **è chiuso**.
+> ⭐ È la ragione per cui un presidio si interroga invece di fidarsi di un elenco
+> scritto: l'elenco invecchia, la vista no.
 
-**Perché.** Il percorso all'emittente **c'è** — `listini_versioni.listino_id →
-listini.emittente_soggetto_ruolo_id`, che è `NOT NULL` — ed è la ragione per cui la
-chiusura scadenze è stata dichiarata di dominio anche su quel bersaglio. Ma nessuna difesa
-lo applica: né in lettura né in scrittura.
+**Che cosa serve.** Il **write-guard** `script.trgfn_guard_emittente_scope` su
+`vendite.fatture_stampa_coda`.
 
-⇒ Quando la chiusura scadenze girerà per emittente (DB-1), sul bersaglio *contratti* il
-perimetro sarà garantito dal database; sul bersaglio *listini* lo garantirà **soltanto la
-query**. È la differenza fra il Caso A e il Caso B: lì un filtro dimenticato non si ferma
-da solo.
+**Perché.** È l'unica riga rimasta nel livello 2 del presidio, e dice
+*«write-guard (scrittura scoperta)»*. La tabella ha la policy RLS — armata il
+2026-09-04 — quindi in **lettura** il perimetro c'è; in **scrittura** l'unico
+presidio è la policy stessa.
 
-⛔ **Non blocca il codice, blocca la dichiarazione.** Il lotto si può scrivere e girare;
-quello che non si può fare è dire che il perimetro della chiusura scadenze è applicato,
-perché su metà dei suoi bersagli non lo è. Preferisco scriverlo adesso che scoprirlo dopo.
+⚠️ **E adesso ha un consumatore.** Dal 2026-09-05 il worker della coda stampa gira
+con l'identità dell'utente tecnico di **un** emittente e marca l'esito su quelle
+righe. Il perimetro regge — la policy filtra anche l'`UPDATE` — ma il livello 2 del
+vostro presidio esiste apposta per dire che lì il «Caso A» non è completo: manca la
+metà che si ferma da sola in scrittura.
 
-⚠️ Anche questo è già registrato da voi come **R-8**.
+⛔ **Non è urgente e non blocca**: lo segnalo perché è l'ultima riga di quel
+registro, e un registro a una riga sola è a un passo dall'essere vuoto.
 
-**Come si vede che è chiuso.** `dbops.vw_processi_dominio_senza_difesa` non nomina più
-`vendite.listini*`.
+**Come si vede che è chiuso.** `dbops.vw_processi_dominio_senza_difesa` **vuota**.
 
 ---
 
@@ -183,6 +195,113 @@ permette di arrivare davvero a zero. Lo scrivo perché è la cosa che, rileggend
 mesi, sembra un errore e non lo è.
 
 **Come si vede che è chiuso.** Un run scritto senza attore viene rifiutato.
+
+---
+
+## DB-6 — Rifare l'utente tecnico di un processo: oggi si sbatte su un 23505
+
+**Che cosa serve.** Che il caso *«questo processo ha un utente tecnico sbagliato o
+ritirato male, se ne rifà uno»* si concluda con un rifiuto **che dice quale regola è**,
+oppure funzioni.
+
+**Perché.** `script.fn_crea_utente_tecnico` ha un guard esplicito sul duplicato — il
+vostro guard 4 — e il commento dice bene perché esiste:
+
+> *«Ci si ferma prima dell'unique: un 23505 nudo non direbbe quale regola.»*
+
+⚠️ **Ma quel guard guarda `processi_identita.attivo`, e lo username no.** Lo username è
+deterministico (`processo@emittente`) ed è `UNIQUE` senza condizioni. ⇒ Disattivare il
+legame — che è **la via che voi stessi indicate** per sostituire l'utente di un processo
+(«si disattiva la riga esistente e se ne crea una nuova») — libera il guard 4 e lascia in
+piedi il muro: `auth_user_username_key`.
+
+**Come l'ho trovato.** Non leggendo: **provando**. Scrivendo il presidio che tiene gli
+utenti tecnici fuori dalle liste di persone di Amm. Software, la fixture doveva
+fabbricarsi il proprio soggetto con la fabbrica vera — che è la forma giusta di un test.
+Non ci è riuscita, e il test ora **dichiara** perché
+(`apps/amm_software/tests/db/test_operatori_senza_utenti_tecnici.py`), invece di
+nascondere il limite dietro un `skip` senza motivo.
+
+⭐ **Il difetto non è nel test: è che la strada di sostituzione documentata non è
+percorribile.** Finché è così, la §12.7 del vostro brief descrive un rimedio che non
+funziona — ed è il tipo di frase che qualcuno seguirà fra sei mesi, di fretta, su un
+processo che non fattura.
+
+⚠️ **Non blocca niente** oggi: nessuno deve rifare un utente tecnico. Lo segnalo perché è
+piccolo adesso e diventa un'ora persa il giorno in cui serve davvero.
+
+**Come si vede che è chiuso.** Disattivare il legame di una coppia (processo, emittente) e
+richiamare la fabbrica per la stessa coppia produce o un utente nuovo, o un errore con un
+codice di dominio registrato.
+
+---
+
+## DB-7 — 🔴 Quattro job pgAgent non si dichiareranno mai: il registro usa nomi diversi
+
+**Che cosa serve.** Che i nomi con cui i job pgAgent si presentano al giornale dei run
+esistano in `dbops.processi`.
+
+**Perché — sono due vocabolari, e si è dato per scontato che fossero uno.** La §3.3 del
+vostro brief promette che *«i dodici job diventano conformi senza una riga in
+`85_pgagent`»*, perché `fn_run_and_log` deriva il codice dal jobname quando quel jobname
+corrisponde a un processo registrato. ⭐ Il meccanismo funziona. ⛔ Ma il registro è stato
+seminato con i nomi dei **job di pgAgent**, mentre la funzione riceve il `p_jobname` che
+gli passano i **wrapper `maintenance.proc_*_job`** — e i due insiemi non coincidono:
+
+| Il wrapper passa | Il registro contiene |
+| --- | --- |
+| `apply_fk_index_policy` | `automations_apply_fk_indexes_policy` |
+| `automations_cleanup` | `automations_cleanup_weekly` |
+| `automations_lock_columns` | — (nessuna riga) |
+| `automations_delete_block` | — (nessuna riga) |
+
+⇒ Per quei nomi la derivazione non aggancia niente, l'attore resta `NULL`, e la riga
+resta in `dbops.vw_run_senza_attore` **per sempre**: non c'è nessuna corsa futura che la
+tolga.
+
+**Fatto datato, 2026-09-05** (contesto, non la ragione): la vista ha sette righe. Due
+(`apply_storicizza_weekly`, `sync_storico_set_storicizza`) hanno `processo_registrato =
+true` e si toglieranno da sole alla prossima corsa notturna — la derivazione lì funziona.
+Tre hanno `processo_registrato = false` e non si toglieranno mai. Le ultime due sono del
+backend e le chiude il piano BE.
+
+⚠️ **La conseguenza è su DB-5**, ed è per questo che lo segnalo qui invece di lasciarlo
+scoprire: finché quei nomi non combaciano, `vw_run_senza_attore` **non può arrivare a
+zero**, quindi `job_run_log.processo_codice` non può diventare obbligatorio, quindi la
+stretta finale del cantiere resta aperta per un disallineamento di quattro stringhe.
+
+🔵 **Non so quale dei due lati sia quello giusto**, e non è una mia decisione: `…_lock_columns`
+e `…_delete_block` potrebbero essere **passi** di un job e non job — nel qual caso la
+domanda non è «aggiungere due righe» ma «il registro cataloga job o unità di lavoro?». Ve
+la giro così com'è.
+
+**Come si vede che è chiuso.** Ogni jobname che compare in `maintenance.job_run_log` con
+origine `PGAGENT` ha una riga in `dbops.processi`, e `vw_run_senza_attore` può svuotarsi
+dopo un giro notturno.
+
+---
+
+## DB-8 — Un codice per «questo processo non esiste»
+
+**Che cosa serve.** Un codice errore di classe `NON_TROVATO` per il caso *«il codice
+processo indicato non è nel registro»* — es. `E_PROCESSO_NON_TROVATO`.
+
+**Perché.** La schermata dei processi automatici ha un dettaglio per codice
+(`GET /amm-software/processi/<codice>/`). Un codice inesistente è un 404, e a catalogo
+quel codice non c'è.
+
+⛔ **Non si riusa `E_JOB_NON_TROVATO`**, che è la tentazione ovvia: quello dice «il
+LAVORO in coda 42 non esiste». Un processo e un lavoro sono due cose diverse, e un
+messaggio che parla del secondo manda a cercare nel posto sbagliato. *Un codice usato per
+due cose si spezza a monte, non si rimappa a valle.*
+
+⚠️ **Non blocca**: nel frattempo l'endpoint risponde **400** con la frase esatta («Il
+processo indicato non esiste nel registro»), dichiarato in un commento nel service. È il
+denominatore sicuro — a quell'indirizzo ci si arriva solo digitandolo a mano — e il
+giorno in cui il codice esiste qui si cambia una riga.
+
+**Come si vede che è chiuso.** `E_PROCESSO_NON_TROVATO` è a catalogo con classe
+`NON_TROVATO`, e il service smette di ripiegare sul 400.
 
 ---
 

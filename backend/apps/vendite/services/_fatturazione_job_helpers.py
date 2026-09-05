@@ -441,3 +441,68 @@ def parse_lotti(raw: Any, *, error_code: str) -> tuple[int, ...] | None:
             context=contesto_terminale(),
         )
     return tuple(ids)
+
+
+# Scopo: LA CORSIA con cui un giro accodato dall'applicazione verra' eseguito.
+#        Una sede sola per una regola che serve in DUE momenti lontani fra loro:
+#        all'ACCODAMENTO (entra nella chiave di dedup) e all'ESECUZIONE (la usa
+#        l'handler). Se le due la calcolassero ognuna per conto suo, un giorno
+#        direbbero cose diverse — e il sintomo sarebbe un giro deduplicato
+#        contro un altro che fa un lavoro diverso.
+#
+# ⭐ La regola: una selezione esplicita di gruppi e' un perimetro piu' preciso
+#    dell'instradamento automatico, quindi vince sulla corsia. Senza gruppi il
+#    giro on-demand di massa e' «differita» — si ferma a EMESSA, gate fiscale I-7.
+# ⚠️ `None` per i lavori che una corsia non ce l'hanno: la numerazione di
+#    perimetro non e' un giro, e' un passo.
+# ⛔ I letterali delle corsie NON si riscrivono qui: si importano dal driver, che
+#    ne e' l'owner (`_MODALITA`). Import locale come nell'handler, per non
+#    caricare la catena driver al boot del modulo.
+def corsia_del_giro(job_type: str, *, gruppi=None) -> str | None:
+    if job_type != JOB_TYPE_FATTURAZIONE_GIRO:
+        return None
+    from apps.vendite.services.fatturazione_driver_service import (
+        MODALITA_MIRATA,
+        MODALITA_ONDEMAND,
+    )
+
+    return MODALITA_MIRATA if gruppi else MODALITA_ONDEMAND
+
+
+# Scopo: La CHIAVE DI BUSINESS con cui la coda deduplica i giri vivi. Una sede
+#        sola, perche' i produttori sono DUE: il verbo dell'applicazione e il
+#        batch notturno.
+#
+# ⛔ LA CORSIA E' NELLA CHIAVE, e prima non c'era (2026-09-05, decisione di Tid,
+#    opzione A). Le corsie fanno cose diverse — «immediata» va fino in fondo e
+#    NUMERA, «differita» si ferma a EMESSA — ma per la dedup erano lo stesso
+#    lavoro: stesso tipo, stesso mese, stesso perimetro. Finche' a produrre era
+#    solo l'applicazione il difetto restava LATENTE (una corsia sola in uso);
+#    col batch, che le produce entrambe per la stessa azienda e lo stesso mese,
+#    la seconda sarebbe stata scartata **in silenzio** — una corsia semplicemente
+#    non fatturava, senza nessun errore.
+# ⭐ Ed e' UNA regola, non due formati: `corsia=None` per i lavori che una corsia
+#    non ce l'hanno (la numerazione di perimetro). Due formati per lo stesso tipo
+#    di lavoro sarebbero la cosa che poi diverge — chi tocca uno non sa
+#    dell'altro.
+# ⚠️ Sul verbo dell'applicazione il valore e' determinato dal perimetro (mirata
+#    se ci sono gruppi, differita altrimenti), quindi la chiave cambia FORMA e
+#    non cambia COMPORTAMENTO: nessun giro che oggi si deduplica smette di farlo.
+# ⛔ Il digest del perimetro mirato resta in coda e resta condizionale: senza,
+#    due selezioni diverse sullo stesso mese sarebbero lo stesso job e la
+#    seconda verrebbe assorbita senza dirlo.
+def chiave_idempotenza_giro(
+    *,
+    job_type: str,
+    competenza: date,
+    scope_key: str,
+    corsia: str | None = None,
+    digest: str = "",
+) -> str:
+    parti = [job_type]
+    if corsia:
+        parti.append(corsia)
+    parti.extend([competenza.isoformat(), scope_key])
+    if digest:
+        parti.append(digest)
+    return ":".join(parti)

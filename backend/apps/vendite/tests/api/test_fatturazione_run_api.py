@@ -115,8 +115,17 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         })
         # competenza normalizzata al 1° nel payload del job
         self.assertEqual(kwargs["payload"]["competenza_mese"], "2026-06-01")
-        # chiave business = competenza + emittenti ORDINATI (dedup deterministico)
-        self.assertEqual(kwargs["idempotency_key"], "FATTURAZIONE_GIRO:2026-06-01:3,4")
+        # ⭐ Chiave business = tipo + CORSIA + competenza + emittenti ORDINATI.
+        #    La corsia e' entrata il 2026-09-05 (opzione A): senza, il batch
+        #    notturno avrebbe visto «immediata» e «differita» dello stesso mese e
+        #    della stessa azienda come lo stesso lavoro, e ne avrebbe scartata
+        #    una in silenzio. Qui il valore e' «differita» — il giro on-demand di
+        #    massa — quindi per il verbo web cambia la FORMA, non il
+        #    comportamento: nessun giro che si deduplicava smette di farlo.
+        self.assertEqual(
+            kwargs["idempotency_key"],
+            "FATTURAZIONE_GIRO:differita:2026-06-01:3,4",
+        )
 
     # 4. JWT senza claim identita_id (token anomalo) → 400 parlante, no accoda.
     @patch(_AUTH, return_value=(_mock_user(), None))

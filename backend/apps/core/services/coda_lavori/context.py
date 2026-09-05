@@ -3,9 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Contesto di esecuzione OPERATORE per i job della coda generica. A
-#        differenza di `system_process_context` (che ridirige la connessione a
-#        un ruolo BYPASSRLS), qui si resta sul ruolo applicativo NON-BYPASSRLS
-#        del worker e si ripropone l'IDENTITÀ COMPLETA dell'operatore che ha
+#        Si resta sul ruolo applicativo NON-BYPASSRLS del worker e si
+#        ripropone l'IDENTITÀ COMPLETA dell'operatore che ha
 #        accodato il job — gli stessi 5 GUC del ciclo web (`set_jwt_gucs`:
 #        `app.jwt_user` username, `app.current_user_id`, `app.current_identita_id`,
 #        `app.ruolo_applicativo`, `app.soggetto_ruolo_id`). Effetto: le policy
@@ -24,8 +23,9 @@
 #        col design §3a: la revoca vale per i job non ancora partiti, non
 #        interrompe l'IN_CORSO.
 #
-#        NB: non ridirige credenziali/ruolo → NON è il canale di sistema e non
-#        rientra nella whitelist di `system_process_context`.
+#        NB: non ridirige credenziali né ruolo — imposta solo GUC di sessione.
+#        ⭐ Dal 2026-09-05 è l'UNICO contesto di esecuzione dei job: il canale
+#        `BYPASSRLS` che gli stava accanto è stato ritirato (R-2).
 # ------------------------------------------------------------
 
 from __future__ import annotations

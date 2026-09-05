@@ -669,6 +669,86 @@ curl -X PUT -H "Authorization: Bearer <token>" \
 
 ---
 
+### 2.7 GET /api/v1/amm-software/operatori/{id}/permessi-ereditati/ -- Livelli ereditati dal profilo
+
+Restituisce i livelli che l'operatore **eredita dal profilo**, cioe' cosa avrebbe
+**senza nessun override individuale**. Sola lettura: non cambia niente e non
+tocca la semantica dei permessi.
+
+⭐ **A cosa serve.** Alimenta la colonna «ereditato» del pannello permessi. Un
+override che **ripete** il valore del profilo non e' rumore innocuo: **congela
+la riga**, perche' da quel momento quell'utente non segue piu' il reparto se il
+reparto cambia livello. Vedere l'ereditato accanto all'override e' cio' che
+evita di scriverlo.
+
+⛔ **Non e' `GET /reparti/{uo_id}/profilo/`, e la differenza non e' cosmetica.**
+Quello legge il **solo** binding `REPARTO` per `unita_organizzativa_id`. I
+bindings sono **tre** e i resolver prendono il primo per priorita':
+
+| Priorita' | Tipo | Legato a |
+| --- | --- | --- |
+| **1** | `AD_HOC` | l'identita' digitale dell'utente |
+| 2 | `PORTALE` | il ruolo applicativo dell'identita' |
+| 2 | `REPARTO` | l'unita' organizzativa |
+
+Per un utente con un binding `AD_HOC` la lettura per reparto darebbe un valore
+**plausibile e sbagliato**, su una schermata di sicurezza. Questo endpoint legge
+invece da `script.fn_get_profili_accesso_applicabili`, **la stessa funzione** che
+usano `fn_resolve_livello_area` e `fn_check_azione_processo`.
+
+**Parametri path:** `id` (int) -- auth_user_id dell'utente.
+
+**Risposta:**
+
+```json
+{
+  "data": {
+    "aree": [
+      {
+        "area_id": 2,
+        "area_codice": "vendite",
+        "area_descrizione": "Vendite",
+        "livello": "LETTURA",
+        "profilo_nome": "Profilo reparto Amministrazione",
+        "profilo_tipo": "REPARTO"
+      }
+    ],
+    "azioni": [
+      {
+        "azione_id": 3,
+        "permission_codename": "genera_fatture_lotti",
+        "azione_descrizione": "Genera fatture lotti",
+        "area_codice": "vendite",
+        "abilitata": true,
+        "profilo_nome": "Profilo reparto Amministrazione",
+        "profilo_tipo": "REPARTO"
+      }
+    ]
+  }
+}
+```
+
+⚠️ **Una voce ASSENTE e' un dato, non un buco**: significa che *nessun profilo*
+copre quell'area o quell'azione, quindi vale il **default** — `BLOCCATO` per le
+aree, azione **negata** per le azioni. Un utente senza profili applicabili
+riceve due liste vuote, e va rappresentato come «default», non come «vuoto».
+
+ℹ️ **Nessuna chiave `oggetti`**, ed e' voluto: `config.profili_accesso_oggetti`
+non esiste. La catena di un model e' *override oggetto -> override area ->
+profilo dell'**area** -> BLOCCATO*, quindi l'ereditato di un oggetto e' il
+livello della sua **area**, che il chiamante ha gia' nella chiave `aree`.
+Restituirlo anche qui sarebbe una seconda risposta alla stessa domanda, con due
+posti in cui sbagliarla.
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/operatori/1/permessi-ereditati/"
+```
+
+---
+
 ## 3. Reparti
 
 ### 3.1 GET /api/v1/amm-software/reparti/ -- Lista reparti

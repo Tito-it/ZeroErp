@@ -60,6 +60,9 @@ export const NAV_ICONS = Object.freeze({
   ID_CARD: 'pi pi-id-card',
   TAGS: 'pi pi-tags',
   HISTORY: 'pi pi-history',
+  // Processi automatici: ingranaggi = «gira da solo». Distinta da
+  // CODE_LAVORO (la coda di ciò che sta girando adesso).
+  PROCESSI_AUTOMATICI: 'pi pi-cog',
   AT: 'pi pi-at',
   FILE_EDIT: 'pi pi-file-edit',
   ENVELOPE: 'pi pi-envelope',
@@ -162,6 +165,7 @@ export const DOMAIN_MENUS = {
     { key: 'categorie-clienti', icon: NAV_ICONS.TAGS, to: '/amm-software/categorie-clienti' },
     { key: 'definizioni-workflow', icon: NAV_ICONS.SITEMAP, to: '/amm-software/definizioni-workflow' },
     { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },
+    { key: 'processi-automatici', icon: NAV_ICONS.PROCESSI_AUTOMATICI, to: '/amm-software/processi-automatici' },
     { key: 'audit-log', icon: NAV_ICONS.HISTORY, to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: NAV_ICONS.AT, to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: NAV_ICONS.FILE_EDIT, to: '/amm-software/email-templates' },

@@ -499,6 +499,11 @@ _LISTE: tuple[tuple[str, object], ...] = (
     #    l'ordine di un ambito e' la sua gerarchia, non una preferenza — e
     #    `oggetto` e' composta dal frontend, senza una colonna SQL dietro.
     ("anagrafiche.titolo_iva_ambiti", ORDINAMENTO_LOCALE),
+    # Processi automatici (2026-09-05, cantiere «nessun processo senza
+    # operatore»). ⚠️ La lista non nasce da una vista: la compone
+    # `ProcessiRepository.list_processi` con le sue colonne derivate, e la
+    # whitelist di ordinamento e' la costante di modulo del repository.
+    ("amm.processi", _da_costante("apps.core.db.processi_repository", "_ORDER_COLS_PROCESSI")),
 )
 
 

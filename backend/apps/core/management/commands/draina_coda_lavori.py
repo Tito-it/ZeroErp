@@ -11,9 +11,11 @@
 #
 #        NB anti-overlap: NESSUN `lock_key`. La coda è concorrenza-safe per
 #        costruzione (`claim` con `FOR UPDATE SKIP LOCKED` → più worker prendono
-#        righe diverse); inoltre un lock advisory di sessione verrebbe rilasciato
-#        dal `system_process_context` per-item dei job SISTEMA (che chiude la
-#        connessione). `registered_job` qui serve solo al TRACCIAMENTO.
+#        righe diverse). `registered_job` qui serve solo al TRACCIAMENTO.
+#        ⚠️ C'era una seconda ragione — «un lock di sessione verrebbe rilasciato
+#        dal canale di sistema per-item, che chiude la connessione» — ed è
+#        DECADUTA il 2026-09-05 col ritiro di quel canale. La prima regge da
+#        sola, ed è quella vera.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from django.core.management.base import BaseCommand
 
 from apps.core.services.coda_lavori.drainer_service import draina_coda_lavori
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
+from apps.core.services.processi import PROCESSO_DRAINA_CODA_LAVORI
 
 
 class Command(BaseCommand):
@@ -50,7 +53,11 @@ class Command(BaseCommand):
             if options[k] is not None
         }
         # Tracciamento run-level (senza lock: SKIP LOCKED regge la concorrenza).
-        with registered_job("draina_coda_lavori", origine=ORIGINE_CRON) as job:
+        with registered_job(
+            PROCESSO_DRAINA_CODA_LAVORI,
+            processo_codice=PROCESSO_DRAINA_CODA_LAVORI,
+            origine=ORIGINE_CRON,
+        ) as job:
             # `job.id` = run job_run_log timbrato sui job claimati (tracciabilità
             # job↔passata, guida Tracciamento processi e job).
             summary = draina_coda_lavori(

@@ -20,7 +20,7 @@ from typing import Any, Protocol
 # Scopo: Work-item claimato dalla coda, forma minima di cui il motore ha
 #        bisogno per la policy retry/backoff + il dispatch. `payload`/`scope`
 #        sono opachi al motore (li interpreta l'handler). `run_as`/`scope`
-#        governano il contesto di esecuzione (SISTEMA BYPASSRLS vs OPERATORE
+#        governano il contesto di esecuzione (SISTEMA senza emittente vs OPERATORE
 #        con scope catturato). Il backend può portare campi extra nel dict
 #        `raw` (colonne specifiche della sua tabella) senza gonfiare il contratto.
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 837, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 843, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -619,6 +619,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_IVA_TITOLI_AMBIGUI": "NON_ESEGUIBILE",
     # script.trgfn_lock_columns su config.iva: si e' tentato di modificare aliquota_iva o natura_iva_id di un codice IVA. ⛔ Cambiare l'aliquota di un codice in USO ne riscrive il significato retroattivamente su ogni documento che l'ha applicato - e su una fattura gia' emessa il numero e' scritto, ma la percentuale che lo spiega verrebbe da un catalogo diverso: il documento si contraddirebbe. La forma giusta e' coniare un CODICE NUOVO, che e' anche come funziona nella realta' - un cambio di aliquota non trasforma il vecchio codice, ne affianca uno. CONFLITTO_STATO come i tre lock gemelli (CODICE_NON_MODIFICABILE, E_ORD_CLIENTE_IMMUTABILE, E_PREV_RIGA_NATURA_IMMUTABILE): non c'e' un campo del form da correggere, e' l'operazione a non essere ammessa - ne discende che nel contesto non va la chiave `campo`. ⚠️ Il VARIADIC porta il NOME DELLA COLONNA, ed e' il caso in cui farlo e' giusto: e' l'informazione utile, e i tre lock gemelli fanno lo stesso. ⭐ Chiude il buco per cui il risolutore avrebbe potuto trovare due aliquote diverse per lo stesso codice sulla stessa fattura (righe scritte prima e dopo una modifica del catalogo): con il lock quel caso e' IRRAGGIUNGIBILE, e non serve allargare uq_fatture_r_iva_key. Uscita dichiarata per correggere un refuso su un codice appena creato: GUC zeroerp.allow_lock_columns_override. Piano: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.
     "E_IVA_TRATTAMENTO_IMMUTABILE": "CONFLITTO_STATO",
+    # dbops.fn_accoda_lavoro: si e' provato ad accodare un lavoro il cui processo e' di classe DOMINIO con run_as diverso da OPERATORE. ⛔ Un lavoro di dominio tocca righe dentro il perimetro di un emittente: senza operatore girerebbe senza perimetro, ed e' esattamente cio' che il cantiere «nessun processo senza operatore» esiste per impedire. ⭐ Serve perche' coda_lavori_tipi.run_as_default e' un SUGGERIMENTO che p_run_as sovrascrive, e il CHECK chk_coda_lavori_run_as_scope guarda la coerenza fra run_as e scope, non la natura del lavoro. La classe si legge da dbops.processi via coda_lavori_tipi.processo_codice. ⛔ Non si e' riusato E_PARAMETRO_INVALIDO: li' non c'e' un parametro invalido, c'e' un'invariante rotta — e quel codice e' un debito dichiarato, non una sede (D11 di brief-db-be-classe-codici-errore). ⚠️ TECNICO e non DATO_ERRATO: l'enqueue lo fa il backend o un trigger, non una persona in un form, quindi niente chiave campo.
+    "E_JOB_DOMINIO_SENZA_OPERATORE": "TECNICO",
     # UI gestione code (BE-7): annullo di un job non piu` PENDING → · conflitto di stato (il worker lo ha gia` preso, o e` terminato).
     "E_JOB_NON_ANNULLABILE": "CONFLITTO_STATO",
     # UI gestione code (BE-7): requeue di un job non IN_CORSO/ERRORE → · conflitto di stato (solo i bloccati/terminali si riaccodano).
@@ -858,6 +860,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "NON_PERMESSO",
     # Refactor 2026-05-20: user_message generico "Variazione prezzo" per · entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel · codice errore + nel detail tecnico (segno della variazione) — utile · per workflow approvazione, dashboard e log, ma non per l'utente. · L'UX vede la direzione esplicita nel detail ("in diminuzione" / · "in aumento") generato da `_raise_or_return_violazione_l2`.
     "E_PRICING_SCONTO_ECCESSIVO": "NON_PERMESSO",
+    # script.fn_crea_utente_tecnico: si e' chiesto un utente tecnico per un processo che non ne vuole uno. Eleggibili SOLO i processi di dbops.processi con classe DOMINIO, attivi, non obsoleti e su canale PGAGENT o COMMAND. ⛔ I processi su canale CODA sono esclusi di proposito: sono accodati da un OPERATORE e girano con lo scope catturato all'enqueue: hanno gia' un'identita', ed e' quella della persona che ha chiesto il lavoro. Dargliene una tecnica ne cancellerebbe il nome dall'audit. ⛔ TECNICO e non DATO_ERRATO: quella chiamata non la fa un operatore in un form, la fa una migrazione o l'amministrazione - quindi niente chiave campo. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+    "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": "TECNICO",
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "DATO_ERRATO",
     "E_PROFILO_ACCESSO_NON_TROVATO": "NON_TROVATO",
     # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un · valore nuovo dell'enum senza regola. Il guard non apre per omissione.
@@ -976,6 +980,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SCADENZE_TERMINE_MANCANTE": "CONFLITTO_STATO",
     # script.trgfn_guard_emittente_scope: fn_check_user_emittente_scope · nega. E' il perimetro dell'operatore, non uno stato sfavorevole.
     "E_SCOPE_EMITTENTE": "NON_PERMESSO",
+    # script.trgfn_guard_emittente_scope: una sessione APPLICATIVA ha provato a scrivere su una tabella con perimetro emittente senza dichiarare chi agisce (app.current_user_id vuota). ⛔ Fino al 2026-09-04 quel caso usciva con RETURN NEW: era la porta da cui un processo automatico scriveva ovunque, e il cantiere «nessun processo senza operatore» esiste per chiuderla. ⭐ Il criterio non e il ruolo DB ma row_security_active() sulla tabella: chi passa dalla RLS (proprietario, superuser, BYPASSRLS) passa anche di qui, e chi la subisce deve dire chi e. Un criterio solo, quello che PostgreSQL applica gia. ⚠️ TECNICO e non NON_PERMESSO: non ce una persona a cui negare qualcosa: ce un processo configurato senza identita. Il fratello NON_PERMESSO e E_SCOPE_EMITTENTE, che nega a un utente NOTO un emittente fuori perimetro. Brief: brief-db-processi-automatici-identita-e-perimetro §7.
+    "E_SCOPE_SENZA_UTENTE": "TECNICO",
     "E_SEARCH_NOT_FOUND": "NON_TROVATO",
     "E_SEARCH_VALIDATION": "DATO_ERRATO",
     # <- SEQUENZA_NON_CONFIGURATA  (vivo)
@@ -1162,6 +1168,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
+    # script.fn_crea_utente_tecnico: l'emittente fiscale indicato per l'utente tecnico non esiste o non e' attivo. ⭐ L'emittente e' OBBLIGATORIO e costitutivo, non un permesso aggiunto dopo: config.user_emittenti_fiscali e' 1-a-1 sull'utente (UNIQUE(auth_user_id), changeSet 20260408-11), quindi un utente tecnico nasce PER un emittente e un utente senza non potrebbe fare niente, mai. ⛔ TECNICO e non DATO_ERRATO: la chiamata la fa una migrazione o l'amministrazione, non un operatore in un form.
+    "E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO": "TECNICO",
+    # script.fn_crea_utente_tecnico: il processo ha gia' un utente tecnico attivo per quell'emittente, e la regola e' UNO per processo PER EMITTENTE (decisione D-6, rivista il 2026-09-04: config.user_emittenti_fiscali e' 1-a-1 sull'utente). ⭐ La fn si ferma prima invece di lasciar sollevare uq_processi_identita_processo: un 23505 nudo non direbbe QUALE regola e' stata infranta, e questa e' una regola di dominio, non un incidente di chiave. Per sostituire l'utente di un processo si disattiva la riga esistente e se ne crea una nuova: la storia dei run che lo nominano resta leggibile. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+    "E_UTENTE_TECNICO_GIA_ESISTE": "TECNICO",
+    # script.fn_crea_utente_tecnico: il profilo di accesso chiesto per un utente tecnico non e' utilizzabile - non esiste, non e' attivo, oppure non e' di tipo AD_HOC (l'unico legabile a una singola identita'; SUPER_ADMIN vi rientra ed e' escluso). ⛔ Il divieto su SUPER_ADMIN e' il punto: e' la scorciatoia ovvia per «deve servire tutti gli emittenti», e bypasserebbe lo scope PRIMA della whitelist in script.fn_check_user_emittente_scope - riaprendo con un nome rassicurante la porta che tutto il cantiere esiste per chiudere. Il perimetro di un processo si scrive riga per riga in config.user_emittenti_fiscali. ⚠️ Su un TECNICO la chiave campo esce dal contesto. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
+    "E_UTENTE_TECNICO_PROFILO_VIETATO": "TECNICO",
     "E_UTILITY_RUOLO_NON_AMMESSO": "DATO_ERRATO",
     "E_VALIDATION_INPUT": "DATO_ERRATO",
     # 13 punti di sollevamento, tutti la stessa condizione: parametro obbligatorio mancante o non valido (la guard prescritta da AGENTS.md). Non e un accumulatore, misurato il 2026-08-07.

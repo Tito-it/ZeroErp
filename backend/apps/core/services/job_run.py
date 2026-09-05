@@ -63,24 +63,44 @@ class JobRunHandle:
 #        uscito per eccezione, poi rilancia). Se il lock è occupato (`acquired=False`) la
 #        riga "skip" è già loggata dallo start: il corpo NON va eseguito (il caller
 #        controlla `handle.acquired`) e `fn_job_run_end` non viene chiamato (nessun lock
-#        posseduto). DEVE girare sulla stessa connessione del corpo job: per il batch
-#        fatturazione significa DENTRO il gateway del canale di sistema
-#        (apps.core.services.system_context), stesso ruolo/connessione, così il lock di
-#        sessione vive per tutto il run — vedi design §4.
+#        posseduto). DEVE girare sulla stessa connessione del corpo job, così il
+#        lock di sessione vive per tutto il run — vedi design §4.
+#        ⚠️ Fino al 2026-09-05 questa riga diceva «dentro il gateway del canale di
+#        sistema»: quel gateway è stato ritirato (R-2) e la connessione è ora
+#        sempre quella applicativa. Il vincolo «stessa connessione» resta.
+#
+#        ⭐ `processo_codice` (2026-09-05) e' L'ATTORE: chi ha eseguito, scritto su
+#        `maintenance.job_run_log.processo_codice` con **hard FK** verso
+#        `dbops.processi`. E' keyword-only e SENZA default di proposito — un job
+#        nuovo non deve poter nascere senza dire chi e', e con un default lo
+#        dimenticherebbe il prossimo senza che niente lo segnali. Le costanti
+#        stanno in `apps.core.services.processi`.
+#        ⛔ NON si deriva dal `job_name`: `run_fatturazione_batch` si registra come
+#        `run_fatturazione_batch:immediata`, con la corsia attaccata. *Una
+#        derivazione incompleta e' peggio di nessuna derivazione* — copre una
+#        parte dei casi e tace sull'altra. Dove la derivazione e' completa esiste
+#        gia', ed e' dentro `maintenance.fn_run_and_log` per i job pgAgent.
+#        ⚠️ `auth_user_id` e' l'utente TECNICO, e si valorizza solo dove la
+#        risposta e' UNA: un processo di dominio che lavora un emittente alla
+#        volta ce l'ha, un produttore che ne serve N no (i suoi utenti sono N, e
+#        chi scrive davvero e' il lavoro accodato).
 @contextmanager
 def registered_job(
     job_name: str,
     *,
+    processo_codice: str,
     origine: str = ORIGINE_CRON,
     stepname: str | None = None,
     lock_key: str | None = None,
     agent_host: str | None = None,
+    auth_user_id: int | None = None,
 ) -> Iterator[JobRunHandle]:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT id, run_uuid, acquired "
-            "FROM script.fn_job_run_start(%s, %s, %s, %s, %s)",
-            [job_name, origine, stepname, lock_key, agent_host],
+            "FROM script.fn_job_run_start(%s, %s, %s, %s, %s, %s, %s)",
+            [job_name, origine, stepname, lock_key, agent_host,
+             processo_codice, auth_user_id],
         )
         row = cursor.fetchone()
     assert row is not None  # la funzione ritorna sempre una riga

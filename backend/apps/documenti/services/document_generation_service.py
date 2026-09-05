@@ -128,10 +128,13 @@ _DOCUMENTO_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # Sentinel C-0 (P-1, brief-be-fe-processi-fatturazione §4): "scope non passato"
 # e' diverso da "scope None". Default = deriva lo scope dallo user (path web,
-# invariato per i 6 domini). Il path SISTEMA (worker drainer, pipeline, cron)
-# passa `emittente_scope=None` esplicito (vede tutto: l'emittente e' input
-# autoritativo del lotto e il canale e' gia' `system_process_context`
-# BYPASSRLS) e `user=None` (audit a None: l'attore e' in `app.jwt_user`).
+# invariato per i 6 domini).
+# ⭐ Il path PROCESSO (worker headless) passa `emittente_scope` ESPLICITO — la
+# lista di UN emittente, quello del proprio utente tecnico — e `user=None`
+# (audit a None: l'attore e' in `app.jwt_user`).
+# ⛔ Fino al 2026-09-05 passava `None` («vede tutto») su un canale `BYPASSRLS`:
+# era la porta da cui un worker generava il documento di qualunque azienda. Il
+# canale non esiste piu' e quella combinazione e' rifiutata (R-2/R-4).
 _SCOPE_DA_UTENTE: Any = object()
 
 
@@ -168,7 +171,7 @@ class DocumentGenerationService:
     #        C-0: `emittente_scope` separa CHI AUTORIZZA da COSA GENERA —
     #        default sentinel = deriva dallo `user` (path web, invariato);
     #        il path sistema passa lo scope gia' risolto (None = vede tutto,
-    #        canale BYPASSRLS obbligatorio, guard `_guard_canale_sistema`).
+    #        perimetro esplicito obbligatorio, vedi `_resolve_scope_chiamante`).
     def genera_documento(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -985,10 +988,10 @@ class DocumentGenerationService:
     #        AUTORIZZA da COSA GENERA. Sentinel (default) = path web: auth
     #        guard + `resolve_emittente_scope(user)` come sempre. Scope
     #        esplicito = path caller-resolved: il chiamante ha gia' deciso
-    #        (worker/pipeline passano None = vede tutto). La combinazione
-    #        `scope=None + user=None` e' ammessa SOLO su canale di sistema
-    #        BYPASSRLS (fail-loud: una view web che la passasse per errore
-    #        viene bloccata qui, non genera cross-scope).
+    #        (un worker passa la lista di UN emittente: il proprio). ⛔ Dal
+    #        2026-09-05 la combinazione `scope=None + user=None` — «nessun
+    #        utente e nessun perimetro» — NON e' piu' ammessa da nessun canale:
+    #        o si dice chi si e', o si dice per quale azienda si genera.
     def _resolve_scope_chiamante(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -1006,25 +1009,35 @@ class DocumentGenerationService:
             message="emittente_scope non valido: attesa lista di id o None.",
             detail=f"emittente_scope={type(emittente_scope).__name__}",
         )
-        if emittente_scope is None and user is None:
-            self._guard_canale_sistema()
-        return emittente_scope
-
-    # Scopo: Guard fail-loud del path sistema: senza utente e senza scope si
-    #        genera SOLO su una connessione di canale sistema (BYPASSRLS,
-    #        aperta da `system_process_context`). Metodo separato per
-    #        testabilita' (i test lo patchano senza DB).
-    def _guard_canale_sistema(self) -> None:
-        from apps.core.services.system_context import connection_role_bypasses_rls
-
+        # ⛔ SENZA UTENTE E SENZA PERIMETRO NON SI GENERA PIU' (2026-09-05,
+        #    residuo R-4 del cantiere «nessun processo senza operatore»).
+        #    Fino a ieri quella combinazione era ammessa su una connessione
+        #    `BYPASSRLS`: era la porta da cui un worker produceva il documento
+        #    di QUALUNQUE azienda senza dire per conto di chi.
+        #    ⭐ Adesso il worker della coda stampa gira con l'identita'
+        #    dell'utente tecnico e passa il perimetro esplicito
+        #    (`emittente_scope=[id]`), quindi questo ramo non ha piu' nessun
+        #    chiamante legittimo — e restare aperto lo renderebbe di nuovo
+        #    raggiungibile per distrazione.
+        #    ⛔ E NON si e' sostituito il guard con «la connessione ha un utente
+        #    in sessione?»: sarebbe stato un secondo criterio accanto a quello
+        #    che il database applica gia' — la GUC la impone il chiamante, e un
+        #    guard che la legge crede al chiamante. Qui si pretende il DATO:
+        #    o dici chi sei, o dici per quale azienda stai generando.
         ErrorManager.require(
-            connection_role_bypasses_rls(),
+            not (emittente_scope is None and user is None),
             code=E_VALIDATION,
             message=(
-                "Generazione senza utente e senza scope ammessa solo dal "
-                "canale di sistema (BYPASSRLS)."
+                "Generazione senza utente e senza perimetro emittente: "
+                "il processo non dichiara per conto di chi genera."
+            ),
+            detail=(
+                "Passare `emittente_scope=[<emittente_fiscale_id>]` — il "
+                "perimetro dell'utente tecnico del processo — oppure lo user "
+                "della richiesta."
             ),
         )
+        return emittente_scope
 
     # Scopo: Risolve il template da generare. Tre casi:
     #         a) caller passa `template_documento_id` -> get_template via
