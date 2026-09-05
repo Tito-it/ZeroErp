@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-6 — l'ultima riga del presidio livello 2.
+#   Registrato come R-10 in brief-db-processi-automatici-identita-e-perimetro,
+#   sezione 12.3; nato rispondendo a brief-db-processi-automatici-residui-be.
+#
+# ⭐ E' l'unica riga rimasta in `dbops.vw_processi_dominio_senza_difesa`:
+#     draina_coda_stampa | vendite.fatture_stampa_coda | write-guard (scrittura scoperta)
+#   La policy c'e' gia' (`rls_fatture_stampa_coda_ef_whitelist`, changeSet
+#   20260904-05/-06). Manca il guard di scrittura, ed e' il pezzo che parla.
+#
+# ── ⭐ PERCHE' SERVE ANCHE QUI, con la policy gia' in piedi ─────────
+#   Sull'INSERT la policy arriva TARDI. `WITH CHECK` si valuta dopo i trigger
+#   `BEFORE ROW`: un operatore che accoda la stampa di una fattura ALTRUI
+#   riceverebbe «new row violates row-level security policy», che e' vero e
+#   inservibile. Il guard scatta prima e dice chi, quale emittente, quale
+#   tabella.
+#   ⛔ E copre il caso in cui la RLS non morde affatto: una `SECURITY DEFINER`
+#   di proprieta' di `titodb` che scriva qui passerebbe senza che nessuno
+#   guardi l'emittente.
+#
+# ── ⚠️ LA TABELLA SEMBRA POLIMORFA, E NON LO E' ─────────────────────
+#   Porta `sorgente_tipo_id` e `sorgente_uid`, cioe' la forma delle sorgenti
+#   polimorfe — dove il portante puo' essere l'`uid` e non l'`id`, e puntare
+#   `sorgente_id` a una tabella sola sarebbe sbagliato.
+#   ✅ Qui no, e non e' una deduzione dal nome: c'e' una **FK dura**
+#   `fk_fatture_stampa_coda_fattura (sorgente_id) REFERENCES vendite.fatture(id)`.
+#   Il tipo sorgente e' uno solo (`FATTURA`), fissato dal vincolo, non dalla
+#   convenzione. ⇒ Il modo `fattura` su `sorgente_id` e' corretto, ed e' lo
+#   stesso che la policy usa gia' con `fn_scope_ef_whitelist_via_fattura`.
+#   ⛔ Il giorno che la coda accettasse un'altra sorgente, quella FK dovrebbe
+#   cadere — e allora questo guard e la policy vanno rivisti INSIEME, perche'
+#   entrambi assumono la stessa cosa.
+#
+# ── ⚠️ L'ORDINE COI TRIGGER ESISTENTI, e perche' non morde ──────────
+#   I `BEFORE ROW` scattano in ordine alfabetico:
+#     trg_fatture_stampa_coda_a10_archiviazione_upd          (puo' rifiutare)
+#     trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd  <- questo
+#   Quindi l'archiviazione parlerebbe per prima. Misurato che non e' un
+#   problema: quel trigger e' **solo su UPDATE**, e un UPDATE su una riga
+#   altrui non arriva mai ai trigger — o la RLS la nasconde (canale
+#   applicativo), o la sessione bypassa la RLS e allora il guard di scope esce
+#   subito per conto suo (fase 6). ⇒ I due non possono essere rilevanti insieme,
+#   e si tiene il prefisso `a10_` della famiglia invece di inventarne uno.
+#   ⭐ Sull'INSERT — il caso che conta — l'altro trigger non c'e' proprio.
+#
+# Dipendenze: script.trgfn_guard_emittente_scope, modo `fattura` (gia' in essere).
+# Verifica: db/pgtap/rls/test-rls-fatture-stampa-coda-write-guard.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260905-07-create-trg-fatture-stampa-coda-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260905-07-create-trg-fatture-stampa-coda-guard-emittente-scope
+      author: mctit
+      failOnError: true
+      comment: >
+        Guard di scrittura su vendite.fatture_stampa_coda (modo fattura su
+        sorgente_id), che affianca rls_fatture_stampa_coda_ef_whitelist. Chiude R-10
+        e porta dbops.vw_processi_dominio_senza_difesa a ZERO. Serve perche' sull'
+        INSERT il WITH CHECK della policy arriva dopo i BEFORE ROW: senza il guard,
+        accodare la stampa di una fattura altrui darebbe un errore vero e
+        inservibile invece di dire chi, quale emittente e quale tabella.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatture_stampa_coda }
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_stampa_coda
+                columnName: sorgente_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_guard_emittente_scope'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'fk_fatture_stampa_coda_fattura'
+                     AND conrelid = 'vendite.fatture_stampa_coda'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS
+                  trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd
+                  ON vendite.fatture_stampa_coda;
+              CREATE TRIGGER trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.fatture_stampa_coda
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                      'fattura', 'sorgente_id');
+
+              COMMENT ON TRIGGER
+                  trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd
+                  ON vendite.fatture_stampa_coda IS
+                  'Difesa in profondita'' sul perimetro emittente della coda di stampa, '
+                  'risolto dalla FATTURA sorgente. Affianca '
+                  'rls_fatture_stampa_coda_ef_whitelist: sull''INSERT il WITH CHECK della '
+                  'policy si valuta DOPO i BEFORE ROW, quindi senza questo trigger '
+                  'accodare la stampa di una fattura altrui darebbe «new row violates '
+                  'row-level security policy» — vero e inservibile. ⭐ E copre il caso in '
+                  'cui la RLS non morde: una SECURITY DEFINER di titodb che scriva qui. '
+                  '⚠️ La tabella PORTA sorgente_tipo_id e sorgente_uid, cioe'' la forma '
+                  'polimorfa, ma NON lo e'': la FK fk_fatture_stampa_coda_fattura fissa '
+                  'sorgente_id a vendite.fatture. Se un giorno quella FK cadesse, questo '
+                  'guard e la policy vanno rivisti INSIEME — assumono la stessa cosa. '
+                  'Chiude R-10, e porta dbops.vw_processi_dominio_senza_difesa a zero. '
+                  'rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS
+                  trg_fatture_stampa_coda_a10_guard_emittente_scope_ins_upd
+                  ON vendite.fatture_stampa_coda;
