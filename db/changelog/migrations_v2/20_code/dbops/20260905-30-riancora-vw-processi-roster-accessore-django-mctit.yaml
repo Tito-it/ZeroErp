@@ -1,0 +1,262 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ri-ancora `dbops.vw_processi_roster` sull'accessore late-bound, sui database
+# dove il `20260905-23` e' GIA' stato applicato.
+#
+# ── 🔴 IL PROBLEMA, ED E' UNA DIVERGENZA CI-vs-DEV ──────────────────
+#   Il `20260905-23` creava la vista con `JOIN django.auth_user`, e su un
+#   database ricostruito da zero il migrate si e' fermato li':
+#   `la relazione "django.auth_user" non esiste`.
+#   ⛔ Non e' un ordine da sistemare: le TABELLE dello schema `django` le crea
+#   `manage.py migrate`, non Liquibase — in `ci.yaml` quel passo non c'e'
+#   affatto, in `ci-validate.yaml` viene dopo. Durante il migrate quella tabella
+#   non esiste in nessun momento.
+#   ⭐ Una VISTA si risolve alla `CREATE`; una funzione **plpgsql** no. E' per
+#   questo che le ~40 funzioni del progetto che leggono `django.*` non hanno mai
+#   dato problemi, e per cui `anagrafiche.risorse_umane_auth_user` — una vista
+#   che si chiama cosi' — passa da `identita_digitali` e non da Django.
+#   ⇒ La regola: **il DB puo' CHIAMARE dentro `django.*`, non puo' DIPENDERNE
+#   strutturalmente** (vista, FK, colonna generata).
+#
+# ── ℹ️ PERCHE' UN CHANGESET NUOVO E NON SOLO LA CORREZIONE DEL -23 ──
+#   Il `-23` e' gia' EXECUTED su dbdev, quindi li' **non ri-esegue**: corretto
+#   solo quello, la CI avrebbe la vista nuova e dbdev quella vecchia — due
+#   macchine, due definizioni dello stesso oggetto, e la doc auto-gen (che si
+#   genera da dbdev) racconterebbe quella sbagliata.
+#   ⇒ Il `-23` porta la stessa DDL perche' un database **da zero** deve avere la
+#   vista giusta subito — anche per la preCondition del `-24`, che la pretende —
+#   e questo changeSet la porta **dove il -23 non arriva piu'**.
+#   ⛔ Non sono due sorgenti da tenere allineate: e' la forma forward-only di
+#   sempre, dove l'ultimo changeSet e' la definizione viva e i precedenti sono
+#   storia. Chi dovra' cambiare il roster scrivera' il prossimo, non tornera' su
+#   questi.
+#
+# ── ⭐ LE CINQUE CONDIZIONI RESTANO CINQUE ──────────────────────────
+#   `au.is_active` non e' stata sacrificata alla correzione, ed era la
+#   scorciatoia ovvia («tanto `idg.attivo` la rispecchia»). Non la rispecchia:
+#   la sincronia e' a senso unico (identita' -> Django), quindi un utente
+#   disattivato **dentro Django** resterebbe attivo per il DB. Il join resta
+#   INNER: utente assente o spento, la riga sparisce come prima.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-roster.sql (il test 6 spegne
+# `django.auth_user.is_active` e pretende che la coppia sparisca).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-30-riancora-vw-processi-roster-accessore-django-mctit.yaml
+
+  - changeSet:
+      id: 20260905-30-riancora-vw-processi-roster-accessore-django
+      author: mctit
+      failOnError: true
+      comment: >
+        Ri-ancora dbops.vw_processi_roster sull'accessore plpgsql
+        script.fn_get_auth_user_stato: una vista si risolve alla CREATE e le
+        tabelle dello schema django le crea manage.py migrate, non Liquibase.
+        Stessa DDL del 20260905-23, che su un database dove e' gia' applicato
+        non ri-esegue.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: processi_identita }
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: identita_digitali
+                columnName: tecnica
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =====================================================
+              -- 1) L'ACCESSORE late-bound su django.auth_user.
+              --    plpgsql e non sql: il corpo di una funzione plpgsql non
+              --    viene risolto alla CREATE, quindi puo' nominare una tabella
+              --    che durante il migrate non esiste ancora.
+              -- ⛔ Niente %TYPE sulle colonne di django.*: stessa regola.
+              -- ⚠️ SECURITY INVOKER (il default) e non DEFINER: chi legge il
+              --    roster o e' zeroerp_app — che su django.auth_user ha SELECT —
+              --    o e' il job pgAgent, che gira come superuser. Darle privilegi
+              --    propri sarebbe darli a chiunque possa eseguirla, ed e' la
+              --    stessa scelta gia' motivata in fn_accoda_chiusura_scadenze.
+              -- =====================================================
+              CREATE OR REPLACE FUNCTION script.fn_get_auth_user_stato(
+                  p_auth_user_id integer)
+               RETURNS TABLE (username text, is_active boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- ⚠️ Nessun guard sul parametro, ed e' una scelta motivata:
+                  --   questa non e' una funzione applicativa chiamata da un
+                  --   form, e' la CHIAVE DI UN JOIN. Un id assente (utente
+                  --   cancellato) deve dare ZERO RIGHE — che in un INNER JOIN
+                  --   LATERAL fa sparire la riga, cioe' fail-closed. Sollevare
+                  --   fermerebbe la lettura del roster INTERO per una riga sola.
+                  RETURN QUERY
+                  SELECT au.username::text, au.is_active
+                    FROM django.auth_user au
+                   WHERE au.id = p_auth_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_auth_user_stato(integer) IS
+                  'Lo stato di un utente Django (username, is_active) per '
+                  'auth_user_id. ⭐ Esiste per una ragione sola e va detta: una '
+                  'VISTA si risolve alla CREATE, e le tabelle dello schema django '
+                  'le crea manage.py migrate — non Liquibase — quindi durante il '
+                  'migrate non esistono. Una funzione plpgsql invece e'' '
+                  'late-bound. ⇒ Il DB puo'' CHIAMARE dentro django.*, non puo'' '
+                  'DIPENDERNE strutturalmente (vista, FK, colonna generata): chi '
+                  'ha bisogno di auth_user dentro una vista passa da qui. '
+                  '⚠️ Zero righe su id assente e'' la risposta giusta, non un '
+                  'errore: e'' la chiave di un join, e in un INNER JOIN LATERAL '
+                  'fa sparire la riga (fail-closed).';
+
+              DO $grant_fn$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION script.fn_get_auth_user_stato(integer)
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant_fn$;
+
+              -- =====================================================
+              -- 2) IL ROSTER.
+              -- ⚠️ DROP + CREATE e non CREATE OR REPLACE: `username` cambia
+              --    tipo (varchar(150) di Django -> text dell'accessore), e
+              --    CREATE OR REPLACE VIEW non sa cambiare il tipo di una
+              --    colonna. Il GRANT si rimette qui sotto, nello stesso
+              --    changeSet: un DROP porta via anche i privilegi.
+              -- ⭐ Nessuna dipendenza da rifare: fn_accoda_chiusura_scadenze la
+              --    legge da dentro un corpo plpgsql, che non e' una dipendenza
+              --    registrata — il DROP non la tocca.
+              -- =====================================================
+              DROP VIEW IF EXISTS dbops.vw_processi_roster;
+
+              CREATE VIEW dbops.vw_processi_roster AS
+              SELECT p.codice              AS processo_codice,
+                     p.classe,
+                     p.canale,
+                     idg.auth_user_id,
+                     au.username,
+                     idg.id                AS identita_id,
+                     ef.id                 AS emittente_fiscale_id,
+                     ef.codice             AS emittente_codice,
+                     ef.soggetto_ruolo_id  AS emittente_soggetto_ruolo_id
+                FROM dbops.processi p
+                JOIN dbops.processi_identita pi
+                  ON pi.processo_id = p.id
+                 AND pi.attivo
+                JOIN anagrafiche.identita_digitali idg
+                  ON idg.auth_user_id = pi.auth_user_id
+                 AND idg.attivo
+                 AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                -- ⛔ NON `JOIN django.auth_user`: una vista si risolve alla
+                --   CREATE e quella tabella durante il migrate non esiste.
+                --   La condizione e' la stessa (`au.is_active`), letta da un
+                --   accessore plpgsql: il join resta INNER, quindi un utente
+                --   assente o spento fa sparire la riga come prima.
+                JOIN LATERAL script.fn_get_auth_user_stato(pi.auth_user_id) au
+                  ON au.is_active
+                JOIN config.user_emittenti_fiscali uef
+                  ON uef.auth_user_id = pi.auth_user_id
+                JOIN anagrafiche.emittenti_fiscali ef
+                  ON ef.id = uef.emittente_fiscale_id
+                 AND ef.attivo
+               WHERE p.attivo
+                 AND p.obsoleto_dal IS NULL
+               -- ⚠️ Ordine stabile: il produttore accoda nell'ordine in cui
+               --   legge, e due corse devono essere confrontabili.
+               ORDER BY p.codice, ef.codice, idg.auth_user_id;
+
+              COMMENT ON VIEW dbops.vw_processi_roster IS
+                  'Per ogni processo automatico, con quale IDENTITA'' lavora ciascuna '
+                  'azienda: la terna (auth_user_id, username, identita_id) piu'' '
+                  'l''emittente. ⭐ Il fatto esisteva gia'' ma viveva in una stringa SQL '
+                  'dentro Python (processi_repository.roster_processo): serviva solo al '
+                  'produttore della fatturazione. Da quando anche il DB deve accodare — il '
+                  'job pgAgent della chiusura scadenze — riscriverlo sarebbe stata una '
+                  'SECONDA scrittura dello stesso fatto. ⚠️ Le cinque condizioni sono '
+                  'tutte necessarie (legame attivo, identita'' attiva, ruolo OPERATORE, '
+                  'utente Django attivo, emittente attivo): spegnerne uno basta a fermare '
+                  'il processo, quindi guardarne uno solo basta a sbagliare — e'' la stessa '
+                  'terna che script.fn_riattiva_utente_tecnico riaccende tutta insieme. '
+                  '⚠️ La condizione sull''utente Django passa da '
+                  'script.fn_get_auth_user_stato e non da un JOIN diretto: una vista si '
+                  'risolve alla CREATE e le tabelle di django le crea manage.py migrate, '
+                  'non Liquibase. ⚠️ Al backend: roster_processo puo'' diventare un SELECT '
+                  'su questa vista. Finche'' restano due copie, sono due copie.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_roster TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si torna alla vista con il JOIN diretto su
+              -- django.auth_user (la forma del 20260905-23 originale), che su
+              -- un database dove Django ha gia' migrato e' valida.
+              DROP VIEW IF EXISTS dbops.vw_processi_roster;
+
+              CREATE VIEW dbops.vw_processi_roster AS
+              SELECT p.codice              AS processo_codice,
+                     p.classe,
+                     p.canale,
+                     idg.auth_user_id,
+                     au.username,
+                     idg.id                AS identita_id,
+                     ef.id                 AS emittente_fiscale_id,
+                     ef.codice             AS emittente_codice,
+                     ef.soggetto_ruolo_id  AS emittente_soggetto_ruolo_id
+                FROM dbops.processi p
+                JOIN dbops.processi_identita pi
+                  ON pi.processo_id = p.id
+                 AND pi.attivo
+                JOIN anagrafiche.identita_digitali idg
+                  ON idg.auth_user_id = pi.auth_user_id
+                 AND idg.attivo
+                 AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                JOIN django.auth_user au
+                  ON au.id = pi.auth_user_id
+                 AND au.is_active
+                JOIN config.user_emittenti_fiscali uef
+                  ON uef.auth_user_id = pi.auth_user_id
+                JOIN anagrafiche.emittenti_fiscali ef
+                  ON ef.id = uef.emittente_fiscale_id
+                 AND ef.attivo
+               WHERE p.attivo
+                 AND p.obsoleto_dal IS NULL
+               ORDER BY p.codice, ef.codice, idg.auth_user_id;
+
+              DO $grant_rb$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_roster TO zeroerp_app;
+                  END IF;
+              END
+              $grant_rb$;
+
+              DROP FUNCTION IF EXISTS script.fn_get_auth_user_stato(integer);

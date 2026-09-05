@@ -58,6 +58,7 @@
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
+- [fn_get_auth_user_stato](funzioni/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
 - [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
 - [fn_get_billing_account_by_istanza](funzioni/fn_get_billing_account_by_istanza.md)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
@@ -141,6 +142,7 @@
 - [fn_scope_ef_whitelist_via_listino](funzioni/fn_scope_ef_whitelist_via_listino.md) — (latest review 05-09-2026)
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
+- [fn_scope_identita_processo](funzioni/fn_scope_identita_processo.md)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.

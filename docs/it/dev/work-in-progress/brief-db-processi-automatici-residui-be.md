@@ -827,6 +827,203 @@ dichiarare al command la propria identità, un'azienda alla volta.
 
 ---
 
+## 1-septies. Risposta del DB al §1-sexies (2026-09-05, sera)
+
+### ✅ Il commento perso — è nostro, ed è riparato
+
+`dbops.vw_processi_dominio_senza_emittente` aveva `obj_description` NULL: il
+`DROP` + `CREATE` del changeSet `20260905-19` porta via anche il `COMMENT`, e
+quel changeSet **rimetteva il GRANT ma non il commento**. ⇒ `20260905-27`.
+
+⭐ **Grazie per averlo visto, e il modo in cui l'avete visto conta**: il vostro
+pannello *legge* quel commento. Un commento che nessuno consuma sarebbe sparito
+senza testimoni — la vista funzionava benissimo, e nessun errore lo avrebbe mai
+detto.
+
+⚠️ Il testo non è quello vecchio ricopiato: quella versione descriveva una vista
+**senza** `stato` e `nota`. Rimetterlo tale e quale avrebbe restituito un
+commento vero al 4 settembre su una vista cambiata il 5.
+
+> ⭐ La lezione, che ci teniamo: `DROP VIEW` + `CREATE VIEW` porta via **tre**
+> cose — i GRANT, il `COMMENT` e (dove c'è) `security_invoker`. Il `-19` se ne
+> era ricordate due su tre.
+
+---
+
+### 🔴 DB-3 — avete ragione sulle due tabelle, e cambia la forma della richiesta
+
+> **La colonna emittente l'abbiamo messa sulla tabella che il processo non
+> legge.**
+
+Verificato leggendo il vostro command: `send_pending_emails` seleziona da
+**`config.email_log`**. `config.email_outbox` non compare nel giro di invio — è
+l'area delle **bozze**, che scrive e legge l'interfaccia.
+
+E le due tabelle sono davvero due:
+
+| | `config.email_outbox` | `config.email_log` |
+| --- | --- | --- |
+| a che serve | bozze, scritte dall'UI | il registro degli invii |
+| chi la legge in automatico | ⛔ nessuno | ✅ `send_pending_emails` |
+| `emittente_fiscale_id` | ✅ c'è (DB-3) | ⛔ **non c'è** |
+
+⛔ **Quindi il bersaglio dichiarato in `dbops.processi_bersagli` è sbagliato**, e
+non di poco: dice che `send_pending_emails` tocca `email_outbox`, e quel processo
+non la apre mai. ⇒ Il presidio di livello 2 sta sorvegliando la tabella
+**sbagliata** per quel processo, e la tabella che il processo tocca davvero non è
+sorvegliata da nessuno — non compare nemmeno nel livello 1, perché non è
+dichiarata.
+
+⭐ **Non è un errore vostro né una svista di DB-3**: `email_outbox` ha comunque
+bisogno del perimetro (le bozze sono di un'azienda). È il **censimento** ad avere
+sbagliato bersaglio, e nessuno dei due lati poteva vederlo prima — voi guardavate
+il codice, noi il registro.
+
+#### Che cosa ne facciamo, e perché non oggi
+
+🔵 **Una sola cosa e' una decisione nuova**, e conviene separarla dal resto:
+
+| | | |
+| --- | --- | --- |
+| ✅ | le email `SISTEMA` le legge solo il super admin | **gia' decisa, resta valida**: risponde a *«quale persona le legge»* |
+| 🔴 | **un utente tecnico puo' leggerle?** | **NUOVA.** Non esisteva prima, perche' non si sapeva che chi spedisce deve vedere la riga |
+| ⚙️ | la policy nomina il processo | conseguenza: verificato che `fn_crea_utente_tecnico` rifiuta un profilo non `AD_HOC` (`E_UTENTE_TECNICO_PROFILO_VIETATO`), quindi l'altra strada e' chiusa dal DB stesso |
+| ⚙️ | `config.email_log` prende la colonna e diventa bersaglio | conseguenza — con una sotto-domanda: 🔵 `email_outbox` **resta** un bersaglio dichiarato? Nessun processo automatico la tocca, la scrive l'interfaccia |
+
+⚠️ Verificato anche il vostro numero: le due identita' tecniche di
+`send_pending_emails` hanno `fn_is_super_admin = false`, e in piu' **non hanno
+alcun profilo di accesso legato**. Confermato misurando, non riferito.
+
+⭐ **Sul punto 2 siamo d'accordo con la vostra lettura**: «chi le legge» e «come
+fa a spedirle chi le spedisce» sono due verbi diversi, e il postino non ha titolo
+a leggere la lettera ma deve comunque portarla. La differenza è che nel database
+**portare è leggere**: non esiste un modo di spedire una riga senza vederla.
+⇒ La policy deve nominare il processo, e il fatto che lo faccia va scritto dove
+si vede — non nascosto in una condizione.
+
+---
+
+## 1-octies. 🔴 DB-3 — la decisione c'è, e il blocco si è spostato (2026-09-05, notte)
+
+### ✅ Tid ha deciso: **sì, un utente tecnico può leggerle**
+
+⇒ Il quadro è completo: **il super admin** fra le persone, **l'identità tecnica
+del processo che spedisce** fra le macchine. Come dicevate voi, il postino deve
+poter portare la lettera — solo che nel database **portare è leggere**.
+
+⚙️ Da qui discende, e non è più una scelta: **la policy nomina il processo**.
+Verificato quel che ci avevate scritto: `fn_crea_utente_tecnico` ha davvero il
+guard `E_UTENTE_TECNICO_PROFILO_VIETATO`, e le due identità di
+`send_pending_emails` hanno `fn_is_super_admin = false` **e nessun profilo di
+accesso legato**.
+
+---
+
+### 🔴 Ma la policy resta non scrivibile, e stavolta il blocco è nel writer
+
+Sembrava che la scoperta delle due tabelle sbloccasse `config.email_outbox`: chi
+spedisce legge `email_log`, quindi accendere la RLS sull'outbox non lo tocca —
+e abbiamo verificato che l'outbox la apre **solo** il percorso HTTP, che le GUC
+le ha.
+
+⛔ Poi abbiamo letto chi ci **scrive**:
+
+```python
+# apps/core/api/email_views.py:84
+ambito=(payload.get("ambito") or "SISTEMA").strip(),
+```
+
+`SISTEMA` è il **default** quando il client non manda l'ambito — e il frontend
+non lo manda. E `create_outbox` **non valorizza `emittente_fiscale_id`**.
+
+Con la policy accesa oggi:
+
+| | |
+| --- | --- |
+| bozza senza ambito esplicito → `SISTEMA` | ⛔ l'operatore non la può più creare né vedere |
+| bozza con un ambito vero | ⛔ viola `chk_email_outbox_ambito_emittente` |
+
+**La funzione bozze si romperebbe in tutte e due le direzioni.**
+
+> ⛔ Il difetto vero: `ambito = 'SISTEMA'` oggi significa *«nessuno ha detto quale
+> ambito»*, non *«email di sistema»*. ⭐ Un valore di **default** non può fare da
+> cancello di sicurezza — la policy classificherebbe come segreto di sistema ogni
+> bozza a cui un client ha dimenticato un campo.
+
+#### Che cosa serve da voi, adesso in ordine
+
+| | |
+| --- | --- |
+| 1 | ⛔ **`ambito` diventa un'affermazione**: l'API smette di metterlo per default, il client lo dichiara. Finché è un fallback, non è un cancello |
+| 2 | `create_outbox` **valorizza `emittente_fiscale_id`** per le bozze di un'azienda |
+| 3 | `send_pending_emails` dichiara la propria identità al database (`app.current_user_id` + `app.ruolo_applicativo`), un'azienda alla volta |
+| 4 | e serve `config.email_log` con la colonna emittente — quello è nostro, e viene dopo il 3 |
+
+⭐ Fatti 1 e 2, la policy su `email_outbox` parte **subito**: non dipende da 3 e 4.
+
+---
+
+### ✅ La policy è scritta e applicata — con la RLS ancora spenta
+
+`20260905-32`, ripulita dal `-33`. ⇒ Da parte nostra **DB-3 è finito**: quando
+arrivano i vostri due punti (1 e 2 qui sopra), resta **una riga** —
+`ALTER TABLE config.email_outbox ENABLE ROW LEVEL SECURITY;` — più il
+write-guard di famiglia, che vanno insieme.
+
+⛔ **Perché scritta ma spenta, e non è la scorciatoia che avevamo rifiutato.**
+Scrivere una policy senza accenderla era stato scartato perché lasciava la
+tabella aperta **con il presidio che diceva di no**. ⭐ Dal `20260905-26` quella
+domanda è cambiata: una policy conta solo se la row level security è **in
+vigore**. Infatti il presidio adesso dice, ad alta voce:
+
+> `email_outbox | la policy c'è ma la ROW LEVEL SECURITY non è attiva sulla tabella, e manca il write-guard`
+
+⚠️ **Niente write-guard adesso, e va detto perché**: un guard è un **trigger**,
+morde anche con la RLS spenta. Montarlo oggi fermerebbe la creazione delle bozze
+subito, senza aspettare nessuno.
+
+### ⛔ E il ramo per la vostra identità tecnica NON è su `email_outbox`
+
+L'avevamo scritto lì, e l'abbiamo **ritirato lo stesso giorno** (`-33`): il
+ragionamento era giusto — *portare è leggere* — ma sulla **tabella sbagliata**.
+
+Misurato sui due soli percorsi che potevano smentirlo:
+
+* **inviare una bozza** (`EmailOutboxSendView` → `confirm_and_send`) gira dentro
+  la richiesta HTTP, con una persona vera. Nessuna coda, nessuna identità
+  tecnica;
+* **il ritentativo** (`retry_log_entry`) tocca **solo** `config.email_log`.
+
+⇒ Il ramo va sulla policy di `config.email_log`, insieme alla colonna emittente:
+è lì che il vostro command legge, ed è lì che un collaudo funzionale lo può
+esercitare.
+
+⭐ Il predicato però esiste già ed è collaudato:
+`script.fn_scope_identita_processo(auth_user_id, processo_codice)`
+(`20260905-31`). ⚠️ È più stretto di quanto vi serva sapere in una riga: guarda
+**cinque livelli** — legame, processo vivo, identità attiva, ruolo `OPERATORE`,
+utente Django attivo. Un'identità **revocata** smette di leggere lo stesso
+giorno, senza che nessuno debba ricordarsi di spegnere anche il legame.
+
+---
+
+### ✅ Intanto il censimento smette di mentire
+
+`config.email_log` è ora dichiarata come bersaglio di `send_pending_emails`
+(`debito_dichiarato = true`). Prima il registro diceva `email_outbox`, che quel
+processo non apre mai: il presidio sorvegliava **con sicurezza la tabella
+sbagliata**.
+
+⭐ Ora il livello 1 la nomina — *«percorso verso l'emittente non dichiarato»* — e
+gli allarmi restano **zero**. Il debito è visibile e ha un nome.
+
+🔵 **Una sotto-domanda per voi**: `config.email_outbox` deve restare un bersaglio
+dichiarato? Un bersaglio afferma *«un processo automatico tocca questa tabella»*,
+e per le bozze non è vero — le scrive l'interfaccia. Non l'abbiamo tolta: è una
+decisione, non una pulizia.
+
+---
+
 ## DB-1 — La chiusura scadenze ha bisogno di una casa nella coda
 
 **Che cosa serve.** Un tipo di lavoro della coda con cui il backend possa accodare

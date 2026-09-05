@@ -22,7 +22,7 @@
 --  7) chk_processi_bersagli_via_colonna respinge un percorso senza colonna
 --  8) ogni canale DICHIARATO dal CHECK e' usato da almeno un processo
 --  9) ogni bersaglio seedato punta a un processo DOMINIO
--- 10) vw_processi_dominio_senza_emittente elenca ESATTAMENTE il debito dichiarato
+-- 10) vw_processi_dominio_senza_emittente non ha righe NON_DICHIARATO
 -- 11) un DOMINIO senza bersagli finisce nella vista (caso COSTRUITO)
 -- 12) un percorso su colonna inesistente finisce nella vista (caso COSTRUITO)
 -- 13) vw_processi_che_bypassano non ha righe NON_DICHIARATO
@@ -146,22 +146,43 @@ SELECT is_empty(
 );
 
 -- ============================================================
--- 10. Il livello 1 e' VUOTO, e adesso puo' esserlo davvero
+-- 10. Il livello 1 non ha righe NON_DICHIARATO
 -- ============================================================
 -- ⛔ 2026-09-05 — ERA LA TERZA VOLTA CHE SCRIVEVO QUESTO ERRORE, e vale la pena
 --   fissarlo qui. Il test pretendeva che la vista elencasse ESATTAMENTE
 --   `send_pending_emails`, cioe' fissava un DEBITO come se fosse un'invariante.
---   Il giorno in cui quel debito e' stato pagato — `config.email_outbox` ha
---   preso la colonna emittente, changeSet 20260905-18 — il test e' diventato
---   rosso **perche' il lavoro era riuscito**.
 --   ⭐ Un presidio ha il compito di arrivare a ZERO: un test che pretende una
 --     sua riga si rompe quando ci arriva.
 --   ⇒ La regola generale, ormai pagata tre volte: un test SU un presidio
 --     asserisce che e' vuoto, e COSTRUISCE il caso che lo deve accendere (test
 --     11 e 12 qui sotto). Non si appoggia mai a un debito reale.
+--
+-- 🔴 2026-09-05, GIRO DOPO — e la correzione era andata un passo TROPPO IN LA'.
+--   Riscritto come «la vista e' vuota», il test e' tornato rosso al primo
+--   migrate: `send_pending_emails` c'e' ancora.
+--   ⚠️ Il debito non era stato pagato: si era SPOSTATO. Il changeSet -18 ha dato
+--   l'emittente a `config.email_outbox`, ma quella tabella la scrive
+--   l'interfaccia — il processo legge `config.email_log`, che la colonna non ce
+--   l'ha. Il censimento ora nomina la tabella giusta, e la vista la mostra
+--   perche' e' vero che il percorso non esiste.
+--   ⛔ «Vuota» non e' l'invariante: lo sarebbe solo il giorno in cui non esiste
+--   piu' nessun debito, e un test che lo pretende e' lo stesso errore di prima
+--   girato al contrario — fissa l'ASSENZA di un debito invece della sua
+--   presenza, e si rompe lo stesso.
+--   ⭐ L'invariante vera e' **«nessuna riga NON_DICHIARATO»**: un debito con un
+--   nome e' un lavoro, una riga che nessuno ha dichiarato e' un allarme. E'
+--   esattamente cio' che il test 13 qui sotto fa gia' per i bypass RLS, ed e' la
+--   ragione per cui la colonna `stato` esiste (changeSet 20260905-19).
+--   ⚠️ Il prezzo si dichiara: dichiarare un debito ZITTISCE questo test. Lo
+--   tengono onesto i test 11 e 12, che costruiscono un caso NUOVO e non
+--   dichiarato e pretendono che compaia.
+--   ℹ️ Stessa invariante, dall'altro capo: test 4 di
+--   `db/pgtap/dbops/test-presidi-debito-dichiarato.sql`.
 SELECT is_empty(
-    $$SELECT processo_codice FROM dbops.vw_processi_dominio_senza_emittente$$,
-    'vw_processi_dominio_senza_emittente e'' vuota: ogni bersaglio sa dire di chi e'''
+    $$SELECT processo_codice, nome_tabella
+        FROM dbops.vw_processi_dominio_senza_emittente
+       WHERE stato = 'NON_DICHIARATO'$$,
+    'nessun processo DOMINIO senza percorso all''emittente, fuori dal debito dichiarato'
 );
 
 -- ============================================================
