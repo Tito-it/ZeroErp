@@ -33,6 +33,14 @@ const DEFAULT_ACTIONS_COMPACT_WIDTH = 56 // px, kebab singolo
 // padding/bordo: tenuto a 16px per non reintrodurre lo scroll orizzontale
 // proprio sul filo del contenitore quando compare la scrollbar verticale.
 const DEFAULT_SAFETY = 16
+// Quanto si aspetta che la larghezza SI FERMI prima di rimisurare. Il perche'
+// sta sulla `measure()`.
+// ⚠️ ACCOPPIATO A MANO a `--app-transition-normal` (0.2s, `theme.css`): deve
+//    restare piu' lungo, o si torna a ricalcolare a meta' animazione. Non lo
+//    legge da li' di proposito — servirebbe un `getComputedStyle` a ogni
+//    istanza di lista per un valore che cambia una volta ogni mai — ma se quella
+//    transizione si allunga, questo numero va alzato con lei.
+const ASSESTAMENTO_MS = 260
 
 // Scopo: split delle colonne in visibili + ritirate in base alla larghezza
 // reale del contenitore.
@@ -50,26 +58,53 @@ const DEFAULT_SAFETY = 16
 export function useResponsiveColumns(containerRef, columns, options = {}) {
   const containerWidth = ref(0)
   let ro = null
-  let rafId = null
+  let timerId = null
 
-  // Coalescing via requestAnimationFrame: il ResizeObserver fira ad ogni frame
-  // durante l'animazione della sidebar (~0.2s) — una sola misura per frame
-  // evita ricomputazioni ridondanti e il "ballottaggio" delle colonne.
-  function measure() {
-    if (rafId != null) return
-    const raf =
-      typeof requestAnimationFrame !== 'undefined'
-        ? requestAnimationFrame
-        : (cb) => setTimeout(cb, 16)
-    rafId = raf(() => {
-      rafId = null
-      const el = containerRef.value
-      if (el) containerWidth.value = el.clientWidth
-    })
+  // Scopo: legge la larghezza vera e la pubblica. Da qui in poi ricalcola il
+  //        packing e, se il verdetto cambia, la DataTable ridisegna le colonne.
+  function leggi() {
+    timerId = null
+    const el = containerRef.value
+    if (el) containerWidth.value = el.clientWidth
+  }
+
+  // ⛔ SI MISURA QUANDO LA LARGHEZZA SI FERMA, NON MENTRE CAMBIA — e il motivo
+  //    non e' l'eleganza, e' che il costo non sta nella misura.
+  //
+  //    Il `ResizeObserver` fira a OGNI FRAME per tutta l'animazione della
+  //    sidebar (~0.2s, una dozzina di frame). La misura in se' e' una lettura di
+  //    `clientWidth`; quello che costa e' cio' che ne segue — `containerWidth`
+  //    cambia, il packing ricalcola, `visibleColumns` cambia, e PrimeVue
+  //    RIDISEGNA le colonne di tutta la tabella. Farlo dodici volte dentro
+  //    un'animazione di 200ms consuma il budget di ogni frame: la sidebar si
+  //    muove a scatti e sembra rallentata.
+  //
+  // ⭐ E gli undici ricalcoli intermedi sono BUTTATI: l'unico verdetto che
+  //    conta e' quello sulla larghezza finale. Il "ballottaggio" delle colonne
+  //    che la stesura precedente citava come effetto collaterale era in realta'
+  //    il sintomo — le colonne entravano e uscivano seguendo una larghezza che
+  //    stava ancora cambiando.
+  //
+  // ⚠️ TRAILING, non leading: durante il trascinamento del bordo finestra le
+  //    colonne restano ferme e si assestano alla fine. E' voluto — un ritiro di
+  //    colonna a meta' gesto e' esattamente cio' che disorienta.
+  // ⚠️ La finestra (`ASSESTAMENTO_MS`) e' piu' lunga dell'animazione della
+  //    sidebar: piu' corta e si ricadrebbe a ricalcolare a meta' corsa, che e'
+  //    il difetto che questo codice esiste per togliere.
+  function measure({ subito = false } = {}) {
+    if (timerId != null) clearTimeout(timerId)
+    if (subito) {
+      leggi()
+      return
+    }
+    timerId = setTimeout(leggi, ASSESTAMENTO_MS)
   }
 
   onMounted(() => {
-    measure()
+    // ⭐ La PRIMA misura e' immediata: al montaggio non c'e' nessuna animazione
+    //    in corso, e aspettare un quarto di secondo mostrerebbe la lista con le
+    //    colonne sbagliate e poi un salto.
+    measure({ subito: true })
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(() => measure())
       if (containerRef.value) ro.observe(containerRef.value)
@@ -80,18 +115,20 @@ export function useResponsiveColumns(containerRef, columns, options = {}) {
   })
 
   // Se l'elemento osservato cambia (v-if/remount), ri-osserva.
+  // ⚠️ Misura SUBITO: un remount non e' un'animazione in corso, e' un elemento
+  //    nuovo che deve nascere con le colonne giuste.
   watch(containerRef, (el, old) => {
     if (ro) {
       if (old) ro.unobserve(old)
       if (el) ro.observe(el)
     }
-    measure()
+    measure({ subito: true })
   })
 
   onBeforeUnmount(() => {
-    if (rafId != null && typeof cancelAnimationFrame !== 'undefined') {
-      cancelAnimationFrame(rafId)
-      rafId = null
+    if (timerId != null) {
+      clearTimeout(timerId)
+      timerId = null
     }
     if (ro) {
       ro.disconnect()

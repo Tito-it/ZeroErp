@@ -27,20 +27,22 @@
 > perimetro, la select filtra, e il backend consegna `context.lock_batch_id`.
 > ⇒ La prova 2 misurerebbe finalmente il **savepoint** e non il residuo.
 >
-> ⛔ **Ma la materia di `2026-09` è consumata**, misurata oggi: delle tre
-> commesse ne resta **una**, ed è proprio quella che doveva fare da **guasto**
-> (34137). Le due sane — 34136 e 34138 — non ci sono più.
+> ✅ **E la materia è INTEGRA**, verificato dopo il ripristino del 2026-09-05:
+> tutte e tre le commesse sono di nuovo fatturabili, con gli stessi numeri della
+> fotografia del 04 (34136 · 3 attività · 53,00 — 34137 · 1 · 15,00 — 34138 ·
+> 1 · 10,00), e ciascuna ha la sua riga `ROOT`.
 >
-> ⭐ **E non è invecchiamento: è il difetto stesso.** La fotografia di agosto
-> era scaduta in quattro giorni «da sola»; questa è durata **un giorno**, e a
-> mangiarsela è stato il giro del 2026-09-04 — quello che il collaudo stava
-> misurando. Il lavoro delle commesse sane è finito in fattura, che è
-> esattamente ciò che D1 e D2 descrivono. La materia non è un contorno della
-> prova: è la prima cosa che il difetto tocca.
+> ⚠️ **Come ci si è arrivati, perché la prossima volta è più corto.** Annullare
+> i lotti restituisce le attività ma **non disfa il guasto**: la `ROOT` tolta a
+> 34137 (riga `17005`, degradata a `COLLEGATO`) era rimasta lì, e finché
+> c'era, ogni pull respingeva quella commessa e riaccendeva il badge. ⇒ Il
+> ripristino del guasto è un passo **separato** dall'annullo del lotto, e va
+> fatto per **id**.
 >
-> ⇒ **La materia si costruisce SUBITO PRIMA di eseguire, non in anticipo.**
-> Costruirla oggi per una prova di domani vuol dire rifare la stessa misura su
-> una fotografia scaduta — il copione lo ha già imparato due volte.
+> ⭐ **E la materia non era consumata**, come sembrava contando le commesse
+> emittibili a guasto ancora in piedi: 34137 non compariva perché era
+> **respinta**, non perché fosse stata fatturata. Contare ciò che è
+> «emittibile» mentre un guasto è attivo misura il guasto, non la materia.
 >
 > **Revisione del 2026-09-04 — materia rifatta su `2026-09`, e un `SET` che
 > mancava.** Tre cose:
@@ -213,48 +215,33 @@ SELECT competenza_mese, commessa_id, commessa_codice, cliente_display,
  ORDER BY 1 DESC, 2;
 ```
 
-#### ⛔ Stato della materia al 2026-09-05: **non eseguibile così com'è**
+Le tre commesse di `2026-09`, costruite il 2026-09-04 da tre clienti diversi,
+tutte nate da push, con la riga di `commesse_sorgenti` da guastare.
+✅ **Rimisurate il 2026-09-05 dopo il ripristino: integre, stessi numeri.**
 
-Rimisurata oggi con la query qui sopra. Questo è tutto ciò che il database ha
-in stadio `DA_EMETTERE`, su **ogni** mese:
+| Commessa    | Codice                          | Cliente (BA)                 | Attività `DA_EMETTERE` | Valore | ROOT (`id` riga) | COLLEGATO     |
+| ----------- | ------------------------------- | ---------------------------- | ---------------------- | ------ | ---------------- | ------------- |
+| 34136       | `CMM-PGTAPEF202-2026-000000003` | Azienda PG Test Natura (169) | 3                      | 53,00  | 17003            | **1** (17004) |
+| ⭐ **34137** | `CMM-PGTAPEF202-2026-000000004` | Azienda ConTutto (173)       | 1                      | 15,00  | **17005**        | 0             |
+| 34138       | `CMM-PGTAPEF202-2026-000000005` | Titini Michele Carlo (155)   | 1                      | 10,00  | 17006            | 0             |
 
-| Mese | Commessa | Cliente (BA) | Attività | Valore |
-| --- | --- | --- | --- | --- |
-| `2026-09` | **34137** | Azienda ConTutto | 1 | 15,00 |
-| `2026-08` | 15370 | Azienda ConTutto | 2 | **−20,00** |
-| `2026-08` | 32899 | Titini Michele Carlo | 4 | 74,00 |
-| `2026-06` | 113 | Azienda PG Test Natura | 31 | 1.390,00 |
+ℹ️ Nel perimetro di `2026-09` compare anche **33285**, ma è in stadio
+`FATTURATA`: non partecipa al pull e non va contata fra le sane.
 
-⛔ **Nessun mese ha ciò che serve.** `2026-09` ne ha **una** — e per giunta è la
-candidata al **guasto**: senza commesse sane la prova 2 non ha controprova e
-degrada nella prova 5. `2026-08` ne ha due, di due clienti diversi: è il minimo
-sindacale, e una delle due ha valore **negativo**. `2026-06` ne ha una sola.
+#### ⛔ Rimettere in ordine dopo una prova: sono TRE cose, non una
 
-⇒ **Prima di eseguire si costruisce**, con la procedura del paragrafo qui sopra
-(tre clienti diversi, commesse nate da push, attività portate a `DA_EMETTERE`).
+Imparato il 2026-09-05, ripulendo settembre. Annullare il lotto **non basta**, e
+ognuno dei tre passi ha un padrone diverso:
 
-<details>
-<summary>La materia di <code>2026-09</code>, costruita il 2026-09-04 — ⛔ consumata in <b>un giorno</b></summary>
+| # | Che cosa resta su | Come si abbassa |
+| --- | --- | --- |
+| 1 | il **guasto** (`ROOT` tolta a 34137) | si rimette `ruolo_link='ROOT'` sulla riga **per id** — l'annullo non lo tocca |
+| 2 | i **task run** in `ERRORE` | ✅ l'annullo li porta ad `ANNULLATO` da sé (**D4**). ⚠️ I lotti annullati *prima* del 2026-09-04 sono rimasti indietro e vanno allineati a mano |
+| 3 | le **segnalazioni di lotto** (`fatturazione_lotti_log`, `status='C'`) | ⛔ **nessuno le abbassa**: restano accese anche a lotto `ANNULLATA`, e sono la sorgente della lista «commesse respinte». Oggi si spengono a mano (`disabilitato=true`) — è un tampone, la cura è del DB |
 
-Tenuta come fatto datato, e vale più di quella di agosto: dice **da che cosa**
-una materia viene consumata.
-
-| Commessa    | Codice                          | Cliente (BA)                 | Attività `DA_EMETTERE` | Valore | ROOT (`id` riga) | COLLEGATO     | Oggi |
-| ----------- | ------------------------------- | ---------------------------- | ---------------------- | ------ | ---------------- | ------------- | ---- |
-| 34136       | `CMM-PGTAPEF202-2026-000000003` | Azienda PG Test Natura (169) | 3                      | 53,00  | 17003            | **1** (17004) | ⛔ consumata |
-| ⭐ **34137** | `CMM-PGTAPEF202-2026-000000004` | Azienda ConTutto (173)       | 1                      | 15,00  | **17005**        | 0             | ✅ c'è ancora |
-| 34138       | `CMM-PGTAPEF202-2026-000000005` | Titini Michele Carlo (155)   | 1                      | 10,00  | 17006            | 0             | ⛔ consumata |
-
-⭐ **Le due che mancano sono le SANE, e quella che resta è il GUASTO.** È il
-ritratto esatto di D1+D2: il giro del 2026-09-04 ha rifiutato 34137 — e ha
-consumato il lavoro delle altre due, che il pull non gli aveva consegnato. La
-materia non è invecchiata: è stata mangiata dal difetto che il collaudo stava
-misurando.
-
-ℹ️ Nel perimetro di `2026-09` compariva anche **33285**, in stadio `FATTURATA`:
-non partecipava al pull e non andava contata fra le sane.
-
-</details>
+⭐ Il criterio per sapere se si è puliti davvero: `vw_dash_competenza_errori` e
+`vw_dash_commesse_respinte` **entrambe a zero** sul mese, e le tre commesse di
+nuovo in `vw_dash_competenza_gruppi` con `commessa_emittibile`.
 
 **Quale guastare, e perché non le altre:**
 
