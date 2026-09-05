@@ -9,8 +9,9 @@
 > Leggendo il contratto — e provando a scrivere il primo presidio — sono emerse **otto
 > cose che il BE non può darsi da solo**.
 >
-> **Stato:** 🟢 **IN CORSO — 5 su 8 APPLICATE, DB-5 scritta, DB-2/DB-3 in
-> lavorazione.** Lo stato per riga è nel **§1-quinquies**.
+> **Stato:** 🟢 **CHIUSO lato DB (8 su 8), e CONSUMATO dal backend il
+> 2026-09-05.** Lo stato DB per riga è nel **§1-quinquies**; che cosa il backend
+> ne ha fatto — e l'unica cosa che resta aperta — è nel **§1-sexies**.
 > ✅ **Le tre domande aperte sono chiuse**: le decisioni e il perché stanno nel
 > **§1-quater**.
 >
@@ -757,6 +758,72 @@ dichiarato»; la risposta vera era «questo job non gira da sei mesi».
 ⇒ Registrato come **R-12** nel nostro registro dei residui. È di un altro
 cantiere e non lo progettiamo qui, ma lo diciamo subito perché è **la sola cosa
 che separa la vostra vista dallo zero**.
+
+---
+
+## 1-sexies. Il backend ha consumato le otto (2026-09-05, sera)
+
+> ⚠️ Misurato dopo il merge `25a0ac246`, con il `migrate` già passato su dbdev.
+
+| Vostra consegna | Che cosa il BE ne ha fatto |
+| --- | --- |
+| **DB-1** — tipo `CHIUSURA_SCADENZE`, `fn_accoda_chiusura_scadenze`, canale `CODA_AUTOMATICA` | ✅ l'**handler** (`chiusura_scadenze_default`), registrato in `CoreConfig.ready()`. ⛔ Chiama `fn_apply_chiusura_scadenze()` **senza argomenti**: il perimetro è l'identità, e un secondo posto che lo dichiara è il posto che si dimentica |
+| **`dbops.vw_processi_roster`** | ✅ `roster_processo` è diventato un `SELECT` sulla vista. ⭐ Le cinque condizioni non stanno più in Python: avevate ragione, erano già due copie |
+| **`dbops.vw_coda_lavori_da_guardare`** e **`vw_processi_dominio_su_pgagent`** | ✅ aggiunte ai presidi del pannello. Il pannello legge la natura dal vostro `obj_description`, quindi non è servita nessuna riga di classificazione |
+| **DB-6** — `fn_riattiva_utente_tecnico` | ✅ verbo esposto: service, endpoint `POST …/identita/riattiva/`, e il pulsante compare **dopo** il vostro rifiuto parlante — il frontend non indovina se un utente spento esista |
+| **DB-8** — `E_PROCESSO_NON_TROVATO` | ✅ il ripiego dichiarato è rientrato: 404 invece di 400 |
+| **DB-7** | ✅ verificato: `vw_run_senza_attore` ha 4 righe e **tutte** hanno ormai `processo_registrato = true` |
+
+### ⚠️ Una vista ha perso il commento
+
+`dbops.vw_processi_dominio_senza_emittente` ha `obj_description` **NULL** dopo la
+ricreazione con la colonna `stato` (DB-2). Le altre sette lo hanno. Il pannello
+legge la natura del presidio da quel commento: per questa riga non sa dirla.
+⇒ Serve rimettere il commento (con la stessa forma delle sorelle).
+
+### ⛔ Una cosa che il vostro contratto ci ha fatto correggere
+
+`_CANALI_CON_IDENTITA` nel backend era `("PGAGENT", "COMMAND")`: un **mirror
+dichiarato** della vostra regola. Con `CODA_AUTOMATICA` sarebbe rimasto indietro,
+e la schermata avrebbe mostrato `chiusura_scadenze_daily` come *«non vuole
+un'identità»* proprio mentre ne usa una — senza dare errore.
+
+⇒ Corretto, e adesso il mirror **si prova contro l'originale**: un test legge la
+definizione di `vw_processi_dominio_senza_identita` e il `CHECK` dei canali, e
+fallisce se il backend nomina canali che voi non considerate o ne dimentica uno
+che voi pretendete.
+
+### 🔵 DB-3, seconda metà — la decisione c'è, ma non copre chi spedisce
+
+✅ **Confermato da Tid: le email `SISTEMA` le legge solo il super admin.** La
+vostra policy del §12.15 è quella giusta e resta com'è.
+
+⛔ **Quella regola però dice chi le LEGGE, non come fa a spedirle chi le
+spedisce** — e i due verbi non coincidono: il postino non ha titolo a leggere la
+lettera e deve comunque portarla.
+
+Misurato oggi: le due identità tecniche di `send_pending_emails` hanno
+`script.fn_is_super_admin` = **false**. ⇒ Accesa la RLS, il command vede zero
+righe e chiude verde.
+
+Delle vostre due strade la prima è chiusa **dal database stesso**:
+`fn_crea_utente_tecnico` rifiuta qualunque profilo non `AD_HOC`
+(`E_UTENTE_TECNICO_PROFILO_VIETATO`), e il catalogo spiega che SUPER_ADMIN
+*«bypasserebbe lo scope PRIMA della whitelist»*. Giusto così — non chiediamo di
+rilassarlo.
+
+⇒ **Resta la seconda: la policy nomina il processo.** Un ramo per l'identità
+tecnica di `send_pending_emails` (i pezzi ci sono: `identita_digitali.tecnica`,
+`dbops.processi_identita`). Il super admin resta l'unica **persona** che legge.
+
+⚠️ **E prima ancora, un fatto che non era nel vostro quadro:**
+`send_pending_emails` legge `config.email_log`, mentre la colonna emittente nuova
+e il bersaglio dichiarato sono su `config.email_outbox`. Sono **due tabelle**:
+una policy su `email_outbox` non toccherebbe nemmeno il command che spedisce.
+
+🔵 **Quindi due righe da chiudere insieme:** su quale tabella vale il perimetro, e
+il ramo per l'identità tecnica. Il backend ha già pronto il suo pezzo — far
+dichiarare al command la propria identità, un'azienda alla volta.
 
 ---
 

@@ -40,7 +40,12 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { getProcesso, listProcessoRun, creaUtenteTecnico } from '../api/amministrazione'
+import {
+  getProcesso,
+  listProcessoRun,
+  creaUtenteTecnico,
+  riattivaUtenteTecnico,
+} from '../api/amministrazione'
 import { displayTimestamp } from '../../core/utils/date'
 
 
@@ -72,6 +77,15 @@ const caricamento = ref(false)
 const tabAttiva = ref('bersagli')
 const emittenteScelto = ref(null)
 const creazioneInCorso = ref(false)
+// ⭐ L'azienda per cui la fabbrica ha detto «c'è già, ed è spento». Si tiene il
+//    CODICE e non un booleano: cambiando scelta nella tendina il pulsante di
+//    riattivazione deve sparire, o resterebbe acceso su un'altra azienda.
+// ⛔ Non si calcola qui se un utente tecnico spento esista: lo saprebbe solo
+//    ricostruendo lo username deterministico `processo@azienda`, che è una
+//    regola del DATABASE — scriverla anche qui la renderebbe due, e la seconda è
+//    quella che diverge il giorno che il formato cambia.
+const daRiattivare = ref(null)
+const codiceRifiuto = 'E_UTENTE_TECNICO_DA_RIATTIVARE'
 
 // ⭐ Le aziende che questo processo NON serve arrivano dal dettaglio: sono
 //    l'elenco su cui il verbo agisce. Senza, il pannello mostrerebbe due
@@ -105,6 +119,7 @@ async function carica() {
     dettaglio.value = det ?? null
     corse.value = run?.results ?? []
     emittenteScelto.value = null
+    daRiattivare.value = null
   } finally {
     caricamento.value = false
   }
@@ -121,15 +136,49 @@ watch(() => [props.visible, props.codice], ([aperto]) => {
 // Scopo: crea l'utente tecnico per l'azienda scelta, poi ricarica.
 // ⛔ Nessuna scorciatoia «crea tutti quelli che mancano»: sarebbe il sistema che
 //    concede perimetri da solo, cioè quello che la decisione D-9 ha escluso.
+//
+// ⚠️ Il `catch` intercetta SOLO per leggere il codice, e poi rilancia: il toast e
+//    il resto della gestione errori restano dove stanno (`execute`). Senza
+//    questo, la frase del database — «va riattivato, non creato di nuovo» —
+//    arriverebbe all'operatore senza il pulsante che la esegue.
 async function creaIdentita() {
   if (!emittenteScelto.value) return
+  const azienda = emittenteScelto.value
   creazioneInCorso.value = true
+  daRiattivare.value = null
   try {
     const res = await execute(
-      () => creaUtenteTecnico(props.codice, emittenteScelto.value),
+      () => creaUtenteTecnico(props.codice, azienda).catch((err) => {
+        if (err?.response?.data?.error?.code === codiceRifiuto) {
+          daRiattivare.value = azienda
+        }
+        throw err
+      }),
     )
     if (res !== null) {
       notify.success(t('amministrazione.processi.identita_creata'))
+      emit('identita-creata')
+      await carica()
+    }
+  } finally {
+    creazioneInCorso.value = false
+  }
+}
+
+// Scopo: riaccende l'utente tecnico spento dell'azienda scelta, poi ricarica.
+// ⚠️ Riaccende TUTTA la terna (utente, identità, legame): la fabbrica non
+//    ammette una riattivazione parziale, perché un anello spento fermerebbe il
+//    processo lasciandolo con l'aria di essere a posto.
+async function riattivaIdentita() {
+  if (!daRiattivare.value) return
+  creazioneInCorso.value = true
+  try {
+    const res = await execute(
+      () => riattivaUtenteTecnico(props.codice, daRiattivare.value),
+    )
+    if (res !== null) {
+      notify.success(t('amministrazione.processi.identita_riattivata'))
+      daRiattivare.value = null
       emit('identita-creata')
       await carica()
     }
@@ -253,6 +302,7 @@ async function creaIdentita() {
                     option-label="label"
                     option-value="value"
                     :placeholder="t('amministrazione.processi.scegli_azienda')"
+                    @change="daRiattivare = null"
                   />
                   <Button
                     :label="t('amministrazione.processi.crea_identita')"
@@ -260,6 +310,18 @@ async function creaIdentita() {
                     :disabled="!emittenteScelto || creazioneInCorso"
                     :loading="creazioneInCorso"
                     @click="creaIdentita"
+                  />
+                  <!-- ⭐ Compare SOLO dopo che la fabbrica ha detto che c'è
+                       qualcosa di spento: è il rifiuto parlante a portare qui,
+                       non un'ipotesi del frontend. -->
+                  <Button
+                    v-if="daRiattivare"
+                    :label="t('amministrazione.processi.riattiva_identita')"
+                    icon="pi pi-replay"
+                    severity="warn"
+                    :disabled="creazioneInCorso"
+                    :loading="creazioneInCorso"
+                    @click="riattivaIdentita"
                   />
                 </div>
               </template>

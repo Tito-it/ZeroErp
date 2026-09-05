@@ -4,7 +4,7 @@
   Doc: Vue
 -->
 <script setup>
-// Scopo: il pannello dei SEI PRESIDI del cantiere «nessun processo senza
+// Scopo: il pannello dei PRESIDI del cantiere «nessun processo senza
 //        operatore»: per ognuno quante righe ha, cosa vuol dire, e le prime.
 //
 // ⭐ LA NATURA DI OGNI PRESIDIO ARRIVA DAL DATABASE, non da un elenco qui. È il

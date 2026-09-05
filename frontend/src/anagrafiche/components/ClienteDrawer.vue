@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
@@ -193,6 +194,25 @@ const fgFv = useFetchVersion()
 // diversi durante l'animazione di apertura.
 const ready = ref(false)
 
+// ⭐ DUE CANCELLI, e servono per due motivi diversi.
+//    `ready`        → i DATI sono arrivati (fetchDetail + utility del BA);
+//    `contentReady` → l'ANIMAZIONE di apertura è finita.
+//    Il contenuto si monta solo quando valgono entrambi.
+//
+// 🔴 Prima qui c'era `v-show="ready"`, e la differenza non è di stile: `v-show`
+//    MONTA comunque tutto il sottoalbero e lo nasconde con `display:none`. I
+//    tre `LookupSelect` di questo drawer fanno fetch AL MOUNT
+//    (`useGlobalLookup` con `immediate: true`), quindi durante lo slide-in
+//    partivano tre richieste in più alle due già attese qui sotto, e il mount
+//    dell'intero form occupava il thread proprio mentre il pannello scorreva.
+//    Il risultato erano DUE scatti: l'animazione che si inceppa, e poi il
+//    salto spinner→contenuto quando `ready` passava a true.
+// ⚠️ `v-if` si può fare perché il drawer non ha nessun `ref` di template: il
+//    padre non chiama mai metodi dei figli, quindi non c'è niente che debba
+//    esistere prima del tempo.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+const contenutoVisibile = computed(() => ready.value && contentReady.value)
+
 // Carica dati
 watch(() => props.visible, async (val) => {
   if (!val) { fgFv.invalidate(); ready.value = false; return }
@@ -348,6 +368,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     :dismissable="true"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -357,10 +378,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
       />
     </template>
 
-    <div v-if="!ready" class="app-loading">
+    <div v-if="!contenutoVisibile" class="app-loading">
       <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
     </div>
-    <div v-show="ready" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div v-if="contenutoVisibile" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
         <!-- === Soggetto === -->
         <h4>{{ t('anagrafiche.clienti.section_soggetto') }}</h4>

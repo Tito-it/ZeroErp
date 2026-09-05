@@ -1315,6 +1315,8 @@
       "scegli_azienda": "Scegli l'azienda",
       "crea_identita": "Crea utente tecnico",
       "identita_creata": "Utente tecnico creato.",
+      "identita_riattivata": "Utente tecnico riattivato.",
+      "riattiva_identita": "Riattiva utente tecnico",
       "run_help": "Le ultime {n} corse registrate per questo processo.",
       "run_nessuno": "Nessuna corsa registrata: il processo non è ancora girato, oppure gira senza dichiararsi.",
       "col_quando": "Quando",

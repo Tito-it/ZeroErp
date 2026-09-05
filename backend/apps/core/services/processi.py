@@ -30,6 +30,14 @@ PROCESSO_SEND_PENDING_EMAILS = "send_pending_emails"
 PROCESSO_SYNC_AUTH_USER_ACTIVE = "sync_auth_user_active"
 PROCESSO_LISTEN_CAMBIO_REPARTO = "listen_cambio_reparto"
 
+# ⚠️ `chiusura_scadenze_daily` (canale CODA_AUTOMATICA) NON sta qui, di
+#    proposito: il backend non lo avvia e non lo accoda — lo sveglia pgAgent con
+#    `dbops.fn_accoda_chiusura_scadenze`. Il legame fra il tipo di coda
+#    `CHIUSURA_SCADENZE` e quel processo lo tiene il database
+#    (`coda_lavori_tipi.processo_codice`), e l'handler non ha bisogno di
+#    nominarlo. Una costante che nessuno legge e' un nome in piu' da tenere
+#    allineato.
+
 # ⚠️ I due processi su canale CODA (`FATTURAZIONE_GIRO`, `FATTURAZIONE_NUMERA`)
 #    NON stanno qui: le loro costanti esistono gia' in
 #    `apps/vendite/services/_fatturazione_job_helpers.py` come `JOB_TYPE_*`,

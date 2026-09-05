@@ -373,7 +373,7 @@ class ProcessiPresidiView(AdminAPIView):
             name="ProcessiPresidiResp", fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: I sei presidi in un round-trip: conteggio, prime righe, descrizione.
+    # Scopo: I presidi in un round-trip: conteggio, prime righe, descrizione.
     def get(self, request: Request) -> JsonResponse:
         return success_response(ProcessiService().stato_presidi())
 
@@ -413,6 +413,28 @@ class ProcessiRunView(AdminAPIView):
         ))
 
 
+# Scopo: il pezzo comune ai due verbi sull'utente tecnico (crea / riattiva):
+#        stesso header obbligatorio, stesso corpo, stessa traduzione del
+#        payload. I due endpoint restano SEPARATI — sono due intenzioni — ma
+#        cio' che hanno in comune sta scritto una volta.
+# ⚠️ `_IDEMPOTENCY_HEADER_PARAM` esiste identico in `core/api/views_tracciamento.py`:
+#    e' la seconda copia. Portarla in `core/api` e' un'estrazione di building
+#    block, e si fa quando Tid dice di si', non di passaggio.
+_IDEMPOTENCY_HEADER_PARAM = OpenApiParameter(
+    name="Idempotency-Key", type=str,
+    location=OpenApiParameter.HEADER, required=True,
+    description="Chiave idempotenza obbligatoria per endpoint write.",
+)
+_IDENTITA_REQ_FIELDS = {"emittente_codice": serializers.CharField()}
+
+
+def _post_verbo_identita(request: Request, codice: str, verbo) -> JsonResponse:
+    def _handler(payload: dict[str, object]) -> dict[str, object]:
+        return verbo(codice, emittente_codice=str(payload.get("emittente_codice") or ""))
+
+    return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class ProcessiIdentitaView(AdminAPIView):
     """POST crea l'utente tecnico di un processo PER UN EMITTENTE.
 
@@ -422,31 +444,39 @@ class ProcessiIdentitaView(AdminAPIView):
     """
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="Idempotency-Key", type=str,
-                location=OpenApiParameter.HEADER, required=True,
-                description="Chiave idempotenza obbligatoria per endpoint write.",
-            ),
-        ],
-        request=inline_serializer(
-            name="ProcessiIdentitaReq",
-            fields={"emittente_codice": serializers.CharField()},
-        ),
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(name="ProcessiIdentitaReq", fields=_IDENTITA_REQ_FIELDS),
         responses={200: inline_serializer(
             name="ProcessiIdentitaResp", fields={"data": serializers.DictField()},
         )},
     )
     # Scopo: Crea l'utente tecnico (processo x emittente) via fabbrica di dominio.
     def post(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return ProcessiService().crea_utente_tecnico(
-                codice, emittente_codice=str(payload.get("emittente_codice") or ""),
-            )
+        return _post_verbo_identita(request, codice, ProcessiService().crea_utente_tecnico)
 
-        return handle_post_json(
-            request, handler=_handler, require_idempotency_key=True,
-        )
+
+class ProcessiIdentitaRiattivaView(AdminAPIView):
+    """POST riaccende l'utente tecnico SPENTO di un processo per un emittente.
+
+    ⭐ Endpoint SEPARATO dalla creazione, e non un flag su quello: sono due
+    intenzioni diverse davanti a due stati del mondo diversi — «non c'e'» e
+    «c'e' ed e' spento». Un `POST … /identita/` che a volte crea e a volte
+    riaccende sarebbe un verbo che decide da solo quale, e chi lo chiama non
+    saprebbe piu' quale dei due e' avvenuto.
+    ⚠️ Ci si arriva da un rifiuto parlante: `fn_crea_utente_tecnico` risponde
+    `E_UTENTE_TECNICO_DA_RIATTIVARE` e manda qui.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(name="ProcessiIdentitaRiattivaReq", fields=_IDENTITA_REQ_FIELDS),
+        responses={200: inline_serializer(
+            name="ProcessiIdentitaRiattivaResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Riattiva l'utente tecnico (processo x emittente) via fabbrica.
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        return _post_verbo_identita(request, codice, ProcessiService().riattiva_utente_tecnico)
 
 
 class AuditLogView(AdminAPIView):

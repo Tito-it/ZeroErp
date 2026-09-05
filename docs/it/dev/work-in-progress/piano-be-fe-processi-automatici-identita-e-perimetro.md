@@ -15,20 +15,22 @@
 > `20260904-07…-51`). ⚠️ L'ultimo push porta nel messaggio il nome di un altro brief
 > (`brief-residuo-fatturabili…`): il contenuto è questo cantiere.
 >
-> **Stato:** 🟢 **QUASI CHIUSO** (2026-09-05). ✅ Fatti e verdi: **0**, **6.3**,
-> **1**, **2** (con R-4), **3**, **5**, **6**.
-> 🔵 Resta il **lotto 4** (chiusura scadenze sulla coda), che aspetta **DB-1**.
+> **Stato:** 🟢 **CHIUSO** (2026-09-05). ✅ Fatti e verdi **tutti i lotti**:
+> **0**, **6.3**, **1**, **2** (con R-4), **3**, **5**, **6**, e infine **4** —
+> sbloccato dal push DB del pomeriggio (merge `25a0ac246`), che ha chiuso tutte
+> e otto le richieste del brief residui.
 > ⚠️ Due code fuori dal backend: il **`DROP ROLE`** del passepartout (provisioning)
 > e lo **smoke C-9**, che osservava da quel ruolo — §11.
 > ✅ **Decisioni di Tid, 2026-09-05**: le quattro domande del §7 sono chiuse; il
 > passo 0 (la misura) è **stato eseguito**, e le tre regressioni che ha trovato
 > sono **corrette** — §2.1.
 >
-> 📨 **Il team DB ha pushato una parte dei residui (merge `6fd2266ed`).** ⛔ Per il
-> backend **non si è sbloccato niente**: la cosa fatta — RLS e write-guard sui
-> listini — era il prerequisito di **DB-1** nella catena del DB, non di un lotto
-> BE. Il **lotto 4 resta fermo**, e in più aspetta una decisione di modello (R-E).
-> Stato misurato e risposta del BE nel **§1-ter** del brief dei residui.
+> 📨 **Il team DB ha chiuso tutte e otto le richieste** (merge `6fd2266ed` per
+> DB-4, poi `25a0ac246` per le altre sette). Il backend le ha consumate: §4
+> lotto 4, e la §6 non ha più righe aperte.
+> 🔵 **Una cosa non è implementazione e resta a Tid**: chi può leggere le email
+> di ambito `SISTEMA` — §6-quater. È l'unico motivo per cui
+> `vw_processi_dominio_senza_difesa` non è vuota, e la sua riga è **dichiarata**.
 >
 > ⚠️ **Perimetro:** *chi* esegue un processo automatico, *dentro quale emittente*, e
 > come lo si vede da dentro l'applicazione. ⛔ **Non** è di questo piano cosa fanno i
@@ -369,22 +371,40 @@ regge intatta. ⛔ Le viste non vanno toccate.
 
 ---
 
-### Lotto 4 — `chiusura_scadenze` migra sulla coda (passo 5-bis)
+### Lotto 4 — ✅ `chiusura_scadenze` è migrata sulla coda (passo 5-bis)
 
-Il job pgAgent `chiusura_scadenze_daily` è l'unico processo di **dominio** che gira in
-pgAgent: cambia lo stato gestionale di `vendite.contratti` e `vendite.listini_versioni`
-ogni notte, senza attore.
+Il job pgAgent `chiusura_scadenze_daily` era l'unico processo di **dominio** che
+girava in pgAgent: cambiava lo stato gestionale di righe applicative ogni notte,
+senza attore e senza perimetro.
 
-* **prerequisito DB**: un tipo nuovo in `dbops.coda_lavori_tipi` (con il suo
-  `processo_codice`, che è `NOT NULL` e ha la FK) — è un **seed**, quindi un brief al team
-  DB (§6);
-* **BE**: handler registrato in `handler_registry` che chiama
-  `fn_apply_chiusura_scadenze(p_classe)`, più il produttore che accoda un lavoro per
-  emittente servito;
-* ⚠️ **vincolo dichiarato**: `vendite.listini*` **non ha policy RLS** (R-8). Finché è
-  così, sul bersaglio listino il perimetro **non è applicato dal database**: il Caso A
-  («si ferma da solo») non vale, un filtro dimenticato passerebbe. Il lotto si può fare;
-  ⛔ non si può **dichiarare chiuso** il perimetro finché quel debito è aperto.
+⭐ **Adesso pgAgent sveglia e non lavora.** Il job chiama
+`dbops.fn_accoda_chiusura_scadenze`, che mette in coda un lavoro per ogni azienda
+del roster con l'identità tecnica di quell'azienda; il lavoro lo esegue il
+drenatore, minuti dopo.
+
+| Pezzo | Dove |
+| --- | --- |
+| il tipo di coda `CHIUSURA_SCADENZE` e il produttore SQL | **DB** (DB-1, changeSet `20260905-21`…`-25`) |
+| il canale `CODA_AUTOMATICA` e i tre presidi che assumevano «coda ⇒ persona» | **DB** (decisione R-E, **strada B**: si corregge il modello) |
+| l'**handler** che esegue il lavoro | `apps/core/services/coda_lavori/chiusura_scadenze_handler.py`, registrato in `CoreConfig.ready()` |
+
+⛔ **L'handler non passa nessun perimetro**, ed è il punto del lotto:
+`dbops.fn_apply_chiusura_scadenze` è `SECURITY INVOKER`, quindi vede ciò che vede
+l'identità con cui gira — e il drenatore ha già aperto `operator_identity_context`
+con l'utente tecnico dell'azienda. Passare l'emittente come argomento sarebbe la
+**seconda sede** del perimetro, cioè quella che si dimentica.
+
+⚠️ **Il silenzio si è spostato, non è sparito.** Prima il guasto era un job che
+moriva; adesso è un lavoro che nessuno prende — e «le scadenze non si chiudono»
+si manifesta come uno stato gestionale che resta aperto, cioè come **assenza**.
+Per questo `dbops.vw_coda_lavori_da_guardare` è nel pannello dei presidi (§8) e
+il DB l'ha scritta **prima** della migrazione.
+
+⚠️ **E il cablaggio è di due pezzi che si applicano separatamente**: il seed del
+tipo (DB) e l'handler registrato (Python). Il 2026-09-05 il primo è arrivato
+senza il secondo. Il cancello che lo prende è
+`apps/core/tests/db/test_coda_lavori_tipi_handler_guardrail.py` — stessa forma
+del cancello dei task di pipeline, stessa specie di difetto.
 
 ---
 
@@ -554,46 +574,81 @@ o la colonna di stato c'è in entrambe, o non c'è in nessuna.
 
 ---
 
-## 6. Prerequisiti DB — che cosa va chiesto al team `dev/db-tid`
+## 6. Prerequisiti DB — ✅ tutti chiusi (2026-09-05)
 
-⛔ **Nessuna di queste è un'azione del backend**: il BE **attende** i prerequisiti invece
-di aggirarli.
+⛔ **Nessuna di queste era un'azione del backend**: il BE ha **atteso** i
+prerequisiti invece di aggirarli, e li ha consumati quando sono arrivati.
 
-✅ **Sono passate al team DB** (2026-09-05):
+✅ Sono passate al team DB e **tutte chiuse** in giornata:
 [brief-db-processi-automatici-residui-be.md](brief-db-processi-automatici-residui-be.md).
-⭐ **Quel brief è la sede autorevole**, e la numerazione è la sua: la tabella qui sotto
-serve a chi legge il piano per sapere **da cosa dipende**, e non va tenuta in vita per
-conto suo. Se le due divergono, vince il brief.
+⭐ **Quel brief è la sede autorevole**, e la numerazione è la sua.
 
-| # | Richiesta | Serve al lotto | Blocca? |
+| # | Richiesta | Serve al lotto | Che cosa il BE ne ha fatto |
 | --- | --- | --- | --- |
-| **DB-1** | un tipo di coda per la **chiusura scadenze**, col suo processo registrato. 🔵 Da concordare insieme: **chi accoda** (il job pgAgent di stasera o un command su cron) | 4 | ⛔ sì |
-| **DB-2** | che `vw_processi_dominio_senza_emittente` distingua una riga **attesa** da una **nuova** — oggi la vista dice «deve restare vuota» e il seed dei bersagli si aspetta una riga | 6.6 | ⚠️ no, ma peggiora col tempo |
-| **DB-3** | **R-7** — colonna emittente su `config.email_outbox`: senza, `send_pending_emails` è di dominio **senza percorso al perimetro** | 1.3 | ⛔ sì, per la parte «un emittente alla volta» |
-| **DB-4** | ⚠️ *riscritta*: il **write-guard** su `vendite.fatture_stampa_coda` — ultima riga del livello 2. ⛔ La riscrittura diceva anche «`listini*` è già a posto»: **era una misura sbagliata**, la policy non c'era e il DB l'ha accesa il 2026-09-05 (brief §1-ter) | 2 | ⚠️ no |
-| **DB-5** | `maintenance.job_run_log.processo_codice` → obbligatorio, **quando** `vw_run_senza_attore` è vuota | dopo 1 | ⛔ oggi impossibile: aspetta **DB-7** |
-| **DB-6** | poter rifare l'utente tecnico di un processo ritirato male | 6 | ⚠️ no |
-| **DB-7** | 🔴 i nomi di **4 job pgAgent** non esistono nel registro: non si dichiareranno mai | — | ⛔ blocca DB-5 |
-| **DB-8** | un codice per «processo non trovato nel registro» | 6 | ⚠️ no, c'è un ripiego dichiarato |
+| **DB-1** | tipo di coda `CHIUSURA_SCADENZE` + processo registrato | 4 | ✅ l'**handler**. Il produttore è del DB: pgAgent sveglia e non lavora |
+| **DB-2** | il debito si **dichiara** nelle viste di presidio | 6.6 | ✅ niente da fare: il pannello rende la descrizione che arriva dal DB — era progettato per questo |
+| **DB-3** | colonna emittente su `config.email_outbox` | 1.3 | 🔵 **prima metà** fatta dal DB; la seconda è una **decisione di sicurezza**, §6-quater |
+| **DB-4** + **R-10** | RLS e write-guard su famiglia listino e `fatture_stampa_coda` | 2 | ✅ verificato che il BE non ci cade (nessuna CTE padre-figlia): §9 |
+| **DB-5** | attore obbligatorio sui run (`CHECK … NOT VALID`) | dopo 1 | ✅ i sei comandi lo dichiarano già |
+| **DB-6** | poter rifare l'utente tecnico di un processo ritirato male | 6 | ✅ esposto `fn_riattiva_utente_tecnico` — service, endpoint e pulsante |
+| **DB-7** | nomi dei job pgAgent allineati al registro | — | ✅ nulla da fare: erano tutti di là. Oggi le 4 righe di `vw_run_senza_attore` hanno `processo_registrato = true` |
+| **DB-8** | codice per «processo non trovato nel registro» | 6 | ✅ il ripiego dichiarato è **rientrato**: 404 con `E_PROCESSO_NON_TROVATO` |
 
 ⚠️ **L'azione di processo per «crea utente tecnico» è caduta** con la decisione di mettere
 la schermata in `amm-software` (§6.0): `AdminAPIView` è già il gate.
 
 ---
 
-## 6-bis. ✅ Il cantiere parallelo su `amm-software` non blocca
+## 6-quater. Email di `SISTEMA`: deciso chi le legge, aperto chi le spedisce
 
-Rilevato il 2026-09-05 nel working tree (`piano-be-fe-ui-permessi-operatore.md`,
-`MatriceOverride.vue`, `OperatorePermessiTab.vue`, `get_permessi_ereditati`).
-**Tid: è fermo, ha solo rifatto la UI per gestirla meglio.** ⇒ Il lotto 6 è partito.
+✅ **Decisione di Tid (2026-09-05): le email di ambito `SISTEMA` le legge solo il
+super admin.** Non appartengono a nessuna azienda e valgono quanto una
+credenziale. La policy per questa regola il team DB l'ha **già scritta**
+(brief-db §12.15): ramo su `ambito`, `fn_is_super_admin` per le `SISTEMA`,
+whitelist emittente per le altre.
 
-⭐ Le due modifiche convivono senza conflitto: quel cantiere ha **aggiunto** un metodo
-al repository, il 6.3 ne ha **filtrato** due query esistenti, e il lotto 6 ha aggiunto
-view e rotte nuove accanto alle sue.
+⛔ **Ma quella regola non dice come fa a spedirle chi le spedisce**, e la
+distinzione non è formale: *leggere* e *consegnare* sono due verbi diversi. Il
+postino non ha titolo a leggere la lettera, e deve comunque poterla portare.
 
-⚠️ Una cosa da segnalare e non da sistemare qui: `frontend/src/core/components/MatriceOverride.vue`
-è un file **nuovo senza header di licenza**, e `scripts/check_license.py` guarda i file
-aggiunti — bloccherà il commit di quel cantiere. Non l'ho toccato perché non è mio.
+**Misurato il 2026-09-05:**
+
+| | |
+| --- | --- |
+| `send_pending_emails` gira come management command | le GUC `app.current_user_id` / `app.ruolo_applicativo` le scrive il JWT: in un command **non ci sono** |
+| il ruolo `zeroerp_app` | **niente `BYPASSRLS`** |
+| le due identità tecniche del processo | `fn_is_super_admin` = **false** su entrambe |
+
+⇒ Accesa la RLS, il command vedrebbe **zero righe** e chiuderebbe verde: i reset
+password non partirebbero e nessun log lo direbbe.
+
+### 🔵 Quello che resta da decidere, ed è una riga sola
+
+Il team DB aveva posto l'alternativa: *«o l'identità tecnica porta il profilo
+super admin, o la policy nomina esplicitamente il processo»*.
+
+⛔ **La prima è chiusa dal database stesso**, e non per caso:
+`script.fn_crea_utente_tecnico` rifiuta qualunque profilo che non sia `AD_HOC`
+(`E_UTENTE_TECNICO_PROFILO_VIETATO`), e il catalogo spiega perché — SUPER_ADMIN è
+*«la scorciatoia ovvia per "deve servire tutti gli emittenti", e bypasserebbe lo
+scope PRIMA della whitelist»*. È la porta che questo cantiere esiste per chiudere.
+
+⇒ **Resta la seconda**: la policy aggiunge un ramo per l'identità tecnica **di
+quel processo** — i pezzi ci sono già (`identita_digitali.tecnica`,
+`dbops.processi_identita`). Il super admin resta l'unica **persona** che legge;
+la macchina che spedisce fa il suo lavoro senza diventare super admin.
+
+⚠️ **E prima ancora, un fatto da mettere sul tavolo**: il command legge
+`config.email_log`, mentre la colonna emittente nuova e il bersaglio dichiarato
+del processo sono su `config.email_outbox`. Sono **due tabelle**. Una policy su
+`email_outbox` non toccherebbe nemmeno il command che spedisce.
+
+### Che cosa fa il backend, quando la riga è decisa
+
+`send_pending_emails` dichiara la propria identità anche al database — le GUC
+dell'utente tecnico dal roster, un'azienda alla volta, come già fa
+`draina_coda_stampa`. È lavoro piccolo e pronto: aspetta solo di sapere **su
+quale tabella** e **con quale ramo**.
 
 ---
 
@@ -602,8 +657,8 @@ aggiunti — bloccherà il commit di quel cantiere. Non l'ho toccato perché non
 | Cosa | Perché non è del backend | Come si vede che è chiuso |
 | --- | --- | --- |
 | **`DROP ROLE zeroerp_batch_fatturazione`** + ritiro di `scripts/sql/provision_db_role_batch_fatturazione.sql` | i privilegi dei ruoli batch vivono nel **provisioning**, mai in un changeSet | `dbops.vw_processi_che_bypassano` **vuota** (oggi ha ancora la sua riga: il ruolo esiste, non lo usa più nessuno) |
-| **Smoke C-9** (`smoke-c9-fatturazione-parte-alta.py`) | ⚠️ osservava da una **seconda connessione** col ruolo di bypass, per due ragioni insieme: vedere tutte le aziende **e** leggere da fuori la propria transazione. La seconda non si sostituisce con la connessione Django. Ora si **dichiara** `SENZA_MATERIA` invece di rompersi con un `KeyError`, ed è nel registro del debito | va riscritto con uno snapshot **per emittente**, iterando il roster |
-| **Seed della lista `amm.processi`** | ⭐ **già fatto**: i quattro CSV di `ui.lista_*` sono mirror `runOnChange`, quindi una riga nuova è un **append** — è la via che AGENTS.md indica («non serve un brief e non si aspetta nessuno»). Serve un `migrate` perché il mirror la carichi | la schermata `/amm-software/processi-automatici` disegna la tabella invece di `E_UI_LISTA_NON_TROVATA` |
+| **Smoke C-9** (`smoke-c9-fatturazione-parte-alta.py`) | ✅ **riscritto il 2026-09-05**: la seconda connessione resta (serviva a leggere da **fuori** la propria transazione, e quella ragione non è sparita) ma sul ruolo normale, e il conteggio cross-azienda si ottiene **iterando il roster** — un badge alla volta, come il lavoro vero | 🔵 la metà **osservativa** è provata isolata; il giro completo **emette fatture vere** e va lanciato a mano. La riga in `baseline-smoke.tsv` resta finché qualcuno non lo vede verde |
+| ~~**Seed della lista `amm.processi`**~~ | ✅ **chiuso il 2026-09-05**: il `migrate` è passato e `ui.lista_definizione` contiene `amm.processi` — verificato sul database, non dedotto dal CSV | fatto: la schermata `/amm-software/processi-automatici` disegna la tabella |
 
 ---
 
@@ -626,29 +681,36 @@ del §6, che non sono decisioni: sono lavoro di un altro ramo.
 ## 8. Presidi: dove siamo, misurato
 
 ⭐ **Dove c'è un presidio non si va a memoria: si interroga la vista.** Stato al
-2026-09-05, dopo i lotti chiusi.
+2026-09-05, **dopo** il push DB del pomeriggio e i lotti chiusi.
 
 | Presidio / prova | Atteso | Oggi |
 | --- | --- | --- |
-| `./manage-env.sh genera_error_policies --check` | esce 0 | ✅ allineato |
-| suite Django | verde | ✅ **4442 test** |
-| suite Django con `ZEROERP_TEST_DB_E2E=1` | verde | ✅ gli **88 test opt-in** passano — ⚠️ **spenti** senza la variabile: è così che è sfuggita la riga mancante in `_ESERCIZI` (§9) |
-| `scripts/smoke-baseline.sh` | nessuna regressione | ✅ 3 non-verdi, **tutti noti** |
-| `dbops.vw_run_senza_attore` | vuota | 🟡 **4 righe** (era 7): ⭐ le **due del backend sono uscite** — il lotto 1 funziona. 3 sono i job pgAgent di **DB-7**, che non si toglieranno mai da soli; 1 (`apply_storicizza_weekly`) si toglie alla prossima corsa |
-| `dbops.vw_processi_che_bypassano` | vuota | 🟡 **una riga**: il ruolo esiste ancora a database, ma non lo usa più nessuno — manca il `DROP ROLE` (§6-ter) |
-| `dbops.vw_processi_dominio_senza_emittente` | vuota | 🟡 **una riga**: `config.email_outbox`, debito dichiarato (DB-3) |
-| `dbops.vw_processi_dominio_senza_difesa` | deve **calare** | 🟡 **una riga**: manca il write-guard su `vendite.fatture_stampa_coda` (**DB-4** riscritta, per il DB **R-10**). ⭐ `vendite.listini*` è uscito il 2026-09-05, **perché il DB ci ha acceso policy e guard** — non perché ci fosse già |
+| `./manage-env.sh genera_error_policies --check` | esce 0 | ✅ allineato (rigenerato dopo i 3 codici nuovi) |
+| suite Django | verde | ✅ **4479 test** |
+| suite Django con `ZEROERP_TEST_DB_E2E=1` | verde | ✅ verde — ⚠️ **spenti** senza la variabile: è così che è sfuggita la riga mancante in `_ESERCIZI` (§9) |
+| build frontend | verde | ✅ |
 | `dbops.vw_processi_dominio_senza_identita` | vuota | ✅ **vuota** |
 | `dbops.vw_emittenti_non_serviti` | vuota | ✅ **vuota** |
+| `dbops.vw_processi_dominio_senza_emittente` | vuota | ✅ **vuota** — DB-2 e DB-3 l'hanno chiusa |
+| `dbops.vw_processi_dominio_su_pgagent` | vuota | ✅ **vuota**: nessun processo di dominio è rimasto su pgAgent |
+| `dbops.vw_processi_dominio_senza_difesa` | deve **calare** | 🔵 **una riga, DICHIARATA**: la policy di `config.email_outbox` aspetta la decisione del §6-quater |
+| `dbops.vw_processi_che_bypassano` | vuota | 🔵 **una riga, DICHIARATA**: manca il `DROP ROLE` (provisioning, §6-ter) |
+| `dbops.vw_run_senza_attore` | vuota | 🟡 **4 righe, tutte con `processo_registrato = true`**: DB-7 ha allineato i nomi, quindi si tolgono da sole alla prossima corsa — ⛔ tranne `apply_storicizza_weekly`, che **non gira da sei mesi**: [brief-db-storicizzazione-bersagli-spariti.md](brief-db-storicizzazione-bersagli-spariti.md) |
+| `dbops.vw_coda_lavori_da_guardare` | vuota | ✅ **vuota**: le 4 righe (lavori in `ERRORE` di luglio e agosto) sono state **capite e archiviate** il 2026-09-05 — tre erano un difetto di codice che non esiste più, la quarta un rifiuto corretto |
 | `grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue \| wc -l` | non sale | ✅ la schermata nuova monta `<ListaConfigurabile>` |
 
-⚠️ **Nessuno dei 🟡 è un lavoro del backend**: quattro sono richieste al team DB
-(DB-2, DB-3, DB-4, DB-7), uno è provisioning, e un run si chiude da solo.
+⚠️ **Nessun 🟡/🔵 è un lavoro del backend**: uno è una decisione di sicurezza
+(§6-quater), uno è provisioning, i quattro run si chiudono da soli tranne quello
+di R-12.
 
-⛔ **E uno era il backend, misurato oggi:** `ui.lista_definizione` **non contiene
-`amm.processi`**. Il seed è nei CSV mirror (a bordo con la PR #1507) ma il `migrate`
-non è stato eseguito: finché non gira, la schermata del lotto 6 risponde
-`E_UI_LISTA_NON_TROVATA`. ⚠️ Le migrazioni non le applica l'agent — §9.
+⭐ **Il primo frutto del pannello, e si è già chiuso**: i quattro lavori falliti
+erano di **luglio e agosto** e fino a ieri non esisteva una vista che li
+nominasse. Guardati uno per uno il 2026-09-05: tre erano un `AttributeError` in
+codice ritirato (prova: `FATTURAZIONE_GIRO` ha 57 lavori `FATTO` e
+`FATTURAZIONE_NUMERA` 33, l'ultimo di oggi, e zero `AttributeError` dopo il 22
+luglio), il quarto era un **rifiuto corretto** su una commessa in `BOZZA`.
+Archiviati col verbo dell'applicazione: le righe restano in `ERRORE`, il giornale
+non si riscrive.
 
 ---
 

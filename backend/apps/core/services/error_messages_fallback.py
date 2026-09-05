@@ -660,6 +660,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
         "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."
     ),
+    "E_PROCESSO_NON_TROVATO": (
+        "Il processo indicato non esiste nel registro dei processi automatici."
+    ),
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "Tipo profilo non gestito dal guard di coerenza bindings: regola mancante.",
@@ -875,12 +878,20 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UTENTE_DISABILITATO": "Account disabilitato. Contattare l'amministratore.",
     "E_UTENTE_NON_ATTIVO": "Account non ancora attivo.",
     "E_UTENTE_SCADUTO": "Account scaduto. Contattare l'amministratore.",
+    "E_UTENTE_TECNICO_DA_RIATTIVARE": (
+        "Per questo processo e quell'azienda un utente tecnico esiste gia', ma e' "
+        "spento: va riattivato, non creato di nuovo."
+    ),
     "E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO": (
         "Azienda emittente inesistente o non attiva: un utente tecnico nasce PER "
         "un'azienda, e senza non potrebbe fare niente."
     ),
     "E_UTENTE_TECNICO_GIA_ESISTE": (
         "Il processo ha gia' un utente tecnico attivo per quell'azienda."
+    ),
+    "E_UTENTE_TECNICO_NON_TROVATO": (
+        "Non esiste un utente tecnico da riattivare per questo processo e "
+        "quell'azienda: va creato."
     ),
     "E_UTENTE_TECNICO_PROFILO_VIETATO": (
         "Profilo di accesso non utilizzabile per un utente tecnico."

@@ -3,7 +3,9 @@
 # Eseguito via `python manage.py shell < smoke_c9_parte_alta.py`.
 # Percorso REALE: enqueue identico alle view, drain dai worker systemd
 # (zeroerp-coda-lavori / zeroerp-coda-stampa, ogni minuto).
-# Verifica di verità con connessione BYPASSRLS (ruolo batch) separata.
+# Verifica di verita' con una seconda connessione (ruolo normale,
+# autocommit) che ITERA IL ROSTER degli utenti tecnici: un'azienda alla
+# volta, come il lavoro vero. Niente BYPASSRLS — ritirato il 2026-09-05.
 #
 # ⚠️⚠️ QUESTO SMOKE **NON FA ROLLBACK**, ed e' l'unico della famiglia. Approva
 # attivita', emette fatture, consuma progressivi fiscali e accoda stampe: tutto
@@ -39,6 +41,7 @@ from apps.core.services.coda_lavori.repository import (
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.processi import PROCESSO_RUN_FATTURAZIONE_BATCH
 from apps.vendite.services.commesse_service import approva_attivita_competenza
 
 # Scopo: Competenza su cui gira lo smoke. Da `SMOKE_C9_COMPETENZA` (ISO
@@ -79,37 +82,108 @@ def warn(label, detail=""):
 
 
 # --- connessione di VERITÀ per gli snapshot -----------------------------
-# ⛔ QUESTO SMOKE DIPENDE DA UN RUOLO CHE È STATO RITIRATO (2026-09-05, R-2).
-#    Apriva una SECONDA connessione come `zeroerp_batch_fatturazione`
-#    (`BYPASSRLS`) per due ragioni insieme, ed entrambe contano:
-#      1. vedere TUTTI gli emittenti — il conteggio è cross-azienda;
-#      2. leggere da FUORI la transazione del fixture (`autocommit = True`),
-#         cioè i dati committati e non il proprio lavoro in corso.
-#    ⚠️ La seconda è quella che non si sostituisce con la connessione Django:
-#    quella vedrebbe il lavoro non ancora committato, e lo snapshot «prima»
-#    conterebbe cose che il fixture ha appena scritto.
+# ⭐ RISCRITTA IL 2026-09-05, col ritiro del ruolo `BYPASSRLS` (R-2).
 #
-# ⭐ Si DICHIARA senza materia invece di fallire con un `KeyError` su una
-#    variabile d'ambiente: la copertura di questo giro vale ZERO, non
-#    «parziale», e il registro degli smoke ha il terzo esito apposta.
-# 🔵 Da rifare: lo snapshot per EMITTENTE, iterando il roster del processo, che
-#    è come il mondo funziona adesso. È lavoro suo, non di questa riga.
-_PASSWORD_VERITA = os.environ.get("DB_SYSTEM_FATTURAZIONE_PASSWORD")
-if not _PASSWORD_VERITA:
-    raise SystemExit(
-        "SENZA_MATERIA: questo smoke osserva da una connessione BYPASSRLS "
-        "(`zeroerp_batch_fatturazione`), ritirata il 2026-09-05 col cantiere "
-        "«nessun processo senza operatore». Va riscritto con uno snapshot per "
-        "emittente — vedi piano-be-fe-processi-automatici-identita-e-perimetro."
-    )
+#    Prima apriva una seconda connessione come `zeroerp_batch_fatturazione`, e
+#    le ragioni erano DUE — vale la pena tenerle separate, perche' una sola
+#    delle due e' sparita:
+#      1. ⛔ vedere TUTTI gli emittenti da una sessione sola. Questa NON si fa
+#         piu', e non e' una perdita: era il privilegio che il cantiere
+#         «nessun processo senza operatore» esiste per togliere;
+#      2. ✅ leggere da FUORI la transazione del fixture (`autocommit = True`),
+#         cioe' i dati COMMITTATI e non il proprio lavoro in corso. Questa
+#         resta necessaria, e non si sostituisce con la connessione Django —
+#         quella vedrebbe anche cio' che il fixture ha appena scritto, e lo
+#         snapshot «prima» conterebbe cose che non c'erano ancora.
+#
+# ⇒ La seconda connessione resta, ma sul ruolo NORMALE (`zeroerp_app`, niente
+#   bypass) e il conteggio cross-azienda si ottiene ITERANDO IL ROSTER: per ogni
+#   utente tecnico di `run_fatturazione_batch` si impostano le sue GUC e si
+#   contano le righe che QUELL'AZIENDA vede. La somma e' il totale.
+#
+# ⭐ E il giro non e' solo un modo diverso di ottenere lo stesso numero: e' la
+#   stessa strada che percorre il lavoro vero. Se un badge manca, il conteggio
+#   cala — e cala anche la fatturazione di quell'azienda. Prima il bypass
+#   nascondeva l'assenza mostrando comunque tutte le righe.
+#
+# ⚠️ La somma non fa doppioni perche' `config.user_emittenti_fiscali` e' 1-a-1
+#    sull'utente (UNIQUE): ogni badge vede un'azienda sola, e gli insiemi sono
+#    disgiunti. Non e' un'assunzione di comodo — e' il vincolo su cui poggia
+#    tutto il perimetro.
+# ⚠️ E la somma copre TUTTO solo finche' `dbops.vw_emittenti_non_serviti` e'
+#    vuota. Se un'azienda attiva non ha badge, il suo lavoro non entra in questi
+#    conteggi — ma non entra nemmeno in fatturazione, quindi lo smoke misura la
+#    stessa cosa che il mondo fa. ⭐ Con il bypass, invece, il conteggio restava
+#    completo mentre la fatturazione no: e' la differenza fra osservare da dentro
+#    il perimetro e osservare da sopra.
+#
+# 🔵 NON ANCORA ESEGUITO dopo la riscrittura (2026-09-05): la meta' OSSERVATIVA
+#    e' stata provata isolata (roster iterato, somma corretta su `2026-06`), ma
+#    il giro completo emette fatture vere — si lancia a mano, quando serve. La
+#    riga in `baseline-smoke.tsv` resta finche' qualcuno non lo vede verde:
+#    toglierla adesso vorrebbe dire dichiarare un verde mai visto.
+_ROSTER_SQL = """
+    SELECT auth_user_id, username, identita_id,
+           emittente_fiscale_id, emittente_codice
+      FROM dbops.vw_processi_roster
+     WHERE processo_codice = %s
+     ORDER BY emittente_codice
+"""
+_PROCESSO_OSSERVATO = PROCESSO_RUN_FATTURAZIONE_BATCH
 
 dsn = (
     f"host={os.environ['DB_HOST']} port={os.environ.get('DB_PORT', '5432')} "
-    f"dbname={os.environ['DB_NAME']} user=zeroerp_batch_fatturazione "
-    f"password={_PASSWORD_VERITA}"
+    f"dbname={os.environ['DB_NAME']} user={os.environ['DB_USER']} "
+    f"password={os.environ['DB_PASSWORD']}"
 )
 truth = psycopg.connect(dsn)
 truth.autocommit = True
+
+with truth.cursor() as _cur:
+    _cur.execute(_ROSTER_SQL, [_PROCESSO_OSSERVATO])
+    BADGE = _cur.fetchall()
+
+# ⛔ Roster vuoto = nessuna finestra da cui guardare. Si DICHIARA, non si conta
+#    zero: uno smoke che osserva da nessuna parte e' verde per sottrazione, che
+#    e' peggio di un rosso.
+if not BADGE:
+    raise SystemExit(
+        "SENZA_MATERIA: nessun utente tecnico per "
+        f"`{_PROCESSO_OSSERVATO}` in dbops.vw_processi_roster. Senza badge non "
+        "c'e' nessuna azienda da cui osservare, e i conteggi sarebbero zero "
+        "per assenza di perimetro, non per assenza di dati."
+    )
+
+print(
+    f"--- osservatori: {len(BADGE)} badge di {_PROCESSO_OSSERVATO} "
+    f"({', '.join(b[4] for b in BADGE)})"
+)
+
+
+# Scopo: impone alla connessione di verita' l'identita' di UN badge. Le sei GUC
+#        sono le stesse che il middleware JWT scrive nel web
+#        (`set_jwt_gucs`): la RLS operatore risolve identica.
+# ⚠️ `app.ruolo_applicativo` non e' facoltativo — senza, le policy operatore
+#    rispondono ZERO righe a chiunque, e uno zero fail-closed non si distingue
+#    da un dato.
+def _indossa(badge):
+    auth_user_id, username, identita_id, emittente_id, _codice = badge
+    with truth.cursor() as cur:
+        cur.execute(
+            """
+            SELECT set_config('app.jwt_user',             %s, false),
+                   set_config('app.current_user_id',      %s, false),
+                   set_config('app.current_identita_id',  %s, false),
+                   set_config('app.ruolo_applicativo',    'OPERATORE', false),
+                   set_config('app.soggetto_ruolo_id',
+                              COALESCE((SELECT soggetto_ruolo_id::text
+                                          FROM anagrafiche.identita_digitali
+                                         WHERE id = %s), ''), false),
+                   set_config('app.current_emittente_id', %s, false)
+            """,
+            [str(username), str(auth_user_id), str(identita_id),
+             str(identita_id), str(emittente_id)],
+        )
 
 
 def q(sql, params=None):
@@ -118,33 +192,67 @@ def q(sql, params=None):
         return cur.fetchall()
 
 
+# Scopo: somma righe `(chiave..., n...)` provenienti da badge diversi. La chiave
+#        e' tutto cio' che precede le colonne numeriche.
+# ⚠️ Le chiavi che un'azienda non ha semplicemente non compaiono: si accumulano
+#    in un dizionario e si riordina, invece di pretendere che i badge tornino le
+#    stesse righe — un'azienda senza fatture non deve far sparire la riga di
+#    un'altra.
+def _somma(acc, righe, n_chiavi):
+    for riga in righe:
+        chiave = tuple(riga[:n_chiavi])
+        valori = tuple(riga[n_chiavi:])
+        precedenti = acc.get(chiave)
+        acc[chiave] = (
+            valori if precedenti is None
+            else tuple(a + b for a, b in zip(precedenti, valori, strict=True))
+        )
+    return acc
+
+
+def _righe(acc):
+    return [tuple(k) + tuple(v) for k, v in sorted(acc.items(), key=lambda kv: kv[0])]
+
+
+# Scopo: la fotografia del mese, vista dall'insieme delle aziende servite.
+# ⭐ Ogni conteggio e' la somma di cio' che ciascun badge vede nel proprio
+#    perimetro: e' la stessa aritmetica che fa il giro di fatturazione.
 def snapshot(label):
-    att = q(
-        """SELECT stato_approvazione, stato_emissione, count(*)
-             FROM vendite.commesse_attivita WHERE competenza_mese=%s
-             GROUP BY 1,2 ORDER BY 1,2""",
-        [COMPETENZA],
-    )
-    lotti = q(
-        """SELECT s.codice, count(*) FROM vendite.fatturazione_lotti l
-             JOIN config.stati_doc_fiscale s ON s.id=l.stato_doc_fiscale_id
-            WHERE l.competenza_mese=%s GROUP BY 1 ORDER BY 1""",
-        [COMPETENZA],
-    )
-    fatture = q(
-        """SELECT s.codice, count(*), count(f.numero) FROM vendite.fatture f
-             JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id=f.id
-             JOIN vendite.fatturazione_lotti l ON l.id=lf.lotto_id
-             LEFT JOIN config.stati_doc_fiscale s ON s.id=f.stato_doc_fiscale_id
-            WHERE l.competenza_mese=%s GROUP BY 1 ORDER BY 1""",
-        [COMPETENZA],
-    )
-    stampa = q("SELECT stato, count(*) FROM vendite.fatture_stampa_coda GROUP BY 1 ORDER BY 1")
-    print(f"--- snapshot {label}")
+    att_acc, lotti_acc, fatture_acc, stampa_acc = {}, {}, {}, {}
+    for badge in BADGE:
+        _indossa(badge)
+        _somma(att_acc, q(
+            """SELECT stato_approvazione, stato_emissione, count(*)
+                 FROM vendite.commesse_attivita WHERE competenza_mese=%s
+                 GROUP BY 1,2""",
+            [COMPETENZA],
+        ), 2)
+        _somma(lotti_acc, q(
+            """SELECT s.codice, count(*) FROM vendite.fatturazione_lotti l
+                 JOIN config.stati_doc_fiscale s ON s.id=l.stato_doc_fiscale_id
+                WHERE l.competenza_mese=%s GROUP BY 1""",
+            [COMPETENZA],
+        ), 1)
+        _somma(fatture_acc, q(
+            """SELECT s.codice, count(*), count(f.numero) FROM vendite.fatture f
+                 JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id=f.id
+                 JOIN vendite.fatturazione_lotti l ON l.id=lf.lotto_id
+                 LEFT JOIN config.stati_doc_fiscale s ON s.id=f.stato_doc_fiscale_id
+                WHERE l.competenza_mese=%s GROUP BY 1""",
+            [COMPETENZA],
+        ), 1)
+        _somma(stampa_acc, q(
+            "SELECT stato, count(*) FROM vendite.fatture_stampa_coda GROUP BY 1"
+        ), 1)
+
+    att, lotti = _righe(att_acc), _righe(lotti_acc)
+    fatture, stampa = _righe(fatture_acc), _righe(stampa_acc)
+    print(f"--- snapshot {label} (somma di {len(BADGE)} aziende)")
     print("    attivita (appr, emiss, n):", att)
     print("    lotti giu:", lotti, "| fatture giu (stato, n, con_numero):", fatture)
     print("    coda stampa:", stampa)
-    return {"att": att, "lotti": dict(r[:2] for r in lotti), "fatture": fatture, "stampa": dict(stampa)}
+    return {"att": att, "lotti": dict(r[:2] for r in lotti), "fatture": fatture,
+            "stampa": dict(stampa)}
 
 
 def poll_job(job_id, label, timeout_s=240):

@@ -23,14 +23,18 @@
 #         `soggetto_ruolo` `PROC_AUTO` quando `tecnica = true` e `RIS_UMANA`
 #         quando e' false — i due mondi sono disgiunti in ENTRAMBI i versi
 #         (stessa scoperta del brief DB §12.7);
-#      2. la fabbrica non puo' rifare una coppia gia' servita: il suo guard 4
-#         guarda `processi_identita.attivo`, ma lo USERNAME e' deterministico
-#         (`processo@emittente`) e UNIQUE senza condizioni. Disattivare il
-#         legame libera il guard e lascia il muro: `auth_user_username_key`.
-#         🔴 E' un buco della fabbrica, segnalato al team DB (DB-6 del brief
-#         residui): il caso «processo ritirato male, si rifa' l'utente» esce
-#         con un 23505 nudo invece che col codice di dominio che il guard 4
-#         esiste apposta per dare.
+#      2. ✅ RISOLTA IL 2026-09-05 (DB-6), e si scrive perche' resti la storia:
+#         la fabbrica non poteva rifare una coppia gia' servita — il guard 4
+#         guardava `processi_identita.attivo`, ma lo USERNAME e' deterministico
+#         (`processo@emittente`) e UNIQUE senza condizioni, quindi disattivare
+#         il legame liberava il guard e lasciava il muro
+#         (`auth_user_username_key`), con un 23505 nudo. Adesso il rifiuto
+#         parla (`E_UTENTE_TECNICO_DA_RIATTIVARE`) e c'e' il verbo che mancava
+#         (`script.fn_riattiva_utente_tecnico`).
+#         ⚠️ Non basta a fabbricare qui: resta il guard 1, che e' giusto e non
+#         si tocca, e resta il fatto che su un database ricostruito da zero
+#         mancano gli EMITTENTI (seed `dati_macchina`) — cioe' l'argomento
+#         obbligatorio della fabbrica.
 #
 # ⚠️ Quindi il test USA i soggetti che ci sono, e QUANDO NON CI SONO LO DICE
 #    (`skip` motivato) invece di passare a vuoto. E' la seconda delle due

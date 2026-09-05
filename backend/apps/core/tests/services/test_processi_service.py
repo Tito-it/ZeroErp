@@ -19,6 +19,9 @@
 #      silenzio della D-9
 #   6) `con_righe` conta i presidi accesi, non le righe
 #   7) ⛔ la natura di un presidio NON è decisa qui: la descrizione arriva dal DB
+#   8) «processo non trovato» è un 404 vero, non più il ripiego dichiarato
+#   9) `CODA_AUTOMATICA` è un filtro legittimo: ometterlo darebbe 400 sul buono
+#  10) i due verbi dell'utente tecnico pretendono entrambi gli argomenti
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -40,6 +43,44 @@ def _service(**metodi):
     for nome, valore in metodi.items():
         getattr(repo, nome).return_value = valore
     return ProcessiService(repo=repo), repo
+
+
+class ProcessiServiceVocabolarioTests(unittest.TestCase):
+    # 8. ⭐ Il ripiego dichiarato e' rientrato: dal 2026-09-05 (DB-8) il codice
+    #    esiste a catalogo con classe NON_TROVATO, quindi l'endpoint risponde
+    #    404. ⛔ Il test guarda la COSTANTE e non il valore letterale sparso: se
+    #    qualcuno rimettesse un codice di validazione, un «non esiste» tornerebbe
+    #    a presentarsi come «hai sbagliato a scrivere».
+    def test_il_codice_di_non_trovato_e_quello_di_dominio(self):
+        from apps.core.services import processi_service
+
+        self.assertEqual(processi_service.E_NOT_FOUND, "E_PROCESSO_NON_TROVATO")
+        self.assertNotEqual(
+            processi_service.E_NOT_FOUND, processi_service.E_VALIDATION,
+        )
+
+    # 9. Il quarto canale. ⚠️ Non e' un dettaglio di vocabolario: e' il canale
+    #    dei processi svegliati da una macchina, e senza di lui il filtro della
+    #    schermata rifiuterebbe con un 400 una richiesta perfettamente valida.
+    def test_coda_automatica_e_un_filtro_ammesso(self):
+        svc, repo = _service()
+        svc.list_processi(canale="CODA_AUTOMATICA")
+        self.assertEqual(
+            repo.list_processi.call_args.kwargs["canale"], "CODA_AUTOMATICA",
+        )
+
+
+class ProcessiServiceUtenteTecnicoTests(unittest.TestCase):
+    # 10. I due verbi sono simmetrici anche nel rifiuto: nessuno dei due prova a
+    #     indovinare l'azienda. ⛔ Un verbo che si sceglie il perimetro da solo e'
+    #     esattamente cio' che la decisione D-9 ha escluso.
+    def test_entrambi_i_verbi_pretendono_processo_ed_emittente(self):
+        svc, _repo = _service()
+        for verbo in ("crea_utente_tecnico", "riattiva_utente_tecnico"):
+            for processo, emittente in (("", "ACME"), ("x", "")):
+                with self.subTest(verbo=verbo, processo=processo):
+                    with self.assertRaises(ServiceError):
+                        getattr(svc, verbo)(processo, emittente_codice=emittente)
 
 
 class ProcessiServiceFiltriTests(unittest.TestCase):

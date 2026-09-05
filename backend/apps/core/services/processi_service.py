@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Facade del REGISTRO DEI PROCESSI AUTOMATICI: elenco, dettaglio, corse,
-#        stato dei sei presidi, e il verbo che crea l'utente tecnico di un
+#        stato dei presidi, e i verbi che creano o riaccendono l'utente tecnico di un
 #        processo per un emittente.
 # Note: ⭐ Sta in `apps/core` come il suo repository, e per la stessa ragione:
 #        il roster serve anche a chi PRODUCE lavoro in `apps/vendite`, e le
@@ -35,24 +35,23 @@ from apps.core.services.payload_helpers import translate_db_errors
 _FN = "core.processi_service"
 E_VALIDATION = "E_CORE_VALIDATION"
 
-# 🔵 RIPIEGO DICHIARATO — richiesta DB-8 al team DB.
-# Il codice giusto per «il processo indicato non e' nel registro» non esiste
-# ancora a catalogo, e coniarlo e' un seed, non un'azione del backend.
+# ✅ Il ripiego dichiarato e' RIENTRATO il 2026-09-05 (DB-8): il codice esiste a
+# catalogo con classe `NON_TROVATO`, quindi un codice processo inesistente in URL
+# risponde 404 e non piu' 400.
 # ⛔ Non si riusa `E_JOB_NON_TROVATO`: quello dice «il LAVORO in coda 42 non
 #    esiste», che e' un'altra cosa — e un messaggio che parla del lavoro
 #    sbagliato manda a cercare nel posto sbagliato.
-# ⚠️ Fino ad allora un codice inesistente in URL risponde 400 con una frase
-#    esatta invece di 404. E' il denominatore sicuro: nessuno raggiunge questo
-#    endpoint se non digitando un indirizzo a mano, e la frase dice il vero.
-#    Il giorno in cui `E_PROCESSO_NON_TROVATO` esiste, qui si cambia una riga.
-E_NOT_FOUND = "E_CORE_VALIDATION"
+E_NOT_FOUND = "E_PROCESSO_NON_TROVATO"
 
 # Vocabolari del registro: sono gli stessi `CHECK` di `dbops.processi`.
 # ⚠️ Qui servono a rifiutare un FILTRO senza senso con un 400 parlante invece
 #    di consegnare una lista vuota che sembra un dato. Non sono una seconda
 #    definizione della classe di un processo: quella e' e resta a database.
 _CLASSI = ("MANUTENZIONE", "AMMINISTRAZIONE", "DOMINIO")
-_CANALI = ("PGAGENT", "COMMAND", "CODA")
+# ⚠️ `CODA_AUTOMATICA` e' il quarto dal 2026-09-05 (`chk_processi_canale`).
+#    Ometterlo non darebbe un errore: darebbe un 400 su un filtro LEGITTIMO, e
+#    la schermata non saprebbe mostrare i processi svegliati da una macchina.
+_CANALI = ("PGAGENT", "COMMAND", "CODA", "CODA_AUTOMATICA")
 
 _ORDER_AMMESSI = (
     "codice", "descrizione", "classe", "canale", "attivo", "ultimo_run",
@@ -143,7 +142,7 @@ class ProcessiService:
         )
         return {"count": totale, "results": righe}
 
-    # Scopo: Lo stato dei sei presidi, in un round-trip.
+    # Scopo: Lo stato dei presidi, in un round-trip.
     # ⭐ La NATURA di ogni presidio («deve restare vuota» / «registro di debito»)
     #    arriva dal commento della vista a database, non da un elenco qui: e'
     #    il team DB che la dichiara, ed e' giusto che a dirla sia una sede sola.
@@ -183,6 +182,44 @@ class ProcessiService:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT script.fn_crea_utente_tecnico(%s, %s)",
+                    [processo_codice, emittente_codice],
+                )
+                row = cursor.fetchone()
+        assert row is not None
+        return {"auth_user_id": int(row[0])}
+
+    # Scopo: Riaccende l'utente tecnico SPENTO di un processo per un emittente.
+    #        Ritorna l'`auth_user_id` riattivato.
+    #
+    # ⭐ E' il secondo verbo di una coppia, e la coppia e' il punto. Sostituire
+    #    l'utente di un processo passa per «si spegne il legame e se ne fa uno
+    #    nuovo»: ma lo username e' deterministico (`processo@azienda`) ed e'
+    #    UNIQUE senza condizioni, quindi la seconda meta' sbatteva su un `23505`
+    #    nudo. Dal 2026-09-05 (DB-6) `fn_crea_utente_tecnico` riconosce il caso e
+    #    rifiuta dicendo `E_UTENTE_TECNICO_DA_RIATTIVARE` — cioe' manda QUI.
+    # ⚠️ Riaccende TUTTA la terna (utente Django, identita' digitale, legame nel
+    #    registro): spegnerne uno basta a fermare il processo, quindi riaccenderne
+    #    uno solo basta a lasciarlo fermo con l'aria di essere a posto.
+    # ⛔ Nessun guard ricopiato, come per la creazione: la fabbrica rifiuta e
+    #    spiega, e i suoi codici sono a catalogo.
+    def riattiva_utente_tecnico(
+        self, processo_codice: str, *, emittente_codice: str,
+    ) -> dict[str, Any]:
+        fn = f"{_FN}.riattiva_utente_tecnico"
+        ErrorManager.require(
+            bool(processo_codice) and bool(emittente_codice),
+            code=E_VALIDATION,
+            message="Processo ed emittente sono entrambi obbligatori.",
+            function_name=fn,
+        )
+        with translate_db_errors(
+            context={"op": fn},
+            fallback_code=E_VALIDATION,
+            fallback_message="Riattivazione dell'utente tecnico non riuscita.",
+        ):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_riattiva_utente_tecnico(%s, %s)",
                     [processo_codice, emittente_codice],
                 )
                 row = cursor.fetchone()
