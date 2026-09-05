@@ -5,7 +5,6 @@ id,processo_id,schema_tabella,nome_tabella,emittente_via,emittente_colonna,note,
 11,20,vendite,fatture,soggetto_ruolo,emittente_soggetto_ruolo_id,Emissione delle fatture del lotto.,false
 20,21,vendite,fatture_stampa_coda,fattura,sorgente_id,Claim e marcatura esito delle righe di coda stampa.,false
 21,21,documenti,documenti_generati,fiscale,emittente_fiscale_id,Documento prodotto dal render.,false
-30,22,config,email_outbox,fiscale,emittente_fiscale_id,"DEBITO DICHIARATO al LIVELLO 2: il percorso c'e' (colonna emittente_fiscale_id, changeSet 20260905-18) ma la POLICY che lo applica no. Deciso il 2026-09-05: le email di ambito SISTEMA le legge solo il super admin, e un utente tecnico puo' leggerle per poterle spedire. La policy resta pero' non scrivibile: oggi l'API scrive ambito=SISTEMA per DEFAULT quando il client non lo manda e non valorizza emittente_fiscale_id, quindi il campo che farebbe da cancello significa nessuno ha detto e non email di sistema. Serve prima che il backend affermi l'ambito e valorizzi l'emittente. Vedi brief-db-processi-automatici-identita-e-perimetro 12.15.",true
 40,40,vendite,fatturazione_lotti,soggetto_ruolo,emittente_soggetto_ruolo_id,Stessa scrittura del batch ma per un solo perimetro.,false
 41,40,vendite,fatture,soggetto_ruolo,emittente_soggetto_ruolo_id,Stessa scrittura del batch ma per un solo perimetro.,false
 50,41,vendite,fatture,soggetto_ruolo,emittente_soggetto_ruolo_id,Numerazione dei lotti EMESSA di una competenza.,false

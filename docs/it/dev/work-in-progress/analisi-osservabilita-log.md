@@ -314,6 +314,15 @@ quella parte, è già pagato.
 > Rilettura fatta contro il **codice e il database vivi**, non contro il piano.
 > Serve perché tre passi su sette sono cambiati di stato in due giorni e il §4
 > qui sotto li descrive ancora come da fare.
+>
+> ⏱️ **Rimisurato il 2026-09-05** (dodici giorni dopo). Tre voci del §5 «Aperte»
+> erano **già chiuse nel codice** e non lo diceva nessuno — vedi le note ⏱️ lì.
+> Qui cambia una riga sola, il Passo D. Il resto del quadro regge.
+>
+> ⚠️ **E si legge con il contesto operatore addosso**: `vendite.event_log` ha la
+> RLS attiva, quindi un `count(*)` da una sessione senza GUC torna **0**. Non è
+> «il registro è vuoto», è **fail-closed**. Con il contesto: **236 righe**
+> (2026-09-05).
 
 | Passo | Stato | Come si verifica |
 | --- | --- | --- |
@@ -323,7 +332,7 @@ quella parte, è già pagato.
 | **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
 | **B** — superfici aggregate | 🔵 aperto | invariato |
 | **C** — notifiche | 🔵 aperto | invariato |
-| **D** — retention sui log di dominio | 🟡 **parziale** | `event_log` ha `cleanup_at` dal Passo 0; `fatturazione_lotti_log` e `fatture_log` no |
+| **D** — retention sui log di dominio | 🟡 **parziale** — ma la parte difficile è fatta | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⛔ Resta il pezzo meccanico: `fatturazione_lotti_log` e `fatture_log` non hanno `cleanup_at` |
 
 ### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
 
@@ -389,7 +398,7 @@ incontra tutti:
 | **R-2** | `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** | Filtrare per «filo» tiene `event_log` + `task_run` e butta via le righe scritte **per una persona**. ⛔ Un filtro per giro nasconderebbe metà del contenuto |
 | **R-4** | Il **perimetro non è mai stato esercitato** su nessuno dei quattro rami | Un solo emittente ha righe. Il fail-closed funziona (senza GUC la vista torna 0), la **discriminazione** no: va collaudata **apposta**, i dati non lo faranno |
 | **R-5** | Due **generazioni di righe** convivono | Le vecchie hanno `tx_id` NULL e per «filo» il lotto; le nuove il giro. A video sono **indistinguibili** — e da R-1 in poi si aggiunge l'orario |
-| **R-6** | La riga `TASK_RUN` è **incoerente con sé stessa** | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
+| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05*: `script.vw_giornale_entita` usa tuttora `COALESCE(ended_at, started_at)` | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
 | **R-7** | **Rumore**: sul 6260, 213 righe, 82 non-INFO — e **81 sono la stessa storia ripetuta otto volte**. L'errore vero è **una riga** | Il filtro non-INFO da solo non basta: nascondere le ritirate ne toglie una parte, il resto è **de-duplicazione**, da guardare col pannello davanti |
 
 ---
@@ -717,9 +726,18 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 > fra le Chiuse. Le voci qui sotto sono quelle **residue**, più quelle nate dalla
 > verifica sul DB dello stesso giorno.
 
-7. **Check CI** sul disallineamento codici — solo sui codici nuovi o su tutti?
-   (Passo 1, che ormai è solo questo)
-8. **Notifiche** — canale email o solo badge in-app in prima battuta? (Passo C)
+7. ✅ **CHIUSA di fatto — verificato il 2026-09-05.** **Check CI** sul
+   disallineamento codici: *solo sui codici nuovi o su tutti?* La risposta è nel
+   codice e non era stata riportata qui — `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py`
+   (step CI *«Codici errore — nessun codice allarga il proprio significato»*)
+   presidia i **nuovi** (`test_nessun_codice_nuovo_senza_policy`) e tiene il
+   pregresso a **soglia** (`test_la_misura_non_e_degradata`), che deve calare.
+   ⚠️ Il registro oggi conta **502** codici da dichiarare: è un debito misurato,
+   non un errore. ⇒ Il Passo 1 è chiuso.
+8. 🔵 **APERTA, e serve una decisione di Tid** — **Notifiche**: canale email o
+   solo badge in-app in prima battuta? (Passo C). ⭐ È l'unica delle voci
+   originali che non si è chiusa da sola: le altre le ha chiuse il lavoro, questa
+   aspetta una scelta.
 > ✅ **Le voci 9, 10, 11, 12 e 13 sono state decise il 2026-08-22 e sono
 > confluite nel [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
 > come D-6 (`actor`/`source` via), D-7 (il giro), D-8 (retention),
@@ -728,7 +746,11 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 > insieme alle **sei domande nuove** che la scrittura del brief ha fatto
 > emergere (§8 di là).**
 
-9. 🔴 **`actor` è ridondante, e B3 non è vero come scritto.** `event_log.user_insert`
+9. ✅ **CHIUSA — verificato il 2026-09-05: le colonne non ci sono più.**
+   `vendite.event_log` non ha né `actor` né `source`; «chi» resta su
+   `user_insert`, dove il progetto lo mette già. La proposta qui sotto è stata
+   accolta, e il testo resta come storia.
+   🔴 **`actor` è ridondante, e B3 non è vero come scritto.** `event_log.user_insert`
    **dice già chi**: il trigger generico `script.trgfn_audit_data_user_generic` lo
    riempie da `app.jwt_user`, e in tabella ci sono `tid`, `pochi`, `fara`,
    `BATCH_FATTURAZIONE` — non `zeroerp_app`. La colonna costante e inutile è
@@ -744,7 +766,15 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     si decide **cosa sia un giro**: un `uuid` nuovo generato dal runner a ogni
     `run_pipeline`, il `tx_id` della transazione, o l'id del `task_run`.
     ⚠️ È lato scrittura: non è recuperabile dopo.
-11. 🔴 **La retention standard NON funziona su una tabella append-only.**
+11. ✅ **CHIUSA — la via (a) è stata scritta, verificato il 2026-09-05.**
+    `trgfn_event_log_append_only` distingue **alterare la storia** (UPDATE:
+    sempre vietato) da **ritirare ciò che è scaduto** (DELETE: ammesso con la GUC
+    di manutenzione **oppure** su riga con `cleanup_at <= now()`). ⭐ Il criterio
+    del secondo ramo non è **chi** cancella ma **cosa**, così
+    `dbops.fn_purge_cleanup_expired` funziona com'è. E il veto sull'UPDATE rende
+    `cleanup_at` immutabile: nessuno può anticipare la scadenza di una riga
+    scomoda. Il testo resta come storia.
+    🔴 **La retention standard NON funziona su una tabella append-only.**
     `dbops.fn_apply_cleanup_at` valorizza `cleanup_at` con un **`UPDATE`**, e
     `dbops.fn_purge_cleanup_expired` cancella con un **`DELETE`**: il trigger
     `trgfn_event_log_append_only` li vieta **entrambi**. Aggiungere la colonna e

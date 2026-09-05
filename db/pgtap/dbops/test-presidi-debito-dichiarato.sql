@@ -16,7 +16,7 @@
 --  2) ⛔ DB-3: un'email non di SISTEMA senza emittente si ferma
 --  3) ✅ DB-3: un'email di SISTEMA entra SENZA emittente, come deve
 --  4) ⭐ il livello 1 non ha ALLARMI (nessuna riga NON_DICHIARATO)
---  5) ⭐ DB-2: la riga del livello 2 DICE di essere attesa
+--  5) ⭐ DB-2: un bersaglio scoperto ma DICHIARATO si presenta come tale (COSTRUITO)
 --  6) ⛔ DB-2: un bersaglio nuovo e rotto e' un ALLARME, non un debito
 --  7) le due viste parlano la stessa lingua
 --  8) ⛔ una policy SCRITTA ma con la RLS spenta non conta come difesa
@@ -105,13 +105,63 @@ SELECT is_empty(
 -- ============================================================
 -- 5..6. ⭐ DB-2: il presidio distingue l'atteso dal nuovo
 -- ============================================================
--- `config.email_outbox` ha il percorso (changeSet -18) ma non ancora la policy:
--- e' un debito con un nome, e la vista deve dirlo invece di sembrare un allarme.
+-- ⚠️ ASSERZIONE RIVOLTATA il 2026-09-05, ed e' la QUARTA volta che questa
+--   lezione si paga. Chiedeva che `config.email_outbox` comparisse nel livello 2
+--   come `DEBITO_DICHIARATO`: si appoggiava a un **debito reale**, e quel debito
+--   e' stato ritirato — la riga di censimento affermava il falso
+--   (`send_pending_emails` non apre mai quella tabella, changeSet `20260905-34`).
+--   ⛔ Un test che si appoggia a un debito si rompe quando il debito se ne va,
+--     cioe' **quando il lavoro riesce**.
+--   ⇒ Il caso si COSTRUISCE, esattamente come lo costruisce il test 6 per il
+--     verso opposto. I due sono lo stesso presidio che risponde in due modi a
+--     due situazioni diverse, e adesso sono simmetrici anche nella forma.
+DO $dichiarato$
+DECLARE
+    v_id dbops.processi.id%TYPE := 9402;
+BEGIN
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    VALUES (v_id, 'PGTAP-DB2-DICHIARATO',
+            'processo di prova con un bersaglio scoperto ma DICHIARATO',
+            'DOMINIO', 'COMMAND');
+
+    -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
+    -- snapshot e la FK non troverebbe il padre.
+    -- ⭐ ANCHE LA TABELLA SCOPERTA SI COSTRUISCE, e questa e' la QUINTA volta.
+    --   La stesura precedente puntava a `config.email_outbox` perche' «oggi e'
+    --   davvero scoperta». Lo era la mattina; il changeSet `20260905-37` le ha
+    --   dato RLS e write-guard nel pomeriggio, e il test e' andato rosso
+    --   **perche' il lavoro era riuscito** — di nuovo.
+    --   ⛔ Costruire il processo e il bersaglio NON BASTA se la condizione che
+    --     li rende «scoperti» resta una proprieta' di una tabella VERA che
+    --     qualcun altro sta riparando: il caso e' costruito a meta', e la meta'
+    --     presa in prestito e' proprio quella che deve cambiare.
+    --   ⇒ Il caso possiede tutto cio' che afferma: la tabella nasce qui, senza
+    --     policy, senza row level security e senza write-guard, e muore col
+    --     `ROLLBACK`. E' scoperta per costruzione, non per congiuntura.
+    --   ⚠️ Serve una tabella VERA (`relkind = 'r'`) con una colonna vera: il
+    --     livello 1 respinge «tabella inesistente» e «colonna del percorso
+    --     inesistente», e la riga arriverebbe li' invece che al livello 2.
+    --     ⛔ E non puo' essere temporanea: il presidio cerca lo schema per NOME,
+    --     e `pg_temp_<n>` cambia a ogni sessione.
+    CREATE TABLE dbops.pgtap_bersaglio_scoperto (
+        id                   bigint PRIMARY KEY,
+        emittente_fiscale_id bigint
+    );
+
+    INSERT INTO dbops.processi_bersagli
+        (id, processo_id, schema_tabella, nome_tabella,
+         emittente_via, emittente_colonna, note, debito_dichiarato)
+    VALUES (9402, v_id, 'dbops', 'pgtap_bersaglio_scoperto',
+            'fiscale', 'emittente_fiscale_id',
+            'debito dichiarato costruito dal test', true);
+END
+$dichiarato$;
+
 SELECT is(
     (SELECT stato FROM dbops.vw_processi_dominio_senza_difesa
-      WHERE nome_tabella = 'email_outbox'),
+      WHERE processo_codice = 'PGTAP-DB2-DICHIARATO'),
     'DEBITO_DICHIARATO',
-    '5. la riga attesa nel livello 2 si DICHIARA'
+    '5. un bersaglio scoperto ma DICHIARATO si presenta come tale'
 );
 
 -- ⛔ E il verso che rende il presidio ancora un presidio: un bersaglio NUOVO,

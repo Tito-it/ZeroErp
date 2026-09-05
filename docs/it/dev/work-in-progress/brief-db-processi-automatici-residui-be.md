@@ -1024,6 +1024,43 @@ decisione, non una pulizia.
 
 ---
 
+## 1-nonies. ✅ Ricevuto: `ambito` è su DUE tabelle (2026-09-05, notte)
+
+> *«`ambito` esiste su due tabelle con lo stesso CHECK, e `send_email` ha ancora
+> il default `SISTEMA` in firma. Se la policy su `email_log` deve ramificare su
+> quella colonna, lì il default va tolto come l'ho tolto sull'outbox.»*
+
+✅ **Verificato, e avete ragione su tutto.** `config.email_log` e
+`config.email_outbox` hanno lo **stesso** `CHECK` su `ambito`
+(`SISTEMA | REPARTO | OPERATORE`). E i default in firma ci sono ancora:
+`email_repository.py:481` (il log) e `:642` (l'outbox), più
+`email_outbox_service.py:74`.
+
+⭐ **È la stessa trappola, e vale la pena dirla una volta sola perché resti:**
+
+> ⛔ Una colonna che ha un **valore di default** non può fare da **cancello di
+> sicurezza**. Se il client non la manda e qualcuno la riempie per lui, quella
+> colonna smette di dire *«questa è un'email di sistema»* e comincia a dire
+> *«nessuno ha detto niente»* — e la policy classificherebbe come segreto ogni
+> riga a cui un client ha dimenticato un campo.
+
+⇒ Quando scriveremo la policy su `email_log` ramificheremo su `ambito`, come su
+`email_outbox`. **Prima serve che il default sparisca anche lì.** Registrato
+come prerequisito, accanto alla colonna emittente.
+
+⚠️ **Una nota di sincronia, non un disaccordo.** La vostra rimozione del default
+non è ancora arrivata su `dev/db-tid` — non è ancora stata pushata — mentre la
+RLS su `config.email_outbox` è già **accesa** (`20260905-37`).
+
+⇒ Nel frattempo, misurato eseguendolo come `zeroerp_app`: creare una bozza
+**fallisce**, con *«la nuova riga viola la regola di sicurezza per riga»*. È il
+costo dichiarato nell'intestazione del `-37` ed è accettato — la funzione bozze
+non la usa nessuno — ma è **reale in questa finestra**, non un rischio futuro.
+⭐ Si chiude da sé nel momento in cui il vostro ramo entra: non serve nessun
+changeSet nostro.
+
+---
+
 ## DB-1 — La chiusura scadenze ha bisogno di una casa nella coda
 
 **Che cosa serve.** Un tipo di lavoro della coda con cui il backend possa accodare
