@@ -51,6 +51,12 @@ _FERMATA_DA_CORSIA: Any = object()
 #   dell'instradamento automatico: quando c'e', la corsia non serve piu'.
 # La fermata resta EMESSA: il gate fiscale I-7 non si tocca.
 MODALITA_MIRATA = "mirata"
+# Corsia del giro on-demand di MASSA: differita, fermata a EMESSA (gate D-1).
+# ⭐ Sta QUI e non nell'handler (dov'era, come `_MODALITA_ONDEMAND`) perche'
+# l'owner delle corsie e' questo modulo: chi la usa la importa, non la
+# riscrive. Serve a due consumatori — handler ed enqueue — e un secondo
+# letterale avrebbe potuto disallinearsi dal dizionario `_MODALITA`.
+MODALITA_ONDEMAND = "differita"
 _MODALITA: dict[str, tuple[str, bool | None, str | None]] = {
     "immediata": ("GIORNALIERO", True, None),
     "differita": ("MASSIVO", False, STATO_FERMATA_EMESSA),
@@ -88,7 +94,7 @@ def modalita_disponibili() -> list[str]:
 #        terna, best-effort, con fermata `fino_a_stato` (default di corsia).
 #        Obiettivo: unico core condiviso da cron e UI (I-1). Perimetro:
 #        nessuna gestione canale/registrazione run (restano al chiamante:
-#        system_process_context+registered_job nel command, scope operatore
+#        registered_job nel command, scope operatore
 #        nell'endpoint). Risultato: riepilogo strutturato del run — usato
 #        come meta di job_run_log e come esito API.
 def esegui_giro_fatturazione(

@@ -17,9 +17,16 @@ from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int
+from apps.core.api.payload_validators import (
+    optional_int,
+    qp_bool_optional,
+    qp_int,
+    qp_str,
+    qp_str_upper,
+)
 from apps.core.api.success_responses import success_response
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.core.services.processi_service import ProcessiService
 
 
 # Scopo: Decodifica query param a bool opzionale. Valori True: 1|true|yes|on
@@ -258,6 +265,31 @@ class RepartiListView(AdminAPIView):
         return success_response({"results": AmmSoftwareService().list_reparti()})
 
 
+class PermessiEreditatiView(AdminAPIView):
+    """GET livelli EREDITATI dal profilo per un operatore (sola lettura).
+
+    Cosa l'operatore avrebbe **senza** override individuali: e' la colonna
+    «ereditato» del pannello permessi, che evita di scrivere un override che
+    ripete il profilo — e un override che ripete il profilo congela la riga,
+    perche' da quel momento non segue piu' il reparto quando il reparto cambia.
+
+    ⛔ Non e' `reparti/<uo_id>/profilo/`: quello legge il solo binding REPARTO,
+    mentre i bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i
+    resolver prendono il primo per priorita'.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PermessiEreditatiGetResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Livelli ereditati dal profilo, per area e per azione.
+    def get(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return success_response(
+            AmmSoftwareService().get_permessi_ereditati(auth_user_id)
+        )
+
+
 class RepartoProfiloView(AdminAPIView):
     """GET/PUT profilo reparto."""
 
@@ -281,6 +313,140 @@ class RepartoProfiloView(AdminAPIView):
 # ================================================================== #
 # Riepilogo permessi                                                   #
 # ================================================================== #
+
+
+class ProcessiListView(AdminAPIView):
+    """GET registro dei PROCESSI AUTOMATICI (`dbops.processi`).
+
+    ⭐ Prima schermata che rende leggibile da dentro l'applicazione cio' che
+    fino al 2026-09-05 si vedeva solo da `psql`: quali programmi girano da
+    soli, di che classe sono, con quale identita' e per quali aziende.
+    ⛔ `AdminAPIView` e non `DomainAPIView`: le viste di presidio che alimentano
+    questa area nominano TUTTI gli emittenti e non hanno RLS.
+    """
+
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="classe", type=str, required=False),
+            OpenApiParameter(name="canale", type=str, required=False),
+            OpenApiParameter(name="attivo", type=bool, required=False),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="ProcessiListResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Elenco paginato dei processi automatici con filtri di pannello.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        return success_response(ProcessiService().list_processi(
+            classe=qp_str_upper(qp.get("classe")),
+            canale=qp_str_upper(qp.get("canale")),
+            attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
+            search=qp_str(qp.get("search")),
+            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
+            offset=qp_int(qp.get("offset"), 0),
+            order_by=qp_str(qp.get("order_by")),
+            # ⚠️ Il valore GREZZO: `parse_list_params` normalizzerebbe a "asc" e
+            #    annullerebbe il default del repository.
+            order_dir=qp_str(qp.get("order_dir")),
+        ))
+
+
+class ProcessiPresidiView(AdminAPIView):
+    """GET stato dei SEI presidi del cantiere «nessun processo senza operatore».
+
+    ⭐ La natura di ogni presidio — «deve restare vuota» oppure «registro di
+    debito che deve calare» — arriva dal COMMENTO della vista a database, non
+    da un elenco nel backend: e' il team DB a dichiararla, e a dirla e' una
+    sede sola.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiPresidiResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: I sei presidi in un round-trip: conteggio, prime righe, descrizione.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(ProcessiService().stato_presidi())
+
+
+class ProcessiDetailView(AdminAPIView):
+    """GET dettaglio di un processo: bersagli dichiarati e identita' tecniche."""
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ProcessiDetailResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Dettaglio completo del processo (404 se il codice non esiste).
+    def get(self, request: Request, codice: str) -> JsonResponse:
+        return success_response(ProcessiService().get_processo(codice))
+
+
+class ProcessiRunView(AdminAPIView):
+    """GET le corse recenti di un processo (`maintenance.job_run_log`)."""
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="ProcessiRunResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Storia recente delle corse di un processo.
+    def get(self, request: Request, codice: str) -> JsonResponse:
+        qp = request.query_params
+        return success_response(ProcessiService().list_run(
+            codice,
+            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
+            offset=qp_int(qp.get("offset"), 0),
+        ))
+
+
+class ProcessiIdentitaView(AdminAPIView):
+    """POST crea l'utente tecnico di un processo PER UN EMITTENTE.
+
+    ⛔ D-9: il sistema non SCEGLIE l'emittente, lo riceve da una persona. Non
+    esiste un verbo «crea tutti quelli che mancano»: il pannello mostra chi non
+    e' servito, la decisione resta di chi guarda.
+    """
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key", type=str,
+                location=OpenApiParameter.HEADER, required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            ),
+        ],
+        request=inline_serializer(
+            name="ProcessiIdentitaReq",
+            fields={"emittente_codice": serializers.CharField()},
+        ),
+        responses={200: inline_serializer(
+            name="ProcessiIdentitaResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Crea l'utente tecnico (processo x emittente) via fabbrica di dominio.
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return ProcessiService().crea_utente_tecnico(
+                codice, emittente_codice=str(payload.get("emittente_codice") or ""),
+            )
+
+        return handle_post_json(
+            request, handler=_handler, require_idempotency_key=True,
+        )
 
 
 class AuditLogView(AdminAPIView):

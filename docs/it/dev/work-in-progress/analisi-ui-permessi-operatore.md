@@ -4,8 +4,19 @@
 > **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DECISO** (Tid, 2026-09-05) — vedi §7
 >
 > ✅ **Decisioni prese**: *nessun cambio di funzionalità* — il tetto d'area (§3)
-> **non si fa** e resta segnalato come difetto a sé; la UI **resta nel drawer**.
+> **non si fa** e resta segnalato come difetto a sé; la UI **resta nel drawer**;
+> `DataTable` con tutte le righe e **niente paginazione**; **estrazione del BB
+> approvata**; e le righe mostrano il **valore ereditato** dal profilo.
 > Quindi è una **ristrutturazione grafica**, e §7 dice come.
+>
+> ➡️ **Il piano operativo è
+> [piano-be-fe-ui-permessi-operatore.md](piano-be-fe-ui-permessi-operatore.md)**
+> — componente, endpoint, store, test e ordine dei passi. ⛔ Le decisioni non si
+> riaprono lì: si traducono.
+>
+> 🔴 **Resta aperto e NON è di questo cantiere**: il tetto d'area (§3) è un
+> difetto di modello vero — un'area bloccata non blocca le sue azioni di
+> processo — e aspetta una decisione a sé.
 >
 > **La domanda.** Oggi i permessi di un utente si gestiscono in un drawer con
 > tre tabelle di *override*: per aggiungerne uno si preme «Aggiungi override» e

@@ -16,6 +16,8 @@ from django.db import connection
 
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_service import EmailDispatchService
+from apps.core.services.job_run import ORIGINE_CRON, registered_job
+from apps.core.services.processi import PROCESSO_SEND_PENDING_EMAILS
 
 logger = logging.getLogger("zeroerp.email")
 
@@ -33,9 +35,36 @@ class Command(BaseCommand):
             help="Numero massimo di email da processare (default 50).",
         )
 
-    # Scopo: Processa email in coda PENDING/RETRY, con retry automatico
-    #        per i FAILED con tentativi < max_tentativi.
+    # Scopo: Registra il run e delega al corpo. ⭐ Dal 2026-09-05 questo command
+    #        DICE CHI E' (`processo_codice`): prima non si registrava affatto, e
+    #        un presidio costruito su `job_run_log` gli era cieco sopra.
+    # ⛔ Il DRY-RUN resta FUORI dalla registrazione: non e' un'esecuzione
+    #    operativa (stessa regola gia' applicata da `run_fatturazione_batch`).
+    # ⚠️ NIENTE `lock_key`: questo command non ne aveva uno prima, e aggiungerlo
+    #    ora cambierebbe il comportamento di un processo in esercizio dentro un
+    #    cantiere che parla di identita', non di concorrenza.
+    # 🔴 QUESTO PROCESSO E' DI DOMINIO E NON HA UN PERIMETRO. `config.email_outbox`
+    #    non porta l'emittente, quindi non si puo' lavorare «un'azienda alla
+    #    volta»: gli si da' l'ATTORE e basta. Il resto sta nel debito R-7 /
+    #    richiesta DB-3 (brief-db-processi-automatici-residui-be) — dichiarato,
+    #    non dimenticato.
     def handle(self, *args, **options):
+        if options["dry_run"]:
+            self._esegui(options)
+            return
+        with registered_job(
+            PROCESSO_SEND_PENDING_EMAILS,
+            processo_codice=PROCESSO_SEND_PENDING_EMAILS,
+            origine=ORIGINE_CRON,
+        ) as job:
+            esito = self._esegui(options)
+            job.set_meta(esito)
+            job.set_rows_affected(esito.get("processate", 0))
+
+    # Scopo: Processa email in coda PENDING/RETRY, con retry automatico
+    #        per i FAILED con tentativi < max_tentativi. Ritorna il riepilogo
+    #        del giro (vuoto sul dry-run, che non e' un'esecuzione).
+    def _esegui(self, options) -> dict:
         dry_run = options["dry_run"]
         limit = options["limit"]
 
@@ -61,11 +90,11 @@ class Command(BaseCommand):
             self.stdout.write(f"[DRY-RUN] {count} email in coda da processare.")
             for r in rows:
                 self.stdout.write(f"  id={r['id']} stato={r['stato']} dest={r['destinatario']} tentativi={r['tentativi']}/{r['max_tentativi']}")
-            return
+            return {"dry_run": True, "in_coda": count}
 
         if count == 0:
             self.stdout.write("Nessuna email in coda.")
-            return
+            return {"processate": 0, "inviate": 0, "fallite": 0}
 
         self.stdout.write(f"Processando {count} email...")
         repo = EmailRepository()
@@ -99,3 +128,4 @@ class Command(BaseCommand):
                 failed += 1
 
         self.stdout.write(self.style.SUCCESS(f"Completato: {sent} inviate, {failed} fallite."))
+        return {"processate": count, "inviate": sent, "fallite": failed}

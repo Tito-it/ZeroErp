@@ -274,7 +274,8 @@
       "email-accounts": "Email Accounts",
       "email-templates": "Email Templates",
       "email-log": "Email Log",
-      "personalizzazioni-liste-tecniche": "List customizations (technical)"
+      "personalizzazioni-liste-tecniche": "List customizations (technical)",
+      "processi-automatici": "Automated processes"
     },
     "anagrafiche": {
       "soggetti": "Subjects",
@@ -1277,6 +1278,53 @@
       "ut_parent_inactive_warn": "The fiscal issuer is disabled: utility configurations can only be saved as inactive. Re-enable the issuer to activate the rows.",
       "ut_parent_inactive_tooltip": "Issuer disabled: child cannot be active",
       "avviso_registri": "After creating the issuer you also need its numbering registers and the document-type/nature mappings: without them, its first invoice stops with «missing configuration». There is no generic fallback register — by design: better to stop than to number on another company's sequence."
+    },
+    "permessi_nota": "All entries are listed: with no override, the value inherited from the profile applies. An override that repeats the inherited value is pointless, and from then on the entry no longer follows the profile.",
+    "ereditato_default": "default (no profile)",
+    "ereditato_da_area": "from area {area}",
+    "ereditato_da_override_area": "from the area override",
+    "override_non_impostato": "— not set",
+    "override_ridondante": "Repeats the inherited value: pointless, and from now on this entry will no longer follow the profile.",
+    "azione_abilitata": "Enabled",
+    "azione_negata": "Denied",
+    "cerca_azione": "Search action…",
+    "cerca_model": "Search object…",
+    "processi": {
+      "search_placeholder": "Search process (code or description)…",
+      "classe_tutte": "All classes",
+      "canale_tutti": "All channels",
+      "mai_girato": "never ran",
+      "esito_ok": "OK",
+      "esito_ko": "Error",
+      "esito_in_corso": "running",
+      "errore_caricamento": "The process registry could not be read. The list below is not empty: it was not read.",
+      "drawer_action": "Details",
+      "tab_bersagli": "Where it writes",
+      "tab_identita": "Which identity",
+      "tab_run": "Recent runs",
+      "bersagli_help": "The tables this process declares it writes to, and how each row reaches the issuing company. It is a declared list: it says where someone stated the process writes, not that it writes only there.",
+      "senza_percorso": "no path",
+      "col_tabella": "Table",
+      "col_percorso": "Path to company",
+      "col_colonna": "Column",
+      "identita_help": "This process works one company at a time, and each one needs its own technical user.",
+      "identita_non_serve": "This process does not need a technical user: a person starts it, and it runs with that person's identity.",
+      "col_utente": "Technical user",
+      "col_azienda": "Company",
+      "aziende_scoperte": "{n} active company/companies have no technical user for this process: their work is not done, and no error reports it.",
+      "scegli_azienda": "Choose the company",
+      "crea_identita": "Create technical user",
+      "identita_creata": "Technical user created.",
+      "run_help": "The last {n} recorded runs for this process.",
+      "run_nessuno": "No run recorded: the process has not run yet, or it runs without declaring itself.",
+      "col_quando": "When",
+      "col_jobname": "Job",
+      "col_origine": "Origin",
+      "col_esito": "Outcome",
+      "presidi_titolo": "Checks that must stay empty",
+      "presidi_help": "Anything listed below is something to fix. Each check's explanation comes from the database, which is where that rule is written.",
+      "presidi_errore": "The checks could not be read. «No rows» below would mean «all clear»: that is not what is happening.",
+      "presidi_troncato": "first {n} rows"
     }
   },
   "indirizzi": {
@@ -4992,5 +5040,15 @@
     "senza_numero": "Not numbered",
     "nessun_risultato": "No invoice found",
     "affina": "Showing {shown} of {total}: refine your search"
+  },
+  "matrice_override": {
+    "cerca": "Search…",
+    "col_ereditato": "Inherited",
+    "col_override": "Override",
+    "col_stato": "Status",
+    "stato_override": "Override",
+    "stato_ereditato": "Inherited",
+    "reset_tooltip": "Remove the override: the entry goes back to the inherited value",
+    "nessuna_voce": "No entries"
   }
 }

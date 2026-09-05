@@ -84,6 +84,13 @@ _ESENZIONI: dict[str, str] = {
     "anagrafiche.emittente_billing_account": "AdminAPIView — configura la mappatura BA→emittente",
     "anagrafiche.emittenti_fiscali": "AdminAPIView — e' l'elenco degli emittenti stessi",
     "anagrafiche.operatori": "AdminAPIView — gestione utenti",
+    # ⭐ Il registro dei processi automatici e' CATALOGO: descrive il software,
+    #    non i dati di un'azienda. Le sue righe valgono identiche su ogni
+    #    installazione e non hanno un emittente da cui arrivare — chiedere «da
+    #    quale azienda viene questa riga?» sarebbe una domanda senza risposta.
+    #    ⚠️ Le IDENTITA' un emittente ce l'hanno, ma stanno nel DETTAGLIO (una
+    #    riga per azienda servita), non in questa lista.
+    "amm.processi": "AdminAPIView — registro di catalogo, senza perimetro emittente",
     "config.email_account": "AdminAPIView — configurazione tecnica",
     "config.email_log": "AdminAPIView — diario tecnico di sistema",
     # ⭐ La schermata che monta questa lista e' `/amm-software/audit-log/`

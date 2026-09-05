@@ -2,15 +2,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Guard STATICO anti-misuse del canale di sistema headless (RLS Path A,
-#        D8). Il gateway `system_process_context` ripunta la connessione DEFAULT a
-#        un ruolo BYPASSRLS: usarlo dentro un percorso di richiesta web
-#        renderebbe quella connessione BYPASSRLS (leak cross-tenant). Questo test
-#        fallisce se il gateway (o l'alias `system_fatturazione`) compare fuori dai
-#        moduli whitelisted — pendant statico del guard runtime nel middleware.
+# Scopo: Guard STATICO — il canale di sistema `BYPASSRLS` NON deve tornare.
+#
+# ⭐ Questo cancello e' stato GIRATO il 2026-09-05 (R-2), non cancellato.
+#    Prima diceva «il gateway si usa solo in questi cinque moduli»: era la forma
+#    giusta finche' un uso legittimo esisteva. Adesso non ne esiste piu' nessuno
+#    — ogni processo ha la propria identita' e lavora dentro il proprio
+#    perimetro — quindi la whitelist e' VUOTA e il presidio dice una cosa piu'
+#    forte: **zero occorrenze**.
+# ⛔ Perche' non si cancella il file: il pericolo che presidiava non e' sparito,
+#    ha cambiato forma. Prima era «qualcuno lo usa dove non deve»; adesso e'
+#    «qualcuno lo rimette». Un ruolo che scavalca le policy e' la scorciatoia
+#    che verra' in mente al primo processo nuovo che «deve vedere tutte le
+#    aziende», e la risposta e' che si crea un utente tecnico, non un
+#    passepartout.
+# ⚠️ Resta fuori `connection_role_bypasses_rls`, che ha il verso OPPOSTO: non
+#    concede il bypass, verifica che la connessione della richiesta non ce
+#    l'abbia. Quella si usa, e il middleware la usa.
 # Indice test:
-#   1) system_process_context usato solo nei moduli whitelisted
-#   2) alias 'system_fatturazione' referenziato solo nei moduli whitelisted
+#   1) `system_process_context` non compare in nessun modulo applicativo
+#   2) l'alias `system_fatturazione` non compare in nessun modulo applicativo
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -21,26 +32,12 @@ from unittest import TestCase
 # Radice apps/ del backend (questo file è apps/core/tests/...).
 _APPS_ROOT = Path(__file__).resolve().parents[2]
 
-# Moduli autorizzati a toccare il canale di sistema (path relativi ad apps/).
-# - il gateway stesso (definizione/uso interno);
-# - il management command headless che lo consuma;
-# - il middleware web (importa l'helper di guardia connection_role_bypasses_rls).
-_GATEWAY_WHITELIST = {
-    "core/services/system_context.py",
-    "vendite/management/commands/run_fatturazione_batch.py",
-    # Worker drainer della coda stampa (Fase C C-2b): headless, stesso canale
-    # di sistema del batch (ruolo BYPASSRLS) — uso legittimo del gateway.
-    "vendite/management/commands/draina_coda_stampa.py",
-    # Drainer coda lavori generica: dispatch per-item dei job run_as=SISTEMA sul
-    # canale di sistema (BYPASSRLS); i job OPERATORE restano su RLS attiva.
-    "core/services/coda_lavori/drainer_service.py",
-    "core/middleware/jwt_audit_middleware.py",
-}
-# Il LETTERALE dell'alias DB vive SOLO in system_context (fonte unica, regola
-# del 2 — 2026-07-21): i consumer importano la costante SYSTEM_FATTURAZIONE_DB_ALIAS.
-_ALIAS_WHITELIST = {
-    "core/services/system_context.py",
-}
+# ⛔ VUOTE, e sono la sostanza del presidio: dal 2026-09-05 non c'e' nessun
+#    modulo autorizzato, perche' non c'e' nessun uso legittimo. Se un giorno
+#    servisse davvero un'eccezione, si aggiunge QUI con la ragione scritta
+#    accanto — non si aggira il test.
+_GATEWAY_WHITELIST: set[str] = set()
+_ALIAS_WHITELIST: set[str] = set()
 
 
 def _offending_files(needle: str, whitelist: set[str]) -> list[str]:
@@ -66,14 +63,17 @@ def _offending_files(needle: str, whitelist: set[str]) -> list[str]:
 
 
 class SystemContextUsageWhitelistTests(TestCase):
-    # Scopo: il gateway non deve essere usato fuori dai moduli headless whitelisted.
-    def test_system_process_context_only_in_whitelist(self):
+    # Scopo: il gateway ritirato non deve ricomparire da nessuna parte.
+    def test_system_process_context_non_esiste_piu(self):
         offenders = _offending_files("system_process_context", _GATEWAY_WHITELIST)
         self.assertEqual(
             offenders, [],
-            f"system_process_context usato fuori whitelist (rischio BYPASSRLS in "
-            f"contesto richiesta): {offenders}. Se è un nuovo processo headless "
-            f"legittimo, aggiungerlo a _GATEWAY_WHITELIST.",
+            f"Il canale di sistema BYPASSRLS è ricomparso in: {offenders}. "
+            "È stato ritirato il 2026-09-05: un processo che deve lavorare più "
+            "aziende NON scavalca le policy, ha un utente tecnico per azienda "
+            "(script.fn_crea_utente_tecnico) e itera il proprio roster. Se "
+            "esistesse davvero un'eccezione, va dichiarata in "
+            "_GATEWAY_WHITELIST con la ragione scritta accanto.",
         )
 
     # Scopo: l'alias del canale non deve comparire fuori dai moduli whitelisted.

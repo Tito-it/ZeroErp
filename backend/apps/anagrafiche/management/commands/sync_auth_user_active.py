@@ -18,7 +18,9 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.anagrafiche.db.anagrafiche_repository import AnagraficheRepository
+from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.permissions_cache import invalidate_user
+from apps.core.services.processi import PROCESSO_SYNC_AUTH_USER_ACTIVE
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +40,32 @@ class Command(BaseCommand):
             help="Solo report: mostra gli utenti che sarebbero disattivati senza applicare modifiche.",
         )
 
-    # Scopo: Esegue la sync batch degli utenti scaduti.
+    # Scopo: Registra il run e delega al corpo. ⭐ Dal 2026-09-05 questo command
+    #        DICE CHI E': prima non si registrava affatto, quindi qualunque
+    #        presidio costruito su `job_run_log` gli era cieco sopra.
+    # ⛔ Il DRY-RUN resta fuori dalla registrazione: e' un report, non
+    #    un'esecuzione operativa.
+    # ⚠️ Classe AMMINISTRAZIONE: tocca dati che non appartengono a un emittente
+    #    (`auth_user`, `risorse_umane`), quindi NON ha un utente tecnico e non
+    #    itera per azienda. L'attore basta — e' esattamente la distinzione della
+    #    D-8 dell'analisi.
+    def handle(self, *args: Any, **options: Any) -> None:
+        if options["dry_run"]:
+            self._esegui(options)
+            return
+        with registered_job(
+            PROCESSO_SYNC_AUTH_USER_ACTIVE,
+            processo_codice=PROCESSO_SYNC_AUTH_USER_ACTIVE,
+            origine=ORIGINE_CRON,
+        ) as job:
+            esito = self._esegui(options)
+            job.set_meta(esito)
+            job.set_rows_affected(esito.get("disattivati", 0))
+
+    # Scopo: Esegue la sync batch degli utenti scaduti e ritorna il riepilogo.
     # Flusso: raccoglie gli auth_user_id coinvolti, chiama la funzione SQL
     # di sync, poi invalida la cache permessi per ciascun utente modificato.
-    def handle(self, *args: Any, **options: Any) -> None:
+    def _esegui(self, options: Any) -> dict:
         dry_run: bool = options["dry_run"]
         repository = AnagraficheRepository()
 
@@ -55,7 +79,7 @@ class Command(BaseCommand):
                         "Nessun utente con finestra temporale scaduta."
                     )
                 )
-                return
+                return {"disattivati": 0, "cache_invalidata": 0}
 
             if dry_run:
                 self.stdout.write(
@@ -64,7 +88,7 @@ class Command(BaseCommand):
                         f"auth_user_id = {affected_ids}"
                     )
                 )
-                return
+                return {"dry_run": True, "candidati": len(affected_ids)}
 
             # Fase 2: esecuzione sync SQL
             count = repository.call_sync_auth_user_expired()
@@ -89,6 +113,7 @@ class Command(BaseCommand):
                 invalidated,
                 affected_ids,
             )
+            return {"disattivati": count, "cache_invalidata": invalidated}
 
         except Exception as exc:
             logger.exception("Errore in sync_auth_user_active")

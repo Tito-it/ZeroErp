@@ -20,9 +20,20 @@ urlpatterns = [
     path("operatori/<int:auth_user_id>/override-azioni/", views.OverrideAzioniView.as_view(), name="amm-override-azioni"),
     path("operatori/<int:auth_user_id>/override-oggetti/", views.OverrideOggettiView.as_view(), name="amm-override-oggetti"),
     path("operatori/<int:auth_user_id>/emittenti-scope/", views.EmittentiScopeView.as_view(), name="amm-emittenti-scope"),
+    # Livelli EREDITATI dal profilo (sola lettura): la colonna «ereditato» del
+    # pannello permessi. Non e' `reparti/<uo_id>/profilo/` — vedi la view.
+    path("operatori/<int:auth_user_id>/permessi-ereditati/", views.PermessiEreditatiView.as_view(), name="amm-permessi-ereditati"),
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
     path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),
+    # Processi automatici (registro + presidi + utenti tecnici).
+    # ⚠️ `presidi/` PRIMA di `<str:codice>/`, o Django lo leggerebbe come il
+    #    codice di un processo che si chiama "presidi".
+    path("processi/", views.ProcessiListView.as_view(), name="amm-processi-list"),
+    path("processi/presidi/", views.ProcessiPresidiView.as_view(), name="amm-processi-presidi"),
+    path("processi/<str:codice>/", views.ProcessiDetailView.as_view(), name="amm-processi-detail"),
+    path("processi/<str:codice>/run/", views.ProcessiRunView.as_view(), name="amm-processi-run"),
+    path("processi/<str:codice>/identita/", views.ProcessiIdentitaView.as_view(), name="amm-processi-identita"),
     # Setup status (refactor operatore-emittenti)
     path("setup-status/", views.SetupStatusView.as_view(), name="amm-setup-status"),
     # Reparti e profili

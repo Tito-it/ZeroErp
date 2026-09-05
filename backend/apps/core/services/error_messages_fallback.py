@@ -459,6 +459,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_IVA_RESOLVE_NON_INVOCABILE": "Risoluzione IVA invocata senza i dati necessari, o su un articolo che non esiste.",
     "E_IVA_TITOLI_AMBIGUI": "Su questa riga ricadono due o piu' titoli IVA del soggetto con la stessa specificita': il trattamento non e' determinabile. Restringere l'ambito di uno dei titoli, o chiuderne uno.",
     "E_IVA_TRATTAMENTO_IMMUTABILE": "Aliquota e natura di un codice IVA non si modificano: cambiarle riscriverebbe il trattamento dei documenti gia' emessi. Per un trattamento diverso si crea un codice nuovo.",
+    # ⚠️ SENZA segnaposto: a catalogo il messaggio nomina il tipo di job e il
+    # `run_as` chiesto. Qui la frase deve reggere anche a mani vuote.
+    "E_JOB_DOMINIO_SENZA_OPERATORE": (
+        "Lavoro di dominio accodato senza operatore: un lavoro che tocca i dati "
+        "di un'azienda deve girare con l'identita' di chi lo ha chiesto."
+    ),
     "E_JOB_NON_ANNULLABILE": "Il lavoro non e` piu` in attesa: annullo non possibile.",
     "E_JOB_NON_RIACCODABILE": "Il lavoro non e` riaccodabile nello stato corrente.",
     "E_JOB_NON_TROVATO": "Lavoro non trovato.",
@@ -650,6 +656,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
+    "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": (
+        "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
+        "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."
+    ),
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "Tipo profilo non gestito dal guard di coerenza bindings: regola mancante.",
@@ -724,6 +734,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SCADENZE_TERMINE_INVALIDO": "Regola di ripartizione del termine di pagamento non valida.",
     "E_SCADENZE_TERMINE_MANCANTE": "Termine di pagamento non valorizzato in testata.",
     "E_SCOPE_EMITTENTE": "Accesso negato per scope emittente fiscale.",
+    # ⚠️ Il FRATELLO di sopra nega a un utente NOTO un emittente fuori perimetro;
+    # questo dice che un utente non c'e' affatto. Le due frasi vanno tenute
+    # distinte: sono due guasti diversi, e confonderli manda a cercare un
+    # permesso dove manca un'identita'.
+    "E_SCOPE_SENZA_UTENTE": (
+        "Scrittura senza un utente in sessione su una tabella con perimetro "
+        "emittente: il processo non dichiara chi agisce."
+    ),
     "E_SEARCH_NOT_FOUND": "Nessun risultato trovato.",
     "E_SEARCH_VALIDATION": "Parametri ricerca non validi.",
     "E_SEQUENZA_NON_CONFIGURATA": "Sequenza di numerazione non configurata.",
@@ -857,6 +875,16 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UTENTE_DISABILITATO": "Account disabilitato. Contattare l'amministratore.",
     "E_UTENTE_NON_ATTIVO": "Account non ancora attivo.",
     "E_UTENTE_SCADUTO": "Account scaduto. Contattare l'amministratore.",
+    "E_UTENTE_TECNICO_EMITTENTE_NON_VALIDO": (
+        "Azienda emittente inesistente o non attiva: un utente tecnico nasce PER "
+        "un'azienda, e senza non potrebbe fare niente."
+    ),
+    "E_UTENTE_TECNICO_GIA_ESISTE": (
+        "Il processo ha gia' un utente tecnico attivo per quell'azienda."
+    ),
+    "E_UTENTE_TECNICO_PROFILO_VIETATO": (
+        "Profilo di accesso non utilizzabile per un utente tecnico."
+    ),
     "E_UTILITY_RUOLO_NON_AMMESSO": "Tipo ruolo non ammesso per questa utility.",
     "E_VALIDATION_INPUT": "Parametro di input non valido.",
     "E_VALIDAZIONE": "Validazione fallita.",

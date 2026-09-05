@@ -7,6 +7,8 @@
 #   1) start acquired → corpo eseguito, fn_job_run_end chiamato con ok=True + meta
 #   2) lock occupato (acquired=False) → corpo vede acquired False, NIENTE fn_job_run_end
 #   3) eccezione nel corpo → fn_job_run_end ok=False + error_code/detail, eccezione rilanciata
+#   4) ⭐ l'ATTORE arriva a fn_job_run_start — e non si deriva dal job_name
+#   5) ⛔ senza attore il BB non si chiama: TypeError, non un run anonimo
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -21,6 +23,9 @@ from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.service_errors import ServiceError
 
 _CONN = "apps.core.services.job_run.connection"
+# Un codice qualsiasi: qui non si prova il VOCABOLARIO (lo presidia la FK a
+# database), si prova che il parametro arrivi alla funzione.
+_PROCESSO = "draina_coda_lavori"
 
 
 def _mock_connection(*, start_row):
@@ -42,7 +47,10 @@ class RegisteredJobTests(TestCase):
     def test_acquired_runs_body_and_ends_ok(self):
         conn, cursor = _mock_connection(start_row=(42, "uuid-1", True))
         with patch(_CONN, conn):
-            with registered_job("job:x", origine=ORIGINE_CRON, lock_key="job:x") as job:
+            with registered_job(
+                "job:x", processo_codice=_PROCESSO,
+                origine=ORIGINE_CRON, lock_key="job:x",
+            ) as job:
                 self.assertTrue(job.acquired)
                 self.assertEqual(job.id, 42)
                 self.assertEqual(job.run_uuid, "uuid-1")
@@ -64,7 +72,7 @@ class RegisteredJobTests(TestCase):
     def test_not_acquired_skips_end(self):
         conn, cursor = _mock_connection(start_row=(99, "uuid-skip", False))
         with patch(_CONN, conn):
-            with registered_job("job:x", lock_key="job:x") as job:
+            with registered_job("job:x", processo_codice=_PROCESSO, lock_key="job:x") as job:
                 self.assertFalse(job.acquired)
 
         sqls = _executed_sql(cursor)
@@ -76,7 +84,7 @@ class RegisteredJobTests(TestCase):
         conn, cursor = _mock_connection(start_row=(7, "uuid-2", True))
         with patch(_CONN, conn):
             with self.assertRaises(ServiceError):
-                with registered_job("job:x", lock_key="job:x"):
+                with registered_job("job:x", processo_codice=_PROCESSO, lock_key="job:x"):
                     raise ServiceError(code="E_BOOM", message="rotto", detail="dett")
 
         end_call = next(c for c in cursor.execute.call_args_list
@@ -95,5 +103,39 @@ class RegisteredJobTests(TestCase):
         with patch(_CONN, conn):
             # Deve propagare la ServiceError del corpo, NON la DatabaseError del finally.
             with self.assertRaises(ServiceError):
-                with registered_job("job:x", lock_key="job:x"):
+                with registered_job("job:x", processo_codice=_PROCESSO, lock_key="job:x"):
                     raise ServiceError(code="E_BOOM", message="rotto", detail="dett")
+
+
+class RegisteredJobAttoreTests(TestCase):
+    # ⭐ Scopo: l'attore (`processo_codice`) e l'utente tecnico arrivano a
+    #    `fn_job_run_start` nelle posizioni giuste. E' il pezzo che rende il
+    #    presidio `dbops.vw_run_senza_attore` capace di svuotarsi.
+    def test_attore_e_utente_arrivano_alla_funzione(self):
+        conn, cursor = _mock_connection(start_row=(7, "uuid-7", True))
+        with patch(_CONN, conn):
+            with registered_job(
+                "run_fatturazione_batch:immediata",
+                processo_codice="run_fatturazione_batch",
+                origine=ORIGINE_CRON,
+                auth_user_id=99,
+            ):
+                pass
+
+        start_call = next(c for c in cursor.execute.call_args_list
+                          if "fn_job_run_start" in c.args[0])
+        params = start_call.args[1]
+        # jobname, origine, stepname, lock_key, agent_host, processo, auth_user
+        self.assertEqual(len(params), 7)
+        self.assertEqual(params[5], "run_fatturazione_batch")
+        self.assertEqual(params[6], 99)
+        # ⛔ E l'attore NON e' il jobname: qui differiscono di proposito, perche'
+        #    il jobname porta la corsia. Se un giorno il BB "aiutasse" derivando
+        #    il codice dal nome, questa riga lo prenderebbe.
+        self.assertNotEqual(params[0], params[5])
+
+    # ⛔ Scopo: il vincolo e' nella FIRMA, non in una convenzione. Un job che
+    #    dimentica di dire chi e' non gira: non si registra in silenzio.
+    def test_senza_attore_non_si_chiama(self):
+        with self.assertRaises(TypeError):
+            registered_job("job:senza-attore")  # type: ignore[call-arg]

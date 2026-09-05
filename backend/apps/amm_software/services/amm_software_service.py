@@ -465,6 +465,17 @@ class AmmSoftwareService:
     def get_profilo_reparto(self, uo_id: int) -> dict:
         return self._repo.get_profilo_reparto(uo_id)
 
+    # Scopo: I livelli che l'operatore eredita dal profilo (area + azione),
+    #        cioe' cosa avrebbe SENZA override individuali. Serve al pannello
+    #        permessi per non far scrivere override che ripetono il profilo.
+    # ⚠️ `get_operatore` prima della lettura, e non e' cerimonia: su un id
+    #    inesistente le due query tornerebbero due liste VUOTE, che a video
+    #    sono indistinguibili da «questo utente non eredita niente» — cioe' la
+    #    risposta sbagliata invece di un errore.
+    def get_permessi_ereditati(self, auth_user_id: int) -> dict:
+        self.get_operatore(auth_user_id)
+        return self._repo.get_permessi_ereditati(auth_user_id)
+
     # Scopo: Lista UO.
     def list_unita_organizzative(self) -> list:
         return self._repo.list_unita_organizzative()

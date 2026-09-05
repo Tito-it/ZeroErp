@@ -78,11 +78,35 @@ def warn(label, detail=""):
     WARN.append(label)
 
 
-# --- connessione di VERITÀ (BYPASSRLS) per gli snapshot -----------------
+# --- connessione di VERITÀ per gli snapshot -----------------------------
+# ⛔ QUESTO SMOKE DIPENDE DA UN RUOLO CHE È STATO RITIRATO (2026-09-05, R-2).
+#    Apriva una SECONDA connessione come `zeroerp_batch_fatturazione`
+#    (`BYPASSRLS`) per due ragioni insieme, ed entrambe contano:
+#      1. vedere TUTTI gli emittenti — il conteggio è cross-azienda;
+#      2. leggere da FUORI la transazione del fixture (`autocommit = True`),
+#         cioè i dati committati e non il proprio lavoro in corso.
+#    ⚠️ La seconda è quella che non si sostituisce con la connessione Django:
+#    quella vedrebbe il lavoro non ancora committato, e lo snapshot «prima»
+#    conterebbe cose che il fixture ha appena scritto.
+#
+# ⭐ Si DICHIARA senza materia invece di fallire con un `KeyError` su una
+#    variabile d'ambiente: la copertura di questo giro vale ZERO, non
+#    «parziale», e il registro degli smoke ha il terzo esito apposta.
+# 🔵 Da rifare: lo snapshot per EMITTENTE, iterando il roster del processo, che
+#    è come il mondo funziona adesso. È lavoro suo, non di questa riga.
+_PASSWORD_VERITA = os.environ.get("DB_SYSTEM_FATTURAZIONE_PASSWORD")
+if not _PASSWORD_VERITA:
+    raise SystemExit(
+        "SENZA_MATERIA: questo smoke osserva da una connessione BYPASSRLS "
+        "(`zeroerp_batch_fatturazione`), ritirata il 2026-09-05 col cantiere "
+        "«nessun processo senza operatore». Va riscritto con uno snapshot per "
+        "emittente — vedi piano-be-fe-processi-automatici-identita-e-perimetro."
+    )
+
 dsn = (
     f"host={os.environ['DB_HOST']} port={os.environ.get('DB_PORT', '5432')} "
     f"dbname={os.environ['DB_NAME']} user=zeroerp_batch_fatturazione "
-    f"password={os.environ['DB_SYSTEM_FATTURAZIONE_PASSWORD']}"
+    f"password={_PASSWORD_VERITA}"
 )
 truth = psycopg.connect(dsn)
 truth.autocommit = True

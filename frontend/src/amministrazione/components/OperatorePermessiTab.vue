@@ -1,9 +1,21 @@
 <script setup>
 // Scopo: Componente permessi operatore riutilizzabile.
-// Sezioni: override aree, override azioni, emittenti scope.
+// Sezioni: aree, azioni di processo, oggetti (model), emittenti scope.
 // Usato sia dentro i Tabs di OperatoreDrawer sia dal
 // drawer dedicato OperatorePermessiDrawer (azione rapida dalla lista).
 // Reagisce automaticamente al cambio di authUserId.
+//
+// ⭐ RISTRUTTURAZIONE 2026-09-05 — le tre tabelle mostrano TUTTE le voci del
+//    catalogo, non piu' i soli override. Prima un operatore appena creato
+//    apriva tre tabelle VUOTE, da cui non si capiva cosa potesse fare: la
+//    schermata mostrava le ECCEZIONI e non lo STATO, mentre il livello che
+//    conta nasce da una catena di cinque passi di cui se ne vedeva uno.
+//    E' il pattern slot/override gia' adottato sul tab Utilities degli
+//    emittenti, qui incarnato dal BB `MatriceOverride`.
+// ⛔ NESSUN CAMBIO DI FUNZIONALITA': la semantica dei permessi e' identica.
+//    In particolare un'area BLOCCATA continua a NON bloccare le sue azioni di
+//    processo — e' un difetto di modello aperto, non lavoro di questa
+//    ristrutturazione (analisi-ui-permessi-operatore.md §3).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
@@ -12,11 +24,9 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
 import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali, getModelOverridesLookup } from '../api/amministrazione'
-import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel } from '../constants'
+import MatriceOverride from '../../core/components/MatriceOverride.vue'
 import Select from 'primevue/select'
-import ToggleSwitch from 'primevue/toggleswitch'
 import RadioButton from 'primevue/radiobutton'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
@@ -48,9 +58,17 @@ const isSuperAdmin = computed(() => store.currentOperatore?.is_super_admin === t
 
 // Stato locale editabile (mantenuto separato dallo store per permettere undo
 // logico tra un save e l'altro e per non mutare direttamente lo store).
-const localAree = ref([])
-const localAzioni = ref([])
-const localOggetti = ref([])
+//
+// ⭐ MAPPE indicizzate per chiave, e non piu' array di righe: la lista a video
+//    e' il CATALOGO (tutte le aree, tutte le azioni, tutti i model), mentre
+//    questi sono i soli override SCRITTI. La presenza della chiave E'
+//    l'override; l'assenza e' «vale l'ereditato».
+// ⛔ E la distinzione non e' un dettaglio di struttura dati: un livello
+//    BLOCCATO **scritto** non e' «nessun override» — batte il profilo del
+//    reparto — quindi le due cose non possono collassare in un unico valore.
+const overrideAree = ref({})
+const overrideAzioni = ref({})
+const overrideOggetti = ref({})
 
 // Fase 2 multi-face: scope dichiarativo. `localScopeMode` e' la radio
 // attualmente selezionata; `localEmittenteId` e' l'id selezionato quando
@@ -71,6 +89,9 @@ async function loadAll(userId) {
     store.fetchOverrideAree(userId),
     store.fetchOverrideAzioni(userId),
     store.fetchOverrideOggetti(userId),
+    // La colonna «ereditato»: senza, il pannello direbbe MENO di quello di
+    // prima — mostrerebbe 59 righe senza dire da dove viene il loro valore.
+    store.fetchPermessiEreditati(userId),
     store.fetchEmittentiScope(userId)
   ])
   syncLocal()
@@ -78,13 +99,60 @@ async function loadAll(userId) {
 
 watch(() => props.authUserId, loadAll, { immediate: true })
 
+// Chiave di un oggetto override: `app_label.model_name`. Sede unica — la
+// stessa stringa indicizza la mappa locale, il lookup dei model riservati e la
+// riga del catalogo.
+const chiaveOggetto = (o) => `${o.app_label}.${o.model_name}`
+
 function syncLocal() {
-  localAree.value = store.overrideAree.map(a => ({ ...a }))
-  localAzioni.value = store.overrideAzioni.map(a => ({ ...a }))
-  localOggetti.value = store.overrideOggetti.map(o => ({ ...o }))
+  overrideAree.value = Object.fromEntries(
+    store.overrideAree.map(a => [a.area_id, { ...a }])
+  )
+  overrideAzioni.value = Object.fromEntries(
+    store.overrideAzioni.map(a => [a.azione_id, { ...a }])
+  )
+  overrideOggetti.value = Object.fromEntries(
+    store.overrideOggetti.map(o => [chiaveOggetto(o), { ...o }])
+  )
   localScopeMode.value = store.emittentiScope.scope_mode || 'GLOBAL'
   localEmittenteId.value = (store.emittentiScope.emittenti_ids || [])[0] ?? null
 }
+
+// ═══ L'EREDITATO — cosa l'operatore ha GIA' dal profilo ════════════════════
+// ⚠️ Voce assente = nessun profilo la copre ⇒ vale il DEFAULT (BLOCCATO per le
+//    aree, azione negata). Il `?? ` qui sotto e' quel default, non un ripiego
+//    difensivo: e' la quinta regola della catena di risoluzione.
+const ereditatoAree = computed(() =>
+  Object.fromEntries((store.permessiEreditati.aree || []).map(a => [a.area_id, a]))
+)
+const ereditatoAzioni = computed(() =>
+  Object.fromEntries((store.permessiEreditati.azioni || []).map(a => [a.azione_id, a]))
+)
+
+const livelloEreditatoArea = (areaId) =>
+  ereditatoAree.value[areaId]?.livello ?? LIVELLO_ACCESSO.BLOCCATO
+const abilitataEreditataAzione = (azioneId) =>
+  ereditatoAzioni.value[azioneId]?.abilitata ?? false
+
+// Da dove viene il valore ereditato: il nome del profilo, o «default» quando
+// nessun profilo copre la voce. ⭐ Distinguere le due cose e' la ragione per
+// cui la colonna esiste: «bloccato perche' qualcuno l'ha deciso» e «bloccato
+// perche' nessuno ha detto niente» hanno rimedi diversi.
+const fonteArea = (areaId) =>
+  ereditatoAree.value[areaId]?.profilo_nome ?? t('amministrazione.ereditato_default')
+const fonteAzione = (azioneId) =>
+  ereditatoAzioni.value[azioneId]?.profilo_nome ?? t('amministrazione.ereditato_default')
+
+// ⚠️ Per un OGGETTO l'ereditato e' il livello della sua AREA, non un livello di
+//    profilo: `config.profili_accesso_oggetti` non esiste. La catena e'
+//    override oggetto → override area → profilo dell'area → BLOCCATO, quindi
+//    qui si guarda prima un eventuale override d'area e poi il suo ereditato.
+const livelloEreditatoOggetto = (voce) =>
+  overrideAree.value[voce.area_id]?.livello ?? livelloEreditatoArea(voce.area_id)
+const fonteOggetto = (voce) =>
+  overrideAree.value[voce.area_id]
+    ? t('amministrazione.ereditato_da_override_area')
+    : t('amministrazione.ereditato_da_area', { area: voce.area_descrizione })
 
 // Capability esposte dal BE: render condizionale e disable/tooltip.
 const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['GLOBAL', 'SINGLE'])
@@ -113,7 +181,13 @@ async function _saveOverride(action, items, afterSuccess) {
   }
 }
 
-// Mapper per la riga area override -> payload BE.
+// ⛔ IL SALVATAGGIO MANDA SOLO LE RIGHE CON OVERRIDE VERO, e i mapper partono
+//    dai VALORI delle mappe — mai dalle voci del catalogo.
+//    Il `PUT` sostituisce l'intera collezione (`DELETE WHERE auth_user_id` +
+//    reinsert): mandare tutte le voci a video materializzerebbe 59 override
+//    reali e cambierebbe il comportamento di ogni utente con un profilo, cioe'
+//    farebbe per sbaglio il cambio di funzionalita' che questa ristrutturazione
+//    esclude. Un BLOCCATO scritto non e' «nessun override»: batte il profilo.
 const _toAreaItem = (a) => ({
   area_id: a.area_id,
   livello: a.livello,
@@ -140,10 +214,10 @@ const _toOggettoItem = (o) => ({
 })
 
 const saveAree = () =>
-  _saveOverride(store.saveOverrideAree, localAree.value.map(_toAreaItem))
+  _saveOverride(store.saveOverrideAree, Object.values(overrideAree.value).map(_toAreaItem))
 
 const saveAzioni = () =>
-  _saveOverride(store.saveOverrideAzioni, localAzioni.value.map(_toAzioneItem))
+  _saveOverride(store.saveOverrideAzioni, Object.values(overrideAzioni.value).map(_toAzioneItem))
 
 // Costruzione payload Fase 2: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
 // La validazione e' centralizzata sul BE (E_AMM_SCOPE_NON_AMMESSO se SINGLE
@@ -177,39 +251,89 @@ const saveEmittenti = () => {
   )
 }
 
-function addAreaOverride() {
-  localAree.value.push({
-    area_id: null, livello: LIVELLO_ACCESSO.BLOCCATO, motivo: '', valido_dal: null, valido_al: null
-  })
+// ═══ I DUE VERBI ══════════════════════════════════════════════════════════
+// `set` scrive l'override sulla riga; `reset` lo TOGLIE e la riga torna a
+// seguire l'ereditato. ⭐ Non sono la stessa cosa scritta in due modi: un
+// override che ripete il valore ereditato CONGELA la riga — da quel momento
+// non segue piu' il profilo, quindi il giorno che il reparto cambia livello
+// quell'utente resta indietro, e nessuno lo segnala.
+function setOverrideArea(areaId, livello) {
+  overrideAree.value = {
+    ...overrideAree.value,
+    [areaId]: { ...(overrideAree.value[areaId] || {}), area_id: areaId, livello },
+  }
 }
 
-function removeAreaOverride(index) {
-  localAree.value.splice(index, 1)
+function setOverrideAzione(azioneId, abilitata) {
+  overrideAzioni.value = {
+    ...overrideAzioni.value,
+    [azioneId]: { ...(overrideAzioni.value[azioneId] || {}), azione_id: azioneId, abilitata },
+  }
 }
 
-function addAzioneOverride() {
-  localAzioni.value.push({
-    azione_id: null, abilitata: false, motivo: '', valido_dal: null, valido_al: null
-  })
+function setOverrideOggetto(voce, livello) {
+  const k = chiaveOggetto(voce)
+  overrideOggetti.value = {
+    ...overrideOggetti.value,
+    [k]: {
+      ...(overrideOggetti.value[k] || {}),
+      app_label: voce.app_label,
+      model_name: voce.model_name,
+      livello,
+    },
+  }
 }
 
-function removeAzioneOverride(index) {
-  localAzioni.value.splice(index, 1)
+// Rimozione per chiave, con riassegnazione dell'oggetto: mutare in-place con
+// `delete` non e' reattivo su un `ref` di oggetto semplice.
+function _senzaChiave(mappa, chiave) {
+  return Object.fromEntries(
+    Object.entries(mappa).filter(([k]) => String(k) !== String(chiave))
+  )
 }
 
-// Scopo: Label per il dropdown model override (es. "anagrafiche.conto_bancario — Anagrafiche").
-//        Fase 8: filtra solo i model con `can_override === true`. I model
-//        riservati al kernel permessi (identita_digitali, profili_accesso,
-//        bindings, override stessi) NON appaiono nel dropdown — il BE
-//        rifiuterebbe comunque la scrittura come defense-in-depth.
-const modelOverrideOptions = computed(() =>
-  modelOverrides.items.value
-    .filter(m => m.can_override === true)
+const resetArea = (areaId) => { overrideAree.value = _senzaChiave(overrideAree.value, areaId) }
+const resetAzione = (azioneId) => { overrideAzioni.value = _senzaChiave(overrideAzioni.value, azioneId) }
+const resetOggetto = (chiave) => { overrideOggetti.value = _senzaChiave(overrideOggetti.value, chiave) }
+
+// ═══ L'AVVISO: un override che ripete l'ereditato ═════════════════════════
+// Non serve a niente e congela la riga. E' il guadagno vero della colonna
+// «ereditato»: si vede confrontando due valori che ora sono entrambi in pagina.
+const avvisoArea = (area) => {
+  const o = overrideAree.value[area.id]
+  return o && o.livello === livelloEreditatoArea(area.id)
+    ? t('amministrazione.override_ridondante')
+    : null
+}
+const avvisoAzione = (az) => {
+  const o = overrideAzioni.value[az.id]
+  return o && o.abilitata === abilitataEreditataAzione(az.id)
+    ? t('amministrazione.override_ridondante')
+    : null
+}
+const avvisoOggetto = (voce) => {
+  const o = overrideOggetti.value[chiaveOggetto(voce)]
+  return o && o.livello === livelloEreditatoOggetto(voce)
+    ? t('amministrazione.override_ridondante')
+    : null
+}
+
+// Le VOCI della matrice oggetti: i model configurabili
+// (`can_override === true`), piu' quelli che hanno GIA' un override.
+// ⛔ Il secondo insieme non e' un di piu': un model diventato riservato dopo
+//    che qualcuno gli aveva messo un override sparirebbe dalla vista mentre la
+//    sua riga resta scritta e viene RISALVATA a ogni salvataggio — invisibile e
+//    viva. Mostrandolo (con il controllo disabilitato e il motivo a tooltip)
+//    resta almeno rimovibile.
+const vociOggetti = computed(() => {
+  const conOverride = new Set(Object.keys(overrideOggetti.value))
+  return modelOverrides.items.value
+    .filter(m => m.can_override === true || conOverride.has(`${m.app_label}.${m.model_name}`))
     .map(m => ({
       ...m,
-      label: `${m.app_label}.${m.model_name} — ${m.area_descrizione}`
+      label: `${m.app_label}.${m.model_name}`
     }))
-)
+})
 
 // Scopo: Mappa indicizzata `(app_label, model_name) -> {can_override, reason}`
 //        per evitare scansioni lineari nelle template cells. Ricomputata
@@ -234,25 +358,15 @@ function modelOverrideReason(row) {
 }
 
 const saveOggetti = () =>
-  _saveOverride(store.saveOverrideOggetti, localOggetti.value.map(_toOggettoItem))
+  _saveOverride(store.saveOverrideOggetti, Object.values(overrideOggetti.value).map(_toOggettoItem))
 
-function addOggettoOverride() {
-  localOggetti.value.push({
-    app_label: null, model_name: null, livello: LIVELLO_ACCESSO.BLOCCATO,
-    motivo: '', valido_dal: null, valido_al: null
-  })
-}
-
-function removeOggettoOverride(index) {
-  localOggetti.value.splice(index, 1)
-}
-
-function onModelSelect(item, row) {
-  if (item) {
-    row.app_label = item.app_label
-    row.model_name = item.model_name
-  }
-}
+// Le tre opzioni di override di un'azione. ⚠️ Un `ToggleSwitch` qui NON basta:
+// avrebbe due stati per una realta' che ne ha tre — «abilitata», «negata» e
+// «non impostata, vale il profilo» — e il terzo e' quello che si perde.
+const azioneOptions = computed(() => [
+  { label: t('amministrazione.azione_abilitata'), value: true },
+  { label: t('amministrazione.azione_negata'), value: false },
+])
 </script>
 
 <template>
@@ -261,93 +375,110 @@ function onModelSelect(item, row) {
       {{ t('amministrazione.admin_full_access') }}
     </Message>
 
-    <!-- Override Aree -->
+    <p class="app-permessi-nota">{{ t('amministrazione.permessi_nota') }}</p>
+
+    <!-- ═══ AREE FUNZIONALI ═══════════════════════════════════════════════ -->
     <h4>{{ t('amministrazione.override_aree_title') }}</h4>
-    <DataTable :value="localAree" class="mb-2" size="small">
-      <Column :header="t('amministrazione.col_area')">
-        <template #body="{ data }">
-          <Select v-model="data.area_id" :options="areeFunzionali.items.value"
-            option-label="descrizione" option-value="id" class="w-full"
-            :disabled="isReadonly" />
-        </template>
-      </Column>
-      <Column :header="t('amministrazione.col_livello')">
-        <template #body="{ data }">
-          <Select v-model="data.livello" :options="livelloOptions"
-            option-label="label" option-value="value" class="w-full"
-            :disabled="isReadonly" />
-        </template>
-      </Column>
-      <Column v-if="!isReadonly" style="width: 3rem">
-        <template #body="{ index }">
-          <Button :icon="MANAGE_ICONS.DELETE" text class="app-delete-btn" @click="removeAreaOverride(index)" />
-        </template>
-      </Column>
-    </DataTable>
-    <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amministrazione.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAreaOverride" />
+    <MatriceOverride
+      :voci="areeFunzionali.items.value"
+      :chiave="a => a.id"
+      :overrides="overrideAree"
+      :label-voce="t('amministrazione.col_area')"
+      :avviso="avvisoArea"
+      @reset="resetArea"
+    >
+      <template #voce="{ voce }">{{ voce.descrizione }}</template>
+      <template #ereditato="{ voce }">
+        {{ getLivelloLabel(t, livelloEreditatoArea(voce.id)) }}
+        <small class="app-permessi-fonte">{{ fonteArea(voce.id) }}</small>
+      </template>
+      <template #override="{ voce, valore }">
+        <Select
+          :model-value="valore?.livello ?? null"
+          :options="livelloOptions"
+          option-label="label"
+          option-value="value"
+          :placeholder="t('amministrazione.override_non_impostato')"
+          class="w-full"
+          :disabled="isReadonly"
+          @update:model-value="v => setOverrideArea(voce.id, v)"
+        />
+      </template>
+    </MatriceOverride>
+    <div v-if="!isReadonly" class="flex justify-end mb-4">
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAree" />
     </div>
 
-    <!-- Override Azioni -->
+    <!-- ═══ AZIONI DI PROCESSO ════════════════════════════════════════════ -->
     <h4>{{ t('amministrazione.override_azioni_title') }}</h4>
-    <DataTable :value="localAzioni" class="mb-2" size="small">
-      <Column :header="t('amministrazione.col_azione')">
-        <template #body="{ data }">
-          <Select v-model="data.azione_id" :options="azioniProcesso.items.value"
-            option-label="descrizione" option-value="id" class="w-full"
-            :disabled="isReadonly" />
-        </template>
-      </Column>
-      <Column :header="t('amministrazione.col_abilitata')" style="width: 6rem">
-        <template #body="{ data }">
-          <ToggleSwitch v-model="data.abilitata" :disabled="isReadonly" />
-        </template>
-      </Column>
-      <Column v-if="!isReadonly" style="width: 3rem">
-        <template #body="{ index }">
-          <Button :icon="MANAGE_ICONS.DELETE" text class="app-delete-btn" @click="removeAzioneOverride(index)" />
-        </template>
-      </Column>
-    </DataTable>
-    <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amministrazione.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAzioneOverride" />
+    <MatriceOverride
+      :voci="azioniProcesso.items.value"
+      :chiave="a => a.id"
+      :overrides="overrideAzioni"
+      :label-voce="t('amministrazione.col_azione')"
+      :avviso="avvisoAzione"
+      ricerca
+      :ricerca-placeholder="t('amministrazione.cerca_azione')"
+      @reset="resetAzione"
+    >
+      <template #voce="{ voce }">{{ voce.descrizione }}</template>
+      <template #ereditato="{ voce }">
+        {{ abilitataEreditataAzione(voce.id) ? t('amministrazione.azione_abilitata') : t('amministrazione.azione_negata') }}
+        <small class="app-permessi-fonte">{{ fonteAzione(voce.id) }}</small>
+      </template>
+      <template #override="{ voce, valore, haOverride }">
+        <Select
+          :model-value="haOverride ? valore.abilitata : null"
+          :options="azioneOptions"
+          option-label="label"
+          option-value="value"
+          :placeholder="t('amministrazione.override_non_impostato')"
+          class="w-full"
+          :disabled="isReadonly"
+          @update:model-value="v => setOverrideAzione(voce.id, v)"
+        />
+      </template>
+    </MatriceOverride>
+    <div v-if="!isReadonly" class="flex justify-end mb-4">
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAzioni" />
     </div>
 
-    <!-- Override Oggetti (v2 permessi — livello model) -->
+    <!-- ═══ OGGETTI (livello model) ═══════════════════════════════════════ -->
     <h4>{{ t('amministrazione.override_oggetti_title') }}</h4>
-    <DataTable :value="localOggetti" class="mb-2" size="small">
-      <Column :header="t('amministrazione.col_model')">
-        <template #body="{ data }">
-          <span v-tooltip.top="modelOverrideReason(data)" class="block w-full">
-            <Select
-              :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
-              :options="modelOverrideOptions"
-              option-label="label"
-              :placeholder="t('amministrazione.select_model')"
-              class="w-full"
-              :disabled="isReadonly || !!modelOverrideReason(data)"
-              @update:modelValue="v => onModelSelect(v, data)"
-            />
-          </span>
-        </template>
-      </Column>
-      <Column :header="t('amministrazione.col_livello')">
-        <template #body="{ data }">
-          <Select v-model="data.livello" :options="livelloOptions"
-            option-label="label" option-value="value" class="w-full"
-            :disabled="isReadonly" />
-        </template>
-      </Column>
-      <Column v-if="!isReadonly" style="width: 3rem">
-        <template #body="{ index }">
-          <Button :icon="MANAGE_ICONS.DELETE" text class="app-delete-btn" @click="removeOggettoOverride(index)" />
-        </template>
-      </Column>
-    </DataTable>
-    <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amministrazione.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addOggettoOverride" />
+    <MatriceOverride
+      :voci="vociOggetti"
+      :chiave="o => `${o.app_label}.${o.model_name}`"
+      :overrides="overrideOggetti"
+      :label-voce="t('amministrazione.col_model')"
+      :avviso="avvisoOggetto"
+      ricerca
+      :ricerca-placeholder="t('amministrazione.cerca_model')"
+      @reset="resetOggetto"
+    >
+      <template #voce="{ voce }">
+        {{ voce.label }}
+        <small class="app-permessi-fonte">{{ voce.area_descrizione }}</small>
+      </template>
+      <template #ereditato="{ voce }">
+        {{ getLivelloLabel(t, livelloEreditatoOggetto(voce)) }}
+        <small class="app-permessi-fonte">{{ fonteOggetto(voce) }}</small>
+      </template>
+      <template #override="{ voce, valore }">
+        <span v-tooltip.top="modelOverrideReason(voce)" class="block w-full">
+          <Select
+            :model-value="valore?.livello ?? null"
+            :options="livelloOptions"
+            option-label="label"
+            option-value="value"
+            :placeholder="t('amministrazione.override_non_impostato')"
+            class="w-full"
+            :disabled="isReadonly || !!modelOverrideReason(voce)"
+            @update:model-value="v => setOverrideOggetto(voce, v)"
+          />
+        </span>
+      </template>
+    </MatriceOverride>
+    <div v-if="!isReadonly" class="flex justify-end mb-4">
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveOggetti" />
     </div>
 
@@ -424,5 +555,16 @@ h4:first-child {
 }
 .scope-radio-label {
   cursor: pointer;
+}
+.app-permessi-nota {
+  font-size: 0.85rem;
+  color: var(--app-text-secondary, var(--p-text-muted-color));
+  margin-bottom: 0.75rem;
+}
+/* La fonte del valore ereditato: sta sotto il livello, non accanto — la
+   domanda «quanto» viene prima della domanda «da dove». */
+.app-permessi-fonte {
+  display: block;
+  color: var(--app-text-secondary, var(--p-text-muted-color));
 }
 </style>

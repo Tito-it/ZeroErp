@@ -37,6 +37,8 @@ from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
+    chiave_idempotenza_giro,
+    corsia_del_giro,
     insieme_digest,
     parse_lotti,
     parse_gruppi,
@@ -2246,9 +2248,18 @@ def _accoda_job_fatturazione(
     # ⚠️ Un verbo accetta gruppi OPPURE lotti, mai entrambi (sono due atti
     #    diversi): l'insieme che alimenta il digest e' quello dei due che c'e'.
     digest = insieme_digest(gruppi or lotti)
-    idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
-    if digest:
-        idempotency_key = f"{idempotency_key}:{digest}"
+    # ⭐ La CORSIA entra nella chiave (2026-09-05, opzione A): qui il valore e'
+    #    determinato dal perimetro — «mirata» quando l'operatore ha scelto dei
+    #    gruppi, «differita» sul giro di massa — cioe' lo stesso che l'handler
+    #    userebbe. ⇒ la chiave cambia forma e NON cambia comportamento; serve al
+    #    secondo produttore, il batch, che le corsie le fa entrambe.
+    # ⛔ Il valore NON si ricalcola qui con un `if`: si chiede al modulo che
+    #    possiede la regola, o al primo cambio le due copie divergono.
+    corsia = corsia_del_giro(job_type, gruppi=gruppi)
+    idempotency_key = chiave_idempotenza_giro(
+        job_type=job_type, competenza=competenza, scope_key=scope_key,
+        corsia=corsia, digest=digest,
+    )
 
     job_id = CodaLavoriRepository().accoda(
         job_type=job_type,

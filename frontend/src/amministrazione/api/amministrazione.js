@@ -2,6 +2,7 @@
 // Usa l'istanza axios condivisa con interceptor JWT.
 
 import api from '../../core/api'
+import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 const BASE = '/amm-software'
 
@@ -89,6 +90,41 @@ export function getPermessiRiepilogo(params = {}) {
   return api.get(`${BASE}/permessi-riepilogo/`, { params })
 }
 
+// --- Processi automatici (registro + presidi + utenti tecnici) ---
+
+// Scopo: elenco paginato del registro dei processi automatici.
+export function listProcessi(params = {}) {
+  return api.get(`${BASE}/processi/`, { params })
+}
+
+// Scopo: stato dei sei presidi in un round-trip (conteggi + prime righe).
+export function getProcessiPresidi() {
+  return api.get(`${BASE}/processi/presidi/`)
+}
+
+// Scopo: dettaglio di un processo (bersagli dichiarati + identità tecniche).
+export function getProcesso(codice) {
+  return api.get(`${BASE}/processi/${encodeURIComponent(codice)}/`)
+}
+
+// Scopo: corse recenti di un processo (`maintenance.job_run_log`).
+export function listProcessoRun(codice, params = {}) {
+  return api.get(`${BASE}/processi/${encodeURIComponent(codice)}/run/`, { params })
+}
+
+// Scopo: crea l'utente tecnico di un processo PER UN'AZIENDA.
+// ⛔ L'azienda si passa, non si deduce: il sistema non concede perimetri da solo
+//    (D-9) — il pannello mostra chi non è servito, la decisione resta di chi
+//    guarda.
+// ⚠️ L'endpoint dichiara `require_idempotency_key`: senza header risponde 400.
+export function creaUtenteTecnico(codice, emittenteCodice) {
+  return api.post(
+    `${BASE}/processi/${encodeURIComponent(codice)}/identita/`,
+    { emittente_codice: emittenteCodice },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 export function getAuditLog(params = {}) {
   return api.get(`${BASE}/audit-log/`, { params })
 }
@@ -161,6 +197,16 @@ export function getEmailLog(id) {
 
 export function listUnitaOrganizzative() {
   return api.get(`${BASE}/lookup/unita-organizzative/`)
+}
+
+// Livelli EREDITATI dal profilo: cosa l'operatore avrebbe senza override.
+// ⛔ Non e' `reparti/<uo_id>/profilo/`, che legge il solo binding REPARTO: i
+//    bindings sono tre (AD_HOC prio 1, PORTALE e REPARTO prio 2) e i resolver
+//    prendono il primo per priorita'. Alimenta la colonna «ereditato».
+// ℹ️ Nessuna chiave `oggetti`: per un model l'ereditato e' il livello della sua
+//    AREA, che sta gia' in `aree`.
+export function getPermessiEreditati(authUserId) {
+  return api.get(`${BASE}/operatori/${authUserId}/permessi-ereditati/`)
 }
 
 export function listAreeFunzionali() {
