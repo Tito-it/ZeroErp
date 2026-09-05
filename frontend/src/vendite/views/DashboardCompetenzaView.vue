@@ -1283,24 +1283,68 @@ function etichettaGiro(context) {
 //        `ultimo_errore.context` di un giro che non ha prodotto NULLA (li' il
 //        BE solleva). Scriverlo due volte significherebbe che prima o poi i due
 //        rami raccontano la stessa cosa in modo diverso.
+// Scopo: l'etichetta CORTA di un motivo di mancata fatturazione, concordata col
+//        numero. Il vocabolario e' del BE (`_fatturazione_job_helpers`), e qui
+//        si risolve l'indirizzo `motivo_<codice>` — stesso patto di
+//        `motivoLabel`: se il BE ne aggiunge uno, a video compare il CODICE e
+//        non una cella vuota, cosi' il buco si vede invece di sparire.
+function etichettaMotivo(codice, n) {
+  const chiave = `vendite.dashboard_competenza.motivo_${String(codice || '').toLowerCase()}`
+  return te(chiave) ? t(chiave, n) : (codice || '—')
+}
+
+// Scopo: il messaggio dei gruppi richiesti ma NON fatturati.
+//
+// ⭐ RISCRITTO IL 2026-09-05 (rilievo di Tid). Diceva «{lotti} lotti prodotti e
+//    {mancanti} gruppi rimasti fuori», e aveva due difetti che si sommavano:
+//      1. ⛔ MESCOLAVA DUE UNITA' — lotti in uscita, gruppi in entrata — senza
+//         dire il totale. Su tre gruppi «1 lotto prodotto e 1 gruppo fuori»
+//         faceva sottrarre e concludere che il terzo fosse sparito: era dentro
+//         il lotto insieme a un altro, perche' l'aggregazione mette piu' gruppi
+//         nello stesso lotto. Adesso il totale sta davanti e i due lati sono
+//         nella STESSA unita': il conto torna sempre.
+//      2. ⛔ «rimasto fuori» non diceva SE fosse un guasto. Il BE classifica
+//         dieci motivi e cinque non sono errori (gia' fatturato, da approvare,
+//         rifiutato, fuori competenza, commessa non emittibile): chiamarli
+//         «errore» manda a cercare un guasto che non c'e', chiamarli «fuori»
+//         non dice niente. Adesso si nomina il motivo.
+// ⚠️ Il motivo sta in TESTA quando e' uno solo — il caso normale — e allora il
+//    dettaglio e' il solo nome del gruppo. Con motivi diversi la testa dice
+//    «non fatturati» (il superinsieme vero) e ciascuno porta il suo.
+// ⚠️ La prosa lunga del BE (`s.dettaglio`) NON entra piu' nel toast: un toast si
+//    legge in un colpo d'occhio, e quel testo vive nell'esito del job e nel
+//    registro del lotto, dove si va a guardare il perche'.
 function notificaNonServiti(nonServiti, nLotti, context) {
-  // «N su M, chi manca e perche'»: primi 3 per esteso (un toast non regge un
-  // elenco), il resto riassunto. Il dettaglio pieno resta nell'esito del job.
-  // `dettaglio` e' prosa del BE (come `ultimo_errore.message`), resa cosi'.
+  // Gruppi DISTINTI, non righe: la fotografia BE ha grana
+  // `(gruppo_key, commessa_id)` e un gruppo su due commesse darebbe due
+  // righe — «2 mancanti» per un solo gruppo non servito.
+  const chiaviMancanti = new Set(nonServiti.map((s) => s.gruppo_key))
+  const mancanti = chiaviMancanti.size
+  // Il totale sono i gruppi SPEDITI, congelati all'avvio: la lista a video puo'
+  // essersi gia' ricaricata quando l'esito arriva.
+  const totale = normalizzaLista(context?.gruppi).length || mancanti
+  const motiviDistinti = new Set(nonServiti.map((s) => s.motivo))
+  const motivoUnico = motiviDistinti.size === 1 ? [...motiviDistinti][0] : null
+
   notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_non_serviti', {
-    giro: etichettaGiro(context),
-    lotti: nLotti,
-    // Gruppi DISTINTI, non righe: la fotografia BE ha grana
-    // `(gruppo_key, commessa_id)` e un gruppo su due commesse darebbe due
-    // righe — «2 mancanti» per un solo gruppo non servito.
-    mancanti: new Set(nonServiti.map((s) => s.gruppo_key)).size,
+    totale,
+    fatturati: Math.max(totale - mancanti, 0),
+    lotti: t('vendite.dashboard_competenza.n_lotti_prodotti', nLotti, { n: nLotti }),
+    mancanti,
+    motivo: motivoUnico
+      ? etichettaMotivo(motivoUnico, mancanti)
+      : t('vendite.dashboard_competenza.motivo_non_servito_misto', mancanti),
     // Il gruppo si nomina come nella lista — col `riferimento`, non col codice
     // commessa: e' lo STESSO gruppo, e chiamarlo in due modi manda a cercare due
     // oggetti. Il codice commessa resta come ripiego per le righe che nel
     // frattempo sono uscite dalla lista.
+    // ⚠️ Primi 3 per esteso: un toast non regge un elenco, e i giri di massa ne
+    //    hanno centinaia.
     dettagli: elencoTroncato(
       nonServiti,
-      (s) => `${etichettaGruppoKey(s.gruppo_key, s.commessa_codice)}: ${s.dettaglio}`,
+      (s) => (motivoUnico
+        ? etichettaGruppoKey(s.gruppo_key, s.commessa_codice)
+        : `${etichettaGruppoKey(s.gruppo_key, s.commessa_codice)}: ${etichettaMotivo(s.motivo, 1)}`),
       '; ',
     ),
   }))
