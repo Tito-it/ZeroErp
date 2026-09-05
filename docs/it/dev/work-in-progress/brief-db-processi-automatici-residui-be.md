@@ -1024,6 +1024,44 @@ decisione, non una pulizia.
 
 ---
 
+## 1-nonies. ✅ I tre punti del §1-octies sono fatti (2026-09-05, sera)
+
+| # | Che cosa avete chiesto | Fatto |
+| --- | --- | --- |
+| **1** | `ambito` diventa un'affermazione | ✅ `EmailPrepareView` non mette più il default: lo pretende e lo valida sul vocabolario (`AMBITI_OUTBOX`), con un 400 parlante. `prepare_draft` e `create_outbox` hanno perso il default in firma — ⭐ presidiato da un test **sulla firma**, non su una chiamata: reintrodurre un default non romperebbe nessun chiamante e passerebbe inosservato |
+| **2** | `create_outbox` valorizza l'emittente | ✅ risolto dal claim del token (`extract_emittente_attivo_from_request`), cioè la stessa fonte su cui la vostra policy filtra. `None` solo per `SISTEMA`, come pretende `chk_email_outbox_ambito_emittente`; per gli altri ambiti, se manca si ferma con una frase invece di sbattere sul vincolo |
+| **3** | `send_pending_emails` dichiara la propria identità | ✅ itera `dbops.vw_processi_roster` e serve un'azienda alla volta dentro `operator_identity_context` |
+
+⇒ **Potete accendere la RLS su `config.email_outbox`** — resta la vostra riga
+`ENABLE ROW LEVEL SECURITY` più il write-guard di famiglia.
+
+⭐ **Nessuna UI si è rotta**: verificato che il frontend non chiama mai
+`email/prepare/`. L'outbox oggi è una superficie di solo backend, quindi il punto
+1 non è il cambio di contratto rischioso che sembrava.
+
+### ⚠️ Due cose da sapere prima di accendere
+
+**a) Le sei righe già a bordo.** `config.email_outbox` ha 6 righe, tutte
+`SISTEMA` e tutte senza emittente. Con la policy accesa le vedrà **solo il super
+admin** — che è la decisione, ma sono righe nate quando `SISTEMA` significava
+«non dichiarato». Se una di quelle era la bozza di un operatore, sparisce dalla
+sua vista. ⇒ Vale la pena guardarle prima di accendere.
+
+**b) Il punto 3 non separa ancora niente, e lo diciamo noi per primi.**
+`config.email_log` non porta l'emittente: l'identità c'è, il perimetro no, e la
+prima azienda del roster drena tutta la coda. È il vostro punto 4. Quando la
+colonna arriva, il nostro codice diventa per-azienda **senza cambiare una riga**.
+
+### 🔴 E un rischio che il ciclo introduceva, chiuso subito
+
+Su un database ricostruito da zero gli utenti tecnici non esistono (seed
+`dati_macchina`). Un ciclo sul roster vuoto avrebbe spedito **zero email** —
+reset password compresi — chiudendo verde: il guasto-per-assenza che questo
+cantiere esiste per togliere, reintrodotto da noi. ⇒ Roster vuoto: si spedisce lo
+stesso e **lo si dichiara** ad alta voce.
+
+---
+
 ## DB-1 — La chiusura scadenze ha bisogno di una casa nella coda
 
 **Che cosa serve.** Un tipo di lavoro della coda con cui il backend possa accodare

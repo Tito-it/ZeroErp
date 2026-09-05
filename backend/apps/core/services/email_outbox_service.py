@@ -71,7 +71,11 @@ class EmailOutboxService:
         unita_organizzativa_id: int | None = None,
         tipo_prestazione_id: int | None = None,
         lingua: str = "it",
-        ambito: str = "SISTEMA",
+        # ⛔ Senza default, ed e' il punto: `SISTEMA` come ripiego rendeva
+        #    indistinguibile «non dichiarato» da «di sistema», proprio sulla
+        #    colonna su cui il database decide chi puo' leggere.
+        ambito: str,
+        emittente_fiscale_id: int | None = None,
         pratica_id: int | None = None,
         auth_user_id: int | None = None,
         creato_da_user_id: int | None = None,
@@ -97,6 +101,7 @@ class EmailOutboxService:
             email_account_id=account["id"],
             email_template_id=template["id"],
             ambito=ambito,
+            emittente_fiscale_id=emittente_fiscale_id,
             unita_organizzativa_id=unita_organizzativa_id,
             pratica_id=pratica_id,
             auth_user_id=auth_user_id,
