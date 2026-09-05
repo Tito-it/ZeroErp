@@ -1,0 +1,188 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ IL PRESIDIO CONTAVA UNA POLICY SCRITTA, NON UNA POLICY IN VIGORE.
+#   Brief: brief-db-processi-automatici-identita-e-perimetro, sezione 12.15
+#
+# `ha_policy` era `EXISTS (… pg_policy …)`. Ma una policy su una tabella con
+# `ROW LEVEL SECURITY` **disabilitata non filtra niente**: PostgreSQL la
+# conserva e non la applica. ⇒ Bastava scrivere una policy e non abilitare la
+# RLS per far sparire una riga da questo elenco lasciando la tabella **aperta a
+# tutti**.
+#
+# ── ⭐ NON NASCE DA UNA MISURA, e va detto ─────────────────────────
+#   Misurato il 2026-09-05: **nessun bersaglio e' oggi in quello stato**, quindi
+#   la vista non cambia di una riga. Il difetto non e' un dato: e' che la
+#   domanda posta era la domanda sbagliata. «Esiste una policy?» non e' «questa
+#   tabella e' difesa?».
+#   ⚠️ E' stato trovato progettando la policy di `config.email_outbox`: la
+#   scorciatoia — scrivere la policy senza abilitare la RLS, per non fermare
+#   l'invio delle email — avrebbe portato il presidio a ZERO lasciando la
+#   tabella scoperta. ⛔ Un presidio che si puo' spegnere con una decorazione
+#   e' peggio di nessun presidio: fa credere che il lavoro sia fatto.
+#
+# ── ⚠️ IL `manca` DICE QUALE DEI DUE PEZZI E' ASSENTE ──────────────
+#   «policy assente» e «policy presente ma RLS spenta» hanno **rimedi diversi** —
+#   il primo e' una decisione di sicurezza da prendere, il secondo un
+#   `ALTER TABLE … ENABLE ROW LEVEL SECURITY` di una riga. Un motivo unico
+#   manderebbe a riscrivere qualcosa che c'e' gia'.
+#
+# ⭐ `FORCE ROW LEVEL SECURITY` NON entra nel criterio, ed e' voluto: in questo
+# database nessuna tabella lo usa, perche' l'owner (`titodb`) deve poter leggere
+# fuori dalla row security per le `SECURITY DEFINER` che derivano il perimetro.
+# Chiederlo qui accenderebbe l'intera famiglia dei documenti.
+#
+# ⭐ `CREATE OR REPLACE`, non `DROP`+`CREATE`: le colonne non cambiano — cambia
+# come si risponde — e cosi' i GRANT restano dove sono.
+# ⚠️ Il corpo di partenza e' quello VIVO, estratto da `pg_get_viewdef`.
+#
+# Verifica: db/pgtap/dbops/test-presidi-debito-dichiarato.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-26-update-vw-processi-dominio-senza-difesa-rls-attiva-mctit.yaml
+
+  - changeSet:
+      id: 20260905-26-update-vw-processi-dominio-senza-difesa-rls-attiva
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_dominio_senza_difesa conta una policy solo se la ROW
+        LEVEL SECURITY e' ATTIVA sulla tabella. Una policy su una tabella con la
+        RLS disabilitata non filtra niente: prima bastava scriverla per far
+        sparire la riga dal presidio lasciando la tabella aperta a tutti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_processi_dominio_senza_difesa
+            - columnExists:
+                schemaName: dbops
+                tableName: processi_bersagli
+                columnName: debito_dichiarato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_difesa AS
+               WITH bersagli AS (
+                       SELECT p.codice AS processo_codice,
+                          b.schema_tabella,
+                          b.nome_tabella,
+                          b.emittente_via,
+                          b.debito_dichiarato,
+                          b.note,
+                          c.oid AS rel_oid,
+                          -- ⭐ La RLS in vigore sulla TABELLA. Senza, una policy
+                          --   e' un testo conservato e mai applicato.
+                          c.relrowsecurity AS rls_attiva
+                         FROM dbops.processi p
+                           JOIN dbops.processi_bersagli b ON b.processo_id = p.id
+                           JOIN pg_class c ON c.relname = b.nome_tabella
+                           JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = b.schema_tabella
+                        WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL AND b.emittente_via IS NOT NULL AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]))
+                      ), difese AS (
+                       SELECT b.processo_codice,
+                          b.schema_tabella,
+                          b.nome_tabella,
+                          b.emittente_via,
+                          b.debito_dichiarato,
+                          b.note,
+                          b.rel_oid,
+                          b.rls_attiva,
+                          (EXISTS ( SELECT 1
+                                 FROM pg_policy pol
+                                WHERE pol.polrelid = b.rel_oid)) AS ha_policy_scritta,
+                          (EXISTS ( SELECT 1
+                                 FROM pg_trigger t
+                                   JOIN pg_proc pr ON pr.oid = t.tgfoid
+                                WHERE t.tgrelid = b.rel_oid AND NOT t.tgisinternal AND pr.proname = 'trgfn_guard_emittente_scope'::name)) AS ha_guard
+                         FROM bersagli b
+                      )
+               SELECT processo_codice,
+                  schema_tabella,
+                  nome_tabella,
+                  emittente_via,
+                      -- ⚠️ Tre situazioni, tre rimedi diversi: «la policy non
+                      --   c'e'» e' una decisione di sicurezza da prendere, «la
+                      --   policy c'e' ma la RLS e' spenta» e' un ALTER TABLE di
+                      --   una riga. Un motivo unico manderebbe a riscrivere
+                      --   qualcosa che c'e' gia'.
+                      CASE
+                          WHEN NOT ha_policy_scritta AND NOT ha_guard THEN 'policy RLS e write-guard'::text
+                          WHEN ha_policy_scritta AND NOT rls_attiva AND NOT ha_guard THEN 'la policy c''e'' ma la ROW LEVEL SECURITY non e'' attiva sulla tabella, e manca il write-guard'::text
+                          WHEN ha_policy_scritta AND NOT rls_attiva THEN 'la policy c''e'' ma la ROW LEVEL SECURITY non e'' attiva sulla tabella: non filtra niente'::text
+                          WHEN NOT ha_policy_scritta THEN 'policy RLS (lettura scoperta)'::text
+                          ELSE 'write-guard (scrittura scoperta)'::text
+                      END AS manca,
+                  CASE WHEN debito_dichiarato THEN 'DEBITO_DICHIARATO'::text
+                       ELSE 'NON_DICHIARATO'::text END AS stato,
+                  note AS nota
+                 FROM difese
+                -- ⛔ Una policy conta solo se e' IN VIGORE.
+                WHERE NOT (ha_policy_scritta AND rls_attiva) OR NOT ha_guard;
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_senza_difesa IS
+                  'Tabelle di dominio in cui si SA dove sta l''emittente ma nessuno lo usa '
+                  'per filtrare: manca la policy RLS, manca il write-guard, o entrambi. '
+                  '⛔ Una policy conta solo se la ROW LEVEL SECURITY e'' ATTIVA sulla '
+                  'tabella (rev 2026-09-05): PostgreSQL conserva le policy di una tabella '
+                  'con la RLS disabilitata e non le applica, quindi prima bastava '
+                  'SCRIVERE una policy per far sparire la riga da qui lasciando la tabella '
+                  'aperta a tutti. ⭐ Non e'' nato da una misura — nessun bersaglio era in '
+                  'quello stato — ma dalla scorciatoia che si stava per prendere sulla '
+                  'policy di config.email_outbox: un presidio che si spegne con una '
+                  'decorazione e'' peggio di nessun presidio. ⚠️ FORCE ROW LEVEL SECURITY '
+                  'NON entra nel criterio: in questo database nessuna tabella lo usa, '
+                  'perche'' l''owner deve poter leggere fuori dalla row security per le '
+                  'SECURITY DEFINER che derivano il perimetro. ⚠️ La regola resta «deve '
+                  'restare VUOTA», ma l''invariante verificabile e'' «nessuna riga '
+                  'NON_DICHIARATO»: dichiarare un debito dice «sappiamo perche'' e'' qui», '
+                  'non «va bene che ci sia».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna a contare una policy SCRITTA invece di una policy in
+              --   vigore. E' la forma che rende il presidio zittibile.
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_difesa AS
+               WITH bersagli AS (
+                       SELECT p.codice AS processo_codice,
+                          b.schema_tabella, b.nome_tabella, b.emittente_via,
+                          b.debito_dichiarato, b.note, c.oid AS rel_oid
+                         FROM dbops.processi p
+                           JOIN dbops.processi_bersagli b ON b.processo_id = p.id
+                           JOIN pg_class c ON c.relname = b.nome_tabella
+                           JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = b.schema_tabella
+                        WHERE p.classe = 'DOMINIO'::text AND p.attivo AND p.obsoleto_dal IS NULL AND b.emittente_via IS NOT NULL AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]))
+                      ), difese AS (
+                       SELECT b.processo_codice, b.schema_tabella, b.nome_tabella,
+                          b.emittente_via, b.debito_dichiarato, b.note, b.rel_oid,
+                          (EXISTS ( SELECT 1 FROM pg_policy pol
+                                     WHERE pol.polrelid = b.rel_oid)) AS ha_policy,
+                          (EXISTS ( SELECT 1 FROM pg_trigger t
+                                       JOIN pg_proc pr ON pr.oid = t.tgfoid
+                                     WHERE t.tgrelid = b.rel_oid AND NOT t.tgisinternal
+                                       AND pr.proname = 'trgfn_guard_emittente_scope'::name)) AS ha_guard
+                         FROM bersagli b
+                      )
+               SELECT processo_codice, schema_tabella, nome_tabella, emittente_via,
+                      CASE
+                          WHEN NOT ha_policy AND NOT ha_guard THEN 'policy RLS e write-guard'::text
+                          WHEN NOT ha_policy THEN 'policy RLS (lettura scoperta)'::text
+                          ELSE 'write-guard (scrittura scoperta)'::text
+                      END AS manca,
+                  CASE WHEN debito_dichiarato THEN 'DEBITO_DICHIARATO'::text
+                       ELSE 'NON_DICHIARATO'::text END AS stato,
+                  note AS nota
+                 FROM difese
+                WHERE NOT ha_policy OR NOT ha_guard;

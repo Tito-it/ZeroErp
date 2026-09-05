@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL JOB SMETTE DI LAVORARE E COMINCIA A SVEGLIARE.
+#   Decisione: brief-db-processi-automatici-identita-e-perimetro, sezione 12.12
+#
+#     prima:  SELECT dbops.fn_apply_chiusura_scadenze();   -- chiude, di tutti
+#     dopo:   SELECT dbops.fn_accoda_chiusura_scadenze();  -- accoda, uno per azienda
+#
+# ⛔ E' l'ultimo processo di classe DOMINIO che ESEGUIVA dentro pgAgent, dove non
+# ha identita' — quindi nessun perimetro — e dove un fallimento non arriva a
+# nessuno. Dopo questo changeSet `dbops.vw_processi_dominio_su_pgagent` va a
+# ZERO.
+#
+# ── ⚠️ E' UN CAMBIO DI COMPORTAMENTO, non un refactoring ───────────
+#   Dalla notte in cui questo changeSet e' applicato, la chiusura scadenze NON
+#   avviene piu' dentro il job: avviene nel drenatore, minuti dopo. ⇒ Se il
+#   worker `draina_coda_lavori` non gira, **le scadenze non si chiudono**.
+#   ⭐ Ed e' il motivo per cui `dbops.vw_coda_lavori_da_guardare` (changeSet -21)
+#   e' stata scritta PRIMA: un worker spento non produce errori, produce
+#   ASSENZA — la stessa forma di R-12, che questa migrazione esiste per
+#   togliere. Senza quel presidio avremmo spostato il silenzio.
+#
+# ── ⚠️ LA FUNZIONE VECCHIA RESTA, ed e' voluto ─────────────────────
+#   `dbops.fn_apply_chiusura_scadenze(p_classe)` non si tocca: la chiama
+#   l'handler della coda per fare il lavoro vero, un'azienda alla volta. Cambia
+#   CHI la chiama e con quale identita', non che cosa fa.
+#   ⭐ Il parametro `p_classe`, scritto nella fase 5 «per quando i bersagli di
+#   dominio migreranno sulla coda», serve adesso: era stato messo prima che
+#   servisse, ed e' il motivo per cui oggi non c'e' niente da cambiare li'.
+#
+# ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' MARK_RAN ──────────
+#   Questo changeSet e' segnato come eseguito SENZA essere eseguito. Su un
+#   ambiente ricostruito da zero il job resterebbe alla forma vecchia — cioe'
+#   eseguirebbe invece di accodare — e nessun test lo direbbe. Registrato come
+#   R-11, e vale anche qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/85_pgagent/20260905-25-replace-pgagent-job-chiusura-scadenze-accoda-mctit.yaml
+
+  - changeSet:
+      id: 20260905-25-replace-pgagent-job-chiusura-scadenze-accoda
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Il job chiusura_scadenze_daily smette di eseguire la chiusura e comincia
+        ad ACCODARE un lavoro per azienda, con l'identita' tecnica nello scope.
+        E' l'ultimo processo DOMINIO che eseguiva dentro pgAgent.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'fn_accoda_chiusura_scadenze'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Si sostituisce SOLO il corpo dello step: la schedulazione, la
+              --   classe e il nome restano quelli di 20260426-06. Rifare il job
+              --   da zero avrebbe perso l'orario senza motivo.
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = $step$
+                        SELECT dbops.fn_accoda_chiusura_scadenze();
+                     $step$,
+                     jstname = 'accoda_chiusura_scadenze'
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jstjobid
+                 AND j.jobname = 'chiusura_scadenze_daily';
+
+              UPDATE pgagent.pga_job
+                 SET jobdesc = 'Sveglia la chiusura scadenze: accoda un lavoro '
+                               'per azienda, con l''identita'' tecnica nello scope. '
+                               'NON chiude piu'' le scadenze qui — lo fa il '
+                               'drenatore, dentro la RLS.'
+               WHERE jobname = 'chiusura_scadenze_daily';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna a ESEGUIRE dentro pgAgent, cioe' senza identita' e senza
+              --   perimetro. Manovra di emergenza, non una configurazione.
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = $step$
+                        SELECT dbops.fn_apply_chiusura_scadenze();
+                     $step$,
+                     jstname = 'run_chiusura_scadenze'
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jstjobid
+                 AND j.jobname = 'chiusura_scadenze_daily';
+
+  - changeSet:
+      id: 20260905-90-tag-pgagent-job-chiusura-scadenze-accoda
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260905-25-replace-pgagent-job-chiusura-scadenze-accoda

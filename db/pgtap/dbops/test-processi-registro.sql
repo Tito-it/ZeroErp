@@ -20,7 +20,7 @@
 --  5) la FK bersagli -> processi respinge un processo inesistente
 --  6) chk_processi_bersagli_via respinge un percorso fuori vocabolario
 --  7) chk_processi_bersagli_via_colonna respinge un percorso senza colonna
---  8) il seed di catalogo copre tutti e tre i canali
+--  8) ogni canale DICHIARATO dal CHECK e' usato da almeno un processo
 --  9) ogni bersaglio seedato punta a un processo DOMINIO
 -- 10) vw_processi_dominio_senza_emittente elenca ESATTAMENTE il debito dichiarato
 -- 11) un DOMINIO senza bersagli finisce nella vista (caso COSTRUITO)
@@ -113,10 +113,25 @@ SELECT throws_ok(
 -- ============================================================
 -- 8..9. Il seed di catalogo
 -- ============================================================
-SELECT is(
-    (SELECT count(DISTINCT canale)::int FROM dbops.processi WHERE attivo),
-    3,
-    'il seed copre tutti e tre i canali (PGAGENT, COMMAND, CODA)'
+-- ⚠️ 2026-09-05 — QUESTA ASSERZIONE E' STATA RIVOLTATA, non riparata.
+--   Diceva «il seed copre tutti e TRE i canali» con un 3 scritto a mano. Il
+--   giorno in cui il CHECK ne ha ammesso un quarto — `CODA_AUTOMATICA`,
+--   changeSet 20260905-09 — il test e' andato rosso pur essendo tutto a posto:
+--   il numero non descriveva una regola, fotografava un elenco.
+--   ⭐ La regola vera e': **ogni canale che il CHECK dichiara lecito e' usato da
+--     almeno un processo**. Un canale ammesso e mai seminato e' un pezzo di
+--     vocabolario che nessuno esercita — e il primo processo che ci finira'
+--     dentro non troverebbe nessun precedente che lo dice funzionante.
+--   ⇒ L'elenco lecito si LEGGE dal vincolo: aggiungerne uno senza seminarlo
+--     accende questo test, aggiungerne uno seminandolo no.
+SELECT is_empty(
+    $$SELECT c.canale
+        FROM (SELECT unnest(regexp_matches(pg_get_constraintdef(oid),
+                                           '''([A-Z_]+)''::text', 'g')) AS canale
+                FROM pg_constraint WHERE conname = 'chk_processi_canale') c
+       WHERE NOT EXISTS (SELECT 1 FROM dbops.processi p
+                          WHERE p.attivo AND p.canale = c.canale)$$,
+    '8. ogni canale dichiarato dal CHECK e'' usato da almeno un processo attivo'
 );
 
 -- I bersagli si dichiarano per la sola classe DOMINIO: e' quella su cui il
@@ -131,15 +146,22 @@ SELECT is_empty(
 );
 
 -- ============================================================
--- 10. Il debito dichiarato, e nulla di piu'
+-- 10. Il livello 1 e' VUOTO, e adesso puo' esserlo davvero
 -- ============================================================
--- ⚠️ Questa NON e' una vista «che deve restare vuota»: config.email_outbox non
---   porta l'emittente ed e' un Caso B DICHIARATO. Il test fissa l'insieme: se
---   domani un processo DOMINIO nasce senza percorso, questo rosso lo dice.
-SELECT set_eq(
-    $$SELECT DISTINCT processo_codice FROM dbops.vw_processi_dominio_senza_emittente$$,
-    ARRAY['send_pending_emails'],
-    'vw_processi_dominio_senza_emittente elenca esattamente il debito dichiarato'
+-- ⛔ 2026-09-05 — ERA LA TERZA VOLTA CHE SCRIVEVO QUESTO ERRORE, e vale la pena
+--   fissarlo qui. Il test pretendeva che la vista elencasse ESATTAMENTE
+--   `send_pending_emails`, cioe' fissava un DEBITO come se fosse un'invariante.
+--   Il giorno in cui quel debito e' stato pagato — `config.email_outbox` ha
+--   preso la colonna emittente, changeSet 20260905-18 — il test e' diventato
+--   rosso **perche' il lavoro era riuscito**.
+--   ⭐ Un presidio ha il compito di arrivare a ZERO: un test che pretende una
+--     sua riga si rompe quando ci arriva.
+--   ⇒ La regola generale, ormai pagata tre volte: un test SU un presidio
+--     asserisce che e' vuoto, e COSTRUISCE il caso che lo deve accendere (test
+--     11 e 12 qui sotto). Non si appoggia mai a un debito reale.
+SELECT is_empty(
+    $$SELECT processo_codice FROM dbops.vw_processi_dominio_senza_emittente$$,
+    'vw_processi_dominio_senza_emittente e'' vuota: ogni bersaglio sa dire di chi e'''
 );
 
 -- ============================================================

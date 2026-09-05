@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ IL PRESIDIO CHE VIENE PRIMA — e prima di che cosa, va detto.
+#   Decisione: i processi di classe DOMINIO lasciano pgAgent e passano dalla coda.
+#
+# ── ⭐ PERCHE' QUESTA VISTA PRECEDE LA MIGRAZIONE ───────────────────
+#   L'argomento per spostare i processi di dominio sulla coda e' che **pgAgent
+#   non racconta i suoi fallimenti**: `apply_storicizza_weekly` e' morto ogni
+#   settimana per sei mesi e lo si e' scoperto per caso (R-12), perche' la
+#   traccia sta in `pgagent.pga_joblog`, che nessuno guarda e che
+#   l'applicazione non vede.
+#
+#   ⛔ Ma la coda oggi non e' meglio: al 2026-09-05 ha **4 lavori in ERRORE** e
+#   NESSUNA vista che li nomini. Spostarci i processi di dominio senza questo
+#   presidio significherebbe **trasferire il silenzio**, non toglierlo — e
+#   comprare una visibilita' che non abbiamo ancora costruito.
+#   ⇒ Prima si costruisce il posto dove guardare, poi ci si mette il lavoro.
+#
+# ── ⭐ TRE MOTIVI, PERCHE' SONO TRE GUASTI DIVERSI ──────────────────
+#     ERRORE            il lavoro ha finito i tentativi e si e' arreso
+#     IN_CORSO stantio  qualcuno l'ha preso e non l'ha mai chiuso: worker morto
+#     PENDING vecchio   nessuno l'ha nemmeno preso: ⛔ IL WORKER NON GIRA
+#   ⚠️ Il terzo e' il piu' importante e il meno visibile: un worker spento non
+#   produce errori, produce **assenza**. E' esattamente la forma di R-12, e
+#   sarebbe il modo in cui questa migrazione tradirebbe la sua promessa.
+#
+# ── ⚠️ LE SOGLIE SONO SCRITTE QUI, e sono una scelta ────────────────
+#   `IN_CORSO` oltre 60 minuti, `PENDING` oltre 60 minuti dal momento in cui
+#   sarebbe eseguibile. Non vengono da una misura: vengono dal fatto che il
+#   drenatore gira di continuo, quindi un'ora di attesa non e' lentezza, e'
+#   qualcosa che non va. ⛔ Una soglia dedotta dai tempi di oggi si taglierebbe
+#   addosso al carico di oggi.
+#
+# ── ⚠️ COSA NON ENTRA ──────────────────────────────────────────────
+#   ANNULLATO (deciso da qualcuno) e archiviato (gia' guardato e messo via).
+#   ⭐ Un presidio che elenca anche cio' che qualcuno ha gia' visto smette di
+#   essere una lista di cose da fare.
+#
+# Verifica: db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-21-create-vw-coda-lavori-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260905-21-create-vw-coda-lavori-da-guardare
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_coda_lavori_da_guardare: i lavori che chiedono un occhio — falliti,
+        presi e mai chiusi (worker morto), o mai presi (worker spento). E' il
+        presidio che deve esistere PRIMA di spostare i processi di dominio dalla
+        coda: senza, la migrazione trasferirebbe il silenzio invece di toglierlo.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: coda_lavori }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_coda_lavori_da_guardare AS
+              SELECT c.id,
+                     c.uid,
+                     c.job_type,
+                     c.stato,
+                     c.tentativi,
+                     c.max_tentativi,
+                     -- ⭐ Tre motivi, perche' sono tre guasti diversi e vogliono
+                     --   tre gesti diversi.
+                     CASE
+                         WHEN c.stato = 'ERRORE'
+                             THEN 'fallito: tentativi esauriti'
+                         WHEN c.stato = 'IN_CORSO'
+                             THEN 'preso e mai chiuso: il worker e'' morto a meta'''
+                         ELSE 'mai preso: il worker non sta girando'
+                     END AS motivo,
+                     -- Da quanto aspetta: e' il numero che dice se guardare
+                     -- adesso o domani.
+                     now() - COALESCE(c.claimed_at, c.run_after, c.data_insert)
+                         AS da_quanto,
+                     c.ultimo_errore,
+                     c.scope,
+                     c.data_insert
+                FROM dbops.coda_lavori c
+               WHERE NOT c.archiviato
+                 -- ⚠️ ANNULLATO resta fuori: qualcuno l'ha deciso.
+                 AND (
+                     c.stato = 'ERRORE'
+                     -- Preso da un worker che non l'ha mai chiuso.
+                     OR (c.stato = 'IN_CORSO'
+                         AND c.claimed_at < now() - interval '60 minutes')
+                     -- ⛔ Il caso che conta di piu' e si vede di meno: nessuno
+                     --   l'ha nemmeno preso. Un worker spento non produce
+                     --   errori, produce ASSENZA.
+                     OR (c.stato = 'PENDING'
+                         AND COALESCE(c.run_after, c.data_insert)
+                             < now() - interval '60 minutes')
+                 );
+
+              COMMENT ON VIEW dbops.vw_coda_lavori_da_guardare IS
+                  'I lavori di coda che chiedono un occhio: falliti (ERRORE), presi e mai '
+                  'chiusi (IN_CORSO da oltre un''ora: il worker e'' morto a meta''), o mai '
+                  'presi (PENDING da oltre un''ora: ⛔ il worker non sta girando). DEVE '
+                  'restare VUOTA. ⭐ Esiste PRIMA della migrazione dei processi di dominio '
+                  'dalla coda, e non dopo: l''argomento per lasciare pgAgent e'' che pgAgent '
+                  'non racconta i suoi fallimenti — apply_storicizza_weekly e'' morto ogni '
+                  'settimana per sei mesi e lo si e'' scoperto per caso (R-12). ⛔ Ma la coda '
+                  'senza questa vista non era meglio: 4 lavori in ERRORE e nessuno a '
+                  'nominarli. Spostarci il lavoro prima avrebbe TRASFERITO il silenzio '
+                  'invece di toglierlo. ⚠️ Il terzo motivo e'' il piu'' importante e il meno '
+                  'visibile: un worker spento non produce errori, produce ASSENZA. ⚠️ Le '
+                  'soglie di un''ora non vengono da una misura ma dal fatto che il '
+                  'drenatore gira di continuo: una soglia dedotta dai tempi di oggi si '
+                  'taglierebbe addosso al carico di oggi. ⛔ Fuori ANNULLATO (deciso da '
+                  'qualcuno) e archiviato (gia'' guardato): un presidio che elenca cio'' che '
+                  'qualcuno ha gia'' visto smette di essere una lista di cose da fare.';
+
+              -- Il ruolo applicativo la legge: il frontend la mostra accanto alle
+              -- altre viste di presidio.
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_coda_lavori_da_guardare TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_coda_lavori_da_guardare;

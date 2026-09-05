@@ -67,8 +67,18 @@ SELECT throws_ok(
 );
 
 -- ---- 8..11: fn_job_run_start happy-path (no lock) ----
+-- ⛔ 2026-09-05: `chk_job_run_log_processo_dichiarato` pretende che un run NUOVO
+--   dichiari il proprio processo (DB-5). Questa fixture ne apriva uno muto —
+--   collaudava la vecchia tolleranza, non la registrazione.
+--   ⇒ Si passa un processo VERO del catalogo, scelto in modo deterministico:
+--     cosi' il file continua a collaudare cio' che collaudava — l'apertura e la
+--     chiusura del run — invece di inciampare su un vincolo che non e' suo.
 CREATE TEMP TABLE _r ON COMMIT DROP AS
-    SELECT * FROM script.fn_job_run_start('test_job', 'CRON', NULL, NULL, NULL);
+    SELECT * FROM script.fn_job_run_start(
+        'test_job', 'CRON', NULL, NULL, NULL,
+        (SELECT codice FROM dbops.processi
+          WHERE classe = 'MANUTENZIONE' AND attivo
+          ORDER BY id LIMIT 1));
 
 SELECT ok((SELECT acquired FROM _r), 'start: acquired = true');
 SELECT ok((SELECT run_uuid IS NOT NULL FROM _r), 'start: run_uuid non null');

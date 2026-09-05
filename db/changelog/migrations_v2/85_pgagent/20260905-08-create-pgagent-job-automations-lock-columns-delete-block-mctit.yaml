@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-7 (pezzo 1 di 3) — I DUE GIRI NOTTURNI CHE MANCAVANO.
+#   Richiesta: brief-db-processi-automatici-residui-be.md, sezione DB-7 e §1-quater
+#
+# ⛔ IL BUCO CHE CHIUDE. `dbops.fn_run_automations_lock_columns` e
+# `..._delete_block` girano gia' — ma SOLO a ogni migrazione, dentro `ci_apply`.
+# Le altre CINQUE automazioni della stessa famiglia girano anche di notte:
+#
+#     audit_update, storico_provision, storico, tx_id, attivo  ->  ogni notte
+#     lock_columns, delete_block                               ->  solo al deploy
+#
+# ⇒ Una tabella creata FRA DUE MIGRAZIONI riceve le altre cinque protezioni la
+# notte stessa, e queste due solo alla migrazione dopo: nel frattempo quelle
+# colonne non hanno lucchetto e quelle righe si possono cancellare.
+#   ⚠️ Non sono automazioni abbandonate: hanno 31 e 8 configurazioni ATTIVE
+#   (misurato 2026-09-05). Mancava il giro, non l'uso.
+#
+# ── ⭐ PERCHE' 21:10 E NON 21:00 ────────────────────────────────────
+#   La famiglia delle automazioni gira alle 21:00. Queste due vanno DOPO, e non
+#   e' una preferenza: e' l'ordine che `90_end/ci_apply/20250627-31` usa gia'
+#   quando le lancia tutte in fila —
+#     audit_update, storico_provision, storico, tx_id, attivo,
+#     **lock_columns**, **delete_block**
+#   Una tabella nuova prima riceve colonne e trigger, poi il lucchetto su quelle
+#   colonne. Al contrario il lucchetto non troverebbe cosa lucchettare.
+#
+# ── ⚠️ IL DEBITO CHE QUESTO CHANGESET CREA, e va detto qui ──────────
+#   `85_pgagent` in CI e' **MARK_RAN**: segnata come eseguita SENZA essere
+#   eseguita. ⇒ Questi due job nascono su dbdev, ma su un ambiente ricostruito
+#   da zero NON esisterebbero, e nessun test lo direbbe.
+#   ⛔ Non c'e' un presidio DB possibile — la fase non gira, quindi non c'e'
+#   niente da misurare. Si verifica **a mano** su un ambiente nuovo.
+#   Registrato come R-11 nel brief-db-processi-automatici-identita-e-perimetro.
+#
+# ── ⭐ E QUESTO E' IL MOTIVO PRATICO PER CUI SI REGISTRANO, NON SI RITIRANO ──
+#   L'alternativa era ritirare i due wrapper. Non avrebbe svuotato
+#   `dbops.vw_run_senza_attore`: `automations_lock_columns` ha TRE corse
+#   storiche senza attore (ultima 2026-06-04), la vista guarda l'ultima corsa
+#   di ogni job, e un job ritirato non gira piu' — quindi non si dichiara mai e
+#   non sparisce mai. Sarebbe stato di nuovo un presidio incapace di arrivare a
+#   zero. Registrandoli, la riga si toglie da se' alla prima corsa.
+#
+# Dipendenze: i wrapper maintenance.proc_automations_{lock_columns,delete_block}_job
+#             (gia' in essere), e le righe di dbops.processi con lo STESSO nome
+#             (changeSet 80_data, stesso lotto).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/85_pgagent/20260905-08-create-pgagent-job-automations-lock-columns-delete-block-mctit.yaml
+
+  - changeSet:
+      id: 20260905-08-create-pgagent-job-automations-lock-columns-delete-block
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        Crea i due job pgAgent che mancavano alla famiglia delle automazioni:
+        automations_lock_columns e automations_delete_block, ogni notte alle 21:10,
+        cioe' DOPO le altre cinque (stesso ordine di ci_apply). Senza, quelle due
+        protezioni arrivavano solo al deploy, e una tabella creata fra due
+        migrazioni restava senza lucchetto e senza blocco di cancellazione.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+              FROM pg_extension
+              WHERE extname = 'pgagent'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+                 DECLARE
+                   v_classid INTEGER;
+                   v_jobid   INTEGER;
+                   v_job     RECORD;
+                 BEGIN
+                   -- 1) Classe 'Routine Maintenance', come tutta la famiglia
+                   SELECT jclid INTO v_classid
+                     FROM pgagent.pga_jobclass
+                    WHERE jclname = 'Routine Maintenance'
+                    LIMIT 1;
+
+                   IF v_classid IS NULL THEN
+                     INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                     VALUES ('Routine Maintenance', 'Default job class')
+                     RETURNING jclid INTO v_classid;
+                   END IF;
+
+                   -- 2) I due job, con lo stesso corpo: cambia solo il nome.
+                   --    ⚠️ Il jobname DEVE essere identico al codice in
+                   --    dbops.processi, o maintenance.fn_run_and_log non sa
+                   --    derivare l'attore — ed e' esattamente il difetto che
+                   --    questo lotto chiude.
+                   FOR v_job IN
+                     SELECT * FROM (VALUES
+                       ('automations_lock_columns',
+                        'Applica il lucchetto alle colonne dichiarate in dbops.automation_lock_columns',
+                        'run_automations_lock_columns',
+                        'CALL maintenance.proc_automations_lock_columns_job();'),
+                       ('automations_delete_block',
+                        'Applica il blocco di cancellazione alle tabelle dichiarate in dbops.automation_delete_block',
+                        'run_automations_delete_block',
+                        'CALL maintenance.proc_automations_delete_block_job();')
+                     ) AS t(jobname, jobdesc, stepname, stepcode)
+                   LOOP
+                     -- Idempotenza: si rifa' da zero, come le sorelle.
+                     DELETE FROM pgagent.pga_job WHERE jobname = v_job.jobname;
+
+                     INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                     VALUES (v_classid, v_job.jobname, v_job.jobdesc, true)
+                     RETURNING jobid INTO v_jobid;
+
+                     -- ⭐ 21:10, DOPO la famiglia delle 21:00: una tabella nuova
+                     --   prima riceve colonne e trigger, poi il lucchetto su
+                     --   quelle colonne. E' l'ordine di ci_apply.
+                     INSERT INTO pgagent.pga_schedule(
+                       jscjobid, jscname, jscenabled,
+                       jscminutes, jschours, jscweekdays,
+                       jscmonthdays, jscmonths, jscstart
+                     ) VALUES (
+                       v_jobid,
+                       'daily_21_10',
+                       true,
+                       (SELECT array_agg((i = 10)::boolean) FROM generate_series(0,59) AS g(i)),
+                       (SELECT array_agg((i = 21)::boolean) FROM generate_series(0,23) AS g(i)),
+                       array_fill(TRUE, ARRAY[7])::boolean[],
+                       array_fill(TRUE, ARRAY[32])::boolean[],
+                       array_fill(TRUE, ARRAY[12])::boolean[],
+                       now()
+                     );
+
+                     INSERT INTO pgagent.pga_jobstep(
+                       jstjobid, jstname, jstkind, jstcode, jstdbname
+                     ) VALUES (
+                       v_jobid, v_job.stepname, 's', v_job.stepcode, current_database()
+                     );
+                   END LOOP;
+                 END;
+                 $$;
+
+  - changeSet:
+      id: 20260905-90-tag-pgagent-job-automations-lock-columns-delete-block
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260905-08-create-pgagent-job-automations-lock-columns-delete-block

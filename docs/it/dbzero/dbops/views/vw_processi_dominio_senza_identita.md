@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Disaccordi fra il flag anagrafiche.identita_digitali.tecnica e il registro dbops.processi_identita, nei DUE sensi, piu' i processi DOMINIO headless ancora senza utente tecnico. DEVE restare VUOTA. ⛔ Esclusi i processi su canale CODA: sono accodati da un operatore e girano con lo scope catturato all'enqueue — un utente tecnico li' cancellerebbe il nome di chi ha chiesto il lavoro. ⭐ Il terzo verso (identita' col flag che nessun processo rivendica) protegge dal caso peggiore: marcare tecnica=true sull'identita' di una PERSONA per farla sparire dai conteggi. Brief: brief-db-processi-automatici-identita-e-perimetro §8.
+> Processi DOMINIO che non possono dire CHI agisce, guardato nei TRE versi: processo senza utente tecnico, utente tecnico senza identita' OPERATORE col flag, identita' col flag che nessun processo rivendica. DEVE restare VUOTA. ⭐ Rev 2026-09-05 (R-E, strada B): il filtro sul canale include CODA_AUTOMATICA — un lavoro di coda messo in coda da una MACCHINA non ha un'identita' prestata da nessuno, quindi ne vuole una propria. ⚠️ I processi CODA «umani» restano esclusi, ed e' voluto: li' l'identita' la porta l'operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_identita AS
@@ -12,7 +12,7 @@ SELECT p.codice AS processo_codice,
     NULL::integer AS auth_user_id,
     'processo DOMINIO headless senza utente tecnico'::text AS motivo
    FROM dbops.processi p
-  WHERE ((p.classe = 'DOMINIO'::text) AND p.attivo AND (p.obsoleto_dal IS NULL) AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text])) AND (NOT (EXISTS ( SELECT 1
+  WHERE ((p.classe = 'DOMINIO'::text) AND p.attivo AND (p.obsoleto_dal IS NULL) AND (p.canale = ANY (ARRAY['PGAGENT'::text, 'COMMAND'::text, 'CODA_AUTOMATICA'::text])) AND (NOT (EXISTS ( SELECT 1
            FROM dbops.processi_identita pi
           WHERE ((pi.processo_id = p.id) AND pi.attivo)))))
 UNION ALL

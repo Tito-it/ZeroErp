@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA REGOLA DIVENTA VERIFICABILE.
+#   Decisione: brief-db-processi-automatici-identita-e-perimetro, sezione 12.12
+#
+#     ⛔ Nessun processo di classe DOMINIO su pgAgent.
+#
+# ── ⭐ PERCHE' UNA VISTA E NON UN `CHECK` ───────────────────────────
+#   Un CHECK su `dbops.processi` (`classe <> 'DOMINIO' OR canale <> 'PGAGENT'`)
+#   sarebbe piu' stretto, e per questo sbagliato ADESSO: `chiusura_scadenze_daily`
+#   e' ancora li', e un CHECK farebbe fallire il migrate prima di poterlo
+#   spostare. ⇒ Prima la vista che conta, poi — quando arriva a zero — si puo'
+#   valutare se stringere.
+#   ⚠️ E c'e' un secondo motivo, che vale anche dopo: il registro e' **catalogo**
+#   e si cambia dal CSV. Un CHECK trasformerebbe un errore di configurazione in
+#   un migrate rotto, cioe' in un problema di tutti invece che di quella riga.
+#
+# ── ⚠️ PERCHE' NON BASTAVA LA CLASSE DA SOLA ───────────────────────
+#   Il cantiere aveva gia' `classe`, ma come **dichiarazione verificata in un
+#   verso**: si controllava che cio' che e' dichiarato di dominio avesse un
+#   perimetro e una difesa. Non si controllava DOVE gira.
+#   ⇒ Questa vista chiude il verso mancante: la classificazione smette di essere
+#     una targhetta e diventa una regola sulla macchina.
+#
+# ── ⚠️ IL CANALE `CODA_AUTOMATICA` NON E' UN'ECCEZIONE ─────────────
+#   Un processo di dominio puo' stare su `COMMAND`, `CODA` o `CODA_AUTOMATICA`.
+#   Cio' che non puo' fare e' **eseguire** dentro pgAgent, perche' li' non ha
+#   ne' identita' ne' un posto dove raccontare un fallimento.
+#   ⭐ Che il job pgAgent lo SVEGLI resta lecito, e non e' una scappatoia: un job
+#   che chiama fn_accoda_lavoro non tocca nessun documento — se muore non ha
+#   fatto danni, e il lavoro vero e' tracciato nella coda. Il registro descrive
+#   il PROCESSO, non chi suona la sveglia.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-dominio-su-pgagent.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260905-22-create-vw-processi-dominio-su-pgagent-mctit.yaml
+
+  - changeSet:
+      id: 20260905-22-create-vw-processi-dominio-su-pgagent
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_dominio_su_pgagent: i processi di dominio che eseguono
+        dentro pgAgent, dove non hanno ne' identita' ne' un posto in cui raccontare
+        un fallimento. Rende verificabile la regola presa il 2026-09-05. Oggi ha
+        una riga (chiusura_scadenze_daily) e deve arrivare a zero.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: processi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_dominio_su_pgagent AS
+              SELECT p.codice AS processo_codice,
+                     p.descrizione,
+                     p.canale,
+                     -- ⭐ Il motivo dice il RIMEDIO, non il difetto: chi legge un
+                     --   presidio vuole sapere che cosa fare, non che cosa e'
+                     --   rotto.
+                     'esegue dentro pgAgent: senza identita'', e un fallimento '
+                     'non arriva a nessuno. Va spostato su CODA_AUTOMATICA, con '
+                     'il job pgAgent che lo ACCODA invece di eseguirlo'::text
+                         AS motivo
+                FROM dbops.processi p
+               WHERE p.classe = 'DOMINIO'
+                 AND p.attivo
+                 AND p.obsoleto_dal IS NULL
+                 AND p.canale = 'PGAGENT';
+
+              COMMENT ON VIEW dbops.vw_processi_dominio_su_pgagent IS
+                  'Processi di classe DOMINIO che ESEGUONO dentro pgAgent. DEVE arrivare a '
+                  'VUOTA. ⛔ Li'' un processo non ha identita'' — quindi nessun perimetro '
+                  'emittente — e un fallimento non arriva a nessuno: la traccia sta in '
+                  'pgagent.pga_joblog, che nessuno guarda e che l''applicazione non vede. '
+                  '⭐ L''argomento e'' sperimentale: apply_storicizza_weekly e'' morto ogni '
+                  'settimana per SEI MESI e lo si e'' scoperto per caso (R-12). '
+                  '⚠️ Che un job pgAgent SVEGLI un processo di dominio resta lecito e non '
+                  'e'' una scappatoia: un job che chiama dbops.fn_accoda_lavoro non tocca '
+                  'nessun documento — se muore non ha fatto danni, e il lavoro vero resta '
+                  'tracciato nella coda. Il registro descrive il PROCESSO, non chi suona '
+                  'la sveglia: percio'' il canale diventa CODA_AUTOMATICA. ⛔ Non e'' un '
+                  'CHECK su dbops.processi, e per due ragioni: oggi fallirebbe il migrate '
+                  '(la riga c''e'' ancora), e il registro e'' catalogo — un CHECK '
+                  'trasformerebbe un errore di configurazione in un migrate rotto, cioe'' '
+                  'in un problema di tutti invece che di quella riga. Decisione: '
+                  'brief-db-processi-automatici-identita-e-perimetro, sezione 12.12.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_dominio_su_pgagent TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_dominio_su_pgagent;

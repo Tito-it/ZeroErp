@@ -20,6 +20,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| debito_dichiarato | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

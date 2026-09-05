@@ -33,11 +33,21 @@ BEGIN
       FROM dbops.processi
      WHERE codice = p_processo_codice;
 
-    IF NOT FOUND
-       OR NOT v_processo.attivo
+    -- ⭐ Rev 2026-09-05: «non esiste» e «esiste ma non e' eleggibile» erano lo
+    --   STESSO errore, e mandano a cercare in due posti diversi: il primo nel
+    --   seed del catalogo, il secondo nella riga che c'e' gia'.
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_crea_utente_tecnico',
+            'E_PROCESSO_NON_TROVATO',
+            jsonb_build_object('processo_codice', p_processo_codice),
+            NULL::uuid, p_processo_codice);
+    END IF;
+
+    IF NOT v_processo.attivo
        OR v_processo.obsoleto_dal IS NOT NULL
        OR v_processo.classe <> 'DOMINIO'
-       OR v_processo.canale NOT IN ('PGAGENT', 'COMMAND') THEN
+       OR v_processo.canale NOT IN ('PGAGENT', 'COMMAND', 'CODA_AUTOMATICA') THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_crea_utente_tecnico',
             'E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO',
@@ -104,6 +114,33 @@ BEGIN
     --   lavoro, e il posto di lavoro qui e' (processo, emittente).
     --   Cosi' resta unico e leggibile quando gli emittenti sono N.
     v_username := p_processo_codice || '@' || p_emittente_codice;
+
+    -- ⚠️ NON confondere questo guard col guard 4 qui sopra, e i due codici
+    --   NON sono intercambiabili perche' i loro messaggi hanno un numero
+    --   DIVERSO di segnaposto:
+    --     guard 4  E_UTENTE_TECNICO_GIA_ESISTE     1 %s  «esiste ed e' ATTIVO»
+    --     qui      E_UTENTE_TECNICO_DA_RIATTIVARE  2 %s  «esiste ed e' SPENTO»
+    --   ⛔ Rinominarne uno «per uniformita'» fa crashare format(). E' successo:
+    --     una sostituzione globale del nome ha toccato anche il guard 4, e a
+    --     prenderlo e' stato il presidio
+    --     db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.
+    -- ⛔ IL MURO CHE NON PARLAVA. Il guard sul duplicato piu' sopra guarda
+    --   dbops.processi_identita.attivo; lo username NO, e il suo UNIQUE su
+    --   django.auth_user non ha condizioni. ⇒ Disattivare il legame — che e' la
+    --   via documentata per sostituire l'utente di un processo — liberava il
+    --   guard e lasciava in piedi `auth_user_username_key`: un 23505 NUDO, che
+    --   non dice quale regola sia stata toccata.
+    --   ⭐ Qui ci si ferma prima, e si indica il verbo giusto: l'utente non va
+    --     rifatto, va RIATTIVATO (script.fn_riattiva_utente_tecnico).
+    IF EXISTS (SELECT 1 FROM django.auth_user au WHERE au.username = v_username) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_crea_utente_tecnico',
+            'E_UTENTE_TECNICO_DA_RIATTIVARE',
+            jsonb_build_object('processo_codice',  p_processo_codice,
+                               'emittente_codice', p_emittente_codice,
+                               'username',         v_username),
+            NULL::uuid, p_processo_codice, p_emittente_codice);
+    END IF;
 
     -- 1. L'utente Django, con password INUTILIZZABILE ('!' e' la
     --    convenzione Django per «non puo' autenticarsi»).
@@ -172,7 +209,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_crea_utente_tecnico(p_processo_codice text, p_emittente_codice character varying, p_profilo_codice character varying)
-IS 'Crea l''utente tecnico di un processo automatico PER UN EMITTENTE: utente Django con password inutilizzabile e username processo@emittente, soggetto dedicato col suo contatto, soggetto_ruolo PROC_AUTO, identita'' OPERATORE con flag tecnica, la riga di perimetro in config.user_emittenti_fiscali e il legame in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ L''emittente e'' OBBLIGATORIO e costitutivo: config.user_emittenti_fiscali e'' 1-a-1 sull''utente (UNIQUE(auth_user_id), changeSet 20260408-11) e in questo modello solo il super admin e'' multi-emittente — quindi un processo che serve N emittenti ha N utenti tecnici. ⚠️ D-9 resta: la funzione non SCEGLIE l''emittente, lo riceve da chi scrive la chiamata. Il profilo e'' facoltativo e di norma non si passa (zero capability = minimo privilegio); se indicato dev''essere AD_HOC. ⛔ Mai SUPER_ADMIN. Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
+IS 'Crea l''utente tecnico di un processo automatico PER UN EMITTENTE: utente Django con password inutilizzabile e username processo@emittente, soggetto dedicato col suo contatto, soggetto_ruolo PROC_AUTO, identita'' OPERATORE col flag tecnica, la riga di perimetro in config.user_emittenti_fiscali e il legame in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ L''emittente e'' OBBLIGATORIO e costitutivo: config.user_emittenti_fiscali e'' 1-a-1 sull''utente, quindi un processo che serve N emittenti ha N utenti tecnici. ⚠️ D-9 resta: la funzione non SCEGLIE l''emittente, lo riceve da chi scrive la chiamata. Il profilo e'' facoltativo e di norma non si passa; se indicato dev''essere AD_HOC. ⛔ Mai SUPER_ADMIN. ⭐ Rev 2026-09-05 (R-E strada B): accetta anche il canale CODA_AUTOMATICA; il canale CODA «umano» resta rifiutato, perche'' li'' l''identita'' la porta l''operatore che accoda. ⭐ Rev 2026-09-05 (DB-6): due guard che prima non parlavano. «Processo inesistente» e «processo non eleggibile» erano lo STESSO errore e mandavano a cercare in due posti diversi: adesso il primo e'' E_PROCESSO_NON_TROVATO. E lo username duplicato alzava un 23505 NUDO: adesso e'' E_UTENTE_TECNICO_DA_RIATTIVARE, che indica il verbo giusto — script.fn_riattiva_utente_tecnico. Brief: brief-db-processi-automatici-residui-be, DB-6 e DB-8.';
 ```
 
 ---

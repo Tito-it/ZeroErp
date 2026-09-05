@@ -11,7 +11,7 @@
 --  3) ⚠️ la FK che rende lecito quel modo esiste ancora
 --  4) ✅ accodare la stampa di una PROPRIA fattura passa
 --  5) ⛔ accodare la stampa di una fattura ALTRUI si ferma, e SPIEGA
---  6) ⭐ il presidio livello 2 e' VUOTO
+--  6) ⭐ il presidio livello 2 non ha ALLARMI
 --
 -- Scopo:
 --  - provare il caso che la policy da sola non copre bene: sull'INSERT il
@@ -216,13 +216,32 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 6. ⭐ Il presidio arriva a ZERO
+-- 6. ⭐ Il presidio livello 2 non ha ALLARMI
 -- ============================================================
--- E' il primo presidio di questo cantiere che ci arriva davvero: qui la vista
--- deve essere VUOTA, non «senza la nostra riga».
+-- ⚠️ QUESTA ASSERZIONE E' CAMBIATA, ed e' il caso di dire perche'.
+--   Nata il 2026-09-05 come «la vista e' VUOTA», ed era vera: col guard sulla
+--   coda di stampa il livello 2 era arrivato a zero. Poche ore dopo il changeSet
+--   20260905-18 ha dato a `config.email_outbox` la colonna emittente ma NON la
+--   policy che la applica — prima va deciso chi puo' leggere le email di ambito
+--   SISTEMA (reset password), che non appartengono a nessun emittente.
+--   ⇒ La vista ha di nuovo una riga, e la riga e' GIUSTA: un debito con un
+--     nome, dichiarato in `dbops.processi_bersagli.debito_dichiarato`.
+--
+-- ⛔ «Vuota» non e' piu' l'invariante, e insistere l'avrebbe resa una bugia: il
+--   rosso non avrebbe segnalato un difetto ma una decisione presa apposta.
+--   ⭐ Cio' che resta vero — e che questo cantiere ha davvero ottenuto — e' che
+--   non c'e' nessuna riga NON dichiarata: nessun ALLARME.
+--
+-- ⚠️ E si dichiara il rischio: dichiarare un debito ZITTISCE questo test. E' il
+--   motivo per cui il censimento dei debiti non sta qui ma in
+--   db/pgtap/dbops/test-presidi-debito-dichiarato.sql, dove il test 6 prova che
+--   un bersaglio NUOVO e rotto esce NON_DICHIARATO — cioe' che il flag e' un
+--   gesto e non l'impostazione di fabbrica.
 SELECT is_empty(
-    $$SELECT 1 FROM dbops.vw_processi_dominio_senza_difesa$$,
-    '6. dbops.vw_processi_dominio_senza_difesa e'' vuota'
+    $$SELECT processo_codice, nome_tabella
+        FROM dbops.vw_processi_dominio_senza_difesa
+       WHERE stato = 'NON_DICHIARATO'$$,
+    '6. nessun bersaglio di dominio scoperto che non sia DICHIARATO'
 );
 
 SELECT * FROM finish();
