@@ -24,6 +24,12 @@
 > passo 0 (la misura) è **stato eseguito**, e le tre regressioni che ha trovato
 > sono **corrette** — §2.1.
 >
+> 📨 **Il team DB ha pushato una parte dei residui (merge `6fd2266ed`).** ⛔ Per il
+> backend **non si è sbloccato niente**: la cosa fatta — RLS e write-guard sui
+> listini — era il prerequisito di **DB-1** nella catena del DB, non di un lotto
+> BE. Il **lotto 4 resta fermo**, e in più aspetta una decisione di modello (R-E).
+> Stato misurato e risposta del BE nel **§1-ter** del brief dei residui.
+>
 > ⚠️ **Perimetro:** *chi* esegue un processo automatico, *dentro quale emittente*, e
 > come lo si vede da dentro l'applicazione. ⛔ **Non** è di questo piano cosa fanno i
 > processi.
@@ -564,7 +570,7 @@ conto suo. Se le due divergono, vince il brief.
 | **DB-1** | un tipo di coda per la **chiusura scadenze**, col suo processo registrato. 🔵 Da concordare insieme: **chi accoda** (il job pgAgent di stasera o un command su cron) | 4 | ⛔ sì |
 | **DB-2** | che `vw_processi_dominio_senza_emittente` distingua una riga **attesa** da una **nuova** — oggi la vista dice «deve restare vuota» e il seed dei bersagli si aspetta una riga | 6.6 | ⚠️ no, ma peggiora col tempo |
 | **DB-3** | **R-7** — colonna emittente su `config.email_outbox`: senza, `send_pending_emails` è di dominio **senza percorso al perimetro** | 1.3 | ⛔ sì, per la parte «un emittente alla volta» |
-| **DB-4** | ⚠️ *riscritta*: il **write-guard** su `vendite.fatture_stampa_coda` — ultima riga del livello 2. `listini*` è già a posto | 2 | ⚠️ no |
+| **DB-4** | ⚠️ *riscritta*: il **write-guard** su `vendite.fatture_stampa_coda` — ultima riga del livello 2. ⛔ La riscrittura diceva anche «`listini*` è già a posto»: **era una misura sbagliata**, la policy non c'era e il DB l'ha accesa il 2026-09-05 (brief §1-ter) | 2 | ⚠️ no |
 | **DB-5** | `maintenance.job_run_log.processo_codice` → obbligatorio, **quando** `vw_run_senza_attore` è vuota | dopo 1 | ⛔ oggi impossibile: aspetta **DB-7** |
 | **DB-6** | poter rifare l'utente tecnico di un processo ritirato male | 6 | ⚠️ no |
 | **DB-7** | 🔴 i nomi di **4 job pgAgent** non esistono nel registro: non si dichiareranno mai | — | ⛔ blocca DB-5 |
@@ -627,16 +633,21 @@ del §6, che non sono decisioni: sono lavoro di un altro ramo.
 | `./manage-env.sh genera_error_policies --check` | esce 0 | ✅ allineato |
 | suite Django | verde | ✅ **4442 test** |
 | `scripts/smoke-baseline.sh` | nessuna regressione | ✅ 3 non-verdi, **tutti noti** |
-| `dbops.vw_run_senza_attore` | vuota | 🟡 **5 righe**: 3 sono i job pgAgent di **DB-7** (nomi che il registro non conosce, non si toglieranno mai da soli), 2 si toglieranno alla prossima corsa notturna |
+| `dbops.vw_run_senza_attore` | vuota | 🟡 **4 righe** (era 7): ⭐ le **due del backend sono uscite** — il lotto 1 funziona. 3 sono i job pgAgent di **DB-7**, che non si toglieranno mai da soli; 1 (`apply_storicizza_weekly`) si toglie alla prossima corsa |
 | `dbops.vw_processi_che_bypassano` | vuota | 🟡 **una riga**: il ruolo esiste ancora a database, ma non lo usa più nessuno — manca il `DROP ROLE` (§6-ter) |
 | `dbops.vw_processi_dominio_senza_emittente` | vuota | 🟡 **una riga**: `config.email_outbox`, debito dichiarato (DB-3) |
-| `dbops.vw_processi_dominio_senza_difesa` | deve **calare** | 🟡 **una riga**: manca il write-guard su `vendite.fatture_stampa_coda` (**DB-4**, riscritta). ⭐ `vendite.listini*` **è uscito**: la policy c'è — l'elenco scritto era invecchiato, la vista no |
+| `dbops.vw_processi_dominio_senza_difesa` | deve **calare** | 🟡 **una riga**: manca il write-guard su `vendite.fatture_stampa_coda` (**DB-4** riscritta, per il DB **R-10**). ⭐ `vendite.listini*` è uscito il 2026-09-05, **perché il DB ci ha acceso policy e guard** — non perché ci fosse già |
 | `dbops.vw_processi_dominio_senza_identita` | vuota | ✅ **vuota** |
 | `dbops.vw_emittenti_non_serviti` | vuota | ✅ **vuota** |
 | `grep -rl "from 'primevue/datatable'" frontend/src --include=*.vue \| wc -l` | non sale | ✅ la schermata nuova monta `<ListaConfigurabile>` |
 
 ⚠️ **Nessuno dei 🟡 è un lavoro del backend**: quattro sono richieste al team DB
-(DB-2, DB-3, DB-4, DB-7), uno è provisioning, e i due run si chiudono da soli.
+(DB-2, DB-3, DB-4, DB-7), uno è provisioning, e un run si chiude da solo.
+
+⛔ **E uno era il backend, misurato oggi:** `ui.lista_definizione` **non contiene
+`amm.processi`**. Il seed è nei CSV mirror (a bordo con la PR #1507) ma il `migrate`
+non è stato eseguito: finché non gira, la schermata del lotto 6 risponde
+`E_UI_LISTA_NON_TROVATA`. ⚠️ Le migrazioni non le applica l'agent — §9.
 
 ---
 
@@ -653,6 +664,15 @@ del §6, che non sono decisioni: sono lavoro di un altro ramo.
 * ⚠️ **`useApiHandler.execute()` solo per response axios**: le chiamate che passano da uno
   store vanno dirette. E i blob non passano da lì.
 * ⚠️ **Drawer**: `if (result !== null)`, non `if (result)`.
+* ⛔ **Padre e figlia di una famiglia protetta non si scrivono nella stessa
+  istruzione** (dal DB, 2026-09-05, trovata accendendo la RLS sui listini). La policy
+  della figlia risolve il perimetro leggendo il padre, e in un'unica `WITH` lo legge
+  con lo **snapshot di quell'istruzione**: il padre appena inserito non c'è, il
+  perimetro è `NULL`, e l'errore parla di *sicurezza per riga* — sembra un problema di
+  permessi ed è un problema di **numero di istruzioni**. ⇒ Due `execute`.
+  ⚠️ Verificato che oggi il BE **non** ci cade (nessuna CTE di scrittura su
+  `vendite.listini*`, `create_listino` e `create_versione` sono due metodi): la
+  trappola è annotata **in avanti**, non come difetto aperto.
 * ⛔ **Mai committare** senza richiesta esplicita; **mai** applicare migrazioni: l'hook
   `guardrail_no_db_migrate.py` le blocca, e non si disattiva per farle passare.
 
