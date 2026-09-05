@@ -61,7 +61,6 @@
 | trg_fatture_fondi_fattura_source_a10_guard_importo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_importo()` |
 | trg_fatture_fondi_fattura_source_a10_guard_transizione_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_transizione()` |
 | trg_fatture_fondi_fattura_source_a10_guard_transizione_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fondi_source_guard_transizione()` |
-| trg_fatture_fondi_fattura_source_a10_lock_atto_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('importo', 'E_FONDO_ATTO_IMMUTABILE', 'fattura_sorgente_id', 'E_FONDO_ATTO_IMMUTABILE', 'tipo_fondo_fattura_id', 'E_FONDO_ATTO_IMMUTABILE', 'origine', 'E_FONDO_ATTO_IMMUTABILE')` |
 | trg_fatture_fondi_fattura_source_a10_sistemazioni_block__88087b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'sistemazioni', 'fondo_source_id', 'id', 'attivo')` |
 | trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_fatture_fondi_fattura_source_a10_tipi_doc_fiscale_re_d53a63 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |

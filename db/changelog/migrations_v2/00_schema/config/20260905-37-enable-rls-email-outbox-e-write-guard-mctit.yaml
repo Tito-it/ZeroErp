@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA POLICY ENTRA IN VIGORE — e il presidio di livello 2 va a zero.
+#   Decisione: Tid, 2026-09-05 · brief-db-processi-automatici-identita-e-perimetro §12.15
+#
+# La policy `rls_email_outbox_ambito` era scritta dal `20260905-32` (ripulita dal
+# `-33`) ma **inerte**: PostgreSQL conserva le policy di una tabella con la row
+# level security disabilitata e non le applica. Qui si accende, e si aggiunge il
+# write-guard di famiglia.
+#
+# ── ✅ SUI DATI GIA' A BORDO, LA VERIFICA E' STATA FATTA ────────────
+#   Le 6 righe presenti sono **tutte** `SISTEMA` senza emittente — nate quando
+#   `SISTEMA` voleva dire «nessuno ha detto», non «email di sistema». Guardate
+#   una per una: tutte `CANCELLED`, tutte di prova («Test», «Test smoke»), tutte
+#   dell'utente 1. ⇒ Accendere non nasconde niente che qualcuno stia usando.
+#
+# ── 🔴 MA DA QUESTO MOMENTO UN OPERATORE NON PUO' PIU' CREARE UNA BOZZA
+#   E non e' un effetto collaterale imprevisto: e' una conseguenza misurata, e
+#   sta qui perche' chi legge questo file la trovi.
+#     * `apps/core/api/email_views.py:84` scrive ancora
+#       `ambito=(payload.get("ambito") or "SISTEMA").strip()` — il **default** e'
+#       `SISTEMA`, e il frontend non manda mai il campo. ⇒ Ogni bozza nasce
+#       `SISTEMA`, e per la policy quella e' roba da super admin: l'`INSERT` di
+#       un operatore viene respinto dal `WITH CHECK`.
+#     * `create_outbox` **non valorizza `emittente_fiscale_id`**. ⇒ Anche
+#       mandando un ambito vero, l'`INSERT` violerebbe
+#       `chk_email_outbox_ambito_emittente` — e questo succede gia' oggi, senza
+#       RLS: verificato eseguendolo.
+#
+#   ⚠️ **Il costo e' delimitato**, ed e' la ragione per cui si accende lo stesso:
+#   la funzione bozze oggi non la usa nessuno (6 righe, tutte di prova, tutte
+#   annullate), e questo non e' un ambiente di produzione.
+#   ⭐ **Si sblocca con una riga**: quando l'API smette di mettere `SISTEMA` per
+#   default e valorizza l'emittente, tutto torna a funzionare senza toccare
+#   niente qui. E' il punto 1-2 della lista al backend (§1-octies del brief BE).
+#   ⛔ Finche' non arriva, creare una bozza da interfaccia **fallisce**. Chi
+#   incontra quell'errore ha trovato questo, non un difetto nuovo.
+#
+# ── ⭐ IL WRITE-GUARD, E PERCHE' ORA SI PUO' MONTARE ────────────────
+#   Un guard e' un TRIGGER: morde **anche con la RLS spenta**. Per questo non era
+#   stato montato prima — avrebbe fermato le bozze subito, senza aspettare
+#   nessuno. Adesso che si accende comunque, i due gesti vanno insieme.
+#   ⚠️ Sul modo `fiscale` la colonna delle righe `SISTEMA` e' NULL, e il guard in
+#   quel caso **esce subito** (`v_col_value IS NULL -> RETURN NEW`): le email di
+#   sistema non le ferma lui, le governa la policy. Le altre le prende.
+#   ⭐ E copre il caso che la policy non copre: una `SECURITY DEFINER` di
+#   `titodb` che scriva qui non subisce la RLS, il trigger si'.
+#
+# ── ⚠️ `ENABLE` SENZA `FORCE`, come tutta la famiglia ──────────────
+#   L'owner e' `titodb`, l'applicazione gira come `zeroerp_app`: la RLS morde
+#   gia' sul canale web. Un `FORCE` inciderebbe solo sull'owner e romperebbe le
+#   `SECURITY DEFINER` di sua proprieta' che devono leggere fuori dalla row
+#   security.
+#
+# ── ✅ COME SI VEDE CHE E' CHIUSO ──────────────────────────────────
+#   `dbops.vw_processi_dominio_senza_difesa` non nomina piu' `config.email_outbox`
+#   — ma non perche' la riga di censimento sia stata tolta (lo e' stata, col
+#   `-34`, ed e' un'altra storia): perche' da qui la tabella e' **davvero difesa**.
+#
+# Verifica: db/pgtap/rls/test-rls-email-outbox-ambito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260905-37-enable-rls-email-outbox-e-write-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260905-37-enable-rls-email-outbox-e-write-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Accende la ROW LEVEL SECURITY su config.email_outbox e monta il
+        write-guard di famiglia. ⚠️ Da qui un operatore non puo' piu' creare una
+        bozza finche' l'API smette di scrivere ambito=SISTEMA per default e non
+        valorizza l'emittente: costo accettato perche' la funzione bozze oggi non
+        la usa nessuno (6 righe, tutte di prova e annullate). Verificato sui dati.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_policy
+                   WHERE polrelid = 'config.email_outbox'::regclass
+                     AND polname  = 'rls_email_outbox_ambito'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_guard_emittente_scope'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Da qui la policy scritta dal -32/-33 smette di essere un testo
+              --   conservato e comincia a filtrare.
+              ALTER TABLE config.email_outbox ENABLE ROW LEVEL SECURITY;
+
+              DROP TRIGGER IF EXISTS trg_email_outbox_a10_guard_emittente_scope_ins_upd
+                  ON config.email_outbox;
+
+              CREATE TRIGGER trg_email_outbox_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON config.email_outbox
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                      'fiscale', 'emittente_fiscale_id');
+
+              COMMENT ON TRIGGER trg_email_outbox_a10_guard_emittente_scope_ins_upd
+                  ON config.email_outbox IS
+                  'Difesa in profondita'' sul perimetro emittente delle bozze email. '
+                  'Affianca rls_email_outbox_ambito: la policy NASCONDE, il trigger '
+                  'RIFIUTA E SPIEGA (E_SCOPE_EMITTENTE). ⚠️ Sulle righe di ambito SISTEMA '
+                  'la colonna emittente e'' NULL e il guard esce subito: quelle non le '
+                  'ferma lui, le governa la policy (solo super admin). ⭐ Copre il caso '
+                  'che la policy non copre: una SECURITY DEFINER di titodb che scriva qui '
+                  'non subisce la row level security, il trigger si''. rev 2026-09-05.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Riporta la tabella a essere leggibile e scrivibile da
+              --   chiunque sia collegato, policy compresa che torna inerte.
+              DROP TRIGGER IF EXISTS trg_email_outbox_a10_guard_emittente_scope_ins_upd
+                  ON config.email_outbox;
+              ALTER TABLE config.email_outbox DISABLE ROW LEVEL SECURITY;

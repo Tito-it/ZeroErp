@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL VERBALE DI UN FALLIMENTO SOPRAVVIVE AL FALLIMENTO.
+#   Brief: brief-db-storicizzazione-bersagli-spariti.md §2.3 (R-12)
+#
+# ── ⛔ IL DIFETTO, in una riga ──────────────────────────────────────
+#   `maintenance.fn_run_and_log` cattura l'errore, SCRIVE la riga `ok = false`
+#   con codice e dettaglio… e poi fa `RAISE`. Il `RAISE` annulla la transazione,
+#   quindi **anche quella riga**. Il verbale viene redatto e distrutto nello
+#   stesso istante.
+#   ⇒ Non e' che le corse fallite manchino: **non possono esistere**. Nessuno dei
+#     dodici job che passano di li' puo' lasciare una riga rossa, mai.
+#   ⭐ Ed e' cosi' che `apply_storicizza_weekly` e' morto ogni settimana per SEI
+#     MESI con l'ultimo verdetto agli atti a «done».
+#
+# ── ⭐ LA SOLUZIONE C'ERA GIA' IN CASA ──────────────────────────────
+#   `script.fn_log_error_only` scrive in `dbops.error_log` su una **connessione
+#   separata** via `dblink` — fuori dalla transazione. E' il motivo per cui
+#   quella tabella ha 143.000 righe fra cui 262 di `trgfn_guard_emittente_scope`,
+#   un guard che esiste solo per sollevare eccezioni: quelle righe sono
+#   sopravvissute al `RAISE`.
+#   ⇒ Qui si riusa lo stesso canale — non se ne inventa un altro.
+#
+# ── ⛔ NON E' UN «ESEGUI SQL FUORI TRANSAZIONE» ─────────────────────
+#   Una primitiva generica (`fn_exec_out_of_tx(text)`) sarebbe una **esecuzione
+#   di SQL arbitrario in `SECURITY DEFINER` di un superuser**: la cosa piu'
+#   pericolosa che si possa lasciare in giro. ⇒ Questa funzione prende
+#   **parametri tipizzati** e costruisce da sola il proprio `INSERT`, con
+#   `format(%L)`. Non c'e' nessuna via per farle scrivere altro.
+#
+# ── ⚠️ PERCHE' UN `INSERT` COMPLETO E NON UN `UPDATE` ───────────────
+#   La riga «iniziato» che `fn_run_and_log` scrive all'avvio muore col rollback:
+#   aggiornarla sul canale separato vorrebbe dire aggiornare una riga che sta per
+#   sparire. ⇒ Si scrive una riga INTERA del run fallito.
+#   ⭐ Il `run_uuid` e' quello del run vivo: e' il filo che ricuce cio' che resta
+#   fuori con cio' che e' successo dentro (e con `dbops.error_log`, che porta lo
+#   stesso identificativo).
+#
+# ── ⛔ NON DEVE MAI ROMPERE CHI LA CHIAMA ───────────────────────────
+#   La chiama un gestore d'eccezione, cioe' qualcuno che sta gia' andando male.
+#   Ogni via d'uscita e' un `RAISE WARNING`: ⚠️ non si fa fallire un lavoro
+#   perche' non si e' riusciti a scrivere una nota su di lui.
+#   ⚠️ E il rovescio va detto: quando il canale non c'e', **tace**. Percio' va
+#   guardato UNA volta, sul percorso vero di un job, che una corsa fallita lasci
+#   davvero la riga — un controllo, non un atto di fede.
+#
+# ── ⚠️ `SECURITY DEFINER`, E L'OWNER NON LO METTE QUESTO FILE ───────
+#   `dblink` rifiuta a un non-superuser una connessione senza password: e' la sua
+#   difesa contro chi si farebbe prestare le credenziali del server. Per questo
+#   `script.fn_log_error_only` e' `SECURITY DEFINER` **di `postgres`**.
+#   ⇒ Liquibase gira come `titodb` e non puo' cambiare owner. Lo fa il
+#   meccanismo che il progetto ha gia': la riga in `dbops.sec_functions_owner`
+#   (seed `80_data`) e `dbops.fn_sync_functions_owner()`, che il `90_end` esegue
+#   a **ogni** migrate (`runAlways`). ⛔ Senza quella riga la funzione esiste e
+#   non scrive niente.
+#
+# Verifica: db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260905-35-create-fn-job-run-log-failure-out-of-tx-mctit.yaml
+
+  - changeSet:
+      id: 20260905-35-create-fn-job-run-log-failure-out-of-tx
+      author: mctit
+      failOnError: true
+      comment: >
+        maintenance.fn_job_run_log_failure: scrive una riga di run FALLITO in
+        maintenance.job_run_log su una connessione separata (dblink), cosi' che
+        sopravviva al RAISE che annulla la transazione. Riusa il canale di
+        script.fn_log_error_only. Prende parametri tipizzati e costruisce da sola
+        il proprio INSERT: non e' una primitiva di esecuzione SQL arbitraria.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: maintenance, tableName: job_run_log }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_extension WHERE extname = 'dblink'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_ensure_logconn'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION maintenance.fn_job_run_log_failure(
+                  p_jobname         maintenance.job_run_log.jobname%TYPE,
+                  p_stepname        maintenance.job_run_log.stepname%TYPE,
+                  p_started_at      maintenance.job_run_log.started_at%TYPE,
+                  p_run_uuid        maintenance.job_run_log.run_uuid%TYPE,
+                  p_origine         maintenance.job_run_log.origine%TYPE,
+                  p_processo_codice maintenance.job_run_log.processo_codice%TYPE,
+                  p_auth_user_id    maintenance.job_run_log.auth_user_id%TYPE,
+                  p_message         maintenance.job_run_log.message%TYPE,
+                  p_error_code      maintenance.job_run_log.error_code%TYPE,
+                  p_error_detail    maintenance.job_run_log.error_detail%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_sql  text;
+                  v_dsn  text;
+                  v_open boolean := false;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere il verbale di un run FALLITO dove il rollback
+                  --   non arriva: su una connessione separata.
+                  --
+                  -- ⛔ Chi chiama e' un gestore d'eccezione: qualunque cosa
+                  --   vada storta qui si risolve in un WARNING. Non si fa
+                  --   fallire un lavoro perche' non si e' riusciti a scrivere
+                  --   una nota su di lui.
+                  -- =========================================================
+
+                  -- ⚠️ L'INSERT lo costruisce QUESTA funzione, con %L su ogni
+                  --   valore. Non esiste un parametro che permetta di farle
+                  --   scrivere qualcos'altro: e' cio' che la distingue da una
+                  --   primitiva di esecuzione SQL arbitraria in SECURITY
+                  --   DEFINER di un superuser.
+                  v_sql := format(
+                      'INSERT INTO maintenance.job_run_log '
+                      '(jobname, stepname, started_at, ended_at, ok, message, '
+                      ' error_code, error_detail, agent_host, run_uuid, origine, '
+                      ' meta, processo_codice, auth_user_id) '
+                      'VALUES (%L, %L, %L, now(), false, %L, %L, %L, %L, %L, %L, '
+                      '        %L::jsonb, %L, %s)',
+                      p_jobname, p_stepname, p_started_at,
+                      p_message, p_error_code, p_error_detail,
+                      current_setting('cluster_name', true),
+                      p_run_uuid, p_origine,
+                      -- ⭐ La riga dice di se stessa come e' arrivata: senza,
+                      --   sembrerebbe una riga normale scritta da un giro che
+                      --   invece e' stato annullato.
+                      jsonb_build_object(
+                          'scritta_fuori_transazione', true,
+                          'motivo', 'il RAISE avrebbe annullato il verbale insieme al lavoro'
+                      )::text,
+                      p_processo_codice,
+                      COALESCE(p_auth_user_id::text, 'NULL'));
+
+                  BEGIN
+                      -- 1. la connessione nominata, gestita dal canale esistente
+                      PERFORM script.fn_ensure_logconn();
+                      v_open := 'logconn' = ANY (
+                          COALESCE(public.dblink_get_connections(), ARRAY[]::text[]));
+
+                      IF v_open THEN
+                          PERFORM public.dblink_exec('logconn', v_sql, true);
+                          RETURN;
+                      END IF;
+
+                      -- 2. altrimenti la DSN diretta, come fa fn_log_error_only
+                      v_dsn := COALESCE(
+                          NULLIF(current_setting('myapp.logconn', true), ''),
+                          NULLIF(current_setting('myapp.dblink_log_connection', true), ''));
+
+                      IF v_dsn IS NOT NULL THEN
+                          PERFORM public.dblink_exec(v_dsn, v_sql, true);
+                          RETURN;
+                      END IF;
+
+                      -- 3. nessun canale: si dichiara, non si finge
+                      RAISE WARNING
+                          'maintenance.fn_job_run_log_failure: nessun canale fuori '
+                          'transazione configurato, il run fallito di % non lascia '
+                          'traccia nel giornale', p_jobname;
+                  EXCEPTION WHEN OTHERS THEN
+                      RAISE WARNING
+                          'maintenance.fn_job_run_log_failure: verbale non scritto '
+                          'per % (%)', p_jobname, SQLERRM;
+                  END;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION maintenance.fn_job_run_log_failure(text, text, timestamptz, uuid, varchar, text, integer, text, text, text)
+              IS 'Scrive una riga di run FALLITO in maintenance.job_run_log su una connessione SEPARATA (dblink), cosi'' che sopravviva al RAISE che annulla la transazione. ⛔ Esiste perche'' fn_run_and_log scriveva il verbale del fallimento e poi lo distruggeva: il RAISE fa rollback anche di quella riga, quindi NESSUNO dei dodici job poteva lasciare una riga rossa — ed e'' cosi'' che apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto a «done». ⭐ Riusa il canale gia'' in servizio di script.fn_log_error_only (143.000 righe in dbops.error_log lo dimostrano, fra cui 262 di un guard che esiste solo per sollevare eccezioni). ⛔ NON e'' una primitiva di esecuzione SQL arbitraria: prende parametri tipizzati e costruisce da sola il proprio INSERT con format(%L). ⚠️ Ogni via d''uscita e'' un WARNING: la chiama un gestore d''eccezione, e non si fa fallire un lavoro perche'' non si e'' riusciti a scrivere una nota su di lui — il rovescio e'' che quando il canale non c''e'' TACE, quindi va verificato una volta sul percorso vero di un job. ⚠️ SECURITY DEFINER: dblink rifiuta a un non-superuser una connessione senza password. L''owner (postgres) NON lo mette il changeSet — lo allinea dbops.fn_sync_functions_owner() dalla riga in dbops.sec_functions_owner, a ogni migrate.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS maintenance.fn_job_run_log_failure(
+                  text, text, timestamptz, uuid, varchar, text, integer, text, text, text);
