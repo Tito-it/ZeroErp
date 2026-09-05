@@ -9,10 +9,14 @@
 > Leggendo il contratto — e provando a scrivere il primo presidio — sono emerse **otto
 > cose che il BE non può darsi da solo**.
 >
-> **Stato:** 🟢 **IN CORSO — 1 su 6 fatta.** ✅ **DB-4 applicata il 2026-09-05**
+> **Stato:** 🟢 **IN CORSO — 1 su 8 fatta.** ✅ **DB-4 applicata il 2026-09-05**
 > (era il prerequisito di DB-1). La risposta del team DB è nel **§1-bis**, e
-> corregge l'ordine del §1.
-> ⛔ Due punti vanno decisi insieme prima che uno dei due lati scriva (R-B e R-E).
+> corregge l'ordine del §1; la **risposta del backend, misurata dopo il vostro
+> push**, è nel **§1-ter**.
+> ⛔ Due punti vanno decisi insieme prima che uno dei due lati scriva (R-B e R-E):
+> del primo il §1-ter porta la risposta del BE, il secondo è una decisione di Tid.
+> 🔴 **DB-6, DB-7 e DB-8 non erano nella versione che il team DB ha letto** — sono
+> arrivate con la PR #1507, dopo la loro risposta: §1-ter, ultimo punto.
 >
 > ⛔ **Questo brief dice che cosa serve e perché, non come farlo.** Forma, DDL, numerazione
 > dei changeSet, seed e test sono decisioni di chi scrive: se il *cosa* qui sotto si
@@ -263,6 +267,123 @@ al BE» — cambia il modello dei processi. Le due strade:
 
 ---
 
+## 1-ter. Risposta del BE (2026-09-05) — misurata dopo il vostro push
+
+> ⚠️ Tutto ciò che segue è **letto dal database dopo il merge `6fd2266ed`**, non
+> dedotto dal testo. Dove c'è un numero, viene da una query.
+
+### Che cosa si è sbloccato per il backend: **niente** — ed è corretto così
+
+DB-4 era il prerequisito di **DB-1**, non di un lotto BE: ha fatto un passo nella
+vostra catena, non nella nostra. Il **lotto 4** resta fermo dov'era.
+
+| Misurato | Valore |
+| --- | --- |
+| `dbops.coda_lavori_tipi` | due tipi: `FATTURAZIONE_GIRO`, `FATTURAZIONE_NUMERA` — nessuna casa per la chiusura scadenze |
+| `chiusura_scadenze_daily` | ancora `DOMINIO / PGAGENT` |
+| `vw_processi_dominio_senza_difesa` | **una riga**: `draina_coda_stampa · vendite.fatture_stampa_coda · write-guard` |
+| `vw_processi_dominio_senza_emittente` | **una riga**: `send_pending_emails · config.email_outbox` |
+| `config.codici_errore` | nessun `E_PROCESSO_NON_TROVATO` — il ripiego dichiarato di DB-8 resta in piedi |
+| `vendite.listini` / `listini_versioni` | RLS accesa, **1 policy** ciascuna, write-guard presente — stessa forma di `vendite.contratti` |
+
+### ✅ La metà BE di DB-5 è chiusa, e adesso si vede dalla vista
+
+`dbops.vw_run_senza_attore` è passata da **sette righe a quattro**, e le due del
+backend — `run_fatturazione_batch:immediata` e `:differita` — **non ci sono più**.
+Restano:
+
+| jobname | `processo_registrato` | |
+| --- | --- | --- |
+| `apply_fk_index_policy` | `false` | DB-7 |
+| `automations_cleanup` | `false` | DB-7 |
+| `automations_lock_columns` | `false` | DB-7 |
+| `apply_storicizza_weekly` | `true` | si toglie da sé — ⚠️ ma l'ultima corsa è del **2026-02-21** |
+
+⇒ **Nessuna delle quattro è del backend.** La parte che vi avevo promesso di
+segnalare («vi scrivo io quando la vista è vuota») è fatta per la nostra metà.
+
+### 🔵 R-B, prima domanda — la risposta è: **il suffisso non va strappato**
+
+`registered_job` ha `processo_codice` **keyword-only e senza default**: un comando
+che non lo dichiara non parte. Tutti e sei i comandi headless lo passano esplicito,
+e le due cose sono separate **per costruzione**:
+
+* `run_fatturazione_batch:immediata` è il **jobname** — porta la corsia, che è la
+  chiave dell'anti-overlap: due corsie devono poter girare insieme;
+* `run_fatturazione_batch` è il **processo** — la corsia non c'entra niente.
+
+⇒ ⛔ **Non derivate il codice dal jobname per i comandi del backend, e non
+insegnate alla derivazione a strappare un suffisso**: la derivazione è il ripiego
+per chi non sa dichiararsi, e chi si dichiara ha già dato la risposta giusta.
+Strappare il suffisso farebbe *sembrare* dichiarato anche chi non lo è.
+⇒ **Un `NOT NULL` su `job_run_log.processo_codice` non pianta nessun comando
+Django.** Quello che resta fra voi e il vincolo è DB-7, che è tutto di là.
+
+### 🔵 R-B, seconda domanda — `automations_lock_columns` non è del backend
+
+Cercati i quattro nomi in tutto `backend/`: **nessuna occorrenza**, in nessun file
+Python. Non sono nominati né dai comandi né dai service: vivono in pgAgent e nei
+wrapper `maintenance.proc_*_job`. ⇒ La domanda *«di quale processo sono, o sono
+passi e non job»* resta vostra, e il BE non ha un'opinione da opporre.
+
+### ⚠️ R-E — la decisione è di Tid, ma il BE non è indifferente
+
+Fra le due strade, quella che al backend **non costa niente di nuovo** è la **A**
+(il processo resta `COMMAND` e produce, un secondo processo `CODA` esegue): è
+esattamente la forma di `run_fatturazione_batch`, che è già scritta, provata e in
+piedi da ieri — produttore che legge il roster, un lavoro per azienda, l'identità
+tecnica nello scope.
+
+⛔ **Non è un argomento per scegliere A**: che una strada sia già lastricata non
+dice che sia quella giusta. La **B** cambia il *modello* dei presidi — «un processo
+di coda accodato da una macchina vuole comunque l'identità» — e se il modello è
+quello, va cambiato il modello, non aggirato con un secondo processo.
+⇒ Lo mettiamo davanti a Tid così: **A costa poco e lascia il modello com'è; B costa
+di più e dice la verità su chi accoda.**
+
+### ✅ R-F verificata contro il codice del backend: **non lo tocca**
+
+La regola *«padre e figlia non nella stessa istruzione»* è stata cercata nel
+backend, non data per buona:
+
+* **nessuna CTE di scrittura** su `vendite.listini*` in `listini_repository.py`;
+* `create_listino` e `create_versione` sono **due metodi**, quindi due istruzioni:
+  il padre è già committato nello snapshot quando la figlia viene scritta;
+* nessun cambio di attore fra la scrittura e il commit ⇒ il caso dei **vincoli
+  differiti** non si presenta.
+
+⇒ Niente da correggere lato BE. ⭐ La regola però **vale in avanti**: è annotata
+fra le trappole del piano, perché il giorno in cui qualcuno scriverà padre e figlia
+in una `WITH` il messaggio parlerà di sicurezza per riga e sembrerà un problema di
+permessi.
+
+### 🔴 Tre richieste non erano nella versione che avete letto
+
+La vostra risposta parla di **cinque richieste**, ed è esatto per il commit su cui
+avete lavorato: `a4fe59b4f^` conteneva DB-1…DB-5. **DB-6, DB-7 e DB-8 — e la
+riscrittura di DB-4 — sono arrivate con la PR #1507**, mergiata *dopo* la vostra.
+Sono nel documento che state leggendo adesso, e nessuna è persa:
+
+| | |
+| --- | --- |
+| **DB-7** | ⭐ l'avete trovata da soli, ed è il vostro **R-B**: stessa cosa, due nomi |
+| **DB-6** (fabbrica dell'utente tecnico) | **mai vista** — è il `23505` sullo username deterministico |
+| **DB-8** (codice errore) | **mai vista** — non blocca, c'è un ripiego dichiarato |
+
+⛔ **E c'è una collisione di numeri da sciogliere prima che costi un'ora**: il
+vostro §1-bis registra il write-guard su `fatture_stampa_coda` come «**DB-6**»
+(R-D), mentre in questo brief **DB-6 è un'altra cosa** — la fabbrica dell'utente
+tecnico. Nel vostro registro dei residui quella riga è **R-10**, che è un nome
+libero e non ambiguo.
+⇒ Proposta: **si usa R-10**, e «DB-6» resta la fabbrica. Il numero lo scegliete
+voi; l'importante è che due cose diverse non si chiamino allo stesso modo, perché è
+così che una delle due sparisce.
+
+⚠️ E la vostra tabella **«L'ordine reale» si ferma a DB-6**: DB-7 e DB-8 non ci
+sono. DB-7 è la sola cosa che separa DB-5 dall'essere fattibile.
+
+---
+
 ## DB-1 — La chiusura scadenze ha bisogno di una casa nella coda
 
 **Che cosa serve.** Un tipo di lavoro della coda con cui il backend possa accodare
@@ -353,13 +474,19 @@ richiesta nuova, aggiungo **il consumatore** che ci sbatte contro e una data.
 
 ## DB-4 — ⚠️ *Riscritta*: il write-guard manca su `vendite.fatture_stampa_coda`
 
-> 🔴 **Questa richiesta diceva un'altra cosa, ed era sbagliata.** Diceva «le policy
-> mancano su `vendite.listini*` (R-8)», copiando il vostro registro dei residui.
-> **Interrogato il presidio il 2026-09-05: `vendite.listini_versioni` la policy ce
-> l'ha**, e non compare in `dbops.vw_processi_dominio_senza_difesa`. R-8, per quel
-> bersaglio, **è chiuso**.
-> ⭐ È la ragione per cui un presidio si interroga invece di fidarsi di un elenco
-> scritto: l'elenco invecchia, la vista no.
+> 🔴 **Riscritta due volte, e la prima riscrittura era sbagliata.** Diceva
+> «`vendite.listini_versioni` la policy ce l'ha, R-8 per quel bersaglio è chiuso»,
+> e diceva di averlo letto dal presidio. ⛔ **Non reggeva:** la misura del team DB
+> (§1-bis, R-A) dice `RLS no · policy 0 · write-guard 0`, e i changeSet
+> `20260905-04`/`-05` **accendono** la RLS su quelle due tabelle — cosa che non si
+> fa dove è già accesa. La loro misura è quella giusta, e R-8 era aperto.
+> ⭐ Il presidio si interroga invece di fidarsi di un elenco scritto — ma una
+> lettura del presidio va **riportata per intero**, altrimenti diventa essa stessa
+> l'elenco che invecchia.
+> ⇒ **Quello che resta di questa richiesta è il bersaglio giusto**, ed è l'unica
+> riga oggi viva nel livello 2: il write-guard su `vendite.fatture_stampa_coda`.
+> Il team DB l'ha registrata come **R-10** nel proprio registro dei residui, e come
+> «DB-6» nel §1-bis — ⚠️ vedere la collisione di numerazione nel §1-ter.
 
 **Che cosa serve.** Il **write-guard** `script.trgfn_guard_emittente_scope` su
 `vendite.fatture_stampa_coda`.
