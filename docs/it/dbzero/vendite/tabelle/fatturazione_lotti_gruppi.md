@@ -18,11 +18,17 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| stato_esecuzione | text | YES |  |
+| errore_codice | text | YES |  |
+| errore_messaggio | text | YES |  |
+| errore_quando | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatturazione_lotti_gruppi_key_non_vuota |  |
+| CHECK | chk_lotti_gruppi_errore_parlante |  |
+| CHECK | chk_lotti_gruppi_stato_esecuzione |  |
 | FOREIGN KEY | fk_fatturazione_lotti_gruppi_lotto | lotto_id |
 | PRIMARY KEY | pk_fatturazione_lotti_gruppi | id |
 | UNIQUE | uq_fatturazione_lotti_gruppi_lotto_key | lotto_id, gruppo_key |

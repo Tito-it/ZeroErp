@@ -243,6 +243,7 @@
 - [fn_riporta_lotto_a_draft](funzioni/fn_riporta_lotto_a_draft.md) — (latest review 31-08-2026)  
 - [fn_ritira_commessa_attivita_da_sorgente](funzioni/fn_ritira_commessa_attivita_da_sorgente.md) — (latest review 26-08-2026)
 - [fn_saldo_sorgente_fondo](funzioni/fn_saldo_sorgente_fondo.md) — (latest review 15-08-2026)
+- [fn_segna_esito_gruppo_lotto](funzioni/fn_segna_esito_gruppo_lotto.md)
 - [fn_select_attivita_fatturabili](funzioni/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 - [fn_set_arrotondamento_scope](funzioni/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](funzioni/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.

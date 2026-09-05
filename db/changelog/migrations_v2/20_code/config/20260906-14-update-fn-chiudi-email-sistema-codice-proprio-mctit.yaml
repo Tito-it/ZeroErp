@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ UN CODICE USATO PER DUE COSE SI SPEZZA A MONTE — e l'ha detto il presidio.
+#   Segnalazione: backend, 2026-09-06 · scripts/codici-errore-baseline.sh
+#
+# `config.fn_chiudi_email_sistema` sollevava `E_VALIDAZIONE` da **tre** guardie
+# diverse. Il classificatore dei codici l'ha visto e si e' fermato:
+#
+#     🔴 ACCUMULA  E_VALIDAZIONE — famiglia nuova: NOT_FOUND
+#     ⛔ Un codice ha acquistato un tipo di condizione che non copriva.
+#        NON si aggiorna la baseline per far passare la CI.
+#
+# ⭐ E la regola che lo dice l'abbiamo scritta noi tre giorni fa, su DB-8:
+#   **«un codice usato per due cose si spezza a monte, non si rimappa a valle».**
+#
+# ── ⛔ PERCHE' `E_VALIDAZIONE` ERA IL CODICE SBAGLIATO ──────────────
+#   E' di classe `DATO_ERRATO`: a video diventa *«hai sbagliato i dati»*.
+#   ⚠️ Ma `p_email_log_id` **non arriva mai da una persona**: e' l'id che il
+#   chiamante ha scritto un istante prima. Se non risolve, nessuno ha sbagliato a
+#   compilare niente — e' il codice che passa un valore inesistente.
+#
+# ── ⭐ E NEMMENO `NON_TROVATO`, che sembrava ovvio ──────────────────
+#   Quella classe porta un **404**, ed e' giusta quando e' una persona a chiedere
+#   una cosa che non c'e'. Qui chi chiede e' il backend: un 404 manderebbe a
+#   cercare una risorsa mancante invece di un **difetto di codice**.
+#   ⇒ `TECNICO` dice il vero: e' il chiamante che ha sbagliato, non il mondo.
+#
+# ── ⚠️ LE ALTRE DUE GUARDIE RESTANO `E_VALIDAZIONE`, ed e' una scelta
+#     * `p_stato` fuori dai valori ammessi -> e' proprio la validazione di un
+#       parametro, la famiglia che quel codice gia' copriva;
+#     * riga esistente ma **non** di ambito `SISTEMA` -> resta li' per ora.
+#   🔵 Su quest'ultima la stessa regola direbbe di spezzare ancora: non e' un
+#   dato sbagliato, e' **la porta sbagliata**. La lascio perche' il classificatore
+#   non l'ha segnalata e non voglio infilare una seconda decisione dentro la
+#   correzione di una prima — ma e' una domanda aperta, non una svista.
+#
+# ⚠️ Il codice e il suo messaggio sono in coda ai CSV di `80_data`, non in un
+# loader nuovo. Il messaggio ha **un** segnaposto, e la chiamata passa **un**
+# valore: un segnaposto senza valore fa crashare `format()`.
+#
+# Verifica: db/pgtap/config/test-fn-email-sistema.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260906-14-update-fn-chiudi-email-sistema-codice-proprio-mctit.yaml
+
+  - changeSet:
+      id: 20260906-14-update-fn-chiudi-email-sistema-codice-proprio
+      author: mctit
+      failOnError: true
+      comment: >
+        config.fn_chiudi_email_sistema solleva E_EMAIL_LOG_INESISTENTE (classe
+        TECNICO) quando l'id non risolve, invece di E_VALIDAZIONE. Segnalato dal
+        classificatore dei codici: E_VALIDAZIONE aveva acquistato la famiglia
+        NOT_FOUND. ⛔ Non NON_TROVATO, che porta un 404: qui chi chiede e' il
+        backend, e un 404 manderebbe a cercare una risorsa invece di un difetto
+        di codice.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config'
+                     AND p.proname = 'fn_chiudi_email_sistema'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_chiudi_email_sistema(
+                  p_email_log_id config.email_log.id%TYPE,
+                  p_stato        config.email_log.stato%TYPE,
+                  p_errore       config.email_log.errore%TYPE     DEFAULT NULL,
+                  p_inviato_at   config.email_log.inviato_at%TYPE DEFAULT NULL)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_ambito config.email_log.ambito%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere l'ESITO dell'invio di una email di SISTEMA, dal
+                  --   percorso che non ha un utente in sessione.
+                  --
+                  -- ⛔ Tocca SOLO righe di ambito SISTEMA e SOLO i campi
+                  --   dell'esito. Non e' una porta di servizio per aggiornare
+                  --   una email qualunque.
+                  -- =========================================================
+
+                  -- ⛔ `PENDING` non e' un esito: questa e' la funzione che
+                  --   CHIUDE, non quella che rimette in coda. Ammetterlo
+                  --   vorrebbe dire poter resuscitare una email gia' chiusa.
+                  -- ⚠️ Qui `E_VALIDAZIONE` e' il codice GIUSTO: e' la
+                  --   validazione di un parametro, la famiglia che quel codice
+                  --   copre da sempre.
+                  IF p_stato IS NULL OR p_stato NOT IN ('SENT', 'FAILED', 'RETRY') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('stato', p_stato,
+                                             'email_log_id', p_email_log_id),
+                          NULL::uuid,
+                          'stato ammesso solo fra SENT, FAILED e RETRY');
+                  END IF;
+
+                  -- ⚠️ Si legge PRIMA di scrivere, per poter distinguere i due
+                  --   modi in cui la riga puo' non essere quella giusta. Un
+                  --   UPDATE che non trova niente e' muto, e il chiamante
+                  --   crederebbe di aver chiuso qualcosa.
+                  SELECT l.ambito INTO v_ambito
+                    FROM config.email_log l
+                   WHERE l.id = p_email_log_id;
+
+                  IF NOT FOUND THEN
+                      -- ⭐ CODICE PROPRIO, di classe TECNICO. Non e'
+                      --   E_VALIDAZIONE (DATO_ERRATO, «hai sbagliato i dati»):
+                      --   questo id non arriva da una persona, e' quello che il
+                      --   chiamante ha scritto un istante prima.
+                      -- ⛔ E non e' NON_TROVATO, che porta un 404: qui non c'e'
+                      --   nessuno che cerca una risorsa, c'e' del codice che
+                      --   passa un valore inesistente.
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_EMAIL_LOG_INESISTENTE',
+                          jsonb_build_object('email_log_id', p_email_log_id),
+                          NULL::uuid,
+                          p_email_log_id::text);
+                  END IF;
+
+                  -- ⛔ IL CASO PERICOLOSO, e per questo ha parole sue: qualcuno
+                  --   sta usando la porta di sistema per una email che
+                  --   appartiene a un'azienda. Dirlo con la stessa frase del
+                  --   caso sopra avrebbe sprecato l'unico momento in cui si
+                  --   puo' notare.
+                  IF v_ambito <> 'SISTEMA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+                          jsonb_build_object('email_log_id', p_email_log_id,
+                                             'ambito', v_ambito),
+                          NULL::uuid,
+                          'questa porta chiude solo le email di ambito SISTEMA: '
+                          'una email di un''azienda si chiude dalla sessione di '
+                          'chi ne ha il perimetro');
+                  END IF;
+
+                  -- ⚠️ `tentativi + 1` come faceva update_log_stato: instradare
+                  --   dev'essere un cambio di indirizzo, non di comportamento.
+                  UPDATE config.email_log l
+                     SET stato      = p_stato,
+                         errore     = p_errore,
+                         inviato_at = COALESCE(p_inviato_at, l.inviato_at),
+                         tentativi  = l.tentativi + 1
+                   WHERE l.id     = p_email_log_id
+                     AND l.ambito = 'SISTEMA';
+
+                  RETURN true;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_chiudi_email_sistema(bigint, varchar, text, timestamptz)
+              IS 'Scrive l''ESITO dell''invio (SENT / FAILED / RETRY, errore, inviato_at, tentativi+1) su una riga di ambito SISTEMA, dal percorso che NON ha un utente in sessione. ⭐ E'' la meta'' mancante di config.fn_accoda_email_sistema: la decisione e'' che una mail di sistema parta SUBITO, quindi dopo l''INSERT il backend tenta l''invio e deve scriverne l''esito — e quell''UPDATE e'' bloccato dalla stessa policy, per lo stesso motivo. ⛔ Non e'' una porta di servizio: tocca SOLO righe di ambito SISTEMA (sta nella WHERE, non in un controllo dimenticabile) e SOLO i campi dell''esito. ⛔ PENDING non e'' un esito ammesso: questa chiude, non rimette in coda. ⚠️ Se la riga non esiste solleva E_EMAIL_LOG_INESISTENTE, classe TECNICO — rev 2026-09-06, su segnalazione del classificatore dei codici: prima era E_VALIDAZIONE, che e'' DATO_ERRATO e a video diventa «hai sbagliato i dati», mentre quell''id non arriva da una persona ma dal chiamante che l''ha scritto un istante prima. ⭐ E non NON_TROVATO, che porta un 404: qui nessuno cerca una risorsa, e'' del codice che passa un valore inesistente. Se invece la riga esiste e NON e'' di sistema, il messaggio e'' un altro: e'' qualcuno che usa la porta di sistema per una email di un''azienda, ed e'' l''unico momento in cui lo si puo'' notare. ⚠️ tentativi+1 lo fa la funzione perche'' lo faceva update_log_stato: instradare dev''essere un cambio di indirizzo, non di comportamento.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna a sollevare E_VALIDAZIONE anche sull'id inesistente,
+              --   cioe' a un codice che copre due famiglie di condizioni.
+              --   Il classificatore tornerebbe rosso, e avrebbe ragione.
+              SELECT 1;
