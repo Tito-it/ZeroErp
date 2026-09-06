@@ -1,0 +1,18 @@
+# Template systemd — timer della disattivazione utenti scaduti.
+# Placeholder per-host: __ONCALENDAR__ (cadenza, default `*-*-* 03:00` = ogni
+# notte alle 03:00, dichiarato in `backend/deploy/sveglie.json`).
+#
+# ⛔ L'installer lo SCRIVE ma NON lo abilita: c'è un gemello pgAgent che fa lo
+# stesso lavoro. Il perché per esteso sta nel .service gemello.
+#
+# ⚠️ `Persistent=true`: il tick è giornaliero, quindi un host spento alle 03:00
+# perderebbe il giro per un giorno intero. Col flag il run parte al riaggancio.
+[Unit]
+Description=Timer ZeroERP disattivazione utenti con finestra scaduta
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target
