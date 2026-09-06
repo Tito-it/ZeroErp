@@ -77,10 +77,24 @@ esegui_installer() {
   local run="$1" dest="$TMP/$1/units" registro="$TMP/$1/systemctl.log"
   mkdir -p "$TMP/$run"
   : > "$registro"
-  PATH="$TMP/bin:$PATH" \
-  SYSTEMCTL_REGISTRO="$registro" \
-  ZEROERP_SYSTEMD_DIR="$dest" \
-    bash "$INSTALLER" > "$TMP/$run/stdout.txt" 2>&1
+  # ⛔ L'USCITA DELL'INSTALLER SI MOSTRA QUANDO FALLISCE, e non è un di più.
+  #    L'output va in un file (il registro delle chiamate è quello che conta, e
+  #    lo stdout sporcherebbe l'esito), il file lo cancella il `trap`, e con
+  #    `set -e` la corsa muore prima di stampare qualsiasi cosa: in CI restava
+  #    l'intestazione e `exit 1`, senza una riga che dicesse perché.
+  # 🔴 È successo davvero: l'installer si fermava su un env file assente — che
+  #    in un checkout non c'è mai — e la CI non aveva modo di dirlo.
+  # ⚠️ `|| { … }` e non `set +e`: qui un installer che fallisce È il rosso, e
+  #    proseguire vorrebbe dire misurare un registro vuoto e attribuire il
+  #    guasto al primo controllo invece che alla causa.
+  if ! PATH="$TMP/bin:$PATH" \
+       SYSTEMCTL_REGISTRO="$registro" \
+       ZEROERP_SYSTEMD_DIR="$dest" \
+         bash "$INSTALLER" > "$TMP/$run/stdout.txt" 2>&1; then
+    echo "  ❌ l'installer è uscito con errore ($run). Ecco cosa ha detto:" >&2
+    sed 's/^/       /' "$TMP/$run/stdout.txt" >&2
+    exit 1
+  fi
   echo "$registro"
 }
 
