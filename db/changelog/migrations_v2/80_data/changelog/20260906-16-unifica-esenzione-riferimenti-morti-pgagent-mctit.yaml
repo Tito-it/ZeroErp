@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Una riga sola per le DUE facce dello stesso falso positivo.
+#   Sostituisce le voci dei changeSet 20260906-09 e 20260906-15.
+#
+# ── 🔴 L'ERRORE DI DISEGNO, ED E' ISTRUTTIVO ───────────────────────
+#   Lo stesso riferimento a `pgagent.pga_job` produce DUE errori diversi a
+#   seconda della macchina:
+#
+#     dbdev  error:42501:33:RETURN QUERY:permesso negato per lo schema pgagent
+#     CI     error:42P01:33:RETURN QUERY:relation "pgagent.pga_job" does not exist
+#
+#   Sembravano due debiti distinti — cause diverse, motivi diversi — e sono
+#   stati registrati con due righe, una per SQLSTATE.
+#
+#   ⛔ **Ma il registro non lo permette, e ha ragione.** Il presidio fa DUE
+#   controlli: che ogni difetto sia registrato, e che ogni riga del registro
+#   corrisponda a un difetto **che c'e' adesso, su questa macchina**. Le due
+#   facce non convivono mai:
+#     * su dbdev esiste solo il permesso negato ⇒ la riga del `42P01` avanza;
+#     * in CI esiste solo la tabella assente ⇒ la riga del `42501` avanza.
+#   ⇒ Qualunque macchina, una delle due e' sempre «di troppo». Non e' un
+#     difetto del presidio: e' il presidio che dice che quella non e' la forma
+#     giusta.
+#
+#   ⭐ La lezione, e vale oltre questo caso: **un registro di debito descrive lo
+#   stato di UNA macchina alla volta.** Una riga che documenta un caso che su
+#   questa macchina non puo' verificarsi non e' documentazione: e' rumore che
+#   il presidio deve segnalare.
+#
+# ── ✅ LA FORMA GIUSTA: un difetto, una riga ───────────────────────
+#   Il difetto e' uno solo — *«questa funzione legge pgagent, e plpgsql_check
+#   non riesce a risolvere quel riferimento»* — e cambia solo il modo in cui si
+#   manifesta. Quindi una riga, con un modello che aggancia entrambe le forme e
+#   un motivo che le spiega tutte e due.
+#
+#   Il modello `%:RETURN QUERY:%pgagent%` si ancora alle due cose che NON
+#   cambiano: l'istruzione e lo schema.
+#   ⚠️ Non allo SQLSTATE, che cambia con la macchina, e non al messaggio, che e'
+#   tradotto. `pgagent` invece e' un identificatore: resta uguale in ogni lingua.
+#   ⛔ E non e' un modello generico: provato che rifiuta sia un errore diverso
+#   sulla stessa istruzione, sia lo stesso errore su un'istruzione diversa.
+#
+# ── ⭐ PERCHE' E' UN FALSO POSITIVO — lo dimostra il codice ─────────
+#   La funzione se lo chiede gia', poche righe sopra:
+#       IF to_regclass('pgagent.pga_job') IS NULL THEN RETURN;
+#   Se pgAgent non c'e', torna vuota. E' un caso previsto e gestito, non una
+#   dimenticanza. `plpgsql_check` pero' compila TUTTO il corpo e non puo' sapere
+#   che quel guard protegge l'istruzione sotto.
+#   ⚠️ Sull'altra faccia vale l'argomento gia' scritto nel `-09`: la funzione e'
+#   SECURITY DEFINER, e la domanda «il chiamante puo' risolvere il riferimento?»
+#   per una SECURITY DEFINER e' la domanda sbagliata.
+#
+# ── ⛔ pgAgent in CI NON SI ATTIVA (decisione di Tid, 2026-09-06) ───
+#   «E' sempre stato un problema». La strada resta chiusa, e non la si riapre
+#   per far tacere un controllo.
+#
+# ── ✅ QUANDO ESCE DAL REGISTRO ────────────────────────────────────
+#   Il giorno in cui la funzione smette di leggere `pgagent.*`. ⛔ NON il giorno
+#   in cui qualcuno desse i permessi all'applicazione, e non il giorno in cui
+#   qualcuno si stancasse di vederla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260906-16-unifica-esenzione-riferimenti-morti-pgagent-mctit.yaml
+
+  - changeSet:
+      id: 20260906-16-unifica-esenzione-riferimenti-morti-pgagent
+      author: mctit
+      failOnError: true
+      comment: >
+        Sostituisce le due righe di esenzione su dbops.fn_get_pgagent_job_stato
+        (20260906-09 e -15) con UNA riga sola. Le due facce dello stesso falso
+        positivo — permesso negato su dbdev, tabella assente in CI — non
+        convivono mai sulla stessa macchina, quindi una delle due risultava
+        sempre «di troppo» nel registro del debito. Un difetto, una riga.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: riferimenti_morti_esenzioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Prima si tolgono le due righe per SQLSTATE, poi si mette
+              --   quella unificata: l'ordine conta, perche' il modello nuovo
+              --   copre le stesse forme e due righe che agganciano lo stesso
+              --   difetto sarebbero di nuovo una di troppo.
+              DELETE FROM dbops.riferimenti_morti_esenzioni
+               WHERE schema_nome = 'dbops'
+                 AND funzione    = 'fn_get_pgagent_job_stato'
+                 AND esito_like IN ('%42501:%RETURN QUERY%',
+                                    '%42P01:%RETURN QUERY%');
+
+              INSERT INTO dbops.riferimenti_morti_esenzioni
+                     (schema_nome, funzione, esito_like, motivo, data_registrazione)
+              SELECT 'dbops',
+                     'fn_get_pgagent_job_stato',
+                     -- Si ancora a cio' che NON cambia fra le macchine:
+                     -- l'istruzione e il nome dello schema. Lo SQLSTATE cambia,
+                     -- il messaggio e' tradotto, `pgagent` no.
+                     '%:RETURN QUERY:%pgagent%',
+                     'FALSO POSITIVO STRUTTURALE, con DUE facce che non convivono mai: su '
+                     'dbdev e'' 42501 (le tabelle di pgAgent ci sono, il chiamante non le '
+                     'vede), in CI e'' 42P01 (non ci sono affatto, perche'' la fase '
+                     '85_pgagent e'' segnata come eseguita senza esserlo). ⭐ Una riga per '
+                     'SQLSTATE non funziona: il registro pretende che ogni voce '
+                     'corrisponda a un difetto presente SU QUESTA macchina, quindi una '
+                     'delle due risultava sempre di troppo. Un difetto, una riga. '
+                     '⭐ Che sia un falso positivo lo dimostra il codice: la funzione '
+                     'chiede to_regclass(''pgagent.pga_job'') e torna VUOTA se non c''e'' — '
+                     'l''assenza di pgAgent e'' prevista e gestita. Ma plpgsql_check '
+                     'compila tutto il corpo e non sa che quel guard protegge la RETURN '
+                     'QUERY. Sull''altra faccia: la funzione e'' SECURITY DEFINER, e per '
+                     'una SECURITY DEFINER «il chiamante puo'' risolvere il riferimento?» '
+                     'e'' la domanda sbagliata — quella giusta e'' se puo'' risolverlo il '
+                     'suo PROPRIETARIO, e la risposta e'' si'' (verificato leggendo '
+                     'dbops.vw_processi_programmazione come zeroerp_app). '
+                     '⛔ Scartato installare pgAgent in CI (decisione di Tid del '
+                     '2026-09-06: «e'' sempre stato un problema»); scartato il GRANT USAGE '
+                     'su pgagent a zeroerp_app, che aprirebbe anche pga_joblog con '
+                     'l''output dei comandi; scartata la riscrittura in SQL dinamico, che '
+                     'sarebbe codice peggiore per compiacere un controllo. '
+                     '✅ Esce dal registro quando la funzione smette di leggere pgagent.*.',
+                     DATE '2026-09-06'
+               WHERE NOT EXISTS (
+                     SELECT 1 FROM dbops.riferimenti_morti_esenzioni e
+                      WHERE e.schema_nome = 'dbops'
+                        AND e.funzione    = 'fn_get_pgagent_job_stato'
+                        AND e.esito_like  = '%:RETURN QUERY:%pgagent%');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna alle due righe per SQLSTATE, che e'' lo stato da cui
+              --   questo changeSet viene: rimetterne una sola lascerebbe il
+              --   registro incoerente su una delle due macchine.
+              DELETE FROM dbops.riferimenti_morti_esenzioni
+               WHERE schema_nome = 'dbops'
+                 AND funzione    = 'fn_get_pgagent_job_stato'
+                 AND esito_like  = '%:RETURN QUERY:%pgagent%';
