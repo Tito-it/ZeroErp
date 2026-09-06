@@ -524,17 +524,35 @@ export function statoTaskRunSeverity(codice) {
   return resolveSeverity(STATO_TASK_RUN_MAP, codice)
 }
 
-// Stato di esecuzione della singola fattura nel lotto
-// (vendite.fatturazione_lotti_fatture.stato_esecuzione): PRONTA/ESCLUSA=grigio,
-// ELABORATA=verde, ERRORE=rosso.
-export const STATO_ESECUZIONE_FATTURA_MAP = {
-  PRONTA: 'secondary',
-  ELABORATA: 'success',
+// Esito di esecuzione dentro un lotto — UNA mappa per DUE livelli:
+// `vendite.fatturazione_lotti_fatture.stato_esecuzione` (la fattura prodotta) e
+// `vendite.fatturazione_lotti_gruppi.stato_esecuzione` (il documento preso in
+// carico, che una fattura può non essere mai diventata).
+//
+// ⭐ Una sola mappa perché il vocabolario è UNO SOLO, e lo è per decisione: la
+// D-2 di `brief-db-esito-gruppo-lotto` tiene i due CHECK identici, «due colonne
+// che rispondono alla stessa domanda a due livelli non possono parlare due
+// lingue». Due mappe qui sarebbero la seconda sede della stessa cosa.
+//
+// 🔴 FINO AL 2026-09-06 QUESTA MAPPA PARLAVA UNA LINGUA CHE IL DATABASE NON
+// PARLA: diceva `PRONTA` / `ELABORATA` / `ESCLUSA`, mentre il CHECK
+// `chk_fatturazione_lf_stato_esecuzione` ammette solo
+// `PENDING` / `RUNNING` / `COMPLETED` / `ERRORE`. Effetto: nel drawer del lotto
+// un documento `COMPLETED` prendeva il ripiego `secondary` — GRIGIO, cioè
+// «bozza» — invece del verde. ⚠️ Nessun errore da nessuna parte: `resolveSeverity`
+// ripiega di proposito, e un colore sbagliato non fallisce. Trovato aggiungendo
+// il secondo consumatore, che parla lo stesso vocabolario.
+//
+// ⚠️ `PENDING` è grigio e non azzurro: è «in coda», cioè un lavoro che non è
+// ancora cominciato — `RUNNING` è quello in corso.
+export const STATO_ESECUZIONE_LOTTO_MAP = {
+  PENDING: 'secondary',
+  RUNNING: 'info',
+  COMPLETED: 'success',
   ERRORE: 'danger',
-  ESCLUSA: 'secondary',
 }
-export function statoEsecuzioneFatturaSeverity(codice) {
-  return resolveSeverity(STATO_ESECUZIONE_FATTURA_MAP, codice)
+export function statoEsecuzioneLottoSeverity(codice) {
+  return resolveSeverity(STATO_ESECUZIONE_LOTTO_MAP, codice)
 }
 
 // Natura del documento fiscale (config.nature_doc_fiscale.codice_interno):

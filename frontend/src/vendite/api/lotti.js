@@ -41,6 +41,33 @@ export function listLottoFatture(lottoId, params = {}) {
   return api.get(`${BASE}/${lottoId}/fatture/`, { params })
 }
 
+// GET i DOCUMENTI che il lotto ha preso in carico, con l'esito di ciascuno.
+//
+// ⭐ Non è un doppione di `listLottoFatture`, ed è la ragione per cui esiste
+// (brief-db-esito-gruppo-lotto). Quella elenca le FATTURE del lotto: un
+// documento che cade PRIMA di diventarne una non ha niente a cui appendersi e
+// sparisce dal racconto — sul lotto LTF-0009578 se ne vedevano due su tre, e il
+// terzo era nominato solo da una segnalazione, per giunta con
+// l'identificativo della COMMESSA.
+// ⚠️ Le due liste NON sono in corrispondenza 1:1 nemmeno a giro riuscito: una
+// fattura può raccogliere più documenti. Sono due domande diverse.
+// ⚠️ La risposta porta `perimetro_dichiarato`: un giro DI MASSA non dichiara
+// nessun perimetro, quindi qui non ha niente da mostrare — e senza quel flag
+// «non ha lavorato niente» e «non dichiara un perimetro» si leggono uguali.
+// `statoEsecuzione` assente = tutti, compresi i documenti mai tentati.
+export function listLottoGruppi(
+  lottoId, { page = 1, pageSize = 25, orderBy = null, orderDir = null, statoEsecuzione = null } = {},
+) {
+  const params = { page, page_size: pageSize }
+  if (orderBy) params.order_by = orderBy
+  // ⚠️ Il verso si manda SOLO insieme alla colonna: senza colonna il backend ha
+  // un ordine di default suo — i falliti in cima — e un `asc` spedito a vuoto
+  // lo annullerebbe.
+  if (orderBy && orderDir) params.order_dir = orderDir
+  if (statoEsecuzione) params.stato_esecuzione = statoEsecuzione
+  return api.get(`${BASE}/${lottoId}/gruppi/`, { params })
+}
+
 // GET i tentativi dei task del lotto — elenco PAGINATO e ordinabile
 // (`vendite.fn_list_lotto_task_runs`), con il totale nell'envelope.
 // ⚠️ `order_by` va lasciato al DB: la whitelist vive nella funzione, e su un
@@ -69,6 +96,10 @@ export function listLottoTaskRuns(
 // verrebbe intercettato prima della view (memoria feedback_drf_format_magic_param).
 export function exportLottoFatture(lottoId, params = {}) {
   return api.get(`${BASE}/${lottoId}/fatture/export/`, { params, responseType: 'blob' })
+}
+
+export function exportLottoGruppi(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/gruppi/export/`, { params, responseType: 'blob' })
 }
 
 export function exportLottoTaskRuns(lottoId, params = {}) {

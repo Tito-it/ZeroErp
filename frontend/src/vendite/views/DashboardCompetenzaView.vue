@@ -37,6 +37,8 @@ import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
 import DonutTransito from '../../core/components/charts/DonutTransito.vue'
 import Button from 'primevue/button'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
+import { BERSAGLIO_TIPI } from '../../core/bersagli'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaGestioneDrawer from '../components/CommessaGestioneDrawer.vue'
 import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
@@ -51,12 +53,12 @@ import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
-import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA } from '../constants'
+import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA, STATO_ESECUZIONE_LOTTO } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
-import { statoDocFiscaleSeverity } from '../../core/utils/severity'
+import { statoDocFiscaleSeverity, statoEsecuzioneLottoSeverity } from '../../core/utils/severity'
 import { approvaCompetenza } from '../api/commesse'
 import { getFatturazioneRun, runFatturazione } from '../api/lotti'
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
@@ -907,6 +909,59 @@ function gruppoTipoLabel(row) {
     `vendite.dashboard_competenza.tipo_gruppo.${String(row.tipo_gruppo).toLowerCase()}`,
     row.tipo_gruppo,
   )
+}
+
+// ═══ IL SEGNO SU UN DOCUMENTO CHE UN GIRO HA GIÀ PROVATO A FATTURARE ═══════
+//
+// ⭐ IL CASO (brief-db-esito-gruppo-lotto, lotto LTF-0009578). Un lotto prende
+//    in carico tre documenti e ne fattura due. Il terzo cade PRIMA di diventare
+//    fattura, quindi non compare nel lotto — e qui restava fra quelli da
+//    emettere, identico agli altri. Sembrava fatturabile, e chi guardava non
+//    aveva modo di sapere che era già stato provato.
+//
+// ⛔ IL SEGNO NON SPEGNE LA RIGA (decisione di Tid, 2026-09-06): stadio e
+//    emittibilità restano quelli di prima, la spunta resta spuntabile e
+//    «Fattura questo» resta acceso. Dice «ci ho provato e non ci sono
+//    riuscito», non «non si può fatturare» — il rimedio è correggere la
+//    commessa e riprovare, non nascondere la riga.
+//
+// ⚠️ `null` non è «andata bene»: è «nessuno l'ha detto». Si accende SOLO su
+//    `ERRORE`, mai sull'assenza — un segno su ogni riga mai tentata sarebbe
+//    rumore su tutto il mese.
+
+// Scopo: l'ultimo tentativo su questo documento è fallito?
+function haUltimoEsitoErrore(row) {
+  return row.ultimo_esito === STATO_ESECUZIONE_LOTTO.ERRORE
+}
+
+// Scopo: ⭐ IL GESTO CHE SEGUE IL SEGNO — «apri la commessa da correggere».
+//        È il punto che decide se il lavoro è servito: nel caso reale la causa
+//        non era un difetto del programma ma un dato mancante sulla commessa
+//        34137, e un rosso che non porta lì lascia l'operatore a sapere di
+//        avere un problema senza sapere che farci.
+// ⚠️ Il bersaglio si compone QUI e non arriva dal backend, ed è la differenza
+//        con l'icona del drawer lotto: là il bersaglio è PERSISTITO nel `meta`
+//        della segnalazione perché la riga non sa a chi appartiene l'errore;
+//        qui la commessa è una colonna della riga stessa — chiedere al backend
+//        di rispedirla sarebbe lo stesso dato due volte.
+// ⛔ Elenco vuoto senza commessa: `BersaglioAzioni` non disegna niente, e il
+//        messaggio resta leggibile. Mai un pulsante che porta in un vicolo
+//        cieco (regola §4.3 di `brief-db-bersaglio-errore`).
+function bersagliUltimoEsito(row) {
+  return row.commessa_id
+    ? [{ type: BERSAGLIO_TIPI.COMMESSA, id: row.commessa_id }]
+    : []
+}
+
+// Scopo: il titolo del pannello dell'errore, che NOMINA il lotto in cui il
+//        tentativo è avvenuto. ⭐ È l'unico uso di `ultimo_lotto_codice`
+//        nell'icona: il codice serve a dire «quale giro», non a navigarci — la
+//        vista espone il codice e non l'id, e inventare un salto da un codice
+//        vorrebbe dire cercarlo.
+function titoloUltimoEsito(row) {
+  return row.ultimo_lotto_codice
+    ? t('vendite.dashboard_competenza.ultimo_esito_titolo_lotto', { lotto: row.ultimo_lotto_codice })
+    : t('vendite.dashboard_competenza.ultimo_esito_titolo')
 }
 
 // Scopo: paginazione DataTable errori (lazy, paginator top; calcolo
@@ -2394,6 +2449,42 @@ onActivated(() => {
                       class="pi pi-spin pi-spinner app-spinner-in-corso"
                       v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
                     />
+                    <!-- ⭐ L'ULTIMO TENTATIVO È FALLITO. Accanto al nome, dove
+                         l'occhio è già posato: stesso posto del lucchetto, e
+                         per la stessa ragione — segnalare, non nascondere.
+                         ⛔ NON è una colonna di catalogo, ed è una scelta: le
+                         cinque colonne dell'esito esistono (disponibili e
+                         spente, per chi le vuole in lista o nell'export), ma il
+                         segno deve esserci SEMPRE. Una colonna che nessuno ha
+                         acceso è un segno che non c'è.
+                         ⚠️ Il messaggio in un popover e non in una cella: il
+                         testo cita numeri di documento e via d'uscita, e in una
+                         colonna sarebbe troncato — cioè presente e inutile. -->
+                    <ErroreRigaInfo
+                      v-if="haUltimoEsitoErrore(data)"
+                      :messaggio="data.ultimo_errore_messaggio"
+                      :codice="data.ultimo_errore_codice"
+                      :quando="data.ultimo_errore_quando"
+                      :bersagli="bersagliUltimoEsito(data)"
+                      :titolo="titoloUltimoEsito(data)"
+                    />
+                  </template>
+                  <!-- Le cinque colonne dell'esito nascono SPENTE a catalogo
+                       (D-4: si aggiungono al preset con `visibile = FALSE`, e
+                       chi ne ha bisogno le accende). Solo l'esito ha uno slot:
+                       è un vocabolario chiuso e vuole il suo colore. Codice,
+                       motivo, data e lotto si rendono nudi — il seed dichiara
+                       già `datetime_short` per la data.
+                       ⚠️ Vuoto = MAI TENTATO, e si scrive «—» come ogni altra
+                       assenza: dire «in attesa» su un documento che nessun giro
+                       ha guardato sarebbe una promessa che nessuno ha fatto. -->
+                  <template #cell-ultimo_esito="{ data }">
+                    <Tag
+                      v-if="data.ultimo_esito"
+                      :value="data.ultimo_esito"
+                      :severity="statoEsecuzioneLottoSeverity(data.ultimo_esito)"
+                    />
+                    <span v-else>—</span>
                   </template>
                   <template #cell-tipo_gruppo="{ data }">
                     <Tag

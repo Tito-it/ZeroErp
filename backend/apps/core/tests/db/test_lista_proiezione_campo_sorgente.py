@@ -616,6 +616,22 @@ _ESERCIZI: dict[str, Esercizio] = {
             **_ordine(ob, od, "id", chiavi=("sort_by", "sort_dir")),
         ),
     ),
+    # ⭐ La scheda «Presi in carico» (brief-db-esito-gruppo-lotto): i documenti
+    #    che il lotto ha preso, compresi quelli che una fattura non sono mai
+    #    diventati. ⚠️ Nessun `campi_da_python`: qui il cursore vede TUTTO —
+    #    l'identita' del gruppo la porta la SELECT (aggregata dalla vista di
+    #    competenza), non il mapping.
+    "vendite.lotto_gruppi": Esercizio(
+        dove="vendite/db/vendite_repository.py::list_lotto_gruppi",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.vendite_repository", "VenditeRepository"
+        ).list_lotto_gruppi(
+            lotto_id=_ID_FINTO,
+            limit=1,
+            offset=0,
+            **_ordine(ob, od, chiavi=("sort_by", "sort_dir")),
+        ),
+    ),
     "vendite.lotto_task_runs": Esercizio(
         dove="vendite/db/pipeline_repository.py::list_lotto_task_runs",
         chiama=lambda ob, od: _r(

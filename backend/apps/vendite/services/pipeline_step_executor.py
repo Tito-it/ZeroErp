@@ -19,6 +19,14 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
+# Il vocabolario dell'esito di esecuzione dentro un lotto — specchio del CHECK
+# di tabella. Vive con le altre liste chiuse del dominio (`DASH_COMPETENZA_STADI`,
+# `TIPO_GRUPPO_ONERI`, …): una sede sola, e chi scrive e chi legge la usano
+# entrambi. ⛔ Riscrivere le stringhe qui sarebbe la seconda sede.
+from apps.vendite.db.vendite_repository import (
+    STATO_ESECUZIONE_COMPLETED,
+    STATO_ESECUZIONE_ERRORE,
+)
 from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 
@@ -1330,9 +1338,19 @@ class PipelineStepExecutor:
         messaggi = {e.item: _messaggio_pull(e.item, e.messaggio) for e in esito.errori}
         for commessa_id in commessa_ids:
             fallita = commessa_id in messaggi
+            # ⛔ LO STATO SI DECIDE UNA VOLTA SOLA. La stessa ternaria era
+            #    scritta DUE volte — qui e nel log poco sotto — e una copia che
+            #    esiste solo per raccontare l'altra e' la forma in cui un
+            #    verbale finisce a dire una cosa diversa da quella accaduta.
+            # ⚠️ E i due valori vengono dallo SPECCHIO del CHECK di tabella
+            #    (`STATI_ESECUZIONE_LOTTO`), non da stringhe scritte a mano:
+            #    un typo qui non fallisce, fa scrivere un esito che il vincolo
+            #    rifiuta — dentro un gestore d'eccezione, cioe' proprio dove
+            #    l'errore vero verrebbe coperto.
+            stato = STATO_ESECUZIONE_ERRORE if fallita else STATO_ESECUZIONE_COMPLETED
             marcati = self.repository.segna_esito_gruppo_lotto(
                 lotto_id,
-                "ERRORE" if fallita else "COMPLETED",
+                stato,
                 commessa_id=commessa_id,
                 errore_codice="E_PULL_COMMESSA" if fallita else None,
                 errore_messaggio=messaggi.get(commessa_id),
@@ -1344,7 +1362,7 @@ class PipelineStepExecutor:
                     "pull_commesse.esito_non_appeso lotto_id=%s commessa_id=%s "
                     "stato=%s — nessun gruppo marcato: il lotto raccontera' un "
                     "esito su un documento che non mostra",
-                    lotto_id, commessa_id, "ERRORE" if fallita else "COMPLETED",
+                    lotto_id, commessa_id, stato,
                 )
 
     # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti

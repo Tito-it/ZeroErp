@@ -141,6 +141,32 @@ const DESTINAZIONI = Object.freeze({
   //    Otto destinazioni su nove tipi.
 })
 
+// Scopo: ⭐ I NOMI DEI TIPI, per chi un bersaglio se lo COMPONE invece di
+//        riceverlo dal backend.
+//
+// ⭐ PERCHE' ESISTE (2026-09-06). La maggioranza dei bersagli arriva
+//    dall'envelope o dal `meta` di una segnalazione: chi li rende non li
+//    scrive, li passa. Ma due superfici li compongono da sé — l'icona d'errore
+//    dei gruppi in competenza e il kebab dei documenti presi in carico dal
+//    lotto — perché lì la cosa da aprire è già una colonna della riga, e
+//    chiederla al backend sarebbe lo stesso dato due volte.
+//
+// ⛔ Alla terza occorrenza la stringa `'COMMESSA'` era scritta a mano in tre
+//    template, e il modo in cui sbaglia è MUTO: un tipo che non sta nella mappa
+//    non risolve, `bersagliRisolti` lo scarta e il pulsante semplicemente non
+//    compare. Nessun errore, nessun avviso — solo un gesto che manca.
+//
+// ⚠️ Si DERIVA dalle chiavi di `DESTINAZIONI`, non si riscrive: un elenco
+//    parallelo sarebbe la seconda sede della stessa cosa, e il giorno in cui
+//    una destinazione cambia nome resterebbe indietro senza fallire.
+// ⛔ Da NON confondere con `DOCUMENTO_DRAWER_TIPI`, che oggi porta gli stessi
+//    nomi: sono due vocabolari distinti che coincidono per caso — uno dice
+//    «quale entità», l'altro «quale pannello» — e appoggiarsi all'altro
+//    significherebbe legarsi a una coincidenza.
+export const BERSAGLIO_TIPI = Object.freeze(
+  Object.fromEntries(Object.keys(DESTINAZIONI).map((tipo) => [tipo, tipo])),
+)
+
 // Scopo: ⭐ IL CONFINE, e passa TUTTO di qui. Il backend parla inglese
 //        (`{type, id}`, come ogni chiave dell'envelope), questo lato parla
 //        italiano (`{tipo, id}`, come il resto del dominio): la traduzione

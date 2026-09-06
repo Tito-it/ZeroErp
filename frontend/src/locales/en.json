@@ -2256,7 +2256,14 @@
       "motivo_righe_annullate": "cancelled | cancelled",
       "motivo_nessuna_riga_candidata": "with no billable lines | with no billable lines",
       "motivo_esecuzione_fallita": "to retry | to retry",
-      "motivo_non_determinato": "in error | in error"
+      "motivo_non_determinato": "in error | in error",
+      "col_ultimo_esito": "Attempt outcome",
+      "col_ultimo_errore_codice": "Error code",
+      "col_ultimo_errore_messaggio": "Reason",
+      "col_ultimo_errore_quando": "Attempted on",
+      "col_ultimo_lotto": "Attempt batch",
+      "ultimo_esito_titolo": "The last invoicing attempt failed",
+      "ultimo_esito_titolo_lotto": "Last attempt failed — batch {lotto}"
     },
     "ddt": {
       "titolo": "Sales delivery notes",
@@ -2880,7 +2887,13 @@
       "giornale_ritirate": "{n} events from retried attempts hidden.",
       "giornale_parziale": "Showing {n} of {tot} events.",
       "lotto_in_giro_tooltip": "Numbering of this batch already started and running: wait for the outcome, the spinner disappears on its own when the run ends.",
-      "numera_mese_atteso": "A numbering run is still in progress. The MONTH action takes every batch, including those already running: wait for it to finish. Meanwhile you can number other selections."
+      "numera_mese_atteso": "A numbering run is still in progress. The MONTH action takes every batch, including those already running: wait for it to finish. Meanwhile you can number other selections.",
+      "tab_gruppi": "Taken in",
+      "gruppi_senza_perimetro": "This batch declares no document scope: it is a bulk run, and works on everything it finds. The documents it produced are in the “Documents” tab.",
+      "nessun_gruppo": "No document taken in",
+      "gruppo_errore_titolo": "Why this document did not go through",
+      "gruppo_commesse_multi": "{n} jobs",
+      "gruppo_commesse_multi_tooltip": "This document feeds more than one job: there is no single one to open."
     },
     "numerazione_data": {
       "titolo": "Numbering — document date",
@@ -3819,6 +3832,15 @@
       "TITOLO": "Customer VAT title (e.g. letter of intent)",
       "ASSENTE": "No rate resolved: it must be chosen",
       "MANUALE": "Chosen manually"
+    },
+    "lotto_gruppi": {
+      "col_riferimento": "Document",
+      "col_tipo_gruppo": "Type",
+      "col_commessa": "Job",
+      "col_stato_esecuzione": "Outcome",
+      "col_errore_codice": "Error code",
+      "col_errore_messaggio": "Reason",
+      "col_errore_quando": "Failed on"
     }
   },
   "pagamenti": {

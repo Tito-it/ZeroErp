@@ -240,6 +240,55 @@ class LottoFattureRow(TypedDict):
     can_reset_fattura_reason_key: str | None
 
 
+class LottoGruppoRow(TypedDict):
+    # UN DOCUMENTO PRESO IN CARICO DA UN LOTTO, e com'e' andato
+    # (`vendite.fatturazione_lotti_gruppi`, brief-db-esito-gruppo-lotto).
+    #
+    # ⭐ PERCHE' NON E' `LottoFattureRow`. Quella riga si aggancia a
+    # `fattura_id`: descrive un documento che una fattura l'ha prodotta. Un
+    # documento che cade PRIMA — al pull delle attivita' dalla commessa — non
+    # ha nessuna fattura a cui appendersi, e finora non compariva da nessuna
+    # parte. Questa e' la grana in cui esiste comunque.
+    # ⚠️ Le due NON sono in corrispondenza 1:1 nemmeno quando tutto va bene:
+    # `fn_build_fattura_key` puo' raccogliere piu' gruppi nello stesso
+    # documento. Sono due domande diverse, non due viste della stessa.
+    id: int
+    # La chiave di dominio del gruppo, `<sorgente>:<uid>` oppure
+    # `MAN:<commessa>`. E' anche il RIPIEGO a video quando l'identita' non si
+    # risolve piu': una riga senza nome e' peggio di una riga con la chiave.
+    gruppo_key: str
+    # Vocabolario chiuso `PENDING` · `RUNNING` · `COMPLETED` · `ERRORE`,
+    # identico a quello delle fatture del lotto (D-2 del brief): due colonne
+    # che rispondono alla stessa domanda a due livelli non possono parlare due
+    # lingue.
+    # ⚠️ `None` = «nessuno l'ha detto» — il gruppo non e' stato tentato in
+    # questo lotto, oppure il giro e' anteriore al 2026-09-06. NON e' «andato
+    # bene», e chi rende deve tenerli distinti.
+    stato_esecuzione: str | None
+    errore_codice: str | None
+    errore_messaggio: str | None
+    errore_quando: str | None
+    # ═══ L'IDENTITA', risolta dalla vista di competenza sul mese del lotto ═══
+    # ⚠️ Tutte opzionali, e il caso vuoto e' reale: il lavoro di quel gruppo
+    # puo' essere stato preso da un altro giro o essere uscito dal mese, e
+    # allora la vista non lo espone piu'. La riga resta — con il suo esito e la
+    # sua chiave — perche' e' proprio quella per cui questa lista esiste.
+    riferimento: str | None
+    tipo_gruppo: str | None
+    area_documento: str | None
+    documento_id: int | None
+    # ⭐ LA COMMESSA DA CORREGGERE: nel caso vero il fallimento non era un
+    # difetto del programma ma un dato mancante sulla commessa, e senza questo
+    # id l'operatore sa di avere un problema e non sa dove andare.
+    # ⚠️ Valorizzata SOLO quando il gruppo ne ha una sola. La chiave di un
+    # gruppo-documento non contiene la commessa, quindi due commesse sullo
+    # stesso documento sono ammesse per costruzione: `commesse_n` dice quante
+    # sono, e offrirne una a caso sarebbe una scommessa travestita da regola.
+    commessa_id: int | None
+    commessa_codice: str | None
+    commesse_n: int
+
+
 class LottoListRow(TypedDict):
     id: int
     codice: str
@@ -1145,6 +1194,39 @@ class DashCompetenzaGruppoRow(TypedDict):
     #    con il motivo di dominio, non con il dump tecnico.
     respinta_il: str | None
     respinta_motivo: str | None
+    # ═══ COM'E' ANDATO L'ULTIMO TENTATIVO DI FATTURARE QUESTO DOCUMENTO ═══
+    # (changeSet DB `20260906-12`, brief-db-esito-gruppo-lotto R-3).
+    #
+    # ⭐ IL CASO CHE LE HA FATTE NASCERE. Un lotto prende in carico tre
+    # documenti e ne fattura due; il terzo cade al primo passo — prima che una
+    # fattura esista — e sparisce dal racconto: non e' nel lotto (non c'e'
+    # nessuna fattura a cui appendersi) e qui resta fra quelli da emettere,
+    # senza un segno. Sembra fatturabile.
+    #
+    # ⛔ IL SEGNO NON SPEGNE NIENTE (decisione di Tid, 2026-09-06): `stadio` e
+    # `commessa_emittibile` restano quelli di prima. Dice «ci ho provato e non
+    # ci sono riuscito», non «non e' fatturabile» — la riga resta selezionabile
+    # e il verbo resta acceso, perche' il rimedio e' correggere la commessa e
+    # riprovare.
+    #
+    # ⚠️ `None` = «nessuno l'ha detto», e NON e' «e' andata bene»: e' la verita'
+    # di ogni gruppo che nessun giro ha ancora lavorato, e di tutti quelli
+    # lavorati prima del 2026-09-06. Chi rende a video deve tenere distinti i
+    # due casi, o un documento mai tentato si leggerebbe come uno riuscito.
+    #
+    # ⚠️ Il legame e' (gruppo, MESE di competenza) e il mese non e' un di piu':
+    # senza, il documento di settembre erediterebbe l'errore di agosto.
+    # Vocabolario chiuso, identico a quello delle fatture del lotto (D-2):
+    # `PENDING` · `RUNNING` · `COMPLETED` · `ERRORE`.
+    ultimo_esito: str | None
+    ultimo_errore_codice: str | None
+    ultimo_errore_messaggio: str | None
+    ultimo_errore_quando: str | None
+    # In QUALE lotto e' stato tentato. ⚠️ Il codice e non l'id: serve a
+    # nominarlo in una frase («ultimo tentativo — lotto LTF-0009578»), non a
+    # navigarci. Il giorno in cui servisse il salto, l'id lo deve aggiungere la
+    # vista — comporlo qui vorrebbe dire una seconda lettura per una colonna.
+    ultimo_lotto_codice: str | None
 
 
 class DashCompetenzaGruppoRegistroRow(TypedDict):
