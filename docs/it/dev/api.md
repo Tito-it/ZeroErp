@@ -1108,6 +1108,51 @@ nominarli**: lo presidia `test_error_codes_declared_guardrail`, e per la stessa
 ragione `ErrorPolicyRegistry.has()` oggi risponde *«lo conosco»*, non *«è
 buono»*. La domanda «questo codice si può usare?» si fa su `CODICI_RITIRATI`.
 
+#### ⛔ Il rubinetto degli accumulatori: riusare un codice per una condizione nuova
+
+`scripts/codici-errore-baseline.sh` (CI) confronta, per ogni codice, **le
+famiglie di condizione** su cui viene sollevato — lette dalla riga di guardia in
+`pg_proc`:
+
+| guardia | famiglia |
+| --- | --- |
+| `IF NOT FOUND` | `NOT_FOUND` |
+| `IS NULL` / `<= 0` su un `p_*` | `PARAMETRO` |
+| `NOT IN (…)` | `ENUM` |
+| tutto il resto | `IGNOTO` — la misura dichiara di non saper leggere |
+
+Un codice che **acquista una famiglia che non aveva** ferma la CI.
+
+> ⭐ **Non è pedanteria: è il modo in cui gli accumulatori si formano davvero.**
+> Nessuno crea un codice generico di proposito. Si prende quello che c'è già e lo
+> si usa «anche per questo caso qui», una volta sola, e sembra ragionevole. La
+> sessantottesima volta è `E_GENERICO`.
+
+⛔ **La baseline non si aggiorna per far passare la CI.** Il rosso è la richiesta
+di una decisione, e le uscite sono due: o il codice nuovo va creato, o l'uso è
+legittimo e allora la baseline si aggiorna **con la ragione nel messaggio di
+commit**.
+
+**Il caso vero, 2026-09-06.** `config.fn_chiudi_email_sistema` sollevava
+`E_VALIDAZIONE` su tre condizioni diverse, e una era `IF NOT FOUND` — «nessuna
+email con questo identificativo». ⇒ La CI si è fermata.
+
+La decisione non è stata aggiornare la baseline: `E_VALIDAZIONE` è di classe
+`DATO_ERRATO`, cioè *«hai sbagliato i dati»*, ma quell'identificativo **non
+arriva mai da una persona** — è l'id che il backend ha scritto un istante prima.
+⇒ Codice nuovo, `E_EMAIL_LOG_INESISTENTE`, classe **`TECNICO`**.
+
+⚠️ **E non `NON_TROVATO`**, che sarebbe stata la scelta d'istinto: quella classe
+porta un **404**, giusto quando è una *persona* a chiedere una cosa che non c'è.
+Qui chi chiede è il backend, e un 404 manderebbe a cercare una risorsa mancante
+invece di un difetto di codice. ⇒ **La famiglia della condizione non decide la
+classe**: la prima dice *com'è fatta la guardia*, la seconda *chi ha sbagliato*.
+
+⚠️ **Un codice nuovo vuole anche il suo ripiego.** `error_messages_fallback.py`
+deve avere una frase **senza segnaposto** per ogni codice vivo — lo presidia
+`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`. Senza, l'operatore vede una
+frase neutra che non parla del suo problema.
+
 ⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Restano 176
 override su 658, di cui **117 sulla sola `DATO_ERRATO`**: lì il default è un
 lancio di moneta — 117 contro 117 — perché il discriminante non è la classe ma

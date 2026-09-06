@@ -22,6 +22,7 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_outbox_service import EmailOutboxService, _get_attachments_root
+from apps.core.services.email_constants import AMBITI_EMAIL
 from apps.core.services.auth_helpers import (
     extract_emittente_attivo_from_request,
 )
@@ -60,11 +61,11 @@ def _check_outbox_access(request: Request, outbox: dict[str, Any]) -> None:
     )
 
 
-# Vocabolario di `config.email_outbox.ambito` (`chk_email_outbox_ambito`).
-# ⚠️ Mirror dichiarato del CHECK: serve a rifiutare un valore inventato con un
-#    400 parlante invece di lasciarlo arrivare al database come violazione di
-#    vincolo. La regola resta la', e un test la confronta col catalogo.
-AMBITI_OUTBOX = ("SISTEMA", "REPARTO", "OPERATORE")
+# ⭐ Il vocabolario vive in `services/email_constants.py`, non qui: lo usa anche
+#    il repository, e un repository che importa una view per sapere una regola di
+#    dominio ha il livello sbagliato. Qui si ri-esporta col nome storico, cosi'
+#    chi lo importava da questo modulo non si accorge dello spostamento.
+AMBITI_OUTBOX = AMBITI_EMAIL
 
 
 class EmailPrepareView(DomainAPIView):

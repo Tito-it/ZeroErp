@@ -10,9 +10,16 @@
 > intitolato «gli otto residui», sette dei quali chiusi. Un filo vivo dentro un
 > archivio non si legge: si perde.
 >
-> **Stato:** 🟢 **DB completo e applicato** (`20260906-01`, `-02`), test verdi —
-> §6. ⇒ Resta **solo** il pezzo del §5: un punto del backend, e i due percorsi
-> tornano a funzionare.
+> **Stato:** ✅ **CHIUSO** (2026-09-06) — il filo delle email è finito. Il DB ha
+> consegnato le due porte (`20260906-01`, `-02`) e il backend le ha instradate:
+> reset password e inviti da chi non è super admin sono **verdi, misurati sul
+> database vero** (§8). Anche il §10 è rientrato.
+>
+> 🔵 **Le due code sono uscite di qui** il 2026-09-06 e vivono in
+> [brief-db-sveglia-dei-processi.md](../work-in-progress/brief-db-sveglia-dei-processi.md):
+> la programmazione dei job (§6-bis) e la terza guardia che la misura non sa
+> leggere (§10). ⚠️ Nessuna delle due è del filo email — restare qui dentro
+> voleva dire perderle.
 
 ---
 
@@ -280,3 +287,110 @@ Tutti in `work-done/`, archiviati il 2026-09-05:
 * `brief-db-processi-automatici-residui-be.md` — gli otto residui: questo filo era il §1-octies
 * `brief-db-storicizzazione-bersagli-spariti.md` — R-12, il job fermo da sei mesi
 * `piano-be-fe-processi-automatici-identita-e-perimetro.md` — i lotti BE/FE
+
+---
+
+## 8. ✅ Il backend ha instradato (2026-09-06)
+
+Un punto solo, come dicevate: `EmailRepository`. `insert_log` passa da
+`fn_accoda_email_sistema` e `update_log_stato` da `fn_chiudi_email_sistema`
+quando l'ambito è `SISTEMA`. Le quattro chiamate applicative non sono state
+toccate.
+
+### ⚠️ Il bivio guarda la RIGA, non il chiamante
+
+`_send_smtp` e `retry_log_entry` ci arrivano **sia** dal percorso senza sessione
+**sia** dal worker, che l'identità ce l'ha. ⇒ Non si può decidere da «chi sono»:
+decide l'`ambito`, che quindi viaggia fino ai sei punti che scrivono l'esito, e
+il command se lo porta dietro con una colonna in più nella sua `SELECT`.
+
+### ⛔ E il rifiuto della porta NON è un ripiego
+
+`fn_chiudi_email_sistema` solleva su una riga che non è `SISTEMA`. Quel rifiuto
+non viene intercettato per ricadere sull'`UPDATE` diretto: dice che qualcuno sta
+usando la porta di sistema per l'email di un'azienda, ed è **il solo posto in cui
+quel difetto si vede**. Trasformarlo in un ripiego lo spegnerebbe.
+
+### Le tre prove, sul database vero
+
+| | |
+| --- | --- |
+| reset password (nessuna sessione) | ✅ accodata **e chiusa** |
+| invito da operatore non super admin | ✅ accodata **e chiusa** |
+| ⛔ chiudere l'email di un'azienda dalla porta di sistema | ✅ **rifiutata** — «questa porta chiude solo le email di ambito SISTEMA» |
+
+⭐ La terza è quella che conta, e il caso va **costruito**: righe non-`SISTEMA` su
+dbdev non ce n'erano, e un test che non trova materia sarebbe verde per
+sottrazione. Fissate in `apps/core/tests/db/test_email_porta_di_sistema.py`, con
+la controprova che dalla porta giusta la stessa riga si chiude — altrimenti
+«rifiutata» potrebbe voler dire «rotta per un'altra ragione».
+
+### ⭐ Una cosa spostata, per un difetto di livello
+
+Il vocabolario degli ambiti viveva in `apps/core/api/email_views.py`: il
+repository che ne aveva bisogno avrebbe dovuto importare una **view** per sapere
+una regola di dominio. Ora sta in `apps/core/services/email_constants.py`, e la
+view lo ri-esporta col nome storico.
+
+---
+
+## 10. ✅ Il rubinetto degli accumulatori — risolto (2026-09-06)
+
+> **Esito:** il team DB ha coniato **`E_EMAIL_LOG_INESISTENTE`**, classe
+> **`TECNICO`** — la scelta raccomandata qui sotto. Rimisurato:
+> `E_VALIDAZIONE` è tornato a `{IGNOTO, PARAMETRO}` e il codice nuovo nasce con
+> **una famiglia sola** (`{NOT_FOUND}`, 1 punto). Presidio verde: *0 accumuli*.
+> Lato backend: policy rigenerata e ripiego aggiunto.
+>
+> ⬇️ Il ragionamento resta agli atti — è il precedente di come si decide.
+
+La CI si è fermata su `scripts/codici-errore-baseline.sh`:
+
+> `E_VALIDAZIONE` — famiglia nuova: `NOT_FOUND` (prima: `PARAMETRO` · ora:
+> `NOT_FOUND,PARAMETRO` · 17 punti)
+
+### Da dove viene, misurato
+
+Il classificatore legge la riga di **guardia** che precede il letterale. In
+`config.fn_chiudi_email_sistema` le condizioni sono tre, e sollevano tutte
+`E_VALIDAZIONE`:
+
+| guardia | famiglia letta | |
+| --- | --- | --- |
+| `IF p_stato IS NULL OR p_stato NOT IN (…)` | `PARAMETRO` | ✅ già ammessa |
+| `IF NOT FOUND` — nessuna email con quell'id | **`NOT_FOUND`** | 🔴 **la famiglia nuova** |
+| `IF v_ambito <> 'SISTEMA'` | `IGNOTO` | la misura non sa leggerla |
+
+⚠️ I punti passano da 13 a 17 perché le due funzioni nuove ne aggiungono quattro
+in tutto — ma la **famiglia** nuova è una sola, e viene da quella riga.
+
+### ⛔ Non aggiorno la baseline, e il motivo è il vostro stesso
+
+Lo script dice che la baseline si aggiorna solo *«se l'uso è legittimo»*. Non lo
+è, e l'argomento l'avete scritto voi tre giorni fa su DB-8:
+
+> *«Un codice usato per due cose si spezza a monte, non si rimappa a valle.»*
+
+`E_VALIDAZIONE` è di classe **`DATO_ERRATO`** — a video diventa *«hai sbagliato i
+dati»*. Ma `p_email_log_id` **non arriva mai da una persona**: è l'id che il
+backend ha scritto un istante prima con `fn_accoda_email_sistema`. Se non si
+risolve, nessuno ha sbagliato a compilare niente — è il backend che ha passato un
+id che non esiste.
+
+### Che cosa serve
+
+Un codice suo per quella riga. ⚠️ **Non lo classificherei `NON_TROVATO`**: quella
+classe porta un 404, che è la risposta giusta quando è una *persona* a chiedere
+una cosa che non c'è. Qui chi chiede è il backend, e un 404 manderebbe a cercare
+una risorsa mancante invece di un difetto di codice. ⇒ **`TECNICO`** dice il vero.
+
+⭐ La forma e il nome sono vostri. Quando il codice esiste, la baseline si allinea
+da sé alla corsa successiva.
+
+### 🔵 E già che ci siete: la terza guardia è `IGNOTO`
+
+`IF v_ambito <> 'SISTEMA'` è **il caso pericoloso** — quello che il vostro stesso
+commento dice avere «parole sue» perché è l'unico momento in cui si nota che
+qualcuno sta usando la porta di sistema per l'email di un'azienda. ⚠️ Alla misura
+risulta illeggibile, quindi quel presidio **non lo sta guardando**. Non è urgente,
+ma è il punto che meno vorreste cieco.

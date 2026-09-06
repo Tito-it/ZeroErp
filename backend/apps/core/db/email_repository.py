@@ -24,6 +24,7 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
 
+from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
     fetchone_scalar,
     row_to_dict,
@@ -491,6 +492,46 @@ class EmailRepository:
         auth_user_id: int | None = None,
         contesto_json: dict[str, Any] | None = None,
     ) -> int:
+        # ⛔ LE EMAIL DI SISTEMA PASSANO DA UNA PORTA LORO, e non e' una
+        #    preferenza di stile: dal 2026-09-05 `config.email_log` ha la RLS
+        #    accesa, e la policy ammette in scrittura solo il super admin o
+        #    l'identita' tecnica di `send_pending_emails`. Un reset password
+        #    nasce su un endpoint NON autenticato — nessuna sessione, nessuna
+        #    GUC — e un invito puo' partire da un admin che super admin non e':
+        #    misurato il 2026-09-05, entrambi venivano RIFIUTATI.
+        # ⭐ `config.fn_accoda_email_sistema` e' `SECURITY DEFINER` e sa scrivere
+        #    UNA COSA SOLA: `ambito='SISTEMA'`, emittente `NULL`. Non prende
+        #    l'ambito come parametro proprio per non essere una porta di
+        #    servizio con cui scrivere qualunque riga aggirando la policy.
+        # ⚠️ Il bivio guarda LA RIGA, non il chiamante: `_send_smtp` e
+        #    `retry_log_entry` arrivano qui sia dal percorso senza sessione sia
+        #    dal worker, che l'identita' ce l'ha. E' l'ambito a decidere.
+        if ambito == AMBITO_SISTEMA:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT config.fn_accoda_email_sistema(
+                        p_destinatario           => %s,
+                        p_oggetto                => %s,
+                        p_corpo_html             => %s,
+                        p_corpo_testo            => %s,
+                        p_email_account_id       => %s,
+                        p_email_template_id      => %s,
+                        p_auth_user_id           => %s,
+                        p_contesto_json          => %s::jsonb,
+                        p_unita_organizzativa_id => %s,
+                        p_destinatari_cc         => %s,
+                        p_pratica_id             => %s)
+                    """,
+                    [
+                        destinatario, oggetto, corpo_inviato_html, corpo_inviato_testo,
+                        email_account_id, email_template_id, auth_user_id,
+                        json.dumps(contesto_json or {}),
+                        unita_organizzativa_id, destinatari_cc, pratica_id,
+                    ],
+                )
+                return fetchone_scalar(cursor)
+
         sql = """
             INSERT INTO config.email_log
                 (email_account_id, email_template_id, destinatario, destinatari_cc,
@@ -511,14 +552,33 @@ class EmailRepository:
             return fetchone_scalar(cursor)
 
     # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY).
+    #
+    # ⛔ `ambito` NON ha un default, e serve a scegliere la porta — non a
+    #    descrivere la riga. Su una `SISTEMA` l'UPDATE diretto e' rifiutato
+    #    dalla policy per lo stesso motivo per cui lo era l'INSERT: chi ha
+    #    appena spedito un reset password non ha una sessione.
+    # ⭐ `config.fn_chiudi_email_sistema` tocca SOLO righe `SISTEMA` e SOLO i
+    #    campi dell'esito. ⚠️ Se la riga non e' di sistema **solleva**, e quel
+    #    rifiuto NON va trasformato in un ripiego sull'UPDATE diretto: dice che
+    #    qualcuno sta usando la porta di sistema per l'email di un'azienda, ed e'
+    #    il solo posto in cui quel difetto si vede.
     def update_log_stato(
         self,
         log_id: int,
         stato: str,
         *,
+        ambito: str,
         errore: str | None = None,
         inviato_at: str | None = None,
     ) -> bool:
+        if ambito == AMBITO_SISTEMA:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config.fn_chiudi_email_sistema(%s, %s, %s, %s::timestamptz)",
+                    [log_id, stato, errore, inviato_at],
+                )
+                return bool(fetchone_scalar(cursor))
+
         sql = """
             UPDATE config.email_log
                SET stato = %s,

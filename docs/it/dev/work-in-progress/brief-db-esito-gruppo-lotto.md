@@ -248,3 +248,68 @@ a metà e tace quando va male del tutto.
 3. giro **tutto riuscito** → tutti `COMPLETED`, nessun campo di errore
    valorizzato;
 4. la funzione torna **0** → il caso va gestito (almeno un log), non ignorato.
+
+---
+
+## 10. ✅ Il backend ha chiamato (2026-09-06)
+
+* `pipeline_repository.segna_esito_gruppo_lotto(...)` — la chiamata SQL, come da
+  convenzione, così i test la possono mockare;
+* `pipeline_step_executor._marca_esito_gruppi(...)` — **una volta sola, prima dei
+  tre rami**, non dentro ciascuno.
+
+⭐ **Perché prima e non dentro.** Le uscite sono tre e la marcatura serve in
+tutte: scriverla nei rami vorrebbe dire scriverla tre volte e dimenticarla una,
+e il candidato naturale è proprio quello che solleva — cioè il caso peggiore. È
+la trappola che il vostro §8 segnala, e il modo più sicuro di non caderci è non
+avere tre punti da ricordare.
+
+⚠️ Il valore di ritorno **si guarda**: `0` finisce in un `warning` con
+`lotto_id`, `commessa_id` e stato. Non solleva, come dite voi.
+
+I quattro casi del §8 sono in `test_pipeline_step_executor.py`.
+
+---
+
+## 11. 🔴 «Marcare prima di sollevare» non basta — misurato
+
+Il §8 dice: *«⇒ Marcare prima di sollevare, in tutti e due i rami.»* L'ho fatto,
+e **sul ramo che solleva non regge**.
+
+**Perché.** `run_pipeline` tiene un `transaction.atomic()` attorno all'**intero
+ciclo degli step**, e `fn_segna_esito_gruppo_lotto` è una funzione plpgsql
+normale: scrive nella transazione di chi la chiama. Il `raise` di
+`E_PULL_COMMESSA_ALL_FAILED` propaga fuori da lì e fa **rollback**, marcature
+comprese.
+
+**La prova, sul database vero:**
+
+```
+gruppo 894 (lotto 6034) — stato prima: None
+  marcati: 1
+  sollevata: come E_PULL_COMMESSA_ALL_FAILED
+stato DOPO il raise: None
+⛔ LA MARCATURA E' STATA PERSA
+```
+
+⚠️ **E nessun test lo vedeva**, perché nei test il repository è mockato: provano
+che la chiamata avvenga, non che la riga resti. È il difetto che si scopre solo
+guardando i confini di transazione.
+
+⭐ **È la stessa forma che avete già diagnosticato voi** su `fn_run_and_log` —
+*«scrive, e poi butta via»* — e per cui avete costruito
+`maintenance.fn_job_run_log_failure`. Il paradosso è identico: il verbale del
+fallimento muore insieme al fallimento.
+
+### Che cosa serve
+
+Che la marcatura di un gruppo **sopravviva al rollback** di chi l'ha chiesta. La
+forma la decidete voi: avete già risolto lo stesso problema una volta.
+
+⇒ **Nel frattempo la copertura è parziale, e dichiarata:** i due rami che non
+sollevano — tutto riuscito e **parziale** — funzionano. Il parziale è il caso di
+`LTF-0009578`, cioè quello per cui il cantiere è nato: il difetto originale è
+chiuso. Resta scoperto il «tutte fallite», che è quello che oggi non si vede.
+
+⛔ La chiamata resta **prima dei rami** e non si sposta: il giorno in cui la
+scrittura diventa durevole, il terzo ramo è già coperto senza toccare niente.
