@@ -178,7 +178,11 @@ class Command(BaseCommand):
         # Seleziona email da processare
         sql = """
             SELECT id, destinatario, oggetto, stato, tentativi, max_tentativi,
-                   email_account_id
+                   email_account_id,
+                   -- ⚠️ Serve a scegliere la PORTA con cui si scrive l'esito:
+                   --    una riga `SISTEMA` non si aggiorna con un UPDATE
+                   --    diretto (policy RLS), passa da `fn_chiudi_email_sistema`.
+                   ambito
               FROM config.email_log
              WHERE (stato = 'PENDING'
                     OR (stato IN ('FAILED', 'RETRY')
@@ -217,7 +221,10 @@ class Command(BaseCommand):
             else:
                 account = repo.resolve_account()
             if not account:
-                repo.update_log_stato(row["id"], "FAILED", errore="Nessun account SMTP configurato")
+                repo.update_log_stato(
+                    row["id"], "FAILED", ambito=row["ambito"],
+                    errore="Nessun account SMTP configurato",
+                )
                 failed += 1
                 continue
 

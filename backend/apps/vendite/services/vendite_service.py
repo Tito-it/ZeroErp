@@ -28,6 +28,7 @@ from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
     LOTTO_FATTURE_SORT_COLUMNS,
+    LOTTO_GRUPPI_SORT_COLUMNS,
     MOTIVO_NON_FATTURATA_RESIDUO,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
@@ -37,6 +38,7 @@ from apps.vendite.db.vendite_repository import (
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
     SEARCH_MIN_LEN,
+    STATI_ESECUZIONE_LOTTO,
     VenditeRepository,
 )
 from apps.vendite.types import (
@@ -50,6 +52,7 @@ from apps.vendite.types import (
     DashCompetenzaGruppoRow,
     FondoFatturaDaDecidereRow,
     LottoFattureRow,
+    LottoGruppoRow,
     LottoListRow,
 )
 
@@ -460,6 +463,75 @@ def fn_list_lotto_fatture(
         max_rows=max_rows,
     )
     return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di ciascuno.
+# Obiettivo: rispondere a «quale documento di questo giro non e' passato, e
+#        perche'» — la domanda a cui la scheda «Documenti» non puo' rispondere,
+#        perche' elenca le FATTURE e un documento caduto prima di diventarne una
+#        non ha niente a cui appendersi (brief-db-esito-gruppo-lotto §0).
+# Perimetro: sola lettura; il cancello di scope e' la TESTATA del lotto
+#        (`fatturazione_lotti_gruppi` non ha RLS, `fatturazione_lotti` si').
+# Risultato: dict con count, page, page_size, total_pages, results +
+#        `perimetro_dichiarato` — vedi sotto, e' la meta' che rende onesto lo
+#        zero.
+def fn_list_lotto_gruppi(
+    *,
+    lotto_id: int,
+    auth_user_id: int | None = None,
+    stato_esecuzione: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+    max_rows: int | None = None,
+) -> dict[str, object]:
+    _validate_enum(
+        stato_esecuzione,
+        allowed=STATI_ESECUZIONE_LOTTO,
+        param_name="stato_esecuzione",
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi",
+    )
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=LOTTO_GRUPPI_SORT_COLUMNS,
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi",
+    )
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi",
+    )
+    repository = VenditeRepository()
+    results: list[LottoGruppoRow]
+    results, total_count = repository.list_lotto_gruppi(
+        lotto_id=lotto_id,
+        auth_user_id=auth_user_id,
+        stato_esecuzione=stato_esecuzione,
+        sort_by=order_by,
+        sort_dir=order_dir or "asc",
+        limit=limit,
+        offset=offset,
+        max_rows=max_rows,
+    )
+    payload = _build_list_response(results, total_count, page, page_size)
+    if max_rows is not None:
+        # Export: si ferma qui, come tutte le altre liste esportabili — chi
+        # costruisce il file legge `results` e `count` e nient'altro.
+        return payload
+    # ⭐ ZERO RIGHE HA DUE SIGNIFICATI, e senza questo flag si leggono uguali.
+    #    Un lotto MIRATO senza gruppi non esiste; un giro DI MASSA non dichiara
+    #    nessun perimetro per costruzione (`fatturazione_lotti_gruppi` vuota =
+    #    NESSUNA restrizione, garanzia G1 della tabella), quindi qui non ha
+    #    niente da mostrare — e non perche' non abbia lavorato.
+    # ⛔ Il conto non si fa sulle righe della pagina: sarebbe un'eco. Si chiede
+    #    al perimetro intero, con lo STESSO cancello di scope della lista.
+    payload["perimetro_dichiarato"] = (
+        total_count > 0
+        or repository.lotto_ha_perimetro_gruppi(
+            lotto_id=lotto_id, auth_user_id=auth_user_id,
+        )
+    )
+    return payload
 
 
 # Range anni ammesso per i cruscotti fatturazione (Lente 1: anno libero

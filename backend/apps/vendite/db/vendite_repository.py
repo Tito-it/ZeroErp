@@ -19,6 +19,7 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
     call_jsonb_fn,
+    fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
     query_paged_view,
@@ -28,6 +29,10 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.services.system_context import connection_role_bypasses_rls
+# ⚠️ Un repository di dominio che importa da `apps.ui`: e' la sede UNICA del
+#    tetto dell'export, e la dipendenza e' su una costante, non su un servizio.
+#    Il modulo importa solo stdlib e `apps.core` — nessun ciclo.
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
@@ -54,6 +59,7 @@ from apps.vendite.types import (
     LineagePassaggioRow,
     LineageSorgenteRow,
     LottoFattureRow,
+    LottoGruppoRow,
     LottoListRow,
 )
 
@@ -76,10 +82,24 @@ logger = logging.getLogger(__name__)
 # ⚠️ Il NUCLEO ordina sempre (regola delle liste standard): numero, data,
 # identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
 # lista sarebbe nata con cinque colonne di nucleo rotte.
-# Il tetto delle righe esportabili dei documenti di un lotto. Il tetto di
-# PAGINA (`LIST_MAX_LIMIT`, 200) resta dov'e': sono due limiti diversi per due
-# usi diversi, e confonderli significa o una pagina enorme o un file troncato.
-_LOTTO_FATTURE_EXPORT_MAX_ROWS = 10_000
+# Il tetto delle righe esportabili delle liste del DRAWER LOTTO (documenti del
+# lotto e documenti presi in carico). Il tetto di PAGINA (`LIST_MAX_LIMIT`, 200)
+# resta dov'e': sono due limiti diversi per due usi diversi, e confonderli
+# significa o una pagina enorme o un file troncato.
+#
+# ⛔ SI DERIVA, non si riscrive, ed e' una correzione del 2026-09-06: qui c'era
+#    un `10_000` scritto a mano, cioe' una SECONDA copia di
+#    `apps.ui.services.lista_export_service.EXPORT_MAX_ROWS` — lo stesso numero
+#    su cui il guard dell'export decide se il file e' completo.
+#    ⚠️ Il difetto che due copie producono e' MUTO: alzando il tetto in una sola
+#    sede, il guard lascerebbe passare un perimetro piu' grande mentre il
+#    repository continuerebbe a troncare — un file con 10.000 righe consegnato
+#    come completo. Nessun errore, nessun test rosso.
+# 📌 Restano DUE copie dello stesso numero, dichiarate e non mie:
+#    `_ATTIVITA_EXPORT_MAX_ROWS` (commesse_repository) e
+#    `_DRAWER_EXPORT_MAX_ROWS` (pipeline_repository). Vanno nella stessa
+#    direzione, ma toccano liste che questo cantiere non attraversa.
+_LOTTO_EXPORT_MAX_ROWS = EXPORT_MAX_ROWS
 
 # ⭐ Le colonne ordinabili del GIORNALE di un'entita', e sono due sole di
 # proposito: la gravita' (default) e il tempo. ⛔ Non e' una lista ridotta «per
@@ -123,6 +143,26 @@ LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "stato_esecuzione": "fllf.stato_esecuzione",
     "totale_doc": "f.totale_doc",
     "totale_a_pagare": "f.totale_a_pagare",
+}
+
+# Ordinamenti ammessi sui GRUPPI di un lotto — i documenti che il lotto ha
+# preso in carico, con l'esito di ciascuno (brief-db-esito-gruppo-lotto §6).
+#
+# ⚠️ Le chiavi sono i nomi di OUTPUT della SELECT, non le colonne fisiche: le
+# quattro di identita' escono da un'aggregazione (`ref`), e ordinare per
+# l'espressione riscritta invece che per l'alias e' il modo in cui una copia
+# diverge dall'originale (api.md §whitelist di ordinamento).
+# ⛔ `errore_messaggio` NON e' ordinabile, ed e' una scelta: mettere in ordine
+#    alfabetico delle frasi non risponde a nessuna domanda. La sua riga a
+#    catalogo e' `ordinabile = f`, e i due versi di
+#    `test_liste_configurabili_seed` tengono le due cose allineate.
+LOTTO_GRUPPI_SORT_COLUMNS: dict[str, str] = {
+    "riferimento": "riferimento",
+    "tipo_gruppo": "tipo_gruppo",
+    "stato_esecuzione": "stato_esecuzione",
+    "errore_codice": "errore_codice",
+    "errore_quando": "errore_quando",
+    "commessa_codice": "commessa_codice",
 }
 
 # Aree della famiglia dash fatturazione, nell'ordine del funnel (brief
@@ -191,6 +231,28 @@ TIPO_GRUPPO_ONERI = "ONERI_COMMESSA"
 # chiamata arriva dall'export, che non passa dalla validazione della view: una
 # sola sede, mai un 3 scritto in due posti che poi divergono.
 SEARCH_MIN_LEN = 3
+
+# Vocabolario dell'esito di esecuzione dentro un lotto — specchio Python del
+# CHECK `chk_lotti_gruppi_stato_esecuzione` (e del gemello sulle fatture del
+# lotto: D-2 del brief-db-esito-gruppo-lotto li tiene IDENTICI, perche' due
+# colonne che rispondono alla stessa domanda a due livelli non possono parlare
+# due lingue).
+# ⚠️ `NULL` NON e' in questa tupla ed e' voluto: e' l'assenza di risposta —
+# «nessuno l'ha detto» — non un valore del vocabolario. Un filtro su «mai
+# tentati» sarebbe una domanda diversa, e la si porrebbe con un altro
+# parametro, non con una quinta voce qui dentro.
+# ⭐ I due valori che il codice NOMINA vivono in una costante ciascuno, e la
+#    tupla li riusa: cosi' «l'elenco ammesso» e «il valore che scrivo» non
+#    possono divergere. Gli altri due (`PENDING`, `RUNNING`) nessuno li scrive
+#    ne' li confronta — restano stringhe dell'elenco finche' non serviranno.
+STATO_ESECUZIONE_ERRORE = "ERRORE"
+STATO_ESECUZIONE_COMPLETED = "COMPLETED"
+STATI_ESECUZIONE_LOTTO: tuple[str, ...] = (
+    "PENDING",
+    "RUNNING",
+    STATO_ESECUZIONE_COMPLETED,
+    STATO_ESECUZIONE_ERRORE,
+)
 
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
@@ -1740,6 +1802,24 @@ class VenditeRepository:
         # vicine.
         "registro_codice": "registro_codice",
         "data_documento_prevista": "data_documento_prevista",
+        # ═══ L'ESITO DELL'ULTIMO TENTATIVO (changeSet DB `20260906-12`,
+        #     brief-db-esito-gruppo-lotto R-3) ═════════════════════════════
+        # Stessa coppia inscindibile delle voci qui sopra: le righe 724/725/
+        # 727/728 del CSV `ui/lista_colonna.csv` sono `ordinabile = t`, e il
+        # presidio `test_liste_configurabili_seed` lega catalogo e whitelist
+        # nei DUE versi — una qui senza la sua riga a catalogo e' rossa quanto
+        # il contrario.
+        # ⭐ `ultimo_esito` e' l'ordinamento che serve davvero: mette in cima le
+        #    righe su cui un giro ha gia' provato e ha fallito, che sono le
+        #    uniche su cui l'operatore ha qualcosa da fare.
+        # ⛔ `ultimo_errore_messaggio` NON e' qui, ed e' una scelta: ordinare
+        #    alfabeticamente delle frasi non risponde a nessuna domanda. La sua
+        #    riga a catalogo e' `ordinabile = f`, e i due versi del presidio
+        #    la tengono fuori da entrambe le parti.
+        "ultimo_esito": "ultimo_esito",
+        "ultimo_errore_codice": "ultimo_errore_codice",
+        "ultimo_errore_quando": "ultimo_errore_quando",
+        "ultimo_lotto_codice": "ultimo_lotto_codice",
     }
 
     # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
@@ -2008,7 +2088,12 @@ class VenditeRepository:
                 g.emittente_ragione_sociale,
                 g.registri_n,
                 g.registro_codice,
-                g.data_documento_prevista
+                g.data_documento_prevista,
+                g.ultimo_esito,
+                g.ultimo_errore_codice,
+                g.ultimo_errore_messaggio,
+                g.ultimo_errore_quando,
+                g.ultimo_lotto_codice
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -2086,6 +2171,32 @@ class VenditeRepository:
                     "data_documento_prevista": (
                         row[22].isoformat() if row[22] is not None else None
                     ),
+                    # ═══ L'ESITO DELL'ULTIMO TENTATIVO DI FATTURAZIONE ═══════
+                    # (changeSet DB `20260906-12`, brief-db-esito-gruppo-lotto
+                    # R-3). ⭐ Nasce dal lotto LTF-0009578: tre ordini presi in
+                    # carico, due fatturati, e il terzo — caduto PRIMA di
+                    # diventare fattura — restava qui senza nessun segno,
+                    # quindi sembrava fatturabile.
+                    # ⛔ NON sono una LATERAL scritta qui: le calcola la VISTA,
+                    #    che lega l'esito al gruppo sul mese di competenza. Il
+                    #    mese e' parte del legame e non un di piu' — senza, il
+                    #    documento di settembre erediterebbe l'errore di agosto.
+                    # ⚠️ `ultimo_esito` NON spegne `stadio` ne'
+                    #    `commessa_emittibile` (decisione di Tid, 2026-09-06):
+                    #    dice «ci ho provato e non ci sono riuscito», non
+                    #    «questo documento non si puo' fatturare». Un gruppo in
+                    #    errore resta DA EMETTERE ed e' ancora selezionabile.
+                    # ⚠️ Tutte `None` finche' il giro non passa da
+                    #    `vendite.fn_segna_esito_gruppo_lotto`: `NULL` vuol dire
+                    #    «nessuno l'ha detto», che e' diverso da «e' andata
+                    #    bene». Le due cose il frontend deve tenerle distinte.
+                    "ultimo_esito": None if row[23] is None else str(row[23]),
+                    "ultimo_errore_codice": None if row[24] is None else str(row[24]),
+                    "ultimo_errore_messaggio": None if row[25] is None else str(row[25]),
+                    "ultimo_errore_quando": (
+                        row[26].isoformat() if row[26] is not None else None
+                    ),
+                    "ultimo_lotto_codice": None if row[27] is None else str(row[27]),
                     # ═══ D3 · la bandiera della commessa respinta ════════════
                     # Nascono vuote e le riempie `_applica_bandiera_respinta`
                     # sulla SOLA pagina: vedi il commento del metodo per il
@@ -3007,7 +3118,7 @@ class VenditeRepository:
         # dell'esportazione. Senza `max_rows` un file di 3.000 righe uscirebbe
         # troncato a 200 senza dirlo — e un export troncato in silenzio somiglia
         # in tutto a un export completo.
-        tetto = _LOTTO_FATTURE_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
         safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
 
@@ -3268,6 +3379,267 @@ class VenditeRepository:
                 }
             )
         return result, total_count
+
+    # Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di
+    #        ciascuno — compresi quelli che una fattura non sono mai diventati.
+    #
+    # ⭐ PERCHE' NON BASTA LA SCHEDA «DOCUMENTI» (brief-db-esito-gruppo-lotto).
+    #    Quella elenca `fatturazione_lotti_fatture`, che si aggancia a
+    #    `fattura_id`: un documento caduto PRIMA che una fattura esista non ha
+    #    niente a cui appendersi e sparisce dal racconto. Sul lotto LTF-0009578
+    #    si vedevano due documenti su tre, e il terzo era nominato solo da una
+    #    segnalazione — per giunta con l'identificativo della COMMESSA.
+    #    Il piano giusto e' un gradino piu' su, ed e' il GRUPPO.
+    #
+    # ⛔ IL CANCELLO E' LA TESTATA, e va tenuto: `fatturazione_lotti_gruppi` NON
+    #    ha RLS, `fatturazione_lotti` si'. Leggere la figlia da sola sarebbe
+    #    fail-open. Il `JOIN` sulla CTE `lotto` e' quel cancello, e vale anche
+    #    per il conteggio — un totale senza cancello direbbe «3 documenti»
+    #    mostrandone zero.
+    #
+    # ⭐ L'IDENTITA' DEL GRUPPO NON SI RICOSTRUISCE QUI. Una `gruppo_key` e'
+    #    `<sorgente>:<uid>` (oppure `MAN:<commessa>`): per scriverla a video ci
+    #    vuole la derivazione che `vendite.fn_build_gruppo_fatturabile_key` e
+    #    `vw_dash_competenza_gruppi` gia' fanno. Si legge da LI' invece di
+    #    spezzare la chiave in Python — che sarebbe la seconda sede della
+    #    regola, e il giorno in cui la chiave cambia forma le due dissentono in
+    #    silenzio. Il legame e' (gruppo, MESE del lotto), lo stesso della vista.
+    #
+    # ⚠️ L'ESITO invece si legge dalla TABELLA, non dalle colonne `ultimo_*`
+    #    della vista: quelle dicono com'e' andato l'ULTIMO tentativo su quel
+    #    gruppo, che puo' essere di un altro lotto. Qui la domanda e' «come e'
+    #    andata in QUESTO lotto», e la risposta e' la riga di questo lotto.
+    #
+    # ⚠️ `commessa_id` esce solo quando ce n'e' UNA. Il gruppo di un documento
+    #    non porta la commessa in chiave, quindi due commesse sullo stesso
+    #    documento sono ammesse per costruzione: offrirne una sarebbe una
+    #    scommessa travestita da regola — la stessa forma con cui questa lista
+    #    tratta gia' il sezionale (`registri_n`). `commesse_n` dice quante sono.
+    #
+    # Risultato: (righe, totale). Zero righe = il lotto non dichiara un
+    #        perimetro di gruppi (giro di massa): NON e' «non ha lavorato
+    #        niente», ed e' il chiamante a doverlo raccontare cosi'.
+    def list_lotto_gruppi(
+        self,
+        *,
+        lotto_id: int,
+        auth_user_id: int | None = None,
+        stato_esecuzione: str | None = None,
+        sort_by: str | None = None,
+        sort_dir: str = "asc",
+        limit: int,
+        offset: int,
+        max_rows: int | None = None,
+    ) -> tuple[list[LottoGruppoRow], int]:
+        # Due tetti, come sulle fatture del lotto: la PAGINA si ferma a
+        # `LIST_MAX_LIMIT`, l'EXPORT salta la paginazione e arriva al suo.
+        tetto = _LOTTO_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
+        safe_limit = max(1, min(int(max_rows or limit), tetto))
+        safe_offset = max(0, int(offset))
+
+        lotto_conditions: list[str] = ["l.id = %s"]
+        params: list[Any] = [lotto_id]
+        # Scope emittente esplicito OLTRE alla RLS, come su `list_lotto_fatture`:
+        # il canale applicativo non e' l'unico che passa di qui.
+        self._add_scope_emittente(
+            auth_user_id, "l.emittente_soggetto_ruolo_id", lotto_conditions, params
+        )
+        lotto_where = " AND ".join(lotto_conditions)
+
+        gruppi_where = ""
+        if stato_esecuzione is not None:
+            # ⚠️ `IS NOT DISTINCT FROM` no: `NULL` non e' un valore del
+            #    vocabolario, e chiederlo come filtro vorrebbe dire un secondo
+            #    parametro. Chi vuole «mai tentati» non filtra.
+            gruppi_where = "AND lg.stato_esecuzione = %s"
+            params.append(stato_esecuzione)
+
+        # Ordinamento: solo valori dalla whitelist entrano nella query.
+        sort_col = LOTTO_GRUPPI_SORT_COLUMNS.get(sort_by or "")
+        safe_dir = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
+        order_params: list[Any] = []
+        if sort_col is not None:
+            order_clause = f"ORDER BY {sort_col} {safe_dir} NULLS LAST, gruppo_key ASC"
+        else:
+            # ⭐ DEFAULT: i falliti in cima. Non e' l'ordine alfabetico dello
+            #    stato — che metterebbe `ERRORE` dopo `COMPLETED` — ma la
+            #    domanda con cui si apre questa scheda: «quale documento non e'
+            #    passato?». Il resto in ordine di riferimento, e `gruppo_key`
+            #    come tiebreak perche' `riferimento` puo' non risolversi.
+            # ⛔ Il valore viaggia come PARAMETRO e non come letterale nell'SQL:
+            #    e' la lezione gia' pagata sullo stadio della lista gruppi
+            #    (AGENTS.md §vocabolari). Una stringa scritta a mano dentro la
+            #    query e' una SECONDA sede del vocabolario, e il giorno in cui
+            #    il CHECK rinomina il valore l'ordinamento smette di funzionare
+            #    senza fallire: le righe rosse tornano in fondo, e nessuno se ne
+            #    accorge finche' non le cerca.
+            order_clause = (
+                "ORDER BY (stato_esecuzione = %s) DESC, "
+                "riferimento ASC NULLS LAST, gruppo_key ASC"
+            )
+            order_params.append(STATO_ESECUZIONE_ERRORE)
+
+        sql = f"""
+            WITH lotto AS (
+                SELECT l.id, l.competenza_mese
+                FROM vendite.fatturazione_lotti l
+                WHERE {lotto_where}
+            ),
+            gruppi AS (
+                SELECT lg.id,
+                       lg.gruppo_key,
+                       lg.stato_esecuzione,
+                       lg.errore_codice,
+                       lg.errore_messaggio,
+                       lg.errore_quando
+                FROM vendite.fatturazione_lotti_gruppi lg
+                JOIN lotto ON lotto.id = lg.lotto_id
+                WHERE TRUE {gruppi_where}
+            ),
+            ref AS (
+                -- Una riga per gruppo. ⚠️ La vista ha grana
+                -- (competenza, gruppo_key, …, stadio): senza il collasso lo
+                -- STESSO documento comparirebbe due volte quando parte del suo
+                -- lavoro e' gia' fatturato e parte no.
+                -- ⚠️ `min()` sulle colonne di IDENTITA' e' un collasso di valori
+                -- identici, non una scelta fra alternative: riferimento, tipo e
+                -- documento discendono dalla CHIAVE, che qui e' fissa. Resta
+                -- deterministico anche se un giorno smettessero di esserlo.
+                SELECT g.gruppo_key,
+                       min(g.riferimento)                  AS riferimento,
+                       min(g.tipo_gruppo)                  AS tipo_gruppo,
+                       min(g.area_documento)               AS area_documento,
+                       min(g.documento_id)                 AS documento_id,
+                       count(DISTINCT g.commessa_id)       AS commesse_n,
+                       CASE WHEN count(DISTINCT g.commessa_id) = 1
+                            THEN min(g.commessa_id) END    AS commessa_id,
+                       CASE WHEN count(DISTINCT g.commessa_id) = 1
+                            THEN min(g.commessa_codice) END AS commessa_codice
+                FROM vendite.vw_dash_competenza_gruppi g
+                JOIN lotto ON lotto.competenza_mese = g.competenza_mese
+                WHERE g.gruppo_key IN (SELECT gruppo_key FROM gruppi)
+                GROUP BY g.gruppo_key
+            )
+            SELECT gr.id,
+                   gr.gruppo_key,
+                   gr.stato_esecuzione,
+                   gr.errore_codice,
+                   gr.errore_messaggio,
+                   gr.errore_quando,
+                   ref.riferimento,
+                   ref.tipo_gruppo,
+                   ref.area_documento,
+                   ref.documento_id,
+                   ref.commessa_id,
+                   ref.commessa_codice,
+                   COALESCE(ref.commesse_n, 0) AS commesse_n,
+                   COUNT(*) OVER () AS total_count
+            FROM gruppi gr
+            LEFT JOIN ref ON ref.gruppo_key = gr.gruppo_key
+            {order_clause}
+            LIMIT %s OFFSET %s
+        """  # noqa: S608
+
+        # ⚠️ IL FALLBACK NON E' DECORATIVO. `COUNT(*) OVER ()` non puo' dire il
+        #    totale quando la pagina richiesta non ha righe: su una pagina
+        #    STANTIA — l'elenco si e' accorciato sotto le mani di chi guarda —
+        #    il totale uscirebbe `0`, e la scheda direbbe «nessun documento
+        #    preso in carico» su un lotto che ne ha tre. ⛔ Qui non c'e' il
+        #    clamp dei cruscotti: `useListaDrawerPaginata` serve la pagina
+        #    CHIESTA e non adotta nessuna pagina effettiva, quindi il conteggio
+        #    e' l'unica cosa che puo' raccontare la verita'.
+        count_sql = f"""
+            WITH lotto AS (
+                SELECT l.id
+                FROM vendite.fatturazione_lotti l
+                WHERE {lotto_where}
+            )
+            SELECT COUNT(*)
+            FROM vendite.fatturazione_lotti_gruppi lg
+            JOIN lotto ON lotto.id = lg.lotto_id
+            WHERE TRUE {gruppi_where}
+        """  # noqa: S608
+
+        rows, total_count = fetch_paged_with_total(
+            sql, params + order_params + [safe_limit, safe_offset],
+            fallback_count_sql=count_sql,
+            fallback_params=list(params),
+            offset=safe_offset,
+        )
+
+        result: list[LottoGruppoRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "id": int(row["id"]),
+                    "gruppo_key": str(row["gruppo_key"]),
+                    # ⚠️ `None` = mai tentato in questo lotto, e non e' «andato
+                    # bene»: e' la verita' di ogni gruppo lavorato prima che il
+                    # backend chiamasse `fn_segna_esito_gruppo_lotto`.
+                    "stato_esecuzione": row["stato_esecuzione"],
+                    "errore_codice": row["errore_codice"],
+                    "errore_messaggio": row["errore_messaggio"],
+                    "errore_quando": (
+                        row["errore_quando"].isoformat()
+                        if row["errore_quando"] is not None else None
+                    ),
+                    # ⚠️ Tutte `None` quando il gruppo non si risolve piu': il
+                    # lavoro puo' essere stato preso da un altro giro o essere
+                    # uscito dal mese. Il gruppo resta in elenco col suo esito —
+                    # nasconderlo cancellerebbe proprio la riga per cui questa
+                    # scheda esiste. Il frontend ripiega sulla chiave.
+                    "riferimento": row["riferimento"],
+                    "tipo_gruppo": row["tipo_gruppo"],
+                    "area_documento": row["area_documento"],
+                    "documento_id": (
+                        None if row["documento_id"] is None else int(row["documento_id"])
+                    ),
+                    "commessa_id": (
+                        None if row["commessa_id"] is None else int(row["commessa_id"])
+                    ),
+                    "commessa_codice": row["commessa_codice"],
+                    "commesse_n": int(row["commesse_n"] or 0),
+                }
+            )
+        return result, total_count
+
+    # Scopo: «Questo lotto dichiara un perimetro di gruppi?» — la meta' che
+    #        rende onesto lo zero di `list_lotto_gruppi`.
+    #
+    # ⭐ Zero righe ha DUE significati e senza questa risposta si leggono
+    #    uguali: un giro DI MASSA non scrive nessun gruppo (nessuna riga =
+    #    NESSUNA restrizione, garanzia G1 della tabella), quindi non ha niente
+    #    da mostrare — che e' diverso da «non ha lavorato niente». Un elenco
+    #    vuoto senza questa distinzione direbbe la cosa sbagliata proprio sui
+    #    lotti piu' numerosi.
+    # ⛔ `EXISTS` e non un `count(*)`: la domanda e' «ce n'e' almeno uno», e un
+    #    numero che nessuno legge e' lavoro in piu' su ogni chiamata.
+    # ⚠️ STESSO cancello di scope della lista: senza, un lotto fuori perimetro
+    #    risponderebbe «si', ma non te li mostro».
+    def lotto_ha_perimetro_gruppi(
+        self, *, lotto_id: int, auth_user_id: int | None = None,
+    ) -> bool:
+        conditions: list[str] = ["l.id = %s"]
+        params: list[Any] = [lotto_id]
+        self._add_scope_emittente(
+            auth_user_id, "l.emittente_soggetto_ruolo_id", conditions, params
+        )
+        where_clause = " AND ".join(conditions)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM vendite.fatturazione_lotti_gruppi lg
+                    JOIN vendite.fatturazione_lotti l ON l.id = lg.lotto_id
+                    WHERE {where_clause}
+                )
+                """,  # noqa: S608
+                params,
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return bool(row[0])
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Fattura (generazione documento / stampa, C-2)

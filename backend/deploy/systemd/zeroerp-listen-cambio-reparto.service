@@ -1,0 +1,45 @@
+# Template systemd — listener LISTEN/NOTIFY dei cambi di reparto.
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+#
+# ⭐ NON HA UN TIMER, E NON E' UNA DIMENTICANZA. È l'unico dei sette processi
+# svegliati dal backend che **non ha una cadenza**: è un processo sempre acceso
+# che sta in ascolto su un canale PostgreSQL e invalida la cache permessi quando
+# un utente cambia reparto. Non c'è niente da programmare — c'è da tenerlo vivo.
+# ⇒ `Type=simple` + `Restart=always`, e si abilita il `.service`, non un
+# `.timer` che non esiste.
+#
+# ⚠️ QUESTO CAMBIA COSA VUOL DIRE «STA GIRANDO», e va saputo prima di guardare
+# il giornale. Il command scrive **UN SOLO run**, quello di avvio, e lo chiude
+# subito (decisione di Tid, 2026-09-05, motivata nell'header del command): un
+# run lungo quanto il processo resterebbe «aperto» per settimane e su una morte
+# improvvisa per sempre, quindi il giornale non distinguerebbe «sta lavorando»
+# da «è morto». ⇒ Su `maintenance.job_run_log` questo processo dice **«sono
+# partito, qui, alle ore X»** — non «sono vivo adesso».
+# ⛔ Per questo la sua `tolleranza_minuti` in `sveglie.json` è `null`: presidiare
+# la liveness sull'ultimo run direbbe «fermo» su un listener sano che è partito
+# tre settimane fa e da allora lavora benissimo. Il battito periodico è un
+# cantiere suo e si aggancia a `MaintenanceRepository.job_liveness`, che è la
+# sede che quella domanda ce l'ha già.
+#
+# ⚠️ `Restart=always` + `RestartSec`: se il DB cade, il listener muore e systemd
+# lo riprende. Ogni ripresa scrive un run di avvio nuovo — quindi una raffica di
+# righe ravvicinate su `job_run_log` è il sintomo di un DB che singhiozza, non
+# un difetto del giornale.
+[Unit]
+Description=ZeroERP listener cambi di reparto (LISTEN/NOTIFY)
+After=network.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh listen_cambio_reparto
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

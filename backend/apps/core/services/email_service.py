@@ -201,13 +201,20 @@ class EmailDispatchService:
         if self.is_console_mode(account):
             self._send_console(account, destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo)
             now = datetime.now(timezone.utc).isoformat()
-            self._repo.update_log_stato(log_id, "SENT", inviato_at=now)
+            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
             return log_id, True
 
-        success = self._send_smtp(account, destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo, log_id)
+        success = self._send_smtp(
+            account, destinatario, destinatari_cc, oggetto, corpo_html,
+            corpo_testo, log_id, ambito,
+        )
         return log_id, success
 
     # Scopo: Invia email via SMTP reale, aggiorna log con esito. Ritorna True se successo.
+    # ⚠️ `ambito` arriva fin qui perche' l'esito dell'invio si scrive su
+    #    `config.email_log`, e su una riga `SISTEMA` quella scrittura passa da
+    #    una porta diversa (vedi `EmailRepository.update_log_stato`). Non e' un
+    #    parametro descrittivo: sceglie la porta.
     def _send_smtp(
         self,
         account: dict[str, Any],
@@ -217,12 +224,16 @@ class EmailDispatchService:
         corpo_html: str,
         corpo_testo: str | None,
         log_id: int,
+        ambito: str,
     ) -> bool:
         server: smtplib.SMTP | smtplib.SMTP_SSL | None = None
         try:
             encrypted_pw = account.get("smtp_password_encrypted")
             if not encrypted_pw:
-                self._repo.update_log_stato(log_id, "FAILED", errore="Password SMTP non configurata per l'account.")
+                self._repo.update_log_stato(
+                    log_id, "FAILED", ambito=ambito,
+                    errore="Password SMTP non configurata per l'account.",
+                )
                 return False
             password = crypto_service.decrypt(encrypted_pw)
 
@@ -252,12 +263,14 @@ class EmailDispatchService:
             server.sendmail(account["email_from"], all_recipients, msg.as_string())
 
             now = datetime.now(timezone.utc).isoformat()
-            self._repo.update_log_stato(log_id, "SENT", inviato_at=now)
+            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
             logger.info("Email inviata: log_id=%s dest=%s", log_id, destinatario)
             return True
 
         except (smtplib.SMTPException, OSError, ValueError) as exc:
-            self._repo.update_log_stato(log_id, "FAILED", errore=str(exc)[:500])
+            self._repo.update_log_stato(
+                log_id, "FAILED", ambito=ambito, errore=str(exc)[:500],
+            )
             logger.exception("Errore invio email: log_id=%s dest=%s", log_id, destinatario)
             return False
         finally:
@@ -294,7 +307,11 @@ class EmailDispatchService:
 
     # Scopo: Ritenta l'invio di un'email gia' presente nel log (per management command).
     #        Usa l'account specificato, aggiorna lo stato del log.
+    # ⚠️ L'ambito si legge dal `log_detail` che il chiamante ha gia' in mano
+    #    (`get_log` lo consegna): serve a scegliere la porta con cui si
+    #    scrive l'esito, non a descrivere la riga.
     def retry_log_entry(self, log_id: int, account: dict[str, Any], log_detail: dict[str, Any]) -> bool:
+        ambito = log_detail["ambito"]
         if self.is_console_mode(account):
             self._send_console(
                 account,
@@ -305,7 +322,7 @@ class EmailDispatchService:
                 log_detail.get("corpo_inviato_testo"),
             )
             now = datetime.now(timezone.utc).isoformat()
-            self._repo.update_log_stato(log_id, "SENT", inviato_at=now)
+            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
             return True
         return self._send_smtp(
             account,
@@ -315,6 +332,7 @@ class EmailDispatchService:
             log_detail.get("corpo_inviato_html", ""),
             log_detail.get("corpo_inviato_testo"),
             log_id,
+            ambito,
         )
 
     # Scopo: Testa la connessione SMTP di un account (senza inviare email).

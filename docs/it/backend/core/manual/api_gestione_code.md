@@ -44,7 +44,24 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
 
 - `GET /api/v1/core/tracciamento/code/conteggi/`
 - Conteggi vivi (PENDING/IN_CORSO) delle due code, **scoped** al chiamante, +
-  liveness worker (`ultimo run entro 10 minuti` = attivo). Pollato dal FE a 60s.
+  liveness worker (`ultimo run entro la tolleranza dichiarata` = attivo).
+  Pollato dal FE a 60s.
+- ⭐ **La soglia non è più un numero nel backend** (dal 2026-09-06): arriva dal
+  **dichiarato di deploy**, `backend/deploy/sveglie.json`, campo
+  `tolleranza_minuti` della sveglia del worker, letto via
+  `apps.core.services.sveglie`. Oggi vale 10 minuti per entrambi i drainer, che
+  è il valore che c'era prima — **il numero non cambia, cambia chi lo dice**.
+- ⛔ Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` in `gestione_service.py`, con
+  il commento «i timer girano a 1-2 minuti»: per sapere se 10 fosse ancora
+  giusto bisognava aprire l'`OnCalendar` in un altro file, che nessuno
+  rileggeva. Due scritture dello stesso fatto, e la divergenza sarebbe stata
+  **muta** — un pallino verde su un worker fermo.
+- ⚠️ Il contratto della risposta **non cambia**: `{last_run_at, attivo,
+  last_ok}` per worker, e un worker mai girato resta `{attivo: false}`
+  esplicito.
+- ⚠️ Se un worker arrivasse senza tolleranza dichiarata il service ripiega su 10
+  minuti per non spegnere il badge, ma è una configurazione incompleta e la CI
+  la rifiuta (`test_worker_del_badge_hanno_una_tolleranza`).
 
 ### 2. Lista coda lavori (BE-5, sola lettura)
 
@@ -272,6 +289,15 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
   `add_emittente_scope_condition`, convenzione SR) + `anagrafiche.emittenti_fiscali`.
 - `maintenance.job_run_log` (liveness worker, jobname
   `draina_coda_lavori`/`draina_coda_stampa`).
+  ⚠️ I due jobname **non sono letterali** in `gestione_service.py`: sono le
+  costanti di `apps.core.services.processi`, perché il worker si registra sul
+  giornale col proprio `processo_codice` ed è con quello che si cerca la
+  tolleranza nel dichiarato. Due stringhe uguali in due file si sarebbero
+  sfilate al primo rename **senza che niente fallisse**: la tolleranza non si
+  sarebbe più trovata e il badge avrebbe continuato con il ripiego.
+- `backend/deploy/sveglie.json` — **non è una dipendenza DB ma di deploy**, ed è
+  la sede della `tolleranza_minuti`. Vedi
+  [sveglie_processi.md](sveglie_processi.md).
 - Seed `config.aree_funzionali` area `strumenti` + azione
   `config.azioni_processo` `code_manage` su quell'area (team DB, brief §6).
 

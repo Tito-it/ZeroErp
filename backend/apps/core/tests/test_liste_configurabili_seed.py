@@ -379,6 +379,13 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_task_runs.md")),
     ("vendite.lotto_segnalazioni",
      _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni.md")),
+    # ⭐ La QUARTA scheda del drawer lotto (2026-09-06,
+    # brief-db-esito-gruppo-lotto): i DOCUMENTI presi in carico, con l'esito di
+    # ciascuno. Registrata nello STESSO passo in cui nasce il seed — una lista
+    # che nasce senza presidio viene dichiarata a posto senza essere stata
+    # guardata, ed e' la lezione dei residui di competenza.
+    ("vendite.lotto_gruppi",
+     _da_costante("apps.vendite.db.vendite_repository", "LOTTO_GRUPPI_SORT_COLUMNS")),
     # Montata il 2026-08-22 (Vendite -> Tool fatturazione, primo tab). Era
     # seedata dal 15-08 e SENZA consumatore frontend: il registro contava 46
     # liste montate contro 47 codici a catalogo, e la differenza era questa.

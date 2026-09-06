@@ -2256,7 +2256,14 @@
       "motivo_righe_annullate": "annullato | annullati",
       "motivo_nessuna_riga_candidata": "senza righe da fatturare | senza righe da fatturare",
       "motivo_esecuzione_fallita": "da rilanciare | da rilanciare",
-      "motivo_non_determinato": "in errore | in errore"
+      "motivo_non_determinato": "in errore | in errore",
+      "col_ultimo_esito": "Esito tentativo",
+      "col_ultimo_errore_codice": "Codice errore",
+      "col_ultimo_errore_messaggio": "Motivo",
+      "col_ultimo_errore_quando": "Tentato il",
+      "col_ultimo_lotto": "Lotto del tentativo",
+      "ultimo_esito_titolo": "L’ultimo tentativo di fatturazione è fallito",
+      "ultimo_esito_titolo_lotto": "Ultimo tentativo fallito — lotto {lotto}"
     },
     "ddt": {
       "titolo": "DDT di vendita",
@@ -2880,7 +2887,13 @@
       "giornale_ritirate": "Nascosti {n} eventi di tentativi poi rifatti.",
       "giornale_parziale": "Mostrati {n} eventi su {tot}.",
       "lotto_in_giro_tooltip": "Numerazione di questo lotto già avviata e in lavorazione: attendi l'esito, la rotellina sparisce da sola quando il giro è finito.",
-      "numera_mese_atteso": "Un giro di numerazione è ancora in corso. L'atto sul MESE prende tutti i lotti, compresi quelli già in volo: attendi che finisca. Nel frattempo puoi numerare altre selezioni."
+      "numera_mese_atteso": "Un giro di numerazione è ancora in corso. L'atto sul MESE prende tutti i lotti, compresi quelli già in volo: attendi che finisca. Nel frattempo puoi numerare altre selezioni.",
+      "tab_gruppi": "Presi in carico",
+      "gruppi_senza_perimetro": "Questo lotto non dichiara un perimetro di documenti: è un giro di massa, e lavora tutto ciò che trova. I documenti prodotti sono nella scheda «Documenti».",
+      "nessun_gruppo": "Nessun documento preso in carico",
+      "gruppo_errore_titolo": "Perché questo documento non è passato",
+      "gruppo_commesse_multi": "{n} commesse",
+      "gruppo_commesse_multi_tooltip": "Questo documento alimenta più di una commessa: non ce n’è una sola da aprire."
     },
     "numerazione_data": {
       "titolo": "Numerazione — data del documento",
@@ -3819,6 +3832,15 @@
       "TITOLO": "Titolo IVA del cliente (es. dichiarazione d'intento)",
       "ASSENTE": "Nessuna aliquota risolta: va scelta",
       "MANUALE": "Scelta manualmente"
+    },
+    "lotto_gruppi": {
+      "col_riferimento": "Documento",
+      "col_tipo_gruppo": "Tipo",
+      "col_commessa": "Commessa",
+      "col_stato_esecuzione": "Esito",
+      "col_errore_codice": "Cod. errore",
+      "col_errore_messaggio": "Motivo",
+      "col_errore_quando": "Fallito il"
     }
   },
   "pagamenti": {

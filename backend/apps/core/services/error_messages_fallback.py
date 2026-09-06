@@ -308,6 +308,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_EMAIL": "Errore configurazione email.",
     "E_EMAIL_ADMIN": "Operazione sulla configurazione email non riuscita.",
+    "E_EMAIL_LOG_INESISTENTE": (
+        "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
+    ),
     "E_EMAIL_OP": "Operazione email non riuscita.",
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
     "E_EMITTENTE_ATTIVO_TOKEN": "Refresh token richiesto per applicare il cambio di emittente.",

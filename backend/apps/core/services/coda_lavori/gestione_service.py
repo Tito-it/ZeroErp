@@ -39,7 +39,12 @@ from apps.core.services.fan_out import run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.processi import (
+    PROCESSO_DRAINA_CODA_LAVORI,
+    PROCESSO_DRAINA_CODA_STAMPA,
+)
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.sveglie import tolleranza_minuti
 
 # Azione di processo che sblocca la vista cross-utente e le azioni su job
 # altrui (D-A). Seed a carico del team DB (brief §6, area core); finché non è
@@ -48,12 +53,25 @@ AZIONE_CODE_MANAGE = "code_manage"
 
 # Jobname dei worker drainer in maintenance.job_run_log (owner: i rispettivi
 # management command). Base della liveness del badge (BE-4).
-JOBNAME_WORKER_CODA_LAVORI = "draina_coda_lavori"
-JOBNAME_WORKER_CODA_STAMPA = "draina_coda_stampa"
+# ⭐ NON sono letterali: sono le costanti dei processi. I due command si
+#    registrano sul giornale col PROPRIO codice, quindi qui `jobname` e
+#    `processo_codice` sono la stessa stringa — e scriverla due volte
+#    significherebbe che `_liveness_worker`, che cerca la tolleranza PER
+#    PROCESSO, smetterebbe di trovarla al primo rename senza che niente
+#    fallisca: cadrebbe sul ripiego, e il pallino resterebbe verde con un
+#    numero inventato.
+JOBNAME_WORKER_CODA_LAVORI = PROCESSO_DRAINA_CODA_LAVORI
+JOBNAME_WORKER_CODA_STAMPA = PROCESSO_DRAINA_CODA_STAMPA
 
-# Soglia di liveness: ultimo run del worker entro N minuti = "attivo". I timer
-# girano a 1-2 minuti: 10 minuti assorbe ritardi/riavvii senza falsi allarmi.
-WORKER_ATTIVO_SOGLIA_MINUTI = 10
+# Ripiego della soglia di liveness, per un worker che nel dichiarato di deploy
+# non ha una `tolleranza_minuti`.
+# ⚠️ NON è «il valore giusto»: è il valore che non fa danno. Un worker senza
+#    tolleranza dichiarata è una voce di `sveglie.json` incompleta, e il posto
+#    dove si corregge è quella — non questa riga.
+# ⛔ E non deve diventare la strada normale: `test_worker_del_badge_hanno_una_tolleranza`
+#    fallisce in CI se uno dei due drainer arriva qui senza tolleranza. Questo
+#    resta per il runtime, dove un badge che si spegne sarebbe peggio.
+_SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 
 # Stati "vivi" delle due code (vocabolario condiviso PENDING/IN_CORSO).
 _STATI_VIVI = ("PENDING", "IN_CORSO")
@@ -115,6 +133,47 @@ def _valida_ordinamento(
     return sort_by or default, sort_dir_norm or "DESC"
 
 
+# Scopo: liveness dei worker, con la soglia PRESA DAL DICHIARATO DI DEPLOY
+#        (`backend/deploy/sveglie.json`, via `apps.core.services.sveglie`)
+#        invece che da una costante scritta qui.
+#
+# ⛔ PERCHE' NON E' PIU' UN NUMERO IN QUESTO FILE. Fino al 2026-09-06 c'era
+#    `WORKER_ATTIVO_SOGLIA_MINUTI = 10`, con il commento «i timer girano a 1-2
+#    minuti». Quel commento è la prova del difetto: per sapere se 10 fosse
+#    ancora giusto bisognava andare a leggere l'`OnCalendar` in un altro file,
+#    che nessuno rileggeva. Lo stesso fatto scritto in due posti — e il giorno
+#    in cui una cadenza fosse passata a 15 minuti, il pallino sarebbe diventato
+#    rosso su un worker sano, che è il modo più rapido di far smettere di
+#    guardare un presidio.
+#
+# ⚠️ SI RAGGRUPPA PER SOGLIA, e non è generalità gratuita: `job_liveness`
+#    accetta UNA soglia per chiamata, e nulla nel modello dice che due worker
+#    debbano avere la stessa. Oggi le due coincidono e la chiamata resta una
+#    sola; il giorno in cui divergono questo codice fa la cosa giusta invece di
+#    applicarne una alle due.
+def _liveness_worker(jobnames: list[str]) -> dict[str, dict]:
+    per_soglia: dict[int, list[str]] = {}
+    for jobname in jobnames:
+        # ⚠️ Il jobname dei drainer È il `processo_codice`: sono i command che si
+        #    registrano col proprio nome, e le costanti qui sopra vengono da
+        #    `processi.py` apposta. Dove i due non coincidessero (le corsie di
+        #    `run_fatturazione_batch`, che attaccano la corsia al jobname) la
+        #    liveness non si fa da qui.
+        # ⛔ `is None` e NON `or`: sono due domande diverse. `or` direbbe
+        #    «ripiega» anche su uno zero, e soprattutto confonde «non
+        #    dichiarata» con «dichiarata a niente» — che nel file sono due cose
+        #    opposte (`null` = «non si presidia da qui»).
+        dichiarata = tolleranza_minuti(jobname)
+        soglia = _SOGLIA_LIVENESS_RIPIEGO_MINUTI if dichiarata is None else dichiarata
+        per_soglia.setdefault(soglia, []).append(jobname)
+
+    repo = MaintenanceRepository()
+    esito: dict[str, dict] = {}
+    for soglia, gruppo in per_soglia.items():
+        esito.update(repo.job_liveness(gruppo, soglia_minuti=soglia))
+    return esito
+
+
 # Scopo: BE-4 — conteggi per il badge top bar + liveness worker. Ritorna
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
@@ -134,9 +193,8 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
         auth_user_id=auth_user_id,
     )
 
-    liveness = MaintenanceRepository().job_liveness(
+    liveness = _liveness_worker(
         [JOBNAME_WORKER_CODA_LAVORI, JOBNAME_WORKER_CODA_STAMPA],
-        soglia_minuti=WORKER_ATTIVO_SOGLIA_MINUTI,
     )
     worker_giu = {"last_run_at": None, "attivo": False, "last_ok": None}
 

@@ -71,22 +71,34 @@ import { extractApiError } from '../../core/utils/apiError'
 import {
   gravitaGiornaleSeverity,
   naturaDocSeverity,
-  statoEsecuzioneFatturaSeverity,
+  statoEsecuzioneLottoSeverity,
   statoLottoSeverity,
   statoTaskRunSeverity,
 } from '../../core/utils/severity'
 import {
   getLotto,
   listLottoFatture,
+  listLottoGruppi,
   listLottoTaskRuns,
   getLottoSegnalazioni,
   listLottoSegnalazioni,
   exportLottoFatture,
+  exportLottoGruppi,
   exportLottoTaskRuns,
   exportLottoSegnalazioni,
   eliminaFatturaDaLotto,
   getLottoGiornale,
 } from '../api/lotti'
+// ⭐ Il gesto «apri il documento / apri la commessa» del kebab dei documenti
+// presi in carico passa dal RESOLVER GLOBALE dei bersagli, non da drawer
+// montati qui: l'ospite è UNO SOLO, in `App.vue`, e la mappa tipo→destinazione
+// applica già i guard dei permessi. Montarne di propri vorrebbe dire una
+// seconda catena — e un pulsante che porta su «accesso negato» dove l'altra
+// non lo mostra affatto.
+import { BERSAGLIO_TIPI, normalizzaBersagli } from '../../core/bersagli'
+import { azioniDaBersagli } from '../../core/bersaglioGesto'
+import { useAuthStore } from '../../stores/auth'
+import { STATO_ESECUZIONE_LOTTO } from '../constants'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -130,6 +142,48 @@ const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir
   listLottoFatture(props.lottoId, {
     page, page_size: pageSize, ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
   }))
+// ⭐ LA QUARTA SCHEDA — I DOCUMENTI PRESI IN CARICO (brief-db-esito-gruppo-lotto).
+//
+// ⛔ NON è un doppione della scheda «Documenti», ed è la ragione per cui esiste.
+//    Quella elenca `fatturazione_lotti_fatture`, che si aggancia a
+//    `fattura_id`: un documento caduto PRIMA che una fattura esista non ha
+//    niente a cui appendersi. Sul lotto LTF-0009578 se ne vedevano DUE su tre,
+//    e il terzo era nominato solo da una segnalazione — per giunta con
+//    l'identificativo della COMMESSA, così che la segnalazione sembrava
+//    sbagliata mentre era l'unica cosa vera in giro.
+//
+// ⚠️ Le due liste non sono in corrispondenza 1:1 nemmeno a giro riuscito: una
+//    fattura può raccogliere più documenti. Sono due domande diverse, non due
+//    viste della stessa — per questo è una scheda e non una colonna in più.
+//
+// Nessun ordinamento iniziale dichiarato: il default lo decide il backend e
+// mette in cima i FALLITI, che è la domanda con cui questa scheda si apre.
+// Dichiarata PRIMA del fetcher che la scrive: l'ordine di dichiarazione in un
+// `<script setup>` è l'ordine di esecuzione, e una ref usata da un blocco
+// dichiarato più in alto è una TDZ silenziosa (memoria
+// feedback_vue_watch_immediate_tdz).
+// ⚠️ TRE stati, non due: `null` = «non lo sappiamo ancora» (o la fetch è
+// fallita), `false` = il lotto NON dichiara un perimetro, `true` = lo dichiara.
+// Con un booleano, una fetch fallita si sarebbe letta come «giro di massa» e la
+// scheda avrebbe AFFERMATO una cosa falsa — la stessa regola dell'empty-state
+// onesto: un vuoto positivo si dice solo dopo una risposta ricevuta.
+const perimetroGruppiDichiarato = ref(null)
+const listaGruppi = useListaDrawerPaginata(
+  async ({ page, pageSize, sortBy, sortDir }) => {
+    const res = await listLottoGruppi(props.lottoId, {
+      page, pageSize, orderBy: sortBy, orderDir: sortDir,
+    })
+    // ⭐ ZERO RIGHE HA DUE SIGNIFICATI e senza questo flag si leggono uguali: un
+    // giro DI MASSA non dichiara nessun perimetro di gruppi (nessuna riga =
+    // nessuna restrizione, garanzia G1 della tabella), quindi qui non ha niente
+    // da mostrare — che è diverso da «non ha lavorato niente».
+    // Letto QUI e non nel composable: è un campo extra di questo endpoint, e il
+    // BB delle liste in drawer non deve sapere che questa è speciale.
+    perimetroGruppiDichiarato.value = res?.data?.data?.perimetro_dichiarato ?? null
+    return res
+  },
+)
+
 // ⭐ Ordinamento iniziale «Fine» DESC: la diagnostica si legge dall'ULTIMA cosa
 //    successa. Senza, la funzione DB ripiega su `started_at` e il frontend manda
 //    `asc` — cioe' il piu' VECCHIO in cima, e su un lotto ripreso otto volte
@@ -195,6 +249,7 @@ const listaSegnalazioni = useListaDrawerPaginata(
 // ⭐ L'export riceve gli STESSI filtri e lo STESSO ordinamento della lista a
 // video: il file E' la lista, non una seconda query che le somiglia.
 const listaDocumentiRef = ref(null)
+const listaGruppiRef = ref(null)
 const listaTaskRef = ref(null)
 const listaSegnalazioniRef = ref(null)
 
@@ -223,6 +278,21 @@ const azioniDocumenti = useListaAzioni(() => listaDocumentiRef.value, {
       ? {
           sort_by: listaDocumenti.sortField.value,
           sort_dir: listaDocumenti.sortOrder.value === -1 ? 'desc' : 'asc',
+        }
+      : {}),
+  }),
+})
+const azioniGruppi = useListaAzioni(() => listaGruppiRef.value, {
+  exportFn: (params) => exportLottoGruppi(props.lottoId, params),
+  getExportParams: (formato) => ({
+    formato,
+    // ⚠️ L'ordinamento viaggia col file: il file È la lista, non una seconda
+    // query che le somiglia. Il verso si manda solo con la colonna — da solo
+    // annullerebbe il default del backend, che mette i falliti in cima.
+    ...(listaGruppi.sortField.value
+      ? {
+          order_by: listaGruppi.sortField.value,
+          order_dir: listaGruppi.sortOrder.value === -1 ? 'desc' : 'asc',
         }
       : {}),
   }),
@@ -263,6 +333,7 @@ const azioniSegnalazioni = useListaAzioni(() => listaSegnalazioniRef.value, {
 
 // Le tre barre a video: «ricarica» davanti, poi personalizza e esporta.
 const barraDocumenti = conRicarica(azioniDocumenti.azioniLista, () => listaDocumenti.carica())
+const barraGruppi = conRicarica(azioniGruppi.azioniLista, () => listaGruppi.carica())
 const barraTask = conRicarica(azioniTask.azioniLista, () => listaTask.carica())
 const barraSegnalazioni = conRicarica(azioniSegnalazioni.azioniLista, caricaSegnalazioni)
 const segnalazioni = ref(null)
@@ -461,6 +532,7 @@ async function loadTabs() {
     const [sRes] = await Promise.all([
       getLottoSegnalazioni(props.lottoId),
       listaDocumenti.carica(),
+      listaGruppi.carica(),
       listaTask.carica(),
       caricaSegnalazioni(),
       caricaGiornale(),
@@ -535,6 +607,12 @@ watch(
     segnalazioni.value = null
     segnalazioniFuoriJob.value = 0
     listaDocumenti.reset()
+    listaGruppi.reset()
+    // ⚠️ Si azzera anche il flag, non solo le righe: senza, il drawer aprirebbe
+    // su un lotto DI MASSA mostrando il messaggio del lotto precedente — o, il
+    // caso peggiore, l'empty-state «nessun documento» su un lotto che un
+    // perimetro non lo dichiara affatto.
+    perimetroGruppiDichiarato.value = null
     listaTask.reset()
     listaSegnalazioni.reset()
     // Riapertura = si riparte dai DOCUMENTI, sempre. Senza questo reset il
@@ -788,6 +866,65 @@ function buildFatturaActions(row) {
   return actions
 }
 
+const auth = useAuthStore()
+
+// Scopo: le azioni del kebab sui DOCUMENTI PRESI IN CARICO — «apri il
+//        documento» e «apri la commessa da correggere».
+//
+// ⭐ SI COSTRUISCONO DAL RESOLVER DEI BERSAGLI, non a mano. La mappa
+//    tipo→destinazione vive in `core/bersagli.js`, applica i guard dei permessi
+//    e apre l'ospite globale di `App.vue`: qui non si monta nessun drawer.
+//    ⚠️ E `tipo_gruppo` È già il vocabolario di quella mappa — sono entrambi i
+//    `config.sorgenti.codice_interno`. Non c'era una tabella da inventare, ce
+//    n'era una da riconoscere.
+//
+// ⛔ Il degrado è dichiarato e va tenuto: un tipo senza destinazione (le voci
+//    manuali, `ONERI_COMMESSA`), un documento fuori scope, un'area BLOCCATA →
+//    nessuna voce. Mai un pulsante che porta in un vicolo cieco (§4.3 di
+//    `brief-db-bersaglio-errore`).
+//
+// ⚠️ La commessa esce SOLO quando ce n'è una: `commesse_n > 1` significa che il
+//    documento ne alimenta più d'una, e offrirne una a caso sarebbe una
+//    scommessa travestita da regola — la stessa ragione per cui il backend
+//    lascia `commessa_id` a NULL in quel caso.
+function buildGruppoRowActions(row) {
+  const bersagli = []
+  if (row.documento_id && row.tipo_gruppo) {
+    bersagli.push({ type: row.tipo_gruppo, id: row.documento_id })
+  }
+  bersagli.push(...bersaglioCommessa(row))
+  return azioniDaBersagli(normalizzaBersagli(bersagli), auth).map((azione, i) => ({
+    key: `bersaglio_${i}`,
+    label: azione.label,
+    icon: azione.icon,
+    command: azione.esegui,
+  }))
+}
+
+// Scopo: ⭐ LA COMMESSA DA CORREGGERE, come bersaglio. Sta in una funzione e non
+//        in due espressioni perché le superfici sono DUE — il kebab qui sopra e
+//        l'icona d'errore nella cella dell'esito — e scriverla due volte
+//        significa dimenticare in un posto il guard su `commessa_id`.
+// ⚠️ Elenco vuoto e non `null`: chi la usa la concatena o la passa a
+//        `ErroreRigaInfo`, e in entrambi i casi «niente» è la lista vuota.
+// ⛔ Il tipo viene dalla mappa dei bersagli, non da una stringa a mano: un tipo
+//        che quella mappa non conosce non risolve, e il pulsante semplicemente
+//        non compare — senza nessun errore.
+function bersaglioCommessa(row) {
+  return row.commessa_id
+    ? [{ type: BERSAGLIO_TIPI.COMMESSA, id: row.commessa_id }]
+    : []
+}
+
+// Scopo: il nome del documento preso in carico. ⚠️ Il ripiego è la CHIAVE del
+//        gruppo e non un trattino: quando l'identità non si risolve più — il
+//        lavoro è finito in un altro giro, o è uscito dal mese — la riga resta
+//        in elenco col suo esito, ed è proprio quella per cui questa scheda
+//        esiste. Una riga senza nome è comunque meglio di una riga assente.
+function gruppoRiferimento(row) {
+  return row.riferimento || row.gruppo_key
+}
+
 // ⛔ Niente composizione locale: il numero documento viene dalla sede unica
 // (`vendite.fn_numero_documento_fattura`, 20260829-15). Qui si scriveva
 // `serie numero`, nel drawer fattura `serie numero/anno`: due schermate, due
@@ -865,6 +1002,14 @@ function fatturaNumero(row) {
                  con la paginazione «(25)» su 137 documenti sarebbe la
                  dimensione della pagina spacciata per quantita'. -->
             <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
+            <!-- ⭐ I documenti PRESI IN CARICO — quelli che una fattura non sono
+                 mai diventati compresi. ⚠️ Il conteggio compare solo quando il
+                 lotto dichiara un perimetro: un «(0)» su un giro di massa
+                 direbbe «non ha lavorato niente», che è falso. -->
+            <Tab value="gruppi">
+              {{ t('vendite.lotti.tab_gruppi') }}
+              <template v-if="perimetroGruppiDichiarato === true"> ({{ listaGruppi.totale.value }})</template>
+            </Tab>
             <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
             <Tab value="segnalazioni">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
             <!-- ⭐ La quarta scheda risponde a una domanda che le altre tre non
@@ -932,7 +1077,7 @@ function fatturaNumero(row) {
                 </template>
                 <template #cell-stato_esecuzione="{ data }">
                   <span class="app-lotto-esecuzione-cella">
-                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneFatturaSeverity(data.stato_esecuzione)" />
+                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)" />
                     <!-- Il PERCHE' accanto al CHE COSA: senza, «ERRORE» e' una
                          bandiera senza messaggio. Il componente si nasconde da
                          solo quando non c'e' errore. -->
@@ -963,6 +1108,112 @@ function fatturaNumero(row) {
                      PrimeVue, che e' in inglese. -->
                 <template #empty>
                   <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
+                </template>
+              </ListaConfigurabile>
+            </TabPanel>
+
+            <TabPanel value="gruppi">
+              <!-- ⚠️ La toolbar segue la LISTA, non la scheda: senza perimetro
+                   la lista non è montata, e «Personalizza colonne»/«Esporta»
+                   agirebbero su un riferimento nullo — pulsanti che si possono
+                   premere e non fanno niente, che è peggio di pulsanti
+                   assenti. -->
+              <div v-if="perimetroGruppiDichiarato !== false" class="app-page-toolbar">
+                <span class="app-page-filters" />
+                <PageActionsBar :actions="barraGruppi">
+                  <template #suffix>
+                    <ListaConfigStatusTag :dirty="azioniGruppi.dirty.value" />
+                  </template>
+                </PageActionsBar>
+              </div>
+              <!-- ⭐ IL LOTTO DI MASSA NON DICHIARA UN PERIMETRO, e va DETTO.
+                   Un elenco vuoto senza questa frase si legge come «questo
+                   lotto non ha lavorato niente», che è il contrario del vero:
+                   un giro schedulato prende tutto ciò che trova, e l'assenza di
+                   righe È il criterio (garanzia G1 di
+                   `fatturazione_lotti_gruppi`). ⛔ Prima della lista e non al
+                   suo posto: se un domani il perimetro arrivasse anche ai giri
+                   di massa, la lista è già lì. -->
+              <Message
+                v-if="perimetroGruppiDichiarato === false && !tabLoading"
+                severity="info"
+                :closable="false"
+                class="app-mb-1"
+              >
+                {{ t('vendite.lotti.gruppi_senza_perimetro') }}
+              </Message>
+              <ListaConfigurabile
+                v-else
+                ref="listaGruppiRef"
+                codice="vendite.lotto_gruppi"
+                data-key="id"
+                :rows="listaGruppi.righe.value"
+                :total="listaGruppi.totale.value"
+                :loading="tabLoading || listaGruppi.loading.value"
+                :paginator-options="listaGruppi.paginatorOptions.value"
+                :page="listaGruppi.page.value"
+                :sort-field="listaGruppi.sortField.value"
+                :sort-order="listaGruppi.sortOrder.value"
+                @page="listaGruppi.onPage"
+                @sort="listaGruppi.onSort"
+                @config-loaded="listaGruppi.onConfigLoaded"
+              >
+                <!-- ⚠️ Il ripiego è la CHIAVE del gruppo, non un trattino: una
+                     riga che ha perso l'identità ha comunque un esito da
+                     raccontare, ed è quella per cui la scheda esiste. -->
+                <template #cell-riferimento="{ data }">
+                  <strong>{{ gruppoRiferimento(data) }}</strong>
+                </template>
+                <template #cell-tipo_gruppo="{ data }">
+                  <Tag v-if="data.tipo_gruppo" :value="data.tipo_gruppo" severity="secondary" />
+                  <span v-else>—</span>
+                </template>
+                <!-- ⚠️ Vuota quando il documento alimenta PIÙ commesse
+                     (`commesse_n > 1`): non è «non lo so», è «sono più di una»,
+                     e le due cose si scrivono diverse — stessa forma con cui
+                     questa applicazione tratta già il sezionale multiplo. -->
+                <template #cell-commessa_codice="{ data }">
+                  <span v-if="data.commessa_codice">{{ data.commessa_codice }}</span>
+                  <span
+                    v-else-if="data.commesse_n > 1"
+                    v-tooltip.bottom="t('vendite.lotti.gruppo_commesse_multi_tooltip')"
+                  >
+                    <i class="pi pi-clone" />
+                    {{ t('vendite.lotti.gruppo_commesse_multi', { n: data.commesse_n }) }}
+                  </span>
+                  <span v-else>—</span>
+                </template>
+                <!-- ⭐ Il CHE COSA e il PERCHÉ nella stessa cella, come sulla
+                     scheda «Documenti»: il tag dice com'è andata, l'icona apre
+                     il motivo per intero e porta alla commessa da correggere.
+                     ⚠️ Vuoto = MAI TENTATO in questo lotto, e non è «andata
+                     bene»: si scrive «—», che è l'assenza, non un `PENDING`
+                     inventato qui. -->
+                <template #cell-stato_esecuzione="{ data }">
+                  <span class="app-lotto-esecuzione-cella">
+                    <Tag
+                      v-if="data.stato_esecuzione"
+                      :value="data.stato_esecuzione"
+                      :severity="statoEsecuzioneLottoSeverity(data.stato_esecuzione)"
+                    />
+                    <span v-else>—</span>
+                    <ErroreRigaInfo
+                      v-if="data.stato_esecuzione === STATO_ESECUZIONE_LOTTO.ERRORE"
+                      :messaggio="data.errore_messaggio"
+                      :codice="data.errore_codice"
+                      :quando="data.errore_quando"
+                      :bersagli="bersaglioCommessa(data)"
+                      :titolo="t('vendite.lotti.gruppo_errore_titolo')"
+                    />
+                  </span>
+                </template>
+                <!-- ⛔ `actions`, non `cell-azioni`: col nome sbagliato la
+                     colonna non viene resa affatto e non fallisce niente. -->
+                <template #actions="{ data, compact }">
+                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
+                </template>
+                <template #empty>
+                  <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessun_gruppo') }}</p></div>
                 </template>
               </ListaConfigurabile>
             </TabPanel>
@@ -1363,6 +1614,12 @@ function fatturaNumero(row) {
 }
 .app-mt-1 {
   margin-top: 1rem;
+}
+/* Stacco fra il banner «questo lotto non dichiara un perimetro» e ciò che
+   segue. ⚠️ Locale come `.app-mt-1` qui sopra: le spaziature globali di
+   `main.css` sono `mt-025`/`mt-05`/`mt-1`, senza gemelle in basso. */
+.app-mb-1 {
+  margin-bottom: 1rem;
 }
 .app-lotto-segn-link {
   padding: 0 0 0 0.35rem;

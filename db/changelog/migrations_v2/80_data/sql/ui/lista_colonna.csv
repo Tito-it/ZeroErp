@@ -721,3 +721,16 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 721,66,ultimo_run,Ultima corsa,Quando e girato l ultima volta,ultimo_run,informazione,datetime,datetime_short,170,70,left,,,f,t,t,f,f,t,2026-09-05 00:00:00,mctit,,50
 722,66,ultimo_ok,Esito,Esito dell ultima corsa,ultimo_ok,informazione,boolean,,110,80,center,,,f,f,t,f,f,t,2026-09-05 00:00:00,mctit,,55
 723,66,attivo,Attivo,Processo attivo a catalogo,attivo,informazione,boolean,yesno,90,90,center,,,t,t,t,f,f,t,2026-09-05 00:00:00,mctit,,10
+724,42,ultimo_esito,Esito tentativo,Come e andato l ultimo tentativo di fatturare questo documento,ultimo_esito,informazione,string,,,110,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.dashboard_competenza.col_ultimo_esito,55
+725,42,ultimo_errore_codice,Codice errore,Codice applicativo dell ultimo tentativo fallito,ultimo_errore_codice,informazione,string,,,120,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.dashboard_competenza.col_ultimo_errore_codice,25
+726,42,ultimo_errore_messaggio,Motivo,Perche l ultimo tentativo non e andato a buon fine,ultimo_errore_messaggio,informazione,string,,,130,left,,,f,f,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.dashboard_competenza.col_ultimo_errore_messaggio,15
+727,42,ultimo_errore_quando,Tentato il,Quando e fallito l ultimo tentativo,ultimo_errore_quando,informazione,datetime,datetime_short,,140,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.dashboard_competenza.col_ultimo_errore_quando,20
+728,42,ultimo_lotto_codice,Lotto del tentativo,In quale lotto il documento e stato tentato,ultimo_lotto_codice,informazione,string,,,150,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.dashboard_competenza.col_ultimo_lotto,30
+729,67,riferimento,Documento,Il documento preso in carico: numero se ce l ha altrimenti il codice commessa,riferimento,identificatore,string,,200,10,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_riferimento,100
+730,67,tipo_gruppo,Tipo,Da quale sorgente arriva il documento (ONERI_COMMESSA per le voci manuali),tipo_gruppo,informazione,string,,130,20,center,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_tipo_gruppo,60
+731,67,commessa_codice,Commessa,La commessa da correggere. Vuota quando il documento ne alimenta piu di una,commessa_codice,informazione,string,,220,30,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_commessa,85
+732,67,stato_esecuzione,Esito,Come e andato in QUESTO lotto. Vuoto = mai tentato che non e andato bene,stato_esecuzione,informazione,string,,130,40,center,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_stato_esecuzione,95
+733,67,errore_codice,Cod. errore,Codice applicativo del fallimento,errore_codice,informazione,string,,180,50,left,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_errore_codice,45
+734,67,errore_messaggio,Motivo,Perche il documento non e passato,errore_messaggio,informazione,string,,300,60,left,,,f,f,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_errore_messaggio,50
+735,67,errore_quando,Fallito il,,errore_quando,informazione,datetime,datetime_short,150,70,center,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_errore_quando,20
+736,67,azioni,Azioni,,,azione,string,,90,999,center,,,f,f,f,f,f,t,2026-09-06 00:00:00,mctit,common.col_azioni,100

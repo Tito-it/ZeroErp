@@ -788,6 +788,122 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(call_args_list[0][0][0], 10)
         self.assertEqual(call_args_list[1][0][0], 20)
 
+    # ══════════════════════════════════════════════════════════════════
+    #  L'ESITO APPESO AI DOCUMENTI DEL LOTTO (brief-db-esito-gruppo-lotto §8)
+    # ══════════════════════════════════════════════════════════════════
+    #
+    # ⛔ IL DIFETTO CHE PRESIDIANO. Un lotto prende in carico tre documenti e ne
+    #    fattura due: il terzo falliva e SPARIVA dal racconto — non nel lotto
+    #    (non e' mai diventato fattura) e nella competenza ancora fra quelli da
+    #    emettere, senza un segno. Sembrava fatturabile.
+    # ⚠️ Le uscite dell'handler sono TRE, e la marcatura serve in tutte: il ramo
+    #    che SOLLEVA (tutte fallite) e' il caso peggiore ed e' il candidato
+    #    naturale a essere dimenticato.
+
+    # Scopo: fa fallire l'emit sulle commesse indicate, lasciando passare le altre.
+    @staticmethod
+    def _emit_che_fallisce_su(*commesse_ko):
+        def _emit(commessa_id, **_kw):
+            if commessa_id in commesse_ko:
+                raise RuntimeError(f"ROOT source mancante per commessa {commessa_id}")
+            return {"righe": 1}
+        return _emit
+
+    # Scopo: monta l'handler con un roster di commesse e un emit pilotabile.
+    def _executor_pull(self, commesse, *, ko=()):
+        processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "pull_attivita_da_commessa_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = list(commesse)
+        commesse_repo.emit_attivita_fatturabili.side_effect = self._emit_che_fallisce_su(*ko)
+        executor.commesse_repository = commesse_repo
+        repo.segna_esito_gruppo_lotto.return_value = 1
+        return executor, repo
+
+    # Scopo: `{commessa_id: (stato, codice)}` da come il repository e' stato chiamato.
+    @staticmethod
+    def _esiti_marcati(repo):
+        return {
+            c.kwargs["commessa_id"]: (c.args[1], c.kwargs.get("errore_codice"))
+            for c in repo.segna_esito_gruppo_lotto.call_args_list
+        }
+
+    # 1. Una fallita su tre: una `ERRORE` col codice, due `COMPLETED`.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_marca_errore_sulla_fallita_e_completed_sulle_altre(self, _mock_txn):
+        executor, repo = self._executor_pull([10, 20, 30], ko=(20,))
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        esiti = self._esiti_marcati(repo)
+        self.assertEqual(esiti[20][0], "ERRORE")
+        self.assertEqual(esiti[20][1], "E_PULL_COMMESSA")
+        # ⭐ Anche le riuscite: senza, un gruppo andato bene resta a NULL e non
+        #    si distingue da uno mai lavorato.
+        self.assertEqual(esiti[10][0], "COMPLETED")
+        self.assertEqual(esiti[30][0], "COMPLETED")
+        self.assertIsNone(esiti[10][1])
+
+    # 2. ⛔ TUTTE fallite: si marca **e poi** si solleva. E' il ramo che sarebbe
+    #    rimasto scoperto mettendo la marcatura dentro i rami.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_marca_anche_quando_tutte_falliscono_e_poi_solleva(self, _mock_txn):
+        executor, repo = self._executor_pull([10, 20], ko=(10, 20))
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
+        self.assertEqual(ctx.exception.code, "E_PULL_COMMESSA_ALL_FAILED")
+
+        esiti = self._esiti_marcati(repo)
+        self.assertEqual({c: s for c, (s, _) in esiti.items()},
+                         {10: "ERRORE", 20: "ERRORE"})
+
+    # 3. Tutto riuscito: nessun campo d'errore valorizzato.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_marca_completed_quando_va_tutto_bene(self, _mock_txn):
+        executor, repo = self._executor_pull([10, 20])
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        for chiamata in repo.segna_esito_gruppo_lotto.call_args_list:
+            self.assertEqual(chiamata.args[1], "COMPLETED")
+            self.assertIsNone(chiamata.kwargs.get("errore_codice"))
+            self.assertIsNone(chiamata.kwargs.get("errore_messaggio"))
+
+    # 4. ⚠️ La funzione torna 0 — «non l'ho appeso a niente». Non solleva mai, e
+    #    quindi il valore di ritorno E' l'unico segnale: va almeno scritto nel
+    #    log, o il lotto racconta un errore su un documento che non mostra.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_avvisa_quando_l_esito_non_viene_appeso(self, _mock_txn):
+        executor, repo = self._executor_pull([10], ko=(10,))
+        repo.segna_esito_gruppo_lotto.return_value = 0
+
+        with self.assertLogs(
+            "apps.vendite.services.pipeline_step_executor", level="WARNING",
+        ) as log:
+            with self.assertRaises(ServiceError):
+                executor.execute_step(
+                    lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                    rollback=False, dry_run=False,
+                )
+        self.assertTrue(
+            any("esito_non_appeso" in r for r in log.output),
+            "nessun avviso: un esito non appeso resterebbe invisibile",
+        )
+
     # Scopo: Verifica il caso `test_pull_attivita_da_commessa_dry_run_skips_emit`.
     def test_pull_attivita_da_commessa_dry_run_skips_emit(self):
         processi = [{"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}}]

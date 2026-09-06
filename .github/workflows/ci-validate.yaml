@@ -721,3 +721,16 @@ jobs:
           bash backend/bin/install-timers.sh --render-only "$OUT"
           systemd-analyze verify "$OUT"/*.service "$OUT"/*.timer
           echo "Unit systemd dei worker validati."
+
+      - name: Prova il ramo che ACCENDE gli unit (systemctl finto)
+        run: |
+          # ⭐ L'ALTRA META', e finora mancava. Lo step qui sopra prova che gli
+          # unit sono VALIDI; questo prova che si accendono QUELLI GIUSTI —
+          # cioè il ramo che `--render-only` non attraversa.
+          # 🔴 Il 2026-09-06 `zeroerp-listen-cambio-reparto` veniva installato e
+          # mai avviato (slittamento di campi su un `oncalendar` vuoto), e la CI
+          # non poteva vederlo: il difetto viveva dove la prova non arrivava.
+          # Il test mette un `systemctl` finto in testa al PATH e sposta la
+          # destinazione con ZEROERP_SYSTEMD_DIR: le righe eseguite sono le
+          # STESSE della produzione, cambia solo dove atterrano.
+          bash backend/scripts/tests/test-install-timers.sh

@@ -50,6 +50,8 @@ Indice test eseguiti:
 24-quinquies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittente_ragione_sociale
 24-sexies) DashCompetenzaGruppiRepositoryTests.test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 24-septies) DashCompetenzaGruppiRepositoryTests.test_larghezza_riga_finta_uguale_al_select
+24-decies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_l_esito_dell_ultimo_tentativo
+24-undecies) DashCompetenzaGruppiRepositoryTests.test_esito_assente_resta_none
 24-octies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_riferimento_non_nullo
 25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
 26) DashCompetenzaFatturePerCellaTests.test_stadio_non_calcolabile_e_non_applicabile
@@ -994,14 +996,78 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
               ba_codice="BA-0001", id_fiscale="12345678901",
               emittente="Tito Srl",
               registri_n=1, registro_codice="Front-office",
-              data_prevista=date(2026, 8, 31)):
+              data_prevista=date(2026, 8, 31),
+              ultimo_esito=None, ultimo_errore_codice=None,
+              ultimo_errore_messaggio=None, ultimo_errore_quando=None,
+              ultimo_lotto_codice=None):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
             emittibile, stato, stato_descr, ba_codice, id_fiscale, emittente,
             registri_n, registro_codice, data_prevista,
+            # ⭐ L'esito dell'ULTIMO tentativo (rev 2026-09-06, changeSet DB
+            # `20260906-12` — brief-db-esito-gruppo-lotto R-3). I default sono
+            # tutti `None` e NON e' pigrizia: e' la forma che il database
+            # produce su ogni gruppo che nessun giro ha ancora lavorato, cioe'
+            # il caso normale. Chi prova il ramo «e' fallito» lo chiede.
+            ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio,
+            ultimo_errore_quando, ultimo_lotto_codice,
         )]
+
+    # 24-decies) 🟢 L'ESITO DELL'ULTIMO TENTATIVO arriva dalla VISTA e il
+    #     mapping lo consegna (brief-db-esito-gruppo-lotto R-3, changeSet DB
+    #     `20260906-12`). ⭐ Il caso vero e' il documento che il lotto ha preso
+    #     in carico e NON e' riuscito a fatturare: restava fra quelli da
+    #     emettere senza un segno, quindi sembrava fatturabile.
+    #     ⛔ Il test verifica anche cio' che NON deve cambiare: `stadio` e
+    #     `commessa_emittibile` restano quelli di prima (decisione di Tid). Il
+    #     segno dice «ci ho provato», non «non si puo' fare» — e la riga deve
+    #     restare fatturabile, o il rimedio (correggi e riprova) sarebbe
+    #     impossibile proprio dove serve.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_l_esito_dell_ultimo_tentativo(self, mock_query, _band):
+        mock_query.return_value = (self._rows(
+            5387,
+            ultimo_esito="ERRORE",
+            ultimo_errore_codice="E_PULL_COMMESSA",
+            ultimo_errore_messaggio="ROOT source mancante per commessa 34137",
+            ultimo_errore_quando=datetime(2026, 9, 6, 17, 12, tzinfo=UTC),
+            ultimo_lotto_codice="LTF-0009578",
+        ), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["ultimo_esito"], "ERRORE")
+        self.assertEqual(righe[0]["ultimo_errore_codice"], "E_PULL_COMMESSA")
+        self.assertEqual(
+            righe[0]["ultimo_errore_messaggio"],
+            "ROOT source mancante per commessa 34137",
+        )
+        # ISO, come ogni altro timestamp del payload.
+        self.assertTrue(righe[0]["ultimo_errore_quando"].startswith("2026-09-06T17:12"))
+        self.assertEqual(righe[0]["ultimo_lotto_codice"], "LTF-0009578")
+        # ⛔ Il segno NON spegne la riga.
+        self.assertEqual(righe[0]["stadio"], "DA_EMETTERE")
+        self.assertTrue(righe[0]["commessa_emittibile"])
+
+    # 24-undecies) ⚠️ `None` NON diventa una stringa, e non e' un dettaglio: e' la
+    #     verita' di ogni gruppo che nessun giro ha ancora lavorato — «nessuno
+    #     l'ha detto», che il frontend deve poter distinguere da «e' andata
+    #     bene». Un `"None"` a video sarebbe un esito inventato.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_esito_assente_resta_none(self, mock_query, _band):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio=None, limit=25, offset=0,
+        )
+        for chiave in (
+            "ultimo_esito", "ultimo_errore_codice", "ultimo_errore_messaggio",
+            "ultimo_errore_quando", "ultimo_lotto_codice",
+        ):
+            self.assertIsNone(righe[0][chiave], chiave)
 
     # 24-septies) La riga finta e il SELECT vero devono avere la STESSA
     #     larghezza. E' il presidio del presidio: tutti i test di mapping di

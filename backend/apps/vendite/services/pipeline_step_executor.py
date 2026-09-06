@@ -19,6 +19,14 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.services.value_normalizer import as_bool
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
+# Il vocabolario dell'esito di esecuzione dentro un lotto — specchio del CHECK
+# di tabella. Vive con le altre liste chiuse del dominio (`DASH_COMPETENZA_STADI`,
+# `TIPO_GRUPPO_ONERI`, …): una sede sola, e chi scrive e chi legge la usano
+# entrambi. ⛔ Riscrivere le stringhe qui sarebbe la seconda sede.
+from apps.vendite.db.vendite_repository import (
+    STATO_ESECUZIONE_COMPLETED,
+    STATO_ESECUZIONE_ERRORE,
+)
 from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 
@@ -1235,6 +1243,35 @@ class PipelineStepExecutor:
             ),
         )
 
+        # ⭐ L'ESITO SI APPENDE AI DOCUMENTI, e si fa QUI: prima dei tre rami,
+        #    non dentro ciascuno.
+        #
+        # ⛔ Le uscite di questo handler sono TRE — tutto ok, tutte fallite (che
+        #    SOLLEVA), parziale — e la marcatura serve in tutte e tre. Metterla
+        #    dentro i rami vorrebbe dire scriverla tre volte e dimenticarla una:
+        #    il candidato naturale e' il ramo che solleva, cioe' il caso
+        #    PEGGIORE. Sarebbe il paradosso classico — funziona quando va male a
+        #    meta' e tace quando va male del tutto.
+        # ⚠️ E il `dry_run` non arriva mai fin qui: esce molto prima con `None`.
+        #
+        # 🔴 LIMITE DICHIARATO, MISURATO IL 2026-09-06. Nel ramo «TUTTE fallite»
+        #    la marcatura NON sopravvive: `run_pipeline` tiene un
+        #    `transaction.atomic()` attorno all'intero ciclo degli step, e
+        #    `fn_segna_esito_gruppo_lotto` e' una funzione plpgsql normale —
+        #    scrive nella transazione di chi la chiama. Il `raise` di
+        #    `E_PULL_COMMESSA_ALL_FAILED` fa rollback e si porta via i segni.
+        #    ⭐ Provato sul database vero: marcati=1, poi il raise, poi lo stato
+        #    torna `NULL`.
+        # ⇒ Funziona sui due rami che NON sollevano (tutto ok, parziale — che e'
+        #    il caso di `LTF-0009578`, quello per cui il cantiere e' nato).
+        #    Sul terzo serve una scrittura che sopravviva al rollback: e' la
+        #    stessa forma di `maintenance.fn_job_run_log_failure`, ed e' del DB.
+        #    Richiesta in brief-db-esito-gruppo-lotto §11.
+        # ⛔ La chiamata resta QUI e non si sposta nei rami: il giorno in cui la
+        #    scrittura diventa durevole, il terzo ramo e' gia' coperto senza
+        #    toccare niente.
+        self._marca_esito_gruppi(lotto_id, commessa_ids, esito)
+
         # ⭐ Giro riuscito: il diario porta comunque i contatori. La promessa
         # del perimetro consegnato dev'essere verificabile anche quando regge —
         # e «ok: 0 su 3» e' esattamente il segnale che un marchio non arrivato
@@ -1281,6 +1318,52 @@ class PipelineStepExecutor:
                 "commesse_fallite": [e.item for e in esito.errori][:5],
             },
         )
+
+    # Scopo: Appende a ogni gruppo del lotto l'esito della sua commessa —
+    #        `ERRORE` col motivo per quelle fallite, `COMPLETED` per le altre.
+    #
+    # ⭐ PERCHE' ANCHE LE RIUSCITE. Senza, un gruppo andato bene resta a `NULL` e
+    #    non si distingue da uno mai lavorato: la colonna direbbe solo dove e'
+    #    andata male, e non si potrebbe MAI dire «il lotto e' a posto».
+    # ⚠️ Il valore di ritorno della funzione si GUARDA: `0` vuol dire che
+    #    l'esito non e' stato appeso a nessun documento — il lotto continuerebbe
+    #    a raccontare un errore su qualcosa che non mostra. Non solleva (sta
+    #    annotando un fallimento gia' avvenuto, e un errore su di se' coprirebbe
+    #    quello vero): lo si scrive nel log, che e' il solo posto in cui quel
+    #    silenzio si vede.
+    # ⛔ Nessun `UPDATE` diretto: quale riga marcare, avendo in mano una commessa
+    #    e non un gruppo, e' l'unica regola non banale del cantiere e sta nella
+    #    funzione DB. Rifarla qui sarebbe la seconda sede.
+    def _marca_esito_gruppi(self, lotto_id: int, commessa_ids, esito) -> None:
+        messaggi = {e.item: _messaggio_pull(e.item, e.messaggio) for e in esito.errori}
+        for commessa_id in commessa_ids:
+            fallita = commessa_id in messaggi
+            # ⛔ LO STATO SI DECIDE UNA VOLTA SOLA. La stessa ternaria era
+            #    scritta DUE volte — qui e nel log poco sotto — e una copia che
+            #    esiste solo per raccontare l'altra e' la forma in cui un
+            #    verbale finisce a dire una cosa diversa da quella accaduta.
+            # ⚠️ E i due valori vengono dallo SPECCHIO del CHECK di tabella
+            #    (`STATI_ESECUZIONE_LOTTO`), non da stringhe scritte a mano:
+            #    un typo qui non fallisce, fa scrivere un esito che il vincolo
+            #    rifiuta — dentro un gestore d'eccezione, cioe' proprio dove
+            #    l'errore vero verrebbe coperto.
+            stato = STATO_ESECUZIONE_ERRORE if fallita else STATO_ESECUZIONE_COMPLETED
+            marcati = self.repository.segna_esito_gruppo_lotto(
+                lotto_id,
+                stato,
+                commessa_id=commessa_id,
+                errore_codice="E_PULL_COMMESSA" if fallita else None,
+                errore_messaggio=messaggi.get(commessa_id),
+            )
+            if not marcati:
+                # ⚠️ `logging.getLogger(__name__)` in linea: e' l'idioma di
+                #    questo modulo, che non tiene un logger di modulo.
+                logging.getLogger(__name__).warning(
+                    "pull_commesse.esito_non_appeso lotto_id=%s commessa_id=%s "
+                    "stato=%s — nessun gruppo marcato: il lotto raccontera' un "
+                    "esito su un documento che non mostra",
+                    lotto_id, commessa_id, stato,
+                )
 
     # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti
     #        Fase 2): congela i satelliti di intestazione delle fatture del

@@ -77,6 +77,7 @@ from apps.vendite.services.vendite_service import (
     fn_export_lotti,
     fn_list_lotti,
     fn_list_lotto_fatture,
+    fn_list_lotto_gruppi,
     fn_lotti_mensile,
     get_lotto_giornale,
 )
@@ -1130,6 +1131,144 @@ class ApiLottoFattureList(DomainAPIView):
             page_size=page_size,
         )
         return success_response(data)
+
+
+class ApiLottoGruppiList(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/gruppi/
+
+    I DOCUMENTI che il lotto ha preso in carico, con l'esito di ciascuno.
+
+    ⭐ Non e' un doppione di `/fatture/`, ed e' la ragione per cui esiste
+    (brief-db-esito-gruppo-lotto). Quella lista si aggancia a `fattura_id`:
+    descrive i documenti che una fattura l'hanno prodotta. Un documento che
+    cade PRIMA — al pull delle attivita' dalla commessa — non ha nessuna
+    fattura a cui appendersi e finora spariva dal racconto: sul lotto
+    LTF-0009578 se ne vedevano due su tre, e il terzo era nominato solo da una
+    segnalazione, per giunta con l'identificativo della COMMESSA.
+
+    ⚠️ Le due liste NON sono in corrispondenza 1:1 nemmeno quando tutto va
+    bene: `fn_build_fattura_key` puo' raccogliere piu' gruppi nello stesso
+    documento. Sono due domande diverse, non due viste della stessa.
+
+    ⭐ La risposta porta `perimetro_dichiarato`: un giro DI MASSA non scrive
+    nessun gruppo (nessuna riga = nessuna restrizione, garanzia G1 della
+    tabella), quindi qui non ha niente da mostrare — e senza quel flag «non ha
+    lavorato niente» e «non dichiara un perimetro» si leggerebbero uguali.
+
+    🔒 Il cancello di scope e' la TESTATA: `fatturazione_lotti_gruppi` non ha
+    RLS, `fatturazione_lotti` si'. Lotto fuori perimetro -> elenco vuoto con
+    `perimetro_dichiarato = false`, mai le righe di un lotto altrui.
+    """
+
+    area_funzionale = "vendite"
+    # Lista configurabile 67: il codice dichiara da quale catalogo arrivano le colonne.
+    lista_codice = "vendite.lotto_gruppi"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Filtro esito: PENDING | RUNNING | COMPLETED | ERRORE. "
+                    "Assente = tutti, compresi i gruppi mai tentati (esito NULL)."
+                ),
+            ),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+                description="Verso: asc (default) o desc.",
+            ),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoGruppiListResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoGruppiListData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                            "perimetro_dichiarato": serializers.BooleanField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET l'elenco paginato dei documenti presi in carico
+    #        dal lotto, con l'esito di ciascuno.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        q = request.query_params
+        data = fn_list_lotto_gruppi(
+            lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
+            stato_esecuzione=qp_str(q.get("stato_esecuzione")),
+            order_by=qp_str(q.get("order_by")),
+            # ⚠️ Il valore GREZZO, non un default `"asc"` scritto qui: il
+            #    repository ha un ordine di default suo — i falliti in cima —
+            #    e un verso dichiarato lo annullerebbe (api.md §parse_list_params).
+            order_dir=qp_str(q.get("order_dir")),
+            page=qp_int_strict(q.get("page"), "page", 1),
+            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+
+class ApiLottoGruppiExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/gruppi/export/?formato=csv|xlsx
+
+    I documenti presi in carico dal lotto, colonne dal catalogo
+    `vendite.lotto_gruppi`."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_gruppi"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX dei documenti presi in carico dal lotto.
+    # ⚠️ Il filtro viaggia anche qui: il file E' la lista. Un export che
+    #    ignorasse l'esito scelto conterrebbe tutti i documenti mentre a video
+    #    se ne vede una fetta.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        q = request.query_params
+        stato_esecuzione = qp_str(q.get("stato_esecuzione"))
+        data = fn_list_lotto_gruppi(
+            lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
+            stato_esecuzione=stato_esecuzione,
+            order_by=qp_str(q.get("order_by")),
+            order_dir=qp_str(q.get("order_dir")),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        # I filtri finiscono nell'intestazione del file: chi lo riapre fra un
+        # mese deve poter sapere di quale fetta si tratta.
+        filtri_applicati: dict[str, str] = {"lotto_id": str(lotto_id)}
+        if stato_esecuzione:
+            filtri_applicati["stato_esecuzione"] = stato_esecuzione
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_gruppi",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 

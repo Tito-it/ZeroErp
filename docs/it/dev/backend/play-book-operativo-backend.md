@@ -368,3 +368,116 @@ journalctl -u zeroerp-coda-lavori.service -n 50 --no-pager
 > Convergenza futura (Q-4): `draina_coda_stampa` aggancerà lo stesso motore
 > (`QueueDrainEngine`) via un `QueueBackend` sui metodi repo esistenti — la tabella resta,
 > si deduplica solo il loop; il worker/timer non cambiano.
+
+---
+
+## 17) Il dichiarato delle sveglie — `deploy/sveglie.json` (dal 2026-09-06)
+
+⭐ **Che cosa si installa non sta più negli script.** L'elenco degli unit, la
+cadenza di ciascuno e cosa va acceso si leggono da
+[`backend/deploy/sveglie.json`](../../../../backend/deploy/sveglie.json), che è
+la **sede unica** del dichiarato di deploy. Lo leggono in due:
+
+| Chi | Cosa ne prende |
+| --- | --- |
+| `backend/bin/install-timers.sh` | l'`OnCalendar` da sostituire nei template e la lista di cosa abilitare |
+| `apps.core.services.sveglie` (backend) | la `tolleranza_minuti`, cioè entro quanto l'ultimo run di un processo vale ancora come segno di vita |
+
+⛔ **Perché è cambiato.** Prima le cadenze erano cablate in quattro chiamate
+dentro l'installer, e la tolleranza di liveness degli stessi processi era un
+`WORKER_ATTIVO_SOGLIA_MINUTI = 10` in `coda_lavori/gestione_service.py`. Lo
+stesso fatto — *«ogni quanto ci si aspetta questo processo»* — scritto in due
+posti che non si conoscevano. Due scritture prima o poi dissentono, e lì la
+divergenza sarebbe stata **muta**: un pallino verde su un worker fermo.
+
+### 17.1) I sette unit, e i tre nati quel giorno
+
+| Unit | Processo | Forma | Cadenza default | Acceso dall'installer |
+| --- | --- | --- | --- | --- |
+| `zeroerp-coda-lavori` | `draina_coda_lavori` | timer | `*:0/1` | ✅ |
+| `zeroerp-coda-stampa` | `draina_coda_stampa` | timer | `*:0/2` | ✅ |
+| `zeroerp-fatturazione-immediata` | `run_fatturazione_batch` | timer | `*:0/2` | ⛔ emette documenti |
+| `zeroerp-fatturazione-differita` | `run_fatturazione_batch` | timer | `*-*-01 02:00` | ⛔ idem |
+| **`zeroerp-send-pending-emails`** | `send_pending_emails` | timer | `*:0/5` | ✅ |
+| **`zeroerp-sync-auth-user-active`** | `sync_auth_user_active` | timer | `*-*-* 03:00` | 🔴 gemello pgAgent |
+| **`zeroerp-listen-cambio-reparto`** | `listen_cambio_reparto` | **servizio** | — | ✅ |
+
+🔴 **I tre in grassetto non esistevano**, e non è un dettaglio: erano processi a
+catalogo in `dbops.processi`, che si registravano su `maintenance.job_run_log`
+dal 2026-09-05, e che **nessun artefatto di deploy faceva partire**. Su un host
+nuovo non partivano mai. `dbops.vw_processi_programmazione` li classifica
+`FUORI_PORTATA` — *«il database non può saperlo»* — quindi il guasto non aveva
+nessun modo di manifestarsi se non come assenza.
+
+⭐ **Adesso lo presidia il backend**:
+`apps/core/tests/services/test_sveglie.py::test_ogni_processo_del_backend_ha_una_sveglia`
+fallisce se un processo che il backend dichiara di eseguire non ha un unit che
+lo faccia partire. Gira in CI, senza database.
+
+### 17.2) Due forme, e la differenza conta
+
+* **timer** (`Type=oneshot` + `.timer`) — si abilita il **`.timer`**; per un run
+  manuale si lancia il `.service`.
+* **servizio** (`Type=simple` + `Restart=always`, **nessun `.timer`**) — oggi
+  solo `listen_cambio_reparto`: è un listener `LISTEN/NOTIFY` sempre acceso, non
+  ha una cadenza da dichiarare. Si abilita il **`.service`**.
+  ⚠️ Scrive **un solo run**, quello di avvio (decisione di Tid, 2026-09-05):
+  sul giornale dice *«sono partito alle ore X»*, non *«sono vivo adesso»*. Per
+  questo la sua `tolleranza_minuti` è `null` — presidiarne la liveness
+  sull'ultimo run direbbe «fermo» su un listener sano partito tre settimane fa.
+
+### 17.3) 🔴 `sync-auth-user-active` è scritto e spento, e non è prudenza
+
+`dbops.processi` ha **due righe per lo stesso lavoro**: `sync_auth_user_active`
+(id 23, `COMMAND`) e `sync_auth_user_expired_daily` (id 11, `PGAGENT`).
+Accendere il timer senza ritirare il gemello farebbe girare la disattivazione
+degli utenti scaduti **due volte per notte**. La scelta di quale tenere è del
+modello, non del deploy: richiesta al team DB in
+[brief-db-sveglia-dei-processi.md](../work-in-progress/brief-db-sveglia-dei-processi.md) §7.
+
+### 17.4) Aggiungere una sveglia
+
+1. una voce in `deploy/sveglie.json` (il **perché** delle scelte va nel template,
+   qui il valore — due programmi devono poterlo leggere);
+2. la coppia `deploy/systemd/<unit>.{service,timer}` — solo il `.service` se è un
+   servizio sempre acceso;
+3. `sudo backend/bin/install-timers.sh`.
+
+⚠️ **Modifiche agli unit si fanno sui template**, mai in `/etc/systemd/system`:
+l'installer è idempotente e riscrive tutto a ogni run, quindi una modifica a
+valle sparisce al primo re-install.
+
+```bash
+# Validazione locale, senza root né systemctl (la stessa che gira in CI):
+backend/bin/install-timers.sh --render-only /tmp/units && systemd-analyze verify /tmp/units/*
+```
+
+### 17.5) Come si prova, e le due metà
+
+| Prova | Che cosa dice | Dove gira |
+| --- | --- | --- |
+| `systemd-analyze verify` sui template renderizzati | gli unit **sono validi** | CI, `validate-deploy` |
+| `backend/scripts/tests/test-install-timers.sh` | si accendono **quelli giusti** | CI, `validate-deploy` |
+| `apps/core/tests/services/test_sveglie.py` | ogni processo ha una sveglia, nessun template orfano | CI, suite Django |
+
+🔴 **Fino al 2026-09-06 c'era solo la prima**, e il difetto è passato di lì:
+`install-timers.sh` leggeva i campi con `IFS=$'\t'` — il TAB è IFS-whitespace,
+quindi `read` collassa i delimitatori consecutivi. Su un `oncalendar` vuoto (il
+caso normale di un servizio sempre acceso) `abilita` diventava il testo della
+nota, e `zeroerp-listen-cambio-reparto` veniva **installato e mai avviato**. La
+CI renderizzava sette unit corretti e non poteva vederlo: `--render-only` esce
+**prima** del ramo che accende.
+
+⭐ Il secondo test apre quel ramo senza inventarne uno nuovo: un `systemctl`
+**finto** in testa al `PATH` (lo script lo invoca senza percorso assoluto) e
+`ZEROERP_SYSTEMD_DIR` per la destinazione — con cui cade anche il requisito di
+root, che serve a scrivere in `/etc/systemd/system` e non «perché è la modalità
+install». ⛔ Un `--dry-run` che salta `systemctl` avrebbe provato il ramo che
+**non** accende: inutile per questo bug.
+
+```bash
+# In locale, senza root e senza toccare il sistema:
+bash backend/scripts/tests/test-install-timers.sh
+```
+
+⚠️ Resta scoperto il caso «`systemctl enable` fallisce»: lo stub esce sempre `0`.

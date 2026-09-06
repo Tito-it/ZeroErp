@@ -20,6 +20,7 @@ from apps.core.db._helpers import (
     coerce_jsonb_dict,
     conta_con_perimetro,
     fetch_paged_with_total,
+    fetchone_scalar,
     iso_or_none,
     jsonb_out,
     rows_to_list,
@@ -3338,3 +3339,45 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 ],
             )
             return cursor.rowcount
+
+    # Scopo: Appende a un gruppo del lotto l'ESITO della sua lavorazione —
+    #        `COMPLETED` oppure `ERRORE` col motivo. Ritorna quanti gruppi la
+    #        funzione ha marcato.
+    #
+    # ⭐ PERCHE' PASSA DAL DATABASE E NON DA UN `UPDATE` QUI. La regola non
+    #    banale e' UNA: quale riga marcare quando si ha in mano una commessa e
+    #    non un gruppo — la funzione ritrova il gruppo **dentro quel lotto**.
+    #    Riscriverla in Python vorrebbe dire due sedi della stessa regola, e la
+    #    seconda e' quella che diverge.
+    # ⚠️ Si passa il gruppo OPPURE la commessa: chi fallisce ha in mano la
+    #    seconda.
+    # ⛔ La funzione NON solleva mai, di proposito: sta annotando un fallimento
+    #    gia' avvenuto, e un errore su di se' coprirebbe quello vero. ⇒ Il
+    #    valore di ritorno E' il segnale, e va guardato: `0` vuol dire «non l'ho
+    #    appeso a niente», cioe' il lotto continuera' a raccontare un errore su
+    #    un documento che non mostra.
+    def segna_esito_gruppo_lotto(
+        self,
+        lotto_id: int,
+        stato: str,
+        *,
+        gruppo_key: str | None = None,
+        commessa_id: int | None = None,
+        errore_codice: str | None = None,
+        errore_messaggio: str | None = None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_segna_esito_gruppo_lotto(
+                    p_lotto_id         => %s,
+                    p_stato            => %s,
+                    p_gruppo_key       => %s,
+                    p_commessa_id      => %s,
+                    p_errore_codice    => %s,
+                    p_errore_messaggio => %s)
+                """,
+                [lotto_id, stato, gruppo_key, commessa_id,
+                 errore_codice, errore_messaggio],
+            )
+            return int(fetchone_scalar(cursor) or 0)

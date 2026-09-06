@@ -6,11 +6,17 @@
 > (richiesta di Tid, 2026-09-06): serve a fissare il caso, le decisioni e — più
 > di tutto — **che cosa resta e a chi**.
 >
-> **Stato:** 🟢 **metà DB completa.** `-10` e `-11` applicati e verdi;
-> ⏳ **`-12` scritto e da applicare** (la vista che mostra l'esito in competenza,
-> residuo R-3). pgTAP **7 su 8** — il test 7 diventa verde con il migrate.
-> 🔴 **Il backend non è ancora stato toccato**, e finché non chiama la funzione
-> non cambia niente per chi guarda: il contratto è nel **§8**.
+> **Stato:** 🟢 **DB, BE e FE completi** — vedi **§10** (la chiamata) e **§12**
+> (le due superfici). `-10`, `-11` e `-12` applicati: verificato sul DB vivo il
+> 2026-09-06, la vista ha le cinque colonne.
+> ⚠️ **Il dato è a zero** (44 gruppi, tutti `NULL`): nessun giro è ancora
+> passato dalla marcatura, e finché non passa non si vede niente. Il collaudo
+> end-to-end è in **§12.5**, fatto in transazione annullata sul caso vero.
+> 🔴 Restano **due domande di modello al team DB**: il **§11** (la marcatura che
+> muore col rollback nel ramo «tutte fallite») e il **§12.4** (un giro di massa
+> non ha dove essere marcato).
+> 🔴 E un passo operativo: le colonne di catalogo arrivano col prossimo
+> `migrate` del seed — **§12.6**.
 >
 > **Origine:** Tid, 2026-09-06, guardando il lotto `LTF-0009578`.
 
@@ -145,6 +151,14 @@ il backend chiama la funzione.
 ⚠️ **R-1 è il collo di bottiglia.** Tutto il resto è già in piedi e non serve a
 niente finché nessuno scrive l'esito.
 
+> ✅ **Aggiornamento 2026-09-06 (dopo §10 e §12).** R-1, R-2 e R-3 sono **fatti**.
+> ⭐ **R-4 è superato, non rinviato**: la scheda «Presi in carico» del drawer
+> lotto nomina il documento caduto *dalla riga del gruppo*, quindi il log non
+> deve più farlo. Riaprirlo vorrebbe dire scrivere una seconda volta
+> un'informazione che ora ha una sede sua.
+> 🔴 Restano il **§11** e il **§12.4**, e sono **entrambi del modello**: nessuno
+> dei due si tappa dal backend.
+
 ---
 
 ## 6. Come si vede che è chiuso
@@ -248,3 +262,179 @@ a metà e tace quando va male del tutto.
 3. giro **tutto riuscito** → tutti `COMPLETED`, nessun campo di errore
    valorizzato;
 4. la funzione torna **0** → il caso va gestito (almeno un log), non ignorato.
+
+---
+
+## 10. ✅ Il backend ha chiamato (2026-09-06)
+
+* `pipeline_repository.segna_esito_gruppo_lotto(...)` — la chiamata SQL, come da
+  convenzione, così i test la possono mockare;
+* `pipeline_step_executor._marca_esito_gruppi(...)` — **una volta sola, prima dei
+  tre rami**, non dentro ciascuno.
+
+⭐ **Perché prima e non dentro.** Le uscite sono tre e la marcatura serve in
+tutte: scriverla nei rami vorrebbe dire scriverla tre volte e dimenticarla una,
+e il candidato naturale è proprio quello che solleva — cioè il caso peggiore. È
+la trappola che il vostro §8 segnala, e il modo più sicuro di non caderci è non
+avere tre punti da ricordare.
+
+⚠️ Il valore di ritorno **si guarda**: `0` finisce in un `warning` con
+`lotto_id`, `commessa_id` e stato. Non solleva, come dite voi.
+
+I quattro casi del §8 sono in `test_pipeline_step_executor.py`.
+
+---
+
+## 11. 🔴 «Marcare prima di sollevare» non basta — misurato
+
+Il §8 dice: *«⇒ Marcare prima di sollevare, in tutti e due i rami.»* L'ho fatto,
+e **sul ramo che solleva non regge**.
+
+**Perché.** `run_pipeline` tiene un `transaction.atomic()` attorno all'**intero
+ciclo degli step**, e `fn_segna_esito_gruppo_lotto` è una funzione plpgsql
+normale: scrive nella transazione di chi la chiama. Il `raise` di
+`E_PULL_COMMESSA_ALL_FAILED` propaga fuori da lì e fa **rollback**, marcature
+comprese.
+
+**La prova, sul database vero:**
+
+```
+gruppo 894 (lotto 6034) — stato prima: None
+  marcati: 1
+  sollevata: come E_PULL_COMMESSA_ALL_FAILED
+stato DOPO il raise: None
+⛔ LA MARCATURA E' STATA PERSA
+```
+
+⚠️ **E nessun test lo vedeva**, perché nei test il repository è mockato: provano
+che la chiamata avvenga, non che la riga resti. È il difetto che si scopre solo
+guardando i confini di transazione.
+
+⭐ **È la stessa forma che avete già diagnosticato voi** su `fn_run_and_log` —
+*«scrive, e poi butta via»* — e per cui avete costruito
+`maintenance.fn_job_run_log_failure`. Il paradosso è identico: il verbale del
+fallimento muore insieme al fallimento.
+
+### Che cosa serve
+
+Che la marcatura di un gruppo **sopravviva al rollback** di chi l'ha chiesta. La
+forma la decidete voi: avete già risolto lo stesso problema una volta.
+
+⇒ **Nel frattempo la copertura è parziale, e dichiarata:** i due rami che non
+sollevano — tutto riuscito e **parziale** — funzionano. Il parziale è il caso di
+`LTF-0009578`, cioè quello per cui il cantiere è nato: il difetto originale è
+chiuso. Resta scoperto il «tutte fallite», che è quello che oggi non si vede.
+
+⛔ La chiamata resta **prima dei rami** e non si sposta: il giorno in cui la
+scrittura diventa durevole, il terzo ramo è già coperto senza toccare niente.
+
+---
+
+## 12. ✅ BE + FE — le due superfici (2026-09-06)
+
+> Scritto dopo lo sviluppo, come il resto del documento. `-12` risulta
+> **applicato**: la vista viva ha le cinque colonne (verificato sul DB, non
+> dedotto dagli YAML). ⚠️ **Il dato è a zero**: 44 righe in
+> `fatturazione_lotti_gruppi`, tutte con `stato_esecuzione = NULL`, perché
+> nessun giro di fatturazione è ancora passato dalla marcatura scritta ieri.
+> Non è un difetto — è che il primo giro deve ancora avvenire.
+
+### 12.1 Cosa si vede adesso, e dove
+
+| Dove | Cosa |
+| --- | --- |
+| **Competenza → Da emettere** | il documento che ha già fallito porta un'icona rossa **accanto al nome**, col motivo per intero e ⭐ **il pulsante che apre la commessa da correggere** (§6 punto 4) |
+| **Drawer del lotto** | scheda nuova **«Presi in carico»**: i documenti che il lotto ha preso, **compreso quello che una fattura non è mai diventata**, con l'esito di ciascuno |
+
+### 12.2 Le decisioni prese scrivendo
+
+| # | Decisione | Perché |
+| --- | --- | --- |
+| **BF-1** | ⭐ **Il segno in competenza è chrome della cella, non una colonna a catalogo** | Le cinque colonne esistono (disponibili e **spente**, convenzione D-4), ma una colonna che nessuno ha acceso è un segno che non c'è. Il segno deve esserci sempre — sta accanto al nome, dov'è già il lucchetto dell'emittibilità |
+| **BF-2** | Il **messaggio** vive in un popover, non in una cella | Cita numeri di documento e via d'uscita: in una colonna sarebbe troncato, cioè presente e inutile. È lo stesso `ErroreRigaInfo` della scheda documenti |
+| **BF-3** | ⭐ Il gesto verso la commessa passa dal **resolver dei bersagli** già in servizio (`core/bersagli.js`) | Applica da sé i guard dei permessi e apre l'ospite globale di `App.vue`. ⛔ Il bersaglio si **compone nel frontend** e non arriva dal backend: la commessa è già una colonna della riga, e rispedirla sarebbe lo stesso dato due volte |
+| **BF-4** | La scheda del lotto è **una scheda in più**, non colonne dentro «Documenti» | Le due grane sono diverse e non in corrispondenza 1:1 nemmeno a giro riuscito: `fn_build_fattura_key` può raccogliere più gruppi nello stesso documento |
+| **BF-5** | L'identità del gruppo si **legge** da `vw_dash_competenza_gruppi`, non si ricostruisce | Spezzare la `gruppo_key` in Python sarebbe la seconda sede della regola: il giorno in cui la chiave cambia forma, le due dissentono in silenzio |
+| **BF-6** | L'esito della scheda lotto si legge dalla **tabella**, non dalle colonne `ultimo_*` della vista | Quelle dicono com'è andato l'**ultimo** tentativo su quel gruppo, che può essere di un **altro** lotto. Lì la domanda è «come è andata in *questo* lotto» |
+| **BF-7** | `commessa_id` esce **solo quando ce n'è una** (`commesse_n` dice quante sono) | La chiave di un gruppo-documento non contiene la commessa: due commesse sullo stesso documento sono ammesse per costruzione, e sceglierne una sarebbe la scommessa che il §7 vieta |
+| **BF-8** | La risposta della scheda porta **`perimetro_dichiarato`** | Vedi §12.4: senza, il caso più frequente racconta una bugia |
+
+### 12.3 🔴 Un difetto trovato di rimbalzo, e non era di questo cantiere
+
+La mappa cromatica del frontend per `stato_esecuzione`
+(`core/utils/severity.js`) parlava una lingua che il database **non parla**:
+`PRONTA` / `ELABORATA` / `ESCLUSA`, mentre il `CHECK` ammette
+`PENDING` / `RUNNING` / `COMPLETED` / `ERRORE`.
+
+⇒ Nel drawer del lotto un documento `COMPLETED` prendeva il ripiego
+`secondary` — **grigio, cioè «bozza»** — invece del verde. Nessun errore da
+nessuna parte: `resolveSeverity` ripiega di proposito, e un colore sbagliato non
+fallisce.
+
+⭐ È emerso aggiungendo il **secondo** consumatore, che per la D-2 parla lo
+stesso vocabolario. La mappa è ora **una sola** per i due livelli, con i valori
+veri.
+
+### 12.4 ⚠️ Il buco che resta, ed è del modello — non del codice
+
+**Un lotto di massa non ha dove essere marcato.**
+`fatturazione_lotti_gruppi` è il perimetro di un lotto **mirato**; la
+convenzione portante della tabella dice che *nessuna riga = nessuna
+restrizione*, che è il comportamento del giro schedulato (garanzia G1). Un giro
+di massa quindi **non scrive nessun gruppo**, e `fn_segna_esito_gruppo_lotto`
+non trova niente da marcare: torna `0`, con il warning previsto dal §7.
+
+⇒ **L'esito per giro esiste oggi solo sui lotti nati da emissione mirata.**
+Il lotto `LTF-0009578` è uno di quelli — è `MASSIVO` come tipo ma porta un
+perimetro, perché nasce da un'emissione mirata — quindi il caso del §1 è
+coperto. Un giro schedulato che fallisse una commessa resterebbe **muto come
+prima**.
+
+⛔ **Non si tappa dal backend**, e la tentazione c'è: basterebbe far scrivere al
+runner i gruppi scoperti anche sui giri di massa. Ma quelle righe **sono** il
+criterio di restrizione — scriverle trasformerebbe ogni giro schedulato in un
+giro mirato, cioè un cambio di comportamento del motore travestito da
+miglioria di diagnostica.
+
+⇒ **È una domanda di modello per il team DB**, accanto al §11: *dove vive
+l'esito di un documento quando il lotto non dichiara un perimetro?* Nel
+frattempo la scheda **lo dichiara** invece di tacere: su un lotto senza
+perimetro non mostra «nessun documento» — che sarebbe falso — ma dice che quel
+lotto un perimetro non lo dichiara, e rimanda alla scheda «Documenti».
+
+### 12.5 Come è stato collaudato
+
+⚠️ **Il dato è tutto `NULL`, quindi «non si vede niente» era indistinguibile da
+«non funziona».** Il collaudo si è fatto **sul database vero, in transazione
+annullata**: marcato il gruppo di `ORD0036005` nel lotto `LTF-0009578` con
+`E_PULL_COMMESSA`, e i due gemelli a `COMPLETED`.
+
+```
+scheda lotto:  ORD0036005  ERRORE     E_PULL_COMMESSA  «ROOT source mancante…»
+               ORD0036004  COMPLETED
+               ORD0036006  COMPLETED
+competenza:    ORD0036005  stadio=DA_EMETTERE  emittibile=True
+                           esito=ERRORE  cod=E_PULL_COMMESSA  lotto=LTF-0009578
+dopo rollback: gruppi con esito = 0
+```
+
+⭐ La riga in competenza resta **DA EMETTERE con la commessa emittibile**: è la
+D-3, ed è la cosa che il collaudo doveva provare più dell'esistenza delle
+colonne.
+
+### 12.6 🔴 Prima che si veda in applicazione
+
+Le **due liste** prendono le colonne dal catalogo (`ui.lista_colonna`), che è
+**dato di seed**: le righe sono nei CSV, ma nel database ci arrivano solo col
+prossimo `migrate` — oppure creandole dai pannelli di amministrazione in-app.
+Finché non succede, la scheda «Presi in carico» monta una lista **senza
+colonne**.
+
+⚠️ Il segno in competenza **non** dipende dal catalogo (BF-1): quello si vede
+appena il backend viene ricaricato.
+
+| Cosa | Serve |
+| --- | --- |
+| icona rossa + gesto in competenza | ricarica del backend (`kill -HUP`) + build FE |
+| le cinque colonne opzionali in competenza | `migrate` del seed |
+| scheda «Presi in carico» del lotto | `migrate` del seed |
