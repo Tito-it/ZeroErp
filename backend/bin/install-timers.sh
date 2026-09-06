@@ -81,9 +81,22 @@ SVEGLIE="${APP_DIR}/deploy/sveglie.json"
 [ -d "$TEMPLATE_DIR" ] || { echo "Manca la cartella template: $TEMPLATE_DIR" >&2; exit 1; }
 [ -f "$SVEGLIE" ] || { echo "Manca il dichiarato di deploy: $SVEGLIE" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "Serve python3 per leggere $SVEGLIE" >&2; exit 1; }
-# L'env file è un segreto runtime per-host: richiesto solo per l'installazione
-# reale, non per la validazione (la CI non ce l'ha e non ne ha bisogno).
-if [ "$RENDER_ONLY" -eq 0 ]; then
+# L'env file è un segreto runtime per-host: è nel .gitignore, e in un checkout
+# non c'è MAI.
+#
+# ⭐ IL REQUISITO È DELLA DESTINAZIONE, non della modalità — è la stessa
+#    correzione già fatta sopra per il root, e per la stessa ragione: l'env file
+#    serve perché quegli unit gireranno DAVVERO su questa macchina. Se la
+#    destinazione è altrove, non serve.
+# 🔴 Legato alla modalità era una coincidenza che ha smesso di reggere il giorno
+#    in cui le corse sono diventate tre invece di due. `--render-only` non lo
+#    chiedeva; l'installazione vera sì; e la prova del ramo CHE ACCENDE — che
+#    non è né l'una né l'altra, perché deve attraversare `systemctl` scrivendo
+#    in una cartella temporanea — ci cadeva dentro. In CI il test moriva al
+#    primo passo, in zero secondi.
+# ⚠️ E il file non viene nemmeno LETTO: l'unit lo cita come percorso
+#    (`EnvironmentFile=`), questo è solo un controllo di pre-volo.
+if [ "$DEST_DIR" = "$DEST_DIR_REALE" ]; then
   [ -f "$ENV_FILE" ] || { echo "Manca l'env file: $ENV_FILE" >&2; exit 1; }
 fi
 
