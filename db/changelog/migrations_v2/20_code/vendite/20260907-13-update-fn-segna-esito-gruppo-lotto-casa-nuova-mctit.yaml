@@ -1,0 +1,236 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La funzione scrive nella casa nuova, e il contratto non cambia.
+#   La casa: changeSet 20260907-12. Brief: brief-db-esito-gruppo-lotto §15.
+#
+# ── ⭐ STESSO NOME, STESSI PARAMETRI, STESSO VALORE DI RITORNO ─────
+#   Il backend non tocca niente. Cambia solo dove la riga finisce — e che su un
+#   lotto senza perimetro viene CREATA invece di non essere trovata.
+#   ⇒ La chiamata che oggi torna `0` sui giri di massa comincia a funzionare da
+#     sola, senza una riga di codice in piu' da nessuna parte.
+#
+# ── ⭐ COME SI TROVA IL DOCUMENTO, ORA CHE IL PERIMETRO PUO' MANCARE ─
+#   Chi fallisce ha in mano la COMMESSA. Le chiavi dei documenti che quella
+#   commessa alimenta si costruiscono con `fn_build_gruppo_fatturabile_key` —
+#   la stessa che usa la dashboard di competenza, quindi non si riscrive
+#   niente.
+#   Poi si applica la sola regola che serve:
+#     * il lotto DICHIARA un perimetro  -> si marcano le chiavi che stanno
+#       dentro quel perimetro (com'era prima: fuori dal perimetro il lotto non
+#       stava lavorando quel documento);
+#     * il lotto NON dichiara niente    -> si marcano tutte le chiavi della
+#       commessa, perche' un giro senza restrizione le stava lavorando tutte.
+#   ⛔ Non si guarda piu' se la riga di perimetro esiste **per decidere se
+#     scrivere**: quella era la confusione fra le due domande.
+#
+# ── ⚠️ UN SECONDO TENTATIVO SOVRASCRIVE, ED E' VOLUTO ──────────────
+#   La chiave e' (lotto, documento): la domanda e' «com'e' finita», non «quante
+#   volte ci abbiamo provato». Lo storico dei tentativi sta nel giornale del
+#   lotto, che e' fatto per quello.
+#   ⭐ E il passaggio a COMPLETED **azzera** causa, frase e orario: un gruppo
+#   che ci riprova e stavolta riesce non deve restare col rosso addosso — un
+#   rosso che non scade mai e' peggio di nessun rosso.
+#
+# ── ⛔ CONTINUA A NON SOLLEVARE MAI ────────────────────────────────
+#   La chiama un gestore d'eccezione: sta annotando un fallimento gia'
+#   avvenuto, e un errore su di se' coprirebbe quello vero. Ogni via d'uscita e'
+#   un `RAISE WARNING`, e il ritorno e' quante righe ha scritto — **zero resta
+#   una risposta**, e va guardata.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260907-13-update-fn-segna-esito-gruppo-lotto-casa-nuova-mctit.yaml
+
+  - changeSet:
+      id: 20260907-13-update-fn-segna-esito-gruppo-lotto-casa-nuova
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fn_segna_esito_gruppo_lotto scrive ora su
+        vendite.fatturazione_lotti_esiti invece che sulle colonne del perimetro.
+        Firma e valore di ritorno invariati: il backend non cambia. Su un lotto
+        senza perimetro la riga viene creata, quindi i giri di massa smettono di
+        essere muti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_segna_esito_gruppo_lotto(
+                  p_lotto_id        vendite.fatturazione_lotti.id%TYPE,
+                  p_stato           text,
+                  p_gruppo_key      text   DEFAULT NULL,
+                  p_commessa_id     bigint DEFAULT NULL,
+                  p_errore_codice   text   DEFAULT NULL,
+                  p_errore_messaggio text  DEFAULT NULL)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_scritti      integer := 0;
+                  v_ha_perimetro boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire come e' andato UN documento dentro un lotto, su
+                  --   vendite.fatturazione_lotti_esiti. La riga si crea quando
+                  --   c'e' qualcosa da dire: cosi' vale anche per i giri che
+                  --   non dichiarano nessun perimetro, che prima restavano muti.
+                  --
+                  -- ⛔ Nessun RAISE: la chiama un gestore d'eccezione.
+                  -- =========================================================
+
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      RAISE WARNING
+                          'fn_segna_esito_gruppo_lotto: lotto non indicato, esito non scritto.';
+                      RETURN 0;
+                  END IF;
+
+                  IF p_stato IS NULL THEN
+                      RAISE WARNING
+                          'fn_segna_esito_gruppo_lotto: stato non indicato per il lotto %, esito non scritto.',
+                          p_lotto_id;
+                      RETURN 0;
+                  END IF;
+
+                  IF p_gruppo_key IS NULL AND p_commessa_id IS NULL THEN
+                      RAISE WARNING
+                          'fn_segna_esito_gruppo_lotto: per il lotto % non e'' stato indicato ne'' il documento ne'' la commessa: non c''e'' modo di sapere che cosa scrivere.',
+                          p_lotto_id;
+                      RETURN 0;
+                  END IF;
+
+                  -- ⚠️ Il vincolo di tabella pretende, su ERRORE, almeno una fra
+                  --   causa e frase. Si controlla PRIMA: farlo scoprire al
+                  --   vincolo vorrebbe dire sollevare, ed e' cio' che questa
+                  --   funzione non deve fare.
+                  IF p_stato = 'ERRORE'
+                     AND p_errore_codice IS NULL
+                     AND p_errore_messaggio IS NULL THEN
+                      RAISE WARNING
+                          'fn_segna_esito_gruppo_lotto: errore senza causa ne'' frase sul lotto %: un errore muto non si scrive.',
+                          p_lotto_id;
+                      RETURN 0;
+                  END IF;
+
+                  -- Il lotto dichiara un perimetro? La domanda si fa UNA volta:
+                  -- serve solo a restringere le chiavi della commessa, non a
+                  -- decidere se scrivere.
+                  v_ha_perimetro := EXISTS (
+                      SELECT 1 FROM vendite.fatturazione_lotti_gruppi g
+                       WHERE g.lotto_id = p_lotto_id);
+
+                  WITH chiavi AS (
+                      -- Il documento indicato, oppure quelli che la commessa
+                      -- alimenta. ⭐ La chiave si costruisce con la funzione che
+                      -- la costruisce gia' per la dashboard: una sola sede.
+                      SELECT p_gruppo_key AS gruppo_key
+                       WHERE p_gruppo_key IS NOT NULL
+                      UNION
+                      SELECT DISTINCT vendite.fn_build_gruppo_fatturabile_key(
+                                 ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+                        FROM vendite.commesse_attivita ca
+                       WHERE p_gruppo_key IS NULL
+                         AND ca.commessa_id = p_commessa_id
+                  ),
+                  ammesse AS (
+                      SELECT k.gruppo_key
+                        FROM chiavi k
+                       WHERE k.gruppo_key IS NOT NULL
+                         -- Se il lotto dichiara un perimetro, fuori da quello
+                         -- non stava lavorando quel documento. Se non lo
+                         -- dichiara, li stava lavorando tutti.
+                         AND (NOT v_ha_perimetro
+                              OR EXISTS (SELECT 1
+                                           FROM vendite.fatturazione_lotti_gruppi g
+                                          WHERE g.lotto_id = p_lotto_id
+                                            AND g.gruppo_key = k.gruppo_key))
+                  )
+                  INSERT INTO vendite.fatturazione_lotti_esiti AS e
+                         (lotto_id, gruppo_key, stato_esecuzione,
+                          errore_codice, errore_messaggio, errore_quando)
+                  SELECT p_lotto_id,
+                         a.gruppo_key,
+                         p_stato,
+                         CASE WHEN p_stato = 'ERRORE' THEN p_errore_codice END,
+                         CASE WHEN p_stato = 'ERRORE' THEN p_errore_messaggio END,
+                         CASE WHEN p_stato = 'ERRORE' THEN clock_timestamp() END
+                    FROM ammesse a
+                      ON CONFLICT ON CONSTRAINT uq_fatturazione_lotti_esiti_documento
+                      DO UPDATE
+                         SET stato_esecuzione = EXCLUDED.stato_esecuzione,
+                             -- ⭐ Un documento che ci riprova e riesce non resta
+                             --   col rosso addosso: un rosso che non scade mai
+                             --   e' peggio di nessun rosso.
+                             errore_codice    = EXCLUDED.errore_codice,
+                             errore_messaggio = EXCLUDED.errore_messaggio,
+                             errore_quando    = EXCLUDED.errore_quando,
+                             data_update      = now(),
+                             user_update      = CURRENT_USER;
+
+                  GET DIAGNOSTICS v_scritti = ROW_COUNT;
+
+                  -- ⚠️ Zero e' una risposta, e va detta: vuol dire che il
+                  --   fallimento non e' stato appeso a nessun documento.
+                  IF v_scritti = 0 THEN
+                      RAISE WARNING
+                          'fn_segna_esito_gruppo_lotto: nessun documento trovato per il lotto % (documento=%, commessa=%): esito non appeso a niente.',
+                          p_lotto_id, p_gruppo_key, p_commessa_id;
+                  END IF;
+
+                  RETURN v_scritti;
+              END;
+              $function$;
+
+              -- ⚠️ Tipi SCIOLTI: COMMENT ON FUNCTION non accetta %TYPE.
+              COMMENT ON FUNCTION vendite.fn_segna_esito_gruppo_lotto(
+                  bigint, text, text, bigint, text, text) IS
+                  'Scrive l''esito di UN documento dentro un lotto su '
+                  'vendite.fatturazione_lotti_esiti. ⭐ Rev 2026-09-07: prima scriveva '
+                  'sulle colonne di vendite.fatturazione_lotti_gruppi, cioe'' sul '
+                  'PERIMETRO — e sui giri che un perimetro non lo dichiarano (quelli di '
+                  'massa) non trovava niente da marcare e tornava 0, lasciando muto un '
+                  'documento fallito. Ora la riga si CREA. ⭐ Firma e valore di ritorno '
+                  'invariati: il backend non cambia di una riga. ⭐ Il chiamante passa il '
+                  'documento se ce l''ha, altrimenti la COMMESSA — che e'' cio'' che ha in '
+                  'mano quando fallisce — e le chiavi si costruiscono con '
+                  'vendite.fn_build_gruppo_fatturabile_key, una sola sede. Se il lotto '
+                  'dichiara un perimetro si marca solo dentro quello; se non lo dichiara '
+                  'si marcano tutte le chiavi della commessa, perche'' le stava lavorando '
+                  'tutte. ⚠️ Un secondo tentativo sullo stesso lotto SOVRASCRIVE (la '
+                  'domanda e'' «com''e'' finita», non «quante volte»), e il passaggio a '
+                  'COMPLETED azzera causa, frase e orario. ⛔ NON solleva mai: la chiama '
+                  'un gestore d''eccezione. Torna quante righe ha scritto — zero e'' una '
+                  'risposta e va guardata. Brief: brief-db-esito-gruppo-lotto §15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback non ricostruisce la versione precedente: quella
+              --    scriveva su colonne che il changeSet 20260907-16 toglie.
+              --    Per tornare indietro si rilancia la definizione del 20260906-11
+              --    DOPO aver ripristinato le colonne.
+              DROP FUNCTION IF EXISTS vendite.fn_segna_esito_gruppo_lotto(
+                  bigint, text, text, bigint, text, text);

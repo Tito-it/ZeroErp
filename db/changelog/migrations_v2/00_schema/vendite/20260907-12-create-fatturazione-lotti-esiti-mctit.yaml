@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'esito di un documento dentro un lotto prende casa sua.
+#   Decisione di Tid, 2026-09-07 — brief-db-esito-gruppo-lotto §15 e §17.
+#
+# ── ⭐ IL PROBLEMA: UNA TABELLA RISPONDEVA A DUE DOMANDE ────────────
+#   `fatturazione_lotti_gruppi` diceva due cose insieme:
+#     * «quali documenti devo lavorare» — il PERIMETRO, dove la convenzione
+#       portante e' che *nessuna riga = nessuna restrizione*;
+#     * «com'e' andato ciascun documento» — l'ESITO, che deve esistere sempre.
+#   Coincidono sui giri MIRATI e divergono su quelli di MASSA: li' non c'e'
+#   nessuna riga di perimetro, quindi non c'era niente da marcare e un
+#   documento fallito restava muto come prima.
+#   ⛔ E scrivere le righe di perimetro anche sui giri di massa non e' una via:
+#   trasformerebbe ogni giro schedulato in un giro mirato — un cambio di
+#   comportamento del motore travestito da miglioria di diagnostica.
+#
+# ── ✅ LA SEPARAZIONE ──────────────────────────────────────────────
+#   Il perimetro torna a essere solo perimetro, e la sua regola resta intatta.
+#   L'esito ha una casa che **accetta la riga nuova** invece di doverla trovare.
+#
+#   ⭐ E qui sta la parte che vale: il backend chiama gia' oggi la funzione per
+#   OGNI commessa, mirata o di massa. Su un giro di massa la chiamata parte, non
+#   trova niente e torna `0`. Con questa casa quella stessa chiamata comincia a
+#   funzionare **senza cambiare una riga di codice del backend**.
+#
+# ── ⭐ `stato_esecuzione` QUI E' NOT NULL, e non e' un dettaglio ────
+#   Sulla tabella del perimetro doveva essere nullabile: le righe c'erano gia'
+#   e `NULL` voleva dire «nessuno l'ha detto». Qui una riga NASCE quando c'e'
+#   qualcosa da dire, quindi il non-detto non si rappresenta: si rappresenta
+#   con l'assenza della riga.
+#   ⇒ Sparisce lo stato di mezzo, che e' sempre il piu' difficile da leggere.
+#
+# ── ⚠️ LA CHIAVE E' (lotto, documento) ─────────────────────────────
+#   Un documento ha UN esito per lotto: l'ultimo tentativo di quel lotto. Lo
+#   storico dei tentativi non vive qui — vive nel giornale del lotto, che e'
+#   fatto per quello. Due tentativi nello stesso lotto sovrascrivono, ed e'
+#   voluto: la domanda a cui questa tabella risponde e' «com'e' finita», non
+#   «quante volte ci abbiamo provato».
+#
+# ── ⛔ NIENTE MIGRAZIONE DEI DATI (decisione di Tid) ────────────────
+#   Le quattro colonne sul perimetro portano gli esiti dei giri mirati di
+#   questi due giorni. Siamo in test: non si recuperano. Le colonne vengono
+#   TOLTE dal changeSet `20260907-16`, dopo che le viste hanno cambiato lettura.
+#
+# ⚠️ Tabella nuova = i trigger di audit, `tx_id` e storico non ci sono fino al
+#   giro delle automazioni. E' il comportamento noto del framework, non una
+#   dimenticanza di questo changeSet.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260907-12-create-fatturazione-lotti-esiti-mctit.yaml
+
+  - changeSet:
+      id: 20260907-12-create-fatturazione-lotti-esiti
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti_esiti: com'e' andato un documento dentro un
+        lotto, indipendentemente da come il lotto e' nato. Separa l'esito dal
+        perimetro (fatturazione_lotti_gruppi), che tornava a dire due cose
+        insieme e lasciava muti i giri di massa. Una riga per (lotto,
+        documento), creata quando c'e' qualcosa da dire.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti }
+            - not:
+                - tableExists:
+                    { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE vendite.fatturazione_lotti_esiti (
+                  id                bigint GENERATED ALWAYS AS IDENTITY
+                                        CONSTRAINT pk_fatturazione_lotti_esiti PRIMARY KEY,
+                  lotto_id          bigint      NOT NULL,
+                  gruppo_key        text        NOT NULL,
+                  stato_esecuzione  text        NOT NULL,
+                  errore_codice     text        NULL,
+                  errore_messaggio  text        NULL,
+                  errore_quando     timestamptz NULL,
+                  meta              jsonb       NOT NULL DEFAULT '{}'::jsonb,
+                  storicizza        boolean     NOT NULL DEFAULT true,
+                  tx_id             uuid        NULL,
+                  data_insert       timestamptz NOT NULL DEFAULT now(),
+                  user_insert       text        NOT NULL DEFAULT CURRENT_USER,
+                  data_update       timestamptz NOT NULL DEFAULT now(),
+                  user_update       text        NOT NULL DEFAULT CURRENT_USER,
+
+                  CONSTRAINT fk_fatturazione_lotti_esiti_lotto
+                      FOREIGN KEY (lotto_id)
+                      REFERENCES vendite.fatturazione_lotti (id)
+                      ON DELETE CASCADE,
+
+                  -- ⚠️ Un documento ha UN esito per lotto: l'ultimo tentativo di
+                  --   quel lotto. Lo storico dei tentativi sta nel giornale, che
+                  --   e' fatto per quello.
+                  CONSTRAINT uq_fatturazione_lotti_esiti_documento
+                      UNIQUE (lotto_id, gruppo_key),
+
+                  -- Stesso vocabolario di vendite.fatturazione_lotti_fatture:
+                  -- e' la stessa domanda posta a un documento invece che a una
+                  -- fattura, e due colonne cosi' non possono parlare due lingue.
+                  CONSTRAINT chk_fatturazione_lotti_esiti_stato
+                      CHECK (stato_esecuzione IN ('PENDING', 'RUNNING', 'COMPLETED', 'ERRORE')),
+
+                  -- ⛔ Un errore muto non serve a nessuno. ⚠️ Basta UNA fra causa
+                  --   e frase: chi scrive la riga la chiama da dentro un gestore
+                  --   d'eccezione, e pretendere il codice registrato la farebbe
+                  --   fallire proprio quando serve.
+                  CONSTRAINT chk_fatturazione_lotti_esiti_errore_parlante
+                      CHECK (stato_esecuzione <> 'ERRORE'
+                             OR errore_codice IS NOT NULL
+                             OR errore_messaggio IS NOT NULL)
+              );
+
+              COMMENT ON TABLE vendite.fatturazione_lotti_esiti IS
+                  'Com''e'' andato un DOCUMENTO dentro un lotto: una riga per (lotto, '
+                  'documento), creata quando c''e'' qualcosa da dire. ⭐ Nasce separando '
+                  'due domande che vivevano nella stessa tabella: '
+                  'vendite.fatturazione_lotti_gruppi dice QUALI documenti lavorare (il '
+                  'perimetro, dove «nessuna riga» significa «nessuna restrizione») e '
+                  'diceva anche COM''E'' ANDATO ciascuno. Le due coincidono sui giri '
+                  'mirati e divergono su quelli di massa, che non scrivono nessun '
+                  'perimetro: li'' un documento fallito restava muto. ⛔ Scrivere il '
+                  'perimetro anche sui giri di massa non era una via — trasformerebbe '
+                  'ogni giro schedulato in un giro mirato. ⭐ Il backend non cambia: '
+                  'chiamava gia'' vendite.fn_segna_esito_gruppo_lotto per ogni commessa, e '
+                  'sui giri di massa quella chiamata tornava 0 perche'' non trovava la '
+                  'riga; qui la riga viene creata. ⚠️ Un tentativo successivo sullo '
+                  'stesso lotto SOVRASCRIVE: la domanda e'' «com''e'' finita», non «quante '
+                  'volte ci abbiamo provato» — lo storico sta nel giornale del lotto. '
+                  'Brief: brief-db-esito-gruppo-lotto §15.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_esiti.gruppo_key IS
+                  'Il documento, nella forma costruita da '
+                  'vendite.fn_build_gruppo_fatturabile_key — la stessa chiave usata dal '
+                  'perimetro e dalla dashboard di competenza. ⛔ Non e'' una FK verso il '
+                  'perimetro: l''esito esiste anche dove il perimetro non c''e'', ed e'' '
+                  'esattamente il caso per cui questa tabella nasce.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_esiti.stato_esecuzione IS
+                  'PENDING | RUNNING | COMPLETED | ERRORE — stesso vocabolario di '
+                  'vendite.fatturazione_lotti_fatture. ⭐ NOT NULL, a differenza della '
+                  'colonna omonima che stava sul perimetro: li'' le righe esistevano gia'' '
+                  'e NULL voleva dire «nessuno l''ha detto», qui una riga NASCE quando '
+                  'qualcuno lo dice. Il non-detto si rappresenta con l''assenza della '
+                  'riga, e lo stato di mezzo — sempre il piu'' difficile da leggere — '
+                  'sparisce.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_esiti.errore_quando IS
+                  'Quando il tentativo e'' fallito. Serve a distinguere un errore di oggi '
+                  'da uno rimasto scritto da un giro precedente.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT, INSERT, UPDATE, DELETE
+                          ON vendite.fatturazione_lotti_esiti TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS vendite.fatturazione_lotti_esiti;

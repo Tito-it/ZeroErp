@@ -2,20 +2,26 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: l'esito di un gruppo dentro un lotto — dal posto dove si scrive
---       (vendite.fatturazione_lotti_gruppi) a quello dove si vede
---       (vendite.vw_dash_competenza_gruppi)
--- ChangeSet: 20260906-10 (colonne), -11 (chi le scrive), -12 (chi le mostra)
+-- Test: l'esito di un documento dentro un lotto — dal posto dove si scrive
+--       (vendite.fatturazione_lotti_esiti) a quello dove si vede
+--       (vendite.vw_dash_competenza_gruppi), piu' il presidio
+-- ChangeSet: 20260907-12 (la casa), -13 (chi scrive), -14 e -15 (chi legge),
+--            -16 (il perimetro torna a fare solo il perimetro)
 --
--- Elenco test (plan 8):
---  1) le quattro colonne dell'esito ci sono
---  2) ⭐ il vocabolario e' lo STESSO del gemello, e si legge dai vincoli
---  3) ⛔ un errore senza causa ne' frase non si scrive
---  4) ✅ marcare per chiave di gruppo: una riga, e i campi parlano
---  5) ✅ COMPLETED non lascia residui dell'errore precedente
---  6) ⛔ una commessa che non alimenta nessun gruppo del lotto non marca niente
---  7) la competenza espone le cinque colonne dell'ultimo tentativo
---  8) ⛔ e NON ha smesso di dire se il documento e' ancora da emettere
+-- Elenco test (plan 12):
+--   1) la casa dell'esito ha le sue colonne
+--   2) ⭐ il vocabolario e' lo STESSO del gemello, e si legge dai vincoli
+--   3) ⛔ un errore senza causa ne' frase non si scrive
+--   4) ✅ marcare un documento: una riga, e i campi parlano
+--   5) ✅ COMPLETED non lascia residui dell'errore precedente
+--   6) ⛔ una commessa che non alimenta niente in quel lotto non scrive
+--   7) ⭐ un lotto SENZA perimetro viene marcato lo stesso — il caso per cui
+--      questa casa e' nata
+--   8) ⭐ un secondo tentativo sovrascrive, non duplica
+--   9) la competenza espone le cinque colonne dell'ultimo tentativo
+--  10) ⛔ e NON ha smesso di dire se il documento e' ancora da emettere
+--  11) il presidio dei lotti chiusi con documenti falliti e' VUOTO
+--  12) ⭐ ...e si accende davvero, su un caso COSTRUITO
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL CASO DA CUI NASCE. Il lotto LTF-0009578 ha preso in carico tre ordini
@@ -23,17 +29,22 @@
 --   diventato fattura non aveva nessuna riga dove comparire: fuori dal lotto, e
 --   dentro i documenti da emettere senza un segno. Sembrava fatturabile.
 --
--- ⚠️ TUTTI I CASI SONO COSTRUITI. Il lotto e i gruppi li fabbrica la fixture:
+-- ⭐ E LA SECONDA META', del 2026-09-07. L'esito viveva sulle righe del
+--   PERIMETRO, che i giri di massa non scrivono: li' un documento fallito
+--   restava muto come prima. Adesso l'esito ha una casa sua, e la riga si crea
+--   invece di dover essere trovata — il test 7 e' quello che lo verifica.
+--
+-- ⚠️ TUTTI I CASI SONO COSTRUITI. Lotti e documenti li fabbrica la fixture:
 --   nessuna asserzione si appoggia a un lotto vero, che domani puo' essere
 --   archiviato o corretto. L'unica cosa presa dai dati sono i due riferimenti
 --   obbligatori del lotto (tipo documento ed emittente), letti da un lotto
 --   esistente perche' devono stare nel perimetro dell'operatore.
 --
--- ⛔ QUELLO CHE QUESTO FILE NON PROVA, E VA DETTO: il ritrovamento del gruppo
---   PARTENDO DALLA COMMESSA quando la commessa alimenta davvero quel gruppo.
+-- ⛔ QUELLO CHE QUESTO FILE NON PROVA, E VA DETTO: il ritrovamento del
+--   documento PARTENDO DALLA COMMESSA quando la commessa lo alimenta davvero.
 --   Costruirlo richiederebbe una commessa con le sue attivita' — una fixture
 --   piu' grande della cosa da provare. Il test 6 copre il verso che si puo'
---   costruire (una commessa che non c'entra non marca niente); il verso
+--   costruire (una commessa che non c'entra non scrive niente); il verso
 --   positivo si collauda sul giro vero, ed e' un debito dichiarato.
 -- ------------------------------------------------------------
 
@@ -45,10 +56,10 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(12);
 
 -- ============================================================
--- Fixture: un lotto e due gruppi, fabbricati qui
+-- Fixture: due lotti — uno CON perimetro e uno SENZA
 -- ============================================================
 CREATE TEMP TABLE tmp_esito AS
 SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
@@ -58,37 +69,48 @@ SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
 
 DO $fixture$
 DECLARE
-    v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+    v_mirato vendite.fatturazione_lotti.id%TYPE;
+    v_massa  vendite.fatturazione_lotti.id%TYPE;
 BEGIN
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP-ESITO-GRUPPI', date_trunc('month', CURRENT_DATE)::date,
+    SELECT 'PGTAP-ESITO-MIRATO', date_trunc('month', CURRENT_DATE)::date,
            t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
       FROM tmp_esito t
-    RETURNING id INTO v_lotto_id;
+    RETURNING id INTO v_mirato;
 
     -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
     -- snapshot e la FK non troverebbe il padre.
     INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
-    VALUES (v_lotto_id, 'PGTAP:gruppo-che-fallisce'),
-           (v_lotto_id, 'PGTAP:gruppo-che-riesce');
+    VALUES (v_mirato, 'PGTAP:documento-che-fallisce'),
+           (v_mirato, 'PGTAP:documento-che-riesce');
 
-    PERFORM set_config('pgtap.lotto', v_lotto_id::text, true);
+    -- ⭐ Il secondo lotto NON ha righe di perimetro: e' un giro di massa, e
+    --   fino al 2026-09-07 non aveva nessun posto dove essere marcato.
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
+    SELECT 'PGTAP-ESITO-MASSA', date_trunc('month', CURRENT_DATE)::date,
+           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
+      FROM tmp_esito t
+    RETURNING id INTO v_massa;
+
+    PERFORM set_config('pgtap.lotto', v_mirato::text, true);
+    PERFORM set_config('pgtap.lotto_massa', v_massa::text, true);
 END
 $fixture$;
 
 -- ============================================================
--- 1. Le colonne ci sono
+-- 1. La casa dell'esito ha le sue colonne
 -- ============================================================
 SELECT is(
     (SELECT count(*)::int
        FROM information_schema.columns
       WHERE table_schema = 'vendite'
-        AND table_name   = 'fatturazione_lotti_gruppi'
-        AND column_name IN ('stato_esecuzione', 'errore_codice',
-                            'errore_messaggio', 'errore_quando')),
-    4,
-    '1. il gruppo di un lotto ha le quattro colonne dell''esito'
+        AND table_name   = 'fatturazione_lotti_esiti'
+        AND column_name IN ('lotto_id', 'gruppo_key', 'stato_esecuzione',
+                            'errore_codice', 'errore_messaggio', 'errore_quando')),
+    6,
+    '1. vendite.fatturazione_lotti_esiti ha le colonne dell''esito'
 );
 
 -- ============================================================
@@ -97,17 +119,16 @@ SELECT is(
 -- ⛔ Non si scrive a mano l'elenco dei quattro valori: sarebbe una fotografia,
 --   e il giorno in cui il gemello ne ammette un quinto questo test resterebbe
 --   verde mentre le due colonne hanno smesso di parlare la stessa lingua.
---   Si leggono dai due vincoli e si confrontano fra loro.
 SELECT is(
     (SELECT array_agg(v ORDER BY v)
        FROM (SELECT unnest(regexp_matches(pg_get_constraintdef(oid), '''([A-Z_]+)''', 'g')) AS v
                FROM pg_constraint
-              WHERE conname = 'chk_lotti_gruppi_stato_esecuzione') s),
+              WHERE conname = 'chk_fatturazione_lotti_esiti_stato') s),
     (SELECT array_agg(v ORDER BY v)
        FROM (SELECT unnest(regexp_matches(pg_get_constraintdef(oid), '''([A-Z_]+)''', 'g')) AS v
                FROM pg_constraint
               WHERE conname = 'chk_fatturazione_lf_stato_esecuzione') s),
-    '2. il gruppo e la fattura del lotto ammettono gli STESSI stati'
+    '2. l''esito e la fattura del lotto ammettono gli STESSI stati'
 );
 
 -- ============================================================
@@ -119,36 +140,36 @@ SELECT is(
     vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id   => current_setting('pgtap.lotto')::bigint,
         p_stato      => 'ERRORE',
-        p_gruppo_key => 'PGTAP:gruppo-che-fallisce'),
+        p_gruppo_key => 'PGTAP:documento-che-fallisce'),
     0,
     '3. un ERRORE senza causa ne'' frase non viene scritto'
 );
 
 -- ============================================================
--- 4. ✅ Marcare per chiave di gruppo
+-- 4. ✅ Marcare un documento
 -- ============================================================
 SELECT is(
     vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => current_setting('pgtap.lotto')::bigint,
         p_stato            => 'ERRORE',
-        p_gruppo_key       => 'PGTAP:gruppo-che-fallisce',
+        p_gruppo_key       => 'PGTAP:documento-che-fallisce',
         p_errore_codice    => 'E_PULL_COMMESSA',
         p_errore_messaggio => 'ROOT source mancante'),
     1,
-    '4. l''esito viene appeso al gruppo indicato, e a quello solo'
+    '4. l''esito viene appeso al documento indicato, e a quello solo'
 );
 
 -- ============================================================
 -- 5. ✅ COMPLETED non lascia residui
 -- ============================================================
--- ⭐ Un gruppo che ci riprova e stavolta riesce non deve restare con addosso
+-- ⭐ Un documento che ci riprova e stavolta riesce non deve restare con addosso
 --   il messaggio del tentativo di prima: sarebbe un rosso che non scade mai.
 DO $riuscito$
 BEGIN
     PERFORM vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id   => current_setting('pgtap.lotto')::bigint,
         p_stato      => 'COMPLETED',
-        p_gruppo_key => 'PGTAP:gruppo-che-fallisce');
+        p_gruppo_key => 'PGTAP:documento-che-fallisce');
 END
 $riuscito$;
 
@@ -157,18 +178,18 @@ SELECT ok(
         AND errore_codice IS NULL
         AND errore_messaggio IS NULL
         AND errore_quando IS NULL
-       FROM vendite.fatturazione_lotti_gruppi
+       FROM vendite.fatturazione_lotti_esiti
       WHERE lotto_id = current_setting('pgtap.lotto')::bigint
-        AND gruppo_key = 'PGTAP:gruppo-che-fallisce'),
-    '5. un gruppo riuscito non conserva l''errore del tentativo precedente'
+        AND gruppo_key = 'PGTAP:documento-che-fallisce'),
+    '5. un documento riuscito non conserva l''errore del tentativo precedente'
 );
 
 -- ============================================================
 -- 6. ⛔ Il perimetro del lotto tiene
 -- ============================================================
--- Una commessa che in questo lotto non alimenta niente non deve marcare niente:
--- ⚠️ marcare «il primo gruppo che capita» sarebbe peggio del non marcare, perché
---   attribuirebbe un errore a un documento che non c'entra.
+-- Una commessa che in questo lotto non alimenta niente non deve scrivere
+-- niente: ⚠️ marcare «il primo documento che capita» sarebbe peggio del non
+-- marcare, perché attribuirebbe un errore a un documento che non c'entra.
 SELECT is(
     vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => current_setting('pgtap.lotto')::bigint,
@@ -177,11 +198,56 @@ SELECT is(
         p_errore_codice    => 'E_PULL_COMMESSA',
         p_errore_messaggio => 'commessa che non c''entra'),
     0,
-    '6. una commessa che non alimenta nessun gruppo del lotto non marca niente'
+    '6. una commessa che non alimenta niente in quel lotto non scrive'
 );
 
 -- ============================================================
--- 7. La competenza porta l'esito dell'ultimo tentativo
+-- 7. ⭐ Il caso per cui questa casa e' nata: il giro SENZA perimetro
+-- ============================================================
+-- ⛔ Fino al 2026-09-07 l'esito viveva sulle righe del perimetro, e un giro di
+--   massa non ne scrive nessuna: la marcatura non trovava niente da aggiornare
+--   e tornava 0. Il documento fallito restava muto, e nessuno lo sapeva.
+-- ⭐ Adesso la riga si CREA. E il backend non e' cambiato: e' la stessa
+--   chiamata di prima, che prima non trovava casa.
+SELECT is(
+    vendite.fn_segna_esito_gruppo_lotto(
+        p_lotto_id         => current_setting('pgtap.lotto_massa')::bigint,
+        p_stato            => 'ERRORE',
+        p_gruppo_key       => 'PGTAP:documento-di-un-giro-di-massa',
+        p_errore_codice    => 'E_PULL_COMMESSA',
+        p_errore_messaggio => 'fallito in un giro senza perimetro'),
+    1,
+    '7. un lotto senza perimetro riceve comunque l''esito del suo documento'
+);
+
+-- ============================================================
+-- 8. ⭐ Un secondo tentativo sovrascrive, non duplica
+-- ============================================================
+-- ⚠️ La chiave e' (lotto, documento): la domanda a cui questa casa risponde e'
+--   «com'e' finita», non «quante volte ci abbiamo provato». Lo storico dei
+--   tentativi vive nel giornale del lotto, che e' fatto per quello.
+DO $ancora$
+BEGIN
+    PERFORM vendite.fn_segna_esito_gruppo_lotto(
+        p_lotto_id         => current_setting('pgtap.lotto_massa')::bigint,
+        p_stato            => 'ERRORE',
+        p_gruppo_key       => 'PGTAP:documento-di-un-giro-di-massa',
+        p_errore_codice    => 'E_PULL_COMMESSA',
+        p_errore_messaggio => 'secondo tentativo, stesso documento');
+END
+$ancora$;
+
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.fatturazione_lotti_esiti
+      WHERE lotto_id = current_setting('pgtap.lotto_massa')::bigint
+        AND gruppo_key = 'PGTAP:documento-di-un-giro-di-massa'),
+    1,
+    '8. due tentativi sullo stesso documento lasciano UNA riga, non due'
+);
+
+-- ============================================================
+-- 9. La competenza porta l'esito dell'ultimo tentativo
 -- ============================================================
 -- ⭐ E' il pezzo che rende visibile tutto il resto: senza queste colonne
 --   l'esito starebbe scritto e non lo leggerebbe nessuno.
@@ -194,18 +260,16 @@ SELECT is(
                             'ultimo_errore_messaggio', 'ultimo_errore_quando',
                             'ultimo_lotto_codice')),
     5,
-    '7. i documenti da emettere portano l''esito dell''ultimo tentativo'
+    '9. i documenti da emettere portano l''esito dell''ultimo tentativo'
 );
 
 -- ============================================================
--- 8. ⛔ Il segno non ha spento l'emittibilita'
+-- 10. ⛔ Il segno non ha spento l'emittibilita'
 -- ============================================================
 -- ⛔ E' il presidio della decisione di Tid del 2026-09-06, e sta qui perche' e'
 --   la cosa che qualcuno, fra sei mesi, sara' tentato di «sistemare»: togliere
 --   dall'elenco i documenti che hanno un errore. Sarebbe tornare al problema di
 --   partenza dall'altra parte — il documento sparirebbe di nuovo.
--- ⚠️ Il test guarda che le due colonne ci siano ancora: un CREATE OR REPLACE
---   della vista che le togliesse fallirebbe qui invece che in produzione.
 SELECT is(
     (SELECT count(*)::int
        FROM information_schema.columns
@@ -213,7 +277,59 @@ SELECT is(
         AND table_name   = 'vw_dash_competenza_gruppi'
         AND column_name IN ('stadio', 'commessa_emittibile')),
     2,
-    '8. un documento con un errore resta comunque uno che dice se e'' da emettere'
+    '10. un documento con un errore resta comunque uno che dice se e'' da emettere'
+);
+
+-- ============================================================
+-- 11. Il presidio della decisione «3 su 3 come 2 su 3»
+-- ============================================================
+-- ⭐ CHE COSA SORVEGLIA. Dal 2026-09-06 il passo non solleva piu' quando
+--   falliscono TUTTE le commesse: cosi' i segni non vengono annullati dal
+--   rollback. Ma senza l'eccezione lo stato finale del lotto lo decide chi
+--   guarda fatture in errore e segnalazioni critiche — e con tutte le commesse
+--   fallite le fatture NON NASCONO.
+--   ⇒ La salvezza dipende da segnalazioni scritte da un altro pezzo. Se
+--     cambiassero forma, un fallimento totale si presenterebbe come «Pipeline
+--     completata», in silenzio. Questa vista e' li' per quel giorno.
+SELECT is_empty(
+    $$SELECT lotto_codice FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore$$,
+    '11. nessun lotto chiuso COMPLETATO contiene documenti dichiarati in ERRORE'
+);
+
+-- ============================================================
+-- 12. ⭐ ...e il presidio si accende davvero
+-- ============================================================
+-- ⛔ Senza questo, il test 11 proverebbe solo che oggi non c'e' niente — non
+--   che la vista sappia accorgersi di qualcosa.
+DO $contraddizione$
+DECLARE
+    v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+BEGIN
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
+         stato_lotto)
+    SELECT 'PGTAP-CONTRADDIZIONE', date_trunc('month', CURRENT_DATE)::date,
+           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id, 'COMPLETATO'
+      FROM tmp_esito t
+    RETURNING id INTO v_lotto_id;
+
+    PERFORM vendite.fn_segna_esito_gruppo_lotto(
+        p_lotto_id         => v_lotto_id,
+        p_stato            => 'ERRORE',
+        p_gruppo_key       => 'PGTAP:documento-fallito-in-lotto-chiuso',
+        p_errore_codice    => 'E_PULL_COMMESSA',
+        p_errore_messaggio => 'costruito dal test');
+
+    PERFORM set_config('pgtap.lotto_chiuso', v_lotto_id::text, true);
+END
+$contraddizione$;
+
+SELECT is(
+    (SELECT gruppi_in_errore::int
+       FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore
+      WHERE lotto_id = current_setting('pgtap.lotto_chiuso')::bigint),
+    1,
+    '12. un lotto COMPLETATO con un documento in ERRORE viene nominato'
 );
 
 SELECT * FROM finish();
