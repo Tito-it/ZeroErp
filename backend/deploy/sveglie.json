@@ -2,6 +2,7 @@
   "_scopo": "SEDE UNICA del DICHIARATO: chi sveglia ogni processo automatico del backend, con quale cadenza, e entro quanto il suo ultimo run e' ancora un segno di vita. Letto dall'installer degli unit (backend/bin/install-timers.sh) E dal backend (apps.core.services.sveglie). Il PERCHE' di ogni scelta sta nel template dell'unit; qui c'e' il VALORE, perche' due programmi devono poterlo leggere.",
   "_forma": "unit = nome systemd senza estensione. processo_codice = dbops.processi.codice (l'attore che comparira' su maintenance.job_run_log). forma = timer|servizio. oncalendar = cadenza default, null per i servizi sempre accesi. abilita = se l'installer lo accende. tolleranza_minuti = entro quanto l'ultimo run vale ancora 'vivo'; null = la liveness NON si presidia da qui.",
   "_regola": "Un processo puo' avere PIU' sveglie (run_fatturazione_batch ne ha due, una per corsia): la chiave e' l'unit, non il processo. Aggiungere una sveglia = una voce qui + la coppia di template in deploy/systemd/. Niente altro.",
+  "_ritirate": "UN'ASSENZA DECISA, scritta qui perche' altrimenti si legge come una dimenticanza. zeroerp-sync-auth-user-active e' stata TOLTA il 2026-09-07 (unit, voce e costante PROCESSO_*, insieme): la riga 23 di dbops.processi e' ritirata a favore del gemello pgAgent sync_auth_user_expired_daily. Il management command resta come attrezzo a mano e non registra piu' un run. Il perche' per esteso sta in apps/core/services/processi.py; il brief e' work-in-progress/brief-db-sveglia-dei-processi.md §8.5.",
 
   "sveglie": [
     {
@@ -48,15 +49,6 @@
       "abilita": true,
       "tolleranza_minuti": 30,
       "nota": "Nato il 2026-09-06: prima questo processo non aveva NESSUN artefatto di deploy, ed e' quello che il brief della sveglia usa come esempio del guasto-per-assenza. Cadenza piu' lenta dei due drainer perche' le email di SISTEMA partono gia' in sincrono (brief email §1): questo giro e' il ripiego e il ritentativo, non la strada principale."
-    },
-    {
-      "unit": "zeroerp-sync-auth-user-active",
-      "processo_codice": "sync_auth_user_active",
-      "forma": "timer",
-      "oncalendar": "*-*-* 03:00",
-      "abilita": false,
-      "tolleranza_minuti": null,
-      "nota": "SCRITTO E SPENTO, e il motivo NON e' una policy: e' che dbops.processi ha DUE righe per lo stesso lavoro — questa (COMMAND) e sync_auth_user_expired_daily (PGAGENT, id 11). Accenderlo senza spegnere il gemello farebbe girare la disattivazione due volte. La scelta di quale dei due tenere e' del modello, non del deploy."
     },
     {
       "unit": "zeroerp-listen-cambio-reparto",

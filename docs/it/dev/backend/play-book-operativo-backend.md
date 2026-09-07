@@ -399,15 +399,17 @@ divergenza sarebbe stata **muta**: un pallino verde su un worker fermo.
 | `zeroerp-fatturazione-immediata` | `run_fatturazione_batch` | timer | `*:0/2` | ⛔ emette documenti |
 | `zeroerp-fatturazione-differita` | `run_fatturazione_batch` | timer | `*-*-01 02:00` | ⛔ idem |
 | **`zeroerp-send-pending-emails`** | `send_pending_emails` | timer | `*:0/5` | ✅ |
-| **`zeroerp-sync-auth-user-active`** | `sync_auth_user_active` | timer | `*-*-* 03:00` | 🔴 gemello pgAgent |
 | **`zeroerp-listen-cambio-reparto`** | `listen_cambio_reparto` | **servizio** | — | ✅ |
 
-🔴 **I tre in grassetto non esistevano**, e non è un dettaglio: erano processi a
+🔴 **I due in grassetto non esistevano**, e non è un dettaglio: erano processi a
 catalogo in `dbops.processi`, che si registravano su `maintenance.job_run_log`
 dal 2026-09-05, e che **nessun artefatto di deploy faceva partire**. Su un host
 nuovo non partivano mai. `dbops.vw_processi_programmazione` li classifica
 `FUORI_PORTATA` — *«il database non può saperlo»* — quindi il guasto non aveva
 nessun modo di manifestarsi se non come assenza.
+
+⚠️ **Erano tre.** Il terzo — `zeroerp-sync-auth-user-active` — è nato spento il
+2026-09-06 e ritirato il **2026-09-07**: §17.3.
 
 ⭐ **Adesso lo presidia il backend**:
 `apps/core/tests/services/test_sveglie.py::test_ogni_processo_del_backend_ha_una_sveglia`
@@ -426,14 +428,34 @@ lo faccia partire. Gira in CI, senza database.
   questo la sua `tolleranza_minuti` è `null` — presidiarne la liveness
   sull'ultimo run direbbe «fermo» su un listener sano partito tre settimane fa.
 
-### 17.3) 🔴 `sync-auth-user-active` è scritto e spento, e non è prudenza
+### 17.3) ✅ `sync-auth-user-active` è stato RITIRATO (2026-09-07)
 
-`dbops.processi` ha **due righe per lo stesso lavoro**: `sync_auth_user_active`
-(id 23, `COMMAND`) e `sync_auth_user_expired_daily` (id 11, `PGAGENT`).
-Accendere il timer senza ritirare il gemello farebbe girare la disattivazione
-degli utenti scaduti **due volte per notte**. La scelta di quale tenere è del
-modello, non del deploy: richiesta al team DB in
-[brief-db-sveglia-dei-processi.md](../work-in-progress/brief-db-sveglia-dei-processi.md) §7.
+`dbops.processi` aveva **due righe per lo stesso lavoro**: `sync_auth_user_active`
+(id 23, `COMMAND`) e `sync_auth_user_expired_daily` (id 11, `PGAGENT`). Il modello
+ammetteva che fossero **accesi tutti e due**, cioè la disattivazione degli utenti
+scaduti due volte per notte, e nulla nel database lo impediva né lo segnalava.
+Per questo il timer era nato **scritto e spento**.
+
+**Deciso dal team DB** (brief §8.5): si tiene il `PGAGENT`. Il lavoro vero
+(`anagrafiche.fn_sync_auth_user_expired`) sta tutto nel database, ha il suo
+wrapper di giornale, ed è l'**unica** delle due righe che il confronto a due
+fonti riesca a vedere — ritirare quella visibile per tenere l'invisibile
+toglierebbe presidio. La riga 23 porta `obsoleto_dal = 2026-09-07`.
+
+**Da questo lato** sono spariti **insieme** unit, voce in `sveglie.json` e
+costante `PROCESSO_SYNC_AUTH_USER_ACTIVE`: lasciarne una farebbe dissentire
+`test_ogni_processo_del_backend_ha_una_sveglia` e `test_nessun_template_orfano`,
+che guardano lo stesso fatto dai due versi.
+
+⭐ **Il management command resta come attrezzo a mano, e NON registra più un
+run.** La FK lo accetterebbe sotto il codice superstite, ma la LATERAL di
+`dbops.vw_processi_programmazione` legge il giornale con
+`processo_codice = codice OR jobname = codice` **senza filtrare `origine`**: una
+corsa a mano sposterebbe avanti `giornale_ultima_corsa` e spegnerebbe il
+confronto `GIRA_E_NON_REGISTRA` su quel job — cioè il rilevatore di R-12, che su
+`apply_storicizza_weekly` ha lavorato indisturbato per sei mesi e mezzo.
+⚠️ Il prezzo dichiarato: **un lancio manuale non lascia traccia**
+(decisione di Tid, 2026-09-07).
 
 ### 17.4) Aggiungere una sveglia
 

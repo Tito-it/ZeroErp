@@ -83,16 +83,31 @@ scoperto per caso.
 
 ---
 
-### 🔴 Al 7 settembre 2026 questa vista non è vuota
+### ✅ Al 7 settembre 2026, a fine giornata, questa vista è vuota
 
-E non è un difetto della vista: è la prima cosa che ha da dire.
+Ci ha messo poche ore, e le due righe con cui è nata se ne sono andate per
+strade diverse — vale la pena tenerle distinte, perché solo una delle due è una
+risposta.
 
-* un lavoro notturno che ha appena ricevuto la capacità di registrarsi:
-  registrerà alla prossima corsa, e la riga sparisce da sé;
-* ⛔ un lavoro settimanale che **quella capacità ce l'aveva già**, e che dal
-  febbraio 2026 gira senza lasciare traccia. Quello non si toglie da solo: la
-  prima corsa utile per capirlo è **sabato 12 settembre 2026**, e ciò che ci si
-  aspetta è una traccia — verde o rossa, ma una.
+* un lavoro **notturno** che aveva appena ricevuto la capacità di registrarsi:
+  ha registrato alla corsa successiva, e la riga è sparita da sé. Atteso;
+* ⛔ un lavoro **settimanale** che quella capacità ce l'aveva già, e che dal
+  febbraio 2026 girava senza lasciare traccia. Quello non si sarebbe tolto da
+  solo: la corsa è stata **forzata** il 7 settembre, e ha lasciato una traccia.
+
+**Che cosa dice quella traccia, e che cosa no.** È **verde**: quindi il lavoro
+non era rotto, e ciò che si era rotto era il modo in cui raccontava di aver
+lavorato. ⚠️ Ma una corsa riuscita oggi non spiega **perché** sei mesi di corse
+riuscite non abbiano scritto niente: quella domanda si risponde solo guardando
+lo storico dello scheduler, che da qui non si legge.
+
+⇒ Il sintomo è sparito, la causa non è accertata. Sono due cose diverse, e la
+seconda va tenuta scritta: la prossima volta che questo giornale tace, si
+comincia da lì.
+
+⚠️ **Il commento della vista è rimasto indietro**, ed è quello che il pannello
+dei presidi rende: dichiara ancora il fatto datato *«questa vista NASCE con due
+righe»* e dice esso stesso che va tolto quando saranno rientrate. Adesso lo sono.
 
 ---
 

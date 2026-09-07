@@ -82,6 +82,21 @@ abilitare.
 - ⛔ **Il nome dell'unit passa da una regex.** Finisce interpolato in un percorso
   e passato a `systemctl`: un refuso con una barra scriverebbe fuori da
   `/etc/systemd/system`. Stesso presidio degli identificatori SQL interpolati.
+- ⛔ **Ritirare una sveglia è un gesto in TRE pezzi, e vanno insieme**: la voce
+  qui, la coppia di template, e la costante `PROCESSO_*` in
+  `apps/core/services/processi.py`. Lasciarne uno fa dissentire
+  `test_ogni_processo_del_backend_ha_una_sveglia` e `test_nessun_template_orfano`,
+  che guardano lo stesso fatto dai due versi.
+  ⭐ **Ed è successo**: `zeroerp-sync-auth-user-active`, ritirata il 2026-09-07
+  perché `dbops.processi` aveva due righe per lo stesso lavoro e il team DB ha
+  scelto il gemello pgAgent (brief §8.5). L'assenza è **dichiarata** nella chiave
+  `_ritirate` di `sveglie.json`: un'assenza non scritta si rilegge come una
+  dimenticanza, e qualcuno la «ripara».
+  ⚠️ Il management command sopravvive come attrezzo a mano e **non registra più
+  un run**: registrarsi sotto il codice superstite sposterebbe avanti
+  `giornale_ultima_corsa` e spegnerebbe il confronto `GIRA_E_NON_REGISTRA` su
+  quel job — la LATERAL del panorama legge il giornale **senza filtrare
+  `origine`**. Playbook §17.3.
 
 ### I presidi
 

@@ -22,8 +22,23 @@
 > toglie alla prossima corsa, è **R-12 ancora vivo** (§8.1). Leggere quello prima
 > del §1.
 > ✅ **Lavorato e applicato il 2026-09-07: §9.** Il §6 e il §3.2 sono chiusi lato
-> DB, il §7 pure — resta al backend togliere l'unit e la costante (§9.5), e resta
-> **sabato 12-09** per `apply_storicizza_weekly`.
+> DB, il §7 pure. ✅ **E il backend ha chiuso il §9.5 lo stesso giorno**: unit,
+> voce e costante tolti insieme, la riga in `PRESIDI_PROCESSI` cablata.
+> ✅ **E `apply_storicizza_weekly` ha parlato — §22.** Corsa forzata da pgAgent
+> il 2026-09-07 alle 09:35:47 UTC: il giornale ha una riga, **verde**, e il
+> presidio del §6 è **vuoto**. ⇒ Il difetto non era nel job, era nel verbale.
+> ⚠️ Ma il **perché** dei sei mesi e mezzo di silenzio resta non accertato, e da
+> questo lato non si accerta: `pgagent.*` non è leggibile come `zeroerp_app`.
+>
+> 🔴 **Restano due cose.**
+> **1. La CI è rossa — §23**, ed è una conseguenza di `20260907-03` che questo
+> brief non aveva calcolato: la famiglia `VALORE_ATTESO` fa scattare il rubinetto
+> degli accumulatori su **8 codici**. ⭐ Su sette non è un accumulo — i punti sono
+> identici alla baseline: è il *metro* che è cambiato, non il misurato. Chiede una
+> decisione, e la decisione è una sola.
+> **2. §9.5-bis** — il confronto a due fonti non guarda `origine`, quindi un
+> attore che non è pgAgent può spegnere il rilevatore di R-12 sul job che sta
+> sorvegliando.
 >
 > ⚠️ **Nessuno dei due punti è un guasto.** Sono due posti in cui un presidio
 > **non guarda** — e un presidio cieco non si nota, per definizione.
@@ -401,9 +416,21 @@ job sta fallendo, ciò che comparirà non sarà silenzio: sarà una riga rossa i
 ⚠️ In `dbops.error_log` non c'è nulla, il che è coerente: l'errore non passa da
 `script.fn_log_and_raise_error`.
 
+> ✅ **SUPERATO il 2026-09-07 — §22.** La prova è arrivata prima del previsto,
+> forzando la corsa: il giornale ha una riga. ⛔ Ma è **verde**, quindi
+> l'ipotesi di questo paragrafo (*«il job falliva e il `RAISE` annullava la riga
+> rossa»*) **non è confermata**: resta da spiegare perché un job che riesce non
+> abbia scritto nulla per sei mesi e mezzo. Il §22 dice perché da qui non si
+> accerta.
+
 ⚠️ **Conseguenza diretta sul §6**, e va detta prima di cablare: la vista-presidio
 **nasce non vuota**, e resta tale almeno fino al 12-09. Non è un difetto della
 vista — è la prima cosa che quella vista ha da dire.
+
+> ✅ **Rientrata il 2026-09-07**: la vista-presidio è **vuota**. ⚠️ Ne discende
+> un lavoro per il team DB: il `COMMENT` della vista — quello che il pannello
+> rende — porta ancora il *fatto datato* «questa vista NASCE con due righe», e
+> dice esso stesso che va tolto quando saranno rientrate. Adesso lo sono.
 
 ---
 
@@ -588,7 +615,7 @@ i rossi.
 | **DB-4** | Famiglia nuova in `dbops.vw_codici_errore_forme_condizione`, **dopo** `PARAMETRO` per non toccare la precedenza; commento con la lettura datata e l'imprecisione dichiarata | `20_code/dbops` |
 | **DB-5** | pgTAP: la terza guardia di `fn_chiudi_email_sistema` non è più `IGNOTO` — **e il verso opposto**, senza cui il test passerebbe anche se la famiglia dicesse sempre sé stessa | `db/pgtap/dbops` |
 | **DB-6** | `obsoleto_dal` sulla riga 23, **editando `processi.csv`** | `80_data/sql/dbops` |
-| **DB-7** | 🔴 `apply_storicizza_weekly`: guardare sabato **12-09** e capire perché sei mesi di corse non hanno lasciato traccia | — |
+| **DB-7** | ✅ `apply_storicizza_weekly`: la traccia è arrivata il **07-09** (corsa forzata), il presidio è vuoto — §22. ⚠️ Il *perché* dei sei mesi resta non accertato, e vuole `pgagent.*` | — |
 
 ⚠️ **DB-6 si fa dal CSV, mai con un `UPDATE` SQL**: il mirror è `runOnChange` e
 riallinea, quindi le due sorgenti divergerebbero fra sviluppo e CI
@@ -700,31 +727,102 @@ Non gli resta nemmeno un punto `IGNOTO`.
 
 ### 9.5 🔴 Che cosa resta, e a chi
 
-* **Al backend** (§8.5): togliere insieme la costante
-  `PROCESSO_SYNC_AUTH_USER_ACTIVE`, i due template
-  `zeroerp-sync-auth-user-active.*` e la voce in `sveglie.json`. ⚠️ Vanno
-  insieme: `test_ogni_processo_del_backend_ha_una_sveglia` e
-  `test_nessun_template_orfano` guardano lo stesso fatto dai due versi, e
-  lasciarne una li fa dissentire.
-  ⚠️ Se il command resta come attrezzo a mano, non può più registrare un run
-  sotto un processo ritirato: o smette di registrare, o registra sotto
-  `sync_auth_user_expired_daily` con `origine = 'CRON'` — che è la forma che il
-  `CHECK` di `job_run_log` già ammette.
+* ✅ **Al backend** (§8.5) — **fatto il 2026-09-07.** Tolti **insieme** la
+  costante `PROCESSO_SYNC_AUTH_USER_ACTIVE`, i due template
+  `zeroerp-sync-auth-user-active.*` e la voce in `sveglie.json`
+  (`test_ogni_processo_del_backend_ha_una_sveglia` e `test_nessun_template_orfano`
+  guardano lo stesso fatto dai due versi: lasciarne una li fa dissentire).
+  ⭐ L'assenza è **dichiarata** nella chiave `_ritirate` di `sveglie.json`:
+  un'assenza non scritta si rilegge come una dimenticanza, e qualcuno la
+  «ripara».
+  **Il command resta come attrezzo a mano e SMETTE di registrare**
+  (decisione di Tid, 2026-09-07) — e la seconda strada che proponete va
+  scartata per una ragione che il §8.5 non calcola: vedi il §9.5-bis.
   ⭐ E i 124 run storici restano dove sono: la FK punta a una riga che esiste
   ancora, e `maintenance.vw_job_run_da_guardare` si auto-pulisce dopo sette
   giorni senza corse.
-* **Una riga in `PRESIDI_PROCESSI`** (`apps/core/db/processi_repository.py`):
-  `dbops.vw_processi_programmazione_da_guardare`. Nel frontend zero.
+  ⛔ **E togliere la registrazione ha tolto anche l'allarme, quindi ne è nato
+  uno nuovo.** Fino a quel giorno la protezione era il `@patch` su
+  `registered_job` in ogni test: sparita la chiamata sono spariti i patch, e con
+  loro l'unica cosa che si sarebbe accorta di una registrazione. Chi la
+  riaggiungesse avrebbe **sei test verdi** e righe vere su
+  `maintenance.job_run_log` — cioè l'incidente del 2026-09-05 (93 corse OK e 31
+  rosse in un giorno, tutte di lì) rientrato dalla porta di servizio.
+  ⇒ `test_il_command_non_registra_un_run` asserisce che il command **non apre
+  nessun cursore**. ⭐ Si prova il comportamento e non l'assenza di un import:
+  un `hasattr(modulo, 'registered_job')` coprirebbe una forma di import e non
+  l'altra. Provato al contrario rimettendo `registered_job`: rosso, e nomina il
+  motivo.
+* ✅ **La riga in `PRESIDI_PROCESSI`** (`apps/core/db/processi_repository.py`) —
+  **fatta il 2026-09-07**, e nel frontend zero come dicevate: il pannello legge
+  le chiavi che trova e la natura dal `COMMENT`. Provata end-to-end dal service,
+  non solo cablata.
+  ⚠️ **Fatto datato (dbdev, 2026-09-07 al cablaggio): il presidio ha UNA riga,
+  non due.** `chiusura_scadenze_daily` era già rientrato da solo, come il §8.1
+  prevedeva. Resta `apply_storicizza_weekly` — pgAgent 05-09, giornale fermo al
+  2026-02-21. ✅ **Rientrata il 2026-09-07** (§22): il presidio è **vuoto**.
+  ⇒ La riga del `COMMENT` della vista che dichiara «nasce con due righe» adesso
+  **va tolta** — è il `COMMENT` stesso a dirlo, ed è lavoro del team DB perché è
+  quel testo che il pannello rende.
+  ⭐ Corretto anche un numero stantìo trovato di passaggio: il docstring di
+  `ProcessiPresidiView` diceva «i SEI presidi» mentre l'elenco ne aveva dieci —
+  esattamente ciò contro cui il commento di `PRESIDI_PROCESSI` mette in guardia
+  due righe sopra. Adesso il numero non è scritto da nessuna parte.
+  ⚠️ **E l'endpoint non era in nessuna doc API**: ora c'è
+  (`backend/amm-software/manual/api_amm_software.md` §6.1), con il contratto
+  della risposta e il fatto che `conteggio > 0` non è sempre un errore — è la
+  `descrizione` che viene dal `COMMENT` a dirlo. ⛔ Le altre cinque rotte
+  `processi/*` restano **non documentate**, e adesso è scritto che restano tali:
+  un debito dichiarato, non un'assenza da leggere come «non esistono».
+
 * **A noi**: niente. I tre changeSet sono applicati, la suite `dbops` è **31 su
   31 verde** (`scripts/pgtap-baseline.sh dbops`, 2026-09-07) e la documentazione
   è scritta: i manual di `dbops.vw_processi_programmazione`,
   `dbops.vw_processi_programmazione_da_guardare` e
   `dbops.vw_codici_errore_forme_condizione`.
-* 🔴 **A nessuno, ed è il punto**: `apply_storicizza_weekly`. Sabato
-  **2026-09-12 alle 07:00** quel job gira. È la prima corsa dopo il
-  `20260905-36`, e sarà la prima volta in sei mesi e mezzo che lascia una
-  traccia — verde o rossa. ⛔ Se non ne lascia nessuna, il difetto non è nel
-  verbale: è nel job, e va aperto un cantiere suo.
+  ⚠️ Il **31 su 31** è la corsa di quel giorno, non una proprietà del cantiere:
+  la suite si muove per ragioni che con questo brief non c'entrano. Ciò che
+  questo documento può dire è che **i suoi quattro file sono verdi** — §22.
+* ✅ **`apply_storicizza_weekly` HA LASCIATO LA TRACCIA — §22.** Non c'è stato
+  bisogno di aspettare sabato: Tid ha **forzato** la corsa da pgAgent il
+  **2026-09-07 alle 09:35:47 UTC**, e il giornale ha una riga. ⇒ Il presidio del
+  §6 è **vuoto**, e il panorama dà quel processo `OK`.
+  ⛔ Ma la riga è **verde**, e una riga verde *non* conferma l'ipotesi del §8.1:
+  §22.
+
+### 9.5-bis 🔴 Una risposta al §8.5 che apre una cosa vostra
+
+Il §8.5 offre due strade al command superstite — *«o smette di registrare, o
+registra sotto `sync_auth_user_expired_daily` con `origine = 'CRON'`»* — e la
+seconda **acceca il presidio del §8.1**.
+
+La `LATERAL` del giornale in `dbops.vw_processi_programmazione` legge
+
+```sql
+WHERE r.processo_codice = p.codice OR r.jobname = p.codice
+```
+
+**senza filtrare `origine`**. ⇒ Una corsa a mano registrata sotto il codice
+superstite sposta avanti `giornale_ultima_corsa`, e il confronto
+`GIRA_E_NON_REGISTRA` — che scatta su
+`giornale_ultima_corsa < pgagent_ultima_corsa - 1h` — **non scatta più**. Cioè si
+spegne il rilevatore di R-12 proprio sul job che state guardando, e lo spegne un
+attore che non è pgAgent.
+
+⛔ **Da qui non è correggibile, e non proponiamo la correzione ovvia.** Un filtro
+secco `origine = 'PGAGENT'` taglierebbe fuori `chiusura_scadenze_daily`, che è
+`CODA_AUTOMATICA`: lo sveglia pgAgent ma il run lo registra il worker della coda,
+con un'altra `origine`. ⇒ La domanda è vostra: **quando il panorama confronta le
+due fonti, quali corse del giornale valgono come risposta di pgAgent?** Oggi
+valgono tutte, e finché il modello ammette due attori sullo stesso lavoro
+(§8.5, *«una riga, due attori, `origine` a distinguerli»*) quella colonna esiste
+apposta e il confronto non la guarda.
+
+⚠️ **Oggi non fa danno**, e non è un argomento: nessuno registra più sotto quel
+codice se non pgAgent, perché la scelta di questo lato lo ha impedito. È un
+presidio che regge **per una decisione presa altrove**, non per costruzione.
+
+---
 
 ### 9.6 ⚠️ Una piccola divergenza vista di passaggio, non sanata
 
@@ -750,7 +848,7 @@ gira col perimetro di chi legge»* — era presidiata in **quattro posti, tutti 
 elenco**, e una vista era scoperta da due mesi.
 
 ⇒ È un cantiere suo e ha un brief suo:
-[brief-db-viste-security-invoker-criterio.md](brief-db-viste-security-invoker-criterio.md).
+[brief-db-viste-security-invoker-criterio.md](../work-done/brief-db-viste-security-invoker-criterio.md).
 
 ⭐ Sta scritto qui perché è il precedente più utile di questa giornata, e vale
 per entrambi i cantieri: **un presidio che elenca copre ciò che qualcuno si è
@@ -758,3 +856,137 @@ ricordato di scriverci.** È lo stesso identico argomento con cui il §8.3 chied
 un pgTAP che tenga legati i canali del `CHECK` ai rami del `CASE`, e con cui il
 §8.2 rifiuta di ripetere l'elenco degli stati nella vista di presidio. Tre volte
 in un giorno, su tre oggetti diversi.
+
+---
+
+## 22. ✅ `apply_storicizza_weekly` ha parlato — 2026-09-07
+
+> **Corsa forzata da pgAgent da Tid**, non quella schedulata di sabato. La
+> distinzione conta per un pezzo della risposta e non per l'altro: vedi in fondo.
+
+### La riga che mancava da sei mesi e mezzo
+
+| | |
+| --- | --- |
+| `started_at` → `ended_at` | 2026-09-07 09:35:47.115 → .153 UTC (**38 ms**) |
+| `ok` | ✅ **true** |
+| `origine` · `jobname` | `PGAGENT` · `apply_storicizza_weekly` |
+| `processo_codice` | **`apply_storicizza_weekly`** — valorizzato |
+| `rows_affected` · `message` | `0` · `done`, nessun `error_code` |
+
+⭐ **Il presidio è VUOTO.** `dbops.vw_processi_programmazione_da_guardare` non ha
+più righe, e il panorama dà quel processo **`OK`** — il giornale (`.115`) è
+*dopo* pgAgent (`.098`), quindi il confronto a due fonti torna.
+⇒ La riga rimasta del §8.1 è rientrata, e con lei l'ultimo `GIRA_E_NON_REGISTRA`.
+
+⭐ **E la riga nuova ha `processo_codice` valorizzato**, mentre le quattro
+storiche (fino al 21-02-2026) ce l'hanno `NULL` e si agganciano solo per
+`jobname`. È la conferma d'uso del ripiego che il `CASE` del panorama porta
+apposta: senza, questo processo sarebbe sembrato «mai girato prima di settembre».
+
+### ⛔ Che cosa questa riga NON dice, e va scritto
+
+Il §8.1 ipotizzava: *«il job falliva, e prima del `20260905-36` il `RAISE`
+annullava la riga rossa, quindi non lasciava niente»*. La corsa di oggi è
+**verde**. ⇒ Il criterio di chiusura che il §8.1 si era dato — *«verde o rossa,
+ma una»* — è **soddisfatto**, e la conclusione operativa che ne discende regge:
+*il difetto non era nel job*, era nel verbale.
+
+⚠️ **Ma il perché dei sei mesi e mezzo di silenzio resta senza risposta.** Una
+corsa verde oggi non dice niente su che cosa impediva di scrivere fra il
+21-02-2026 e il 05-09-2026: se il job in quel periodo riusciva, avrebbe dovuto
+lasciare righe verdi come faceva prima del 21-02.
+⛔ Da questo lato la domanda non si chiude: `pgagent.*` non è leggibile come
+`zeroerp_app` (permesso negato), quindi lo storico degli esiti dello scheduler —
+l'unica fonte che distingue «falliva» da «non scriveva» — è del team DB.
+⚠️ Non è una condizione di riapertura: è una **causa non accertata** su un
+sintomo che è sparito. Va scritto perché la prossima volta che quel giornale
+tace, questa è la prima cosa da riguardare.
+
+### ⚠️ Forzata, non schedulata — e che cosa cambia
+
+La corsa forzata prova **il percorso di scrittura** (il wrapper chiama
+`fn_run_and_log`, la riga sopravvive, il presidio si spegne). ⭐ Ed è esattamente
+la domanda che il §8.1 poneva.
+⚠️ Non prova la **cadenza** — ma quella non era in dubbio: `pgagent_ultima_corsa`
+si muoveva tutte le settimane anche mentre il giornale taceva. ⇒ Sabato
+**12-09 alle 07:00** resta una conferma gradita, non un prerequisito.
+
+### ✅ I pgTAP del cantiere
+
+I quattro file del §9.2 sono **verdi** (Tid, 2026-09-07).
+
+⛔ Lo stato complessivo della suite non si scrive qui, e non è pudore: la
+baseline la lancia e la verifica Tid, quindi un conteggio copiato in questo
+documento sarebbe una **seconda sede** di un numero che cambia ogni giorno — e
+la seconda sede è quella che nessuno aggiorna.
+
+---
+
+## 23. 🔴 La conseguenza non calcolata di `20260907-03` — la CI è rossa
+
+> Segnalata dalla CI il 2026-09-07 e **riprodotta in locale**, identica.
+> ⚠️ Il §8.4 aveva previsto l'effetto della famiglia nuova sulla **query dei
+> candidati** (*«`E_VALIDAZIONE` affiora»*). Non aveva previsto che la stessa
+> famiglia avrebbe fatto diventare rossa la **baseline B-7 del rubinetto**.
+> ⭐ È la conseguenza che mancava, e sta qui perché la prossima famiglia la
+> produrrà uguale.
+
+### Che cosa dice la CI
+
+`scripts/codici-errore-baseline.sh` — **8 accumuli nuovi**, tutti con la stessa
+diagnosi: *«famiglia nuova: `VALORE_ATTESO`»*. Il guard si ferma e chiede una
+**decisione**, non un aggiornamento d'ufficio.
+
+### ⭐ Sette su otto NON sono accumuli, ed è il conteggio a dirlo
+
+| Codice | Punti in baseline (02-09) | Punti oggi | |
+| --- | ---: | ---: | --- |
+| `E_ADMIN_VALIDAZIONE` | 50 | 50 | = |
+| `E_DELETE_NOT_ALLOWED` | 4 | 4 | = |
+| `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` | 2 | 2 | = |
+| `E_GENERICO` | 43 | 43 | = |
+| `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA` | 7 | 7 | = |
+| `E_PARAMETRO_INVALIDO` | 223 | 223 | = |
+| `E_VENDITE_CHIAMATA_NON_VALIDA` | 34 | 34 | = |
+| **`E_VALIDAZIONE`** | **13** | **16** | ⛔ **+3** |
+
+⇒ Su sette, **nessun punto di sollevamento è stato aggiunto**. La famiglia nuova
+non arriva da un uso allargato: arriva dal **classificatore**, che ha imparato a
+leggere `x <> 'LETTERALE'` — una forma che prima cadeva in `IGNOTO` e che
+`IGNOTO` non fa famiglia.
+
+⛔ **La baseline sta confrontando due misure prese con classificatori diversi.**
+Non è il rubinetto che ha trovato qualcosa: è il metro che è cambiato sotto.
+
+### ⚠️ L'ottavo è diverso, e va guardato — ma è già noto
+
+`E_VALIDAZIONE` guadagna **3 punti**. Vengono da `config.fn_accoda_email_sistema`
+(`20260905-42`) e `config.fn_chiudi_email_sistema` (`20260906-02`/`-14`), nate
+**dopo** la baseline del 02-09 col cantiere delle email.
+
+⭐ E la seconda è **esattamente** la funzione del §3.2 di questo brief: la sua
+terza guardia — `IF v_ambito <> 'SISTEMA'` — è il caso per cui `VALORE_ATTESO` è
+stata creata. ⇒ Il codice che il rubinetto adesso vede è quello che il §8.4 aveva
+detto che avrebbe visto. Il cerchio si chiude, e non c'è niente di nascosto.
+
+### La decisione, e perché è una sola
+
+Il guard offre due strade: *coniare un codice nuovo* oppure *ri-basare con la
+ragione nel commit*. ⇒ **La seconda**, per tutti e otto: non c'è nessun uso
+allargato da spezzare in un codice nuovo, perché nessuno ha allargato niente.
+
+```bash
+scripts/codici-errore-baseline.sh --update
+```
+
+⚠️ **Che cosa costa, detto prima.** La ri-base azzera il confronto anche sui
+codici grossi: se dentro i 223 punti di `E_PARAMETRO_INVALIDO` ci fosse un
+accumulo vero avvenuto fra il 02-09 e oggi, sparirebbe dentro l'aggiornamento.
+⭐ Qui il rischio è **nullo e verificabile**: i conteggi identici escludono che
+sia stato aggiunto un solo punto su sette codici su otto, e i 3 dell'ottavo sono
+nominati qui sopra.
+
+⛔ **E non si aggiorna in silenzio**: la ragione va nel messaggio di commit, come
+il guard stesso pretende. La ragione è *«ri-base del metro, non del misurato:
+`20260907-03` ha insegnato al classificatore la forma `VALORE_ATTESO`»*.

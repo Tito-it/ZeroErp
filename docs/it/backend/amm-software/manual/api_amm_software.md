@@ -1172,6 +1172,82 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
+## 6. Processi automatici — i presidi
+
+⚠️ **Di questa famiglia qui c'e' solo l'endpoint dei presidi.** Le altre cinque
+rotte (`GET processi/`, `GET processi/{codice}/`, `POST processi/{codice}/run/`,
+`GET|POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
+**non sono documentate**: e' un debito dichiarato, non un'omissione da leggere
+come «non ci sono». Contratto vivo: `/api/docs/`.
+
+### 6.1 GET /api/v1/amm-software/processi/presidi/
+
+Lo stato di **tutte** le viste-presidio del cantiere «nessun processo senza
+operatore», in **un round-trip**: per ognuna il conteggio, le prime righe e la
+descrizione.
+
+⭐ **La natura di ogni presidio la dichiara il DATABASE, non il backend.** È il
+`COMMENT` della vista a dire se *«deve restare VUOTA»* oppure se è *«un registro
+di DEBITO che deve CALARE»*, e il backend lo consegna in `descrizione` leggendolo
+con `obj_description`. ⛔ Un elenco di eccezioni scritto nel backend o nel
+frontend sarebbe la seconda sede della stessa decisione, e la seconda diverge.
+
+⛔ **Quante siano non è scritto da nessuna parte, ed è una scelta.** L'elenco è
+`PRESIDI_PROCESSI` in `apps/core/db/processi_repository.py`, qualificato collo
+schema (ci sono viste di `dbops` **e** di `maintenance`). Un numero copiato
+accanto a un elenco che cresce invecchia in silenzio: fino al 2026-09-07 il
+docstring della view diceva «i SEI presidi» e alla stessa data l'elenco ne
+contava dieci.
+
+**Response shape**: `presidi` è una lista; `con_righe` è il numero che si guarda
+per primo.
+
+```json
+{
+  "data": {
+    "presidi": [
+      {
+        "vista": "dbops.vw_processi_programmazione_da_guardare",
+        "descrizione": "PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. …",
+        "conteggio": 1,
+        "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "…": "…" } ],
+        "troncato": false
+      }
+    ],
+    "con_righe": 4
+  }
+}
+```
+
+| Campo | Significato |
+|---|---|
+| `vista` | nome **qualificato collo schema**: due schemi possono avere viste omonime, e mezzo nome manderebbe a guardare quella sbagliata |
+| `descrizione` | il `COMMENT` della vista — è lì che sta la differenza fra «deve essere zero» e «deve calare» |
+| `conteggio` | `count(*)` **senza filtro e prima delle righe**: dice quanto sta fuori dalle prime consegnate |
+| `righe` | le prime N righe, con le colonne che la vista ha (forme diverse per vista) |
+| `troncato` | le righe mostrate non sono tutte — senza, venti su duecento si leggerebbero come «sono venti» |
+
+⚠️ **Le colonne di `righe` non sono un contratto fisso**: ogni presidio ha la sua
+forma e il client le rende leggendo le chiavi che trova
+(`PresidiProcessiPanel.vue`). Un elenco di colonne per vista sarebbe un terzo
+posto in cui quella forma è scritta, e si romperebbe alla prima colonna aggiunta.
+
+⚠️ **`conteggio > 0` non è sempre un errore**, e per questo la `descrizione` va
+resa insieme al numero: alcune viste sono registri di debito. ⭐ Al **2026-09-07**
+`dbops.vw_processi_programmazione_da_guardare` nasce con **una** riga
+(`apply_storicizza_weekly`, che dal febbraio 2026 gira senza lasciare traccia sul
+giornale): il suo stesso `COMMENT` lo dichiara e dice quando va tolto. Brief:
+`work-in-progress/brief-db-sveglia-dei-processi.md` §8.1.
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/processi/presidi/"
+```
+
+---
+
 ## Regole trasversali
 
 - **Autenticazione**: tutti gli endpoint richiedono JWT Bearer token con ruolo `ADMIN`

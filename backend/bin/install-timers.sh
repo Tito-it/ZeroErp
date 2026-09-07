@@ -15,9 +15,11 @@
 #
 # ⚠️ CHI ACCENDE E CHI NO lo dice il campo `abilita` del file, con la ragione
 # scritta nella `nota` accanto. Le due corsie della fatturazione restano spente
-# (emettono documenti — decisione di Tid, 2026-08-16) e cosi'
-# `sync-auth-user-active` (ha un gemello pgAgent che fa lo stesso lavoro). I
-# drainer e il listener si accendono: a coda vuota non fanno niente.
+# (emettono documenti — decisione di Tid, 2026-08-16). I drainer e il listener
+# si accendono: a coda vuota non fanno niente.
+# ⛔ `sync-auth-user-active` NON c'e' piu' (2026-09-07): il suo processo di
+# catalogo e' ritirato a favore del gemello pgAgent `sync_auth_user_expired_daily`,
+# e unit, voce e costante sono spariti INSIEME — vedi `_ritirate` in sveglie.json.
 #
 # Idempotente: riscrive gli unit a ogni run. Da eseguire come root:
 #   sudo backend/bin/install-timers.sh
