@@ -15,10 +15,11 @@
 > ✅ **Le due domande di modello hanno risposta**: il **§11** nel §13 e §14 (si
 > allineano i due rami: niente eccezione, niente rollback, i segni restano), il
 > **§12.4** nel **§15** (una tabella sta rispondendo a due domande — si separano).
-> 🔴 Resta il lavoro: **P-5 e P-3 al backend**, poi **P-6** e la separazione del
-> §15 al DB.
-> 🔴 E un passo operativo: le colonne di catalogo arrivano col prossimo
-> `migrate` del seed — **§12.6**.
+> ✅ **Il DB ha finito** (aggiornato il 2026-09-07): la separazione del §15 è
+> applicata e verde — **§17** —, e **P-6** ha ritirato
+> `E_PULL_COMMESSA_ALL_FAILED` con `obsoleto_dal` — **§19**.
+> 🔴 Resta **P-3 al backend**: un test sul ramo «tutte fallite» che non mocka il
+> repository.
 >
 > **Origine:** Tid, 2026-09-06, guardando il lotto `LTF-0009578`.
 
@@ -587,7 +588,7 @@ nasce già spento e non arriva mai a zero.
 | --- | --- | --- | --- |
 | **P-5** | Il ramo «tutte fallite» torna un esito invece di sollevare, come il parziale | BE | 🔴 da fare |
 | **P-3** | Un test su quel ramo che **non mocka** il repository | BE | 🔴 resta |
-| **P-6** | `E_PULL_COMMESSA_ALL_FAILED` non lo solleva più nessuno ⇒ si deprecalo con `obsoleto_dal`. ⚠️ **Dopo** il BE, non prima: nessuna funzione del database lo nomina (verificato), quindi è solo il backend a poterlo lasciare | DB | 🔵 dopo P-5 |
+| **P-6** | `E_PULL_COMMESSA_ALL_FAILED` ritirato con `obsoleto_dal = 2026-09-07` (§19) | DB | ✅ **fatto (07-09)** |
 | **P-7** | Il presidio `20260907-11` | DB | ✅ **applicato e verde (07-09)** |
 | ~~P-1, P-2~~ | ~~scrittura di compensazione~~ | — | ⛔ **decadute** |
 
@@ -681,7 +682,7 @@ con perimetro.
 
 | # | Cosa |
 | --- | --- |
-| **P-6** | `E_PULL_COMMESSA_ALL_FAILED` non lo solleverà più nessuno ⇒ `obsoleto_dal`. ⚠️ **dopo** P-5. Verificato: nessuna funzione del database lo nomina |
+| ~~P-6~~ | ✅ **fatto il 2026-09-07**: ritirato con `obsoleto_dal`, una riga di CSV. Il come e il perché nel §19 |
 | **P-8** | La separazione del §15, **se e quando** la si decide |
 
 ### ⚠️ Il debito di collaudo, dichiarato
@@ -801,9 +802,87 @@ e controlla i privilegi dopo.
 | ✅ **Il §12.4** | chiuso: anche i giri **senza perimetro** hanno dove essere marcati, e il backend non cambia una riga |
 | 🔴 **P-5** | il ramo «tutte fallite» torna un esito invece di sollevare | *backend* |
 | 🔴 **P-3** | un test su quel ramo che **non mocka** il repository | *backend* |
-| 🔵 **P-6** | deprecare `E_PULL_COMMESSA_ALL_FAILED` con `obsoleto_dal`, **dopo** P-5 | *DB* |
+| ✅ **P-6** | `E_PULL_COMMESSA_ALL_FAILED` ritirato il 07-09 con `obsoleto_dal` — §19 | *DB* |
 
 ⚠️ Il debito di collaudo dichiarato resta: il ritrovamento del documento
 **partendo dalla commessa** si verifica sul primo giro vero. Se lì il conto
 tornasse a zero, il messaggio da cercare nei log è
 `pull_commesse.esito_non_appeso`.
+
+---
+
+## 19. ✅ P-6 — il codice ritirato, il 2026-09-07
+
+> **Sblocco di Tid:** *«nessuno lo solleva più, e un test lo presidia guardando
+> il sorgente»*. Il backend ha già tolto il `raise`; qui si chiude la metà DB.
+
+### Che cosa è cambiato: una riga di CSV
+
+`80_data/sql/config/codici_errore.csv`, riga di `E_PULL_COMMESSA_ALL_FAILED`:
+`obsoleto_dal` passa da vuoto a **2026-09-07**, e la colonna `note` si prende il
+perché per esteso.
+
+⭐ **Non serve un changeSet nuovo.** Quel CSV è già appeso a un mirror
+`runOnChange` (il `20260614-08`): cambiare il file cambia la sua impronta, e il
+prossimo `migrate` ri-esegue l'upsert. Un loader in più sarebbe una seconda sede
+per la stessa cosa.
+
+### ⛔ Ritirato, non cancellato — e la differenza è concreta
+
+`dbops.error_log` ha una FK **NOT NULL** verso `config.messaggi_errore(id)`, e
+sotto questo codice ci sono **4 righe di giornale già scritte** (misurato il
+2026-09-07). Cancellarlo vorrebbe dire riscrivere il diario per far tornare i
+conti a una decisione presa dopo.
+
+⚠️ E non è `attivo = false`: un codice ritirato **continua a risolversi**.
+Provato in transazione annullata — dopo il ritiro `script.fn_get_messaggio`
+restituisce ancora *«Tutti i pull commessa falliti.»*. Se un percorso non ancora
+bonificato lo sollevasse, l'operatore leggerebbe una frase e non un segnaposto.
+
+### ⭐ Non ha un sostituto, e non è una dimenticanza
+
+Gli altri ritiri di questo catalogo rimandano a un codice nuovo. Qui no: **il
+caso ha smesso di essere un errore da sollevare ed è diventato un esito da
+registrare.** Sta scritto nella `note`, perché la prima domanda di chi rilegge un
+codice ritirato senza erede è «e allora adesso cosa si usa?».
+
+### Le tre verifiche, prima di toccare il CSV
+
+| Cosa poteva rompersi | Esito |
+| --- | --- |
+| Controllo **(D)** del guardrail — *«una funzione viva solleva un codice ritirato»* | ✅ nessuna funzione plpgsql lo nomina |
+| Controllo **(C)** — *«voce di troppo nel registro dei codici legacy»* | ✅ non è nel registro |
+| pgTAP che asseriscono su quel codice | ✅ nessuno |
+
+Le prime due girate **con il ritiro già applicato**, dentro un `BEGIN` chiuso in
+`ROLLBACK`: un controllo fatto prima della modifica misura il mondo di ieri.
+
+### ⚠️ Chi presidia davvero questo ritiro — e da quando
+
+Il controllo (D) del guardrail legge **solo i corpi plpgsql**, e lo dichiara da
+sé. Questo codice lo sollevava il **Python**: (D) non lo avrebbe mai visto, né
+prima né adesso.
+
+Il presidio vero è lato backend — `test_nessun_codice_usato_e_ritirato` — e legge
+l'elenco dei ritirati **dalla coda di `error_policies_generated.py`**, non dal
+database.
+
+⇒ Finché il backend non rigenera quel modulo, il ritiro è vero a catalogo ma
+**non ancora presidiato**. Non è un problema di ordine — nessuna CI diventa rossa
+per questo, in nessuno dei due versi — ma è la cosa da sapere: la rete si chiude
+alla prossima rigenerazione, ed è un passo del backend.
+
+### Cosa resta
+
+| | |
+| --- | --- |
+| ✅ **P-6** | fatto |
+| 🔴 **P-3** | un test sul ramo «tutte fallite» che **non mocka** il repository — *backend* |
+| ⚪ **P-8** | nulla: la separazione del §15 è stata fatta il 07-09 (§17) |
+
+⚠️ Due documenti nominano ancora l'errore come comportamento atteso:
+`collaudo-in-app-esito-parziale-pull-commessa.md` (prova 5, *«l'errore è
+E_PULL_COMMESSA_ALL_FAILED»*) e `brief-be-fan-out-isolato-e-esito-parziale.md`.
+Sono del cantiere del backend e non sono stati toccati qui: una checklist di
+collaudo che pretende un errore che non arriva più manda chi collauda a cercare
+un guasto che non c'è.

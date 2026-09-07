@@ -13,9 +13,9 @@
 > caricati, pgTAP verdi, doc rigenerata). Le tre decisioni aperte sono chiuse.
 > 🟢 **BE e FE scritti il 2026-09-04**: il debito del §11.4 è chiuso — il
 > registro delle attività è la **PARTE BE/FE** in fondo (§12).
-> ⚠️ **Non ancora applicato a database il solo mirror CSV di `ui.lista_colonna`**
-> (le righe 713/714 passate ad `attivo = t`): è un `runOnChange`, ri-esegue al
-> prossimo migrate, che **lo lancia Tid**.
+> ✅ **E il migrate è passato**: verificato il 2026-09-07, le righe 713/714 di
+> `ui.lista_colonna` sono `attivo = t`. Con quello il §14.1 è chiuso, e **lato DB
+> non resta niente** — vedi §15.
 > **La risposta del team DB — analisi, correzioni, piano e registro delle
 > attività — è la PARTE DB in fondo a questo documento.**
 
@@ -800,11 +800,9 @@ il verbo sulla coda stampa non sarebbe stato esercitato affatto.
 
 ## 14. Cosa resta fuori, e perché
 
-1. ⚠️ **Il migrate.** Il mirror CSV di `ui.lista_colonna` è `runOnChange` e
-   ri-esegue al prossimo `db-migrate`, che **lo lancia Tid**: finché non gira, a
-   database le righe 713/714 restano `attivo = f` e la colonna «Archiviata il»
-   non compare. Tutto il resto (colonne, trigger, policy, codice errore) è già
-   applicato dal 2026-09-04.
+1. ✅ **Il migrate — fatto.** Verificato il 2026-09-07: le righe 713/714 di
+   `ui.lista_colonna` sono `attivo = t`, quindi la colonna «Archiviata il» c'è.
+   Questa voce si chiude.
 2. ⚠️ **Le scritture a mano di `data_update`/`user_update`** in
    `claim_stampe_pending`, `marca_stampa_fatto`, `marca_stampa_errore` e
    `reset_stale_stampe_in_corso` — segnalate dal team DB al §8.1. Sono
@@ -814,3 +812,45 @@ il verbo sulla coda stampa non sarebbe stato esercitato affatto.
    ⛔ Non toccate qui: `reset_stale_stampe_in_corso` **ragiona** su `data_update`
    come istante del claim, quindi la pulizia va fatta guardando quel reaper e
    non in coda a un cantiere che parla d'altro.
+
+---
+
+## 15. ✅ Verifica di chiusura lato DB — 2026-09-07
+
+Riletto contro il database, non contro il documento.
+
+| Cosa | Esito |
+| --- | --- |
+| `archiviato`, `archiviato_il`, `archiviato_da` sulle due code | ✅ presenti e simmetriche |
+| `chk_*_archiviato_non_vivo` e `chk_*_archiviato_coerente` | ✅ su entrambe |
+| `trg_*_a10_archiviazione_upd` | ✅ su entrambe |
+| RLS su `vendite.fatture_stampa_coda` (§8) | ✅ attiva, `rls_fatture_stampa_coda_ef_whitelist` |
+| `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` a catalogo | ✅ `CONFLITTO_STATO` |
+| `ui.lista_colonna` 713/714 | ✅ `attivo = t` — il migrate è passato |
+| Debito documentale del §8.1 | ✅ **pagato**, riletto nei file: entrambi i manual correggono le premesse scadute |
+| pgTAP `test-coda-archiviazione`, `test-coda-lavori`, i due `test-rls-fatture-stampa-coda*` | ✅ 4 su 4 PASS |
+
+⇒ **Lato DB questo cantiere non ha più niente da fare.**
+
+### ⚠️ Una cosa che nessuno ha in carico, e vale più delle altre
+
+Il contratto del §3 — **«`archiviato` non entra nel `WHERE` di claim, drainer,
+reaper, `mark_*` e `count_*`»** — oggi è **rispettato**: verificato il
+2026-09-07, `archiviato` compare in `pipeline_repository` e in
+`coda_lavori/repository` solo nel percorso di **elenco** (filtro di default e
+conteggio delle archiviate), mai nei percorsi di lavoro.
+
+⛔ **Ma non lo presidia niente.** È una frase in un brief, e i test coprono il
+verso positivo («le archiviate sono nascoste di default») non quello negativo
+(«nessun altro le nasconde»). Il giorno in cui qualcuno aggiunge `AND NOT
+archiviato` a un `claim` per «coerenza», l'archiviazione diventa un
+annullamento silenzioso — cioè **peggio della cancellazione che questa richiesta
+esiste per evitare** — e nessun test diventa rosso.
+
+⭐ È lo stesso difetto che questa giornata ha incontrato altre tre volte: *una
+regola che vive in prosa vale finché qualcuno se la ricorda.* La forma del
+presidio è un test del backend che legge l'SQL dei percorsi di lavoro e pretende
+che la parola non ci sia — non una revisione a mano.
+
+⚠️ Non è stato scritto: è del backend, e va deciso, non aggiunto di straforo in
+coda a una verifica.
