@@ -48,4 +48,5 @@
 - [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp. Implementa la catena di risoluzione: ruolo_sistema → override utente → profilo reparto → BLOCCATO (default sicuro).
 - [request_log_middleware](manual/request_log_middleware.md) — Registrare ogni request API autenticata nella tabella dbops.request_log con metodo, path, status, durata e utente.
 - [session_audit_service](manual/session_audit_service.md) — Registrare eventi di sessione JWT (login, refresh, logout, revoca) nella tabella dbops.sessioni_utente.
+- [sveglie_processi](manual/sveglie_processi.md) — Dire **chi sveglia ogni processo automatico del backend**, con quale cadenza, e entro quanto il suo ultimo run vale ancora come segno di vita — da una sede sola, leggibile da due programmi.
 - [zeroerp_permission](manual/zeroerp_permission.md) — Permission class DRF centrale per ZeroErp. Risolve automaticamente l'area funzionale dallo schema del model e verifica il livello di accesso tramite PermissionResolver.

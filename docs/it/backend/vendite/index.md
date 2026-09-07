@@ -24,6 +24,7 @@
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
 - [api_lotto_giornale](manual/api_lotto_giornale.md) — Rispondere a una domanda sola: **«cosa è successo a questo lotto, in che ordine»** — il lotto **più le sue fatture**, limitato alle righe non-INFO. Elenco paginato e di sola lettura che alimenta la scheda **«Storia»** d…
+- [api_lotto_gruppi_list](manual/api_lotto_gruppi_list.md) — Esporre via HTTP i **documenti che un lotto ha preso in carico**, con l'esito di ciascuno — **compresi quelli che una fattura non sono mai diventati**.
 - [api_lotto_segnalazioni_summary](manual/api_lotto_segnalazioni_summary.md) — Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione di blocco avanzamento step.
 - [api_lotto_task_runs](manual/api_lotto_task_runs.md) — Esporre via HTTP i task run runtime di un lotto per monitoraggio operativo e diagnostica pipeline.
 - [api_offerte](manual/api_offerte.md) — CRUD operativo delle **offerte commerciali**, documento pre-contrattuale che propone al cliente le condizioni quadro per una specifica utility prima della formalizzazione in contratto. Espone sub-entita' **eccezioni** (…

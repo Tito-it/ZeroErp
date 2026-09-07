@@ -14,7 +14,8 @@
 --  6) D-5 riferimento del gruppo documento = numero del documento (via area)
 --  7) G4 il gruppo oneri c'e', con area NULL e riferimento = commessa (LEFT JOIN)
 --  8) G14 operatore fuori scope emittente -> zero righe
---  9) security_invoker=on presente su entrambe le viste
+--  (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql,
+--   non piu' qui)
 -- 10) A5/A9: il riepilogo coincide con la somma dell'elenco (riconciliazione)
 -- ------------------------------------------------------------
 -- ⭐ IL TEST 4 e' quello che protegge la promessa di D-4: l'elenco e' derivato
@@ -48,7 +49,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(9);
 
 -- ============================================================
 -- Riferimenti minimi
@@ -358,15 +359,18 @@ SELECT set_config('app.current_user_id', '', true);
 --   security_definer di fatto, aprendo un buco nello scope emittente
 --   su tutte le dashboard di competenza.
 -- ============================================================
-SELECT is(
-  (SELECT count(*)::int FROM pg_class c
-     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'vendite'
-      AND c.relname IN ('vw_dash_competenza_attivita', 'vw_dash_competenza_gruppi')
-      AND c.reloptions::text LIKE '%security_invoker=on%'),
-  2,
-  '9) security_invoker=on presente su entrambe le viste'
-);
+-- ⛔ QUI `security_invoker` NON SI PRESIDIA PIU' (rev 2026-09-07), e non e' una
+--   rinuncia: lo fa gia' db/pgtap/rls/test-rls-viste-security-invoker.sql, su
+--   TUTTE le viste che toccano dati in RLS — anche attraverso altre viste — e
+--   leggendo la PROPRIETA' invece della parola. Nessun elenco di nomi.
+--   ⚠️ Il doppione locale non aggiungeva copertura, e ne ha tolta: era scritto
+--   come confronto di GRAFIA (`security_invoker=on`) ed e' diventato ROSSO su
+--   una vista perfettamente sana, riscritta con `= true` — che significa la
+--   stessa identica cosa. Due falsi allarmi il 2026-09-07, e una bisezione fra
+--   due cantieri per scoprire che non era rotto niente.
+--   ⭐ Una seconda sede diverge sempre; questa e' divergiata verso il FALSO
+--   ALLARME, che e' il verso che fa spegnere i presidi.
+
 
 -- ============================================================
 -- TEST 10 (requisito A5, step A9): la riga di totali.

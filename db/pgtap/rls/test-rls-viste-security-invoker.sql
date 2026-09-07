@@ -1,71 +1,222 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
---   questo stesso file. Dichiarazione leggibile dal cancello
---   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
---   «dimenticato», che una nota in prosa non fa.
---   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
---   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
--- pgTAP test ANTI-REGRESSIONE — security_invoker sulle viste del lotto RLS
+-- pgtap-contesto: escluso — questo file non interroga NESSUN dato: legge il
+--   catalogo di PostgreSQL (pg_class, pg_depend, pg_rewrite). Un contesto
+--   operatore non cambierebbe una riga del risultato, e metterlo darebbe
+--   l'impressione che la RLS qui sia esercitata, che sarebbe falso.
+--   Dichiarazione leggibile dal cancello scripts/guardrail_pgtap_preambolo.py:
+--   distingue «escluso apposta» da «dimenticato».
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: i test 3..5 CREANO viste di prova (in transazione, poi
+--   annullata) perche' il criterio si prova solo COSTRUENDO i casi. E' DDL: il
+--   ruolo applicativo non ne fa e non ne deve fare.
 --
--- Brief RLS §8 / §11 (trasforma C2 in cancello CI). Le viste DEFINER su
--- tabelle in RLS scavalcano la RLS (RLS cosmetica). Questo test fallisce se
--- una vista del lotto torna DEFINER (security_invoker assente o = off),
--- intercettando la regressione prima dell'ENABLE.
+-- pgTAP test ANTI-REGRESSIONE — security_invoker su TUTTE le viste che toccano
+-- dati protetti da RLS.
 --
--- Riferimento: changeSet 20260601-26 (conversione a security_invoker=on).
+-- ChangeSet di riferimento: 20260601-26 (conversione), 20260706-15 (fix V-1),
+--                           20260707-10 (ripristino), 20260907-04 (l'ultima
+--                           scoperta, trovata proprio da questo criterio)
 --
--- Indice test (1..9): una asserzione per vista.
+-- Indice test (plan 5):
+--   1) ⭐ il criterio COPRE tutto cio' che i quattro elenchi a mano garantivano
+--   2) ⛔ IL PRESIDIO: nessuna vista che tocca dati in RLS e' priva del flag
+--   3) ⛔ il criterio e' TRANSITIVO: prende una vista che arriva alla tabella
+--      attraverso un'altra vista (caso COSTRUITO)
+--   4) ⚠️ e prende anche il caso diretto a un anello solo (caso COSTRUITO)
+--   5) ⚠️ e NON prende una vista che dati protetti non ne tocca (caso COSTRUITO)
+--
+-- ────────────────────────────────────────────────────────────────
+-- ⛔ IL PROBLEMA, E PERCHE' NON SI VEDE.
+--   Una vista senza `security_invoker` gira come il suo OWNER. Se quell'owner
+--   possiede anche le tabelle sottostanti — ed e' il caso: `titodb` le possiede
+--   tutte — e la RLS non e' `FORCE`, l'owner ne e' ESENTE. La vista continua a
+--   rispondere: risponde solo di piu'. Nessun errore, nessuna pagina rotta.
+--   ⚠️ E la reloption NON compare in `pg_get_viewdef`: chi ricrea una vista
+--   partendo dalla definizione stampata la perde senza nessun avviso.
+--
+-- ⛔ PERCHE' IL CRITERIO HA SOSTITUITO GLI ELENCHI (rev 2026-09-07).
+--   Fino a oggi la stessa proprieta' era asserita in QUATTRO posti, tutti a
+--   elenco:
+--     * questo file           — 9 nomi scritti a mano;
+--     * vendite/test-vw-dash-security-invoker.sql — le `vendite.vw_dash_*` per
+--       PREFISSO, piu' una coda esplicita (ritirato oggi: confluito qui);
+--     * quattro doppioni locali dentro test funzionali (tolti oggi);
+--     * sei altri controlli sparsi, cinque dei quali confrontavano la GRAFIA.
+--   ⚠️ Un elenco copre cio' che qualcuno si e' ricordato di scriverci. Le sette
+--   viste `*stato_sorgente*` erano scoperte da sette settimane e sono state
+--   trovate per caso; `script.vw_pratica_doc_sorgente` era scoperta da DUE MESI
+--   e l'ha trovata questo criterio il 2026-09-07 (fix: 20260907-04). Quella
+--   sfuggiva a tutti e tre i modi di cercarla: schema sbagliato, nome sbagliato,
+--   e arrivava alle tabelle solo ATTRAVERSO altre viste.
+--   ⭐ Il criterio non e' un'idea nuova: era gia' scritto, in prosa,
+--   nell'intestazione del file ritirato — *«il modo per trovarne altre non e'
+--   leggere questo elenco, e' rifare la misura»*. Qui la misura e' il test.
+--
+-- ⛔ E LA CATENA SI PERDE AL PRIMO ANELLO SPENTO, non all'ultimo.
+--   `security_invoker` NON si propaga: da dentro una vista DEFINER, «il
+--   chiamante» che gli anelli interni onorano e' l'owner della vista esterna.
+--   Sei anelli accesi e uno spento fanno una catena spenta — ed e' esattamente
+--   il caso del 20260907-04. Per questo il test 3 non e' un di piu': senza, il
+--   criterio sarebbe cieco proprio dove il difetto e' vissuto piu' a lungo.
+--
+-- ⚠️ COSA QUESTO TEST NON DICE. Che una vista abbia il flag non significa che
+--   la RLS a valle sia scritta bene: dice solo che verra' applicata a chi legge.
+--   Le policy si provano nei file `test-rls-*` accanto a questo.
 -- ------------------------------------------------------------
 
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 --   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
 --   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
---   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
---   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
---   cleanup, su righe ormai cancellate.
---   Brief: brief-db-pgtap-runner-rls-baseline §19.
+--   file sarebbe verde per sottrazione.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(9);
+SELECT plan(5);
 
--- Helper: true se la vista ha security_invoker=on nelle reloptions.
-CREATE FUNCTION pg_temp.is_invoker(p_sch text, p_nm text)
-RETURNS boolean LANGUAGE sql STABLE AS $$
-    -- option_value e' memorizzato come 'on' (non 'true'): cast a boolean
-    -- per robustezza ('on'/'true'/'1' -> true).
-    SELECT COALESCE((
-        SELECT ot.option_value::boolean
-          FROM pg_class c
-          JOIN pg_namespace n ON n.oid = c.relnamespace
-          LEFT JOIN LATERAL pg_options_to_table(c.reloptions) ot
-            ON ot.option_name = 'security_invoker'
-         WHERE n.nspname = p_sch
-           AND c.relname = p_nm
-    ), false);
-$$;
+-- ============================================================
+-- Il criterio, in un posto solo
+-- ============================================================
+-- ⭐ Ogni vista, e ogni tabella con RLS che raggiunge — anche attraverso altre
+--   viste. La ricorsione e' il punto: vedi la nota sulla catena, in testa.
+CREATE TEMP VIEW _tocca_rls AS
+WITH RECURSIVE dip AS (
+    -- Da che cosa dipende ogni vista: si legge dalla sua regola di riscrittura.
+    SELECT rw.ev_class AS vista_oid, d.refobjid AS dip_oid
+      FROM pg_rewrite rw
+      JOIN pg_depend d ON d.objid = rw.oid AND d.classid = 'pg_rewrite'::regclass
+     -- ⚠️ Una vista dipende anche da se stessa: senza questa riga la
+     --   ricorsione non termina.
+     WHERE d.refobjid <> rw.ev_class
+), catena AS (
+    SELECT v.oid AS vista_oid, d.dip_oid
+      FROM pg_class v JOIN dip d ON d.vista_oid = v.oid
+     WHERE v.relkind = 'v'
+    UNION
+    SELECT c.vista_oid, d.dip_oid
+      FROM catena c JOIN dip d ON d.vista_oid = c.dip_oid
+)
+SELECT DISTINCT
+       n.nspname::text AS sch,
+       v.relname::text AS vista,
+       COALESCE((SELECT o.option_value::boolean
+                   FROM pg_options_to_table(v.reloptions) o
+                  WHERE o.option_name = 'security_invoker'), false) AS invoker
+  FROM catena c
+  JOIN pg_class v     ON v.oid = c.vista_oid AND v.relkind = 'v'
+  JOIN pg_namespace n ON n.oid = v.relnamespace
+  JOIN pg_class t     ON t.oid = c.dip_oid
+                     AND t.relkind = 'r'
+                     AND t.relrowsecurity
+ WHERE n.nspname NOT IN ('pg_catalog', 'information_schema');
 
-SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi'),
-    '1. vendite.vw_preventivi -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_lista'),
-    '2. vendite.vw_preventivi_lista -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_pratiche'),
-    '3. vendite.vw_preventivi_pratiche -> security_invoker=on');
--- Rename 20260612-05 (brief smistamento): vw_preventivi_stato_fatturazione*
--- -> vw_preventivi_smistamento* (stesse tabelle RLS sottostanti).
-SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_smistamento'),
-    '4. vendite.vw_preventivi_smistamento -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_smistamento_righe'),
-    '5. vendite.vw_preventivi_smistamento_righe -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('vendite','vw_offerte_commerciali_lista'),
-    '6. vendite.vw_offerte_commerciali_lista -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('anagrafiche','vw_clienti_lista'),
-    '7. anagrafiche.vw_clienti_lista -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('anagrafiche','vw_clienti_codice_ba'),
-    '8. anagrafiche.vw_clienti_codice_ba -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('dbops','vw_diag_v_clienti_links'),
-    '9. dbops.vw_diag_v_clienti_links -> security_invoker=on');
+-- ============================================================
+-- 1. ⭐ LA MIGRAZIONE NON PERDE NIENTE
+-- ============================================================
+-- ⛔ Sostituire un elenco con un criterio si prova cosi', e non altrimenti: il
+--   criterio deve contenere TUTTO cio' che gli elenchi nominavano. Senza questo
+--   test, «zero trasgressori» sarebbe compatibile con una rete che ha smesso di
+--   pescare — il verde per sottrazione, sul presidio peggiore su cui averlo.
+-- ⚠️ Questi nomi restano scritti qui APPOSTA, ed e' l'unico elenco che
+--   sopravvive: non e' il perimetro (quello lo decide il criterio), e' la prova
+--   che il perimetro non si e' ristretto.
+SELECT is_empty(
+    $$WITH garantite (sch, vista) AS (
+          VALUES
+            -- i 9 nomi che questo file elencava prima del 2026-09-07
+            ('vendite','vw_preventivi'), ('vendite','vw_preventivi_lista'),
+            ('vendite','vw_preventivi_pratiche'),
+            ('vendite','vw_preventivi_smistamento'),
+            ('vendite','vw_preventivi_smistamento_righe'),
+            ('vendite','vw_offerte_commerciali_lista'),
+            ('anagrafiche','vw_clienti_lista'),
+            ('anagrafiche','vw_clienti_codice_ba'),
+            ('dbops','vw_diag_v_clienti_links'),
+            -- la coda esplicita del file ritirato (vendite/test-vw-dash-security-invoker)
+            ('vendite','vw_lotti_gruppi_serviti'),
+            ('script','vw_stato_sorgente'),
+            ('vendite','vw_stato_sorgente_contratto'),
+            ('vendite','vw_stato_sorgente_ddt'),
+            ('vendite','vw_stato_sorgente_offerta'),
+            ('vendite','vw_stato_sorgente_ordine'),
+            ('vendite','vw_stato_sorgente_preventivo'),
+            ('vendite','vw_stato_sorgente_reso'),
+            -- le sei presidiate a mano nei test funzionali, tolte oggi
+            ('vendite','vw_contratti_lista'), ('vendite','vw_ordini_lista'),
+            ('vendite','vw_partite_merce'), ('script','vw_giornale_entita'),
+            ('vendite','vw_dash_competenza_attivita'),
+            ('vendite','vw_dash_competenza_gruppi')
+      )
+      SELECT g.sch || '.' || g.vista
+        FROM garantite g
+       WHERE EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                      WHERE n.nspname = g.sch AND c.relname = g.vista AND c.relkind = 'v')
+         AND NOT EXISTS (SELECT 1 FROM _tocca_rls r
+                          WHERE r.sch = g.sch AND r.vista = g.vista)$$,
+    '1. il criterio copre tutte le viste che i quattro elenchi a mano garantivano'
+);
+
+-- ============================================================
+-- 2. ⛔ IL PRESIDIO
+-- ============================================================
+-- In fallimento il messaggio NOMINA le viste: su un difetto che non ha nessun
+-- altro sintomo, sapere QUALE e' meta' del lavoro.
+SELECT is(
+    (SELECT string_agg(r.sch || '.' || r.vista, ', ' ORDER BY r.sch, r.vista)
+       FROM _tocca_rls r WHERE NOT r.invoker),
+    NULL,
+    '2. nessuna vista che tocca dati in RLS gira come DEFINER'
+);
+
+-- ============================================================
+-- I casi costruiti — da qui in giu' si semina
+-- ============================================================
+-- ⛔ Il test 2 gira PRIMA: dopo queste righe il database contiene apposta una
+--   vista trasgressiva, e l'ordine non e' un dettaglio.
+CREATE VIEW dbops.pgtap_si_ponte WITH (security_invoker = on) AS
+    SELECT c.id FROM vendite.contratti c;
+
+-- Due anelli: questa e' spenta, quella sotto e' accesa. La catena e' spenta.
+CREATE VIEW dbops.pgtap_si_indiretta AS
+    SELECT p.id FROM dbops.pgtap_si_ponte p;
+
+-- Un anello solo, spenta.
+CREATE VIEW dbops.pgtap_si_diretta AS
+    SELECT c.id FROM vendite.contratti c;
+
+-- Spenta, ma non tocca niente di protetto: NON deve entrare nel perimetro.
+CREATE VIEW dbops.pgtap_si_innocua AS
+    SELECT s.id FROM config.sorgenti s;
+
+SELECT isnt_empty(
+    $$SELECT vista FROM _tocca_rls
+       WHERE sch = 'dbops' AND vista = 'pgtap_si_indiretta' AND NOT invoker$$,
+    '3. il criterio prende una vista che arriva alla tabella ATTRAVERSO un''altra vista'
+);
+
+SELECT isnt_empty(
+    $$SELECT vista FROM _tocca_rls
+       WHERE sch = 'dbops' AND vista = 'pgtap_si_diretta' AND NOT invoker$$,
+    '4. e prende anche il caso diretto, a un anello solo'
+);
+
+-- ⛔ Senza questo, il criterio potrebbe essere «ogni vista vuole il flag», che
+--   e' una regola DIVERSA e sbagliata: una vista che non tocca dati protetti non
+--   ha niente da filtrare, e pretenderglielo insegnerebbe a metterlo ovunque
+--   per far tacere il test.
+SELECT is_empty(
+    $$SELECT vista FROM _tocca_rls
+       WHERE sch = 'dbops' AND vista = 'pgtap_si_innocua'$$,
+    '5. e NON prende una vista che dati protetti non ne tocca'
+);
+
+DROP VIEW dbops.pgtap_si_innocua;
+DROP VIEW dbops.pgtap_si_diretta;
+DROP VIEW dbops.pgtap_si_indiretta;
+DROP VIEW dbops.pgtap_si_ponte;
 
 SELECT * FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia dietro di se' nessuna vista di prova.
 ROLLBACK;

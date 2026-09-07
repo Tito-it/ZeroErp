@@ -57,11 +57,26 @@ SET LOCAL app.current_user_id = '1';
 -- ============================================================
 SELECT has_view('vendite', 'vw_partite_merce', '1) la vista esiste');
 
+-- ⚠️ SI LEGGE LA PROPRIETA', NON LA PAROLA (rev 2026-09-07). `security_invoker`
+--   e' una reloption BOOLEANA: `on` e `true` sono lo stesso identico valore, e
+--   PostgreSQL conserva quello che ha ricevuto. Un confronto sulla stringa
+--   diventa rosso su una vista SANA riscritta con l'altra parola — successo il
+--   2026-09-07 su due presidi gemelli, con due falsi allarmi e una bisezione fra
+--   cantieri per scoprire che non era rotto niente. `::boolean` usa il parser di
+--   PostgreSQL, quindi non c'e' nessun elenco di grafie da tenere allineato.
+-- ⭐ Questa resta una PRECONDIZIONE del file, non un doppione: le asserzioni qui
+--   sotto interrogano la vista dal contesto operatore, e senza il flag
+--   verificherebbero un perimetro che non e' quello di nessuno. Il presidio
+--   GLOBALE, su tutte le viste che toccano dati in RLS, e'
+--   db/pgtap/rls/test-rls-viste-security-invoker.sql.
 SELECT ok(
-  (SELECT 'security_invoker=on' = ANY(c.reloptions)
-     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  (SELECT COALESCE(o.option_value::boolean, false)
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     LEFT JOIN LATERAL pg_options_to_table(c.reloptions) o
+            ON o.option_name = 'security_invoker'
     WHERE n.nspname = 'vendite' AND c.relname = 'vw_partite_merce'),
-  '2) vw_partite_merce e'' security_invoker=on');
+  '2) vw_partite_merce gira col perimetro di chi legge (security_invoker)');
 
 -- ⚠️ `columns_are` e' un contratto, non una fotografia: fallisce anche se una
 --    colonna SPARISCE, che e' il motivo per cui esiste. Chi ne aggiunge una

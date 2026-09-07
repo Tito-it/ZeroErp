@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 FIX V-1 SU UNA VISTA CHE NESSUN PRESIDIO GUARDAVA.
+#   `script.vw_pratica_doc_sorgente` gira come DEFINER e raggiunge SEI tabelle
+#   documentali in RLS — preventivi, ordini, contratti, ddt, resi,
+#   offerte_commerciali — senza applicare lo scope emittente.
+#
+# ── ⛔ E NON SI PERDE NELLA CATENA: SI PERDE AL PRIMO ANELLO ────────
+#   Gli anelli sotto ce l'hanno tutti (`script.vw_stato_sorgente` e le sei
+#   `vendite.vw_stato_sorgente_*`). Non serve a niente: `security_invoker` NON
+#   si propaga. Da dentro una vista DEFINER, «il chiamante» che gli anelli
+#   interni onorano e' l'OWNER della vista esterna — cioe' `titodb`, che possiede
+#   quelle sei tabelle e, senza `FORCE ROW LEVEL SECURITY` (verificato: tutte e
+#   sei a `relforcerowsecurity = false`), dalla RLS e' esente.
+#   ⇒ Sei anelli accesi e uno spento fanno una catena spenta.
+#
+# ── ⚠️ NON E' UNA SCELTA CHE QUALCUNO HA PRESO ────────────────────
+#   La vista e' del `20260702-14`, e la sua intestazione — lunga e ragionata —
+#   non nomina `security_invoker` nemmeno una volta. Il fix V-1 che ha insegnato
+#   la regola al progetto e' del `20260706-15`: QUATTRO GIORNI DOPO. E' una vista
+#   scritta prima della lezione, su cui nessuno e' tornato.
+#
+# ── ⛔ PERCHE' NESSUNO SE N'E' ACCORTO IN DUE MESI ─────────────────
+#   Il presidio dedicato (test-vw-dash-security-invoker.sql) guarda le viste per
+#   NOME: `vendite.vw_dash_*` piu' una coda scritta a mano. Questa vista sfugge a
+#   tutti e tre i modi di cercarla:
+#     * sta in `script`, non in `vendite`;
+#     * non si chiama `vw_dash_*`;
+#     * ⭐ e tocca le tabelle in RLS solo ATTRAVERSO altre viste, quindi non la
+#       vedrebbe nemmeno un criterio sulle dipendenze DIRETTE.
+#   Trovata il 2026-09-07 applicando il criterio in forma TRANSITIVA a tutto il
+#   database — che e' esattamente il modo che l'intestazione di quel presidio
+#   indica come l'unico onesto: «il modo per trovarne altre non e' leggere
+#   questo elenco, e' rifare la misura».
+#   ⇒ Il presidio si allarga nello stesso giro — da 17 viste a 65, e senza piu'
+#     nessun elenco: db/pgtap/rls/test-rls-viste-security-invoker.sql.
+#
+# ── ⚠️ CHE COSA CAMBIA A VIDEO, e va detto ────────────────────────
+#   Le colonne che vengono da `pratiche_sorgenti` e da `config.sorgenti`
+#   (nessuna delle due in RLS) restano come sono. Diventano NULL le colonne di
+#   STATO del documento sorgente quando quel documento e' fuori dal perimetro di
+#   chi legge.
+#   ⭐ E cambia anche la REGOLA D'ANCORA del `DISTINCT ON`, che ordina su
+#   `risolto` e `terminale`: su una pratica con piu' sorgenti puo' vincerne
+#   un'altra. E' corretto — non si sceglie un'ancora guardando dati che non si
+#   possono vedere — ma e' un cambio di comportamento, non solo un
+#   nascondimento.
+#   ⚠️ Su dati coerenti non si vede nulla: il BE legge questa vista in join su
+#   `pratiche.pratiche`, che ha gia' la policy `rls_pratiche_ef_whitelist` sullo
+#   stesso perimetro. Le pratiche che si vedono sono le proprie, e i loro
+#   documenti pure. La differenza emerge dove i due perimetri divergono — cioe'
+#   esattamente il caso che questa riga esiste per chiudere.
+#
+# ⭐ `ALTER VIEW ... SET`, non un `CREATE OR REPLACE`: non tocca la definizione,
+#   quindi non puo' regredire la regola d'ancora del `20260702-14`. E' la stessa
+#   forma del `20260707-10`, che ripristino' il flag su vw_dash_fatturazione_contratti.
+#
+# Consumatore: apps/pratiche/db/pratiche_repository.py (LEFT JOIN sull'ancora).
+# Verifica: db/pgtap/pratiche/test-proiezione-stato-sorgente.sql
+#           db/pgtap/rls/test-rls-viste-security-invoker.sql (il presidio nuovo)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260907-04-alter-vw-pratica-doc-sorgente-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260907-04-alter-vw-pratica-doc-sorgente-security-invoker
+      author: mctit
+      failOnError: true
+      comment: >
+        script.vw_pratica_doc_sorgente gira come DEFINER e raggiunge sei tabelle
+        documentali in RLS attraverso altre viste, bypassando lo scope
+        emittente. Gli anelli sotto hanno il flag e non basta: security_invoker
+        non si propaga, si perde al primo anello spento. La vista e' del
+        20260702-14, quattro giorni prima del fix V-1 che ha insegnato la regola.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_views
+               WHERE schemaname = 'script'
+                 AND viewname = 'vw_pratica_doc_sorgente'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW script.vw_pratica_doc_sorgente SET (security_invoker = on);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Riapre il bypass dello scope emittente su sei tabelle
+              --   documentali. Manovra di emergenza, non una configurazione.
+              ALTER VIEW script.vw_pratica_doc_sorgente RESET (security_invoker);

@@ -10,7 +10,7 @@ Approfondimento tabelle:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 2026-07-02)
+(latest review 2026-09-07)
 `script.vw_pratica_doc_sorgente` risolve, **per ogni pratica**, *quale documento*
 rappresenta lo stato vivo della pratica, e ne proietta il descrittore normalizzato
 (brief-db-proiezione-stato-dominio roll-out, deliverable D3b). Restituisce **una riga per
@@ -71,6 +71,50 @@ FROM pratiche.pratiche p
 LEFT JOIN script.vw_pratica_doc_sorgente d ON d.pratica_id = p.id
 WHERE p.id = 42;
 ```
+
+---
+
+### 🔴 Scope: la vista gira col perimetro di chi legge (dal 2026-09-07)
+
+`WITH (security_invoker = on)` — changeSet `20260907-04`.
+
+⛔ **Fino a quel giorno non ce l'aveva**, e non era una scelta: la vista è del
+`20260702-14`, il correttivo che ha insegnato la regola al progetto è del `20260706-15`.
+Quattro giorni dopo. Senza il flag la vista gira come **proprietario**, che possiede anche
+le sei tabelle documentali sottostanti e — senza `FORCE ROW LEVEL SECURITY` — dalla RLS è
+esente: lo scope emittente non veniva applicato.
+
+⚠️ **E gli anelli sotto non bastavano.** `script.vw_stato_sorgente` e le sei
+`vendite.vw_stato_sorgente_*` il flag ce l'hanno tutte. Non serve: `security_invoker` **non
+si propaga**. Da dentro una vista DEFINER, «il chiamante» che gli anelli interni onorano è
+il proprietario della vista esterna. *Sei anelli accesi e uno spento fanno una catena
+spenta.*
+
+**Che cosa cambia**, e va letto insieme alla regola d'ancora qui sopra:
+
+* le colonne che vengono da `pratiche_sorgenti` e da `config.sorgenti` (nessuna delle due in
+  RLS) restano invariate;
+* diventano NULL le colonne `stato_*`, `risolto` e `terminale` quando il documento sorgente
+  è **fuori dal perimetro di chi legge**;
+* ⭐ **e può cambiare il link scelto**: la regola d'ancora ordina proprio su `risolto` e
+  `terminale`. Su una pratica con più sorgenti può vincerne un'altra. È corretto — non si
+  sceglie un'àncora guardando dati che non si possono vedere — ma è un cambio di
+  comportamento, non solo un nascondimento.
+
+⚠️ **Su dati coerenti non si vede nulla**: il consumer legge questa vista in `LEFT JOIN` su
+`pratiche.pratiche`, che ha la policy `rls_pratiche_ef_whitelist` sullo **stesso**
+`fn_scope_ef_whitelist` delle sei tabelle documentali.
+
+⛔ **Ma il modello ammette la divergenza, e per questo il caso non è teorico**: nulla lega
+la sorgente al perimetro della pratica. `pratiche_sorgenti` non ha nessun vincolo né guard
+che confronti l'emittente del documento con quello della pratica, e `sorgente_uid` è una
+chiave polimorfa senza FK. ⇒ Una pratica di un emittente **può** puntare a un documento di
+un altro, e lì il comportamento cambia — che è esattamente il caso per cui il flag esiste.
+
+Presidio: `db/pgtap/rls/test-rls-viste-security-invoker.sql` — non elenca più le viste per
+nome, chiede *«esiste una vista che tocca dati protetti, anche attraverso altre viste, e non
+ha il flag?»*. È il criterio che ha trovato questa. Brief:
+`brief-db-viste-security-invoker-criterio.md`.
 
 ---
 

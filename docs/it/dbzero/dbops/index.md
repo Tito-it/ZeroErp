@@ -136,6 +136,7 @@
 - [vw_processi_dominio_senza_identita](views/vw_processi_dominio_senza_identita.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_su_pgagent](views/vw_processi_dominio_su_pgagent.md) — (latest review 05-09-2026)
 - [vw_processi_programmazione](views/vw_processi_programmazione.md)
+- [vw_processi_programmazione_da_guardare](views/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](views/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)

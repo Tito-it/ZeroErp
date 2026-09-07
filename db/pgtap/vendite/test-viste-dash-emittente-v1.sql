@@ -13,7 +13,7 @@
 --   3) vw_dash_backlog_documenti          idem
 --   4) vw_dash_competenza_errori          idem
 --   5) vw_dash_competenza_attivita        idem
---   6) * security_invoker = on su tutte e cinque
+--   (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql)
 --   7) sei righe di catalogo, una per lista
 --   8) ...e sono nella forma giusta (sorgente, attiva, non sensibile, i18n)
 --   9) * coerenza catalogo <-> vista: il campo dichiarato ESISTE nella vista
@@ -24,7 +24,11 @@
 -- Scopo, e perche' i due test con l'asterisco sono quelli che guadagnano il
 -- pane:
 --
---  ⭐ IL 6 E' IL PIU' IMPORTANTE DEL FILE, e non parla di emittenti.
+--  ⭐ IL PEZZO PIU' IMPORTANTE DI QUESTO RAGIONAMENTO NON VIVE PIU' QUI
+--     (rev 2026-09-07): sta in db/pgtap/rls/test-rls-viste-security-invoker.sql,
+--     che lo fa per TUTTE le viste che toccano dati in RLS — non per le cinque
+--     di questo file, e senza elencarne nessuna. Il
+--     perche' resta scritto qui sotto, perche' e' la ragione per cui esiste.
 --     `security_invoker = on` NON e' visibile in pg_get_viewdef: chi ricrea
 --     una vista partendo dalla definizione stampata la perde senza nessun
 --     avviso. Su queste cinque viste ci si appoggia lo scope emittente —
@@ -65,7 +69,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(11);
 
 -- ============================================================
 -- Fixture
@@ -131,21 +135,18 @@ SELECT has_column(
     '5. vw_dash_competenza_attivita espone emittente_ragione_sociale'
 );
 
--- 6) * La reloption invisibile. Vedi la nota in testa: perderla non rompe
---    niente, apre soltanto.
-SELECT is(
-    (SELECT count(*)
-       FROM pg_class c
-       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'vendite'
-        AND c.relname IN (SELECT vista FROM _t_viste)
-        AND EXISTS (
-              SELECT 1 FROM unnest(COALESCE(c.reloptions, '{}'::text[])) o
-               WHERE lower(o) IN ('security_invoker=on', 'security_invoker=true')
-            )),
-    5::bigint,
-    '6. * security_invoker = on su tutte e cinque le viste (perderla non rompe: APRE)'
-);
+-- ⛔ QUI `security_invoker` NON SI PRESIDIA PIU' (rev 2026-09-07), e non e' una
+--   rinuncia: lo fa gia' db/pgtap/rls/test-rls-viste-security-invoker.sql, su
+--   TUTTE le viste che toccano dati in RLS — anche attraverso altre viste — e
+--   leggendo la PROPRIETA' invece della parola. Nessun elenco di nomi.
+--   ⚠️ Il doppione locale non aggiungeva copertura, e ne ha tolta: era scritto
+--   come confronto di GRAFIA (`security_invoker=on`) ed e' diventato ROSSO su
+--   una vista perfettamente sana, riscritta con `= true` — che significa la
+--   stessa identica cosa. Due falsi allarmi il 2026-09-07, e una bisezione fra
+--   due cantieri per scoprire che non era rotto niente.
+--   ⭐ Una seconda sede diverge sempre; questa e' divergiata verso il FALSO
+--   ALLARME, che e' il verso che fa spegnere i presidi.
+
 
 -- 7) Il catalogo: una riga emittente per ciascuna delle sei liste.
 SELECT is(

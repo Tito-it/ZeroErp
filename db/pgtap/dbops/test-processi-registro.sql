@@ -12,7 +12,7 @@
 -- Test: dbops.processi, dbops.processi_bersagli e le tre viste di presidio
 -- Brief: brief-db-processi-automatici-identita-e-perimetro §2, §8
 --
--- Elenco test (plan 14):
+-- Elenco test (plan 15):
 --  1) dbops.processi esiste
 --  2) chk_processi_classe respinge una classe fuori catalogo
 --  3) chk_processi_canale respinge un canale fuori catalogo
@@ -28,6 +28,7 @@
 -- 13) vw_processi_che_bypassano non ha righe NON_DICHIARATO
 -- 14) ⭐ un bersaglio col percorso ma SENZA difesa finisce nel livello 2 (COSTRUITO,
 --     non appoggiato a un debito reale: quello prima o poi si paga)
+-- 15) ⛔ due righe di catalogo per lo STESSO lavoro: solo una puo' essere viva
 --
 -- Scopo:
 --  - collaudare i cancelli del registro COSTRUENDO i casi cattivi, non
@@ -45,7 +46,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- 1. La tabella c'e'
@@ -287,6 +288,47 @@ SELECT isnt_empty(
     $$SELECT nome_tabella FROM dbops.vw_processi_dominio_senza_difesa
        WHERE processo_codice = 'PGTAP-BERSAGLIO-SCOPERTO'$$,
     'un bersaglio col percorso ma senza policy ne'' guard finisce nel livello 2'
+);
+
+-- ============================================================
+-- 15. ⛔ DUE RIGHE DI CATALOGO PER LO STESSO LAVORO
+-- ============================================================
+-- Brief: brief-db-sveglia-dei-processi §7 (segnalazione BE) e §8.5 (risposta).
+--
+-- ⛔ «Stesso lavoro» NON e' una proprieta' che il database possa leggere, ed e'
+--   la stessa situazione della `classe`: una DICHIARAZIONE, verificata in un
+--   verso solo. Un vincolo che pretendesse di riconoscerla dedurrebbe, e una
+--   deduzione sbagliata non si vede. ⇒ Niente CHECK, niente colonna: un elenco
+--   DICHIARATO qui, e l'invariante e' «di ogni coppia ne vive al massimo una».
+--
+-- ⚠️ Perche' serve, visto che «oggi non fa danno»: `fn_sync_auth_user_expired`
+--   e' idempotente, quindi il secondo giro non trova nessuno da disattivare.
+--   Quello che si perde e' la LEGGIBILITA' del giornale — due attori diversi
+--   per lo stesso fatto — e la possibilita' di presidiare: il panorama
+--   mostrerebbe uno dei due OK e l'altro fermo, SENZA che ci sia niente di
+--   rotto. Un presidio che segnala il sano e' un presidio che si impara a
+--   ignorare.
+--
+-- ⭐ E questo elenco e' un REGISTRO, non una lista di eccezioni: una coppia
+--   nuova si aggiunge quando la si scopre, e sparisce quando una delle due
+--   righe viene ritirata. Se resta vuoto un giorno, si cancella il test.
+--
+-- ⚠️ «Viva» qui significa cio' che significa per il panorama — `attivo` E
+--   `obsoleto_dal IS NULL` — e non il solo `attivo`: si ritira con
+--   `obsoleto_dal`, che non sveglia nessun guard di disattivazione con figlie.
+SELECT is_empty(
+    $$WITH gemelli (uno, altro, lavoro) AS (
+          VALUES ('sync_auth_user_expired_daily', 'sync_auth_user_active',
+                  'disattivazione degli utenti la cui finestra e'' scaduta')
+      )
+      SELECT g.lavoro
+        FROM gemelli g
+       WHERE (SELECT count(*)
+                FROM dbops.processi p
+               WHERE p.codice IN (g.uno, g.altro)
+                 AND p.attivo
+                 AND p.obsoleto_dal IS NULL) > 1$$,
+    '15. di due righe di catalogo per lo stesso lavoro ne vive al massimo una'
 );
 
 SELECT * FROM finish();
