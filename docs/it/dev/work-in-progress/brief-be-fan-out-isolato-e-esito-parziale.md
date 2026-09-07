@@ -610,7 +610,7 @@ class FanOutEsito:
     @property
     def parziale(self) -> bool
     @property
-    def tutti_falliti(self) -> bool
+    def tutti_falliti(self) -> bool   # ⛔ tolto il 2026-09-07, vedi §5.1
 
 def run_fan_out(
     items,                          # iterabile GIA' scoperto dal chiamante
@@ -644,7 +644,7 @@ def run_fan_out(
 |---|---|---|
 | 10 su 10 ok | `task_run` COMPLETATO | invariato |
 | 7 ok, 3 ko | `task_run` **COMPLETATO** → al rilancio **SKIP**, le 3 non si ritentano | `task_run` **ERRORE senza raise** → al rilancio **RESUME** |
-| 0 su 10 ok | `raise E_PULL_COMMESSA_ALL_FAILED`, lo step si ferma | **invariato** — vedi sotto |
+| 0 su 10 ok | `raise E_PULL_COMMESSA_ALL_FAILED`, lo step si ferma | **invariato** — vedi sotto. 🔴 **Superato il 2026-09-07**, vedi la nota |
 | lista vuota | COMPLETATO | invariato |
 
 **Perché l'all-fail continua a sollevare** e non diventa anch'esso un parziale: se nessuna
@@ -652,6 +652,26 @@ commessa è stata emessa, proseguire con i task successivi costruirebbe un **lot
 Lì fermarsi è la cosa giusta. La regola diventa leggibile in una riga: *nessuno passa →
 fermati · qualcuno passa e qualcuno no → prosegui ma non dichiarare chiuso · tutti passano →
 chiuso*.
+
+> ### 🔴 Superato il 2026-09-07 — l'all-fail NON solleva più (P-5)
+>
+> Il ragionamento qui sopra sbagliava un passaggio, e il difetto che ne è nato si
+> è visto solo un cantiere dopo: **il `raise` faceva rollback dell'intero step**,
+> quindi si portava via anche le marcature d'esito dei documenti caduti, appena
+> scritte. Il caso peggiore era l'unico che non lasciava traccia — il paradosso
+> classico: funziona quando va male a metà e tace quando va male del tutto.
+>
+> ⭐ **La confusione era fra due cose diverse**: *fermare la catena* e *strappare
+> gli appunti*. Le faceva lo stesso gesto. A fermare la catena non serve
+> l'eccezione: il passo scrive una segnalazione **critica per ogni commessa
+> caduta**, quindi al giro dopo `blocks_next_step` rifiuta l'avanzamento e il
+> driver esce con `BLOCCATO_CRITICITA`. Il lotto vuoto non nasce lo stesso.
+>
+> ⇒ Il ramo non è stato modificato, è stato **tolto**: i due casi sono diventati
+> lo stesso codice, e la regola in una riga si accorcia — *qualcuno non passa →
+> segna e fermati · tutti passano → chiuso*.
+> `E_PULL_COMMESSA_ALL_FAILED` è ritirato a catalogo (`obsoleto_dal`).
+> Decisione di Tid, 2026-09-06. Dettaglio: `brief-db-esito-gruppo-lotto` §14 e §20.
 
 ### 5.2 Codice errore — nessuna azione DB
 
@@ -703,7 +723,7 @@ riga di documentazione**, non del codice.
 
 | Fase | Cosa si prova |
 |---|---|
-| F1 | pull con 3 su 10 falliti → ritorna `TaskEsitoParziale` con `E_PULL_COMMESSA` e `meta` popolata · pull con 10/10 ok → ritorna `None` · pull con 0/10 ok → solleva `E_PULL_COMMESSA_ALL_FAILED` · lista vuota → `None`, nessun errore |
+| F1 | pull con 3 su 10 falliti → ritorna `TaskEsitoParziale` con `E_PULL_COMMESSA` e `meta` popolata · pull con 10/10 ok → ritorna `None` · pull con 0/10 ok → ~~solleva `E_PULL_COMMESSA_ALL_FAILED`~~ **ritorna `TaskEsitoParziale` dal 2026-09-07 (P-5)** · lista vuota → `None`, nessun errore |
 | F1 | **executor**: `TaskEsitoParziale` → `fail_lotto_task_run` con codice/messaggio/meta e **nessuna eccezione propagata**; ritorno `None` → `complete_lotto_task_run`. ✅ **Rettifica 2026-08-09**: contrariamente a quanto scritto nella prima stesura di questo brief, il ramo **è già coperto** — dai test 28/29 (snapshot) e 32/33 (scadenze) di `test_pipeline_step_executor.py`. La classe non compare per nome nei test, il suo comportamento sì. Restano da scrivere i test **specifici del pull**, non quelli del meccanismo |
 | F2 | `run_fan_out`: tutti ok → `COMPLETATO` · misto → `PARZIALE` con indici e messaggi giusti · tutti ko → `ERRORE` · **lista vuota → `COMPLETATO`** · `isola_in_transazione=False` non apre transazioni · `run_logger` riceve `start`/`item_failed`×N/`end` nell'ordine · un'eccezione **dentro** il run_logger non affonda il giro |
 | F3/F4 | i test esistenti di `test_pipeline_step_executor.py` e `test_commesse_source_handlers.py` passano **senza modifiche di aspettativa** (a parte quelle di F1). Se un test va cambiato in F3/F4, non è un refactor: è un cambio di comportamento non dichiarato |
@@ -923,6 +943,9 @@ senza il segnale in-app gira ancora il codice vecchio.
   (SKIP) e nessuno se ne accorgeva. È il difetto che il cantiere ha chiuso.
 - Se **tutte** falliscono, lo step deve **fermarsi** con `E_PULL_COMMESSA_ALL_FAILED`:
   proseguire costruirebbe un lotto vuoto.
+  🔴 **Non vale più dal 2026-09-07** (P-5): il ramo non solleva, l'esito si scrive
+  e la catena si ferma per segnalazioni critiche. Il lotto vuoto non nasce lo
+  stesso — vedi la nota in §5.1.
 - ⚠️ **Trappola T-4** (§8): se sui dati veri il parziale risultasse la **norma** e non
   l'eccezione, il problema non è la segnalazione — sono i dati, e si apre un'altra analisi.
   Non si "abbassa" la segnalazione per far tornare il verde.

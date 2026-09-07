@@ -18,8 +18,21 @@
 > ✅ **Il DB ha finito** (aggiornato il 2026-09-07): la separazione del §15 è
 > applicata e verde — **§17** —, e **P-6** ha ritirato
 > `E_PULL_COMMESSA_ALL_FAILED` con `obsoleto_dal` — **§19**.
-> 🔴 Resta **P-3 al backend**: un test sul ramo «tutte fallite» che non mocka il
-> repository.
+> ✅ **E il backend ha finito** (§20): **P-5** — il ramo «tutte fallite» non
+> solleva più — e **P-3**, il test che su quel ramo non mocka il repository.
+> ✅ **Il `migrate` del seed è passato** (verificato il 2026-09-07 sul DB vivo:
+> `ui.lista_definizione` 67/67 e `ui.lista_colonna` 735/735, zero righe del CSV
+> mancanti) ⇒ il §12.6 è chiuso, e con esso il presidio del §19 — §21.
+>
+> 🔴 **Restano DUE cose, e nessuna è una svista — §21.**
+> **1. Il primo giro vero.** `vendite.fatturazione_lotti_esiti` ha **zero
+> righe** (2026-09-07, letto col contesto operatore): nessun giro è ancora
+> passato dalla marcatura, quindi il criterio di chiusura del **§6** — *«si rifà
+> un giro come `LTF-0009578`»* — non è soddisfatto, e il debito di collaudo dei
+> §16/§18 è aperto per costruzione.
+> **2. Il lavoro del §20 non è nel repo**: 16 file modificati e 2 test nuovi non
+> committati. «Fatto» descrive una macchina, non il progetto.
+> ⛔ **Finché valgono queste due, il brief resta in `work-in-progress`.**
 >
 > **Origine:** Tid, 2026-09-06, guardando il lotto `LTF-0009578`.
 
@@ -425,7 +438,12 @@ dopo rollback: gruppi con esito = 0
 D-3, ed è la cosa che il collaudo doveva provare più dell'esistenza delle
 colonne.
 
-### 12.6 🔴 Prima che si veda in applicazione
+### 12.6 ✅ Prima che si veda in applicazione — *fatto il 2026-09-07 (§21)*
+
+> Il `migrate` del seed è passato: `ui.lista_definizione` **67/67** e
+> `ui.lista_colonna` **735/735**, zero righe del CSV mancanti a database.
+> ⬇️ Il testo resta perché spiega *perché* serviva, e perché la stessa cosa
+> tornerà a servire alla prossima lista.
 
 Le **due liste** prendono le colonne dal catalogo (`ui.lista_colonna`), che è
 **dato di seed**: le righe sono nei CSV, ma nel database ci arrivano solo col
@@ -586,8 +604,8 @@ nasce già spento e non arriva mai a zero.
 
 | # | Cosa | Chi | Stato |
 | --- | --- | --- | --- |
-| **P-5** | Il ramo «tutte fallite» torna un esito invece di sollevare, come il parziale | BE | 🔴 da fare |
-| **P-3** | Un test su quel ramo che **non mocka** il repository | BE | 🔴 resta |
+| **P-5** | Il ramo «tutte fallite» torna un esito invece di sollevare, come il parziale | BE | ✅ **fatto (07-09)** — §20 |
+| **P-3** | Un test su quel ramo che **non mocka** il repository | BE | ✅ **fatto (07-09)** — §20 |
 | **P-6** | `E_PULL_COMMESSA_ALL_FAILED` ritirato con `obsoleto_dal = 2026-09-07` (§19) | DB | ✅ **fatto (07-09)** |
 | **P-7** | Il presidio `20260907-11` | DB | ✅ **applicato e verde (07-09)** |
 | ~~P-1, P-2~~ | ~~scrittura di compensazione~~ | — | ⛔ **decadute** |
@@ -675,8 +693,8 @@ con perimetro.
 
 | # | Cosa |
 | --- | --- |
-| **P-5** | Il ramo «tutte fallite» torna un esito invece di sollevare |
-| **P-3** | Un test su quel ramo che **non mocka** il repository: il limite precedente è sfuggito proprio perché i test provano che la chiamata avvenga, non che la riga resti |
+| ~~P-5~~ | ✅ **fatto il 2026-09-07**: il ramo non è stato modificato, è stato **tolto** — §20 |
+| ~~P-3~~ | ✅ **fatto il 2026-09-07**: e verificato che si accende rimettendo il  — §20 |
 
 ### 🔵 Poi torna al DB
 
@@ -795,14 +813,19 @@ e controlla i privilegi dopo.
 
 ## 18. 🏁 Stato al 2026-09-07, fine giornata
 
-| | |
-| --- | --- |
-| ✅ **DB** | quattro changeSet del 06-09 + sei del 07-09, tutti applicati. pgTAP **12/12** |
-| ✅ **Il caso originale** | un documento fallito resta nel lotto e si vede in competenza, con motivo, orario e lotto |
-| ✅ **Il §12.4** | chiuso: anche i giri **senza perimetro** hanno dove essere marcati, e il backend non cambia una riga |
-| 🔴 **P-5** | il ramo «tutte fallite» torna un esito invece di sollevare | *backend* |
-| 🔴 **P-3** | un test su quel ramo che **non mocka** il repository | *backend* |
+⚠️ Questa tabella aveva **tre** colonne dichiarate come due, quindi la colonna
+«chi» — proprio quella che il §16 usa per smistare il lavoro — **non veniva resa**
+nella doc pubblicata. Corretta il 2026-09-07.
+
+| | | Chi |
+| --- | --- | --- |
+| ✅ **DB** | quattro changeSet del 06-09 + sei del 07-09, tutti applicati. pgTAP **12/12** | *DB* |
+| ✅ **Il caso originale** | un documento fallito resta nel lotto e si vede in competenza, con motivo, orario e lotto | — |
+| ✅ **Il §12.4** | chiuso: anche i giri **senza perimetro** hanno dove essere marcati, e il backend non cambia una riga | *DB* |
+| ✅ **P-5** | il ramo «tutte fallite» non solleva più: è stato tolto, non modificato — §20 | *backend* |
+| ✅ **P-3** | il test che su quel ramo non mocka il repository, e che si accende — §20 | *backend* |
 | ✅ **P-6** | `E_PULL_COMMESSA_ALL_FAILED` ritirato il 07-09 con `obsoleto_dal` — §19 | *DB* |
+| ✅ **Il seed** | `migrate` passato: le colonne di catalogo e la scheda «Presi in carico» ci sono — §21 | *Tid* |
 
 ⚠️ Il debito di collaudo dichiarato resta: il ritrovamento del documento
 **partendo dalla commessa** si verifica sul primo giro vero. Se lì il conto
@@ -872,12 +895,32 @@ database.
 per questo, in nessuno dei due versi — ma è la cosa da sapere: la rete si chiude
 alla prossima rigenerazione, ed è un passo del backend.
 
+> ✅ **Rigenerato il 2026-09-07** (§20), e la rete è chiusa: il codice è nella
+> coda dei ritirati e `test_nessun_codice_usato_e_ritirato` lo copre.
+> ⭐ Ricontrollato il 2026-09-07: il codice **continua a risolversi** — la frase
+> è ancora in `error_messages_fallback.py`, quindi un percorso non bonificato
+> che lo sollevasse darebbe una frase e non un segnaposto.
+> 🔴 **Ma la rigenerazione NON è committata**: in `HEAD` il codice compare una
+> volta sola, in `CLASSE_PER_CODICE`. La voce in `CODICI_RITIRATI`, la `note` e
+> il contatore 88→89 vivono nel working tree. ⇒ La rete è chiusa **su questa
+> macchina**, non nel progetto — e vale il vincolo scritto due righe sopra: fra
+> il ritiro a catalogo e la rigenerazione la build è rossa, quindi i due passi
+> vanno **nello stesso commit**.
+> ⚠️ **Ma una CI rossa c'era**, e vale la pena saperlo: non quella del
+> guardrail, `test_il_file_generato_e_allineato_al_catalogo` — che confronta il
+> modulo generato con `config.vw_codici_errore_identita` **nel database**, dove
+> il ritiro era già arrivato. ⇒ Fra il ritiro a catalogo e la rigenerazione la
+> build è rossa, quindi i due passi vanno **nello stesso giro**, non uno «alla
+> prossima occasione».
+> ⭐ Verificato prima di rigenerare che il database **non fosse avanti rispetto
+> a git** su nient'altro: il diff del modulo tocca solo questo codice.
+
 ### Cosa resta
 
 | | |
 | --- | --- |
 | ✅ **P-6** | fatto |
-| 🔴 **P-3** | un test sul ramo «tutte fallite» che **non mocka** il repository — *backend* |
+| ✅ **P-3** | fatto il 2026-09-07, insieme a **P-5** — §20. Il test esercita il ramo con il repository **vero** e legge la riga scritta |
 | ⚪ **P-8** | nulla: la separazione del §15 è stata fatta il 07-09 (§17) |
 
 ⚠️ Due documenti nominano ancora l'errore come comportamento atteso:
@@ -886,3 +929,179 @@ E_PULL_COMMESSA_ALL_FAILED»*) e `brief-be-fan-out-isolato-e-esito-parziale.md`.
 Sono del cantiere del backend e non sono stati toccati qui: una checklist di
 collaudo che pretende un errore che non arriva più manda chi collauda a cercare
 un guasto che non c'è.
+
+> ✅ **Raccolto il 2026-09-07** (§20): i due documenti sono stati allineati. Il
+> rilievo era giusto — e da quando P-5 è applicato non era più un'imprecisione
+> ma un'istruzione sbagliata a chi collauda.
+
+## 20. ✅ BE + FE riallineati, e P-5/P-3 chiusi (2026-09-07)
+
+> Chiude i due punti che il §18 rimandava al backend, e riallinea la lettura
+> alla casa nuova dell'esito.
+
+### Che cosa si era rotto, e come si è visto
+
+Suite completa con `ZEROERP_TEST_DB_E2E=1`: **13 errori + 2 fallimenti**, tutti
+nostri. ⭐ E tutti dai test che **non mockano**: i test unitari erano verdi al
+100%. È la stessa lezione del §11 con un'altra faccia — *un mock non vede un
+cambio di schema*.
+
+| | |
+| --- | --- |
+| `list_lotto_gruppi` leggeva le quattro colonne dal **perimetro** | non esistono più: la scheda era morta |
+| il cancello sul vocabolario puntava a `chk_lotti_gruppi_stato_esecuzione` | non esiste più |
+
+⭐ La lista di **competenza** non ha richiesto una riga: la vista ha tenuto i
+nomi delle cinque colonne. Il contratto verso il backend ha retto, come il §15
+prometteva.
+
+### ⭐ Non era un rename: la scheda legge l'UNIONE
+
+I fatti sono due e indipendenti, e nessuno dei due da solo risponde:
+
+| lotto | col solo perimetro | con l'unione |
+| --- | --- | --- |
+| mirato, non ancora girato | i suoi documenti, esito vuoto | idem |
+| mirato, girato | i documenti con esito | idem |
+| **di massa, girato** | 🔴 «nessun documento» | **i documenti che ha tentato** |
+
+⇒ E **`perimetro_dichiarato` è sparito**, col problema che risolveva: esisteva
+per rendere onesto lo zero, e zero adesso ha un significato solo. ⚠️ Tolto e non
+lasciato «per compatibilità» — un campo che non discrimina più niente è peggio
+di un campo assente, perché chi lo legge crede che discrimini.
+
+⛔ E la riga non ha più un `id`: non è una riga di tabella, è l'unione di due
+fatti. La chiave è il **documento** (`gruppo_key`).
+
+### ✅ P-5 — il ramo «tutte fallite» non solleva più
+
+⭐ **Non è stato modificato: è stato tolto.** I due rami sono diventati *lo
+stesso codice*, quindi il comportamento del «tutte fallite» non va dimostrato a
+parte — è quello del parziale, in esercizio da agosto.
+
+**Che cosa ferma la catena, adesso** — la domanda vera, e la risposta era già
+scritta in tre punti che non si parlavano:
+
+1. il passo scrive una segnalazione **critica per ogni commessa caduta**, prima
+   di scegliere il ramo;
+2. al giro successivo `evaluate_lotto_status` risponde `blocks_next_step` e
+   `run_pipeline` rifiuta di avanzare con `E_PIPELINE_LOTTO_CRITICAL`;
+3. il driver esce con `BLOCCATO_CRITICITA` e `_mark_lotto_error_safely` porta il
+   lotto in **ERRORE**.
+
+⇒ *Fermarsi* e *strappare gli appunti* erano due cose che faceva lo stesso
+gesto. Ora si ferma **tenendo**. Il rilancio dello stesso step resta ammesso: è
+la via d'uscita.
+
+📌 `E_PULL_COMMESSA_ALL_FAILED` non lo solleva più nessuno ⇒ **P-6 è
+sbloccata**. Un test lo presidia guardando il **sorgente** (`code="…"`), perché
+il ramo non esiste più e un test sul comportamento sarebbe verde per
+sottrazione.
+
+### ✅ P-3 — il test che non mocka, e che si accende
+
+`apps/vendite/tests/db/test_pull_tutte_fallite_scrittura_reale.py` (opt-in DB,
+acceso in CI). ⭐ **Che cosa è finto e che cosa no**: `commesse_repository` è
+finto perché serve a *costruire* il caso; `VenditePipelineRepository` è **vero**,
+ed è lui che scrive. Con un mock al suo posto il test tornerebbe a provare
+un'intenzione.
+
+⚠️ **E non prova che la scrittura sopravviva a un rollback — perché non
+sopravvive, e non deve.** La riga è un `INSERT` normale nella transazione del
+chiamante: ciò che protegge i segni è che quel ramo non sollevi. La chiamata è
+avvolta nello stesso `atomic()` che tiene `run_pipeline`, cioè nello specchio
+esatto del confine che il 06-09 si portava via le marcature.
+
+✅ **Verificato che si accende**: rimettendo il `raise`, entrambi i test
+diventano rossi — il primo perché l'eccezione esce, il secondo perché le righe
+spariscono. È la riproduzione fedele del difetto originale.
+
+### Il collaudo, sul database vero e in transazione annullata
+
+| | prima | dopo |
+| --- | --- | --- |
+| lotto **mirato** (`LTF-0009578`) | 3 documenti, esito vuoto | 3, di cui **1 ERRORE** in cima col motivo |
+| lotto **di massa** (`LTF-0009398`) | 🔴 0 documenti | **2 documenti** marcati (`marcati: 2`, prima era `0`) |
+| ramo **tutte fallite** su lotto senza perimetro | sollevava, rollback | `TaskEsitoParziale`, e la scheda mostra **3 documenti** |
+
+Suite: **4526 test verdi**, anche con `ZEROERP_TEST_DB_E2E=1`.
+
+### 🔵 Che cosa resta
+
+⭐ **P-6 è arrivato nel frattempo** (§19): il codice è ritirato con
+`obsoleto_dal`, e il presidio nel backend guarda che nessuno lo sollevi più. Le
+due metà si sono incontrate senza doversi aspettare.
+
+### ✅ Raccolti nello stesso giro, dal §19
+
+| | |
+| --- | --- |
+| **Il modulo generato** | `error_policies_generated.py` rigenerato: il codice entra nella coda dei ritirati, e `test_nessun_codice_usato_e_ritirato` lo copre. ⚠️ Non era «alla prossima occasione»: `test_il_file_generato_e_allineato_al_catalogo` confronta il modulo col **database**, dove il ritiro era già arrivato — quindi fra i due passi la build è rossa. ⭐ Verificato che il DB non fosse avanti su nient'altro: il diff tocca solo questo codice |
+| **I due documenti** | il collaudo in-app e il brief del fan-out pretendevano ancora quell'errore. Da quando P-5 è applicato non era più un'imprecisione ma un'**istruzione sbagliata**: la prova 5 diceva di segnalare se lo step *prosegue*, che ora è il comportamento voluto. Riscritta col segnale d'allarme spostato — il difetto è che il lotto **avanzi** |
+| **`FanOutEsito.tutti_falliti`** | tolto: era `esito == ESITO_ERRORE` e a leggerlo era solo il ramo che P-5 ha rimosso. ⛔ Un alias con zero lettori su un BB condiviso sembra API in uso e non lo è. Il fatto resta dov'era, e i test lo asseriscono su `esito` |
+
+| # | Cosa | Chi |
+| --- | --- | --- |
+| ✅ | ~~`migrate` del seed per le colonne di catalogo e la scheda «Presi in carico»~~ — **passato**, verificato il 2026-09-07 (§21) | Tid |
+| 🔴 | Il debito di collaudo del §18 — il ritrovamento del documento **partendo dalla commessa** — si chiude sul **primo giro vero**, e finché non si chiude questo brief resta in `work-in-progress` (§21) | — |
+
+---
+
+## 21. ✅ Le due spunte, verificate nel repo il 2026-09-07
+
+> Passaggio di verifica, non di sviluppo: le due voci qui sotto erano **già
+> fatte** e il documento non lo diceva. ⚠️ Un brief che elenca come «da fare»
+> qualcosa di già fatto manda a rifarlo, ed è il modo in cui una checklist
+> smette di essere creduta.
+
+### ✅ Il `migrate` del seed è passato
+
+Confronto CSV ↔ database vivo, 2026-09-07:
+
+| | CSV | DB | mancanti |
+| --- | ---: | ---: | ---: |
+| `ui.lista_definizione` | 67 | 67 | **0** |
+| `ui.lista_colonna` | 735 | 735 | **0** |
+
+⇒ `vendite.lotto_gruppi` (definizione **67**) è a catalogo con le sue **8**
+colonne: la scheda «Presi in carico» monta una lista **con** colonne, e le
+opzionali della competenza ci sono. Il §12.6 è chiuso.
+
+### ✅ Il presidio del ritiro è armato
+
+`error_policies_generated.py` rigenerato **e committato** (`fe4d31a64`):
+`E_PULL_COMMESSA_ALL_FAILED` è dentro `CODICI_RITIRATI`, con la `note` del ritiro
+e il marcatore `⚠️ RITIRATO il 2026-09-07` sopra la voce in `CLASSE_PER_CODICE`.
+⇒ La riserva del §19 — *«il ritiro è vero a catalogo ma non ancora presidiato»* —
+**non vale più**.
+
+### ⚠️ E una verifica che ha dato l'esito opposto
+
+`vendite.fatturazione_lotti_esiti` ha **zero righe** (2026-09-07). Nessun giro è
+ancora passato dalla marcatura.
+
+⛔ **Ne discende che il presidio `vw_lotti_chiusi_con_gruppi_in_errore` oggi è
+vuoto per SOTTRAZIONE**, non per salute: non ha ancora avuto materia su cui
+essere rosso. Il §16 lo sa a metà — dice che a sorvegliarlo sono i test 9 e 10
+del pgTAP — ma in **esercizio** quella vista non ha ancora detto niente, e finché
+è così «è verde» non è una notizia.
+
+⚠️ Lo zero è stato letto **col contesto operatore**, prima di usarlo come
+argomento: `fatturazione_lotti_gruppi` ed `_esiti` non hanno RLS,
+`fatturazione_lotti` sì e nello stesso giro mostra **64** righe — quindi il
+contesto morde e quello zero è un dato, non un perimetro. ⛔ Su una tabella con
+RLS un conteggio senza contesto torna zero **e sembra un dato**.
+
+⇒ È esattamente il debito del §18, guardato da un'altra parte: **il criterio di
+chiusura del §6 chiede un giro vero, e il giro vero non c'è ancora stato.**
+
+### ⚠️ Fatto datato: la suite regge, anche dove non mocka
+
+`ZEROERP_TEST_DB_E2E=1 ./manage-test.sh` → **4528 test verdi** (2026-09-07). È il
+verso in cui il §20 aveva trovato 13 errori + 2 fallimenti, quindi vale la pena
+che il numero resti scritto con la sua data.
+
+⛔ **Ma il lavoro del §20 non è nel repo**: BE, FE, la doc di
+`api_lotto_gruppi_list` e i due documenti di collaudo sono **16 file modificati +
+2 test nuovi non committati**. Finché restano lì, «fatto» descrive una macchina,
+non il progetto — ed è la seconda cosa che tiene aperto questo brief.

@@ -3405,10 +3405,11 @@ class VenditeRepository:
     #    regola, e il giorno in cui la chiave cambia forma le due dissentono in
     #    silenzio. Il legame e' (gruppo, MESE del lotto), lo stesso della vista.
     #
-    # ⚠️ L'ESITO invece si legge dalla TABELLA, non dalle colonne `ultimo_*`
-    #    della vista: quelle dicono com'e' andato l'ULTIMO tentativo su quel
-    #    gruppo, che puo' essere di un altro lotto. Qui la domanda e' «come e'
-    #    andata in QUESTO lotto», e la risposta e' la riga di questo lotto.
+    # ⚠️ L'ESITO si legge da `vendite.fatturazione_lotti_esiti`, non dalle
+    #    colonne `ultimo_*` della vista: quelle dicono com'e' andato l'ULTIMO
+    #    tentativo su quel documento, che puo' essere di un ALTRO lotto. Qui la
+    #    domanda e' «come e' andata in QUESTO lotto», e la risposta e' la riga
+    #    di questo lotto.
     #
     # ⚠️ `commessa_id` esce solo quando ce n'e' UNA. Il gruppo di un documento
     #    non porta la commessa in chiave, quindi due commesse sullo stesso
@@ -3416,9 +3417,15 @@ class VenditeRepository:
     #    scommessa travestita da regola — la stessa forma con cui questa lista
     #    tratta gia' il sezionale (`registri_n`). `commesse_n` dice quante sono.
     #
-    # Risultato: (righe, totale). Zero righe = il lotto non dichiara un
-    #        perimetro di gruppi (giro di massa): NON e' «non ha lavorato
-    #        niente», ed e' il chiamante a doverlo raccontare cosi'.
+    # Risultato: (righe, totale). ⭐ Zero righe ha UN significato solo, dal
+    #        2026-09-07: di questo lotto non risulta nessun documento — perche'
+    #        non ha ancora lavorato, o perche' e' anteriore al tracciamento.
+    #        ⛔ Prima ne aveva due, e serviva un flag (`perimetro_dichiarato`)
+    #        per distinguerli: era la conseguenza di leggere il solo perimetro,
+    #        che i giri di massa non scrivono. Con l'unione la distinzione non
+    #        esiste piu', e il flag e' stato tolto invece che tenuto «per
+    #        sicurezza» — un campo che non discrimina piu' niente e' un campo
+    #        che qualcuno leggera' credendo che discrimini.
     def list_lotto_gruppi(
         self,
         *,
@@ -3451,7 +3458,7 @@ class VenditeRepository:
             # ⚠️ `IS NOT DISTINCT FROM` no: `NULL` non e' un valore del
             #    vocabolario, e chiederlo come filtro vorrebbe dire un secondo
             #    parametro. Chi vuole «mai tentati» non filtra.
-            gruppi_where = "AND lg.stato_esecuzione = %s"
+            gruppi_where = "AND esito.stato_esecuzione = %s"
             params.append(stato_esecuzione)
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
@@ -3473,29 +3480,84 @@ class VenditeRepository:
             #    il CHECK rinomina il valore l'ordinamento smette di funzionare
             #    senza fallire: le righe rosse tornano in fondo, e nessuno se ne
             #    accorge finche' non le cerca.
+            # 🔴 `NULLS LAST` NON E' UN DI PIU', ed e' un difetto misurato il
+            #    2026-09-07. In PostgreSQL `DESC` implica `NULLS FIRST`, e il
+            #    confronto `NULL = 'ERRORE'` vale NULL — cioe' i documenti MAI
+            #    TENTATI finivano SOPRA quelli falliti. L'ordinamento prometteva
+            #    «i falliti in cima» e metteva in cima i mai guardati: su un
+            #    lotto con quaranta documenti dichiarati, quello caduto
+            #    scompariva in fondo. ⛔ Nessun errore, solo la riga sbagliata
+            #    per prima — e con l'unione il caso e' la NORMA, perche' ogni
+            #    documento del perimetro non ancora tentato ha esito NULL.
             order_clause = (
-                "ORDER BY (stato_esecuzione = %s) DESC, "
+                "ORDER BY (stato_esecuzione = %s) DESC NULLS LAST, "
                 "riferimento ASC NULLS LAST, gruppo_key ASC"
             )
             order_params.append(STATO_ESECUZIONE_ERRORE)
 
-        sql = f"""
+        # ⭐ IL PERIMETRO DELLA LISTA VIVE IN UN POSTO SOLO, e le due query lo
+        #    CONDIVIDONO invece di riscriverlo.
+        # ⛔ Prima era copiato: la definizione dei documenti del lotto stava sia
+        #    nella query di pagina sia in quella di riserva del conteggio. Due
+        #    copie della stessa regola divergono al primo che ne tocca una, e
+        #    qui la divergenza sarebbe MUTA — il paginatore direbbe un totale
+        #    che non descrive le righe che consegna. E' la regola di api.md
+        #    §count: «si condivide il frammento FROM+WHERE, non lo si riscrive».
+        # ⚠️ `documenti` porta anche `lotto_id`: serve alla LEFT JOIN, e averlo
+        #    nella riga evita un `CROSS JOIN` sulla CTE del lotto — che
+        #    funzionava solo perche' quella CTE ha al massimo una riga, cioe'
+        #    era corretto per coincidenza e non per costruzione.
+        perimetro_sql = f"""
             WITH lotto AS (
                 SELECT l.id, l.competenza_mese
                 FROM vendite.fatturazione_lotti l
                 WHERE {lotto_where}
             ),
-            gruppi AS (
-                SELECT lg.id,
-                       lg.gruppo_key,
-                       lg.stato_esecuzione,
-                       lg.errore_codice,
-                       lg.errore_messaggio,
-                       lg.errore_quando
-                FROM vendite.fatturazione_lotti_gruppi lg
-                JOIN lotto ON lotto.id = lg.lotto_id
-                WHERE TRUE {gruppi_where}
+            documenti AS (
+                -- ⭐ L'UNIONE DI DUE FATTI INDIPENDENTI, dal 2026-09-07.
+                --    Il PERIMETRO dice che cosa il lotto doveva lavorare, e lo
+                --    dichiarano i soli giri mirati; gli ESITI dicono che cosa
+                --    ha lavorato davvero, e ci sono su entrambi i tipi di giro.
+                --    Nessuno dei due da solo risponde alla domanda della
+                --    scheda: «quali documenti, e com'e' andata».
+                -- ⛔ Il solo perimetro lascerebbe muto ogni giro di massa — il
+                --    difetto appena chiuso dal database. I soli esiti
+                --    perderebbero i documenti di un lotto mirato che non e'
+                --    ancora arrivato al passo del pull: dichiarati, e non
+                --    ancora tentati.
+                SELECT lg.lotto_id, lg.gruppo_key
+                  FROM vendite.fatturazione_lotti_gruppi lg
+                  JOIN lotto ON lotto.id = lg.lotto_id
+                UNION
+                SELECT le.lotto_id, le.gruppo_key
+                  FROM vendite.fatturazione_lotti_esiti le
+                  JOIN lotto ON lotto.id = le.lotto_id
             ),
+            gruppi AS (
+                SELECT d.gruppo_key,
+                       -- ⚠️ NULL = il documento e' nel perimetro ma nessuno ha
+                       --    ancora detto com'e' andata. Sulla tabella degli
+                       --    esiti `stato_esecuzione` e' NOT NULL apposta — la
+                       --    riga NASCE quando c'e' qualcosa da dire — quindi
+                       --    qui il non-detto e' l'ASSENZA della riga, non uno
+                       --    stato di mezzo.
+                       esito.stato_esecuzione,
+                       esito.errore_codice,
+                       esito.errore_messaggio,
+                       esito.errore_quando
+                -- ⚠️ Alias `esito` e non `le`: `le` e' gia' il ramo dell'UNION
+                --    qui sopra, e lo stesso nome per due cose nella stessa
+                --    istruzione si legge male anche quando compila.
+                FROM documenti d
+                LEFT JOIN vendite.fatturazione_lotti_esiti esito
+                       ON esito.lotto_id = d.lotto_id
+                      AND esito.gruppo_key = d.gruppo_key
+                WHERE TRUE {gruppi_where}
+            )
+        """  # noqa: S608
+
+        sql = f"""
+            {perimetro_sql},
             ref AS (
                 -- Una riga per gruppo. ⚠️ La vista ha grana
                 -- (competenza, gruppo_key, …, stadio): senza il collasso lo
@@ -3520,8 +3582,7 @@ class VenditeRepository:
                 WHERE g.gruppo_key IN (SELECT gruppo_key FROM gruppi)
                 GROUP BY g.gruppo_key
             )
-            SELECT gr.id,
-                   gr.gruppo_key,
+            SELECT gr.gruppo_key,
                    gr.stato_esecuzione,
                    gr.errore_codice,
                    gr.errore_messaggio,
@@ -3548,17 +3609,9 @@ class VenditeRepository:
         #    clamp dei cruscotti: `useListaDrawerPaginata` serve la pagina
         #    CHIESTA e non adotta nessuna pagina effettiva, quindi il conteggio
         #    e' l'unica cosa che puo' raccontare la verita'.
-        count_sql = f"""
-            WITH lotto AS (
-                SELECT l.id
-                FROM vendite.fatturazione_lotti l
-                WHERE {lotto_where}
-            )
-            SELECT COUNT(*)
-            FROM vendite.fatturazione_lotti_gruppi lg
-            JOIN lotto ON lotto.id = lg.lotto_id
-            WHERE TRUE {gruppi_where}
-        """  # noqa: S608
+        # ⭐ E conta le righe della STESSA CTE che la lista consegna: non e' un
+        #    perimetro «uguale», e' lo stesso.
+        count_sql = f"{perimetro_sql} SELECT COUNT(*) FROM gruppi"  # noqa: S608
 
         rows, total_count = fetch_paged_with_total(
             sql, params + order_params + [safe_limit, safe_offset],
@@ -3571,7 +3624,11 @@ class VenditeRepository:
         for row in rows:
             result.append(
                 {
-                    "id": int(row["id"]),
+                    # ⛔ Niente `id`: la riga non è più UNA riga di tabella, è
+                    #    l'unione di due fatti. L'identità di questa lista è il
+                    #    DOCUMENTO, e la sua chiave è `gruppo_key` — che è unica
+                    #    dentro il lotto per costruzione (lo dicono entrambi i
+                    #    vincoli `uq_*_lotto_key` e `uq_*_documento`).
                     "gruppo_key": str(row["gruppo_key"]),
                     # ⚠️ `None` = mai tentato in questo lotto, e non e' «andato
                     # bene»: e' la verita' di ogni gruppo lavorato prima che il
@@ -3602,44 +3659,6 @@ class VenditeRepository:
                 }
             )
         return result, total_count
-
-    # Scopo: «Questo lotto dichiara un perimetro di gruppi?» — la meta' che
-    #        rende onesto lo zero di `list_lotto_gruppi`.
-    #
-    # ⭐ Zero righe ha DUE significati e senza questa risposta si leggono
-    #    uguali: un giro DI MASSA non scrive nessun gruppo (nessuna riga =
-    #    NESSUNA restrizione, garanzia G1 della tabella), quindi non ha niente
-    #    da mostrare — che e' diverso da «non ha lavorato niente». Un elenco
-    #    vuoto senza questa distinzione direbbe la cosa sbagliata proprio sui
-    #    lotti piu' numerosi.
-    # ⛔ `EXISTS` e non un `count(*)`: la domanda e' «ce n'e' almeno uno», e un
-    #    numero che nessuno legge e' lavoro in piu' su ogni chiamata.
-    # ⚠️ STESSO cancello di scope della lista: senza, un lotto fuori perimetro
-    #    risponderebbe «si', ma non te li mostro».
-    def lotto_ha_perimetro_gruppi(
-        self, *, lotto_id: int, auth_user_id: int | None = None,
-    ) -> bool:
-        conditions: list[str] = ["l.id = %s"]
-        params: list[Any] = [lotto_id]
-        self._add_scope_emittente(
-            auth_user_id, "l.emittente_soggetto_ruolo_id", conditions, params
-        )
-        where_clause = " AND ".join(conditions)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM vendite.fatturazione_lotti_gruppi lg
-                    JOIN vendite.fatturazione_lotti l ON l.id = lg.lotto_id
-                    WHERE {where_clause}
-                )
-                """,  # noqa: S608
-                params,
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            return bool(row[0])
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Fattura (generazione documento / stampa, C-2)

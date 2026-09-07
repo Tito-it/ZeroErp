@@ -1150,14 +1150,15 @@ class ApiLottoGruppiList(DomainAPIView):
     bene: `fn_build_fattura_key` puo' raccogliere piu' gruppi nello stesso
     documento. Sono due domande diverse, non due viste della stessa.
 
-    ⭐ La risposta porta `perimetro_dichiarato`: un giro DI MASSA non scrive
-    nessun gruppo (nessuna riga = nessuna restrizione, garanzia G1 della
-    tabella), quindi qui non ha niente da mostrare — e senza quel flag «non ha
-    lavorato niente» e «non dichiara un perimetro» si leggerebbero uguali.
+    ⭐ La riga e' l'UNIONE di due fatti (rev DB 2026-09-07): il PERIMETRO
+    (`fatturazione_lotti_gruppi`, che dichiarano i soli giri mirati) e l'ESITO
+    (`fatturazione_lotti_esiti`, che c'e' su entrambi i tipi di giro). Nessuno
+    dei due da solo risponde: il primo lascia muti i giri di massa, il secondo
+    perde i documenti dichiarati e non ancora tentati.
 
-    🔒 Il cancello di scope e' la TESTATA: `fatturazione_lotti_gruppi` non ha
-    RLS, `fatturazione_lotti` si'. Lotto fuori perimetro -> elenco vuoto con
-    `perimetro_dichiarato = false`, mai le righe di un lotto altrui.
+    🔒 Il cancello di scope e' la TESTATA: le due tabelle figlie non hanno RLS,
+    `vendite.fatturazione_lotti` si'. Lotto fuori perimetro -> elenco vuoto,
+    mai le righe di un lotto altrui.
     """
 
     area_funzionale = "vendite"
@@ -1194,7 +1195,6 @@ class ApiLottoGruppiList(DomainAPIView):
                             "page_size": serializers.IntegerField(),
                             "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
-                            "perimetro_dichiarato": serializers.BooleanField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),

@@ -252,7 +252,15 @@ class LottoGruppoRow(TypedDict):
     # ⚠️ Le due NON sono in corrispondenza 1:1 nemmeno quando tutto va bene:
     # `fn_build_fattura_key` puo' raccogliere piu' gruppi nello stesso
     # documento. Sono due domande diverse, non due viste della stessa.
-    id: int
+    #
+    # ⭐ LA RIGA E' L'UNIONE DI DUE FATTI (rev 2026-09-07): il PERIMETRO
+    # (`fatturazione_lotti_gruppi` — che cosa il lotto doveva lavorare, e lo
+    # dichiarano i soli giri mirati) e l'ESITO (`fatturazione_lotti_esiti` —
+    # com'e' andata, e c'e' su entrambi i tipi di giro). Nessuno dei due da solo
+    # risponde: il primo lascia muti i giri di massa, il secondo perde i
+    # documenti dichiarati e non ancora tentati.
+    # ⛔ Per questo NON c'e' un `id`: la riga non e' una riga di tabella. La
+    # chiave e' il DOCUMENTO dentro il lotto, cioe' `gruppo_key`.
     # La chiave di dominio del gruppo, `<sorgente>:<uid>` oppure
     # `MAN:<commessa>`. E' anche il RIPIEGO a video quando l'identita' non si
     # risolve piu': una riga senza nome e' peggio di una riga con la chiave.
@@ -261,9 +269,12 @@ class LottoGruppoRow(TypedDict):
     # identico a quello delle fatture del lotto (D-2 del brief): due colonne
     # che rispondono alla stessa domanda a due livelli non possono parlare due
     # lingue.
-    # ⚠️ `None` = «nessuno l'ha detto» — il gruppo non e' stato tentato in
-    # questo lotto, oppure il giro e' anteriore al 2026-09-06. NON e' «andato
+    # ⚠️ `None` = «nessuno l'ha detto» — il documento e' nel perimetro ma non e'
+    # stato tentato, oppure il giro e' anteriore al tracciamento. NON e' «andato
     # bene», e chi rende deve tenerli distinti.
+    # ⭐ Sulla tabella degli esiti la colonna e' NOT NULL apposta: la riga NASCE
+    # quando qualcuno lo dice, quindi il non-detto e' l'ASSENZA della riga.
+    # Il `None` qui viene dalla LEFT JOIN, non da uno stato di mezzo.
     stato_esecuzione: str | None
     errore_codice: str | None
     errore_messaggio: str | None

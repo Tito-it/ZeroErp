@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 847, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 847, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -876,6 +876,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROMO_RETROATTIVA": "DATO_ERRATO",
     "E_PROMO_SCADUTA_IMMUTABILE": "CONFLITTO_STATO",
     "E_PULL_COMMESSA": "DATO_ERRATO",
+    # Ritirato il 2026-09-07. Fermava lo step quando fallivano TUTTE le commesse di un giro di fatturazione, ma il rollback che si portava dietro cancellava anche le marcature d'esito appena scritte: il documento fallito spariva dal lotto e tornava a sembrare fatturabile in competenza, ed e' il difetto che ha aperto il cantiere (caso LTF-0009578 / ORD0036005, 2026-09-06). Dal 2026-09-07 il ramo «tutte fallite» si comporta come il parziale: l'esito si scrive in vendite.fatturazione_lotti_esiti e lo step si ferma SENZA sollevare, cosi' la contraddizione «lotto COMPLETATO con documenti in ERRORE» resta visibile al presidio vendite.vw_lotti_chiusi_con_gruppi_in_errore invece di sparire dentro un rollback. Non ha un codice sostituto, e non e' una dimenticanza: il caso non e' piu' un errore da sollevare, e' un esito da registrare. Non si cancella perche' dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e le righe gia' scritte sotto questo codice devono restare leggibili — e' il pattern obsoleto_dal, non attivo=false. Brief: brief-db-esito-gruppo-lotto P-6.
+    # ⚠️ RITIRATO il 2026-09-07
     "E_PULL_COMMESSA_ALL_FAILED": "DATO_ERRATO",
     "E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO": "DATO_ERRATO",
     "E_PUSH_SORGENTE_ID_INVALIDO": "DATO_ERRATO",
@@ -1376,6 +1378,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_PIPELINE_MARK_ERROR",
         "E_PREV_GIA_IN_COMMESSA",
         "E_PREZZO_LISTINO_NON_TROVATO",
+        "E_PULL_COMMESSA_ALL_FAILED",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",
         "ERRORE_PARAMETRI",
