@@ -61,11 +61,44 @@ GET restituisce la pratica dal repository. PATCH delega a `pratiche_service.aggi
 
 ### Descrittore documento sorgente `doc_*` (2026-07-02, proiezione V10)
 
-Il payload (GET e lista) espone i display fields `doc_*` del documento **ROOT**
-della pratica (`pratiche_sorgenti.ruolo_link='ROOT'`): `doc_risolto`,
-`doc_stato_codice_interno`, `doc_stato_descrizione`, `doc_fase`, `doc_esito`,
-`doc_terminale`, `doc_sorgente_descrizione`. Semantica e fonte in
-`api_percorso.md` (proiezione read-time via `script.vw_stato_sorgente`).
+Il payload (GET e lista) espone i display fields `doc_*` del documento sorgente
+della pratica: `doc_risolto`, `doc_stato_codice_interno`,
+`doc_stato_descrizione`, `doc_fase`, `doc_esito`, `doc_terminale`,
+`doc_sorgente_descrizione`. Semantica dei valori in `api_percorso.md`
+(proiezione read-time, nessun mirror: il documento resta l'unica verità).
+
+⛔ **Non è il documento `ROOT`, e questa riga lo diceva.** L'àncora a livello
+pratica è `script.vw_pratica_doc_sorgente` (roll-out offerte/ordini/contratti,
+D3b): **una riga per pratica**, scelta fra *tutti* i link — `ROOT` **e**
+`COLLEGATO` — con l'ordine `risolto` → **non-terminale** → `ROOT` → link più
+recente. ⇒ Su una pratica evoluta preventivo→ordine il `ROOT` è spesso già
+terminale (`EVASO`) e **vince l'ordine `COLLEGATO` vivo**: leggere il solo `ROOT`
+avrebbe mostrato uno stato morto. Il `ROOT` è il **terzo** criterio, cioè un
+tiebreak.
+
+🔴 **E dal 2026-09-07 i `doc_*` dipendono da CHI LEGGE.** La vista è
+`security_invoker` (changeSet `20260907-04`): il descrittore di un documento
+**fuori dal perimetro emittente** di chi chiama non è leggibile, quindi quel link
+risulta `doc_risolto = false` con i `doc_stato_*` a `null`.
+⭐ **E può cambiare il documento scelto**, non solo nasconderne i campi:
+l'ordinamento è proprio su `risolto` e `terminale`. Un `ROOT` fuori perimetro
+perde contro un `COLLEGATO` visibile — che è corretto, non si sceglie un'àncora
+guardando dati che non si possono vedere, ma è un **cambio di comportamento**.
+⚠️ Su dati coerenti non si vede nulla: pratica e documenti passano dallo stesso
+`fn_scope_ef_whitelist`. Ma il modello la divergenza **la ammette**
+(`pratiche_sorgenti` non ha nessun vincolo che leghi la sorgente all'emittente
+della pratica, e `sorgente_uid` è polimorfa senza FK).
+Presidio: `backend/scripts/tests/smoke-pratica-doc-sorgente-cross-emittente.py`,
+che costruisce il caso invece di aspettarlo.
+
+⚠️ **Il ramo PER-FLUSSO è un'altra cosa e non è cambiato**: `api_percorso.md` e
+`api_coda_lavoro.md` ancorano per `flusso_id` con la regola ridotta
+(`ROOT` → più recente) dentro un solo flusso. Due àncore, due domande diverse.
+
+⚠️ **`doc_*` tutti `null` non vuol dire «pratica fuori perimetro»**: significa
+che la pratica non ha link. Fuori perimetro la pratica **non si vede affatto** —
+il `404` nasce da `pratiche.pratiche`, che ha la RLS; la vista, che
+`pratiche.pratiche` non la legge, non c'entra.
 
 ## Regole
 

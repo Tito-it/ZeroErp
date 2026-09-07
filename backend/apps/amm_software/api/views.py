@@ -360,12 +360,16 @@ class ProcessiListView(AdminAPIView):
 
 
 class ProcessiPresidiView(AdminAPIView):
-    """GET stato dei SEI presidi del cantiere «nessun processo senza operatore».
+    """GET stato dei presidi del cantiere «nessun processo senza operatore».
 
     ⭐ La natura di ogni presidio — «deve restare vuota» oppure «registro di
     debito che deve calare» — arriva dal COMMENTO della vista a database, non
     da un elenco nel backend: e' il team DB a dichiararla, e a dirla e' una
     sede sola.
+    ⚠️ QUANTI SIANO non si scrive qui, e non e' pignoleria: fino al 2026-09-07
+    questa riga diceva «SEI», e alla stessa data `PRESIDI_PROCESSI` ne elencava
+    dieci. Un numero copiato accanto a un elenco che cresce invecchia in
+    silenzio — l'elenco e' la sede, e si legge da li'.
     """
 
     @extend_schema(

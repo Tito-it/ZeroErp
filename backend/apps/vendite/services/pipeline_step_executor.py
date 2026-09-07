@@ -1147,10 +1147,11 @@ class PipelineStepExecutor:
     #            rilancio le SALTAVA per sempre, in silenzio. Era il difetto che
     #            questo handler condivideva coi due gemelli prima che loro lo
     #            correggessero.
-    #          - tutte fallite             → solleva `E_PULL_COMMESSA_ALL_FAILED`
-    #            e ferma lo step: proseguire costruirebbe un lotto VUOTO, e li'
-    #            fermarsi e' la cosa giusta (a differenza dei gemelli, dove il DB
-    #            applica D-Q da solo e il caso «tutte rotte» non esiste).
+    #          - tutte fallite             → `TaskEsitoParziale` come sopra, dal
+    #            2026-09-07 (P-5). ⛔ Prima SOLLEVAVA, e il rollback si portava
+    #            via i segni sui documenti caduti: il caso peggiore era l'unico
+    #            senza traccia. A fermare la catena non serve l'eccezione — ci
+    #            pensa il blocco per segnalazioni critiche al giro successivo.
     def _handle_pull_attivita_da_commessa_task(
         self,
         *,
@@ -1243,33 +1244,23 @@ class PipelineStepExecutor:
             ),
         )
 
-        # ⭐ L'ESITO SI APPENDE AI DOCUMENTI, e si fa QUI: prima dei tre rami,
-        #    non dentro ciascuno.
-        #
-        # ⛔ Le uscite di questo handler sono TRE — tutto ok, tutte fallite (che
-        #    SOLLEVA), parziale — e la marcatura serve in tutte e tre. Metterla
-        #    dentro i rami vorrebbe dire scriverla tre volte e dimenticarla una:
-        #    il candidato naturale e' il ramo che solleva, cioe' il caso
-        #    PEGGIORE. Sarebbe il paradosso classico — funziona quando va male a
-        #    meta' e tace quando va male del tutto.
+        # ⭐ L'ESITO SI APPENDE AI DOCUMENTI, e si fa QUI: prima dei rami, non
+        #    dentro ciascuno. Le uscite sono DUE — tutto riuscito e con errori —
+        #    e la marcatura serve in entrambe: scriverla nei rami vorrebbe dire
+        #    scriverla due volte e dimenticarla una.
         # ⚠️ E il `dry_run` non arriva mai fin qui: esce molto prima con `None`.
         #
-        # 🔴 LIMITE DICHIARATO, MISURATO IL 2026-09-06. Nel ramo «TUTTE fallite»
-        #    la marcatura NON sopravvive: `run_pipeline` tiene un
-        #    `transaction.atomic()` attorno all'intero ciclo degli step, e
-        #    `fn_segna_esito_gruppo_lotto` e' una funzione plpgsql normale —
-        #    scrive nella transazione di chi la chiama. Il `raise` di
-        #    `E_PULL_COMMESSA_ALL_FAILED` fa rollback e si porta via i segni.
-        #    ⭐ Provato sul database vero: marcati=1, poi il raise, poi lo stato
-        #    torna `NULL`.
-        # ⇒ Funziona sui due rami che NON sollevano (tutto ok, parziale — che e'
-        #    il caso di `LTF-0009578`, quello per cui il cantiere e' nato).
-        #    Sul terzo serve una scrittura che sopravviva al rollback: e' la
-        #    stessa forma di `maintenance.fn_job_run_log_failure`, ed e' del DB.
-        #    Richiesta in brief-db-esito-gruppo-lotto §11.
-        # ⛔ La chiamata resta QUI e non si sposta nei rami: il giorno in cui la
-        #    scrittura diventa durevole, il terzo ramo e' gia' coperto senza
-        #    toccare niente.
+        # ✅ IL LIMITE DEL 2026-09-06 NON C'E' PIU', e sono cadute due cose
+        #    insieme. Allora le uscite erano TRE e la terza SOLLEVAVA: il
+        #    `transaction.atomic()` che `run_pipeline` tiene attorno al ciclo
+        #    degli step faceva rollback e si portava via i segni appena scritti
+        #    — misurato, non supposto. ⇒ Il ramo che sollevava e' stato tolto
+        #    (P-5), quindi non c'e' piu' niente che annulli questa scrittura.
+        # ⭐ E la casa dell'esito e' cambiata sotto (DB, 2026-09-07): la riga si
+        #    CREA in `vendite.fatturazione_lotti_esiti` invece di aggiornare una
+        #    colonna del perimetro. Percio' la stessa identica chiamata funziona
+        #    anche sui giri di massa, che un perimetro non lo dichiarano: prima
+        #    li' tornava `0` e il documento restava muto.
         self._marca_esito_gruppi(lotto_id, commessa_ids, esito)
 
         # ⭐ Giro riuscito: il diario porta comunque i contatori. La promessa
@@ -1286,17 +1277,36 @@ class PipelineStepExecutor:
                 }
             )
 
-        # Se tutte le commesse falliscono, il task e` fallito.
-        if esito.tutti_falliti:
-            errors = [_messaggio_pull(e.item, e.messaggio) for e in esito.errori]
-            ErrorManager.raise_error(
-                code="E_PULL_COMMESSA_ALL_FAILED",
-                message="Emissione commesse fallita per tutte le commesse.",
-                detail=f"Errori: {esito.falliti}/{esito.totale}",
-                context={"lotto_id": lotto_id, "errors": errors[:5]},
-                function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
-                log_to_db=True,
-            )
+        # ⭐ UN RAMO SOLO PER TUTTI I FALLIMENTI (P-5, decisione di Tid
+        #    2026-09-06: «trattiamoli tutti come quando ne capita 2 su 3»).
+        #
+        # 🔴 QUI C'ERA UN `raise E_PULL_COMMESSA_ALL_FAILED` quando fallivano
+        #    TUTTE, e sollevare faceva rollback dell'intero step: si portava via
+        #    anche i segni appena scritti sui documenti caduti. Il caso PEGGIORE
+        #    era l'unico che non lasciava traccia — il paradosso classico:
+        #    funziona quando va male a meta' e tace quando va male del tutto.
+        #    ⚠️ Ed era gia' il difetto diagnosticato due righe sopra
+        #    `TaskEsitoParziale`, un ramo piu' in la'.
+        #
+        # ⭐ La differenza fra i due casi era UN NUMERO, e adesso non c'e' piu'
+        #    nessun ramo: il comportamento del «tutte fallite» non va dimostrato
+        #    a parte, perche' e' lo STESSO CODICE del parziale, che e' in
+        #    esercizio da agosto.
+        #
+        # ⛔ E LA CATENA SI FERMA LO STESSO — questa era la domanda vera, non il
+        #    rollback. Il passo scrive una segnalazione CRITICA per ogni commessa
+        #    caduta *prima* di arrivare qui (`_PullCommesseRunLogger.item_failed`,
+        #    `severity="C"`), quindi al giro successivo `evaluate_lotto_status`
+        #    risponde `blocks_next_step` e `run_pipeline` rifiuta di avanzare con
+        #    `E_PIPELINE_LOTTO_CRITICAL`; il driver esce con `BLOCCATO_CRITICITA`
+        #    e il lotto va in ERRORE. Fermarsi e strappare gli appunti erano due
+        #    cose che faceva lo stesso gesto: adesso si ferma TENENDO.
+        # ⚠️ Il rilancio dello STESSO step resta ammesso: e' la via d'uscita —
+        #    correggo la commessa, rieseguo, il task ritira le sue segnalazioni.
+        #
+        # 📌 `E_PULL_COMMESSA_ALL_FAILED` non lo solleva piu' nessuno: la
+        #    deprecazione a catalogo (`obsoleto_dal`) e' P-6, e tocca al DB.
+        #
         # Rifiuto PARZIALE: il giro e' finito, alcune commesse no.
         # Codice riusato e non sintetico: `E_PULL_COMMESSA` e' gia' il motivo
         # per-commessa scritto qui sopra sui log di lotto — e' il criterio dello

@@ -158,30 +158,15 @@ const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir
 //
 // Nessun ordinamento iniziale dichiarato: il default lo decide il backend e
 // mette in cima i FALLITI, che è la domanda con cui questa scheda si apre.
-// Dichiarata PRIMA del fetcher che la scrive: l'ordine di dichiarazione in un
-// `<script setup>` è l'ordine di esecuzione, e una ref usata da un blocco
-// dichiarato più in alto è una TDZ silenziosa (memoria
-// feedback_vue_watch_immediate_tdz).
-// ⚠️ TRE stati, non due: `null` = «non lo sappiamo ancora» (o la fetch è
-// fallita), `false` = il lotto NON dichiara un perimetro, `true` = lo dichiara.
-// Con un booleano, una fetch fallita si sarebbe letta come «giro di massa» e la
-// scheda avrebbe AFFERMATO una cosa falsa — la stessa regola dell'empty-state
-// onesto: un vuoto positivo si dice solo dopo una risposta ricevuta.
-const perimetroGruppiDichiarato = ref(null)
+// ⛔ NIENTE FLAG «questo lotto dichiara un perimetro», e la sua sparizione è
+//    il segno che il database ha risolto il problema invece di spostarlo
+//    (rev 2026-09-07). Serviva perché la lista leggeva il solo PERIMETRO, che i
+//    giri di massa non scrivono: zero righe voleva dire due cose. Ora legge
+//    anche gli ESITI, che ci sono su entrambi i tipi di giro, e zero righe ne
+//    vuol dire una sola.
 const listaGruppi = useListaDrawerPaginata(
-  async ({ page, pageSize, sortBy, sortDir }) => {
-    const res = await listLottoGruppi(props.lottoId, {
-      page, pageSize, orderBy: sortBy, orderDir: sortDir,
-    })
-    // ⭐ ZERO RIGHE HA DUE SIGNIFICATI e senza questo flag si leggono uguali: un
-    // giro DI MASSA non dichiara nessun perimetro di gruppi (nessuna riga =
-    // nessuna restrizione, garanzia G1 della tabella), quindi qui non ha niente
-    // da mostrare — che è diverso da «non ha lavorato niente».
-    // Letto QUI e non nel composable: è un campo extra di questo endpoint, e il
-    // BB delle liste in drawer non deve sapere che questa è speciale.
-    perimetroGruppiDichiarato.value = res?.data?.data?.perimetro_dichiarato ?? null
-    return res
-  },
+  ({ page, pageSize, sortBy, sortDir }) =>
+    listLottoGruppi(props.lottoId, { page, pageSize, orderBy: sortBy, orderDir: sortDir }),
 )
 
 // ⭐ Ordinamento iniziale «Fine» DESC: la diagnostica si legge dall'ULTIMA cosa
@@ -608,11 +593,6 @@ watch(
     segnalazioniFuoriJob.value = 0
     listaDocumenti.reset()
     listaGruppi.reset()
-    // ⚠️ Si azzera anche il flag, non solo le righe: senza, il drawer aprirebbe
-    // su un lotto DI MASSA mostrando il messaggio del lotto precedente — o, il
-    // caso peggiore, l'empty-state «nessun documento» su un lotto che un
-    // perimetro non lo dichiara affatto.
-    perimetroGruppiDichiarato.value = null
     listaTask.reset()
     listaSegnalazioni.reset()
     // Riapertura = si riparte dai DOCUMENTI, sempre. Senza questo reset il
@@ -1003,13 +983,10 @@ function fatturaNumero(row) {
                  dimensione della pagina spacciata per quantita'. -->
             <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
             <!-- ⭐ I documenti PRESI IN CARICO — quelli che una fattura non sono
-                 mai diventati compresi. ⚠️ Il conteggio compare solo quando il
-                 lotto dichiara un perimetro: un «(0)» su un giro di massa
-                 direbbe «non ha lavorato niente», che è falso. -->
-            <Tab value="gruppi">
-              {{ t('vendite.lotti.tab_gruppi') }}
-              <template v-if="perimetroGruppiDichiarato === true"> ({{ listaGruppi.totale.value }})</template>
-            </Tab>
+                 mai diventati compresi. Il conteggio è quello del server, come
+                 sulle altre schede: dal 2026-09-07 vale su entrambi i tipi di
+                 giro, quindi non ha più bisogno di essere condizionato. -->
+            <Tab value="gruppi">{{ t('vendite.lotti.tab_gruppi') }} ({{ listaGruppi.totale.value }})</Tab>
             <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
             <Tab value="segnalazioni">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
             <!-- ⭐ La quarta scheda risponde a una domanda che le altre tre non
@@ -1113,12 +1090,7 @@ function fatturaNumero(row) {
             </TabPanel>
 
             <TabPanel value="gruppi">
-              <!-- ⚠️ La toolbar segue la LISTA, non la scheda: senza perimetro
-                   la lista non è montata, e «Personalizza colonne»/«Esporta»
-                   agirebbero su un riferimento nullo — pulsanti che si possono
-                   premere e non fanno niente, che è peggio di pulsanti
-                   assenti. -->
-              <div v-if="perimetroGruppiDichiarato !== false" class="app-page-toolbar">
+              <div class="app-page-toolbar">
                 <span class="app-page-filters" />
                 <PageActionsBar :actions="barraGruppi">
                   <template #suffix>
@@ -1126,27 +1098,10 @@ function fatturaNumero(row) {
                   </template>
                 </PageActionsBar>
               </div>
-              <!-- ⭐ IL LOTTO DI MASSA NON DICHIARA UN PERIMETRO, e va DETTO.
-                   Un elenco vuoto senza questa frase si legge come «questo
-                   lotto non ha lavorato niente», che è il contrario del vero:
-                   un giro schedulato prende tutto ciò che trova, e l'assenza di
-                   righe È il criterio (garanzia G1 di
-                   `fatturazione_lotti_gruppi`). ⛔ Prima della lista e non al
-                   suo posto: se un domani il perimetro arrivasse anche ai giri
-                   di massa, la lista è già lì. -->
-              <Message
-                v-if="perimetroGruppiDichiarato === false && !tabLoading"
-                severity="info"
-                :closable="false"
-                class="app-mb-1"
-              >
-                {{ t('vendite.lotti.gruppi_senza_perimetro') }}
-              </Message>
               <ListaConfigurabile
-                v-else
                 ref="listaGruppiRef"
                 codice="vendite.lotto_gruppi"
-                data-key="id"
+                data-key="gruppo_key"
                 :rows="listaGruppi.righe.value"
                 :total="listaGruppi.totale.value"
                 :loading="tabLoading || listaGruppi.loading.value"
@@ -1212,8 +1167,18 @@ function fatturaNumero(row) {
                 <template #actions="{ data, compact }">
                   <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
                 </template>
+                <!-- ⚠️ Empty-state ONESTO, e la frase è cambiata col modello:
+                     zero righe non vuol più dire «giro di massa, qui non si può
+                     sapere» — vuol dire che di questo lotto non risulta nessun
+                     documento. Vero sia per un lotto che non ha ancora
+                     lavorato, sia per uno anteriore al tracciamento: non si
+                     afferma che non abbia fatto niente, e si dice dove
+                     guardare. -->
                 <template #empty>
-                  <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessun_gruppo') }}</p></div>
+                  <div class="app-empty-state">
+                    <i class="pi pi-inbox" />
+                    <p>{{ t('vendite.lotti.nessun_gruppo') }}</p>
+                  </div>
                 </template>
               </ListaConfigurabile>
             </TabPanel>

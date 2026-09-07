@@ -6,9 +6,15 @@
 #        (`STATI_ESECUZIONE_LOTTO`) deve coincidere con i `CHECK` che lo
 #        possiedono — su ENTRAMBI i livelli.
 #
+# ⚠️ Rev 2026-09-07: l'esito del documento ha cambiato casa. Stava sulle colonne
+#    del PERIMETRO (`fatturazione_lotti_gruppi`), che i giri di massa non
+#    scrivono; ora vive in `fatturazione_lotti_esiti`, dove la riga NASCE quando
+#    c'e' qualcosa da dire. ⭐ Il vocabolario e' rimasto identico, e questo
+#    cancello e' il posto che lo dimostra invece di darlo per fatto.
+#
 # ⛔ PERCHE' DUE TABELLE E NON UNA. La D-2 di `brief-db-esito-gruppo-lotto`
 #    decide che l'esito di un DOCUMENTO PRESO IN CARICO
-#    (`fatturazione_lotti_gruppi`) e quello della FATTURA prodotta
+#    (`fatturazione_lotti_esiti`) e quello della FATTURA prodotta
 #    (`fatturazione_lotti_fatture`) parlano la stessa lingua: «due colonne che
 #    rispondono alla stessa domanda a due livelli non possono parlare due
 #    lingue». Finora quella decisione viveva in un documento; qui diventa un
@@ -20,7 +26,9 @@
 #        (400 su una domanda legittima);
 #      · in SCRITTURA `_marca_esito_gruppi` scrive un valore che il CHECK
 #        rifiuta — e lo fa dentro un gestore d'eccezione, cioe' proprio dove
-#        l'errore vero verrebbe coperto;
+#        l'errore vero verrebbe coperto. ⚠️ E ora la riga si CREA: un valore
+#        fuori vocabolario non fallisce piu' un `UPDATE` su zero righe, fa
+#        fallire un `INSERT`;
 #      · nell'ORDINAMENTO di `list_lotto_gruppi` il confronto «e' un errore?»
 #        smette di agganciare, le righe rosse tornano in fondo e non fallisce
 #        niente.
@@ -63,7 +71,7 @@ class EsitoEsecuzioneLottoGuardrail(TestCase):
     #    condiviso proprio perche' una regex scritta per un caso e' cieca
     #    sull'altro.
     _PER_TABELLA = {
-        "vendite.fatturazione_lotti_gruppi": "chk_lotti_gruppi_stato_esecuzione",
+        "vendite.fatturazione_lotti_esiti": "chk_fatturazione_lotti_esiti_stato",
         "vendite.fatturazione_lotti_fatture": "chk_fatturazione_lf_stato_esecuzione",
     }
 

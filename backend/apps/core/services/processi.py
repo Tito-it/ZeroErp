@@ -27,8 +27,24 @@ PROCESSO_RUN_FATTURAZIONE_BATCH = "run_fatturazione_batch"
 PROCESSO_DRAINA_CODA_STAMPA = "draina_coda_stampa"
 PROCESSO_DRAINA_CODA_LAVORI = "draina_coda_lavori"
 PROCESSO_SEND_PENDING_EMAILS = "send_pending_emails"
-PROCESSO_SYNC_AUTH_USER_ACTIVE = "sync_auth_user_active"
 PROCESSO_LISTEN_CAMBIO_REPARTO = "listen_cambio_reparto"
+
+# ⛔ `sync_auth_user_active` NON sta piu' qui: la riga 23 di `dbops.processi` e'
+#    RITIRATA (`obsoleto_dal = 2026-09-07`) a favore del gemello pgAgent
+#    `sync_auth_user_expired_daily` (id 11), che fa lo stesso lavoro da dentro
+#    il database ed e' l'unico dei due che il confronto a due fonti riesca a
+#    vedere. Il management command sopravvive come attrezzo a mano, e proprio
+#    per questo NON si registra piu' sul giornale: un run sotto un processo
+#    ritirato e' un attore che il panorama non elenca.
+#    ⭐ E non e' solo igiene di catalogo. La LATERAL di
+#    `dbops.vw_processi_programmazione` legge il giornale con
+#    `processo_codice = codice OR jobname = codice`, SENZA filtrare `origine`:
+#    una corsa a mano registrata sotto il gemello sposterebbe avanti
+#    `giornale_ultima_corsa` e SPEGNEREBBE il confronto GIRA_E_NON_REGISTRA su
+#    quel job — cioe' il rilevatore di R-12, che su `apply_storicizza_weekly` ha
+#    lavorato indisturbato per sei mesi e mezzo.
+#    Decisione di Tid, 2026-09-07.
+#    Brief: work-in-progress/brief-db-sveglia-dei-processi.md §8.5 e §9.5-bis.
 
 # ⚠️ `chiusura_scadenze_daily` (canale CODA_AUTOMATICA) NON sta qui, di
 #    proposito: il backend non lo avvia e non lo accoda — lo sveglia pgAgent con

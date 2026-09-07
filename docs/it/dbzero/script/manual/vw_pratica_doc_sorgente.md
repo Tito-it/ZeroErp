@@ -114,7 +114,7 @@ un altro, e lì il comportamento cambia — che è esattamente il caso per cui i
 Presidio: `db/pgtap/rls/test-rls-viste-security-invoker.sql` — non elenca più le viste per
 nome, chiede *«esiste una vista che tocca dati protetti, anche attraverso altre viste, e non
 ha il flag?»*. È il criterio che ha trovato questa. Brief:
-`brief-db-viste-security-invoker-criterio.md`.
+`work-done/brief-db-viste-security-invoker-criterio.md` (chiuso il 2026-09-07).
 
 ---
 

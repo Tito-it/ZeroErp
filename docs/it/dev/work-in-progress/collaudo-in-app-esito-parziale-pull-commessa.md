@@ -166,8 +166,8 @@ mano.** La riga `ROOT` in `commesse_sorgenti` la scrive
 `ROOT`, le successive `COLLEGATO`. Una commessa creata a mano non ha **nessuna**
 riga sorgente — e allora non è solo che il guasto non ha niente da guastare:
 **anche le commesse sane fallirebbero** con lo stesso `E_VALORE_MANCANTE`, e la
-prova 1 degraderebbe nella prova 5 (`E_PULL_COMMESSA_ALL_FAILED`) senza che tu
-abbia toccato niente.
+prova 1 degraderebbe nella prova 5 (il caso tutto-rosso) senza che tu abbia
+toccato niente.
 
 ⚠️ **E non bastano tre documenti: servono tre CLIENTI diversi.**
 `vendite.fn_get_or_create_commessa` **riusa** la commessa esistente quando
@@ -406,9 +406,11 @@ tornato. Un parziale chiuso in COMPLETATO significa che al rilancio il resolver
 dirà `SKIP` e la commessa rimasta indietro **non verrà mai più ritentata**.
 Fermati e segnala — è la cosa che questo cantiere esisteva per correggere.
 
-⚠️ **Se il giro si è fermato con un errore rosso**: guarda il codice. Se è
-`E_PULL_COMMESSA_ALL_FAILED`, il perimetro conteneva **una sola** commessa e hai
-fatto la prova 5 per sbaglio: rimetti la ROOT, allarga il perimetro, ricomincia.
+⚠️ **Se il giro si è fermato senza nessuna commessa passata**: il perimetro
+conteneva **una sola** commessa e hai fatto la prova 5 per sbaglio — rimetti la
+ROOT, allarga il perimetro, ricomincia. ⛔ Dal 2026-09-07 non lo riconosci più
+da un codice d'errore dedicato: il ramo tutto-rosso non solleva, e il segnale è
+che gli `ok` siano **zero su N**.
 
 ### 2 · ⭐ Le commesse **sane** sono passate — e sono RIMASTE
 
@@ -489,7 +491,18 @@ step ancora una volta.
 La funzione mappa `segment_key` in UUID deterministico proprio per evitarlo —
 segnala con l'id della commessa.
 
-### 5 · Il caso **tutto-rosso** — e lo step si ferma
+### 5 · Il caso **tutto-rosso** — la catena si ferma, ma i segni restano
+
+> ⚠️ **QUESTA PROVA È CAMBIATA IL 2026-09-07 (P-5).** Prima lo step *sollevava*
+> `E_PULL_COMMESSA_ALL_FAILED`, e quel `raise` faceva rollback: si portava via
+> anche le marcature dei documenti caduti, appena scritte. Il caso peggiore era
+> l'unico che non lasciava traccia.
+> ⇒ Adesso il ramo «tutte fallite» **si comporta come il parziale**: nessuna
+> eccezione, l'esito si scrive, e a fermare la catena ci pensa il blocco per
+> segnalazioni critiche. *Fermarsi* e *strappare gli appunti* erano due cose che
+> faceva lo stesso gesto.
+> ⛔ Il codice è **ritirato** (`obsoleto_dal = 2026-09-07`): se lo vedi, qualcosa
+> è tornato indietro.
 
 > Ultima, perché lascia lo step fermo e va poi ripulita.
 
@@ -497,14 +510,25 @@ Applica il guasto a **tutte** le commesse del perimetro (se sono poche; se sono
 molte, restringi il perimetro con l'emissione mirata a un gruppo solo, poi
 guasta quella commessa). Lancia il giro.
 
-- [ ] lo step **si ferma**, e non prosegue a costruire un lotto vuoto;
-- [ ] l'errore è **`E_PULL_COMMESSA_ALL_FAILED`**;
-- [ ] il messaggio dice **quante** su quante (`Errori: N/N`) e l'esito riporta i
-      primi motivi per-commessa.
+- [ ] lo step **non solleva**: il giro finisce, e finisce male;
+- [ ] il `task_run` si chiude in **ERRORE** con **`E_PULL_COMMESSA`** — lo stesso
+      codice del parziale, perché i due rami adesso sono lo stesso codice;
+- [ ] ⭐ nella scheda **«Presi in carico»** del lotto ci sono **tutti** i
+      documenti, ognuno in `ERRORE` col suo motivo. È la prova che i segni sono
+      sopravvissuti: prima di oggi qui non c'era niente;
+- [ ] il lotto va in **ERRORE** e la catena **non avanza**: il giro si ferma con
+      `BLOCCATO_CRITICITA` / `E_PIPELINE_LOTTO_CRITICAL`;
+- [ ] il rilancio dello **stesso** step resta ammesso — è la via d'uscita:
+      correggi la commessa, rilancia, il task ritira le sue segnalazioni.
 
-⚠️ **Se invece lo step prosegue e nasce un lotto senza documenti**: è il ramo
-«tutte fallite» degradato a parziale. Un lotto vuoto che avanza è peggio di uno
-step fermo — segnala.
+⛔ **Il segnale d'allarme si è spostato, e va letto al contrario di prima.** Non
+è più «lo step prosegue»: adesso il giro finisce senza eccezione *per progetto*.
+Il difetto sarebbe che il lotto **AVANZI allo step successivo** e nasca un
+documento vuoto. Se succede, il blocco per segnalazioni critiche non ha
+funzionato — segnala.
+⚠️ E se la scheda «Presi in carico» fosse **vuota**, il difetto è l'altro: la
+marcatura non è arrivata a nessun documento. Nei log cerca
+`pull_commesse.esito_non_appeso`.
 
 **Poi ripristina tutto** e verifica di essere tornato al punto di partenza:
 
@@ -543,7 +567,7 @@ SELECT c.id
 | 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint) | no     |       |      |
 | 3   | 🔴 Il rilancio **RITENTA**, non salta                      | **sì** |       |      |
 | 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni  | **sì** |       |      |
-| 5   | Tutto-rosso → `E_PULL_COMMESSA_ALL_FAILED`, step fermo    | **sì** |       |      |
+| 5   | Tutto-rosso → nessuna eccezione, segni scritti, catena ferma | **sì** |       |      |
 
 ### Che cosa ha trovato il collaudo
 

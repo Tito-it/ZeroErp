@@ -2889,8 +2889,7 @@
       "lotto_in_giro_tooltip": "Numerazione di questo lotto già avviata e in lavorazione: attendi l'esito, la rotellina sparisce da sola quando il giro è finito.",
       "numera_mese_atteso": "Un giro di numerazione è ancora in corso. L'atto sul MESE prende tutti i lotti, compresi quelli già in volo: attendi che finisca. Nel frattempo puoi numerare altre selezioni.",
       "tab_gruppi": "Presi in carico",
-      "gruppi_senza_perimetro": "Questo lotto non dichiara un perimetro di documenti: è un giro di massa, e lavora tutto ciò che trova. I documenti prodotti sono nella scheda «Documenti».",
-      "nessun_gruppo": "Nessun documento preso in carico",
+      "nessun_gruppo": "Di questo lotto non risulta nessun documento. I documenti prodotti sono nella scheda «Documenti».",
       "gruppo_errore_titolo": "Perché questo documento non è passato",
       "gruppo_commesse_multi": "{n} commesse",
       "gruppo_commesse_multi_tooltip": "Questo documento alimenta più di una commessa: non ce n’è una sola da aprire."

@@ -8,8 +8,10 @@ ciascuno — **compresi quelli che una fattura non sono mai diventati**.
 ## Contesto
 
 `GET /api/v1/vendite/lotti/<id>/gruppi/` (+ `/export/?formato=csv|xlsx`).
-Sola lettura su `vendite.fatturazione_lotti_gruppi`, con l'identità di ogni
-gruppo risolta da `vendite.vw_dash_competenza_gruppi` sul **mese del lotto**.
+Sola lettura sull'**unione di due fatti** — il perimetro
+(`vendite.fatturazione_lotti_gruppi`) e l'esito
+(`vendite.fatturazione_lotti_esiti`) — con l'identità di ogni documento risolta
+da `vendite.vw_dash_competenza_gruppi` sul **mese del lotto**.
 
 ⭐ **Perché non basta `/fatture/`**, ed è tutta la ragione per cui questo
 endpoint esiste. Quella lista si aggancia a `fattura_id`: descrive i documenti
@@ -44,17 +46,16 @@ non è passato?»* — e l'ordine alfabetico dello stato metterebbe `ERRORE` **d
 
 ## Output
 
-Envelope lista standard (`count`, `page`, `page_size`, `total_pages`, `results`)
-**più `perimetro_dichiarato`**.
+Envelope lista standard (`count`, `page`, `page_size`, `total_pages`,
+`results`), e **nient'altro** — vedi «L'unione di due fatti» più sotto.
 
 | Campo di riga | Cosa |
 |---|---|
-| `gruppo_key` | la chiave di dominio, `<sorgente>:<uid>` oppure `MAN:<commessa>`. È anche il **ripiego** a video quando l'identità non si risolve più |
+| `gruppo_key` | la chiave di dominio, `<sorgente>:<uid>` oppure `MAN:<commessa>`. È anche il **ripiego** a video quando l'identità non si risolve più, e la **chiave di riga**: ⛔ non c'è un `id`, perché la riga non è una riga di tabella ma l'unione di due fatti |
 | `stato_esecuzione` | vocabolario chiuso, **identico** a quello delle fatture del lotto (D-2). ⚠️ `null` = «nessuno l'ha detto», **non** «è andata bene» |
 | `errore_codice` · `errore_messaggio` · `errore_quando` | il perché, dalla riga di **questo** lotto |
 | `riferimento` · `tipo_gruppo` · `area_documento` · `documento_id` | l'identità del documento, risolta dalla vista di competenza |
 | `commessa_id` · `commessa_codice` · `commesse_n` | la **commessa da correggere** — vedi sotto |
-| `perimetro_dichiarato` (payload, non riga) | vedi «Zero ha due significati» |
 
 ## Regole
 
@@ -73,10 +74,10 @@ identici, non una scelta fra alternative, perché discendono dalla chiave.
 Senza il collasso lo **stesso** documento comparirebbe due volte quando parte
 del suo lavoro è già fatturato e parte no.
 
-### L'esito si legge dalla tabella, non dalle colonne `ultimo_*` della vista
+### L'esito si legge da `fatturazione_lotti_esiti`, non dalle `ultimo_*` della vista
 
-Quelle dicono com'è andato l'**ultimo** tentativo su quel gruppo, che può essere
-di un **altro** lotto. Qui la domanda è «come è andata in *questo* lotto», e la
+Quelle dicono com'è andato l'**ultimo** tentativo su quel documento, che può
+essere di un **altro** lotto. Qui la domanda è «come è andata in *questo* lotto», e la
 risposta è la riga di questo lotto.
 
 ### La commessa esce solo quando ce n'è una
@@ -92,51 +93,62 @@ multiplo (`registri_n`).
 era un difetto del programma ma un dato mancante sulla commessa 34137. Se il
 rosso non porta lì, l'operatore sa di avere un problema e non sa che farci.
 
-### Zero ha due significati, e `perimetro_dichiarato` li separa
+### L'unione di due fatti, e perché nessuno dei due basta
 
-Un giro **di massa** non scrive nessun gruppo: nessuna riga = **nessuna
-restrizione**, che è la convenzione portante di `fatturazione_lotti_gruppi`
-(garanzia G1). Quel lotto qui non ha niente da mostrare — e non perché non abbia
-lavorato. Senza il flag, «non ha lavorato niente» e «non dichiara un perimetro»
-si leggerebbero uguali, e il frontend affermerebbe la cosa sbagliata proprio sui
-lotti più numerosi.
+| | risponde a | esiste su |
+| --- | --- | --- |
+| `fatturazione_lotti_gruppi` | *«quali documenti devo lavorare»* — il **perimetro** | i soli giri **mirati** |
+| `fatturazione_lotti_esiti` | *«com'è andato ciascuno»* — l'**esito** | **entrambi** i tipi di giro |
 
-⛔ Il flag **non si deriva dalle righe della pagina**: sarebbe un'eco. Si chiede
-al perimetro intero (`lotto_ha_perimetro_gruppi`, un `EXISTS`) e solo quando la
-pagina è vuota.
+⛔ Il solo perimetro lascia muto ogni giro di massa — il difetto chiuso dal
+database il 2026-09-07. I soli esiti perdono i documenti di un lotto mirato che
+non è ancora arrivato al passo del pull: **dichiarati e non ancora tentati**.
+
+⭐ **`perimetro_dichiarato` non esiste più**, ed è il segno che il problema è
+stato risolto invece che spostato. Serviva a distinguere «non ha lavorato
+niente» da «non dichiara un perimetro», perché la lista leggeva il solo
+perimetro. Con l'unione, zero righe ha **un significato solo**: di questo lotto
+non risulta nessun documento — non ha ancora lavorato, oppure è anteriore al
+tracciamento. ⚠️ Tolto e non lasciato «per compatibilità»: un campo che non
+discrimina più niente è peggio di un campo assente, perché chi lo legge crede
+che discrimini.
 
 ## Dipendenze DB
 
-* `vendite.fatturazione_lotti_gruppi` (colonne esito dal changeSet `20260906-10`)
+* `vendite.fatturazione_lotti_gruppi` — il perimetro
+* `vendite.fatturazione_lotti_esiti` — l'esito (changeSet `20260907-12`)
 * `vendite.fatturazione_lotti` — **il cancello di scope**
 * `vendite.vw_dash_competenza_gruppi` — l'identità del gruppo
 * `vendite.fn_segna_esito_gruppo_lotto` — chi **scrive** l'esito (dal
   `pipeline_step_executor`, non da qui)
 
-🔒 **Il cancello è la testata**: `fatturazione_lotti_gruppi` **non ha RLS**,
-`fatturazione_lotti` sì. Leggere la figlia da sola sarebbe fail-open, e vale
+🔒 **Il cancello è la testata**: né `fatturazione_lotti_gruppi` né
+`fatturazione_lotti_esiti` hanno **RLS**, `fatturazione_lotti` sì. Leggere la figlia da sola sarebbe fail-open, e vale
 anche per il **conteggio** — un totale senza cancello direbbe «3 documenti»
 mostrandone zero. Allo scope RLS si affianca il filtro emittente esplicito
 (`_add_scope_emittente`), come su `/fatture/`.
 
 ## Note di migrazione
 
-⚠️ **Le colonne dell'esito nascono vuote.** Le scrive
-`vendite.fn_segna_esito_gruppo_lotto`, che il backend chiama dal
-`_handle_pull_attivita_da_commessa_task`: finché non passa un giro di
-fatturazione, ogni riga risponde `stato_esecuzione = null`. Non è un difetto —
-è che il primo giro deve ancora avvenire.
+⚠️ **L'esito nasce assente.** Lo scrive `vendite.fn_segna_esito_gruppo_lotto`,
+che il backend chiama dal `_handle_pull_attivita_da_commessa_task`: finché non
+passa un giro di fatturazione la riga di esito non esiste, e la lista mostra il
+solo perimetro con `stato_esecuzione = null`. Non è un difetto — è che il primo
+giro deve ancora avvenire.
 
-🔴 **Limite dichiarato (brief §11).** Nel ramo «tutte le commesse fallite» la
-marcatura **non sopravvive**: `run_pipeline` tiene un `transaction.atomic()`
-attorno all'intero ciclo degli step, e il `raise` di
-`E_PULL_COMMESSA_ALL_FAILED` fa rollback portandosi via i segni. I due rami che
-non sollevano — tutto riuscito e **parziale** — funzionano, e il parziale è il
-caso per cui il cantiere è nato. Serve una scrittura che sopravviva al rollback,
-ed è del team DB.
+✅ **I due limiti dichiarati il 2026-09-06 sono chiusi**, e da parti diverse.
 
-🔴 **E un lotto di massa non ha dove essere marcato.** Un giro schedulato non
-scrive righe in `fatturazione_lotti_gruppi`, quindi
-`fn_segna_esito_gruppo_lotto` non trova nessun gruppo e torna `0` (con il
-warning previsto). L'esito per giro esiste oggi **solo** sui lotti nati da
-emissione mirata.
+* *«la marcatura non sopravvive nel ramo tutte-fallite»*: quel ramo **non
+  solleva più** (P-5, decisione di Tid). Non serviva una scrittura durevole —
+  serviva togliere ciò che annullava la scrittura. Fermarsi e strappare gli
+  appunti erano due cose che faceva lo stesso gesto: ora si ferma **tenendo**, e
+  a fermare la catena ci pensa il blocco per segnalazioni critiche al giro
+  successivo.
+* *«un lotto di massa non ha dove essere marcato»*: la riga adesso si **crea**
+  in `fatturazione_lotti_esiti`, che il perimetro non lo richiede. La stessa
+  identica chiamata del backend ha cominciato a funzionare.
+
+⭐ Il presidio è `apps/vendite/tests/db/test_pull_tutte_fallite_scrittura_reale.py`
+(opt-in DB, acceso in CI): esercita il ramo con il repository **vero** e legge
+la riga scritta — non che la chiamata sia avvenuta. È la metà che mancava ai
+test del 06-09, ed è stato verificato che si accende rimettendo il `raise`.

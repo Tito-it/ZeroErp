@@ -2889,8 +2889,7 @@
       "lotto_in_giro_tooltip": "Numbering of this batch already started and running: wait for the outcome, the spinner disappears on its own when the run ends.",
       "numera_mese_atteso": "A numbering run is still in progress. The MONTH action takes every batch, including those already running: wait for it to finish. Meanwhile you can number other selections.",
       "tab_gruppi": "Taken in",
-      "gruppi_senza_perimetro": "This batch declares no document scope: it is a bulk run, and works on everything it finds. The documents it produced are in the “Documents” tab.",
-      "nessun_gruppo": "No document taken in",
+      "nessun_gruppo": "No document on record for this batch. The documents it produced are in the “Documents” tab.",
       "gruppo_errore_titolo": "Why this document did not go through",
       "gruppo_commesse_multi": "{n} jobs",
       "gruppo_commesse_multi_tooltip": "This document feeds more than one job: there is no single one to open."

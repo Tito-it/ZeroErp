@@ -851,22 +851,46 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(esiti[30][0], "COMPLETED")
         self.assertIsNone(esiti[10][1])
 
-    # 2. ⛔ TUTTE fallite: si marca **e poi** si solleva. E' il ramo che sarebbe
-    #    rimasto scoperto mettendo la marcatura dentro i rami.
+    # 2. ⭐ TUTTE fallite: si marca e NON si solleva piu' (P-5, decisione di Tid
+    #    2026-09-06 — «trattiamoli tutti come quando ne capita 2 su 3»).
+    # 🔴 Fino al 2026-09-07 questo ramo sollevava `E_PULL_COMMESSA_ALL_FAILED`,
+    #    e il rollback dello step si portava via i segni appena scritti: il caso
+    #    PEGGIORE era l'unico che non lasciava traccia.
+    # ⛔ E la catena si ferma lo stesso, ma per un'altra via: le segnalazioni
+    #    critiche scritte per ogni commessa caduta fanno rifiutare l'avanzamento
+    #    al giro successivo. Fermarsi e strappare gli appunti erano due cose che
+    #    faceva lo stesso gesto.
     @patch("apps.core.services.fan_out.transaction")
-    def test_pull_marca_anche_quando_tutte_falliscono_e_poi_solleva(self, _mock_txn):
+    def test_pull_tutte_fallite_marca_e_non_solleva(self, _mock_txn):
         executor, repo = self._executor_pull([10, 20], ko=(10, 20))
 
-        with self.assertRaises(ServiceError) as ctx:
-            executor.execute_step(
-                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
-                rollback=False, dry_run=False,
-            )
-        self.assertEqual(ctx.exception.code, "E_PULL_COMMESSA_ALL_FAILED")
+        # ⛔ Nessun `assertRaises`: l'assenza dell'eccezione E' il contratto.
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
 
         esiti = self._esiti_marcati(repo)
         self.assertEqual({c: s for c, (s, _) in esiti.items()},
                          {10: "ERRORE", 20: "ERRORE"})
+
+    # 2-bis. ⛔ IL CODICE DEL FALLIMENTO TOTALE NON LO SOLLEVA PIU' NESSUNO, ed
+    #    e' la precondizione di P-6 (la deprecazione a catalogo, che tocca al
+    #    DB): finche' una riga di Python lo emette, `obsoleto_dal` sarebbe una
+    #    bugia.
+    # ⚠️ Si guarda il SORGENTE e non un comportamento, ed e' l'unico modo: il
+    #    ramo che lo sollevava non esiste piu', quindi non c'e' nessuna corsa
+    #    che possa produrlo — un test sul comportamento sarebbe verde per
+    #    sottrazione, cioe' verde anche se qualcuno lo rimettesse altrove.
+    # ⛔ Si cerca la forma `code="..."`, non la stringa: il nome compare ancora
+    #    nei commenti che raccontano perche' e' sparito, e devono poterci stare.
+    def test_il_codice_del_fallimento_totale_non_si_solleva_piu(self):
+        from pathlib import Path
+
+        from apps.vendite.services import pipeline_step_executor as modulo
+
+        sorgente = Path(modulo.__file__).read_text(encoding="utf-8")
+        self.assertNotIn('code="E_PULL_COMMESSA_ALL_FAILED"', sorgente)
 
     # 3. Tutto riuscito: nessun campo d'errore valorizzato.
     @patch("apps.core.services.fan_out.transaction")
@@ -894,11 +918,10 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         with self.assertLogs(
             "apps.vendite.services.pipeline_step_executor", level="WARNING",
         ) as log:
-            with self.assertRaises(ServiceError):
-                executor.execute_step(
-                    lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
-                    rollback=False, dry_run=False,
-                )
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
         self.assertTrue(
             any("esito_non_appeso" in r for r in log.output),
             "nessun avviso: un esito non appeso resterebbe invisibile",
@@ -1113,11 +1136,11 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             detail="Non e' stato assegnato un valore all'informazione richiesta.",
         )
 
-        with self.assertRaises(Exception):
-            # Una commessa sola, e fallisce: e' il ramo «tutte fallite», che
-            # solleva. Al diario per-commessa non cambia niente — il run logger
-            # ha gia' scritto prima che l'esito venisse aggregato.
-            executor.execute_step(
+        # ⚠️ Una commessa sola, e fallisce: e' il ramo «tutte fallite», che dal
+        #    2026-09-07 NON solleva piu' (P-5). Al diario per-commessa non
+        #    cambia niente — il run logger ha gia' scritto prima che l'esito
+        #    venisse aggregato, ed e' quello che questo test guarda.
+        executor.execute_step(
                 lotto_id=1,
                 stato_doc_fiscale_id=2,
                 tipo_lotto="MASSIVO",
@@ -1143,38 +1166,53 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         executor, _repo, commesse_repo, error_logger = self._build_executor_pull([10])
         commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
 
-        with self.assertRaises(Exception):
-            executor.execute_step(
-                lotto_id=1,
-                stato_doc_fiscale_id=2,
-                tipo_lotto="MASSIVO",
-                rollback=False,
-                dry_run=False,
-            )
+        # ⚠️ Nessuna eccezione da attendere: dal 2026-09-07 il ramo «tutte
+        #    fallite» torna un esito (P-5). Il diario per-commessa e' scritto
+        #    prima dell'aggregazione, quindi il presidio non cambia.
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
 
         kwargs = error_logger.log_error.call_args.kwargs
         self.assertIn("emit ko", kwargs["detail"])
 
-    # Scopo: il caso «tutte fallite» resta un RAISE e non un parziale — con zero
-    #        commesse emesse proseguire costruirebbe un lotto VUOTO. E' la sola
-    #        differenza di policy rispetto ai gemelli snapshot/scadenze, dove il
-    #        caso non esiste perche' D-Q lo applica il DB.
+    # Scopo: ⭐ «TUTTE FALLITE» NON SOLLEVA PIU', e chiude il task_run in ERRORE
+    #        come il parziale (P-5, decisione di Tid 2026-09-06).
+    # 🔴 QUESTO TEST PRESIDIAVA IL CONTRARIO, e il contrario era il difetto:
+    #        sollevare faceva rollback dello step e si portava via i segni
+    #        appena scritti sui documenti caduti — il caso peggiore era l'unico
+    #        che non lasciava traccia.
+    # ⛔ Il timore che lo motivava («proseguire costruirebbe un lotto VUOTO») e'
+    #        coperto altrove e meglio: il passo scrive una segnalazione CRITICA
+    #        per ogni commessa caduta, quindi al giro dopo `blocks_next_step`
+    #        rifiuta l'avanzamento. Si ferma TENENDO, invece di fermarsi
+    #        strappando.
+    # ⚠️ `complete_lotto_task_run` NON deve essere chiamato: il giro e' finito,
+    #        ma male. Chiuderlo COMPLETATO farebbe dare SKIP al resolver al
+    #        rilancio — le commesse rimaste indietro non verrebbero piu'
+    #        ritentate, in silenzio. E' il difetto gia' corretto sul parziale il
+    #        2026-08-09, e qui non deve rientrare dalla finestra.
     @patch("apps.core.services.fan_out.transaction")
-    def test_pull_attivita_da_commessa_tutte_fallite_solleva(self, _mock_txn):
+    def test_pull_attivita_da_commessa_tutte_fallite_non_solleva(self, _mock_txn):
         executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20], task_run_id=557)
         commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
 
-        with self.assertRaises(ServiceError) as ctx:
-            executor.execute_step(
-                lotto_id=1,
-                stato_doc_fiscale_id=2,
-                tipo_lotto="MASSIVO",
-                rollback=False,
-                dry_run=False,
-            )
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
 
-        self.assertEqual(ctx.exception.code, "E_PULL_COMMESSA_ALL_FAILED")
         repo.complete_lotto_task_run.assert_not_called()
+        repo.fail_lotto_task_run.assert_called_once()
+        # Stesso codice del parziale: i due rami sono diventati lo stesso codice.
+        self.assertEqual(repo.fail_lotto_task_run.call_args.args[1], "E_PULL_COMMESSA")
 
     # Scopo: dry-run — nessun esito parziale puo' comparire, perche' non e'
     #        stato tentato nulla.

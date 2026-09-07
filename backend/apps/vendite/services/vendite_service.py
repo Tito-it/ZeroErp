@@ -470,11 +470,10 @@ def fn_list_lotto_fatture(
 #        perche'» — la domanda a cui la scheda «Documenti» non puo' rispondere,
 #        perche' elenca le FATTURE e un documento caduto prima di diventarne una
 #        non ha niente a cui appendersi (brief-db-esito-gruppo-lotto §0).
-# Perimetro: sola lettura; il cancello di scope e' la TESTATA del lotto
-#        (`fatturazione_lotti_gruppi` non ha RLS, `fatturazione_lotti` si').
-# Risultato: dict con count, page, page_size, total_pages, results +
-#        `perimetro_dichiarato` — vedi sotto, e' la meta' che rende onesto lo
-#        zero.
+# Perimetro: sola lettura; il cancello di scope e' la TESTATA del lotto —
+#        ne' `fatturazione_lotti_gruppi` ne' `fatturazione_lotti_esiti` hanno
+#        RLS, `fatturazione_lotti` si'.
+# Risultato: dict con count, page, page_size, total_pages, results.
 def fn_list_lotto_gruppi(
     *,
     lotto_id: int,
@@ -513,25 +512,17 @@ def fn_list_lotto_gruppi(
         offset=offset,
         max_rows=max_rows,
     )
-    payload = _build_list_response(results, total_count, page, page_size)
-    if max_rows is not None:
-        # Export: si ferma qui, come tutte le altre liste esportabili — chi
-        # costruisce il file legge `results` e `count` e nient'altro.
-        return payload
-    # ⭐ ZERO RIGHE HA DUE SIGNIFICATI, e senza questo flag si leggono uguali.
-    #    Un lotto MIRATO senza gruppi non esiste; un giro DI MASSA non dichiara
-    #    nessun perimetro per costruzione (`fatturazione_lotti_gruppi` vuota =
-    #    NESSUNA restrizione, garanzia G1 della tabella), quindi qui non ha
-    #    niente da mostrare — e non perche' non abbia lavorato.
-    # ⛔ Il conto non si fa sulle righe della pagina: sarebbe un'eco. Si chiede
-    #    al perimetro intero, con lo STESSO cancello di scope della lista.
-    payload["perimetro_dichiarato"] = (
-        total_count > 0
-        or repository.lotto_ha_perimetro_gruppi(
-            lotto_id=lotto_id, auth_user_id=auth_user_id,
-        )
-    )
-    return payload
+    # ⛔ NIENTE `perimetro_dichiarato`, e la sua sparizione e' il segno che il
+    #    database ha risolto il problema invece di spostarlo (rev 2026-09-07).
+    #    Serviva a distinguere «questo lotto non ha lavorato niente» da «questo
+    #    lotto non dichiara un perimetro», perche' la lista leggeva il solo
+    #    perimetro e i giri di massa non ne scrivono uno. Ora la lista legge
+    #    ANCHE gli esiti, che ci sono su entrambi i tipi di giro: zero righe ha
+    #    un significato solo — di questo lotto non risulta nessun documento.
+    # ⚠️ Tolto e non lasciato «per compatibilita'»: un campo che non discrimina
+    #    piu' niente e' peggio di un campo assente, perche' chi lo legge crede
+    #    che discrimini.
+    return _build_list_response(results, total_count, page, page_size)
 
 
 # Range anni ammesso per i cruscotti fatturazione (Lente 1: anno libero

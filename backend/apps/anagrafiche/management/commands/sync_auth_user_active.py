@@ -6,8 +6,24 @@
 #        con finestra temporale scaduta. Wrapper Django per
 #        anagrafiche.fn_sync_auth_user_expired() con invalidazione
 #        cache permessi per gli utenti coinvolti.
-# Note: Alternativa a pgAgent job sync_auth_user_expired_daily.
-#       Utilizzabile da cron/systemd.
+# Note: ⛔ ATTREZZO A MANO, non un processo programmato — e dal 2026-09-07 non
+#       si registra piu' sul giornale dei run.
+#       Il lavoro schedulato lo fa il job pgAgent `sync_auth_user_expired_daily`
+#       (`dbops.processi` id 11). La riga gemella id 23 (`sync_auth_user_active`,
+#       canale COMMAND) e' RITIRATA — `obsoleto_dal = 2026-09-07` — e con lei
+#       sono spariti l'unit systemd, la voce in `deploy/sveglie.json` e la
+#       costante `PROCESSO_*`: fino a quel giorno il modello ammetteva che
+#       girassero **entrambi**, cioe' la disattivazione due volte per notte.
+#       ⛔ E NON si registra sotto il codice superstite, che pure la FK
+#       accetterebbe: la LATERAL di `dbops.vw_processi_programmazione` legge il
+#       giornale con `processo_codice = codice OR jobname = codice` **senza
+#       filtrare `origine`**, quindi una corsa a mano sposterebbe avanti
+#       `giornale_ultima_corsa` e spegnerebbe il confronto GIRA_E_NON_REGISTRA
+#       su quel job — cioe' il rilevatore di R-12. Un attrezzo a mano non deve
+#       poter accecare il presidio del lavoro che imita.
+#       ⚠️ Ne discende che un lancio di qui NON lascia traccia: e' il prezzo
+#       dichiarato della scelta (Tid, 2026-09-07), non una dimenticanza.
+#       Brief: work-in-progress/brief-db-sveglia-dei-processi.md §8.5/§9.5.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -18,9 +34,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.anagrafiche.db.anagrafiche_repository import AnagraficheRepository
-from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.permissions_cache import invalidate_user
-from apps.core.services.processi import PROCESSO_SYNC_AUTH_USER_ACTIVE
 
 logger = logging.getLogger(__name__)
 
@@ -40,27 +54,20 @@ class Command(BaseCommand):
             help="Solo report: mostra gli utenti che sarebbero disattivati senza applicare modifiche.",
         )
 
-    # Scopo: Registra il run e delega al corpo. ⭐ Dal 2026-09-05 questo command
-    #        DICE CHI E': prima non si registrava affatto, quindi qualunque
-    #        presidio costruito su `job_run_log` gli era cieco sopra.
-    # ⛔ Il DRY-RUN resta fuori dalla registrazione: e' un report, non
-    #    un'esecuzione operativa.
+    # Scopo: Esegue la sync. ⛔ NESSUNA registrazione sul giornale dei run, e la
+    #        ragione sta nell'header: il processo di catalogo che questo command
+    #        nominava e' ritirato, e registrarsi sotto il gemello pgAgent
+    #        accecherebbe il presidio che sorveglia proprio quel job.
     # ⚠️ Classe AMMINISTRAZIONE: tocca dati che non appartengono a un emittente
-    #    (`auth_user`, `risorse_umane`), quindi NON ha un utente tecnico e non
-    #    itera per azienda. L'attore basta — e' esattamente la distinzione della
-    #    D-8 dell'analisi.
+    #    (`auth_user`, `risorse_umane`), quindi non ha un utente tecnico e non
+    #    itera per azienda.
+    # ⚠️ Il riepilogo di `_esegui` NON viene piu' consumato: era il `set_meta`
+    #    del run, e chi lo leggeva era il giornale. Resta un valore di ritorno
+    #    perche' e' l'esito della funzione — quello che l'operatore vede lo
+    #    scrive `_esegui` su stdout — ma qui non ha piu' un destinatario, ed e'
+    #    scritto per non farlo sembrare una dimenticanza.
     def handle(self, *args: Any, **options: Any) -> None:
-        if options["dry_run"]:
-            self._esegui(options)
-            return
-        with registered_job(
-            PROCESSO_SYNC_AUTH_USER_ACTIVE,
-            processo_codice=PROCESSO_SYNC_AUTH_USER_ACTIVE,
-            origine=ORIGINE_CRON,
-        ) as job:
-            esito = self._esegui(options)
-            job.set_meta(esito)
-            job.set_rows_affected(esito.get("disattivati", 0))
+        self._esegui(options)
 
     # Scopo: Esegue la sync batch degli utenti scaduti e ritorna il riepilogo.
     # Flusso: raccoglie gli auth_user_id coinvolti, chiama la funzione SQL

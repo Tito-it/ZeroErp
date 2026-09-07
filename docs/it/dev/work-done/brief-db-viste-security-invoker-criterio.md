@@ -8,9 +8,30 @@
 > di chi legge»* — era presidiata in **quattro posti diversi, tutti a elenco**, e
 > che un elenco copre solo ciò che qualcuno si è ricordato di scriverci.
 >
-> **Stato:** ✅ **applicato il 2026-09-07** (changeSet alle 10:13, presidio verde,
-> nessuna regressione sulla suite). ⛔ **Il brief NON è chiuso**: restano due
-> voci, e la prima è del backend — §7.
+> **Stato:** ✅ **CHIUSO** (2026-09-07) — entrambe le metà.
+> Il DB ha applicato il changeSet `20260907-04` e riscritto il presidio sul
+> **criterio** invece che sui nomi; il backend ha risposto alla voce 1 del §7
+> costruendo il caso che nessuna suite fabbricava.
+>
+> **Come si verifica che è chiuso**, e sono tre letture indipendenti:
+>
+> | Cosa | Esito, 2026-09-07 |
+> | --- | --- |
+> | `script.vw_pratica_doc_sorgente` ha l'interruttore | `reloptions = {security_invoker=on}` |
+> | Viste col flag acceso, su tutto il database | **77** |
+> | `db/pgtap/rls/test-rls-viste-security-invoker.sql` | verde (`pgtap-baseline.sh rls`) |
+> | `smoke-pratica-doc-sorgente-cross-emittente.py` | verde, e **rosso** con la regressione iniettata |
+>
+> 🔵 **Esce di qui una coda sola, e non è di questo cantiere**: la voce 2 del §7
+> — *un presidio che confronta una parola invece della proprietà* non è stato
+> cercato su `proconfig`, `relpersistence`, `convalidated`. Il §7 dice da sé che
+> **non trattiene la chiusura**: è una misura sua, e vuole un documento suo il
+> giorno che qualcuno la apre.
+>
+> ⚠️ **Un residuo dichiarato, non un debito nascosto**: il presidio della voce 1
+> è uno **smoke**, non un pgTAP. Lo lancia `scripts/smoke-baseline.sh`, **non la
+> CI**. Promuoverlo a pgTAP è lavoro del team DB, e non è urgente — prima di
+> oggi non c'era niente.
 >
 > 🔴 **Trovata una vista scoperta da due mesi** (§3): non è un allarme rosso, ma
 > è un varco vero, ed è lo stesso difetto già corretto a luglio su un'altra
@@ -200,21 +221,85 @@ rosso nuovo era il presidio stesso prima del migrate, e nominava il varco.
 Documentazione aggiornata: i manual di `script.vw_pratica_doc_sorgente`,
 `dbops.vw_codici_errore_forme_condizione` e `dbops.vw_processi_programmazione`.
 
-🔵 **Restano due voci, e nessuna è nostra da chiudere.**
+🔵 **Restava una voce di là dal DB, ed è chiusa. Ne resta una che non è di
+nessuno dei due.**
 
-**1. 🔴 Il backend deve guardare le pratiche — ed è l'unica voce con una
-scadenza.** `apps/pratiche/db/pratiche_repository.py` è l'unico consumatore. Il
-comportamento cambia dove i due perimetri divergono, e il §3 dice che il modello
-quella divergenza **la ammette**: nessun vincolo lega la sorgente all'emittente
-della pratica.
-⛔ La domanda non è «si vede ancora qualcosa» ma **«su una pratica che punta a un
-documento di un altro emittente, l'àncora scelta è ancora quella giusta?»** — ed
-è una cosa che si guarda a video, non in un test: nessuna suite fabbrica oggi
-quel caso.
-⭐ Se lo si vuole presidiare invece che collaudare, la strada è un pgTAP che
-**costruisce** una pratica con due sorgenti su emittenti diversi e verifica quale
-vince da ciascun perimetro. Non esiste, e questa riga è il posto in cui è scritto
-che non esiste.
+**1. ✅ Il backend ha guardato le pratiche — chiuso il 2026-09-07.**
+
+La domanda era **«su una pratica che punta a un documento di un altro emittente,
+l'àncora scelta è ancora quella giusta?»**. ⭐ **Sì**, e il verso è quello che
+serve: dal perimetro ristretto vince il documento **di casa**, non l'estraneo —
+che perde non perché sia nascosto, ma perché senza il suo descrittore non è più
+`risolto`, e il criterio 1 della regola d'àncora è risolto-first.
+
+⛔ **Non si è potuto guardare a video, e la ragione va scritta perché cambia la
+richiesta**: i campi `doc_*` **a livello pratica** oggi non li rende nessuna
+schermata. L'unico consumatore di `doc_*` nel frontend è `PraticaPercorso.vue`,
+che è il ramo **per-flusso** — e quello non è toccato, perché
+`_doc_sorgente_lateral` legge `script.vw_stato_sorgente`, che l'interruttore ce
+l'ha da sempre. La lista pratiche non ha nessuna colonna `doc_*` in
+`ui.lista_colonna`. ⇒ La risposta si legge dalla vista e dal repository che la
+usa, non da una pagina.
+
+⭐ **E la modifica del DB chiude un'asimmetria invece di aprirne una**: fino al
+07-09 i due rami potevano dire cose **diverse** sulla stessa pratica — la lista
+mostrava il documento di un altro emittente, il percorso no.
+
+**Come è stato provato**, e il caso è stato **costruito**, non cercato:
+`backend/scripts/tests/smoke-pratica-doc-sorgente-cross-emittente.py`
+(transazione + rollback). Fabbrica un preventivo su un secondo emittente e lo
+appende a **due pratiche speculari** — su A come `ROOT`, su B come `COLLEGATO` —
+poi legge l'àncora da **tre** perimetri, imposti con `app.current_emittente_id`
+(che `fn_check_user_emittente_scope` valuta alla regola 2, **prima** del bypass
+super admin: «restringe chiunque»).
+
+⭐ **Le due pratiche speculari non sono simmetria decorativa**, ed è la
+correzione che è costata di più. Con una sola, *«dal perimetro di casa ha vinto
+il documento di casa»* è compatibile con una vista che sceglie **sempre** il
+`COLLEGATO`, o che preferisce l'emittente di chi legge per un'altra ragione.
+Sulla pratica B il `ROOT` è il documento **di casa**: letta dal perimetro
+**estraneo** deve vincere di nuovo il `COLLEGATO`, che stavolta è l'estraneo.
+Stessi due documenti, verdetto opposto, e l'unica cosa cambiata è chi guarda.
+⇒ Il perimetro largo (test 4) è la riga di partenza: lì vince il `ROOT` su
+entrambe.
+
+⛔ **Cercare quel documento avrebbe dato `SENZA_MATERIA`**: al 2026-09-07 su
+questa macchina un solo emittente ha preventivi. Ma «oggi non capita» non è un
+fatto sul modello — `pratiche_sorgenti` non ha nessun vincolo che leghi la
+sorgente all'emittente della pratica — e un presidio che aspetta i dati giusti
+passa a vuoto su un database ricostruito da zero.
+
+⚠️ **Il test 2 dello smoke è quello che protegge gli altri**: se la connessione
+non applicasse la RLS i tre perimetri direbbero la stessa cosa e il file
+passerebbe **smettendo di verificare**. Lì si esce `SENZA_MATERIA`.
+
+⭐ **Provato anche al contrario**: simulando l'interruttore spento (i perimetri
+dei test 5 e 6 non si restringono, che è come girerebbe la vista sotto il
+proprietario) diventano rossi *«vince il COLLEGATO di casa»* e *«vince il
+COLLEGATO estraneo»* con i due controlli di differenza, **nominandoli**.
+⚠️ E il test 2 resterebbe **verde**: la RLS sulla tabella base non c'entra con la
+reloption della vista — i discriminanti sono il 5 e il 6.
+
+⚠️ **Un fatto che la vista dice e che vale la pena sapere**: `vw_pratica_doc_sorgente`
+**non** legge `pratiche.pratiche`, quindi risponde anche su una pratica di un
+altro emittente. Il cancello sulla pratica è del **consumatore** — il `LEFT JOIN`
+in `_PRATICA_JOINS` su `pratiche.pratiche`, che ha la RLS — ed è il test 7.
+
+🔴 **E la doc API diceva una cosa sbagliata, scoperta scrivendo questa.**
+`backend/pratiche/manual/api_pratica_detail.md` dichiarava che i `doc_*` sono
+*«del documento **ROOT** della pratica (`pratiche_sorgenti.ruolo_link='ROOT'`)»*.
+Non lo sono dal roll-out **D3b**: l'àncora è il documento **più vivo** fra tutti
+i link, e il `ROOT` è il **terzo** criterio, cioè un tiebreak. ⇒ Chi leggeva
+quella pagina si aspettava lo stato del preventivo capostipite mentre a video
+compariva quello dell'ordine collegato — e su una pratica evoluta
+preventivo→ordine sono proprio i due che divergono.
+✅ Corretta il 2026-09-07, insieme alla dipendenza da chi legge introdotta dal
+`20260907-04`. ⭐ Il difetto non c'entrava con questo cantiere: è emerso perché
+per scrivere «che cosa cambia» bisognava prima dire «che cos'era», ed è la
+seconda volta in questo giro che *una sede diversa aveva divergiato in silenzio*.
+
+🔵 **Resta preferibile un pgTAP**, e questa riga non lo chiude: uno smoke non lo
+lancia la CI. Ma la voce non è più «non esiste niente che fabbrichi quel caso».
 
 **2. ⚠️ La classe di difetto non è stata cercata altrove.** *Un presidio che
 confronta una parola invece della proprietà* qui è saltato fuori per caso, e in
@@ -224,7 +309,19 @@ sappiamo se ce ne siano su altre — reloption, `proconfig`, `relpersistence`,
 sua**, e va fatta da qualcuno che decide di farla, non aggiunta in coda a questo
 cantiere.
 
-⚠️ **Quando si chiude questo brief.** Quando la voce 1 ha una risposta — o il
-collaudo dice che va bene, o nasce il pgTAP che costruisce il caso. La voce 2 non
-lo trattiene: è un cantiere diverso, e si sposta in un documento suo il giorno
-che qualcuno lo apre.
+✅ **CHIUSO il 2026-09-07, e archiviato in `work-done/`.** La voce 1 ha una
+risposta — il collaudo dice che va bene, e il caso adesso lo fabbrica qualcosa.
+La voce 2 non lo trattiene: è un cantiere diverso, e si sposta in un documento
+suo il giorno che qualcuno lo apre.
+
+⚠️ **Che cosa esce di qui, perché non si perda nell'archivio** — è la stessa
+ragione per cui il brief delle email era uscito dal documento «gli otto
+residui»: *un filo vivo dentro un archivio non si legge*.
+
+| Filo | Dove va |
+| --- | --- |
+| La **voce 2**: la classe di difetto non cercata su `proconfig`, `relpersistence`, `convalidated` | un documento suo, il giorno che qualcuno apre quella misura |
+| Il presidio della voce 1 è uno **smoke**, non un pgTAP: lo lancia `smoke-baseline.sh`, **non la CI** | team DB, se e quando lo si vuole promuovere |
+
+⛔ **Nessuno dei due è una condizione di riapertura**: il primo non è mai stato
+di questo cantiere, il secondo è un presidio in più dove prima non c'era niente.

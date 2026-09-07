@@ -89,6 +89,21 @@ PRESIDI_PROCESSI: tuple[str, ...] = (
     #    pericolosa e' «mai preso», che si legge solo se il worker e' spento.
     "dbops.vw_processi_dominio_su_pgagent",
     "dbops.vw_coda_lavori_da_guardare",
+    # ⭐ 2026-09-07: la sveglia. `vw_processi_programmazione` e' un PANORAMA —
+    #    elenca anche i sani, perche' senza sapere quanti sono i sani un guasto
+    #    sembra la norma — e proprio per questo NON puo' stare qui: un pannello
+    #    che mostra righe verdi insegna a leggere il verde come debito, cioe' a
+    #    saltare l'avviso. ⛔ E il filtro non lo scriviamo noi: il criterio «quali stati
+    #    sono un guasto» e' del modello e vive in UNA sede, la colonna
+    #    `da_guardare` calcolata accanto al CASE che produce gli stati. Questa
+    #    vista la proietta.
+    # ⚠️ NASCE NON VUOTA, ed e' la prima cosa che ha da dire (brief §8.1).
+    #    Fatto datato, letto sul dbdev il 2026-09-07 al cablaggio: UNA riga,
+    #    `apply_storicizza_weekly` — pgAgent dice 05-09, il giornale si ferma al
+    #    2026-02-21. Il gemello `chiusura_scadenze_daily` era gia' rientrato da
+    #    solo, come previsto. ⛔ Non si compensa nascondendo la riga: la natura
+    #    la dichiara il commento della vista, che il pannello rende.
+    "dbops.vw_processi_programmazione_da_guardare",
     # ⭐ 2026-09-05: il giornale dei run sa finalmente registrare un fallimento.
     #    Fino al changeSet `20260905-36` non poteva: `fn_run_and_log` scriveva la
     #    riga rossa e il `RAISE` ne faceva il rollback, quindi NESSUNO dei dodici

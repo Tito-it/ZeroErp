@@ -12,7 +12,7 @@ Indice test eseguiti:
 2) VenditeLottoGruppiListApiTests.test_list_gruppi_richiede_jwt
 3) VenditeLottoGruppiListApiTests.test_filtro_e_ordinamento_inoltrati
 4) VenditeLottoGruppiListApiTests.test_order_dir_senza_colonna_non_annulla_il_default
-5) VenditeLottoGruppiListApiTests.test_perimetro_dichiarato_esce_nell_envelope
+5) VenditeLottoGruppiListApiTests.test_envelope_lista_standard
 """
 
 from unittest.mock import Mock, patch
@@ -23,7 +23,6 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _GRUPPO_ROW = {
-    "id": 1673,
     "gruppo_key": "ORDINE_VENDITA:01a06ce4-b46a-7a49-a72f-c07c29de47bb",
     "stato_esecuzione": "ERRORE",
     "errore_codice": "E_PULL_COMMESSA",
@@ -44,7 +43,6 @@ _LIST_RESPONSE = {
     "page_size": 50,
     "total_pages": 1,
     "results": [_GRUPPO_ROW],
-    "perimetro_dichiarato": True,
 }
 
 _LOTTO_ID = 10657
@@ -104,12 +102,17 @@ class VenditeLottoGruppiListApiTests(JwtMockedApiTest):
         self.assertIsNone(kwargs["order_by"])
         self.assertIsNone(kwargs["order_dir"])
 
-    # 5) ⭐ Il flag esce nell'envelope: senza, «non ha lavorato niente» e «non
-    #    dichiara un perimetro» si leggono uguali dal lato del client.
+    # 5) L'envelope è quello standard delle liste, e NIENTE ALTRO. ⛔ Il flag
+    #    `perimetro_dichiarato` è sparito col problema che risolveva (rev DB
+    #    2026-09-07): la lista legge anche gli esiti, che ci sono su entrambi i
+    #    tipi di giro, quindi zero righe ha un significato solo. Il test guarda
+    #    che non sia rimasto: un campo che non discrimina più niente è peggio di
+    #    un campo assente.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_lotto_gruppi")
-    def test_perimetro_dichiarato_esce_nell_envelope(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {**_LIST_RESPONSE, "count": 0, "results": [],
-                                    "perimetro_dichiarato": False}
-        response = self.client.get(self.url)
-        self.assertIs(response.json()["data"]["perimetro_dichiarato"], False)
+    def test_envelope_lista_standard(self, mocked_list, _mock_auth):
+        mocked_list.return_value = {**_LIST_RESPONSE, "count": 0, "results": []}
+        dati = self.client.get(self.url).json()["data"]
+        self.assertEqual(
+            sorted(dati), ["count", "page", "page_size", "results", "total_pages"],
+        )

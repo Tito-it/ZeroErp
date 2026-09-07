@@ -59,7 +59,6 @@ class FanOutEsitoTests(unittest.TestCase):
         esito = self._esito()
         self.assertEqual(esito.esito, ESITO_COMPLETATO)
         self.assertFalse(esito.parziale)
-        self.assertFalse(esito.tutti_falliti)
 
     # Scopo: Verifica il caso `test_tutti_ok_e_completato`.
     def test_tutti_ok_e_completato(self):
@@ -75,14 +74,15 @@ class FanOutEsitoTests(unittest.TestCase):
         esito = self._esito(ok=2, ko=1)
         self.assertEqual(esito.esito, ESITO_PARZIALE)
         self.assertTrue(esito.parziale)
-        self.assertFalse(esito.tutti_falliti)
         self.assertEqual(esito.totale, 3)
 
-    # Scopo: Verifica il caso `test_tutti_falliti_e_errore`.
+    # Scopo: nessun item passato = ERRORE, e NON parziale. ⚠️ Si asserisce
+    #        `esito`, non un alias: l'accessore `tutti_falliti` e' stato tolto il
+    #        2026-09-07 insieme al suo unico lettore (P-5 di
+    #        brief-db-esito-gruppo-lotto). Il fatto e' rimasto dov'era.
     def test_tutti_falliti_e_errore(self):
         esito = self._esito(ko=2)
         self.assertEqual(esito.esito, ESITO_ERRORE)
-        self.assertTrue(esito.tutti_falliti)
         self.assertFalse(esito.parziale)
         self.assertEqual(esito.messaggi_errore(), ["boom", "boom"])
 

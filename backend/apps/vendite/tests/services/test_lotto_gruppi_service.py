@@ -28,8 +28,8 @@
 #   7. test_mapping_consegna_esito_identita_e_commessa
 #   8. test_esito_assente_resta_none
 #   9. test_commessa_multipla_non_si_sceglie
-#  10. test_perimetro_dichiarato_falso_su_lotto_di_massa
-#  11. test_perimetro_non_si_richiede_quando_ci_sono_gia_righe
+#  10. test_nessun_flag_sul_perimetro_nella_risposta
+#  11. test_export_non_pagina
 #  12. test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 #  13. test_pagina_vuota_ha_un_conteggio_di_riserva
 # ------------------------------------------------------------
@@ -55,7 +55,6 @@ from apps.vendite.services.vendite_service import fn_list_lotto_gruppi
 # una colonna inserita a meta' proiezione non sposta niente.
 def _riga(**override):
     riga = {
-        "id": 1673,
         "gruppo_key": "ORDINE_VENDITA:01a06ce4-b46a-7a49-a72f-c07c29de47bb",
         "stato_esecuzione": "ERRORE",
         "errore_codice": "E_PULL_COMMESSA",
@@ -84,7 +83,10 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
         VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
         sql = mock_fetch.call_args.args[0]
         self.assertIn("FROM vendite.fatturazione_lotti l", sql)
+        # ⚠️ ENTRAMBE le figlie passano dalla CTE del lotto: e' li' che vive il
+        #    cancello, e una sola delle due agganciata sarebbe fail-open a meta'.
         self.assertIn("JOIN lotto ON lotto.id = lg.lotto_id", sql)
+        self.assertIn("JOIN lotto ON lotto.id = le.lotto_id", sql)
 
     # 2) ⛔ La `gruppo_key` NON si spezza in Python. La derivazione da chiave a
     #    documento vive in `fn_build_gruppo_fatturabile_key` /
@@ -118,7 +120,11 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
         mock_fetch.return_value = ([], 0)
         VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
         sql, params = mock_fetch.call_args.args[0], mock_fetch.call_args.args[1]
-        self.assertIn("ORDER BY (stato_esecuzione = %s) DESC", sql)
+        # 🔴 `NULLS LAST` e' la meta' che mancava: `DESC` implica `NULLS FIRST`
+        #    e `NULL = 'ERRORE'` vale NULL, quindi senza di esso i documenti MAI
+        #    TENTATI finivano sopra quelli falliti — l'ordinamento prometteva il
+        #    contrario di quello che faceva.
+        self.assertIn("ORDER BY (stato_esecuzione = %s) DESC NULLS LAST", sql)
         self.assertNotIn("'ERRORE'", sql)
         # Il valore e' quello del vocabolario, non una stringa a caso.
         self.assertIn(STATO_ESECUZIONE_ERRORE, params)
@@ -137,11 +143,18 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
         mock_fetch.return_value = ([], 7)
         VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=50)
         kwargs = mock_fetch.call_args.kwargs
-        self.assertIsNotNone(kwargs.get("fallback_count_sql"))
+        conteggio = kwargs.get("fallback_count_sql")
+        self.assertIsNotNone(conteggio)
         self.assertEqual(kwargs.get("offset"), 50)
-        # ⚠️ Lo STESSO perimetro della lista, cancello di scope compreso: un
-        #    conteggio piu' largo direbbe un totale che la lista non consegna.
-        self.assertIn("JOIN lotto ON lotto.id = lg.lotto_id", kwargs["fallback_count_sql"])
+        # ⛔ E CONTA LA STESSA CTE che la lista consegna, non un perimetro
+        #    «uguale»: il frammento e' condiviso, non riscritto. Due copie
+        #    divergerebbero al primo che ne tocca una, e in modo MUTO — il
+        #    paginatore direbbe un totale che non descrive le righe.
+        self.assertTrue(conteggio.rstrip().endswith("SELECT COUNT(*) FROM gruppi"))
+        # ⚠️ La prova che e' davvero lo stesso: tutto cio' che precede il
+        #    `SELECT COUNT` compare identico nella query di pagina.
+        perimetro = conteggio.rsplit("SELECT COUNT(*) FROM gruppi", 1)[0]
+        self.assertIn(perimetro.rstrip(), mock_fetch.call_args.args[0])
 
     # 6) Il filtro esito viaggia come PARAMETRO, mai interpolato.
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
@@ -151,7 +164,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
             lotto_id=10657, stato_esecuzione="ERRORE", limit=25, offset=0,
         )
         sql, params = mock_fetch.call_args.args[0], mock_fetch.call_args.args[1]
-        self.assertIn("lg.stato_esecuzione = %s", sql)
+        self.assertIn("esito.stato_esecuzione = %s", sql)
         self.assertIn("ERRORE", params)
         self.assertNotIn("'ERRORE'", sql.split("ORDER BY")[0])
 
@@ -165,6 +178,10 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
         )
         self.assertEqual(totale, 1)
         riga = righe[0]
+        # ⛔ Nessun `id`: la riga e' l'unione di due fatti, non una riga di
+        #    tabella. L'identita' e' il documento dentro il lotto.
+        self.assertNotIn("id", riga)
+        self.assertEqual(riga["gruppo_key"], _riga()["gruppo_key"])
         self.assertEqual(riga["stato_esecuzione"], "ERRORE")
         self.assertEqual(riga["errore_codice"], "E_PULL_COMMESSA")
         self.assertEqual(riga["riferimento"], "ORD0036005")
@@ -246,24 +263,25 @@ class LottoGruppiServiceTests(SimpleTestCase):
         with self.assertRaises(ServiceError):
             fn_list_lotto_gruppi(lotto_id=1, stato_esecuzione="ELABORATA")
 
-    # 10) ⭐ ZERO HA DUE SIGNIFICATI. Un giro DI MASSA non scrive nessun gruppo
-    #     (nessuna riga = nessuna restrizione, garanzia G1): non ha niente da
-    #     mostrare, e non perche' non abbia lavorato. Senza il flag il frontend
-    #     direbbe «nessun documento» proprio sui lotti piu' numerosi.
-    @patch.object(VenditeRepository, "lotto_ha_perimetro_gruppi", return_value=False)
+    # 10) ⭐ UNA SOLA LETTURA, e nessun campo in più. Il flag
+    #     `perimetro_dichiarato` è sparito col problema che risolveva: serviva
+    #     perché la lista leggeva il solo PERIMETRO, che i giri di massa non
+    #     scrivono, e zero righe voleva dire due cose. Ora la lista legge anche
+    #     gli ESITI e zero righe ne vuol dire una sola.
+    # ⛔ Il test guarda che il campo NON ci sia: un campo che non discrimina più
+    #     niente, lasciato «per compatibilità», è peggio di un campo assente —
+    #     chi lo legge crede che discrimini.
     @patch.object(VenditeRepository, "list_lotto_gruppi", return_value=([], 0))
-    def test_perimetro_dichiarato_falso_su_lotto_di_massa(self, _lista, mock_exists):
+    def test_nessun_flag_sul_perimetro_nella_risposta(self, mock_lista):
         out = fn_list_lotto_gruppi(lotto_id=10452)
         self.assertEqual(out["count"], 0)
-        self.assertFalse(out["perimetro_dichiarato"])
-        mock_exists.assert_called_once()
+        self.assertNotIn("perimetro_dichiarato", out)
+        # E una lettura sola: il conteggio non si chiede a nessun altro.
+        mock_lista.assert_called_once()
 
-    # 11) ⛔ E il flag non si deriva dalle righe della pagina — sarebbe un'eco.
-    #     Con righe in mano la domanda ha gia' risposta e la seconda lettura non
-    #     si fa: e' il corto circuito, non una scorciatoia.
-    @patch.object(VenditeRepository, "lotto_ha_perimetro_gruppi")
+    # 11) L'export si ferma all'envelope minimo, come tutte le liste
+    #     esportabili: chi costruisce il file legge `results` e `count`.
     @patch.object(VenditeRepository, "list_lotto_gruppi", return_value=([_riga()], 1))
-    def test_perimetro_non_si_richiede_quando_ci_sono_gia_righe(self, _lista, mock_exists):
-        out = fn_list_lotto_gruppi(lotto_id=10657)
-        self.assertTrue(out["perimetro_dichiarato"])
-        mock_exists.assert_not_called()
+    def test_export_non_pagina(self, mock_lista):
+        fn_list_lotto_gruppi(lotto_id=10657, max_rows=10_001)
+        self.assertEqual(mock_lista.call_args.kwargs["max_rows"], 10_001)

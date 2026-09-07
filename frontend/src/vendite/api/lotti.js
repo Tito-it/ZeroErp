@@ -51,10 +51,12 @@ export function listLottoFatture(lottoId, params = {}) {
 // l'identificativo della COMMESSA.
 // ⚠️ Le due liste NON sono in corrispondenza 1:1 nemmeno a giro riuscito: una
 // fattura può raccogliere più documenti. Sono due domande diverse.
-// ⚠️ La risposta porta `perimetro_dichiarato`: un giro DI MASSA non dichiara
-// nessun perimetro, quindi qui non ha niente da mostrare — e senza quel flag
-// «non ha lavorato niente» e «non dichiara un perimetro» si leggono uguali.
-// `statoEsecuzione` assente = tutti, compresi i documenti mai tentati.
+// ⭐ La riga è l'UNIONE di due fatti (rev DB 2026-09-07): il PERIMETRO — che
+// dichiarano i soli giri mirati — e l'ESITO, che c'è su entrambi i tipi di
+// giro. Perciò la scheda dice qualcosa anche sui giri di massa, che prima
+// restavano muti, e continua a mostrare i documenti dichiarati e non ancora
+// tentati (esito vuoto).
+// `statoEsecuzione` assente = tutti, compresi i mai tentati.
 export function listLottoGruppi(
   lottoId, { page = 1, pageSize = 25, orderBy = null, orderDir = null, statoEsecuzione = null } = {},
 ) {
