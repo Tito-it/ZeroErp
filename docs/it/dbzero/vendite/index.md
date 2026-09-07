@@ -29,6 +29,7 @@
 - [event_log](tabelle/event_log.md) — `vendite.event_log` centralizza in un unico stream temporale gli eventi tecnici/funzionali dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only**.
 - [famiglie_documento](tabelle/famiglie_documento.md) — (latest review 31-08-2026)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA, emittente fiscale) e consente la gestione coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, statistiche).
+- [fatturazione_lotti_esiti](tabelle/fatturazione_lotti_esiti.md)
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura, consentendo di:
 - [fatturazione_lotti_gruppi](tabelle/fatturazione_lotti_gruppi.md) — Registra il **perimetro di un lotto mirato**: quali gruppi fatturabili quel lotto ha il permesso di lavorare.
 - [fatturazione_lotti_log](tabelle/fatturazione_lotti_log.md) — (latest review 28-01-2026) `vendite.fatturazione_lotti_log` registra **warning** e **errori critici** relativi ai processi del lotto di fatturazione.
@@ -409,6 +410,7 @@
 - [vw_fattura_righe_esposte](views/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fatture_lista](views/vw_fatture_lista.md)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
+- [vw_lotti_chiusi_con_gruppi_in_errore](views/vw_lotti_chiusi_con_gruppi_in_errore.md)
 - [vw_lotti_fatture_incoerenti](views/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
 - [vw_lotti_gruppi_serviti](views/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)

@@ -1,0 +1,275 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL CRITERIO DEL GUASTO SI SCRIVE UNA VOLTA SOLA, E STA QUI.
+#   Brief: brief-db-sveglia-dei-processi §6 e §8.2.
+#
+#   Il backend chiede una vista-presidio, cioe' il panorama filtrato ai soli
+#   processi che chiedono un occhio. La richiesta e' giusta e il ragionamento
+#   pure: quel filtro non puo' stare in Python, perche' «quali stati sono un
+#   guasto» e' del modello e cambiera'.
+#
+# ── ⛔ MA `WHERE stato NOT IN (...)` NELLA VISTA FIGLIA E' LA STESSA
+#      DUPLICAZIONE, SPOSTATA DI UN METRO ─────────────────────────────
+#   Il vocabolario degli stati finirebbe enumerato in DUE posti: il `CASE` che
+#   li produce, e la `WHERE` che decide quali sono sani. Il giorno in cui uno
+#   stato nuovo entra — `MAI_PARTITO` che si sdoppia e' l'esempio scritto dal
+#   backend stesso — qualcuno deve RICORDARSI di andare a decidere da che parte
+#   cade. ⚠️ Un allineamento affidato alla memoria e' quello che manca per primo,
+#   e mancherebbe in silenzio: lo stato nuovo cadrebbe fra i guasti o fra i sani
+#   per default, non per decisione.
+#
+#   ⇒ La colonna `da_guardare` nasce QUI, dal `CASE` che produce gli stati, con
+#   i sani nominati una riga sotto. Uno stato nuovo obbliga a decidere sul posto.
+#   La vista-presidio (20260907-02) e' allora `WHERE da_guardare`: non ripete
+#   niente, proietta.
+#
+# ── ⚠️ LA COLONNA VA IN CODA, E NON E' UNA SCELTA ──────────────────
+#   `CREATE OR REPLACE VIEW` sa solo AGGIUNGERE colonne in fondo: non le
+#   riordina e non le toglie. `stato` era l'ultima, quindi `da_guardare` le va
+#   dietro. Tutto il resto — nomi, tipi, ordine — resta identico.
+#
+# ── ⭐ `SU_RICHIESTA`: il panorama si divide su cio' che SA LEGGERE ─
+#   Brief §2: «otto scoperti conta insieme cose diverse», ed e' vero.
+#   `FUORI_PORTATA` teneva insieme due fatti opposti:
+#
+#     COMMAND  — una cadenza ESISTE, ma vive in systemd: e' un limite di VISTA,
+#                e dal 2026-09-06 qualcuno la presidia dall'altro lato
+#                (backend/deploy/sveglie.json + il suo test);
+#     CODA     — una cadenza NON esiste: lo sveglia una persona. E' un fatto
+#                PERMANENTE, non un confine che un giorno si potra' spostare.
+#
+#   ⇒ Due fatti diversi, due parole. `SU_RICHIESTA` non e' un guasto e non lo
+#   sara' mai; `FUORI_PORTATA` e' «non lo so io», e chi lo sa e' il backend.
+#
+#   ⛔ E `listen_cambio_reparto` RESTA fra i COMMAND, deliberatamente. E' un
+#   listener LISTEN/NOTIFY che scrive un solo run, quello di avvio: presidiarne
+#   la vitalita' sull'ultimo run direbbe «fermo» su un listener sano acceso da
+#   tre settimane. Ma che sia un listener il database NON LO SA — nessuna
+#   colonna di dbops.processi lo dice, e dedurlo dal nome sarebbe una
+#   coincidenza travestita da regola. ⇒ Uno stato che il modello non sa produrre
+#   sarebbe una parola scritta a mano. Se serve, e' una colonna: cioe' un pezzo
+#   di modello, non un ramo di CASE.
+#
+# ── ⚠️ IL VOCABOLARIO DEI CANALI E' CHIUSO, E STA IN DUE POSTI ─────
+#   `chk_processi_canale` ammette QUATTRO canali; questo `CASE` ne nomina due e
+#   lascia cadere gli altri sui rami di pgAgent. Oggi regge per coincidenza —
+#   sia i PGAGENT sia l'unico CODA_AUTOMATICA portano un jobname. Un
+#   CODA_AUTOMATICA accodato da un trigger non l'avrebbe: finirebbe
+#   NON_PROGRAMMATO, cioe' nel presidio, come falso allarme su un processo sano.
+#   ⇒ I due vocabolari li tiene legati un pgTAP, non una preCondition: una
+#   preCondition guarda cio' che viene prima, un invariante si asserisce in
+#   pgTAP (linee-guida-sql §11.5).
+#
+# ⚠️ Il test 7 di db/pgtap/dbops/test-vw-processi-programmazione.sql cambia con
+#   questo changeSet: pretendeva FUORI_PORTATA anche sui CODA.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql
+#           db/pgtap/dbops/test-vw-processi-programmazione-da-guardare.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260907-01-update-vw-processi-programmazione-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260907-01-update-vw-processi-programmazione-da-guardare
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione: la colonna `da_guardare` (il criterio
+        del guasto, scritto una volta sola accanto al CASE che produce gli
+        stati) e lo stato `SU_RICHIESTA` per i processi di coda, che una cadenza
+        non ce l'hanno affatto — diverso da FUORI_PORTATA, che e' un limite di
+        vista del database.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: processi
+                columnName: jobname_pgagent
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'fn_get_pgagent_job_stato'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione AS
+              -- ⭐ La CTE non e' un vezzo: serve a calcolare `stato` UNA volta e
+              --   a poterlo poi leggere per dire se e' un guasto. Ripetere il
+              --   CASE per costruire `da_guardare` avrebbe rimesso il criterio
+              --   in due posti dentro la stessa vista.
+              WITH panorama AS (
+                  SELECT p.codice            AS processo_codice,
+                         p.classe,
+                         p.canale,
+                         p.jobname_pgagent,
+                         -- Che cosa ne sa pgAgent. ⚠️ Colonne vuote = «di questo
+                         -- job non so niente»: estensione assente, o job
+                         -- inesistente.
+                         g.abilitato           AS job_abilitato,
+                         g.prossima_esecuzione AS prossima_corsa,
+                         g.ultima_esecuzione   AS pgagent_ultima_corsa,
+                         -- Che cosa ne sa il nostro giornale.
+                         l.ultima_corsa        AS giornale_ultima_corsa,
+                         l.ultimo_esito,
+                         CASE
+                             -- ⭐ Una cadenza NON ESISTE: lo sveglia una persona.
+                             --   Non e' un limite di vista, e' la natura del
+                             --   processo — quindi non diventera' mai un guasto.
+                             WHEN p.canale = 'CODA'
+                                 THEN 'SU_RICHIESTA'
+                             -- ⚠️ Una cadenza esiste e vive fuori: il database
+                             --   non puo' sapere se stanno partendo. ⭐ Chi puo'
+                             --   saperlo e' il backend, e dal 2026-09-06
+                             --   presidia (deploy/sveglie.json + il suo test).
+                             WHEN p.canale = 'COMMAND'
+                                 THEN 'FUORI_PORTATA'
+                             -- ⛔ Nessun job dichiarato su un canale che pgAgent
+                             --   dovrebbe svegliare: o non lo sveglia nessuno, o
+                             --   non l'abbiamo scritto. In entrambi i casi non
+                             --   si sa.
+                             WHEN p.jobname_pgagent IS NULL
+                                 THEN 'NON_PROGRAMMATO'
+                             -- Il processo dichiara un job che pgAgent non ha.
+                             WHEN g.abilitato IS NULL
+                                 THEN 'JOB_ASSENTE'
+                             WHEN g.abilitato IS FALSE
+                                 THEN 'JOB_SPENTO'
+                             -- ⭐ IL CASO PER CUI QUESTA VISTA ESISTE: pgAgent
+                             --   dice che e' girato, il giornale non lo sa. E' un
+                             --   lavoro che muore prima di riuscire a
+                             --   raccontarlo.
+                             --   ⚠️ Un'ora di tolleranza: le due scritture non
+                             --   sono simultanee, e un job partito da poco puo'
+                             --   non aver ancora chiuso la sua riga.
+                             WHEN g.ultima_esecuzione IS NOT NULL
+                                  AND COALESCE(l.ultima_corsa, '-infinity'::timestamptz)
+                                      < g.ultima_esecuzione - interval '1 hour'
+                                 THEN 'GIRA_E_NON_REGISTRA'
+                             -- Programmato, acceso, e non ha mai girato.
+                             WHEN g.ultima_esecuzione IS NULL
+                                 THEN 'MAI_PARTITO'
+                             ELSE 'OK'
+                         END AS stato
+                    FROM dbops.processi p
+                    -- ⛔ LATERAL su una funzione, non un JOIN su pgagent.*: una
+                    --   vista che nomina quello schema non si crea dove
+                    --   l'estensione manca (85_pgagent e' MARK_RAN in CI).
+                    LEFT JOIN LATERAL dbops.fn_get_pgagent_job_stato(p.jobname_pgagent) g
+                           ON true
+                    -- ⚠️ Il giornale si legge per PROCESSO (obbligatorio dal
+                    --   20260905-16) **oppure** per jobname, che e' come si
+                    --   riconoscono le corse storiche: quelle hanno
+                    --   processo_codice vuoto, e senza il ripiego ogni processo
+                    --   sembrerebbe non aver mai girato prima di settembre.
+                    LEFT JOIN LATERAL (
+                        SELECT max(r.started_at) AS ultima_corsa,
+                               (SELECT r2.ok
+                                  FROM maintenance.job_run_log r2
+                                 WHERE (r2.processo_codice = p.codice
+                                        OR r2.jobname = p.codice)
+                                 ORDER BY r2.started_at DESC, r2.id DESC
+                                 LIMIT 1) AS ultimo_esito
+                          FROM maintenance.job_run_log r
+                         WHERE r.processo_codice = p.codice
+                            OR r.jobname = p.codice
+                    ) l ON true
+                   WHERE p.attivo
+                     AND p.obsoleto_dal IS NULL
+              )
+              SELECT panorama.processo_codice,
+                     panorama.classe,
+                     panorama.canale,
+                     panorama.jobname_pgagent,
+                     panorama.job_abilitato,
+                     panorama.prossima_corsa,
+                     panorama.pgagent_ultima_corsa,
+                     panorama.giornale_ultima_corsa,
+                     panorama.ultimo_esito,
+                     panorama.stato,
+                     -- ⭐ QUI, E IN NESSUN ALTRO POSTO, si dice quali stati sono
+                     --   un guasto. I tre sani si nominano una riga sotto il
+                     --   CASE che li produce: uno stato nuovo non ha un default
+                     --   in cui cadere, e chi lo aggiunge deve passare di qui.
+                     -- ⛔ Non e' `stato <> 'OK'`: `FUORI_PORTATA` e
+                     --   `SU_RICHIESTA` non sono OK e non sono guasti — sono
+                     --   «questa domanda non si fa da qui».
+                     panorama.stato NOT IN ('OK', 'FUORI_PORTATA', 'SU_RICHIESTA')
+                         AS da_guardare
+                FROM panorama
+               ORDER BY panorama.canale, panorama.processo_codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione IS
+                  'PANORAMA: per ogni processo automatico attivo — quale job pgAgent lo '
+                  'sveglia, quando girera'', quando ha girato secondo pgAgent e secondo il '
+                  'nostro giornale. ⭐ La colonna che vale piu'' di tutte e'' `stato`, e il '
+                  'valore che conta e'' GIRA_E_NON_REGISTRA: pgAgent dice che il job e'' '
+                  'girato, il giornale non lo sa — e'' la firma esatta di un lavoro che '
+                  'muore prima di riuscire a raccontarlo, cioe'' di R-12, il job morto per '
+                  'sei mesi con l''ultimo verdetto a «done». Questo confronto lo avrebbe '
+                  'trovato in un giorno. ⚠️ Il legame col job NON e'' il nome: si legge da '
+                  'dbops.processi.jobname_pgagent, perche'' due job su quattordici si '
+                  'chiamano diversamente dal processo che registrano. ⚠️ Il giornale si '
+                  'legge per processo_codice OPPURE per jobname: le corse storiche hanno '
+                  'la prima colonna vuota, e senza il ripiego ogni processo sembrerebbe '
+                  'non aver mai girato prima di settembre 2026. '
+                  '⭐ DUE STATI NON SONO GUASTI E NON LO SARANNO MAI, ma per ragioni '
+                  'OPPOSTE (rev 2026-09-06, brief-db-sveglia-dei-processi §8.6): '
+                  'FUORI_PORTATA e'' un limite di VISTA — i COMMAND li sveglia systemd e '
+                  'di loro il database non puo'' sapere se stanno partendo; chi puo'' '
+                  'saperlo e'' il backend, che dal 2026-09-06 lo presidia da '
+                  'backend/deploy/sveglie.json. SU_RICHIESTA e'' invece un fatto della '
+                  'NATURA del processo: i CODA li sveglia una persona, quindi una cadenza '
+                  'da confrontare non esiste affatto. Tenerli sotto la stessa parola '
+                  'faceva contare insieme cose diverse. ⚠️ listen_cambio_reparto resta fra '
+                  'i COMMAND di proposito: e'' un listener che scrive un solo run, ma che '
+                  'sia un listener il database non lo sa — nessuna colonna lo dice, e '
+                  'dedurlo dal nome sarebbe una coincidenza travestita da regola. '
+                  '⭐ E'' un panorama, non un presidio: elenca anche i sani, perche'' senza '
+                  'sapere quanti sono i sani un guasto sembra la norma. ⛔ Il presidio NON '
+                  'si scrive piu'' come un NOT IN a mano: e'' la colonna `da_guardare`, '
+                  'calcolata qui accanto al CASE che produce gli stati, e la vista '
+                  'dbops.vw_processi_programmazione_da_guardare la proietta. Il criterio '
+                  'del guasto sta in UN posto solo: uno stato nuovo non ha un default in '
+                  'cui cadere, e chi lo aggiunge deve decidere qui.';
+
+              COMMENT ON COLUMN dbops.vw_processi_programmazione.da_guardare IS
+                  'Vero se questo stato e'' un guasto. ⭐ E'' la SEDE UNICA del criterio: '
+                  'la vista di presidio la proietta invece di ripetere un NOT IN, che '
+                  'sarebbe la seconda enumerazione degli stati — e la seconda diverge. '
+                  '⛔ Non e'' `stato <> OK`: FUORI_PORTATA e SU_RICHIESTA non sono OK e '
+                  'non sono guasti, sono «questa domanda non si fa da qui».';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_programmazione TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna al panorama SENZA `da_guardare`: il criterio del guasto
+              --   tornerebbe a essere una WHERE scritta a mano da chi legge.
+              --   ⛔ Serve il DROP: CREATE OR REPLACE non sa TOGLIERE una colonna.
+              DROP VIEW IF EXISTS dbops.vw_processi_programmazione_da_guardare;
+              DROP VIEW IF EXISTS dbops.vw_processi_programmazione;

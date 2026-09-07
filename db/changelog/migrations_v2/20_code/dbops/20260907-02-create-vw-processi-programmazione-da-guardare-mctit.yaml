@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL PRESIDIO CHE IL PANORAMA NON PUO' ESSERE.
+#   Richiesta del backend: brief-db-sveglia-dei-processi §6. Risposta: §8.2.
+#
+#   `vw_processi_programmazione` dichiara nel proprio commento di essere un
+#   PANORAMA: elenca anche i sani, perche' senza sapere quanti sono i sani un
+#   guasto sembra la norma. ⛔ Ed e' esattamente il motivo per cui non si puo'
+#   cablare nel pannello dei presidi: quel pannello ha un contratto — ogni vista
+#   che ci compare o DEVE RESTARE VUOTA, o e' un registro di debito che DEVE
+#   CALARE. Metterci dentro dodici righe `OK` insegnerebbe a leggere il verde
+#   come debito, cioe' a ignorare l'avviso. E' il modo piu' efficace di spegnere
+#   un presidio.
+#
+# ── ⭐ PERCHE' UNA VISTA E NON UN FILTRO NEL BACKEND ────────────────
+#   Il criterio «quali stati sono un guasto» e' del MODELLO e cambiera'.
+#   Scritto nel repository Python sarebbe una seconda sede, e la seconda
+#   diverge. Il backend lo dice bene: da parte loro il cablaggio e' UNA riga in
+#   PRESIDI_PROCESSI e ZERO nel frontend — il pannello legge le colonne che
+#   trova e la descrizione da `obj_description`.
+#
+# ── ⛔ E PERCHE' QUI NON C'E' NESSUN `NOT IN` ──────────────────────
+#   Sarebbe la seconda enumerazione degli stati, dentro il database invece che
+#   fuori: stesso difetto, un metro piu' in la'. Il criterio sta in
+#   `da_guardare` (20260907-01), accanto al `CASE` che gli stati li produce.
+#   Questa vista PROIETTA, non decide.
+#
+# ── ⛔ E NEMMENO UN `SELECT *` ─────────────────────────────────────
+#   L'asterisco viene espanso e CONGELATO alla creazione: una colonna aggiunta
+#   domani al panorama non arriverebbe mai al pannello, e non lo direbbe
+#   nessuno. Colonne enumerate, in ordine di lettura: prima CHI e PERCHE', poi
+#   le due date che reggono il verdetto.
+#   ⚠️ `da_guardare` NON entra: qui sarebbe una colonna sempre vera, cioe'
+#   rumore in un elenco che deve essere corto.
+#
+# ── 🔴 NASCE NON VUOTA, E VA SAPUTO PRIMA DI CABLARLA ──────────────
+#   Letto su dbdev il 2026-09-06: due righe `GIRA_E_NON_REGISTRA`.
+#     chiusura_scadenze_daily  — il wrapper e' stato installato alle 00:39,
+#       DOPO la corsa delle 00:05: alla prossima registra, e la riga sparisce;
+#     apply_storicizza_weekly  — ⛔ questo NON e' un residuo. Il suo wrapper
+#       esiste dal 2025-08-08, il giornale si ferma al 2026-02-21 e pgAgent dice
+#       che ha girato il 2026-09-05. Sono sei mesi e mezzo di corse senza
+#       traccia: e' R-12, ancora vivo, sullo stesso processo che l'ha reso
+#       famoso. La causa probabile e' quella corretta il 2026-09-05 alle 22:49
+#       (20260905-35/-36, «il verbale sopravvive»), quindici ore DOPO l'ultima
+#       corsa ⇒ la prima prova onesta e' sabato 2026-09-12.
+#   ⚠️ Quella riga non e' un difetto di questa vista: e' la prima cosa che
+#   questa vista ha da dire, ed e' il motivo per cui la si e' chiesta.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione-da-guardare.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260907-02-create-vw-processi-programmazione-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260907-02-create-vw-processi-programmazione-da-guardare
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione_da_guardare: i processi automatici la
+        cui sveglia e la cui ultima corsa non tornano. E' il panorama proiettato
+        su `da_guardare`, non un secondo criterio — il pannello dei presidi non
+        puo' ospitare una vista che elenca anche i sani.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops'
+                     AND viewname = 'vw_processi_programmazione'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'dbops.vw_processi_programmazione'::regclass
+                     AND a.attname = 'da_guardare'
+                     AND NOT a.attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione_da_guardare AS
+              SELECT v.processo_codice,
+                     -- Il verdetto per primo: e' la colonna che dice cosa
+                     -- guardare, e in un presidio si legge quella.
+                     v.stato,
+                     v.classe,
+                     v.canale,
+                     v.jobname_pgagent,
+                     v.job_abilitato,
+                     -- ⭐ Le due date sono la PROVA del verdetto, non un
+                     --   ornamento: `GIRA_E_NON_REGISTRA` si legge guardando
+                     --   quanto distano.
+                     v.pgagent_ultima_corsa,
+                     v.giornale_ultima_corsa,
+                     v.ultimo_esito,
+                     v.prossima_corsa
+                FROM dbops.vw_processi_programmazione v
+               -- ⛔ Nessun NOT IN qui: il criterio sta nel panorama, accanto al
+               --   CASE che produce gli stati. Questa vista proietta.
+               WHERE v.da_guardare
+               ORDER BY v.canale, v.processo_codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione_da_guardare IS
+                  'PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa '
+                  'non tornano. DEVE restare VUOTA. ⭐ E'' il panorama '
+                  '(dbops.vw_processi_programmazione) proiettato sulla colonna '
+                  '`da_guardare`, NON un secondo criterio: ripetere qui un NOT IN sugli '
+                  'stati sarebbe la seconda enumerazione dello stesso vocabolario, e la '
+                  'seconda diverge — il giorno in cui uno stato nuovo entra, qualcuno '
+                  'dovrebbe ricordarsi di venire a decidere da che parte cade. '
+                  '⛔ Il panorama non puo'' stare al suo posto: elenca anche i sani (12 '
+                  'righe OK al 2026-09-06), e un presidio che mostra il verde insegna a '
+                  'leggere il verde come debito, cioe'' a ignorare l''avviso. '
+                  '⚠️ Restano FUORI di proposito FUORI_PORTATA e SU_RICHIESTA, che non '
+                  'sono guasti per ragioni opposte: il primo e'' un limite di vista del '
+                  'database (i COMMAND li sveglia systemd, e chi li presidia e'' il '
+                  'backend da deploy/sveglie.json), il secondo e'' la natura del processo '
+                  '(un CODA lo sveglia una persona: una cadenza da confrontare non '
+                  'esiste). ⭐ Lo stato che vale piu'' di tutti e'' GIRA_E_NON_REGISTRA: '
+                  'pgAgent dice che il job e'' girato, il giornale non lo sa. E'' la firma '
+                  'di R-12 — un lavoro che muore prima di riuscire a raccontarlo. '
+                  '🔴 FATTO DATATO 2026-09-06, e va tolto da qui quando sara'' rientrato: '
+                  'questa vista NASCE con due righe. chiusura_scadenze_daily ha avuto il '
+                  'wrapper alle 00:39, dopo la corsa delle 00:05, e alla prossima '
+                  'registra. apply_storicizza_weekly no: il suo wrapper esiste dal '
+                  '2025-08-08, il giornale si ferma al 2026-02-21 e pgAgent dice che ha '
+                  'girato il 2026-09-05 — sei mesi e mezzo di corse senza traccia. '
+                  'Brief: brief-db-sveglia-dei-processi §8.1.';
+
+              -- Il ruolo applicativo la legge: il pannello dei presidi della
+              -- schermata «Processi automatici» la mostra accanto alle altre.
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_processi_programmazione_da_guardare
+                          TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_processi_programmazione_da_guardare;

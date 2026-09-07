@@ -12,9 +12,11 @@
 > ⚠️ **Il dato è a zero** (44 gruppi, tutti `NULL`): nessun giro è ancora
 > passato dalla marcatura, e finché non passa non si vede niente. Il collaudo
 > end-to-end è in **§12.5**, fatto in transazione annullata sul caso vero.
-> 🔴 Restano **due domande di modello al team DB**: il **§11** (la marcatura che
-> muore col rollback nel ramo «tutte fallite») e il **§12.4** (un giro di massa
-> non ha dove essere marcato).
+> ✅ **Le due domande di modello hanno risposta**: il **§11** nel §13 e §14 (si
+> allineano i due rami: niente eccezione, niente rollback, i segni restano), il
+> **§12.4** nel **§15** (una tabella sta rispondendo a due domande — si separano).
+> 🔴 Resta il lavoro: **P-5 e P-3 al backend**, poi **P-6** e la separazione del
+> §15 al DB.
 > 🔴 E un passo operativo: le colonne di catalogo arrivano col prossimo
 > `migrate` del seed — **§12.6**.
 >
@@ -438,3 +440,370 @@ appena il backend viene ricaricato.
 | icona rossa + gesto in competenza | ricarica del backend (`kill -HUP`) + build FE |
 | le cinque colonne opzionali in competenza | `migrate` del seed |
 | scheda «Presi in carico» del lotto | `migrate` del seed |
+
+---
+
+## 13. ✅ Risposta del team DB al §11 — **non serve niente dal database**
+
+> Rilettura del 2026-09-06, dopo il push del backend.
+
+### Prima: il lavoro fatto regge, e in due punti va oltre il contratto
+
+* la chiamata è **prima dei tre rami** e non dentro, con il ragionamento giusto
+  scritto accanto — *«metterla nei rami vorrebbe dire scriverla tre volte e
+  dimenticarla una: il candidato naturale è il ramo che solleva, cioè il caso
+  peggiore»*;
+* `COMPLETED` sui riusciti, non solo l'errore;
+* il valore di ritorno **guardato**, con un avviso che dice la conseguenza e non
+  solo il fatto;
+* ⭐ gli stati presi da uno **specchio del vincolo di tabella**, non da stringhe
+  scritte a mano. Il contratto non lo chiedeva: è meglio di quello che avevamo
+  scritto noi;
+* ⭐ e il limite è stato **misurato**, non supposto.
+
+### Il limite è vero. La soluzione proposta, secondo noi, no
+
+Il §11 chiede una scrittura che sopravviva al rollback, *«stessa forma di
+`maintenance.fn_job_run_log_failure`»*. ⛔ **Sconsigliata, per due motivi.**
+
+**1. Cambierebbe la natura del canale.** Quel canale scrive su `dbops.error_log`
+e `maintenance.job_run_log`: due **registri**. Estenderlo a
+`vendite.fatturazione_lotti_gruppi` vuol dire dare al ruolo del canale la
+scrittura su una tabella di **dominio**, sotto RLS. Per far sopravvivere un
+segno si aprirebbe una porta su un'altra tabella — e quella porta poi resta.
+⚠️ In più il canale è silenzioso dove non è configurato: su `ci-validate` non
+c'era fino a ieri.
+
+**2. ⭐ Il meccanismo esiste già, e sta nello stesso file, tre righe sopra.**
+`run_pipeline` ha un `except ServiceError` **fuori** dal `transaction.atomic()`,
+e lì fa già tre scritture di compensazione che sopravvivono al rollback:
+
+| | |
+| --- | --- |
+| `_mark_lotto_error_safely` | mette il lotto in errore |
+| `_persist_fattura_error_safely` | *«la testata dice CHE c'è un errore; questa riga dice QUALE documento, e perché»* |
+| `_persist_task_run_error_safely` | il diario dei task |
+
+⇒ Serve un **quarto fratello**, non un meccanismo nuovo. E il commento del
+secondo descrive già, parola per parola, quello che manca al terzo ramo.
+
+### Il piano
+
+| # | Cosa | Chi |
+| --- | --- | --- |
+| **P-1** | L'eccezione porta gli **id** delle commesse fallite, non solo le frasi formattate (oggi `context["errors"]` sono stringhe) | BE |
+| **P-2** | `_marca_gruppi_falliti_safely(...)` nel `except ServiceError` di `run_pipeline`, accanto ai tre che ci sono già. La transazione lì è chiusa: la scrittura vive | BE |
+| **P-3** | 🔴 Un test che su quel ramo **non mocka** il repository. Il difetto è sfuggito proprio perché i test provano che la chiamata avvenga, non che la riga resti | BE |
+| **P-4** | **DB: niente.** `fn_segna_esito_gruppo_lotto` funziona da qualsiasi transazione, è idempotente e dice quante righe ha marcato | — |
+
+### ⭐ Una domanda prima di P-1 — e la risposta è già scritta accanto
+
+Quando un giro finisce male il sistema può fare due cose diverse:
+
+| | Che cosa succede | Quando lo fa oggi |
+| --- | --- | --- |
+| **Annulla tutto** | come strappare il foglio: non resta traccia di niente, nemmeno degli appunti su che cosa è andato storto | quando falliscono **tutte** le commesse |
+| **Fermati e lascia scritto** | il lavoro non è riuscito, ma gli appunti restano: si vede quale documento è caduto e perché | quando ne falliscono **alcune** |
+
+⭐ **E la seconda scelta il progetto l'ha già fatta**, con il motivo scritto sopra
+`TaskEsitoParziale` in `pipeline_step_executor.py`:
+
+> *«NON sollevare al suo posto: un raise farebbe rollback dell'intero step,
+> cancellando anche il lavoro delle fatture sane E la marcatura di quelle rotte
+> — il rilancio ripartirebbe da zero, identico, per sempre.»*
+
+È **esattamente** il difetto che il §11 ha misurato, un ramo più in là.
+
+⇒ La domanda diventa molto più semplice di come l'avevamo posta:
+**perché quando ne falliscono due su tre teniamo gli appunti, e quando ne
+falliscono tre su tre li strappiamo?** La differenza fra i due casi è un numero.
+
+⚠️ **Una ragione per lasciarlo com'è c'è, e va separata dall'altra.** Se
+falliscono tutte non c'è niente da fatturare, quindi ha senso **fermare la
+catena** invece di far girare a vuoto i passi successivi.
+⭐ Ma *«fermare la catena»* e *«strappare gli appunti»* sono due cose diverse, e
+oggi le fa lo stesso gesto. Si può fermare **tenendo**.
+
+⇒ Se il seguito della catena regge un esito invece di un'eccezione, questa è la
+strada — e P-1/P-2 non servono. Se il `raise` è davvero l'unico modo di fermare
+tutto, allora P-1 e P-2 restano.
+⛔ **Non la tocchiamo noi**: chi conosce il seguito della catena decide.
+
+### ⚠️ Che cosa resta scoperto nel frattempo, e va detto così
+
+I due rami che non sollevano — tutto riuscito e **parziale** — funzionano, e il
+parziale è il caso di `LTF-0009578`: **il difetto per cui il cantiere è nato è
+chiuso.** Resta scoperto il «tutte fallite», che è anche il caso in cui oggi non
+si vede niente. È un debito con un nome, non una svista.
+
+---
+
+## 14. ✅ Decisione presa: si allineano i due casi (Tid, 2026-09-06)
+
+> **«Trattiamoli tutti come quando ne capita 2 su 3.»**
+
+Il ramo «tutte fallite» smette di sollevare e torna un esito, come fa già il
+parziale. Niente rollback ⇒ i segni sui documenti falliti restano.
+
+⇒ **P-1 e P-2 del §13 decadono**: non serve più nessuna scrittura di
+compensazione, perché non c'è più niente da compensare. Resta **P-3** — il test
+che su quel ramo non mocka il repository.
+
+### Che cosa ho verificato prima di dire di sì
+
+La domanda che conta è: **senza l'eccezione, chi mette il lotto in ERRORE?**
+
+Lo decide `evaluate_lotto_status`, che guarda due cose: fatture in errore e
+segnalazioni critiche. ⛔ E con tutte le commesse fallite **le fatture non
+nascono**: la prima delle due è zero per costruzione.
+
+✅ Il lotto va comunque in ERRORE, e il motivo è la seconda: il passo scrive una
+segnalazione **critica per ogni commessa fallita** *prima* di scegliere il ramo.
+Misurato su `LTF-0009578`: una commessa fallita, una riga critica. Con tre su
+tre ce ne sarebbero tre.
+
+### 🔴 Ma è una salvezza indiretta, e va sorvegliata
+
+Il lotto si salva perché **un altro pezzo** scrive quelle righe in un certo
+modo. Se un giorno cambiassero forma — accorpate, declassate a warning,
+spostate — un fallimento totale tornerebbe a presentarsi come *«Pipeline
+completata»*.
+
+⭐ È esattamente la classe di difetto per cui questo cantiere è nato: **si
+manifesta come silenzio**. Quindi non ci si fida: si mette un presidio.
+
+| | |
+| --- | --- |
+| **`20260907-11`** | `vendite.vw_lotti_chiusi_con_gruppi_in_errore` — elenca la contraddizione *«un lotto chiuso COMPLETATO che contiene documenti in ERRORE»*, e deve restare vuota |
+| **pgTAP 9 e 10** | che è vuota, **e** che si accende su un caso costruito. Senza il secondo, il primo proverebbe solo che oggi non c'è niente |
+
+⚠️ La vista **non** conta i gruppi senza esito (`NULL` = nessuno l'ha detto):
+sono tutti i lotti anteriori al 2026-09-06, e contarli darebbe un presidio che
+nasce già spento e non arriva mai a zero.
+
+### Il piano aggiornato
+
+| # | Cosa | Chi | Stato |
+| --- | --- | --- | --- |
+| **P-5** | Il ramo «tutte fallite» torna un esito invece di sollevare, come il parziale | BE | 🔴 da fare |
+| **P-3** | Un test su quel ramo che **non mocka** il repository | BE | 🔴 resta |
+| **P-6** | `E_PULL_COMMESSA_ALL_FAILED` non lo solleva più nessuno ⇒ si deprecalo con `obsoleto_dal`. ⚠️ **Dopo** il BE, non prima: nessuna funzione del database lo nomina (verificato), quindi è solo il backend a poterlo lasciare | DB | 🔵 dopo P-5 |
+| **P-7** | Il presidio `20260907-11` | DB | ✅ **applicato e verde (07-09)** |
+| ~~P-1, P-2~~ | ~~scrittura di compensazione~~ | — | ⛔ **decadute** |
+
+### ⚠️ Il presidio dice una cosa in più di quella per cui è nato
+
+Se un domani qualcuno rimettesse un `raise` su quel ramo, i segni tornerebbero a
+sparire — e la vista **non** se ne accorgerebbe (nessun gruppo in ERRORE, quindi
+nessuna contraddizione). ⇒ Quel verso lo copre il test 10, che costruisce il
+caso: è lì che si vede se la marcatura sopravvive davvero.
+
+---
+
+## 15. ✅ Risposta al §12.4 — una tabella sta rispondendo a due domande
+
+> La domanda era: *«dove vive l'esito di un documento quando il lotto non
+> dichiara un perimetro?»*. La diagnosi del §12.4 è giusta, e il rifiuto di
+> tappare dal backend anche: scrivere i gruppi sui giri di massa
+> trasformerebbe ogni giro schedulato in un giro mirato.
+
+### La causa, in una riga
+
+`fatturazione_lotti_gruppi` oggi risponde a **due domande diverse**:
+
+| | |
+| --- | --- |
+| *«quali documenti devo lavorare?»* | il **perimetro** — e lì *nessuna riga* vuol dire *nessuna restrizione* |
+| *«com'è andato ciascun documento?»* | l'**esito** — che dovrebbe esistere sempre, perimetro o no |
+
+Coincidono sui giri mirati, e divergono su quelli di massa. ⭐ Non è un buco da
+tappare: è **una tabella di troppo poco**.
+
+### La strada che proponiamo
+
+Un posto suo per l'esito — *(lotto, documento, com'è andato)* — scritto
+**quando c'è qualcosa da dire**, indipendentemente da come è nato il lotto.
+`fatturazione_lotti_gruppi` torna a essere solo il perimetro, e la sua
+convenzione portante resta intatta.
+
+⭐ **E il contratto verso il backend non cambia di una virgola**:
+`fn_segna_esito_gruppo_lotto` mantiene nome e parametri — cambia solo dove
+scrive, e su un lotto senza perimetro la riga la **crea** invece di non trovarla.
+⇒ Nessuna modifica al codice già scritto: sparisce solo il ritorno `0` sui giri
+di massa.
+
+### ⛔ Le due strade scartate
+
+* **Un flag sulla riga** che distingua «questa restringe» da «questa racconta»:
+  sarebbe una colonna che risponde a due domande, e la regola portante
+  diventerebbe *«nessuna riga **con il flag**»* — un'invariante più sottile, che
+  ogni lettore dovrebbe conoscere per non sbagliare.
+* **Scrivere i gruppi anche sui giri di massa**: è la tentazione già rifiutata
+  nel §12.4, e per il motivo giusto.
+
+### ⚠️ Quanto costa, detto prima
+
+Non è una riga: una tabella nuova, lo spostamento delle quattro colonne, la
+funzione che cambia bersaglio, la vista di competenza che cambia join, il
+presidio e il pgTAP che seguono. ⇒ **Va deciso, non fatto di slancio.**
+
+⚠️ E finché non si fa, il §12.4 resta vero e va detto così: **l'esito per
+documento esiste sui lotti nati da emissione mirata; un giro schedulato che
+fallisce una commessa è muto come prima.** È un debito con un nome.
+
+---
+
+## 16. 🏁 Dove siamo il 2026-09-07
+
+### ✅ In esercizio, e verificato
+
+| | |
+| --- | --- |
+| Le colonne dell'esito sul gruppo | `20260906-10` |
+| La funzione che le scrive e ritrova il gruppo dalla commessa | `20260906-11` |
+| La competenza che mostra l'ultimo tentativo | `20260906-12` |
+| Il presidio della contraddizione | `20260907-11` |
+| Il collaudo | `test-lotti-gruppi-esito.sql` — **10/10** |
+| La lista che l'operatore guarda | le cinque colonne ci sono **e sono attive** |
+
+⭐ Il difetto per cui il cantiere è nato — un documento fallito che spariva dal
+lotto e sembrava sano in competenza — **è chiuso e visibile a video**, sui lotti
+con perimetro.
+
+### 🔴 Torna al backend
+
+| # | Cosa |
+| --- | --- |
+| **P-5** | Il ramo «tutte fallite» torna un esito invece di sollevare |
+| **P-3** | Un test su quel ramo che **non mocka** il repository: il limite precedente è sfuggito proprio perché i test provano che la chiamata avvenga, non che la riga resti |
+
+### 🔵 Poi torna al DB
+
+| # | Cosa |
+| --- | --- |
+| **P-6** | `E_PULL_COMMESSA_ALL_FAILED` non lo solleverà più nessuno ⇒ `obsoleto_dal`. ⚠️ **dopo** P-5. Verificato: nessuna funzione del database lo nomina |
+| **P-8** | La separazione del §15, **se e quando** la si decide |
+
+### ⚠️ Il debito di collaudo, dichiarato
+
+Il ritrovamento del gruppo **partendo dalla commessa quando la commessa alimenta
+davvero quel gruppo** non è coperto da pgTAP: servirebbe una commessa con le sue
+attività. È coperto il verso opposto.
+⇒ Si verifica **sul primo giro vero** dopo P-5. Se lì il conto tornasse a zero,
+il messaggio da cercare nei log è `pull_commesse.esito_non_appeso`.
+
+### ⚠️ Chi guarda il presidio
+
+`vw_lotti_chiusi_con_gruppi_in_errore` non ha un cruscotto: a sorvegliarla è il
+**test 9** della suite, a ogni corsa — ed è il **test 10**, che costruisce il
+caso cattivo, a impedirle di diventare verde per sottrazione.
+
+---
+
+## 17. ✅ La separazione — applicata e verde il 2026-09-07
+
+> **Decisione di Tid:** *«fonte unica, e giro mirato e di massa si devono
+> comportare alla stessa maniera»*. Più: **niente recupero dei dati vecchi,
+> siamo in test.**
+
+### Perché non bastava il consuntivo
+
+Cercando un posto che esistesse già ho trovato `vendite.fn_esito_gruppi_giro` —
+il consuntivo di un giro, un documento per riga, SERVITO / NON_SERVITO /
+FATTURATO_ALTROVE — che **funziona già anche sui giri di massa**.
+
+⛔ Ma risponde a un'altra domanda: *«com'è andata quella corsa»*, non *«perché
+questo documento non è passato»*. E il motivo, oggi, sta nel giornale, legato
+alla **commessa** e non al documento.
+
+⇒ Tenere il motivo derivato dal giornale avrebbe reso le colonne sul perimetro
+una **seconda copia** dello stesso fatto. Fonte unica vuol dire il contrario:
+una scrittura, tutti leggono di lì.
+
+### I cinque changeSet, e l'ordine è portante
+
+| | Cosa |
+| --- | --- |
+| **`20260907-12`** | `vendite.fatturazione_lotti_esiti` — una riga per (lotto, documento), creata quando c'è qualcosa da dire |
+| **`20260907-13`** | `fn_segna_esito_gruppo_lotto` scrive lì. **Stessa firma, stesso valore di ritorno** |
+| **`20260907-14`** | la competenza legge l'ultimo tentativo dalla casa nuova |
+| **`20260907-15`** | il presidio idem — e così vede anche i lotti **senza perimetro** |
+| **`20260907-16`** | il perimetro perde le quattro colonne e torna a rispondere a una domanda sola |
+
+⚠️ Il `-16` ha il numero più alto **apposta**: le due viste dipendono da quelle
+colonne, e un `DROP COLUMN` con una vista attaccata non passa. L'autogen ordina
+`00_schema` e `20_code` insieme per numero, quindi il `-16` arriva dopo il `-14`
+e il `-15`. ⛔ Rinumerarlo più in basso romperebbe il migrate.
+
+### ⭐ Il backend non tocca niente
+
+Chiamava già la funzione per ogni commessa, mirata o di massa. Su un giro di
+massa la chiamata partiva, non trovava la riga e tornava `0` con il suo avviso.
+Adesso **la riga si crea**: la stessa identica chiamata comincia a funzionare.
+
+⇒ Il §12.4 si chiude senza una riga di codice in più dall'altra parte.
+
+### Due scelte di modello che vale la pena non riscoprire
+
+* ⭐ **`stato_esecuzione` qui è obbligatorio.** Sul perimetro doveva essere
+  nullabile («nessuno l'ha detto»); qui la riga *nasce* quando qualcuno lo dice,
+  quindi il non-detto è l'**assenza della riga**. Sparisce lo stato di mezzo,
+  che è sempre il più difficile da leggere.
+* ⚠️ **La chiave è (lotto, documento)**, quindi un secondo tentativo
+  **sovrascrive**. La domanda è *«com'è finita»*, non *«quante volte ci abbiamo
+  provato»*: lo storico dei tentativi vive nel giornale del lotto, che è fatto
+  per quello.
+
+### Il collaudo
+
+`test-lotti-gruppi-esito.sql` sale a **12 test**, con due casi nuovi che prima
+non erano nemmeno costruibili:
+
+* **7** — un lotto **senza perimetro** riceve comunque l'esito: è il buco del
+  §12.4, provato invece che raccontato;
+* **8** — due tentativi sullo stesso documento lasciano **una** riga, non due.
+
+✅ **Applicati tutti e cinque, pgTAP 12/12.** Il test 7 verde è la prova che il
+buco del §12.4 è chiuso: un lotto senza perimetro riceve comunque l'esito del
+suo documento.
+
+### ⛔ Il dato vecchio non si travasa
+
+Le quattro colonne sul perimetro portano gli esiti dei giri mirati del 6 e 7
+settembre. **Decisione di Tid: siamo in test, non si recuperano.** È scritto nel
+`-12` e nel `-16` perché su un ambiente con dati veri quel passaggio ci sarebbe
+dovuto essere, e chi rilegge deve sapere che è stato **deciso**, non dimenticato.
+
+### ⚠️ Un difetto trovato applicando, e vale come promemoria
+
+Il primo `migrate` si è fermato sul `-14` con *«errore di sintassi a o presso
+COMMENT»*: il corpo della vista era stato ripreso dal database vivo, e
+`pg_get_viewdef` **non restituisce il punto e virgola finale**. Il
+`COMMENT ON VIEW` finiva così dentro la query.
+
+⭐ Nel `-12` non era successo, perché lì il corpo era stato salvato **con** il
+`;`. Stessa tecnica, due esiti — la differenza fra un passaggio verificato e uno
+dato per fatto.
+
+⇒ Rimedio, oltre alla riga: i changeSet delle viste si fanno **parsare** al
+database in transazione annullata. Un `permesso negato` invece di un `errore di
+sintassi` è la prova che l'istruzione è intera, perché PostgreSQL analizza prima
+e controlla i privilegi dopo.
+
+---
+
+## 18. 🏁 Stato al 2026-09-07, fine giornata
+
+| | |
+| --- | --- |
+| ✅ **DB** | quattro changeSet del 06-09 + sei del 07-09, tutti applicati. pgTAP **12/12** |
+| ✅ **Il caso originale** | un documento fallito resta nel lotto e si vede in competenza, con motivo, orario e lotto |
+| ✅ **Il §12.4** | chiuso: anche i giri **senza perimetro** hanno dove essere marcati, e il backend non cambia una riga |
+| 🔴 **P-5** | il ramo «tutte fallite» torna un esito invece di sollevare | *backend* |
+| 🔴 **P-3** | un test su quel ramo che **non mocka** il repository | *backend* |
+| 🔵 **P-6** | deprecare `E_PULL_COMMESSA_ALL_FAILED` con `obsoleto_dal`, **dopo** P-5 | *DB* |
+
+⚠️ Il debito di collaudo dichiarato resta: il ritrovamento del documento
+**partendo dalla commessa** si verifica sul primo giro vero. Se lì il conto
+tornasse a zero, il messaggio da cercare nei log è
+`pull_commesse.esito_non_appeso`.

@@ -9,16 +9,19 @@
 --   fare: quel giornale lo scrivono i job.
 --
 -- Test: dbops.vw_processi_programmazione — la programmazione e l'ultima corsa
--- ChangeSet: 20260906-03 / -04 / -05 / -06
+-- ChangeSet: 20260906-03 / -04 / -05 / -06 · 20260907-01
 --
--- Elenco test (plan 7):
+-- Elenco test (plan 10):
 --  1) la colonna `jobname_pgagent` c'e', ed e' nullable
 --  2) ⛔ due processi non possono dichiarare lo stesso job
 --  3) ⚠️ un nome vuoto non e' «nessun job»
 --  4) ⭐ la funzione su pgAgent torna ZERO righe dove non sa: non esplode
 --  5) ⭐ il panorama nomina GIRA_E_NON_REGISTRA su un caso COSTRUITO
 --  6) ✅ e NON lo nomina quando le due date coincidono
---  7) ⚠️ COMMAND e CODA sono FUORI_PORTATA, non OK
+--  7) ⚠️ i COMMAND sono FUORI_PORTATA, non OK
+--  8) ⭐ e i CODA sono SU_RICHIESTA: una cadenza non ce l'hanno affatto
+--  9) ⛔ ogni canale ammesso dal CHECK ha un verdetto DICHIARATO qui
+-- 10) ⛔ e la vista lo classifica come il verdetto dice
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL TEST 5 E' LA RAGIONE PER CUI LA VISTA ESISTE.
@@ -29,10 +32,19 @@
 --   l'unico modo, perche' `pgagent.pga_job` e' una tabella di un'estensione e
 --   non si semina.
 --
--- ⛔ IL TEST 7 TIENE ONESTA LA VISTA. Di otto processi su ventidue il database
---   NON PUO' sapere se stanno partendo: la loro sveglia vive in crontab o nel
---   backend. Dire `OK` sarebbe una bugia — e una bugia rassicurante e' il modo
---   piu' efficace di non far guardare piu' nessuno.
+-- ⛔ I TEST 7 E 8 TENGONO ONESTA LA VISTA, e sono DUE perche' dicono cose
+--   diverse. Dire `OK` su un processo che non si vede sarebbe una bugia, e una
+--   bugia rassicurante e' il modo piu' efficace di non far guardare piu'
+--   nessuno. Ma i due modi di «non vedere» non sono lo stesso: di un COMMAND il
+--   database non sa (e chi sa e' il backend), mentre un CODA una cadenza non ce
+--   l'ha proprio. ⚠️ Una parola sola per due fatti faceva contare insieme cose
+--   diverse — brief-db-sveglia-dei-processi §8.6.
+--
+-- ⛔ IL TEST 9 GUARDA UN VOCABOLARIO CHIUSO SCRITTO IN DUE POSTI: i canali li
+--   dichiara `chk_processi_canale`, che cosa farne lo dichiara il `CASE` della
+--   vista. L'elenco lo legge da `pg_constraint`; i verdetti stanno qui, ed e'
+--   voluto: un canale nuovo non ha un verdetto, quindi il test lo NOMINA invece
+--   di dargli un default silenzioso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,7 +53,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(10);
 
 -- ============================================================
 -- 1..3. La colonna e i suoi cancelli
@@ -153,9 +165,114 @@ END;
 --   rassicurante, ed e' il modo piu' efficace di non far guardare piu' nessuno.
 SELECT is_empty(
     $$SELECT processo_codice FROM dbops.vw_processi_programmazione
-       WHERE canale IN ('COMMAND', 'CODA')
+       WHERE canale = 'COMMAND'
          AND stato <> 'FUORI_PORTATA'$$,
-    '7. i processi che pgAgent non sveglia sono FUORI_PORTATA, mai OK'
+    '7. i COMMAND, che sveglia systemd, sono FUORI_PORTATA — mai OK'
+);
+
+-- ============================================================
+-- 8. ⭐ E i CODA sono un'altra cosa, non la stessa
+-- ============================================================
+-- ⛔ Fino al 20260907-01 stavano sotto la stessa parola, e «otto scoperti»
+--   contava insieme due fatti opposti:
+--     FUORI_PORTATA  una cadenza ESISTE, ma vive fuori: e' un limite di VISTA,
+--                    e dal 2026-09-06 la presidia il backend;
+--     SU_RICHIESTA   una cadenza NON esiste: lo sveglia una persona. E' la
+--                    natura del processo, e non cambiera' mai.
+-- ⚠️ Il test 7 da solo passerebbe anche se `SU_RICHIESTA` non esistesse: dice
+--   solo che i COMMAND non sono OK. Serve il verso che nomina l'altro stato.
+SELECT is_empty(
+    $$SELECT processo_codice FROM dbops.vw_processi_programmazione
+       WHERE canale = 'CODA'
+         AND stato <> 'SU_RICHIESTA'$$,
+    '8. i CODA li sveglia una persona: SU_RICHIESTA, non FUORI_PORTATA'
+);
+
+-- ============================================================
+-- 9. ⛔ IL VOCABOLARIO DEI CANALI E' CHIUSO, E STA IN DUE POSTI
+-- ============================================================
+-- `chk_processi_canale` dice quali canali esistono; il `CASE` della vista dice
+-- che cosa farne. Sono due elenchi, e oggi tornano per coincidenza: sia i
+-- PGAGENT sia l'unico CODA_AUTOMATICA portano un jobname, quindi nessuno cade
+-- dove non dovrebbe.
+--
+-- ⭐ L'ELENCO DEI CANALI NON E' SCRITTO QUI: si legge da `pg_constraint`. Le
+--   ATTESE si', ed e' il punto — un canale nuovo non ha un'attesa, quindi il
+--   test lo NOMINA invece di dargli un default silenzioso. E' la forma «il
+--   presidio dichiara i suoi debiti»: l'invariante non e' «vuoto», e'
+--   «nessun canale NON DICHIARATO».
+--
+-- ⚠️ Il caso costruito e' `jobname_pgagent = NULL`, cioe' la forma di un canale
+--   la cui sveglia NON e' pgAgent. E' l'unico modo in cui un canale nuovo
+--   arriverebbe davvero alla vista.
+DO $canali$
+DECLARE
+    -- ⚠️ `true` su PGAGENT e CODA_AUTOMATICA non e' una svista: senza un job
+    --   dichiarato NESSUNO sa chi li sveglia, e guardarli e' giusto. Su
+    --   CODA_AUTOMATICA e' un DEBITO DICHIARATO — oggi quel canale passa da un
+    --   job pgAgent, e il giorno in cui lo accodera' un trigger la risposta
+    --   andra' ripensata QUI, con questo test rosso davanti.
+    v_attese CONSTANT jsonb := jsonb_build_object(
+        'PGAGENT',         true,
+        'COMMAND',         false,
+        'CODA',            false,
+        'CODA_AUTOMATICA', true
+    );
+    v_canale       text;
+    v_ottenuto     boolean;
+    v_id           integer := 9800;
+    v_non_dichiarati text[] := '{}';
+    v_dissenzienti   text[] := '{}';
+BEGIN
+    FOR v_canale IN
+        SELECT DISTINCT m[1]
+          FROM pg_constraint c,
+               LATERAL regexp_matches(pg_get_constraintdef(c.oid),
+                                      '''([A-Z_]+)''::text', 'g') m
+         WHERE c.conname = 'chk_processi_canale'
+         ORDER BY 1
+    LOOP
+        IF NOT v_attese ? v_canale THEN
+            v_non_dichiarati := v_non_dichiarati || v_canale;
+            CONTINUE;
+        END IF;
+
+        v_id := v_id + 1;
+        INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                    jobname_pgagent)
+        VALUES (v_id, 'PGTAP-CANALE-' || v_canale, 'prova vocabolario chiuso',
+                'MANUTENZIONE', v_canale, NULL);
+
+        SELECT da_guardare INTO v_ottenuto
+          FROM dbops.vw_processi_programmazione
+         WHERE processo_codice = 'PGTAP-CANALE-' || v_canale;
+
+        IF v_ottenuto IS DISTINCT FROM (v_attese ->> v_canale)::boolean THEN
+            v_dissenzienti := v_dissenzienti
+                || (v_canale || ': atteso ' || (v_attese ->> v_canale)
+                    || ', ottenuto ' || COALESCE(v_ottenuto::text, 'NULL'));
+        END IF;
+    END LOOP;
+
+    -- ⛔ Si tolgono subito: i test che seguono non devono vedere processi che
+    --   non esistono.
+    DELETE FROM dbops.processi WHERE codice LIKE 'PGTAP-CANALE-%';
+
+    PERFORM set_config('pgtap.canali_non_dichiarati',
+                       array_to_string(v_non_dichiarati, ', '), true);
+    PERFORM set_config('pgtap.canali_dissenzienti',
+                       array_to_string(v_dissenzienti, '; '), true);
+END
+$canali$;
+
+SELECT is(
+    current_setting('pgtap.canali_non_dichiarati', true), '',
+    '9. ogni canale ammesso dal CHECK ha un verdetto dichiarato in questo test'
+);
+
+SELECT is(
+    current_setting('pgtap.canali_dissenzienti', true), '',
+    '10. e la vista lo classifica come il verdetto dichiarato dice'
 );
 
 SELECT * FROM finish();

@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il perimetro torna a fare solo il perimetro.
+#   La casa nuova dell'esito: changeSet 20260907-12.
+#
+# ── ⛔ PERCHE' SI TOLGONO, INVECE DI LASCIARLE LI' ──────────────────
+#   Le quattro colonne dell'esito hanno vissuto su `fatturazione_lotti_gruppi`
+#   dal 2026-09-06 al 2026-09-07. Da oggi l'esito sta in
+#   `vendite.fatturazione_lotti_esiti`, e nessuno le legge piu' — le due viste
+#   che le usavano sono state riportate sulla casa nuova dai changeSet -14 e -15.
+#   ⇒ Lasciarle sarebbe **la seconda sede dello stesso fatto**: la cosa che
+#     questa separazione esiste per togliere. Fra sei mesi qualcuno le
+#     scriverebbe di nuovo, in buona fede, e nessuno se ne accorgerebbe.
+#
+# ── ⛔ NIENTE MIGRAZIONE DEI DATI (decisione di Tid, 2026-09-07) ────
+#   Portano gli esiti dei giri mirati di questi due giorni. **Siamo in test:
+#   non si recuperano.** E' una scelta dichiarata, non una dimenticanza: su un
+#   ambiente con dati veri questo changeSet avrebbe avuto davanti un travaso.
+#
+# ── ⚠️ L'ORDINE E' PORTANTE ────────────────────────────────────────
+#   Questo changeSet ha il numero **piu' alto** dei quattro apposta: le viste
+#   dipendono dalle colonne, e un `DROP COLUMN` con una vista attaccata non
+#   passa. L'autogen ordina `00_schema` e `20_code` insieme per numero, quindi
+#   il -16 arriva dopo il -14 e il -15.
+#   ⛔ Rinumerarlo piu' in basso romperebbe il migrate.
+#
+# Verifica: db/pgtap/vendite/test-lotti-gruppi-esito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260907-16-drop-lotti-gruppi-colonne-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260907-16-drop-lotti-gruppi-colonne-esito
+      author: mctit
+      failOnError: true
+      comment: >
+        Toglie da vendite.fatturazione_lotti_gruppi le quattro colonne
+        dell'esito (e i due vincoli): da oggi l'esito vive in
+        vendite.fatturazione_lotti_esiti e il perimetro torna a rispondere a una
+        domanda sola. Nessun travaso dei dati: decisione di Tid, siamo in test.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # La casa nuova deve esserci: togliere prima che ci sia
+            # lascerebbe il fatto senza nessun posto dove stare.
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+            # ⛔ E le due viste devono gia' leggere di la'. Se una di loro
+            #    puntasse ancora qui, il DROP fallirebbe — ma meglio fermarsi
+            #    con una domanda chiara che con un errore di dipendenza.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_depend d
+                    JOIN pg_rewrite r ON r.oid = d.objid
+                    JOIN pg_class v ON v.oid = r.ev_class
+                    JOIN pg_attribute a
+                      ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+                   WHERE d.refobjid = 'vendite.fatturazione_lotti_gruppi'::regclass
+                     AND a.attname IN ('stato_esecuzione', 'errore_codice',
+                                       'errore_messaggio', 'errore_quando');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  DROP CONSTRAINT IF EXISTS chk_lotti_gruppi_errore_parlante;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  DROP CONSTRAINT IF EXISTS chk_lotti_gruppi_stato_esecuzione;
+
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  DROP COLUMN IF EXISTS errore_quando,
+                  DROP COLUMN IF EXISTS errore_messaggio,
+                  DROP COLUMN IF EXISTS errore_codice,
+                  DROP COLUMN IF EXISTS stato_esecuzione;
+
+              COMMENT ON TABLE vendite.fatturazione_lotti_gruppi IS
+                  'Il PERIMETRO di un lotto: quali documenti quel lotto deve lavorare, '
+                  'una riga per documento. ⛔ La convenzione portante e'' che NESSUNA RIGA '
+                  'significa NESSUNA RESTRIZIONE — cioe'' il comportamento di un giro '
+                  'schedulato, che lavora tutto cio'' che trova. Per questo qui non si '
+                  'scrivono righe «per completezza»: scriverle trasformerebbe un giro di '
+                  'massa in un giro mirato. ⭐ Dal 2026-09-07 questa tabella risponde a '
+                  'UNA domanda sola. Fino al giorno prima portava anche l''esito di '
+                  'ciascun documento, e le due cose divergevano proprio sui giri senza '
+                  'perimetro — dove non c''erano righe, quindi non c''era dove scrivere '
+                  'com''era andata. L''esito ora vive in '
+                  'vendite.fatturazione_lotti_esiti. Brief: brief-db-esito-gruppo-lotto §15.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Ripristina le colonne VUOTE: i dati non sono stati travasati
+              --    (decisione dichiarata), quindi il rollback riporta la forma,
+              --    non il contenuto.
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  ADD COLUMN stato_esecuzione  text        NULL,
+                  ADD COLUMN errore_codice     text        NULL,
+                  ADD COLUMN errore_messaggio  text        NULL,
+                  ADD COLUMN errore_quando     timestamptz NULL;
+
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  ADD CONSTRAINT chk_lotti_gruppi_stato_esecuzione
+                      CHECK (stato_esecuzione IS NULL
+                             OR stato_esecuzione IN ('PENDING', 'RUNNING', 'COMPLETED', 'ERRORE'));
+
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                  ADD CONSTRAINT chk_lotti_gruppi_errore_parlante
+                      CHECK (stato_esecuzione IS DISTINCT FROM 'ERRORE'
+                             OR errore_codice IS NOT NULL
+                             OR errore_messaggio IS NOT NULL);

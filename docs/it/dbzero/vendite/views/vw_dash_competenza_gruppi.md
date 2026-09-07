@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> I documenti da emettere di una competenza, un gruppo per riga. Dal 2026-09-06 porta anche l'esito dell'ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice), letto da vendite.fatturazione_lotti_gruppi. Nasce da un caso vero: un lotto prendeva in carico tre documenti, ne fatturava due, e il terzo — caduto prima di diventare fattura — restava qui senza nessun segno, quindi sembrava fatturabile. Il segno NON spegne stadio ne' commessa_emittibile (decisione di Tid): dice che un tentativo e' fallito, non che il documento non si possa fatturare. Il legame e' (gruppo, mese di competenza): senza il mese, il documento di settembre erediterebbe l'errore di agosto. Le colonne restano NULL finche' il backend non scrive l'esito con vendite.fn_segna_esito_gruppo_lotto. Brief: brief-db-esito-gruppo-lotto R-3.
+> I documenti da emettere di una competenza, un gruppo per riga, con l'esito dell'ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice). Rev 2026-09-07: l'esito si legge da vendite.fatturazione_lotti_esiti e non piu' dalle colonne del perimetro — quelle non esistevano sui giri che un perimetro non lo dichiarano, quindi un documento fallito in un giro di massa restava senza segno. Il segno NON spegne stadio ne' commessa_emittibile (decisione di Tid): dice che un tentativo e' fallito, non che il documento non si possa fatturare. Il legame e' (documento, mese di competenza): senza il mese, il documento di settembre erediterebbe l'errore di agosto. Brief: brief-db-esito-gruppo-lotto.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -85,15 +85,15 @@ WITH aggregato AS (
      LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
-     LEFT JOIN LATERAL ( SELECT lg.stato_esecuzione,
-            lg.errore_codice,
-            lg.errore_messaggio,
-            lg.errore_quando,
+     LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+            le.errore_codice,
+            le.errore_messaggio,
+            le.errore_quando,
             l.codice AS lotto_codice
-           FROM (vendite.fatturazione_lotti_gruppi lg
-             JOIN vendite.fatturazione_lotti l ON ((l.id = lg.lotto_id)))
-          WHERE ((lg.gruppo_key = g.gruppo_key) AND (l.competenza_mese = g.competenza_mese) AND (lg.stato_esecuzione IS NOT NULL))
-          ORDER BY COALESCE(lg.errore_quando, lg.data_update) DESC, lg.id DESC
+           FROM (vendite.fatturazione_lotti_esiti le
+             JOIN vendite.fatturazione_lotti l ON ((l.id = le.lotto_id)))
+          WHERE ((le.gruppo_key = g.gruppo_key) AND (l.competenza_mese = g.competenza_mese))
+          ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
          LIMIT 1) esito ON (true));
 ```
 

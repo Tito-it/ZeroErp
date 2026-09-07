@@ -14,7 +14,7 @@ id,codice,descrizione,classe,canale,attivo,obsoleto_dal,jobname_pgagent
 20,run_fatturazione_batch,Driver batch della fatturazione: scoperta commesse emittibili e pipeline lotto per emittente.,DOMINIO,COMMAND,t,NULL,NULL
 21,draina_coda_stampa,Worker di drenaggio della coda stampa documentale (vendite.fatture_stampa_coda).,DOMINIO,COMMAND,t,NULL,NULL
 22,send_pending_emails,Invio delle email in coda (config.email_outbox) inclusi i documenti fiscali ai clienti.,DOMINIO,COMMAND,t,NULL,NULL
-23,sync_auth_user_active,Sincronizzazione batch dello stato attivo degli utenti Django.,AMMINISTRAZIONE,COMMAND,t,NULL,NULL
+23,sync_auth_user_active,Sincronizzazione batch dello stato attivo degli utenti Django. RITIRATO dal 2026-09-07 a favore di sync_auth_user_expired_daily (id 11) che fa lo stesso lavoro da dentro il database ed e l unico dei due che il panorama riesca a vedere. Brief brief-db-sveglia-dei-processi paragrafo 8.5.,AMMINISTRAZIONE,COMMAND,t,2026-09-07,NULL
 24,listen_cambio_reparto,Listener dei cambi di reparto delle risorse umane.,AMMINISTRAZIONE,COMMAND,t,NULL,NULL
 25,draina_coda_lavori,Worker di drenaggio della coda lavori generica: claim e dispatch dei work item.,MANUTENZIONE,COMMAND,t,NULL,NULL
 40,FATTURAZIONE_GIRO,Giro di fatturazione per un perimetro: discovery terne piu lotto piu pipeline.,DOMINIO,CODA,t,NULL,NULL

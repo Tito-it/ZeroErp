@@ -1,0 +1,212 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ L'ASSE AVEVA UNA FORMA CHE NON NOMINAVA, E NON ERA UNA NICCHIA.
+#   Segnalazione del backend: brief-db-sveglia-dei-processi §3.2. Risposta e
+#   ragionamento: §8.4 dello stesso documento.
+#
+# ── ⛔ LA RICHIESTA, PRESA ALLA LETTERA, ERA UNA TOPPA ──────────────
+#   Il §4 del brief chiedeva «nessun punto d'errore di
+#   config.fn_chiudi_email_sistema resta IGNOTO». ⚠️ E' il criterio di chiusura
+#   di UNA funzione, dentro un'area cieca che al 2026-09-06 valeva 357 codici su
+#   453 — e che cresceva (era 269 su 344 all'08-08). Chiudere una funzione la'
+#   dentro non toglie niente: sposta un caso.
+#
+#   ⇒ La domanda sul modello e' un'altra: l'asse «forma della condizione» ha una
+#   forma che non nomina? Si'. Le quattro famiglie leggono un'eccezione, una
+#   riga mancante, un parametro, un insieme. Manca «il valore letto non e' quello
+#   ammesso» — `x <> 'LETTERALE'` — che e' la forma di OGNI guardia di stato o di
+#   perimetro del progetto.
+#   ⇒ Allargare l'asse per QUELLA ragione chiude la terza guardia di
+#   fn_chiudi_email_sistema come conseguenza, non come bersaglio.
+#
+# ── ⭐ IL CASO CHE LA GIUSTIFICA, E SI MISURA ──────────────────────
+#   E_VALIDAZIONE leggeva famiglie {IGNOTO, PARAMETRO}, n_famiglie_note = 1:
+#   quindi NON compariva nella query (1) dei candidati, che filtra > 1. La sua
+#   seconda forma era proprio la terza guardia di fn_chiudi_email_sistema —
+#   «qualcuno sta usando la porta di sistema per l'email di un'azienda», il punto
+#   piu' pericoloso di quella funzione e l'unico momento in cui lo si nota.
+#   ⇒ Il rubinetto era cieco su qualunque codice la cui SECONDA forma fosse una
+#   che il classificatore non sa leggere. Adesso E_VALIDAZIONE legge
+#   {PARAMETRO, VALORE_ATTESO} e affiora.
+#
+# ── ⛔ FAMIGLIA NUOVA, NON `ENUM` ALLARGATO ────────────────────────
+#   Sembra la stessa cosa — un `<> 'X'` e' un insieme di uno — e non lo e'. Le
+#   letture di questa vista sono DATATE e si confrontano nel tempo: cambiare che
+#   cosa significa ENUM renderebbe la lettura del 2026-08-08 incomparabile con la
+#   prossima, e in silenzio. Il nome nuovo dice esattamente che cosa si e' reso
+#   visibile, e quando.
+#
+# ── ⚠️ L'ORDINE DEL CASE, che qui non e' estetica ──────────────────
+#   Il ramo nuovo sta DOPO ENUM e PARAMETRO: un `NOT IN` resta ENUM, e una
+#   guardia su un parametro nullo resta PARAMETRO anche quando confronta un
+#   letterale. Spostarlo piu' in alto riscriverebbe classificazioni gia' lette.
+#
+# ── ⚠️ L'IMPRECISIONE SI DICHIARA, non si scopre dopo ──────────────
+#   La forma prende anche del normale control-flow che capita entro 25 righe da
+#   un RAISE: `IF TG_OP = 'DELETE'`, `IF v_id_type = 'uuid'`. Sta dentro la
+#   natura gia' dichiarata di questa vista — «e' una MISURA, non un cancello» —
+#   ma va scritto nel commento, che e' dove lo legge chi usa la (1).
+#
+# ── ⚠️ `security_invoker` VA RI-SPECIFICATO ────────────────────────
+#   PostgreSQL lo AZZERA a ogni CREATE OR REPLACE VIEW, senza dire niente. La
+#   reloption non compare in pg_get_viewdef: si perde in silenzio.
+#
+# ⭐ Il corpo NON e' stato ricostruito dallo YAML: e' quello di 20260808-01,
+#   verificato riapplicandolo in transazione e confrontando il viewdef
+#   normalizzato con quello vivo (identico), poi modificato in un punto solo.
+#
+# Verifica: db/pgtap/dbops/test-vw-codici-errore-valore-atteso.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260907-03-update-vw-codici-errore-forme-condizione-valore-atteso-mctit.yaml
+
+  - changeSet:
+      id: 20260907-03-update-vw-codici-errore-forme-condizione-valore-atteso
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_codici_errore_forme_condizione: famiglia VALORE_ATTESO — «il
+        valore letto non e' quello ammesso», la forma di ogni guardia di stato o
+        di perimetro, che l'asse non nominava e che finiva tutta in IGNOTO. Con
+        essa E_VALIDAZIONE passa a n_famiglie_note = 2 e affiora fra i candidati
+        della query (1), dove il rubinetto non lo vedeva.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops'
+                     AND viewname = 'vw_codici_errore_forme_condizione'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_class
+                   WHERE oid = 'dbops.vw_codici_errore_forme_condizione'::regclass
+                     AND reloptions @> ARRAY['security_invoker=true']
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_codici_errore_forme_condizione
+              WITH (security_invoker = true) AS
+              WITH righe AS (
+                  -- prosrc spezzato in righe numerate, una volta sola.
+                  SELECT n.nspname::text AS sch,
+                         p.proname::text AS fn,
+                         p.oid,
+                         l.riga,
+                         l.n
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                    CROSS JOIN LATERAL regexp_split_to_table(p.prosrc, E'\n')
+                         WITH ORDINALITY AS l(riga, n)
+                   WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                     AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              ),
+              marcata AS (
+                  -- Tre etichette per riga, calcolate una volta: e' una
+                  -- chiamata? e' una guardia? nomina un codice?
+                  -- Il codice si legge solo fuori dai commenti.
+                  SELECT r.*,
+                         (r.riga ~* 'fn_log_and_raise_error') AS e_chiamata,
+                         (r.riga ~* '^\s*(IF|ELSIF|ELSE|EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)\M') AS e_guardia,
+                         CASE WHEN r.riga !~ '^\s*--'
+                              THEN (regexp_match(r.riga, '''(E_[A-Z0-9_]+)'''))[1]
+                         END AS codice
+                    FROM righe r
+              ),
+              isole AS (
+                  -- ⭐ Il pattern che sostituisce le sottoquery correlate.
+                  -- `isola` cambia numero a ogni riga-guardia: dentro
+                  -- un'isola la PRIMA riga e' la guardia.
+                  SELECT m.*,
+                         count(*) FILTER (WHERE m.e_guardia)
+                           OVER (PARTITION BY m.oid ORDER BY m.n) AS isola,
+                         bool_or(m.e_chiamata)
+                           OVER (PARTITION BY m.oid ORDER BY m.n
+                                 ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS chiamata_vicina
+                    FROM marcata m
+              ),
+              propagata AS (
+                  -- ⚠️ La propagazione DEVE stare in un livello dove le righe
+                  -- ci sono tutte: il WHERE viene applicato prima delle window
+                  -- function, e filtrare qui toglierebbe dalla partizione
+                  -- proprio la riga-guardia (che un codice non ce l'ha).
+                  SELECT i.*,
+                         first_value(i.riga) OVER (PARTITION BY i.oid, i.isola ORDER BY i.n) AS guardia,
+                         first_value(i.n)    OVER (PARTITION BY i.oid, i.isola ORDER BY i.n) AS n_guardia
+                    FROM isole i
+              ),
+              classificato AS (
+                  -- ⚠️ L'ordine dei CASE conta: un `EXCEPTION WHEN` che contiene
+                  -- anche un IS NULL e' prima di tutto un handler di eccezione.
+                  SELECT p.codice,
+                         p.sch || '.' || p.fn AS funzione,
+                         CASE
+                           WHEN p.guardia ~* '(EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)'
+                             THEN 'ECCEZIONE'
+                           WHEN p.guardia ~* '^\s*IF\s+NOT\s+FOUND\M'
+                             THEN 'NOT_FOUND'
+                           WHEN p.guardia ~* '(\mIS\s+NULL\M|<=\s*0|<\s*0)' AND p.guardia ~* '\mp_\w+'
+                             THEN 'PARAMETRO'
+                           WHEN p.guardia ~* 'NOT\s+IN\s*\('
+                             THEN 'ENUM'
+                           WHEN p.guardia ~* '(<>|!=|=)\s*''[A-Za-z0-9_]+'''
+                             THEN 'VALORE_ATTESO'
+                           ELSE 'IGNOTO'
+                         END AS famiglia
+                    FROM propagata p
+                   WHERE p.codice IS NOT NULL
+                     AND p.chiamata_vicina
+                     AND p.isola > 0            -- prima della prima guardia non c'e' guardia
+                     AND p.n - p.n_guardia <= 25
+              )
+              SELECT codice,
+                     count(*)::int                                  AS n_punti,
+                     count(DISTINCT funzione)::int                  AS n_funzioni,
+                     array_agg(DISTINCT famiglia ORDER BY famiglia) AS famiglie,
+                     count(DISTINCT famiglia)::int                  AS n_famiglie,
+                     count(DISTINCT famiglia) FILTER (WHERE famiglia <> 'IGNOTO')::int
+                                                                    AS n_famiglie_note,
+                     bool_and(famiglia = 'IGNOTO')                  AS solo_ignoto
+                FROM classificato
+               GROUP BY codice;
+
+              COMMENT ON VIEW dbops.vw_codici_errore_forme_condizione IS
+              'Misura degli accumulatori sulla FORMA DELLA CONDIZIONE al punto che solleva (non sul dominio della funzione: quell''asse segnalava E_VALIDAZIONE, che e'' il caso su cui la risposta e'' no). NON filtra di proposito.
+              TRE query canoniche, da usare INSIEME.
+              (1) CANDIDATI — SELECT codice, n_punti, famiglie FROM dbops.vw_codici_errore_forme_condizione WHERE n_famiglie_note > 1 ORDER BY n_punti DESC;
+              (2) COPERTURA, senza cui la (1) si legge come una verita'' — SELECT count(*) AS codici, count(*) FILTER (WHERE NOT solo_ignoto) AS classificati, count(*) FILTER (WHERE solo_ignoto) AS invisibili FROM dbops.vw_codici_errore_forme_condizione;
+              (3) LA CLASSE E'' ANCORA VERA? incrocia le due letture indipendenti dello stesso codice — la guardia (cosa FA il punto) e la classe (cosa DICE il catalogo). E'' la query che ha trovato E_ERRORE_PARAMETRI, 4 punti su 13 che dicevano il falso:
+                  SELECT unnest(f.famiglie) AS famiglia, c.classe, count(*) AS codici
+                    FROM dbops.vw_codici_errore_forme_condizione f
+                    JOIN config.codici_errore c USING (codice)
+                   WHERE NOT f.solo_ignoto AND c.obsoleto_dal IS NULL
+                   GROUP BY 1,2 ORDER BY 1, 3 DESC;
+              COME SI LEGGE LA (3): le righe famiglia = IGNOTO NON sono una famiglia, sono la misura che dichiara di non saper leggere quella guardia — vanno lasciate (toglierle farebbe sembrare piena la copertura) ma non lette come un incrocio. E "fuori dominante" non vuol dire sbagliato: NOT_FOUND ha 19 codici su NON_TROVATO e 20 altrove, e la maggioranza dei 20 e'' deliberata ("guard parametro NULL riconducibile a NOT FOUND", scritto dentro le funzioni). E'' una lista DA GUARDARE, non una lista di difetti.
+              ⭐ FAMIGLIA VALORE_ATTESO, dal 2026-09-07 — «il valore letto non e'' quello ammesso» (x <> ''LETTERALE''), che e'' la forma di ogni guardia di STATO o di PERIMETRO del progetto. Non era un caso di nicchia: era una famiglia intera che l''asse non nominava, e finiva tutta in IGNOTO. ⛔ E'' una famiglia NUOVA e non un ENUM allargato di proposito: le letture di questa vista sono datate e si confrontano nel tempo, quindi cambiare che cosa significa ENUM renderebbe la lettura del 2026-08-08 incomparabile con la prossima, in silenzio. ⚠️ L''ordine del CASE la mette DOPO ENUM e PARAMETRO: un NOT IN resta ENUM, e una guardia su un parametro nullo resta PARAMETRO anche se confronta un letterale.
+              ⚠️ IMPRECISIONE DICHIARATA, perche'' si scopre subito e vale la pena saperlo prima: la forma prende anche del normale control-flow che capita entro 25 righe da un RAISE — IF TG_OP = ''DELETE'', IF v_id_type = ''uuid''. Sta dentro la natura gia'' dichiarata di questa vista (una MISURA, non un cancello), ma non e'' zero: chi legge la (1) guarda i codici, non da'' per buono il conteggio.
+              ⭐ PERCHE'' E'' STATA FATTA, ed e'' il caso che la giustifica: E_VALIDAZIONE leggeva famiglie {IGNOTO, PARAMETRO} con n_famiglie_note = 1, quindi NON compariva nella query (1), che filtra > 1. La sua seconda forma era la terza guardia di config.fn_chiudi_email_sistema — «qualcuno sta usando la porta di sistema per l''email di un''azienda», cioe'' il punto piu'' pericoloso di quella funzione. Il rubinetto era cieco su qualunque codice la cui seconda forma fosse una che il classificatore non sapeva leggere. Segnalato dal backend: brief-db-sveglia-dei-processi §3.2, risposta §8.4.
+              Letture datate. Al 2026-08-08: 344 codici, 75 classificati, 269 invisibili. Al 2026-09-06, prima di VALORE_ATTESO: 453 codici, 96 classificati, 357 invisibili — il buco cresceva. Subito dopo, sugli stessi 453: 148 classificati, 305 invisibili, e i candidati della (1) passano da 6 a 10. E'' una MISURA, non un cancello: un codice legittimamente trasversale esiste. Implementazione a window function (20260808-01): 349 ms, contro i 145 secondi della prima versione a sottoquery correlate.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Torna alle quattro famiglie: le guardie «il valore letto non
+              --   e' quello ammesso» tornano tutte in IGNOTO, e i codici che
+              --   affioravano grazie a loro escono dalla query (1) in silenzio.
+              -- ⛔ Serve rifare il corpo per intero: CREATE OR REPLACE non
+              --   toglie un ramo da un CASE.
+              DROP VIEW IF EXISTS dbops.vw_codici_errore_forme_condizione;
