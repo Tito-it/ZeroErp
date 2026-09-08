@@ -196,7 +196,7 @@
 - [fn_list_preventivi_da_pushare](funzioni/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_log_event](funzioni/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
-- [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
+- [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 2026-09-08)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
 - [fn_lookup_registro_documento](funzioni/fn_lookup_registro_documento.md) — (latest review 31-08-2026)
 - [fn_lookup_registro_id](funzioni/fn_lookup_registro_id.md) — **Cercare il sezionale di numerazione, e basta.**
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
@@ -241,11 +241,12 @@
 - [fn_ricalcola_totali_fattura](funzioni/fn_ricalcola_totali_fattura.md) — La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**, applicando le regole di arrotondamento definite per **emittente/utility**.
 - [fn_ricalcola_totali_ordine](funzioni/fn_ricalcola_totali_ordine.md) — (latest review 05-06-2026)
 - [fn_ricalcola_totali_preventivo](funzioni/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
+- [fn_riferimento_gruppo_fatturabile](funzioni/fn_riferimento_gruppo_fatturabile.md) — (latest review 2026-09-08)
 - [fn_riporta_attivita_da_emettere](funzioni/fn_riporta_attivita_da_emettere.md) — (latest review 26-08-2026)
 - [fn_riporta_lotto_a_draft](funzioni/fn_riporta_lotto_a_draft.md) — (latest review 31-08-2026)  
 - [fn_ritira_commessa_attivita_da_sorgente](funzioni/fn_ritira_commessa_attivita_da_sorgente.md) — (latest review 26-08-2026)
 - [fn_saldo_sorgente_fondo](funzioni/fn_saldo_sorgente_fondo.md) — (latest review 15-08-2026)
-- [fn_segna_esito_gruppo_lotto](funzioni/fn_segna_esito_gruppo_lotto.md)
+- [fn_segna_esito_gruppo_lotto](funzioni/fn_segna_esito_gruppo_lotto.md) — (latest review 2026-09-08)
 - [fn_select_attivita_fatturabili](funzioni/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 - [fn_set_arrotondamento_scope](funzioni/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](funzioni/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
@@ -254,6 +255,7 @@
 - [fn_snapshot_fattura_lotto](funzioni/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
 - [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
 - [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
+- [fn_split_gruppo_fatturabile_key](funzioni/fn_split_gruppo_fatturabile_key.md) — (latest review 2026-09-08)
 - [fn_start_commessa_push_run](funzioni/fn_start_commessa_push_run.md) — `vendite.fn_start_commessa_push_run` **apre** un giro dell'orchestratore push: scrive la riga in `commesse_push_log` all'inizio della corsa, in stato `IN_ESECUZIONE`, e ne restituisce l'identificativo. Quell'identificativo è ciò che il chiamante conserva per chiudere il giro quando ha finito.
 - [fn_start_lotto_task_run](funzioni/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 - [fn_sync_contabili_fondo_fattura](funzioni/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.

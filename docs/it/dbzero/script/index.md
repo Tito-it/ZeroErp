@@ -103,6 +103,7 @@
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](funzioni/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + risorse_umane_auth_user + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md) — (rev 2026-08-21)
+- [fn_gruppi_di_commessa_nel_lotto](funzioni/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](funzioni/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_soggetto_pf_pura](funzioni/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
@@ -122,6 +123,7 @@
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
+- [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
