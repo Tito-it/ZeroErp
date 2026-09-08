@@ -673,3 +673,7 @@ preset_id,colonna_id,ordine,visibile,fissata
 67,736,999,t,f
 34,737,55,t,f
 35,738,85,t,f
+54,739,110,f,f
+54,740,120,f,f
+54,741,130,f,f
+54,742,140,f,f

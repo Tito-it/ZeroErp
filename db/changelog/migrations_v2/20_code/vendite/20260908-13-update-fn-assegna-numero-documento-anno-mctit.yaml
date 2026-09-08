@@ -1,0 +1,465 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A-3 — IL COMPOSITORE METTE L'ANNO NEL NUMERO
+#   vendite.fn_assegna_numero_documento
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8
+#
+# -- COSA CAMBIA, IN UNA RIGA ---------------------------------
+#   Se il registro dichiara `anno_nel_numero`, il numero diventa
+#   prefisso + anno + '-' + progressivo:  DDT2026-0023456.
+#   Altrimenti resta quello di prima, byte per byte.
+#
+# -- I TRE TRIGGER NON SI TOCCANO, ED E' IL PUNTO --------------
+#   trgfn_ddt_gen_numero_emesso, trgfn_ordini_gen_numero e
+#   trgfn_resi_gen_numero passano gia' `p_corpo => NULL` e chiamano questa:
+#   la regola entra in vigore per tutti e tre senza riscriverne nessuno.
+#   E' la ragione per cui i sei passi della numerazione erano stati messi
+#   in una sede sola.
+#
+# -- LA POSIZIONE: IN CODA AL CORPO DEL CHIAMANTE --------------
+#   E' un fatto misurato, non una preferenza. Il codice commessa e'
+#   `CMM-<sigla>-<anno>-<9 cifre>`: con l'anno DOPO il corpo (`sigla-`) la
+#   stringa esce identica byte per byte ai 66 codici esistenti — verificato
+#   il 2026-09-08 — mentre con l'anno prima diventerebbe
+#   `CMM-<anno>-<sigla>-…`, cioe' una forma nuova accanto alla vecchia sullo
+#   stesso registro: il difetto che il guard della forma esiste per impedire.
+#   ⇒ E' anche l'ordine che si legge meglio: il corpo dice CHI, l'anno dice
+#   QUANDO, il progressivo chiude.
+#
+# -- RAGGIO D'AZIONE ALL'APPLY: NESSUNO ------------------------
+#   La colonna del registro nasce false ovunque (20260908-12) e il seed dei
+#   default (20260908-16) vive in 80_data, cioe' DOPO: al momento in cui
+#   questa funzione entra in servizio nessun registro NUOVO chiede l'anno, e
+#   ogni numero esce identico a prima.
+#   ⭐ L'unica eccezione sono i registri COMMESSA, che il 20260908-12 porta a
+#   true apposta — e li' «identico a prima» e' letterale: l'anno smette di
+#   scriverlo il compositore di dominio e ricomincia a scriverlo questo, nella
+#   stessa posizione. Verificato byte per byte sui 66 codici esistenti.
+#
+# -- CORPO DALLA FUNZIONE VIVA, FIRMA DALL'ULTIMO YAML ---------
+#   pg_get_functiondef scioglie i %TYPE della firma: quella e' ripresa da
+#   20260831-55, l'ultimo changeSet a dichiararla. RETURNS TABLE invariato,
+#   quindi CREATE OR REPLACE basta e non serve il DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-13-update-fn-assegna-numero-documento-anno-mctit.yaml
+
+  - changeSet:
+      id: 20260908-13-update-fn-assegna-numero-documento-anno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il compositore mette l''anno nel numero quando il registro lo dichiara: prefisso + anno +
+        '-' + progressivo, cioe'' DDT2026-0023456. Serve perche'' un sezionale ANNUALE azzera il
+        progressivo e la stessa stringa torna l''anno dopo su un documento diverso, senza che
+        nessun vincolo se ne accorga - la sua unicita'' l''anno ce l''ha in colonna. ⭐ I tre
+        trigger di DDT, ordini e resi non si toccano: passano gia'' p_corpo => NULL e chiamano
+        questa, che e'' la sede unica dei sei passi. ⚠️ All''apply il raggio d''azione e'' nullo:
+        la colonna del registro nasce false e il seed dei default vive in 80_data, cioe'' dopo.
+        Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8 (A-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: anno_nel_numero
+            # La funzione pura che compone: il `corpo` e' il suo secondo argomento.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_componi_numero_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_assegna_numero_documento(
+                  p_famiglia_documento vendite.registri_fatturazione.famiglia_documento%TYPE,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                  p_data               vendite.fatture.data%TYPE,
+                  p_documento_id       bigint  DEFAULT NULL,
+                  p_utility_id         vendite.registri_fatturazione.utility_id%TYPE DEFAULT NULL,
+                  p_corpo              text    DEFAULT NULL,
+                  -- ⚠️ La serie del DOCUMENTO, quando ce l'ha: DDT e ordini
+                  --   possono dichiararne una propria, resi e commesse no.
+                  p_serie              vendite.ddt.serie%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  registro_id  vendite.registri_fatturazione.id%TYPE,
+                  anno         vendite.ddt.anno%TYPE,
+                  progressivo  bigint,
+                  numero       text,
+                  -- ⭐ La serie RISOLTA esce, perche' chi ha la colonna deve
+                  --   scriverla: e' la stessa che entra nella chiave del
+                  --   contatore, e risolverla due volte con due COALESCE
+                  --   diversi e' il modo in cui il contatore e la UNIQUE
+                  --   cominciano a guardare sezionali diversi.
+                  serie        vendite.registri_fatturazione.serie_default%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_registro vendite.registri_fatturazione.id%TYPE;
+                  v_serie    vendite.registri_fatturazione.serie_default%TYPE;
+                  v_prefisso vendite.registri_fatturazione.prefisso%TYPE;
+                  v_suffisso vendite.registri_fatturazione.suffisso%TYPE;
+                  v_len      vendite.registri_fatturazione.lunghezza_numero%TYPE;
+                  v_anno     vendite.ddt.anno%TYPE;
+                  v_num      bigint;
+                  -- ⭐ La scelta del sezionale: l'anno entra nella stringa del numero.
+                  v_anno_in  vendite.registri_fatturazione.anno_nel_numero%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I SEI PASSI che ogni documento numerato su un registro
+                  --   deve fare, in una sede sola: risolvere il registro,
+                  --   ricavare l'anno, chiedere il progressivo, leggere il
+                  --   formato, comporre.
+                  --
+                  -- ⛔ Prima stavano in QUATTRO funzioni identiche, e una
+                  --   correzione alla composizione andava fatta quattro volte:
+                  --   chi ne dimenticava una produceva un documento formattato
+                  --   diverso dagli altri, che nessun vincolo respinge.
+                  --
+                  -- ⚠️ Cosa NON fa, ed e' deliberato: non decide QUANDO. Il
+                  --   momento e' l'unica cosa che distingue davvero i quattro
+                  --   documenti — DDT a EMESSO, resi a CONFERMATO, ordini e
+                  --   commessa alla creazione — e resta nel trigger di ciascuno.
+                  -- =========================================================
+
+                  -- 1) Il registro. ⛔ L'INVOLUCRO e non il lettore: qui si
+                  --    scrive, e un emittente senza registro deve fermare.
+                  SELECT k.registro_id, k.serie
+                    INTO v_registro, v_serie
+                    FROM vendite.fn_get_registro_documento(
+                             p_famiglia_documento          => p_famiglia_documento,
+                             p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                             p_utility_id                  => p_utility_id) k;
+
+                  -- 2) L'anno, dalla DATA DEL DOCUMENTO.
+                  v_anno := vendite.fn_get_anno_registro(p_data);
+
+                  -- ⚠️ La serie si risolve UNA volta: quella del documento, poi
+                  --   quella del registro, poi vuota. Lo stesso valore va al
+                  --   contatore e torna al chiamante per la colonna.
+                  v_serie := COALESCE(p_serie, v_serie, '');
+
+                  -- 3) Il progressivo, sotto il lock del motore.
+                  v_num := vendite.fn_get_next_progressivo(
+                               v_registro, p_data, NULL,
+                               v_serie, p_documento_id,
+                               p_famiglia_documento);
+
+                  -- 4) Il formato, TUTTO dalla stessa riga: prefisso, suffisso
+                  --    e lunghezza sono l'EFFETTIVO del sezionale e stanno sul
+                  --    registro. I DEFAULT stanno in vendite.famiglie_documento
+                  --    ed e' da li' che nascono i registri nuovi.
+                  --
+                  -- ⛔ Fino al 2026-08-31 la lunghezza si leggeva da
+                  --    config.sistema_codici, e quando il 20260831-53 ne ha
+                  --    tolto le quattro righe la SELECT ha smesso di trovarne:
+                  --    v_len NULL, COALESCE a 7 per tutti — giusto per caso su
+                  --    DDT, ordini e resi, e SBAGLIATO sulla commessa, che ne
+                  --    vuole 9. Un codice piu' corto, senza un errore.
+                  SELECT r.prefisso, r.suffisso, r.lunghezza_numero, r.anno_nel_numero
+                    INTO v_prefisso, v_suffisso, v_len, v_anno_in
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = v_registro;
+
+                  -- 5) La composizione, dalla funzione pura.
+                  --
+                  -- ⭐ L'ANNO ENTRA NEL CORPO, e non e' cosmesi: un registro che azzera
+                  --   il progressivo ogni anno consegna la STESSA stringa in anni
+                  --   diversi. Il database non se ne accorge — la sua unicita' porta
+                  --   l'anno in colonna — quindi non fallisce niente e l'ambiguita'
+                  --   arriva intera a chi legge la lista o cita il numero al telefono.
+                  --   E' l'invariante degli assi dichiarati applicata alla stringa:
+                  --   cio' che discrimina il contatore deve discriminare anche il
+                  --   numero che una persona legge.
+                  --
+                  -- ⭐⭐ IN CODA AL CORPO DEL CHIAMANTE, E LA POSIZIONE E' UN FATTO
+                  --   MISURATO, non una preferenza. Il codice commessa di oggi e'
+                  --   `CMM-<sigla>-<anno>-<9 cifre>`: con l'anno DOPO il corpo
+                  --   (`sigla-`) la stringa esce identica byte per byte — verificato
+                  --   sui codici esistenti il 2026-09-08 — mentre con l'anno prima
+                  --   diventerebbe `CMM-<anno>-<sigla>-…`, cioe' una forma nuova
+                  --   accanto a quella vecchia sullo stesso registro. E' esattamente
+                  --   il difetto che il guard della forma esiste per impedire.
+                  --   ⇒ Il corpo risponde a CHI, l'anno a QUANDO, e il progressivo
+                  --   chiude: e' anche l'ordine che si legge meglio.
+                  --
+                  -- ⚠️ Il separatore e' `-`, lo stesso che la commessa gia' usa fra i
+                  --   pezzi del suo codice. Un solo separatore in tutto il dominio.
+                  RETURN QUERY
+                  SELECT v_registro, v_anno, v_num,
+                         vendite.fn_componi_numero_documento(
+                             v_prefisso,
+                             COALESCE(p_corpo, '')
+                                 || CASE WHEN v_anno_in THEN v_anno::text || '-' ELSE '' END,
+                             v_num, v_len, v_suffisso),
+                         v_serie;
+              END;
+              $function$;
+              -- ============================================================
+              -- LA SECONDA META' DELLA STESSA REGOLA
+              -- ============================================================
+              -- ⭐ La commessa smette di mettersi l'anno da se': da qui in avanti
+              --   glielo mette il compositore generico, come a tutti gli altri.
+              -- ⛔ NELLO STESSO changeSet, e non e' comodita': fra il momento in cui
+              --   il generico comincia a scrivere l'anno e quello in cui la commessa
+              --   smette ci sarebbe una finestra con l'anno scritto DUE volte —
+              --   `CMM-SIGLA-2026-2026-000000001`. Due changeSet separati sono due
+              --   transazioni, e quella finestra sarebbe reale.
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying DEFAULT 'AUTO'::character varying, p_policy_fatturazione character varying DEFAULT 'DA_DOCUMENTO'::character varying, p_fatturazione_immediata boolean DEFAULT false, p_priorita_operativa character varying DEFAULT 'NORMALE'::character varying, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_meta jsonb DEFAULT '{}'::jsonb, p_force_new boolean DEFAULT false, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: recupera o crea la commessa coerente con il contesto
+              --        dimensionale. Da D-R la chiave comprende anche le condizioni
+              --        di pagamento: un documento con termine diverso NON riusa una
+              --        commessa esistente, ne apre una nuova — cosi' la divergenza
+              --        emerge al push e non a valle, in fattura.
+              -- Regole: la chiave vive in TRE posti (hash del lock, WHERE del riuso,
+              --         INSERT). ⚠️ I tre NON sono identici alla lettera, ed e'
+              --         voluto: l'emittente e' NOT NULL sulla colonna
+              --         (20260826-41), quindi il WHERE lo confronta con `=` puro,
+              --         mentre l'hash conserva il proprio COALESCE — cambiare la
+              --         stringa che si hasha cambierebbe l'IDENTITA' del lock senza
+              --         guadagno. Le DIMENSIONI restano le stesse in tutti e tre:
+              --         e' quello che va tenuto uguale, non il testo.
+              -- ⭐ Dal 2026-08-26 NON esiste piu' un parametro per l'emittente:
+              --         si deriva dal billing account e basta (decisione D-1).
+              DECLARE
+                  v_commessa_id vendite.commesse.id%TYPE;
+                  v_ba_utility  anagrafiche.billing_account.utility_id%TYPE;
+                  v_ba_found    BOOLEAN := FALSE;
+                  v_emittente   vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+                  v_codice      vendite.commesse.codice%TYPE;
+                  -- ⭐ rev 2026-08-31 (C2-11): il codice non si fabbrica piu' qui, si
+                  --   COMPONE dal numero che consegna il registro.
+                  v_sigla       anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_registro    vendite.registri_fatturazione.id%TYPE;
+                  v_data        date;
+                  v_anno        smallint;
+                  -- ⚠️ Il separatore FRA I PEZZI del corpo: e' del dominio commessa,
+                  --   non del registro. Quello davanti al prefisso non esiste piu'.
+                  v_sep_dom      text := '-';
+                  v_ass          record;
+              BEGIN
+                  -- Guard: parametri obbligatori
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_commessa', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id),
+                          NULL::uuid, 'p_billing_account_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_commessa', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id),
+                          NULL::uuid, 'p_utility_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_competenza_dal IS NOT NULL AND p_competenza_al IS NOT NULL AND p_competenza_dal > p_competenza_al THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_commessa', 'E_DATA_AL_MINORE_DAL',
+                          jsonb_build_object('competenza_dal', p_competenza_dal, 'competenza_al', p_competenza_al),
+                          NULL::uuid, p_competenza_al::text, p_competenza_dal::text
+                      );
+                  END IF;
+
+                  -- Verifica BA
+                  SELECT ba.utility_id, TRUE INTO v_ba_utility, v_ba_found
+                    FROM anagrafiche.billing_account ba WHERE ba.id = p_billing_account_id;
+
+                  IF NOT v_ba_found THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_commessa', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('billing_account_id', p_billing_account_id),
+                          NULL::uuid, concat('billing_account_id ', p_billing_account_id)
+                      );
+                  END IF;
+
+                  IF v_ba_utility IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_commessa', 'E_BILLING_ACCOUNT_UTILITY_NULL',
+                          jsonb_build_object('billing_account_id', p_billing_account_id),
+                          NULL::uuid, p_billing_account_id::text
+                      );
+                  END IF;
+
+                  IF v_ba_utility <> p_utility_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_commessa', 'E_CLIENTE_UTILITY_MISMATCH_BA',
+                          jsonb_build_object('billing_account_id', p_billing_account_id, 'ba_utility_id', v_ba_utility, 'utility_id', p_utility_id),
+                          NULL::uuid, p_billing_account_id::text, p_utility_id::text, v_ba_utility::text
+                      );
+                  END IF;
+
+                  -- ⭐ L'emittente si DERIVA, e non c'e' piu' nessun modo di
+                  --   passarlo da fuori: e' la decisione D-1 portata a termine.
+                  --   La funzione SOLLEVA invece di tornare NULL, quindi da qui
+                  --   in poi v_emittente e' valorizzato per costruzione.
+                  --   ⚠️ Lo stesso valore lo riscriverebbe comunque
+                  --   trgfn_commesse_default_emittente sulla INSERT: qui serve
+                  --   PRIMA, perche' entra nella chiave di riuso e nel lock.
+                  v_emittente := anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id);
+
+                  IF NOT p_force_new THEN
+                      -- SPECCHIO 1 — advisory lock sul contesto dimensionale.
+                      -- ⛔ Il COALESCE su v_emittente resta anche se il NULL non
+                      --    e' piu' possibile: quello che si hasha e' l'IDENTITA'
+                      --    del lock, e cambiarla farebbe smettere di
+                      --    serializzarsi a due sessioni che girassero su due
+                      --    revisioni diverse di questa funzione.
+                      PERFORM pg_advisory_xact_lock(
+                          hashtext('fn_get_or_create_commessa'),
+                          hashtext(
+                              p_billing_account_id::text || E'\x1F' || p_utility_id::text || E'\x1F' ||
+                              p_tipo_commessa || E'\x1F' || p_policy_fatturazione || E'\x1F' ||
+                              p_fatturazione_immediata::text || E'\x1F' || p_priorita_operativa || E'\x1F' ||
+                              COALESCE(v_emittente::text, '') || E'\x1F' ||
+                              COALESCE(p_competenza_dal::text, '') || E'\x1F' || COALESCE(p_competenza_al::text, '') || E'\x1F' ||
+                              COALESCE(p_termine_pagamento_id::text, '') || E'\x1F' ||
+                              COALESCE(p_modalita_pagamento_id::text, '')
+                          )
+                      );
+
+                      -- SPECCHIO 2 — WHERE della commessa riusabile.
+                      -- ⭐ L'emittente si confronta con `=` PURO: la colonna e'
+                      --   NOT NULL (20260826-41) e v_emittente non e' mai NULL.
+                      -- ⚠️ IS NOT DISTINCT FROM resta sulle quattro dimensioni
+                      --   davvero nullable (competenza e condizioni di pagamento).
+                      SELECT c.id INTO v_commessa_id
+                        FROM vendite.commesse c
+                        JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id AND sc.chiude_commessa = FALSE
+                       WHERE c.billing_account_id = p_billing_account_id
+                         AND c.utility_id = p_utility_id
+                         AND c.tipo_commessa = p_tipo_commessa
+                         AND c.policy_fatturazione = p_policy_fatturazione
+                         AND c.fatturazione_immediata = p_fatturazione_immediata
+                         AND c.priorita_operativa = p_priorita_operativa
+                         AND c.emittente_soggetto_ruolo_id = v_emittente
+                         AND c.competenza_dal IS NOT DISTINCT FROM p_competenza_dal
+                         AND c.competenza_al IS NOT DISTINCT FROM p_competenza_al
+                         AND c.termine_pagamento_id  IS NOT DISTINCT FROM p_termine_pagamento_id
+                         AND c.modalita_pagamento_id IS NOT DISTINCT FROM p_modalita_pagamento_id
+                       ORDER BY c.id DESC LIMIT 1;
+
+                      IF v_commessa_id IS NOT NULL THEN RETURN v_commessa_id; END IF;
+                  END IF;
+
+                  -- ═══ IL CODICE, rev 2026-08-31 (C2-11) ═══════════════════
+                  -- ⛔ Prima era 'CMM-' || timestamp || '-' || md5(random()): un
+                  --   identificatore, non un codice. Diceva quando e' nata la riga
+                  --   — cosa che data_insert dice gia' — e affidava l'unicita' a
+                  --   sei caratteri casuali SOTTO un vincolo deterministico
+                  --   (uq_commesse_codice): un'unicita' probabilistica, che quando
+                  --   fallisce esce come 23505 nudo in mezzo a un fan-out.
+                  -- ⭐ Ora: CMM-<sigla emittente>-<anno>-<9 cifre>, e l'unicita' e'
+                  --   DETERMINISTICA — la sigla e' unica, l'anno e' un fatto, il
+                  --   numero viene da un contatore serializzato.
+
+                  -- La sigla entra nel codice, e per questo il contatore e' PER
+                  -- EMITTENTE: ogni dimensione del contatore dev'essere nella
+                  -- stringa, o al primo cambio di periodo la UNIQUE salta.
+                  SELECT ef.codice INTO v_sigla
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.soggetto_ruolo_id = v_emittente;
+
+                  -- ⛔ L'INVOLUCRO, non il lettore: qui si scrive, e un emittente
+                  --   senza registro COMMESSA deve fermare invece di far nascere
+                  --   una commessa senza codice.
+                  -- ⭐ La commessa non ha una data documento: la sua data e' quella
+                  --   di CREAZIONE, e si legge da script.fn_data_operativa() —
+                  --   la data di oggi NEL FUSO DELL'AZIENDA, mai now() nudo.
+                  v_data := script.fn_data_operativa();
+                  v_anno := vendite.fn_get_anno_registro(v_data);
+
+                  -- ⭐ I SEI PASSI IN UNA CHIAMATA SOLA, la stessa che usano DDT,
+                  --   ordini e resi. La commessa ci sta dentro grazie al `corpo`:
+                  --   il suo codice porta sigla e anno DENTRO la stringa, ed e'
+                  --   l'unico dei cinque la cui IDENTITA' e' la stringa nuda.
+                  -- ⚠️ Il SEPARATORE fra i pezzi del corpo si scrive qui perche' e'
+                  --   una cosa di questo dominio; quello davanti al prefisso non
+                  --   esiste piu' — se serve, sta DENTRO il prefisso del registro
+                  --   ('CMM-'). Cosi' un prefisso vuoto non lascia piu' un
+                  --   separatore ORFANO in testa.
+                  -- ℹ️ Nessun bersaglio (p_documento_id NULL): la riga non esiste
+                  --   ancora, e il cancello non puo' mordere perche' la data e'
+                  --   sempre oggi.
+                  SELECT * INTO v_ass
+                    FROM vendite.fn_assegna_numero_documento(
+                             p_famiglia_documento          => 'COMMESSA',
+                             p_emittente_soggetto_ruolo_id => v_emittente,
+                             p_data                        => v_data,
+                             p_documento_id                => NULL,
+                             p_utility_id                  => p_utility_id,
+                             -- ⭐ IL CORPO PORTA SOLO LA SIGLA, dal 2026-09-08.
+                             --   L'anno lo mette ora il compositore generico, che lo
+                             --   aggiunge in coda al corpo quando il registro lo
+                             --   dichiara (anno_nel_numero): la stringa esce identica
+                             --   — CMM-<sigla>-<anno>-<9 cifre>, verificato byte per
+                             --   byte sui codici esistenti — ma la regola sta in UN
+                             --   POSTO SOLO.
+                             -- ⛔ Prima la commessa era l'unica famiglia che l'anno se
+                             --   lo metteva da se': una seconda sorgente di verita' per
+                             --   la stessa cosa, e la ragione per cui inizialmente
+                             --   COMMESSA doveva dichiarare `false` mentendo sul
+                             --   contenuto della propria stringa.
+                             p_corpo                       => v_sigla || v_sep_dom) v;
+
+                  v_registro := v_ass.registro_id;
+                  v_codice   := v_ass.numero;
+
+                  -- SPECCHIO 3 — INSERT: la commessa nasce con la chiave completa.
+                  -- ⭐ rev 2026-09-02: la commessa nasce con gli ASSI DEL CONTATORE nelle
+                  --   sue colonne, non solo dentro la stringa del codice. `registro_id` e
+                  --   `anno` li ha gia' restituiti il numeratore qui sopra: fino a oggi si
+                  --   buttavano via dopo aver composto il codice, ed era l'unica delle
+                  --   cinque famiglie a non tenerli.
+                  -- ⛔ Non e' un doppione del codice: il codice li porta DENTRO una stringa,
+                  --   per convenzione di chi la compone. Qui sono dato, e si interrogano.
+                  INSERT INTO vendite.commesse (codice, registro_id, anno,
+                      tipo_commessa, policy_fatturazione, fatturazione_immediata,
+                      priorita_operativa, billing_account_id, utility_id, emittente_soggetto_ruolo_id,
+                      competenza_dal, competenza_al, meta,
+                      termine_pagamento_id, modalita_pagamento_id)
+                  VALUES (v_codice, v_registro, v_anno,
+                          p_tipo_commessa, p_policy_fatturazione, p_fatturazione_immediata,
+                      p_priorita_operativa, p_billing_account_id, p_utility_id, v_emittente,
+                      p_competenza_dal, p_competenza_al, COALESCE(p_meta, '{}'::jsonb),
+                      p_termine_pagamento_id, p_modalita_pagamento_id)
+                  RETURNING id INTO v_commessa_id;
+
+                  RETURN v_commessa_id;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Il ripristino e' ri-applicare 20260831-55, non spegnere il
+              --    ramo: una funzione che ignora una colonna dichiarata sul
+              --    registro e' peggio della colonna assente.
+              SELECT 1;

@@ -24,6 +24,7 @@
 | tipo_lotto | text | YES |  |
 | stato_operativo | text | YES |  |
 | tx_id | uuid | YES |  |
+| gruppo_key | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

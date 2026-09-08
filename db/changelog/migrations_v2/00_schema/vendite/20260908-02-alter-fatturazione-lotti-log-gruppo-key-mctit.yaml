@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Una segnalazione dichiara DI CHI E'.
+#   brief-db-uscita-documento-dal-giro §1 e §5.2.
+#
+# ── ⭐ IL DIFETTO CHE QUESTA COLONNA CHIUDE ───────────────────────
+#   `fatturazione_lotti_log` ha lotto_id, messaggio, status, disabilitato, fase,
+#   meta — e NESSUNA colonna che dica di quale DOCUMENTO parla. Il documento
+#   vive dentro il testo del messaggio e, quando c'e', dentro meta.context. La
+#   riga stessa lo dichiara: "scope": "LOTTO".
+#
+#   Ne discendono due cose, e nessuna e' un dettaglio:
+#     * il lotto risulta in errore per intero, per una colpa che non e' sua —
+#       ha preso in carico N documenti e uno era rotto;
+#     * un verbo «togli QUESTO documento dal giro» non e' nemmeno esprimibile,
+#       perche' l'informazione non e' nella riga.
+#   ⇒ Ed e' la ragione per cui l'unica azione che il database offre su un lotto
+#   in errore e' «annulla»: buttare via il giro intero, bozze sane comprese.
+#
+# ── ⭐ E' LA STESSA MOSSA DI IERI, SULL'ALTRA META' ───────────────
+#   `20260907-12` ha tolto l'ESITO dal lotto e l'ha dato al documento. Qui lo fa
+#   la SEGNALAZIONE. Il vocabolario e' lo stesso — `gruppo_key`, la chiave che
+#   il lotto usa gia' per il perimetro e per l'esito: non se ne conia un terzo.
+#
+# ── ⚠️ `NULL` VUOL DIRE «DEL GIRO», E BLOCCA ──────────────────────
+#   Non e' una cautela sul pregresso (Tid, 2026-09-08: «il pregresso non e' un
+#   problema, sono solo dati di test»): e' il SIGNIFICATO della colonna. Una
+#   segnalazione del giro — un emittente non risolto, una configurazione
+#   mancante — deve fermare il giro, e non ha nessun documento da togliere.
+#   Vale identico su una riga scritta domani da un percorso che non dichiara il
+#   proprietario. ⇒ Non serve nessun registro del debito: non c'e' niente da
+#   sanare, c'e' una colonna che vuol dire una cosa sola.
+#
+# ── ⛔ NESSUNA FK, ED E' UNA SCELTA ───────────────────────────────
+#   Una FK verso `fatturazione_lotti_esiti` renderebbe l'ORDINE DI SCRITTURA un
+#   vincolo: la segnalazione nasce mentre il documento sta fallendo, cioe'
+#   PRIMA che l'esito esista. Il legame e' per valore, e il join lo fa chi
+#   legge.
+#
+# ── ⛔ NESSUN INDICE, E QUI SERVE SAPERE PERCHE' ──────────────────
+#   La FK `fk_fatturazione_lotti_log_lotto` e' gia' REGISTRATA in
+#   `dbops.fk_index_policy` con `consentito = false`. La policy e' OPT-IN e gli
+#   indici che governa NON si creano a mano (linee-guida-sql §8.7): un CREATE
+#   scritto qui sarebbe un gemello sotto un altro nome, e un indice su
+#   (lotto_id, gruppo_key) coprirebbe la FK per PREFISSO — cioe' toglierebbe la
+#   FK da `vw_fk_senza_indice` e impedirebbe per sempre alla policy di fare il
+#   suo mestiere.
+#   ⇒ Se un giorno il join costera', la leva e' il FLAG nel seed, non una riga
+#   di DDL qui.
+#
+# Verifica: db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260908-02-alter-fatturazione-lotti-log-gruppo-key-mctit.yaml
+
+  - changeSet:
+      id: 20260908-02-alter-fatturazione-lotti-log-gruppo-key
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti_log.gruppo_key: di quale documento parla
+        questa segnalazione. NULL = e' del giro, e blocca. Senza questa colonna
+        un errore che riguarda un documento solo e' intestato al lotto, e il
+        verbo «togli questo documento dal giro» non e' esprimibile.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_log }
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatturazione_lotti_log
+                    columnName: gruppo_key
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_log
+                  ADD COLUMN gruppo_key text NULL;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_log.gruppo_key IS
+                  'Di quale DOCUMENTO parla questa segnalazione — la stessa chiave '
+                  'che il lotto usa per il perimetro (fatturazione_lotti_gruppi) e '
+                  'per l''esito (fatturazione_lotti_esiti). ⚠️ NULL significa «la '
+                  'segnalazione e'' del GIRO» (un emittente non risolto, una '
+                  'configurazione mancante) e in quel caso BLOCCA: non c''e'' nessun '
+                  'documento da togliere. Non e'' un ripiego sul pregresso, e'' il '
+                  'significato della colonna. ⭐ Serve al conteggio di '
+                  'fn_get_lotto_segnalazioni_summary, che smette di contare le '
+                  'critiche dei documenti usciti dal giro, e al verbo che li fa '
+                  'uscire. ⛔ Nessuna FK verso fatturazione_lotti_esiti: la '
+                  'segnalazione nasce mentre il documento fallisce, cioe'' PRIMA che '
+                  'l''esito esista — una FK renderebbe l''ordine di scrittura un '
+                  'vincolo. ⛔ Lo scrive CHI SOLLEVA: il database non la deriva da '
+                  'meta.context.commessa_id, perche'' la derivazione passerebbe dalla '
+                  'sorgente ROOT della commessa, che e'' proprio il dato che manca nel '
+                  'fallimento piu'' tipico. Brief: brief-db-uscita-documento-dal-giro.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_log
+                  DROP COLUMN IF EXISTS gruppo_key;

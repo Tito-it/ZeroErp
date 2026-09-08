@@ -114,21 +114,34 @@ SELECT is(
 );
 
 -- ============================================================
--- 2. ⭐ Stesso vocabolario del gemello — letto, non riscritto
+-- 2. ⭐ Stesso vocabolario del gemello, A MENO DEL SURPLUS DICHIARATO
 -- ============================================================
--- ⛔ Non si scrive a mano l'elenco dei quattro valori: sarebbe una fotografia,
---   e il giorno in cui il gemello ne ammette un quinto questo test resterebbe
+-- ⛔ Non si scrive a mano l'elenco dei valori: sarebbe una fotografia, e il
+--   giorno in cui uno dei due ne ammette uno in piu' questo test resterebbe
 --   verde mentre le due colonne hanno smesso di parlare la stessa lingua.
+--
+-- 🔴 REV 2026-09-08 — l'invariante NON e' piu' «identici», ed e' una decisione.
+--   `ESCLUSO` e' entrato sul solo lato ESITO (20260908-01), e li' deve restare:
+--   dice «l'operatore ha tolto questo DOCUMENTO dal giro», e una FATTURA quello
+--   stato non lo puo' avere — quando un documento esce, la sua bozza viene
+--   CANCELLATA e la riga di ponte sparisce. Non esiste una fattura «esclusa ma
+--   ancora li'».
+--   ⛔ E il test NON e' stato indebolito a un confronto vago: si sottrae il
+--   surplus DICHIARATO. Cosi' resta rosso in tutti e tre i casi che contano —
+--   il lato fattura acquista uno stato, il lato esito ne acquista uno che non
+--   e' fra quelli dichiarati, oppure `ESCLUSO` sparisce dal lato esito.
+--   E' la forma «l'invariante non e' vuoto, e' nessun NON_DICHIARATO».
 SELECT is(
     (SELECT array_agg(v ORDER BY v)
        FROM (SELECT unnest(regexp_matches(pg_get_constraintdef(oid), '''([A-Z_]+)''', 'g')) AS v
                FROM pg_constraint
-              WHERE conname = 'chk_fatturazione_lotti_esiti_stato') s),
+              WHERE conname = 'chk_fatturazione_lotti_esiti_stato') s
+      WHERE s.v <> ALL (ARRAY['ESCLUSO'])),
     (SELECT array_agg(v ORDER BY v)
        FROM (SELECT unnest(regexp_matches(pg_get_constraintdef(oid), '''([A-Z_]+)''', 'g')) AS v
                FROM pg_constraint
               WHERE conname = 'chk_fatturazione_lf_stato_esecuzione') s),
-    '2. l''esito e la fattura del lotto ammettono gli STESSI stati'
+    '2. l''esito e la fattura ammettono gli stessi stati, meno il surplus dichiarato (ESCLUSO)'
 );
 
 -- ============================================================
