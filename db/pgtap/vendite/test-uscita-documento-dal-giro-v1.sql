@@ -20,6 +20,7 @@
 -- 15) una critica del GIRO (gruppo_key NULL) continua a contare
 -- 16) la segnalazione resta LEGGIBILE: non e' stata ritirata
 -- 17) un documento senza bozza non trascina nessuno
+-- 18) ⭐ P-1 — la frase resa del motivo 1 nomina lo STATO DEL LOTTO
 --
 -- Scopo:
 --  - presidiare il verbo «togli un documento rotto dal giro», che esiste per
@@ -46,7 +47,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(18);
 
 -- ============================================================
 -- Fixture: un lotto con tre documenti — uno rotto, uno sano, uno gia' fuori
@@ -58,10 +59,12 @@ SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
  LIMIT 1;
 
 CREATE TEMP TABLE tmp_lotto (id bigint);
+CREATE TEMP TABLE tmp_lotto_fiscale (id bigint);
 
 DO $fixture$
 DECLARE
-    v_lotto vendite.fatturazione_lotti.id%TYPE;
+    v_lotto          vendite.fatturazione_lotti.id%TYPE;
+    v_lotto_fiscale  vendite.fatturazione_lotti.id%TYPE;
 BEGIN
     -- ⚠️ LO STATO SERVE, e la prima stesura di questa fixture non lo metteva:
     --   la check legge `congela_fiscale` FAIL-CLOSED (COALESCE(..., true)),
@@ -79,6 +82,23 @@ BEGIN
     RETURNING id INTO v_lotto;
 
     INSERT INTO tmp_lotto VALUES (v_lotto);
+
+    -- ⭐ UN SECONDO LOTTO, OLTRE IL PRE-FISCALE, per il test 18. Serve perche'
+    --   il MOTIVO 1 (E_LOTTO_NON_PRE_FISCALE) non scatta mai sul lotto DRAFT
+    --   qui sopra — ed e' proprio il motivo su cui la frase era sbagliata.
+    --   ⛔ `codice_interno`, mai un id: DEFINITIVA e' uno degli stati con
+    --   `congela_fiscale = true`, e il confine si legge dal flag.
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
+         stato_doc_fiscale_id)
+    SELECT 'PGTAP-USCITA-GIRO-FISCALE', date_trunc('month', CURRENT_DATE)::date,
+           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
+           (SELECT s.id FROM config.stati_doc_fiscale s
+             WHERE s.codice_interno = 'DEFINITIVA')
+      FROM tmp_rif t
+    RETURNING id INTO v_lotto_fiscale;
+
+    INSERT INTO tmp_lotto_fiscale VALUES (v_lotto_fiscale);
 
     -- Il perimetro: tre documenti presi in carico.
     INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
@@ -244,6 +264,48 @@ SELECT is(
     script.fn_gruppi_trascinati_da_uscita((SELECT id FROM tmp_lotto), 'PGTAP:sano'),
     '[]'::jsonb,
     'un documento senza bozza non trascina nessuno'
+);
+
+-- ============================================================
+-- 18) ⭐ P-1 — LA FRASE RESA, che nessun cancello statico vede
+-- ============================================================
+-- ⛔ IL DIFETTO ERA VIVO fino al 2026-09-09. vendite.fn_escludi_documento_da_giro
+--   passava `p_gruppo_key` come PRIMO valore: giusto per i motivi 2, 3 e 4, che
+--   cominciano tutti con «Il documento %s». Ma il MOTIVO 1 e'
+--   E_LOTTO_NON_PRE_FISCALE — «Il lotto e' oltre lo stato pre-fiscale (stato
+--   attuale: %s)» — e a video usciva il GRUPPO DEL DOCUMENTO al posto dello
+--   stato del lotto. Ed e' il motivo che sta PRIMO nell'array, cioe' quello che
+--   la madre solleva sul percorso piu' comune.
+--   ⚠️ Arita' giusta (un segnaposto, un valore): nessun `W_MESSAGGIO_ARITA`,
+--   nessun cancello rosso. I `throws_ok` dei test 9-12 asseriscono `P0001`, che
+--   la frase non la guarda.
+--
+-- ⭐ Dal changeSet 20260909-02 i `valori` li emette la check accanto al proprio
+--   codice, quindi ogni motivo porta i suoi. Questo test lo prova RENDENDO la
+--   frase: e' l'unica verifica che vede l'ORDINE dei valori, che nessun
+--   conteggio di segnaposto puo' vedere (il precedente e' del 2026-09-01 su
+--   E_REGISTRO_SERIE_NON_AMMESSA).
+-- ⚠️ Il CASE con `coalesce` non e' pignoleria: senza, una check che smettesse
+--   di emettere `valori` farebbe alzare 22023 a format() e ABORTIREBBE il file,
+--   seppellendo le altre diciassette asserzioni. E scritto con un `<>` nudo non
+--   guarderebbe niente: `jsonb_typeof(NULL) <> 'array'` vale NULL, non vero.
+SELECT matches(
+  (WITH v AS (
+     SELECT script.fn_check_documento_escludibile_da_giro(
+              (SELECT id FROM tmp_lotto_fiscale), 'PGTAP:qualunque') -> 0 AS motivo)
+   SELECT CASE
+            WHEN coalesce(v.motivo ->> 'codice', '') <> 'E_LOTTO_NON_PRE_FISCALE'
+              THEN format('(il primo motivo e'' %s)', v.motivo ->> 'codice')
+            WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
+              THEN '(la check non emette valori)'
+            ELSE format(
+                   (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_LOTTO_NON_PRE_FISCALE' AND m.lingua = 'it'),
+                   VARIADIC ARRAY(SELECT jsonb_array_elements_text(v.motivo -> 'valori')))
+          END
+     FROM v),
+  'stato attuale: DEFINITIVA',
+  '18) la frase resa nomina lo STATO DEL LOTTO, non il gruppo del documento'
 );
 
 SELECT * FROM finish();

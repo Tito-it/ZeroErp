@@ -51,7 +51,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(10);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -300,6 +300,60 @@ SELECT is(
   'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO|ACCREDITO_ESEGUITO',
   '3) dopo l''accredito il gate produce il motivo, col codice e la reason giusti'
 );
+
+-- ⭐ P-1 — LA FRASE RESA. E' l'unica verifica che vede l'ORDINE dei valori:
+--   il ramo C di test-catalogo-messaggi-errore-completo.sql prova che sono
+--   TANTI QUANTI i segnaposto, non che siano quelli giusti al posto giusto.
+--   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — due
+--   valori, due segnaposto, «Registro X1» a video con la serie al posto della
+--   famiglia — e nel 2026-09-09 lo stesso difetto e' stato trovato VIVO su due
+--   siti di questo cantiere.
+-- ⚠️ Si confronta con la frase composta dai valori letti dalla TABELLA: se la
+--   check li emettesse invertiti, le due stringhe divergerebbero. Un `matches`
+--   su un pezzo di frase non lo vedrebbe.
+-- ⚠️ Il CASE con `coalesce` non e' pignoleria: senza, una check che smettesse
+--   di emettere `valori` farebbe alzare 22023 a format() e ABORTIREBBE il file.
+--   E scritto con un `<>` nudo non guarderebbe niente: `jsonb_typeof(NULL) <>
+--   'array'` vale NULL, non vero.
+SELECT is(
+  (WITH v AS (SELECT script.fn_check_rinuncia_reversibile((SELECT resi_riga_id FROM tmp_pr_reso)) -> 0 AS motivo)
+   SELECT CASE
+            WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
+              THEN '(la check non emette valori)'
+            ELSE format(
+                   (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO' AND m.lingua = 'it'),
+                   VARIADIC ARRAY(SELECT jsonb_array_elements_text(v.motivo -> 'valori')))
+          END
+     FROM v),
+  (SELECT format((SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO' AND m.lingua = 'it'),
+                 (SELECT resi_riga_id FROM tmp_pr_reso)::text)),
+  '3-bis) la frase resa nomina la RIGA DI RESO');
+
+-- ⭐ IL CASO A ZERO SEGNAPOSTO, e vale la riga a se': «Reso non trovato.» non
+--   ha `%s`, quindi il suo `valori` e' un array VUOTO — che e' un valore, non
+--   una dimenticanza. Con zero valori fn_log_and_raise_error salta il ramo
+--   format() e il testo arriva intero.
+--   ⛔ Il difetto da vedere qui e' l'opposto degli altri: un `%s` che resta a
+--   video LETTERALE perche' nessuno lo riempie (test 4 del catalogo messaggi).
+--   ⚠️ Le due arita' diverse sulla stessa check (0 e 1) sono il caso che il
+--   chiamante a valori FISSI non poteva servire: e' la ragione per cui questa
+--   check e' entrata nel cantiere.
+SELECT is(
+  (WITH v AS (SELECT script.fn_check_rinuncia_reversibile(999999999) -> 0 AS motivo)
+   SELECT CASE
+            WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
+              THEN '(la check non emette valori)'
+            ELSE format(
+                   (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_RESO_NOT_FOUND' AND m.lingua = 'it'),
+                   VARIADIC ARRAY(SELECT jsonb_array_elements_text(v.motivo -> 'valori')))
+          END
+     FROM v),
+  (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_RESO_NOT_FOUND' AND m.lingua = 'it'),
+  '3-ter) il motivo a ZERO segnaposto rende il testo intero, senza %s a video');
 
 -- ⭐ Che il divieto MORDA lo dice solo la madre: il gate da solo produce un
 --    elenco che nessuno e' obbligato a leggere.

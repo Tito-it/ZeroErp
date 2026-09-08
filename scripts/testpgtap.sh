@@ -180,12 +180,46 @@ esac
 
 # Carica le variabili PG* per pg_prove.
 # Priorita':
+#   0) PGTAP_ENV_FILE        (override esplicito — vedi sotto)
 #   1) db/internal.env       (server DB, fonte primaria)
 #   2) backend/internal.env  (server backend con env pgTAP dedicato)
 #   3) backend/.env          (server backend, usa DB_* -> mappa su PG*)
+#
+# ── ⛔ PERCHE' SERVE UN OVERRIDE DI FILE, E NON BASTA `PGDATABASE=...` ──────
+#   Il file viene caricato con `set -a; source`, quindi le sue righe
+#   SOVRASCRIVONO l'ambiente: `PGDATABASE=altro scripts/testpgtap.sh …` non
+#   sposta niente, e i test girano lo stesso sul database nominato nel file.
+#   ⚠️ E' un fallimento SILENZIOSO, ed e' il peggiore che potesse capitare qui:
+#   chi vuole misurare il database scratch della replica CI
+#   (`scripts/ci-local.sh`, `CI_DB=zeroerp_ci`) crede di misurare quello e
+#   misura SVILUPPO. Con `pgtap-baseline.sh --update` finirebbe per scrivere i
+#   rossi di sviluppo dentro la baseline della CI, cioe' un metro sbagliato
+#   dentro il file che esiste apposta per tenere il metro omogeneo.
+#   ⭐ Quindi la scelta si fa a livello di FILE — un env file per database —
+#   non variabile per variabile: cosi' host, porta, utente, password e database
+#   restano un insieme coerente e non se ne puo' spostare mezzo.
+#
+#   Uso:
+#     PGTAP_ENV_FILE=db/internal.ci.env scripts/pgtap-baseline.sh --update
 ENV_FILE=""
 ENV_STYLE=""   # "pg" = variabili PG* native, "django" = DB_* da mappare
-if [ -f "$ROOT_DIR/db/internal.env" ]; then
+if [ -n "${PGTAP_ENV_FILE:-}" ]; then
+  # Path relativo alla root del repo o assoluto, indifferentemente.
+  case "$PGTAP_ENV_FILE" in
+    /*) ENV_FILE="$PGTAP_ENV_FILE" ;;
+    *)  ENV_FILE="$ROOT_DIR/$PGTAP_ENV_FILE" ;;
+  esac
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "Errore: PGTAP_ENV_FILE='$PGTAP_ENV_FILE' non esiste (risolto in $ENV_FILE)." >&2
+    exit 3
+  fi
+  # Stile: "django" se il file parla DB_* invece che PG*.
+  if grep -qE '^[[:space:]]*DB_NAME=' "$ENV_FILE" && ! grep -qE '^[[:space:]]*PGDATABASE=' "$ENV_FILE"; then
+    ENV_STYLE="django"
+  else
+    ENV_STYLE="pg"
+  fi
+elif [ -f "$ROOT_DIR/db/internal.env" ]; then
   ENV_FILE="$ROOT_DIR/db/internal.env"
   ENV_STYLE="pg"
 elif [ -f "$ROOT_DIR/backend/internal.env" ]; then

@@ -35,6 +35,7 @@ AS $function$
 DECLARE
   v_motivi   jsonb := '[]'::jsonb;
   v_uid      vendite.ordini.uid%TYPE;
+  v_numero   vendite.ordini.numero%TYPE;
   v_ddt      integer := 0;
 BEGIN
   IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
@@ -44,7 +45,9 @@ BEGIN
       NULL::uuid, 'ordine_id obbligatorio (>0)');
   END IF;
 
-  SELECT o.uid INTO v_uid
+  -- ⭐ `o.numero` sulla SELECT che c'era gia': serve a COMPORRE la frase
+  --   («Ordine %s: esistono gia' documenti di trasporto ...»), non a decidere.
+  SELECT o.uid, o.numero INTO v_uid, v_numero
     FROM vendite.ordini o
    WHERE o.id = p_ordine_id;
 
@@ -72,7 +75,8 @@ BEGIN
       'codice',     'E_ORD_ANNULLA_CON_DDT',
       'reason',     'DDT_COLLEGATI',
       'reason_key', 'vendite.ordini.azione_reason.ddt_collegati',
-      'dettaglio',  v_ddt);
+      'dettaglio',  v_ddt,
+      'valori',     jsonb_build_array(COALESCE(v_numero, p_ordine_id::text)));
   END IF;
 
   -- MOTIVO 2 — l'ordine e' gia' entrato in una commessa.
@@ -93,6 +97,10 @@ BEGIN
   -- vendite.commesse_attivita, dove `sorgente_uid` porta `uid::text` — non
   -- l'`id::text` che vendite.commesse_sorgenti usa per l'ordine. Passare la
   -- chiave vecchia non darebbe errore: darebbe zero motivi.
+  -- ⚠️ I motivi di questa check arrivano QUI DENTRO gia' fatti, `valori`
+  --   compresi: non si ricompongono e non si riordinano. E' il motivo per cui
+  --   fn_check_sorgente_chiudibile e' entrata nello stesso cantiere — senza,
+  --   meta' dei motivi di questa funzione sarebbe rimasta senza valori.
   v_motivi := v_motivi || script.fn_check_sorgente_chiudibile(
       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
       v_uid::text);

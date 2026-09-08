@@ -77,7 +77,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(18);
 
 -- ============================================================
 -- 1..4 STRUTTURA
@@ -297,6 +297,37 @@ SELECT is(
                     (SELECT commessa_id FROM tmp_c)) -> 0 AS m) x),
   'E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE|1',
   '12) _annullabile: motivo 558 con dettaglio = numero righe emesse');
+
+-- ⭐ P-1 — LA FRASE RESA. E' l'unica verifica che vede l'ORDINE dei valori:
+--   il ramo C di test-catalogo-messaggi-errore-completo.sql prova che sono
+--   TANTI QUANTI i segnaposto, non che siano quelli giusti al posto giusto.
+--   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — due
+--   valori, due segnaposto, «Registro X1» a video con la serie al posto della
+--   famiglia — e nel 2026-09-09 lo stesso difetto e' stato trovato VIVO su due
+--   siti di questo cantiere.
+-- ⚠️ Si confronta con la frase composta dai valori letti dalla TABELLA: se la
+--   check li emettesse invertiti, le due stringhe divergerebbero. Un `matches`
+--   su un pezzo di frase non lo vedrebbe.
+-- ⚠️ Il CASE con `coalesce` non e' pignoleria: senza, una check che smettesse
+--   di emettere `valori` farebbe alzare 22023 a format() e ABORTIREBBE il file.
+--   E scritto con un `<>` nudo non guarderebbe niente: `jsonb_typeof(NULL) <>
+--   'array'` vale NULL, non vero.
+SELECT is(
+  (WITH v AS (SELECT script.fn_check_commessa_annullabile((SELECT commessa_id FROM tmp_c)) -> 0 AS motivo)
+   SELECT CASE
+            WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
+              THEN '(la check non emette valori)'
+            ELSE format(
+                   (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE' AND m.lingua = 'it'),
+                   VARIADIC ARRAY(SELECT jsonb_array_elements_text(v.motivo -> 'valori')))
+          END
+     FROM v),
+  (SELECT format((SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE' AND m.lingua = 'it'),
+                 c.codice, '1')
+     FROM vendite.commesse c WHERE c.id = (SELECT commessa_id FROM tmp_c)),
+  '12-bis) la frase resa nomina il CODICE della commessa e poi il conteggio, in quest''ordine');
 
 SELECT throws_ok(
   $$ SELECT * FROM vendite.fn_cambia_stato_commessa(

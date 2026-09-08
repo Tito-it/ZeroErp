@@ -85,18 +85,20 @@ BEGIN
                     v_sorgente_tipo_id,
                     (to_jsonb(NEW) ->> 'uid'));
 
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', TG_NAME::text,
-            v_motivi -> 0 ->> 'codice',
-            jsonb_build_object(
-                'sorgente',         v_sorgente_codice,
-                'sorgente_uid',     (to_jsonb(NEW) ->> 'uid'),
-                'documento_id',     (to_jsonb(NEW) ->> 'id'),
-                'motivi',           v_motivi),
-            NULL::uuid,
-            v_motivi -> 0 ->> 'dettaglio');
-    END IF;
+    -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+    --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+    --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi.
+    -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+    --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'database', TG_NAME::text,
+        v_motivi,
+        NULL,
+        NULL::uuid,
+        jsonb_build_object(
+            'sorgente',     v_sorgente_codice,
+            'sorgente_uid', (to_jsonb(NEW) ->> 'uid'),
+            'documento_id', (to_jsonb(NEW) ->> 'id')));
 
     RETURN NEW;
 END;

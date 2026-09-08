@@ -11,7 +11,7 @@
 -- Origine: brief-db-seed-messaggi-errore-mancanti.md §9.6 (il gemello lato DB
 --   del guardrail BE) e brief-db-seed-messaggi-errore-round-2.md §1.
 --
--- Indice test (1..4):
+-- Indice test (1..7):
 --   1. Il catalogo e' popolato e E_MESSAGGIO_NON_DEFINITO esiste (preflight:
 --      senza, il ripiego stesso non funziona)
 --   2. ZERO codici sollevati da funzioni vive e assenti dal catalogo
@@ -22,6 +22,8 @@
 --   5. Nessun punto di sollevamento passa MENO valori dei segnaposto del suo
 --      messaggio (format() alza 22023 e l'errore di dominio SPARISCE)
 --   6. Nessun messaggio con piu' di sei segnaposto (refuso di seed)
+--   7. ⭐ I `valori` che una fn_check_* emette con un motivo sono ESATTAMENTE
+--      i segnaposto del messaggio di quel codice
 --
 -- ⭐ I test 4 e 5 sono stati SCRITTI il 2026-08-18. Prima al loro posto c'era
 --    il solo test "nessun messaggio con piu' di sei %s" — che e' oggi il 6 —
@@ -32,6 +34,23 @@
 --    chiamante. Con quel test verde, il 2026-08-18 il catalogo aveva 2 punti
 --    del primo tipo e 8 del secondo.
 --    Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md
+--
+-- ⭐ E DAL 2026-09-08 I TEST 4 E 5 NON HANNO PIU' IL LORO RAMO CIECO.
+--    Lo scanner si fermava su una riga sola — `CONTINUE WHEN v_code IS NULL`,
+--    «codice in variabile: non misurabile» — e quella riga teneva fuori TUTTO
+--    il pattern linee-guida-sql §12.5, dove la madre chiama una fn_check_* e
+--    solleva `v_motivi -> 0 ->> 'codice'`. Sono i punti in cui la frase la
+--    compone il CHIAMANTE con dati suoi, cioe' quelli dove sbagliare l'arita'
+--    e' piu' facile: il presidio era muto proprio li'.
+--    ⇒ Adesso il punto esce con `codice` NULL e i suoi `n_valori`, e il ramo B
+--    di `_arita` incrocia i codici che quel punto puo' sollevare leggendoli da
+--    dbops.vw_punti_primo_motivo (changeSet 20260908-34), che risale alla
+--    check. ⚠️ Da qui in avanti questo file DIPENDE da quella vista.
+--    Misura del 2026-09-08, prima di C-1: diciannove punti a codice non
+--    letterale, tredici legati a una check, e ZERO difetti — nessuno passa meno
+--    valori dei segnaposto. Il presidio nasce verde, e va saputo: prova che
+--    aggancia, non che ci fosse un guasto.
+--    Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (P-0)
 --
 -- PERCHE' LEGGE IL DATABASE E NON I FILE. Il gemello lato BE analizza l'AST
 -- del codice Python; qui la fonte e' pg_proc.prosrc, cioe' la funzione VIVA.
@@ -69,7 +88,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- Codici sollevati dalle funzioni vive. Il quantificatore e' limitato a 200
 -- perche' PostgreSQL non ammette ripetizioni oltre 255, ed e' non-greedy per
@@ -211,7 +230,20 @@ BEGIN
             v_i := v_i + 1;
             CONTINUE WHEN coalesce(array_length(v_args, 1), 0) < 3;
             v_code := (regexp_match(v_args[3], '^''(E_[A-Z0-9_]{3,})''$'))[1];
-            CONTINUE WHEN v_code IS NULL;             -- codice in variabile: non misurabile
+            -- ⭐ P-0, 2026-09-08 — QUI C'ERA UN `CONTINUE WHEN v_code IS NULL`,
+            --   commentato «codice in variabile: non misurabile». Era una riga
+            --   sola e teneva fuori dallo scanner TUTTI i punti del pattern
+            --   §12.5 («la madre CHIAMA la check»), che sollevano
+            --   `v_motivi -> 0 ->> 'codice'`: al 2026-09-08 diciannove punti, di
+            --   cui tredici legati a una fn_check_*.
+            --   ⇒ Adesso il punto esce con `codice` NULL e i suoi `n_valori`
+            --   misurati: i codici che PUO' sollevare li dice
+            --   dbops.vw_punti_primo_motivo, e li incrocia il ramo B di _arita.
+            --   ⚠️ Non tutti i punti a codice non letterale sono di quella
+            --   famiglia (trgfn_lock_columns, fn_get_next_progressivo,
+            --   fn_resolve_prezzo_listino_v2 tengono il codice in una variabile
+            --   per altre ragioni): quelli restano fuori dal giudizio, e non si
+            --   fingono misurati.
             funzione := r.fn; codice := v_code;
             IF array_length(v_args, 1) <= 5 THEN
                 n_valori := 0;                        -- nessun valore dopo p_tx_id
@@ -237,12 +269,126 @@ END $fn$;
 -- Punti misurabili incrociati col catalogo, per lingua: un messaggio 'en' con
 -- un numero di segnaposto diverso dall'italiano romperebbe le sole sessioni
 -- inglesi, ed e' esattamente il caso che non si nota.
+-- ============================================================
+-- ⭐ LO SCANNER DEI MOTIVI (serve al ramo C, dal 2026-09-09)
+-- ============================================================
+-- ⛔ PERCHE' SERVE, ed e' un buco che si sarebbe aperto DA SOLO. Con C-1/C-2 i
+--   `valori` passano DENTRO la fn_check_*, e il sito smette di chiamare
+--   fn_log_and_raise_error: quei punti escono dallo scanner dei rami A e B, e
+--   con loro uscirebbe l'unico presidio sulla loro arita'. Una bonifica che
+--   riduce la copertura di un cancello e' «verde per sottrazione» — la stessa
+--   classe di difetto per cui questo cantiere esiste.
+-- ⇒ Si misura dove l'arita' e' andata a vivere: `'valori', jsonb_build_array(…)`
+--   accanto al `'codice'` del motivo, dentro la check.
+-- ⚠️ Un motivo SENZA `valori` non e' un difetto: e' una check che non li emette
+--   ancora (il debito del rubinetto). Esce con n_valori NULL e i test lo
+--   ignorano, invece di contarlo come zero.
+CREATE FUNCTION pg_temp.fn_motivi_con_valori()
+RETURNS TABLE(funzione text, codice text, n_valori int)
+LANGUAGE plpgsql AS $fn$
+DECLARE
+    r record; v_src text; v_n int; v_i int; v_j int; v_p int;
+    v_c text; v_d int; v_q boolean; v_buf text; v_code text; v_next int;
+BEGIN
+    FOR r IN
+        SELECT n.nspname || '.' || p.proname AS fn, p.prosrc AS src
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          JOIN pg_language  l ON l.oid = p.prolang
+         WHERE l.lanname = 'plpgsql'
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+           AND p.prosrc LIKE '%''codice''%'
+    LOOP
+        v_src := pg_temp.fn_senza_commenti(r.src);
+        v_n := length(v_src);
+        v_i := 1;
+        LOOP
+            -- il prossimo motivo: "'codice'" seguito da un letterale E_...
+            v_p := position('''codice''' IN substr(v_src, v_i));
+            EXIT WHEN v_p = 0;
+            v_i := v_i + v_p - 1 + length('''codice''');
+            v_code := (regexp_match(substr(v_src, v_i, 80), '^\s*,\s*''(E_[A-Z0-9_]{3,})'''))[1];
+            CONTINUE WHEN v_code IS NULL;   -- non e' un motivo: e' un'altra chiave
+            funzione := r.fn; codice := v_code; n_valori := NULL;
+            -- il `valori` di QUESTO motivo sta prima del prossimo `'codice'`
+            v_next := position('''codice''' IN substr(v_src, v_i));
+            IF v_next = 0 THEN v_next := v_n - v_i + 1; END IF;
+            v_p := position('''valori''' IN substr(v_src, v_i, v_next));
+            IF v_p > 0 THEN
+                v_j := v_i + v_p - 1;
+                v_p := position('jsonb_build_array(' IN substr(v_src, v_j, v_next));
+                IF v_p > 0 THEN
+                    v_j := v_j + v_p - 1 + length('jsonb_build_array(');
+                    -- estrazione BILANCIATA: gli argomenti hanno parentesi
+                    -- annidate (COALESCE(...), cast, jsonb_build_object(...))
+                    v_d := 0; v_q := false; v_buf := '';
+                    WHILE v_j <= v_n LOOP
+                        v_c := substr(v_src, v_j, 1);
+                        IF v_q THEN
+                            IF v_c = '''' THEN
+                                IF substr(v_src, v_j + 1, 1) = '''' THEN
+                                    v_buf := v_buf || ''''''; v_j := v_j + 2; CONTINUE;
+                                END IF;
+                                v_q := false;
+                            END IF;
+                            v_buf := v_buf || v_c; v_j := v_j + 1; CONTINUE;
+                        END IF;
+                        IF v_c = '''' THEN v_q := true;
+                        ELSIF v_c IN ('(', '[') THEN v_d := v_d + 1;
+                        ELSIF v_c = ']' THEN v_d := v_d - 1;
+                        ELSIF v_c = ')' THEN
+                            EXIT WHEN v_d = 0;
+                            v_d := v_d - 1;
+                        END IF;
+                        v_buf := v_buf || v_c; v_j := v_j + 1;
+                    END LOOP;
+                    n_valori := CASE WHEN btrim(v_buf, E' \t\r\n') = '' THEN 0
+                                     ELSE coalesce(array_length(pg_temp.fn_argomenti(v_buf), 1), 0) END;
+                END IF;
+            END IF;
+            RETURN NEXT;
+        END LOOP;
+    END LOOP;
+END $fn$;
+
 CREATE TEMP VIEW _arita AS
-SELECT DISTINCT s.funzione, s.codice, m.lingua, s.n_valori,
+-- Ramo A — il codice e' un LETTERALE sulla riga della chiamata.
+SELECT DISTINCT 'A'::text AS ramo, s.funzione, s.codice, m.lingua, s.n_valori,
        (length(m.messaggio) - length(replace(m.messaggio, '%s', ''))) / 2 AS n_segnaposto
   FROM pg_temp.fn_punti_sollevamento() s
   JOIN config.messaggi_errore m ON m.codice = s.codice
- WHERE s.n_valori IS NOT NULL;
+ WHERE s.n_valori IS NOT NULL
+UNION ALL
+-- ⭐ Ramo B — il codice viene da un MOTIVO: lo scanner sa quanti valori passa
+--   il punto, ma non quale codice uscira'. I codici che quel punto PUO'
+--   sollevare li dice dbops.vw_punti_primo_motivo, risalendo alla fn_check_*.
+--   ⚠️ PESSIMISTA di proposito: la vista da' l'UNIONE dei codici di tutte le
+--   check nominate nel corpo, perche' legge il testo e non sa quale ramo sia
+--   stato preso. E' il verso giusto dell'errore — un sito scritto per l'unione
+--   e' sicuro su ogni ramo, e un falso positivo costa UNA riga in piu' nel
+--   VARIADIC, non un rifiuto sbagliato.
+--   ⛔ Senza questo ramo il test 5 e' muto proprio dove il chiamante compone la
+--   frase da dati SUOI, cioe' dove sbagliare e' piu' facile.
+SELECT DISTINCT 'B'::text AS ramo, s.funzione, v.codice, m.lingua, s.n_valori,
+       (length(m.messaggio) - length(replace(m.messaggio, '%s', ''))) / 2 AS n_segnaposto
+  FROM pg_temp.fn_punti_sollevamento() s
+  JOIN dbops.vw_punti_primo_motivo v ON v.funzione = s.funzione
+  JOIN config.messaggi_errore m ON m.codice = v.codice
+ WHERE s.codice IS NULL
+   AND s.n_valori IS NOT NULL
+   AND v.codice IS NOT NULL
+UNION ALL
+-- ⭐ Ramo C — i `valori` li emette la fn_check_* accanto al proprio codice
+--   (linee-guida-sql §12.5.1). E' dove l'arita' e' andata a vivere con C-1:
+--   il sito non compone piu' niente, quindi i rami A e B non lo vedono.
+--   ⭐ Qui il confronto e' PIU' STRETTO degli altri due, ed e' il guadagno
+--   vero del cantiere: si sa esattamente QUALE codice e QUALI valori vanno
+--   insieme, senza l'unione pessimista del ramo B.
+SELECT DISTINCT 'C'::text AS ramo, m.funzione, m.codice, e.lingua, m.n_valori,
+       (length(e.messaggio) - length(replace(e.messaggio, '%s', ''))) / 2 AS n_segnaposto
+  FROM pg_temp.fn_motivi_con_valori() m
+  JOIN config.messaggi_errore e ON e.codice = m.codice
+ WHERE m.n_valori IS NOT NULL;
 
 -- ============================================================
 -- 1) Preflight: catalogo popolato e ripiego disponibile
@@ -355,6 +501,51 @@ SELECT is(
       WHERE (length(messaggio) - length(replace(messaggio, '%s', ''))) / 2 > 6),
     '',
     '6. Nessun messaggio con piu'' di sei segnaposto %s'
+);
+
+-- ============================================================
+-- 7) ⭐ I `valori` DI UN MOTIVO SONO ESATTAMENTE I SEGNAPOSTO DEL SUO CODICE
+-- ============================================================
+-- ⭐ QUESTO CANCELLO PRIMA NON ERA POSSIBILE, ed e' il guadagno di C-1.
+--   Finche' la frase la componeva il chiamante, si sapeva quanti valori
+--   passava un SITO ma non quale codice sarebbe uscito: il confronto poteva
+--   solo essere «almeno quanti ne servono al peggiore» (ramo B, pessimista).
+--   Ora `valori` e `codice` stanno nello stesso jsonb_build_object, quindi la
+--   coppia e' nota — e si puo' pretendere l'UGUAGLIANZA.
+--
+-- ⛔ E l'uguaglianza prende il caso che i test 4 e 5 non vedono: i valori IN
+--   PIU'. `format()` li ignora in silenzio, quindi l'arita' resta «giusta» e a
+--   video esce una frase SBAGLIATA — nessun `W_`, nessun rosso. Sono i due
+--   difetti vivi trovati il 2026-09-09:
+--     · E_LOTTO_NON_PRE_FISCALE, che riceveva il gruppo del documento al posto
+--       dello stato del lotto (vendite.fn_escludi_documento_da_giro);
+--     · E_SORGENTE_CON_RIGHE_EMESSE, che riceveva il numero dell'ordine al
+--       posto del conteggio (vendite.trgfn_ordini_guard_transizione).
+--   ⚠️ Nessuno dei due avrebbe fatto scattare il test 5: l'arita' bastava.
+--
+-- ⚠️ COSA QUESTO TEST NON PROVA — e va detto, altrimenti sembra piu' di quello
+--   che e': prova che i valori sono TANTI quanti i segnaposto, non che siano
+--   quelli GIUSTI e nell'ORDINE giusto. Quello si vede solo leggendo la frase
+--   resa (`throws_like`), ed e' il precedente del 2026-09-01 su
+--   E_REGISTRO_SERIE_NON_AMMESSA: due valori, due segnaposto, frase falsa.
+--
+-- ⚠️ I motivi che NON emettono `valori` restano fuori (n_valori NULL): sono il
+--   debito del rubinetto, non un difetto. Erano 34 al 2026-09-09, contro 29
+--   motivi misurati qui — il numero da guardare e' che il primo CALI.
+SELECT is(
+    (SELECT coalesce(string_agg(
+                DISTINCT codice || ' [' || lingua || '] <- ' || funzione
+                         || ' (emette ' || n_valori || ', il messaggio ne chiede '
+                         || n_segnaposto || ')', E'\n'), '')
+       FROM _arita
+      -- ⚠️ Si filtra sul RAMO, non sul nome della funzione: una fn_check_*
+      --   contiene anche punti a codice LETTERALE (il guard di parametro in
+      --   testa), che finiscono nel ramo A e non hanno niente a che vedere con
+      --   i `valori` di un motivo. Filtrare per nome li tirava dentro, ed e'
+      --   costato un rosso a vuoto la prima volta.
+      WHERE ramo = 'C' AND n_valori <> n_segnaposto),
+    '',
+    '7. i valori emessi da un motivo sono esattamente i segnaposto del suo messaggio'
 );
 
 SELECT * FROM finish();

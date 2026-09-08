@@ -9,7 +9,11 @@ node_modules/
 tools/
 
 # Credenziali e configurazione locale — non vanno committati
+# ⚠️ Il glob copre anche le varianti per database: `internal.env` da solo NON
+#   matcha `internal.ci.env` (l'env file della replica CI, che contiene la
+#   password di `zeroerp`), e quel file finirebbe committato in chiaro.
 internal.env
+internal*.env
 liquibase.properties
 
 # Changelog auto-generato localmente (incluso da changelog-master-v2.yaml)

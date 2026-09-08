@@ -24,6 +24,7 @@ AS $function$
 DECLARE
   v_motivi jsonb   := '[]'::jsonb;
   v_emesse integer;
+  v_codice vendite.commesse.codice%TYPE;
 BEGIN
   -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
   -- di programmazione, non una condizione di dominio -> errore parlante
@@ -41,6 +42,21 @@ BEGIN
   -- indietro questo stato. Blocchiamo comunque, di proposito.
   -- Indice: ix_commesse_attivita_commessa_stati
   -- (commessa_id, stato_approvazione, stato_emissione).
+      -- ⭐ LA CHIAVE VISIBILE, dal 2026-09-09. Non serve a DECIDERE — il
+      --   verdetto non la guarda — ma a COMPORRE la frase del motivo che
+      --   questa funzione ha scelto: «%s: ...» vuole il nome che una persona
+      --   riconosce, non l'id. Finche' i `valori` li metteva il chiamante,
+      --   glieli dava NEW; adesso il codice e la sua frase escono dallo stesso
+      --   posto, che e' tutto il senso di §12.5.2.
+      -- ⚠️ Dentro un trigger BEFORE questa SELECT legge la riga PRE-modifica,
+      --   mentre il chiamante usava NEW. Sulle transizioni di stato le due
+      --   coincidono (una transizione non rinomina il documento) ed e' anzi il
+      --   valore che l'operatore ha davanti sullo schermo — ma va detto, non
+      --   dato per scontato.
+  SELECT c.codice INTO v_codice
+    FROM vendite.commesse c
+   WHERE c.id = p_commessa_id;
+
   SELECT count(*)
     INTO v_emesse
     FROM vendite.commesse_attivita ca
@@ -52,7 +68,10 @@ BEGIN
       'codice',     'E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE',
       'reason',     'RIGHE_EMESSE',
       'reason_key', 'vendite.commesse.azione_reason.righe_emesse',
-      'dettaglio',  v_emesse);
+      'dettaglio',  v_emesse,
+      -- «Commessa %s: annullamento non consentito, %s riga/e gia' emesse.»
+      'valori',     jsonb_build_array(COALESCE(v_codice, p_commessa_id::text),
+                                      v_emesse));
   END IF;
 
   RETURN v_motivi;

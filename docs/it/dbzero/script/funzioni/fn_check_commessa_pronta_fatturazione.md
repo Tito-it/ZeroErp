@@ -27,6 +27,7 @@ DECLARE
   v_pronte    integer := 0;   -- conteggio, non specchio di colonna
   v_emittente vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
   v_trovata   boolean := false;
+  v_codice    vendite.commesse.codice%TYPE;
 BEGIN
   -- Guard parametro (AGENTS.md): id assente o non valido e' un
   -- errore di programmazione, non una condizione di dominio.
@@ -37,8 +38,11 @@ BEGIN
       NULL::uuid, 'commessa_id obbligatorio (>0)');
   END IF;
 
-  SELECT c.emittente_soggetto_ruolo_id, true
-    INTO v_emittente, v_trovata
+  -- ⭐ `c.codice` viaggia sulla SELECT che c'era gia': serve a COMPORRE la
+  --   frase («Commessa %s: ...»), non a decidere. Vedi la nota gemella in
+  --   fn_check_commessa_annullabile per il caso del trigger BEFORE.
+  SELECT c.emittente_soggetto_ruolo_id, true, c.codice
+    INTO v_emittente, v_trovata, v_codice
     FROM vendite.commesse c
    WHERE c.id = p_commessa_id;
 
@@ -60,7 +64,8 @@ BEGIN
       'codice',     'E_COMMESSA_NESSUNA_RIGA_APPROVATA',
       'reason',     'NESSUNA_RIGA_PRONTA',
       'reason_key', 'vendite.commesse.azione_reason.nessuna_riga_pronta',
-      'dettaglio',  0);
+      'dettaglio',  0,
+      'valori',     jsonb_build_array(COALESCE(v_codice, p_commessa_id::text)));
   END IF;
 
   -- MOTIVO 2 — emittente fiscale assente sulla testata.
@@ -71,7 +76,8 @@ BEGIN
       'codice',     'E_COMMESSA_EMITTENTE_MANCANTE',
       'reason',     'EMITTENTE_MANCANTE',
       'reason_key', 'vendite.commesse.azione_reason.emittente_mancante',
-      'dettaglio',  0);
+      'dettaglio',  0,
+      'valori',     jsonb_build_array(COALESCE(v_codice, p_commessa_id::text)));
   END IF;
 
   RETURN v_motivi;

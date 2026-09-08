@@ -695,7 +695,7 @@ dentro la check e non arriva né ai presidi né alla frase.*
 | codici nominati **solo** dentro una `fn_check_*`, invisibili al rubinetto degli accumulatori | **35** (tutti a catalogo: il cancello del terzo lato non perde niente) |
 | check della forma B i cui codici hanno un **numero di segnaposto diverso**, mentre il chiamante passa valori in numero fisso | **6 su 13** |
 
-⇒ Raccolti in [brief-db-i-motivi-si-fermano-dentro-la-check](../work-in-progress/brief-db-i-motivi-si-fermano-dentro-la-check.md).
+⇒ Raccolti in [brief-db-i-motivi-si-fermano-dentro-la-check](brief-db-i-motivi-si-fermano-dentro-la-check.md).
 
 ⚠️ **E vanno insieme**, non separati: far emettere `valori` alle tredici check
 chiude il secondo **e** rende i loro siti estraibili con l'helper — cioè l'H-4

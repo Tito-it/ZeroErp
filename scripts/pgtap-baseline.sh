@@ -40,6 +40,24 @@
 #
 #   PGTAP_RUNNER=app scripts/pgtap-baseline.sh vendite   # come gira l'applicazione
 #
+# ── LA BASELINE DELLA CI, PRESA IN LOCALE ─────────────────────────────
+#   Il database scratch di `scripts/ci-local.sh` e' ricostruito da zero come
+#   quello di GitHub: e' li' che si misura la baseline della CI, senza
+#   aspettare una corsa. Servono DUE variabili, e nessuna e' facoltativa:
+#
+#     PGTAP_ENV_FILE=db/internal.ci.env \
+#     PGTAP_BASELINE=db/pgtap/baseline-rossi-ci.tsv \
+#       scripts/pgtap-baseline.sh --update
+#
+#   ⛔ `PGDATABASE=zeroerp_ci` NON basta e non avvisa: l'env file viene
+#   caricato con `set -a; source` e sovrascrive l'ambiente, quindi la corsa
+#   finirebbe su SVILUPPO e i suoi rossi verrebbero scritti nella baseline
+#   della CI. Si sceglie il FILE, non la variabile — vedi testpgtap.sh.
+#   ⚠️ E il database scratch va preparato come la CI, o il metro non e' lo
+#   stesso: `--ci-apply` (senza, mancano i trigger di audit/tx_id/storico) e
+#   `scripts/sql/provision_db_roles.sql` con `migrator_role=zeroerp` (senza,
+#   `zeroerp_app` non ha nessun diritto e i rossi sono tutti permessi).
+#
 # La scelta dell'utente sta in scripts/testpgtap.sh (variabile PGTAP_RUNNER e
 # marcatore `-- pgtap-runner: owner` per i file che richiedono l'owner).
 #
@@ -68,7 +86,7 @@ SCHEMI=()
 for arg in "$@"; do
   case "$arg" in
     --update) UPDATE=1 ;;
-    -h|--help) sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help) sed -n '2,69p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     -*) echo "Opzione sconosciuta: $arg" >&2; exit 2 ;;
     *) SCHEMI+=("$arg") ;;
   esac
@@ -139,7 +157,8 @@ echo "pgTAP baseline — $TOT file da eseguire (~$((TOT))s) — runner: $RUNNER"
 echo
 
 CORRENTE=$(mktemp)
-trap 'rm -f "$CORRENTE"' EXIT
+PRIMO_ROSSO=$(mktemp)
+trap 'rm -f "$CORRENTE" "$PRIMO_ROSSO"' EXIT
 
 n=0
 while IFS= read -r f; do
@@ -151,10 +170,31 @@ while IFS= read -r f; do
   out=$(timeout 90 "$SCRIPT_DIR/testpgtap.sh" "db/$rel" 2>&1)
   echo "$out" | grep -q "Result: PASS" && continue
 
+  # Il primo rosso si conserva per intero: se alla fine sono rossi TUTTI, e'
+  # l'unica cosa che spiega perche' (vedi il cancello dopo il ciclo).
+  [ -s "$PRIMO_ROSSO" ] || printf 'db/pgtap/%s\n\n%s\n' "$rel" "$out" > "$PRIMO_ROSSO"
+
   # Classificazione della causa: serve a triagiare senza riaprire ogni file.
+  #
+  # ⛔ IL PREFISSO DELL'ERRORE psql E' TRADOTTO, e per un mese questo ramo e'
+  #   stato irraggiungibile in CI. Il messaggio lo scrive il SERVER secondo il
+  #   proprio `lc_messages`: il database di sviluppo e' `it_IT.UTF-8` e dice
+  #   «ERRORE:», il container della CI (`postgis/postgis:18-3.6`) parla inglese
+  #   e dice «ERROR:». Con la sola forma italiana, in CI nessun rosso poteva
+  #   finire in ERRORE_FIXTURE: uscivano tutti ASSERZIONE.
+  # ⚠️ Misurato il 2026-09-08 sulla corsa 34259315648 (push su Tito-dev): 411
+  #   rossi su 599 file, e **411 su 411** etichettati ASSERZIONE. Un file che
+  #   non esegue nemmeno un'asserzione veniva registrato come se ne avesse
+  #   fallita una — cioe' la baseline dichiarava una copertura parziale dove la
+  #   copertura valeva zero.
+  # ⭐ Perche' conta: e' il §4-bis della guida sui presidi. Un'etichetta
+  #   rassicurante e' piu' pericolosa di un errore, perche' la si legge una
+  #   volta e poi ci si fida. Qui l'etichetta sbagliata non l'avrebbe scritta
+  #   una persona: la produceva lo strumento, in silenzio, solo fuori da una
+  #   macchina italiana.
   if echo "$out" | grep -q "key_selector"; then
     causa="SORGENTE_POLIMORFA"
-  elif echo "$out" | grep -q "ERRORE:"; then
+  elif echo "$out" | grep -qE "(ERRORE|ERROR):"; then
     causa="ERRORE_FIXTURE"
   else
     causa="ASSERZIONE"
@@ -165,6 +205,54 @@ printf '\r%*s\r' 70 '' >&2
 
 sort -o "$CORRENTE" "$CORRENTE"
 ROSSI=$(grep -c '' "$CORRENTE" || true)
+
+# ── ⛔ IL CANCELLO CHE MANCAVA: SE SONO ROSSI TUTTI, NON SI E' MISURATO NIENTE ──
+#
+#   Non e' una soglia arbitraria, ed e' per questo che il numero e' esattamente
+#   «tutti»: se NON PASSA NEMMENO UN FILE, la corsa non ha misurato la suite —
+#   ha misurato l'AMBIENTE. Estensione `pgtap` assente, ruolo senza privilegi,
+#   database sbagliato, server giu': la causa cambia, la conclusione no.
+#
+#   ⚠️ Il danno sta tutto in `--update`, e sarebbe permanente: la baseline
+#   verrebbe riscritta con OGNI file marcato «rosso noto», cioe' un registro che
+#   dichiara l'intera suite come debito accettato. Da quel momento il confronto
+#   non puo' piu' trovare nessuna regressione — il cancello resterebbe verde per
+#   sempre, e nessuno saprebbe perche'.
+#
+#   ⭐ Successo davvero, il 2026-09-09, alla prima corsa sul database scratch
+#   della replica CI: «Baseline aggiornata: (600 rossi noti)» su 600 file. La
+#   causa era una riga sola — `CREATE EXTENSION pgtap` mai eseguita su quel
+#   database, quindi `SELECT plan(18)` moriva con «la funzione plan(integer) non
+#   esiste» in ogni singolo file. Lo script l'ha scritta come se fosse una
+#   misura.
+#
+#   ⭐ E' il §6 punto 5 della guida sui presidi applicato a questo script:
+#   *«fai fallire il controllo quando non puo' misurare. Un cancello che passa
+#   perche' non ha misurato niente e' peggio di un cancello assente: da' la
+#   sensazione della copertura senza averla»*.
+#   ⚠️ Vale sulla suite INTERA, non su un sottoinsieme: uno schema piccolo puo'
+#   essere tutto rosso per ragioni sue, e li' il divieto sarebbe un falso
+#   allarme. Con gli schemi indicati si avvisa e si prosegue.
+if [ "$ROSSI" -eq "$TOT" ] && [ "$TOT" -gt 0 ] && [ ${#SCHEMI[@]} -gt 0 ]; then
+  echo "⚠️  Tutti e $TOT i file di ${SCHEMI[*]} sono rossi: se non te l'aspettavi," >&2
+  echo "   guarda l'ambiente (estensione pgtap, privilegi, database) prima di fidarti." >&2
+  echo >&2
+fi
+if [ "$ROSSI" -eq "$TOT" ] && [ "$TOT" -gt 0 ] && [ ${#SCHEMI[@]} -eq 0 ]; then
+  echo "⛔ ROSSI TUTTI E $TOT: la corsa non ha misurato la suite, ha misurato l'ambiente." >&2
+  echo "   La baseline NON e' stata scritta: un registro con dentro tutto" >&2
+  echo "   disarmerebbe il confronto per sempre." >&2
+  echo >&2
+  echo "   Cause tipiche, in ordine di frequenza:" >&2
+  echo "     * estensione pgtap assente sul database bersaglio" >&2
+  echo "         psql -U postgres -d <db> -c 'CREATE EXTENSION IF NOT EXISTS pgtap;'" >&2
+  echo "     * il ruolo applicativo non ha privilegi (scripts/sql/provision_db_roles.sql)" >&2
+  echo "     * si sta puntando al database sbagliato (PGTAP_ENV_FILE)" >&2
+  echo >&2
+  echo "── output completo del primo file rosso, che di solito lo dice ──" >&2
+  sed 's/^/   /' "$PRIMO_ROSSO" >&2
+  exit 2
+fi
 
 # --- modalita' aggiornamento -------------------------------------------------
 if [ "$UPDATE" -eq 1 ]; then

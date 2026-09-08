@@ -78,7 +78,11 @@ BEGIN
             -- Riuso di E_RESO_NOT_FOUND: esiste a catalogo, nessun
             -- codice nuovo per un caso che e' un errore del chiamante.
             'reason_key', 'vendite.resi.rinuncia_reason.riga_inesistente',
-            'dettaglio',  p_resi_riga_id);
+            'dettaglio',  p_resi_riga_id,
+            -- ⚠️ «Reso non trovato.» non ha segnaposto: l'array VUOTO e' il
+            --   valore giusto, non una dimenticanza. Con zero valori
+            --   fn_log_and_raise_error salta format() e il testo resta intero.
+            'valori',     jsonb_build_array());
         RETURN v_motivi;
     END IF;
 
@@ -98,7 +102,8 @@ BEGIN
             'codice',     'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO',
             'reason',     'ACCREDITO_ESEGUITO',
             'reason_key', 'vendite.resi.rinuncia_reason.accredito_eseguito',
-            'dettaglio',  p_resi_riga_id);
+            'dettaglio',  p_resi_riga_id,
+            'valori',     jsonb_build_array(p_resi_riga_id));
     END IF;
     -- ==================
 

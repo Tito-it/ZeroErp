@@ -106,23 +106,21 @@ BEGIN
     IF v_codice_a = 'ANNULLATO' THEN
         v_motivi := script.fn_check_ordine_annullabile(NEW.id);
 
-        IF jsonb_array_length(v_motivi) > 0 THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                v_motivi -> 0 ->> 'codice',
-                jsonb_build_object(
-                    'ordine_id', NEW.id,
-                    'numero',    NEW.numero,
-                    'stato_da',  v_codice_da,
-                    'stato_a',   v_codice_a,
-                    'motivi',    v_motivi
-                ),
-                NEW.tx_id,
-                coalesce(NEW.numero, NEW.id::text),
-                coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
-            );
-        END IF;
+        -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+        --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+        --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi.
+        -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+        --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            v_motivi,
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'ordine_id', NEW.id,
+                'numero',    NEW.numero,
+                'stato_da',  v_codice_da,
+                'stato_a',   v_codice_a));
     END IF;
 
     -- Regola 4 (rev 2026-08-29): una riga che porta un PREZZO porta
@@ -147,25 +145,24 @@ BEGIN
     IF v_codice_a = 'CONFERMATO' THEN
         v_motivi := script.fn_check_ordine_confermabile(NEW.id);
 
-        IF jsonb_array_length(v_motivi) > 0 THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                v_motivi -> 0 ->> 'codice',
-                jsonb_build_object(
-                    'ordine_id', NEW.id,
-                    'numero',    NEW.numero,
-                    'stato_da',  v_codice_da,
-                    'stato_a',   v_codice_a,
-                    'riga_id',   (v_motivi -> 0 -> 'dettaglio' ->> 'riga_id')::bigint,
-                    'riga_nr',   (v_motivi -> 0 -> 'dettaglio' ->> 'riga_nr')::integer,
-                    'motivi',    v_motivi
-                ),
-                NEW.tx_id,
-                coalesce(NEW.numero, NEW.id::text),
-                coalesce(v_motivi -> 0 -> 'dettaglio' ->> 'riga_nr', '?')
-            );
-        END IF;
+        -- ⚠️ `riga_id` e `riga_nr` NON si estraggono piu' a mano: stanno nel
+        --   `dettaglio` del motivo, che l'helper fonde nel contesto. Erano due
+        --   righe che ricopiavano una struttura decisa dalla check.
+        -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+        --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+        --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi.
+        -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+        --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            v_motivi,
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'ordine_id', NEW.id,
+                'numero',    NEW.numero,
+                'stato_da',  v_codice_da,
+                'stato_a',   v_codice_a));
     END IF;
 
     RETURN NEW;
