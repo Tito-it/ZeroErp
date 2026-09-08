@@ -10,16 +10,17 @@
 --   dedotto.
 --
 -- Test: dbops.vw_processi_programmazione_da_guardare — il presidio
--- ChangeSet: 20260907-01 / -02
--- Brief: brief-db-sveglia-dei-processi §6 (richiesta del backend) e §8.2
+-- ChangeSet: 20260907-01 / -02 / -07
+-- Brief: brief-db-sveglia-dei-processi §6 (richiesta del backend), §8.2, §9.5-bis
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 7):
 --  1) la vista esiste
 --  2) ⚠️ e ha un commento: il pannello ci legge la NATURA del presidio
 --  3) ⭐ non contiene MAI uno stato sano — la proiezione
 --  4) ⭐ e nomina un guasto COSTRUITO (senza, il 3 passerebbe a vuoto)
 --  5) ⛔ panorama e presidio non possono dissentire
 --  6) il ruolo applicativo la legge
+--  7) ⛔ il presidio porta la colonna su cui POGGIA il verdetto
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I TEST 3 E 4 VANNO LETTI INSIEME, ed e' la ragione per cui sono due.
@@ -48,7 +49,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- ============================================================
 -- 1..2. La vista, e cio' che il pannello legge di lei
@@ -139,6 +140,34 @@ SELECT CASE
         '6. zeroerp_app puo'' leggere il presidio: il pannello gira con quel ruolo'
     )
 END;
+
+-- ============================================================
+-- 7. ⛔ La PROVA del verdetto deve stare nella riga
+-- ============================================================
+-- Dal 20260907-06 `GIRA_E_NON_REGISTRA` non si legge piu' su
+-- `giornale_ultima_corsa` ma su `giornale_ultima_corsa_pgagent`: sono le sole
+-- corse che possono valere come risposta di pgAgent.
+-- ⛔ Un presidio che mostra due date e ne usa una terza consegna al pannello un
+--   verdetto che chi guarda non puo' contestare — vedrebbe due timestamp
+--   coerenti e una riga rossa. ⚠️ E il difetto sarebbe MUTO: le colonne le
+--   sceglie chi scrive la vista, e toglierne una non fa rumore.
+-- ⭐ Le due date restano ENTRAMBE, e la differenza fra loro e' informazione: se
+--   `giornale_ultima_corsa` e' avanti e l'altra indietro, qualcuno ha
+--   registrato sotto questo codice senza essere pgAgent — il §9.5-bis, visibile
+--   a occhio.
+SELECT is_empty(
+    $$SELECT c.attesa
+        FROM (VALUES ('pgagent_ultima_corsa'),
+                     ('giornale_ultima_corsa_pgagent'),
+                     ('giornale_ultima_corsa')) AS c(attesa)
+       WHERE NOT EXISTS (
+           SELECT 1 FROM pg_attribute a
+            WHERE a.attrelid = 'dbops.vw_processi_programmazione_da_guardare'::regclass
+              AND a.attname = c.attesa
+              AND a.attnum > 0
+              AND NOT a.attisdropped)$$,
+    '7. il presidio porta le date su cui poggia il verdetto, quella di pgAgent inclusa'
+);
 
 SELECT * FROM finish();
 

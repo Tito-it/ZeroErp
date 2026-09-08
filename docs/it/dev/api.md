@@ -1117,10 +1117,15 @@ famiglie di condizione** su cui viene sollevato — lette dalla riga di guardia 
 
 | guardia | famiglia |
 | --- | --- |
+| `EXCEPTION WHEN …` | `ECCEZIONE` |
 | `IF NOT FOUND` | `NOT_FOUND` |
 | `IS NULL` / `<= 0` su un `p_*` | `PARAMETRO` |
 | `NOT IN (…)` | `ENUM` |
+| `x <> 'LETTERALE'` | `VALORE_ATTESO` — dal 2026-09-07 |
 | tutto il resto | `IGNOTO` — la misura dichiara di non saper leggere |
+
+⚠️ **L'ordine conta**: un `NOT IN` resta `ENUM`, e una guardia su un parametro
+nullo resta `PARAMETRO` anche se confronta un letterale.
 
 Un codice che **acquista una famiglia che non aveva** ferma la CI.
 
@@ -1153,6 +1158,45 @@ classe**: la prima dice *com'è fatta la guardia*, la seconda *chi ha sbagliato*
 deve avere una frase **senza segnaposto** per ogni codice vivo — lo presidia
 `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`. Senza, l'operatore vede una
 frase neutra che non parla del suo problema.
+
+##### ⭐ Il seguito, 2026-09-07: quando cambia il **metro** e non il misurato
+
+Il giorno dopo, un changeSet ha insegnato al classificatore una quinta famiglia —
+**`VALORE_ATTESO`**, cioè `x <> 'LETTERALE'`: la forma di ogni guardia di *stato*
+o di *perimetro*, che prima cadeva tutta in `IGNOTO`. ⇒ Il rubinetto si è fermato
+su **otto** codici in una volta.
+
+⛔ **Sette non erano accumuli, e l'ha detto il conteggio**: per tutti e sette i
+*punti di sollevamento* erano identici alla baseline. Nessuno aveva allargato
+niente — era il metro a essere cambiato sotto. ⇒ Ri-base, con la ragione nel
+commit.
+
+⭐ **L'ottavo sì, ed è il caso che vale.** `E_VALIDAZIONE` guadagnava un punto
+sulla **terza** guardia della stessa `fn_chiudi_email_sistema`: *«la riga esiste
+ma non è di ambito SISTEMA»*. Non è un dato sbagliato — è la **porta sbagliata**,
+e `E_VALIDAZIONE` è `DATO_ERRATO`. ⇒ Codice nuovo,
+`E_EMAIL_LOG_NON_DI_SISTEMA`, **`TECNICO`** — la stessa decisione del giorno
+prima, sulla guardia accanto.
+
+> ⚠️ **La lezione operativa, e serve la prossima volta che nasce una famiglia.**
+> Una famiglia nuova produce **due** effetti che si assomigliano e vanno separati
+> uno per uno: cambia il metro su chi già usava quel codice, e **rende visibile**
+> ciò che prima era illeggibile. ⛔ Il primo si ri-basa, il secondo **no**: è una
+> segnalazione vera arrivata in ritardo. Il discriminante è il **conteggio dei
+> punti** — se non si muove, non ha allargato nessuno.
+>
+> ⭐ E ri-basare l'ottavo avrebbe dichiarato `VALORE_ATTESO` **ammessa** su un
+> codice `DATO_ERRATO`: la baseline sarebbe marcita nel **verso permissivo**,
+> l'unico in cui un presidio marcisce senza che nessuno se ne accorga.
+
+⚠️ **Che quella guardia fosse sbagliata era già scritto**, nel changeSet del
+giorno prima: *«la stessa regola direbbe di spezzare ancora […] la lascio perché
+il classificatore non l'ha segnalata — ma è una domanda aperta, non una svista»*.
+⇒ **Un dubbio dichiarato e non risolto vive finché uno strumento non lo trova.**
+Vale la pena scriverlo lo stesso: è ciò che ha reso la segnalazione leggibile in
+un minuto invece che in un'indagine.
+
+Storia completa: `docs/it/dev/work-done/brief-db-sveglia-dei-processi.md` §23.
 
 ⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Restano 176
 override su 658, di cui **117 sulla sola `DATO_ERRATO`**: lì il default è un

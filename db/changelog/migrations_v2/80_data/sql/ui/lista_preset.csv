@@ -32,8 +32,8 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 31,31,email_log_default,Vista standard log email,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
 32,32,audit_log_default,Vista standard log di audit,sistema,,,t,25,"[{""col"":""timestamp"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
 33,33,categorie_listini_default,Vista standard listini per categoria,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
-34,34,coda_lavori_default,Vista standard coda lavori,sistema,,,t,25,"[{""col"":""started_at"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
-35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_update"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
+34,34,coda_lavori_default,Vista standard coda lavori,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
+35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 36,36,approvazioni_prezzo_default,Vista standard approvazioni prezzo,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
 37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,25,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,mctit
 38,38,commesse_attivita_default,Vista standard attivita commessa,sistema,,,t,25,,t,2026-08-03 00:00:00,mctit

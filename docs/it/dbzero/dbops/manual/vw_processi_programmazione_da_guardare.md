@@ -105,9 +105,34 @@ lo storico dello scheduler, che da qui non si legge.
 seconda va tenuta scritta: la prossima volta che questo giornale tace, si
 comincia da lì.
 
-⚠️ **Il commento della vista è rimasto indietro**, ed è quello che il pannello
-dei presidi rende: dichiara ancora il fatto datato *«questa vista NASCE con due
-righe»* e dice esso stesso che va tolto quando saranno rientrate. Adesso lo sono.
+✅ **Il commento della vista è stato riallineato lo stesso giorno**: portava il
+fatto datato *«questa vista NASCE con due righe»* — una riga che dichiarava la
+propria scadenza — ed è quello che il pannello dei presidi mostra. Lasciarlo
+avrebbe detto a chi guarda di aspettarsi due righe che non ci sono più, cioè
+avrebbe insegnato a non fidarsi del numero. ⚠️ Al suo posto resta scritta la
+causa non accertata: non è una condizione di riapertura, è il punto da cui
+ricominciare la prossima volta che quel giornale tace.
+
+---
+
+### ⭐ Le colonne sono la **prova** del verdetto, non un ornamento
+
+La riga porta tre date, e servono a essere lette insieme.
+
+| | Che cosa dice |
+| --- | --- |
+| quando lo scheduler l'ha fatto partire | la prima fonte |
+| quando il giornale ha registrato **una corsa dello scheduler** | la seconda fonte, ed è quella su cui poggia il verdetto |
+| quando il giornale ha registrato una corsa **qualunque** | il contesto |
+
+⛔ Un presidio che mostra due date e ne usa una terza consegna un verdetto che
+chi guarda **non può contestare**: vedrebbe due orari coerenti e una riga rossa.
+Per questo la data su cui il confronto poggia davvero è esposta.
+
+⭐ E la terza serve a leggere il caso storto: se la corsa «qualunque» è più
+recente di quella dello scheduler, **qualcuno ha registrato sotto questo nome
+senza essere lo scheduler**. Dettaglio in
+[vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione).
 
 ---
 
@@ -115,5 +140,7 @@ righe»* e dice esso stesso che va tolto quando saranno rientrate. Adesso lo son
 
 `db/pgtap/dbops/test-vw-processi-programmazione-da-guardare.sql` — costruisce un
 lavoro guasto e pretende che la vista lo nomini, verifica che nessuna situazione
-sana ci entri, e confronta la vista col panorama per impedire che qui rispunti un
-criterio suo.
+sana ci entri, confronta la vista col panorama per impedire che qui rispunti un
+criterio suo, e pretende che le tre date della prova siano tutte nella riga.
+⚠️ Quest'ultimo serve perché il difetto sarebbe **muto**: le colonne le sceglie
+chi scrive la vista, e toglierne una non dà nessun errore.

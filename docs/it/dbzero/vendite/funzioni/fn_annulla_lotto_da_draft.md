@@ -120,7 +120,35 @@ BEGIN
     )
     SELECT count(*)::INTEGER INTO v_annullati_task_run FROM annullati;
 
-    UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, stato_lotto = 'COMPLETATO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+    -- ⛔ `stato_lotto` NON SI TOCCA (rev 2026-09-07). Fino a oggi questa riga
+    --   ci scriveva 'COMPLETATO', e sono TRE regole infrante in una:
+    --     1. la macchina a stati la vieta — fn_set_fatturazione_lotto_stato
+    --        rifiuta ERRORE -> COMPLETATO («da ERRORE solo IN_ESECUZIONE») —
+    --        e questo UPDATE diretto le passava dietro, quindi il guardiano
+    --        non vedeva nemmeno la transizione;
+    --     2. la sorella fn_riporta_lotto_a_draft dichiara nel proprio corpo
+    --        «stato_lotto NON si tocca — ha una macchina a stati cablata», e
+    --        l'intestazione qui sopra invoca la SIMMETRIA con lei come
+    --        principio: «due sorelle non possono comportarsi diversamente
+    --        sulla stessa cosa»;
+    --     3. e' la stessa cosa che l'intestazione rifiuta due paragrafi sopra
+    --        per `attivo`: DUE DOMANDE SU UN FLAG SOLO. `stato_lotto` risponde
+    --        a «com'e' andata l'elaborazione»; che il lotto non sia piu' in
+    --        lavorazione lo dicono gia' `stato_operativo` e
+    --        `stato_doc_fiscale_id`, che questa riga scrive.
+    -- ⭐ E non serviva a niente: il problema degli «errori vivi» lo risolve la
+    --   chiusura dei task run PER ESITO (rev 2026-09-04), e
+    --   vw_dash_competenza_errori `stato_lotto` lo PROIETTA soltanto, non ci
+    --   filtra. Verificato: nessun cancello pretende COMPLETATO su un annullato.
+    -- ⚠️ E falsificava in ENTRAMBI i casi, non solo sul lotto fallito: uno
+    --   annullato mentre era IN_ESECUZIONE veniva marcato COMPLETATO, cioe'
+    --   «la corsa e' finita bene» di un giro interrotto. Effetto misurato il
+    --   2026-09-07: LTF-0009900, annullato dopo un fallimento,
+    --   risultava COMPLETATO con una segnalazione critica viva, e accendeva
+    --   vw_lotti_chiusi_con_gruppi_in_errore — un presidio che dichiara di
+    --   dover poter restare vuoto.
+    -- Brief: brief-db-esito-gruppo-lotto §22-§24.
+    UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, data_update = now(), user_update = current_user WHERE id = p_lotto_id;
     GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
 
     RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe, v_annullati_task_run;

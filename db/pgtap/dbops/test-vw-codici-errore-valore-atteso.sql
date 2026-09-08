@@ -9,16 +9,18 @@
 --   non ne fa e non ne deve fare.
 --
 -- Test: dbops.vw_codici_errore_forme_condizione — la famiglia VALORE_ATTESO
--- ChangeSet: 20260907-03
--- Brief: brief-db-sveglia-dei-processi §3.2 (segnalazione BE) e §8.4 (risposta)
+-- ChangeSet: 20260907-03, e il seguito 20260907-05
+-- Brief: brief-db-sveglia-dei-processi §3.2 (segnalazione BE), §8.4 (risposta),
+--        §23 (il seguito: la guardia segnalata era un CODICE SBAGLIATO)
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 7):
 --  1) ⭐ «il valore letto non e' quello ammesso» e' VALORE_ATTESO
 --  2) ⛔ e una guardia che il classificatore NON sa leggere resta IGNOTO
 --  3) ⚠️ l'ordine del CASE regge: un NOT IN resta ENUM
 --  4) ⚠️ e una guardia su parametro nullo resta PARAMETRO
---  5) ✅ il caso segnalato dal backend e' chiuso: E_VALIDAZIONE affiora
---  6) ⚠️ la famiglia non e' una parola morta: qualcuno la porta davvero
+--  5) ✅ la guardia segnalata dal backend e' leggibile, e ha un codice SUO
+--  6) ⛔ e E_VALIDAZIONE non la porta piu': lo split ha tenuto
+--  7) ⚠️ la famiglia non e' una parola morta: qualcuno la porta davvero
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I TEST 1 E 2 VANNO LETTI INSIEME, ed e' la ragione per cui sono due.
@@ -35,13 +37,26 @@
 --   girerebbe identico solo per coincidenza. Qui le funzioni-testimone le
 --   scrive il test.
 --
--- ⚠️ IL TEST 5 E' L'ECCEZIONE, E VA SAPUTO: legge il codice vivo, perche' la
---   domanda del backend era su una funzione precisa. La vista aggrega per
+-- ⚠️ I TEST 5 E 6 SONO L'ECCEZIONE, E VA SAPUTO: leggono il codice VIVO, perche'
+--   la domanda del backend era su una funzione precisa. La vista aggrega per
 --   CODICE e non espone la funzione, quindi «nella terza guardia di
 --   config.fn_chiudi_email_sistema» non e' una domanda che le si possa fare: si
---   chiede l'effetto che quella guardia produce sul codice che solleva. Se
---   quella funzione un giorno cambia forma, questo test diventa rosso — ed e'
---   corretto, perche' quella funzione E' il soggetto.
+--   chiede l'effetto che quella guardia produce sul codice che solleva.
+--
+-- ⛔ E QUI C'E' UNA LEZIONE PAGATA, che vale piu' dei due test.
+--   La prima stesura di questo file (2026-09-07) aveva UN test 5 solo, e diceva:
+--   «E_VALIDAZIONE porta VALORE_ATTESO e affiora fra i candidati». Il giorno
+--   dopo era ROSSO — e non per una regressione: perche' il difetto che quella
+--   riga documentava era stato RIPARATO. Il changeSet 20260907-05 ha dato alla
+--   terza guardia un codice suo (E_EMAIL_LOG_NON_DI_SISTEMA, TECNICO), quindi
+--   E_VALIDAZIONE e' tornata a una famiglia sola e ha smesso di affiorare.
+--   ⚠️ Il file lo aveva pure previsto — «se quella funzione cambia forma questo
+--   test diventa rosso, ed e' corretto» — ma quel «corretto» presupponeva una
+--   REGRESSIONE. Un test che diventa rosso quando il difetto viene sanato spinge
+--   a rimettere il difetto, o a cancellare il test: e' il verso sbagliato.
+--   ⭐ Il rimedio non e' togliere l'asserzione, e' SPEZZARLA in due — la
+--   guardia e' leggibile (5), e il codice generico non la copre piu' (6). Le due
+--   insieme dicono la storia intera e nessuna delle due invecchia col dato.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -50,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- ============================================================
 -- Le funzioni-testimone: quattro forme, quattro risposte attese
@@ -152,25 +167,44 @@ SELECT is(
 );
 
 -- ============================================================
--- 5. ✅ Il caso che il backend ha segnalato
+-- 5..6. ✅ Il caso che il backend ha segnalato, e come e' finito
 -- ============================================================
--- ⭐ Prima del 20260907-03, E_VALIDAZIONE leggeva famiglie {IGNOTO, PARAMETRO}
---   con n_famiglie_note = 1: NON compariva nella query (1) dei candidati, che
---   filtra > 1. La sua seconda forma era proprio la terza guardia di
---   config.fn_chiudi_email_sistema — il punto piu' pericoloso di quella
---   funzione, e l'unico momento in cui si nota che qualcuno usa la porta di
---   sistema per l'email di un'azienda.
--- ⚠️ Questo test legge il codice VIVO, ed e' dichiarato in testa al file: se
---   quella funzione cambia forma diventa rosso, ed e' corretto — e' il soggetto.
+-- ⭐ LA STORIA IN TRE RIGHE, perche' senza non si capisce perche' i test sono due.
+--   Prima del 20260907-03 la terza guardia di config.fn_chiudi_email_sistema —
+--   «qualcuno sta usando la porta di sistema per l'email di un'azienda», il
+--   punto piu' pericoloso di quella funzione — cadeva in IGNOTO, quindi
+--   E_VALIDAZIONE leggeva n_famiglie_note = 1 e NON compariva fra i candidati
+--   della query (1), che filtra > 1. Il rubinetto era cieco proprio li'.
+--   Insegnata la forma al classificatore, quella guardia e' affiorata — e si e'
+--   rivelata un CODICE SBAGLIATO, non solo un punto cieco: E_VALIDAZIONE e'
+--   DATO_ERRATO («hai sbagliato i dati») su una condizione in cui nessuno ha
+--   sbagliato un dato. Il 20260907-05 le ha dato E_EMAIL_LOG_NON_DI_SISTEMA.
+--
+-- ⚠️ Questo test legge il codice VIVO: se quella guardia cambia forma diventa
+--   rosso, ed e' corretto — e' il soggetto.
+SELECT is(
+    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+      WHERE codice = 'E_EMAIL_LOG_NON_DI_SISTEMA'),
+    ARRAY['VALORE_ATTESO'],
+    '5. la guardia segnalata dal backend e'' leggibile, e ha un codice SUO'
+);
+
+-- ⛔ IL VERSO CHE PROTEGGE LA RIPARAZIONE. Senza, rimettere quella guardia su
+--   E_VALIDAZIONE non farebbe rosso niente: il test 5 resterebbe verde perche'
+--   guarda l'altro codice, e il rubinetto degli accumulatori non se ne
+--   accorgerebbe piu' — la famiglia sarebbe gia' in baseline.
+-- ⚠️ E' un'asserzione NEGATIVA, quindi passerebbe a vuoto su un classificatore
+--   che avesse smesso di leggere quella forma. A tenerla onesta e' il test 1,
+--   che sulla stessa forma pretende VALORE_ATTESO: i due vanno letti insieme.
 SELECT ok(
-    (SELECT n_famiglie_note > 1 AND 'VALORE_ATTESO' = ANY(famiglie)
+    (SELECT NOT ('VALORE_ATTESO' = ANY(famiglie))
        FROM dbops.vw_codici_errore_forme_condizione
       WHERE codice = 'E_VALIDAZIONE'),
-    '5. E_VALIDAZIONE porta VALORE_ATTESO e affiora fra i candidati della query (1)'
+    '6. e E_VALIDAZIONE, che e'' DATO_ERRATO, non copre piu'' quella forma'
 );
 
 -- ============================================================
--- 6. ⚠️ La famiglia non e' una parola morta
+-- 7. ⚠️ La famiglia non e' una parola morta
 -- ============================================================
 -- ⛔ Un ramo di CASE che nel codice vero non aggancia mai sarebbe una regola
 --   scritta e mai applicata: passerebbe i test 1..4 sui propri testimoni e non
@@ -180,7 +214,7 @@ SELECT isnt_empty(
     $$SELECT codice FROM dbops.vw_codici_errore_forme_condizione
        WHERE 'VALORE_ATTESO' = ANY(famiglie)
          AND codice NOT LIKE 'E_PGTAP_FORMA_%'$$,
-    '6. nel codice vero qualcuno porta davvero VALORE_ATTESO: il ramo non e'' scritto a vuoto'
+    '7. nel codice vero qualcuno porta davvero VALORE_ATTESO: il ramo non e'' scritto a vuoto'
 );
 
 -- ⛔ Si tolgono: la transazione le annullerebbe comunque, ma un file che

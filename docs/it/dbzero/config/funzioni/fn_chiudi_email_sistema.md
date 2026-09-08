@@ -24,14 +24,20 @@ BEGIN
     -- ⛔ Tocca SOLO righe di ambito SISTEMA e SOLO i campi
     --   dell'esito. Non e' una porta di servizio per aggiornare
     --   una email qualunque.
+    --
+    -- ⭐ LE TRE GUARDIE HANNO TRE CODICI, e non e' pignoleria:
+    --   ognuna manda a guardare un posto diverso.
+    --     p_stato fuori dai valori ammessi -> il PARAMETRO;
+    --     la riga non esiste               -> l'ID passato;
+    --     la riga non e' di sistema        -> la PORTA scelta.
     -- =========================================================
 
     -- ⛔ `PENDING` non e' un esito: questa e' la funzione che
     --   CHIUDE, non quella che rimette in coda. Ammetterlo
     --   vorrebbe dire poter resuscitare una email gia' chiusa.
-    -- ⚠️ Qui `E_VALIDAZIONE` e' il codice GIUSTO: e' la
-    --   validazione di un parametro, la famiglia che quel codice
-    --   copre da sempre.
+    -- ⚠️ Qui `E_VALIDAZIONE` e' il codice GIUSTO, ed e' l'unica
+    --   delle tre guardie che lo resta: e' la validazione di un
+    --   parametro, la famiglia che quel codice copre da sempre.
     IF p_stato IS NULL OR p_stato NOT IN ('SENT', 'FAILED', 'RETRY') THEN
         PERFORM script.fn_log_and_raise_error(
             'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
@@ -64,20 +70,25 @@ BEGIN
             p_email_log_id::text);
     END IF;
 
-    -- ⛔ IL CASO PERICOLOSO, e per questo ha parole sue: qualcuno
-    --   sta usando la porta di sistema per una email che
-    --   appartiene a un'azienda. Dirlo con la stessa frase del
-    --   caso sopra avrebbe sprecato l'unico momento in cui si
-    --   puo' notare.
+    -- ⛔ IL CASO PERICOLOSO, e per questo ha un codice suo:
+    --   qualcuno sta usando la porta di sistema per una email che
+    --   appartiene a un'azienda. Dirlo con lo stesso codice del
+    --   caso sopra avrebbe sprecato l'unico momento in cui si puo'
+    --   notare — «la riga non c'e'» e «la riga c'e' e non e' tua»
+    --   mandano a guardare due posti diversi.
+    -- ⭐ TECNICO, non DATO_ERRATO: i parametri sono a posto e la
+    --   riga esiste. Non c'e' nessun dato da correggere, c'e' un
+    --   chiamante che ha bussato alla porta sbagliata.
+    -- ⚠️ Fino al 2026-09-07 era `E_VALIDAZIONE`: 20260906-14 lo
+    --   aveva dichiarato domanda aperta, e il classificatore non
+    --   sapeva ancora leggere questa forma di guardia.
     IF v_ambito <> 'SISTEMA' THEN
         PERFORM script.fn_log_and_raise_error(
-            'config', 'fn_chiudi_email_sistema', 'E_VALIDAZIONE',
+            'config', 'fn_chiudi_email_sistema', 'E_EMAIL_LOG_NON_DI_SISTEMA',
             jsonb_build_object('email_log_id', p_email_log_id,
                                'ambito', v_ambito),
             NULL::uuid,
-            'questa porta chiude solo le email di ambito SISTEMA: '
-            'una email di un''azienda si chiude dalla sessione di '
-            'chi ne ha il perimetro');
+            p_email_log_id::text, v_ambito::text);
     END IF;
 
     -- ⚠️ `tentativi + 1` come faceva update_log_stato: instradare
@@ -95,7 +106,7 @@ END
 $function$
 
 COMMENT ON FUNCTION config.fn_chiudi_email_sistema(p_email_log_id bigint, p_stato character varying, p_errore text, p_inviato_at timestamp with time zone)
-IS 'Scrive l''ESITO dell''invio (SENT / FAILED / RETRY, errore, inviato_at, tentativi+1) su una riga di ambito SISTEMA, dal percorso che NON ha un utente in sessione. ⭐ E'' la meta'' mancante di config.fn_accoda_email_sistema: la decisione e'' che una mail di sistema parta SUBITO, quindi dopo l''INSERT il backend tenta l''invio e deve scriverne l''esito — e quell''UPDATE e'' bloccato dalla stessa policy, per lo stesso motivo. ⛔ Non e'' una porta di servizio: tocca SOLO righe di ambito SISTEMA (sta nella WHERE, non in un controllo dimenticabile) e SOLO i campi dell''esito. ⛔ PENDING non e'' un esito ammesso: questa chiude, non rimette in coda. ⚠️ Se la riga non esiste solleva E_EMAIL_LOG_INESISTENTE, classe TECNICO — rev 2026-09-06, su segnalazione del classificatore dei codici: prima era E_VALIDAZIONE, che e'' DATO_ERRATO e a video diventa «hai sbagliato i dati», mentre quell''id non arriva da una persona ma dal chiamante che l''ha scritto un istante prima. ⭐ E non NON_TROVATO, che porta un 404: qui nessuno cerca una risorsa, e'' del codice che passa un valore inesistente. Se invece la riga esiste e NON e'' di sistema, il messaggio e'' un altro: e'' qualcuno che usa la porta di sistema per una email di un''azienda, ed e'' l''unico momento in cui lo si puo'' notare. ⚠️ tentativi+1 lo fa la funzione perche'' lo faceva update_log_stato: instradare dev''essere un cambio di indirizzo, non di comportamento.';
+IS 'Scrive l''ESITO dell''invio (SENT / FAILED / RETRY, errore, inviato_at, tentativi+1) su una riga di ambito SISTEMA, dal percorso che NON ha un utente in sessione. ⭐ E'' la meta'' mancante di config.fn_accoda_email_sistema: la decisione e'' che una mail di sistema parta SUBITO, quindi dopo l''INSERT il backend tenta l''invio e deve scriverne l''esito — e quell''UPDATE e'' bloccato dalla stessa policy, per lo stesso motivo. ⛔ Non e'' una porta di servizio: tocca SOLO righe di ambito SISTEMA (sta nella WHERE, non in un controllo dimenticabile) e SOLO i campi dell''esito. ⭐ LE TRE GUARDIE HANNO TRE CODICI, rev 2026-09-07, e ognuna manda a guardare un posto diverso. (1) PENDING non e'' un esito ammesso — questa chiude, non rimette in coda: E_VALIDAZIONE, ed e'' il codice giusto perche'' li'' c''e'' davvero un parametro fuori dai valori. (2) La riga non esiste: E_EMAIL_LOG_INESISTENTE, classe TECNICO — quell''id non arriva da una persona ma dal chiamante che l''ha scritto un istante prima, e NON_TROVATO porterebbe un 404 mandando a cercare una risorsa invece di un difetto di codice. (3) La riga esiste ma NON e'' di sistema: E_EMAIL_LOG_NON_DI_SISTEMA, anch''esso TECNICO — e'' qualcuno che usa la porta di sistema per l''email di un''azienda, ed e'' l''unico momento in cui lo si puo'' notare. ⛔ Quest''ultima era E_VALIDAZIONE fino al 2026-09-07: 20260906-14 l''aveva dichiarata domanda aperta, e il rubinetto degli accumulatori l''ha vista solo dopo 20260907-03, che gli ha insegnato la forma x <> ''LETTERALE''. ⚠️ tentativi+1 lo fa la funzione perche'' lo faceva update_log_stato: instradare dev''essere un cambio di indirizzo, non di comportamento.';
 ```
 
 ---

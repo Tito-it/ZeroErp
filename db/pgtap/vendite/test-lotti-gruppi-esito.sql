@@ -20,7 +20,7 @@
 --   8) ⭐ un secondo tentativo sovrascrive, non duplica
 --   9) la competenza espone le cinque colonne dell'ultimo tentativo
 --  10) ⛔ e NON ha smesso di dire se il documento e' ancora da emettere
---  11) il presidio dei lotti chiusi con documenti falliti e' VUOTO
+--  11) ⛔ un lotto chiuso coi documenti a posto NON viene nominato (COSTRUITO)
 --  12) ⭐ ...e si accende davvero, su un caso COSTRUITO
 --
 -- ────────────────────────────────────────────────────────────────
@@ -281,7 +281,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 11. Il presidio della decisione «3 su 3 come 2 su 3»
+-- 11..12. Il presidio della decisione «3 su 3 come 2 su 3»
 -- ============================================================
 -- ⭐ CHE COSA SORVEGLIA. Dal 2026-09-06 il passo non solleva piu' quando
 --   falliscono TUTTE le commesse: cosi' i segni non vengono annullati dal
@@ -291,17 +291,30 @@ SELECT is(
 --   ⇒ La salvezza dipende da segnalazioni scritte da un altro pezzo. Se
 --     cambiassero forma, un fallimento totale si presenterebbe come «Pipeline
 --     completata», in silenzio. Questa vista e' li' per quel giorno.
-SELECT is_empty(
-    $$SELECT lotto_codice FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore$$,
-    '11. nessun lotto chiuso COMPLETATO contiene documenti dichiarati in ERRORE'
-);
-
--- ============================================================
--- 12. ⭐ ...e il presidio si accende davvero
--- ============================================================
--- ⛔ Senza questo, il test 11 proverebbe solo che oggi non c'e' niente — non
---   che la vista sappia accorgersi di qualcosa.
-DO $contraddizione$
+--
+-- ⛔ IL TEST 11 CHIEDEVA CHE LA VISTA FOSSE VUOTA SULL'INTERA POPOLAZIONE, e
+--   quella forma e' stata tolta il 2026-09-07. Non era «legata a un lotto»: era
+--   legata a TUTTI. E aveva i due difetti che l'intestazione di questo file
+--   dichiara di non avere:
+--     * su un database ricostruito da zero — cioe' in CI — la vista e' vuota
+--       perche' non c'e' niente, quindi il test passava **a vuoto**: verde
+--       senza provare nulla. E' il «verde per sottrazione» di AGENTS.md;
+--     * su dbdev diventava rosso al primo uso reale che produce quello stato,
+--       e un rosso che non e' una regressione insegna a ignorare i rossi.
+--   ⚠️ E contraddiceva la riga «TUTTI I CASI SONO COSTRUITI... nessuna
+--   asserzione si appoggia a un lotto vero» scritta in testa a questo file.
+--
+-- ⭐ Sostituito dal CONTROLLO NEGATIVO sullo stesso lotto costruito: prima la
+--   contraddizione non c'e' e la vista tace, poi la si crea e la vista parla. La
+--   coppia prova le due direzioni senza dipendere da nessun dato reale.
+--
+-- ⚠️ La domanda «e il database VERO e' pulito?» non e' sparita: si risponde
+--   GUARDANDO la vista, che e' cio' per cui un presidio esiste. Un pgTAP che
+--   interroga la popolazione non e' un test, e' monitoraggio travestito — e il
+--   2026-09-07 quella domanda ha avuto la sua prima risposta vera: il lotto
+--   LTF-0009900, COMPLETATO con una segnalazione critica e un documento in
+--   E_PULL_COMMESSA. Registrata nel brief, non qui.
+DO $lotto_sano$
 DECLARE
     v_lotto_id vendite.fatturazione_lotti.id%TYPE;
 BEGIN
@@ -313,14 +326,37 @@ BEGIN
       FROM tmp_esito t
     RETURNING id INTO v_lotto_id;
 
+    -- Un lotto chiuso con un documento andato BENE: nessuna contraddizione.
     PERFORM vendite.fn_segna_esito_gruppo_lotto(
-        p_lotto_id         => v_lotto_id,
+        p_lotto_id   => v_lotto_id,
+        p_stato      => 'COMPLETED',
+        p_gruppo_key => 'PGTAP:documento-riuscito-in-lotto-chiuso');
+
+    PERFORM set_config('pgtap.lotto_chiuso', v_lotto_id::text, true);
+END
+$lotto_sano$;
+
+-- ⛔ Il controllo negativo: senza, il test 12 passerebbe anche su una vista che
+--   nomina QUALUNQUE lotto chiuso — cioe' su un presidio che grida sempre.
+SELECT is_empty(
+    format($$SELECT lotto_codice FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore
+              WHERE lotto_id = %s$$, current_setting('pgtap.lotto_chiuso')),
+    '11. un lotto COMPLETATO con i suoi documenti a posto NON viene nominato'
+);
+
+-- ============================================================
+-- 12. ⭐ ...e il presidio si accende davvero
+-- ============================================================
+-- ⛔ Senza questo, il test 11 proverebbe solo che la vista tace — non che sappia
+--   accorgersi di qualcosa.
+DO $contraddizione$
+BEGIN
+    PERFORM vendite.fn_segna_esito_gruppo_lotto(
+        p_lotto_id         => current_setting('pgtap.lotto_chiuso')::bigint,
         p_stato            => 'ERRORE',
         p_gruppo_key       => 'PGTAP:documento-fallito-in-lotto-chiuso',
         p_errore_codice    => 'E_PULL_COMMESSA',
         p_errore_messaggio => 'costruito dal test');
-
-    PERFORM set_config('pgtap.lotto_chiuso', v_lotto_id::text, true);
 END
 $contraddizione$;
 

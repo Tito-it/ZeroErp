@@ -1237,7 +1237,7 @@ resa insieme al numero: alcune viste sono registri di debito. ⭐ Al **2026-09-0
 `dbops.vw_processi_programmazione_da_guardare` nasce con **una** riga
 (`apply_storicizza_weekly`, che dal febbraio 2026 gira senza lasciare traccia sul
 giornale): il suo stesso `COMMENT` lo dichiara e dice quando va tolto. Brief:
-`work-in-progress/brief-db-sveglia-dei-processi.md` §8.1.
+`work-done/brief-db-sveglia-dei-processi.md` §8.1.
 
 **Esempio curl:**
 

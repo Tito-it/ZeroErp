@@ -37,5 +37,13 @@
 | pk_fatturazione_lotti_esiti | `CREATE UNIQUE INDEX pk_fatturazione_lotti_esiti ON vendite.fatturazione_lotti_esiti USING btree (id)` |
 | uq_fatturazione_lotti_esiti_documento | `CREATE UNIQUE INDEX uq_fatturazione_lotti_esiti_documento ON vendite.fatturazione_lotti_esiti USING btree (lotto_id, gruppo_key)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_fatturazione_lotti_esiti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_esiti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_fatturazione_lotti_esiti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_fatturazione_lotti_esiti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

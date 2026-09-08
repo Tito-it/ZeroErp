@@ -734,3 +734,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 734,67,errore_messaggio,Motivo,Perche il documento non e passato,errore_messaggio,informazione,string,,300,60,left,,,f,f,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_errore_messaggio,50
 735,67,errore_quando,Fallito il,,errore_quando,informazione,datetime,datetime_short,150,70,center,,,f,t,t,f,f,t,2026-09-06 00:00:00,mctit,vendite.lotto_gruppi.col_errore_quando,20
 736,67,azioni,Azioni,,,azione,string,,90,999,center,,,f,f,f,f,f,t,2026-09-06 00:00:00,mctit,common.col_azioni,100
+737,34,data_insert,Immesso,"Quando il lavoro e' entrato in coda: e' diverso dall'avvio, ed e' l'unica data che un lavoro in attesa ha",data_insert,informazione,datetime,datetime_short,,55,left,,,t,t,t,f,f,t,2026-09-07 00:00:00,mctit,strumenti.code.col_immesso,85
+738,35,data_insert,Immesso,"Quando la stampa e' entrata in coda: e' diverso dall'ultimo aggiornamento",data_insert,informazione,datetime,datetime_short,,85,left,,,t,t,t,f,f,t,2026-09-07 00:00:00,mctit,strumenti.code.col_immesso,85

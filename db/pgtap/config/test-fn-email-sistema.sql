@@ -10,7 +10,9 @@
 --   dove va provata: db/pgtap/rls/test-rls-email-log-ambito.sql.
 --
 -- Test: le due porte per le email di sistema
--- ChangeSet: 20260906-01 / -02 · Brief: brief-db-email-perimetro-e-invio-di-sistema §4
+-- ChangeSet: 20260906-01 / -02 / -14 · 20260907-05
+-- Brief: brief-db-email-perimetro-e-invio-di-sistema §4 ·
+--        brief-db-sveglia-dei-processi §23
 --
 -- Elenco test (plan 8):
 --  1) la porta accoda, e scrive SEMPRE ambito SISTEMA senza emittente
@@ -20,7 +22,7 @@
 --  5) ⛔ `PENDING` non e' un esito ammesso
 --  6) ⛔ un identificativo inesistente si ferma con un codice suo (TECNICO)
 --  7) ⛔ una riga NON di sistema non si chiude da questa porta — ed e' il caso
---     pericoloso, con parole sue
+--     pericoloso, con un codice suo e una frase che nomina l'ambito
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ PERCHE' LE DUE FUNZIONI SI COLLAUDANO INSIEME.
@@ -158,12 +160,29 @@ BEGIN
 END
 $altrui$;
 
+-- ⚠️ E si chiede il MESSAGGIO, non il solo SQLSTATE. Tutti gli errori
+--   applicativi sono `P0001`: con `NULL` al posto della frase questo test
+--   sarebbe verde anche se a fermare la chiamata fosse il guard di `p_stato`
+--   due righe piu' su — cioe' proverebbe che qualcosa si e' rotto, non CHE COSA.
+--   ⛔ E fino al 2026-09-07 era proprio cosi': la frase e' entrata insieme al
+--   codice suo, e senza di essa il test non avrebbe distinto il caso nuovo.
+-- ⭐ Il codice e' `E_EMAIL_LOG_NON_DI_SISTEMA`, TECNICO, e non piu'
+--   `E_VALIDAZIONE` (DATO_ERRATO, «hai sbagliato i dati»): qui la riga esiste e
+--   i parametri sono a posto — e' il chiamante che ha bussato alla porta
+--   sbagliata. ⛔ E non si riusa `E_EMAIL_LOG_INESISTENTE` del test 6: «la riga
+--   non c'e'» e «la riga c'e' e non e' tua» mandano a guardare due posti
+--   diversi. Domanda lasciata aperta da 20260906-14, chiusa da 20260907-05
+--   quando il classificatore ha imparato a leggere questa forma di guardia.
+-- ⚠️ La frase nomina l'AMBITO della riga, ed e' il valore utile: dice a chi
+--   appartiene davvero l'email che si stava per chiudere.
 SELECT throws_ok(
     format($$SELECT config.fn_chiudi_email_sistema(%s, 'SENT')$$,
            current_setting('pgtap.email_azienda')),
     'P0001',
-    NULL,
-    '7. una email di un''azienda non si chiude dalla porta di sistema'
+    format('L''email di sistema %s appartiene all''ambito OPERATORE: da questa '
+           'porta si chiudono solo le email di ambito SISTEMA.',
+           current_setting('pgtap.email_azienda')),
+    '7. una email di un''azienda non si chiude dalla porta di sistema, e la frase dice di chi e'''
 );
 
 SELECT * FROM finish();
