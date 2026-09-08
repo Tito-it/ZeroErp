@@ -203,11 +203,17 @@ SELECT ok(
 -- Una commessa che in questo lotto non alimenta niente non deve scrivere
 -- niente: ⚠️ marcare «il primo documento che capita» sarebbe peggio del non
 -- marcare, perché attribuirebbe un errore a un documento che non c'entra.
+--
+-- ⚠️ L'id e' POSITIVO e non `-1`, ed e' una correzione del 2026-09-08. Con un
+--   id negativo lo zero arriva dal GUARD di parametro (20260908-19), non dalla
+--   risoluzione: il test sarebbe passato anche a risoluzione rotta — verde per
+--   sottrazione. Un id positivo e inesistente percorre la strada vera e trova
+--   zero documenti, che e' la condizione che questo test dichiara di provare.
 SELECT is(
     vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => current_setting('pgtap.lotto')::bigint,
         p_stato            => 'ERRORE',
-        p_commessa_id      => -1,
+        p_commessa_id      => 2147483647,
         p_errore_codice    => 'E_PULL_COMMESSA',
         p_errore_messaggio => 'commessa che non c''entra'),
     0,

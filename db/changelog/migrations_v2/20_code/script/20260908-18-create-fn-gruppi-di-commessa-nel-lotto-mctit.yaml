@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «Questa commessa, dentro questo lotto, quali DOCUMENTI alimenta?»
+#   Richiesta BE del 2026-09-08 (§3.2), che chiude il contratto §6.1 di
+#   brief-db-uscita-documento-dal-giro.md.
+#
+# ── ⭐ PERCHE' IL BACKEND NON PUO' RISCRIVERLA, ED HA RAGIONE ─────
+#   Chi fallisce al pull ha in mano il `commessa_id`, non la `gruppo_key`: e'
+#   `_PullCommesseRunLogger.item_failed`. Per dichiarare il proprietario della
+#   segnalazione gli serve la conversione — che esiste gia', ma vive DENTRO
+#   `vendite.fn_segna_esito_gruppo_lotto` e non e' chiamabile da fuori.
+#   ⛔ Cio' che una copia in Python duplicherebbe non e' la costruzione della
+#   chiave — quella e' gia' una funzione — ma DA QUALE TABELLA SI LEGGE, che e'
+#   esattamente la parte fragile: calcolare la chiave su
+#   `vendite.attivita_fatturabili` invece che su `vendite.commesse_attivita` da'
+#   `COMMESSA:<hash del segment_key>`, che non aggancia NIENTE. Misurato il
+#   2026-09-08 scrivendo `script.vw_lotto_documento_righe`: zero corrispondenze
+#   su quattro documenti noti, e nessun errore. Una copia di quella scelta, il
+#   giorno che si sposta, produce chiavi che non agganciano niente — in
+#   silenzio.
+#
+# ── ⚠️ E' 1:N, E CAMBIA LA FORMA DELLA CONSEGNA ──────────────────
+#   Una commessa puo' alimentare PIU' documenti: `fn_segna_esito_gruppo_lotto`
+#   infatti scrive N righe di esito, non una. Per questo si torna un ARRAY e non
+#   uno scalare — e chi scrive la segnalazione ne produrra' una per documento.
+#   ⛔ Scegliere «la prima chiave» sarebbe la scorciatoia che rompe: se la
+#   commessa ne alimenta tre e se ne dichiarasse una sola, le altre due
+#   resterebbero a bloccare il lotto per sempre e non togliibili — nessuno
+#   potrebbe zittirle, perche' il verbo lavora sul documento dichiarato.
+#
+# ── ⭐ IL PERIMETRO E' PARTE DELLA DOMANDA, NON UN FILTRO IN PIU' ─
+#   La domanda e' «nel LOTTO», non «in generale»: se il lotto dichiara un
+#   perimetro, i documenti fuori da quello non li stava lavorando, e appendergli
+#   una segnalazione la renderebbe una riga di
+#   `vendite.vw_segnalazioni_con_documento_ignoto` — cioe' un blocco che nessuno
+#   potra' mai togliere. Se il perimetro non c'e' (i giri di massa), li stava
+#   lavorando tutti.
+#   ⚠️ Il `p_lotto_id` non e' quindi un parametro di comodo: toglierlo
+#   cambierebbe la risposta, non la sua forma.
+#
+# ── ⭐ `[]` E' UNA RISPOSTA, E VA LETTA ──────────────────────────
+#   Vuol dire «questo fallimento non ha un proprietario dentro questo lotto».
+#   ⇒ Chi scrive la segnalazione ne mette UNA a `gruppo_key = NULL`, che per la
+#   D-6 del brief vuol dire «e' del GIRO» e blocca: e' il vero. ⛔ Non zero
+#   righe — un fallimento che non si scrive da nessuna parte e' un giro che
+#   riparte su un guasto.
+#   ⭐ E' lo stesso fatto che `fn_segna_esito_gruppo_lotto` gia' segnala con
+#   «esito non appeso a niente», guardato dall'altro lato: le due cose vanno
+#   lette insieme il giorno dell'accensione.
+#
+# ── ⚠️ FAIL-LOUD SUI PARAMETRI, E QUI SERVE SAPERE PERCHE' ───────
+#   Questa funzione la chiama anche il backend, direttamente: li' un id assente
+#   o <= 0 e' un CHIAMANTE ROTTO, non una condizione di dominio, e va detto
+#   forte (linee-guida-sql, guard sugli id). ⛔ Un `[]` restituito su un id
+#   invalido sarebbe indistinguibile da «nessun documento», cioe' farebbe
+#   scrivere una segnalazione di giro al posto di un errore di programmazione.
+#   ⚠️ La madre `fn_segna_esito_gruppo_lotto` NON deve sollevare mai (la chiama
+#   un gestore d'eccezione): li' il guard resta suo e precede la chiamata —
+#   vedi 20260908-19.
+#   ⭐ `E_PARAMETRO_INVALIDO` e non un codice nuovo: e' la scelta gia' presa in
+#   questo cantiere (brief §5.5, «riusati e non coniati») ed e' quella della
+#   gemella `script.fn_gruppi_trascinati_da_uscita`, scritta lo stesso giorno
+#   con lo stesso guard. Un secondo nome per lo stesso rifiuto si legge come
+#   una seconda regola.
+#
+# ── ⚠️ `STABLE` E `SECURITY INVOKER` ────────────────────────────
+#   Legge e non scrive. `vendite.commesse_attivita` ha la RLS: girando come il
+#   chiamante, chi legge vede le commesse dei propri emittenti — ed e' il
+#   comportamento voluto, lo stesso della madre che la chiamera'.
+#
+# ── ⭐ TIPI ANCORATI CON `%TYPE` — FIRMA, DECLARE, COMMENT E DROP ─
+#   I due parametri riflettono una colonna e la nominano: il chiamante ha in
+#   mano un LOTTO e una COMMESSA, non due bigint. Verificato in sola lettura con
+#   `atttypid::regtype` che l'ancora risolva al tipo IDENTICO (il regtype ignora
+#   il typmod, quindi non nasce nessun overload):
+#     p_lotto_id    -> vendite.fatturazione_lotti.id = bigint
+#     p_commessa_id -> vendite.commesse.id           = bigint
+#   ⚠️ `p_commessa_id` e' ancorato alla COMMESSA e non a
+#   `commesse_attivita.commessa_id`: l'ancora dice da dove VIENE il valore, e il
+#   backend ce lo mette leggendolo dalla commessa. Qui i due tipi coincidono.
+#   ⚠️ `RETURNS jsonb` e le due variabili restano espliciti, ed e' dichiarato nel
+#   corpo: dietro non c'e' nessuna colonna — sono un array composto e la risposta
+#   a una domanda. `%TYPE` solo dove una colonna esiste davvero.
+#   ⭐ E l'ancora vale anche nelle firme di `COMMENT ON FUNCTION` e
+#   `DROP FUNCTION`: verificato che PostgreSQL le accetti. Cosi' l'identificatore
+#   non puo' divergere dai parametri — e' la stessa espressione.
+#
+# Verifica: db/pgtap/vendite/test-gruppo-key-segnalazioni-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260908-18-create-fn-gruppi-di-commessa-nel-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260908-18-create-fn-gruppi-di-commessa-nel-lotto
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_gruppi_di_commessa_nel_lotto: quali documenti di un lotto
+        alimenta una commessa. Array ordinato di gruppo_key, [] se nessuno.
+        Sede unica della catena commessa -> commesse_attivita -> chiave di
+        gruppo, oggi sepolta dentro fn_segna_esito_gruppo_lotto: la chiede il
+        backend per dichiarare il proprietario di una segnalazione di pull.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: sorgente_uid
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_gruppi }
+            # ⚠️ Le due colonne a cui la firma si ANCORA: senza, il CREATE muore
+            #   con «relation does not exist» invece che con un cancello.
+            - columnExists:
+                { schemaName: vendite, tableName: fatturazione_lotti, columnName: id }
+            - columnExists:
+                { schemaName: vendite, tableName: commesse, columnName: id }
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_gruppi_di_commessa_nel_lotto(
+                  -- ⭐ Ancorati: dicono DA DOVE viene il valore. Il chiamante ha
+                  --    in mano un lotto e una commessa, non due bigint.
+                  p_lotto_id    vendite.fatturazione_lotti.id%TYPE,
+                  p_commessa_id vendite.commesse.id%TYPE)
+              -- ⚠️ `jsonb` esplicito e non ancorato: dietro non c'e' nessuna
+              --    colonna. E' un array COMPOSTO qui, come per la gemella
+              --    script.fn_gruppi_trascinati_da_uscita.
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: quali DOCUMENTI (gruppi fatturabili) di un lotto sono
+              --        alimentati da una commessa. E' la conversione che serve
+              --        a chi fallisce avendo in mano la commessa e non il
+              --        documento, e che finora viveva solo dentro
+              --        vendite.fn_segna_esito_gruppo_lotto.
+              -- Ritorna: array ORDINATO di gruppo_key, [] se nessuno.
+              -- ⚠️ Funzione PURA: nessuna scrittura. Solleva solo sui parametri.
+              DECLARE
+                  -- ⚠️ Nessuno dei due riflette una colonna, quindi tipo
+                  --    esplicito: il primo e' la RISPOSTA a una domanda, il
+                  --    secondo l'array composto.
+                  v_ha_perimetro boolean;
+                  v_out          jsonb;
+              BEGIN
+                  -- Guard parametri: un id assente o <= 0 e' un chiamante rotto,
+                  -- non una condizione di dominio. ⛔ Mai un [] silenzioso: si
+                  -- confonderebbe con «nessun documento», che ha una conseguenza
+                  -- opposta (vedi testata).
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_gruppi_di_commessa_nel_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio (> 0)');
+                  END IF;
+
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_gruppi_di_commessa_nel_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id),
+                          NULL::uuid, 'p_commessa_id obbligatorio (> 0)');
+                  END IF;
+
+                  -- Il lotto dichiara un perimetro? La domanda si fa UNA volta:
+                  -- serve a restringere, non a decidere se rispondere.
+                  v_ha_perimetro := EXISTS (
+                      SELECT 1 FROM vendite.fatturazione_lotti_gruppi g
+                       WHERE g.lotto_id = p_lotto_id);
+
+                  SELECT COALESCE(jsonb_agg(k.gruppo_key ORDER BY k.gruppo_key),
+                                  '[]'::jsonb)
+                    INTO v_out
+                    FROM (
+                          -- ⛔ LA CATENA E' QUESTA, e non va spostata: la chiave si
+                          --   calcola su commesse_attivita, che porta la sorgente
+                          --   del DOCUMENTO. Su attivita_fatturabili darebbe
+                          --   COMMESSA:<hash>, che non aggancia niente e non
+                          --   fallisce. ⭐ La costruisce la funzione che la
+                          --   costruisce gia' per la dashboard: una sola sede.
+                          SELECT DISTINCT vendite.fn_build_gruppo_fatturabile_key(
+                                     ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                                 ) AS gruppo_key
+                            FROM vendite.commesse_attivita ca
+                           WHERE ca.commessa_id = p_commessa_id
+                         ) k
+                   WHERE k.gruppo_key IS NOT NULL
+                     -- Se il lotto dichiara un perimetro, fuori da quello non
+                     -- stava lavorando quel documento. Se non lo dichiara, li
+                     -- stava lavorando tutti.
+                     AND (NOT v_ha_perimetro
+                          OR EXISTS (SELECT 1
+                                       FROM vendite.fatturazione_lotti_gruppi g
+                                      WHERE g.lotto_id   = p_lotto_id
+                                        AND g.gruppo_key = k.gruppo_key));
+
+                  RETURN COALESCE(v_out, '[]'::jsonb);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_gruppi_di_commessa_nel_lotto(
+                  vendite.fatturazione_lotti.id%TYPE, vendite.commesse.id%TYPE)
+              IS 'Quali DOCUMENTI (gruppi fatturabili) di un lotto sono alimentati da una '
+                 'commessa: array ORDINATO di gruppo_key, [] se nessuno. ⭐ SEDE UNICA '
+                 'della catena commessa -> vendite.commesse_attivita -> '
+                 'vendite.fn_build_gruppo_fatturabile_key: fino al 2026-09-08 viveva '
+                 'dentro vendite.fn_segna_esito_gruppo_lotto e non era chiamabile, '
+                 'mentre chi fallisce al pull ha in mano la COMMESSA e non il documento. '
+                 '⛔ La parte fragile non e'' la costruzione della chiave ma DA QUALE '
+                 'TABELLA SI LEGGE: calcolarla su vendite.attivita_fatturabili da'' '
+                 'COMMESSA:<hash del segment_key>, che non aggancia nessun perimetro e '
+                 'non fallisce (misurato il 2026-09-08: zero corrispondenze su quattro '
+                 'documenti noti). Una copia di quella scelta, il giorno che si sposta, '
+                 'produce chiavi mute. ⚠️ E'' 1:N — una commessa puo'' alimentare piu'' '
+                 'documenti — quindi chi scrive una segnalazione ne produce UNA PER '
+                 'DOCUMENTO: sceglierne una sola lascerebbe le altre a bloccare il lotto '
+                 'per sempre e non togliibili. ⭐ Il perimetro e'' parte della domanda: '
+                 'se il lotto ne dichiara uno, fuori da quello non stava lavorando; se '
+                 'non lo dichiara (giri di massa) li stava lavorando tutti. ⚠️ [] vuol '
+                 'dire «questo fallimento non ha un proprietario in questo lotto» ⇒ chi '
+                 'scrive mette UNA segnalazione a gruppo_key NULL, che vuol dire «e'' del '
+                 'GIRO» e blocca — non zero righe. ⚠️ Fail-loud sui parametri '
+                 '(E_PARAMETRO_INVALIDO): la chiama anche il backend, e li'' un id <= 0 '
+                 'e'' un chiamante rotto; un [] sarebbe indistinguibile da «nessun '
+                 'documento». STABLE, SECURITY INVOKER: commesse_attivita ha la RLS e il '
+                 'chiamante vede le commesse dei propri emittenti. '
+                 'Brief: brief-db-uscita-documento-dal-giro §6.1 (richiesta BE §3.2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Va tolta DOPO vendite.fn_segna_esito_gruppo_lotto (20260908-19),
+              --    che la chiama: il rollback di quel changeSet rimette il
+              --    predicato in linea.
+              DROP FUNCTION IF EXISTS script.fn_gruppi_di_commessa_nel_lotto(
+                  vendite.fatturazione_lotti.id%TYPE, vendite.commesse.id%TYPE);
