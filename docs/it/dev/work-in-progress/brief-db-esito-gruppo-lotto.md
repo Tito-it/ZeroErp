@@ -827,10 +827,10 @@ nella doc pubblicata. Corretta il 2026-09-07.
 | ✅ **P-6** | `E_PULL_COMMESSA_ALL_FAILED` ritirato il 07-09 con `obsoleto_dal` — §19 | *DB* |
 | ✅ **Il seed** | `migrate` passato: le colonne di catalogo e la scheda «Presi in carico» ci sono — §21 | *Tid* |
 
-⚠️ Il debito di collaudo dichiarato resta: il ritrovamento del documento
-**partendo dalla commessa** si verifica sul primo giro vero. Se lì il conto
-tornasse a zero, il messaggio da cercare nei log è
-`pull_commesse.esito_non_appeso`.
+✅ **Il debito di collaudo è caduto il 2026-09-07**: il primo giro vero
+(`LTF-0009900`) ha risolto il documento partendo dalla commessa, e
+`pull_commesse.esito_non_appeso` non è stato scritto — §23.1.
+🔴 Resta **una** cosa, ed è del backend: il §23.3.
 
 ---
 
@@ -1105,3 +1105,314 @@ che il numero resti scritto con la sua data.
 `api_lotto_gruppi_list` e i due documenti di collaudo sono **16 file modificati +
 2 test nuovi non committati**. Finché restano lì, «fatto» descrive una macchina,
 non il progetto — ed è la seconda cosa che tiene aperto questo brief.
+
+---
+
+## 22. 🔴 Il presidio ha parlato, il 2026-09-07 — e non era rumore
+
+Il pgTAP `test-lotti-gruppi-esito.sql` è diventato rosso sul test 11, e la
+reazione naturale — *«è un test fragile, si è rotto perché ho rigenerato un
+lotto»* — è **sbagliata su tutti e due i pezzi**. Vale la pena scrivere perché.
+
+### 22.1 La riga è vera, e la contraddizione pure
+
+`vendite.vw_lotti_chiusi_con_gruppi_in_errore` ha nominato **`LTF-0009900`**
+(lotto 11069, emittente 72, competenza 2026-09). Non è un lotto di fixture
+lasciato indietro: è una corsa reale delle 11:25.
+
+Il lotto è **2 su 3** — due documenti `COMPLETED`, uno `ERRORE` con
+`E_PULL_COMMESSA` (*«ProgrammingError: Indicare un valore per…»* sulla commessa
+34137).
+
+⭐ **E la salvezza indiretta di cui parla il `20260907-11` ha fatto la sua
+parte**: la segnalazione critica **c'è**.
+
+| | quando |
+| --- | --- |
+| segnalazione **critica** (`status = 'C'`) | 11:25:38.294 |
+| esito ERRORE del documento | 11:25:38.301 |
+| lotto messo **COMPLETATO** (`data_update`) | **11:28:43** |
+
+E `vendite.fn_get_lotto_segnalazioni_summary(11069)` risponde
+`lotto_critical_count = 1`. ⇒ `evaluate_lotto_status` calcola
+`is_error = critical_count > 0 or …` → **vero**.
+
+⛔ **Il riepilogo diceva ERRORE, e tre minuti dopo il lotto è stato chiuso
+COMPLETATO lo stesso.** Non è una corsa fra scritture: il conteggio era già a 1.
+
+⚠️ **Quello che questi dati NON dicono**, e va detto invece di riempirlo di
+ipotesi: *chi* ha messo `COMPLETATO` alle 11:28. Può essere un percorso di
+chiusura che non consulta `evaluate_lotto_status`, oppure un'azione a mano
+durante il collaudo. Il database registra lo stato, non il gesto. ⇒ La domanda è
+del backend, ed è **l'unica cosa che questa sezione chiede**.
+
+⭐ Comunque sia andata, la vista ha fatto esattamente ciò per cui è nata il
+giorno prima: *«un difetto che si manifesta come SILENZIO è esattamente ciò per
+cui questo cantiere è nato. Si mette un presidio, invece di fidarsi.»*
+
+### 22.2 ⛔ E il test 11 era comunque sbagliato — per un'altra ragione
+
+Non era «legato a un lotto»: era legato a **tutti**. Chiedeva che la vista fosse
+vuota sull'**intera popolazione**, ed è la forma che la Regola zero vieta:
+
+* su un database ricostruito da zero — cioè **in CI** — la vista è vuota perché
+  non c'è niente: il test passava **a vuoto**, verde senza provare nulla;
+* su dbdev diventava rosso al primo uso reale che produce quello stato, e **un
+  rosso che non è una regressione insegna a ignorare i rossi**.
+
+⚠️ Contraddiceva anche la riga scritta in testa allo stesso file: *«TUTTI I CASI
+SONO COSTRUITI… nessuna asserzione si appoggia a un lotto vero»*.
+
+✅ **Riscritto** come **controllo negativo** sullo stesso lotto costruito del
+test 12: prima la contraddizione non c'è e la vista tace, poi la si crea e la
+vista parla. Provato in entrambi i versi — con la contraddizione anticipata il
+test 11 diventa rosso, senza la contraddizione il 12 diventa rosso.
+
+⭐ **La domanda «e il database vero è pulito?» non è sparita**: si risponde
+**guardando la vista**, che è ciò per cui un presidio esiste. Un pgTAP che
+interroga la popolazione non è un test, è monitoraggio travestito — e con quella
+forma la risposta di oggi sarebbe arrivata come un test rotto invece che come un
+ritrovamento.
+
+### 22.3 Che cosa resta
+
+* 🔴 **Al backend**: capire chi ha chiuso `LTF-0009900` COMPLETATO con il
+  riepilogo che diceva ERRORE. Se è un percorso di codice, è un difetto; se è
+  un'azione a mano, allora **un'azione a mano può produrre la contraddizione**, e
+  vale la pena sapere se deve poterlo fare.
+* ⚠️ La riga resta a database: è un dato di collaudo, e finché c'è la vista la
+  nomina — che è corretto. ⛔ Non si «pulisce» per far tacere il presidio.
+
+---
+
+## 23. 🏁 Chiusura — che cosa è caduto oggi, e l'unica cosa che resta
+
+> Rilettura del 2026-09-07 dopo il push del backend (`993cdb91e`).
+
+### 23.1 ✅ Il debito di collaudo del §16 è chiuso — da un giro VERO
+
+Il §16 lo diceva così: *«il ritrovamento del gruppo partendo dalla commessa
+quando la commessa alimenta davvero quel gruppo non è coperto da pgTAP… si
+verifica sul primo giro vero dopo P-5»*.
+
+**Il primo giro vero c'è stato**: lotto `LTF-0009900`, 2026-09-07 alle 11:25, tre
+commesse, una fallita.
+
+⭐ **E la strada percorsa è proprio quella**, verificato sul chiamante:
+`_marca_esito_gruppi` invoca `segna_esito_gruppo_lotto(lotto_id, stato,
+commessa_id=…)` — passa **solo la commessa**, un `gruppo_key` non lo passa mai.
+Quindi la risoluzione commessa → documento è l'unica strada possibile, non una
+fra due.
+
+**Esito**: tutti e tre i gruppi hanno una chiave documento reale, compreso quello
+fallito —
+
+```
+133 | ORDINE_VENDITA:01a06ce4-b46a-7a49-a72f-c07c29de47bb | ERRORE | E_PULL_COMMESSA
+```
+
+⇒ La funzione ha restituito un aggancio, quindi **`pull_commesse.esito_non_appeso`
+non è stato scritto**: era il segnale che il §16 diceva di cercare se il conto
+fosse tornato a zero. Non è tornato a zero.
+
+### 23.2 ✅ E il §20 è nel repo
+
+*«il lavoro del §20 non è nel repo: 16 file modificati + 2 test nuovi non
+committati»* — caduto col push `993cdb91e`. «Fatto» adesso descrive il progetto,
+non una macchina.
+
+### 23.3 🔴 Resta una cosa sola, ed è del backend
+
+Quella del §22: **`LTF-0009900` è COMPLETATO mentre il riepilogo diceva ERRORE.**
+
+Non è un residuo di collaudo da spazzare: è il punto in cui la decisione P-5
+(«trattiamo il 3 su 3 come il 2 su 3») incontra chi decide lo stato finale del
+lotto. Il §22 porta i tre orari e il conteggio; la domanda che manca è **chi ha
+scritto `COMPLETATO` alle 11:28** con `lotto_critical_count = 1`.
+
+* se è un percorso di codice che chiude senza consultare
+  `evaluate_lotto_status` → è un difetto, e sta esattamente dove questo cantiere
+  ha messo il presidio;
+* se è un'azione a mano → allora **un'azione a mano può produrre la
+  contraddizione**, e la domanda diventa se debba poterlo fare.
+
+⛔ In nessuno dei due casi la risposta è cancellare la riga.
+
+### 23.4 Quando questo brief si chiude
+
+✅ **Il §23.3 ha avuto la sua risposta lo stesso giorno: era l'annullo — §24.**
+Il changeSet `20260907-08` la chiude, con il presidio sui due versi.
+
+⇒ Lato DB resta solo l'applicazione di `20260907-17` (un `COMMENT`: il presidio
+dichiara il proprio pregresso — §25). L'unica coda vera è a video (§24.5): un
+lotto annullato che era andato male mostrerà `ERRORE` e «Annullata» insieme, ed
+è da guardare che il badge non risulti contraddittorio.
+
+---
+
+## 24. ✅ La risposta al §23.3 — l'ha data Tid, ed era l'annullo
+
+> 2026-09-07. **Domanda chiusa**: *chi ha scritto `COMPLETATO` alle 11:28 con
+> `lotto_critical_count = 1`?*
+
+**L'operatore, annullando il lotto.** `vendite.fn_annulla_lotto_da_draft`
+scriveva `stato_lotto = 'COMPLETATO'` dentro l'`UPDATE` di chiusura.
+
+⭐ **Verificato dal vivo mentre si indagava**: `LTF-0009931` era in `ERRORE` alle
+12:02, Tid l'ha annullato, ed è diventato `COMPLETATO / CHIUSO / ANNULLATA`.
+Stessa forma di `LTF-0009900`, riprodotta a comando.
+
+⇒ Non era un percorso di chiusura che salta `evaluate_lotto_status`: era un
+`UPDATE` diretto, tre minuti dopo, che passava **dietro** al guardiano.
+
+### 24.1 ⛔ Tre regole infrante dalla stessa riga
+
+1. **La macchina a stati la vieta.** `fn_set_fatturazione_lotto_stato` rifiuta
+   `ERRORE → COMPLETATO` — *«da ERRORE solo IN_ESECUZIONE»*. L'`UPDATE` diretto
+   non gliel'ha mai chiesto, quindi non è che il guard l'abbia permesso: **non
+   l'ha vista**.
+2. **La sorella dice di non farlo.** `fn_riporta_lotto_a_draft` porta nel corpo
+   la riga *«stato_lotto NON si tocca — ha una macchina a stati cablata»*.
+   ⭐ E l'intestazione dell'annullo invoca **proprio quella sorella** come
+   principio: *«due sorelle non possono comportarsi diversamente sulla stessa
+   cosa»*.
+3. **È la cosa che quell'intestazione rifiuta due paragrafi sopra**, parlando di
+   `attivo`: *«sono due domande su un flag solo, e il giorno che dissentono non
+   c'è scritto da nessuna parte quale vince»*. `stato_lotto` risponde a «com'è
+   andata l'elaborazione»; «non è più in lavorazione» lo dicono già
+   `stato_operativo = 'CHIUSO'` e `stato_doc_fiscale_id = ANNULLATA`, che quello
+   stesso `UPDATE` scrive.
+
+### 24.2 ⭐ E non reggeva niente — verificato, non supposto
+
+Il problema che quella riga sembrava servire — un lotto annullato che resta fra
+gli «errori vivi» del cruscotto — l'ha risolto la rev del 2026-09-04 **chiudendo
+i task run per esito**. L'intestazione lo dice: *«la vista non si tocca: i run
+cadono da soli, PER ESITO»*.
+
+Riletto il 07-09: `vw_dash_competenza_errori` `stato_lotto` lo **proietta**
+soltanto, non ci filtra. E nessuna funzione lo usa come cancello pretendendo
+`COMPLETATO` su un annullato — le uniche guardie sono su `IN_ESECUZIONE`.
+
+### 24.3 ⚠️ Una cosa detta male, e corretta dal test
+
+Prima stesura della nota: *«era un no-op sul lotto andato bene»*. **Falso**, e a
+dirlo è stato il test scritto per provarla:
+
+```
+# Failed test 6: "su un lotto mai andato in errore l'annullo lascia lo stato che aveva"
+#         have: COMPLETATO   want: IN_ESECUZIONE
+```
+
+Un lotto annullato **mentre era in esecuzione** veniva marcato `COMPLETATO`,
+cioè *«la corsa è finita bene»* — di un giro che nessuno ha finito, è stato
+interrotto.
+
+⇒ Quella scrittura **falsificava in entrambi i casi**. Sul lotto fallito
+cancellava l'errore; su quello vivo dichiarava una conclusione mai avvenuta.
+Cambia solo quanto è visibile la bugia.
+
+### 24.4 Che cosa è entrato
+
+| Cosa | Dove |
+| --- | --- |
+| `fn_annulla_lotto_da_draft` non scrive più `stato_lotto` | `20260907-08` |
+| Il presidio della regola, sui due versi | `db/pgtap/vendite/test-annulla-lotto-non-riscrive-stato-v1.sql` (plan 7) |
+| L'asserzione `stato_lotto = 'COMPLETATO'` tolta da dove era di passaggio | `test-fatturazione-reset-lotto-draft.sql` (test 6) |
+
+⭐ **Il test 4 è quello che tiene onesto il test 2**: da solo, il 2 passerebbe
+anche su una funzione che scrive **sempre** `'ERRORE'` — lo stesso difetto
+ribaltato. La coppia prova che la colonna non viene *toccata*, non che viene
+scritta in un altro modo.
+
+⚠️ E il **test 5** guarda il **testo** della funzione: è l'unico modo di dire
+«non la scrive» invece di «oggi non l'ha scritta». Il perimetro è quella
+funzione, ed è dichiarato: la regola è sua.
+
+Provato al contrario: contro la funzione **viva** i test 2, 4 e 5 diventano
+rossi, con `have: COMPLETATO`.
+
+⚠️ Il corpo è stato preso dalla **doc auto-gen**, non da uno YAML, e modificato
+in un punto solo — `stato_lotto` compariva **una volta sola** in tutta la
+funzione. ⛔ E la doc auto-gen stampa il corpo **senza** il `;` dopo
+`$function$`: aggiunto, perché senza si rompe al primo statement che segue.
+
+### 24.5 🔵 Che cosa resta, ed è a video
+
+Un lotto annullato che era andato male ora mostrerà **`ERRORE`** *e*
+**«Annullata»**. Sono due informazioni diverse ed entrambe vere, ma il frontend
+legge `stato_lotto` in quattro file
+(`LottiListView`, `LottiLista`, `LottoDrawer`, `stores/lotti`).
+
+⇒ Vale la pena guardare che il badge non risulti contraddittorio. ⛔ Se lo
+fosse, il rimedio **non** è rimettere quella riga: è decidere che cosa mostrare
+quando le due cose divergono — e che divergano è il punto, non l'incidente.
+
+---
+
+## 25. ✅ Il pregresso — misurato, e lasciato com'è per decisione
+
+> 2026-09-07, dopo l'applicazione del `20260907-08` (19:09).
+
+### 25.1 ⛔ Prima misura sbagliata, e come si è vista
+
+Chiedendo allo storico *«quali lotti hanno una transizione in cui `COMPLETATO`
+ha sovrascritto un altro stato?»* venivano fuori **21** lotti. Sbagliato.
+
+⚠️ Dieci di quei ventuno sono `DEFINITIVA`, cioè **chiusure normali**: un lotto
+che finisce bene passa proprio da `IN_ESECUZIONE` a `COMPLETATO`. La query
+riconosceva la *forma* della transizione e non la sua *causa*, e senza il
+controllo su `stato_doc_fiscale_id` avrei proposto un ripristino su dieci righe
+sane.
+
+⭐ Il perimetro vero: **11 lotti**, tutti `ANNULLATA`, tutti in `ERRORE` un
+istante prima dell'annullo — lo storico conserva il valore sovrascritto per
+ciascuno.
+
+### 25.2 ⚠️ E il presidio vede sei di quegli undici
+
+Gli altri cinque erano in `ERRORE` per le **segnalazioni critiche**, senza avere
+nessun gruppo marcato: la vista cerca la coppia «COMPLETATO + gruppo in ERRORE»,
+e su di loro il secondo pezzo manca.
+
+⇒ **Questa vista non è il perimetro del difetto.** È la seconda volta in due
+giorni che un presidio viene scambiato per la misura di ciò che sorveglia — la
+prima è il §22.2, dove il test 11 chiedeva alla vista di essere vuota su tutta la
+popolazione.
+
+### 25.3 ✅ La decisione: il pregresso non si corregge
+
+**Tid, 2026-09-07.** Era possibile — lo storico ha il valore vero per tutti e
+undici — ma rimetterlo a posto vorrebbe dire un `UPDATE` diretto: la macchina a
+stati vieta anche `COMPLETATO → ERRORE`. Cioè la stessa scorciatoia che il
+`20260907-08` ha appena tolto di mezzo.
+
+### 25.4 ⛔ E allora l'invariante della vista cambia — `20260907-17`
+
+Una vista che dichiara *«deve restare VUOTA»* e non lo è mai insegna a
+ignorarla: chi la apre vede sei righe, non sa perché, e la volta dopo non la
+apre. Il changeSet del presidio lo diceva di sé: *«oggi è vuota, e deve
+restarci: è la condizione che un presidio deve sapere raggiungere, altrimenti è
+rumore»*.
+
+⇒ Il commento della vista ora dichiara:
+
+* l'invariante non è più «vuoto» ma **«nessuna riga non dichiarata»** — la stessa
+  forma di `dbops.processi_bersagli.debito_dichiarato`;
+* ⭐ **il criterio, non il numero**: sono i lotti **annullati prima del
+  2026-09-07 19:09**. «Sei» invecchia — basta che qualcuno ne corregga uno a
+  mano — il criterio no;
+* che il pregresso **non può crescere**, verificato: zero righe della vista
+  aggiornate dopo quell'istante;
+* ⇒ **una riga su un lotto annullato dopo quel momento è un allarme vero.**
+
+⛔ **E non si filtrano via.** Nasconderle renderebbe la vista verde su una
+falsificazione che c'è davvero, e toglierebbe l'unico posto in cui quei sei
+lotti sono nominati. Si vedono, e si sa perché.
+
+### 25.5 Che cosa resta
+
+* 🔵 applicare `20260907-17` (solo un `COMMENT`);
+* ⚠️ e la coda del §24.5, che è a video: un lotto annullato che era andato male
+  mostra ora `ERRORE` **e** «Annullata». Da guardare che il badge non risulti
+  contraddittorio — e se lo è, il rimedio non è tornare indietro.

@@ -26,7 +26,7 @@ processi su sei, margine 10× e 5× sulle rispettive cadenze, senza il perché
 scritto da nessuna parte). Due scritture prima o poi dissentono, e lì la
 divergenza sarebbe stata **muta**: un pallino verde su un worker fermo.
 
-Brief: [brief-db-sveglia-dei-processi](../../../dev/work-in-progress/brief-db-sveglia-dei-processi.md).
+Brief: [brief-db-sveglia-dei-processi](../../../dev/work-done/brief-db-sveglia-dei-processi.md).
 
 ## Input
 

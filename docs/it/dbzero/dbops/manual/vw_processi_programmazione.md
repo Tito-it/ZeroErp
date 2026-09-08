@@ -106,6 +106,48 @@ comportamento predefinito in cui cadere per distrazione.**
 
 ---
 
+### ⛔ Le date del giornale sono **due**, e il confronto usa la seconda
+
+Dal 2026-09-07 la vista porta due date di giornale, e la differenza fra loro non
+è un dettaglio.
+
+| | Che cosa dice |
+| --- | --- |
+| `giornale_ultima_corsa` | l'ultima corsa registrata sotto questo lavoro, **chiunque** l'abbia scritta |
+| `giornale_ultima_corsa_pgagent` | l'ultima corsa che può valere come **risposta dello scheduler** |
+
+La domanda del confronto è **«la sveglia dello scheduler ha lasciato
+traccia?»**. Una corsa scritta da qualcun altro — un comando lanciato a mano, un
+programma del backend che registra sotto lo stesso nome — non è una risposta a
+quella domanda: parla di un altro fatto. ⛔ Ma prima **contava lo stesso**, e
+spostando avanti la data spegneva l'allarme proprio sul lavoro che si stava
+sorvegliando.
+
+⚠️ **Non era un'ipotesi.** Il 2026-09-07 un lavoro di amministrazione risultava
+«ultima corsa alle 11:11» per via di **sei righe lasciate da una prova**, mentre
+lo scheduler l'aveva fatto partire alle 06:00. Su un lavoro *giornaliero* un
+equivoco così rientra da solo il giorno dopo; su uno *settimanale* — cioè
+esattamente sul lavoro che ha reso famoso questo difetto — copre l'intera
+settimana.
+
+⭐ **Le due date restano entrambe, e sono due apposta.** Quella piena serve ai
+lavori che lo scheduler non sveglia affatto: per loro è l'unica informazione
+utile della riga, e filtrarla la svuoterebbe. E quando le due **divergono**,
+quella divergenza è essa stessa un'informazione: vuol dire che qualcuno ha
+registrato sotto questo nome senza essere lo scheduler.
+
+⚠️ **Il limite, detto qui e non scoperto dopo.** Chi ha scritto una corsa si
+legge da una colonna il cui valore *predefinito* è «lo scheduler»: chi registra
+senza dichiararsi finisce lì dentro. ⇒ Il confronto distingue il backend, che si
+dichiara sempre, e **non** distingue lo scheduler da un lavoro lanciato a mano
+dalla console del database. È meno di quanto sembri, ed è molto più di niente.
+
+⚠️ E l'esito dell'ultima corsa (`ultimo_esito`) **non** è filtrato: è contesto,
+non la prova del verdetto. Le corse andate male hanno un presidio loro
+([maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare)).
+
+---
+
 ### ⭐ È un panorama, non un presidio
 
 Elenca **anche i sani**, ed è voluto: senza sapere quanti sono i sani, un guasto
@@ -116,9 +158,23 @@ fare — quella è la vista di presidio, e sta apposta da un'altra parte.
 
 ### Verifica
 
-`db/pgtap/dbops/test-vw-processi-programmazione.sql` — fra i dieci test, quello
-che conta costruisce il caso «è girato e non l'ha detto» togliendo le righe di
-giornale di un lavoro sano, e gli ultimi due tengono legati due vocabolari che
-vivono in posti diversi: i canali ammessi dal vincolo di tabella e i rami che la
-vista dichiara. Un canale nuovo senza verdetto fa rosso il test, invece di
-produrre un falso allarme in produzione.
+`db/pgtap/dbops/test-vw-processi-programmazione.sql` — tredici test.
+
+Quelli che contano **costruiscono** il caso invece di cercarlo fra i dati di
+oggi: si toglie il giornale a un lavoro e si pretende «è girato e non l'ha
+detto»; gli si rimette una corsa dello scheduler e si pretende che torni sano;
+gli si rimette una corsa di **qualcun altro** e si pretende che l'allarme
+**resti acceso**.
+
+⚠️ Il lavoro su cui si costruisce si sceglie sulla **struttura** — canale
+dichiarato, sveglia accesa, almeno una partenza dello scheduler — e non sul
+verdetto che la vista dà oggi. Sceglierlo sul verdetto era il difetto corretto
+il 2026-09-07: bastava una rottura che eliminasse tutti i lavori sani perché il
+file non trovasse nessun soggetto e **smettesse di verificare senza diventare
+rosso**.
+
+Gli ultimi due tengono legati due vocabolari che vivono in posti diversi: i
+canali ammessi dal vincolo di tabella e i rami che la vista dichiara, e —
+allo stesso modo — i modi in cui una corsa può essere stata registrata e quali
+di essi valgono come risposta dello scheduler. Un valore nuovo senza verdetto fa
+rosso il test, invece di produrre un falso allarme in produzione.

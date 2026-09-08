@@ -16,7 +16,7 @@
 > database vero** (§8). Anche il §10 è rientrato.
 >
 > 🔵 **Le due code sono uscite di qui** il 2026-09-06 e vivono in
-> [brief-db-sveglia-dei-processi.md](../work-in-progress/brief-db-sveglia-dei-processi.md):
+> [brief-db-sveglia-dei-processi.md](brief-db-sveglia-dei-processi.md):
 > la programmazione dei job (§6-bis) e la terza guardia che la misura non sa
 > leggere (§10). ⚠️ Nessuna delle due è del filo email — restare qui dentro
 > voleva dire perderle.

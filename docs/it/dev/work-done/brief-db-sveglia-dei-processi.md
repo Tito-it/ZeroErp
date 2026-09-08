@@ -4,18 +4,24 @@
 >
 > **Che cos'è.** Le due code rimaste dal filo delle email, che con le email non
 > c'entravano niente. Erano il §6-bis e l'ultimo punto del §10 di
-> [brief-db-email-perimetro-e-invio-di-sistema.md](../work-done/brief-db-email-perimetro-e-invio-di-sistema.md)
+> [brief-db-email-perimetro-e-invio-di-sistema.md](brief-db-email-perimetro-e-invio-di-sistema.md)
 > (ora in `work-done/`): un cantiere a sé, dentro un documento chiuso.
 >
-> **Stato:** 🔵 aperto, non urgente. ⛔ **Non blocca niente**, e proprio per
-> questo va scritto: è il genere di cosa che resta scoperta finché qualcuno non
-> la nomina.
+> **Stato:** ✅ **CHIUSO il 2026-09-07** su entrambi i lati — §24 per il DB, §5 e
+> §9.5 per il backend. Resta la coda di due righe del §24.6.
+> ⛔ Era nato «non urgente, non blocca niente», ed è il genere di cosa che resta
+> scoperta finché qualcuno non la nomina: nel farlo ha trovato R-12 ancora vivo
+> (§8.1), tre processi senza sveglia (§5), un ramo di installer che la prova non
+> raggiungeva (§5.1), un rilevatore che guardava un artefatto di collaudo
+> (§9.5-bis) e un codice errore usato per due cose (§23). ⭐ Nessuna di queste era
+> la coda per cui il documento è stato aperto.
 >
 > ✅ **La metà backend è chiusa il 2026-09-06** (§3.1 e §5), e non come proponeva
 > questo documento: leggere la correzione in cima al §2 e l'esito del §3.1 prima
-> di usarlo per decidere. Resta aperto ciò che è del team DB: la terza guardia
+> di usarlo per decidere. ~~Resta aperto ciò che è del team DB: la terza guardia
 > `IGNOTO` (§3.2), la vista-presidio (§6) e le due righe di catalogo per lo
-> stesso lavoro (§7).
+> stesso lavoro (§7).~~ — ✅ tutte e tre chiuse il 2026-09-07 (§9), la riga resta
+> agli atti perché è il punto da cui il team DB è partito.
 >
 > 🔵 **Risposta del team DB: §8** (2026-09-06) — piano, decisioni prese, e **un
 > guasto trovato rileggendo**: `apply_storicizza_weekly` non è un residuo che si
@@ -30,19 +36,21 @@
 > ⚠️ Ma il **perché** dei sei mesi e mezzo di silenzio resta non accertato, e da
 > questo lato non si accerta: `pgagent.*` non è leggibile come `zeroerp_app`.
 >
-> 🔴 **Restano due cose.**
-> **1. La CI è rossa — §23**, ed è una conseguenza di `20260907-03` che questo
-> brief non aveva calcolato: la famiglia `VALORE_ATTESO` fa scattare il rubinetto
-> degli accumulatori su **8 codici**. ⭐ Su sette non è un accumulo — i punti sono
-> identici alla baseline: è il *metro* che è cambiato, non il misurato. Chiede una
-> decisione, e la decisione è una sola.
-> **2. §9.5-bis** — il confronto a due fonti non guarda `origine`, quindi un
-> attore che non è pgAgent può spegnere il rilevatore di R-12 sul job che sta
-> sorvegliando.
+> 🔴 **Restavano due cose, ed erano due posti in cui un presidio non guardava:**
+> la CI rossa del §23 e il confronto a due fonti che ignora `origine` (§9.5-bis).
+> ⚠️ Un presidio cieco non si nota, per definizione. ⛔ Tranne uno, e si è visto
+> solo guardando: vedi §8.1.
 >
-> ⚠️ **Nessuno dei due punti è un guasto.** Sono due posti in cui un presidio
-> **non guarda** — e un presidio cieco non si nota, per definizione.
-> ⛔ **Tranne uno, e si è visto solo guardando**: vedi §8.1.
+> ✅ **CHIUSO il 2026-09-07 — §24.** Entrambe lavorate, e su entrambe la risposta
+> non è quella che il documento proponeva:
+> **1.** degli 8 codici del §23 solo **sette** erano il metro; l'ottavo era un
+> **difetto vero** che il metro nuovo ha appena reso visibile, e si chiude
+> coniando un codice — non ri-basando (`20260907-05`);
+> **2.** la premessa del §9.5-bis è **sbagliata** e il difetto che descrive era
+> **vivo sul database** mentre lo si scriveva (`20260907-06`, `-07`).
+>
+> 🔵 **Resta al backend una coda di due righe** — la conseguenza dichiarata del
+> codice nuovo: §24.6.
 
 ---
 
@@ -201,12 +209,15 @@ ciechi si nominano quando si vedono.
   `FUORI_PORTATA`»* — chiedeva alla vista una cosa che non può fare: quello
   stato non è un debito da azzerare, è un confine dichiarato. Chi presidia di là
   dal confine è il backend, e adesso presidia;
-* 🔵 il **panorama si vede in-app**: serve la vista-presidio filtrata al team DB
-  (§6);
-* 🔵 `dbops.processi` non ha più **due righe attive per lo stesso lavoro**
-  (`sync_auth_user_active` / `sync_auth_user_expired_daily`) — §7. Finché non è
-  deciso, l'unit di quel processo resta scritto e spento;
-* 🔵 nessun punto d'errore di `fn_chiudi_email_sistema` resta `IGNOTO` (§3.2).
+* ✅ il **panorama si vede in-app**: la vista-presidio esiste (`20260907-02`), il
+  pannello la mostra, ed è **vuota** — §22;
+* ✅ il confronto a due fonti guarda **chi ha scritto la risposta**: una corsa che
+  non è di pgAgent non spegne più il rilevatore di R-12 (§9.5-bis, `20260907-06`);
+* ✅ `dbops.processi` non ha più **due righe attive per lo stesso lavoro**:
+  `obsoleto_dal` sulla riga 23 (§8.5), unit e voce tolti dal backend (§9.5);
+* ✅ nessun punto d'errore di `fn_chiudi_email_sistema` resta `IGNOTO` (§3.2) —
+  ⭐ e il primo che è diventato leggibile si è rivelato un **codice sbagliato**,
+  non solo un punto cieco: §23.
 
 ---
 
@@ -671,7 +682,7 @@ altro che un guard entrato dopo non accetta più sarebbe una mina armata.
 | --- | --- |
 | `test-vw-processi-programmazione.sql` | plan 7 → **10**: il 7 riscritto sui soli `COMMAND`, l'8 nuovo sui `CODA`, il **9 e il 10** sul vocabolario chiuso dei canali |
 | `test-vw-processi-programmazione-da-guardare.sql` | **nuovo**, plan 6 — fra cui il 5, che impedisce alla vista-presidio di riscriversi un criterio suo |
-| `test-vw-codici-errore-valore-atteso.sql` | **nuovo**, plan 6 — quattro forme costruite, quattro risposte attese |
+| `test-vw-codici-errore-valore-atteso.sql` | **nuovo**, plan 6 — quattro forme costruite, quattro risposte attese. ⚠️ Diventato plan **7** l'08-09: il test 5 pinnava un sintomo che il `20260907-05` ha curato — §24.3-bis |
 | `test-processi-registro.sql` | plan 14 → **15**: di due righe di catalogo per lo stesso lavoro ne vive al massimo una |
 
 ⭐ **Ognuno è stato provato anche al contrario**, perché un presidio verde non
@@ -683,7 +694,7 @@ dice niente finché non si sa che cosa lo farebbe diventare rosso:
 | il panorama torna a tenere `COMMAND` e `CODA` sotto una parola sola | 8 |
 | la vista-presidio si riscrive un `WHERE` suo | 5 (presidio) |
 | la vista-presidio elenca anche i sani | 3 e 5 (presidio) |
-| il classificatore torna alle quattro famiglie | 1, 5, 6 (valore atteso) |
+| il classificatore torna alle quattro famiglie | 1, 5, 6 (valore atteso) — ⚠️ **dall'08-09 sono 1, 5, 7**: il file è passato a plan 7 e il vecchio 6 è il nuovo 7 (§24.3-bis) |
 | la riga 23 torna viva | 15 (registro) |
 
 ⚠️ E i test 2, 3, 4 del file sul classificatore **restano verdi** con la vista
@@ -763,7 +774,9 @@ Non gli resta nemmeno un punto `IGNOTO`.
   2026-02-21. ✅ **Rientrata il 2026-09-07** (§22): il presidio è **vuoto**.
   ⇒ La riga del `COMMENT` della vista che dichiara «nasce con due righe» adesso
   **va tolta** — è il `COMMENT` stesso a dirlo, ed è lavoro del team DB perché è
-  quel testo che il pannello rende.
+  quel testo che il pannello rende. ✅ **Fatto con `20260907-07`**: al suo posto
+  resta scritta la causa non accertata (§22), che non è una condizione di
+  riapertura ma il punto da cui ricominciare la prossima volta.
   ⭐ Corretto anche un numero stantìo trovato di passaggio: il docstring di
   `ProcessiPresidiView` diceva «i SEI presidi» mentre l'elenco ne aveva dieci —
   esattamente ciò contro cui il commento di `PRESIDI_PROCESSI` mette in guardia
@@ -822,6 +835,78 @@ apposta e il confronto non la guarda.
 codice se non pgAgent, perché la scelta di questo lato lo ha impedito. È un
 presidio che regge **per una decisione presa altrove**, non per costruzione.
 
+> ### ✅ Risposta del team DB — 2026-09-07 (`20260907-06`, `-07`)
+>
+> **La domanda ha una risposta, e sono le corse scritte dal percorso DB
+> (`origine = 'PGAGENT'`).** Ma prima due correzioni, perché tutte e due
+> cambiano il ragionamento.
+>
+> ⛔ **1. «Oggi non fa danno» era falso mentre lo scrivevate.** Letto su dbdev il
+> 2026-09-07, sullo stesso processo del §8.5:
+>
+> | | |
+> | --- | --- |
+> | pgAgent, ultima corsa | 2026-09-07 **06:00:04** |
+> | giornale, ultima corsa | 2026-09-07 **11:11:00** — `origine` COMMAND, `jobname` **«x»** |
+>
+> Sei righe scritte in tre millisecondi dall'host del backend, con un jobname
+> finto: sono i **«sei test verdi»** che il vostro §9.5 nomina, lasciati sul
+> giornale prima che toglieste `registered_job`. ⇒ Il panorama raccontava un
+> **artefatto di collaudo** come «l'ultima corsa» di quel processo, e il
+> rilevatore stava confrontando quello.
+> ⚠️ Su un job **giornaliero** un equivoco così rientra da solo il giorno dopo;
+> su uno **settimanale** — cioè su `apply_storicizza_weekly`, il job da cui
+> questo intero cantiere è nato — copre l'intera settimana.
+> ⭐ Le sei righe sono state cancellate (decisione di Tid, 2026-09-07): per id,
+> con un guard che pretende esattamente sei — un `DELETE` su un predicato più
+> largo avrebbe toccato storia vera.
+>
+> ⛔ **2. La ragione per cui rifiutate il filtro non regge, ed è struttura.**
+> Scrivete che `origine = 'PGAGENT'` *«taglierebbe fuori `chiusura_scadenze_daily`,
+> che è CODA_AUTOMATICA: lo sveglia pgAgent ma il run lo registra il worker della
+> coda, con un'altra origine»*. Non è così:
+>
+> * il wrapper di quel job è `maintenance.proc_accoda_chiusura_scadenze_job`, una
+>   **procedura del database** che chiama `fn_run_and_log`;
+> * `maintenance.job_run_log.origine` ha **DEFAULT `'PGAGENT'`**, e quel percorso
+>   non lo valorizza.
+>
+> ⇒ La corsa che quel job registra **è** la sveglia, e porta `PGAGENT`. Ciò che
+> il worker della coda scrive dopo è un **altro processo** (`draina_coda_lavori`),
+> con una riga di catalogo sua e una riga sua nel panorama. ⭐ *La sveglia e il
+> lavoro sono due processi, e il catalogo li separa già.*
+>
+> ### Che cosa si è fatto
+>
+> Il panorama guadagna **`giornale_ultima_corsa_pgagent`** — le sole corse
+> scritte dal percorso DB — e il ramo `GIRA_E_NON_REGISTRA` confronta **quella**.
+> ⛔ `giornale_ultima_corsa` **resta piena**, e non è un ripiego: per i sei
+> `COMMAND`, che pgAgent non sveglia affatto, è l'unica informazione utile della
+> riga. ⭐ E quando le due divergono, **la divergenza è essa stessa
+> l'informazione**: qualcuno ha registrato sotto quel codice senza essere pgAgent.
+>
+> La vista-presidio le espone **entrambe** (`20260907-07`): ⛔ un presidio che
+> mostra due date e ne usa una terza consegna al pannello un verdetto che chi
+> guarda **non può contestare** — vedrebbe due orari coerenti e una riga rossa.
+>
+> ### ⚠️ Il limite, dichiarato e non scoperto dopo
+>
+> **`origine` è un DEFAULT, non una dichiarazione.** Chiunque chiami
+> `fn_run_and_log` senza dire niente scrive `PGAGENT`. ⇒ Il filtro chiude il buco
+> dal lato che **dichiara** — il backend, che passa `ORIGINE_CRON` o
+> `ORIGINE_COMMAND`, cioè esattamente l'attore del controesempio — e **non** lo
+> chiude su un wrapper lanciato a mano da psql, che è indistinguibile da pgAgent.
+> È meno di quanto sembri, ed è molto più di niente. Sta nel `COMMENT` della
+> colonna, perché chi legge il verdetto sappia su che cosa poggia.
+>
+> ⭐ **E `origine` è il terzo vocabolario chiuso di questo cantiere**: lo dichiara
+> `chk_job_run_log_origine`, la vista ne nomina uno. Un valore nuovo domani non
+> varrebbe come risposta e produrrebbe un **falso allarme su un processo sano** —
+> il difetto contro cui mette in guardia il vostro §7. ⇒ Lo tiene legato un
+> pgTAP, come già per i canali (§8.3): un'origine nuova fa **rosso il test**, non
+> un allarme in produzione. *È la quarta volta in due giorni che serve la stessa
+> forma, su quattro oggetti diversi.*
+
 ---
 
 ### 9.6 ⚠️ Una piccola divergenza vista di passaggio, non sanata
@@ -848,7 +933,7 @@ gira col perimetro di chi legge»* — era presidiata in **quattro posti, tutti 
 elenco**, e una vista era scoperta da due mesi.
 
 ⇒ È un cantiere suo e ha un brief suo:
-[brief-db-viste-security-invoker-criterio.md](../work-done/brief-db-viste-security-invoker-criterio.md).
+[brief-db-viste-security-invoker-criterio.md](brief-db-viste-security-invoker-criterio.md).
 
 ⭐ Sta scritto qui perché è il precedente più utile di questa giornata, e vale
 per entrambi i cantieri: **un presidio che elenca copre ciò che qualcuno si è
@@ -990,3 +1075,285 @@ nominati qui sopra.
 ⛔ **E non si aggiorna in silenzio**: la ragione va nel messaggio di commit, come
 il guard stesso pretende. La ragione è *«ri-base del metro, non del misurato:
 `20260907-03` ha insegnato al classificatore la forma `VALORE_ATTESO`»*.
+
+---
+
+> ### 🔴 CORREZIONE (2026-09-07): la decisione **non** era una sola, ed è l'ottavo
+>
+> Il paragrafo qui sopra dice *«per tutti e otto: nessuno ha allargato niente»*.
+> ⛔ **Per sette è vero e verificato; per l'ottavo è falso**, e questo documento
+> aveva davanti tutto il necessario per accorgersene — lo scrive lui stesso due
+> paragrafi sopra: *«l'ottavo è diverso, e va guardato»*. Poi lo ri-basa insieme
+> agli altri.
+>
+> ⭐ **La differenza fra i due casi è la stessa che il §8.4 aveva già scritto**:
+> `VALORE_ATTESO` non ha solo cambiato il metro, ha reso **visibile** una cosa
+> che prima cadeva in `IGNOTO`. Sui sette non c'era niente da vedere; sull'ottavo
+> c'era.
+>
+> **Le tre cose che lo dicono, e sono tutte già scritte:**
+>
+> 1. ⛔ `E_VALIDAZIONE` è di classe **`DATO_ERRATO`** — a video, *«hai sbagliato i
+>    dati»*. Ma su `IF v_ambito <> 'SISTEMA'` la riga **esiste** e i parametri
+>    sono a posto: nessuno ha compilato niente di sbagliato. È il chiamante che
+>    ha bussato alla **porta sbagliata**;
+> 2. ⛔ la `note` a catalogo di quel codice dice *«13 punti, **TUTTI la stessa
+>    condizione**: parametro obbligatorio mancante o non valido. Non è un
+>    accumulatore, misurato il 2026-08-07»*. Ri-basare l'avrebbe resa falsa
+>    lasciandola scritta;
+> 3. ⭐ **due guardie sopra, nella stessa funzione, la stessa regola era già stata
+>    applicata**: `20260906-14` ha spezzato `E_EMAIL_LOG_INESISTENTE` per un
+>    motivo identico — e su questa terza guardia ha scritto, testualmente:
+>    *«la stessa regola direbbe di spezzare ancora: non è un dato sbagliato, è LA
+>    PORTA SBAGLIATA. La lascio perché il classificatore non l'ha segnalata […]
+>    ma è una domanda aperta, non una svista»*.
+>
+> ⇒ **Il classificatore adesso l'ha segnalata.** Quella domanda non è più aperta:
+> il rubinetto sta facendo esattamente il suo mestiere, sul primo caso che la
+> famiglia nuova gli ha reso leggibile. Ri-basarlo avrebbe dichiarato
+> `VALORE_ATTESO` **ammessa** su un codice `DATO_ERRATO` — cioè avrebbe fatto
+> marcire la baseline nel **verso permissivo**, l'unico in cui un presidio marcisce
+> senza che nessuno se ne accorga. *È lo stesso difetto che lo script si è scritto
+> in testa per i restringimenti, arrivato dalla porta di servizio.*
+>
+> ### ✅ La decisione presa (Tid, 2026-09-07)
+>
+> **Prima si conia, poi si ri-basa.** `20260907-05` dà alla terza guardia il suo
+> codice — `E_EMAIL_LOG_NON_DI_SISTEMA`, classe **TECNICO** come il fratello due
+> guardie sopra — e a quel punto `E_VALIDAZIONE` torna a `{PARAMETRO}`.
+>
+> ⭐ **E la ri-base diventa uniformemente onesta**: restano **sette** codici, e su
+> tutti e sette i punti sono identici alla baseline del 02-09. Non c'è più un
+> «ottavo che è diverso» da spiegare in una nota — la ragione *«il metro, non il
+> misurato»* vale per ogni riga che cambia. Misurato caricando `20260907-05` in
+> una transazione annullata, con la stessa query del rubinetto:
+>
+> | | prima del `-05` | dopo |
+> | --- | ---: | ---: |
+> | codici che il rubinetto chiama accumulo | 8 | **7** |
+> | `E_VALIDAZIONE` | `PARAMETRO,VALORE_ATTESO` · 16 punti | **`PARAMETRO`** · 15 punti |
+>
+> ⚠️ I 15 contro i 13 della baseline non sono un allargamento: sono le due
+> guardie di parametro nate col cantiere delle email, la famiglia che quel codice
+> copre da sempre. Il rubinetto confronta le **famiglie**, non i conteggi.
+
+---
+
+## 24. ✅ Chiusura — 2026-09-07, seconda metà della giornata
+
+> Numerazione: il cantiere ha usato `20260907-01..03`; questa coda ha preso
+> `-05`, `-06`, `-07` (il `-04` è del cantiere `security_invoker`, da `-11` in
+> avanti è di un altro lavoro).
+
+### 24.1 I changeSet
+
+| # | Oggetto | Chiude |
+| --- | --- | --- |
+| `20260907-05` | `config.fn_chiudi_email_sistema`: la terza guardia prende **`E_EMAIL_LOG_NON_DI_SISTEMA`** (TECNICO) | §23, e la domanda aperta di `20260906-14` |
+| `20260907-06` | `dbops.vw_processi_programmazione`: colonna **`giornale_ultima_corsa_pgagent`**, e il confronto legge quella | §9.5-bis |
+| `20260907-07` | `dbops.vw_processi_programmazione_da_guardare`: espone la data del verdetto, e il `COMMENT` perde il fatto datato | §9.5-bis e §22 |
+| `80_data` | `codici_errore.csv` + `messaggi_errore.csv`: il codice nuovo e la sua frase (id 1055) | mirror `runOnChange`, nessun changeSet |
+| `db/baseline-codici-errore-famiglie.tsv` | la ri-base dei **sette** | §23 |
+
+⚠️ **I due CSV sono stati verificati risvegliabili prima di toccarli**
+(linee-guida-sql §11.2): 847 codici + 842 messaggi ricaricati in temp table e
+ri-upsertati in una transazione annullata. Un mirror `runOnChange` rilegge
+**tutto** il file, e una riga di qualcun altro che un guard entrato dopo non
+accetta più sarebbe una mina armata.
+
+### 24.2 I pgTAP
+
+| File | Cosa |
+| --- | --- |
+| `dbops/test-vw-processi-programmazione.sql` | plan 10 → **13**: l'11 è il §9.5-bis costruito, il 12 e il 13 sono il vocabolario chiuso delle **origini** — e il 5 e il 6 sono stati **riscritti** (sotto) |
+| `dbops/test-vw-processi-programmazione-da-guardare.sql` | plan 6 → **7**: la prova del verdetto deve stare nella riga |
+| `config/test-fn-email-sistema.sql` | il test 7 chiede ora la **frase**, non il solo SQLSTATE |
+| `dbops/test-vw-codici-errore-valore-atteso.sql` | plan 6 → **7**: il test 5 **spezzato in due** — §24.3-bis |
+
+### 24.3 🔴 Un difetto trovato provando al contrario, e non era mio
+
+Rompendo la vista in uno dei modi previsti — la `FILTER` che nomina l'origine
+sbagliata — i test **non diventavano rossi: saltavano**.
+
+⛔ La causa è nel test 5, che sceglieva il proprio soggetto con
+`WHERE stato = 'OK'`: **chiedeva alla vista sotto esame di indicargli da sé chi
+esaminare**. Basta una rottura che elimini tutti gli `OK` perché la `SELECT` non
+trovi nessuno, e allora i test 5, 6, 11 e 13 dichiarano «nessun processo sano su
+questo database» e passano. ⚠️ È la forma classica del **verde per sottrazione**:
+il file smette di verificare senza dirlo, e nessuno lo nota perché non è rosso.
+
+✅ Corretto: il soggetto si sceglie sulla **struttura** — canale dichiarato, job
+acceso, almeno una corsa di pgAgent — cioè sulle **precondizioni del ramo**,
+nessuna delle quali dipende dal giornale, che è la cosa sotto esame.
+⭐ E il test 6 è stato riscritto insieme: pretendeva che il processo *«risultasse
+OK prima»*, cioè faceva della popolazione di oggi la propria asserzione. Ora
+costruisce anche quel verso — si rimette una corsa di pgAgent e si pretende `OK`.
+*Il caso si costruisce, non si cerca* (AGENTS.md, corollario sui test).
+
+### 24.3-bis 🔴 E un secondo, il giorno dopo: un test rosso su una RIPARAZIONE
+
+Applicato il migrate l'**8 settembre**, `dbops/test-vw-codici-errore-valore-atteso.sql`
+è diventato rosso sul test 5 — e **non per una regressione**.
+
+Quel test diceva: *«`E_VALIDAZIONE` porta `VALORE_ATTESO` e affiora fra i
+candidati della query (1)»*. Era vero il 7 settembre, ed era il **sintomo** che
+il §8.4 aveva previsto. ⛔ Ma il `20260907-05` quel sintomo l'ha **curato**: dato
+alla terza guardia un codice suo, `E_VALIDAZIONE` è tornata a una famiglia sola e
+ha giustamente smesso di affiorare.
+
+⚠️ **Il file lo aveva anche previsto**, e con parole sue: *«se quella funzione un
+giorno cambia forma, questo test diventa rosso — ed è corretto, perché quella
+funzione È il soggetto»*. Ma quel «corretto» presupponeva una **regressione**.
+⛔ *Un test che diventa rosso quando il difetto viene sanato spinge a rimettere il
+difetto, o a cancellare il test.* È il verso sbagliato, e non lo si nota finché la
+riparazione non arriva.
+
+⭐ **Il rimedio non è togliere l'asserzione, è spezzarla in due**, e le due
+insieme dicono più di quanto dicesse l'originale:
+
+| | Che cosa asserisce | Perché non invecchia |
+| --- | --- | --- |
+| **5** | la guardia segnalata è **leggibile** e ha un **codice suo** (`E_EMAIL_LOG_NON_DI_SISTEMA` porta `VALORE_ATTESO`) | è la *capacità* del classificatore, non lo stato di un codice |
+| **6** | `E_VALIDAZIONE` **non copre più** quella forma | è l'**invariante della riparazione**: rimettercela fa rosso |
+
+⛔ E il 6 serve davvero: senza, rimettere quella guardia su `E_VALIDAZIONE` non
+farebbe rosso **niente** — il 5 resterebbe verde perché guarda l'altro codice, e
+il rubinetto degli accumulatori non se ne accorgerebbe più, perché ormai quella
+famiglia sta in baseline.
+⚠️ Il 6 è un'asserzione **negativa**, quindi passerebbe a vuoto su un
+classificatore che avesse smesso di leggere la forma: a tenerlo onesto è il test
+1, che sulla stessa forma pretende `VALORE_ATTESO`. Vanno letti insieme.
+
+⭐ **La lezione è gemella di quella del §24.3**, un piano più su: là il test
+chiedeva il proprio *soggetto* all'oggetto esaminato, qui asserisce il *sintomo*
+invece del comportamento. In tutti e due i casi ciò che era scritto era vero **il
+giorno in cui è stato scritto**, ed è il modo in cui un file di test diventa un
+registro di fotografie.
+
+### 24.4 ⭐ Provato al contrario, tutto
+
+| si rompe… | diventa rosso |
+| --- | --- |
+| il `CASE` torna a confrontare `giornale_ultima_corsa` (il difetto del §9.5-bis) | 11 e 13 (panorama) |
+| la `FILTER` nomina un'origine diversa da `PGAGENT` | 6 e 13 (panorama) |
+| un'origine nuova entra nel `CHECK` e nessuno le dà un verdetto | 12 (panorama) |
+| la vista-presidio perde la colonna su cui poggia il verdetto | 7 (presidio) |
+| la terza guardia torna a `E_VALIDAZIONE` (si disfa lo split) | 7 (email), **5 e 6** (valore atteso) |
+| il classificatore torna alle quattro famiglie | 1, 5 e 7 (valore atteso) — ⚠️ **non il 6**: è l'asserzione negativa, e passa a vuoto. La tiene onesta il test 1 |
+
+⚠️ La riga B è la prova che la correzione del §24.3 serviva: **prima** quella
+rottura produceva quattro `SKIP` e zero rossi.
+
+### 24.5 Le misure, datate
+
+Lette su dbdev il **2026-09-07**, con i changeSet caricati in transazioni
+annullate. Sono fatti, non ragioni.
+
+| | prima | dopo |
+| --- | ---: | ---: |
+| codici che il rubinetto chiama accumulo | 8 | **7** |
+| `E_VALIDAZIONE`: famiglie | `PARAMETRO,VALORE_ATTESO` | **`PARAMETRO`** |
+| righe del presidio | 0 | **0** |
+| `sync_auth_user_expired_daily`: giornale ultima corsa | 11:11 (collaudo) | **06:00** (pgAgent) |
+| righe di collaudo nel giornale | 6 | **0** |
+| baseline B-7: codici presidiati | 91 | **149** |
+
+⭐ I 149 contro 91 non sono codici nuovi: sono i codici che `VALORE_ATTESO` ha
+reso **leggibili**, e che prima la baseline non presidiava affatto perché
+cadevano tutti in `IGNOTO`. La copertura del rubinetto è cresciuta del 64%
+senza che nessuno abbia scritto un codice.
+
+### 24.6 🔵 Che cosa resta, e a chi
+
+* 🔵 **Al backend — due righe, ed è la conseguenza dichiarata del codice nuovo.**
+  `E_EMAIL_LOG_NON_DI_SISTEMA` fa diventare rosso
+  `test_il_file_generato_e_allineato_al_catalogo` (opt-in `ZEROERP_TEST_DB_E2E`,
+  acceso in CI) **appena il seed è applicato**. Servono:
+  1. `python manage.py genera_error_policies` — rigenera
+     `error_policies_generated.py`, che ⛔ non si modifica a mano;
+  2. una frase **senza segnaposto** in `error_messages_fallback.py`, come
+     pretende `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`.
+
+  ⚠️ Il costo era noto **prima** di decidere, non scoperto dopo: è scritto in
+  `api.md` §Tassonomia errori, ed è il prezzo di non far marcire la baseline nel
+  verso permissivo.
+  🔴 **Verificato l'08-09, a migrate fatto: è ancora da fare.** Il codice è nel
+  catalogo (`config.vw_codici_errore_identita` lo espone) e **non** è nei due
+  file Python — quindi `test_il_file_generato_e_allineato_al_catalogo` è rosso
+  con `ZEROERP_TEST_DB_E2E=1`, cioè in CI.
+* 🔵 **Al backend, tre riferimenti da aggiornare** — questo documento è passato in
+  `work-done/`, e tre file di `backend/` lo citano ancora come
+  `work-in-progress/…`. Sono fuori dal perimetro DB, quindi li lascio scritti
+  qui invece di toccarli: `apps/anagrafiche/management/commands/sync_auth_user_active.py`
+  (riga 26), `apps/core/services/processi.py` (riga 47) e `deploy/sveglie.json`
+  (chiave `_ritirate`). ⚠️ Un puntatore che non risolve più si legge come «il
+  brief non esiste», che è il contrario di quello che dice.
+* ✅ **La baseline è confermata dal migrate vero** (08-09): zero su tutte e tre
+  le colonne. Era stata committata come scatto preso con `20260907-05` caricato
+  in una transazione annullata — cioè una previsione — e la misura non l'ha
+  smentita.
+* ⚠️ **Una svista di forma vista di passaggio, non sanata.** Le ultime quattro
+  righe appese ai due CSV dei codici errore (id 1051-1054, fra cui
+  `E_EMAIL_LOG_INESISTENTE`) hanno gli **apostrofi raddoppiati** — `l''utente`,
+  `sull''emittente` — perché scritte come se fossero letterali SQL. In un CSV
+  non serve, e il doppio apostrofo arriva **a video all'operatore**: 4 note e 4
+  messaggi su 373 e 843. Le righe nuove di oggi sono scritte con l'apostrofo
+  singolo, come le altre 267. È una riga di `sed` sui due file, e non l'ho fatta
+  perché tocca dati di un cantiere chiuso: basta dirlo.
+* ✅ **Migrate applicato l'8 settembre, e il conto torna.** I quattro rossi
+  pre-apply erano attesi (chiedevano colonne e un codice che i changeSet
+  portano) e sono rientrati tutti. Misurato dopo l'apply:
+
+  | | esito |
+  | --- | --- |
+  | `dbops/test-vw-processi-programmazione.sql` | ✅ 13/13 |
+  | `dbops/test-vw-processi-programmazione-da-guardare.sql` | ✅ 7/7 |
+  | `dbops/test-processi-registro.sql` | ✅ |
+  | `config/test-fn-email-sistema.sql` | ✅ 8/8 |
+  | `dbops/test-vw-codici-errore-valore-atteso.sql` | 🔴 → ✅ 7/7 **dopo la correzione del §24.3-bis** |
+  | `scripts/codici-errore-baseline.sh` | ✅ **0 accumuli · 0 ristretti · 0 rientrati** |
+
+  ⭐ Lo zero su tutte e tre le colonne del rubinetto è la conferma che la
+  baseline committata era lo scatto giusto: era stata presa con `20260907-05`
+  caricato in una transazione annullata, e il migrate vero non l'ha smentita.
+
+* ⚠️ **Un presidio di questo cantiere dà un verdetto che dipende da CHI lo
+  lancia, ed è bene saperlo.** `scripts/sql/guardrail_riferimenti_morti.sql` su
+  dbdev è **rosso da owner** e **verde da `zeroerp_app`**, su
+  `dbops.fn_get_pgagent_job_stato` (nata qui, `20260906-08`).
+  ⭐ La ragione è la funzione stessa: `plpgsql_check` ne **compila** il corpo, e
+  `FROM pgagent.pga_job` fallisce per **permesso** a chi non ha `USAGE` (42501) e
+  per **assenza** dove lo schema non c'è (42P01, la CI) — ma da owner compila e
+  basta. ⇒ Nessun difetto, quindi la riga di esenzione risulta «di troppo».
+  ⛔ **Non si toglie**: in CI quella riga serve, e toglierla farebbe diventare
+  rossa una build oggi verde.
+  ⚠️ Il `motivo` scritto in registro dichiara **due** facce che non convivono
+  mai; le facce sono **tre**, e la terza è *nessun difetto*. Il registro non sa
+  esprimere «difetto solo per certi lettori», ed è un limite del presidio, non
+  di questa voce. ⇒ Regola pratica: quel guardrail si lancia con il ruolo che il
+  difetto lo **subisce** (`zeroerp_app`), che è anche quello che la CI simula.
+
+* **A noi**: niente.
+
+### 24.7 ⭐ Che cosa lascia, oltre alle correzioni
+
+Tre volte in due giorni, su quattro oggetti diversi, è servita la **stessa
+forma**: un vocabolario chiuso scritto in due posti, tenuto insieme da un pgTAP
+che legge l'elenco da `pg_constraint` e pretende un verdetto **dichiarato** per
+ogni valore.
+
+| vocabolario | dove è dichiarato | dove è usato |
+| --- | --- | --- |
+| gli stati del panorama | il `CASE` | `da_guardare`, accanto — §8.2 |
+| i canali dei processi | `chk_processi_canale` | il `CASE` — §8.3 |
+| le origini delle corse | `chk_job_run_log_origine` | la `FILTER` — §9.5-bis |
+| l'interruttore delle viste | (nessuno: era un elenco) | quattro elenchi a mano — §10 |
+
+⭐ L'ultima riga è quella che spiega le altre tre: **un presidio che elenca copre
+ciò che qualcuno si è ricordato di scriverci**, e una vista era rimasta scoperta
+per due mesi. Le prime tre non elencano: obbligano a decidere, sul posto, chi
+aggiunge un valore.
+
+⛔ E la lezione del §24.3 è la sua gemella, un piano più sotto: **un test che
+chiede al proprio soggetto di indicarsi da sé non è un test**. Il verso in cui
+fallisce non è il rosso — è il silenzio.

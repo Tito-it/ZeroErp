@@ -117,7 +117,7 @@
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_coda_lavori_da_guardare](views/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
 - [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
-- [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-08-21)
+- [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_emittenti_non_serviti](views/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
@@ -135,7 +135,7 @@
 - [vw_processi_dominio_senza_emittente](views/vw_processi_dominio_senza_emittente.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_senza_identita](views/vw_processi_dominio_senza_identita.md) — (latest review 04-09-2026)
 - [vw_processi_dominio_su_pgagent](views/vw_processi_dominio_su_pgagent.md) — (latest review 05-09-2026)
-- [vw_processi_programmazione](views/vw_processi_programmazione.md)
+- [vw_processi_programmazione](views/vw_processi_programmazione.md) — (latest review 07-09-2026)
 - [vw_processi_programmazione_da_guardare](views/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](views/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_riferimenti_morti_da_sanare](views/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)

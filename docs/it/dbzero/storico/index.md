@@ -30,6 +30,7 @@
 - [eventi_assets](tabelle/eventi_assets.md)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md)
 - [fatturazione_lotti_attivita](tabelle/fatturazione_lotti_attivita.md)
+- [fatturazione_lotti_esiti](tabelle/fatturazione_lotti_esiti.md)
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md)
 - [fatturazione_lotti_gruppi](tabelle/fatturazione_lotti_gruppi.md)
 - [fatture](tabelle/fatture.md)
