@@ -1,0 +1,295 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Chi scrive una segnalazione puo' finalmente dire DI CHI E'.
+#   Richiesta BE del 2026-09-08 (§3.1) · brief-db-uscita-documento-dal-giro §6.1.
+#
+# ── ⛔ IL DIFETTO: LA COLONNA C'E', IL CANALE PER RIEMPIRLA NO ────
+#   Il `20260908-02` ha dato a `vendite.fatturazione_lotti_log` la colonna
+#   `gruppo_key` — «di quale DOCUMENTO parla questa segnalazione», NULL = e' del
+#   giro. Ma `vendite.fn_log_pipeline_fase` e' l'UNICO canale con cui il backend
+#   scrive su quel registro (PipelineErrorLogger.log_error ->
+#   VenditePipelineRepository.log_pipeline_fase), e la sua firma quel parametro
+#   non ce l'ha.
+#   ⇒ Il backend puo' sapere di chi e' la segnalazione e non avere dove metterlo.
+#   E finche' e' cosi', il verbo «togli questo documento dal giro» — che c'e', e
+#   funziona — non sblocca NIENTE sulla corsia del pull: l'unica segnalazione che
+#   blocca nasce con `gruppo_key` NULL, cioe' «e' del giro», e per la D-6 una
+#   segnalazione del giro deve fermare il giro. La regola e' giusta; a mancare e'
+#   chi dichiara il proprietario.
+#
+# ── ⚠️ IN CODA E CON DEFAULT ────────────────────────────────────
+#   Il parametro e' l'OTTAVO. Le quattro funzioni DB chiamanti
+#   (fn_snapshot_fattura_lotto, fn_genera_scadenze_lotto, fn_genera_scadenze_fattura,
+#   fn_log_lotto_esito_fatture) e la chiamata POSIZIONALE a sei argomenti del
+#   backend (apps/vendite/db/pipeline_repository.py) continuano a funzionare
+#   identiche. ⭐ E il `DEFAULT NULL` dice il vero: NULL e' gia' il valore che
+#   significa «questa segnalazione e' del giro», non un ripiego.
+#
+# ── ⚠️ E' UN DROP + CREATE, ANCHE SE LA RETURNS NON CAMBIA ───────
+#   Aggiungere un parametro con DEFAULT non SOSTITUISCE la funzione: ne crea un
+#   OVERLOAD. Con la vecchia a sette parametri ancora viva, ogni chiamata a sei
+#   o sette argomenti diventerebbe AMBIGUA e fallirebbe. Stessa trappola gia'
+#   dichiarata nel `20260821-39`, che aggiunse il settimo.
+#
+# ── ⭐ UNA COLONNA, NON `meta` — ED E' L'OPPOSTO DI `error_code` ─
+#   Il codice errore sta in `meta` perche' e' un dato locale al log e le righe
+#   gia' scritte non l'avranno mai. La `gruppo_key` no: e' un ASSE DI JOIN — la
+#   legge il conteggio di `fn_get_lotto_segnalazioni_summary` per non contare le
+#   critiche dei documenti usciti, e il presidio
+#   `vendite.vw_segnalazioni_con_documento_ignoto`. Un dato su cui si fa
+#   `EXISTS` non vive in un jsonb.
+#
+# ── ⛔ NESSUNA VERIFICA CHE IL DOCUMENTO ESISTA, E VA DETTO ──────
+#   Sarebbe la cosa piu' naturale da aggiungere ed e' proprio quella da NON
+#   fare: questa funzione scrive un LOG, e un log non deve poter fallire per un
+#   riferimento sbagliato in cio' che sta registrando. Fallirebbe dentro il ramo
+#   EXCEPTION di qualcun altro, sostituendo il guasto vero con il proprio — e'
+#   la stessa ragione per cui il codice errore non viene confrontato col
+#   catalogo.
+#   ⭐ Il presidio esiste gia' e sta al posto giusto:
+#   `vendite.vw_segnalazioni_con_documento_ignoto` guarda e non blocca, e il suo
+#   invariante e' «deve restare vuota».
+#
+# ── ⚠️ UNA STRINGA VUOTA E' ASSENZA, MA QUI COSTA — QUINDI SI DICE ─
+#   `''` o soli spazi vengono normalizzati a NULL, come gia' si fa per
+#   `p_error_code`: la colonna ha DUE stati dichiarati (NULL = del giro, una
+#   chiave = di quel documento) e una stringa vuota sarebbe un terzo che nessun
+#   lettore conosce — `IS NOT NULL` la farebbe passare per «nomina un
+#   documento», e la colonna «Documento» mostrerebbe il vuoto.
+#   ⛔ Ma la conseguenza NON e' cosmetica come per il codice errore: quella riga
+#   bloccherebbe il lotto per sempre, e nessuno potrebbe toglierla perche' non
+#   c'e' nessun documento da togliere. ⇒ Il caso si normalizza E si dichiara,
+#   con un WARNING: e' l'unica traccia che qualcuno ha provato a dire di chi era
+#   la segnalazione senza riuscirci.
+#   ⛔ Non si solleva: vedi sopra, un log non fallisce.
+#
+# ── ⭐ TIPI ANCORATI ANCHE NEL `DROP` E NEL `COMMENT` ────────────
+#   La firma e il DECLARE erano gia' ancorati dal `20260821-39` e restano; il
+#   parametro nuovo va a `fatturazione_lotti_log.gruppo_key%TYPE`.
+#   ⚠️ Ma l'ancora vale anche nelle firme di `DROP FUNCTION` e
+#   `COMMENT ON FUNCTION`, che qui erano scritte a tipi RISOLTI — cioe' DEDOTTI.
+#   E' esattamente il difetto che il 2026-08-31 ha fatto morire un migrate con
+#   «la funzione non esiste», un messaggio che manda a cercare la funzione e non
+#   il tipo. Con `%TYPE` l'identificatore non puo' divergere dai parametri:
+#   e' la stessa espressione. ⭐ Verificato sul database che PostgreSQL li
+#   accetti in entrambi i comandi.
+#   ⚠️ Il caso che si sarebbe sbagliato a mano e' `p_status`: la colonna e'
+#   `character(1)`, e nella lista di un DROP il typmod si perde — scriverlo
+#   giusto richiede di saperlo, ancorarlo no.
+#
+# Origine del corpo: pg_get_functiondef del 2026-09-08 (verificato identico alla
+#   doc auto-gen dbzero).
+# Verifica: db/pgtap/vendite/test-gruppo-key-segnalazioni-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-20-update-fn-log-pipeline-fase-gruppo-key-mctit.yaml
+
+  - changeSet:
+      id: 20260908-20-update-fn-log-pipeline-fase-gruppo-key
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fn_log_pipeline_fase accetta p_gruppo_key (ottavo, in coda, con
+        default) e lo scrive nella colonna omonima di fatturazione_lotti_log.
+        E' l'unico canale con cui il backend scrive quel registro: senza il
+        parametro, la colonna nata col 20260908-02 resta vuota e il verbo
+        «togli il documento dal giro» non sblocca la corsia del pull.
+        DROP + CREATE: un parametro nuovo creerebbe un overload ambiguo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+                columnName: gruppo_key
+            # ⚠️ Le due colonne fuori schema a cui la firma si ANCORA: senza,
+            #   il CREATE muore con «relation does not exist» invece che con un
+            #   cancello che spiega. Le altre cinque stanno su tabelle gia'
+            #   pretese qui sopra.
+            - columnExists:
+                { schemaName: config, tableName: stati_doc_fiscale, columnName: id }
+            - columnExists:
+                { schemaName: config, tableName: codici_errore, columnName: codice }
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_log_pipeline_fase'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP obbligatorio: il parametro nuovo creerebbe un OVERLOAD, e
+              --    con la vecchia firma a sette ancora viva ogni chiamata a sei o
+              --    sette argomenti diventerebbe ambigua.
+              DROP FUNCTION IF EXISTS vendite.fn_log_pipeline_fase(
+                  vendite.fatturazione_lotti.id%TYPE,
+                  config.stati_doc_fiscale.id%TYPE,
+                  vendite.fatturazione_lotti_log.fase%TYPE,
+                  vendite.fatturazione_lotti_log.status%TYPE,
+                  vendite.fatturazione_lotti_log.messaggio%TYPE,
+                  vendite.fatturazione_lotti_log.meta%TYPE,
+                  config.codici_errore.codice%TYPE);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(
+                  p_lotto_id             vendite.fatturazione_lotti.id%TYPE,
+                  -- ⚠️ Ancorato al CATALOGO degli stati e non alla colonna
+                  --    omonima della tabella di log: cio' che il parametro
+                  --    riceve e' un id di config.stati_doc_fiscale.
+                  p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                  p_fase                 vendite.fatturazione_lotti_log.fase%TYPE,
+                  p_status               vendite.fatturazione_lotti_log.status%TYPE DEFAULT 'I'::bpchar,
+                  p_messaggio            vendite.fatturazione_lotti_log.messaggio%TYPE DEFAULT NULL,
+                  p_meta                 vendite.fatturazione_lotti_log.meta%TYPE DEFAULT '{}'::jsonb,
+                  p_error_code           config.codici_errore.codice%TYPE DEFAULT NULL,
+                  -- ⭐ Ancorato alla COLONNA di destinazione e non a un catalogo:
+                  --    la chiave di gruppo non e' una riga di catalogo, e'
+                  --    calcolata da vendite.fn_build_gruppo_fatturabile_key. La
+                  --    sola tabella che ne definisce il dominio qui e' quella in
+                  --    cui il valore atterra. In coda per non spostare i sette
+                  --    esistenti.
+                  p_gruppo_key           vendite.fatturazione_lotti_log.gruppo_key%TYPE DEFAULT NULL
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_tipo_lotto      vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
+                  v_error_code      config.codici_errore.codice%TYPE;
+                  v_gruppo_key      vendite.fatturazione_lotti_log.gruppo_key%TYPE;
+                  v_meta            vendite.fatturazione_lotti_log.meta%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_status IS NULL OR p_status NOT IN ('I', 'W', 'C') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_status', 'valore', p_status), NULL::uuid, concat('p_status=', coalesce(p_status::text, 'NULL'), ' (ammessi: I, W, C)'));
+                  END IF;
+
+                  SELECT l.tipo_lotto, l.stato_operativo INTO v_tipo_lotto, v_stato_operativo
+                    FROM vendite.fatturazione_lotti l WHERE l.id = p_lotto_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  -- ⭐ IL CODICE ERRORE ENTRA IN META.
+                  --    Normalizzato: una stringa di soli spazi e' assenza, non un
+                  --    codice — e in JSON diventerebbe una chiave presente e vuota,
+                  --    cioe' peggio che assente (la lista mostrerebbe una cella
+                  --    bianca dove «non lo so» e «non c'e'» si leggono uguali).
+                  --    ⚠️ NESSUNA verifica contro config.codici_errore: questa
+                  --    funzione scrive un LOG, e un log non deve poter fallire per
+                  --    un refuso nel codice che sta registrando. Fallirebbe dentro
+                  --    il ramo EXCEPTION di qualcun altro, sostituendo il guasto
+                  --    vero con il proprio.
+                  v_error_code := NULLIF(btrim(COALESCE(p_error_code, '')), '');
+                  v_meta       := COALESCE(p_meta, '{}'::jsonb);
+
+                  IF v_error_code IS NOT NULL THEN
+                      -- Il parametro VINCE su una chiave omonima gia' presente in
+                      -- p_meta: e' quello dichiarato in firma, ed e' l'unico che
+                      -- un lettore sa di dover cercare.
+                      v_meta := v_meta || jsonb_build_object('error_code', v_error_code);
+                  END IF;
+
+                  -- ⭐ IL PROPRIETARIO DELLA SEGNALAZIONE ENTRA IN UNA COLONNA.
+                  --    NULL = «e' del GIRO», ed e' un valore dichiarato, non
+                  --    un'assenza di informazione: una segnalazione del giro deve
+                  --    fermare il giro e non ha nessun documento da togliere.
+                  --    ⚠️ Una stringa vuota o di soli spazi diventa NULL: la
+                  --    colonna ha DUE stati, e un terzo che nessun lettore conosce
+                  --    passerebbe per «nomina un documento» — con la conseguenza
+                  --    che quella riga bloccherebbe il lotto per sempre senza che
+                  --    nessuno possa toglierla.
+                  --    ⛔ Non si solleva (un log non fallisce), ma il caso si
+                  --    DICHIARA: e' l'unica traccia che qualcuno ha provato a dire
+                  --    di chi era la segnalazione senza riuscirci.
+                  v_gruppo_key := NULLIF(btrim(COALESCE(p_gruppo_key, '')), '');
+
+                  IF p_gruppo_key IS NOT NULL AND v_gruppo_key IS NULL THEN
+                      RAISE WARNING
+                          'fn_log_pipeline_fase: gruppo_key vuota sul lotto %: la segnalazione viene scritta come «del giro», e nessuno potra'' toglierla.',
+                          p_lotto_id;
+                  END IF;
+
+                  INSERT INTO vendite.fatturazione_lotti_log (
+                      lotto_id, data_ora, messaggio, status, disabilitato, fase,
+                      stato_doc_fiscale_id, tipo_lotto, stato_operativo, meta,
+                      gruppo_key,
+                      data_insert, user_insert, data_update, user_update
+                  )
+                  VALUES (
+                      -- ⭐ R-1 (24-08-2026): clock_timestamp() e non now(). Con
+                      --    now() ogni riga scritta dentro la stessa transazione
+                      --    usciva con lo stesso identico orario, e la storia di un
+                      --    lotto — che unisce TRE registri i cui contatori di riga
+                      --    non sono confrontabili fra loro — non era ordinabile.
+                      --    ⚠️ Gli ultimi quattro `now()` restano: quelli sono i
+                      --    campi di AUDIT, dove l'orario di transazione e' la
+                      --    convenzione della casa e non c'entra con l'ordinamento.
+                      p_lotto_id, clock_timestamp(), COALESCE(p_messaggio, p_fase, 'pipeline'), p_status,
+                      FALSE, p_fase, p_stato_doc_fiscale_id, v_tipo_lotto, v_stato_operativo,
+                      v_meta, v_gruppo_key,
+                      now(), current_user, now(), current_user
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_log_pipeline_fase(
+                  vendite.fatturazione_lotti.id%TYPE,
+                  config.stati_doc_fiscale.id%TYPE,
+                  vendite.fatturazione_lotti_log.fase%TYPE,
+                  vendite.fatturazione_lotti_log.status%TYPE,
+                  vendite.fatturazione_lotti_log.messaggio%TYPE,
+                  vendite.fatturazione_lotti_log.meta%TYPE,
+                  config.codici_errore.codice%TYPE,
+                  vendite.fatturazione_lotti_log.gruppo_key%TYPE)
+              IS 'Scrive una riga di log di FASE su vendite.fatturazione_lotti_log, arricchendola col tipo lotto e lo stato operativo letti dalla testata. '
+                 '⭐ rev 2026-09-08 (brief-db-uscita-documento-dal-giro §6.1, richiesta BE §3.1): accetta p_gruppo_key e lo scrive nella COLONNA omonima. '
+                 'E'' l''unico canale con cui il backend scrive quel registro, quindi senza il parametro la colonna nata col 20260908-02 resta vuota — e il '
+                 'verbo «togli questo documento dal giro» non sblocca niente sulla corsia del pull, perche'' l''unica segnalazione che blocca nasce a NULL, '
+                 'cioe'' «e'' del giro». ⭐ In una COLONNA e non in meta, all''opposto di error_code: la gruppo_key e'' un ASSE DI JOIN — la leggono il '
+                 'conteggio di fn_get_lotto_segnalazioni_summary e il presidio vw_segnalazioni_con_documento_ignoto — e un dato su cui si fa EXISTS non vive '
+                 'in un jsonb. ⚠️ NULL significa «la segnalazione e'' del GIRO» e blocca: e'' un valore dichiarato, non un''assenza. Una stringa vuota o di '
+                 'soli spazi viene normalizzata a NULL e il caso viene DICHIARATO con un WARNING — la colonna ha due stati, e un terzo passerebbe per «nomina '
+                 'un documento» lasciando una riga che blocca il lotto per sempre e che nessuno puo'' togliere. ⛔ NESSUNA verifica che il documento esista, '
+                 'di proposito: un log non deve poter fallire per un riferimento sbagliato in cio'' che registra — fallirebbe dentro il ramo EXCEPTION di '
+                 'qualcun altro. Il presidio e'' vw_segnalazioni_con_documento_ignoto, che guarda e non blocca. Il parametro e'' l''OTTAVO, in coda: le '
+                 'quattro funzioni DB chiamanti e la chiamata posizionale a sei argomenti del backend continuano a funzionare identiche. '
+                 '⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-2): accetta p_error_code e lo scrive in meta->>''error_code''. Nasce da una '
+                 'misura: NESSUNA funzione del database cattura CONSTRAINT_NAME, quindi il codice di dominio non veniva conservato da nessuna parte, e i log '
+                 'tenevano solo RETURNED_SQLSTATE, che per un errore di dominio e'' SEMPRE P0001 e non distingue niente. ⛔ NESSUNA validazione contro '
+                 'config.codici_errore, per la stessa ragione: il presidio dei codici non dichiarati vive in dbops.vw_codici_errore_da_dichiarare. '
+                 '⚠️ E'' comunque un DROP + CREATE — un parametro nuovo crea un overload, e con la vecchia firma viva ogni chiamata a sei o sette argomenti '
+                 'sarebbe ambigua.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: tornare alla firma a sette
+              --    parametri rimette il log di lotto nella condizione di non poter
+              --    dichiarare il proprietario di una segnalazione, cioe' il difetto
+              --    per cui questo changeSet esiste — e le righe scritte nel
+              --    frattempo terrebbero una colonna che nessuno sa piu' riempire.
+              --    Se serve davvero, si riapplica 20260821-39 (ultima revisione
+              --    della firma a sette) sapendo questo.
+              SELECT 1;
