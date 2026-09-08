@@ -274,10 +274,45 @@ class RegistriFormaTests(TestCase):
     def test_serie_default_non_e_scrivibile(self):
         self.assertIn("serie_default", _CAMPI_CREATE)
         self.assertNotIn("serie_default", _CAMPI_UPDATE)
-        # E le tre colonne che NESSUNO dei due verbi tocca.
-        for campo in ("uid", "id", "reset_policy", "emittente_soggetto_ruolo_id"):
+        # E le colonne che NESSUNO dei due verbi tocca.
+        for campo in ("uid", "id", "emittente_soggetto_ruolo_id"):
             self.assertNotIn(campo, _CAMPI_CREATE)
             self.assertNotIn(campo, _CAMPI_UPDATE)
+
+    # Scopo: (8c) `reset_policy` si SCEGLIE alla nascita e non si cambia piu'.
+    # ⭐ Il verso positivo conta quanto il negativo, ed e' nuovo dal 2026-09-08:
+    #    prima la politica era fuori da entrambi i verbi, quindi accesa nel
+    #    database (il CHECK ammette ANNUALE e NESSUNA dal 20260901-06, e
+    #    `fn_get_next_progressivo` ramifica) e irraggiungibile dall'applicazione.
+    # ⛔ E il verso negativo NON e' prudenza: la politica e' un asse della chiave
+    #    del contatore. Cambiarla su un registro che ha gia' consegnato numeri
+    #    sposta il secchio, il progressivo riparte da 1 e sbatte contro i numeri
+    #    gia' scritti. ⚠️ Nessun trigger lo rifiuta: `_CAMPI_UPDATE` e' l'unico
+    #    presidio, ed e' la ragione per cui questa riga esiste.
+    def test_reset_policy_si_crea_ma_non_si_modifica(self):
+        self.assertIn("reset_policy", _CAMPI_CREATE)
+        self.assertNotIn("reset_policy", _CAMPI_UPDATE)
+
+    # Scopo: (8d) «vuoto» su `reset_policy` vale «non l'ho scelto», e decide il
+    #        default della colonna.
+    # ⛔ Senza, `empty_to_none` manderebbe all'INSERT un NULL esplicito su una
+    #    colonna NOT NULL: l'operatore leggerebbe «campo obbligatorio» per una
+    #    scelta che il modello NON gli chiede di fare.
+    # ⚠️ Si asserisce che la chiave SIA STATA TOLTA, non che valga 'ANNUALE':
+    #    il default vive nella colonna, e ripeterlo qui creerebbe la terza sede
+    #    che questo test esiste per non avere.
+    def test_reset_policy_vuota_non_arriva_come_null(self):
+        for vuoto in ("", None):
+            with self.subTest(vuoto=vuoto):
+                dati = RegistriService()._normalizza({
+                    "codice": "X", "reset_policy": vuoto,
+                })
+                self.assertNotIn("reset_policy", dati)
+
+    # Scopo: il verso positivo — una politica scelta passa intatta.
+    def test_reset_policy_scelta_passa_intatta(self):
+        dati = RegistriService()._normalizza({"reset_policy": "NESSUNA"})
+        self.assertEqual(dati["reset_policy"], "NESSUNA")
 
 
 class RegistriPayloadTests(TestCase):

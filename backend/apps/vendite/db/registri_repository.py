@@ -63,9 +63,27 @@ _ORDER_DEFAULT = "codice"
 
 # Colonne scrivibili, per verbo.
 #
-# ⛔ FUORI DA ENTRAMBE: `id`, `uid`, `reset_policy` e `emittente_soggetto_ruolo_id`.
-#    `reset_policy` e' inchiodata ad ANNUALE dal CHECK `chk_registri_fatturazione_reset`
-#    (e' un FATTO, non un campo); l'emittente lo da' il contesto, non il form.
+# ⛔ FUORI DA ENTRAMBE: `id`, `uid` e `emittente_soggetto_ruolo_id`.
+#    L'emittente lo da' il contesto, non il form.
+#
+# ⭐ `reset_policy` E' IN CREATE E NON IN UPDATE, dal 2026-09-08.
+#    ⚠️ Qui c'era scritto che era «inchiodata ad ANNUALE dal CHECK
+#    `chk_registri_fatturazione_reset` (e' un FATTO, non un campo)», e quella
+#    frase e' SCADUTA IL GIORNO STESSO IN CUI E' STATA SCRITTA: il changeSet
+#    `20260901-06` ha allargato quel CHECK a ANNUALE **e** NESSUNA, e
+#    `fn_get_next_progressivo` ramifica davvero (sotto NESSUNA il secchio del
+#    contatore e' uno solo e vale 0). Restava un divieto APPLICATIVO motivato
+#    con un vincolo che non esisteva piu' — cioe' un parametro acceso nel
+#    database e irraggiungibile dall'applicazione, lo specchio esatto del
+#    difetto che il cantiere esiste per togliere: cio' che il documento afferma
+#    deve corrispondere a cio' che il database ammette.
+#    ⛔ IN UPDATE NO, e non e' prudenza: la politica e' un ASSE DELLA CHIAVE del
+#    contatore. Cambiarla su un registro che ha gia' consegnato numeri sposta il
+#    SECCHIO — il progressivo riparte da 1 su una chiave nuova e sbatte contro i
+#    numeri gia' scritti, con un errore che parla del numero e non nomina la
+#    causa. E' la stessa famiglia di guasti di `serie_default` qui sotto.
+#    ⚠️ Con una differenza che pesa: la forma del numero ha il suo trigger, qui
+#    NON c'e' nessun guard a rifiutare. L'unico presidio e' questa tupla.
 #
 # ⭐ I TRE CAMPI DI FORMA SONO IN UPDATE, ed e' una decisione del 2026-09-01.
 #    Il brief li teneva fuori come «ripiego prudente in attesa che il criterio
@@ -93,6 +111,7 @@ _CAMPI_CREATE: tuple[str, ...] = (
     "prefisso",
     "suffisso",
     "lunghezza_numero",
+    "reset_policy",
 )
 _CAMPI_UPDATE: tuple[str, ...] = (
     "codice",

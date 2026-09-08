@@ -56,6 +56,20 @@ _NEUTRI_SENZA_REGOLE_FISCALI: dict[str, object] = {
     "politica_data_documento": "OGGI",
 }
 
+# ⭐ COLONNE `NOT NULL` CHE HANNO UN DEFAULT A DATABASE. Per queste «campo
+#    assente» e «campo vuoto» vogliono dire la stessa cosa — *usa il default* —
+#    e l'unico modo di sbagliare e' mandare un `NULL` esplicito, che il vincolo
+#    respinge con un messaggio che parla di un campo obbligatorio invece che
+#    della scelta che l'operatore non ha fatto.
+# ⛔ Si TOGLIE la chiave, non si scrive qui il valore: il default vive nella
+#    colonna (`reset_policy DEFAULT 'ANNUALE'`), e ricopiarlo in Python
+#    creerebbe una terza sede — dopo il database e la costante del frontend —
+#    che nessun presidio tiene allineata.
+# ⚠️ Serve da quando `reset_policy` e' un campo scrivibile (2026-09-08):
+#    `empty_to_none` trasforma la stringa vuota in `None`, e senza questo passo
+#    un payload con `"reset_policy": ""` arriverebbe all'INSERT come NULL.
+_NOT_NULL_CON_DEFAULT_DB: frozenset[str] = frozenset({"reset_policy"})
+
 # ⭐ LE DUE VOCI CHE VALGONO IL CANTIERE, e dicono la stessa cosa su due assi.
 #
 # ⛔ NESSUNA DELLE DUE PUO' DIRE «esiste gia'» E BASTA. I due UNIQUE sono
@@ -119,9 +133,21 @@ _CHECK_CONSTRAINTS: dict[str, tuple] = {
         "I campi del limite di emissione e una politica data non neutra sono "
         "ammessi solo sui registri di famiglia FATTURA.",
     ),
+    # ⚠️ IL MESSAGGIO DICE COSA IL `CHECK` AMMETTE, non cosa il backend espone.
+    #    Fino al 2026-09-08 diceva «e' ANNUALE e non e' modificabile», ed era
+    #    falso dal 2026-09-01: il changeSet `20260901-06` ha allargato il vincolo
+    #    a ANNUALE **e** NESSUNA, e `fn_get_next_progressivo` ramifica davvero
+    #    (sotto NESSUNA il secchio e' uno solo e vale 0).
+    # ⛔ La frase non doveva parlare della whitelist del backend: questo e' il
+    #    messaggio di un vincolo del DATABASE, e se un giorno il campo si apre
+    #    e' l'unica cosa che l'operatore legge quando sbaglia il valore. Una
+    #    frase che nomina un divieto applicativo lo manderebbe a cercare il
+    #    permesso invece del valore ammesso.
     "chk_registri_fatturazione_reset": (
         E_VENDITE_VALIDATION,
-        "La politica di reset del contatore è ANNUALE e non è modificabile.",
+        "La politica di reset del contatore ammette solo ANNUALE (il "
+        "progressivo riparte a ogni anno) o NESSUNA (un contatore solo, che "
+        "non riparte mai).",
     ),
     "chk_registri_fatturazione_politica_data": (
         E_VENDITE_VALIDATION,
@@ -214,6 +240,11 @@ class RegistriService:
             for campo, neutro in _NEUTRI_SENZA_REGOLE_FISCALI.items():
                 if campo in dati and dati[campo] != neutro:
                     dati[campo] = neutro
+        # «Vuoto» su una NOT NULL con default = «non l'ho scelto»: si toglie la
+        # chiave e decide la colonna. Vedi `_NOT_NULL_CON_DEFAULT_DB`.
+        for campo in _NOT_NULL_CON_DEFAULT_DB:
+            if campo in dati and dati[campo] is None:
+                del dati[campo]
         return dati
 
     # Scopo: «la famiglia di questo registro ammette le regole fiscali?», cioe'

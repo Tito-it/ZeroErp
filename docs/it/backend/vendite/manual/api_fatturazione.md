@@ -269,7 +269,11 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   legge).
 - Ristampa: `{ "data": { "lotto_id": 117, "accodate": 4 } }`
 - Numerazione singolo lotto: esito dello step (`stato_doc_fiscale_id`,
-  `step_eseguiti`, `motivo_stop`). ⭐ Con `data_documento` nel body l'esito porta
+  `step_eseguiti`, `motivo_stop`, `errore`). ⚠️ È l'esito del **driver di
+  pipeline**, con lo stesso contratto — *un `200` non è un successo, si guarda
+  `motivo_stop`* — descritto una volta sola in
+  [api_run_lotto_pipeline_until_done.md](api_run_lotto_pipeline_until_done.md)
+  §Output. ⭐ Con `data_documento` nel body l'esito porta
   anche `data_documento`, `aggiornate`, `saltate_numerate`, `rate_rigenerate`:
   **le due conseguenze che l'operatore non si aspetta** sono un lotto numerato a
   metà e delle scadenze che si sono spostate. Chi non le mostra le nasconde.

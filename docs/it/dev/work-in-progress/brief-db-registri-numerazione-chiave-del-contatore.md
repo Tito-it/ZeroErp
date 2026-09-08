@@ -711,7 +711,7 @@ database ammette**.
 del §7.4. ⛔ Il che non dice *«non serve»*: dice che il ramo `NESSUNA` oggi non
 ha un controesempio, perché nessuno ha una strada per produrlo.
 
-**Cosa resta da decidere, ed è di Tid** — le due mosse sono indipendenti:
+**Cosa restava da decidere, ed era di Tid** — le due mosse erano indipendenti:
 
 1. ⚠️ **La riga falsa va tolta comunque**, anche scegliendo di non esporre
    niente: un commento che motiva un'esclusione con un vincolo che non esiste
@@ -725,3 +725,37 @@ ha un controesempio, perché nessuno ha una strada per produrlo.
    test 9 per il ramo `NESSUNA`, `test-registri-progressivi` test 4 per
    `ANNUALE` — i due rami sono coperti in due file diversi, e il gemello
    positivo c'è.
+
+### ✅ 11.5-bis — chiuse entrambe il 2026-09-08 (decisione di Tid: «sì, la scelta va in maschera»)
+
+⭐ **Ed era una TERZA riga falsa, non due**: l'elenco sopra ne nominava due
+(il commento del repository e il §2 del brief CRUD), e cercandole si è trovata
+la peggiore delle tre — `registri_service.py` traduceva
+`chk_registri_fatturazione_reset` con *«La politica di reset del contatore è
+ANNUALE e non è modificabile»*. ⛔ Le prime due sono **commenti**, che legge uno
+sviluppatore; questa è la frase che il **database manda a una persona** quando
+rifiuta il valore. Ora dice cosa il `CHECK` ammette — che è l'unica cosa vera
+che quel messaggio possa dire, e resta vera qualunque cosa il backend esponga.
+
+| Dove | Cosa cambia |
+| --- | --- |
+| `registri_repository.py` | `reset_policy` entra in `_CAMPI_CREATE`, **non** in `_CAMPI_UPDATE`; il commento dice la ragione vera |
+| `registri_service.py` | il messaggio del `CHECK` dice i due valori ammessi, non un divieto applicativo |
+| `views_registri.py` | il campo nello spec della POST; il commento della PATCH separa le **tre** ragioni che prima erano una |
+| `test_registri_service.py` | `test_reset_policy_si_crea_ma_non_si_modifica` — i due versi, positivo e negativo |
+| `constants.js` · `RegistroNumerazioneDrawer.vue` | `REGISTRO_RESET_POLICY` + il `Select` accanto a `serie_default`, **solo in creazione**; in modifica si legge |
+| `it.json` · `en.json` | `reset_policy`, `reset_annuale`, `reset_nessuna`, `reset_hint` |
+
+⚠️ **`_CAMPI_UPDATE` è l'UNICO presidio del verso negativo**, e va detto perché
+non somiglia agli altri campi di questa maschera: la forma del numero ha il suo
+trigger (`trg_registri_fatturazione_a10_guard_forma_numero_upd`), qui **non c'è
+nessun guard a rifiutare**. Se un domani la tupla si allarga, il database non
+dice niente e il contatore riparte da 1 su un secchio nuovo.
+
+⭐ **Provato sul database vero, e in ENTRAMBI i versi** — dentro una transazione
+annullata, zero righe residue: creazione con `NESSUNA` → la politica arriva a
+destinazione; update che prova a cambiarla → **ignorato**, mentre la descrizione
+passa (cioè l'update funziona, non è fermo); `fn_get_next_progressivo` sul
+registro `NESSUNA` → secchio **`anno = 0`**; e sul gemello `ANNUALE` → secchio
+**`2026`**. ⚠️ Il quarto serve a non essere verdi per sottrazione: senza, un
+`v_anno` sempre a zero passerebbe le prime tre.
