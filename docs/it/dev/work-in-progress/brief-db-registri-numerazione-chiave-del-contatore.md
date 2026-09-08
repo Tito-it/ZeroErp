@@ -21,6 +21,14 @@
 > servono a un uso solo: dire se qualcosa *smentisce* il piano. A decidere è la
 > struttura.
 >
+> 🔭 **Da leggere per primo, al 2026-09-08: §11.4 e §11.5.** Il cantiere è
+> **applicato e verde** (22 changeSet `EXECUTED`, i tre pgTAP del cantiere
+> 9/9 + 6/6 + 6/6, cancelli statici della CI verdi). Di aperto restano **tre
+> cose, nessuna delle quali è codice DB da scrivere**: la firma senza `%TYPE`
+> (decisione di Tid), l'unicità di `commesse` su una stringa sola (debito
+> dichiarato) e — nuova — `reset_policy` accesa nel database e irraggiungibile
+> dall'applicazione, con due documenti che la dicono ancora inchiodata (§11.5).
+>
 > **Correlati:**
 > [brief-db-prefisso-sul-registro](../work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md) ·
 > [brief-db-registri-di-numerazione-emittente-e-trasloco](../work-done/brief-db-registri-di-numerazione-emittente-e-trasloco.md) ·
@@ -586,6 +594,20 @@ essere `NULL` su un database ricostruito — e a leggerla è
 `fn_provision_registri_emittente`, che darebbe ai registri nuovi un prefisso
 vuoto. **Da verificare**, non è un'affermazione.
 
+> ✅ **Il sospetto era fondato, e non è rimasto tale: la CI lo ha trovato il
+> 2026-09-02**, con la stessa faccia di un altro difetto («Expected '0' got
+> '4'») su una preCondition diversa — la terza di
+> `20260831-53`, quella che pretende il `prefisso_default` sulle famiglie
+> attive. ⭐ **E il rimedio è quello che questo §11.2 aveva già scritto per la
+> serie**: il valore va dove la sua sede dice, cioè un CSV di `80_data` —
+> `famiglie_documento_formato.csv` (`prefisso_default` + `lunghezza_default`),
+> caricato da `20260902-53-01-seed-famiglie-documento-formato`, forma copiata
+> riga per riga da `20260901-12`. Il backfill di `20260831-51` resta e non fa
+> danno: su un database nuovo trova zero righe, su uno vecchio i valori giusti.
+> ⚠️ Riverificato il 2026-09-08 sul database: le cinque famiglie portano il
+> prefisso, e la `FATTURA` lo ha `NULL` **di proposito** — il suo numero è nudo,
+> ed è il token `NULL` del CSV a dirlo.
+
 **2. Il guard della serie ha due accorgimenti che tengono in piedi il migrate**,
 e sono la ragione per cui non è un `CHECK` né un guard ingenuo:
 
@@ -618,14 +640,25 @@ cancello sull'arità non lo avrebbe visto.
 
 ### 11.4 🔭 Cosa resta
 
-* ⚠️ **Due `reason_key`** ora emesse dal database e assenti dai `locales`, e
-  `check_i18n_keys.py` è **rosso** finché il FE non le aggiunge — è il
-  comportamento voluto (§12.3), non un incidente:
-  * `amministrazione.registri_fatturazione.forma_blocco.ha_numerato`
-  * `amministrazione.registri_fatturazione.serie_blocco.non_gestita`
+> ⭐ **Riverificato il 2026-09-08**, riga per riga e contro il database, non
+> contro il ricordo: delle quattro voci qui sotto **due sono chiuse**, una resta
+> **decisione di Tid**, una resta **debito dichiarato** — e ne è emersa una
+> **quinta**, che questo elenco non prevedeva (§11.5). Le voci superate si
+> marcano e non si cancellano: la riverifica successiva deve poter vedere anche
+> la spunta di prima.
 
-  ⛔ Vanno in `it.json` **e** `en.json` nello stesso giro del lavoro frontend.
-  Chi apre una PR prima di allora la trova rossa, e non per colpa sua.
+* ✅ ~~⚠️ **Due `reason_key`** ora emesse dal database e assenti dai `locales`~~ —
+  **chiuse.** Le due chiavi ci sono in `it.json` **e** `en.json`,
+  `scripts/check_i18n_keys.py` è **verde** (*«nessuna chiave emessa dal DB
+  risulta irrisolvibile»*, riverificato il 2026-09-08), e la seconda è **resa a
+  video**: `RegistroNumerazioneDrawer.vue` la stampa sul campo `serie_default`
+  in sola lettura, che è la sede per cui la check era stata scritta (§5.3).
+  ⚠️ **Ed è la spunta che vale meno delle altre se si guarda solo il
+  cancello**: `check_i18n_keys.py` verifica che la chiave *esista*, non che
+  qualcuno la *chieda* — quello si guarda a video, ed è la regola di
+  `linee-guida-sql.md` §12.5.5. Qui è stato guardato il chiamante.
+  * ~~`amministrazione.registri_fatturazione.forma_blocco.ha_numerato`~~ ✅
+  * ~~`amministrazione.registri_fatturazione.serie_blocco.non_gestita`~~ ✅
 * ⚠️ **`script.fn_check_registro_forma_modificabile` ha la firma senza `%TYPE`**
   (`p_registro_id bigint` invece di `vendite.registri_fatturazione.id%TYPE`,
   come fa la gemella). ⛔ È in un changeSet **già pushato**, quindi non si
@@ -634,7 +667,61 @@ cancello sull'arità non lo avrebbe visto.
   **debito di sorgente**, non di comportamento: si paga alla prossima revisione
   di quella funzione, o con un changeSet dedicato se si preferisce la coerenza
   degli YAML. Decisione a Tid.
+  ⚠️ **Ancora aperto al 2026-09-08**, e la verifica è sullo **YAML**, non sulla
+  doc auto-gen: `20260901-02` è l'unico changeSet che dichiara quella funzione e
+  dice ancora `p_registro_id bigint`. La doc auto-gen non può fare da prova —
+  `pg_get_functiondef` scioglie i `%TYPE` comunque (è la trappola del §11.2/3).
 * ✅ ~~⛔ **`commesse` resta scoperta**~~ — **chiusa il 2026-09-02**, vedi §4:
   dichiara `colonna_serie NULL`, quindi i
   presidi la proteggono dal prendere una serie — ma la sua unicità resta su una
   **stringa sola**, senza registro né serie. Debito dichiarato.
+  ⚠️ Riverificato il 2026-09-08: `registro_id` e `anno` sono colonne popolate su
+  **tutte** le 66 righe, e `test-commessa-chiave-numerazione-v1` è verde (6/6).
+  Il debito è quello e solo quello: la forma dell'unicità.
+
+### 11.5 🔴 La quinta voce, che l'elenco non prevedeva — `reset_policy` è accesa e irraggiungibile
+
+> Trovata il 2026-09-08 riverificando §7, e **non è un difetto del lavoro
+> consegnato**: è ciò che il §7 lascia sul tavolo, e che nessuno ha raccolto.
+
+Il §7 ha acceso la politica **dove si legge** — `fn_get_next_progressivo`
+ramifica davvero su `reset_policy`, e il `CHECK` ammette `NESSUNA`. Ma la
+politica **non si può scegliere da nessuna parte**: il backend tiene
+`reset_policy` fuori dalla whitelist di **creazione e di modifica**
+(`registri_repository.py`, `_CAMPI_CREATE`/`_CAMPI_UPDATE`), quindi un registro
+nasce `ANNUALE` per default della colonna e `ANNUALE` resta, salvo un `UPDATE`
+scritto a mano in `psql`.
+
+⛔ **E il motivo scritto accanto a quell'esclusione oggi dice il falso**, in due
+punti che si citano a vicenda:
+
+| Dove | Cosa dice | Da quando è falso |
+| --- | --- | --- |
+| `backend/apps/vendite/db/registri_repository.py` | *«`reset_policy` è inchiodata ad ANNUALE dal CHECK `chk_registri_fatturazione_reset` (è un FATTO, non un campo)»* | 2026-09-01, changeSet `20260901-06` |
+| `work-done/brief-be-fe-crud-registri-di-numerazione` §2 | *«`reset_policy` non è una scelta: il CHECK la inchioda ad ANNUALE. Va mostrata come fatto, non come campo»* | idem — **stesso giorno** del changeSet |
+
+⭐ **Il difetto è di forma nota, ed è lo specchio del §5.3.** Là il pericolo era
+un campo che l'amministratore cambia senza ottenere niente; qui è un parametro
+che **ottiene qualcosa** e che nessuno può cambiare. In entrambi i casi la cura
+non è il campo: è che **ciò che il documento afferma corrisponda a ciò che il
+database ammette**.
+
+⚠️ **Fatto datato, non premessa** (2026-09-08): i 14 registri sono tutti
+`ANNUALE` e i 10 secchi portano l'anno solare, zero violazioni dell'invariante
+del §7.4. ⛔ Il che non dice *«non serve»*: dice che il ramo `NESSUNA` oggi non
+ha un controesempio, perché nessuno ha una strada per produrlo.
+
+**Cosa resta da decidere, ed è di Tid** — le due mosse sono indipendenti:
+
+1. ⚠️ **La riga falsa va tolta comunque**, anche scegliendo di non esporre
+   niente: un commento che motiva un'esclusione con un vincolo che non esiste
+   più è la cosa che il prossimo legge e crede. ⛔ **Perimetro**: sta in
+   `backend/`, quindi non la tocca il DB.
+2. 🔭 **Se la politica va scelta**, è lavoro BE+FE: `reset_policy` in
+   `_CAMPI_CREATE` (⛔ *non* in update — cambiarla su un registro che ha già
+   consegnato numeri sposta il secchio sotto i piedi al contatore, ed è
+   esattamente la famiglia di guasti del §3), più il campo in maschera con le
+   due voci. ⭐ Il presidio esiste già: `test-chiave-contatore-assi-dichiarati-v1`
+   test 9 per il ramo `NESSUNA`, `test-registri-progressivi` test 4 per
+   `ANNUALE` — i due rami sono coperti in due file diversi, e il gemello
+   positivo c'è.
