@@ -3778,7 +3778,7 @@
     },
     "lotto_segnalazioni": {
       "col_data_ora": "When",
-      "col_documento_display": "Document",
+      "col_documento_display": "Customer",
       "col_error_code": "Code",
       "col_fase": "Phase",
       "col_importo": "Amount",
@@ -3786,6 +3786,7 @@
       "col_livello": "Level",
       "col_messaggio": "Message",
       "col_origine": "Source",
+      "col_riferimento": "Document",
       "col_ritirata": "Withdrawn"
     },
     "fondi_fattura_da_decidere": {
