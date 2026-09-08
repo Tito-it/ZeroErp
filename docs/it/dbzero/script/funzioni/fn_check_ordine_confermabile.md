@@ -25,6 +25,7 @@ AS $function$
 DECLARE
     v_motivi  jsonb := '[]'::jsonb;
     v_uid     vendite.ordini.uid%TYPE;
+    v_numero  vendite.ordini.numero%TYPE;
     v_riga_id vendite.ordini_righe.id%TYPE;
     v_riga_nr vendite.ordini_righe.riga_nr%TYPE;
 BEGIN
@@ -35,7 +36,10 @@ BEGIN
             NULL::uuid, 'ordine_id obbligatorio (>0)');
     END IF;
 
-    SELECT o.uid INTO v_uid
+    -- ⭐ `o.numero` sulla SELECT che c'era gia': serve a COMPORRE la frase
+    --   («Ordine %s: la riga %s ...»), non a decidere. Nota sul trigger
+    --   BEFORE: vedi fn_check_commessa_annullabile.
+    SELECT o.uid, o.numero INTO v_uid, v_numero
       FROM vendite.ordini o
      WHERE o.id = p_ordine_id;
 
@@ -80,7 +84,10 @@ BEGIN
             'reason',     'RIGA_SENZA_ALIQUOTA',
             'reason_key', 'vendite.ordini.azione_reason.iva_mancante',
             'dettaglio',  jsonb_build_object('riga_id', v_riga_id,
-                                             'riga_nr', v_riga_nr));
+                                             'riga_nr', v_riga_nr),
+            -- «Ordine %s: la riga %s ha un prezzo ma nessuna aliquota IVA.»
+            'valori',     jsonb_build_array(COALESCE(v_numero, p_ordine_id::text),
+                                            COALESCE(v_riga_nr::text, '?')));
     END IF;
 
     RETURN v_motivi;

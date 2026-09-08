@@ -1,0 +1,269 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-1 — I MOTIVI DELLA RINUNCIA REVERSIBILE PORTANO I LORO `valori`
+#
+# ── ⭐ PERCHE' LA CHECK DEVE EMETTERE `valori` ─────────────────────
+#   Nel pattern §12.5 la check sa QUALE codice ha scelto; la frase la componeva
+#   il CHIAMANTE, con un numero FISSO di valori presi dai propri dati. Le due
+#   cose non erano legate da niente: un motivo nuovo con un'altra forma di
+#   frase non fa fallire nulla, esce solo una frase sbagliata.
+#   ⇒ Chi sceglie il codice sceglie anche cosa ci va dentro. E' la stessa
+#   ragione di §12.5.2 per il predicato, applicata al messaggio.
+#
+# ── ⚠️ L'ORDINE DEI `valori` E' IL CONTRATTO DELLA FRASE ──────────
+#   Non si verifica contando i segnaposto: si verifica LEGGENDO la frase resa.
+#   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — arita'
+#   giusta, valori invertiti, «Registro X1» a video con la serie al posto della
+#   famiglia. Nessun cancello lo vide.
+#
+#
+# ── ⚠️ UN ARRAY VUOTO E' UN VALORE, NON UNA DIMENTICANZA ──────────
+#   «Reso non trovato.» non ha segnaposto: il suo `valori` e' `[]`. Con zero
+#   valori fn_log_and_raise_error salta il ramo format() e il testo arriva
+#   intero. E' proprio la coppia di arita' diverse (0 e 1) sulla stessa check
+#   che rendeva impossibile al chiamante passare un numero FISSO di valori
+#   corretto per entrambi.
+#
+# ⛔ Nessun codice errore nuovo, nessun `reason` toccato, nessun motivo
+#   riordinato: si AGGIUNGE una chiave.
+# ⚠️ Questo changeSet da solo NON basta: fa entrare il suo sito nel perimetro
+#   del rubinetto (test 2 di test-rubinetto-primo-motivo-v1.sql), che pretende
+#   zero code scritte a mano. Va nella STESSA consegna dei changeSet C-2.
+#
+# ⭐ Il corpo e' quello VIVO (pg_get_functiondef), non ricostruito da uno YAML.
+# Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (C-1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-03-update-fn-check-rinuncia-reversibile-emette-valori-mctit.yaml
+
+  - changeSet:
+      id: 20260909-03-update-fn-check-rinuncia-reversibile-emette-valori
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_check_rinuncia_reversibile: i due motivi emettono `valori`. Le arita' sono diverse (0 e 1), che e' il caso che il chiamante a valori fissi non puo' servire.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_rinuncia_reversibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_rinuncia_reversibile(p_resi_riga_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono di RIAPRIRE una rinuncia
+              --   (annullare la dichiarazione di definitivita' su una quota resa).
+              --   Funzione PURA (fn_check_*): nessun raise di dominio, nessuna
+              --   scrittura. Consumatore: vendite.fn_riapri_riconsegna_reso.
+              --   Brief: brief-db-chiusura-riconsegna-reso-definitivo §5.1;
+              --   il gate NC: brief-db-note-credito-prerequisiti-be-fe §12 (P-3).
+              -- Ritorna: [] se reversibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              --
+              -- ⭐ 2026-08-19: IL GATE SI E' SVEGLIATO. Dal 2026-07-26 questa
+              --   funzione ritornava sempre [] e lo dichiarava: «il ramo NC non
+              --   esiste ancora nel progetto […] codice da registrare allora,
+              --   non oggi». La slice NC e' arrivata, e il divieto e' entrato
+              --   qui — come previsto, senza toccare la madre, che solleva gia'
+              --   il primo motivo prodotto.
+              --
+              -- ⚠️ LA CONDIZIONE E' «ACCREDITATA», NON «NC EMESSA». Il commento
+              --   del 2026-07-26 immaginava il gate sul DOCUMENTO; la finestra
+              --   pericolosa si apre invece AL VERBO. Fra l'accredito e la
+              --   fattura la quota e' gia' impegnata e la riga e' gia' uscita
+              --   dalla coda: aspettare l'emissione lascerebbe scoperta la
+              --   parte piu' lunga del giro.
+              --
+              -- ⭐⚠️ VINCOLO RECIPROCO, ORA SU TRE POSTI (C-3): questo gate,
+              --   vendite.fn_annulla_accredito_riga_reso e — dal 2026-08-19 — la
+              --   guardia E_RESO_ANNULLO_CON_ACCREDITO di vendite.fn_annulla_reso.
+              --   Tutti e tre si AUTO-RIPARANO perche' l'annullo dell'accredito
+              --   CANCELLA le righe di ponte: annullato l'accredito la rinuncia
+              --   torna reversibile E il reso torna annullabile, senza che
+              --   nessuno dei due sappia nulla di quella. E' un pregio FRAGILE:
+              --   se l'annullo diventasse un soft-delete, questi rami
+              --   continuerebbero a vedere la riga e vieterebbero PER SEMPRE una
+              --   rinuncia ormai reversibile e un annullo ormai ammesso, IN
+              --   SILENZIO — perche' nessuno dei lati sarebbe sbagliato da solo.
+              --   Le TRE funzioni si cambiano INSIEME.
+              --
+              -- ⚠️ NON RIMUOVERE questa funzione: e' il punto di innesto del
+              --   gate. Rimuoverla riporta il problema a essere una nota in un
+              --   commento che nessuno cerchera'.
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+                  v_esiste boolean;
+                  v_accreditata boolean;
+              BEGIN
+                  IF p_resi_riga_id IS NULL OR p_resi_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script','fn_check_rinuncia_reversibile','E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro','resi_riga_id','valore',p_resi_riga_id),
+                          NULL::uuid, 'resi_riga_id obbligatorio (>0)');
+                  END IF;
+
+                  -- La riga deve esistere: un id inventato non e' "reversibile",
+                  -- e' un errore del chiamante. Si segnala come motivo (non come
+                  -- raise) per restare puri: la madre decide se sollevare.
+                  SELECT EXISTS (SELECT 1 FROM vendite.resi_righe rr
+                                  WHERE rr.id = p_resi_riga_id)
+                    INTO v_esiste;
+
+                  IF NOT v_esiste THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RESO_NOT_FOUND',
+                          'reason',     'RIGA_INESISTENTE',
+                          -- Riuso di E_RESO_NOT_FOUND: esiste a catalogo, nessun
+                          -- codice nuovo per un caso che e' un errore del chiamante.
+                          'reason_key', 'vendite.resi.rinuncia_reason.riga_inesistente',
+                          'dettaglio',  p_resi_riga_id,
+                          -- ⚠️ «Reso non trovato.» non ha segnaposto: l'array VUOTO e' il
+                          --   valore giusto, non una dimenticanza. Con zero valori
+                          --   fn_log_and_raise_error salta format() e il testo resta intero.
+                          'valori',     jsonb_build_array());
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- === IL GATE NC ===
+                  -- ⚠️ DOPO «riga inesistente», che ritorna subito: quello e'
+                  --    l'IDENTITA' della riga, non una sua condizione. Dire
+                  --    «gia' accreditata» a chi ha passato un id inventato lo
+                  --    manderebbe a cercare un accredito che non esiste.
+                  -- Basta l'ESISTENZA di una riga di ponte: un accredito e' N
+                  -- coppie, e una sola impegna gia' la quota.
+                  SELECT EXISTS (SELECT 1 FROM vendite.resi_righe_accrediti a
+                                  WHERE a.resi_riga_id = p_resi_riga_id)
+                    INTO v_accreditata;
+
+                  IF v_accreditata THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO',
+                          'reason',     'ACCREDITO_ESEGUITO',
+                          'reason_key', 'vendite.resi.rinuncia_reason.accredito_eseguito',
+                          'dettaglio',  p_resi_riga_id,
+                          'valori',     jsonb_build_array(p_resi_riga_id));
+                  END IF;
+                  -- ==================
+
+                  RETURN v_motivi;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_rinuncia_reversibile(p_resi_riga_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono di RIAPRIRE una rinuncia
+              --   (annullare la dichiarazione di definitivita' su una quota resa).
+              --   Funzione PURA (fn_check_*): nessun raise di dominio, nessuna
+              --   scrittura. Consumatore: vendite.fn_riapri_riconsegna_reso.
+              --   Brief: brief-db-chiusura-riconsegna-reso-definitivo §5.1;
+              --   il gate NC: brief-db-note-credito-prerequisiti-be-fe §12 (P-3).
+              -- Ritorna: [] se reversibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              --
+              -- ⭐ 2026-08-19: IL GATE SI E' SVEGLIATO. Dal 2026-07-26 questa
+              --   funzione ritornava sempre [] e lo dichiarava: «il ramo NC non
+              --   esiste ancora nel progetto […] codice da registrare allora,
+              --   non oggi». La slice NC e' arrivata, e il divieto e' entrato
+              --   qui — come previsto, senza toccare la madre, che solleva gia'
+              --   il primo motivo prodotto.
+              --
+              -- ⚠️ LA CONDIZIONE E' «ACCREDITATA», NON «NC EMESSA». Il commento
+              --   del 2026-07-26 immaginava il gate sul DOCUMENTO; la finestra
+              --   pericolosa si apre invece AL VERBO. Fra l'accredito e la
+              --   fattura la quota e' gia' impegnata e la riga e' gia' uscita
+              --   dalla coda: aspettare l'emissione lascerebbe scoperta la
+              --   parte piu' lunga del giro.
+              --
+              -- ⭐⚠️ VINCOLO RECIPROCO, ORA SU TRE POSTI (C-3): questo gate,
+              --   vendite.fn_annulla_accredito_riga_reso e — dal 2026-08-19 — la
+              --   guardia E_RESO_ANNULLO_CON_ACCREDITO di vendite.fn_annulla_reso.
+              --   Tutti e tre si AUTO-RIPARANO perche' l'annullo dell'accredito
+              --   CANCELLA le righe di ponte: annullato l'accredito la rinuncia
+              --   torna reversibile E il reso torna annullabile, senza che
+              --   nessuno dei due sappia nulla di quella. E' un pregio FRAGILE:
+              --   se l'annullo diventasse un soft-delete, questi rami
+              --   continuerebbero a vedere la riga e vieterebbero PER SEMPRE una
+              --   rinuncia ormai reversibile e un annullo ormai ammesso, IN
+              --   SILENZIO — perche' nessuno dei lati sarebbe sbagliato da solo.
+              --   Le TRE funzioni si cambiano INSIEME.
+              --
+              -- ⚠️ NON RIMUOVERE questa funzione: e' il punto di innesto del
+              --   gate. Rimuoverla riporta il problema a essere una nota in un
+              --   commento che nessuno cerchera'.
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+                  v_esiste boolean;
+                  v_accreditata boolean;
+              BEGIN
+                  IF p_resi_riga_id IS NULL OR p_resi_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script','fn_check_rinuncia_reversibile','E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro','resi_riga_id','valore',p_resi_riga_id),
+                          NULL::uuid, 'resi_riga_id obbligatorio (>0)');
+                  END IF;
+
+                  -- La riga deve esistere: un id inventato non e' "reversibile",
+                  -- e' un errore del chiamante. Si segnala come motivo (non come
+                  -- raise) per restare puri: la madre decide se sollevare.
+                  SELECT EXISTS (SELECT 1 FROM vendite.resi_righe rr
+                                  WHERE rr.id = p_resi_riga_id)
+                    INTO v_esiste;
+
+                  IF NOT v_esiste THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RESO_NOT_FOUND',
+                          'reason',     'RIGA_INESISTENTE',
+                          -- Riuso di E_RESO_NOT_FOUND: esiste a catalogo, nessun
+                          -- codice nuovo per un caso che e' un errore del chiamante.
+                          'reason_key', 'vendite.resi.rinuncia_reason.riga_inesistente',
+                          'dettaglio',  p_resi_riga_id);
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- === IL GATE NC ===
+                  -- ⚠️ DOPO «riga inesistente», che ritorna subito: quello e'
+                  --    l'IDENTITA' della riga, non una sua condizione. Dire
+                  --    «gia' accreditata» a chi ha passato un id inventato lo
+                  --    manderebbe a cercare un accredito che non esiste.
+                  -- Basta l'ESISTENZA di una riga di ponte: un accredito e' N
+                  -- coppie, e una sola impegna gia' la quota.
+                  SELECT EXISTS (SELECT 1 FROM vendite.resi_righe_accrediti a
+                                  WHERE a.resi_riga_id = p_resi_riga_id)
+                    INTO v_accreditata;
+
+                  IF v_accreditata THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO',
+                          'reason',     'ACCREDITO_ESEGUITO',
+                          'reason_key', 'vendite.resi.rinuncia_reason.accredito_eseguito',
+                          'dettaglio',  p_resi_riga_id);
+                  END IF;
+                  -- ==================
+
+                  RETURN v_motivi;
+              END;
+              $function$

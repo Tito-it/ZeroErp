@@ -71,7 +71,15 @@ BEGIN
             'reason',     'RIGHE_COMMESSA_EMESSE',
             'reason_key', 'vendite.sorgenti.azione_reason.righe_commessa_emesse',
             'dettaglio',  v_emesse::text,
-            'quante',     v_emesse);
+            'quante',     v_emesse,
+            -- ⭐ «Il documento ha %s righe di commessa gia' emesse»: ci va il
+            --   CONTEGGIO. Fino al 2026-09-09 questo motivo viaggiava anche
+            --   dentro fn_check_ordine_annullabile, che lo concatena, e li' la
+            --   madre passava per primo il NUMERO dell'ordine: a video usciva
+            --   «Il documento ha ORD-... righe». Il guard della chiusura
+            --   sorgente invece passava il dettaglio, ed era corretto — due
+            --   chiamanti, una frase sola, due esiti diversi.
+            'valori',     jsonb_build_array(v_emesse));
     END IF;
 
     RETURN v_motivi;

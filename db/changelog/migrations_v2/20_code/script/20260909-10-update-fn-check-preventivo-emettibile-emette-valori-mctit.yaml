@@ -1,0 +1,269 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-1 — IL MOTIVO DELL'EMISSIONE PREVENTIVO PORTA I SUOI `valori`
+#
+# ── ⭐ PERCHE' LA CHECK DEVE EMETTERE `valori` ─────────────────────
+#   Nel pattern §12.5 la check sa QUALE codice ha scelto; la frase la componeva
+#   il CHIAMANTE, con un numero FISSO di valori presi dai propri dati. Le due
+#   cose non erano legate da niente: un motivo nuovo con un'altra forma di
+#   frase non fa fallire nulla, esce solo una frase sbagliata.
+#   ⇒ Chi sceglie il codice sceglie anche cosa ci va dentro. E' la stessa
+#   ragione di §12.5.2 per il predicato, applicata al messaggio.
+#
+# ── ⚠️ L'ORDINE DEI `valori` E' IL CONTRATTO DELLA FRASE ──────────
+#   Non si verifica contando i segnaposto: si verifica LEGGENDO la frase resa.
+#   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — arita'
+#   giusta, valori invertiti, «Registro X1» a video con la serie al posto della
+#   famiglia. Nessun cancello lo vide.
+#
+#
+# ── ⚠️ NELLA FRASE VA LA DESCRIZIONE, non un numero di riga ───────
+#   «Preventivo %s: la riga «%s» ha un prezzo ma nessuna aliquota IVA.»
+#   `preventivi_righe` non ha `riga_nr` e la colonna `ordine` ha default 0: la
+#   scelta e' gia' dichiarata nel commento di
+#   vendite.trgfn_preventivi_guard_transizione, e qui si sposta dentro la check
+#   senza cambiarla.
+#   ⭐ `p.numero` sulla SELECT che c'era gia'. Ragione e caveat: changeSet -05.
+#
+# ⛔ Nessun codice errore nuovo, nessun `reason` toccato, nessun motivo
+#   riordinato: si AGGIUNGE una chiave.
+# ⚠️ Questo changeSet da solo NON basta: fa entrare il suo sito nel perimetro
+#   del rubinetto (test 2 di test-rubinetto-primo-motivo-v1.sql), che pretende
+#   zero code scritte a mano. Va nella STESSA consegna dei changeSet C-2.
+#
+# ⭐ Il corpo e' quello VIVO (pg_get_functiondef), non ricostruito da uno YAML.
+# Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (C-1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-10-update-fn-check-preventivo-emettibile-emette-valori-mctit.yaml
+
+  - changeSet:
+      id: 20260909-10-update-fn-check-preventivo-emettibile-emette-valori
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_check_preventivo_emettibile: il motivo emette `valori` (numero preventivo e descrizione della riga).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_preventivo_emettibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_preventivo_emettibile(p_preventivo_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'EMISSIONE di un
+              --   preventivo. Funzione PURA (fn_check_*): non solleva, non
+              --   scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_preventivo (che spegne il bottone).
+              --   Gemella di fn_check_preventivo_annullabile.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9 / §R-3.
+              -- Ritorna: [] se emettibile; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi   jsonb := '[]'::jsonb;
+                  v_uid      vendite.preventivi.uid%TYPE;
+                  v_numero   vendite.preventivi.numero%TYPE;
+                  v_riga_id  vendite.preventivi_righe.id%TYPE;
+                  v_riga_des vendite.preventivi_righe.descrizione%TYPE;
+              BEGIN
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_preventivo_emettibile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'preventivo_id', 'valore', p_preventivo_id),
+                          NULL::uuid, 'preventivo_id obbligatorio (>0)');
+                  END IF;
+
+                  -- ⭐ `p.numero` sulla SELECT che c'era gia': serve a COMPORRE la frase
+                  --   («Preventivo %s: la riga «%s» ...»), non a decidere.
+                  SELECT p.uid, p.numero INTO v_uid, v_numero
+                    FROM vendite.preventivi p
+                   WHERE p.id = p_preventivo_id;
+
+                  IF v_uid IS NULL THEN
+                      RETURN v_motivi;   -- preventivo inesistente: decide il chiamante
+                  END IF;
+
+                  -- MOTIVO 1 — VALORE DELLA RIGA: una riga che entra nel
+                  --   riepilogo IVA deve portare un'aliquota.
+                  --
+                  -- ⭐ IL PREDICATO E' QUELLO DEL CONSUMATORE, copiato da
+                  --   vendite.fn_ricalcola_riepilogo_iva_preventivo:
+                  --   attivo IS TRUE AND quantita > 0. Quella funzione calcola
+                  --   l'imposta con COALESCE(fn_get_aliquota_iva(iva_id,...), 0),
+                  --   quindi una riga senza aliquota finisce in
+                  --   vendite.preventivi_riepiloghi_iva con imponibile pieno e
+                  --   imposta zero.
+                  --
+                  -- ⚠️ `quantita > 0` NON e' ridondante come lo sarebbe sugli
+                  --   ordini: preventivi_righe.quantita e' NULLABILE e non ha
+                  --   CHECK di positivita' (ordini_righe ha
+                  --   chk_ordini_v_r_qta_pos). Senza, si bloccherebbe un
+                  --   preventivo per una riga che nel riepilogo non entra mai.
+                  --
+                  -- ⚠️ `attivo IS TRUE` e non `attivo`: la colonna e' NULLABILE
+                  --   qui (su ordini_righe e' NOT NULL), e il NULL va escluso
+                  --   esattamente come lo esclude il consumatore.
+                  --
+                  -- ⚠️ `prezzo_unitario IS NOT NULL` e' oggi sempre vero (colonna
+                  --   NOT NULL): si scrive perche' e' la forma vera della regola
+                  --   — dove c'e' un prezzo serve l'aliquota — ed e' gia'
+                  --   successo che una colonna prezzo diventasse facoltativa
+                  --   (20260819-13 su vendite.ddt_righe_componenti).
+                  --
+                  -- ⛔ Nel dettaglio va la DESCRIZIONE e non un numero di riga:
+                  --   preventivi_righe NON HA riga_nr, e `ordine` e' una chiave
+                  --   di ordinamento con default 0 — un messaggio che dicesse
+                  --   «la riga 0» non aiuterebbe nessuno. L'id resta per chi
+                  --   diagnostica.
+                  --
+                  -- ⚠️ ORDER BY prima del LIMIT: senza, quale riga esca dipende
+                  --   dal piano del planner e il messaggio nominerebbe una riga
+                  --   diversa a ogni corsa.
+                  SELECT pr.id, pr.descrizione
+                    INTO v_riga_id, v_riga_des
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE
+                     AND pr.quantita > 0
+                     AND pr.prezzo_unitario IS NOT NULL
+                     AND pr.iva_id IS NULL
+                   ORDER BY pr.ordine NULLS LAST, pr.id
+                   LIMIT 1;
+
+                  IF v_riga_id IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_PREV_RIGA_IVA_MANCANTE',
+                          'reason',     'RIGA_SENZA_ALIQUOTA',
+                          'reason_key', 'vendite.preventivi.azione_reason.iva_mancante',
+                          'dettaglio',  jsonb_build_object(
+                                            'riga_id',     v_riga_id,
+                                            'descrizione', v_riga_des),
+                          -- ⚠️ preventivi_righe non ha riga_nr e `ordine` ha default 0: nella
+                          --   frase va la DESCRIZIONE, ed e' la stessa scelta gia' dichiarata
+                          --   nel commento di trgfn_preventivi_guard_transizione.
+                          'valori',     jsonb_build_array(COALESCE(v_numero, p_preventivo_id::text),
+                                                          COALESCE(v_riga_des, 'senza descrizione')));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_preventivo_emettibile(p_preventivo_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'EMISSIONE di un
+              --   preventivo. Funzione PURA (fn_check_*): non solleva, non
+              --   scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_preventivo (che spegne il bottone).
+              --   Gemella di fn_check_preventivo_annullabile.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9 / §R-3.
+              -- Ritorna: [] se emettibile; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi   jsonb := '[]'::jsonb;
+                  v_uid      vendite.preventivi.uid%TYPE;
+                  v_riga_id  vendite.preventivi_righe.id%TYPE;
+                  v_riga_des vendite.preventivi_righe.descrizione%TYPE;
+              BEGIN
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_preventivo_emettibile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'preventivo_id', 'valore', p_preventivo_id),
+                          NULL::uuid, 'preventivo_id obbligatorio (>0)');
+                  END IF;
+
+                  SELECT p.uid INTO v_uid
+                    FROM vendite.preventivi p
+                   WHERE p.id = p_preventivo_id;
+
+                  IF v_uid IS NULL THEN
+                      RETURN v_motivi;   -- preventivo inesistente: decide il chiamante
+                  END IF;
+
+                  -- MOTIVO 1 — VALORE DELLA RIGA: una riga che entra nel
+                  --   riepilogo IVA deve portare un'aliquota.
+                  --
+                  -- ⭐ IL PREDICATO E' QUELLO DEL CONSUMATORE, copiato da
+                  --   vendite.fn_ricalcola_riepilogo_iva_preventivo:
+                  --   attivo IS TRUE AND quantita > 0. Quella funzione calcola
+                  --   l'imposta con COALESCE(fn_get_aliquota_iva(iva_id,...), 0),
+                  --   quindi una riga senza aliquota finisce in
+                  --   vendite.preventivi_riepiloghi_iva con imponibile pieno e
+                  --   imposta zero.
+                  --
+                  -- ⚠️ `quantita > 0` NON e' ridondante come lo sarebbe sugli
+                  --   ordini: preventivi_righe.quantita e' NULLABILE e non ha
+                  --   CHECK di positivita' (ordini_righe ha
+                  --   chk_ordini_v_r_qta_pos). Senza, si bloccherebbe un
+                  --   preventivo per una riga che nel riepilogo non entra mai.
+                  --
+                  -- ⚠️ `attivo IS TRUE` e non `attivo`: la colonna e' NULLABILE
+                  --   qui (su ordini_righe e' NOT NULL), e il NULL va escluso
+                  --   esattamente come lo esclude il consumatore.
+                  --
+                  -- ⚠️ `prezzo_unitario IS NOT NULL` e' oggi sempre vero (colonna
+                  --   NOT NULL): si scrive perche' e' la forma vera della regola
+                  --   — dove c'e' un prezzo serve l'aliquota — ed e' gia'
+                  --   successo che una colonna prezzo diventasse facoltativa
+                  --   (20260819-13 su vendite.ddt_righe_componenti).
+                  --
+                  -- ⛔ Nel dettaglio va la DESCRIZIONE e non un numero di riga:
+                  --   preventivi_righe NON HA riga_nr, e `ordine` e' una chiave
+                  --   di ordinamento con default 0 — un messaggio che dicesse
+                  --   «la riga 0» non aiuterebbe nessuno. L'id resta per chi
+                  --   diagnostica.
+                  --
+                  -- ⚠️ ORDER BY prima del LIMIT: senza, quale riga esca dipende
+                  --   dal piano del planner e il messaggio nominerebbe una riga
+                  --   diversa a ogni corsa.
+                  SELECT pr.id, pr.descrizione
+                    INTO v_riga_id, v_riga_des
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE
+                     AND pr.quantita > 0
+                     AND pr.prezzo_unitario IS NOT NULL
+                     AND pr.iva_id IS NULL
+                   ORDER BY pr.ordine NULLS LAST, pr.id
+                   LIMIT 1;
+
+                  IF v_riga_id IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_PREV_RIGA_IVA_MANCANTE',
+                          'reason',     'RIGA_SENZA_ALIQUOTA',
+                          'reason_key', 'vendite.preventivi.azione_reason.iva_mancante',
+                          'dettaglio',  jsonb_build_object(
+                                            'riga_id',     v_riga_id,
+                                            'descrizione', v_riga_des));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$

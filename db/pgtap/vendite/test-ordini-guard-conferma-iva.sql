@@ -51,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   riga i DEFERRABLE non verrebbero esercitati.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================
 -- 0) Riferimenti
@@ -173,6 +173,38 @@ SELECT is(
       -> 0 -> 'dettaglio' ->> 'riga_nr',
     '1',
     'Il motivo porta il NUMERO di riga, non il solo id'
+  );
+
+-- ⭐ P-1 — LA FRASE RESA. E' l'unica verifica che vede l'ORDINE dei valori:
+--   il ramo C di test-catalogo-messaggi-errore-completo.sql prova che sono
+--   TANTI QUANTI i segnaposto, non che siano quelli giusti al posto giusto.
+--   Il precedente e' del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA — due
+--   valori, due segnaposto, «Registro X1» a video con la serie al posto della
+--   famiglia — e nel 2026-09-09 lo stesso difetto e' stato trovato VIVO su due
+--   siti di questo cantiere.
+-- ⚠️ Si confronta con la frase composta dai valori letti dalla TABELLA: se la
+--   check li emettesse invertiti, le due stringhe divergerebbero. Un `matches`
+--   su un pezzo di frase non lo vedrebbe.
+-- ⚠️ Il CASE con `coalesce` non e' pignoleria: senza, una check che smettesse
+--   di emettere `valori` farebbe alzare 22023 a format() e ABORTIREBBE il file.
+--   E scritto con un `<>` nudo non guarderebbe niente: `jsonb_typeof(NULL) <>
+--   'array'` vale NULL, non vero.
+SELECT is(
+  (WITH v AS (SELECT script.fn_check_ordine_confermabile((SELECT id FROM tmp_oi_ordine)) -> 0 AS motivo)
+   SELECT CASE
+            WHEN coalesce(jsonb_typeof(v.motivo -> 'valori'), 'assente') <> 'array'
+              THEN '(la check non emette valori)'
+            ELSE format(
+                   (SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_ORDINE_RIGA_IVA_MANCANTE' AND m.lingua = 'it'),
+                   VARIADIC ARRAY(SELECT jsonb_array_elements_text(v.motivo -> 'valori')))
+          END
+     FROM v),
+  (SELECT format((SELECT m.messaggio FROM config.messaggi_errore m
+                     WHERE m.codice = 'E_ORDINE_RIGA_IVA_MANCANTE' AND m.lingua = 'it'),
+                 o.numero, '1')
+     FROM vendite.ordini o WHERE o.id = (SELECT id FROM tmp_oi_ordine)),
+  'La frase resa nomina il NUMERO dell''ordine e poi la RIGA, in quest''ordine'
   );
 
 -- ============================================================

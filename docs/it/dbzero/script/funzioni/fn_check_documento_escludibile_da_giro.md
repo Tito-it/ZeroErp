@@ -69,7 +69,13 @@ BEGIN
             'codice',     'E_LOTTO_NON_PRE_FISCALE',
             'reason',     'STATO_LOTTO_NON_PRE_FISCALE',
             'reason_key', 'vendite.lotti.azione_reason.lotto_non_pre_fiscale',
-            'dettaglio',  COALESCE(v_lotto_stato, '-'));
+            'dettaglio',  COALESCE(v_lotto_stato, '-'),
+            -- ⭐ «Il lotto e' oltre lo stato pre-fiscale (stato attuale: %s)»:
+            --   ci va lo STATO. Fino al 2026-09-09 la madre passava per primo
+            --   p_gruppo_key — giusto per i motivi 2-4, che cominciano con «Il
+            --   documento %s», e a video usciva il gruppo al posto dello stato.
+            --   Arita' giusta, frase falsa: nessun cancello lo vedeva.
+            'valori',     jsonb_build_array(COALESCE(v_lotto_stato, '-')));
     END IF;
 
     SELECT e.stato_esecuzione
@@ -86,7 +92,8 @@ BEGIN
             'codice',     'E_LOTTO_DOC_SENZA_ESITO',
             'reason',     'SENZA_ESITO',
             'reason_key', 'vendite.lotti.azione_reason.documento_senza_esito',
-            'dettaglio',  p_gruppo_key);
+            'dettaglio',  p_gruppo_key,
+            'valori',     jsonb_build_array(p_gruppo_key));
 
     -- MOTIVO 3 — e' gia' uscito.
     -- ⚠️ PRECEDE il motivo 4, e la precedenza e' portante: un
@@ -98,7 +105,8 @@ BEGIN
             'codice',     'E_LOTTO_DOC_GIA_USCITO',
             'reason',     'GIA_USCITO',
             'reason_key', 'vendite.lotti.azione_reason.documento_gia_uscito',
-            'dettaglio',  p_gruppo_key);
+            'dettaglio',  p_gruppo_key,
+            'valori',     jsonb_build_array(p_gruppo_key));
 
     -- MOTIVO 4 — non e' in errore (D-4): dal giro si tolgono solo i
     -- documenti che hanno fallito.
@@ -107,7 +115,8 @@ BEGIN
             'codice',     'E_LOTTO_DOC_NON_IN_ERRORE',
             'reason',     'DOCUMENTO_NON_IN_ERRORE',
             'reason_key', 'vendite.lotti.azione_reason.documento_non_in_errore',
-            'dettaglio',  v_esito);
+            'dettaglio',  v_esito,
+            'valori',     jsonb_build_array(p_gruppo_key, v_esito));
     END IF;
 
     RETURN v_motivi;

@@ -40,23 +40,22 @@ BEGIN
 
     -- ── Le precondizioni: sede unica, non riscritte qui ───
     v_motivi := script.fn_check_documento_escludibile_da_giro(p_lotto_id, p_gruppo_key);
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_escludi_documento_da_giro',
-            v_motivi -> 0 ->> 'codice',
-            jsonb_build_object('lotto_id', p_lotto_id,
-                               'gruppo_key', p_gruppo_key,
-                               -- L'elenco COMPLETO nel contesto: il
-                               -- backend puo' mostrarli tutti anche
-                               -- se la frase ne nomina uno.
-                               'motivi', v_motivi,
-                               'bersaglio', jsonb_build_array(
-                                   jsonb_build_object('tipo', 'LOTTO',
-                                                      'id', p_lotto_id::text))),
-            NULL::uuid,
-            p_gruppo_key,
-            COALESCE(v_motivi -> 0 ->> 'dettaglio', '-'));
-    END IF;
+    -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+    --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+    --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi
+    --   (il backend puo' mostrarli tutti anche se la frase ne nomina uno).
+    -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+    --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', 'fn_escludi_documento_da_giro',
+        v_motivi,
+        NULL,          -- nessun campo da accendere: non e' un errore di form
+        NULL::uuid,
+        jsonb_build_object('lotto_id',   p_lotto_id,
+                           'gruppo_key', p_gruppo_key,
+                           'bersaglio',  jsonb_build_array(
+                               jsonb_build_object('tipo', 'LOTTO',
+                                                  'id', p_lotto_id::text))));
 
     -- ── Chi viene via insieme, PRIMA di cancellare ────────
     -- ⚠️ Dopo la cancellazione il legame non c'e' piu': letto qui

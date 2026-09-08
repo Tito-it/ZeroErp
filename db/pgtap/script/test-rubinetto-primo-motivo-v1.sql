@@ -9,8 +9,8 @@
 --  2) ⭐⭐ IL RUBINETTO: zero punti IN PERIMETRO sollevano il primo motivo a mano
 --  3) ⭐ zero punti NON CLASSIFICATI — un presidio che non sa leggere un sito
 --        deve diventare ROSSO, non saltarlo
---  4) il debito FUORI perimetro non cresce (soglia 13, puo' solo calare)
---  5) le dieci funzioni bonificate chiamano davvero l'helper
+--  4) il debito FUORI perimetro non cresce (soglia 6, puo' solo calare)
+--  5) le sedici funzioni bonificate chiamano davvero l'helper
 --  6) ⚠️ il marcatore non e' troppo LARGO: un codice LETTERALE resta fuori
 --  7) ⭐⭐ la canarina: il marcatore non e' troppo STRETTO
 --
@@ -66,40 +66,29 @@ SELECT plan(7);
 --   divergere fra loro, che e' il difetto classico dei presidi copiati).
 -- ============================================================
 
+-- ⭐ DAL 2026-09-08 LA DERIVAZIONE NON VIVE PIU' QUI (passo V-0 del brief
+--   «i motivi si fermano dentro la check»). Stava in questo `pg_temp`, dove
+--   nessun altro presidio poteva leggerla — e infatti lo scanner dell'arita'
+--   dei messaggi, che ne aveva bisogno, se la sarebbe ricopiata: due letture
+--   dello stesso fatto che cominciano a dissentire senza che nessuno lo veda.
+--   Adesso e' dbops.vw_punti_primo_motivo (changeSet 20260908-34), e questo
+--   file la INTERROGA. Le regole portanti — marcatore `->> 'codice'` e non
+--   `-> 0 ->> 'codice'`, tutte le fn_check_* nominate nel corpo e non solo
+--   quella assegnata a `v_motivi`, perimetro PESSIMISTA — sono le stesse, e
+--   stanno scritte nel commento della vista.
+-- ⚠️ Da qui in avanti questo file DIPENDE da quella vista.
 CREATE TEMP VIEW punti_primo_motivo AS
-WITH punti AS (
-    SELECT n.nspname AS sch, p.proname AS fn, p.prosrc
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-       -- ⭐ Il codice non e' un letterale: viene da un motivo. Prende sia la
-       --   forma con la variabile d'appoggio sia quella inline.
-       AND p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''
-       -- ⛔ L'helper e' la SEDE della coda, non un suo residuo: e' l'unico
-       --   posto del database dove quella forma e' giusta.
-       AND NOT (n.nspname = 'script' AND p.proname = 'fn_raise_primo_motivo_se_presente')
-), legami AS (
-    -- ⚠️ Si cercano TUTTE le fn_check_* nominate nel corpo, non solo quella
-    --   assegnata a `v_motivi`: vendite.trgfn_commesse_guard_transizione ne
-    --   sceglie una fra TRE con un CASE, e un riconoscimento ancorato a `:=`
-    --   la perdeva — cioe' il presidio aveva un ramo cieco proprio dove il
-    --   codice e' piu' articolato.
-    SELECT pt.sch, pt.fn, m[1] AS csch, m[2] AS cfn
-      FROM punti pt
-     CROSS JOIN LATERAL regexp_matches(pt.prosrc, '(\w+)\.(fn_check_\w+)\s*\(', 'g') m
-)
-SELECT pt.sch,
-       pt.fn,
-       count(c.oid)                                      AS check_trovate,
+SELECT sch,
+       fn,
+       count(DISTINCT check_funzione)::int                 AS check_trovate,
+       -- (i testimoni del test 7 restano fuori dai conteggi: vedi laggiu')
        -- ⭐ PESSIMISTA: basta UNA delle check nominate che emetta `valori`
        --   perche' il sito sia in perimetro. Un presidio che sceglie il ramo
        --   ottimista assolve il caso che dovrebbe segnalare.
-       coalesce(bool_or(c.prosrc ~ '''valori'''), false) AS in_perimetro
-  FROM punti pt
-  LEFT JOIN legami l  ON l.sch = pt.sch AND l.fn = pt.fn
-  LEFT JOIN pg_proc c ON c.proname = l.cfn
-  LEFT JOIN pg_namespace cn ON cn.oid = c.pronamespace AND cn.nspname = l.csch
- GROUP BY pt.sch, pt.fn;
+       coalesce(bool_or(check_emette_valori), false)       AS in_perimetro
+  FROM dbops.vw_punti_primo_motivo
+ WHERE fn !~ '^pgtap_'
+ GROUP BY sch, fn;
 
 -- ============================================================
 -- Asserzioni
@@ -138,8 +127,13 @@ SELECT is(
 --    qualcuno ha scritto una coda nuova, ed e' esattamente la cosa da vedere.
 SELECT cmp_ok(
     (SELECT count(*)::int FROM punti_primo_motivo WHERE NOT in_perimetro),
-    '<=', 13,
-    'il debito dei siti FUORI perimetro non cresce (soglia 13, puo'' solo calare)');
+    '<=', 6,
+    -- ⭐ 2026-09-09: da 13 a 6. Sei funzioni sono uscite dal debito con C-1/C-2
+    --   (escludi_documento_da_giro, riapri_riconsegna_reso, i guard di
+    --   transizione di commesse/ordini/preventivi e il guard della chiusura
+    --   sorgente), perche' le loro check hanno imparato a emettere `valori`.
+    --   ⛔ Non e' un allentamento: la soglia CALA, ed e' l'unico verso ammesso.
+    'il debito dei siti FUORI perimetro non cresce (soglia 6, puo'' solo calare)');
 
 -- 5) La bonifica e' arrivata dove diceva: dieci funzioni chiamano l'helper.
 --    ⭐ E' il test che ha morso nella prova per mutazione, quando il 2 non
@@ -148,8 +142,12 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE p.prosrc ~ 'fn_raise_primo_motivo_se_presente'
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    10,
-    'le dieci funzioni della forma A chiamano l''helper');
+    16,
+    -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
+    --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
+    --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
+    --   aggiornare questa riga. In entrambi i casi va guardato.
+    'le sedici funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la
@@ -169,11 +167,38 @@ SELECT ok(
 --    verde per costruzione.
 --    ⚠️ E' successo davvero: la prima stesura cercava `-> 0 ->> 'codice'` e non
 --    vedeva nessuno dei dieci. Solo una prova per mutazione l'ha mostrato.
+--    ⭐ DAL 2026-09-08 LA CANARINA E' UN TESTIMONE COSTRUITO, e il cambio e'
+--    la lezione del file gemello: prima l'asserzione ri-scriveva il marcatore
+--    QUI e lo applicava all'helper — cioe' sorvegliava una COPIA del marcatore,
+--    non la sede. Da quando la derivazione vive in dbops.vw_punti_primo_motivo,
+--    restringerlo LA' lasciava questa riga verde.
+--    ⇒ Adesso il test si fabbrica un sito nella forma con la variabile
+--    d'appoggio e pretende che la VISTA lo veda. Se qualcuno riporta il
+--    marcatore a `-> 0 ->> 'codice'`, questo diventa rosso.
+--    ⚠️ Il testimone e' escluso dai conteggi dei test 2-4 (`fn !~ '^pgtap_'`):
+--    un presidio che si conta addosso i propri semi sposta le sue soglie.
+CREATE FUNCTION pg_temp.pgtap_coda_variabile_appoggio() RETURNS void
+LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb;
+    v_primo  jsonb;
+BEGIN
+    v_motivi := script.fn_check_sorgente_chiudibile(1::bigint, 'PGTAP');
+    IF jsonb_array_length(v_motivi) > 0 THEN
+        v_primo := v_motivi -> 0;
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'pgtap_coda_variabile_appoggio', v_primo ->> 'codice',
+            '{}'::jsonb, NULL::uuid,
+            VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+    END IF;
+END
+$f$;
+
 SELECT ok(
-    (SELECT p.prosrc ~ 'fn_log_and_raise_error\s*\([^;]*->> ''codice'''
-       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'script' AND p.proname = 'fn_raise_primo_motivo_se_presente'),
-    'il marcatore riconosce la forma con la variabile d''appoggio (canarina)');
+    EXISTS (SELECT 1 FROM dbops.vw_punti_primo_motivo
+             WHERE sch ~ '^pg_temp' AND fn = 'pgtap_coda_variabile_appoggio'
+               AND check_funzione = 'fn_check_sorgente_chiudibile'),
+    'la vista riconosce la forma con la variabile d''appoggio e la lega alla sua check (canarina)');
 
 SELECT * FROM finish();
 ROLLBACK;

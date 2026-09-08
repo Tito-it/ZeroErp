@@ -82,23 +82,22 @@ BEGIN
                       ELSE                            script.fn_check_commessa_annullabile(NEW.id)
                     END;
 
-        IF jsonb_array_length(v_motivi) > 0 THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                v_motivi -> 0 ->> 'codice',
-                jsonb_build_object(
-                    'commessa_id', NEW.id,
-                    'codice',      NEW.codice,
-                    'stato_da',    v_codice_da,
-                    'stato_a',     v_codice_a,
-                    'motivi',      v_motivi
-                ),
-                NEW.tx_id,
-                coalesce(NEW.codice, NEW.id::text),
-                coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
-            );
-        END IF;
+        -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+        --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+        --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi
+        --   (il backend puo' mostrarli tutti anche se la frase ne nomina uno).
+        -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+        --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            v_motivi,
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'commessa_id', NEW.id,
+                'codice',      NEW.codice,
+                'stato_da',    v_codice_da,
+                'stato_a',     v_codice_a));
     END IF;
 
     RETURN NEW;

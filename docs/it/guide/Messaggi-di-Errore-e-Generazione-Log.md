@@ -290,7 +290,10 @@ l'helper, stai usando l'attrezzo sbagliato: quel motivo lo conosci gia', e il
 ⚠️ **E c'e' un caso in cui l'helper NON si usa anche se hai i motivi**: quando
 la `fn_check_*` **non emette `valori`**. Li' la frase la compone il chiamante
 dai propri dati, e delegare la spezzerebbe — uscirebbero i `%s` grezzi a video.
-Sono tredici siti, dichiarati come debito nel presidio.
+Sono **sei** siti — erano tredici fino al 2026-09-09, quando nove check hanno
+imparato a emettere `valori` e sei madri sono passate all'helper. Restano
+dichiarati come debito nel presidio (`test-rubinetto-primo-motivo-v1.sql`,
+test 4), a soglia che **puo' solo calare**.
 
 ⭐ **La domanda che viene PRIMA**, quando scrivi un guard nuovo, non e' quale
 funzione chiamare: e' **«questa regola deve anche accendere o spegnere un

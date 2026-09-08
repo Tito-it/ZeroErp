@@ -24,6 +24,7 @@ AS $function$
 DECLARE
   v_motivi  jsonb   := '[]'::jsonb;
   v_pendenti integer;
+  v_codice  vendite.commesse.codice%TYPE;
 BEGIN
   -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
   -- di programmazione, non una condizione di dominio.
@@ -40,6 +41,21 @@ BEGIN
   -- Sono le righe che fn_list_commesse_emittibili avrebbe raccolto:
   -- chiudere sopra di esse le perde, e CHIUSA e' irreversibile.
   -- Indice: ix_commesse_attivita_commessa_stati.
+      -- ⭐ LA CHIAVE VISIBILE, dal 2026-09-09. Non serve a DECIDERE — il
+      --   verdetto non la guarda — ma a COMPORRE la frase del motivo che
+      --   questa funzione ha scelto: «%s: ...» vuole il nome che una persona
+      --   riconosce, non l'id. Finche' i `valori` li metteva il chiamante,
+      --   glieli dava NEW; adesso il codice e la sua frase escono dallo stesso
+      --   posto, che e' tutto il senso di §12.5.2.
+      -- ⚠️ Dentro un trigger BEFORE questa SELECT legge la riga PRE-modifica,
+      --   mentre il chiamante usava NEW. Sulle transizioni di stato le due
+      --   coincidono (una transizione non rinomina il documento) ed e' anzi il
+      --   valore che l'operatore ha davanti sullo schermo — ma va detto, non
+      --   dato per scontato.
+  SELECT c.codice INTO v_codice
+    FROM vendite.commesse c
+   WHERE c.id = p_commessa_id;
+
   SELECT count(*)
     INTO v_pendenti
     FROM vendite.commesse_attivita ca
@@ -52,7 +68,10 @@ BEGIN
       'codice',     'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI',
       'reason',     'RIGHE_DA_EMETTERE',
       'reason_key', 'vendite.commesse.azione_reason.righe_da_emettere',
-      'dettaglio',  v_pendenti);
+      'dettaglio',  v_pendenti,
+      -- «Commessa %s: chiusura non consentita, %s riga/e approvate ...»
+      'valori',     jsonb_build_array(COALESCE(v_codice, p_commessa_id::text),
+                                      v_pendenti));
   END IF;
 
   RETURN v_motivi;
