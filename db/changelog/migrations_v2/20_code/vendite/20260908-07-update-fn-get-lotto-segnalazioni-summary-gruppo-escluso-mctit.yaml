@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La critica di un documento USCITO non ferma piu' il giro.
+#   brief-db-uscita-documento-dal-giro §5.3.
+#
+# ── ⭐ E' L'UNICA MODIFICA AL CONTEGGIO, E VA CAPITO PERCHE' ─────
+#   `blocks_next_step` e' `critical_count > 0 OR stato_esecuzione_errore_count > 0`,
+#   e tutti i numeri vengono da questa funzione, che ha TRE aggregati:
+#
+#     * `lotto_agg`   — legge fatturazione_lotti_log. Ci finisce il documento
+#                       caduto PRIMA di diventare fattura (il pull). 🔵 QUI si
+#                       interviene: e' l'unico ramo senza proprietario.
+#     * `fatture_agg` — legge fatture_log attraverso fatturazione_lotti_fatture.
+#     * `ponte_agg`   — legge fatturazione_lotti_fatture.stato_esecuzione.
+#
+#   ⭐ Gli ultimi due si sistemano DA SOLI, e per una ragione sola: leggono
+#   entrambi attraverso `fatturazione_lotti_fatture`, e togliere un documento dal
+#   giro cancella la sua bozza — quindi la riga di ponte sparisce e i due
+#   conteggi scendono senza che nessuno li tocchi. Non e' una coincidenza
+#   fortunata: e' la conferma che comporre `fn_elimina_fattura_da_lotto` (D-2)
+#   era coerente col resto.
+#
+# ── ⛔ LA REGOLA NON SI DUPLICA ─────────────────────────────────
+#   `blocks_next_step` sta in Python, somma e basta, e NON deve sapere niente di
+#   questo cantiere. Se un giorno servisse toccarlo, vorrebbe dire che il conto
+#   e' finito nel posto sbagliato.
+#
+# ── ⚠️ `gruppo_key IS NULL` CONTINUA A BLOCCARE ─────────────────
+#   Il `NOT EXISTS` non trova mai una corrispondenza su una riga senza
+#   proprietario, quindi quella riga conta — ed e' esattamente il significato
+#   della colonna: «questa segnalazione e' del GIRO», e una segnalazione del
+#   giro deve fermare il giro. Non e' un effetto collaterale del confronto: e'
+#   la regola, e viene gratis.
+#
+# ── 🔴 E FINCHE' IL BACKEND NON DICHIARA IL PROPRIETARIO... ─────
+#   ...questa modifica non sblocca NIENTE, e va detto: le critiche del pull
+#   nascono oggi con `gruppo_key` a NULL, quindi contano tutte. Il contratto e'
+#   nel §6 del brief — chi scrive una segnalazione che riguarda un documento ne
+#   dichiara la gruppo_key. Non e' un difetto di questo changeSet: e' l'ordine
+#   dei lavori, dichiarato.
+#
+# ⚠️ RETURNS TABLE invariato: CREATE OR REPLACE basta, niente DROP.
+#
+# Verifica: db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-07-update-fn-get-lotto-segnalazioni-summary-gruppo-escluso-mctit.yaml
+
+  - changeSet:
+      id: 20260908-07-update-fn-get-lotto-segnalazioni-summary-gruppo-escluso
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fn_get_lotto_segnalazioni_summary smette di contare le critiche
+        dei documenti usciti dal giro. Un documento escluso porta via la sua
+        segnalazione, quindi il lotto riparte quando esce l'ultimo che lo teneva
+        fermo — senza toccare blocks_next_step, che continua a chiedere «zero
+        critiche vive».
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+                columnName: gruppo_key
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_esiti
+                columnName: uscita_motivo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
+              RETURNS TABLE(fatture_critical_count bigint, fatture_warning_count bigint,
+                            lotto_critical_count bigint, lotto_warning_count bigint,
+                            lotto_info_count bigint, fatture_stato_esecuzione_errore_count bigint)
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Guard: parametro obbligatorio
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_lotto_segnalazioni_summary', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  RETURN QUERY
+                  WITH fatture_agg AS (
+                      -- ⭐ Non si tocca: la bozza cancellata porta via la riga di
+                      --    ponte, e questo conteggio scende da se'.
+                      SELECT COUNT(*) FILTER (WHERE fl.status = 'C') AS fc,
+                             COUNT(*) FILTER (WHERE fl.status = 'W') AS fw
+                        FROM vendite.fatturazione_lotti_fatture lf
+                        JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                       WHERE lf.lotto_id = p_lotto_id AND fl.disabilitato IS FALSE
+                  ),
+                  lotto_agg AS (
+                      SELECT COUNT(*) FILTER (WHERE ll.status = 'C') AS lc,
+                             COUNT(*) FILTER (WHERE ll.status = 'W') AS lw,
+                             COUNT(*) FILTER (WHERE ll.status = 'I') AS li
+                        FROM vendite.fatturazione_lotti_log ll
+                       WHERE ll.lotto_id = p_lotto_id AND ll.disabilitato IS FALSE
+                         -- ⭐ La segnalazione di un documento USCITO non conta piu':
+                         --   non e' stata ritirata, e' che il suo documento non e'
+                         --   piu' in gioco. Resta leggibile nella storia del lotto.
+                         -- ⚠️ Con `gruppo_key` NULL il NOT EXISTS e' vero e la riga
+                         --   CONTA: «segnalazione del giro» ferma il giro. La regola
+                         --   viene gratis dal confronto, non e' un ramo a parte.
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.fatturazione_lotti_esiti e
+                              WHERE e.lotto_id         = ll.lotto_id
+                                AND e.gruppo_key       = ll.gruppo_key
+                                AND e.stato_esecuzione = 'ESCLUSO')
+                  ),
+                  ponte_agg AS (
+                      -- ⭐ Nemmeno questo: stessa ragione di fatture_agg.
+                      SELECT COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS pe
+                        FROM vendite.fatturazione_lotti_fatture lf
+                       WHERE lf.lotto_id = p_lotto_id
+                  )
+                  SELECT COALESCE(fa.fc, 0), COALESCE(fa.fw, 0),
+                         COALESCE(la.lc, 0), COALESCE(la.lw, 0), COALESCE(la.li, 0),
+                         COALESCE(pa.pe, 0)
+                    FROM fatture_agg fa CROSS JOIN lotto_agg la CROSS JOIN ponte_agg pa;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
+              IS 'Riepilogo segnalazioni lotto attive (log fatture/lotto) + conteggio '
+                 'ponte errore. ⭐ Rev 2026-09-08: il ramo del LOG DI LOTTO non conta piu'' '
+                 'le critiche dei documenti USCITI dal giro (esito ESCLUSO) — cosi'' il '
+                 'lotto riparte quando esce l''ultimo documento che lo teneva fermo, '
+                 'senza che nessuno ritiri una segnalazione e senza toccare '
+                 'blocks_next_step, che continua a chiedere «zero critiche vive». '
+                 '⚠️ Una segnalazione con gruppo_key NULL CONTA: vuol dire «e'' del '
+                 'giro» — un emittente non risolto, una configurazione mancante — e non '
+                 'ha nessun documento da togliere. ⭐ Gli altri due aggregati non sono '
+                 'stati toccati e non e'' una dimenticanza: leggono entrambi attraverso '
+                 'fatturazione_lotti_fatture, e l''uscita cancella la bozza, quindi la '
+                 'riga di ponte sparisce e i loro conteggi scendono da soli. '
+                 '🔴 Finche'' chi scrive le segnalazioni non ne dichiara la gruppo_key, '
+                 'questa modifica non sblocca niente: le critiche del pull nascono a '
+                 'NULL e contano tutte (contratto §6 del brief). '
+                 'Brief: brief-db-uscita-documento-dal-giro §5.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina il conteggio senza il filtro dei documenti usciti.
+              CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
+              RETURNS TABLE(fatture_critical_count bigint, fatture_warning_count bigint,
+                            lotto_critical_count bigint, lotto_warning_count bigint,
+                            lotto_info_count bigint, fatture_stato_esecuzione_errore_count bigint)
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_lotto_segnalazioni_summary', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                      );
+                  END IF;
+                  RETURN QUERY
+                  WITH fatture_agg AS (
+                      SELECT COUNT(*) FILTER (WHERE fl.status = 'C') AS fc,
+                             COUNT(*) FILTER (WHERE fl.status = 'W') AS fw
+                        FROM vendite.fatturazione_lotti_fatture lf
+                        JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                       WHERE lf.lotto_id = p_lotto_id AND fl.disabilitato IS FALSE
+                  ),
+                  lotto_agg AS (
+                      SELECT COUNT(*) FILTER (WHERE ll.status = 'C') AS lc,
+                             COUNT(*) FILTER (WHERE ll.status = 'W') AS lw,
+                             COUNT(*) FILTER (WHERE ll.status = 'I') AS li
+                        FROM vendite.fatturazione_lotti_log ll
+                       WHERE ll.lotto_id = p_lotto_id AND ll.disabilitato IS FALSE
+                  ),
+                  ponte_agg AS (
+                      SELECT COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS pe
+                        FROM vendite.fatturazione_lotti_fatture lf
+                       WHERE lf.lotto_id = p_lotto_id
+                  )
+                  SELECT COALESCE(fa.fc, 0), COALESCE(fa.fw, 0),
+                         COALESCE(la.lc, 0), COALESCE(la.lw, 0), COALESCE(la.li, 0),
+                         COALESCE(pa.pe, 0)
+                    FROM fatture_agg fa CROSS JOIN lotto_agg la CROSS JOIN ponte_agg pa;
+              END;
+              $function$;

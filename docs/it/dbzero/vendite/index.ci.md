@@ -137,6 +137,7 @@
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_elimina_fattura_da_lotto](manual/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
+- [fn_escludi_documento_da_giro](manual/fn_escludi_documento_da_giro.md) — (latest review 2026-09-08)
 - [fn_esito_gruppi_giro](manual/fn_esito_gruppi_giro.md) — (latest review 15-08-2026)
 - [fn_espandi_listino_versione](manual/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
@@ -302,6 +303,7 @@
 - [trgfn_famiglie_documento_guard_riferimenti](manual/trgfn_famiglie_documento_guard_riferimenti.md) — (latest review 31-08-2026)
 - [trgfn_famiglie_documento_guard_struttura](manual/trgfn_famiglie_documento_guard_struttura.md) — *(rev 2026-09-01 — trigger nato il 2026-09-01)*
 - [trgfn_fattura_satellite_guard_congelamento](manual/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
+- [trgfn_fatturazione_lotti_esiti_uscita](manual/trgfn_fatturazione_lotti_esiti_uscita.md) — (latest review 2026-09-08)
 - [trgfn_fatturazione_lotti_gen_codice](manual/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_guard_data_numerata](manual/trgfn_fatture_guard_data_numerata.md) — **Rende immutabile `vendite.fatture.data` da quando la fattura ha un numero.**
@@ -417,6 +419,7 @@
 - [vw_resi_lista](manual/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_resi_righe_dettaglio](manual/vw_resi_righe_dettaglio.md) — (latest review 25-08-2026)
 - [vw_resi_righe_effettive](manual/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
+- [vw_segnalazioni_con_documento_ignoto](manual/vw_segnalazioni_con_documento_ignoto.md) — (latest review 2026-09-08)
 - [vw_situazione_merce_ordine](manual/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](manual/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ddt](manual/vw_stato_sorgente_ddt.md) — (latest review 2026-07-18)

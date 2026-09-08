@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Una segnalazione che nomina un documento che il lotto non ha.
+#   brief-db-uscita-documento-dal-giro §5.6.
+#
+# ── 🔴 IL PRESIDIO CHE AVEVO PROMESSO ERA VACUO, E L'HO CAMBIATO ─
+#   Il brief prometteva una vista dei «lotti fermi con TUTTE le critiche
+#   attribuite a documenti usciti». Scrivendola mi sono accorto che quella
+#   condizione **non e' raggiungibile per costruzione**: se tutte le critiche
+#   sono di documenti usciti, il conteggio del `20260908-07` risponde zero e il
+#   lotto non e' fermo. Sarebbe stata una vista vuota per teorema.
+#   ⛔ Un presidio che non puo' accendersi non e' prudenza: e' rumore, e chi lo
+#   apre due volte a vuoto la terza non lo apre piu'.
+#
+# ── ⭐ QUELLO CHE VALE DAVVERO PRESIDIARE ────────────────────────
+#   Una segnalazione critica il cui `gruppo_key` **non corrisponde a nessun
+#   esito di quel lotto**. E' un difetto vero e raggiungibile:
+#     * la segnalazione nomina un documento che il lotto non conosce, e
+#       l'operatore lo legge nella colonna «Documento»;
+#     * non si potra' MAI zittire togliendo quel documento dal giro, perche'
+#       non c'e' niente da togliere: resta a bloccare per sempre;
+#     * e dice che CHI SCRIVE ha dichiarato un proprietario sbagliato — cioe'
+#       il contratto del §6 e' stato rispettato male, non ignorato.
+#   ⚠️ Diventa raggiungibile il giorno in cui il backend comincia a valorizzare
+#   `gruppo_key`: oggi la colonna e' NULL ovunque e la vista e' vuota per
+#   assenza di dato, non per teorema. La differenza conta.
+#
+# ── ⚠️ `gruppo_key IS NULL` NON ENTRA ────────────────────────────
+#   NULL vuol dire «la segnalazione e' del GIRO», ed e' legittimo: non ha un
+#   documento e non deve averlo. Metterlo qui farebbe accusare come difetto la
+#   meta' sana del vocabolario.
+#
+# ── ⚠️ SOLO LE SEGNALAZIONI VIVE ────────────────────────────────
+#   Una segnalazione ritirata (`disabilitato`) non blocca niente e non si legge
+#   piu' nella scheda: presidiarla non cambierebbe nessuna decisione.
+#
+# ── ⚠️ `security_invoker` ────────────────────────────────────────
+#   `fatturazione_lotti` ha la RLS e il log no: il JOIN al lotto E' il
+#   perimetro. ⛔ Va dichiarato nella stessa istruzione — si azzera a ogni
+#   CREATE OR REPLACE.
+#
+# Verifica: db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-09-create-vw-segnalazioni-con-documento-ignoto-mctit.yaml
+
+  - changeSet:
+      id: 20260908-09-create-vw-segnalazioni-con-documento-ignoto
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_segnalazioni_con_documento_ignoto: le segnalazioni vive che
+        nominano un documento che il loro lotto non ha fra gli esiti. Non si
+        potranno mai zittire togliendo quel documento dal giro, perche' non c'e'
+        niente da togliere. Invariante: deve restare vuota.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+                columnName: gruppo_key
+            - tableExists:
+                { schemaName: vendite, tableName: fatturazione_lotti_esiti }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_segnalazioni_con_documento_ignoto
+              WITH (security_invoker = true) AS
+              SELECT ll.id            AS segnalazione_id,
+                     ll.lotto_id,
+                     fl.codice        AS lotto_codice,
+                     ll.gruppo_key,
+                     ll.status        AS livello,
+                     ll.data_ora,
+                     ll.messaggio
+                FROM vendite.fatturazione_lotti_log ll
+                JOIN vendite.fatturazione_lotti     fl ON fl.id = ll.lotto_id
+               WHERE ll.disabilitato IS FALSE
+                 -- ⚠️ NULL e' legittimo: «la segnalazione e' del GIRO». Non ha
+                 --   un documento e non deve averlo.
+                 AND ll.gruppo_key IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1
+                       FROM vendite.fatturazione_lotti_esiti e
+                      WHERE e.lotto_id   = ll.lotto_id
+                        AND e.gruppo_key = ll.gruppo_key);
+
+              GRANT SELECT ON vendite.vw_segnalazioni_con_documento_ignoto TO PUBLIC;
+
+              COMMENT ON VIEW vendite.vw_segnalazioni_con_documento_ignoto IS
+                  'PRESIDIO. Le segnalazioni VIVE che nominano un documento che il loro '
+                  'lotto non ha fra gli esiti. ⛔ INVARIANTE: deve restare VUOTA. '
+                  'Una riga qui e'' un difetto vero e con una conseguenza precisa: quella '
+                  'segnalazione non si potra'' MAI zittire togliendo il documento dal giro '
+                  '— non c''e'' niente da togliere — quindi resta a bloccare il lotto per '
+                  'sempre, e nel frattempo l''operatore legge nella colonna «Documento» il '
+                  'nome di una cosa che nell''elenco non c''e''. Dice che CHI SCRIVE la '
+                  'segnalazione ha dichiarato un proprietario sbagliato (contratto §6 del '
+                  'brief). ⚠️ gruppo_key NULL NON entra: vuol dire «la segnalazione e'' del '
+                  'GIRO», che e'' legittimo e non ha un documento. ⚠️ Solo le vive: una '
+                  'ritirata non blocca e non si legge. ⭐ Oggi e'' vuota per ASSENZA DI '
+                  'DATO (nessuno valorizza ancora gruppo_key), non per teorema — e la '
+                  'differenza conta, perche'' diventa raggiungibile il giorno in cui il '
+                  'backend comincia a dichiarare il proprietario. 🔴 Sostituisce il '
+                  'presidio promesso nel brief («lotti fermi con tutte le critiche di '
+                  'documenti usciti»), che era VACUO: se tutte le critiche sono di '
+                  'documenti usciti il conteggio risponde zero e il lotto non e'' fermo. '
+                  'Un presidio che non puo'' accendersi e'' rumore. '
+                  'Brief: brief-db-uscita-documento-dal-giro §5.6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_segnalazioni_con_documento_ignoto;

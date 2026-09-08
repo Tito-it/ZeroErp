@@ -21,12 +21,16 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| uscita_motivo | text | YES |  |
+| uscita_quando | timestamp with time zone | YES |  |
+| uscita_da | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatturazione_lotti_esiti_errore_parlante |  |
 | CHECK | chk_fatturazione_lotti_esiti_stato |  |
+| CHECK | chk_fatturazione_lotti_esiti_uscita_parlante |  |
 | FOREIGN KEY | fk_fatturazione_lotti_esiti_lotto | lotto_id |
 | PRIMARY KEY | pk_fatturazione_lotti_esiti | id |
 | UNIQUE | uq_fatturazione_lotti_esiti_documento | lotto_id, gruppo_key |
@@ -40,6 +44,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_fatturazione_lotti_esiti_a10_uscita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_esiti_uscita()` |
+| trg_fatturazione_lotti_esiti_a10_uscita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatturazione_lotti_esiti_uscita()` |
 | trg_fatturazione_lotti_esiti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_esiti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatturazione_lotti_esiti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

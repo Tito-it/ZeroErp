@@ -8,7 +8,7 @@ CREATE FUNCTION fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text DEFAULT NULL::text, p_livello character DEFAULT NULL::bpchar, p_solo_attive boolean DEFAULT true, p_solo_job_corrente boolean DEFAULT false, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'desc'::text)
- RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb)
+ RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb, gruppo_key text)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -172,7 +172,11 @@ BEGIN
                    --   avremmo creata una terza. Il disallineamento
                    --   `bersaglio`/`bersagli`/`target` si chiude a monte:
                    --   qui si dichiara, non si nasconde.
-                   fl.meta -> 'bersagli'                            AS target
+                   fl.meta -> 'bersagli'                            AS target,
+                   -- ⛔ NULL, e non e' un buco: una bozza puo' coprire PIU'
+                   --   documenti, quindi una segnalazione appesa alla FATTURA
+                   --   non ne nomina uno. Sceglierne uno sarebbe una scommessa.
+                   NULL::text                                       AS gruppo_key
               FROM vendite.fatturazione_lotti_fatture lf
               JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
               -- LEFT: il log esiste anche se la fattura non e'
@@ -212,7 +216,11 @@ BEGIN
                    --   da riempire adesso: nessuno lo scrive (misurato: 14
                    --   chiavi in `meta`, nessuna e' un bersaglio). Il patto
                    --   e' offerta, non promessa — li' nessun pulsante.
-                   NULL::jsonb
+                   NULL::jsonb,
+                   -- ⭐ Di CHI parla questa segnalazione. NULL = e' del GIRO
+                   --   (un emittente non risolto, una configurazione mancante):
+                   --   non ha un documento da togliere, e blocca.
+                   ll.gruppo_key
               FROM vendite.fatturazione_lotti_log ll
              WHERE ll.lotto_id = $1
         ), filtrata AS (
@@ -241,7 +249,8 @@ BEGIN
                --    sul job: e' l'unico posto da cui si vedono.
                (SELECT count(*) FROM filtrata y
                  WHERE y.job_corrente IS FALSE)::bigint             AS fuori_job_count,
-               x.target
+               x.target,
+               x.gruppo_key
           FROM filtrata x
          WHERE (NOT $6 OR x.job_corrente)
          ORDER BY %s %s NULLS LAST, x.data_ora DESC, x.origine, x.id
@@ -251,6 +260,9 @@ BEGIN
           v_solo_attive, v_solo_job, v_limit, v_offset;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_livello character, p_solo_attive boolean, p_solo_job_corrente boolean, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
+IS 'Elenco paginato delle segnalazioni di un lotto, dalle due origini (log fatture e log lotto) unite. ⭐ Rev 2026-09-08: espone `gruppo_key`, cioe'' DI QUALE DOCUMENTO parla la riga. E'' la colonna che divide la scheda Critiche in due famiglie con vie d''uscita diverse — quella di un documento si toglie dal giro, quella del GIRO (gruppo_key NULL: emittente non risolto, configurazione mancante) si corregge e basta. ⛔ Sul ramo FATTURA la colonna e'' NULL e non e'' un buco: una bozza puo'' coprire piu'' documenti, quindi una segnalazione appesa alla fattura non ne nomina uno, e sceglierne uno sarebbe una scommessa. Brief: brief-db-uscita-documento-dal-giro §4.1.';
 ```
 
 ---
