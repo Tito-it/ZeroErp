@@ -3794,7 +3794,7 @@
     },
     "lotto_segnalazioni": {
       "col_data_ora": "Quando",
-      "col_documento_display": "Documento",
+      "col_documento_display": "Cliente",
       "col_error_code": "Codice",
       "col_fase": "Fase",
       "col_importo": "Importo",
@@ -3803,6 +3803,7 @@
       "col_messaggio": "Messaggio",
       "col_origine": "Origine",
       "col_gruppo_fatturabile": "Gruppo fatturabile",
+      "col_riferimento": "Documento",
       "col_ritirata": "Ritirata"
     },
     "fondi_fattura_da_decidere": {

@@ -163,6 +163,44 @@ diversi, e confonderli è il difetto più facile da non vedere:
 | `p_context -> 'bersaglio'` | il **frontend** (dove portare l'operatore) | ⭐ **dal 2026-08-23** — array di `{tipo, id}`, **sempre**, anche con un elemento solo |
 | `VARIADIC p_valori` | **l'operatore** (la frase che legge) | ⛔ mai un nome di parametro o di colonna: la cosa che una persona riconosce |
 
+
+### ⭐ Due funzioni per sollevare, e a scegliere non sei tu
+
+Dal 2026-09-08 i punti che sollevano il **codice del primo motivo** di una
+`script.fn_check_*` non compongono piu' la coda a mano: chiamano
+`script.fn_raise_primo_motivo_se_presente`. La domanda che decide e' **una**, e
+si vede nella riga che stai scrivendo:
+
+> **Il codice che sollevo lo sto LEGGENDO da un array di motivi, o lo sto
+> SCRIVENDO come letterale?**
+
+| Quello che scrivi | Cosa chiami |
+| --- | --- |
+| `'E_QUALCOSA'` — un letterale | `script.fn_log_and_raise_error` |
+| `v_motivi -> 0 ->> 'codice'` | `script.fn_raise_primo_motivo_se_presente` |
+
+⭐ **Sbagliare funzione non compila**: i tipi non legano (`42883` in un verso,
+`22P02` nell'altro). L'unico modo di sbagliare e' **non usarla** — ricopiare la
+coda — e quello e' silenzioso: lo presidia `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql`.
+
+⛔ **L'array non lo costruisci tu.** Se stai scrivendo
+`jsonb_build_array(jsonb_build_object('codice', 'E_X', ...))` per poter usare
+l'helper, stai usando l'attrezzo sbagliato: quel motivo lo conosci gia', e il
+`-> 0` non sceglie niente.
+
+⚠️ **E c'e' un caso in cui l'helper NON si usa anche se hai i motivi**: quando
+la `fn_check_*` **non emette `valori`**. Li' la frase la compone il chiamante
+dai propri dati, e delegare la spezzerebbe — uscirebbero i `%s` grezzi a video.
+Sono tredici siti, dichiarati come debito nel presidio.
+
+⭐ **La domanda che viene PRIMA**, quando scrivi un guard nuovo, non e' quale
+funzione chiamare: e' **«questa regola deve anche accendere o spegnere un
+pulsante nel frontend?»**. Se si', il predicato va in una `fn_check_*` e il
+guard la CHIAMA (§12.5.2) — e allora ti ritrovi i motivi in mano. Se no,
+valuti li' e sollevi il codice diretto.
+
+Brief: `docs/it/dev/work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
+
 #### Il bersaglio — *«su quale cosa»*, e perché non va nella frase
 
 Un errore che riguarda **una cosa identificabile** la nomina nel contesto, non

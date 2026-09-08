@@ -25,6 +25,57 @@ unificando:
 
 ---
 
+### ⭐ I tre conteggi del BANNER — contano GESTI, non allarmi
+(dal 2026-09-08)
+
+I sei conteggi storici contano **segnalazioni**. Ma i gesti che l'operatore ha
+davanti sono uno per **documento** — «togli questo dal giro» — e un documento
+con tre critiche resta un documento solo. Dire *«3 segnalazioni bloccanti»* è un
+numero vero che descrive la cosa sbagliata.
+
+| Colonna | Che cosa conta |
+| --- | --- |
+| `documenti_bloccanti_count` | quanti **documenti** hanno almeno una critica viva (`DISTINCT` sulla chiave) |
+| `documenti_presi_in_carico_count` | il **denominatore**: quanti documenti il lotto ha preso in carico |
+| `critiche_giro_count` | le critiche che un documento **non ce l'hanno** |
+
+#### ⛔ Il terzo numero non è un di più
+
+Le critiche sono di **due specie**, e una non è un documento:
+
+* di un **documento** (`gruppo_key` valorizzata) → si toglie dal giro;
+* del **giro** (`gruppo_key IS NULL`) → emittente non risolto, configurazione
+  mancante: blocca e **non c'è niente da togliere**.
+
+Su un lotto fermo per un emittente non risolto, *«N documenti su M»* direbbe
+**«0 documenti su 4»** — un banner che dichiara che non c'è niente da fare
+mentre il giro è bloccato. Il terzo numero è ciò che rende la frase vera.
+
+#### ⛔ Il denominatore non viene dal perimetro
+
+`M` si conta su `vendite.fatturazione_lotti_esiti` — i documenti **presi in
+carico** — e non su `fatturazione_lotti_gruppi`. Il perimetro è **vuoto sui giri
+di massa**: è esattamente la ragione per cui la tabella degli esiti è nata il
+2026-09-07. Col perimetro il banner direbbe «su 0» su metà dei giri.
+
+#### ⚠️ Descrivono il canale «lotto», e va detto
+
+La `gruppo_key` vive solo lì. Gli altri due canali che bloccano — `fatture_log`
+e lo stato della riga di ponte — parlano per **fattura**, e una bozza può
+coprire più documenti: i loro conteggi **non sono sommabili** a questi senza
+scommettere.
+
+#### ⚠️ Sono in coda, e la posizione è portante
+
+Il backend legge questa riga per **posizione** (`row[0]`..`row[5]`). Infilare i
+numeri nuovi in mezzo farebbe scivolare i sei esistenti — e una lettura
+posizionale sbagliata **non protesta**: mostrerebbe numeri plausibili e falsi.
+
+⛔ `blocks_next_step` resta in Python e non deve sapere niente di questi tre:
+sono per la **frase**, non per la decisione.
+
+---
+
 ### ⭐ Le criticità di un documento **uscito dal giro** non contano più
 (dal 2026-09-08)
 

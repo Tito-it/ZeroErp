@@ -38,14 +38,24 @@
 > ✅ **Fatte a video** tre superfici del §7 su quattro: la scheda Critiche con la
 > colonna del documento e l'azione di riga, la scheda «Presi in carico» con
 > l'uscita e il suo timbro, e il gesto di massa con l'esito parziale.
-> 🔵 **Resta al DB — §7-ter**, da leggere per primo insieme al §9: tre cose
-> piccole senza cui il §7 non è intero (le due righe di catalogo, il riferimento
-> leggibile, il conteggio del banner).
-> ⛔ Niente è committato, e ⛔ **niente è applicato**: i tre changeSet nuovi
-> aspettano il `migrate` dell'utente. Il verde definitivo dei pgTAP si prende
-> **dopo**, con `scripts/testpgtap.sh` (che gira come `zeroerp_app`, con la RLS
-> attiva): la prova pre-apply gira da **owner** ed è una prova di struttura, non
-> di permessi.
+> 🟢 **E chiuse le tre richieste del §7-ter** (le due righe di catalogo, il
+> riferimento leggibile, il numero del banner): `20260908-31` (lo split gemello
+> + `fn_riferimento_gruppo_fatturabile`), `-32` (la lista lo espone e lo ordina,
+> critiche del giro **in testa**), `-33` (i tre conteggi del banner), più il seed
+> della lista 47 e le chiavi i18n. Il ragionamento è nei **§6.2 e §6.3**.
+> ✅ **pgTAP `test-riferimento-gruppo-fatturabile-v1.sql`: 16 su 16** come
+> `zeroerp_app`, RLS attiva; baseline completa senza regressioni.
+> ✅ **Tutto applicato** (`migrate` del 2026-09-08): `20260908-18`…`-20` e
+> `-31`…`-33`.
+> 🔵 **Resta**: la rigenerazione della doc auto-gen — aggancia le quattro pagine
+> `manual/` nuove e fa passare `gen_seed_lista.py --verifica-ordinamento`, che
+> per questa lista legge la whitelist **dalla doc** e non dal Python — e, lato
+> backend, la voce `riferimento` nella propria whitelist di ordinamento più i
+> campi nuovi da leggere (`riferimento` in coda alla riga, i tre conteggi in
+> coda al riepilogo).
+> ⚠️ **`gruppo_key` NON entra in whitelist**, ed è una decisione (D-8): la sua
+> colonna è spenta a catalogo, quindi non c'è nessuna freccia da cliccare. Il
+> §7-ter ne chiedeva **due**, se ne offre **una**.
 >
 > **Origine:** Tid, 2026-09-08. ⚠️ **E la formulazione della domanda è parte del
 > progetto**: la prima stesura di questo brief era appoggiata a un lotto di
@@ -551,6 +561,128 @@ quando `fn_segna_esito_gruppo_lotto` non marca nessun gruppo per una commessa: �
 lo **stesso fatto** che `vendite.vw_segnalazioni_con_documento_ignoto` mostra
 dall'altro lato. Vanno letti insieme il giorno dell'accensione.
 
+
+### 6.2 🟢 Il riferimento leggibile — consegnato il 2026-09-08
+
+> **Origine**: seconda richiesta BE dello stesso giorno. *«Sulla scheda Critiche
+> il documento si legge come chiave grezza.»* Vero, e il difetto era a video:
+>
+> | quello che si leggeva | quello che si legge adesso |
+> | --- | --- |
+> | `ORDINE_VENDITA:01a06ce4-35a6-721a-9cd8-9da48bf77626` | `ORD0036004` |
+
+⭐ **La chiave e l'etichetta non sono in concorrenza: servono a due
+destinatari.** La `gruppo_key` la vuole il **pulsante** — `fn_escludi_documento_da_giro`
+la riceve — e continua a viaggiare in riga. Il `riferimento` è per la
+**persona**, ed è l'unico dei due che si vede.
+
+**Che cosa è stato scritto** (`20260908-31`, `-32`):
+
+* `vendite.fn_split_gruppo_fatturabile_key` — la **gemella dichiarata** di
+  quella che costruisce la chiave. ⛔ Non è una riga di `split_part`: la doc
+  della gemella vieta esattamente questa mossa nel verso opposto — *«i prefissi
+  sono una convenzione di leggibilità, non un contratto»* — e l'argomento vale
+  identico al contrario. ⭐ Il presidio non è l'occhio: è un pgTAP di **andata e
+  ritorno**, `split(build(x)) = x` su entrambe le forme;
+* `vendite.fn_riferimento_gruppo_fatturabile` — la scala di ripiego: numero del
+  documento, codice della commessa (la forma sourceless `MAN:<id>`), chiave
+  grezza. ⭐ L'ultimo livello **non è una resa**: è ciò che l'operatore vedeva
+  prima, quindi peggiorare è impossibile;
+* `fn_list_lotto_segnalazioni` espone `riferimento` **in coda** alla
+  `RETURNS TABLE` (DROP + CREATE: `CREATE OR REPLACE` non la cambia) e lo offre
+  in ordinamento.
+
+⭐ **Il pezzo difficile non è stato scritto, perché c'era già.**
+`vendite.fn_get_sorgente_documento_ref` risolve il numero di un documento
+polimorfo leggendo `config.sorgenti.label_selector`, ed è in servizio da mesi
+sotto la dashboard Competenza. Le sorgenti che diventano documenti fatturabili
+dichiarano tutte il proprio selettore — letto dal seed, non misurato.
+
+⛔ **E non si risale a `commesse_attivita`.** Sembra la via ovvia. Ma la
+`gruppo_key` su una segnalazione è un **fatto storico**, e quel lavoro può
+essere già fatturato, annullato o uscito dal giro: la colonna si svuoterebbe
+**proprio dopo**, e la scheda Critiche si legge dopo. È la stessa ragione già
+scritta dentro quella funzione per `documento_display`.
+
+#### ⚠️ Una seconda scrittura, dichiarata invece che nascosta
+
+`vw_dash_competenza_gruppi.riferimento` fa la **stessa** scala di ripiego e non
+chiama la funzione nuova. Il costo di unificarle è scritto: là il `LATERAL`
+serve comunque per `documento_id`, quindi passare dalla chiave vorrebbe dire
+risolvere **due volte per riga** su una vista di dashboard, e riprodurre il
+corpo di una vista grande (con la sua `security_invoker`, che si azzera a ogni
+`CREATE OR REPLACE`) per spostare una riga.
+⇒ La seconda scrittura resta e si **presidia**: un pgTAP chiede alle due la
+stessa stringa. ⚠️ Prova che *oggi* coincidono, non che non possano divergere —
+è un ripiego dichiarato, non un pareggio.
+
+#### Le tre decisioni di Tid (2026-09-08)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **D-7** | La colonna con la chiave resta a video? | ⛔ **No.** `gruppo_fatturabile` va a `attivo = f`: la chiave viaggia in riga per il pulsante, non per l'occhio |
+| **D-8** | Si ordina sulla chiave o sull'etichetta? | **Sull'etichetta.** ⇒ in whitelist entra `riferimento`, non `gruppo_key` — la cui colonna è spenta, quindi non c'è nessuna freccia da cliccare |
+| **D-9** | Le critiche del giro, in testa o in coda? | ⭐ **In testa.** Il `NULLS LAST` di default è scritto per le colonne dove il `NULL` è un dato mancante. Qui il `NULL` è la critica **del giro**: quella che blocca e che non si può togliere in nessun modo. In coda, su una lista paginata, l'operatore toglierebbe trenta documenti uno per uno e il lotto non ripartirebbe lo stesso — per una riga che non ha mai visto |
+
+⚠️ **La D-8 è accoppiata al seed**, e non è un dettaglio: `gen_seed_lista.py`
+confronta la whitelist col flag `ordinabile`. Una voce in whitelist su una
+colonna `ordinabile = f` è una *capacità irraggiungibile*; il verso opposto è
+una *freccia che non ordina*. Le due modifiche si fanno insieme.
+
+#### ⭐ E una quarta cosa, che il database ha deciso da sé
+
+Scrivendo le chiavi i18n è emerso che `vendite.lotto_gruppi.col_riferimento`
+**esiste già** e vale *«Documento»*: la scheda gemella «Presi in carico», nello
+**stesso drawer**, chiama così la stessa cosa. ⇒ La colonna nuova prende quel
+nome invece di coniarne un terzo, e `documento_display` — che mostra il
+**cliente** della fattura, non il documento — diventa *«Cliente»*.
+⚠️ Si è cambiato il **valore** della chiave i18n, mai la chiave: quella è un
+indirizzo.
+
+### 6.3 🟢 Il banner — consegnato il 2026-09-08
+
+Il §7 chiedeva *«Il giro è fermo per N documenti su M»*. Il riepilogo contava
+**segnalazioni**: `20260908-33` aggiunge **tre** conteggi, in coda.
+
+| Colonna | Che cosa conta |
+| --- | --- |
+| `documenti_bloccanti_count` | quanti **documenti** hanno almeno una critica viva (`DISTINCT` sulla chiave) |
+| `documenti_presi_in_carico_count` | il denominatore |
+| `critiche_giro_count` | le critiche che un documento **non ce l'hanno** |
+
+⛔ **Il terzo non è un di più: è ciò che rende la frase vera.** Le critiche sono
+di due specie (§4.1) e una non è un documento. Su un lotto fermo per un
+emittente non risolto, «N documenti su M» direbbe **«0 documenti su 4»** — cioè
+che non c'è niente da fare mentre il giro è bloccato.
+
+⛔ **Il denominatore non viene dal perimetro**: `fatturazione_lotti_gruppi` è
+vuota sui giri di massa — è la ragione per cui `fatturazione_lotti_esiti` è nata
+il 07-09. Col perimetro il banner direbbe «su 0» su metà dei giri, e nessuno
+collegherebbe il difetto a quella riga.
+
+⚠️ **I tre descrivono il canale «lotto»**, dove la `gruppo_key` vive. Gli altri
+due canali parlano per **fattura**, e una bozza può coprire più documenti: non
+sono sommabili senza scommettere.
+
+⚠️ **In coda** — ma il motivo va corretto.
+
+> 🔴 **Correzione del 2026-09-08, dopo il merge di `Tito-dev`.** Avevo scritto —
+> nel changeSet `-33`, nel suo `COMMENT` e nel messaggio di commit — che *«il
+> backend legge il riepilogo per posizione (`row[0]`..`row[5]`), quindi infilare
+> i numeri nuovi in mezzo mostrerebbe valori plausibili e falsi»*. **È falso**:
+> `pipeline_repository.py` **nomina** le colonne nella propria `SELECT`, quindi
+> gli indici sono ancorati alla sua lista e non all'ordine della funzione. Lo
+> stesso vale per il lettore di `fn_list_lotto_segnalazioni`.
+> ⭐ **La decisione resta giusta, il motivo no**, ed è il caso peggiore secondo
+> la regola zero: una conclusione giusta appoggiata a un argomento sbagliato.
+> Il motivo vero è più modesto e vale lo stesso: *in coda è il default
+> conservativo* — protegge un `SELECT *` (i pgTAP ne fanno) e chiunque legga per
+> posizione in futuro, e non costa niente.
+> ⛔ Il testo dentro il `-33` **non si corregge**: è applicato, e riscriverlo
+> romperebbe il checksum Liquibase. La correzione vive qui, che è dove si legge.
+⛔ `blocks_next_step` resta in Python e non deve sapere niente di questi tre:
+sono per la **frase**, non per la decisione.
+
 ---
 
 ## 7. Che cosa si vede
@@ -603,7 +735,31 @@ ragionamento — che è il modo più caro di scoprirlo.
 
 ---
 
-## 7-ter. 🔵 Che cosa resta al DB perché il §7 sia intero
+## 7-ter. 🟢 Che cosa restava al DB perché il §7 sia intero — CHIUSO
+
+> 🟢 **Le tre richieste sono state consegnate il 2026-09-08**, e il ragionamento
+> per esteso sta nei **§6.2** (il riferimento leggibile) e **§6.3** (il banner).
+> Le domande restano scritte sotto, perché il perché di una cosa fatta serve più
+> di quanto serva sapere che è fatta.
+>
+> | | Chiesto | Consegnato |
+> | --- | --- | --- |
+> | **7-ter.1** | le due righe di `ui.lista_colonna` | ✅ nel CSV, più `gruppo_fatturabile` spenta (D-7) e `riferimento` nuova e ordinabile |
+> | **7-ter.2** | `riferimento` accanto a `gruppo_key` | ✅ `20260908-31`/`-32`. ⚠️ In whitelist entra **solo** `riferimento` (D-8): la colonna della chiave è spenta, quindi non c'è freccia da cliccare |
+> | **7-ter.3** | il numero del banner | ✅ `20260908-33`, e i numeri sono **tre**: senza il terzo la frase direbbe «0 documenti su 4» su un lotto fermo per una critica del giro |
+>
+> ⭐ **Due correzioni al ragionamento del §7-ter.2**, e vanno lette perché
+> cambiano la sede: l'identità del gruppo **non** si prende da
+> `vw_dash_competenza_gruppi` — per la ragione che il §7-ter nomina (è agganciata
+> al mese) **e** per una che non nomina: la `gruppo_key` su una segnalazione è un
+> **fatto storico**, e quel lavoro può essere già fatturato o uscito dal giro, per
+> cui la colonna si svuoterebbe *proprio dopo*. La risoluzione passa dallo split
+> della chiave e da `fn_get_sorgente_documento_ref`, che dipende solo dal
+> documento.
+> ⭐ E sul §7-ter.3: **`M` non lo lascia al frontend**. Viene dagli **esiti**
+> (`documenti_presi_in_carico_count`), così numeratore e denominatore nascono
+> nello stesso posto e non possono dissentire — e vale anche sui giri di massa,
+> dove il perimetro è vuoto.
 
 > ⚠️ **Trasportate qui il 2026-09-08**, quando il brief figlio
 > [brief-be-db-gruppo-key-sulle-segnalazioni](../work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md)

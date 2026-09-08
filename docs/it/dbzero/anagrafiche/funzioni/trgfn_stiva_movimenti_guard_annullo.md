@@ -42,30 +42,35 @@ AS $function$
 --    ⚠️ La MADRE resta INVOKER: la scrittura passa comunque dalla
 --    policy, qui si scavalca solo per una LETTURA di coerenza.
 DECLARE
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi   jsonb;
-    v_primo    jsonb;
     v_ann      RECORD;
 BEGIN
     -- ---- 1) AMMISSIBILITA' ------------------------------------
     v_motivi := script.fn_check_annullo_movimento_titolo_iva(
                     NEW.annulla_movimento_id);
 
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        v_primo := v_motivi -> 0;
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', TG_NAME,
-            v_primo ->> 'codice',
-            jsonb_build_object(
-                'movimento_annullato_id', NEW.annulla_movimento_id,
-                'titolo_iva_id',          NEW.titolo_iva_id,
-                'motivi',                 v_motivi),
-            NEW.tx_id,
-            -- ⚠️ I valori della frase viaggiano CON il motivo, per
-            --   non ricomporre in due posti la frase che
-            --   l'operatore legge.
-            VARIADIC ARRAY(SELECT jsonb_array_elements_text(
-                                      v_primo -> 'valori')));
-    END IF;
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⭐⭐ `NEW.tx_id` e' GIUSTO, anche se il guard e' `_a10_`, e questa riga
+    --   e' l'eccezione che spiega la regola: i BEFORE girano in ordine
+    --   LESSICOGRAFICO sul NOME INTERO del trigger, e questo abbrevia il nome
+    --   della tabella —
+    --     trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd   ('so' ...)
+    --     trg_stiva_movimenti_a10_guard_annullo_ins             ('st' ...)
+    --   quindi gen_tx_id scatta PRIMA e la transazione c'e'. ⛔ Non e' il
+    --   prefisso di fase a decidere: e' la stringa intera.
+    -- ⭐ `motivi` non si passa piu': lo mette l'helper, sempre.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'anagrafiche', TG_NAME,
+        v_motivi,
+        NULL,
+        NEW.tx_id,
+        jsonb_build_object(
+            'movimento_annullato_id', NEW.annulla_movimento_id,
+            'titolo_iva_id',          NEW.titolo_iva_id));
 
     -- ---- 2) COERENZA -----------------------------------------
     -- La riga esiste ed e' annullabile: la si rilegge per i due

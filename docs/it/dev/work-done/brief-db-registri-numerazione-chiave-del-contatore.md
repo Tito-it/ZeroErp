@@ -69,7 +69,7 @@
 > solleva il primo motivo di una `fn_check_*` è copiata in **dieci** punti su
 > cinque tabelle — domanda di Tid del 2026-09-08, misura fatta per rispondere,
 > perimetro suo. Sta in
-> [brief-db-coda-primo-motivo-in-un-posto-solo](brief-db-coda-primo-motivo-in-un-posto-solo.md).
+> [brief-db-coda-primo-motivo-in-un-posto-solo](../work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md).
 >
 > 📖 **La versione per chi cerca senza sapere che esiste un brief** — le stesse
 > regole in linguaggio da guida, e più ricercabili:

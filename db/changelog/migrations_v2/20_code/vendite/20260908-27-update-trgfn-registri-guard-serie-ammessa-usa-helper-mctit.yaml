@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# H-2 — Il guard della serie ammessa chiama l'helper
+#   vendite.trgfn_registri_fatturazione_guard_serie_ammessa
+#   Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 6
+#
+# -- PERCHE' -------------------------------------------------
+#   E' il sito nato il 2026-09-01, quello che ha fatto scoprire il cantiere.
+#   ⚠️ L'helper NON difende dall'incidente di quel giorno (l'ordine dei
+#   `valori` vive nella check): toglie di mezzo il gesto meccanico.
+#
+# -- COSA CAMBIA, E COSA NO ----------------------------------
+#   Cambia SOLO la coda che solleva il primo motivo della check. La TESTA —
+#   quale check chiamare, su quali colonne, con quale confronto di no-op —
+#   resta identica, ed e' il §3 del brief: due funzioni che finiscono uguali
+#   non sono due funzioni da unire, sono due funzioni che chiamano la stessa
+#   cosa.
+#   ⛔ Il corpo di partenza e' quello VIVO (pg_get_functiondef), non uno YAML:
+#   di questa funzione ci sono piu' revisioni e solo l'ultima conta.
+#
+# -- IL ROLLBACK --------------------------------------------
+#   Rimette il corpo esattamente com'era prima di questo changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-27-update-trgfn-registri-guard-serie-ammessa-usa-helper-mctit.yaml
+
+  - changeSet:
+      id: 20260908-27-update-trgfn-registri-guard-serie-ammessa-usa-helper
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard della serie ammessa chiama l'helper. E'' il sito nato il 2026-09-01, quello che ha
+        fatto scoprire il cantiere. ⚠️ L''helper NON difende dall''incidente di quel giorno (l''ordine
+        dei `valori` vive nella check): toglie di mezzo il gesto meccanico. Piano: brief-db-coda-primo-
+        motivo-in-un-posto-solo, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_raise_primo_motivo_se_presente';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_registri_fatturazione_guard_serie_ammessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+                  --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
+                  v_motivi jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare un `serie_default` su un registro la cui
+                  --   famiglia non dichiara una colonna dove il documento possa
+                  --   registrare la serie.
+                  --
+                  -- ⛔ Perche': la serie entra nella chiave del contatore.
+                  --   Cambiarla apre un secchio nuovo che riparte da 1, e se il
+                  --   documento non la registra (resi, commesse) quel numero
+                  --   collide con uno gia' emesso — il documento non si numera
+                  --   piu'.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Si chiama
+                  --   script.fn_check_registro_serie_ammessa e si solleva il
+                  --   codice del primo motivo, cosi' il rifiuto e il tooltip
+                  --   della maschera non possono divergere.
+                  -- =========================================================
+
+                  -- ⭐ In UPDATE il no-op passa: `UPDATE OF` scatta quando lo
+                  --   statement NOMINA la colonna, anche a valore invariato — e
+                  --   il mirror CSV dei registri riscrive serie_default a OGNI
+                  --   migrate. Senza questo confronto, ogni migrate fallirebbe.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.serie_default      IS NOT DISTINCT FROM OLD.serie_default
+                     AND NEW.famiglia_documento IS NOT DISTINCT FROM OLD.famiglia_documento THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_registro_serie_ammessa(
+                                  NEW.famiglia_documento, NEW.serie_default);
+
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+                  --   come si spacchettano i valori e come si compone il contesto li decide
+                  --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+                  -- ⚠️ `NULL::uuid` e non NEW.tx_id: questo guard sta su un trigger `_a10_`
+                  --   che, confrontato per NOME INTERO, precede `..._gen_tx_id_ins_upd`
+                  --   ('a10' < 'gen'), quindi la transazione non e' ancora assegnata.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'trgfn_registri_fatturazione_guard_serie_ammessa',
+                      v_motivi,
+                      'serie_default',
+                      NULL::uuid);
+
+                  -- ⭐ Ora RAGGIUNGIBILE, ed e' il ramo «passa»: l'helper tace quando la
+                  --   check non ha trovato nessun motivo.
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare un `serie_default` su un registro la cui
+                  --   famiglia non dichiara una colonna dove il documento possa
+                  --   registrare la serie.
+                  --
+                  -- ⛔ Perche': la serie entra nella chiave del contatore.
+                  --   Cambiarla apre un secchio nuovo che riparte da 1, e se il
+                  --   documento non la registra (resi, commesse) quel numero
+                  --   collide con uno gia' emesso — il documento non si numera
+                  --   piu'.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Si chiama
+                  --   script.fn_check_registro_serie_ammessa e si solleva il
+                  --   codice del primo motivo, cosi' il rifiuto e il tooltip
+                  --   della maschera non possono divergere.
+                  -- =========================================================
+
+                  -- ⭐ In UPDATE il no-op passa: `UPDATE OF` scatta quando lo
+                  --   statement NOMINA la colonna, anche a valore invariato — e
+                  --   il mirror CSV dei registri riscrive serie_default a OGNI
+                  --   migrate. Senza questo confronto, ogni migrate fallirebbe.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.serie_default      IS NOT DISTINCT FROM OLD.serie_default
+                     AND NEW.famiglia_documento IS NOT DISTINCT FROM OLD.famiglia_documento THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_registro_serie_ammessa(
+                                  NEW.famiglia_documento, NEW.serie_default);
+
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
+                  --   scatta PRIMA di trg_registri_fatturazione_gen_tx_id_ins_upd
+                  --   (ordine alfabetico: 'a10' < 'gen').
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_registri_fatturazione_guard_serie_ammessa',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+                          || jsonb_build_object('campo', 'serie_default'),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre.
+                  RETURN NEW;
+              END;
+              $function$;

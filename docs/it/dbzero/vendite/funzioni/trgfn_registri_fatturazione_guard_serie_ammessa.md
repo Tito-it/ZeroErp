@@ -12,8 +12,9 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammes
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi jsonb;
-    v_primo  jsonb;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -50,21 +51,20 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    v_primo := v_motivi -> 0;
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⚠️ `NULL::uuid` e non NEW.tx_id: questo guard sta su un trigger `_a10_`
+    --   che, confrontato per NOME INTERO, precede `..._gen_tx_id_ins_upd`
+    --   ('a10' < 'gen'), quindi la transazione non e' ancora assegnata.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', 'trgfn_registri_fatturazione_guard_serie_ammessa',
+        v_motivi,
+        'serie_default',
+        NULL::uuid);
 
-    -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
-    --   scatta PRIMA di trg_registri_fatturazione_gen_tx_id_ins_upd
-    --   (ordine alfabetico: 'a10' < 'gen').
-    PERFORM script.fn_log_and_raise_error(
-        'vendite',
-        'trgfn_registri_fatturazione_guard_serie_ammessa',
-        v_primo ->> 'codice',
-        COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
-            || jsonb_build_object('campo', 'serie_default'),
-        NULL::uuid,
-        VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
-
-    -- Irraggiungibile: la riga sopra solleva sempre.
+    -- ⭐ Ora RAGGIUNGIBILE, ed e' il ramo «passa»: l'helper tace quando la
+    --   check non ha trovato nessun motivo.
     RETURN NEW;
 END;
 $function$

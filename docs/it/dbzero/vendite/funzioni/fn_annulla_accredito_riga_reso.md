@@ -52,8 +52,9 @@ DECLARE
     -- rev 2026-08-25: v_n_viste e v_n_bloccate sono spariti insieme ai
     -- predicati che li riempivano — ora vivono dentro
     -- script.fn_check_accredito_annullabile.
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi        jsonb;
-    v_motivo_1      jsonb;
     v_n_cancellate  integer;
     v_n_annullate   integer;
     v_r             record;
@@ -149,17 +150,19 @@ BEGIN
     -- --------------------------------------------------
     v_motivi := script.fn_check_accredito_annullabile(p_resi_riga_id);
 
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        v_motivo_1 := v_motivi -> 0;
-        PERFORM script.fn_log_and_raise_error(
-            'vendite','fn_annulla_accredito_riga_reso',
-            (v_motivo_1 ->> 'codice'),
-            jsonb_build_object('resi_riga_id', p_resi_riga_id,
-                               'reason',       v_motivo_1 ->> 'reason',
-                               'dettaglio',    v_motivo_1 -> 'dettaglio'),
-            NULL::uuid,
-            VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_motivo_1 -> 'valori')));
-    END IF;
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⭐ `reason` lo promuove l'helper; il `dettaglio` lo fonde se e' un
+    --   oggetto e lo CONSERVA sotto la sua chiave se non lo e' — ed e' il caso
+    --   di questa check, che su un motivo mette li' un id nudo. Nel contesto
+    --   resta la sola chiave di dominio.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', 'fn_annulla_accredito_riga_reso',
+        v_motivi,
+        NULL,
+        NULL::uuid,
+        jsonb_build_object('resi_riga_id', p_resi_riga_id));
     -- --------------------------------------------------
     -- 6) AUDIT + risultato, PRIMA della cancellazione: dopo,
     --    le coppie non ci sono piu' e con loro sparirebbe
