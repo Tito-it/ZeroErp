@@ -224,6 +224,14 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
     "emittente_codice": "ef.codice {dir} NULLS LAST",
     "operatore": "c.user_insert",
     "stato": "c.stato",
+    # ⭐ QUANDO LA STAMPA E' ENTRATA IN CODA, ed e' il default dal 2026-09-07 —
+    #    simmetrico alla coda lavori, che lo ha adottato lo stesso giorno.
+    #    ⚠️ Prima il default era `c.data_update`, e funzionava per COINCIDENZA:
+    #    su una riga mai toccata vale quanto `data_insert`, quindi una riga in
+    #    attesa restava in testa. Ma «ultimo tocco» e «immesso» sono due domande
+    #    diverse, e un'ordinabilita' che regge finche' nessuno aggiorna la riga
+    #    e' una proprieta' dei dati, non del modello.
+    "data_insert": "c.data_insert",
     # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto (es.
     # ristampe singole) — in DESC finirebbero in testa.
     "lotto_id": "c.lotto_id {dir} NULLS LAST",

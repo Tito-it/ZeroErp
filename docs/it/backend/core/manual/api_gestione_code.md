@@ -73,12 +73,60 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
 - Ogni riga porta `is_mio` (calcolato dal BE: la `scope_key` del job coincide
   con quella del chiamante) e `proprietario` (`scope->>'username'`).
 
+#### ⭐ `data_insert` e l'ordinamento di default (dal 2026-09-07)
+
+Ogni riga porta **`data_insert`** — *quando il lavoro è entrato in coda*. È un
+fatto **diverso da `started_at`**: il primo lo scrive chi accoda, il secondo il
+worker quando prende il lavoro. Su un lavoro in **attesa** esiste solo il primo.
+
+⇒ **È anche il nuovo ordinamento di default**, `DESC`, su **entrambe** le code.
+
+🔴 **Perché è cambiato, ed è un difetto che vale la pena non ricreare.** Il
+default era `started_at DESC NULLS LAST`. Un lavoro `PENDING` `started_at` non
+ce l'ha per definizione, quindi finiva **dopo ogni lavoro mai avviato**: non
+filtrato — *sepolto*. Misurato il 2026-09-07 su dbdev: le righe senza
+`started_at` in posizione **112 e 113 su 113**, cioè in quinta pagina da 25.
+⛔ La lista non sbagliava e non nascondeva niente: metteva in fondo esattamente
+la riga che interessa. È la stessa forma già nominata in
+[api.md](../../../dev/api.md) per i gruppi del lotto — *«il caso che interessa
+finirebbe in fondo»*.
+⭐ L'argomento strutturale, al netto dei gusti: **`data_insert` è `NOT NULL`**.
+Ordinare su una colonna che ammette NULL significa avere sempre un ramo che cade
+in fondo — e qui quel ramo era sistematicamente lo **stato vivo**.
+
+⚠️ **La coda stampa non aveva il difetto, ma per coincidenza**: ordinava su
+`data_update`, che è `NOT NULL` e su una riga mai toccata vale quanto
+`data_insert`. Le due code hanno una semantica sola per decisione (Tid,
+2026-07-23), quindi sono state allineate: due default diversi erano una
+simmetria che reggeva finché nessuno aggiornava una riga in attesa.
+
+⛔ **Questo default vive in TRE sedi che devono concordare**, e la divergenza non
+darebbe nessun errore — darebbe una lista che si riordina da sola al primo tocco
+dell'operatore:
+
+| Sede | Cosa |
+| --- | --- |
+| `gestione_service` (`default=`) | ciò che il BE applica se il client non chiede niente |
+| `ui.lista_preset.ordinamento_default` | ciò che il preset del catalogo dichiara |
+| store FE (`orderBy`) | ciò che il client manda al primo caricamento |
+
+⛔ **E nessun presidio tiene insieme le tre**, verificato il 2026-09-08:
+`test_liste_configurabili_seed` confronta le colonne **ordinabili** del seed con
+la whitelist del repository — non i default — e in tutto `backend/apps` niente
+legge `ordinamento_default`. `test_coda_lavori_gestione_service` fissa i due
+default **del service** e nient'altro. ⇒ Le tre sedi si controllano **a mano**,
+e questa riga esiste perché la prossima persona non creda il contrario.
+
 ### 3. Lista coda stampa (BE-6, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-stampa/`
 - Query: come sopra + `lotto_id`; niente `is_mio` (la coda è per-emittente).
 - Righe: fattura (numero/anno/serie), emittente, lotto, stato, tentativi,
-  ultimo_errore, documento_id, `archiviato`/`archiviato_il`/`archiviato_da`.
+  ultimo_errore, documento_id, `data_insert`/`data_update`,
+  `archiviato`/`archiviato_il`/`archiviato_da`.
+  ⚠️ `data_insert` era già nel payload da prima del 2026-09-07 — mancava solo
+  dalla whitelist d'ordinamento e dal catalogo colonne, quindi nessuno poteva
+  né ordinarci né vederlo.
 
 ⭐ **`ultimo_errore` porta il codice di DOMINIO, dal 2026-08-25.** Prima, su un
 rifiuto del database, la riga conteneva `{"code": "ProgrammingError", "message":

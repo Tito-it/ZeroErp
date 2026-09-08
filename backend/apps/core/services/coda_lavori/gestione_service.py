@@ -249,7 +249,21 @@ def elenca_coda_lavori(
     sort_by, sort_dir = _valida_ordinamento(
         sort_by, sort_dir,
         allowed=tuple(ELENCA_SORT_SQL),
-        default="started_at",
+        # ⭐ `data_insert`, non `started_at` (2026-09-07). Un lavoro in ATTESA
+        #    `started_at` non ce l'ha — lo scrive il worker — quindi col vecchio
+        #    default finiva in fondo alla lista, dopo ogni lavoro mai avviato:
+        #    non filtrato, SEPOLTO. `data_insert` e' NOT NULL, quindi ogni
+        #    lavoro ha una posizione dal momento in cui entra in coda.
+        # ⚠️ Questo default e' scritto in TRE sedi che devono concordare: qui,
+        #    `ordinamento_default` del preset in `ui.lista_preset`, e `orderBy`
+        #    dello store FE.
+        # ⛔ E NESSUN PRESIDIO LE TIENE INSIEME — verificato il 2026-09-08:
+        #    `test_liste_configurabili_seed` confronta le colonne ORDINABILI del
+        #    seed con questa whitelist, non i DEFAULT; e in `backend/apps` niente
+        #    legge `ordinamento_default`. ⇒ Una divergenza non fa rosso niente:
+        #    fa una lista che arriva ordinata in un modo e si riordina in un
+        #    altro appena l'operatore tocca una colonna. Si controlla a mano.
+        default="data_insert",
         function_name="core.gestione_code.elenca_coda_lavori",
     )
     esito = CodaLavoriRepository().elenca(
@@ -312,7 +326,10 @@ def elenca_coda_stampa(
     sort_by, sort_dir = _valida_ordinamento(
         sort_by, sort_dir,
         allowed=tuple(CODA_STAMPA_SORT_SQL),
-        default="data_update",
+        # ⭐ Allineata alla coda lavori il 2026-09-07: le due code hanno una
+        #    semantica sola per decisione (Tid, 2026-07-23), e due default
+        #    diversi erano una simmetria che reggeva per caso.
+        default="data_insert",
         function_name="core.gestione_code.elenca_coda_stampa",
     )
 

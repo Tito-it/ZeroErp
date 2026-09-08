@@ -347,6 +347,14 @@ class LottoListRow(TypedDict):
     # (`OGGI` o `FINE_MESE_COMPETENZA`) quando la testata nasce. Le due cose non
     # vanno confuse a video — un vuoto qui e' «non deciso», non «assente».
     data_documento: str | None
+    # ⭐ Lo stato fiscale del lotto CONGELA il documento
+    # (`config.stati_doc_fiscale.congela_fiscale`): e' la soglia oltre la quale
+    # la pipeline non ha piu' niente da fare, qualunque sia l'esito dell'ultimo
+    # giro. Non e' un codice: e' la PROPRIETA' che decide, cosi' uno stato nuovo
+    # a catalogo entra nel gate senza toccare il frontend.
+    # ⚠️ `None` = il lotto non ha uno stato fiscale (il JOIN e' LEFT). Vale
+    # «non lo so», e chi legge deve essere fail-closed.
+    stato_congela_fiscale: bool | None
 
 
 class EsitoDataDocumento(TypedDict):

@@ -151,8 +151,17 @@ class ElencaCodaLavoriTests(SimpleTestCase):
         self.assertEqual(kwargs["owner_scope_key"], "7")
         self.assertEqual(kwargs["caller_scope_key"], "7")
         self.assertEqual(kwargs["stati"], ["ERRORE"])
-        # Default ordinamento (2026-07-23): l'ultimo lavoro avviato in testa.
-        self.assertEqual(kwargs["sort_by"], "started_at")
+        # ⭐ Default ordinamento (2026-09-07): l'ultimo lavoro ENTRATO in coda in
+        #    testa. Era `started_at` — «l'ultimo AVVIATO» — e un lavoro in
+        #    ATTESA `started_at` non ce l'ha: con `NULLS LAST` finiva dopo ogni
+        #    lavoro mai avviato, cioe' sepolto in ultima pagina invece che
+        #    filtrato. `data_insert` e' NOT NULL: ogni lavoro ha una posizione
+        #    dal momento in cui entra.
+        # ⛔ Questo valore concorda con altre DUE sedi — `ordinamento_default`
+        #    del preset in `ui.lista_preset` e `orderBy` dello store FE — e la
+        #    divergenza non darebbe nessun errore: darebbe una lista che si
+        #    riordina da sola al primo tocco dell'operatore.
+        self.assertEqual(kwargs["sort_by"], "data_insert")
         self.assertEqual(kwargs["sort_dir"], "DESC")
         # ⭐ `archiviate_count` viaggia nell'envelope accanto alla lista: senza
         #    quel numero «coda pulita» e «due righe messe via» si leggono uguali.
@@ -249,9 +258,13 @@ class ElencaCodaStampaTests(SimpleTestCase):
         # is_mio marcato in entrambe le viste.
         self.assertEqual(kwargs_miei["caller_username"], "pochi")
         self.assertEqual(kwargs_tutti["caller_username"], "pochi")
-        # Default ordinamento (2026-07-23): la riga aggiornata più di recente
-        # in testa; whitelist propria della coda stampa.
-        self.assertEqual(kwargs_tutti["sort_by"], "data_update")
+        # ⭐ Default ordinamento (2026-09-07): allineato alla coda lavori —
+        #    «l'ultima stampa ENTRATA in coda in testa». Era `data_update`, che
+        #    funzionava per COINCIDENZA: su una riga mai toccata vale quanto
+        #    `data_insert`. Le due code hanno una semantica sola per decisione
+        #    (Tid, 2026-07-23), e due default diversi erano una simmetria che
+        #    reggeva finche' nessuno aggiornava una riga in attesa.
+        self.assertEqual(kwargs_tutti["sort_by"], "data_insert")
         self.assertEqual(kwargs_tutti["sort_dir"], "DESC")
 
 

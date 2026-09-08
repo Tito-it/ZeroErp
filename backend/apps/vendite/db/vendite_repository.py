@@ -472,7 +472,25 @@ class VenditeRepository:
                 -- testata. Qui si espone il valore DICHIARATO, non quello
                 -- calcolato: sono due cose diverse e mostrarle come una sola
                 -- direbbe che una scelta e' stata fatta quando non lo e'.
-                fl.data_documento
+                fl.data_documento,
+                -- ⭐ LA SOGLIA DI CONGELAMENTO, presa dal CATALOGO e non da
+                -- una lista di codici scritta a mano. Serve al gate dei verbi di
+                -- pipeline (`useLottoAzioni.verbiPipeline`), che finora leggeva
+                -- `stato_doc_fiscale_codice !== 'DRAFT'`: era l'ennesima copia
+                -- della soglia che `D33` ha portato a leggere
+                -- `config.stati_doc_fiscale.congela_fiscale`, e l'ultima copia
+                -- fuori dal database e' gia' stata tolta dallo stesso file Vue
+                -- il 2026-08-31 (F5), per lo stesso motivo: una copia in un
+                -- template il DB non la vede, e il giorno che il confine si
+                -- sposta non fallisce — propone un verbo che verra' rifiutato.
+                -- ⚠️ Il JOIN c'e' gia' (`sdf`): e' una colonna in piu' sulla
+                -- stessa riga, non un accesso nuovo.
+                -- ⚠️ In coda alla proiezione DI PROPOSITO: il mapper e'
+                -- posizionale e un indice sbagliato non fallisce, legge la
+                -- colonna accanto (difetto reale del 2026-08-25 su `riaperto`).
+                -- Inserirla in mezzo rinumererebbe 24 posizioni per ottenere una
+                -- lettura piu' bella.
+                sdf.congela_fiscale AS stato_congela_fiscale
     """
 
     _LOTTO_JOINS = """
@@ -542,6 +560,10 @@ class VenditeRepository:
             #    step, e chiamarlo «Avanza step» dice una cosa falsa.
             "riaperto": bool(row[22]),
             "data_documento": row[23].isoformat() if row[23] is not None else None,
+            # ⚠️ `None` conservato e non appiattito a `False`: il JOIN sullo
+            # stato e' LEFT (un lotto senza stato resta una riga), e «non lo so»
+            # non e' «non congela». Il gate FE e' fail-closed su questo campo.
+            "stato_congela_fiscale": None if row[24] is None else bool(row[24]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
