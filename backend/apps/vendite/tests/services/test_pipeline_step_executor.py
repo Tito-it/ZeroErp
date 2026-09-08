@@ -55,6 +55,8 @@ Indice test eseguiti:
 41) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_dopo_numera_ok (ordine)
 42) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_prima_di_numera_rifiutato (ordine)
 43) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_agganciata_al_registry_reale
+44) PipelineStepExecutorUnitTests.test_pull_una_segnalazione_per_documento (§6.1)
+45) PipelineStepExecutorUnitTests.test_pull_senza_proprietario_scrive_una_riga_del_giro (§6.1)
 """
 
 from contextlib import nullcontext
@@ -997,6 +999,18 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         commesse_repo = MagicMock()
         commesse_repo.list_commesse_emittibili.return_value = list(commesse_ids)
         executor.commesse_repository = commesse_repo
+        # ⭐ DI CHI E' IL FALLIMENTO: la conversione commessa → documenti, che il
+        #    pull chiede al database per dichiarare il proprietario della
+        #    segnalazione (§6.1 di brief-db-uscita-documento-dal-giro).
+        # ⛔ VA MOCKATA ESPLICITAMENTE, e il perche' e' una trappola vera: un
+        #    `MagicMock` nudo si ITERA VUOTO, quindi il ciclo «una riga per
+        #    documento» non gira e non viene scritta NESSUNA segnalazione — senza
+        #    errori, senza fallimenti, con i test che vanno in rosso su
+        #    `call_args is None` invece che sul difetto. Un default esplicito
+        #    dice qual e' il caso normale: un documento per commessa.
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: [f"COMMESSA:{commessa_id}"]
+        )
         return executor, repo, commesse_repo, error_logger
 
     # Scopo: ⚠️ IL TEST CHE CONTA sul pull (D-Q p.3) — con 1 commessa su 3 in
@@ -1769,3 +1783,54 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             PipelineStepExecutor._TASK_ORDER_DEPENDENCIES["popola_fatture_rettifiche"],
             ("numera_fatture",),
         )
+
+    # 44) ⛔ UNA SEGNALAZIONE PER DOCUMENTO, non una sola con una chiave scelta
+    #     fra le tante (§6.1 di brief-db-uscita-documento-dal-giro).
+    #
+    # 🔴 Perche' conta: la segnalazione e' cio' che BLOCCA il lotto, e il verbo
+    #    «togli dal giro» la spegne togliendo il suo documento. Se una commessa
+    #    ne alimenta due e se ne dichiarasse uno solo, l'altro resterebbe a
+    #    bloccare il lotto **per sempre** — e non sarebbe togliibile, perche'
+    #    niente lo nomina.
+    #
+    # ⚠️ Il caso 1:N e' raro e per questo pericoloso: con un documento per
+    #    commessa — la norma — un difetto qui non si vedrebbe mai.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_una_segnalazione_per_documento(self, _mock_txn):
+        executor, repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: ["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"]
+        )
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        chiavi = [c.kwargs["gruppo_key"] for c in error_logger.log_error.call_args_list]
+        self.assertEqual(chiavi, ["ORDINE_VENDITA:aaa", "ORDINE_VENDITA:bbb"])
+
+    # 45) ⚠️ `[]` E' UNA RISPOSTA, e va letta: «questo fallimento non ha un
+    #     proprietario in questo lotto» ⇒ UNA riga senza `gruppo_key`, che torna
+    #     a valere «e' del giro» e ferma il giro.
+    # ⛔ Non zero righe: un fallimento che non blocca niente e' un fallimento
+    #    perso — il lotto proseguirebbe come se non fosse successo nulla.
+    # ⚠️ E' anche il presidio della trappola del mock: un `MagicMock` nudo si
+    #    itera VUOTO, quindi il ciclo non girerebbe e questo test sarebbe l'unico
+    #    a dirlo.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_senza_proprietario_scrive_una_riga_del_giro(self, _mock_txn):
+        executor, repo, commesse_repo, error_logger = self._build_executor_pull([10])
+        commesse_repo.emit_attivita_fatturabili.side_effect = RuntimeError("emit ko")
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: []
+        )
+
+        executor.execute_step(
+            lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+            rollback=False, dry_run=False,
+        )
+
+        self.assertEqual(error_logger.log_error.call_count, 1)
+        self.assertIsNone(error_logger.log_error.call_args.kwargs["gruppo_key"])

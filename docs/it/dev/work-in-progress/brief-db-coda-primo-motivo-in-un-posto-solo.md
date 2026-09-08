@@ -18,7 +18,7 @@
 > struttura.
 >
 > **Correlati:**
-> [brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md) — il cantiere in cui la domanda è nata ·
+> [brief-db-registri-numerazione-chiave-del-contatore](../work-done/brief-db-registri-numerazione-chiave-del-contatore.md) — il cantiere in cui la domanda è nata ·
 > [linee-guida-sql §12.5](../../linee-guida-sql.md) — le azioni per riga, dove la regola «la madre CHIAMA la check» è scritta
 
 ---

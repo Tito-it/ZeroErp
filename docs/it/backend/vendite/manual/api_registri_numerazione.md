@@ -61,7 +61,7 @@ sotto `NESSUNA` la chiave del contatore porta `anno = 0`, cioè un secchio unico
 ⛔ **`MENSILE` non esiste e non torna**: nessun documento porta il mese in
 chiave, quindi un contatore che discriminasse per mese consegnerebbe numeri che
 il documento non è in grado di ospitare — è l'asimmetria del
-[brief chiave del contatore §1](/dev/work-in-progress/brief-db-registri-numerazione-chiave-del-contatore).
+[brief chiave del contatore §1](/dev/work-done/brief-db-registri-numerazione-chiave-del-contatore).
 
 **Nel corpo della POST è opzionale.** Ometterlo, o mandarlo vuoto, significa
 *«non l'ho scelto»* e decide il **default della colonna**: il backend toglie la
@@ -111,4 +111,4 @@ seguire quando si colmerà.
 - Service: `apps/vendite/services/registri_service.py` — normalizzazione + traduzione vincoli
 - View: `apps/vendite/api/views_registri.py`
 - Frontend: `frontend/src/amministrazione/components/RegistroNumerazioneDrawer.vue`
-- Modello e decisioni: [brief chiave del contatore](/dev/work-in-progress/brief-db-registri-numerazione-chiave-del-contatore) · [brief CRUD registri](/dev/work-done/brief-be-fe-crud-registri-di-numerazione)
+- Modello e decisioni: [brief chiave del contatore](/dev/work-done/brief-db-registri-numerazione-chiave-del-contatore) · [brief CRUD registri](/dev/work-done/brief-be-fe-crud-registri-di-numerazione)

@@ -712,7 +712,7 @@ Copre da sola anche il generatore che qualcuno scrivesse domani.
 **I cantieri che hanno prodotto queste regole**, per chi cerca il *perché* con
 tutte le misure e le strade scartate:
 
-* [brief-db-registri-numerazione-chiave-del-contatore](../dev/work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md)
+* [brief-db-registri-numerazione-chiave-del-contatore](../dev/work-done/brief-db-registri-numerazione-chiave-del-contatore.md)
   — gli assi dichiarati (§8-bis), il passaggio di politica e l'anno dentro il
   numero (§8-ter)
 * [brief-db-prefisso-sul-registro-e-allineamento-contatori](../dev/work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md)

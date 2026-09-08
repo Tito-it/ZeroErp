@@ -70,6 +70,44 @@ export function listLottoGruppi(
   return api.get(`${BASE}/${lottoId}/gruppi/`, { params })
 }
 
+// POST toglie N documenti dal giro di fatturazione
+// (`vendite.fn_escludi_documento_da_giro`, brief-db-uscita-documento-dal-giro).
+//
+// ⭐ Un giro prende in carico N documenti; se uno è rotto il lotto si ferma e
+// gli altri N-1 — che hanno già le loro bozze — non vengono emessi. Questo è il
+// gesto che li libera: il documento esce, il lotto riparte con quelli che
+// restano. Con più documenti rotti si ripete, e il lotto riparte quando esce
+// l'ultimo.
+//
+// ⚠️ Le chiavi viaggiano nel BODY e non nel path: sono chiavi di dominio
+// (`ORDINE_VENDITA:01a06…`) e contiene i due punti, che in un segmento di URL
+// vanno codificati — un contratto che si sbaglia a mano.
+// ⛔ `motivo` è OBBLIGATORIO e non ha un default: un documento che esce senza
+// motivo è una riga che fra un mese nessuno sa spiegare (D-5). La regola la
+// tiene il database; qui non c'è un ripiego che la aggiri.
+// ⚠️ L'uscita è a SENSO UNICO (D-3): per rimettere tutto in un lotto solo si
+// annulla il lotto e lo si rigenera.
+// ⭐ Una LISTA anche per un documento solo, ed è una scelta: un endpoint solo,
+// e la riga singola è una lista di uno. Due superfici per lo stesso verbo
+// divergerebbero su permessi, conferme e forma dell'esito.
+// ⭐ La risposta è un REPORT a tre stati (`COMPLETATO` / `PARZIALE` / `ERRORE`)
+// e torna 200 anche quando falliscono tutti: chi legge DEVE guardare `esito` e
+// `falliti`, dove ogni riga porta il suo CODICE — «già uscito» si legge diverso
+// da «non è in errore».
+// 🔴 `Idempotency-Key`, e la sua assenza NON e' un dettaglio: il backend chiede
+// l'header su ogni write e senza risponde `E_IDEMPOTENCY_KEY_REQUIRED` — cioe'
+// il verbo non parte affatto. Trovato provandolo a video il 2026-09-08: la
+// conferma tornava un errore dopo che l'operatore aveva gia' scritto il motivo.
+// ⚠️ Nessun test lo vedeva: i test del servizio chiamano la funzione Python, e
+// l'header vive due strati piu' su.
+export function escludiDocumentiDaGiro(lottoId, { gruppoKeys, motivo }) {
+  return api.post(
+    `${BASE}/${lottoId}/documenti/escludi/`,
+    { gruppo_keys: gruppoKeys, motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // GET i tentativi dei task del lotto — elenco PAGINATO e ordinabile
 // (`vendite.fn_list_lotto_task_runs`), con il totale nell'envelope.
 // ⚠️ `order_by` va lasciato al DB: la whitelist vive nella funzione, e su un

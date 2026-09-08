@@ -17,6 +17,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    call_jsonb_fn,
     coerce_jsonb_dict,
     conta_con_perimetro,
     fetch_paged_with_total,
@@ -42,6 +43,7 @@ from apps.vendite.db._data_documento_sql import (
 )
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
+    EsclusioneDocumentoDaGiroResult,
     EsitoDataDocumento,
     EliminaFatturaDaLottoResult,
     LottoPipelineMeta,
@@ -555,10 +557,36 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             cursor.execute(
                 """
                 SELECT
-                    riga_key, origine, data_ora, livello, messaggio, error_code,
-                    fase, fattura_id, documento_display, importo,
-                    disabilitato, job_corrente, total_count, fuori_job_count,
-                    target
+                    s.riga_key, s.origine, s.data_ora, s.livello, s.messaggio,
+                    s.error_code, s.fase, s.fattura_id, s.documento_display,
+                    s.importo, s.disabilitato, s.job_corrente, s.total_count,
+                    s.fuori_job_count, s.target,
+                    -- ⭐ DI QUALE DOCUMENTO PARLA LA RIGA (`20260908-08`). E' la
+                    --    colonna che divide questa scheda in DUE FAMIGLIE con vie
+                    --    d'uscita diverse: la critica di un documento si toglie
+                    --    dal giro, quella del GIRO (`NULL`) si corregge e basta.
+                    --    Senza, le due sono indistinguibili — ed e' la ragione
+                    --    per cui l'unica proposta a video era «annulla tutto».
+                    s.gruppo_key,
+                    -- ⭐ Il motivo del pulsante spento, dalla STESSA funzione che
+                    --    la madre chiama per rifiutare (§12.5.2).
+                    -- ⛔ IL GUARD E' UN `CASE`, NON UNA `WHERE`, ed e' una
+                    --    lezione pagata: il check SOLLEVA `E_PARAMETRO_INVALIDO`
+                    --    su una chiave vuota, e le righe del GIRO ce l'hanno
+                    --    vuota per costruzione. Una `WHERE s.gruppo_key IS NOT
+                    --    NULL` dentro la LATERAL NON protegge — la sottoquery
+                    --    viene APPIATTITA e la chiamata risale nella proiezione
+                    --    esterna, dove gira su tutte le righe. Provato: apriva la
+                    --    scheda Critiche con un errore, e a fallire era la LISTA,
+                    --    non l'azione.
+                    -- ⭐ `CASE` invece garantisce che il ramo non preso non venga
+                    --    valutato: e' il meccanismo documentato per proteggere una
+                    --    funzione che puo' sollevare.
+                    -- ⚠️ Sulle righe del giro le due colonne restano `NULL`, che
+                    --    NON vuol dire «si puo' fare»: li' il verbo non ha
+                    --    oggetto, e chi rende lo distingue dalla `gruppo_key`.
+                    chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
+                    chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key
                 FROM vendite.fn_list_lotto_segnalazioni(
                     p_lotto_id          => %s,
                     p_origine           => %s,
@@ -569,12 +597,22 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     p_offset            => %s,
                     p_order_by          => %s,
                     p_order_dir         => %s
-                )
+                ) s
+                LEFT JOIN LATERAL (
+                    SELECT CASE WHEN s.gruppo_key IS NOT NULL
+                                THEN script.fn_check_documento_escludibile_da_giro(
+                                         %s, s.gruppo_key)
+                           END AS motivi
+                ) chk ON TRUE
                 """,
                 [
                     int(lotto_id), origine, livello,
                     bool(solo_attive), bool(solo_job_corrente),
                     safe_limit, safe_offset, order_by or None, order_dir,
+                    # ⚠️ Secondo passaggio dello stesso id: la LATERAL non puo'
+                    #    leggerlo da `s`, perche' la funzione non lo espone fra le
+                    #    colonne. L'ordine e' quello TESTUALE dell'SQL.
+                    int(lotto_id),
                 ],
             )
             rows = cursor.fetchall()
@@ -595,6 +633,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 "importo": str(row[9]) if row[9] is not None else None,
                 "disabilitato": bool(row[10]),
                 "job_corrente": bool(row[11]),
+                # ⭐ DI CHI E' LA SEGNALAZIONE. `None` = e' del GIRO, ed e' un
+                # valore: quella riga non ha un documento da togliere, e il
+                # frontend spegne l'azione dicendolo.
+                "gruppo_key": row[15],
+                # ⚠️ `None` su una riga CON documento = azione ammessa; su una
+                # riga del giro non vuol dire niente — li' non e' stato chiesto.
+                "uscita_blocco_reason": row[16],
+                "uscita_blocco_reason_key": row[17],
                 # ⭐ IL BERSAGLIO: su quale cosa l'errore punta, per offrire un
                 # gesto invece di far ricopiare un id. Forma `[{type, id}]`,
                 # **byte-identica** a quella dell'envelope d'errore: la scheda e
@@ -1213,12 +1259,30 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         status: str,
         messaggio: str | None,
         meta: LottoPipelineMeta | None,
+        gruppo_key: str | None = None,
     ) -> None:
+        # ⭐ `gruppo_key` = DI QUALE DOCUMENTO parla questa segnalazione
+        #    (changeSet `20260908-20`). `None` = e' del GIRO, ed e' un valore, non
+        #    un'assenza: una segnalazione del giro deve fermare il giro, mentre
+        #    quella di un documento smette di contare quando il documento esce
+        #    (brief-db-uscita-documento-dal-giro, D-6).
+        #
+        # ⚠️ PARAMETRI PER NOME e non piu' posizionali, ed e' necessario, non
+        #    estetico: la `gruppo_key` e' l'OTTAVO parametro e il settimo
+        #    (`p_error_code`) qui non si passa — posizionalmente non si puo'
+        #    saltare un buco. Per nome, il default del settimo resta quello che
+        #    era e il comportamento non cambia di una virgola.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT vendite.fn_log_pipeline_fase(
-                    %s, %s, %s, %s, %s, %s::jsonb
+                    p_lotto_id             => %s,
+                    p_stato_doc_fiscale_id => %s,
+                    p_fase                 => %s,
+                    p_status               => %s,
+                    p_messaggio            => %s,
+                    p_meta                 => %s::jsonb,
+                    p_gruppo_key           => %s
                 )
                 """,
                 [
@@ -1228,8 +1292,65 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     status,
                     messaggio,
                     self._to_jsonb_param(meta),
+                    gruppo_key,
                 ],
             )
+
+    # Scopo: i DOCUMENTI che una commessa alimenta dentro un lotto — la
+    #        conversione che serve a chi fallisce al pull, dove si ha in mano la
+    #        COMMESSA e non il documento.
+    #
+    # ⛔ NON SI RISCRIVE IN PYTHON, ed e' la ragione per cui questa funzione DB
+    #    esiste (`20260908-18`, chiesta dal backend). Cio' che si copierebbe non
+    #    e' il calcolo della chiave — quello e' gia' una funzione — ma DA QUALE
+    #    TABELLA SI LEGGE: su `attivita_fatturabili` invece che su
+    #    `commesse_attivita` la chiave esce come `COMMESSA:<hash>` e non aggancia
+    #    niente. Misurato dal team DB: zero corrispondenze su quattro, e nessun
+    #    errore.
+    #
+    # ⚠️ E' 1:N — una commessa puo' alimentare piu' documenti — e il perimetro
+    #    del lotto e' parte della domanda, non un filtro in piu'.
+    # ⚠️ `[]` E' UNA RISPOSTA: «questo fallimento non ha un proprietario in
+    #    questo lotto». Chi legge scrive UNA riga senza `gruppo_key`, non zero
+    #    righe.
+    # ⚠️ Fail-loud sui parametri: la funzione SOLLEVA su un id <= 0, perche' qui
+    #    e' il backend a chiamarla diretta e un id storto e' un chiamante rotto.
+    def gruppi_di_commessa_nel_lotto(
+        self, lotto_id: int, commessa_id: int,
+    ) -> list[str]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_gruppi_di_commessa_nel_lotto(%s, %s)",
+                [lotto_id, commessa_id],
+            )
+            # ⛔ `jsonb_out` NON E' DIFENSIVO, e' NECESSARIO: fuori dall'ORM
+            #    psycopg 3 consegna i `jsonb` come STRINGA. Senza, il chiamante
+            #    riceve `'["ORDINE_VENDITA:01a0…"]'` e — poiche' una stringa e'
+            #    iterabile — il ciclo «una riga per documento» gira una volta per
+            #    CARATTERE.
+            # 🔴 Non e' un timore: e' successo, e la chiamata vera l'ha mostrato.
+            #    Cinquantacinque segnalazioni critiche su un lotto, una per
+            #    lettera della chiave, senza nessun errore. I mock non lo vedono
+            #    — restituiscono liste — ed e' il motivo per cui questo giro va
+            #    fatto sul database.
+            payload = jsonb_out(fetchone_scalar(cursor))
+        # ⛔ E DECODIFICARE NON BASTA: si pretende una LISTA. Un JSON scalare
+        #    resterebbe una stringa iterabile e rifarebbe lo stesso danno.
+        # ⚠️ Sulla forma sbagliata si ripiega su `[]` — che il chiamante legge
+        #    come «nessun proprietario» e traduce in UNA riga senza `gruppo_key`,
+        #    cioe' una segnalazione che BLOCCA il giro. E' il verso sicuro: un
+        #    contratto rotto deve fermare il lotto, non inventargli documenti.
+        # ⚠️ Ma si DICHIARA: un ripiego muto qui sarebbe un lotto che si blocca
+        #    per una ragione che nessuno sa leggere.
+        if not isinstance(payload, list):
+            logging.getLogger(__name__).warning(
+                "gruppi_di_commessa_nel_lotto.forma_inattesa lotto_id=%s "
+                "commessa_id=%s tipo=%s — la segnalazione restera' senza "
+                "proprietario e fermera' il giro",
+                lotto_id, commessa_id, type(payload).__name__,
+            )
+            return []
+        return [str(k) for k in payload]
 
     # Scopo: Scrive un log puntuale su singola fattura in `vendite.fatture_log`.
     def log_fattura(
@@ -3018,6 +3139,37 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             "deleted_fatture": int(row[1]),
             "deleted_righe": int(row[2]),
             "riemesse_attivita": int(row[3]),
+        }
+
+    # Scopo: toglie UN documento dal giro di fatturazione — una SELECT sola
+    #        sulla funzione MADRE, che e' atomica per costruzione.
+    #
+    # ⛔ NESSUNA ORCHESTRAZIONE QUI, ed e' il §6.2 del brief: la cancellazione
+    #    della bozza, il ritiro delle attivita', la marcatura dell'uscita e la
+    #    riapertura dei documenti trascinati stanno TUTTE dentro la funzione.
+    #    Ricomporle in Python vorrebbe dire una seconda sede della sequenza — e
+    #    una sequenza in due sedi si interrompe a meta' il giorno che una delle
+    #    due cambia.
+    #
+    # ⚠️ E nemmeno il RIFIUTO: la madre chiama `fn_check_documento_escludibile_da_giro`
+    #    e solleva il codice del PRIMO motivo. Il ServiceError arriva da li',
+    #    col codice giusto (409) e la frase a catalogo.
+    def escludi_documento_da_giro(
+        self, lotto_id: int, gruppo_key: str, motivo: str,
+    ) -> EsclusioneDocumentoDaGiroResult:
+        payload = call_jsonb_fn(
+            "vendite.fn_escludi_documento_da_giro", lotto_id, gruppo_key, motivo,
+        )
+        return {
+            "lotto_id": int(payload["lotto_id"]),
+            "gruppo_escluso": str(payload["gruppo_escluso"]),
+            "fatture_cancellate": int(payload.get("fatture_cancellate") or 0),
+            "attivita_riemesse": int(payload.get("attivita_riemesse") or 0),
+            # ⚠️ `list(...)` e non il valore com'e': psycopg adatta il jsonb a
+            #    liste Python, ma un `null` a catalogo diventerebbe `None` e il
+            #    chiamante conterebbe `len(None)`.
+            "gruppi_riaperti": list(payload.get("gruppi_riaperti") or []),
+            "n_gruppi_riaperti": int(payload.get("n_gruppi_riaperti") or 0),
         }
 
     # Scopo: Recupera `next_fattura_riga_nr` dal contesto applicativo o dal database.

@@ -161,6 +161,18 @@ class LottoSegnalazioneRow(TypedDict):
     # FALLITO, questo e' dove l'operatore deve andare. Sul caso collaudato sono
     # due fatture diverse.
     target: list[dict[str, str]] | None
+    # ⭐ DI QUALE DOCUMENTO parla la segnalazione (brief-db-uscita-documento-dal-giro
+    # §4.1). ⚠️ `None` = e' del GIRO — emittente non risolto, configurazione
+    # mancante — e NON e' un buco: e' la meta' sana del vocabolario. Le due
+    # famiglie hanno vie d'uscita diverse, e questa colonna e' cio' che le separa.
+    # ⛔ Sul ramo FATTURA e' sempre `None`: una bozza puo' coprire piu' documenti,
+    # quindi una segnalazione appesa alla fattura non ne nomina uno.
+    gruppo_key: str | None
+    # ⭐ Il motivo del pulsante spento, dalla `fn_check_*` — la stessa con cui il
+    # database rifiuta. ⚠️ `None` su una riga CON documento = azione ammessa; su
+    # una riga del giro non significa niente, perche' li' non e' stato chiesto.
+    uscita_blocco_reason: str | None
+    uscita_blocco_reason_key: str | None
 
 
 class LottoTaskRunRow(TypedDict):
@@ -298,6 +310,27 @@ class LottoGruppoRow(TypedDict):
     commessa_id: int | None
     commessa_codice: str | None
     commesse_n: int
+    # ═══ L'USCITA DAL GIRO (brief-db-uscita-documento-dal-giro, 2026-09-08) ═══
+    # ⭐ `None` su tutte e tre finche' il documento e' dentro. Il motivo lo
+    # scrive l'operatore ed e' OBBLIGATORIO (D-5): su una riga `ESCLUSO` c'e'
+    # sempre. Il timbro (`uscita_quando`/`uscita_da`) lo mette un trigger dalla
+    # GUC, non il chiamante — e non riusa `data_update`/`user_update`, che
+    # qualunque aggiornamento successivo riscriverebbe.
+    uscita_motivo: str | None
+    uscita_quando: str | None
+    uscita_da: str | None
+    # ⭐ IL MOTIVO DEL PULSANTE SPENTO, prodotto da
+    # `script.fn_check_documento_escludibile_da_giro` — la STESSA funzione che
+    # la madre chiama per rifiutare. ⚠️ `None` = azione AMMESSA.
+    # ⛔ Il TESTO non viaggia: viaggia la chiave i18n (§12.5.5).
+    uscita_blocco_reason: str | None
+    uscita_blocco_reason_key: str | None
+    # ⭐ Quanti ALTRI documenti verrebbero via insieme, perche' condividono la
+    # bozza (D-2b). Va detto PRIMA, nella conferma — non e' un motivo che
+    # rifiuta.
+    # ⚠️ `None` NON e' `0`: significa «non e' stato chiesto», perche' l'azione
+    # su quella riga e' bloccata e la conferma non si aprirebbe mai.
+    n_trascinati: int | None
 
 
 class LottoListRow(TypedDict):
@@ -355,6 +388,30 @@ class LottoListRow(TypedDict):
     # ⚠️ `None` = il lotto non ha uno stato fiscale (il JOIN e' LEFT). Vale
     # «non lo so», e chi legge deve essere fail-closed.
     stato_congela_fiscale: bool | None
+
+
+class EsclusioneDocumentoDaGiroResult(TypedDict):
+    """Consuntivo di `vendite.fn_escludi_documento_da_giro`.
+
+    ⚠️ I due numeri che l'operatore NON si aspetta sono `fatture_cancellate` e
+    `gruppi_riaperti`: una bozza puo' coprire piu' documenti, quindi togliere A
+    puo' portare via anche B — che torna «da emettere» e si fattura al giro
+    dopo. Chi non li mostra li nasconde (D-2b del brief).
+    ⭐ `gruppi_riaperti` porta le CHIAVI e non solo il conteggio: la conferma
+    deve poterli NOMINARE, e un numero da solo non si verifica.
+    """
+
+    lotto_id: int
+    gruppo_escluso: str
+    # Bozze pre-fiscali cancellate. Puo' essere 0: un documento caduto al pull
+    # una fattura non l'ha mai avuta.
+    fatture_cancellate: int
+    # Attivita' di commessa tornate NON_EMESSA e quindi rifatturabili.
+    attivita_riemesse: int
+    # I documenti TRASCINATI dalla cancellazione della bozza condivisa: tornano
+    # a `PENDING`, non a `ESCLUSO` — non sono usciti da niente.
+    gruppi_riaperti: list[str]
+    n_gruppi_riaperti: int
 
 
 class EsitoDataDocumento(TypedDict):

@@ -1,6 +1,6 @@
 # Brief DB — la chiave del contatore: gli assi si dichiarano, non si assumono
 
-> **Destinatario:** team DB (`dev/db-tid`). Aperto il 2026-09-01.
+> **Destinatario:** team DB (`dev/db-tid`). Aperto il 2026-09-01, **chiuso il 2026-09-08**.
 >
 > **In una riga:** il contatore dei registri distingue i numeri su **quattro**
 > assi — `(registro_id, anno, mese, serie)` — ma i documenti che quei numeri li
@@ -21,13 +21,36 @@
 > servono a un uso solo: dire se qualcosa *smentisce* il piano. A decidere è la
 > struttura.
 >
-> 🔭 **Da leggere per primo, al 2026-09-08: §11.4 → §11.8.** Il cantiere è
-> **applicato e verde** (22 changeSet `EXECUTED`, i tre pgTAP del cantiere
-> 9/9 + 6/6 + 6/6, cancelli statici della CI verdi). Di aperto restano **tre
-> cose che non sono codice DB da scrivere**: la firma senza `%TYPE`
-> (decisione di Tid), l'unicità di `commesse` su una stringa sola (debito
-> dichiarato) e — nuova — `reset_policy` accesa nel database e irraggiungibile
-> dall'applicazione, con due documenti che la dicono ancora inchiodata (§11.5).
+> ---
+>
+> ## ✅ CHIUSO il 2026-09-08 — decisione di Tid
+>
+> Il cantiere è **applicato e verde** su tutti e tre i lati, e non resta niente
+> da scrivere: DB (22 changeSet `EXECUTED` + `20260908-10` e `..-11..16`, pgTAP
+> del cantiere verdi), backend e frontend (le voci BE-R1 / FE-R1 / BE-L1 del
+> §11.7, il §11.8 in maschera e la ragione corretta del §11.9).
+>
+> **Le due voci che restano NON sono lavoro, e sono dichiarate:**
+>
+> * ✅ **La firma senza `%TYPE`** su `script.fn_check_registro_forma_modificabile`
+>   — **decisione di Tid, 2026-09-08: si lascia com'è, niente changeSet
+>   correttivo.** ⭐ E la ragione regge da sé: `%TYPE` si risolve allo stesso
+>   `bigint` e la firma non vive in `prosrc`, quindi un changeSet correttivo
+>   sarebbe **un no-op sul database** — cambierebbe uno YAML già pushato senza
+>   cambiare niente di ciò che gira. ⛔ Non è deprecato e non va deprecato: si
+>   paga alla prossima revisione di quella funzione, se e quando ce ne sarà una.
+> * 🔭 **L'unicità di `vendite.commesse` su una stringa sola** — **debito
+>   dichiarato**, non un residuo di questo cantiere: `registro_id` e `anno` sono
+>   colonne popolate su tutte le righe e il pgTAP le presidia (§4). Resta la
+>   forma dell'unicità, che è una decisione di modello a sé.
+>
+> ⚠️ **E una cosa che questo brief NON copre**, per non farla sembrare chiusa:
+> i due rossi su `ESCLUSO` (`STATI_ESECUZIONE_LOTTO` e i due `CHECK` divergenti)
+> appartengono al cantiere **uscita dal giro**, non a questo.
+>
+> ---
+>
+> 🔭 **Da leggere per primo: §11.4 → §11.9.**
 > ✅ Del §11.5 è già chiusa la metà visibile: il catalogo della lista, che taceva
 > sulle politiche del registro, ora porta le quattro colonne (§11.6).
 > ✅ **Il §11.7 è CHIUSO**: cambiare `reset_policy` su un registro che aveva già
@@ -691,10 +714,17 @@ cancello sull'arità non lo avrebbe visto.
   **debito di sorgente**, non di comportamento: si paga alla prossima revisione
   di quella funzione, o con un changeSet dedicato se si preferisce la coerenza
   degli YAML. Decisione a Tid.
-  ⚠️ **Ancora aperto al 2026-09-08**, e la verifica è sullo **YAML**, non sulla
-  doc auto-gen: `20260901-02` è l'unico changeSet che dichiara quella funzione e
-  dice ancora `p_registro_id bigint`. La doc auto-gen non può fare da prova —
+  ⚠️ La verifica è sullo **YAML**, non sulla doc auto-gen: `20260901-02` è
+  l'unico changeSet che dichiara quella funzione e dice ancora
+  `p_registro_id bigint`. La doc auto-gen non può fare da prova —
   `pg_get_functiondef` scioglie i `%TYPE` comunque (è la trappola del §11.2/3).
+  ✅ **DECISA il 2026-09-08 — si lascia com'è, e non si deprèca niente.**
+  Un changeSet correttivo sarebbe un **no-op sul database**: cambierebbe uno YAML
+  già pushato senza cambiare una riga di ciò che gira. ⛔ Riscrivere un changeSet
+  applicato per ottenere zero è il tipo di lavoro che *sembra* igiene e produce
+  solo un secondo changeSet da leggere. ⇒ Il debito resta **di sorgente**,
+  dichiarato qui, e si paga alla prossima revisione di quella funzione — se e
+  quando ce ne sarà una.
 * ✅ ~~⛔ **`commesse` resta scoperta**~~ — **chiusa il 2026-09-02**, vedi §4:
   dichiara `colonna_serie NULL`, quindi i
   presidi la proteggono dal prendere una serie — ma la sua unicità resta su una

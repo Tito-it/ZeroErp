@@ -195,6 +195,10 @@ function defaultForm() {
     //    registro creato senza toccare il campo deve nascere come nasceva
     //    prima che il campo esistesse.
     reset_policy: REGISTRO_RESET_POLICY_DEFAULT,
+    // ⛔ NON si sceglie da qui: lo decide un risolutore a INSERT dal default
+    //    della famiglia. In creazione vale il default della colonna (false), e
+    //    dopo il salvataggio la rilettura porta il valore vero.
+    anno_nel_numero: false,
   }
 }
 
@@ -228,7 +232,16 @@ const anteprima = computed(() => {
     REGISTRO_CIFRE_MIN,
     Math.min(Number(form.value.lunghezza_numero) || REGISTRO_CIFRE_MIN, REGISTRO_CIFRE_MAX),
   )
-  return `${form.value.prefisso || ''}${'1'.padStart(cifre, '0')}${form.value.suffisso || ''}`
+  // ⭐ IL SEGMENTO DELL'ANNO, e non e' cosmesi: su un registro con
+  //    `anno_nel_numero` il database compone `prefisso || <anno>- || progressivo
+  //    || suffisso` (`fn_assegna_numero_documento`, passo 5). Senza questo pezzo
+  //    l'anteprima mostrerebbe una stringa che quel sezionale non produce —
+  //    cioe' un campo plausibile e falso, che e' peggio di un campo assente.
+  // ⚠️ L'anno e' quello CORRENTE perche' l'anteprima parla del prossimo numero;
+  //    il numero vero prende l'anno del DOCUMENTO, che puo' differire su un
+  //    documento retrodatato.
+  const anno = form.value.anno_nel_numero ? `${new Date().getFullYear()}-` : ''
+  return `${form.value.prefisso || ''}${anno}${'1'.padStart(cifre, '0')}${form.value.suffisso || ''}`
 })
 
 async function carica() {
@@ -261,6 +274,7 @@ async function carica() {
     limite_emissione_giorni: dati.limite_emissione_giorni,
     limite_emissione_giorno_mese: dati.limite_emissione_giorno_mese,
     reset_policy: dati.reset_policy ?? REGISTRO_RESET_POLICY_DEFAULT,
+    anno_nel_numero: dati.anno_nel_numero === true,
   }
 }
 
@@ -514,6 +528,21 @@ const titolo = computed(() => {
             :disabled="isReadonly || formaBloccata"
             class="w-full"
           />
+        </div>
+        <!-- ⭐ L'ANNO NELLA STRINGA — in SOLA LETTURA, sempre, anche in
+             creazione: non è una scelta del sezionale ma una proprietà della
+             sua famiglia, e a scriverla è un risolutore a INSERT
+             (`trg_..._set_anno_nel_numero_ins`).
+             ⚠️ Si mostra perché cambia il numero che una PERSONA legge: un
+             registro che azzera ogni anno senza l'anno nella stringa consegna
+             la stessa stringa in anni diversi, e il database non se ne accorge
+             — la sua unicità porta l'anno in colonna. -->
+        <div class="form-field">
+          <label>{{ t('amministrazione.registri_numerazione.anno_nel_numero') }}</label>
+          <span>{{ form.anno_nel_numero ? t('common.yes') : t('common.no') }}</span>
+          <small class="app-field-hint">
+            {{ t('amministrazione.registri_numerazione.anno_nel_numero_hint') }}
+          </small>
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.registri_numerazione.anteprima') }}</label>
