@@ -38,7 +38,7 @@ from apps.vendite.db.vendite_repository import (
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
     SEARCH_MIN_LEN,
-    STATI_ESECUZIONE_LOTTO,
+    STATI_ESECUZIONE_DOCUMENTO,
     VenditeRepository,
 )
 from apps.vendite.types import (
@@ -485,9 +485,14 @@ def fn_list_lotto_gruppi(
     page_size: int = 50,
     max_rows: int | None = None,
 ) -> dict[str, object]:
+    # ⚠️ Il vocabolario del DOCUMENTO, non quello comune: questa lista legge
+    #    `fatturazione_lotti_esiti`, che dal 2026-09-08 ammette anche `ESCLUSO`.
+    #    Con l'elenco comune il filtro «uscito dal giro» rispondeva **400 a una
+    #    domanda buona** — il difetto in LETTURA che il cancello del vocabolario
+    #    dichiara nella propria intestazione.
     _validate_enum(
         stato_esecuzione,
-        allowed=STATI_ESECUZIONE_LOTTO,
+        allowed=STATI_ESECUZIONE_DOCUMENTO,
         param_name="stato_esecuzione",
         function_name="vendite.vendite_service.fn_list_lotto_gruppi",
     )

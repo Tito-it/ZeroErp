@@ -2,19 +2,43 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Orchestrazione reset tecnico lotto DRAFT.
+# Scopo: gli atti che DISFANO il lavoro di un lotto ancora pre-fiscale —
+#        annullamento, ritorno in bozza, eliminazione di una fattura e, dal
+#        2026-09-08, l'uscita di un DOCUMENTO dal giro.
+#        ⚠️ Il modulo diceva «reset tecnico lotto DRAFT»: era vero quando il
+#        perimetro era il solo DRAFT e i verbi erano tre. Oggi il confine e' il
+#        PRE-FISCALE (slice 6-B) e i verbi sono quattro; l'uscita del documento
+#        sta qui perche' COMPONE l'eliminazione della fattura, non accanto ad
+#        essa — separarla vorrebbe dire un file per un metodo, che le
+#        convenzioni di progetto escludono.
 # ------------------------------------------------------------
 
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import translate_db_errors
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
     EliminaFatturaDaLottoResult,
+    EsclusioneDocumentoDaGiroResult,
     RiportaLottoADraftResult,
 )
 
 # Servizio applicativo: espone il reset tecnico lotto DRAFT.
+
+
+# ⭐ IL CODICE CHE SI USA QUANDO IL RIFIUTO NON NE PORTA UNO — sede unica.
+#
+# ⚠️ Serve in DUE punti che devono dire la stessa cosa: qui, come `fallback_code`
+#    della traduzione, e nel diario del giro di massa
+#    (`pipeline_service._EsclusioneRunLogger`), che di codice deve metterne uno
+#    anche quando il logger non ha visto l'eccezione — `run_fan_out` inghiotte i
+#    fallimenti del proprio logger di proposito, quindi quel ripiego e'
+#    RAGGIUNGIBILE, non decorativo.
+# ⛔ Due letterali uguali scritti a mano divergerebbero senza fallire: il report
+#    per riga mostrerebbe un codice che il traduttore non usa piu', e chi
+#    instrada su quel codice smetterebbe di agganciare in silenzio.
+CODICE_RIPIEGO_USCITA = "E_PIPELINE_VALIDATION"
 
 
 class LottoResetService:
@@ -86,3 +110,57 @@ class LottoResetService:
         assert fattura_id is not None
         assert fattura_id > 0
         return self.repository.elimina_fattura_da_lotto(lotto_id, fattura_id)
+
+    # Scopo: toglie UN documento dal giro di fatturazione, cosi' che il lotto
+    #        possa ripartire con quelli che restano.
+    #
+    # ⛔ QUI NON C'E' NESSUNA REGOLA DI DOMINIO, e non e' una svista: il verdetto
+    #    («si puo' togliere?») lo da' `script.fn_check_documento_escludibile_da_giro`,
+    #    che la funzione MADRE chiama per rifiutare — la STESSA da cui la lista
+    #    prende il motivo del pulsante spento. Riscriverne anche un pezzo qui
+    #    farebbe dire due cose diverse al tooltip e all'errore (§6.3 del brief).
+    #
+    # ⚠️ Il guard sotto e' sui PARAMETRI, non sul dominio: `lotto_id <= 0` e
+    #    `gruppo_key` vuota vengono da un chiamante rotto, non da una persona, e
+    #    fermarli qui evita un giro al database per dire la stessa cosa.
+    # ⛔ Il MOTIVO invece NON si valida qui, ed e' deliberato: e' una regola di
+    #    dominio (D-5, «il motivo e' obbligatorio»), la tiene il `CHECK` di
+    #    tabella e la madre solleva `E_PARAMETRO_INVALIDO` anche sui soli spazi.
+    #    Un secondo controllo in Python sarebbe la seconda sede di una regola
+    #    che il database gia' possiede.
+    def escludi_documento_da_giro(
+        self, lotto_id: int, gruppo_key: str, motivo: str,
+    ) -> EsclusioneDocumentoDaGiroResult:
+        ErrorManager.require(
+            lotto_id is not None and lotto_id > 0 and bool((gruppo_key or "").strip()),
+            code="E_RESET_LOTTO_VALIDATION",
+            message="Parametri non validi.",
+            detail="lotto_id obbligatorio e > 0, gruppo_key obbligatoria",
+            context={"lotto_id": lotto_id, "gruppo_key": gruppo_key},
+            function_name="vendite.lotto_reset_service.escludi_documento_da_giro",
+            log_to_db=True,
+        )
+        assert lotto_id is not None
+        assert lotto_id > 0
+        # ⭐ IL CODICE DEL RIFIUTO DEVE ARRIVARE FIN QUI, e per questo la
+        #    traduzione sta nel SERVICE e non al confine dell'API.
+        #
+        # 🔴 Il difetto che chiude, misurato sul giro di massa: senza, dentro il
+        #    fan-out l'eccezione e' ancora quella grezza di psycopg — nessun
+        #    `.code` — e il report per riga usciva con il codice di ripiego su
+        #    OGNI documento rifiutato. `E_LOTTO_DOC_NON_IN_ERRORE` e
+        #    `E_LOTTO_DOC_GIA_USCITO` diventavano la stessa cosa, cioe' proprio
+        #    l'informazione su cui il frontend deve instradare.
+        # ⚠️ Sul verbo SINGOLO non si vedeva: li' l'eccezione arriva al
+        #    middleware, che traduce. Il giro di massa non ci passa mai.
+        #
+        # ⛔ Nessuna mappa di vincoli: qui non si scrive su tabelle con UNIQUE o
+        #    FK proprie — si chiama una funzione che SOLLEVA con un codice a
+        #    catalogo, e il BB lo estrae dai `diag` del `RAISE`. Il fallback
+        #    resta per cio' che non e' un errore di dominio.
+        with translate_db_errors(
+            context={"op": "vendite.lotto_reset_service.escludi_documento_da_giro"},
+            fallback_code=CODICE_RIPIEGO_USCITA,
+            fallback_message="Uscita del documento dal giro non riuscita.",
+        ):
+            return self.repository.escludi_documento_da_giro(lotto_id, gruppo_key, motivo)

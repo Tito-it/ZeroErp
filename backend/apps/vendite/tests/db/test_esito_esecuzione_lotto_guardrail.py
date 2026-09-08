@@ -52,9 +52,11 @@ from unittest import TestCase
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
 from apps.vendite.db.vendite_repository import (
+    STATI_ESECUZIONE_DOCUMENTO,
     STATI_ESECUZIONE_LOTTO,
     STATO_ESECUZIONE_COMPLETED,
     STATO_ESECUZIONE_ERRORE,
+    STATO_ESECUZIONE_ESCLUSO,
 )
 
 
@@ -70,39 +72,65 @@ class EsitoEsecuzioneLottoGuardrail(TestCase):
     #    `character varying` sulle fatture): la lettura sta nel building block
     #    condiviso proprio perche' una regex scritta per un caso e' cieca
     #    sull'altro.
+    # ⭐ Ogni livello col SUO vocabolario, dal 2026-09-08: il documento preso in
+    #    carico puo' essere `ESCLUSO`, la fattura prodotta no. Prima la costante
+    #    era una sola e questa mappa la confrontava con entrambi i CHECK.
     _PER_TABELLA = {
-        "vendite.fatturazione_lotti_esiti": "chk_fatturazione_lotti_esiti_stato",
-        "vendite.fatturazione_lotti_fatture": "chk_fatturazione_lf_stato_esecuzione",
+        "vendite.fatturazione_lotti_esiti": (
+            "chk_fatturazione_lotti_esiti_stato", STATI_ESECUZIONE_DOCUMENTO,
+        ),
+        "vendite.fatturazione_lotti_fatture": (
+            "chk_fatturazione_lf_stato_esecuzione", STATI_ESECUZIONE_LOTTO,
+        ),
     }
 
-    # Scopo: il vocabolario Python e' esattamente quello dei due CHECK.
+    # Scopo: il vocabolario Python di ogni livello e' esattamente quello del suo
+    #        CHECK.
     def test_il_vocabolario_coincide_coi_check(self) -> None:
-        for tabella, conname in self._PER_TABELLA.items():
+        for tabella, (conname, atteso) in self._PER_TABELLA.items():
             with self.subTest(tabella=tabella):
                 self.assertEqual(
-                    set(STATI_ESECUZIONE_LOTTO), valori_check(tabella, conname),
-                    f"`STATI_ESECUZIONE_LOTTO` non coincide col CHECK di "
+                    set(atteso), valori_check(tabella, conname),
+                    f"il vocabolario Python non coincide col CHECK di "
                     f"{tabella}: un valore in meno rifiuta una domanda buona, "
                     "uno in piu' fa scrivere una riga che il vincolo respinge.",
                 )
 
-    # ⭐ LA D-2 RESA CANCELLO: i due livelli devono parlare la STESSA lingua.
-    # ⛔ Non discende dal test sopra per pura logica — discende oggi, perche'
-    #    entrambi sono confrontati con la stessa costante. Sta scritto a parte
-    #    perche' e' la decisione a essere presidiata, non la coincidenza: il
-    #    giorno in cui qualcuno desse al backend due costanti, questo
-    #    resterebbe rosso e quello sopra no.
+    # ⭐ LA D-2 RESA CANCELLO: i due livelli parlano la stessa lingua **a meno
+    #    del surplus DICHIARATO**.
+    #
+    # ⚠️ Rev 2026-09-08: l'invariante era «identici», ed e' diventata rossa
+    #    quando il DB ha aggiunto `ESCLUSO` al solo lato esito
+    #    (brief-db-uscita-documento-dal-giro §7-bis). ⭐ E la divergenza e'
+    #    LEGITTIMA: `ESCLUSO` dice «l'operatore ha tolto questo DOCUMENTO dal
+    #    giro», e una FATTURA quello stato non lo puo' avere — quando un
+    #    documento esce, la sua bozza viene cancellata e la riga di ponte
+    #    sparisce. Non esiste una fattura «esclusa ma ancora li'».
+    #
+    # ⛔ E il test NON e' stato indebolito a un confronto vago: e' la stessa
+    #    forma decisa dal team DB per il pgTAP gemello. Si asserisce la
+    #    differenza nei DUE VERSI, e resta rosso in tutti e tre i casi che
+    #    contano — il lato fattura acquista uno stato, il lato esito ne acquista
+    #    uno non dichiarato, oppure `ESCLUSO` sparisce. ⚠️ Un `esiti - {ESCLUSO}
+    #    == fatture` sarebbe stato piu' corto e avrebbe mancato il terzo.
     def test_i_due_livelli_parlano_la_stessa_lingua(self) -> None:
-        vocabolari = [
-            valori_check(tabella, conname)
-            for tabella, conname in self._PER_TABELLA.items()
-        ]
+        vocabolari = {
+            tabella: valori_check(tabella, conname)
+            for tabella, (conname, _) in self._PER_TABELLA.items()
+        }
+        esiti = vocabolari["vendite.fatturazione_lotti_esiti"]
+        fatture = vocabolari["vendite.fatturazione_lotti_fatture"]
         self.assertEqual(
-            vocabolari[0], vocabolari[1],
-            "i due CHECK dell'esito di esecuzione sono divergenti: la D-2 di "
-            "brief-db-esito-gruppo-lotto li vuole IDENTICI, perche' due colonne "
-            "che rispondono alla stessa domanda a due livelli non possono "
-            "parlare due lingue.",
+            esiti - fatture, {STATO_ESECUZIONE_ESCLUSO},
+            "il livello DOCUMENTO diverge dal livello FATTURA oltre il surplus "
+            "dichiarato: l'unico valore in piu' ammesso e' ESCLUSO.",
+        )
+        self.assertEqual(
+            fatture - esiti, set(),
+            "il livello FATTURA ha un valore che il livello DOCUMENTO non "
+            "ammette: la D-2 di brief-db-esito-gruppo-lotto li vuole nella "
+            "stessa lingua, perche' due colonne che rispondono alla stessa "
+            "domanda a due livelli non possono parlare due lingue.",
         )
 
     # ⚠️ I due valori che il codice NOMINA devono stare nell'elenco. Sembra

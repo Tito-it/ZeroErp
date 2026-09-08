@@ -247,11 +247,32 @@ SEARCH_MIN_LEN = 3
 #    ne' li confronta — restano stringhe dell'elenco finche' non serviranno.
 STATO_ESECUZIONE_ERRORE = "ERRORE"
 STATO_ESECUZIONE_COMPLETED = "COMPLETED"
+# ⭐ Il surplus DICHIARATO del livello DOCUMENTO: l'operatore ha tolto questo
+#    documento dal giro (`vendite.fn_escludi_documento_da_giro`, 2026-09-08).
+#    Una FATTURA quello stato non lo puo' avere — quando un documento esce, la
+#    sua bozza viene cancellata e la riga di ponte sparisce: non esiste una
+#    fattura «esclusa ma ancora li'».
+STATO_ESECUZIONE_ESCLUSO = "ESCLUSO"
+# Il vocabolario COMUNE ai due livelli — documento preso in carico e fattura
+# prodotta rispondono alla stessa domanda, e la D-2 di
+# `brief-db-esito-gruppo-lotto` li vuole nella stessa lingua.
 STATI_ESECUZIONE_LOTTO: tuple[str, ...] = (
     "PENDING",
     "RUNNING",
     STATO_ESECUZIONE_COMPLETED,
     STATO_ESECUZIONE_ERRORE,
+)
+# ⛔ IL LIVELLO DOCUMENTO E' IL COMUNE PIU' IL SURPLUS, e si scrive cosi' —
+#    per SOMMA, non come una seconda lista — perche' il giorno che il
+#    vocabolario comune cresce, questo cresce con lui senza che nessuno se ne
+#    ricordi. Due elenchi scritti a mano divergono al primo valore nuovo.
+# ⚠️ E la divergenza fra i due livelli e' LEGITTIMA ma DICHIARATA: il cancello
+#    `test_esito_esecuzione_lotto_guardrail` non confronta piu' «identici» ma
+#    «identici a meno di questo surplus», che e' la stessa forma decisa dal
+#    team DB per il pgTAP gemello (brief-db-uscita-documento-dal-giro §7-bis).
+STATI_ESECUZIONE_DOCUMENTO: tuple[str, ...] = (
+    *STATI_ESECUZIONE_LOTTO,
+    STATO_ESECUZIONE_ESCLUSO,
 )
 
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
@@ -3557,6 +3578,11 @@ class VenditeRepository:
             ),
             gruppi AS (
                 SELECT d.gruppo_key,
+                       -- ⚠️ Serve alle due LATERAL della pagina: averlo qui
+                       --    evita un secondo segnaposto, e i parametri di
+                       --    questa query hanno gia' un ordine delicato
+                       --    (perimetro + ordinamento + paginazione).
+                       d.lotto_id,
                        -- ⚠️ NULL = il documento e' nel perimetro ma nessuno ha
                        --    ancora detto com'e' andata. Sulla tabella degli
                        --    esiti `stato_esecuzione` e' NOT NULL apposta — la
@@ -3566,7 +3592,15 @@ class VenditeRepository:
                        esito.stato_esecuzione,
                        esito.errore_codice,
                        esito.errore_messaggio,
-                       esito.errore_quando
+                       esito.errore_quando,
+                       -- ⭐ L'USCITA DAL GIRO (brief-db-uscita-documento-dal-giro):
+                       --    motivo scritto dall'operatore piu' il timbro, che
+                       --    lo mette il trigger dalla GUC.
+                       -- ⚠️ `uscita_quando`, non `uscita_il`: il nome vero e'
+                       --    quello, letto dalla doc auto-gen della tabella.
+                       esito.uscita_motivo,
+                       esito.uscita_quando,
+                       esito.uscita_da
                 -- ⚠️ Alias `esito` e non `le`: `le` e' gia' il ramo dell'UNION
                 --    qui sopra, e lo stesso nome per due cose nella stessa
                 --    istruzione si legge male anche quando compila.
@@ -3609,6 +3643,32 @@ class VenditeRepository:
                    gr.errore_codice,
                    gr.errore_messaggio,
                    gr.errore_quando,
+                   gr.uscita_motivo,
+                   gr.uscita_quando,
+                   gr.uscita_da,
+                   -- ⭐ IL MOTIVO DEL PULSANTE SPENTO, PER RIGA (§12.5 delle
+                   --    linee guida). Non e' ricalcolato qui: e' la STESSA
+                   --    funzione che la madre chiama per RIFIUTARE, quindi il
+                   --    tooltip e l'errore non possono dire due cose diverse.
+                   -- ⚠️ Il PRIMO motivo, perche' l'ordine dell'array e' il
+                   --    contratto: la madre solleva quello.
+                   -- ⛔ Colonne che nominano IL VERBO (§12.5.4): non si riusa
+                   --    la colonna di blocco di un altro atto.
+                   chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
+                   chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                   -- ⭐ QUANTI DOCUMENTI VIENE VIA INSIEME (D-2b): una bozza
+                   --    puo' coprirne piu' d'uno, e chiedere di togliere A
+                   --    porta via anche B. ⚠️ Va detto PRIMA, non scoperto
+                   --    dopo — e non e' un motivo che rifiuta: e' una
+                   --    conseguenza, e le conseguenze stanno nella conferma.
+                   -- ⚠️ Calcolato SOLO dove l'azione e' viva: su una riga
+                   --    bloccata la conferma non si apre mai, e la catena
+                   --    delle righe non e' gratis.
+                   CASE WHEN jsonb_array_length(chk.motivi) = 0
+                        THEN jsonb_array_length(
+                                 script.fn_gruppi_trascinati_da_uscita(
+                                     gr.lotto_id, gr.gruppo_key))
+                   END AS n_trascinati,
                    ref.riferimento,
                    ref.tipo_gruppo,
                    ref.area_documento,
@@ -3619,6 +3679,10 @@ class VenditeRepository:
                    COUNT(*) OVER () AS total_count
             FROM gruppi gr
             LEFT JOIN ref ON ref.gruppo_key = gr.gruppo_key
+            CROSS JOIN LATERAL (
+                SELECT script.fn_check_documento_escludibile_da_giro(
+                           gr.lotto_id, gr.gruppo_key) AS motivi
+            ) chk
             {order_clause}
             LIMIT %s OFFSET %s
         """  # noqa: S608
@@ -3677,6 +3741,27 @@ class VenditeRepository:
                         None if row["commessa_id"] is None else int(row["commessa_id"])
                     ),
                     "commessa_codice": row["commessa_codice"],
+                    # ⭐ L'uscita dal giro: `None` su tutte e tre finche' il
+                    #    documento e' dentro. Il motivo e' obbligatorio (D-5),
+                    #    quindi su una riga ESCLUSO c'e' sempre.
+                    "uscita_motivo": row["uscita_motivo"],
+                    "uscita_quando": (
+                        row["uscita_quando"].isoformat()
+                        if row["uscita_quando"] is not None else None
+                    ),
+                    "uscita_da": row["uscita_da"],
+                    # ⚠️ `None` = l'azione e' AMMESSA su questa riga. Il
+                    #    frontend spegne il pulsante quando c'e' un valore, e
+                    #    rende il testo dalla `reason_key`.
+                    "uscita_blocco_reason": row["uscita_blocco_reason"],
+                    "uscita_blocco_reason_key": row["uscita_blocco_reason_key"],
+                    # ⚠️ `None` quando l'azione e' bloccata: li' non e' «zero
+                    #    trascinati», e' «non e' stato chiesto». Zero e un vuoto
+                    #    dicono cose diverse e il frontend deve poterli
+                    #    distinguere.
+                    "n_trascinati": (
+                        None if row["n_trascinati"] is None else int(row["n_trascinati"])
+                    ),
                     "commesse_n": int(row["commesse_n"] or 0),
                 }
             )

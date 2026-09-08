@@ -33,10 +33,14 @@
 > `test-fatture-log-error-code`.
 > 🔴 **Correzione al §5.1**, segnalata dal BE: la colonna è **`uscita_quando`**,
 > non `uscita_il`.
-> 🔵 **Resta al backend**: le tre righe del §6.1 («che cosa fa il backend
-> adesso»). ⛔ Finché non le scrive, il verbo continua a non sbloccare la corsia
-> del pull.
-> 🔵 **Resta a video**: la lista che espone il documento (§7).
+> ✅ **Fatto dal backend**: le tre righe del §6.1, e la corsia del pull adesso si
+> sblocca — catena misurata sul database vero (§9-bis).
+> ✅ **Fatte a video** tre superfici del §7 su quattro: la scheda Critiche con la
+> colonna del documento e l'azione di riga, la scheda «Presi in carico» con
+> l'uscita e il suo timbro, e il gesto di massa con l'esito parziale.
+> 🔵 **Resta al DB — §7-ter**, da leggere per primo insieme al §9: tre cose
+> piccole senza cui il §7 non è intero (le due righe di catalogo, il riferimento
+> leggibile, il conteggio del banner).
 > ⛔ Niente è committato, e ⛔ **niente è applicato**: i tre changeSet nuovi
 > aspettano il `migrate` dell'utente. Il verde definitivo dei pgTAP si prende
 > **dopo**, con `scripts/testpgtap.sh` (che gira come `zeroerp_app`, con la RLS
@@ -596,6 +600,73 @@ NON_DICHIARATO»*.
 ⚠️ **La lezione operativa**: prima di montare un trigger o allargare un `CHECK`,
 si greppa il pgTAP. Non l'ho fatto, e me l'ha detto la baseline invece del
 ragionamento — che è il modo più caro di scoprirlo.
+
+---
+
+## 7-ter. 🔵 Che cosa resta al DB perché il §7 sia intero
+
+> ⚠️ **Trasportate qui il 2026-09-08**, quando il brief figlio
+> [brief-be-db-gruppo-key-sulle-segnalazioni](../work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md)
+> è stato chiuso: le sue richieste erano soddisfatte, queste no. ⛔ Un cantiere
+> che archivia il documento in cui vivono le domande aperte le perde — e nessuno
+> le ritrova, perché nessuno rilegge un brief marcato «fatto». Il ragionamento
+> per esteso resta lì (§6.1, §6.2, §6.4); qui c'è la domanda.
+
+Delle quattro superfici del §7 ne sono vive **tre**: la scheda Critiche con la
+colonna del documento e l'azione di riga, la scheda «Presi in carico» con
+l'uscita e il suo timbro, e il gesto di massa con l'esito parziale. Restano
+**tre cose piccole**, tutte a database.
+
+### 7-ter.1 🔵 Le due righe di `ui.lista_colonna` per la lista 47
+
+La scheda Critiche fornisce lo slot `#actions` e la colonna del documento, ma il
+catalogo di `vendite.lotto_segnalazioni` non ha né la colonna `gruppo_fatturabile`
+né quella con `tipo_colonna = 'azione'`.
+
+⛔ **E il building block non fallisce**: senza la riga a catalogo la colonna
+semplicemente **non viene resa**, e le azioni di riga spariscono in silenzio.
+🔴 Il cancello `test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo` è
+**rosso** e lo resta: legge il **seed in git**, non il database di test — dove le
+due righe ci sono già.
+
+🔵 **Chiediamo**: le due righe nel CSV del seed.
+
+### 7-ter.2 🔵 Il riferimento leggibile accanto alla `gruppo_key`
+
+Sulla scheda Critiche il documento si legge come **chiave grezza**
+(`ORDINE_VENDITA:01a06ce4-…`), perché `fn_list_lotto_segnalazioni` espone
+`gruppo_key` e non il riferimento.
+
+⛔ Non si risolve lato backend: l'identità del gruppo vive in
+`vendite.vw_dash_competenza_gruppi` **agganciata al mese del lotto**, e
+ricostruirla in un repository sarebbe la seconda sede della stessa regola.
+
+🔵 **Chiediamo**: `riferimento` (e volendo `tipo_gruppo`) nell'output della
+funzione. ⚠️ `NULL` resta legittimo — il lavoro può essere uscito dal mese — e il
+frontend ripiega sulla chiave, che è il comportamento già in casa.
+⚠️ Con quello vale la pena aggiungere **entrambi** alla whitelist di
+`p_order_by`: raggruppare le critiche per documento è come si legge quella
+scheda, e oggi la colonna è seedata non ordinabile proprio perché la whitelist
+non li conosce.
+
+### 7-ter.3 🔵 Il numero del banner
+
+Il §7 vuole *«Il giro è fermo per **N documenti su M**»* al posto di «N
+segnalazioni bloccanti». **N non esiste**:
+`vendite.fn_get_lotto_segnalazioni_summary` conta le **segnalazioni**, non i
+**documenti distinti** che ne hanno almeno una viva.
+
+⛔ Non si deriva a video: la scheda è paginata, e contarli lato frontend darebbe
+un numero che cambia scorrendo.
+
+🔵 **Chiediamo**: un aggregato in più sul riepilogo — i documenti distinti con
+almeno una critica viva. ⚠️ Con la `gruppo_key` ora valorizzata è un
+`count(DISTINCT gruppo_key)` sullo stesso perimetro che il §5.3 già percorre; M
+lo ha già il frontend (il totale della scheda Documenti).
+
+⇒ Finché manca, il banner resta quello di oggi: ⛔ **non si mette a video un
+numero che non si sa contare**.
+
 
 ---
 
