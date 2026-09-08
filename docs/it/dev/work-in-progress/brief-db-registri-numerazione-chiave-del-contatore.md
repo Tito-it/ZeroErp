@@ -735,7 +735,7 @@ database ammette**.
 del §7.4. ⛔ Il che non dice *«non serve»*: dice che il ramo `NESSUNA` oggi non
 ha un controesempio, perché nessuno ha una strada per produrlo.
 
-**Cosa resta da decidere, ed è di Tid** — le due mosse sono indipendenti:
+**Cosa restava da decidere, ed era di Tid** — le due mosse erano indipendenti:
 
 1. ⚠️ **La riga falsa va tolta comunque**, anche scegliendo di non esporre
    niente: un commento che motiva un'esclusione con un vincolo che non esiste

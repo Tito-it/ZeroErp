@@ -201,3 +201,34 @@ class FamiglieCancelloTests(JwtMockedApiTest):
         mock_svc.return_value.list_lookup.return_value = []
         resp = self.client.get(f"{_BASE}lookup/", HTTP_AUTHORIZATION="Bearer x")
         self.assertNotEqual(resp.status_code, 403)
+
+    # Scopo: (11) LA FORMA DELLA RISPOSTA, non solo il suo status.
+    # ⛔ E' il presidio che mancava, e la sua assenza e' costata un drawer
+    #    BIANCO con la suite verde (2026-09-08). Il lookup tornava la LISTA
+    #    NUDA sotto `data`; il composable `useLookup` del frontend trasforma
+    #    ogni risposta con `r.data.data.results`, che su una lista nuda vale
+    #    `undefined`. Il `ref` delle famiglie passava da `[]` a `undefined` e il
+    #    primo `.map()` in un computed sollevava: Vue svuota il sottoalbero, e
+    #    il drawer dei registri si apriva vuoto — senza un errore da nessuna
+    #    parte lato server.
+    # ⚠️ E' la classe di difetto che nessuno dei due lati vede da solo: qui il
+    #    200 era corretto, di la' il campo era `undefined`. A vederlo e' solo
+    #    un test che guarda la FORMA, che e' quello che il frontend legge.
+    # ⭐ La forma non e' inventata: e' quella di ogni lookup dedicato
+    #    (`ProvinceLookupView` e le gemelle regioni/stati), ed e' il contratto
+    #    che il BB `useLookup` assume per tutti i suoi chiamanti.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM_ADMIN, return_value=False)
+    @patch(_SVC)
+    def test_il_lookup_torna_l_envelope_results(self, mock_svc, _perm, _auth):
+        righe = [{"codice_interno": "FATTURA", "descrizione": "Fattura"}]
+        mock_svc.return_value.list_lookup.return_value = righe
+        resp = self.client.get(f"{_BASE}lookup/", HTTP_AUTHORIZATION="Bearer x")
+        self.assertEqual(resp.status_code, 200)
+        corpo = resp.json()
+        self.assertIsInstance(
+            corpo["data"], dict,
+            "`data` deve essere l'oggetto con `results`, non la lista nuda: "
+            "il frontend legge `data.data.results`",
+        )
+        self.assertEqual(corpo["data"]["results"], righe)

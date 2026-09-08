@@ -121,6 +121,19 @@ export function getAuditOpSeverity(tipo) {
 export const REGISTRO_POLITICA_DATA = ['OGGI', 'FINE_MESE_COMPETENZA']
 export const REGISTRO_POLITICA_DATA_NEUTRA = 'OGGI'
 
+// `chk_registri_fatturazione_reset`: due valori, e sono quelli che il CHECK
+// ammette dal changeSet `20260901-06` — prima ce n'era uno solo.
+// ⛔ `MENSILE` NON c'e' e non torna: nessun documento porta il mese, quindi un
+//    contatore che discriminasse per mese consegnerebbe numeri che il documento
+//    non e' in grado di ospitare (brief chiave-del-contatore §6).
+// ⭐ `NESSUNA` invece e' sicura per l'asimmetria del §1: usa MENO assi, non di
+//    piu'. Vuol dire numerazione continua fra gli anni, che i gestionali fanno
+//    davvero su DDT e ordini.
+// ⚠️ Si sceglie SOLO alla nascita del registro: e' un asse della chiave del
+//    contatore, e cambiarla dopo il primo numero sposta il secchio.
+export const REGISTRO_RESET_POLICY = ['ANNUALE', 'NESSUNA']
+export const REGISTRO_RESET_POLICY_DEFAULT = 'ANNUALE'
+
 // Limiti della UI per `lunghezza_numero`.
 // ⚠️ NON sono un vincolo del database — la colonna non ha `CHECK` — sono un
 //    guard di maschera: il progressivo e' un `bigint`, quindi oltre 18 cifre

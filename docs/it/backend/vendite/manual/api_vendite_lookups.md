@@ -47,6 +47,25 @@ Tutti i 4 endpoint condividono la stessa shape:
 }
 ```
 
+> ⛔ **`data` E' UNA LISTA NUDA QUI, ED E' UN'ECCEZIONE — non copiarla.**
+> La forma normale di un lookup e' `{"data": {"results": [...]}}`: la assumono
+> **di default** i due composable del frontend (`useLookup`, `useGlobalLookup`),
+> che trasformano ogni risposta con `r.data.data.results`.
+>
+> ⚠️ Su una lista nuda quella espressione vale `undefined`, e il difetto **non
+> da' nessun errore**: il `ref` delle opzioni passa da `[]` a `undefined`, il
+> primo `.map()` solleva, Vue svuota il sottoalbero e la schermata resta
+> **bianca** — con il backend a `200`, i log puliti e la suite verde. E'
+> successo davvero il 2026-09-08 sul lookup delle famiglie documento, e il
+> drawer dei registri di numerazione si apriva vuoto.
+>
+> ⇒ Questi tre endpoint restano com'erano per ragioni storiche, e **chi li
+> consuma deve passare il transform esplicito**:
+> `:transform="(r) => r.data.data"` — tutti e 6 i call site lo fanno
+> (verificato il 2026-09-08). **Un endpoint nuovo usa `{"results": [...]}`** e
+> non ha bisogno di nessun transform da ricordarsi.
+> Regola completa: [api.md §Lookup](/dev/api#lookup--due-pattern-una-regola).
+
 | Path | Codici esposti | Consumer FE |
 | --- | --- | --- |
 | `/api/v1/vendite/lookup/tipi-variazione-contratto/` | `PERCENTUALE`, `VALORE_FISSO` | `TipoVariazioneSelect scope="contratto"` (in `ContrattoDrawer.vue`) |

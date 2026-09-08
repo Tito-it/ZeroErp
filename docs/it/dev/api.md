@@ -81,7 +81,17 @@ Dettagli: `docs/it/backend/core/manual/api_lookup_codici.md`.
 GET /api/v1/anagrafiche/province/lookup/     → sigla + regione_descrizione
 GET /api/v1/anagrafiche/regioni/lookup/      → stato_descrizione
 GET /api/v1/anagrafiche/stati/lookup/        → codice_iso2
+GET /api/v1/vendite/famiglie/lookup/         → prefisso_default, lunghezza_default,
+                                               gestisce_serie, ammette_regole_fiscali
 ```
+
+⭐ Il lookup **famiglie documento** e' l'esempio di quando un dedicato e'
+giustificato: `dbops.fn_get_lookup_codici` torna `id/codice/descrizione/attivo`
+e non puo' portare i default della forma del numero ne' le due colonne di
+natura, che sono esattamente cio' che il drawer dei registri deve sapere per
+precompilare il prefisso e decidere quali campi mostrare.
+⛔ **Non e' dietro il cancello dell'amministratore**: lo chiama una schermata di
+dominio, e chiuderlo spegnerebbe quei campi per tutti gli altri, in silenzio.
 
 Suffisso `/lookup/` sulla risorsa, senza paginazione.
 
@@ -110,6 +120,37 @@ servono colonne aggiuntive da JOIN o campi non standard.
 | Endpoint | `GET /core/lookup/codici/?rel=...` | `GET /{risorsa}/lookup/` |
 | Paginazione | Si' | No (lista completa) |
 | Quando usare | Tabelle config standard | Province, regioni, stati, UO con gerarchia |
+
+#### ⛔ L'ENVELOPE DI UN LOOKUP — `{"results": [...]}`, non la lista nuda
+
+> Un lookup dedicato risponde **`{"data": {"results": [...]}}`**.
+> `success_response({"results": ...})`, **mai** `success_response(<lista>)`.
+
+⚠️ **Ed e' un difetto che non da' nessun errore.** I due composable del
+frontend — `useLookup` e `useGlobalLookup` — trasformano ogni risposta con
+`r.data.data.results` **di default**. Su una lista nuda quella espressione vale
+`undefined`: il `ref` delle opzioni passa da `[]` a `undefined`, il primo
+`.map()` in un computed solleva, e **Vue svuota il sottoalbero**. A video resta
+una schermata bianca, con il backend che ha risposto `200`, nessuna riga nei
+log e la suite verde.
+
+⭐ **Successo reale**, 2026-09-08: `GET /api/v1/vendite/famiglie/lookup/`
+tornava la lista nuda ed era l'**unica** coppia disallineata in tutto il
+progetto (verificate tutte le altre: 17 endpoint `/lookup/` su 20 gia'
+conformi). Il drawer dei registri di numerazione si apriva vuoto — in creazione
+e in modifica — e l'unica traccia del difetto stava nella console del browser.
+
+**L'eccezione, ed e' dichiarata**: i tre lookup **enum statici** di vendite
+(`/vendite/lookup/tipi-variazione-*`, `/ambiti-contratto/`) tornano la lista
+nuda per ragioni storiche. ⚠️ Chi li consuma **deve** passare il transform
+esplicito — `:transform="(r) => r.data.data"` — e tutti i 6 call site lo fanno.
+⛔ Non e' un modello da imitare: un endpoint nuovo usa `{"results": [...]}`, e
+cosi' non ha bisogno di nessun transform da ricordarsi.
+
+**Il presidio**: un test che guarda la **forma** della risposta, non solo lo
+status — `test_il_lookup_torna_l_envelope_results` in
+`apps/vendite/tests/api/test_famiglie_api.py` e' il modello. Uno status `200`
+non dice niente su un campo che il frontend legge e non trova.
 
 ---
 
@@ -826,7 +867,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
-* **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo) | [api_vendite_lookups.md](/backend/vendite/manual/api_vendite_lookups) | [api_vendite_form_defaults.md](/backend/vendite/manual/api_vendite_form_defaults)
+* **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo) | [api_vendite_lookups.md](/backend/vendite/manual/api_vendite_lookups) | [api_vendite_form_defaults.md](/backend/vendite/manual/api_vendite_form_defaults) | [api_registri_numerazione.md](/backend/vendite/manual/api_registri_numerazione)
 * **Vendite — Ciclo attivo**: [api_offerte.md](/backend/vendite/manual/api_offerte) | [api_ordini.md](/backend/vendite/manual/api_ordini)
 * **Vendite — Lotto: i documenti PRESI IN CARICO**: [api_lotto_gruppi_list.md](/backend/vendite/manual/api_lotto_gruppi_list) — `GET /vendite/lotti/<id>/gruppi/` (+ `/export/`): che cosa il lotto ha preso in carico e com'è andato ciascun documento, **compresi quelli che una fattura non sono mai diventati**. ⛔ Non è un doppione di `/fatture/`, ed è la ragione per cui esiste: quella lista si aggancia a `fattura_id`, quindi un documento caduto PRIMA che una fattura esista non ha niente a cui appendersi — sul lotto LTF-0009578 se ne vedevano due su tre, e il terzo era nominato solo da una segnalazione, con l'identificativo della COMMESSA. ⚠️ Le due liste non sono in corrispondenza 1:1 nemmeno a giro riuscito (`fn_build_fattura_key` può raccogliere più gruppi nello stesso documento): sono due domande diverse. ⭐ La risposta porta **`perimetro_dichiarato`**, e senza quel flag «non ha lavorato niente» e «non dichiara un perimetro» si leggono uguali — un giro DI MASSA non scrive nessun gruppo, perché l'assenza di righe È il criterio (garanzia G1). 🔒 Il cancello di scope è la TESTATA: `fatturazione_lotti_gruppi` non ha RLS, `fatturazione_lotti` sì, e il JOIN vale anche per il conteggio. ⚠️ L'ordine di default non è alfabetico ma «i falliti in cima»: `ERRORE` ordinato per stringa verrebbe dopo `COMPLETED`, cioè il caso che interessa finirebbe in fondo
 * **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
