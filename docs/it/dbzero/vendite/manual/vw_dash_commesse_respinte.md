@@ -94,4 +94,4 @@ ORDER BY respinta_il DESC;
 * Il drill-down mostra la bandiera con un **join** a questa vista: nessuna
   colonna aggiunta a una vista da 30 colonne.
 
-Origine: `docs/it/dev/work-in-progress/brief-residuo-fatturabili-e-bandiere-esito-parziale.md`, D3.
+Origine: `docs/it/dev/work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md`, D3.

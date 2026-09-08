@@ -136,7 +136,7 @@ SELECT vendite.fn_escludi_documento_da_giro(
   deriva il trigger
   [`vendite.trgfn_fatturazione_lotti_esiti_uscita`](/dbzero/vendite/funzioni/trgfn_fatturazione_lotti_esiti_uscita).
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md`.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md`.
 
 ---
 

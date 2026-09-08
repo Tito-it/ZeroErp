@@ -24,15 +24,20 @@
 > `ui.lista_definizione` 67/67 e `ui.lista_colonna` 735/735, zero righe del CSV
 > mancanti) ⇒ il §12.6 è chiuso, e con esso il presidio del §19 — §21.
 >
-> 🔴 **Restano DUE cose, e nessuna è una svista — §21.**
-> **1. Il primo giro vero.** `vendite.fatturazione_lotti_esiti` ha **zero
-> righe** (2026-09-07, letto col contesto operatore): nessun giro è ancora
-> passato dalla marcatura, quindi il criterio di chiusura del **§6** — *«si rifà
-> un giro come `LTF-0009578`»* — non è soddisfatto, e il debito di collaudo dei
-> §16/§18 è aperto per costruzione.
-> **2. Il lavoro del §20 non è nel repo**: 16 file modificati e 2 test nuovi non
-> committati. «Fatto» descrive una macchina, non il progetto.
-> ⛔ **Finché valgono queste due, il brief resta in `work-in-progress`.**
+> 🟢 **CHIUSO e archiviato il 2026-09-08** (decisione di Tid). ⚠️ Le due voci
+> che l'intestazione dichiarava aperte erano **già cadute dentro il documento
+> stesso**, e l'intestazione era rimasta indietro: è il difetto che il §21
+> denuncia — *«un brief che elenca come da fare cose già fatte»* — ripetuto sul
+> proprio frontespizio. Riverificate contro il **database**, non contro il testo:
+>
+> | Voce | Diceva | Misurato il 2026-09-08 |
+> | --- | --- | --- |
+> | **§6** · il primo giro vero | «`fatturazione_lotti_esiti` ha **zero righe**» | **43 righe** — e il §23.1 lo aveva già chiuso col giro `LTF-0009900` |
+> | **§20** · non è nel repo | «16 file + 2 test non committati» | committato (§23.2, push `993cdb91e`) |
+> | **§25.5** · applicare `20260907-17` | 🔵 da fare | ✅ applicato: il commento della vista dichiara il criterio del pregresso e l'istante `19:09` |
+>
+> ✅ **E la coda del §24.5 — quella vera — ha avuto la sua risposta**: il badge
+> non era contraddittorio, lo era il **banner**. Vedi §26.
 >
 > **Origine:** Tid, 2026-09-06, guardando il lotto `LTF-0009578`.
 
@@ -1337,7 +1342,7 @@ in un punto solo — `stato_lotto` compariva **una volta sola** in tutta la
 funzione. ⛔ E la doc auto-gen stampa il corpo **senza** il `;` dopo
 `$function$`: aggiunto, perché senza si rompe al primo statement che segue.
 
-### 24.5 🔵 Che cosa resta, ed è a video
+### 24.5 ✅ Che cosa restava, ed era a video — risposto il 2026-09-08 (§26)
 
 Un lotto annullato che era andato male ora mostrerà **`ERRORE`** *e*
 **«Annullata»**. Sono due informazioni diverse ed entrambe vere, ma il frontend
@@ -1412,7 +1417,75 @@ lotti sono nominati. Si vedono, e si sa perché.
 
 ### 25.5 Che cosa resta
 
-* 🔵 applicare `20260907-17` (solo un `COMMENT`);
-* ⚠️ e la coda del §24.5, che è a video: un lotto annullato che era andato male
-  mostra ora `ERRORE` **e** «Annullata». Da guardare che il badge non risulti
-  contraddittorio — e se lo è, il rimedio non è tornare indietro.
+* ✅ `20260907-17` **applicato**: verificato il 2026-09-08 leggendo il commento
+  della vista dal database — dichiara il criterio del pregresso (i lotti
+  annullati prima del `2026-09-07 19:09`), non il numero.
+* ✅ La coda del §24.5 è stata guardata, e il difetto c'era — ma non dove lo si
+  aspettava: **§26**.
+
+---
+
+## 26. ✅ La coda del §24.5 — guardata il 2026-09-08, e il difetto non era il badge
+
+> Il §24.5 chiedeva: *«un lotto annullato che era andato male mostrerà `ERRORE`
+> e «Annullata» insieme… vale la pena guardare che il badge non risulti
+> contraddittorio»*.
+
+**Il perimetro esiste**: cinque lotti in `stato_lotto = ERRORE` con stato fiscale
+`ANNULLATA` — `LTF-0010261`, `LTF-0009971`, `LTF-0010003`, `LTF-0010227`,
+`LTF-0010225` (più `LTF-0010162`).
+
+### 26.1 ⭐ I due badge NON sono contraddittori
+
+Rispondono a due domande diverse, e la schermata già le tiene separate: il `Tag`
+di `stato_lotto` dice **com'è andato il giro**, quello di
+`stato_doc_fiscale_descrizione` dice **dov'è il documento adesso**. Entrambe
+vere, nessuna smentisce l'altra. ⇒ Nessun rimedio: la divergenza è il punto, non
+l'incidente, esattamente come il §24.5 prevedeva.
+
+### 26.2 🔴 Il difetto era nel BANNER, ed era stato introdotto quel giorno stesso
+
+Sul drawer di `LTF-0010227`, `LTF-0010225` e `LTF-0010162` — annullati, con una
+critica viva che nomina un documento — il banner delle segnalazioni diceva:
+
+> «Il giro è fermo per 1 documento su 3: **si toglie dal giro e il lotto riparte
+> con quelli che restano**.»
+
+⛔ E **due righe sotto, la stessa schermata rifiutava quel gesto**: l'azione
+«Togli dal giro» era spenta con `lotto_non_pre_fiscale` — *«Il lotto è oltre lo
+stato pre-fiscale: non se ne può più togliere niente»*.
+
+⚠️ Un rimedio promesso dall'intestazione e negato dalla riga è il **vicolo cieco**
+che le linee guida vietano: peggio di nessun suggerimento, perché manda a cercare
+un pulsante che non c'è.
+
+⭐ **E la frase vecchia aveva lo stesso vizio in forma più debole** — «N
+segnalazioni critiche bloccano l'avanzamento» su un lotto che non avanza più. Il
+banner nuovo lo ha reso **visibile** perché nomina un gesto: è la ragione per cui
+questa coda andava guardata a video e non dedotta.
+
+### 26.3 Il rimedio
+
+Su un lotto **congelato** le critiche sono **storia**, non lavoro:
+
+* la frase è al passato e **non nomina nessun gesto**;
+* il banner non è più rosso — un allarme rosso su un giro chiuso insegna a
+  ignorare gli allarmi rossi.
+
+⭐ **La soglia si LEGGE, non si riscrive**: `stato_congela_fiscale` del catalogo,
+la stessa che `useLottoAzioni` consulta per proporre i verbi. ⛔ Non
+`stato_doc_fiscale_codice !== 'DRAFT'`, che era l'ennesima copia della soglia —
+tolta da quello **stesso file** il 2026-08-31.
+⚠️ Fail-closed (`=== false`): un dettaglio non ancora arrivato non conta come
+«si può rimediare».
+
+### 26.4 ⭐ Che cosa insegna, oltre al caso
+
+Il §24.5 non chiedeva di correggere un badge: chiedeva di **guardare una
+divergenza**. Guardandola, i badge erano a posto e il difetto stava in una frase
+scritta lo stesso giorno da un altro cantiere.
+
+⇒ *Una coda di collaudo vale anche quando l'ipotesi è sbagliata* — e questa lo
+era: cercava un difetto nel posto in cui non c'era, e ha trovato quello vero
+accanto.
+

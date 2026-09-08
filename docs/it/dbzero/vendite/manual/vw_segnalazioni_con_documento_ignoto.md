@@ -80,7 +80,7 @@ SELECT * FROM vendite.vw_segnalazioni_con_documento_ignoto;
 perimetro emittente. Letta da un canale senza contesto operatore risponde zero
 righe per fail-closed, che **non** è la stessa cosa di «tutto a posto».
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md`.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md`.
 
 ---
 

@@ -27,7 +27,7 @@ ed era l'unica cosa vera in giro.
 due domande diverse, non due viste della stessa — per questo è una scheda in più
 e non una colonna.
 
-Brief di riferimento: `docs/it/dev/work-in-progress/brief-db-esito-gruppo-lotto.md`.
+Brief di riferimento: `docs/it/dev/work-done/brief-db-esito-gruppo-lotto.md`.
 
 ## Input
 

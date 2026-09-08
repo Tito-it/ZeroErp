@@ -85,7 +85,7 @@ SELECT jsonb_array_length(
 );
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md`.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md`.
 
 ---
 

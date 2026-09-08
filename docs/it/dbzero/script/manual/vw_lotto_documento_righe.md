@@ -90,7 +90,7 @@ SELECT fattura_id, count(*) AS documenti
  GROUP BY fattura_id;
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md`.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md`.
 
 ---
 

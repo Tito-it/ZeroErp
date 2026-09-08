@@ -70,15 +70,6 @@ function vaiAl(risolto) {
   }
 }
 
-// ⚠️ Un identificativo LUNGO non entra in un pulsante. Al 2026-08-24 tutti e
-// nove i tipi a catalogo hanno chiave numerica, ma `key_selector` ammette
-// ancora `uid`: il giorno che una superficie pubblica indirizzera' cosi',
-// «Apri Preventivo 0f8c1d42-9a3b-4c11-8e77-2b6d5a4c9e01» sarebbe un'etichetta
-// illeggibile — e il numero, a quel punto, non aggiunge niente a chi legge.
-// ⭐ Il guard resta anche se oggi non morde: costa una riga e toglie una
-//    domanda a chi aggiungera' quel tipo.
-const ID_MAX_IN_ETICHETTA = 12
-
 // Scopo: ⭐ Le AZIONI da mettere nel toast, per i bersagli raggiungibili.
 //        Array vuoto = nessun pulsante, e il toast resta quello di prima:
 //        e' il degrado dichiarato del §4.3, non un ripiego.
@@ -95,15 +86,22 @@ const ID_MAX_IN_ETICHETTA = 12
 //        questo file.
 export function azioniDaBersagli(bersagli, authStore) {
   const t = i18n.global.t
-  return bersagliRisolti(bersagli, authStore).map((risolto) => {
-    const entita = t(risolto.etichettaKey)
-    return {
-      label:
-        String(risolto.idEtichetta).length <= ID_MAX_IN_ETICHETTA
-          ? t('errors.bersaglio_apri', { entita, id: risolto.idEtichetta })
-          : t('errors.bersaglio_apri_senza_id', { entita }),
-      icon: 'pi pi-external-link',
-      esegui: () => vaiAl(risolto),
-    }
-  })
+  return bersagliRisolti(bersagli, authStore).map((risolto) => ({
+    // ⛔ SENZA L'IDENTIFICATIVO, e non e' una semplificazione: quello e' la
+    //    CHIAVE PRIMARIA, non il numero con cui una persona chiama quel
+    //    documento. «Apri ordine 12345» espone un dato interno e per giunta ne
+    //    mostra uno che l'operatore non ritrovera' da nessuna parte — sul
+    //    documento c'e' scritto `ORD0036005` (rilievo di Tid, 2026-09-08).
+    // ⭐ E dove il gesto vive — il kebab di una RIGA — il soggetto e' gia' la
+    //    riga: ripetere un identificativo li' e' rumore, non precisione.
+    // ⚠️ Cade con questa anche la vecchia soglia sulla lunghezza: serviva a non
+    //    stampare un uuid in un pulsante, e non c'e' piu' niente da stampare.
+    label: t('errors.bersaglio_apri_senza_id', { entita: t(risolto.etichettaKey) }),
+    // ⭐ L'icona DELLA COSA, dichiarata dalla destinazione, non una generica di
+    //    collegamento: due voci nello stesso kebab devono distinguersi prima di
+    //    essere lette. ⚠️ Il ripiego resta perche' un pulsante senza icona si
+    //    disallinea dagli altri — non perche' una destinazione possa non averla.
+    icon: risolto.icona || 'pi pi-external-link',
+    esegui: () => vaiAl(risolto),
+  }))
 }

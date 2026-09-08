@@ -111,7 +111,7 @@ SELECT script.fn_check_documento_escludibile_da_giro(11221, 'ORDINE_VENDITA:...'
        -> 0 ->> 'reason';
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md`.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md`.
 
 ---
 

@@ -154,7 +154,7 @@ SELECT vendite.fn_log_pipeline_fase(
            script.fn_gruppi_di_commessa_nel_lotto(11221, 34137)) AS g;
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md` §6.1.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.1.
 
 ---
 

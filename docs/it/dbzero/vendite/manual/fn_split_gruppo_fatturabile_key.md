@@ -93,7 +93,7 @@ SELECT * FROM vendite.fn_split_gruppo_fatturabile_key('MAN:42');
 -- NULL | NULL | 42
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md` §6.2.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.2.
 
 ---
 

@@ -358,7 +358,6 @@
     "forbidden_message": "You do not have permission to access this area.",
     "back_home": "Back to Home",
     "lookup_load_failed": "Could not load the list. Retry or contact the administrator.",
-    "bersaglio_apri": "Open {entita} {id}",
     "bersaglio_apri_senza_id": "Open {entita}"
   },
   "placeholder": {
@@ -2805,6 +2804,10 @@
       "segn_escludi_del_giro": "This alert is about the run, not a document: there is nothing to remove. Fix the cause and re-run the step.",
       "nessuna_segnalazione_livello": "No signals at this level",
       "segnalazioni_bloccanti": "{n} critical alerts block progression.",
+      "segnalazioni_bloccanti_documenti": "The run is stuck on 1 of {m} documents: remove it from the run and the batch carries on with the rest. | The run is stuck on {n} of {m} documents: remove them from the run and the batch carries on with the rest.",
+      "segnalazioni_bloccanti_piu_giro": "Plus 1 run-level alert that belongs to no document: it is fixed, not removed. | Plus {k} run-level alerts that belong to no document: those are fixed, not removed.",
+      "segnalazioni_bloccanti_giro": "The run is stuck on 1 alert that is not about a document: there is nothing to remove — fix the cause and re-run the step. | The run is stuck on {k} alerts that are not about a document: there is nothing to remove — fix the cause and re-run the step.",
+      "segnalazioni_giro_chiuso": "This run had stopped on 1 critical alert. The batch is no longer in processing: there is nothing left to remove. | This run had stopped on {n} critical alerts. The batch is no longer in processing: there is nothing left to remove.",
       "avanza": "Advance step",
       "avanza_header": "Advance pipeline",
       "avanza_conferma": "Advance the batch pipeline by one step?",
