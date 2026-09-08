@@ -21,6 +21,10 @@
 -- 16) la segnalazione resta LEGGIBILE: non e' stata ritirata
 -- 17) un documento senza bozza non trascina nessuno
 -- 18) ⭐ P-1 — la frase resa del motivo 1 nomina lo STATO DEL LOTTO
+-- 19) ⭐ LA GIUNTURA: il marcatore non muore su un documento uscito
+-- 20) ⭐ …e non smette di marcare quelli sani
+-- 21) ⭐ l'uscita COMPARE nel giornale, col suo motivo
+-- 22) ⭐ una critica su un documento uscito non si scrive, un'informativa si'
 --
 -- Scopo:
 --  - presidiare il verbo «togli un documento rotto dal giro», che esiste per
@@ -47,7 +51,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(22);
 
 -- ============================================================
 -- Fixture: un lotto con tre documenti — uno rotto, uno sano, uno gia' fuori
@@ -306,6 +310,125 @@ SELECT matches(
      FROM v),
   'stato attuale: DEFINITIVA',
   '18) la frase resa nomina lo STATO DEL LOTTO, non il gruppo del documento'
+);
+
+-- ============================================================
+-- 19-20) ⭐ LA GIUNTURA — uscita dal giro + marcatore
+-- ============================================================
+-- ⛔ IL DIFETTO ERA VIVO, e lo ha trovato un collaudo a video (BE, 2026-09-08):
+--   tolto un documento dal giro e premuto «Rilancia step», il rilancio moriva
+--   con E_PIPELINE 400. `fn_segna_esito_gruppo_lotto` marcava TUTTI i documenti
+--   della commessa fallita, compreso quello uscito; il guard dell'uscita
+--   rifiutava — correttamente, ESCLUSO e' terminale — e l'eccezione usciva dal
+--   marcatore. ⇒ Il verbo che esiste per far ripartire un lotto lo rendeva
+--   impossibile da rilanciare.
+--
+-- ⚠️ E IL DANNO NON ERA IL DOCUMENTO USCITO. Il guard e' BEFORE ROW e il
+--   marcatore fa UN SOLO `INSERT ... ON CONFLICT DO UPDATE`: l'eccezione su una
+--   riga saltava l'INTERO statement, quindi restavano senza esito anche i
+--   documenti SANI della stessa commessa. E' il motivo per cui il test 20
+--   esiste: da solo il 19 passerebbe anche su un rimedio che si limita a NON
+--   sollevare smettendo di marcare tutto.
+--
+-- ⭐ PERCHE' NESSUN PRESIDIO LO VEDEVA, e non e' che «non poteva»: i pgTAP
+--   provavano le due funzioni una per una, e il difetto nasce dalla SEQUENZA.
+--   La fixture per provarla c'era gia' — questo file — e mancava solo la
+--   chiamata. Un buco dichiarato inevitabile e' un buco che resta aperto.
+--   Brief: brief-db-il-marcatore-scrive-su-un-documento-uscito.md
+--   ChangeSet: 20260909-18-update-fn-segna-esito-gruppo-lotto-salta-usciti
+SELECT lives_ok(
+    format($$ SELECT * FROM vendite.fn_segna_esito_gruppo_lotto(
+                       %s, 'ERRORE', 'PGTAP:rotto', NULL,
+                       'E_PULL_COMMESSA', 'il pull fallisce ancora, come al collaudo') $$,
+           (SELECT id FROM tmp_lotto)),
+    '19) il marcatore non solleva su un documento gia'' uscito dal giro: lo salta'
+);
+
+-- ⚠️ Due cose in una asserzione, e vanno insieme: il documento SANO riceve
+--   davvero il suo esito, e quello uscito resta ESCLUSO — cioe' il marcatore
+--   non ha "risolto" smettendo di scrivere, e non ha nemmeno riscritto la riga
+--   uscita col vecchio valore per farla passare.
+-- ⚠️ IL VERBO IN UN'ISTRUZIONE SEPARATA, e non e' stile: dentro una sola
+--   espressione l'ordine di valutazione degli operandi NON e' garantito, e le
+--   letture di stato possono precedere la scrittura. Scritta tutta insieme,
+--   questa asserzione leggeva 'COMPLETED' su una riga che la chiamata accanto
+--   stava marcando 'ERRORE' — un rosso che non dipendeva dal codice sotto
+--   esame.
+CREATE TEMP TABLE tmp_marcati_sano AS
+SELECT * FROM vendite.fn_segna_esito_gruppo_lotto(
+         (SELECT id FROM tmp_lotto), 'ERRORE', 'PGTAP:sano', NULL,
+         'E_PULL_COMMESSA', 'il pull fallisce ancora');
+
+SELECT is(
+    (SELECT marcati::text FROM tmp_marcati_sano)
+     || '|' ||
+     (SELECT e.stato_esecuzione FROM vendite.fatturazione_lotti_esiti e
+       WHERE e.lotto_id = (SELECT id FROM tmp_lotto) AND e.gruppo_key = 'PGTAP:rotto')
+     || '|' ||
+     (SELECT e.stato_esecuzione FROM vendite.fatturazione_lotti_esiti e
+       WHERE e.lotto_id = (SELECT id FROM tmp_lotto) AND e.gruppo_key = 'PGTAP:sano'),
+    '1|ESCLUSO|ERRORE',
+    '20) il documento sano viene marcato, quello uscito resta ESCLUSO'
+);
+
+-- ============================================================
+-- 21) ⭐ L'USCITA COMPARE NEL GIORNALE, COL SUO MOTIVO
+-- ============================================================
+-- ⛔ Fino al 2026-09-09 non c'era nessuna riga: il timbro stava solo sulla riga
+--   dell'esito (uscita_motivo/quando/da), quindi chi guardava la STORIA del
+--   lotto non vedeva che un documento era uscito ne' perche'. Un fatto voluto,
+--   con una motivazione che il CHECK di tabella rende obbligatoria, che il
+--   giornale non registrava.
+-- ⚠️ Si verificano tre cose insieme perche' separate non dicono niente: che la
+--   riga ci sia, che sia `I` (un fatto, non un allarme: non deve contare fra le
+--   critiche) e che porti la `gruppo_key` — senza, sarebbe «del giro» e nessuno
+--   saprebbe di chi parla ne' potrebbe toglierla.
+-- ⚠️ E il MOTIVO si cerca nel messaggio, non in `meta`: chi legge il giornale
+--   legge il messaggio.
+SELECT is(
+    (SELECT g.status || '|' || g.gruppo_key || '|' ||
+            CASE WHEN g.messaggio LIKE '%esce per la prova%' THEN 'col motivo'
+                 ELSE 'SENZA motivo: ' || g.messaggio END
+       FROM vendite.fatturazione_lotti_log g
+      WHERE g.lotto_id = (SELECT id FROM tmp_lotto)
+        AND g.fase = 'USCITA_DAL_GIRO'),
+    'I|PGTAP:rotto|col motivo',
+    '21) l''uscita lascia nel giornale una informativa col documento e il motivo'
+);
+
+-- ============================================================
+-- 22) ⭐ UNA CRITICA SU UN DOCUMENTO USCITO NON SI SCRIVE — UNA `I` SI'
+-- ============================================================
+-- ⛔ Al rilancio il pull di una commessa fallita fallisce ancora, e il backend
+--   riscriveva una critica per OGNI suo documento, compreso quello uscito. Non
+--   bloccava — il conteggio le scarta gia' — ma se ne accumulava una a ogni
+--   giro su un documento che non e' piu' in gioco.
+-- ⭐ Le due meta' vanno insieme: da sola la prima passerebbe anche su una
+--   regola che ha smesso di scrivere QUALUNQUE cosa sul documento uscito — e
+--   allora sparirebbe anche la riga del test 21.
+-- ⚠️ Le scritture stanno in istruzioni SEPARATE dalla lettura: dentro una sola
+--   espressione l'ordine di valutazione non e' garantito.
+SELECT vendite.fn_log_pipeline_fase(
+    (SELECT id FROM tmp_lotto),
+    (SELECT l.stato_doc_fiscale_id FROM vendite.fatturazione_lotti l
+      WHERE l.id = (SELECT id FROM tmp_lotto)),
+    'PGTAP_PROVA', 'C'::char, 'critica su un documento uscito',
+    '{}'::jsonb, NULL, 'PGTAP:rotto');
+
+SELECT vendite.fn_log_pipeline_fase(
+    (SELECT id FROM tmp_lotto),
+    (SELECT l.stato_doc_fiscale_id FROM vendite.fatturazione_lotti l
+      WHERE l.id = (SELECT id FROM tmp_lotto)),
+    'PGTAP_PROVA', 'I'::char, 'informativa su un documento uscito',
+    '{}'::jsonb, NULL, 'PGTAP:rotto');
+
+SELECT is(
+    (SELECT coalesce(string_agg(g.status::text, ',' ORDER BY g.status), '(nessuna)')
+       FROM vendite.fatturazione_lotti_log g
+      WHERE g.lotto_id = (SELECT id FROM tmp_lotto)
+        AND g.fase = 'PGTAP_PROVA'),
+    'I',
+    '22) sul documento uscito la critica non si scrive, l''informativa si'''
 );
 
 SELECT * FROM finish();
