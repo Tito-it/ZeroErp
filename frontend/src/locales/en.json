@@ -3637,7 +3637,11 @@
       "col_lunghezza_numero": "Digits",
       "col_serie_default": "Series",
       "col_attivo": "Active",
-      "col_data_insert": "Created"
+      "col_data_insert": "Created",
+      "col_reset_policy": "Reset",
+      "col_politica_data_documento": "Document date",
+      "col_limite_emissione_giorni": "Day limit",
+      "col_limite_emissione_giorno_mese": "Day-of-month limit"
     },
     "resi_da_riconsegnare": {
       "col_numero": "Number",

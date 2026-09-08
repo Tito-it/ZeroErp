@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A-2 — LA SCELTA DEL SEZIONALE: L'ANNO NEL NUMERO
+#   vendite.registri_fatturazione.anno_nel_numero
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8
+#
+# -- LA COPPIA E' GIA' QUELLA DI PREFISSO E LUNGHEZZA -----------
+#   famiglie_documento.anno_nel_numero_default = il DEFAULT del tipo
+#   documento (A-1); registri_fatturazione.anno_nel_numero = l'EFFETTIVO di
+#   QUESTO sezionale. Identico al rapporto prefisso_default/prefisso.
+#
+# -- QUESTA COLONNA E' FORMA DEL NUMERO, E NE PORTA LE REGOLE ---
+#   Accenderla o spegnerla cambia la stringa che il registro consegna. Su un
+#   sezionale che ha gia' numerato significherebbe far convivere DUE forme
+#   con numeri consecutivi — esattamente cio' che il guard di 20260901-03
+#   impedisce per prefisso, suffisso e lunghezza.
+#   => Il changeSet 20260908-15 rimonta quel guard aggiungendo questa
+#   colonna alla clausola UPDATE OF (e al confronto dei valori che ne e' il
+#   no-op). Fino ad allora la colonna e' nuova, quindi non c'e' finestra:
+#   l'unico a cambiarla e' il backfill qui sotto.
+#
+# -- IL DEFAULT E' false, E NON E' PRUDENZA ---------------------
+#   E' la sola scelta che non cambia la forma dei registri esistenti nel
+#   momento in cui la colonna arriva. Chi vuole l'anno su un sezionale
+#   vecchio non puo' averlo, e non e' un limite di questo changeSet: e' la
+#   regola della forma del numero, che vale da 20260901-03.
+#
+# -- ⭐ TRANNE LA COMMESSA, CHE L'ANNO CE L'HA GIA' -------------
+#   I registri COMMESSA fanno eccezione, e per non cambiare niente: il loro
+#   codice l'anno lo porta da sempre — `CMM-<sigla>-<anno>-<9 cifre>` — solo
+#   che glielo metteva il compositore di dominio invece di quello generico.
+#   Dal 20260908-13 quel pezzo passa al generico, che pero' guarda QUESTA
+#   colonna: lasciarla a false farebbe uscire il codice della prossima
+#   commessa SENZA l'anno, cioe' una forma nuova accanto a quella vecchia.
+#   ⇒ Il backfill non aggiunge l'anno a nessuno: gli impedisce di sparire.
+#
+# -- ⚠️ E L'ORDINE E' PORTANTE ----------------------------------
+#   Questo backfill DEVE stare qui e non in 80_data: dal 20260908-15 la
+#   colonna entra nella clausola UPDATE OF del guard della forma, che
+#   rifiuta il cambio su un registro che ha gia' numerato — e COM-72 ne ha
+#   gia' numerate sei. Qui il guard quella colonna non la guarda ancora.
+#   ⛔ Non e' un aggiramento del presidio: e' il passo che porta lo stato
+#   dove il presidio lo vuole, prima che il presidio ci sia. Dopo, la
+#   colonna e' bloccata per tutti — commessa compresa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260908-12-alter-registri-fatturazione-anno-nel-numero-mctit.yaml
+
+  - changeSet:
+      id: 20260908-12-alter-registri-fatturazione-anno-nel-numero
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L''effettivo del sezionale: questo registro mette l''anno dentro il numero. Sta al
+        default della famiglia (20260908-11) come `prefisso` sta a `prefisso_default`. E'' FORMA
+        DEL NUMERO a tutti gli effetti — cambiarla su un registro che ha gia'' numerato farebbe
+        convivere due forme con numeri consecutivi — quindi 20260908-15 la aggiunge al guard della forma.' Nasce false ovunque tranne che sui registri COMMESSA, il cui
+        codice l''anno lo porta da sempre: li'' un false farebbe USCIRE l''anno dal codice quando il
+        compositore di dominio smette di scriverlo (20260908-13), cioe'' una forma nuova accanto
+        alla vecchia. ⚠️ Il backfill sta qui e non in 80_data perche'' dal 20260908-15 questa
+        colonna entra nel guard della forma, che lo rifiuterebbe su COM-72 - che ha gia'' numerato. Piano:
+        brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8 (A-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: registri_fatturazione
+                    columnName: anno_nel_numero
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                  ADD COLUMN anno_nel_numero boolean NOT NULL DEFAULT false;
+
+              -- ⭐ La commessa l'anno lo porta da sempre: qui non glielo si
+              --   aggiunge, gli si impedisce di sparire quando il compositore
+              --   di dominio smette di scriverlo (20260908-13).
+              -- ⚠️ Su un database ricostruito da zero questa tabella e' VUOTA
+              --   — i registri sono dati di macchina, nascono dal
+              --   provisioning — quindi l'UPDATE tocca zero righe ed e'
+              --   innocuo: e' un backfill del pregresso, e come tale non si
+              --   marca `dati_macchina` (linee-guida-sql §11.7).
+              UPDATE vendite.registri_fatturazione
+                 SET anno_nel_numero = true
+               WHERE famiglia_documento = 'COMMESSA';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.anno_nel_numero IS
+                  'Questo sezionale espone l''anno DENTRO il numero: vendite.fn_assegna_numero_documento lo aggiunge in coda al corpo, prima del progressivo (DDT2026-0023456, CMM-SIGLA-2026-000000001). E'' FORMA DEL NUMERO: il guard trg_registri_fatturazione_a10_guard_forma_numero_upd ne impedisce il cambio su un registro che ha gia'' consegnato numeri, perche'' due forme con numeri consecutivi sullo stesso sezionale non si separano piu''. Il default di nascita lo porta la famiglia (anno_nel_numero_default), applicato in INSERT dal risolutore trg_registri_fatturazione_a10_set_anno_nel_numero_ins. Serve dove reset_policy = ANNUALE: senza, due documenti di anni diversi escono con lo stesso numero e nessun vincolo se ne accorge. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                  DROP COLUMN IF EXISTS anno_nel_numero;

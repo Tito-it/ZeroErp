@@ -1,0 +1,405 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL SECCHIO NUOVO NASCE DAL MASSIMO DI QUELLI CON CUI PUO' COLLIDERE
+#   vendite.fn_get_next_progressivo
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.7
+#
+# -- IL DIFETTO, PROVATO E NON DEDOTTO (2026-09-08) --------------
+#   Registro ANNUALE con due numeri emessi nel 2026 (secchio 2026 = 2).
+#   `UPDATE ... SET reset_policy = 'NESSUNA'` e poi un numero: la funzione
+#   cerca il secchio (registro, anno = 0, serie), non lo trova, lo CREA A
+#   ZERO e consegna 1. Ma il documento tiene il suo anno SOLARE, quindi
+#   uq_ordini_v_anno_serie_numero (registro_id, anno, serie, numero) trova
+#   quel numero gia' usato: la scrittura viene respinta, il rollback riporta
+#   indietro anche l'incremento del contatore, e al tentativo dopo si
+#   riparte da 1 e si sbatte di nuovo.
+#   => Non un dato sporco: un NUMERATORE PIANTATO, con un errore che parla
+#   del numero e non nomina la causa. E' il difetto della sezione 3 del
+#   brief, entrato da un'altra porta.
+#
+# -- PERCHE' SI RIPARA QUI E NON CON UN GUARD -------------------
+#   La forma ovvia sarebbe un guard che RIFIUTA il cambio di reset_policy su
+#   un registro che ha gia' numerato: e' il gemello del guard sulla forma del
+#   numero (20260901-03). Ma davanti a un blocco su stato persistente la
+#   domanda e' «com'e' lo stato DOPO l'azione che il guard impedisce?»: qui
+#   e' RECUPERABILE (basta innescare il secchio), quindi il cancello
+#   toglierebbe una configurazione legittima invece di impedire un autogol.
+#   Sulla forma del numero e' l'opposto: due forme con numeri consecutivi
+#   sullo stesso sezionale non si separano piu'.
+#
+# -- IL CRITERIO, E COSA NON E' ---------------------------------
+#   NON e' «il massimo di sempre»: sotto ANNUALE il primo documento
+#   dell'anno DEVE ripartire da 1. Si guardano i soli secchi che possono
+#   COLLIDERE, cioe' quelli i cui documenti condividono un anno solare:
+#     * secchio continuo (anno = 0): li attraversa tutti  -> max su tutti;
+#     * secchio d'anno   (anno = Y): solo il continuo     -> max su quello.
+#   Copre ENTRAMBI i versi del passaggio, ANNUALE->NESSUNA e NESSUNA->ANNUALE.
+#
+# -- RAGGIO D'AZIONE: NESSUNO, OGGI -----------------------------
+#   Il ramo si accende solo dove un secchio continuo convive con uno d'anno,
+#   cioe' solo dove una politica e' cambiata. Su ogni altro registro il max
+#   e' su zero righe, il COALESCE rende 0, e il comportamento resta identico
+#   a quello di prima, riga per riga.
+#
+# -- IL CORPO VIENE DALLA FUNZIONE VIVA, LA FIRMA DALL'ULTIMO YAML
+#   pg_get_functiondef scioglie i %TYPE della firma in tipi concreti: la
+#   firma e' ripresa da 20260901-07, l'ultimo changeSet a dichiararla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-10-update-fn-get-next-progressivo-seme-secchio-nuovo-mctit.yaml
+
+  - changeSet:
+      id: 20260908-10-update-fn-get-next-progressivo-seme-secchio-nuovo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Un secchio del contatore appena nato non parte piu'' da zero: parte dal massimo dei
+        secchi con cui i suoi documenti possono COLLIDERE. Serve al passaggio di reset_policy su
+        un registro che ha gia'' numerato - provato il 2026-09-08: la politica cambia, la chiave
+        del secchio cambia, il secchio nuovo nasce a zero e consegna un numero che nell''anno
+        solare del documento e'' gia'' stato emesso; il vincolo del documento lo respinge, il
+        rollback annulla anche l''incremento, e il numeratore resta PIANTATO. Il criterio non e''
+        «il massimo di sempre»: sotto ANNUALE il primo documento dell''anno deve ripartire da 1,
+        quindi un secchio d''anno guarda il solo secchio continuo (anno = 0), e quello continuo
+        li guarda tutti. Copre i due versi del passaggio. Dove nessuna politica e'' cambiata il
+        massimo e'' su zero righe e il comportamento e'' identico a prima. Piano:
+        brief-db-registri-numerazione-chiave-del-contatore, sezione 11.7.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione_progressivi
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione_progressivi
+                columnName: last_numero
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_next_progressivo(
+                  p_registro_id        vendite.registri_fatturazione.id%TYPE,
+                  p_data               vendite.fatture.data%TYPE,
+                  p_competenza_mese    vendite.fatture.competenza_mese%TYPE,
+                  p_serie              text    DEFAULT NULL,
+                  -- ⛔ Il nome resta `p_fattura_id` benche' ora porti l'id di un
+                  --   documento qualunque: rinominarlo spezzerebbe le chiamate
+                  --   per parametro nominato. Debito dichiarato, come il nome
+                  --   della tabella registri_fatturazione.
+                  p_fattura_id         bigint  DEFAULT NULL,
+                  p_famiglia_documento vendite.registri_fatturazione.famiglia_documento%TYPE
+                                               DEFAULT 'FATTURA'
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_anno       vendite.registri_fatturazione_progressivi.anno%TYPE;
+                  -- ⭐ La politica di azzeramento del sezionale, LETTA e non assunta.
+                  v_reset      vendite.registri_fatturazione.reset_policy%TYPE;
+                  v_serie      TEXT := COALESCE(p_serie, '');
+                  v_last       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+                  v_next       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+                  -- ⭐ Il valore da cui parte un secchio APPENA NATO: non piu' zero.
+                  v_seme       vendite.registri_fatturazione_progressivi.last_numero%TYPE;
+                  v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+                  v_origine    text;
+                  v_competenza vendite.fatture.competenza_mese%TYPE;
+                  v_ultima_id  vendite.fatture.id%TYPE;
+                  v_bersagli   jsonb;
+                  -- ⭐ Il codice del ramo SEQUENZA lo sceglie la famiglia.
+                  v_codice_seq text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Consegnare il prossimo numero del sezionale, e rifiutare
+                  --   se la data del documento sta sotto il PAVIMENTO
+                  --   EFFETTIVO.
+                  --
+                  -- Regole:
+                  --   - il controllo sta SOTTO il lock, o e' soggetto a corsa;
+                  --   - il lock ha lo STESSO perimetro del controllo;
+                  --   - la stessa data e' ammessa (>=, non >);
+                  --   - il codice dell'errore lo sceglie il pavimento che ha
+                  --     morso E la famiglia del documento.
+                  --
+                  -- ⭐ rev 2026-08-31: arriva p_famiglia_documento. Cambia SOLO
+                  --   il ramo d'errore — il percorso felice non legge
+                  --   vendite.fatture e non l'ha mai fatto.
+                  -- =========================================================
+
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_next_progressivo',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_next_progressivo',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  IF p_data IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_next_progressivo',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'data documento obbligatoria',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_next_progressivo',
+                          'p_data (obbligatorio)');
+                  END IF;
+
+                  -- ⭐ LA COMPETENZA, O IL SUO RIPIEGO.
+                  -- ⛔ NON si legge dal lotto: quello ha la RLS, e da dentro una
+                  --    SECURITY INVOKER un lotto invisibile darebbe competenza
+                  --    NULL e via libera — fail-open nel punto non aggirabile.
+                  -- ℹ️ Sui documenti non fiscali la competenza non serve a
+                  --    niente (il limite di emissione non si applica), ma il
+                  --    ripiego costa nulla e tiene una sola forma di chiamata.
+                  v_competenza := COALESCE(p_competenza_mese,
+                                           date_trunc('month', p_data)::date);
+
+                  -- ─── ⭐ L'ANNO DEL SECCHIO, NON QUELLO DEL DOCUMENTO ──
+                  -- ⛔ Sono due cose diverse che si chiamano uguale:
+                  --    · l'anno del DOCUMENTO (fatture.anno, ddt.anno, ...) e'
+                  --      sempre l'anno solare, e lo compone
+                  --      vendite.fn_assegna_numero_documento;
+                  --    · l'anno del SECCHIO e' una chiave di contatore, e sotto
+                  --      reset_policy = 'NESSUNA' non esiste: c'e' un secchio
+                  --      solo, e vale 0.
+                  -- ⭐ Per questo vendite.fn_get_anno_registro NON e' stata
+                  --    toccata: risponde all'altra domanda, e ha quattro
+                  --    chiamanti che non c'entrano con questa.
+                  SELECT r.reset_policy INTO v_reset
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  -- ⚠️ Registro inesistente: qui non si decide. Si ripiega sul
+                  --    comportamento storico, e a dirlo sara' la FK del contatore
+                  --    piu' sotto — che e' il posto giusto.
+                  v_anno := CASE
+                      WHEN v_reset = 'NESSUNA' THEN 0::smallint
+                      ELSE vendite.fn_get_anno_registro(p_data)
+                  END;
+
+                  -- ─── IL LOCK ──────────────────────────────────────────
+                  -- 🔴 La chiave NON porta l'anno, e non e' una svista: il
+                  --    cancello legge il massimo ATTRAVERSO GLI ANNI, e con
+                  --    l'anno nella chiave due transazioni con date in anni
+                  --    diversi prenderebbero lock DIVERSI e passerebbero
+                  --    entrambe.
+                  -- ⚠️ Forma a DUE argomenti (namespace + chiave).
+                  PERFORM pg_advisory_xact_lock(
+                      hashtext('registri_fatturazione_progressivi'),
+                      hashtext(p_registro_id::text || '|' || v_serie)
+                  );
+
+                  -- ─── ⭐ IL CANCELLO ───────────────────────────────────
+                  -- ⚠️ La lettura resta SOTTO il lock: la parte di sequenza
+                  --    legge il contatore, ed e' quella che va serializzata.
+                  -- ⭐ Dal 20260831-05 il pavimento sa gia' che il limite di
+                  --    emissione vale sulla sola FATTURA: qui non si distingue
+                  --    niente, si chiede.
+                  SELECT pv.pavimento, pv.origine
+                    INTO v_pavimento, v_origine
+                    FROM vendite.fn_get_pavimento_data_documento(
+                             p_registro_id, v_serie, v_competenza) pv;
+
+                  -- ⚠️ `<` e non `<=`: la STESSA data del pavimento e' ammessa,
+                  --    ed e' il caso piu' comune.
+                  IF v_pavimento IS NOT NULL AND p_data < v_pavimento THEN
+
+                      -- ⭐ Da qui in giu' si e' gia' deciso di rifiutare: il
+                      --    costo di comporre il bersaglio non tocca il percorso
+                      --    felice.
+                      v_bersagli := CASE
+                          WHEN p_fattura_id IS NOT NULL
+                          THEN jsonb_build_array(jsonb_build_object(
+                                   'tipo', p_famiglia_documento,
+                                   'id',   p_fattura_id::text))
+                          ELSE '[]'::jsonb
+                      END;
+
+                      -- ─── Ramo LIMITE DI EMISSIONE ────────────────────
+                      -- ⛔ Nessun secondo bersaglio: dietro il limite non c'e'
+                      --    nessun documento da aprire.
+                      -- ⛔ E questo ramo e' raggiungibile SOLO dalla famiglia
+                      --    FATTURA: dal 20260831-05 il pavimento di emissione
+                      --    non si applica alle altre. E' il motivo per cui il
+                      --    codice resta E_FATTURA_* senza un gemello.
+                      IF v_origine = 'EMISSIONE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_get_next_progressivo',
+                              'E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE',
+                              jsonb_build_object(
+                                  'campo',          'data_documento',
+                                  'registro_id',    p_registro_id,
+                                  'serie',          v_serie,
+                                  'pavimento',      v_pavimento,
+                                  'origine',        v_origine,
+                                  'competenza',     v_competenza,
+                                  'data_richiesta', p_data,
+                                  'famiglia',       p_famiglia_documento,
+                                  'documento_id',   p_fattura_id)
+                              || CASE WHEN jsonb_array_length(v_bersagli) > 0
+                                      THEN jsonb_build_object('bersaglio', v_bersagli)
+                                      ELSE '{}'::jsonb
+                                 END,
+                              NULL::uuid,
+                              to_char(v_pavimento, 'DD/MM/YYYY'));
+                      END IF;
+
+                      -- ─── Ramo SEQUENZA (e pareggio, che va a SEQUENZA) ─
+                      -- ⭐ Il secondo bersaglio — «apri l'ultima numerata» —
+                      --    esiste SOLO per la fattura: per gli altri documenti
+                      --    quella lookup e' su un'altra tabella e non c'e'
+                      --    nessuna pagina a cui mandare. Un pulsante verso il
+                      --    nulla e' peggio di nessun pulsante.
+                      -- ⭐ L'ultima numerata si cerca PER DATA, non per numero:
+                      --    in un registro con inversioni gia' scritte «l'ultimo
+                      --    per numero» porterebbe una data diversa da quella
+                      --    che la frase nomina.
+                      -- ⚠️ vendite.fatture ha la RLS e questa funzione e'
+                      --    SECURITY INVOKER: se non e' visibile non si trova
+                      --    nulla e il pulsante non nasce.
+                      IF p_famiglia_documento = 'FATTURA' THEN
+                          SELECT f.id
+                            INTO v_ultima_id
+                            FROM vendite.fatture f
+                            JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                           WHERE f.registro_id = p_registro_id
+                             AND COALESCE(f.serie, r.serie_default, '') = v_serie
+                             AND f.numero IS NOT NULL
+                             AND f.data   = v_pavimento
+                           ORDER BY f.anno DESC, f.numero DESC
+                           LIMIT 1;
+
+                          IF v_ultima_id IS NOT NULL THEN
+                              v_bersagli := v_bersagli || jsonb_build_array(
+                                  jsonb_build_object('tipo', 'FATTURA',
+                                                     'id', v_ultima_id::text));
+                          END IF;
+                      END IF;
+
+                      -- ⭐ Il codice lo sceglie la FAMIGLIA: la frase del
+                      --    gemello non nomina la fattura, perche' a leggerla e'
+                      --    chi sta emettendo un DDT. ⛔ Riusare il codice della
+                      --    fattura manderebbe a cercare nel posto sbagliato:
+                      --    i consumatori di un messaggio si trovano dal NOME
+                      --    di chi lo solleva.
+                      v_codice_seq := CASE
+                          WHEN p_famiglia_documento = 'FATTURA'
+                          THEN 'E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO'
+                          ELSE 'E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO'
+                      END;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_next_progressivo',
+                          v_codice_seq,
+                          jsonb_build_object(
+                              'campo',          'data_documento',
+                              'registro_id',    p_registro_id,
+                              'serie',          v_serie,
+                              'ultima_data',    v_pavimento,
+                              'origine',        v_origine,
+                              'data_richiesta', p_data,
+                              'famiglia',       p_famiglia_documento,
+                              'documento_id',   p_fattura_id)
+                          -- ⚠️ La chiave si OMETTE se non c'e' nessun bersaglio:
+                          --    un array vuoto e' malformato e lascerebbe un
+                          --    W_BERSAGLIO_MALFORMATO nel log per niente.
+                          || CASE WHEN jsonb_array_length(v_bersagli) > 0
+                                  THEN jsonb_build_object('bersaglio', v_bersagli)
+                                  ELSE '{}'::jsonb
+                             END,
+                          NULL::uuid,
+                          to_char(v_pavimento, 'DD/MM/YYYY'));
+                  END IF;
+
+                  -- ─── IL CONTATORE ─────────────────────────────────────
+                  SELECT rp.last_numero
+                    INTO v_last
+                    FROM vendite.registri_fatturazione_progressivi rp
+                   WHERE rp.registro_id = p_registro_id
+                     AND rp.anno  = v_anno
+                     AND rp.serie = v_serie
+                     FOR UPDATE;
+
+                  IF v_last IS NULL THEN
+                      -- ⭐ IL SEME DEL SECCHIO NUOVO, e non e' zero.
+                      --   Un secchio nasce quando cambia la CHIAVE, e la chiave cambia in
+                      --   due momenti: a capodanno (ANNUALE) e quando qualcuno cambia
+                      --   reset_policy su un registro che ha gia' numerato. Nel secondo caso
+                      --   ripartire da 1 consegna un numero che nell'anno solare del
+                      --   documento e' gia' stato emesso: il vincolo di unicita' del
+                      --   documento lo respinge, il rollback riporta indietro anche
+                      --   l'incremento, e al tentativo dopo si sbatte di nuovo. Cioe' un
+                      --   numeratore PIANTATO, con un errore che parla del numero e non
+                      --   nomina la causa.
+                      --
+                      -- ⛔ Il criterio NON e' «il massimo di sempre»: sotto ANNUALE il primo
+                      --   documento dell'anno DEVE ripartire da 1, ed e' tutto il senso della
+                      --   politica. Si guardano solo i secchi che possono COLLIDERE, cioe'
+                      --   quelli i cui documenti condividono un anno solare con questo:
+                      --     · secchio continuo (v_anno = 0)  -> li attraversa TUTTI  ⇒ max su tutti;
+                      --     · secchio d'anno   (v_anno = Y)  -> solo il continuo, se esiste;
+                      --       gli altri anni no, altrimenti l'azzeramento non avverrebbe mai.
+                      --
+                      -- ⚠️ Su un registro che il secchio continuo non ce l'ha, il massimo e'
+                      --   su zero righe e il COALESCE rende 0: il comportamento di prima,
+                      --   identico. Il ramo si accende SOLO dove una politica e' cambiata.
+                      -- ⭐ E gira gia' sotto il lock giusto: la chiave dell'advisory lock non
+                      --   porta l'anno (vedi sopra), quindi due transazioni con date in anni
+                      --   diversi sullo stesso (registro, serie) sono comunque serializzate.
+                      SELECT COALESCE(max(rp.last_numero), 0)
+                        INTO v_seme
+                        FROM vendite.registri_fatturazione_progressivi rp
+                       WHERE rp.registro_id = p_registro_id
+                         AND rp.serie       = v_serie
+                         AND (v_anno = 0 OR rp.anno = 0);
+
+                      INSERT INTO vendite.registri_fatturazione_progressivi
+                             (registro_id, anno, serie, last_numero, attivo)
+                      VALUES (p_registro_id, v_anno, v_serie, v_seme, true)
+                      RETURNING last_numero INTO v_last;
+                  END IF;
+
+                  v_next := v_last + 1;
+
+                  -- ⭐ `GREATEST` e non un'assegnazione secca: la memoria della
+                  --    sequenza non deve MAI arretrare.
+                  UPDATE vendite.registri_fatturazione_progressivi
+                     SET last_numero = v_next,
+                         ultima_data = GREATEST(COALESCE(ultima_data, p_data), p_data)
+                   WHERE registro_id = p_registro_id
+                     AND anno  = v_anno
+                     AND serie = v_serie;
+
+                  RETURN v_next;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si torna al secchio che nasce a zero: sarebbe rimettere
+              --    in circolo il numeratore piantato. Il ripristino, se
+              --    servisse davvero, e' ri-applicare 20260901-07.
+              SELECT 1;

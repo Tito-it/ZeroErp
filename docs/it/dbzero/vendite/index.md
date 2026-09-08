@@ -367,6 +367,7 @@
 - [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_registri_fatturazione_guard_forma_numero](funzioni/trgfn_registri_fatturazione_guard_forma_numero.md)
 - [trgfn_registri_fatturazione_guard_serie_ammessa](funzioni/trgfn_registri_fatturazione_guard_serie_ammessa.md)
+- [trgfn_registri_fatturazione_set_anno_nel_numero](funzioni/trgfn_registri_fatturazione_set_anno_nel_numero.md)
 - [trgfn_resi_accrediti_guard](funzioni/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_gen_numero](funzioni/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_resi_guard_ddt_consegnato](funzioni/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)

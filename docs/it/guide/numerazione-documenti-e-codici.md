@@ -227,6 +227,40 @@ trasporto per la spedizione di ieri, inserito stamattina dopo che ne è già usc
 uno con la data di oggi, è un caso d'uso normale. Applicare lì lo stesso cancello lo
 avrebbe reso impossibile.
 
+#### ⭐ E guarda la **sequenza**, non il registro — deciso l'8 settembre 2026
+
+Il cancello confronta la data con l'ultima numerata **sulla stessa sequenza**,
+dove una sequenza è la coppia *registro + serie*. Su un registro che emette su
+due serie diverse, ciascuna ha il suo calendario e non blocca l'altra.
+
+**Sembra un dettaglio e non lo è.** Se il cancello guardasse il registro intero,
+due serie che vanno avanti in parallelo si bloccherebbero a vicenda: emetti sulla
+prima con la data di oggi e la seconda — che sta a una data più indietro perché è
+un'altra sequenza — non riuscirebbe più a numerare.
+
+⚠️ **Non è teoria**: il registro *Front-office* emette **già** su due serie,
+`VX2` e `R2`. E i documenti di trasporto e gli ordini possono portare una serie
+**propria**, diversa da quella predefinita del registro: due sequenze parallele
+sono una cosa che il modello prevede, non un incidente.
+
+#### La domanda che ne nasce, e la risposta
+
+*«Se cambio la serie predefinita di un registro, riparto senza calendario: non è
+un modo per retrodatare un documento?»*
+
+⭐ **No, ed è coperto da un altro cancello.** Cambiare la serie predefinita
+significa **aprire una sequenza nuova**, e una sequenza nuova non ha passato: che
+riparta anche il calendario è coerente, non è un varco. Contro la retrodatazione
+vera esiste il **limite di emissione** (§6.3 sopra e la guida dei limiti), che
+guarda il **registro** e la competenza — e che una serie nuova **non azzera**.
+
+⇒ I due cancelli rispondono a due domande diverse, e vanno tenuti distinti:
+
+| Domanda | Chi risponde | Perimetro |
+| --- | --- | --- |
+| «questa sequenza va avanti?» | il cancello di cronologia | registro **+ serie** |
+| «questo documento è ancora emettibile?» | il limite di emissione | **registro** + competenza |
+
 ### 6.4 Il codice della commessa contiene la sigla dell'azienda
 
 La **identità** della commessa è la stringa stessa: è il codice a essere unico,
@@ -492,6 +526,30 @@ che vale `0` sotto `NESSUNA`) e quello del **documento** (`fatture.anno`,
 `ddt.anno`, …), che è sempre l'anno solare. `fn_get_anno_registro` risponde alla
 seconda domanda, e per questo non è stata toccata.
 
+#### ⚠️ E cambiare politica su un registro che ha già numerato
+
+La politica si può cambiare, ma il momento in cui la si cambia conta. Il
+contatore vive in un «secchio» identificato dall'anno: passando da `ANNUALE` a
+`NESSUNA` (o viceversa) la chiave del secchio cambia, quindi ne nasce uno nuovo —
+e un secchio nuovo, fino all'8 settembre 2026, **partiva da zero**.
+
+⛔ **Cosa succedeva davvero**, ed è stato provato prima di ripararlo: il registro
+aveva già emesso i numeri 1 e 2; cambiata la politica, il documento successivo
+chiedeva il numero **1**. Quel numero, nell'anno del documento, esisteva già: la
+scrittura veniva respinta, e con l'annullamento tornava indietro anche il
+contatore. Al tentativo dopo ricominciava da 1 e sbatteva di nuovo — cioè **un
+numeratore piantato**, con un errore che parlava del numero e non nominava la
+causa.
+
+✅ **Ora un secchio nuovo nasce dal numero più alto di quelli con cui potrebbe
+scontrarsi**, quindi la numerazione prosegue e il cambio di politica è
+un'operazione sicura, nei due versi.
+
+⛔ **E non "dal numero più alto in assoluto"**: sotto `ANNUALE` il primo documento
+dell'anno **deve** ripartire da 1, ed è tutto il senso della politica. Si guardano
+solo i secchi che possono davvero scontrarsi — cioè quelli i cui documenti
+condividono un anno di calendario.
+
 ### Il controllo automatico che il §8 chiedeva
 
 Tre verifiche, tutte **derivate** — nessun elenco scritto a mano:
@@ -535,6 +593,68 @@ quattro, perché porta la sigla dell'azienda e quindi non si ripete mai fra
 registri diversi.
 
 ---
+
+## 8-ter. ⭐ L'anno **dentro** il numero — 8 settembre 2026
+
+> Osservazione di Tid: *«gli ordini hanno l'azzeramento annuale ma il numero non
+> mostra l'anno: `ORD0036007`»*.
+
+### Il difetto, in una riga
+
+Se la numerazione riparta ogni anno **e** il numero non porta l'anno, allora il
+1° gennaio la stessa identica stringa torna su un documento diverso. `ORD0000001`
+del 2026 e `ORD0000001` del 2027 sono due ordini diversi con lo stesso numero
+scritto sopra.
+
+⚠️ **Il database non se ne accorge**, e questo è il punto: la sua regola di
+unicità l'anno ce l'ha in una colonna a parte, quindi nessuna scrittura fallisce.
+L'ambiguità non è nei dati — è **nella stringa che una persona legge**: in una
+lista, in una ricerca, o al telefono quando un cliente cita un numero.
+
+⭐ È la stessa regola del §8-bis, un piano più su: *tutto ciò che distingue il
+contatore deve poter distinguere anche il numero che si legge*.
+
+### La cura: si dichiara, non si assume
+
+Come per la serie, la scelta sta in due posti diversi e complementari:
+
+| Dove | Cosa dice |
+| --- | --- |
+| **la famiglia** (`anno_nel_numero_default`) | *«i documenti di questo tipo portano l'anno dentro il numero»* — è il default |
+| **il registro** (`anno_nel_numero`) | *«questo sezionale lo fa»* — è l'effettivo, come il prefisso |
+
+E alla nascita di un registro il valore **si risolve da solo**: un sezionale che
+azzera per anno, di una famiglia che espone l'anno, nasce già con l'anno nel
+numero. ⭐ **Non è una domanda che si fa a chi crea il registro**: è una
+conseguenza di due cose che ha già scelto — la politica e la famiglia.
+
+Il numero diventa così: `DDT` + `2026-` + `0023456` → **`DDT2026-0023456`**.
+
+### ⛔ Le due famiglie che non lo fanno, e non è una dimenticanza
+
+* **La fattura**: il suo numero è il progressivo **nudo** (`101`), e anno e serie
+  viaggiano in colonne a parte — è la convenzione fiscale, ed è la stampa a
+  ricomporli (*«N. 101 / Serie VX1 / 2026»*). Mettere l'anno dentro la stringa
+  cambierebbe il numero di una fattura.
+* ⭐ **La commessa lo fa, ma per una strada diversa da prima.** Il suo codice
+  l'anno lo portava già — `CMM-<sigla>-<anno>-<9 cifre>` — solo che glielo
+  metteva un pezzo di codice **suo**, diverso da quello di tutti gli altri.
+  Decisione di Tid: *«la commessa deve diventare standard, tutti devono avere gli
+  stessi parametri»*. Ora l'anno glielo mette lo stesso meccanismo degli altri, e
+  **il codice esce identico carattere per carattere** — verificato sui codici già
+  esistenti prima di applicare.
+
+### ⚠️ Una cosa da sapere prima di chiederla su un registro vecchio
+
+L'anno nel numero è **forma del numero**, come il prefisso: su un sezionale che
+ha già consegnato dei numeri **non si può aggiungere**. Il motivo è lo stesso del
+§6.6 — il contatore non riparte quando cambia la forma, prosegue, e sullo stesso
+registro convivrebbero due forme con numeri consecutivi, senza modo di
+distinguerle.
+
+⇒ La scelta si fa **alla nascita** del registro. Su un sezionale già in uso
+l'alternativa è l'altra: se la sua numerazione non riparte (politica `NESSUNA`),
+il numero non si ripete e l'anno non serve.
 
 ## 9. ⚠️ Un difetto trovato il giorno stesso, e cosa insegna
 
@@ -586,3 +706,16 @@ Copre da sola anche il generatore che qualcuno scrivesse domani.
   i sei passi, in una sede sola
 * [`vendite.fn_componi_numero_documento`](/dbzero/vendite/manual/fn_componi_numero_documento) —
   la composizione della stringa, pura e verificabile in una riga
+* [`vendite.fn_get_next_progressivo`](/dbzero/vendite/manual/fn_get_next_progressivo) —
+  il contatore: la politica di azzeramento e il seme del secchio nuovo
+
+**I cantieri che hanno prodotto queste regole**, per chi cerca il *perché* con
+tutte le misure e le strade scartate:
+
+* [brief-db-registri-numerazione-chiave-del-contatore](../dev/work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md)
+  — gli assi dichiarati (§8-bis), il passaggio di politica e l'anno dentro il
+  numero (§8-ter)
+* [brief-db-prefisso-sul-registro-e-allineamento-contatori](../dev/work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md)
+  — la forma del numero sul registro
+* [brief-be-fe-crud-registri-di-numerazione](../dev/work-done/brief-be-fe-crud-registri-di-numerazione.md)
+  — la maschera e le regole di modifica

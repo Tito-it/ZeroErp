@@ -10,6 +10,7 @@ CREATE FUNCTION trgfn_registri_fatturazione_guard_forma_numero()
 CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_forma_numero()
  RETURNS trigger
  LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
     v_motivi jsonb;
@@ -42,7 +43,17 @@ BEGIN
     --   mirror CSV che riscrivesse queste colonne.
     IF NEW.prefisso         IS NOT DISTINCT FROM OLD.prefisso
        AND NEW.suffisso     IS NOT DISTINCT FROM OLD.suffisso
-       AND NEW.lunghezza_numero IS NOT DISTINCT FROM OLD.lunghezza_numero THEN
+       AND NEW.lunghezza_numero IS NOT DISTINCT FROM OLD.lunghezza_numero
+       -- ⭐ LA QUARTA COLONNA DELLA FORMA, dal 2026-09-08. `anno_nel_numero`
+       --   cambia la stringa consegnata quanto le altre tre: un sezionale che
+       --   la spegne dopo aver numerato porterebbe due forme con numeri
+       --   consecutivi, che e' il difetto per cui questo guard esiste.
+       -- ⚠️ NON BASTAVA allargare la clausola UPDATE OF del trigger: questo
+       --   confronto e' il no-op, e senza la quarta riga vedeva «nessuna delle
+       --   tre e' cambiata» e lasciava passare proprio il cambio nuovo.
+       --   L'ha trovato il test 7 di test-anno-nel-numero-v1, non un
+       --   ragionamento: allargare il trigger sembrava sufficiente.
+       AND NEW.anno_nel_numero IS NOT DISTINCT FROM OLD.anno_nel_numero THEN
         RETURN NEW;
     END IF;
 

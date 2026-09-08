@@ -11,8 +11,6 @@ CREATE FUNCTION fn_assegna_numero_documento(p_famiglia_documento character varyi
 CREATE OR REPLACE FUNCTION vendite.fn_assegna_numero_documento(p_famiglia_documento character varying, p_emittente_soggetto_ruolo_id bigint, p_data date, p_documento_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_corpo text DEFAULT NULL::text, p_serie character varying DEFAULT NULL::character varying)
  RETURNS TABLE(registro_id bigint, anno smallint, progressivo bigint, numero text, serie character varying)
  LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
     v_registro vendite.registri_fatturazione.id%TYPE;
@@ -22,6 +20,8 @@ DECLARE
     v_len      vendite.registri_fatturazione.lunghezza_numero%TYPE;
     v_anno     vendite.ddt.anno%TYPE;
     v_num      bigint;
+    -- ⭐ La scelta del sezionale: l'anno entra nella stringa del numero.
+    v_anno_in  vendite.registri_fatturazione.anno_nel_numero%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -75,16 +75,42 @@ BEGIN
     --    v_len NULL, COALESCE a 7 per tutti — giusto per caso su
     --    DDT, ordini e resi, e SBAGLIATO sulla commessa, che ne
     --    vuole 9. Un codice piu' corto, senza un errore.
-    SELECT r.prefisso, r.suffisso, r.lunghezza_numero
-      INTO v_prefisso, v_suffisso, v_len
+    SELECT r.prefisso, r.suffisso, r.lunghezza_numero, r.anno_nel_numero
+      INTO v_prefisso, v_suffisso, v_len, v_anno_in
       FROM vendite.registri_fatturazione r
      WHERE r.id = v_registro;
 
     -- 5) La composizione, dalla funzione pura.
+    --
+    -- ⭐ L'ANNO ENTRA NEL CORPO, e non e' cosmesi: un registro che azzera
+    --   il progressivo ogni anno consegna la STESSA stringa in anni
+    --   diversi. Il database non se ne accorge — la sua unicita' porta
+    --   l'anno in colonna — quindi non fallisce niente e l'ambiguita'
+    --   arriva intera a chi legge la lista o cita il numero al telefono.
+    --   E' l'invariante degli assi dichiarati applicata alla stringa:
+    --   cio' che discrimina il contatore deve discriminare anche il
+    --   numero che una persona legge.
+    --
+    -- ⭐⭐ IN CODA AL CORPO DEL CHIAMANTE, E LA POSIZIONE E' UN FATTO
+    --   MISURATO, non una preferenza. Il codice commessa di oggi e'
+    --   `CMM-<sigla>-<anno>-<9 cifre>`: con l'anno DOPO il corpo
+    --   (`sigla-`) la stringa esce identica byte per byte — verificato
+    --   sui codici esistenti il 2026-09-08 — mentre con l'anno prima
+    --   diventerebbe `CMM-<anno>-<sigla>-…`, cioe' una forma nuova
+    --   accanto a quella vecchia sullo stesso registro. E' esattamente
+    --   il difetto che il guard della forma esiste per impedire.
+    --   ⇒ Il corpo risponde a CHI, l'anno a QUANDO, e il progressivo
+    --   chiude: e' anche l'ordine che si legge meglio.
+    --
+    -- ⚠️ Il separatore e' `-`, lo stesso che la commessa gia' usa fra i
+    --   pezzi del suo codice. Un solo separatore in tutto il dominio.
     RETURN QUERY
     SELECT v_registro, v_anno, v_num,
            vendite.fn_componi_numero_documento(
-               v_prefisso, p_corpo, v_num, v_len, v_suffisso),
+               v_prefisso,
+               COALESCE(p_corpo, '')
+                   || CASE WHEN v_anno_in THEN v_anno::text || '-' ELSE '' END,
+               v_num, v_len, v_suffisso),
            v_serie;
 END;
 $function$

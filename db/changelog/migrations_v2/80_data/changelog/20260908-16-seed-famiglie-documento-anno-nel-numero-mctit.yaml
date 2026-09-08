@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A-6 — I CINQUE VALORI: CHI METTE L'ANNO NEL NUMERO
+#   vendite.famiglie_documento.anno_nel_numero_default
+#   Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8
+#
+# -- I VALORI, E IL PERCHE' DI OGNUNO -------------------------
+#   DDT, ORDINE, RESO, COMMESSA -> true
+#     Il loro numero e' la stringa formattata (DDT0023455) e non porta
+#     nient'altro: sotto ANNUALE torna identica ogni gennaio.
+#
+#   FATTURA -> false
+#     Il numero della fattura e' il progressivo NUDO (101); anno e serie
+#     viaggiano in COLONNA e la stampa li ricompone («N. 101 / Serie VX1 /
+#     2026»). E' la convenzione fiscale: mettere l'anno dentro la stringa
+#     cambierebbe il numero di una fattura. L'anno c'e', in un altro posto.
+#
+#     La commessa e' fra questi dal 2026-09-08: il suo codice l'anno lo porta
+#     da sempre, ma glielo metteva il compositore di DOMINIO invece di quello
+#     generico — una seconda sorgente di verita' per la stessa cosa. Decisione
+#     di Tid: «la commessa deve diventare standard, tutti devono avere gli
+#     stessi parametri». Il pezzo e' passato al generico con 20260908-13, e la
+#     stringa esce identica byte per byte.
+#
+# -- ⛔ NON UN `UPDATE` IN 00_schema, E LO ABBIAMO GIA' PAGATO -
+#   Il 2026-09-02 la CI si e' fermata proprio su questo: `prefisso_default`
+#   era seminata con un UPDATE in 00_schema, che su un database ricostruito
+#   da zero gira quando famiglie_documento e' ancora VUOTA — zero righe
+#   toccate, e il valore restava NULL in CI mentre su dev era popolato.
+#   ⇒ Il seed vive in 80_data, con un CSV dedicato e la chiave naturale
+#   `codice_interno`. Stessa forma di famiglie_documento_colonna_serie.csv.
+#
+# -- ⛔ CSV DEDICATO E NON famiglie_documento.csv --------------
+#   Il mirror base e' gia' mergiato e non si tocca; un CSV per sottoinsieme
+#   e' gia' il pattern di casa (colonna_serie, formato).
+#
+# -- QUANDO ARRIVA, CHI CAMBIA --------------------------------
+#   ⭐ Nessuno dei registri esistenti: la colonna del registro nasce false e
+#   il risolutore di 20260908-14 lavora solo in INSERT. I due registri
+#   COMMESSA fanno eccezione, ma per RESTARE come sono (20260908-12).
+#   Da qui in avanti i registri NUOVI di DDT, ordini e resi nascono col
+#   numero che porta l'anno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260908-16-seed-famiglie-documento-anno-nel-numero-mctit.yaml
+
+  - changeSet:
+      id: 20260908-16-seed-famiglie-documento-anno-nel-numero
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Dichiara quali famiglie portano l''anno DENTRO la stringa del numero: DDT/ORDINE/RESO/COMMESSA ->
+        true, FATTURA -> false (il numero e'' il progressivo nudo, anno e serie stanno in colonna
+        per convenzione fiscale e la stampa li ricompone). ⭐ La commessa e'' entrata fra i true il
+        2026-09-08: il suo codice l''anno lo portava gia'', ma glielo metteva il compositore di
+        dominio invece di quello generico - una seconda sorgente di verita'' per la stessa cosa. ⛔ In 80_data e non con un UPDATE in 00_schema: su un database ricostruito da zero
+        la tabella e'' ancora vuota quando 00_schema gira, e il valore si perderebbe in CI mentre
+        su dev funziona - e'' successo il 2026-09-02 con prefisso_default. ⭐ Nessun registro
+        esistente cambia: la colonna del registro nasce false e il risolutore lavora solo in
+        INSERT. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8 (A-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: famiglie_documento
+                columnName: anno_nel_numero_default
+            # ⛔ Le cinque famiglie devono esistere: se il mirror base non
+            #    fosse ancora passato, loadUpdateData le INSERIREBBE con i soli
+            #    due campi del CSV, cioe' righe monche contro i NOT NULL.
+            - sqlCheck:
+                expectedResult: 5
+                sql: |
+                  SELECT COUNT(*)
+                    FROM vendite.famiglie_documento
+                   WHERE codice_interno IN ('FATTURA', 'DDT', 'ORDINE', 'RESO', 'COMMESSA');
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/famiglie_documento_anno_nel_numero.csv
+            tableName: famiglie_documento
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice_interno"
+            columns:
+              - column: { name: codice_interno,          type: STRING }
+              - column: { name: anno_nel_numero_default, type: BOOLEAN }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Non si riportano a false: i registri nati nel frattempo
+              --    hanno gia' l'anno nel numero, e togliere il default non
+              --    toglierebbe l'anno a loro — cambierebbe solo cio' che nasce
+              --    dopo, creando due forme sulla stessa famiglia.
+              SELECT 1;

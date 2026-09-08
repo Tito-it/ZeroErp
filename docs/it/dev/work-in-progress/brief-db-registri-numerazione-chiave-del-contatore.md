@@ -21,13 +21,37 @@
 > servono a un uso solo: dire se qualcosa *smentisce* il piano. A decidere è la
 > struttura.
 >
-> 🔭 **Da leggere per primo, al 2026-09-08: §11.4 e §11.5.** Il cantiere è
+> 🔭 **Da leggere per primo, al 2026-09-08: §11.4 → §11.8.** Il cantiere è
 > **applicato e verde** (22 changeSet `EXECUTED`, i tre pgTAP del cantiere
 > 9/9 + 6/6 + 6/6, cancelli statici della CI verdi). Di aperto restano **tre
-> cose, nessuna delle quali è codice DB da scrivere**: la firma senza `%TYPE`
+> cose che non sono codice DB da scrivere**: la firma senza `%TYPE`
 > (decisione di Tid), l'unicità di `commesse` su una stringa sola (debito
 > dichiarato) e — nuova — `reset_policy` accesa nel database e irraggiungibile
 > dall'applicazione, con due documenti che la dicono ancora inchiodata (§11.5).
+> ✅ Del §11.5 è già chiusa la metà visibile: il catalogo della lista, che taceva
+> sulle politiche del registro, ora porta le quattro colonne (§11.6).
+> ✅ **Il §11.7 è CHIUSO**: cambiare `reset_policy` su un registro che aveva già
+> numerato faceva **ripartire il contatore da 1** — provato; ora il secchio nuovo
+> nasce dal massimo di quelli con cui può collidere. `20260908-10` applicato il
+> 2026-09-08, pgTAP 5/5 verde.
+> ✅ **Anche il §11.8 è CHIUSO e APPLICATO** (2026-09-08, 15:34): sotto `ANNUALE` il
+> numero esposto di ordini, DDT e resi non portava l'anno e si ripeteva ogni
+> gennaio. Sei changeSet `20260908-11..16`, pgTAP nuovo verde e **nove** file
+> esistenti riprovati insieme: 73 asserzioni, zero rosse.
+> ⭐ Nello stesso giro la **commessa è diventata standard** (decisione di Tid):
+> l'anno se lo metteva da sé, ora glielo mette il compositore generico come a
+> tutti — e la stringa esce identica byte per byte.
+>
+> 📌 **Un debito trovato qui è stato RESTITUITO, non archiviato**: la coda che
+> solleva il primo motivo di una `fn_check_*` è copiata in **dieci** punti su
+> cinque tabelle — domanda di Tid del 2026-09-08, misura fatta per rispondere,
+> perimetro suo. Sta in
+> [brief-db-coda-primo-motivo-in-un-posto-solo](brief-db-coda-primo-motivo-in-un-posto-solo.md).
+>
+> 📖 **La versione per chi cerca senza sapere che esiste un brief** — le stesse
+> regole in linguaggio da guida, e più ricercabili:
+> [numerazione-documenti-e-codici](../../guide/numerazione-documenti-e-codici.md)
+> §6.3 (il pavimento), §8-bis (gli assi e la politica), §8-ter (l'anno nel numero).
 >
 > **Correlati:**
 > [brief-db-prefisso-sul-registro](../work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md) ·
@@ -725,3 +749,507 @@ ha un controesempio, perché nessuno ha una strada per produrlo.
    test 9 per il ramo `NESSUNA`, `test-registri-progressivi` test 4 per
    `ANNUALE` — i due rami sono coperti in due file diversi, e il gemello
    positivo c'è.
+
+---
+
+### 11.6 ✅ E il §11.5 aveva una seconda metà: il catalogo della lista taceva sulle POLITICHE
+
+> Osservazione di Tid, 2026-09-08: *«sulla lista csv delle colonne manca come
+> minimo `reset_policy`»*. Vero, e più largo di una colonna.
+
+Il catalogo `vendite.registri_numerazione` (`ui.lista_colonna`, lista 54) portava
+**dieci** colonne più `azioni`: identità, forma del numero, stato, `data_insert`.
+⛔ **Mancava l'intero gruppo delle politiche** — le quattro colonne che dicono
+*come il registro si comporta*, tutte già proiettate dal repository e invisibili
+in lista:
+
+| campo | cosa governa | perimetro |
+| --- | --- | --- |
+| `reset_policy` | il **secchio del contatore** | ⭐ **tutte** le famiglie |
+| `politica_data_documento` | la **data del documento** (`OGGI` / `FINE_MESE_COMPETENZA`) | di fatto FATTURA — sulle altre il `CHECK` la inchioda a `OGGI` |
+| `limite_emissione_giorni` · `limite_emissione_giorno_mese` | il **limite di emissione** | FATTURA (`chk_registri_fatturazione_famiglia_regole_fattura`) |
+
+⭐ **Non è una riga dimenticata, è una natura mancante**: il catalogo raccontava
+*identità + forma + stato* e taceva sul comportamento. E su `reset_policy` pesa
+il §11.5 — non essendo editabile da nessuna parte, **la lista è l'unico posto in
+cui può vedersi**.
+
+**Seminate le quattro** (CSV `80_data/sql/ui/lista_colonna.csv` righe 739-742 +
+`lista_preset_colonna.csv`), gruppo nuovo **«Regole»**, `attivo = t`:
+
+* ⭐ `attivo = t` **è ammesso qui**, e di solito non lo è: il cancello
+  `apps/core/tests/db/test_lista_proiezione_campo_sorgente.py` pretende che ogni
+  `campo_sorgente` attivo sia una chiave che la SELECT consegna davvero — e
+  `_PROIEZIONE` le porta già tutte e quattro. ⛔ Su una colonna non proiettata
+  sarebbe stato `attivo = f` fino al commit del BE;
+* **fuori dal preset standard** (`visibile = f`): la vista di default resta a
+  dieci colonne, la politica se la accende chi la cerca in «Personalizza
+  colonne». ⚠️ Le due `limite_*` per **modello** sono vuote su quattro famiglie
+  su cinque, e una colonna vuota di default sarebbe rumore;
+* **`ordinabile = f`, `ricercabile_full = f`** — vedi la richiesta BE qui sotto;
+* le **quattro chiavi i18n** in `it.json` e `en.json` nello stesso giro
+  (`check_i18n_keys.py`: 609 intestazioni di colonna, tutte tradotte).
+
+#### ⚠️ La prova del mirror, e la trappola che ha fatto scattare
+
+Il CSV ha un mirror `runOnChange: true` (`20260806-15`): **appendere una riga
+sveglia il loader, che rilegge tutto il file** (AGENTS §11.2). Rigiocato l'upsert
+su **tutte** le righe dei due CSV (741 + 678) in transazione annullata: passano.
+
+⛔ **Ma il primo giro era rosso, e il rosso era della PROVA, non del CSV.** Un
+`\copy … FORMAT CSV` rende la cella vuota come `NULL`, e la riga 170
+(`reso_id`, `etichetta` vuota) è morta sul `NOT NULL`. Nel database quella riga
+ha `''`: il `loadUpdateData` scrive la **stringa vuota** sulle colonne dichiarate
+`type: STRING` e `NULL` solo su `NUMERIC`/`BOOLEAN`, e il mirror era **RERAN con
+successo il giorno prima**. ⇒ La prova è stata riscritta fedele al loader
+(`NULL` su un token impossibile + `NULLIF` sulle sole colonne numeriche).
+⭐ È la stessa lezione già in casa sul `campo_sorgente` delle colonne azione:
+*una prova che simula un caricamento prova la simulazione*, e qui avrebbe
+accusato un CSV sano.
+
+#### ⚠️ Quello che la cella mostrerà, e va detto prima del collaudo
+
+Le due colonne di politica renderanno il **codice nudo** — `ANNUALE`/`NESSUNA`,
+`OGGI`/`FINE_MESE_COMPETENZA` — mentre il drawer degli stessi due campi mostra
+l'etichetta tradotta (`politica_oggi`, `politica_fine_mese_competenza`).
+⛔ **Non è una svista del seed, ed è una cosa che non si inventa qui**: in tutto
+il catalogo `ui.lista_colonna` non esiste **nessuna** colonna `tipo_dato = enum`
+(482 `string`, 111 `numeric`, 57 `date`, 47 `datetime`, 40 `boolean`), quindi non
+c'è un meccanismo di casa che traduca il *valore* di una cella — solo la sua
+intestazione. Tradurli vorrebbe dire **inventare quel meccanismo**, che è un
+cantiere FE suo e riguarda tutte le liste, non questa.
+⭐ Su una lista di amministrazione il codice è anche l'informazione giusta: è la
+parola che il `CHECK`, il messaggio d'errore e questo brief usano.
+
+#### 📌 Cosa ricade sul backend (richiesta, non implementazione)
+
+| # | Cosa | Perché |
+| --- | --- | --- |
+| BE-L1 | ⚠️ **Togliere la riga falsa** su `reset_policy` in `registri_repository.py` (§11.5) | motiva un'esclusione con un `CHECK` che non esiste più |
+| BE-L2 | 🔭 *Se* si vuole ordinare per politica: `reset_policy` (e le altre tre) in `_ORDER_COLS` | oggi `ordinabile = f` a catalogo, quindi la freccia non c'è e nessuno prende un 400 |
+
+⛔ **BE-L2 muove DUE cose insieme, o diventa rosso.** `test_liste_configurabili_seed`
+lega catalogo e whitelist **nei due versi**: una colonna che il backend sa
+ordinare e che il catalogo tiene a `ordinabile = f` è *«capacità irraggiungibile»*
+e fallisce. Chi aggiunge la riga al repository edita il CSV nello stesso commit.
+✅ Verificato oggi con le stesse due fonti del test — seed e costante: entrambi i
+versi puliti, e tutti i `campo_sorgente` attivi sono consegnati dalla proiezione.
+
+---
+
+### 11.7 🔴 Il PASSAGGIO di politica su un registro che ha già numerato — provato il 2026-09-08
+
+> Domanda di Tid: *«molti numeratori non hanno un reset, per esempio gli ordini:
+> che valore metto? Oppure c'è un flag che attiva/disattiva il reset?»*
+
+**Non c'è un flag a parte: `reset_policy` È l'interruttore** — `ANNUALE` |
+`NESSUNA`, e per «non si azzera» il valore è `NESSUNA`. Ma la domanda ne apre
+una che il §7 non aveva guardato: **cosa succede a cambiarla su un registro che
+ha già consegnato numeri.**
+
+⛔ **Riparte da 1.** Provato in transazione annullata, non dedotto:
+
+| passo | esito |
+| --- | --- |
+| due numeri con `ANNUALE`, nel 2026 | 1, 2 — secchio `(anno 2026)` |
+| `UPDATE … SET reset_policy = 'NESSUNA'`, poi un numero | ⛔ **1**, in un secchio `(anno 0)` nato a zero |
+| innescato `(anno 0)` al massimo già emesso, poi un numero | 3 — e nel 2027 prosegue |
+
+**Il meccanismo**, letto dalla funzione viva: il contatore cerca il secchio
+`(registro_id, anno, serie)` e, se non lo trova, lo **crea a `last_numero = 0`**.
+Cambiare politica cambia la chiave ⇒ il secchio nuovo non esiste ⇒ zero. Il
+documento invece tiene il suo `anno` **solare**, quindi
+`uq_ordini_v_anno_serie_numero` trova quel numero già usato: è il guasto del §3,
+entrato da un'altra porta.
+⚠️ **E il pavimento non para il colpo**: `fn_get_pavimento_data_documento` è un
+pavimento di **date**, non di numeri — il `GREATEST` che «non fa mai arretrare la
+memoria» protegge `ultima_data`, non `last_numero`.
+
+⭐ **Il verso opposto ha la stessa forma**: da `NESSUNA` ad `ANNUALE` il secchio
+dell'anno corrente non esiste e riparte da 1, sopra i numeri appena emessi.
+
+#### ⛔ Il precedente è in casa, ed è a due changeSet di distanza
+
+`prefisso`, `suffisso` e `lunghezza_numero` **non si cambiano** su un registro
+che ha già numerato: lo rifiuta `trg_registri_fatturazione_a10_guard_forma_numero_upd`
+(`20260901-03`), e la ragione registrata in `E_REGISTRO_FORMA_NON_MODIFICABILE`
+dice, parola per parola, *«il contatore non riparte quando cambia la forma,
+prosegue — quindi sullo stesso sezionale convivrebbero due forme con numeri
+consecutivi»*. ⇒ `reset_policy` è **della stessa specie**: cambia il modo in cui
+i numeri nascono su un registro che ne ha già prodotti.
+
+✅ **Decisione di Tid, 2026-09-08: si ripara il MECCANISMO, non si vieta il
+cambio** — *«i dati nel db li modifico io, tu predisponi per far funzionare una
+policy NESSUNA»*. ⭐ E la regola di casa dice la stessa cosa: davanti a un blocco
+su stato persistente la domanda è *«com'è lo stato DOPO l'azione che il guard
+impedirebbe?»*. Qui è **recuperabile** — basta innescare il secchio — quindi il
+cancello toglierebbe una configurazione legittima invece di impedire un autogol.
+Sulla forma del numero è l'opposto, ed è per questo che lì il guard è giusto.
+
+⛔ **Le due cose che Tid chiedeva erano però già fatte, ed è la parte da non
+rifare**: il `CHECK` accetta `NESSUNA` dal `20260901-06`, e
+`fn_get_next_progressivo` ramifica già sulla politica (`20260901-07`). Mancava
+solo il **passaggio**.
+
+### La cura — `20260908-10`, ✅ APPLICATA il 2026-09-08
+
+> `20_code/vendite/20260908-10-update-fn-get-next-progressivo-seme-secchio-nuovo`
+
+**Un secchio appena nato non parte più da zero: parte dal massimo di quelli con
+cui i suoi documenti possono COLLIDERE.**
+
+```text
+secchio continuo (anno = 0)  → attraversa tutti gli anni  ⇒ max su TUTTI i secchi
+secchio d'anno   (anno = Y)  → solo il continuo, se c'è   ⇒ max su quello
+```
+
+⛔ **Il criterio NON è «il massimo di sempre»**, e la differenza è tutto: sotto
+`ANNUALE` il primo documento dell'anno **deve** ripartire da 1. Un secchio d'anno
+guarda il solo secchio continuo, mai gli altri anni.
+
+⭐ **Copre i due versi** del passaggio, e gira già sotto il lock giusto: la chiave
+dell'advisory lock non porta l'anno — scelta fatta a suo tempo perché il cancello
+di monotonia legge attraverso gli anni — quindi il massimo si legge serializzato.
+
+⚠️ **Raggio d'azione oggi: nessuno.** Il ramo si accende solo dove un secchio
+continuo convive con uno d'anno, cioè solo dove una politica è cambiata. Ovunque
+altro il massimo è su zero righe, il `COALESCE` rende 0, e il comportamento è
+identico a prima riga per riga.
+
+#### ⭐ La commessa diventa standard — decisione di Tid, 2026-09-08
+
+> *«Commessa deve diventare standard, tutti devono avere gli stessi parametri:
+> si toglie l'anno interno e lo passa la variabile.»*
+
+La prima stesura dichiarava `COMMESSA → false` con questa motivazione: *«l'anno
+nel suo codice ce lo mette il compositore di dominio, dichiararlo qui lo
+scriverebbe due volte»*. ⛔ **Vera come meccanismo, e sbagliata come modello**:
+quella colonna dice *«il numero di questa famiglia porta l'anno»*, e sulla
+commessa la risposta è **sì**. Dire `false` significava **mentire sul contenuto
+della stringa** per descrivere chi la compone — cioè tenere in piedi la seconda
+sorgente di verità invece di toglierla.
+
+⇒ `fn_get_or_create_commessa` passa ora solo `p_corpo => sigla || '-'`, l'anno lo
+aggiunge il compositore generico, e la famiglia dichiara `true` come le altre
+tre.
+
+⭐⭐ **E la posizione dell'anno è diventata un fatto misurato, non una
+preferenza.** In coda al corpo la stringa esce **identica byte per byte** —
+`CMM-PGTAPEF202-2026-000000006`, verificato ricomponendo i codici esistenti;
+davanti al corpo sarebbe diventata `CMM-2026-PGTAPEF202-…`, cioè una forma nuova
+accanto alla vecchia sullo stesso registro. *Il corpo dice CHI, l'anno dice
+QUANDO, il progressivo chiude.*
+
+⛔ **Due conseguenze che il piano non aveva**, ed entrambe sono ordini di
+esecuzione:
+
+1. **Le due funzioni stanno nello STESSO changeSet.** Fra il momento in cui il
+   generico comincia a scrivere l'anno e quello in cui la commessa smette ci
+   sarebbe una finestra con l'anno **doppio** — `CMM-SIGLA-2026-2026-000000001`.
+   Due changeSet separati sono due transazioni, e quella finestra sarebbe reale.
+2. **I registri COMMESSA esistenti vanno portati a `true` nel `20260908-12`**,
+   cioè con la colonna e **prima** che il guard della forma la impari
+   (`20260908-15`). ⚠️ Non è un aggiramento del presidio: è il passo che porta lo
+   stato dove il presidio lo vuole, prima che il presidio ci sia — dopo, la
+   colonna è bloccata per tutti, commessa compresa. ⛔ E senza quel backfill la
+   prossima commessa uscirebbe **senza** l'anno, perché il compositore di dominio
+   ha smesso e il registro non lo chiede: la forma cambierebbe in silenzio, che è
+   il difetto peggiore di tutto questo §11.8.
+
+#### Come è stato provato
+
+L'SQL **estratto dal changeSet** (non riscritto a mano) eseguito in transazione
+annullata, e sopra i casi:
+
+| caso | prima | dopo |
+| --- | ---: | ---: |
+| `ANNUALE`, due numeri nel 2126 | 1, 2 | 1, 2 |
+| passo a `NESSUNA`, chiedo un numero | ⛔ **1** | ✅ **3** |
+| `NESSUNA` attraversa l'anno | — | 4 |
+| torno ad `ANNUALE` l'anno dopo | ⛔ **1** | ✅ **5** |
+| ⭐ **controllo**: nessun cambio di politica, 1° gennaio | 1 | ✅ **1** |
+
+pgTAP: `db/pgtap/vendite/test-secchio-nuovo-seme-v1.sql`, **5/5 verde** contro la
+funzione del changeSet.
+⭐ **E provato per mutazione**: contro la funzione di oggi diventa **rosso su 3**
+(`have: 1, want: 3`), mentre i test 4 e 5 restano verdi in entrambi i mondi.
+⛔ **Il test 4 è quello che tiene in piedi gli altri tre**: il criterio sbagliato
+— «parti sempre dal massimo» — passerebbe 1, 2 e 3 esattamente come quello
+giusto, e spegnerebbe l'azzeramento annuale su **tutti** i registri senza che
+niente diventi rosso. Sarebbe invisibile fino al 1° gennaio.
+
+✅ **Applicato da Tid il 2026-09-08** (`EXECUTED` sul `databasechangelog`), e il
+pgTAP rilanciato contro la funzione viva è **5/5 verde**. ⇒ Il passaggio di
+politica non pianta più nessun numeratore, nei due versi.
+
+#### 📌 Cosa resta, e non è DB
+
+⚠️ **«In futuro per i nuovi numeratori si deve poter scegliere la reset policy»**
+(Tid, 2026-09-08): lato database **c'è già tutto** — colonna, `CHECK` a due
+valori, funzione che ramifica. Manca la strada per sceglierla:
+
+| # | Chi | Cosa |
+| --- | --- | --- |
+| BE-R1 | backend | `reset_policy` in `_CAMPI_CREATE` (⛔ **non** in update: lì il valore si cambia su un registro che può aver già numerato, ed è il caso di questo §11.7) |
+| FE-R1 | frontend | il campo in maschera alla creazione, due voci |
+| BE-L1 | backend | togliere la riga che dice ancora *«inchiodata ad ANNUALE dal CHECK»* (§11.5) |
+
+⭐ Con BE-R1 il valore si sceglie **alla nascita**, che è il momento in cui non
+c'è nessun secchio da innescare — e il §11.7 diventa la rete, non la strada
+principale.
+
+---
+
+### 11.8 ✅ L'invariante del §1 ha un TERZO piano: il numero che si LEGGE
+
+> Osservazione di Tid, 2026-09-08: *«i numeratori, per esempio ordini, pur avendo
+> ANNUALE non mettono l'anno nella numerazione esposta. Esempio ORD0036007
+> creato ieri. Credo sia giusto che, se si sceglie il reset annuale, sia
+> obbligatorio esporre l'anno nel numero.»*
+
+⭐ **È il §1, un piano più su.** Là: *tutto ciò che discrimina il CONTATORE deve
+poter discriminare anche il DOCUMENTO*. Qui: **…e anche la stringa che una
+persona legge**. Il contatore discrimina su `anno`; `ORD0036007` no. Al primo
+gennaio il contatore riparte e quella stringa **torna**: due ordini diversi, lo
+stesso numero scritto sopra. ⛔ Il database non se ne accorge — `uq_ordini_v_anno_serie_numero`
+porta l'anno, quindi l'`INSERT` passa. È un'ambiguità **muta**, che vive fuori
+dal database: liste, ricerche, la telefonata in cui un cliente cita un numero.
+
+#### Il fatto, verificato il 2026-09-08
+
+```text
+vendite.fn_componi_numero_documento(prefisso, CORPO, progressivo, lunghezza, suffisso)
+
+trgfn_ordini_gen_numero      p_corpo => NULL   ⇒ ORD + 0036007          ⛔ senza anno
+trgfn_ddt_gen_numero_emesso  p_corpo => NULL   ⇒ DDT + 0023455          ⛔ senza anno
+trgfn_resi_gen_numero        p_corpo => NULL   ⇒ RESO + 0012132         ⛔ senza anno
+fn_get_or_create_commessa    p_corpo => sigla || '-' || anno || '-'     ✅ CMM-<sigla>-<anno>-<9>
+FATTURA                      non passa di qui  ⇒ numero = 101, anno e serie in COLONNA
+```
+
+> ⭐ **E la commessa è diventata standard il 2026-09-08**, per decisione di
+> Tid: *«tutti devono avere gli stessi parametri»*. Vedi in fondo — l'anno se
+> lo metteva **da sé**, ed era una seconda sorgente di verità per la stessa
+> cosa.
+
+⭐ **Lo slot c'è già, e uno lo usa**: `p_corpo` è il posto dell'anno, e la
+commessa ci mette sigla e anno da sempre. Esporre l'anno non è un meccanismo da
+inventare — è un argomento da passare.
+
+#### ⚠️ Ma la regola non si scrive come un CHECK secco, e il motivo è la FATTURA
+
+«`ANNUALE` ⇒ l'anno sta nel numero» preso alla lettera colpirebbe i **6 registri
+FATTURA**, che sono anche gli unici che resteranno `ANNUALE`: lì il `numero` è il
+progressivo **nudo** (`101`), l'anno e la serie viaggiano in **colonna**, e la
+stampa li ricompone — `template-ddt-vendita.html` rende già
+`N. {{ numero }} / Serie {{ serie }} / {{ anno }}`. È la convenzione fiscale, ed
+è giusta: mettere l'anno dentro la stringa cambierebbe il numero di una fattura.
+
+⇒ **Il soggetto dell'invariante è «il numero come lo si legge», e l'anno può
+stare in due posti diversi a seconda della famiglia.** È esattamente la forma del
+§5: *sulla FAMIGLIA si dichiara ciò che il documento PUÒ esprimere, sul REGISTRO
+si sceglie ciò che quel sezionale FA* — come `colonna_serie`. La dichiarazione
+naturale è **dove sta l'anno**: dentro la stringa, oppure in colonna.
+
+#### ⚠️ Due conseguenze da tenere in conto prima di aprirlo
+
+1. ⛔ **L'anno nel numero è FORMA DEL NUMERO**, quindi ricade sotto
+   `trg_registri_fatturazione_a10_guard_forma_numero_upd`: su un registro che ha
+   già consegnato numeri **non si può aggiungere**. ⇒ È una scelta che si fa
+   **alla nascita**, come prefisso e lunghezza — e va nella maschera di
+   creazione insieme a `reset_policy` (BE-R1/FE-R1 del §11.7).
+2. ⭐ **Sui registri di oggi il problema si chiude da solo con il passaggio a
+   `NESSUNA`** (decisione di Tid, stessa giornata): un progressivo che non
+   riparte non si ripete, e la stringa resta unica senza l'anno. Restano
+   `ANNUALE` le sole fatture, che l'anno lo espongono in colonna.
+   ⇒ **Non c'è niente che bruci**; il cancello serve a impedire che nasca
+   *domani* un registro `ANNUALE` con un numero senza anno.
+
+#### ✅ Cosa è stato scritto — `20260908-11..16`, **applicati il 2026-09-08**
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| A-1 | `famiglie_documento.anno_nel_numero_default` — il **default del tipo documento** | `00_schema/vendite/20260908-11` |
+| A-2 | `registri_fatturazione.anno_nel_numero` — l'**effettivo del sezionale** | `00_schema/vendite/20260908-12` |
+| A-3 | `fn_assegna_numero_documento` mette l'anno **in coda al corpo** — e nello stesso changeSet `fn_get_or_create_commessa` smette di mettercelo da sé | `20_code/vendite/20260908-13` |
+| A-4 | il **risolutore** in INSERT: `ANNUALE` + famiglia che espone ⇒ nasce con l'anno | `20_code/vendite/20260908-14` |
+| A-5 | il guard della forma impara la **quarta colonna** | `20_code/vendite/20260908-15` |
+| A-6 | il seed dei cinque default — **quattro `true`**, la sola fattura `false` | `80_data/20260908-16` + CSV dedicato |
+| P | `db/pgtap/vendite/test-anno-nel-numero-v1.sql` — 7 test | `db/pgtap/vendite` |
+
+⭐ **La coppia è quella già in casa**: `prefisso_default`/`prefisso`. Il tipo
+documento decide, il sezionale eredita alla nascita, e da lì il valore è suo.
+
+#### ⛔ Il grep dei pgTAP ha cambiato il progetto — e questo è il punto
+
+La prima stesura era un **guard che rifiuta**: `ANNUALE` + famiglia che espone +
+colonna a `false` ⇒ rifiuto, con codice errore e `fn_check_*` per la maschera.
+È stato scartato **prima di scriverlo**, per due misure:
+
+* **sei** file pgTAP creano registri `DDT`/`ORDINE`/`RESO` `ANNUALE` senza
+  nominare la colonna nuova — sarebbero diventati rossi tutti insieme;
+* il backend crea i registri con una whitelist di colonne che quella nuova non
+  la contiene: **ogni creazione dall'app sarebbe stata rifiutata** finché il BE
+  non fosse stato adeguato.
+
+⛔ *Un cancello che spegne sei test e una maschera viene disattivato, e un
+presidio spento è peggio di uno assente.*
+⭐ **E c'era di meglio**: se non esiste un caso legittimo di «ANNUALE senza
+anno» per quelle famiglie, allora non è una scelta da difendere — è un valore da
+**derivare**. Il risolutore fa valere l'invariante *per costruzione* invece che
+per rifiuto, non chiede niente a nessuno, e non rompe una riga.
+⚠️ **E non è il difetto di `config.sistema_codici`** (§5.3, «si rifiuta, non si
+ignora»): là un campo cambiava senza ottenere niente; qui il valore viene
+risolto e **diventa effettivo** — la stringa del numero cambia davvero.
+
+#### ⛔ E allargare `UPDATE OF` non bastava, l'ha trovato il test 7
+
+Il guard della forma comincia con un confronto sui **valori** — il no-op che
+lascia passare un `UPDATE` che nomina una colonna senza cambiarla. Quel
+confronto guardava le **tre** colonne storiche: allargata la sola clausola
+`UPDATE OF`, un cambio della quarta arrivava al guard, trovava «nessuna delle
+tre è cambiata» e **passava**. Il rifiuto non scattava, e non falliva niente.
+⇒ Si riscrivono **entrambi**, la funzione e il trigger. ⭐ L'ha trovato la prova
+d'insieme, non un ragionamento: a leggerlo, allargare il trigger sembrava fatto.
+
+#### Come è stato provato
+
+L'SQL **estratto** dai cinque changeSet nell'ordine di numerazione, più il seed
+applicato come lo applica il loader, poi **dieci** file pgTAP nella stessa
+transazione annullata — il nuovo, quello del §11.7, i **sei preesistenti** che
+creano registri e i **due presidi della commessa**
+(`test-commessa-chiave-numerazione-v1`, che confronta il codice con gli assi
+dichiarati, e `test-documenti-numerazione-trasloco-v1`, che ne verifica forma e
+sigla). **73 asserzioni, zero rosse.**
+
+⚠️ **Cosa è cambiato all'apply: niente, su niente.** La colonna del registro
+nasce `false`, il risolutore lavora solo in `INSERT`, e i registri di allora non
+sono stati toccati — i loro numeri restano identici. Cambia ciò che **nasce
+dopo**.
+⭐ **I due registri COMMESSA sono l'unica eccezione, e per RESTARE come sono**:
+il backfill li porta a `true` perché la stringa che consegnano non cambi quando
+l'anno passa di mano.
+
+#### ✅ Verificato dopo l'apply — 2026-09-08
+
+I sette changeSet risultano `EXECUTED` sul `databasechangelog`, i **dieci** file
+pgTAP girano verdi **contro il database vero** (non più in transazione
+simulata), e lo stato è quello voluto:
+
+| | |
+| --- | --- |
+| default delle famiglie | `FATTURA=f`, le altre quattro `t` |
+| registri non fiscali | portati a **`NESSUNA`** da Tid — 8 su 14 |
+| registri `FATTURA` | restano `ANNUALE`, senza anno nella stringa (ce l'hanno in colonna) |
+| `anno_nel_numero` acceso | **solo i due COMMESSA**, per conservare la forma del loro codice |
+
+⭐ **E la lettura di oggi vale la riga**: con i non fiscali a `NESSUNA`, in questo
+momento **nessun sezionale è `ANNUALE` senza l'anno** — non perché il meccanismo
+sia intervenuto, ma perché la politica ha tolto l'ambiguità alla radice. Il
+meccanismo del §11.8 è la rete per il sezionale `ANNUALE` che nascerà domani.
+⚠️ È un **fatto datato**, non una prova che serva o non serva: la regola sta sul
+modello.
+
+⭐ **E i registri di oggi si sistemano da soli con la mossa che stai già
+facendo**: portati a `NESSUNA`, il progressivo non riparte e la stringa non si
+ripete. L'anno nel numero serve ai sezionali che l'azzeramento lo tengono.
+
+#### 📌 Cosa resta al BE, e non è bloccante
+
+`anno_nel_numero` non è nella whitelist di creazione del backend: un registro
+creato dall'app prende comunque il valore giusto — **lo mette il risolutore** —
+ma la maschera non lo mostra. Mostrarlo in sola lettura accanto a prefisso e
+lunghezza è il completamento naturale, insieme a BE-R1/FE-R1 del §11.7.
+
+---
+
+### 11.9 ✅ Il pavimento guarda la SEQUENZA, non il registro — decisione dell'8 settembre
+
+> **Origine:** segnalazione del BE, riportata da Tid il 2026-09-08. *«Sulla serie
+> non c'è nessun controllo: `prefisso`, `suffisso` e `lunghezza` li protegge un
+> trigger, `serie_default` solo una lista in Python. Chi allarga quella lista, o
+> aggiunge un endpoint, o scrive un UPDATE in psql, passa senza che niente lo
+> fermi.»*
+
+**Il fatto è esatto**, la conclusione no — e distinguerli è tutto il valore di
+questo paragrafo.
+
+#### ⛔ Perché `serie_default` NON si congela come la forma
+
+L'analogia con `prefisso`/`suffisso`/`lunghezza` non regge, e la differenza è
+strutturale:
+
+| | cosa cambia | esito |
+| --- | --- | --- |
+| **forma del numero** | la stringa **dentro la stessa sequenza** — il contatore non riparte | due forme con numeri **consecutivi**, indistinguibili ⇒ si congela |
+| **`serie_default`** | apre una **sequenza nuova**, che riparte da 1 | niente collide, e i due numeri restano distinguibili ⇒ non si congela |
+
+Tre fatti la reggono, tutti verificati il 2026-09-08:
+
+1. **la serie non entra nella stringa** — la fattura è `numero = 101` con
+   `serie = VX1` in colonna: cambiarla non crea due forme sullo stesso numero;
+2. **la serie sta nella chiave di unicità del documento** —
+   `uq_fatture_numero (registro_id, anno, COALESCE(serie,''), numero)`, e uguale
+   su DDT e ordini: una serie nuova che riparte da 1 non collide con niente. È
+   l'asimmetria del §1 **nel verso innocuo**, quello in cui il documento porta
+   l'asse;
+3. **su resi e commesse non c'è nessun "dopo" da proteggere**: il guard del §5
+   vieta di avere una serie del tutto.
+
+⇒ Congelarla vieterebbe un'operazione legittima — spostare un sezionale su una
+serie nuova. ⚠️ E il motivo scritto in `registri_repository.py`
+(*«`serie_default` fuori dall'update perché il guard non la copre»*) è giusto
+nella conclusione e **sbagliato nella ragione**: non manca un presidio, non
+serve. 📌 Riga in `backend/`, fuori perimetro DB: segnalata, non toccata.
+
+#### ⭐⭐ La raccomandazione sbagliata, e il controesempio che l'ha ribaltata
+
+La domanda aveva però trovato qualcosa: **il pavimento di monotonia è per
+`(registro, serie)`** — `fn_get_pavimento_sequenza` fa
+`max(ultima_data) … AND rp.serie = v_serie`, e la serie la risolve da
+`serie_default`. Quindi una serie nuova nasce **senza pavimento**.
+
+⛔ **Avevo raccomandato di togliere quel filtro**, appoggiandomi a *«un sezionale
+è un registro, la serie è solo l'etichetta che stampa»*. **Il modello dice il
+contrario**, e due misure lo hanno smentito prima che scrivessi una riga:
+
+* il registro **Front-office emette già su DUE serie**, `VX2` e `R2`;
+* `trgfn_ddt_gen_numero_emesso` e `trgfn_ordini_gen_numero` passano
+  `p_serie => NEW.serie`: **un documento può portare una serie propria**, diversa
+  dal default del registro.
+
+⇒ Due sequenze parallele sullo stesso registro sono **previste dal modello**. Col
+pavimento per registro si bloccherebbero a vicenda sulle date — emetti su `VX2`
+il 20 settembre e `R2`, che sta più indietro perché è un'altra sequenza, non
+numera più. Sarebbe un difetto nuovo, peggiore di quello da chiudere.
+
+⭐ **E la conferma era già in casa**: il test 11 di `test-registri-progressivi`
+asserisce dal 2026-08-25 *«due serie sullo stesso registro non si bloccano a
+vicenda»*. Era una decisione **deliberata**, e la raccomandazione l'avrebbe
+rovesciata senza accorgersene.
+
+⇒ **Il filtro resta.** Il pavimento risponde a «questa **sequenza** va avanti?»,
+e la sequenza è `(registro, serie)`.
+
+#### ✅ E il timore di partenza è già coperto — da un altro cancello
+
+*«Cambio la serie e riapro il passato»* non è un varco del pavimento: cambiare
+`serie_default` **apre una sequenza nuova**, e una sequenza nuova non ha passato.
+Contro la retrodatazione vera c'è il **limite di emissione**
+(`fn_get_pavimento_emissione`), che guarda **registro + competenza**, non la
+serie, e che una serie nuova **non azzera** — il risultato è il `GREATEST` dei
+due pavimenti.
+
+⚠️ **Misurato**: il pavimento di sequenza si applica alla sola `FATTURA`
+(`presidia_data_documento = t`; le altre quattro famiglie sono `f`), ed è proprio
+lì che il limite di emissione regge. ⇒ Il presidio contro la retrodatazione
+c'è, ed è quello costruito per quella domanda.
+
+⭐ **La lezione, e vale oltre questo caso**: due cancelli che *sembrano*
+rispondere alla stessa domanda vanno letti sul **perimetro**, non sul nome. Uno
+guarda la sequenza, l'altro il registro — e chi li confonde toglie quello
+sbagliato.
+
+📖 **Scritto anche nella guida**, dove si cerca senza sapere che esiste un brief:
+[numerazione-documenti-e-codici §6.3](../../guide/numerazione-documenti-e-codici.md).
+

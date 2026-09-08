@@ -196,8 +196,19 @@ BEGIN
                p_data                        => v_data,
                p_documento_id                => NULL,
                p_utility_id                  => p_utility_id,
-               p_corpo                       => v_sigla || v_sep_dom
-                                             || v_anno::text || v_sep_dom) v;
+               -- ⭐ IL CORPO PORTA SOLO LA SIGLA, dal 2026-09-08.
+               --   L'anno lo mette ora il compositore generico, che lo
+               --   aggiunge in coda al corpo quando il registro lo
+               --   dichiara (anno_nel_numero): la stringa esce identica
+               --   — CMM-<sigla>-<anno>-<9 cifre>, verificato byte per
+               --   byte sui codici esistenti — ma la regola sta in UN
+               --   POSTO SOLO.
+               -- ⛔ Prima la commessa era l'unica famiglia che l'anno se
+               --   lo metteva da se': una seconda sorgente di verita' per
+               --   la stessa cosa, e la ragione per cui inizialmente
+               --   COMMESSA doveva dichiarare `false` mentendo sul
+               --   contenuto della propria stringa.
+               p_corpo                       => v_sigla || v_sep_dom) v;
 
     v_registro := v_ass.registro_id;
     v_codice   := v_ass.numero;
