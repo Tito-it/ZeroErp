@@ -17,12 +17,31 @@
 > ed è riparata: §7-bis.
 > ✅ **Doc rigenerata** e sei pagine concettuali scritte in `manual/`; le tre
 > chiavi i18n nuove sono nei locales e `check_i18n_keys.py` è **tutto pulito**.
-> 🔵 **Resta solo il contratto verso il backend** — §6 e §5.5.
 > ✅ **D-2b decisa** (Tid): la bozza condivisa si cancella lo stesso e
 > **trascina** — §5.4-bis. La proposta opposta era peggiore, e il perché è lì.
-> 🔵 **Restano**: la lista che espone il documento, il presidio, il pgTAP — e il
-> contratto BE del §6, senza il quale il verbo **non sblocca niente**.
-> ⛔ Niente è committato.
+>
+> 🟢 **Chiuso lato DB il 2026-09-08 — §6.1, da leggere per primo.** Il contratto
+> §6 mancava di **due pezzi a database**, chiesti dal backend e consegnati:
+> `20260908-18` (`script.fn_gruppi_di_commessa_nel_lotto` — la conversione
+> commessa → documenti, estratta dov'era sepolta), `-19` (la madre la **chiama**
+> invece di riscriverla) e `-20` (`fn_log_pipeline_fase` accetta `p_gruppo_key`).
+> ✅ **pgTAP `test-gruppo-key-segnalazioni-v1.sql`: 15 su 15**, provati
+> sull'SQL **estratto** dagli YAML in transazione annullata — e la mutazione
+> conferma che i due presidi di §12.5.2 diventano rossi togliendo il `-19`.
+> Nessuna regressione su `test-lotti-gruppi-esito`, `test-uscita-documento-dal-giro-v1`,
+> `test-fn-list-lotto-segnalazioni`, `test-registri-log-orario-reale`,
+> `test-fatture-log-error-code`.
+> 🔴 **Correzione al §5.1**, segnalata dal BE: la colonna è **`uscita_quando`**,
+> non `uscita_il`.
+> 🔵 **Resta al backend**: le tre righe del §6.1 («che cosa fa il backend
+> adesso»). ⛔ Finché non le scrive, il verbo continua a non sbloccare la corsia
+> del pull.
+> 🔵 **Resta a video**: la lista che espone il documento (§7).
+> ⛔ Niente è committato, e ⛔ **niente è applicato**: i tre changeSet nuovi
+> aspettano il `migrate` dell'utente. Il verde definitivo dei pgTAP si prende
+> **dopo**, con `scripts/testpgtap.sh` (che gira come `zeroerp_app`, con la RLS
+> attiva): la prova pre-apply gira da **owner** ed è una prova di struttura, non
+> di permessi.
 >
 > **Origine:** Tid, 2026-09-08. ⚠️ **E la formulazione della domanda è parte del
 > progetto**: la prima stesura di questo brief era appoggiata a un lotto di
@@ -179,15 +198,22 @@ quindi vale anche sui giri senza perimetro. *«Uscito dal giro»* è esattamente
 valore di *«com'è andato»*.
 
 * allargare `chk_fatturazione_lotti_esiti_stato` per ammettere **`ESCLUSO`**;
-* colonne nuove: `uscita_motivo TEXT`, `uscita_il TIMESTAMPTZ`,
+* colonne nuove: `uscita_motivo TEXT`, `uscita_quando TIMESTAMPTZ`,
   `uscita_da TEXT`;
 * `CHECK (stato_esecuzione <> 'ESCLUSO' OR uscita_motivo IS NOT NULL)` — gemello
   di `chk_..._errore_parlante` che c'è già;
-* ⭐ **`uscita_il`/`uscita_da` li deriva un trigger dalla GUC**, non il
+* ⭐ **`uscita_quando`/`uscita_da` li deriva un trigger dalla GUC**, non il
   chiamante: è il pattern già in servizio su `dbops.coda_lavori`
   (`archiviato_il`/`archiviato_da`). ⚠️ E **non** si usano `data_update` /
   `user_update`: quelli li riscrive qualunque aggiornamento successivo, e il
   momento dell'uscita andrebbe perso in silenzio.
+
+> 🔴 **Correzione del 2026-09-08, segnalata dal backend.** Questa sezione diceva
+> `uscita_il`. La colonna vera — quella applicata dal `20260908-01` e quella che
+> il backend legge — è **`uscita_quando`**. ⚠️ Non è un refuso innocuo: è la
+> prima cosa che legge chi arriva dopo, e un brief che nomina una colonna che
+> non esiste manda a cercare un difetto dove non c'è. *Il nome nel disegno
+> insegue quello nel database, mai il contrario.*
 
 ⚠️ `ESCLUSO` è **terminale** (D-3): il guard di transizione lo rifiuta come stato
 di partenza.
@@ -406,6 +432,121 @@ esattamente il giorno in cui il backend comincia a dichiarare il proprietario.
 3. **Il motivo del rifiuto non si ricalcola in Python**: la check è la stessa che
    la madre usa per rifiutare, e la lista lo espone in riga.
 
+### 6.1 🟢 I due pezzi che mancavano — consegnati il 2026-09-08
+
+> **Origine**: brief BE → DB del 2026-09-08. Il verbo era consumato end-to-end e
+> funzionava; sulla corsia del **pull** non sbloccava niente, e il backend non
+> poteva chiudere il §6 da solo. Non per pigrizia: gli mancavano **due** cose a
+> database, ed entrambe le richieste erano giuste.
+>
+> **Il fatto datato che l'ha reso visibile** (lotto LTF-0010003, 2026-09-08, in
+> transazione annullata): escluso il documento rotto, `lotto_critical_count`
+> restava **1**. L'unica segnalazione viva aveva `gruppo_key = NULL`, cioè *«è
+> del giro»* — e per la D-6 una segnalazione del giro **deve** fermare il giro.
+> ⭐ Il difetto non era la regola: era che **nessuno dichiarava il
+> proprietario**, perché non aveva dove.
+
+**Pezzo 1 — il canale** (`20260908-20`). `vendite.fn_log_pipeline_fase` accetta
+`p_gruppo_key`, **ottavo parametro, in coda, con `DEFAULT NULL`**, e lo scrive
+nella colonna omonima.
+
+* È l'**unico** canale con cui il backend scrive `fatturazione_lotti_log`
+  (`PipelineErrorLogger.log_error` → `VenditePipelineRepository.log_pipeline_fase`):
+  senza il parametro, la colonna nata col `20260908-02` non poteva riempirsi.
+* ⚠️ *In coda e con default* non è cortesia: le **quattro** funzioni DB chiamanti
+  e la chiamata **posizionale a sei argomenti** del backend continuano identiche.
+  E il `DEFAULT NULL` **dice il vero** — `NULL` è già il valore che significa «è
+  del giro».
+* ⚠️ **DROP + CREATE**: un parametro nuovo crea un *overload*, e con la vecchia
+  firma viva ogni chiamata a sei o sette argomenti sarebbe ambigua.
+* ⭐ **In una colonna e non in `meta`**, all'opposto di `error_code`: la
+  `gruppo_key` è un **asse di join** — la leggono il conteggio del §5.3 e il
+  presidio del §5.6. Un dato su cui si fa `EXISTS` non vive in un jsonb.
+* ⛔ **Nessuna verifica che il documento esista**, per la stessa ragione per cui
+  non se ne fa una sul codice errore: un log non deve poter fallire dentro il
+  ramo `EXCEPTION` di qualcun altro. Il presidio è il §5.6, che guarda e non
+  blocca.
+* ⚠️ Una `gruppo_key` **vuota o di soli spazi** diventa `NULL` — la colonna ha
+  due stati, e un terzo passerebbe per «nomina un documento» lasciando una riga
+  che blocca per sempre e che nessuno può togliere. ⛔ Ma **si dichiara** con un
+  `WARNING`: qui la conseguenza non è cosmetica come per il codice errore.
+
+**Pezzo 2 — la conoscenza** (`20260908-18` + `20260908-19`).
+`script.fn_gruppi_di_commessa_nel_lotto(p_lotto_id, p_commessa_id)` torna
+l'array **ordinato** delle `gruppo_key` che quella commessa alimenta **dentro
+quel lotto**; `[]` se nessuna. E `vendite.fn_segna_esito_gruppo_lotto`, dove la
+conversione era sepolta, adesso la **chiama** (§12.5.2: *la madre non riscrive il
+predicato, lo chiama*).
+
+* ⭐ **Il backend aveva ragione a non riscriverla in Python.** Ciò che
+  copierebbe non è la costruzione della chiave — quella è già una funzione — ma
+  **da quale tabella si legge**: su `attivita_fatturabili` invece che su
+  `commesse_attivita` la chiave esce come `COMMESSA:<hash>` e non aggancia
+  niente. Misurato scrivendo `script.vw_lotto_documento_righe`: **zero
+  corrispondenze su quattro**, e nessun errore.
+* ⚠️ **È 1:N, e cambia la forma della consegna**: un fallimento di pull produce
+  **una segnalazione per documento**. ⛔ Sceglierne una sola lascerebbe le altre
+  a bloccare il lotto per sempre e non togliibili.
+* ⭐ **Il perimetro è parte della domanda**, non un filtro in più: un documento
+  fuori dal perimetro il lotto non lo stava lavorando, e appendergli una
+  segnalazione la renderebbe una riga del presidio §5.6.
+* ⚠️ **`[]` è una risposta e va letta**: «questo fallimento non ha un
+  proprietario in questo lotto» ⇒ si scrive **una** riga a `gruppo_key` `NULL`.
+  ⛔ Non zero righe.
+* ⚠️ **Fail-loud sui parametri**, e il perché è la parte non ovvia: la funzione
+  estratta **solleva** su un id `<= 0`, perché il backend la chiama diretta e lì
+  è un chiamante rotto; la madre invece **non deve sollevare mai**. Le due
+  promesse convivono solo perché il guard sulla commessa sta **prima** della
+  chiamata. ⭐ E il messaggio ci guadagna: prima un id negativo usciva come
+  «nessun documento trovato», cioè la diagnosi sbagliata.
+
+**Che cosa fa il backend adesso** — e sono tre righe, non un cantiere:
+
+1. `PipelineErrorLogger.log_error` prende `gruppo_key` e lo passa alla funzione;
+2. `_PullCommesseRunLogger.item_failed` chiede i gruppi della commessa nel lotto
+   e scrive **una riga per gruppo**; su `[]`, **una** riga senza `gruppo_key`;
+3. niente altro: il conteggio del §5.3 fa il resto da sé.
+
+#### 🔴 Una correzione fatta in corsa, e il meccanismo va scritto
+
+La prima stesura dei tre changeSet aveva le firme a **tipi nudi**, ed è stato
+Tid a chiederne conto. Due cause distinte, e la seconda non era ancora
+registrata da nessuna parte:
+
+* nel `-19` il corpo viene da `pg_get_functiondef` — la regola di casa — e quel
+  corpo **ha già i `%TYPE` sciolti**, perché PostgreSQL li risolve al `CREATE`.
+  Copiandolo si eredita il debito **in una forma che sembra corretta perché
+  combacia col database**. ⛔ Peggio: `p_lotto_id` era ancorato in `20260906-11`
+  e `20260907-13`, quindi non era un'omissione ma una **regressione**;
+* nel `-18` — ed è il pezzo nuovo — ho imitato la **funzione sorella**
+  `script.fn_gruppi_trascinati_da_uscita`, scritta il giorno prima nello stesso
+  cantiere e anche lei a tipi nudi. *Imitare il vicino sembra coerenza ed è
+  propagazione del debito: la convenzione si legge dalle linee guida, non dal
+  file accanto.*
+
+⭐ **E c'era una terza sede che nessuno guardava**: `DROP FUNCTION` e
+`COMMENT ON FUNCTION`, che erano a tipi **risolti**, cioè dedotti. È il difetto
+che il 2026-08-31 ha fatto morire un migrate con *«la funzione non esiste»* —
+un messaggio che manda a cercare la funzione, non il tipo. Verificato sul
+database che PostgreSQL accetti `%TYPE` anche lì: così l'identificatore non può
+divergere dai parametri, perché è la stessa espressione. ⚠️ Il caso che si
+sbaglia a mano è `p_status`, ancorato a una colonna `character(1)`: nella lista
+di un `DROP` il typmod si perde, e scriverlo giusto richiede di saperlo.
+
+⭐ **La prova che toglie il dubbio dell'overload, e costa due query**: prima, in
+sola lettura, `atttypid::regtype` sulle colonne da ancorare (il regtype ignora
+il typmod); dopo, in transazione annullata, **una sola funzione per nome** e
+`pg_get_function_identity_arguments` **byte-identico** al vivo. Fatto:
+`fn_segna_esito_gruppo_lotto` esce identica alla firma di partenza, e
+`fn_log_pipeline_fase` con i sette parametri storici intatti più `p_gruppo_key`
+in coda. ⚠️ Con sei parametri e quattro `DEFAULT`, un overload avrebbe reso
+**ambigua ogni chiamata del backend**.
+
+⭐ **E un presidio nasce gratis.** `_marca_esito_gruppi` logga già un avviso
+quando `fn_segna_esito_gruppo_lotto` non marca nessun gruppo per una commessa: è
+lo **stesso fatto** che `vendite.vw_segnalazioni_con_documento_ignoto` mostra
+dall'altro lato. Vanno letti insieme il giorno dell'accensione.
+
 ---
 
 ## 7. Che cosa si vede
@@ -472,6 +613,36 @@ ragionamento — che è il modo più caro di scoprirlo.
   «gli esiti coincidono» ma «il predicato sta in un posto solo» (§12.5.2);
 * `throws_ok` **sempre con lo SQLSTATE**.
 
+### 8.1 ✅ Il secondo file, per i due pezzi del §6.1
+
+`db/pgtap/vendite/test-gruppo-key-segnalazioni-v1.sql` — **15 test**, e tre cose
+vale la pena dire di come sono fatti:
+
+* ⭐ **I test 2 e 3 sono il presidio del §12.5.2**, e non è un modo di dire: non
+  confrontano gli esiti (proverebbe che *oggi* coincidono), leggono il `prosrc`
+  della madre e chiedono che **non nomini più** `commesse_attivita` e che
+  **chiami** la funzione estratta. ⚠️ Tolgono i **commenti** prima di cercare:
+  il corpo della madre spiega la trappola citandola, e un presidio che legge il
+  `prosrc` grezzo accusa chi documenta il difetto invece di chi lo commette.
+  ⭐ **Provati per mutazione**: rieseguendo il file senza il `20260908-19`
+  diventano rossi loro due e nient'altro.
+* ⚠️ **I test 14 e 15 sono data-dependent e lo dichiarano con uno `skip()`
+  motivato**: il verso positivo (una commessa con **due** documenti, cioè il caso
+  1:N) chiederebbe di fabbricare articolo, istanza di utility, unità di misura e
+  commessa — una fixture più grande della cosa da provare. ⛔ Su un database
+  ricostruito da zero saltano, e la copertura di quel verso vale **zero**, non
+  «parziale»: è un debito dichiarato, non un verde. Il verso costruibile — una
+  commessa che non alimenta niente — è il test 4.
+* ⭐ **Il test 13 accende il presidio del §5.6 per la prima volta.** Fino a
+  ieri `vw_segnalazioni_con_documento_ignoto` era vuota *per assenza di dato*;
+  adesso è raggiungibile, e il test prova che accusa il caso giusto — un
+  proprietario dichiarato **male**, non uno assente.
+
+⚠️ E in `test-lotti-gruppi-esito.sql` il test 6 è stato corretto: passava
+`p_commessa_id => -1`, che dal `20260908-19` prende la strada del **guard di
+parametro** invece della risoluzione — sarebbe rimasto verde anche a risoluzione
+rotta. Adesso passa un id positivo e inesistente, che percorre la strada vera.
+
 ---
 
 ## 9. Come si vede che è chiuso
@@ -483,6 +654,12 @@ rimetta in errore il lotto per un documento che non ha più.
 
 ⛔ Non basta che i test siano verdi: questo cantiere nasce da un comportamento
 osservato a video, e lì va riguardato.
+
+⚠️ **E fino al 2026-09-08 quel giro si fermava al primo passo**, per una ragione
+che non era del disegno: la segnalazione non aveva padrone, quindi non c'era
+niente da toglierle. ⇒ La prova va **rifatta dopo** che il backend ha scritto le
+tre righe del §6.1 — prima, misurerebbe l'assenza del contratto e non il verbo.
+🔵 È l'ultimo passo aperto di questo cantiere.
 
 ---
 
