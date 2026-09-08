@@ -301,9 +301,18 @@ class ApiFamiglieLookup(DomainAPIView):
     @extend_schema(
         operation_id="vendite_famiglie_lookup",
         responses={200: inline_serializer(
-            name="VenditeFamiglieLookupResp", fields={"data": serializers.ListField()},
+            name="VenditeFamiglieLookupResp", fields={"data": serializers.DictField()},
         )},
     )
     # Scopo: Le famiglie attive con i loro default, per le tendine di dominio.
+    # ⛔ `{"results": [...]}` E NON LA LISTA NUDA, ed e' la forma di TUTTI i
+    #    lookup dedicati (`ProvinceLookupView`, e le gemelle regioni/stati).
+    #    ⚠️ Fino al 2026-09-08 qui tornava la lista nuda, e il difetto era
+    #    INVISIBILE DA QUESTO LATO: il composable `useLookup` del frontend
+    #    trasforma ogni risposta con `r.data.data.results`, che su una lista nuda
+    #    vale `undefined`. Il `ref` delle famiglie passava da `[]` a `undefined`,
+    #    il primo `.map()` sollevava, e Vue svuotava il sottoalbero — il drawer
+    #    dei registri si apriva BIANCO, con il backend verde e nessun errore in
+    #    nessun log. Il presidio e' in `test_il_lookup_torna_l_envelope_results`.
     def get(self, request: Request) -> JsonResponse:
-        return success_response(FamiglieDocumentoService().list_lookup())
+        return success_response({"results": FamiglieDocumentoService().list_lookup()})
