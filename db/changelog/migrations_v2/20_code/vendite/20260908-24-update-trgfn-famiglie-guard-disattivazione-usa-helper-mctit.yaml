@@ -1,0 +1,200 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# H-2 — Il guard di disattivazione della famiglia chiama l'helper
+#   vendite.trgfn_famiglie_documento_guard_disattivazione
+#   Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 6
+#
+# -- PERCHE' -------------------------------------------------
+#   Nessun `campo`: l'operatore ha premuto un interruttore, non c'e' un
+#   input da correggere. Il tx_id resta NULL, ed e' il caso normale di un
+#   `_a10_`.
+#
+# -- COSA CAMBIA, E COSA NO ----------------------------------
+#   Cambia SOLO la coda che solleva il primo motivo della check. La TESTA —
+#   quale check chiamare, su quali colonne, con quale confronto di no-op —
+#   resta identica, ed e' il §3 del brief: due funzioni che finiscono uguali
+#   non sono due funzioni da unire, sono due funzioni che chiamano la stessa
+#   cosa.
+#   ⛔ Il corpo di partenza e' quello VIVO (pg_get_functiondef), non uno YAML:
+#   di questa funzione ci sono piu' revisioni e solo l'ultima conta.
+#
+# -- IL ROLLBACK --------------------------------------------
+#   Rimette il corpo esattamente com'era prima di questo changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260908-24-update-trgfn-famiglie-guard-disattivazione-usa-helper-mctit.yaml
+
+  - changeSet:
+      id: 20260908-24-update-trgfn-famiglie-guard-disattivazione-usa-helper
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard di disattivazione della famiglia chiama l'helper. Nessun `campo`: l''operatore ha
+        premuto un interruttore, non c''e'' un input da correggere. Il tx_id resta NULL, ed e'' il caso
+        normale di un `_a10_`. Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_raise_primo_motivo_se_presente';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_famiglie_documento_guard_disattivazione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+                  --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
+                  v_motivi jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare lo spegnimento di una famiglia di documento
+                  --   che ha ancora registri accesi o documenti numerati.
+                  --
+                  -- ⛔ Perche': anagrafiche.fn_ba_ha_storia_emittente itera
+                  --   `WHERE fd.attivo`. Spegnere la famiglia non nasconde una
+                  --   voce di catalogo: toglie i suoi documenti dal presidio
+                  --   sul cambio emittente del billing account. Nessun errore,
+                  --   nessun log — il controllo guarda in un posto in meno.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Il guard chiama
+                  --   script.fn_check_famiglia_documento_disattivabile e
+                  --   solleva il codice del PRIMO motivo, cosi' il rifiuto e
+                  --   il cestino spento della lista non possono divergere.
+                  -- =========================================================
+
+                  -- ⭐ IL NO-OP PASSA, ed e' la riga che tiene in piedi il
+                  --   migrate: `UPDATE OF` scatta quando lo statement NOMINA la
+                  --   colonna, anche a valore invariato, e il mirror CSV
+                  --   20260830-14 riscrive `attivo` a OGNI migrate.
+                  -- ⛔ E si guarda la TRANSIZIONE, non lo stato: riaccendere
+                  --   una famiglia rimette in gioco un presidio, non lo toglie.
+                  IF NOT (OLD.attivo AND NOT NEW.attivo) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_famiglia_documento_disattivabile(OLD.id);
+
+                  -- Nessun motivo: la famiglia non e' piu' la regola di
+                  -- nessuno e si puo' ritirare.
+                  -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+                  --   come si spacchettano i valori e come si compone il contesto li decide
+                  --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+                  -- ⚠️ Niente `campo`: non c'e' un input da correggere — l'operatore ha
+                  --   premuto un interruttore, e quello che non va e' la situazione. Il
+                  --   frontend spegne il pulsante, non accende un campo.
+                  -- ⚠️ `NULL::uuid` e non NEW.tx_id: questo guard sta su un trigger `_a10_`
+                  --   che, confrontato per NOME INTERO, precede `..._gen_tx_id_ins_upd`
+                  --   ('a10' < 'gen'), quindi la transazione non e' ancora assegnata.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'trgfn_famiglie_documento_guard_disattivazione',
+                      v_motivi,
+                      NULL,
+                      NULL::uuid);
+
+                  -- ⭐ Ora RAGGIUNGIBILE, ed e' il ramo «passa»: l'helper tace quando la
+                  --   check non ha trovato nessun motivo.
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare lo spegnimento di una famiglia di documento
+                  --   che ha ancora registri accesi o documenti numerati.
+                  --
+                  -- ⛔ Perche': anagrafiche.fn_ba_ha_storia_emittente itera
+                  --   `WHERE fd.attivo`. Spegnere la famiglia non nasconde una
+                  --   voce di catalogo: toglie i suoi documenti dal presidio
+                  --   sul cambio emittente del billing account. Nessun errore,
+                  --   nessun log — il controllo guarda in un posto in meno.
+                  --
+                  -- ⭐ §12.5.2: QUI NON C'E' IL PREDICATO. Il guard chiama
+                  --   script.fn_check_famiglia_documento_disattivabile e
+                  --   solleva il codice del PRIMO motivo, cosi' il rifiuto e
+                  --   il cestino spento della lista non possono divergere.
+                  -- =========================================================
+
+                  -- ⭐ IL NO-OP PASSA, ed e' la riga che tiene in piedi il
+                  --   migrate: `UPDATE OF` scatta quando lo statement NOMINA la
+                  --   colonna, anche a valore invariato, e il mirror CSV
+                  --   20260830-14 riscrive `attivo` a OGNI migrate.
+                  -- ⛔ E si guarda la TRANSIZIONE, non lo stato: riaccendere
+                  --   una famiglia rimette in gioco un presidio, non lo toglie.
+                  IF NOT (OLD.attivo AND NOT NEW.attivo) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_famiglia_documento_disattivabile(OLD.id);
+
+                  -- Nessun motivo: la famiglia non e' piu' la regola di
+                  -- nessuno e si puo' ritirare.
+                  IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  -- ⚠️ Niente `campo` nel contesto: non c'e' un input da
+                  --   correggere: l'operatore ha premuto un interruttore, e
+                  --   quello che non va e' la situazione. Il verbo e' `attivo`,
+                  --   e il frontend spegne il pulsante, non accende un campo.
+                  -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
+                  --   scatta PRIMA di trg_famiglie_documento_gen_tx_id_ins_upd
+                  --   (ordine alfabetico: 'a10' < 'gen'), quindi NEW.tx_id qui
+                  --   porta ancora il valore vecchio.
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_famiglie_documento_guard_disattivazione',
+                      v_primo ->> 'codice',
+                      COALESCE(v_primo -> 'dettaglio', '{}'::jsonb),
+                      NULL::uuid,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre.
+                  RETURN NEW;
+              END;
+              $function$;

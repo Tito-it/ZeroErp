@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# H-2 — Il guard dell'ambito (lato titolo) chiama l'helper
+#   anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito
+#   Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 6
+#
+# -- PERCHE' -------------------------------------------------
+#   Gemello del precedente sul lato padre. Stesso trigger `_z90_` AFTER,
+#   stesso tx_id, campo diverso.
+#
+# -- COSA CAMBIA, E COSA NO ----------------------------------
+#   Cambia SOLO la coda che solleva il primo motivo della check. La TESTA —
+#   quale check chiamare, su quali colonne, con quale confronto di no-op —
+#   resta identica, ed e' il §3 del brief: due funzioni che finiscono uguali
+#   non sono due funzioni da unire, sono due funzioni che chiamano la stessa
+#   cosa.
+#   ⛔ Il corpo di partenza e' quello VIVO (pg_get_functiondef), non uno YAML:
+#   di questa funzione ci sono piu' revisioni e solo l'ultima conta.
+#
+# -- IL ROLLBACK --------------------------------------------
+#   Rimette il corpo esattamente com'era prima di questo changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260908-22-update-trgfn-stiva-guard-ambito-usa-helper-mctit.yaml
+
+  - changeSet:
+      id: 20260908-22-update-trgfn-stiva-guard-ambito-usa-helper
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard dell'ambito (lato titolo) chiama l'helper. Gemello del precedente sul lato padre.
+        Stesso trigger `_z90_` AFTER, stesso tx_id, campo diverso. Piano: brief-db-coda-primo-motivo-in-
+        un-posto-solo, sezione 6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_raise_primo_motivo_se_presente';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'trgfn_soggetti_titoli_iva_guard_ambito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la stessa regola dell'ambito, applicata quando a cambiare
+              --   e' il TITOLO e non le sue righe. Due titoli diventano
+              --   sovrapposti anche allargando `valido_al`, riattivando un
+              --   titolo spento o cambiandone il tipo: in nessuno di quei casi
+              --   la tabella figlia viene toccata, quindi il guard sulle figlie
+              --   non scatta. Chiama la stessa fn_check.
+              DECLARE
+                  -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+                  --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
+                  v_motivi jsonb;
+              BEGIN
+                  v_motivi := anagrafiche.fn_check_titolo_iva_ambito(NEW.id);
+
+                  -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+                  --   come si spacchettano i valori e come si compone il contesto li decide
+                  --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+                  -- ⚠️ `NEW.tx_id`: trigger `_z90_` **AFTER**, i BEFORE sono gia' passati.
+                  -- ⚠️ Anche qui l'ordine di fusione si inverte e `campo` vince: nessuna
+                  --   check del database mette `campo` dentro `dettaglio` (misurato
+                  --   2026-09-08), quindi e' una regola che si unifica senza cambiare nulla.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'anagrafiche', 'trgfn_soggetti_titoli_iva_guard_ambito',
+                      v_motivi,
+                      'valido_al',
+                      NEW.tx_id);
+
+                  -- ⭐ Ora raggiungibile: l'helper tace se non c'e' nessun motivo.
+                  RETURN NULL;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la stessa regola dell'ambito, applicata quando a cambiare
+              --   e' il TITOLO e non le sue righe. Due titoli diventano
+              --   sovrapposti anche allargando `valido_al`, riattivando un
+              --   titolo spento o cambiandone il tipo: in nessuno di quei casi
+              --   la tabella figlia viene toccata, quindi il guard sulle figlie
+              --   non scatta. Chiama la stessa fn_check.
+              DECLARE
+                  v_motivi jsonb;
+                  v_primo  jsonb;
+              BEGIN
+                  v_motivi := anagrafiche.fn_check_titolo_iva_ambito(NEW.id);
+
+                  IF jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NULL;
+                  END IF;
+
+                  v_primo := v_motivi -> 0;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'anagrafiche', 'trgfn_soggetti_titoli_iva_guard_ambito',
+                      v_primo ->> 'codice',
+                      jsonb_build_object('campo', 'valido_al')
+                          || COALESCE(v_primo -> 'dettaglio', '{}'::jsonb),
+                      NEW.tx_id,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(
+                                         COALESCE(v_primo -> 'valori', '[]'::jsonb))));
+
+                  RETURN NULL;
+              END;
+              $function$;

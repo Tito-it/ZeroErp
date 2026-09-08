@@ -1,0 +1,305 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# H-1 — SOLLEVARE IL PRIMO MOTIVO IN UN POSTO SOLO
+#   script.fn_raise_primo_motivo_se_presente
+#   Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 4
+#
+# -- PERCHE' -------------------------------------------------
+#   Ventitre' punti del database sollevano il codice del PRIMO motivo di una
+#   `fn_check_*`. Le quattro righe risparmiate per sito non varrebbero un
+#   building block: il motivo sono le tre convenzioni che ci stanno dentro e
+#   che, sbagliate, NON FANNO FALLIRE NIENTE —
+#     1) `-> 0`: l'ordine dell'array e' il contratto (linee-guida-sql §12.5.2).
+#        Sollevare un altro elemento fa dire al tooltip una cosa e all'errore
+#        un'altra, e non se ne accorge nessuno;
+#     2) il `tx_id`: dipende dalla fase E DAL NOME del trigger (sezione 5 del
+#        brief). Sbagliato, il log riceve NULL al posto della transazione;
+#     3) lo spacchettamento del VARIADIC: passato male, i %s del messaggio si
+#        riempiono da una lista che non e' quella attesa — arita' giusta,
+#        frase falsa.
+#
+# -- ⛔ COSA QUESTO HELPER NON FA, e va detto ----------------
+#   Non difende dall'incidente del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA
+#   («Registro X1» dove X1 era la serie): li' l'errore era nell'ORDINE dei
+#   `valori`, che vive dentro la fn_check_*. Quella difesa e' un `throws_like`
+#   sulla frase resa, non un helper. Qui si toglie di mezzo il gesto MECCANICO.
+#
+# -- LA FIRMA, E PERCHE' HA SEI PARAMETRI E NON QUATTRO ------
+#   ⛔ `p_context_extra` c'e' dal primo giorno perche' i ventitre' siti OGGI
+#   mettono nel contesto cose che una firma corta non saprebbe esprimere:
+#   chiavi di dominio (`movimento_id`, `resi_riga_id`, `lotto_id`), la chiave
+#   `reason` (il motivo macchina che il frontend legge sulle azioni di riga,
+#   linee-guida-sql §12.5.1), la chiave `bersaglio` (il canale DATATYPE, §5) e
+#   il ripiego `parametro` del canale COLUMN.
+#   ⚠️ E si decide ORA: `CREATE OR REPLACE` non cambia la lista dei parametri,
+#   quindi aggiungerlo dopo vuol dire DROP + ricreazione + tutti i siti da
+#   ripuntare, oppure un overload da non lasciare in giro.
+#
+# -- LE TRE DECISIONI SCRITTE NEL CORPO ----------------------
+#   a) `motivi` lo mette SEMPRE l'helper. Quindici dei ventitre' lo portano
+#      gia'; e' la chiave che permette al backend di mostrarli tutti anche
+#      quando la frase ne nomina uno. Uniformare in piu', non in meno.
+#   b) L'ordine di fusione e' DICHIARATO e vince `p_campo`:
+#      extra || dettaglio || {motivi} || {campo}. Oggi due siti fondono al
+#      contrario (`campo` prima, quindi vince `dettaglio`) e otto nell'ordine
+#      opposto: una divergenza che non fallisce mai e si vede solo il giorno in
+#      cui un `dettaglio` porta una chiave `campo`.
+#   c) `valori` si normalizza sul TIPO, non con COALESCE. Una chiave con `null`
+#      JSON non e' SQL NULL: COALESCE non la vede, e jsonb_array_elements_text
+#      alzerebbe 22023 DENTRO il percorso d'errore — cioe' il rifiuto di
+#      dominio non verrebbe mai sollevato.
+#
+# -- ⚠️ IL NOME DICE CHE PUO' TACERE -------------------------
+#   linee-guida-sql §5 vieta di mescolare i nomi («impossibile capire dal nome
+#   se la funzione lancia o verifica soltanto»). Un `fn_raise_*` che su un
+#   array vuoto non solleva e' quella ambiguita': il suffisso `_se_presente`
+#   la toglie. ⛔ E non e' fail-open: «nessun motivo» e' esattamente la
+#   risposta che dice *passa*.
+#
+# -- SECURITY INVOKER ----------------------------------------
+#   Gira come il chiamante, esattamente come script.fn_log_and_raise_error
+#   (verificato: prosecdef = false). L'helper non allarga nessun perimetro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260908-17-create-fn-raise-primo-motivo-se-presente-mctit.yaml
+
+  - changeSet:
+      id: 20260908-17-create-fn-raise-primo-motivo-se-presente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Sollevare il codice del PRIMO motivo di una fn_check_* in un posto solo. Non e'' per le
+        quattro righe risparmiate per sito: e'' per le tre convenzioni che ci stanno dentro e che
+        sbagliate NON fanno fallire niente - quale elemento dell''array si solleva (l''ordine e'' il
+        contratto, §12.5.2), quale tx_id si passa (dipende dalla fase E dal nome del trigger) e
+        come si spacchetta il VARIADIC (arita'' giusta, frase falsa). La firma porta
+        p_context_extra dal primo giorno perche'' i siti vivi mettono nel contesto reason,
+        bersaglio, parametro e chiavi di dominio, e CREATE OR REPLACE non cambia la lista dei
+        parametri. Tre decisioni dichiarate: motivi sempre presente, ordine di fusione fissato con
+        p_campo che vince, valori normalizzato sul TIPO (un null JSON non e'' SQL NULL e
+        alzerebbe 22023 dentro il percorso d''errore). Piano:
+        brief-db-coda-primo-motivo-in-un-posto-solo, sezione 4 (H-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_log_and_raise_error'
+                 AND p.provariadic <> 0
+                 AND p.pronargs = 6;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_raise_primo_motivo_se_presente(
+                  -- ⭐ Ancorati con %TYPE: questi tre valori finiscono TALI E QUALI
+                  --   nelle colonne di dbops.error_log, e il tipo lo possiede la
+                  --   tabella. ⚠️ In firma il %TYPE e' una FOTOGRAFIA — si risolve
+                  --   alla CREATE e non insegue la colonna: quello che compra e'
+                  --   dire DOVE va a finire il valore, che e' l'informazione che
+                  --   qui manca a chi legge.
+                  p_area          dbops.error_log.area%TYPE,
+                  p_funzione      dbops.error_log.function_name%TYPE,
+                  -- ⛔ NUDO, e non e' una dimenticanza: `p_motivi` e' cio' che
+                  --   torna una script.fn_check_*, cioe' il valore di ritorno di
+                  --   una FUNZIONE. Non c'e' nessuna colonna dietro, e non c'e'
+                  --   niente da ancorare.
+                  p_motivi        jsonb,
+                  -- ⛔ NUDO per la stessa ragione per cui in
+                  --   script.fn_log_and_raise_error `v_campo` e' dichiarato
+                  --   `text` con un commento che lo difende: questo NON e' il
+                  --   valore di una colonna, e' il NOME di una colonna — un
+                  --   identificatore che esce sul canale COLUMN. Ancorarlo a una
+                  --   colonna direbbe una cosa falsa.
+                  p_campo         text  DEFAULT NULL,
+                  p_tx_id         dbops.error_log.tx_id%TYPE DEFAULT NULL,
+                  -- ⭐ E' un FRAMMENTO del contesto che finira' in
+                  --   dbops.error_log.context: stessa colonna, stesso tipo.
+                  p_context_extra dbops.error_log.context%TYPE DEFAULT '{}'::jsonb)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  -- ⛔ I primi due NUDI: `v_primo` e' un elemento di `p_motivi` e
+                  --   `v_valori` una sua chiave — entrambi pezzi di un jsonb che
+                  --   viene da una funzione, non da una tabella.
+                  v_primo   jsonb;
+                  v_valori  jsonb;
+                  -- ⭐ Questo invece E' il contesto, e la colonna che lo ospita
+                  --   esiste: si ancora.
+                  v_context dbops.error_log.context%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Sollevare il codice del PRIMO motivo di una fn_check_*,
+                  --   in un posto solo. Chi chiama passa l'array come gli e'
+                  --   tornato dalla check e non tocca ne' l'indice, ne' lo
+                  --   spacchettamento dei valori, ne' la forma del contesto.
+                  --
+                  -- ⭐ TACE SU UN ARRAY VUOTO, e non e' fail-open: «nessun
+                  --   motivo» e' esattamente la risposta che dice *passa*.
+                  --   Cosi' il sito chiamante perde anche l'IF e diventa una
+                  --   riga sola. Il suffisso `_se_presente` nel nome esiste
+                  --   per questo: linee-guida-sql §5 vieta un `raise` che a
+                  --   volte non solleva senza dirlo dal nome.
+                  --
+                  -- ⛔ NON NORMALIZZA IL MOTIVO. Prende il primo elemento e lo
+                  --   passa. Se un giorno servisse sollevarne un altro, la
+                  --   regola da cambiare e' l'ORDINE DELL'ARRAY NELLA CHECK,
+                  --   che e' dove il contratto vive (§12.5.2).
+                  -- =========================================================
+
+                  -- ⚠️ DUE uscite, non tre, e la terza e' stata TOLTA di
+                  --   proposito. NULL e array vuoto sono «nessun motivo»: e'
+                  --   la risposta che dice *passa*, ed e' cio' che i ventitre'
+                  --   siti facevano gia'.
+                  -- ⛔ Un NON-array invece e' un CONTRATTO ROTTO della check, e
+                  --   deve restare RUMOROSO: jsonb_array_length gli alza 22023
+                  --   da solo, esattamente come succedeva prima di questa
+                  --   estrazione. Una riga `jsonb_typeof(...) <> 'array'` in
+                  --   piu' l'avrebbe reso SILENZIOSO — cioe' avrebbe scambiato
+                  --   un guasto per un «passa», togliendo un rifiuto senza far
+                  --   fallire niente. E' la stessa classe di difetto che questo
+                  --   cantiere esiste per chiudere: un guard non si allarga
+                  --   «per igiene».
+                  IF p_motivi IS NULL OR jsonb_array_length(p_motivi) = 0 THEN
+                      RETURN;
+                  END IF;
+
+                  v_primo := p_motivi -> 0;
+
+                  -- ⛔ Normalizzazione sul TIPO e non con COALESCE, ed e' la
+                  --   differenza che conta: `-> 'valori'` su una chiave
+                  --   ASSENTE torna SQL NULL (e COALESCE lo vede), ma su una
+                  --   chiave che porta `null` JSON torna 'null'::jsonb — che
+                  --   COALESCE NON vede e che fa alzare a
+                  --   jsonb_array_elements_text un 22023 «cannot extract
+                  --   elements from a scalar». Quell'errore scatterebbe QUI
+                  --   dentro, quindi il RAISE di dominio non verrebbe mai
+                  --   eseguito: si perderebbe il rifiuto, non solo la frase.
+                  v_valori := CASE
+                      WHEN jsonb_typeof(v_primo -> 'valori') = 'array'
+                          THEN v_primo -> 'valori'
+                      ELSE '[]'::jsonb
+                  END;
+
+                  -- ⭐ L'ORDINE DI FUSIONE E' UNA DECISIONE, non un accidente:
+                  --   in jsonb `||` vince la DESTRA. Qui vince `p_campo`, poi
+                  --   `motivi`, poi il `dettaglio` della check, poi le chiavi
+                  --   di dominio del chiamante.
+                  -- ⚠️ Nei siti vivi convivevano i due ordini opposti: due
+                  --   guard mettevano `campo` a sinistra (quindi a vincere era
+                  --   `dettaglio`) e otto a destra. Non falliva mai, e si
+                  --   sarebbe visto solo il giorno in cui un `dettaglio` porta
+                  --   una chiave `campo`. Si chiude qui, dichiarandolo.
+                  -- ⚠️ `p_context_extra` in fondo a sinistra e' anche il
+                  --   canale con cui passano `reason` (il motivo macchina che
+                  --   il frontend legge sulle azioni di riga), `bersaglio`
+                  --   (canale DATATYPE) e `parametro` (il ripiego del canale
+                  --   COLUMN in fn_log_and_raise_error).
+                  v_context := COALESCE(p_context_extra, '{}'::jsonb)
+                      -- ⭐ Il `dettaglio` si FONDE se e' un oggetto, e si
+                      --   CONSERVA sotto la sua chiave se non lo e'. Non e'
+                      --   pignoleria: script.fn_check_accredito_annullabile ha
+                      --   un motivo il cui `dettaglio` e' uno SCALARE (l'id
+                      --   della riga), e il sito che lo sollevava lo annidava,
+                      --   quindi nel log ci arrivava. Scartarlo perche' «non e'
+                      --   un oggetto» sarebbe stata una perdita silenziosa di
+                      --   informazione fatta da un attrezzo il cui mestiere e'
+                      --   NON perdere il messaggio.
+                      -- ⚠️ E la differenza col `p_motivi` non-array e'
+                      --   voluta: li' il contratto rotto rende la chiamata
+                      --   PRIVA DI SENSO (quale motivo si solleva?) e deve
+                      --   essere rumoroso; qui e' un pezzo solo che non si
+                      --   fonde, e il rifiuto resta valido. Si conserva, non si
+                      --   giudica.
+                      || CASE
+                             WHEN jsonb_typeof(v_primo -> 'dettaglio') = 'object'
+                                 THEN v_primo -> 'dettaglio'
+                             WHEN jsonb_typeof(v_primo -> 'dettaglio') IS NOT NULL
+                                 THEN jsonb_build_object('dettaglio', v_primo -> 'dettaglio')
+                             ELSE '{}'::jsonb
+                         END
+                      -- ⭐ L'ELENCO COMPLETO viaggia SEMPRE, anche quando la
+                      --   frase ne nomina uno: e' cio' che permette al backend
+                      --   di mostrarli tutti. Quindici dei ventitre' siti lo
+                      --   portavano gia'; qui smette di essere una scelta per
+                      --   sito e diventa il contratto dell'helper.
+                      || jsonb_build_object('motivi', p_motivi)
+                      -- ⭐ `reason` e `reason_key` PROMOSSI dal primo motivo, e
+                      --   non e' un di piu': fanno parte della forma del motivo
+                      --   (linee-guida-sql §12.5.1) e due siti li mettevano nel
+                      --   contesto a mano — cosa che, senza questa promozione,
+                      --   li costringerebbe a tenersi `v_primo` solo per
+                      --   estrarli, cioe' a NON perdere la coda che qui si sta
+                      --   togliendo. ⚠️ Misurato il 2026-09-08: tutte e otto le
+                      --   check dei dieci siti emettono `reason`, sette anche
+                      --   `reason_key`.
+                      -- ⚠️ Si promuove solo se e' una STRINGA, e il discriminante
+                      --   e' jsonb_typeof e non l'operatore jsonb di esistenza
+                      --   della chiave: quello direbbe «c'e'» anche per una
+                      --   chiave che porta `null` JSON, e nel contesto
+                      --   finirebbe un `null` — che dice una cosa DIVERSA da
+                      --   «non c'e'» a chi legge il log.
+                      || CASE
+                             WHEN jsonb_typeof(v_primo -> 'reason') = 'string'
+                                 THEN jsonb_build_object('reason', v_primo ->> 'reason')
+                             ELSE '{}'::jsonb
+                         END
+                      || CASE
+                             WHEN jsonb_typeof(v_primo -> 'reason_key') = 'string'
+                                 THEN jsonb_build_object('reason_key', v_primo ->> 'reason_key')
+                             ELSE '{}'::jsonb
+                         END;
+
+                  -- ⚠️ `campo` entra SOLO se il chiamante lo passa. Su un
+                  --   errore di classe TECNICO non c'e' nessun campo da
+                  --   accendere, e promettere al frontend un input che non
+                  --   esiste e' peggio che non dirgli niente.
+                  IF p_campo IS NOT NULL THEN
+                      v_context := v_context || jsonb_build_object('campo', p_campo);
+                  END IF;
+
+                  -- ⚠️ Il VARIADIC si passa SEMPRE, anche vuoto: chiamata a
+                  --   cinque argomenti, fn_log_and_raise_error non risolve.
+                  PERFORM script.fn_log_and_raise_error(
+                      p_area,
+                      p_funzione,
+                      v_primo ->> 'codice',
+                      v_context,
+                      p_tx_id,
+                      VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_valori)));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_raise_primo_motivo_se_presente(text, text, jsonb, text, uuid, jsonb)
+              IS 'Solleva il codice del PRIMO motivo di una fn_check_*, in un posto solo. Tace - e non e'' fail-open - se p_motivi e'' NULL, non e'' un array o e'' vuoto: «nessun motivo» e'' la risposta che dice passa, e il suffisso _se_presente lo dichiara dal nome (linee-guida-sql §5). Estratta il 2026-09-08 da ventitre'' punti di chiamata che ripetevano la stessa coda: le righe risparmiate sono un effetto collaterale, il motivo sono le tre convenzioni che sbagliate non fanno fallire niente - quale elemento si solleva (l''ordine dell''array e'' il contratto, §12.5.2), quale tx_id si passa (dipende dalla fase E dal nome del trigger) e come si spacchetta il VARIADIC (arita'' giusta, frase falsa). Contesto composto in ordine DICHIARATO, e in jsonb || vince la destra: p_context_extra || dettaglio || motivi || campo. `motivi` viaggia SEMPRE (il backend puo'' mostrarli tutti anche se la frase ne nomina uno); `campo` solo se passato (su un TECNICO non c''e'' nessun campo da accendere). `valori` normalizzato sul TIPO e non con COALESCE: una chiave con null JSON non e'' SQL NULL e farebbe alzare 22023 a jsonb_array_elements_text DENTRO il percorso d''errore, perdendo il rifiuto e non solo la frase. ⛔ NON difende dall''ordine dei valori dentro la check, che e'' l''incidente del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA: quella difesa e'' un throws_like sulla frase resa. Brief: brief-db-coda-primo-motivo-in-un-posto-solo.';
+
+              -- ⚠️ Stessi grant di script.fn_log_and_raise_error, che questa
+              --   funzione chiama e di cui condivide il percorso: l'helper non
+              --   apre e non chiude niente rispetto a quello che c'e' gia'.
+              GRANT EXECUTE ON FUNCTION script.fn_raise_primo_motivo_se_presente(text, text, jsonb, text, uuid, jsonb) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_raise_primo_motivo_se_presente(text, text, jsonb, text, uuid, jsonb);

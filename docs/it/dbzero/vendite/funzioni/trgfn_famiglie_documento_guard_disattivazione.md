@@ -13,8 +13,9 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_disattivazione
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+    -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+    --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
     v_motivi jsonb;
-    v_primo  jsonb;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -47,29 +48,23 @@ BEGIN
 
     -- Nessun motivo: la famiglia non e' piu' la regola di
     -- nessuno e si puo' ritirare.
-    IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
-        RETURN NEW;
-    END IF;
+    -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+    --   come si spacchettano i valori e come si compone il contesto li decide
+    --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+    -- ⚠️ Niente `campo`: non c'e' un input da correggere — l'operatore ha
+    --   premuto un interruttore, e quello che non va e' la situazione. Il
+    --   frontend spegne il pulsante, non accende un campo.
+    -- ⚠️ `NULL::uuid` e non NEW.tx_id: questo guard sta su un trigger `_a10_`
+    --   che, confrontato per NOME INTERO, precede `..._gen_tx_id_ins_upd`
+    --   ('a10' < 'gen'), quindi la transazione non e' ancora assegnata.
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', 'trgfn_famiglie_documento_guard_disattivazione',
+        v_motivi,
+        NULL,
+        NULL::uuid);
 
-    v_primo := v_motivi -> 0;
-
-    -- ⚠️ Niente `campo` nel contesto: non c'e' un input da
-    --   correggere: l'operatore ha premuto un interruttore, e
-    --   quello che non va e' la situazione. Il verbo e' `attivo`,
-    --   e il frontend spegne il pulsante, non accende un campo.
-    -- ⚠️ tx_id NULL e non NEW.tx_id: questo guard e' `_a10_` e
-    --   scatta PRIMA di trg_famiglie_documento_gen_tx_id_ins_upd
-    --   (ordine alfabetico: 'a10' < 'gen'), quindi NEW.tx_id qui
-    --   porta ancora il valore vecchio.
-    PERFORM script.fn_log_and_raise_error(
-        'vendite',
-        'trgfn_famiglie_documento_guard_disattivazione',
-        v_primo ->> 'codice',
-        COALESCE(v_primo -> 'dettaglio', '{}'::jsonb),
-        NULL::uuid,
-        VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
-
-    -- Irraggiungibile: la riga sopra solleva sempre.
+    -- ⭐ Ora RAGGIUNGIBILE, ed e' il ramo «passa»: l'helper tace quando la
+    --   check non ha trovato nessun motivo.
     RETURN NEW;
 END;
 $function$
