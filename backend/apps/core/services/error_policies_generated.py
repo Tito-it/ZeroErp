@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 847, di cui 89 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 848, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -447,6 +447,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_EMAIL_ADMIN": "DATO_ERRATO",
     # config.fn_chiudi_email_sistema: l''identificativo passato non corrisponde a nessuna riga di config.email_log. ⛔ Prima era E_VALIDAZIONE, e il classificatore l''ha preso: quel codice e'' di classe DATO_ERRATO, cioe'' a video diventa «hai sbagliato i dati». ⚠️ Ma p_email_log_id non arriva mai da una persona: e'' l''id che il chiamante ha scritto un istante prima. Se non risolve, nessuno ha sbagliato a compilare niente — e'' il codice che passa un valore inesistente. ⭐ TECNICO e non NON_TROVATO: quella classe porta un 404, giusto quando e'' una persona a chiedere una cosa che non c''e''. Qui chi chiede e'' il backend, e un 404 manderebbe a cercare una risorsa mancante invece di un difetto di codice. Regola applicata: «un codice usato per due cose si spezza a monte, non si rimappa a valle» (DB-8). Brief: brief-db-email-perimetro-e-invio-di-sistema.
     "E_EMAIL_LOG_INESISTENTE": "TECNICO",
+    # config.fn_chiudi_email_sistema: la riga di config.email_log esiste, ma il suo ambito non è SISTEMA — qualcuno sta usando la porta di sistema per una email che appartiene a un'azienda. ⛔ Prima era E_VALIDAZIONE, che è DATO_ERRATO, cioè a video diventa «hai sbagliato i dati»: ma qui nessuno ha compilato niente, è il chiamante che ha bussato alla porta sbagliata. ⭐ TECNICO come il fratello E_EMAIL_LOG_INESISTENTE, e per la stessa ragione: chi chiama è il backend, non una persona. ⛔ E non si riusa quello: «la riga non c'è» e «la riga c'è e non è tua» mandano a guardare due posti diversi, e questo è l'unico momento in cui il secondo caso si può notare. ⚠️ La guardia era già dichiarata domanda aperta in 20260906-14: il classificatore non la vedeva perché non sapeva leggere la forma x <> 'LETTERALE', e l'ha imparata con 20260907-03. Brief: brief-db-sveglia-dei-processi §23.
+    "E_EMAIL_LOG_NON_DI_SISTEMA": "TECNICO",
     # ⚠️ Codici-modulo generici (validazione, not-found e accesso negato · sotto la stessa etichetta): 400 come il gemello `E_EMAIL`. Andrebbero · spacchettati per verbo — debito noto, non toccato qui per non · cambiare gli status HTTP di endpoint gia' in uso.
     "E_EMAIL_OP": "DATO_ERRATO",
     # Impersonazione di scope emittente per SUPER_ADMIN: la selezione e' · solo restringente, quindi un valore non ammesso e' un tentativo di · uscire dal proprio perimetro (403), non un campo mal compilato.

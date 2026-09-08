@@ -311,6 +311,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMAIL_LOG_INESISTENTE": (
         "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
     ),
+    "E_EMAIL_LOG_NON_DI_SISTEMA": (
+        "Impossibile registrare l'esito dell'invio: l'email indicata non e' di "
+        "sistema. Va chiusa dal perimetro a cui appartiene, non da questa porta."
+    ),
     "E_EMAIL_OP": "Operazione email non riuscita.",
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
     "E_EMITTENTE_ATTIVO_TOKEN": "Refresh token richiesto per applicare il cambio di emittente.",
