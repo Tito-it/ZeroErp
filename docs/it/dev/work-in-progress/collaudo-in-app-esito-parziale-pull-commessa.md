@@ -17,7 +17,7 @@
 > è finito in fattura lo stesso, e la prova 2 non ha misurato il savepoint —
 > ha misurato un **residuo** di `attivita_fatturabili` sopravvissuto alla
 > riapertura del giro precedente. Cinque difetti, due di modello, in
-> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
+> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](../work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
 > ⛔ **La prova 2 va rifatta dopo D1 e D2**: finché il perimetro di un giro è
 > «tutto ciò che è libero in competenza» e non «ciò che il pull consegna», la
 > prova misura il residuo e non il savepoint.
@@ -592,3 +592,104 @@ linea del fan-out chiude per intero.
 passa alla successiva — tranne la 2, dove un difetto significa perdita di lavoro
 e conviene fermarsi. E **ripristina sempre le ROOT** prima di chiudere la
 sessione, comunque sia andata.
+
+---
+
+## Prove aggiuntive · l'USCITA DAL GIRO — il secondo consumatore del fan-out
+
+> **Perché stanno qui e non in un file loro.** È lo **stesso** telaio: il verbo
+> «togli dal giro» di massa gira su `run_fan_out`, con savepoint per elemento e
+> lo stesso esito a tre stati delle prove 1-5. Cambia il dominio, non il
+> meccanismo — e un collaudo per consumatore renderebbe tre copie della stessa
+> trafila.
+> Il *perché* di ogni scelta sta in
+> [brief-db-uscita-documento-dal-giro.md](../work-done/brief-db-uscita-documento-dal-giro.md).
+>
+> **Stato**: 🔵 **da eseguire**. Aggiunte il 2026-09-08, quando la parte con il
+> dato già pronto è stata spuntata a video (colonna «Documento» leggibile,
+> ordinamento con le critiche del giro in testa, kebab senza id con le icone
+> giuste, banner che conta documenti, azione spenta col motivo su un documento
+> già uscito).
+>
+> 🔴 **E queste tre NON si possono provare su ciò che c'è.** Misurato il
+> 2026-09-08: **nessun lotto ha più di UN documento in `ERRORE`**, quindi il
+> gesto di massa non ha su cosa esercitarsi. La materia va costruita, come per
+> la prova 3.
+
+### Cosa serve costruire
+
+Un lotto **pre-fiscale** (`DRAFT`) con **due** documenti in `ERRORE`, e — per la
+prova 7 — i due devono **condividere la stessa bozza**.
+
+⚠️ Le bozze condivise esistono già (una copre 10 documenti), ma su lotti vecchi
+che sono **oltre il pre-fiscale**: lì l'azione è spenta col motivo
+`lotto_non_pre_fiscale`, che è corretto e non serve alla prova.
+
+⛔ Non si costruisce con un `UPDATE` diretto su `fatturazione_lotti_esiti`: il
+trigger dell'uscita governa quella colonna, e uno stato messo a mano
+salterebbe proprio la strada che si sta collaudando. Si guasta a monte — come la
+`ROOT` tolta alla commessa della prova 3 — e si lascia fallire il giro.
+
+### 6 · Il gesto di MASSA
+
+1. Scheda **«Presi in carico»**, spuntare i **due** documenti in errore.
+2. Il pulsante deve comparire **solo ora** e portare il conteggio: «Togli dal
+   giro **(2)**».
+3. Premere: si apre la **stessa** conferma della riga singola, con il motivo
+   obbligatorio.
+
+**Deve succedere:** il pulsante è spento finché il motivo è vuoto; alla conferma
+l'esito dice quante bozze sono state cancellate e quanti documenti sono tornati
+«da emettere».
+
+**Se non succede:** un pulsante che compare a selezione vuota, o una conferma
+diversa da quella di riga, significa che il verbo ha due superfici — ed è
+esattamente ciò che l'endpoint unico esiste per impedire.
+
+### 7 · ⭐ IL CUORE — l'esito **PARZIALE**, e si costruisce da sé
+
+Due documenti che **condividono la bozza**, entrambi in errore, **tolti
+insieme**.
+
+⭐ Non serve inventare un guasto: togliendo il primo, il secondo viene
+**trascinato** e torna a `PENDING` (D-2b). A quel punto non è più «in errore», e
+il suo rifiuto arriva da solo.
+
+**Deve succedere:**
+
+| | |
+| --- | --- |
+| esito | `PARZIALE` — e la risposta è **200**, non un errore |
+| messaggio | «Tolti dal giro 1 documenti su 2. I restanti non sono passati: …» |
+| il motivo | quello **vero** della riga — `E_LOTTO_DOC_NON_IN_ERRORE`, non un codice generico |
+| la selezione | resta spuntata **solo la riga fallita** |
+
+⛔ **E il numero dei «tornati da emettere» deve dire `0`, non `2`.** I due sono
+usciti entrambi: nessuno torna in coda. Si contano per **insieme** e non
+sommando le righe, proprio perché due documenti che condividono una bozza si
+nominano a vicenda come trascinati.
+
+**Se non succede:** un `E_PIPELINE_VALIDATION` al posto del codice vero
+significa che la traduzione dell'errore è tornata al confine dell'API invece che
+nel service — dentro il fan-out l'eccezione è ancora quella grezza di psycopg, e
+i due rifiuti diventano indistinguibili.
+
+### 8 · L'avviso «trascina», PRIMA di premere
+
+Su un documento che condivide la bozza, aprire la conferma **senza** confermare.
+
+**Deve succedere:** compare l'avviso arancio col numero degli altri documenti
+che vengono via insieme, e dice che **tornano «da emettere»** — non che si
+perdono.
+
+**Se non succede:** l'avviso assente su una riga con `n_trascinati > 0` è la
+conseguenza nascosta che la D-2b esiste per dichiarare — l'operatore la
+scoprirebbe dopo, sul lotto successivo.
+
+### Verbale delle prove aggiuntive
+
+| N° | Cosa dimostra | Atteso | Esito | Note |
+| --- | --- | --- | --- | --- |
+| 6   | Il gesto di massa è lo stesso verbo della riga | **sì** |       |      |
+| 7   | Esito PARZIALE: codice per riga, spunta sulle fallite, riaperti per insieme | **sì** |       |      |
+| 8   | La conseguenza si dichiara prima | **sì** |       |      |

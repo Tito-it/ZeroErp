@@ -128,7 +128,7 @@ SELECT vendite.fn_log_pipeline_fase(
 );
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md` §6.1.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.1.
 
 ---
 

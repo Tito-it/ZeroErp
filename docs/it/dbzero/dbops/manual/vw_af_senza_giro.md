@@ -95,4 +95,4 @@ ORDER BY data_insert;
 * `security_invoker = true`. ⚠️ L'opzione si azzera a ogni `CREATE OR REPLACE
   VIEW` e va ri-specificata nella stessa istruzione.
 
-Origine: `docs/it/dev/work-in-progress/brief-residuo-fatturabili-e-bandiere-esito-parziale.md`, D1+D2.
+Origine: `docs/it/dev/work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md`, D1+D2.

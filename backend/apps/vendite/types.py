@@ -123,6 +123,21 @@ class LottoSegnalazioniSummary(TypedDict):
     lotto_warning_count: int
     lotto_info_count: int
     fatture_stato_esecuzione_errore_count: int
+    # ═══ I TRE NUMERI DEL BANNER (2026-09-08) ═══
+    # ⭐ I sei qui sopra contano SEGNALAZIONI; questi contano GESTI. Un documento
+    # con tre critiche resta UN documento, e il gesto che l'operatore ha davanti
+    # e' uno solo: «togli questo dal giro». «3 segnalazioni bloccanti» e' un
+    # numero vero che descrive la cosa sbagliata.
+    documenti_bloccanti_count: int
+    # Il DENOMINATORE, e viene dagli ESITI — non dal perimetro, che sui giri di
+    # massa e' vuoto e direbbe «su 0» su meta' dei lotti.
+    documenti_presi_in_carico_count: int
+    # ⛔ Le critiche che un documento NON ce l'hanno, e non e' un di piu': senza,
+    # un lotto fermo per un emittente non risolto direbbe «0 documenti su 4» —
+    # cioe' che non c'e' niente da fare mentre il giro e' bloccato.
+    # ⚠️ I tre descrivono il canale LOTTO. Gli altri due parlano per FATTURA, e
+    # una bozza puo' coprire piu' documenti: non si sommano a questi.
+    critiche_giro_count: int
 
 
 class LottoSegnalazioneRow(TypedDict):
@@ -173,6 +188,13 @@ class LottoSegnalazioneRow(TypedDict):
     # una riga del giro non significa niente, perche' li' non e' stato chiesto.
     uscita_blocco_reason: str | None
     uscita_blocco_reason_key: str | None
+    # ⭐ IL DOCUMENTO COME LO LEGGE UNA PERSONA: `ORD0036004` invece di
+    # `ORDINE_VENDITA:<uuid>`. ⛔ Non sostituisce `gruppo_key`, che resta e serve
+    # al PULSANTE: i due hanno destinatari diversi, e l'unico che si vede e'
+    # questo (la colonna della chiave e' spenta a catalogo, D-7).
+    # ⚠️ `None` = la segnalazione e' del GIRO — lo stesso NULL di `gruppo_key`,
+    # non un'identita' che non si e' risolta.
+    riferimento: str | None
 
 
 class LottoTaskRunRow(TypedDict):

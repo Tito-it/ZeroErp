@@ -3,16 +3,18 @@
 > **Tipo**: brief di difetti emersi in collaudo (DB + BE + FE) · **Data**: 2026-09-04 ·
 > **Owner**: Tid · **Branch**: `dev/backend-tid`
 >
-> **Stato**: 🟡 **il DB ha finito, tranne un passo che aspetta il backend**
-> — aggiornato la sera del 2026-09-04. **Otto changeSet applicati**, dettaglio
-> e verifiche in §10-bis.
+> **Stato**: 🟢 **CHIUSO e archiviato il 2026-09-08** (decisione di Tid).
+> D1+D2, D3, D4 e il §7 erano già chiusi la sera del 2026-09-04 — otto changeSet
+> applicati, dettaglio in §10-bis. L'unica voce rimasta, **D5**, era una verifica
+> a video: guardata il 2026-09-08 **nel codice e sul database**, e la sua ipotesi
+> non regge (§6).
 >
 > | Difetto | Stato |
 > | --- | --- |
 > | **D1+D2** | ✅ **chiuso lato DB e lato BE**: il pull firma, la select filtra (-50, `EXECUTED` il 2026-09-04 22:45:58), c'è il presidio, e il backend consegna `context.lock_batch_id` al pull. ⚠️ La finestra in cui il -50 era applicato **senza** il BE — fatturazione a zero fatture e nessun errore — è durata dalle 22:45 alla release BE della stessa sera |
 > | **D3** | ✅ **chiuso lato DB** (changeSet -47, -48, -49): il pannello porta l'elenco delle commesse respinte, e ognuna ha la sua riga con il suo motivo |
 > | **D4** | ✅ **chiuso**: l'annullo chiude i task run con l'esito `ANNULLATO`. ⚠️ *«disattiva»* era il verbo sbagliato — corretto in §5 e §9.4 |
-> | **D5** | 🔵 aperto, ed è una verifica **a video** (§6) |
+> | **D5** | ✅ **chiuso il 2026-09-08 — l'ipotesi è DISPROVATA**, e il difetto non c'è dove il §6 lo cercava: badge ed elenco leggono la stessa vista e coincidono, e il frontend **rifà** la fetch quando il badge è acceso. Dettaglio in §6 |
 > | **§7** | ✅ chiuso: era la mirata, non un terzo difetto |
 >
 > ✅ **Le decisioni sono prese (Tid, 2026-09-04)**: il perimetro si consegna a
@@ -24,9 +26,9 @@
 > per scontata — è stata verificata e regge **anche sulle righe sourceless**.
 >
 > **Da dove viene.** Eseguendo
-> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
+> [collaudo-in-app-esito-parziale-pull-commessa.md](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md)
 > — la voce **V1** del cantiere fan-out
-> ([brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md)
+> ([brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md)
 > §13.1) — la **prova 1 è passata** e la **prova 2 è uscita rossa**, ma per una
 > ragione che il copione non prevedeva: il lavoro della commessa **respinta** è
 > finito in fattura lo stesso.
@@ -231,7 +233,7 @@ bandiera abbassata. Con il contesto impostato, al 2026-09-04 la riga del lotto
 
 ---
 
-## 6 · D5 🟡 · Lista vuota e calendario acceso — divergenza da confermare a video
+## 6 · D5 ✅ · Lista vuota e calendario acceso — ipotesi DISPROVATA (2026-09-08)
 
 **Il fatto riferito**: dopo l'annullo, il pannello degli errori si è svuotato
 mentre il calendario continua a segnare l'errore.
@@ -245,6 +247,37 @@ vuoto finché non lo si risollecita.
 🩺 **Verifica**: ricarica la pagina e riseleziona settembre. Se la riga
 riappare, è questo; se resta vuota con il badge acceso, allora è altro e va
 guardato a parte.
+
+### ✅ Verificato il 2026-09-08 — e l'ipotesi NON regge
+
+⛔ **Il frontend la fetch la rifà.** Il pannello non è appeso a un `reset()`
+solitario: lo governa un `watch([competenzaCorrente, mesi])` che, **ogni volta
+che l'aggregata arriva** (`mesi` cambia identità a ogni `fetchMensile`), fa
+`loadErrori()` se il conteggio è > 0 e `resetErrori()` solo se è **zero**.
+
+⭐ E i due leggono **lo stesso numero**: il badge del mese e il predicato del
+watch sono entrambi `nErroriMese`, cioè `meseCorrente.n_errori`. ⇒ «badge acceso
++ pannello vuoto per mancata fetch» è una combinazione che quel codice **non sa
+produrre**.
+
+⚠️ E nemmeno il database la produce. Misurato il 2026-09-08 nel contesto
+operatore, confrontando l'aggregata del badge con l'elenco, mese per mese:
+
+| Competenza | Badge | Elenco |
+| --- | --- | --- |
+| 2026-07 | 9 | **9** |
+| 2026-09 | 1 | **1** |
+
+Entrambi leggono `vendite.vw_dash_competenza_errori` — sono d'accordo per
+costruzione, e lo sono di fatto.
+
+⇒ **La voce si chiude come ipotesi disprovata, non come difetto risolto**: se il
+sintomo si ripresenta, ⛔ non è la fetch mancante. Le strade restano due, e vanno
+guardate in quest'ordine: una `loadErrori()` **fallita** (l'errore finisce in un
+toast e la lista resta vuota, col badge acceso), oppure una vista **stantia** che
+non ha rifatto l'aggregata al rientro. ⚠️ Il rimedio suggerito qui sopra —
+ricaricare — le maschera entrambe senza distinguerle: è ciò che rende una
+diagnosi sbagliata più costosa di nessuna diagnosi.
 
 ---
 

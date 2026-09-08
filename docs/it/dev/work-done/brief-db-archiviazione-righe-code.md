@@ -16,6 +16,11 @@
 > ✅ **E il migrate è passato**: verificato il 2026-09-07, le righe 713/714 di
 > `ui.lista_colonna` sono `attivo = t`. Con quello il §14.1 è chiuso, e **lato DB
 > non resta niente** — vedi §15.
+> 🟢 **CHIUSO e archiviato il 2026-09-08** (decisione di Tid). L'unica voce
+> rimasta era in **prosa**: il contratto del §3 — «`archiviato` non entra nel
+> `WHERE` di claim, drainer, reaper, `mark_*` e `count_*`» — era rispettato e non
+> lo presidiava niente. Adesso lo presidia un cancello del backend, **provato per
+> mutazione**: coda del §15.
 > **La risposta del team DB — analisi, correzioni, piano e registro delle
 > attività — è la PARTE DB in fondo a questo documento.**
 
@@ -852,5 +857,23 @@ regola che vive in prosa vale finché qualcuno se la ricorda.* La forma del
 presidio è un test del backend che legge l'SQL dei percorsi di lavoro e pretende
 che la parola non ci sia — non una revisione a mano.
 
-⚠️ Non è stato scritto: è del backend, e va deciso, non aggiunto di straforo in
-coda a una verifica.
+✅ **SCRITTO il 2026-09-08**, ed è l'ultima cosa che mancava a questo cantiere:
+`backend/apps/core/tests/test_archiviazione_code_non_e_un_annullo.py`.
+
+⭐ **È una WHITELIST, non un elenco di colpevoli**: si dichiarano i metodi che la
+bandiera **può** nominare — `elenca*`, `imposta_archiviato*`, `get_dettaglio` —
+e ogni altro deve tacere. Un elenco di metodi *proibiti* resterebbe indietro al
+primo metodo nuovo, che è esattamente quando il difetto entra.
+⚠️ `get_dettaglio` è in whitelist perché la **proietta**, non perché la filtri:
+nascondere a un operatore la riga che ha appena archiviato sarebbe la stessa
+sparizione che il §3 vieta.
+
+⭐ **Provato per mutazione**, che è l'unico modo di sapere che un cancello
+chiude: aggiungendo `AND NOT archiviato` al `claim` diventa rosso e nomina il
+colpevole — `coda_lavori/repository.py:223 claim()`.
+⛔ E porta con sé il **verso positivo** (l'elenco la nomina davvero) e il
+controllo che la whitelist parli di metodi **esistenti**: senza, un metodo
+rinominato scivolerebbe fuori dal presidio senza far fallire niente.
+
+⇒ Con questo il cantiere **chiude**: lato DB non restava niente dal 2026-09-07,
+e questa era l'unica voce ancora in prosa.

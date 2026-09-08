@@ -337,6 +337,21 @@ const selezioneDocumenti = useSelezioneDocumentiLotto({
 //    l'operatore ha selezionato, prima ancora della dialog.
 // ⛔ Non è un secondo verbo: apre la STESSA conferma e chiama la STESSA API
 //    della riga singola — che è una lista di uno.
+// ⭐ IL SEGNO DEL VERBO «TOGLI DAL GIRO», in un posto solo — lo portano la voce
+//    di riga e il pulsante di massa, che sono lo STESSO gesto: due segni diversi
+//    per lo stesso atto si leggono come due atti.
+//
+// ⛔ NON `pi-sign-out`, che era la prima scelta ed era sbagliata (rilievo di
+//    Tid): quella è **letteralmente** l'icona del logout, la stessa che
+//    `AppTopbar` usa per uscire dall'applicazione. Un segno già impegnato
+//    altrove non diventa disponibile perché la metafora torna.
+// ⭐ Una X, e ROSSA: l'uscita è a senso unico (D-3) e cancella la bozza — per
+//    rimettere tutto in un lotto solo si annulla il lotto e lo si rigenera.
+//    L'arancio dice «attenzione», il rosso dice «non si torna indietro», ed è
+//    lo stesso colore che la conferma porta già sul pulsante.
+const ESCLUDI_ICON = MANAGE_ICONS.CANCEL
+const ESCLUDI_SEVERITY = 'danger'
+
 const barraGruppiBase = conRicarica(azioniGruppi.azioniLista, () => listaGruppi.carica())
 const barraGruppi = computed(() => {
   // ⛔ LO STESSO CANCELLO DELLA COLONNA DELLE CASELLE, e non un secondo: quando
@@ -353,8 +368,8 @@ const barraGruppi = computed(() => {
       key: 'escludi-selezione',
       kind: 'primary',
       label: t('vendite.lotti.gruppo_escludi_n', { n }),
-      icon: 'pi pi-sign-out',
-      severity: 'warn',
+      icon: ESCLUDI_ICON,
+      severity: ESCLUDI_SEVERITY,
       action: 'reset_lotto_fattura_draft',
       command: () => apriEsclusione({ chiavi: selezioneDocumenti.ids.value }),
     },
@@ -388,7 +403,81 @@ const fatturaDrawerId = ref(null)
 const availableActions = computed(() => lotto.value?.available_actions ?? [])
 
 // Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
-const haSegnalazioniCritiche = computed(() => (segnalazioni.value?.critical_count ?? 0) > 0)
+// ⚠️ Il conteggio delle critiche in UNA sede: lo leggevano tre punti — il
+//    guard del banner e due rami della sua frase — con lo stesso `?? 0`
+//    ricopiato. Tre copie dello stesso ripiego sono tre posti dove il giorno
+//    che l'envelope cambia nome due si aggiornano e una no, in silenzio.
+const nCritiche = computed(() => segnalazioni.value?.critical_count ?? 0)
+const haSegnalazioniCritiche = computed(() => nCritiche.value > 0)
+
+// Scopo: ⭐ LA FRASE DEL BANNER, che dal 2026-09-08 conta GESTI e non allarmi.
+//
+// 🔴 Il difetto che chiude: «3 segnalazioni critiche bloccano l'avanzamento» è
+//    un numero VERO che descrive la cosa sbagliata. Un documento con tre
+//    critiche resta UN documento, e il gesto che l'operatore ha davanti è uno
+//    solo — «togli questo dal giro». Chi leggeva tre si preparava a tre.
+//
+// ⚠️ FORMA PLURALE, e la sceglie il numero che è SOGGETTO della frase. «1
+//    documenti su 3» non è un dettaglio di stile: è la prima riga che si legge
+//    su un lotto fermo, e una frase sgrammaticata lì fa sembrare rotto il resto.
+// 🔴 L'ORDINE DEGLI ARGOMENTI È `t(chiave, {nomi}, plurale)` E NON IL CONTRARIO,
+//    ed è un difetto già commesso qui: con `t(chiave, plurale, {nomi})` vue-i18n
+//    legge il terzo posto come OPZIONI e ogni segnaposto DIVERSO da `n`
+//    sparisce — a video usciva «fermo per 1 documento su : si toglie…», nessun
+//    errore, solo un buco dove c'era il totale. ⚠️ E il `{n}` sopravviveva,
+//    perché vue-i18n inietta da sé il conteggio con quel nome: è la trappola in
+//    cui stanno gli altri 18 messaggi plurali del progetto, che funzionano solo
+//    perché hanno il SOLO `{n}`.
+//
+// ⭐ IL GIRO E' ANCORA RIMEDIABILE? La soglia e' UNA SOLA e si LEGGE, non si
+//    riscrive: `congela_fiscale` del catalogo, la stessa che `useLottoAzioni`
+//    consulta per proporre i verbi. ⛔ Non `stato_doc_fiscale_codice !== 'DRAFT'`
+//    — quella era l'ennesima copia, tolta da questo stesso file il 2026-08-31.
+// ⚠️ Fail-closed (`=== false`): un dettaglio non ancora arrivato non conta come
+//    «si puo' rimediare».
+const giroRimediabile = computed(() => lotto.value?.stato_congela_fiscale === false)
+
+const fraseBanner = computed(() => {
+  const riepilogo = segnalazioni.value?.summary ?? {}
+  const documenti = riepilogo.documenti_bloccanti_count ?? 0
+  const presi = riepilogo.documenti_presi_in_carico_count ?? 0
+  const giro = riepilogo.critiche_giro_count ?? 0
+
+  // 🔴 SU UN LOTTO CONGELATO IL RIMEDIO NON SI PROPONE — difetto misurato il
+  //    2026-09-08 su LTF-0010227 / 0010225 / 0010162 (annullati ma in ERRORE:
+  //    due cose diverse ed entrambe vere, §24.5 di `brief-db-esito-gruppo-lotto`).
+  //    Il banner diceva «si toglie dal giro e il lotto riparte» mentre due righe
+  //    sotto la stessa schermata rifiutava il gesto.
+  // ⛔ Un rimedio promesso dall'intestazione e negato dalla riga è il vicolo
+  //    cieco che le linee guida vietano: peggio di nessun suggerimento.
+  // ⭐ Lì le critiche sono STORIA: la frase lo dice al passato e non nomina
+  //    nessun gesto.
+  if (!giroRimediabile.value) {
+    return t('vendite.lotti.segnalazioni_giro_chiuso', { n: nCritiche.value }, nCritiche.value)
+  }
+
+  // ⛔ LE DUE SPECIE STANNO IN DUE FRASI, non in una. Un messaggio ha UNA forma
+  //    plurale sola, scelta da UN numero: insieme, il ramo lo decideva il primo
+  //    e il secondo usciva sgrammaticato — «più 1 critiche del giro che non
+  //    appartengono». ⚠️ Sono due frasi INTERE giustapposte, non pezzi cuciti:
+  //    un frammento senza soggetto non si traduce.
+  if (documenti > 0) {
+    const frase = t('vendite.lotti.segnalazioni_bloccanti_documenti',
+      { n: documenti, m: presi }, documenti)
+    if (giro === 0) return frase
+    return `${frase} ${t('vendite.lotti.segnalazioni_bloccanti_piu_giro', { k: giro }, giro)}`
+  }
+  if (giro > 0) {
+    return t('vendite.lotti.segnalazioni_bloccanti_giro', { k: giro }, giro)
+  }
+
+  // ⚠️ E QUESTO RAMO NON È UN RIPIEGO PIGRO: i tre conteggi descrivono il solo
+  //    canale LOTTO, dove vive la `gruppo_key`. Gli altri due che bloccano
+  //    parlano per FATTURA — e una bozza può coprire più documenti, quindi i
+  //    loro numeri non si sommano a questi senza scommettere. Là la frase
+  //    vecchia è l'unica vera, e resta.
+  return t('vendite.lotti.segnalazioni_bloccanti', { n: nCritiche.value })
+})
 
 // Tab attiva CONTROLLATA (era fissa a "fatture"): serve al link del banner, che
 // porta l'operatore sulla scheda invece di dirgli dove guardare.
@@ -946,8 +1035,8 @@ function azioneEscludi(motivo, payload) {
   return {
     key: 'escludi',
     label: t('vendite.lotti.gruppo_escludi'),
-    icon: 'pi pi-sign-out',
-    severity: 'warn',
+    icon: ESCLUDI_ICON,
+    severity: ESCLUDI_SEVERITY,
     disabled: Boolean(motivo),
     tooltip: motivo,
     // Stesso potere della cancellazione di una bozza dal lotto, che questo
@@ -986,9 +1075,12 @@ function buildSegnalazioneRowActions(row) {
       : t('vendite.lotti.segn_escludi_del_giro'),
     {
       gruppo_key: row.gruppo_key,
-      // ⚠️ Qui il riferimento leggibile non c'è: la conferma nomina la chiave,
-      //    che è comunque meglio di una frase senza soggetto.
-      riferimento: row.gruppo_key,
+      // ⭐ La conferma nomina il documento come lo legge una persona
+      //    (`ORD0036004`), non la chiave. ⚠️ Il ripiego sulla chiave resta e
+      //    non è teorico: `riferimento` è l'ULTIMO gradino di una scala che il
+      //    database percorre — numero, codice commessa, chiave — e su un lavoro
+      //    che non si risolve più torna proprio lei.
+      riferimento: row.riferimento || row.gruppo_key,
       // ⚠️ Il conteggio dei trascinati vive sulla scheda Documenti, non qui:
       //    `null` significa «non lo so», e la conferma non promette un numero
       //    che non ha. ⛔ Non `0`, che direbbe «non trascina nessuno».
@@ -1202,8 +1294,16 @@ function fatturaNumero(row) {
         </div>
 
         <!-- Banner segnalazioni critiche (blocca l'avanzamento). -->
-        <Message v-if="haSegnalazioniCritiche" severity="error" :closable="false" class="app-mt-1">
-          {{ t('vendite.lotti.segnalazioni_bloccanti', { n: segnalazioni.critical_count }) }}
+        <!-- ⚠️ Il ROSSO solo dove c'e' qualcosa da fare: su un lotto congelato
+             le critiche sono storia, e un allarme rosso su un giro chiuso
+             insegna a ignorare gli allarmi rossi. -->
+        <Message
+          v-if="haSegnalazioniCritiche"
+          :severity="giroRimediabile ? 'error' : 'secondary'"
+          :closable="false"
+          class="app-mt-1"
+        >
+          {{ fraseBanner }}
           <!-- Il banner dice QUANTE sono; il dettaglio sta in una scheda sola,
                e il link ci porta invece di chiedere all'operatore di cercarla.
                Apre già filtrata sulle critiche: sono quelle di cui parla. -->
@@ -1621,12 +1721,19 @@ function fatturaNumero(row) {
                        cui l'unica proposta a video era «annulla tutto».
                        ⚠️ Il vuoto si SCRIVE, non si lascia in bianco: «è del
                        giro» è un'informazione, non un dato mancante.
-                       ⚠️ La chiave grezza è il ripiego onesto: il riferimento
-                       leggibile vive in `vw_dash_competenza_gruppi` e questa
-                       funzione non lo espone — chiesto al DB, non ricostruito
-                       qui (sarebbe la seconda sede dell'identità). -->
-                  <template #cell-gruppo_fatturabile="{ data }">
-                    <span v-if="data.gruppo_key">{{ data.gruppo_key }}</span>
+                       ⭐ Si legge il RIFERIMENTO e non la chiave (2026-09-08):
+                       `ORD0036004` invece di `ORDINE_VENDITA:<uuid>`. I due non
+                       sono in concorrenza — servono a destinatari diversi: la
+                       chiave la vuole il PULSANTE e continua a viaggiare in
+                       riga, il riferimento è per la persona ed è l'unico dei
+                       due che si vede (la colonna della chiave è spenta a
+                       catalogo, D-7).
+                       ⚠️ Nessun ripiego sulla chiave qui: la scala di ripiego
+                       la fa già il database — numero del documento, codice
+                       commessa, chiave grezza — e rifarla qui sarebbe la terza
+                       sede della stessa regola. -->
+                  <template #cell-riferimento="{ data }">
+                    <span v-if="data.riferimento">{{ data.riferimento }}</span>
                     <span v-else class="text-color-secondary">
                       {{ t('vendite.lotti.segn_del_giro') }}
                     </span>

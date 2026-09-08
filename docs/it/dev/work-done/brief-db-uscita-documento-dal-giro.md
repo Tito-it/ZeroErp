@@ -35,9 +35,10 @@
 > non `uscita_il`.
 > ✅ **Fatto dal backend**: le tre righe del §6.1, e la corsia del pull adesso si
 > sblocca — catena misurata sul database vero (§9-bis).
-> ✅ **Fatte a video** tre superfici del §7 su quattro: la scheda Critiche con la
-> colonna del documento e l'azione di riga, la scheda «Presi in carico» con
-> l'uscita e il suo timbro, e il gesto di massa con l'esito parziale.
+> ✅ **Fatte a video tutte e quattro le superfici del §7**: la scheda Critiche
+> con il documento e l'azione di riga, la scheda «Presi in carico» con l'uscita e
+> il suo timbro, il gesto di massa con l'esito parziale e — dal 2026-09-08 — il
+> **banner** che conta documenti invece di allarmi.
 > 🟢 **E chiuse le tre richieste del §7-ter** (le due righe di catalogo, il
 > riferimento leggibile, il numero del banner): `20260908-31` (lo split gemello
 > + `fn_riferimento_gruppo_fatturabile`), `-32` (la lista lo espone e lo ordina,
@@ -47,12 +48,37 @@
 > `zeroerp_app`, RLS attiva; baseline completa senza regressioni.
 > ✅ **Tutto applicato** (`migrate` del 2026-09-08): `20260908-18`…`-20` e
 > `-31`…`-33`.
-> 🔵 **Resta**: la rigenerazione della doc auto-gen — aggancia le quattro pagine
-> `manual/` nuove e fa passare `gen_seed_lista.py --verifica-ordinamento`, che
-> per questa lista legge la whitelist **dalla doc** e non dal Python — e, lato
-> backend, la voce `riferimento` nella propria whitelist di ordinamento più i
-> campi nuovi da leggere (`riferimento` in coda alla riga, i tre conteggi in
-> coda al riepilogo).
+> ✅ **Doc auto-gen rigenerata** (le pagine `funzioni/` delle due funzioni nuove
+> ci sono e gli `index` le agganciano), e
+> `gen_seed_lista.py --verifica-ordinamento` dice **`vendite.lotto_segnalazioni`
+> ok — 11 colonne, whitelist 9**.
+> ✅ **Consumato da BE/FE il 2026-09-08**, subito dopo: la lista legge
+> `riferimento` (in coda alla propria proiezione, non in mezzo — il mapper è
+> posizionale), il riepilogo legge i tre conteggi **per nome**, la scheda
+> Critiche mostra il DOCUMENTO al posto della chiave e il banner conta **gesti**.
+> ⚠️ La whitelist di ordinamento **non era in Python**: per questa lista il
+> presidio la legge dalla doc auto-gen della funzione, che già porta
+> `riferimento` — non c'era niente da allineare a mano, e cercarlo avrebbe
+> prodotto una seconda sede.
+> ⭐ **Provato sul database vero**, attraverso il codice del backend e nel
+> contesto operatore — senza, le tabelle RLS tornano **zero e sembra un dato**:
+> `ORDINE_VENDITA:01a06ce4-…` → **`ORD0036005`**; banner **«1 documento su 3»**
+> sul lotto 11477 e — il caso che giustifica il terzo numero — **0 documenti e 2
+> critiche del giro** sul lotto 93, dove «N su M» direbbe «0 su 0» su un lotto
+> che è fermo.
+> 🟢 **CHIUSO e archiviato il 2026-09-08** (decisione di Tid). Provata a video
+> la metà che il dato permetteva: la colonna «Documento» leggibile, le critiche
+> del giro **in testa** all'ordinamento, il kebab senza id con le icone di
+> ordini e commesse, il banner che conta documenti, l'azione **spenta col
+> motivo** su un documento già uscito, e «togli dal giro» che funziona.
+> 🔵 **Il §9 non è chiuso, è TRASLOCATO**, perché la sua materia non esiste:
+> misurato lo stesso giorno, **nessun lotto ha più di UN documento in `ERRORE`**,
+> quindi il gesto di massa non ha su cosa esercitarsi. Le tre prove — massa,
+> esito **PARZIALE**, avviso «trascina» — vivono adesso in
+> [collaudo-in-app-esito-parziale-pull-commessa](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md),
+> in coda, accanto alle prove dello **stesso telaio** (`run_fan_out`).
+> ⛔ Restano una prova a video, non una deduzione: una suite verde non è un
+> comportamento guardato, ed è la distinzione da cui questo cantiere è nato.
 > ⚠️ **`gruppo_key` NON entra in whitelist**, ed è una decisione (D-8): la sua
 > colonna è spenta a catalogo, quindi non c'è nessuna freccia da cliccare. Il
 > §7-ter ne chiedeva **due**, se ne offre **una**.
@@ -254,7 +280,7 @@ tutti da `vendite.fn_get_lotto_segnalazioni_summary`, che ha **tre** aggregati:
 
 | Aggregato | Legge | Chi ci finisce | Che cosa serve |
 | --- | --- | --- | --- |
-| `lotto_agg` | `fatturazione_lotti_log` | il documento caduto **prima** di diventare fattura (il pull) | 🔵 **l'unica modifica**: non contare le critiche il cui `gruppo_key` corrisponde, sullo stesso lotto, a un esito `ESCLUSO` |
+| `lotto_agg` | `fatturazione_lotti_log` | il documento caduto **prima** di diventare fattura (il pull) | ✅ **l'unica modifica, fatta** (`20260908-07`): non conta le critiche il cui `gruppo_key` corrisponde, sullo stesso lotto, a un esito `ESCLUSO` |
 | `fatture_agg` | `fatture_log` via `fatturazione_lotti_fatture` | il documento caduto **dopo** aver generato la bozza | ✅ niente |
 | `ponte_agg` | `fatturazione_lotti_fatture.stato_esecuzione = 'ERRORE'` | idem | ✅ niente |
 
@@ -379,7 +405,7 @@ uno stato che non ha nessun modo di cambiare.
 ⭐ **Riusati e non coniati**: `E_LOTTO_NON_PRE_FISCALE` (§5.4),
 `E_LOTTO_NON_TROVATO` e `E_PARAMETRO_INVALIDO` per i guard di parametro.
 
-🔵 **Contratto verso il backend, e va fatto nello stesso giro**: quattro codici
+✅ **Contratto verso il backend — fatto nello stesso giro**: quattro codici
 nuovi vogliono `./manage-env.sh genera_error_policies` (o
 `test_error_policies_divergenza_db` diventa rosso) **e** una frase di ripiego in
 `error_messages_fallback.py` per ciascuno — `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`
@@ -773,7 +799,7 @@ colonna del documento e l'azione di riga, la scheda «Presi in carico» con
 l'uscita e il suo timbro, e il gesto di massa con l'esito parziale. Restano
 **tre cose piccole**, tutte a database.
 
-### 7-ter.1 🔵 Le due righe di `ui.lista_colonna` per la lista 47
+### 7-ter.1 ✅ Le due righe di `ui.lista_colonna` per la lista 47
 
 La scheda Critiche fornisce lo slot `#actions` e la colonna del documento, ma il
 catalogo di `vendite.lotto_segnalazioni` non ha né la colonna `gruppo_fatturabile`
@@ -785,9 +811,9 @@ semplicemente **non viene resa**, e le azioni di riga spariscono in silenzio.
 **rosso** e lo resta: legge il **seed in git**, non il database di test — dove le
 due righe ci sono già.
 
-🔵 **Chiediamo**: le due righe nel CSV del seed.
+🔵 **Chiedevamo**: le due righe nel CSV del seed. ✅ Consegnate, più `riferimento`.
 
-### 7-ter.2 🔵 Il riferimento leggibile accanto alla `gruppo_key`
+### 7-ter.2 ✅ Il riferimento leggibile accanto alla `gruppo_key`
 
 Sulla scheda Critiche il documento si legge come **chiave grezza**
 (`ORDINE_VENDITA:01a06ce4-…`), perché `fn_list_lotto_segnalazioni` espone
@@ -797,7 +823,7 @@ Sulla scheda Critiche il documento si legge come **chiave grezza**
 `vendite.vw_dash_competenza_gruppi` **agganciata al mese del lotto**, e
 ricostruirla in un repository sarebbe la seconda sede della stessa regola.
 
-🔵 **Chiediamo**: `riferimento` (e volendo `tipo_gruppo`) nell'output della
+🔵 **Chiedevamo**: `riferimento` (e volendo `tipo_gruppo`) nell'output della
 funzione. ⚠️ `NULL` resta legittimo — il lavoro può essere uscito dal mese — e il
 frontend ripiega sulla chiave, che è il comportamento già in casa.
 ⚠️ Con quello vale la pena aggiungere **entrambi** alla whitelist di
@@ -805,7 +831,7 @@ frontend ripiega sulla chiave, che è il comportamento già in casa.
 scheda, e oggi la colonna è seedata non ordinabile proprio perché la whitelist
 non li conosce.
 
-### 7-ter.3 🔵 Il numero del banner
+### 7-ter.3 ✅ Il numero del banner
 
 Il §7 vuole *«Il giro è fermo per **N documenti su M**»* al posto di «N
 segnalazioni bloccanti». **N non esiste**:
@@ -815,7 +841,7 @@ segnalazioni bloccanti». **N non esiste**:
 ⛔ Non si deriva a video: la scheda è paginata, e contarli lato frontend darebbe
 un numero che cambia scorrendo.
 
-🔵 **Chiediamo**: un aggregato in più sul riepilogo — i documenti distinti con
+🔵 **Chiedevamo**: un aggregato in più sul riepilogo — i documenti distinti con
 almeno una critica viva. ⚠️ Con la `gruppo_key` ora valorizzata è un
 `count(DISTINCT gruppo_key)` sullo stesso perimetro che il §5.3 già percorre; M
 lo ha già il frontend (il totale della scheda Documenti).
@@ -874,6 +900,13 @@ rotta. Adesso passa un id positivo e inesistente, che percorre la strada vera.
 
 ## 9. Come si vede che è chiuso
 
+> 🔵 **TRASLOCATO il 2026-09-08.** Il copione di questa prova vive in
+> [collaudo-in-app-esito-parziale-pull-commessa](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md)
+> (prove **6-8**), perché richiede una materia che oggi non esiste — nessun
+> lotto ha due documenti in errore — e un collaudo si tiene aperto accanto
+> all'applicazione, mentre un brief chiuso non lo si riapre. ⚠️ Quello che segue
+> resta il **testo della prova**, non un residuo di lavoro.
+
 Si costruisce un giro con due documenti rotti su quattro, si escludono uno alla
 volta, e si guarda che il lotto riparta **al secondo** e non prima. Poi si
 rilancia lo step e si verifica che la segnalazione riscritta dal task **non**
@@ -886,7 +919,11 @@ osservato a video, e lì va riguardato.
 che non era del disegno: la segnalazione non aveva padrone, quindi non c'era
 niente da toglierle. ⇒ La prova va **rifatta dopo** che il backend ha scritto le
 tre righe del §6.1 — prima, misurerebbe l'assenza del contratto e non il verbo.
-🔵 È l'ultimo passo aperto di questo cantiere.
+🔵 **È l'unica cosa aperta di questo cantiere, e non è codice.** Al 2026-09-08
+DB, backend, frontend, seed, doc auto-gen e pgTAP sono chiusi; la suite Django è
+verde (4558). ⛔ Ma il §9 non si chiude da lì: **una suite verde non è la stessa
+cosa di un comportamento guardato**, ed è precisamente la distinzione da cui
+questo cantiere è nato.
 
 ---
 

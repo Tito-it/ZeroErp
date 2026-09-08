@@ -227,7 +227,10 @@ class VenditePipelineRepositoryUnitTests(TestCase):
     def test_get_lotto_segnalazioni_summary_maps_counts(self, mocked_cursor_factory):
         cursor = MagicMock()
         cursor.__enter__.return_value = cursor
-        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7)
+        # ⚠️ I tre del banner sono IN CODA: la funzione li ha aggiunti li'
+        #    apposta, e una tupla piu' corta qui direbbe che il repository
+        #    legge sei colonne quando ne legge nove.
+        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7, 2, 4, 1)
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
@@ -242,6 +245,12 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 "lotto_warning_count": 4,
                 "lotto_info_count": 5,
                 "fatture_stato_esecuzione_errore_count": 7,
+                # ⭐ I GESTI, non gli allarmi: due documenti da togliere su
+                #    quattro presi in carico, piu' una critica del GIRO che
+                #    non si toglie in nessun modo.
+                "documenti_bloccanti_count": 2,
+                "documenti_presi_in_carico_count": 4,
+                "critiche_giro_count": 1,
             },
         )
         execute_sql, execute_params = cursor.execute.call_args.args
@@ -592,6 +601,9 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 #    documento: il `CASE` non chiama nemmeno la check.
                 None,                               # 16 uscita_blocco_reason
                 None,                               # 17 uscita_blocco_reason_key
+                # ⚠️ Senza chiave non c'e' riferimento: e' lo STESSO NULL, non
+                #    un'identita' che non si e' risolta.
+                None,                               # 18 riferimento
             ),
         ]
         mocked_cursor_factory.return_value = cursor
@@ -617,11 +629,13 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         cursor.fetchall.return_value = [
             # ⚠️ Riga del GIRO: nessun bersaglio, nessun documento e — di
             #    conseguenza — nessun motivo di blocco, perche' il `CASE` non
-            #    chiama nemmeno la check. Le tre code sono `None` insieme, e
-            #    non e' una coincidenza: senza documento il verbo non ha oggetto.
+            #    chiama nemmeno la check, ne' riferimento leggibile, perche'
+            #    senza chiave non c'e' niente da nominare. Le QUATTRO code sono
+            #    `None` insieme, e non e' una coincidenza: senza documento il
+            #    verbo non ha oggetto e l'etichetta non ha soggetto.
             ("LOTTO:7", "LOTTO", None, "C", "Errore pipeline", "E_PIPELINE",
              "Numerazione", None, None, None, False, True, 1, 0, None,
-             None, None, None),
+             None, None, None, None),
         ]
         mocked_cursor_factory.return_value = cursor
 
@@ -632,6 +646,7 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         #    frontend legge per spegnere «togli dal giro» col motivo giusto.
         self.assertIsNone(righe[0]["gruppo_key"])
         self.assertIsNone(righe[0]["uscita_blocco_reason"])
+        self.assertIsNone(righe[0]["riferimento"])
 
     # Scopo: Verifica che list_lotto_task_runs mappi correttamente righe runtime task da DB.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")

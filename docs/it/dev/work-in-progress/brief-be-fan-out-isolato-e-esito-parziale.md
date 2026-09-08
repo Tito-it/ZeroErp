@@ -929,7 +929,7 @@ versione a fine giro.
 > proprietà per cui questo cantiere esiste — il savepoint per item — **non è
 > stata misurata**: le fatture nascevano da righe `attivita_fatturabili` residue
 > di un giro precedente, non dal pull. Cinque difetti (due di modello) in
-> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](brief-residuo-fatturabili-e-bandiere-esito-parziale.md);
+> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](../work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md);
 > il copione è in
 > [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md),
 > ora **SOSPESO**. V1 resta aperta.

@@ -93,7 +93,7 @@ Le due colonne del timbro vengono azzerate. Una riga che dicesse *«non uscita,
 uscita il 3 settembre»* sarebbe un dato a metà — due affermazioni che si
 smentiscono sulla stessa riga.
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md`.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md`.
 
 ---
 

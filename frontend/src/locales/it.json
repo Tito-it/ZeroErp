@@ -358,7 +358,6 @@
     "forbidden_message": "Non hai i permessi per accedere a questa area.",
     "back_home": "Torna alla Home",
     "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore.",
-    "bersaglio_apri": "Apri {entita} {id}",
     "bersaglio_apri_senza_id": "Apri {entita}"
   },
   "placeholder": {
@@ -2805,6 +2804,10 @@
       "segn_escludi_del_giro": "Questa segnalazione riguarda il giro, non un documento: non c'è niente da togliere. Si corregge la causa e si rilancia lo step.",
       "nessuna_segnalazione_livello": "Nessuna segnalazione di questo livello",
       "segnalazioni_bloccanti": "{n} segnalazioni critiche bloccano l'avanzamento.",
+      "segnalazioni_bloccanti_documenti": "Il giro è fermo per 1 documento su {m}: si toglie dal giro e il lotto riparte con quelli che restano. | Il giro è fermo per {n} documenti su {m}: si tolgono dal giro e il lotto riparte con quelli che restano.",
+      "segnalazioni_bloccanti_piu_giro": "Più 1 critica del giro, che non appartiene a nessun documento: quella si corregge, non si toglie. | Più {k} critiche del giro, che non appartengono a nessun documento: quelle si correggono, non si tolgono.",
+      "segnalazioni_bloccanti_giro": "Il giro è fermo per 1 critica che non riguarda un documento: non c'è niente da togliere, si corregge la causa e si rilancia lo step. | Il giro è fermo per {k} critiche che non riguardano un documento: non c'è niente da togliere, si corregge la causa e si rilancia lo step.",
+      "segnalazioni_giro_chiuso": "Questo giro si era fermato per 1 segnalazione critica. Il lotto non è più in lavorazione: non c'è più niente da togliere. | Questo giro si era fermato per {n} segnalazioni critiche. Il lotto non è più in lavorazione: non c'è più niente da togliere.",
       "avanza": "Avanza step",
       "avanza_header": "Avanza pipeline",
       "avanza_conferma": "Avanzare la pipeline del lotto di uno step?",

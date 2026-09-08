@@ -119,8 +119,8 @@ SELECT vendite.fn_segna_esito_gruppo_lotto(
     p_errore_messaggio => 'Errore emissione commessa');
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-esito-gruppo-lotto.md` §15 ·
-> `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md` §6.1.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-esito-gruppo-lotto.md` §15 ·
+> `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.1.
 
 ---
 

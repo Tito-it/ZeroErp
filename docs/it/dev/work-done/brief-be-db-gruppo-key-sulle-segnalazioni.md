@@ -2,7 +2,7 @@
 
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-08.
 > **A chi:** team DB (`dev/db-tid`).
-> **Seguito di:** [brief-db-uscita-documento-dal-giro.md](../work-in-progress/brief-db-uscita-documento-dal-giro.md) §6.1.
+> **Seguito di:** [brief-db-uscita-documento-dal-giro.md](brief-db-uscita-documento-dal-giro.md) §6.1.
 >
 > **In una riga — com'era all'apertura:** il verbo è consumato end-to-end e
 > funziona, ma sulla corsia
@@ -193,7 +193,7 @@ batteria di test verdi — che è la ragione per cui questo cantiere esiste.
 > ⚠️ **Queste richieste hanno cambiato casa il 2026-09-08**, quando questo brief
 > è stato chiuso: erano ancora vive, e un documento archiviato non si rilegge.
 > Vivono nel **§7-ter del brief padre**
-> ([brief-db-uscita-documento-dal-giro](../work-in-progress/brief-db-uscita-documento-dal-giro.md)),
+> ([brief-db-uscita-documento-dal-giro](brief-db-uscita-documento-dal-giro.md)),
 > insieme a una terza che qui non c'era — le due righe di `ui.lista_colonna` per
 > la lista 47, senza cui il cancello dello slot `#actions` resta rosso.
 > ⇒ Quello che segue resta come **ragionamento**, non come domanda aperta.

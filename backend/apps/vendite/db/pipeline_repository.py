@@ -497,7 +497,26 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     lotto_critical_count,
                     lotto_warning_count,
                     lotto_info_count,
-                    fatture_stato_esecuzione_errore_count
+                    fatture_stato_esecuzione_errore_count,
+                    -- ⭐ I TRE NUMERI DEL BANNER (`20260908-33`): contano GESTI,
+                    --    non allarmi. I sei qui sopra contano SEGNALAZIONI, e un
+                    --    documento con tre critiche resta un documento solo —
+                    --    «3 segnalazioni bloccanti» e' un numero vero che
+                    --    descrive la cosa sbagliata.
+                    -- ⛔ `critiche_giro_count` non e' un di piu': su un lotto
+                    --    fermo per un emittente non risolto le altre due
+                    --    direbbero «0 documenti su 4», cioe' che non c'e'
+                    --    niente da fare mentre il giro e' bloccato.
+                    -- ⚠️ Descrivono il solo canale LOTTO, dove vive la
+                    --    `gruppo_key`. Gli altri due canali parlano per FATTURA
+                    --    e una bozza puo' coprire piu' documenti: NON si
+                    --    sommano a questi senza scommettere.
+                    -- ⭐ Letti per NOME e non per posizione: la funzione li
+                    --    aggiunge in coda proprio perche' un lettore posizionale
+                    --    sbagliato non protesta — qui il rischio non si corre.
+                    documenti_bloccanti_count,
+                    documenti_presi_in_carico_count,
+                    critiche_giro_count
                 FROM vendite.fn_get_lotto_segnalazioni_summary(%s)
                 """,
                 [lotto_id],
@@ -511,6 +530,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
                 "fatture_stato_esecuzione_errore_count": 0,
+                "documenti_bloccanti_count": 0,
+                "documenti_presi_in_carico_count": 0,
+                "critiche_giro_count": 0,
             }
         return {
             "fatture_critical_count": int(row[0]),
@@ -519,6 +541,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             "lotto_warning_count": int(row[3]),
             "lotto_info_count": int(row[4]),
             "fatture_stato_esecuzione_errore_count": int(row[5]),
+            "documenti_bloccanti_count": int(row[6]),
+            "documenti_presi_in_carico_count": int(row[7]),
+            "critiche_giro_count": int(row[8]),
         }
 
     # Scopo: L'ELENCO delle segnalazioni del lotto — quello che il riepilogo
@@ -586,7 +611,21 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     --    NON vuol dire «si puo' fare»: li' il verbo non ha
                     --    oggetto, e chi rende lo distingue dalla `gruppo_key`.
                     chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
-                    chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key
+                    chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
+                    -- ⭐ IL DOCUMENTO COME LO LEGGE UNA PERSONA (`20260908-32`):
+                    --    `ORD0036004` invece di `ORDINE_VENDITA:<uuid>`. Non
+                    --    sostituisce la chiave, che resta in riga: la chiave la
+                    --    vuole il PULSANTE — `fn_escludi_documento_da_giro` la
+                    --    riceve — il riferimento e' per l'occhio, ed e' l'unico
+                    --    dei due che si vede (la colonna della chiave e' spenta
+                    --    a catalogo, D-7).
+                    -- ⛔ IN CODA a questa proiezione, e non accanto alla chiave
+                    --    dove starebbe meglio: il mapper qui sotto legge per
+                    --    POSIZIONE, e infilare una colonna in mezzo sposta tutte
+                    --    quelle dopo — un indice sbagliato legge la colonna
+                    --    VICINA e non fallisce. E' il difetto gia' pagato su
+                    --    `riaperto` il 2026-08-25.
+                    s.riferimento
                 FROM vendite.fn_list_lotto_segnalazioni(
                     p_lotto_id          => %s,
                     p_origine           => %s,
@@ -641,6 +680,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 # riga del giro non vuol dire niente — li' non e' stato chiesto.
                 "uscita_blocco_reason": row[16],
                 "uscita_blocco_reason_key": row[17],
+                # ⭐ Il documento leggibile. ⚠️ `None` = la segnalazione e' del
+                # GIRO, lo stesso NULL di `gruppo_key` e non un'identita' che non
+                # si e' risolta: senza chiave non c'e' niente da nominare.
+                "riferimento": row[18],
                 # ⭐ IL BERSAGLIO: su quale cosa l'errore punta, per offrire un
                 # gesto invece di far ricopiare un id. Forma `[{type, id}]`,
                 # **byte-identica** a quella dell'envelope d'errore: la scheda e

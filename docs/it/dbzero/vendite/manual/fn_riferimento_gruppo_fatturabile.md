@@ -118,7 +118,7 @@ SELECT vendite.fn_riferimento_gruppo_fatturabile(NULL);
 -- NULL: la segnalazione e' del GIRO
 ```
 
-> Piano e decisioni: `docs/it/dev/work-in-progress/brief-db-uscita-documento-dal-giro.md` §6.2.
+> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.2.
 
 ---
 
