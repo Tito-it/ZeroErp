@@ -318,13 +318,41 @@ class LottoPipelineRunner:
     def _normalize_lotto_id(lotto_id: int | None) -> int | None:
         return None if lotto_id in (0, None) else lotto_id
 
-    # Scopo: Determina da quale step (singolo) ripartire. Tre casi:
+    # Scopo: l'indice dello step su cui il lotto si trova, `None` se il suo
+    #        stato non e' uno step di QUESTA catena.
+    #
+    # ⛔ E' la sede UNICA della domanda «il lotto e' dentro la sua catena?». La
+    #    chiedono in due — il guard di `run_pipeline`, che RIFIUTA il giro, e
+    #    `_resolve_steps_for_run`, che decide da DOVE riprendere — e alla prima
+    #    scrittura erano due forme diverse della stessa cosa (un dizionario
+    #    indicizzato di qua, un `all(... != ...)` di la'). Due forme della
+    #    stessa domanda divergono senza fallire: il guard lascerebbe passare un
+    #    giro che il resolver non sa dove far partire, o il contrario.
+    #
+    # ⚠️ Prende un `int`, non un `int | None`, ed e' voluto: «il lotto non ha
+    #    stato fiscale» e «il suo stato non e' uno step» sono due cose diverse e
+    #    portano a due risposte opposte (si parte dall'inizio / non si parte).
+    #    Accettando `None` questa funzione le appiattirebbe in un unico `None`,
+    #    e i chiamanti perderebbero proprio la distinzione che devono fare.
+    @staticmethod
+    def _indice_step_corrente(
+        steps: list[Any], stato_doc_fiscale_id: int,
+    ) -> int | None:
+        for index, step in enumerate(steps):
+            if step.stato_doc_fiscale_id == stato_doc_fiscale_id:
+                return index
+        return None
+
+    # Scopo: Determina da quale step (singolo) ripartire. Quattro casi:
+    #  - il lotto non ha ancora uno stato fiscale: dal primo step del catalogo;
+    #  - lo stato c'e` ma NON e` uno step di questa catena: nessuno step se il
+    #    lotto e` esistente (mai la catena intera — sarebbe una transizione
+    #    retroattiva), dal primo se e` appena stato creato;
     #  - deve rifare lo step CORRENTE: rerun in errore OPPURE lotto riportato a
     #    bozza e non ancora rifatto (vedi `deve_rifare_step_corrente`);
     #  - successo su lotto ESISTENTE (lotto_id passato dal driver): avanza allo step
     #    SUCCESSIVO a quello gia` eseguito — abilita la progressione multi-step, prima
-    #    assente nel ramo di successo (steps[:1] prendeva sempre il primo step);
-    #  - primo run / lotto appena creato / stato non in catalogo: dal primo step.
+    #    assente nel ramo di successo (steps[:1] prendeva sempre il primo step).
     @staticmethod
     def _resolve_steps_for_run(
         *,
@@ -334,13 +362,55 @@ class LottoPipelineRunner:
         lotto_stato_doc_corrente: int | None,
     ) -> list[Any]:
         if lotto_stato_doc_corrente is None:
+            # Nessuno stato fiscale: la pipeline non ha mai toccato questo
+            # lotto, quindi non c'e' nessuna posizione da rispettare e si parte
+            # dal primo step. ⚠️ Distinto dal ramo qui sotto, dove uno stato c'e'
+            # e non appartiene alla catena.
             return steps
-        step_index_by_stato = {
-            step.stato_doc_fiscale_id: index for index, step in enumerate(steps)
-        }
-        current_index = step_index_by_stato.get(lotto_stato_doc_corrente)
+        current_index = LottoPipelineRunner._indice_step_corrente(
+            steps, lotto_stato_doc_corrente,
+        )
         if current_index is None:
-            return steps
+            # ⛔ LO STATO CORRENTE NON E' UNO STEP DI QUESTA CATENA: nessuno
+            #    step da eseguire. MAI la catena intera.
+            #
+            # 🔴 IL DIFETTO, corretto il 2026-09-08 (segnalazione team DB sul
+            #    lotto LTF-0009971). Qui c'era `return steps`, e il chiamante fa
+            #    `steps[:1]`: su un lotto ANNULLATA — che non e' uno step —
+            #    veniva scelto il PRIMO step della catena, cioe' DRAFT, e
+            #    `_execute_pipeline_step` provava a riportarci il lotto. E' la
+            #    TRANSIZIONE RETROATTIVA che questo stesso resolver dichiara,
+            #    tre righe piu' sotto, di esistere per impedire: il ramo
+            #    «sconosciuto» faceva l'esatto contrario degli altri due.
+            #
+            # ⚠️ Non falliva per progetto ma per un accidente del SEED:
+            #    `config.stati_doc_fiscale_transizioni` non ha nessuna riga in
+            #    uscita da ANNULLATA, quindi il guard di transizione a DB
+            #    rifiutava. Il giorno che una riapertura esistesse, il primo
+            #    step ripartirebbe su un documento chiuso — e prima di
+            #    arrivarci il giro ha gia' ritirato le marcature delle fatture
+            #    (`ritira_marcature_fatture_be`, FUORI dalla transazione
+            #    apposta): un rifiuto che lascia il segno.
+            #
+            # ⚠️ Al 2026-09-08 la catena e' `DRAFT → EMESSA → DEFINITIVA →
+            #    INVIATA` per ogni combinazione registrata, quindi gli stati
+            #    fuori catena sono ANNULLATA e REGISTRATA. E' un fatto datato,
+            #    non la ragione: la ragione e' che un resolver di RESUME non
+            #    puo' proporre uno step che sta PRIMA della posizione corrente.
+            #
+            # ⛔ E il caso non finisce qui con una lista vuota: `run_pipeline`
+            #    lo intercetta PRIMA e rifiuta il giro (vedi il guard «il lotto
+            #    dentro la sua catena»). Questo `[]` e' la difesa in profondita'
+            #    per chi chiamasse il resolver da solo — la risposta sicura,
+            #    non la risposta completa.
+            #
+            # ⚠️ `is_existing_lotto_request` e' la condizione, e non e' un
+            #    dettaglio: un lotto APPENA CREATO non ha nessuna posizione da
+            #    rispettare — non c'e' niente dietro di lui — e parte dal primo
+            #    step del catalogo, che e' il ramo in fondo a questa funzione.
+            #    L'invariante riguarda il RESUME: solo chi riprende puo'
+            #    tornare indietro.
+            return [] if is_existing_lotto_request else steps
         if deve_rifare_step_corrente:
             # Resume sullo step corrente; evita transizioni retroattive non ammesse.
             # Due cause, stesso comportamento: lo step e` fallito (rerun in
@@ -656,6 +726,86 @@ class LottoPipelineRunner:
                     utility_id=lotto_context.utility_id,
                     tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
                 )
+                # ⛔ IL LOTTO DEVE STARE DENTRO LA PROPRIA CATENA, e se non ci
+                #    sta il giro si RIFIUTA — non si esegue a vuoto.
+                #
+                # 🔴 E' l'altra meta' del difetto corretto in
+                #    `_resolve_steps_for_run` (2026-09-08). Li' si e' tolta la
+                #    risposta sbagliata («riparti dal primo step»); qui si dice
+                #    quella giusta, che NON e' «nessuno step».
+                #
+                # ⛔ Perche' la lista vuota non basta, ed e' la parte che si
+                #    vede solo leggendo fino in fondo: piu' sotto `[]` significa
+                #    gia' «catena esaurita» e porta a
+                #    `set_lotto_job_stato(COMPLETATO)`. Su un lotto ANNULLATA un
+                #    giro che non ha eseguito NIENTE si annuncerebbe «Pipeline
+                #    completata» — e su LTF-0009971, che e' ANNULLATA e in
+                #    ERRORE, cancellerebbe pure l'errore. Un solo significato
+                #    per la lista vuota; il caso illegittimo si rifiuta.
+                #
+                # ⚠️ Prima del guard piu' sotto che scrive `IN_ESECUZIONE`: una
+                #    richiesta che verra' rifiutata non deve nemmeno segnare il
+                #    lotto come partito.
+                #
+                # ⚠️ DEBITO DICHIARATO — il codice giusto non c'e' ancora.
+                #    `E_PIPELINE_STATO_LOTTO` dice il vero all'operatore («Stato
+                #    lotto non compatibile con l'operazione») ed e' della classe
+                #    giusta (CONFLITTO_STATO → 409), ma i suoi altri tre punti
+                #    di chiamata parlano di `stato_lotto` — l'asse del LAVORO —
+                #    mentre qui l'asse e' quello del DOCUMENTO. Il codice suo e'
+                #    `E_LOTTO_NON_AVANZABILE`, quinto della famiglia
+                #    `E_LOTTO_NON_*`, ed e' un seed a catalogo: chiesto al team
+                #    DB. Il giorno che c'e', qui cambia una riga.
+                # ⚠️ Le due condizioni davanti non sono decorative:
+                #    `is_existing_lotto_request` perche' solo chi RIPRENDE ha una
+                #    posizione da rispettare (un lotto appena creato parte dal
+                #    primo step); `steps` perche' «fuori dalla propria catena»
+                #    presuppone che una catena ci sia — un catalogo vuoto e' un
+                #    pezzo non configurato, che e' un'altra diagnosi e un altro
+                #    codice (`E_PIPELINE_NOT_FOUND`).
+                if (
+                    is_existing_lotto_request
+                    and steps
+                    and lotto_stato_doc_corrente is not None
+                    and self._indice_step_corrente(
+                        steps, lotto_stato_doc_corrente,
+                    ) is None
+                ):
+                    ErrorManager.raise_error(
+                        code="E_PIPELINE_STATO_LOTTO",
+                        # ⚠️ IL MESSAGGIO QUI E' QUELLO CHE L'OPERATORE LEGGE, e
+                        #    va scritto per QUESTO punto — come fanno gli altri
+                        #    due che sollevano lo stesso codice («stato_lotto non
+                        #    valido», «Transizione stato_lotto non ammessa»).
+                        #    Sulle rotte normali l'envelope usa il testo a
+                        #    catalogo (`policy.user_message`) e questo resta
+                        #    interno; ma gli endpoint del runner rispondono 200
+                        #    con l'esito nel payload, e li' il frontend rende
+                        #    proprio `errore.message` (`verdettoRunner`). Alla
+                        #    prima scrittura qui c'era la frase generica del
+                        #    catalogo copiata parola per parola: non aggiungeva
+                        #    niente dove viene letta, e il giorno che il catalogo
+                        #    cambia i due canali direbbero cose diverse.
+                        # ⛔ Nessun nome di colonna nella frase: quello sta nel
+                        #    `detail`, che e' per chi puo' rimediare.
+                        message=(
+                            "Il lotto non e' in uno stato da cui la pipeline "
+                            "possa proseguire."
+                        ),
+                        detail=(
+                            "Stato fiscale fuori dalla catena di pipeline: "
+                            f"lotto_id={lotto_id}, "
+                            f"stato_doc_fiscale_id={lotto_stato_doc_corrente}, "
+                            f"tipo_lotto={effective_tipo_lotto}"
+                        ),
+                        context={
+                            "lotto_id": lotto_id,
+                            "stato_doc_fiscale_id": lotto_stato_doc_corrente,
+                            "tipo_lotto": effective_tipo_lotto,
+                        },
+                        function_name="vendite.run_lotto_pipeline",
+                        log_to_db=True,
+                    )
                 steps = self._resolve_steps_for_run(
                     steps=steps,
                     is_existing_lotto_request=is_existing_lotto_request,
@@ -818,13 +968,41 @@ class LottoPipelineRunner:
                 # di un avanzamento, che il gate sopra bloccherebbe. Nessuna
                 # eccezione: sollevare qui farebbe rollback anche del lavoro
                 # delle fatture sane e della loro marcatura.
-                stato_finale = (
-                    self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
-                    if steps else None
-                )
-                step_con_errori = stato_finale is not None and stato_finale.is_error
+                # ⛔ SI RICALCOLA SEMPRE, ANCHE SU ZERO STEP (2026-09-08).
+                #
+                # 🔴 Qui c'era `if steps else None`, e con la catena vuota
+                #    `step_con_errori` risultava falso **senza aver contato
+                #    niente**: si cadeva nel ramo `else` e il lotto usciva
+                #    «Pipeline completata» da un giro che non aveva eseguito
+                #    nulla. Su un lotto in ERRORE quello e' un errore
+                #    CANCELLATO, non concluso.
+                #
+                # ⚠️ E la matrice di `set_lotto_job_stato` non poteva fermarlo:
+                #    `ERRORE → COMPLETATO` e' vietata apposta — «e' andata bene»
+                #    e' una CONCLUSIONE e «va guadagnata con un giro» — ma
+                #    l'avvio scrive `IN_ESECUZIONE`, che da ERRORE e' l'unica
+                #    porta aperta, e da li' COMPLETATO passa. Il divieto non
+                #    veniva infranto: veniva aggirato da due scritture di stato
+                #    e zero lavoro.
+                #
+                # ⚠️ Il caso non riguarda solo i lotti fuori catena (rifiutati
+                #    piu' sopra): un lotto GIORNALIERO in ERRORE fermo
+                #    all'ultimo step risolve a `steps[current+1:] == []` —
+                #    `is_massivo_error_rerun` guarda solo i MASSIVO — e usciva
+                #    COMPLETATO.
+                #
+                # ⭐ La correzione non aggiunge un'eccezione, ne TOGLIE una: il
+                #    contratto scritto in `set_lotto_job_stato` dice gia' che «a
+                #    fine di OGNI giro il runner ricalcola con
+                #    `evaluate_lotto_status` — che conta le segnalazioni ATTUALI
+                #    — e riporta il lotto a COMPLETATO se non ci sono piu'
+                #    errori». Era vero per tutti i giri tranne quelli vuoti, che
+                #    concludevano senza contare. Ora la regola vale sempre:
+                #    tolte le righe rotte, il segnale si spegne da se'; se sono
+                #    ancora rotte, resta.
+                stato_finale = self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
+                step_con_errori = stato_finale.is_error
                 if step_con_errori:
-                    assert stato_finale is not None
                     self.repository.set_lotto_job_stato(
                         lotto_id,
                         "ERRORE",
@@ -849,7 +1027,7 @@ class LottoPipelineRunner:
                                         stato_finale.fatture_stato_esecuzione_errore_count
                                     ),
                                 }
-                                if step_con_errori and stato_finale is not None
+                                if step_con_errori
                                 else {}
                             ),
                         },

@@ -24,6 +24,8 @@
 # Indice test:
 #   0. ogni_chiave_legge_la_sua_colonna
 #   1. riaperto_non_dipende_dal_totale   (il difetto storico, in negativo)
+#   2. data_documento_assente_resta_none
+#   3. stato_congela_fiscale_senza_stato_resta_none
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -64,6 +66,7 @@ def _riga(override: dict[int, object] | None = None):
         True,                           # 21 ha_errori_gravi
         False,                          # 22 riaperto
         date(2026, 7, 31),              # 23 data_documento
+        False,                          # 24 stato_congela_fiscale
     ]
     for i, v in (override or {}).items():
         riga[i] = v
@@ -97,6 +100,7 @@ class MapLottoRowTests(SimpleTestCase):
         self.assertIs(r["ha_errori_gravi"], True)
         self.assertIs(r["riaperto"], False)
         self.assertEqual(r["data_documento"], "2026-07-31")
+        self.assertIs(r["stato_congela_fiscale"], False)
 
     # 1. ⛔ IL DIFETTO STORICO, scritto in negativo: `riaperto` deve dipendere
     #    SOLO dalla sua colonna. Le due righe qui sotto sono i due casi veri
@@ -120,3 +124,11 @@ class MapLottoRowTests(SimpleTestCase):
     def test_data_documento_assente_resta_none(self) -> None:
         r = VenditeRepository._map_lotto_row(_riga({23: None}))
         self.assertIsNone(r["data_documento"])
+
+    # 3. Il JOIN sullo stato e' LEFT: un lotto senza stato fiscale resta una
+    #    riga, e la soglia di congelamento resta `None` — «non lo so», non
+    #    «non congela». Appiattirlo a `False` qui accenderebbe i verbi di
+    #    pipeline sul caso in cui si sa meno di tutti.
+    def test_stato_congela_fiscale_senza_stato_resta_none(self) -> None:
+        r = VenditeRepository._map_lotto_row(_riga({24: None}))
+        self.assertIsNone(r["stato_congela_fiscale"])

@@ -82,6 +82,18 @@ ELENCA_SORT_SQL: dict[str, str] = {
     "job_type": "job_type",
     "stato": "stato",
     "proprietario": "proprietario {dir} NULLS LAST",
+    # ⭐ QUANDO IL LAVORO E' ENTRATO IN CODA, ed e' il default dal 2026-09-07.
+    #    ⛔ Niente NULLS LAST, e non e' una dimenticanza: `data_insert` e' NOT
+    #    NULL con default `now()`. E' l'unica colonna temporale della tabella
+    #    che un lavoro ha SEMPRE — le altre tre le scrive il worker.
+    "data_insert": "data_insert",
+    # ⚠️ Ordinare qui una colonna che il lavoro non ha ancora significa mandare
+    #    in fondo proprio lo stato che interessa: `started_at` lo scrive il
+    #    worker quando prende il lavoro, quindi un PENDING non ce l'ha e con
+    #    `NULLS LAST` finisce dopo OGNI lavoro mai avviato. Era il default fino
+    #    al 2026-09-07, e il difetto era muto — la lista non nascondeva niente,
+    #    seppelliva. Misurato quel giorno: le righe senza `started_at` in
+    #    posizione 112 e 113 su 113, cioe' in quinta pagina da 25.
     "started_at": "started_at {dir} NULLS LAST",
     "ended_at": "ended_at {dir} NULLS LAST",
     "archiviato_il": "archiviato_il {dir} NULLS LAST",
@@ -575,7 +587,7 @@ class CodaLavoriRepository:
         data_sql = f"""
             SELECT id, job_type, stato, priorita, tentativi, max_tentativi,
                    ultimo_errore, run_after, claimed_at, started_at, ended_at,
-                   job_run_id, result,
+                   job_run_id, result, data_insert,
                    archiviato, archiviato_il, archiviato_da,
                    scope->>'username' AS proprietario,
                    scope->>'scope_key' AS scope_key,
@@ -611,6 +623,13 @@ class CodaLavoriRepository:
                 "max_tentativi": int(r["max_tentativi"]),
                 "ultimo_errore": jsonb_out(r["ultimo_errore"]),
                 "run_after": iso_or_none(r["run_after"]),
+                # ⭐ QUANDO E' STATO IMMESSO A SISTEMA, ed e' un fatto diverso da
+                #    `started_at`: il primo lo scrive chi accoda, il secondo il
+                #    worker che prende. Su un lavoro in attesa c'e' solo questo.
+                #    ⚠️ NOT NULL a tabella, quindi `iso_or_none` non torna mai
+                #    None — si usa lo stesso helper delle altre per non avere due
+                #    formati di data nello stesso payload.
+                "data_insert": iso_or_none(r["data_insert"]),
                 "claimed_at": iso_or_none(r["claimed_at"]),
                 "started_at": iso_or_none(r["started_at"]),
                 "ended_at": iso_or_none(r["ended_at"]),

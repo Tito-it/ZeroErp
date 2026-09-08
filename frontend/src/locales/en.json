@@ -170,6 +170,7 @@
       "col_proprietario": "Owner",
       "col_tentativi": "Attempts",
       "col_avviato": "Started",
+      "col_immesso": "Queued at",
       "col_concluso": "Ended",
       "col_fattura": "Invoice",
       "col_emittente": "Issuer",

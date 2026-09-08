@@ -21,7 +21,7 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { listCodaLavori, listCodaStampa } from '../../core/api/tracciamento'
-import { defaultFiltroDataDa, toDateString } from '../../core/utils/date'
+import { defaultFiltroDataDa, toDateStringOrNull } from '../../core/utils/date'
 
 // Scopo: mappa filtri store → query param degli endpoint coda (limit/offset +
 //        filtri opzionali + sort_by/sort_dir maiuscolo come da contratto BE).
@@ -29,8 +29,12 @@ function buildCodaParams(f) {
   const p = { limit: f.limit, offset: f.offset }
   if (f.ambito === 'tutti') p.ambito = 'tutti'
   if (f.stato) p.stato = f.stato
-  if (f.dataDa) p.data_da = toDateString(f.dataDa)
-  if (f.dataA) p.data_a = toDateString(f.dataA)
+  // ⛔ `toDateStringOrNull`, non `toDateString`: qui una data non valida vale
+  //    «non filtrare», nei form varrebbe «svuota il campo». Il perche' — e da
+  //    dove arriva una Invalid Date — sta una volta sola, sulla funzione.
+  // ⚠️ Il null non parte affatto: axios omette i parametri nulli.
+  if (f.dataDa) p.data_da = toDateStringOrNull(f.dataDa)
+  if (f.dataA) p.data_a = toDateStringOrNull(f.dataA)
   // Interruttore «mostra archiviate»: le righe messe via sono nascoste di
   // default, e il parametro le chiede. ⛔ Il filtro sta nel BACKEND e non qui:
   // la lista è paginata lato server, filtrare a valle filtrerebbe solo la
@@ -48,6 +52,14 @@ function buildCodaParams(f) {
 // `orderBy` = preset del seed, che replica il default gia' applicato dal BE
 // (la lista non si riordina sotto gli occhi dell'operatore al primo
 // caricamento).
+// ⚠️ Lo stesso fatto vive quindi in TRE sedi che devono concordare: qui,
+//    `ordinamento_default` del preset in `ui.lista_preset`, e il `default=`
+//    del service. Cambiarne una sola non da' nessun errore: da' una lista che
+//    si riordina da sola appena l'operatore tocca qualcosa.
+// ⭐ Dal 2026-09-07 entrambe le code ordinano per `data_insert` — «quando e'
+//    entrato in coda». Prima la coda lavori usava `started_at`, che un lavoro
+//    in ATTESA non ha: finiva in fondo, dopo ogni lavoro mai avviato. Non era
+//    filtrato, era sepolto.
 //
 // ⛔ NESSUNO STATO PRESELEZIONATO, su nessuna delle due code (decisione di
 //    Tid, 2026-09-04). Fino a quel giorno la coda lavori si apriva su
@@ -107,8 +119,8 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
 }
 
 export const useCodaLavoriStore = createCodaJobsStore(
-  'strumenti-coda-lavori', listCodaLavori, { orderBy: 'started_at' },
+  'strumenti-coda-lavori', listCodaLavori, { orderBy: 'data_insert' },
 )
 export const useCodaStampaStore = createCodaJobsStore(
-  'strumenti-coda-stampa', listCodaStampa, { orderBy: 'data_update' },
+  'strumenti-coda-stampa', listCodaStampa, { orderBy: 'data_insert' },
 )
