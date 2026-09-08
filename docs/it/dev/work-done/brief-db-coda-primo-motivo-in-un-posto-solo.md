@@ -29,7 +29,7 @@
 > struttura.
 >
 > **Correlati:**
-> [brief-db-registri-numerazione-chiave-del-contatore](../work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md) — il cantiere in cui la domanda è nata ·
+> [brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md) — il cantiere in cui la domanda è nata ·
 > [linee-guida-sql §12.5](../../linee-guida-sql.md) — le azioni per riga, dove la regola «la madre CHIAMA la check» è scritta ·
 > [linee-guida-sql §5](../../linee-guida-sql.md) — i canali di `fn_log_and_raise_error` (codice, campo, bersaglio, valori)
 

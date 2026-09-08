@@ -550,6 +550,12 @@ export const STATO_ESECUZIONE_LOTTO_MAP = {
   RUNNING: 'info',
   COMPLETED: 'success',
   ERRORE: 'danger',
+  // ⭐ `ESCLUSO` è `warn` e non `danger` né `secondary` (2026-09-08): non è un
+  // fallimento — l'operatore ha DECISO di togliere il documento dal giro — ma
+  // nemmeno una cosa da non notare, perché quel documento NON è stato
+  // fatturato e tornerà in competenza. `secondary` lo confonderebbe con
+  // `PENDING`, che è il grigio di «in coda».
+  ESCLUSO: 'warn',
 }
 export function statoEsecuzioneLottoSeverity(codice) {
   return resolveSeverity(STATO_ESECUZIONE_LOTTO_MAP, codice)

@@ -20,6 +20,7 @@ from apps.vendite.api.views import (
     ApiCommessaOneri,
     ApiCommessePushLog,
     ApiCommessaStato,
+    ApiEscludiDocumentiDaGiro,
     ApiFatturazioneApprovaCompetenza,
     ApiFatturazioneFinestraNumerazione,
     ApiFatturazioneEsiti,
@@ -410,6 +411,14 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/<int:fattura_id>/reset-draft/",
         ApiResetLottoFatturaDraft.as_view(),
         name="vendite-reset-lotto-fattura-draft",
+    ),
+    # ⚠️ La `gruppo_key` viaggia nel BODY e non nel path: e' una chiave di
+    #    dominio (`ORDINE:123`, `MAN:45`) e contiene i due punti, che in un
+    #    segmento di URL vanno codificati — un contratto che si sbaglia a mano.
+    path(
+        "lotti/<int:lotto_id>/documenti/escludi/",
+        ApiEscludiDocumentiDaGiro.as_view(),
+        name="vendite-lotto-documenti-escludi",
     ),
     # --- Commesse ---
     path(

@@ -67,6 +67,7 @@ from apps.vendite.services.pipeline_service import (
     fn_annulla_lotto_da_draft,
     fn_riporta_lotto_a_draft,
     fn_elimina_fattura_da_lotto,
+    fn_escludi_documenti_da_giro,
     numera_lotto,
     ristampa_lotto,
     run_lotto_pipeline,
@@ -713,6 +714,111 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+
+
+class ApiEscludiDocumentiDaGiro(DomainAPIView):
+    """Toglie N documenti dal giro, cosi' che il lotto riparta con gli altri.
+
+    ⭐ Un giro prende in carico N documenti; se uno e' rotto il lotto si ferma e
+    gli altri N-1, che hanno gia' le loro bozze, non vengono emessi. Prima
+    l'unica azione su un lotto fermo era ANNULLARLO — buttare via il giro
+    intero, bozze sane comprese.
+
+    ⚠️ **Il consuntivo va mostrato, non ingoiato.** Una bozza puo' coprire piu'
+    documenti: togliere A puo' portare via anche B, che torna «da emettere» e si
+    fattura al giro dopo. `gruppi_riaperti` porta le CHIAVI proprio perche' la
+    conferma deve poterli nominare (D-2b del brief).
+
+    ⛔ Nessuna regola qui: il verdetto e' della funzione MADRE, che chiama
+    `script.fn_check_documento_escludibile_da_giro` — la stessa da cui la lista
+    documenti prende il motivo del pulsante spento. Un rifiuto arriva come 409
+    con il codice del PRIMO motivo.
+
+    ⚠️ **Permesso RIUSATO e non coniato**: `reset_lotto_fattura_draft`. Il potere
+    e' lo stesso — cancellare bozze pre-fiscali di un lotto, una alla volta — e
+    questo verbo quella primitiva la COMPONE. Un codename nuovo sarebbe un seed
+    a catalogo (`config.azioni_processo`) per dire che e' un'altra facolta',
+    e non lo e'.
+    """
+
+    area_funzionale = "vendite"
+    post_permission = "reset_lotto_fattura_draft"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeEscludiDocumentiDaGiroRequest",
+            fields={
+                # ⭐ Una LISTA anche per un documento solo: un endpoint solo, e
+                #    la riga singola è una lista di uno. Due superfici per lo
+                #    stesso verbo divergerebbero su permessi, conferme e forma
+                #    dell'esito.
+                "gruppo_keys": serializers.ListField(child=serializers.CharField()),
+                # ⚠️ Obbligatorio, e la regola la tiene il database (D-5): un
+                #    documento che esce senza motivo e' una riga che fra un mese
+                #    nessuno sa spiegare.
+                # ⚠️ UNO per il giro, non uno per riga: chi toglie cinque
+                #    documenti li toglie per la stessa ragione, e chiederne
+                #    cinque renderebbe il gesto di massa più lento della somma
+                #    dei singoli.
+                "motivo": serializers.CharField(),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeEscludiDocumentiDaGiroResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeEscludiDocumentiDaGiroData",
+                        fields={
+                            # ⭐ Un REPORT a tre stati, e torna 200 anche quando
+                            #    falliscono tutti: il verbo non produce un atto
+                            #    fiscale, lascia documenti che tornano in
+                            #    competenza. Sollevare sul «tutti falliti»
+                            #    darebbe due forme da leggere per la stessa
+                            #    domanda.
+                            "esito": serializers.CharField(),
+                            "totale": serializers.IntegerField(),
+                            "ok": serializers.IntegerField(),
+                            "usciti": serializers.ListField(
+                                child=serializers.DictField(),
+                            ),
+                            # ⚠️ Il CODICE per riga, non solo la frase: è ciò su
+                            #    cui il frontend instrada — «già uscito» si legge
+                            #    diverso da «non è in errore».
+                            "falliti": serializers.ListField(
+                                child=serializers.DictField(),
+                            ),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            # ⛔ NESSUNA NORMALIZZAZIONE, e nemmeno un `str()` di comodo: il
+            #    `CHECK` di tabella rifiuta anche i soli spazi, e sistemarlo qui
+            #    trasformerebbe un rifiuto in un motivo vuoto scritto. Il TIPO
+            #    lo controlla il service; il CONTENUTO e' del database (D-5).
+            return fn_escludi_documenti_da_giro(
+                lotto_id=lotto_id,
+                gruppo_keys=payload.get("gruppo_keys"),
+                motivo=payload.get("motivo"),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 # Whitelist di ordinamento della lista lotti: derivata dalla mappa del

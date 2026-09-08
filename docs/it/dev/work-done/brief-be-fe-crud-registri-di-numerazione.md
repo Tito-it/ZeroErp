@@ -140,7 +140,7 @@ mostrata affatto.
 > tiene fuori da entrambe le whitelist — ma non per il motivo scritto qui: non
 > c'è più nessun `CHECK` che la inchiodi. Il seguito, con le due mosse da
 > decidere, sta in
-> [brief-db-registri-numerazione-chiave-del-contatore](../work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md)
+> [brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md)
 > §7 e §11.5.
 >
 > ✅ **Superata il 2026-09-08**: Tid ha deciso che la scelta va in maschera, e
@@ -749,7 +749,7 @@ documento**, il residuo non è uniforme:
   vincolo li rifiuta e il documento **non si numera più**.
 
 ⇒ È diventato un cantiere suo, con la sua analisi e il suo piano:
-[brief-db-registri-numerazione-chiave-del-contatore](../work-in-progress/brief-db-registri-numerazione-chiave-del-contatore.md).
+[brief-db-registri-numerazione-chiave-del-contatore](brief-db-registri-numerazione-chiave-del-contatore.md).
 ⭐ Lì la cura è **dare l'asse mancante ai documenti**, non vietare il campo sul
 registro — e la colonna `mese` del contatore, dormiente e senza nessun documento
 che la porti, **si toglie**.

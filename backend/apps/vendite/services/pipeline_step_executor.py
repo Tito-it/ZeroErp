@@ -140,6 +140,10 @@ class _PullCommesseRunLogger(FanOutRunLogger):
     task: str
     lotto_id: int
     stato_doc_fiscale_id: int
+    # ⚠️ Serve a chiedere di CHI e' il fallimento: la conversione commessa →
+    #    documenti vive a database (`script.fn_gruppi_di_commessa_nel_lotto`) e
+    #    non si riscrive qui.
+    repository: Any
 
     # Scopo: Registra sui log di lotto la commessa che non e' passata.
     # ⭐ `detail` porta il MOTIVO DI DOMINIO e non piu' il dump: e' il campo che
@@ -150,21 +154,46 @@ class _PullCommesseRunLogger(FanOutRunLogger):
     def item_failed(self, *, item: Any, indice: int, exc: Exception) -> None:
         tecnico = _messaggio_pull(item, messaggio_eccezione(exc))
         motivo = _motivo_dominio(exc, ripiego=tecnico)
-        self.error_logger.log_error(
-            scope="LOTTO",
-            severity="C",
-            code="E_PULL_COMMESSA",
-            message=f"Errore emissione commessa {item}",
-            detail=motivo,
-            lotto_id=self.lotto_id,
-            stato_doc_fiscale_id=self.stato_doc_fiscale_id,
-            context={
-                "commessa_id": item,
-                "task": self.task,
-                "dettaglio_tecnico": tecnico,
-            },
-            function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
-        )
+        # ⭐ LA SEGNALAZIONE DICHIARA DI QUALE DOCUMENTO PARLA (§6.1 del brief
+        #    `brief-db-uscita-documento-dal-giro`, 2026-09-08).
+        #
+        # 🔴 IL DIFETTO CHE QUESTA RIGA CHIUDE, misurato sul lotto LTF-0010003:
+        #    la segnalazione nasceva senza proprietario, quindi valeva «e' del
+        #    giro» — e una segnalazione del giro ferma il giro per costruzione.
+        #    Risultato: si poteva togliere il documento rotto dal giro e il lotto
+        #    restava fermo lo stesso, perche' cio' che lo bloccava non era
+        #    attribuito a nessuno. Il verbo c'era e non sbloccava niente.
+        #
+        # ⛔ UNA RIGA PER DOCUMENTO, e non una sola con una chiave scelta fra le
+        #    tante: una commessa puo' alimentarne piu' d'uno. Dichiararne uno
+        #    lascerebbe gli altri a bloccare il lotto **per sempre** — non
+        #    sarebbero togliibili, perche' niente li nomina.
+        #
+        # ⚠️ `[]` E' UNA RISPOSTA e va letta: «questo fallimento non ha un
+        #    proprietario in questo lotto» ⇒ UNA riga senza `gruppo_key`, che
+        #    torna a valere «e' del giro» e ferma il giro. ⛔ Non zero righe: un
+        #    fallimento che non blocca niente e' un fallimento perso.
+        gruppi = self.repository.gruppi_di_commessa_nel_lotto(self.lotto_id, item)
+        for gruppo_key in gruppi or [None]:
+            self.error_logger.log_error(
+                scope="LOTTO",
+                severity="C",
+                code="E_PULL_COMMESSA",
+                message=f"Errore emissione commessa {item}",
+                detail=motivo,
+                lotto_id=self.lotto_id,
+                stato_doc_fiscale_id=self.stato_doc_fiscale_id,
+                context={
+                    "commessa_id": item,
+                    "task": self.task,
+                    "dettaglio_tecnico": tecnico,
+                },
+                function_name=(
+                    "vendite.pipeline_step_executor."
+                    "_handle_pull_attivita_da_commessa_task"
+                ),
+                gruppo_key=gruppo_key,
+            )
 
 
 class PipelineStepExecutor:
@@ -1241,6 +1270,7 @@ class PipelineStepExecutor:
                 task=task,
                 lotto_id=lotto_id,
                 stato_doc_fiscale_id=stato_doc_fiscale_id,
+                repository=self.repository,
             ),
         )
 

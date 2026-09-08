@@ -33,23 +33,29 @@
 > `test-fatture-log-error-code`.
 > 🔴 **Correzione al §5.1**, segnalata dal BE: la colonna è **`uscita_quando`**,
 > non `uscita_il`.
-> 🟢 **Chiuse anche §6.2 (il riferimento leggibile) e §6.3 (il banner)** — le
-> altre due richieste BE del 2026-09-08: `20260908-31` (lo split gemello + il
-> riferimento), `-32` (la lista lo espone e lo ordina, critiche del giro in
-> testa), `-33` (i tre conteggi del banner), più il seed della lista 47 e le
-> due chiavi i18n. ✅ **pgTAP `test-riferimento-gruppo-fatturabile-v1.sql`:
-> 16 su 16** come `zeroerp_app`, RLS attiva.
-> 🔵 **Resta al backend, ed è tutto ciò che resta**: le tre righe del §6.1, più
-> la voce `riferimento` nella propria whitelist di ordinamento (§6.2, D-8) e
-> `row[17]` / i tre conteggi nuovi da leggere. ⛔ Finché non le scrive, il verbo
-> continua a non sbloccare la corsia del pull.
+> ✅ **Fatto dal backend**: le tre righe del §6.1, e la corsia del pull adesso si
+> sblocca — catena misurata sul database vero (§9-bis).
+> ✅ **Fatte a video** tre superfici del §7 su quattro: la scheda Critiche con la
+> colonna del documento e l'azione di riga, la scheda «Presi in carico» con
+> l'uscita e il suo timbro, e il gesto di massa con l'esito parziale.
+> 🟢 **E chiuse le tre richieste del §7-ter** (le due righe di catalogo, il
+> riferimento leggibile, il numero del banner): `20260908-31` (lo split gemello
+> + `fn_riferimento_gruppo_fatturabile`), `-32` (la lista lo espone e lo ordina,
+> critiche del giro **in testa**), `-33` (i tre conteggi del banner), più il seed
+> della lista 47 e le chiavi i18n. Il ragionamento è nei **§6.2 e §6.3**.
+> ✅ **pgTAP `test-riferimento-gruppo-fatturabile-v1.sql`: 16 su 16** come
+> `zeroerp_app`, RLS attiva; baseline completa senza regressioni.
 > ✅ **Tutto applicato** (`migrate` del 2026-09-08): `20260908-18`…`-20` e
-> `-31`…`-33`. Il verde dei pgTAP è quello **dopo l'apply**, preso con
-> `scripts/testpgtap.sh` — che gira come `zeroerp_app` con la RLS attiva, non da
-> owner. ✅ Baseline completa senza regressioni (verificata da Tid).
-> 🔵 **Resta la rigenerazione della doc auto-gen**, che aggancia le quattro
-> pagine `manual/` nuove e fa passare `gen_seed_lista.py --verifica-ordinamento`
-> (per questa lista legge la whitelist **dalla doc**, non dal Python).
+> `-31`…`-33`.
+> 🔵 **Resta**: la rigenerazione della doc auto-gen — aggancia le quattro pagine
+> `manual/` nuove e fa passare `gen_seed_lista.py --verifica-ordinamento`, che
+> per questa lista legge la whitelist **dalla doc** e non dal Python — e, lato
+> backend, la voce `riferimento` nella propria whitelist di ordinamento più i
+> campi nuovi da leggere (`riferimento` in coda alla riga, i tre conteggi in
+> coda al riepilogo).
+> ⚠️ **`gruppo_key` NON entra in whitelist**, ed è una decisione (D-8): la sua
+> colonna è spenta a catalogo, quindi non c'è nessuna freccia da cliccare. Il
+> §7-ter ne chiedeva **due**, se ne offre **una**.
 >
 > **Origine:** Tid, 2026-09-08. ⚠️ **E la formulazione della domanda è parte del
 > progetto**: la prima stesura di questo brief era appoggiata a un lotto di
@@ -658,9 +664,22 @@ collegherebbe il difetto a quella riga.
 due canali parlano per **fattura**, e una bozza può coprire più documenti: non
 sono sommabili senza scommettere.
 
-⚠️ **In coda, e la posizione è portante**: il backend legge il riepilogo per
-**posizione** (`row[0]`..`row[5]`). Infilarli in mezzo farebbe scivolare i sei
-esistenti, e una lettura posizionale sbagliata **non protesta**.
+⚠️ **In coda** — ma il motivo va corretto.
+
+> 🔴 **Correzione del 2026-09-08, dopo il merge di `Tito-dev`.** Avevo scritto —
+> nel changeSet `-33`, nel suo `COMMENT` e nel messaggio di commit — che *«il
+> backend legge il riepilogo per posizione (`row[0]`..`row[5]`), quindi infilare
+> i numeri nuovi in mezzo mostrerebbe valori plausibili e falsi»*. **È falso**:
+> `pipeline_repository.py` **nomina** le colonne nella propria `SELECT`, quindi
+> gli indici sono ancorati alla sua lista e non all'ordine della funzione. Lo
+> stesso vale per il lettore di `fn_list_lotto_segnalazioni`.
+> ⭐ **La decisione resta giusta, il motivo no**, ed è il caso peggiore secondo
+> la regola zero: una conclusione giusta appoggiata a un argomento sbagliato.
+> Il motivo vero è più modesto e vale lo stesso: *in coda è il default
+> conservativo* — protegge un `SELECT *` (i pgTAP ne fanno) e chiunque legga per
+> posizione in futuro, e non costa niente.
+> ⛔ Il testo dentro il `-33` **non si corregge**: è applicato, e riscriverlo
+> romperebbe il checksum Liquibase. La correzione vive qui, che è dove si legge.
 ⛔ `blocks_next_step` resta in Python e non deve sapere niente di questi tre:
 sono per la **frase**, non per la decisione.
 
@@ -713,6 +732,97 @@ NON_DICHIARATO»*.
 ⚠️ **La lezione operativa**: prima di montare un trigger o allargare un `CHECK`,
 si greppa il pgTAP. Non l'ho fatto, e me l'ha detto la baseline invece del
 ragionamento — che è il modo più caro di scoprirlo.
+
+---
+
+## 7-ter. 🟢 Che cosa restava al DB perché il §7 sia intero — CHIUSO
+
+> 🟢 **Le tre richieste sono state consegnate il 2026-09-08**, e il ragionamento
+> per esteso sta nei **§6.2** (il riferimento leggibile) e **§6.3** (il banner).
+> Le domande restano scritte sotto, perché il perché di una cosa fatta serve più
+> di quanto serva sapere che è fatta.
+>
+> | | Chiesto | Consegnato |
+> | --- | --- | --- |
+> | **7-ter.1** | le due righe di `ui.lista_colonna` | ✅ nel CSV, più `gruppo_fatturabile` spenta (D-7) e `riferimento` nuova e ordinabile |
+> | **7-ter.2** | `riferimento` accanto a `gruppo_key` | ✅ `20260908-31`/`-32`. ⚠️ In whitelist entra **solo** `riferimento` (D-8): la colonna della chiave è spenta, quindi non c'è freccia da cliccare |
+> | **7-ter.3** | il numero del banner | ✅ `20260908-33`, e i numeri sono **tre**: senza il terzo la frase direbbe «0 documenti su 4» su un lotto fermo per una critica del giro |
+>
+> ⭐ **Due correzioni al ragionamento del §7-ter.2**, e vanno lette perché
+> cambiano la sede: l'identità del gruppo **non** si prende da
+> `vw_dash_competenza_gruppi` — per la ragione che il §7-ter nomina (è agganciata
+> al mese) **e** per una che non nomina: la `gruppo_key` su una segnalazione è un
+> **fatto storico**, e quel lavoro può essere già fatturato o uscito dal giro, per
+> cui la colonna si svuoterebbe *proprio dopo*. La risoluzione passa dallo split
+> della chiave e da `fn_get_sorgente_documento_ref`, che dipende solo dal
+> documento.
+> ⭐ E sul §7-ter.3: **`M` non lo lascia al frontend**. Viene dagli **esiti**
+> (`documenti_presi_in_carico_count`), così numeratore e denominatore nascono
+> nello stesso posto e non possono dissentire — e vale anche sui giri di massa,
+> dove il perimetro è vuoto.
+
+> ⚠️ **Trasportate qui il 2026-09-08**, quando il brief figlio
+> [brief-be-db-gruppo-key-sulle-segnalazioni](../work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md)
+> è stato chiuso: le sue richieste erano soddisfatte, queste no. ⛔ Un cantiere
+> che archivia il documento in cui vivono le domande aperte le perde — e nessuno
+> le ritrova, perché nessuno rilegge un brief marcato «fatto». Il ragionamento
+> per esteso resta lì (§6.1, §6.2, §6.4); qui c'è la domanda.
+
+Delle quattro superfici del §7 ne sono vive **tre**: la scheda Critiche con la
+colonna del documento e l'azione di riga, la scheda «Presi in carico» con
+l'uscita e il suo timbro, e il gesto di massa con l'esito parziale. Restano
+**tre cose piccole**, tutte a database.
+
+### 7-ter.1 🔵 Le due righe di `ui.lista_colonna` per la lista 47
+
+La scheda Critiche fornisce lo slot `#actions` e la colonna del documento, ma il
+catalogo di `vendite.lotto_segnalazioni` non ha né la colonna `gruppo_fatturabile`
+né quella con `tipo_colonna = 'azione'`.
+
+⛔ **E il building block non fallisce**: senza la riga a catalogo la colonna
+semplicemente **non viene resa**, e le azioni di riga spariscono in silenzio.
+🔴 Il cancello `test_chi_fornisce_lo_slot_actions_ha_la_colonna_a_catalogo` è
+**rosso** e lo resta: legge il **seed in git**, non il database di test — dove le
+due righe ci sono già.
+
+🔵 **Chiediamo**: le due righe nel CSV del seed.
+
+### 7-ter.2 🔵 Il riferimento leggibile accanto alla `gruppo_key`
+
+Sulla scheda Critiche il documento si legge come **chiave grezza**
+(`ORDINE_VENDITA:01a06ce4-…`), perché `fn_list_lotto_segnalazioni` espone
+`gruppo_key` e non il riferimento.
+
+⛔ Non si risolve lato backend: l'identità del gruppo vive in
+`vendite.vw_dash_competenza_gruppi` **agganciata al mese del lotto**, e
+ricostruirla in un repository sarebbe la seconda sede della stessa regola.
+
+🔵 **Chiediamo**: `riferimento` (e volendo `tipo_gruppo`) nell'output della
+funzione. ⚠️ `NULL` resta legittimo — il lavoro può essere uscito dal mese — e il
+frontend ripiega sulla chiave, che è il comportamento già in casa.
+⚠️ Con quello vale la pena aggiungere **entrambi** alla whitelist di
+`p_order_by`: raggruppare le critiche per documento è come si legge quella
+scheda, e oggi la colonna è seedata non ordinabile proprio perché la whitelist
+non li conosce.
+
+### 7-ter.3 🔵 Il numero del banner
+
+Il §7 vuole *«Il giro è fermo per **N documenti su M**»* al posto di «N
+segnalazioni bloccanti». **N non esiste**:
+`vendite.fn_get_lotto_segnalazioni_summary` conta le **segnalazioni**, non i
+**documenti distinti** che ne hanno almeno una viva.
+
+⛔ Non si deriva a video: la scheda è paginata, e contarli lato frontend darebbe
+un numero che cambia scorrendo.
+
+🔵 **Chiediamo**: un aggregato in più sul riepilogo — i documenti distinti con
+almeno una critica viva. ⚠️ Con la `gruppo_key` ora valorizzata è un
+`count(DISTINCT gruppo_key)` sullo stesso perimetro che il §5.3 già percorre; M
+lo ha già il frontend (il totale della scheda Documenti).
+
+⇒ Finché manca, il banner resta quello di oggi: ⛔ **non si mette a video un
+numero che non si sa contare**.
+
 
 ---
 

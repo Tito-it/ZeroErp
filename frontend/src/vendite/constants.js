@@ -50,6 +50,10 @@ export const STATO_ESECUZIONE_LOTTO = Object.freeze({
   RUNNING: 'RUNNING',
   COMPLETED: 'COMPLETED',
   ERRORE: 'ERRORE',
+  // ⭐ Solo sul livello DOCUMENTO (2026-09-08): l'operatore ha tolto questo
+  // documento dal giro. Una FATTURA non lo può avere — quando un documento
+  // esce, la sua bozza viene cancellata e la riga di ponte sparisce.
+  ESCLUSO: 'ESCLUSO',
 })
 
 // Natura della riga di commessa (`commesse_attivita.tipo_movimento`): filtro
