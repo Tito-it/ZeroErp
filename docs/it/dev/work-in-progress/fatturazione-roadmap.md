@@ -13,9 +13,20 @@
 > testa a ogni sezione. Il testo originale è conservato: è ancora la
 > descrizione migliore del *perché* di ognuno.
 
+> 🔄 **Riverificato il 2026-09-09**, e la notizia è che **le affermazioni
+> portanti reggono ancora**: la scoperta trasversale (`event_log` write-only),
+> l'item 2, l'8 e il 9 sono stati ricontrollati sul codice vivo e sono **giusti**
+> — vedi §«Cosa è stato ricontrollato». ⭐ È metà del valore di questa passata, e
+> senza scriverlo si ripaga daccapo: chi rilegge non deve ri-verificare quattro
+> cose per scoprire che erano a posto.
+> Ciò che è indietro è il **contesto**: fra il 31-08 e oggi una cinquantina di
+> documenti sono entrati o si sono mossi in `work-done/`, e almeno sette
+> toccano item di questa roadmap. Gli item 3, 5 e 6 hanno una nota nuova, e c'è
+> un **item 11**.
+
 ---
 
-## 📊 Stato in una pagina (2026-08-03, item 1 al 2026-08-21, item 10 al 2026-08-22)
+## 📊 Stato in una pagina (2026-08-03, item 1 al 2026-08-21, item 10 al 2026-08-22, item 11 al 2026-09-09)
 
 | # | Item | Priorità dichiarata (feb) | Stato verificato |
 | --- | --- | --- | --- |
@@ -24,11 +35,12 @@
 | 3 | Multi-company / multi-esercizio | P2 | 🟡 numerazione e isolamento ✅; esercizio fiscale 🔴 |
 | 4 | Audit trail formale | P0 «una riga» | 🟡 **infrastruttura pronta, cablaggio mancante** |
 | 5 | Dashboard operative | P3 | 🟢 in gran parte **fatto** (era P3 e si è fatto da sé) |
-| 6 | Alerting e monitoring | P3 | 🔴 non fatto — ma i mattoni ci sono |
+| 6 | Alerting e monitoring | P3 | 🔴 l'**alerting sui dati** non è fatto (riverificato 09-09) — ⚠️ ma la metà «vitalità dei **processi**» ha avuto il suo cantiere, chiuso il 07-09 |
 | 7 | `correlation_id` | P0 | 🟡 metà: pipeline sì, push no |
 | 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` nel repo |
 | 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione** — la pipeline ora scrive in `fatture_sdi`, manca il builder XML a valle. ⚠️ Dal 31/08 raccoglie anche il residuo del cantiere IVA: `EsigibilitaIVA`, `DatiContratto` e le righe **spezzate** dal plafond |
 | 10 | Preview di fatturazione del contratto | — (assorbito, 22/08) | 🔴 non esiste — il dato c'è nel motore, manca chi lo presenta |
+| 11 | Integrità del giro: di chi è questo documento, adesso? | — (nuovo, 09/09) | 🟢 **DB completo**, resta il frontend |
 
 ### 🔑 La scoperta trasversale: `event_log` è **write-only**
 
@@ -198,6 +210,19 @@ documento **trasversale**.
 > | --- | --- |
 > | Numerazione per esercizio/sezionale con reset annuale | ✅ **FATTO** — `registri_fatturazione` (`reset_policy` default `ANNUALE`) + `registri_fatturazione_progressivi` (unique su `registro, anno, mese, serie`) + `fn_assign_numero_fattura` con lock `FOR UPDATE`. È il requisito **normativo non negoziabile**, ed è quello coperto |
 > | Isolamento dati per società | ✅ **FATTO** via RLS EF-whitelist, diffusa su tutta la famiglia fatture + commesse + documenti. ⚠️ ma è isolamento per **emittente fiscale**, non per «società»: del **consolidamento cross-company** non c'è traccia |
+>
+> ⚠️ **Aggiornamento 2026-09-09: «numerazione ✅» non è più la stessa
+> numerazione.** Dal 31-08 il tema ha avuto tre cantieri —
+> [i due motori](../work-done/analisi-db-numerazione-documenti-e-due-motori.md),
+> [il prefisso sul registro e l'allineamento dei contatori](../work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md)
+> e il [CRUD dei registri lato BE/FE](../work-done/brief-be-fe-crud-registri-di-numerazione.md).
+> ⭐ E hanno cambiato una cosa che questa riga dava per assodata: **la serie è un
+> asse di sequenza, non un'etichetta**, quindi il pavimento del contatore è per
+> `(registro, serie)`. Chi legge il «✅» del 03-08 e progetta sopra la vecchia
+> forma sbaglia il perimetro del lock.
+> ⛔ Il sotto-punto che NON si è mosso resta l'**esercizio fiscale**: quello è
+> ancora 🔴, e non va confuso col reset annuale del progressivo, che è un'altra
+> cosa.
 > | Esercizio fiscale come entità esplicita | ❌ **zero occorrenze** di `esercizio`/`anno_fiscale`/`periodo_contabile` in `migrations_v2` e nel backend. L'esercizio è oggi l'anno solare *derivato* da `fatture.data` |
 > | Due esercizi aperti contemporaneamente | ❌ non è nemmeno **esprimibile**: senza l'entità con apertura/chiusura, la domanda non ha un posto dove essere formulata |
 >
@@ -277,6 +302,18 @@ documento **trasversale**.
 > esattamente ciò che il cockpit è diventato. Le due lacune (vista push,
 > reset a step) restano valide e ora si possono chiedere in modo preciso.
 
+> ⚠️ **Aggiornamento 2026-09-09.** La fotografia del 03-08 è cresciuta, e le
+> due lacune dichiarate («vista push», «reset a step») **non** sono quelle che
+> si sono mosse. Cantieri chiusi da allora che vivono in questa sezione:
+> [esito-gruppo-lotto](../work-done/brief-db-esito-gruppo-lotto.md) (DB, BE e FE
+> completi: il giro sa dire com'è andato **documento per documento**),
+> [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md)
+> (il verbo che toglie un documento dal giro, end-to-end),
+> `gruppo_key` sulle segnalazioni e la ricerca sulla dash competenza.
+> ⇒ La «vista errori» non è più solo un pannello di lettura: da questi cantieri
+> l'operatore **agisce** sul singolo documento — che è esattamente la frase
+> finale di questa sezione, arrivata dove non ce l'aspettavamo.
+
 **Problema:** il modello dati è pronto per un'operatività sofisticata ma senza interfaccia il vantaggio si perde.
 
 **Quando ci lavori, tenere presente:**
@@ -313,6 +350,19 @@ documento **trasversale**.
 > Il salto da fare è quindi minore di quanto la sezione lasci pensare:
 > non «costruire il monitoring», ma **puntare un meccanismo esistente su
 > un'altra sorgente e aggiungergli un canale d'uscita**.
+>
+> ⚠️ **Aggiornamento 2026-09-09 — e la distinzione conta.** I quattro
+> sotto-punti qui sopra sono stati **riverificati e reggono**: `event_log` non
+> ha ancora nessun lettore. Ma «alerting e monitoring» erano **due cose in una
+> riga**, e la seconda ha avuto il suo cantiere:
+> [brief-db-sveglia-dei-processi](../work-done/brief-db-sveglia-dei-processi.md),
+> ✅ **chiuso il 2026-09-07** su entrambi i lati — tre processi senza sveglia
+> trovati e coperti, il registro dei processi, un ramo di installer che la prova
+> non copriva. Resta la coda del suo §24.6.
+> ⇒ **La vitalità dei PROCESSI è coperta; l'allarme sui DATI no.** Chi legge
+> «🔴 non fatto» e va a costruire da zero rifà il primo pezzo: il substrato
+> (registro, sveglia, identità) c'è, e quello che manca è la query su
+> `event_log` più il canale d'uscita.
 
 **Problema:** i KPI sono definiti ma non c'è notifica automatica. Un lotto bloccato in ERRORE per ore è invisibile senza monitoring.
 
@@ -503,6 +553,68 @@ drawer riga potrebbe limitarsi alle **regole**, senza dover comunicare il
 
 ---
 
+## 11. Integrità del giro: di chi è questo documento, adesso? (2026-09-09)
+
+> 🟢 **DB COMPLETO, resta il frontend.** Non era nella review di febbraio, e non
+> poteva esserci: nasce dall'uso del cockpit, quando un giro si è fermato e si è
+> scoperto che nessuno sapeva dire **chi tenesse** un documento.
+
+**La domanda unica.** Tre cantieri di settembre rispondono tutti alla stessa
+cosa, ed è per questo che stanno in un item solo:
+
+| Cantiere | Il pezzo di risposta |
+| --- | --- |
+| [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md) | si può **togliere** un documento da un giro fermo, con la motivazione — invece di annullare tutto il lotto |
+| [il marcatore scrive su un documento uscito](brief-db-il-marcatore-scrive-su-un-documento-uscito.md) | e una volta uscito **non si marca, non si conta, non blocca, non si racconta** — il tentativo uccideva il rilancio |
+| [documento trattenuto da un lotto vivo](brief-db-documento-trattenuto-da-un-lotto-vivo.md) | e finché un giro **vivo** lo tiene, non lo si offre a un secondo giro |
+
+⭐ **La cosa che vale oltre questi tre**, e che è costata due riscritture di
+perimetro: *il meccanismo che c'era misurava l'**esito** del lavoro, non il fatto
+che il lavoro fosse **in corso**.* `EMESSA` dice «è andato», `LIBERA` dice «non è
+mai partito» — mancava la terza, «è dentro un giro che non ha ancora finito».
+È lo stesso buco che si presenta ogni volta che si guarda un risultato invece di
+uno stato.
+
+⚠️ **E il verdetto non si legge dall'esito.** `ultimo_esito` è muto in **entrambe**
+le direzioni: `COMPLETED` su un lotto DRAFT è trattenuto, `ERRORE` su uno
+ANNULLATO è libero. Si legge dallo **stato del lotto**, dal flag `is_abortito`
+— ⛔ mai `congela_fiscale`, che su ANNULLATA vale `true`.
+
+**Cosa resta**: il frontend. Riga non selezionabile, motivo da
+`emissione_blocco_reason_key`, gesto «vai al lotto» da
+`emissione_blocco_lotto_id`. ⚠️ Finché non arriva, i quattro campi sono
+**dichiarati e non letti** — peggio della loro assenza, perché sembrano
+presidiati.
+
+### Voci vicine, che hanno casa altrove
+
+Per non farne item e poi non trovarli più:
+
+* **archiviazione delle righe di coda** — DB applicato il 04-09, chiuso su
+  entrambi i lati ([brief](../work-done/brief-db-archiviazione-righe-code.md));
+* **fan-out isolato ed esito parziale** — vive nel suo brief e nel collaudo in
+  app; tocca l'item 5 (come il giro racconta com'è andato) più che questo.
+
+---
+
+## 🔎 Cosa è stato ricontrollato il 2026-09-09, e REGGE
+
+⭐ Metà del lavoro di una riverifica è scoprire che il documento aveva ragione.
+Se non si scrive, si ripaga daccapo — quindi si scrive, **col fatto datato**:
+
+| Affermazione | Come è stata verificata | Esito |
+| --- | --- | --- |
+| `event_log` è **write-only** | otto file del backend lo nominano, **nessuno lo legge**; zero occorrenze nel frontend | ✅ regge — ed è ancora il perno degli item 5, 6 e 7 |
+| item 2 — `contabilita` è uno schema vuoto | zero oggetti in `pg_class` | ✅ regge |
+| item 8 — zero diagrammi di stato | ⚠️ e qui la prima misura mentiva: un `grep` ne trovava **due**, ma erano **questo file stesso** e `mermaid.min.js`. Diagrammi veri: **zero** | ✅ regge |
+| item 9 — la pipeline prepara e nessuno spedisce | `vendite.fn_prepare_sdi_payload` scrive `fatture_sdi`, nessun lettore a valle | ✅ regge |
+
+⚠️ **La riga dell'item 8 è la lezione della passata**: una misura che *conferma*
+ciò che speravi va guardata due volte come una che lo smentisce. Lì per lì
+sembrava una voce da aggiornare, ed era il grep a essere sbagliato.
+
+---
+
 ## Ordine di attacco — ORIGINALE (28/02/2026, storico)
 
  i P0 sono cose che puoi fare in poche ore e sbloccano molto, i P1 sono bloccanti per andare in produzione reale, i P2-P3 possono crescere incrementalmente.
@@ -541,6 +653,23 @@ funzionale ma perché ha già fatto danno.
 | **P3** | Esercizio fiscale (#3) | La parte normativa (numerazione) è coperta; questa serve al **primo bilancio**, non al primo ciclo |
 | **P3** | Contabilità (#2) | Schema vuoto: è un modulo, non un item. Prima serve decidere se consuma eventi o vive nella pipeline |
 | **P3** | **Preview di fatturazione del contratto (#10)** *(nuovo)* | Entrata il 22/08 assorbendo `sviluppo-fatturazione.md`. Non blocca nessun altro item e niente si rompe senza — ma **sblocca una decisione UX ferma** su `contratti_righe`, e la condizione che la teneva sospesa (motore commesse) è caduta. ⚠️ Da non confondere con `/righe-preview/`, che è la preview di *pricing* |
+
+> ⚠️ **Nota del 2026-09-09 — l'ordine NON è stato rifatto**, ed è una scelta:
+> ripianificare dieci voci per aggiornarne due produrrebbe un elenco nuovo di
+> zecca e meno verificato di questo. Le due cose che chi lo legge deve sapere
+> prima di sceglierne una:
+>
+> * **P2 «Alerting (#6)»** — la metà «vitalità dei **processi**» è coperta dal
+>   cantiere chiuso il 07-09; quello che resta è l'allarme sui **dati**, e
+>   dipende ancora dall'endpoint di lettura su `event_log` (P1). L'ordine regge,
+>   la stima cala;
+> * **item 11 (integrità del giro)** non entra in questo elenco perché il suo
+>   lato DB è **finito**: quello che resta è frontend, e va nella coda del
+>   frontend, non qui.
+>
+> ⛔ E una che NON è cambiata: la **#1 (ritorno a DRAFT)** è ancora l'unico item
+> che *peggiora da solo*. Le voci nuove di settembre hanno tutte una causa
+> esterna che le ha fatte emergere; questa no, e sta lì da febbraio.
 
 ### Voci uscite dall'elenco
 
