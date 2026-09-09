@@ -296,6 +296,37 @@ dimensione la dice il passo 1. **Ma finché non si fa nemmeno il passo 1, la
 suite non difende niente**, e il costo di restare fermi cresce con ogni test
 scritto.
 
+### ✅ Com'è finita, il 2026-09-09
+
+Tutti e tre i passi fatti in giornata. Il cancello è **armato**: da
+`ci-validate.yaml` è sparito `continue-on-error`, e il ramo che generava la
+baseline ora la genera, la stampa **e fallisce** — perché con il cancello acceso
+un file sparito avrebbe riportato la CI a non misurare niente, in silenzio.
+
+| | |
+| --- | --- |
+| Baseline della CI | **407 rossi su 601**, misurata dalla CI (corsa `34340793130`) |
+| Prima corsa di confronto | **verde**, «nessuna regressione», numeri identici a due corse di distanza |
+| Composizione | 344 `ERRORE_FIXTURE`, 63 `ASSERZIONE` |
+
+⭐ **E strada facendo il conto è sceso da 485 a 407 senza sanare quasi nessun
+test.** Tre correzioni d'ambiente, tutte della stessa natura — cose che su dbdev
+esistevano perché messe a mano, e che su un database ricostruito dai changelog
+non c'erano:
+
+* il `GRANT USAGE` su `maintenance` al ruolo applicativo (§D5-bis, ora nel
+  provisioning): senza, `plpgsql_check` non risolve `maintenance.*` e otto
+  funzioni sane risultano riferimenti morti;
+* lo schema `django`, che Liquibase non costruisce e che sul database scratch
+  non arrivava affatto;
+* il canale di log `dblink`, che sullo scratch puntava al database di **sviluppo**
+  senza password: 151 file di `vendite` riportavano `2F003` al posto della
+  propria causa. Non un rosso in più — un rosso che **mente**.
+
+⚠️ Il difetto del classificatore (la stringa italiana) andava corretto **prima**
+di tutto il resto: senza, quelle tre diagnosi non si sarebbero potute fare, e la
+baseline sarebbe nata con 407 etichette sbagliate.
+
 ---
 
 ### 🔴 D2 — Il perimetro emittente si ferma alla testata
@@ -662,7 +693,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 
 | Area | Peso | Voto | Perché |
 | --- | --- | --- | --- |
-| **Catena di verifica (CI)** | 🔴 alto | **3/10** | I cancelli statici sono sette e duri. Il cancello che conta — la suite — è disattivato da un bootstrap mai chiuso, e il classificatore che dovrebbe spiegarne l'esito è cieco fuori da una macchina italiana (D1) |
+| **Catena di verifica (CI)** | 🔴 alto | **7,5/10** ⬆ | ✅ 2026-09-09: la suite è un cancello vero — baseline misurata dalla CI, `continue-on-error` tolto, il ramo di bootstrap fallisce invece di passare. Resta il registro a 407, che deve calare (D1, D7) |
 | **Perimetro dei dati (RLS)** | 🔴 alto | **5/10** | Progettato bene, applicato a un sesto del dominio documento e a zero dello storico (D2, D3, D4) |
 | **Copertura test** | 🔴 alto | **4/10** | 600 file e ~6.183 asserzioni, ma su un DB ricostruito da zero **la suite è verde al 31%** (411 rossi su 599, misurato). Il 38% delle funzioni non è mai nominato (D7) |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | **6,5/10** | `security_invoker` presidiato benissimo; `relrowsecurity` e `search_path` no (D5, D6) |
@@ -710,10 +741,13 @@ torna difendibile — e sono tre cantieri delimitati, non una riscrittura.
       `script/test-seed-stati-doc-ordini-evaso-v1.sql` resta `ASSERZIONE`.
       ⚠️ La baseline di sviluppo **non va rigenerata**: era già corretta, presa
       su una macchina italiana.
-* [ ] **D1-b** — rilanciare, leggere la ripartizione vera delle 411, decidere se
-      committare la baseline intera o triagiare prima `vendite` (214).
-* [ ] **D1-c** — togliere `continue-on-error`, **solo dopo** una corsa di
-      confronto verde.
+* [x] **D1-b** — ✅ **fatto**: baseline della CI committata, **407 rossi su 601**,
+      misurata dalla CI e non in locale (lo scratch diverge su 11 file).
+      344 `ERRORE_FIXTURE` + 63 `ASSERZIONE`.
+* [x] **D1-c** — ✅ **fatto**: `continue-on-error` tolto dopo una corsa di
+      confronto verde. E il ramo del bootstrap ora **fallisce** dopo aver
+      stampato la baseline: un file sparito non deve poter spegnere il cancello
+      in silenzio.
 * [x] **D1-bis** — ~~correggere `.codex/AGENTS.md` §Test~~. **Cade da sé**: la
       frase «usa una baseline sua, `db/pgtap/baseline-rossi-ci.tsv`» diventa vera
       nel momento in cui il file è committato (D1-b), e la frase «in CI la suite
