@@ -50,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(20);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -526,6 +526,88 @@ SELECT ok(
     WHERE g.commessa_id = (SELECT id FROM tmp_dc_commessa)
       AND g.stadio = 'DA_EMETTERE'),
   '15. Gruppi: commessa_stato_descrizione decodificata; documento_id NULL sul gruppo sourceless (oneri), col riferimento che ripiega sulla commessa'
+);
+
+-- ============================================================
+-- 15-bis..quater) ⭐ IL DOCUMENTO TRATTENUTO DA UN LOTTO VIVO
+-- ============================================================
+-- ⛔ Perche' qui e non in un file suo: la riga di dashboard esiste solo con
+--   questa fixture (commessa + attivita + operatore + GUC), e un presidio che
+--   se la rifabbrica da zero sarebbe una seconda fixture che diverge.
+-- ⚠️ E vanno PRIMA del test 16, che azzera la GUC: dopo, la vista non rende
+--   righe e queste asserzioni passerebbero a vuoto.
+--
+-- ⭐ I tre test sono un verso e il suo contrario, e servono entrambi:
+--     · lotto VIVO      -> la riga si spegne e il conteggio la toglie;
+--     · lotto ANNULLATO -> la riga torna libera e il conteggio la riprende.
+--   Con il solo primo, un predicato che blocca QUALUNQUE documento con un esito
+--   passerebbe — ed e' l'errore che `ultimo_esito` fa davvero: su un lotto
+--   annullato direbbe «bloccato» per un documento fatturabile.
+--   Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-2, T-3)
+
+-- La riga da trattenere, con le chiavi con cui il riepilogo la raggruppa.
+-- ⚠️ ORDER BY prima del LIMIT: senza, quale gruppo esca dipende dal planner.
+CREATE TEMP TABLE tmp_dc_trat AS
+SELECT g.gruppo_key, g.competenza_mese, g.stadio, g.emittente_soggetto_ruolo_id
+  FROM vendite.vw_dash_competenza_gruppi g
+ WHERE g.commessa_id = (SELECT id FROM tmp_dc_commessa)
+   AND g.stadio = 'DA_EMETTERE'
+ ORDER BY g.gruppo_key
+ LIMIT 1;
+
+-- Un lotto VIVO che tiene quel documento. ⛔ `codice_interno`, mai un id.
+CREATE TEMP TABLE tmp_dc_lotto_vivo AS
+WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti (
+    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
+    stato_doc_fiscale_id, meta)
+  SELECT 'PGTAP-DC-TRAT-' || substr(md5(clock_timestamp()::text), 1, 8),
+         t.competenza_mese, r.tipo_doc_fiscale_id, r.ef_a_sr,
+         (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT'),
+         jsonb_build_object('test_scope','pgtap_dash_competenza')
+    FROM tmp_dc_refs r, tmp_dc_trat t
+  RETURNING id)
+SELECT id FROM ins;
+
+INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
+SELECT (SELECT id FROM tmp_dc_lotto_vivo), t.gruppo_key FROM tmp_dc_trat t;
+
+-- ⭐ Esito COMPLETED di proposito: e' il caso in cui `ultimo_esito` direbbe
+--   «libero» e il documento e' invece trattenuto. Il verso che nessuno vedeva.
+INSERT INTO vendite.fatturazione_lotti_esiti (lotto_id, gruppo_key, stato_esecuzione)
+SELECT (SELECT id FROM tmp_dc_lotto_vivo), t.gruppo_key, 'COMPLETED' FROM tmp_dc_trat t;
+
+SELECT is(
+  (SELECT g.emissione_blocco_reason || '|' || g.emissione_blocco_lotto_codice
+     FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+    WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio),
+  'TRATTENUTO_DA_LOTTO|' || (SELECT l.codice FROM vendite.fatturazione_lotti l
+                              WHERE l.id = (SELECT id FROM tmp_dc_lotto_vivo)),
+  '15-bis. la riga si spegne col motivo e nomina il lotto che la trattiene (esito COMPLETED, lotto VIVO)'
+);
+
+SELECT is(
+  (SELECT r.n_gruppi_trattenuti::text
+     FROM vendite.vw_dash_competenza_gruppi_riepilogo r, tmp_dc_trat t
+    WHERE r.competenza_mese = t.competenza_mese AND r.stadio = t.stadio
+      AND r.emittente_soggetto_ruolo_id IS NOT DISTINCT FROM t.emittente_soggetto_ruolo_id),
+  '1',
+  '15-ter. il conteggio della card la ESCLUDE e la dichiara in n_gruppi_trattenuti'
+);
+
+-- ⭐ IL VERSO OPPOSTO. Annullato il lotto, il documento torna fatturabile: e'
+--   il caso in cui `ultimo_esito` (rimasto COMPLETED) non cambia di una virgola
+--   e il verdetto invece si ribalta.
+UPDATE vendite.fatturazione_lotti
+   SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s
+                                WHERE s.codice_interno = 'ANNULLATA')
+ WHERE id = (SELECT id FROM tmp_dc_lotto_vivo);
+
+SELECT ok(
+  (SELECT g.emissione_blocco_reason IS NULL
+     FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+    WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio),
+  '15-quater. annullato il lotto la riga torna libera: il verdetto e'' lo STATO, non l''esito'
 );
 
 -- ============================================================

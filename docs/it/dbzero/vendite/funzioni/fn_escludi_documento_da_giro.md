@@ -40,22 +40,23 @@ BEGIN
 
     -- ── Le precondizioni: sede unica, non riscritte qui ───
     v_motivi := script.fn_check_documento_escludibile_da_giro(p_lotto_id, p_gruppo_key);
-    -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
-    --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
-    --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi
-    --   (il backend puo' mostrarli tutti anche se la frase ne nomina uno).
-    -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
-    --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
-    PERFORM script.fn_raise_primo_motivo_se_presente(
-        'vendite', 'fn_escludi_documento_da_giro',
-        v_motivi,
-        NULL,          -- nessun campo da accendere: non e' un errore di form
-        NULL::uuid,
-        jsonb_build_object('lotto_id',   p_lotto_id,
-                           'gruppo_key', p_gruppo_key,
-                           'bersaglio',  jsonb_build_array(
-                               jsonb_build_object('tipo', 'LOTTO',
-                                                  'id', p_lotto_id::text))));
+    IF jsonb_array_length(v_motivi) > 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_escludi_documento_da_giro',
+            v_motivi -> 0 ->> 'codice',
+            jsonb_build_object('lotto_id', p_lotto_id,
+                               'gruppo_key', p_gruppo_key,
+                               -- L'elenco COMPLETO nel contesto: il
+                               -- backend puo' mostrarli tutti anche
+                               -- se la frase ne nomina uno.
+                               'motivi', v_motivi,
+                               'bersaglio', jsonb_build_array(
+                                   jsonb_build_object('tipo', 'LOTTO',
+                                                      'id', p_lotto_id::text))),
+            NULL::uuid,
+            p_gruppo_key,
+            COALESCE(v_motivi -> 0 ->> 'dettaglio', '-'));
+    END IF;
 
     -- ── Chi viene via insieme, PRIMA di cancellare ────────
     -- ⚠️ Dopo la cancellazione il legame non c'e' piu': letto qui
@@ -92,6 +93,33 @@ BEGIN
            uscita_motivo    = btrim(p_motivo)
      WHERE lotto_id = p_lotto_id
        AND gruppo_key = p_gruppo_key;
+
+    -- ── ⭐ L'USCITA SI RACCONTA NEL GIORNALE ──────────────
+    -- ⛔ Fino al 2026-09-09 l'uscita non lasciava NESSUNA riga di giornale: il
+    --   timbro stava solo sulla riga dell'esito (uscita_motivo, uscita_quando,
+    --   uscita_da). Chi guardava la storia del lotto non vedeva che un
+    --   documento era uscito, ne' perche' — e l'esclusione e' una cosa che si
+    --   fa apposta, con una motivazione che il CHECK di tabella rende
+    --   obbligatoria. Un fatto voluto e motivato che il giornale non registra
+    --   e' esattamente cio' che un giornale non deve fare.
+    -- ⭐ Status `I`: e' un fatto, non un allarme. E la scelta non e' estetica —
+    --   dal 2026-09-09 fn_log_pipeline_fase RIFIUTA `W` e `C` su un documento
+    --   uscito, e accetta le `I` proprio perche' questa riga possa esistere.
+    -- ⚠️ La `gruppo_key` c'e': senza, la riga sarebbe «del giro» e nessuno
+    --   potrebbe piu' toglierla ne' capire di chi parla.
+    -- ⚠️ Il motivo va NEL MESSAGGIO e non solo in meta: chi legge il giornale
+    --   legge il messaggio, e un motivo che sta solo nel carico e' un motivo
+    --   che nessuno vede.
+    PERFORM vendite.fn_log_pipeline_fase(
+        p_lotto_id,
+        (SELECT l.stato_doc_fiscale_id FROM vendite.fatturazione_lotti l
+          WHERE l.id = p_lotto_id),
+        'USCITA_DAL_GIRO',
+        'I'::char,
+        format('Documento %s tolto dal giro: %s', p_gruppo_key, btrim(p_motivo)),
+        jsonb_build_object('uscita_motivo', btrim(p_motivo)),
+        NULL,
+        p_gruppo_key);
 
     -- ── I trascinati tornano in coda ─────────────────────
     -- ⛔ `PENDING`, non `ESCLUSO`: non sono usciti da niente, e non
