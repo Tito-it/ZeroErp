@@ -15,7 +15,7 @@
 --
 -- Elenco test (plan 7):
 --  1) la vista porta le colonne che il produttore legge
---  2) il roster nomina almeno una coppia (processo, azienda) — il presupposto
+--  2) il roster nomina la coppia (processo, azienda) appena COSTRUITA
 --  3) ⚠️ e la nomina UNA volta sola: nessun fan-out dalle cinque join
 --  4) ⛔ spento il LEGAME processo-utente, la coppia sparisce
 --  5) ⛔ spenta l'IDENTITA' applicativa, la coppia sparisce
@@ -33,11 +33,21 @@
 --   uno solo basta a sbagliare.
 --
 -- ⚠️ LA QUINTA CONDIZIONE — `ef.attivo` — NON E' COLLAUDATA QUI, e va detto.
---   Misurato il 2026-09-05: su questo database spegnere un emittente e'
---   vietato da `trgfn_prevent_deactivate_if_children` (EMITEST e PGTAPEF202
---   hanno entrambi figlie: contratti, documenti). Costruire un emittente
---   usa-e-getta richiederebbe soggetto, ruolo EF e un utente tecnico proprio —
---   cioe' una fixture piu' grande della cosa da provare.
+--   ⭐ Rev 2026-09-09: la ragione scritta prima non regge piu', e quella nuova
+--   e' migliore perche' sta sul MODELLO invece che sui dati di oggi.
+--   Diceva: «spegnere EMITEST o PGTAPEF202 e' vietato perche' hanno figlie
+--   (contratti, documenti), e un emittente usa-e-getta sarebbe una fixture piu'
+--   grande della cosa da provare». La seconda meta' non e' piu' vera —
+--   `dbops.fn_pgtap_crea_roster_processo` un emittente usa-e-getta lo fabbrica
+--   in una riga — ma provandolo si scopre che la prima non era la causa.
+--   ⛔ Misurato il 2026-09-09 su un emittente appena creato, senza contratti e
+--   senza documenti: lo spegnimento e' vietato lo stesso, e il guard nomina
+--   `config.user_emittenti_fiscali`. Cioe' e' la riga di PERIMETRO dell'utente
+--   tecnico a trattenerlo — proprio quella che serve al roster per esistere.
+--   ⇒ `ef.attivo` non e' isolabile: per vederlo cadere bisognerebbe togliere
+--   la riga di perimetro, ma il roster la JOINA, quindi la coppia sparirebbe
+--   per l'altra ragione. Le due condizioni non si possono separare su un
+--   emittente che ha un utente tecnico, ed e' l'unico che il roster nomina.
 --   ⛔ Si dichiara invece di fingere: un `CASE WHEN … skip()` avrebbe detto la
 --   stessa cosa occupando un numero di test, e un test che non prova niente e'
 --   peggio di un test che manca — sembra copertura.
@@ -74,28 +84,46 @@ SELECT is(
 );
 
 -- ============================================================
--- La coppia su cui si lavora
+-- La coppia su cui si lavora — si COSTRUISCE, non si cerca
 -- ============================================================
--- ⚠️ Ordine stabile: una fixture che pesca a caso non verifica, scommette.
+-- ⛔ Fino al 2026-09-09 questo blocco pescava la prima coppia del roster
+--   ESISTENTE. Su dbdev funzionava — due emittenti veri, otto coppie — e su un
+--   database ricostruito dai changelog no: emittenti e soggetti sono
+--   `dati_macchina`, quindi il roster e' vuoto e non deve contenere niente.
+--   Misurato quel giorno sul database scratch di `scripts/ci-local.sh`: 0
+--   righe, e i test 2 e 4..7 rossi tutti insieme. E' il corollario sui test
+--   della Regola zero: un test che si appoggia alla popolazione prova i soli
+--   casi che quella popolazione per caso contiene.
+--
+-- ⭐ E IL SECONDO GUADAGNO E' PIU' GRANDE DEL PRIMO. I test 4..7 spengono e
+--   riaccendono quattro livelli di un'identita' tecnica. Prima lo facevano su
+--   un'identita' VERA — quella con cui `chiusura_scadenze_daily` lavora
+--   davvero i documenti di un'azienda di esercizio. Dentro una transazione
+--   annullata, quindi senza danno, ma il collaudo si appoggiava a un mondo che
+--   non era suo: bastava che quell'utente cambiasse stato per un'altra ragione
+--   e il test avrebbe misurato altro. Adesso il mondo lo fabbrica il test.
 DO $scelta$
 DECLARE
     v_r record;
 BEGIN
     SELECT * INTO v_r
-      FROM dbops.vw_processi_roster
-     WHERE processo_codice = 'chiusura_scadenze_daily'
-     ORDER BY emittente_codice
-     LIMIT 1;
+      FROM dbops.fn_pgtap_crea_roster_processo('chiusura_scadenze_daily');
 
-    PERFORM set_config('pgtap.user', COALESCE(v_r.auth_user_id::text, ''), true);
-    PERFORM set_config('pgtap.identita', COALESCE(v_r.identita_id::text, ''), true);
+    PERFORM set_config('pgtap.user', v_r.auth_user_id::text, true);
+    PERFORM set_config('pgtap.identita', v_r.identita_id::text, true);
+    PERFORM set_config('pgtap.emittente', v_r.emittente_codice, true);
 END
 $scelta$;
 
+-- ⚠️ Non piu' «almeno una coppia» ma «LA coppia»: l'asserzione nomina cio' che
+--   la fixture ha appena costruito, quindi non puo' passare per merito di una
+--   riga di esercizio che c'era gia'.
 SELECT isnt_empty(
-    $$SELECT 1 FROM dbops.vw_processi_roster
-       WHERE processo_codice = 'chiusura_scadenze_daily'$$,
-    '2. il roster nomina almeno una coppia (processo, azienda)'
+    format($$SELECT 1 FROM dbops.vw_processi_roster
+              WHERE processo_codice = 'chiusura_scadenze_daily'
+                AND emittente_codice = %L$$,
+           current_setting('pgtap.emittente', true)),
+    '2. il roster nomina la coppia (processo, azienda) appena costruita'
 );
 
 -- ⚠️ Cinque join in fila sono cinque occasioni di moltiplicare le righe. Una

@@ -50,6 +50,29 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(6);
 
 -- ============================================================
+-- Il roster su cui si suona — si COSTRUISCE, non si eredita
+-- ============================================================
+-- ⛔ Fino al 2026-09-09 questo file suonava sul roster che TROVAVA. Su dbdev ci
+--   sono due emittenti veri e otto coppie, quindi sembrava verificare; su un
+--   database ricostruito dai changelog il roster e' VUOTO — emittenti e
+--   soggetti sono `dati_macchina` — e succedeva la cosa peggiore:
+--   ⚠️ i test 1..5 passavano LO STESSO, perche' «zero accodati» e' uguale a
+--   «zero aziende a roster». Verdi per sottrazione, cioe' verdi smettendo di
+--   verificare. Solo il 6 diventava rosso, ed e' l'unico che si era accorto di
+--   niente.
+--
+-- ⭐ DUE coppie e non una: il test 6 fa fallire la PRIMA azienda e pretende che
+--   le altre passino lo stesso. Con una sola azienda a roster «le altre» non
+--   esistono, e l'asserzione diventerebbe `1/0` — vera per mancanza di
+--   materia, che e' di nuovo il difetto di sopra.
+DO $roster$
+BEGIN
+    PERFORM dbops.fn_pgtap_crea_roster_processo('chiusura_scadenze_daily');
+    PERFORM dbops.fn_pgtap_crea_roster_processo('chiusura_scadenze_daily');
+END
+$roster$;
+
+-- ============================================================
 -- La sveglia suona una volta
 -- ============================================================
 -- ⚠️ Il riepilogo si mette da parte: le asserzioni dopo lo leggono senza
