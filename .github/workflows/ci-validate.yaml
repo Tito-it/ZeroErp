@@ -629,7 +629,14 @@ jobs:
         #   Trovato provando la tabella dei quattro casi a tavolino, non
         #   leggendo la condizione.
         if: github.base_ref == 'main' || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')
-        continue-on-error: true
+        # ⭐ ARMATO IL 2026-09-09, e fino a quel giorno non lo era: `continue-on-error`
+        #   piu' una baseline mai committata tenevano questo passo nel ramo del
+        #   bootstrap dal 2026-08-07. Per un mese la suite ha girato in CI e il
+        #   suo esito e' stato buttato via — 601 file e ~6.200 asserzioni che non
+        #   difendevano l'integrazione. Il sintomo non c'era: la corsa era verde.
+        #   ⛔ Non rimetterlo. Se un rosso nuovo ferma un merge, il rosso e' il
+        #   messaggio: o e' una regressione, o e' un file che va in baseline con
+        #   la sua ragione scritta.
         env:
           # ⚠️ Baseline SEPARATA da quella di sviluppo, e non e' pigrizia.
           #   Quella committata (db/pgtap/baseline-rossi.tsv) e' misurata sul DB
@@ -673,17 +680,27 @@ jobs:
           echo "runner risolto: $(scripts/testpgtap.sh --print-runner)"
 
           if [ ! -f "$PGTAP_BASELINE" ]; then
-            # ⚠️ PRIMA CORSA: la baseline della CI non esiste ancora, e non si
-            #   puo' indovinare — dipende da quali test reggono su un database
-            #   ricostruito da zero, che e' esattamente cio' che su dev non si
-            #   puo' misurare. Questa corsa la GENERA e la stampa: va copiata,
-            #   committata, e poi si toglie `continue-on-error` qui sopra.
-            echo "::warning::baseline CI assente: questa corsa la genera. Copiala e committala."
+            # ⛔ GENERA, STAMPA, E FALLISCE. Le tre cose insieme.
+            #   Fino al 2026-09-09 questo ramo usciva 0: era giusto per il primo
+            #   giro — la baseline non si puo' indovinare, dipende da quali test
+            #   reggono su un database ricostruito da zero — ed e' diventato una
+            #   mina il giorno dopo. Con il cancello armato bastava che il file
+            #   sparisse (un rebase sfortunato, una cancellazione per sbaglio)
+            #   perche' la CI tornasse in silenzio a non misurare niente: verde,
+            #   e cieca. E' esattamente lo stato in cui e' rimasta per un mese.
+            #   ⭐ La regola che il progetto si e' dato per i presidi e' «fai
+            #   fallire il controllo quando non puo' misurare». Il servizio utile
+            #   — stampare la baseline pronta da copiare — resta; a cambiare e'
+            #   che la corsa NON passa. Chi la rigenera di proposito
+            #   (`git rm db/pgtap/baseline-rossi-ci.tsv`) si aspetta un rosso e
+            #   sa cosa farne; chi l'ha persa se ne accorge subito.
+            echo "::error::baseline CI assente ($PGTAP_BASELINE): la suite non e' stata CONFRONTATA."
             scripts/pgtap-baseline.sh --update || true
             echo "----- 8< ----- db/pgtap/baseline-rossi-ci.tsv ----- 8< -----"
             cat "$PGTAP_BASELINE"
             echo "----- >8 ----------------------------------------- >8 -----"
-            exit 0
+            echo "Copia il blocco qui sopra nel file, committalo, e questa corsa tornera' verde."
+            exit 1
           fi
 
           scripts/pgtap-baseline.sh
