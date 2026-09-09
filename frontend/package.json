@@ -15,7 +15,9 @@
     "guard:pinia": "node scripts/check-pinia-user-scoped-reset.mjs",
     "guard:drawer": "node scripts/check-drawer-width.mjs",
     "guard:icone": "node scripts/check-primeicons-codepoints.mjs",
-    "verify": "run-s lint guards build",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "verify": "run-s lint guards test:run build",
     "fix": "oxlint . --fix && eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
   },
@@ -43,7 +45,8 @@
     "oxlint": "~1.81.0",
     "prettier": "3.9.6",
     "vite": "^8.2.2",
-    "vite-plugin-vue-devtools": "^8.2.1"
+    "vite-plugin-vue-devtools": "^8.2.1",
+    "vitest": "^5.0.0"
   },
   "overrides": {
     "form-data": "^4.0.6"

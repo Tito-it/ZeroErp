@@ -566,7 +566,7 @@ cosa, ed è per questo che stanno in un item solo:
 | --- | --- |
 | [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md) | si può **togliere** un documento da un giro fermo, con la motivazione — invece di annullare tutto il lotto |
 | [il marcatore scrive su un documento uscito](brief-db-il-marcatore-scrive-su-un-documento-uscito.md) | e una volta uscito **non si marca, non si conta, non blocca, non si racconta** — il tentativo uccideva il rilancio |
-| [documento trattenuto da un lotto vivo](brief-db-documento-trattenuto-da-un-lotto-vivo.md) | e finché un giro **vivo** lo tiene, non lo si offre a un secondo giro |
+| [documento trattenuto da un lotto vivo](../work-done/brief-db-documento-trattenuto-da-un-lotto-vivo.md) | e finché un giro **vivo** lo tiene, non lo si offre a un secondo giro |
 
 ⭐ **La cosa che vale oltre questi tre**, e che è costata due riscritture di
 perimetro: *il meccanismo che c'era misurava l'**esito** del lavoro, non il fatto

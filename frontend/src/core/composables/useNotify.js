@@ -39,11 +39,41 @@ export function useNotify() {
     })
   }
 
-  function error(message) {
+  // ⭐ LA FORMA COMUNE DEI TRE TOAST D'ERRORE, in un posto solo (2026-09-09).
+  // I tre — normale, di sistema, col gesto — condividono severita', ripiego del
+  // messaggio e il `detail` che porta la SOLUZIONE; divergono solo per `life` e
+  // per cio' che il gruppo dedicato si porta dietro.
+  // ⛔ Prima erano tre copie di due righe, e la terza l'ha aggiunta il campo
+  //    `soluzione`: e' il momento in cui una ripetizione smette di essere
+  //    tollerabile — al quarto campo sarebbero tre punti da ricordarsi.
+  //
+  // ⚠️ La soluzione va nel `detail` di PrimeVue e non concatenata al `summary`:
+  //    sono DUE frasi con due ruoli — cosa e' successo, e cosa fare — e il tema
+  //    le rende una sotto l'altra con pesi diversi. Unirle produrrebbe un
+  //    periodo unico in cui l'istruzione si perde dentro la diagnosi.
+  // ⚠️ `undefined` e non stringa vuota: una chiave presente e vuota farebbe
+  //    disegnare al tema una seconda riga che non contiene niente.
+  function _toastErrore(message, soluzione, extra) {
     toast.add({
       severity: 'error',
       summary: message || t('notifications.generic_error'),
-      life: TOAST_DURATION.ERROR
+      detail: soluzione || undefined,
+      ...extra
+    })
+  }
+
+  // ⭐ L'ERRORE CHE DICE ANCHE COSA FARE (2026-09-09). Il secondo argomento e'
+  // la `soluzione` che il team DB scrive a catalogo per il codice sollevato:
+  // viaggia dal database (canale HINT dell'eccezione) fino a `error.hint`
+  // nell'envelope, ed e' l'UNICA frase che dice all'operatore cosa fare adesso.
+  // Fino a quel giorno il database la scriveva, il backend la trasportava con
+  // cinque punti di traduzione allineati, e lo schermo la buttava.
+  //
+  // ⚠️ La durata cambia col TESTO, non con la gravita': con la soluzione c'e' il
+  //    doppio da leggere (`ERROR_CON_SOLUZIONE`).
+  function error(message, soluzione) {
+    _toastErrore(message, soluzione, {
+      life: soluzione ? TOAST_DURATION.ERROR_CON_SOLUZIONE : TOAST_DURATION.ERROR
     })
   }
 
@@ -61,14 +91,15 @@ export function useNotify() {
   // arrivare ai 122 file che usano `execute` senza che nessuno lo scriva.
   // ⚠️ `group` dedicato: la resa con i pulsanti sta nel `<Toast group="azioni">`
   // di `App.vue`, e il toast normale resta esattamente com'era.
-  function errorConAzioni(message, azioni) {
+  // ⚠️ La `soluzione` arriva anche qui, e l'ordine a video e' quello del
+  // ragionamento: cosa e' successo → cosa fare → il pulsante che lo fa. Il
+  // template del gruppo (`App.vue`) la rende fra il testo e i pulsanti.
+  function errorConAzioni(message, azioni, soluzione) {
     if (!azioni?.length) {
-      error(message)
+      error(message, soluzione)
       return
     }
-    toast.add({
-      severity: 'error',
-      summary: message || t('notifications.generic_error'),
+    _toastErrore(message, soluzione, {
       group: 'azioni',
       life: TOAST_DURATION.AZIONI,
       // Il payload che il template del gruppo rende come pulsanti.
@@ -76,12 +107,15 @@ export function useNotify() {
     })
   }
 
-  function systemError(message) {
-    toast.add({
-      severity: 'error',
-      summary: message || t('notifications.generic_error'),
-      life: TOAST_DURATION.SYSTEM_ERROR
-    })
+  // ⚠️ Anche il toast di sistema porta la soluzione quando c'e', ed e' meno
+  // raro di quanto sembri: `_apply_policy` la toglie sui TRE codici tecnici
+  // (`E_DATABASE`, `E_PIPELINE`, `E_GENERICO`) ma la lascia sui codici di
+  // classe `TECNICO` registrati a catalogo — dove la frase e' proprio quella
+  // che serve a chi legge un 500 («segnalare al supporto citando il
+  // request_id»).
+  // ⛔ Qui la durata non cambia: e' gia' persistente (`life: 0`).
+  function systemError(message, soluzione) {
+    _toastErrore(message, soluzione, { life: TOAST_DURATION.SYSTEM_ERROR })
   }
 
   return { success, info, warn, error, errorConAzioni, systemError }

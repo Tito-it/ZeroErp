@@ -2393,13 +2393,56 @@ inventa una — è lo stesso patto dei tre livelli già descritto sopra.
 ⚠️ **Oggi `TASK_RUN` non è raggiungibile**, ed è deliberato: è a catalogo perché
 serve al giornale degli eventi, e nessuna schermata mostra un giro per id.
 
+### ⭐ La soluzione — `hint`, cioè cosa fare adesso (dal 2026-09-09)
+
+`campiErrati` dice **quale campo** correggere, il bersaglio dice **a quale altra
+cosa** andare. La **soluzione** dice **cosa fare adesso** — ed è la terza metà,
+quella che mancava.
+
+```
+messaggio:   «Non si può numerare il documento 835: la fattura che
+              rettifica non è ancora numerata (documento 820).»
+soluzione:   «Numerare prima i documenti che questo rettifica, poi ripetere.»
+gesto:       [ Apri Fattura 820 ]
+```
+
+⭐ **La frase non la scrive il frontend, e nemmeno il backend**: è la `soluzione`
+che il team DB scrive **a catalogo per ogni codice**, quindi è multilingua e
+cambia con un seed. Viaggia nell'envelope come `error.hint`.
+
+**Non c'è niente da scrivere nei componenti.** La estrae `useApiHandler` e la
+consegna al toast, che la rende **sotto il messaggio** — esattamente come per il
+gesto:
+
+```js
+// Serve solo a chi ha una superficie PROPRIA dove metterla.
+const { execute, soluzione } = useApiHandler()
+```
+
+| Regola | Perché |
+|---|---|
+| va nel **`detail`** del toast, mai concatenata al messaggio | sono due frasi con due ruoli — cosa è successo, cosa fare — e il tema le rende una sotto l'altra con pesi diversi. Unirle produce un periodo unico in cui l'istruzione si perde dentro la diagnosi |
+| il toast che la porta dura **di più** (`TOAST_DURATION.ERROR_CON_SOLUZIONE`) | la durata si calibra su **quanto c'è da leggere**, e qui il testo è il doppio. ⛔ Non è persistente come quello col gesto: la soluzione è a catalogo per ogni codice, e `life: 0` farebbe di **ogni** errore di dominio un toast da chiudere a mano |
+| su un errore **tecnico** non arriva, e non è il frontend a deciderlo | lo toglie `_apply_policy` sui tre codici in cui il canale `HINT` non porta una soluzione a catalogo ma il testo che PostgreSQL scrive per lo sviluppatore. ⛔ Ri-deciderlo qui sarebbe una **seconda sede** della stessa regola |
+| il **rifiuto confermabile** non la mostra, ed è voluto | lì la frase «cosa fare adesso» **è il dialog che sta comparendo** (`useForzaturaConfermata`): ripeterla sotto sarebbe dire due volte la stessa cosa |
+
+⛔ **Chi chiama `notify.error(...)` a mano non ce l'ha**, ed è la stessa
+asimmetria che già vale per il gesto: il canale è `execute`, e un secondo
+percorso che legge l'envelope per conto proprio è la forma in cui i due
+divergono. Se una schermata mostra un errore senza passare da `useApiHandler`,
+la domanda da farsi è perché.
+
 ---
 
-⚠️ **`ui_action` non si usa ancora.** `useApiHandler` lo espone come `azioneUi`
-per chi vorra' costruirci sopra, ma **nessun componente lo legge**: la reazione
-della pagina la decidono il messaggio e lo status. Prima di dargli un
-comportamento vanno rilette le 176 scelte fatte quando nessuno poteva
-verificarle a video.
+⚠️ **`ui_action`: un valore su sette, e gli altri sei sono SERVITI.**
+`useApiHandler` lo espone come `azioneUi`; l'unico componente che ci ramifica è
+`useForzaturaConfermata`, su `confirm_and_retry`. ⭐ **Non è una lacuna, ed è
+dichiarato** (decisione di Tid, 2026-09-09): `highlight_form_fields` lo serve
+`campiErrati`, `redirect_login` lo serve lo **status 401** in `core/api.js`, e i
+restanti quattro li serve il **toast** — che ora porta anche la soluzione e, dove
+c'è un bersaglio, il gesto. ⚠️ Prima di dare un comportamento al settimo vanno
+rilette le **176 righe di override**, decise quando nessuno poteva verificarle a
+video. Tabella completa: [api.md §Cosa cambia davvero lo status](../api.md).
 
 ---
 

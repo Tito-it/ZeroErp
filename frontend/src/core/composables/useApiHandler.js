@@ -31,6 +31,20 @@
 // una riga di modifica. `bersagli` resta esposto per chi ha una superficie
 // propria dove metterlo (il pannello degli esiti, l'icona di riga).
 // Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §7-bis.
+//
+// ⭐ SOLUZIONE (dal 2026-09-09): la TERZA meta', ed e' quella che mancava.
+// `campiErrati` dice quale campo correggere, `bersagli` a quale altra cosa
+// andare — la soluzione dice **cosa fare adesso** (envelope `error.hint`). E'
+// la frase che il team DB scrive a catalogo per ogni codice e che
+// `script.fn_log_and_raise_error` consegna nel canale HINT dell'eccezione:
+// «Numerare prima i documenti che questo rettifica, poi ripetere».
+//
+// ⛔ Fino a quel giorno era il caso di scuola che `api.md` descrive di suo
+// pugno — *un campo dichiarato e mai letto sembra presidiato e non presidia
+// niente*: il database la scriveva, il backend la trasportava con cinque punti
+// di traduzione allineati e un BB dedicato, e lo schermo la buttava.
+// ⚠️ Stessa regola del gesto: la mette a video QUESTO composable, non il
+// chiamante — sotto il messaggio, nel `detail` del toast.
 
 import { ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
@@ -86,6 +100,11 @@ export function useApiHandler() {
   // conferma. ⚠️ Senza questo, quel chiamante dovrebbe riscriversi
   // `extractErrorMessage` coi suoi tre ripieghi: una seconda sede.
   const messaggioErrore = ref(null)
+  // ⭐ La SOLUZIONE dell'ultimo errore (envelope `hint`): cosa fare adesso.
+  // Stesse regole degli altri: si azzera a ogni `execute`, si popola anche in
+  // `silent`. Esposta per chi ha una superficie propria dove renderla — il
+  // toast la mette gia' da se'.
+  const soluzione = ref(null)
 
   /**
    * Esegue una chiamata API con gestione errori/toast automatica.
@@ -106,6 +125,7 @@ export function useApiHandler() {
     azioneUi.value = null
     bersagli.value = []
     messaggioErrore.value = null
+    soluzione.value = null
     try {
       const response = await apiFn()
       if (options.successMessage) {
@@ -119,14 +139,31 @@ export function useApiHandler() {
         : response
       return (body && typeof body === 'object' && 'data' in body) ? body.data : body
     } catch (err) {
-      // Prima del toast: i campi da correggere e il suggerimento di reazione.
+      // ⭐ L'envelope si legge UNA VOLTA SOLA. Prima del 2026-09-09 questo blocco
+      //    ripeteva `err.response?.data?.error?...` per ogni campo, e ogni campo
+      //    nuovo ne aggiungeva una copia: quattro allora, cinque con la
+      //    soluzione. ⛔ E' la stessa forma che il backend ha smesso di avere
+      //    quando ha estratto `diagnostica_db` — li' i punti di lettura erano
+      //    cinque e ognuno leggeva un sottoinsieme diverso. Qui la catena e'
+      //    una, e i campi si prendono da lei.
+      // ⚠️ `extractErrorMessage` resta su `err` di proposito: e' l'unico che
+      //    guarda anche FUORI da `error` (`data.detail` di DRF, `data.error`
+      //    come stringa nuda), quindi non e' un lettore dell'envelope standard —
+      //    e' il ripiego per chi quell'envelope non lo produce.
+      const errore = err.response?.data?.error
       // Si leggono anche in modalita' `silent` — il chiamante puo' voler
       // evidenziare senza far comparire un toast.
-      campiErrati.value = estraiCampi(err)
-      azioneUi.value = err.response?.data?.error?.ui_action ?? null
-      bersagli.value = estraiBersagli(err.response?.data?.error)
-      const codice = err.response?.data?.error?.code
+      campiErrati.value = estraiCampi(errore)
+      azioneUi.value = errore?.ui_action ?? null
+      bersagli.value = estraiBersagli(errore)
+      const codice = errore?.code
       messaggioErrore.value = extractErrorMessage(err)
+      // ⚠️ Il filtro sta a MONTE, non qui: `_apply_policy` toglie l'`hint` sui
+      //    tre codici tecnici, dove quel canale non porta una soluzione a
+      //    catalogo ma il testo che PostgreSQL scrive per lo sviluppatore.
+      //    Ri-decidere qui sarebbe una seconda sede della stessa regola, e le
+      //    due divergerebbero al primo codice nuovo.
+      soluzione.value = estraiSoluzione(errore)
       // ⭐ Il chiamante puo' dichiarare di gestire da se' UNA CLASSE di
       // comportamento (`ui_action`), e allora il toast non parte: il caso e' il
       // rifiuto CONFERMABILE (`confirm_and_retry`), che non e' un fallimento ma
@@ -152,11 +189,11 @@ export function useApiHandler() {
         // gesto che sparisce dopo cinque secondi non e' un gesto.
         const azioni = azioniDaBersagli(bersagli.value, auth)
         if (isSystem) {
-          notify.systemError(message)
+          notify.systemError(message, soluzione.value)
         } else if (azioni.length) {
-          notify.errorConAzioni(message, azioni)
+          notify.errorConAzioni(message, azioni, soluzione.value)
         } else {
-          notify.error(message)
+          notify.error(message, soluzione.value)
         }
       }
       return null
@@ -165,14 +202,28 @@ export function useApiHandler() {
     }
   }
 
-  return { execute, loading, campiErrati, azioneUi, bersagli, messaggioErrore }
+  return { execute, loading, campiErrati, azioneUi, bersagli, messaggioErrore, soluzione }
 }
+
+// I due estrattori prendono l'oggetto `error` dell'envelope — non l'eccezione —
+// come fa gia' `estraiBersagli`: la catena opzionale la percorre il chiamante,
+// una volta sola, e questi restano funzioni pure sul contratto.
 
 // Estrae i nomi dei campi da correggere dall'envelope: { error: { fields: [...] } }.
 // Il backend manda i NOMI e mai i valori (api.md §Envelope risposte).
-function estraiCampi(err) {
-  const campi = err.response?.data?.error?.fields
+function estraiCampi(errore) {
+  const campi = errore?.fields
   return Array.isArray(campi) ? campi.filter(c => typeof c === 'string') : []
+}
+
+// Estrae la SOLUZIONE dall'envelope: { error: { hint: "..." } }.
+// ⚠️ Stringa e non vuota, o niente: il backend la omette quando non c'e'
+//    (una chiave presente e vuota direbbe «guardami» senza dire niente), ma un
+//    ripiego che si fida di un contratto e' un ripiego che il contratto lo
+//    presidia — qui costa una riga.
+function estraiSoluzione(errore) {
+  const hint = errore?.hint
+  return typeof hint === 'string' && hint.trim() ? hint : null
 }
 
 // Estrae il messaggio di errore dall'envelope backend { error: { code, message } }

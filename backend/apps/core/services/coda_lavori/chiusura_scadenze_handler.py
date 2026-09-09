@@ -32,6 +32,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import coerce_jsonb_dict
+
 logger = logging.getLogger(__name__)
 
 # handler_code seedato in `dbops.coda_lavori_tipi` per il tipo CHIUSURA_SCADENZE.
@@ -57,7 +59,38 @@ def chiusura_scadenze_handler(
     with connection.cursor() as cursor:
         cursor.execute("SELECT dbops.fn_apply_chiusura_scadenze()")
         riga = cursor.fetchone()
-    esito: dict[str, Any] = dict(riga[0]) if riga and riga[0] else {}
+    # 🔴 `coerce_jsonb_dict` e NON `dict(...)`, ed e' una riga che e' costata
+    #    quattro notti (corretta il 2026-09-09).
+    #    `dbops.fn_apply_chiusura_scadenze()` dichiara `RETURNS jsonb` e
+    #    costruisce un oggetto JSON ben formato — ma **il backend Django per
+    #    psycopg 3 non decodifica i `jsonb` fuori dall'ORM**: su un cursor RAW
+    #    quel valore arriva come `str`.
+    #    ⇒ `dict("{...}")` itera i CARATTERI, e ogni carattere e' una sequenza di
+    #    lunghezza 1 dove ne servono 2: `ValueError: dictionary update sequence
+    #    element #0 has length 1; 2 is required`. E' l'errore con cui il job ha
+    #    fallito quattro notti di fila (5-8 settembre), due volte per notte,
+    #    tentativi esauriti, dentro `dbops.vw_coda_lavori_da_guardare`.
+    # ⛔ Il rimedio non era da inventare: `coerce_jsonb_dict` esiste dal
+    #    2026-06-11, e la sua docstring descrive **questa** condizione. Questo era
+    #    un call site scritto dopo l'estrazione del building block, che non l'ha
+    #    cercato.
+    # ⚠️ **E non era l'unico a non usarlo**, come questa riga ha detto per
+    #    mezza giornata: altri OTTO punti facevano la stessa coercizione **a
+    #    mano** (`ui/db/{ui,dashboard}_repository`,
+    #    `core/db/{auth,search,email}_repository`, `invito_operatore_service`).
+    #    ⛔ Il difetto di quella riga non era il numero sbagliato: era che
+    #    «l'unico» chiude il discorso, e un discorso chiuso non si riapre.
+    # ✅ Chiusi tutti e otto il 2026-09-09, e non con `coerce_jsonb_dict`: con
+    #    **`jsonb_out`**, che conserva la loro semantica (un JSON illeggibile
+    #    esplode invece di diventare `{}`). ⭐ La differenza NON e' di stile —
+    #    su `auth_repository.registra_tentativo_login` il ripiego a `{}` avrebbe
+    #    dato `result.get("bloccato") is None`, cioe' **account non bloccato**:
+    #    un fail-OPEN su un percorso di autenticazione.
+    # ⭐ Da quel giorno la copia numero nove non nasce: la vieta
+    #    `apps/core/tests/test_coercizione_jsonb_dal_bb`, registro a **zero**.
+    #    Ed e' il presidio che a questo call site sarebbe servito — era stato
+    #    scritto DOPO l'estrazione del BB, e non l'aveva cercato.
+    esito: dict[str, Any] = coerce_jsonb_dict(riga[0]) if riga else {}
 
     logger.info(
         "chiusura_scadenze.eseguita emittente=%s esito=%s",

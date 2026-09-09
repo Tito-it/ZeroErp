@@ -12,13 +12,12 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import fetchone_scalar
+from apps.core.db._helpers import fetchone_scalar, jsonb_out
 
 
 class AuthRepository:
@@ -71,7 +70,14 @@ class AuthRepository:
             row = cursor.fetchone()
             if not row or not row[0]:
                 return {"bloccato": False, "minuti_rimanenti": 0, "tentativi": 0}
-            return json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            # ⛔ `jsonb_out` e NON `coerce_jsonb_dict`, ed e' una scelta di
+            #    SICUREZZA. Questo esito decide se un account e' bloccato, e il
+            #    chiamante lo legge con `result.get("bloccato")`: il ripiego a
+            #    `{}` del gemello darebbe `None` — cioe' «non bloccato» — su un
+            #    JSON che non si e' saputo leggere. Un fail-OPEN silenzioso su
+            #    un percorso di autenticazione. Qui un decode error deve
+            #    esplodere: il login si rifiuta, che e' il verso giusto.
+            return jsonb_out(row[0])
 
     # Scopo: Legge il flag deve_cambiare_password dell'identita digitale
     # puntata dal JWT della sessione corrente (post modello 1:N §8.4.1).

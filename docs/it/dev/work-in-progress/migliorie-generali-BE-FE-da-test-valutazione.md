@@ -56,7 +56,7 @@ il contratto con cui si lavora, e vanno riletti come si rilegge un giudizio.
 | `.codex/AGENTS.md` · `PROJECT_CONTEXT.md` | «Vite 7, PrimeVue 4.5, **Pinia 3**, Vue Router 5, **vue-i18n 10**»     | `package-lock.json`: **Vite 8.2.2**, PrimeVue 4.5.5, **Pinia 4.0.3**, Vue Router 5.3.1, **vue-i18n 11.4.10**. Due salti di **major** che nessun documento registrava                                                         | ✅ **chiuso**                                                                |
 | `frontend-standards.md` §Stack            | «Vite **8.x**, Pinia **3.x**, vue-i18n **10.x**»                       | Terza versione della stessa riga, terza volta sbagliata in modo diverso. ⭐ Ed era il documento che aveva ragione su Vite: il difetto non era l'ignoranza, era che **lo stesso fatto stava in tre sedi che non si conoscono** | ✅ **chiuso**                                                                |
 | `api.md` §Envelope                        | «`ui_action` … ⚠️ **il frontend non lo legge ancora**»                  | Falso: `useApiHandler` lo legge (`azioneUi`) e `useForzaturaConfermata` ci ramifica sopra. La frase era invecchiata verso il pessimismo                                                                                      | ✅ **chiuso**                                                                |
-| `api.md` §Envelope                        | «`hint` … ⚠️ il frontend non lo legge ancora»                           | **Ancora vero**: `error.hint` ha **zero** occorrenze in `frontend/src`                                                                                                                                                       | ⛔ **non si tocca**: la frase è vera, è il **codice** che deve cambiare (D4) |
+| `api.md` §Envelope                        | «`hint` … ⚠️ il frontend non lo legge ancora»                           | Vero la mattina del 2026-09-09 (**zero** occorrenze in `frontend/src`), **falso la sera**: il toast lo rende sotto il messaggio                                                                                              | ✅ **chiuso — rendendo falsa la frase, non correggendola** (D4)              |
 | `api.md` §Test                            | «Test progressivi, **due livelli**: unit service mockati · smoke curl» | **Superato in meglio**: esiste un terzo livello, `tests/db/` con `richiedi_db_provvisto` — **19 file**, 34 punti di chiamata, acceso in CI da `ZEROERP_TEST_DB_E2E=1`                                                        | ✅ **chiuso**                                                                |
 | `PROJECT_CONTEXT.md` §Struttura           | elenca 10 app Django                                                   | Le app sono **17**. Mancava fra le altre `ai_assistant`: 24 file, 18 tool registrati, 2 endpoint documentati, **assente da tutti e quattro** i documenti di contesto obbligatorio                                            | ✅ **chiuso**                                                                |
 | `AGENTS.md` §Smoke                        | «**undici** script … nessuno li lancia»                                | Oggi sono **sedici**. La seconda metà della frase regge: la CI non li nomina                                                                                                                                                 | ✅ **chiuso**                                                                |
@@ -97,11 +97,16 @@ scheletri; `ai_assistant` entra nell'inventario endpoint di `api.md` **con il
 suo difetto D5 scritto accanto**, perché registrare una funzione senza dire che
 il suo gate non si può aprire sarebbe stato registrare metà del fatto.
 
-⛔ **La riga su `hint` è rimasta.** È l'unica ancora vera, e correggerla avrebbe
-significato correggere il documento **sbagliato**. Le è stata aggiunta la data
-di riverifica e la ragione per cui pesa — la stessa mossa del D1-bis del
-gemello: *«non ha senso correggere il documento: ha senso rendere vero ciò che
-dice»*.
+⛔ **La riga su `hint` era rimasta**, unica delle sette. Correggerla avrebbe
+significato correggere il documento **sbagliato**: le è stata aggiunta la data di
+riverifica e la ragione per cui pesava — la stessa mossa del D1-bis del gemello:
+*«non ha senso correggere il documento: ha senso rendere vero ciò che dice»*.
+
+✅ **E la sera del 2026-09-09 è caduta anche quella**, nel modo che era stato
+dichiarato: non ritoccando la frase, ma **chiudendo il difetto** (D4). ⭐ Sette
+righe su sette, e la settima è l'unica che è costata codice invece che
+riscrittura — che è esattamente la differenza fra un documento invecchiato e un
+documento che dice il vero su una cosa che manca.
 
 ---
 
@@ -346,6 +351,24 @@ parte guardare**.
 | `npm run build` (vite)                                    | ✅            |
 | `scripts/check_i18n_keys.py`                              | ✅            |
 
+### ✅✅ E il 2026-09-09 sera **ha girato per davvero**
+
+Merge #1547 su `Tito-dev`. Non è più «provato in locale»: è un cancello che ha
+fatto un giro completo su GitHub Actions, **due volte** (sulla PR e sul push),
+con **tutti** i passi verdi.
+
+| | |
+| --- | --- |
+| Durata del job | **47 s** (51 s e 55 s le due corse) |
+| Passi | checkout · Setup Node · `npm ci` · lint · guard · build · Setup Python · guard i18n — **tutti `success`** |
+| Node risolto | `Resolved frontend/package.json as ^24.0.0` → **v24.20.0** |
+
+⭐ **La riga sul Node è quella che valeva la pena verificare**: dimostra che la
+«fonte unica di verità» non è un'intenzione scritta nei commenti ma un
+meccanismo che funziona — nessun numero di versione è ricopiato nel workflow, e
+la CI prende quello giusto da `package.json`. Lo stesso vale per `oxlint .` nel
+log, **senza `--fix`**: è un cancello, non un formattatore.
+
 ⭐ **Nasce verde, di proposito.** I sette errori `oxlint` preesistenti sono stati
 sanati **prima** di accenderlo: quattro `no-useless-fallback-in-spread`
 (`{...(x || {})}` e `{...x}` sono identici su ogni valore falsy) e tre parametri
@@ -358,9 +381,49 @@ presidio spento è peggio di uno assente.*
 frontend `ci-validate` non si sveglia, e con lui non si svegliava neanche il
 guard. Ora gira nel workflow del frontend, **dove il frontend cambia**.
 
+### ✅ E il 2026-09-09 sera è arrivato anche il primo test
+
+`vitest` (**solo lui**, 1 pacchetto: `@vue/test-utils` e `jsdom` si aggiungeranno
+il giorno in cui si monterà un componente, non prima). Legge lo stesso
+`vite.config.js` della build, quindi non c'è una seconda configurazione da
+tenere allineata.
+
+| | |
+| --- | --- |
+| Primo file provato | `src/core/composables/useApiHandler.spec.js` — **18 test**, 199 ms |
+| Nel job | passo `Test (vitest)`, prima della build |
+
+⭐ **Il file non è scelto a caso, ed è il punto.** `useApiHandler` è l'**unico**
+posto in cui il frontend legge una risposta del backend — `axios` è importato in
+un file solo. Quello che i 18 test fissano non è «il composable funziona»: è il
+**contratto dell'envelope** di `api.md` — `fields`, `targets`, `ui_action`,
+`message` e i suoi tre ripieghi — cioè metà del lavoro che il backend ha
+costruito (D4) e che a video si perde se qualcuno rinomina un campo.
+
+⭐ **E i test sono stati provati al contrario.** Un test che nasce verde non ha
+ancora dimostrato di misurare qualcosa: quattro mutazioni del sorgente, quattro
+rossi.
+
+| Mutazione | Esito |
+| --- | --- |
+| `azioneUi` smette di leggere `ui_action` | **2 rossi** |
+| tolto l'azzeramento di `campiErrati` fra due chiamate | **1 rosso** |
+| `CODICI_SENZA_TOAST` da `Set` a oggetto letterale (eredita dal prototipo) | **1 rosso** |
+| tolto il primo ripiego del messaggio | **1 rosso** |
+
+⭐ **E il cancello ha preso subito un difetto mio**: la riga
+`const inTest = !!process.env.VITEST` aggiunta a `vite.config.js` ha fatto
+scattare `eslint` — *«`process` is not defined»* — perché i globals di Node la
+configurazione li dà ai soli `scripts/**`. Corretto con un `import process from
+'node:process'` esplicito, che funziona a prescindere da come è configurato il
+linter. *Il primo giorno di vita, e ha già fermato qualcosa.*
+
 ⚠️ **Due residui, dichiarati:**
 
-* i **test** non ci sono ancora — è `§6 D1-d`, e resta un cantiere;
+* la **copertura** è un file su 680: il valore di questi 18 test è il contratto
+  che fissano, non la superficie che coprono. I test di **componente**
+  (`ListaConfigurabile`, i drawer) restano da fare e vogliono due pacchetti in
+  più — è `§6 D1-d-bis`;
 * `scripts/check_license.py` **non presidia niente in CI, e non solo qui.**
   ⛔ Provato il 2026-09-09: lo script non legge **mai** `sys.argv` — usa `sys`
   soltanto per `sys.exit` — e ricava l'elenco dei file da
@@ -412,6 +475,20 @@ guard. Ora gira nel workflow del frontend, **dove il frontend cambia**.
   difetto è rimasto invisibile per mesi. ⚠️ La riga dice «in questo lotto»
   perché pre-commit spezza l'elenco in più invocazioni: uno zero è il conto di
   quel lotto, non del totale.
+
+  ### ✅✅ Confermato nella CI vera, la sera stessa
+
+  Passo `pre-commit` del merge #1547 su `Tito-dev`:
+
+  ```text
+  Controlla header licenza.................................................Passed
+  Header di licenza: 1 file nuovi controllati in questo lotto (range 41e99310..10ea7264).
+  Header di licenza: 2 file nuovi controllati in questo lotto (range 41e99310..10ea7264).
+  ```
+
+  ⭐ **Tre file nuovi effettivamente controllati, dove prima ne guardava zero** —
+  e il numero si legge nel log, che era il secondo scopo della correzione. Il
+  «Passed» di ieri e quello di oggi si scrivono uguale e valgono cose opposte.
 
   ⚠️ **Un difetto del METODO, non del codice, trovato durante la prova e vale
   più della correzione**: il primo caso che avevo scelto (`693e4b258`) sembrava
@@ -498,6 +575,9 @@ in `~/.venvs/zeroerp-tools` — il percorso che `scripts/update-venv.sh` documen
 — e `.git/hooks/pre-commit` lo punta già. Non lo trovavo perché quel venv non era
 sul `PATH`. ⭐ La correzione conta: senza, il punto sarebbe rimasto «scritto e mai
 provato», che è esattamente lo stato che questo documento contesta agli altri.
+
+✅✅ **E in CI ha girato**: nel passo `pre-commit` del merge #1547,
+`ruff check ... Passed`. Il cancello non è più solo configurato.
 
 **Controllo prima/dopo, perché 131 file toccati vogliono una prova:**
 suite Django a database irraggiungibile, `4530 test` — *prima*: 27 fallimenti,
@@ -629,6 +709,132 @@ per `hint` esattamente come valeva per `fields` nel 2026.
 brief (la coda accrediti, dove distingue «non si può» da «resetta il lotto, ma
 sappi che la nota si rigenera»). Un posto solo dove mostrarlo — sotto il
 messaggio, quando c'è — e il campo smette di essere una promessa.
+
+### ✅ Com'è finita, la sera del 2026-09-09 — il campo si vede
+
+**Un posto solo, ed è quello previsto.** `useApiHandler` estrae `error.hint` e
+lo espone come **`soluzione`**; il toast lo rende **sotto il messaggio**, nel
+`detail` di PrimeVue. ⭐ Come per il gesto, **non c'è niente da scrivere nei
+componenti**: chi usa `execute` ce l'ha senza una riga di modifica, e i tre rami
+del toast (sistema · con gesto · normale) lo portano tutti e tre.
+
+⭐ **La riga che rendeva il campo mostrabile non era nel frontend, ed è la parte
+che la stima non conteneva.** `_apply_policy` ricopiava `hint` **sempre**, anche
+sui tre codici di `is_technical_code` — dove il canale `HINT` non porta la
+`soluzione` di nessun catalogo, ma il testo che PostgreSQL scrive per lo
+**sviluppatore**, in inglese (*«Perhaps you meant to reference the column …»*).
+⛔ Mostrarlo così avrebbe chiuso D4 **introducendo** un difetto: un'istruzione in
+inglese, su un oggetto che l'operatore non conosce, sotto un messaggio che nel
+frattempo la policy ha già sostituito. ⇒ Il filtro sta a monte, in **una sede
+sola**, dove sta già la regola gemella del bersaglio.
+
+⚠️ **E le due regole DIVERGONO, di proposito.** Il bersaglio guarda anche lo
+status (`is_technical or policy.http_status >= 500`), la soluzione **no**: su un
+codice di classe `TECNICO` **registrato a catalogo** la frase esce. *Su un 500
+non c'è nessun gesto da offrire, ma «segnalare al supporto citando il
+request_id» è esattamente ciò che chi legge può fare.* Due campi, due regole, e
+la differenza è provata nei casi 5 e 6 di `test_error_translator_soluzione.py`
+invece che spiegata in un commento.
+
+**Cosa è stato toccato**, ed è poco per costruzione:
+
+| Dove | Cosa |
+| --- | --- |
+| `error_translator._apply_policy` | `hint=None if is_technical else …` — la condizione perché il campo sia mostrabile |
+| `test_error_translator_soluzione.py` | **7 test**, gemello di `test_error_translator_campi`; provati per **mutazione** (spento il guard, ne cadono 3) |
+| `useApiHandler` | estrae `soluzione`, la azzera come gli altri, la passa ai tre rami del toast |
+| `useNotify` | `error` / `systemError` / `errorConAzioni` prendono la soluzione e la mettono nel `detail` |
+| `App.vue` | il gruppo `azioni` ha un template suo: lì la soluzione va scritta a mano, **fra** il testo e i pulsanti |
+| `constants.js` | `TOAST_DURATION.ERROR_CON_SOLUZIONE` |
+| `useApiHandler.spec.js` | da 18 a **23** test; il nuovo contratto è fissato il giorno in cui viene reso, non prima |
+| `pipeline_runner` | 🔴 il blob `errore` del **200** leggeva `exc.hint`/`exc.targets` diretti: stesso nome dell'envelope, **regola diversa**. Ora passa da `to_api_error` |
+| `test_pipeline_runner` | il presidio di quella regola, nei due versi (tecnico → niente; rimediabile → entrambi) |
+| `useNotify.spec.js` | **6 test** nuovi: la rete sotto la de-duplicazione dei tre toast d'errore |
+
+### 🔴 Il difetto trovato rendendo il campo, ed è il pezzo che vale
+
+**Il blob d'errore dentro il 200 del runner non passava dalla policy.** Gli
+endpoint di pipeline rispondono 200 anche quando la catena si ferma — il
+fallimento è un campo del payload — e quel campo veniva composto leggendo
+`exc.hint` ed `exc.targets` **diretti**. L'envelope invece li fa passare da
+`_apply_policy`, che su un codice tecnico li toglie.
+
+⛔ **Due regole per lo stesso nome, ed è peggio di due nomi diversi**: due nomi
+si notano leggendo, due regole no. Da quella strada uscivano un **bersaglio su
+un guasto** — un pulsante che il contratto vieta — e il `HINT` grezzo di
+PostgreSQL.
+
+⭐ **Il difetto era vivo da prima del 2026-09-09**, ed è diventato visibile solo
+perché il frontend ha cominciato a *rendere* il suggerimento: *un campo che
+nessuno mostra non ha comportamenti sbagliati, ne ha di invisibili.* È la stessa
+lezione di D4 letta dall'altro capo — e il motivo per cui rendere un campo a
+video vale più di trasportarlo bene.
+
+⚠️ **La correzione non ricopia la regola**: chiede i due valori a
+`ErrorTranslator.to_api_error`, che è chi la possiede. `message` e `detail`
+restano invece grezzi, perché quel blob alimenta il pannello di diagnostica di
+un lotto — la differenza è voluta ed è scritta lì.
+
+### ✅ E il building block che otto punti riscrivevano a mano
+
+Trovato tirando il filo del `dict(riga[0])` che aveva fatto fallire il job
+notturno per quattro notti: **altri otto punti** facevano la stessa coercizione
+`jsonb` a mano — `ui/db/{ui,dashboard}_repository`,
+`core/db/{auth,search,email}_repository`, `invito_operatore_service`. Non erano
+rotti; erano otto copie di un BB che esiste dal 2026-06-11.
+
+⛔ **E non era un find-and-replace, ed è il punto.** I building block sono
+**due** e non sono intercambiabili: `coerce_jsonb_dict` ripiega a `{}`,
+`jsonb_out` fa esplodere. Su `auth_repository.registra_tentativo_login` — che
+torna `{bloccato, …}` e viene letto con `result.get("bloccato")` — il ripiego
+avrebbe dato `None`, cioè **account non bloccato**: un fail-OPEN silenzioso su
+un percorso di autenticazione. ⇒ Tutti e otto adottano **`jsonb_out`**, che
+conserva la semantica che avevano.
+
+⚠️ **La conversione era CIECA, e l'ha detto una mutazione.** Spegnendo
+`jsonb_out` cadevano otto test — e nessuno dei quali toccava questi otto punti:
+erano tutti consumatori storici del BB. *Un cambiamento che nessun test vede non
+è verificato dal fatto che la suite resti verde.* ⇒ Sono stati aggiunti i due
+presidi che mancavano, e coprono cose diverse:
+
+| Presidio | Cosa tiene |
+| --- | --- |
+| `test_coercizione_jsonb_dal_bb` | la **forma**: tre regex vietano di riscrivere i BB a mano, registro a **zero** — nasce senza arretrato, come il cancello di `ruff` |
+| `tests/db/test_jsonb_stringa_negli_otto_lettori` | il **comportamento**: la stringa entra, un dict esce, per tutti e otto (più il verso opposto, che si accorge se un lettore sparisce) |
+
+⭐ Il primo è il presidio che a quel call site sarebbe servito: era stato scritto
+**dopo** l'estrazione del BB e non l'aveva cercato — la forma esatta di
+*«un BB unifica la lettura, ma i punti che la riscrivono si cercano»*.
+
+⭐ **La durata è una decisione, e ha una ragione dichiarata** (Tid, 2026-09-09):
+il toast con la soluzione dura **di più perché il testo è il doppio**, non
+perché l'errore sia più grave. ⛔ E **non** è persistente come quello col gesto:
+la soluzione è a catalogo *per ogni codice*, quindi `life: 0` avrebbe fatto di
+**ogni** errore di dominio un toast da chiudere a mano. *Un gesto ha un pulsante
+da premere e può aspettare; una frase si legge e se ne va.*
+
+⚠️ **Chi chiama `notify.error(...)` a mano resta fuori**, ed è la stessa
+asimmetria che vale già per il gesto: il canale è `execute`. Non è un residuo
+nascosto — è scritto in `frontend-standards` §La soluzione, con la domanda che
+va fatta a una schermata che mostra un errore senza passare di qui.
+
+⚠️ **E un consumatore che di proposito NON la mostra**: il rifiuto confermabile
+(`useForzaturaConfermata`). Lì la frase «cosa fare adesso» **è il dialog che sta
+comparendo**, e ripeterla sotto direbbe due volte la stessa cosa.
+
+### ✅ E la seconda metà: le sei `ui_action`, dichiarate
+
+**Decisione di Tid, 2026-09-09: si dichiara la copertura.** Il default del
+client serve **sei valori su sette**, e non per rassegnazione — `campiErrati`
+serve `highlight_form_fields` (ed è l'unica forma in cui quella richiesta è
+azionabile), lo **status 401** serve `redirect_login` prima ancora che il codice
+si legga, il **toast** serve gli altri quattro. Ramificarli oggi comprerebbe
+zero.
+
+⚠️ **La condizione per accendere il settimo resta scritta e invariata**: le
+**176 righe di override** vanno riguardate **prima**, non dopo — sono state
+decise quando nessuno poteva verificarle a video. La tabella per valore sta in
+`api.md` §Cosa cambia davvero lo status.
 
 ---
 
@@ -981,9 +1187,39 @@ building block, che non l'ha cercato.
    fila, e nessuno l'ha letta: il conto è passato da 6 a 8 **mentre si scriveva
    questo documento**. È il D10 del gemello, colto sul fatto.
 
-⚠️ **Il rimedio è una riga** (`coerce_jsonb_dict(riga[0])` al posto di
-`dict(riga[0])`), ma non è stato applicato: sta fuori dai punti 1-5 autorizzati.
-Vedi `§6 D13`.
+### ✅ Chiuso il 2026-09-09, alle 22:40 — un'ora prima del giro successivo
+
+`chiusura_scadenze_handler.py:60` usa ora `coerce_jsonb_dict(riga[0])`.
+
+⭐ **E il test che c'era è la parte che vale.** Esisteva già
+`apps/core/tests/services/test_chiusura_scadenze_handler.py`: cinque test, ben
+commentati, con in testa la nota giusta — *«Database MOCKATO: qui si prova ciò
+che l'handler DECIDE»* — e la delega esplicita del binding a un guardrail su DB
+vero. Era **verde mentre il job falliva da quattro notti**.
+
+⛔ **Il difetto non era la mancanza di un test: era la forma che il mock
+fingeva.** La riga finta conteneva un `dict` (`({"vendite.contratti": 4},)`); il
+driver consegna una `str`. ⇒ *Un mock non sbaglia mai da solo — sbaglia quando la
+forma che finge non è quella vera, e allora presidia il contrario di ciò per cui
+è stato scritto.* Fra «cosa l'handler decide» e «il binding col catalogo» c'era
+una terza cosa, **la forma del valore che torna**, e non la guardava nessuno.
+
+**Provato nei tre modi che servono**, perché una riga sola merita più di un
+verde:
+
+| Prova | Esito |
+| --- | --- |
+| I due test nuovi (`str` e `dict`, più il JSON malformato) | ✅ 5 test OK |
+| **Mutazione**: rimesso `dict(riga[0])` | ⛔ rosso, con **esattamente** `ValueError: dictionary update sequence element #0 has length 1; 2 is required` — la stessa stringa delle 8 righe in coda |
+| **End-to-end** sul database vero, in transazione annullata | ✅ `chiusure` è un `dict`, nessuna eccezione |
+| Suite backend completa sul DB vero | ✅ **4533 test, OK** |
+
+⚠️ **Restano le 8 righe vecchie** in `vw_coda_lavori_da_guardare`: sono
+fallimenti storici a tentativi esauriti, e non si sanano da sé. Vanno **rimesse
+in coda** (`requeue/`) o **archiviate** — è una decisione operativa, non una
+conseguenza della correzione. ⛔ E finché quel registro non torna a zero, la
+vista continua a non poter fare il suo mestiere: una lista sempre lunga smette di
+essere letta (D13-bis).
 
 ---
 
@@ -1019,19 +1255,19 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 
 | Area                                        | Peso    | Voto         | Perché                                                                                                                                                                                                                                                           |
 | ------------------------------------------- | ------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catena di verifica — frontend**           | 🔴 alto  | **6/10** ⬆   | ✅ 2026-09-09: nato `ci-frontend.yaml` — `npm ci` · lint senza `--fix` · i quattro guard · `vite build` · guard i18n, tutto verde. 🔴 Restano **zero test**: è la ragione per cui non sale oltre (D1, D1-d)                                                        |
+| **Catena di verifica — frontend**           | 🔴 alto  | **7/10** ⬆⬆ | ✅ 2026-09-09: `ci-frontend.yaml` **ha girato in CI**, 47 s, tutti i passi verdi — `npm ci` · lint senza `--fix` · quattro guard · **18 test** · build · guard i18n. ⚠️ Non sale oltre perché la copertura è **un file su 680**: il cancello c'è, la rete no (D1, D1-d-bis) |
 | **Analisi statica — backend**               | 🔴 alto  | **6,5/10** ⬆ | ✅ 2026-09-09: `ruff` (`F`+`E9`) in pre-commit e CI, registro sanato e cancello **nato a zero**. ⚠️ Resta senza **type checker**, che è la metà che vedrebbe i difetti di giuntura (D2)                                                                            |
 | **Catena di verifica — backend**            | 🔴 alto  | **8/10**     | Cancello duro senza `continue-on-error`, 4.560 test verdi in CI, sette guardrail statici, il compilatore plpgsql. Manca la profondità (D9) e il ramo `--deploy` (D3)                                                                                             |
 | **Contratto API pubblicato**                | 🟠 medio | **7/10** ⬆   | ✅ 2026-09-09: `securitySchemes` c'è, `security:` su tutte le 815 operazioni, `check --deploy` da 677 a 124 problemi. Restano 66 `W002`, 54 collisioni di `operationId` e il ramo `--deploy` fuori dalla CI (D3, D3-b)                                            |
 | **Contratto d'errore — lato backend**       | 🟠 medio | **9/10**     | 763 codici vivi, zero senza ripiego, zero orfani, zero `%s`, classi motivate. Il pezzo migliore del backend                                                                                                                                                      |
-| **Contratto d'errore — arrivo a video**     | 🟠 medio | **5/10**     | `fields` e `targets` letti bene; `hint` mai; 1 `ui_action` su 7 (D4)                                                                                                                                                                                             |
+| **Contratto d'errore — arrivo a video**     | 🟠 medio | **8/10** ⬆⬆  | ✅ 2026-09-09: `fields`, `targets` e ora anche **`hint`** arrivano a video — il toast lo rende sotto il messaggio, e sui tre codici tecnici il backend lo toglie perché lì non è la soluzione a catalogo. Le sei `ui_action` non ramificate sono **dichiarate servite** dal default, non ignorate. ⚠️ Non è 10: il canale è `execute`, e chi mostra un errore chiamando `notify.error` a mano resta fuori (D4) |
 | **Perimetro e permessi (lato applicativo)** | 🟠 medio | **7,5/10**   | Catena unica, fail-closed, reset GUC incondizionato; un'area dichiarata e non a catalogo (D5), `skip_area_check` senza un registro (D10)                                                                                                                         |
 | **Correttezza dei contratti di lista**      | 🟠 medio | **6/10**     | La regola sul `count` è scritta e ha un controesempio vivo sull'autocomplete più usato (D6); nessun cancello la difende                                                                                                                                          |
 | **Simmetria del dominio**                   | 🟠 medio | **4/10**     | `acquisti` e `magazzino` modellati a DB e vuoti su BE e FE, senza una data (D11). Stesso voto del gemello, per lo stesso motivo                                                                                                                                  |
 | **Building block — frontend**               | 🟡 basso | **8,5/10**   | 83 composable, 97 componenti, un solo punto HTTP, `bersagli` e `useDrawerChiusuraGlobale` sono lavoro di qualità; restano 34 `DataTable` senza motivo e 11 view fuori dal contratto KeepAlive                                                                    |
 | **Multilingua**                             | 🟡 basso | **9/10**     | 4.697 chiavi in parità perfetta, guard in pre-commit, condotta `Accept-Language` completa. Il voto non è 10 perché il catalogo a monte è monolingue (§2.5)                                                                                                       |
 | **Gestione del debito**                     | 🟡 basso | **5/10**     | Un registro che cala davvero (header licenza, −873 in due settimane) e sette che non hanno un verso (D10)                                                                                                                                                        |
-| **Documentazione di contesto**              | 🟡 basso | **8,5/10** ⬆ | ✅ 2026-09-09: sei righe su sette chiuse in giornata, e lo stack **tolto** dalle tre sedi invece che aggiornato — fonte unica `frontend/package.json`, come `.python-version` per Python. Resta aperta la sola riga su `hint`, che è vera e si chiude con D4 (§1) |
+| **Documentazione di contesto**              | 🟡 basso | **9/10** ⬆   | ✅ 2026-09-09: **sette righe su sette**. Lo stack **tolto** dalle tre sedi invece che aggiornato (fonte unica `frontend/package.json`, come `.python-version`), e l'ultima riga — quella su `hint` — chiusa **rendendola falsa** invece che riscrivendola (§1, D4) |
 
 ### Il giudizio, in una frase
 
@@ -1094,12 +1330,24 @@ per un secondo cliente.
       e lanciati dal job. ⭐ Raccoglierli in uno script invece di quattro righe di
       YAML significa che chi ne aggiunge un quinto lo trova in CI **senza toccare
       il workflow**.
-* [ ] **D1-d** — **solo dopo**, il primo test. Non una suite: **un** test su
-      `useApiHandler` (l'unico punto HTTP del frontend) e **uno** su
-      `ListaConfigurabile` (l'unico modo di montare una lista). Vitest è già
-      compatibile con Vite 8; il valore non è la copertura, è che da lì in poi
-      esista un posto dove scrivere il prossimo. ⛔ Dipendenza npm nuova: serve
-      l'ok esplicito di Tid.
+* [x] **D1-d (metà)** — ✅ **fatto il 2026-09-09**: `vitest` (solo lui, ok di
+      Tid), 18 test su `useApiHandler`, nel job prima della build, e **provati
+      per mutazione** — quattro mutazioni del sorgente, quattro rossi. ⭐ Il
+      valore non è la copertura: è che da qui in poi **esiste un posto dove
+      scrivere il prossimo**, che prima non c'era ed è la ragione per cui non ne
+      veniva scritto nessuno.
+* [ ] **D1-d-bis** — il primo test di **componente**, su `ListaConfigurabile`
+      (l'unico modo di montare una lista, 63 file la usano). ⛔ Vuole due
+      pacchetti in più — `@vue/test-utils` e `jsdom` — e vanno aggiunti **quel
+      giorno**, non prima.
+* [ ] **D1-f** — ⚠️ trovato installando `vitest`: `npm audit` riporta **2
+      vulnerabilità (1 alta)** su `browserslist` / `baseline-browser-mapping`,
+      **preesistenti** — arrivano da `vite-plugin-vue-devtools` → babel ed erano
+      già nel lock — e di sola **build**: non entrano nel bundle. ⛔ Il difetto
+      non è la vulnerabilità: è che **nessuno lancia mai `npm audit`**, quindi
+      non c'era modo di saperlo. Decidere se metterlo nel job, e con quale
+      soglia: un `--audit-level=high` che blocca su una dipendenza di build va
+      valutato, non dato per scontato.
 
 ### 🔴 E una sul backend
 
@@ -1129,10 +1377,13 @@ per un secondo cliente.
       di `settings.py`, e **decidere** sulla CSP: o si aggiunge, o si scrive
       perché no. Oggi la difesa contro l'XSS è «non c'è superficie», ed è vero,
       ma non è presidiato da niente.
-* [ ] **D4** — mostrare `hint` a video, in **un** posto: sotto il messaggio
-      d'errore, quando c'è. E decidere sulle sei `ui_action` non ramificate: o si
-      gestiscono, o si dichiara che il banner le copre tutte tranne
-      `confirm_and_retry`.
+* [x] **D4** — ✅ **fatto il 2026-09-09**: `hint` reso a video in **un** posto —
+      `useApiHandler` → `soluzione` → `detail` del toast, sotto il messaggio. Con
+      lui la condizione che lo rendeva mostrabile (`_apply_policy` lo toglie sui
+      tre codici tecnici, dove quel canale porta il testo di PostgreSQL e non la
+      soluzione a catalogo) e **7 test** nuovi lato BE, **5** lato FE. Le sei
+      `ui_action` non ramificate sono **dichiarate servite** dal default
+      (decisione di Tid): la tabella per valore è in `api.md`.
 
 ### 🟠 La sostanza
 
@@ -1189,18 +1440,34 @@ per un secondo cliente.
       usa solo per intersecare. Provato prima/dopo sulla forma esatta della CI
       (rosso dove prima taceva) e sul percorso del commit (invariato), più
       `verbose: true` perché il verde dica **su cosa**.
-* [ ] **D13** — 🔴 **una riga, e un job notturno che riparte**: in
-      `chiusura_scadenze_handler.py:60` sostituire `dict(riga[0])` con
-      `coerce_jsonb_dict(riga[0])` (`apps.core.db._helpers`), che esiste dal
-      2026-06-11 per questa identica condizione. ⚠️ E aggiungere il test che
-      manca: quello che passa al mapping un `jsonb` **come stringa**, che è la
-      forma in cui il driver lo consegna davvero — senza, il prossimo punto di
-      chiamata ricasca nello stesso posto.
-* [ ] **D13-bis** — dare un **destinatario** a `dbops.vw_coda_lavori_da_guardare`.
-      È il D10 del gemello e qui ha una prova: 6 righe la mattina, 8 la sera,
-      quattro notti di fallimenti identici che nessuno ha letto. ⭐ La forma
-      esiste già (la coda sa accodare, `config.fn_accoda_email_sistema` sa
-      spedire): serve un digest delle viste di presidio non vuote.
+* [x] **D13** — ✅ **fatto il 2026-09-09**: `coerce_jsonb_dict(riga[0])`, più i
+      test sulla **forma** del valore (`str`, `dict`, JSON malformato). Provato
+      per mutazione — col codice vecchio i test riproducono esattamente l'errore
+      delle 8 righe in coda — e end-to-end sul database vero.
+* [x] **D13-ter** — ✅ **fatto da Tid il 2026-09-09 alle 21:25 UTC**: le otto
+      righe archiviate in un solo gesto (stesso `archiviato_il`, endpoint di
+      collezione). `vw_coda_lavori_da_guardare` è a **zero** — `ERRORE` vive = 0,
+      archiviate = 12.
+      ⭐ **E il valore non è la pulizia**: con otto righe vecchie dentro, una riga
+      nuova era indistinguibile dal fondo. Da adesso **qualunque riga significa
+      «stanotte è fallito qualcosa»**. Il presidio ha riacquistato la proprietà
+      per cui era stato scritto, e che non aveva.
+      ⚠️ Ed è la condizione che rende leggibile la prova di D13: alle 22:05 UTC
+      il produttore accoda due lavori e il drenatore li prende con la correzione
+      già sul disco (il timer gira dal working tree, verificato). Domattina la
+      vista dirà **0** o **2**: nessuna terza lettura possibile.
+* [~] **D13-bis** — 🔵 **brief scritto il 2026-09-09, in attesa del DB**:
+      [brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md).
+      ⛔ Non si poteva fare tutto lato backend, e il perché è la parte utile:
+      delle 31 viste `dbops.vw_*`, **14 non sono vuote ma quasi tutte sono
+      inventari** — un digest ingenuo si aprirebbe con 2.035 righe di
+      `vw_trigger_functions`. Servono tre nature distinte (`ZERO` · `SOGLIA` ·
+      `INVENTARIO`) e **nessuna è deducibile dal nome**. ⛔ Metterle in un elenco
+      Python sarebbe una seconda sorgente di verità che diverge alla
+      trentaduesima vista: la classificazione è **dato**, come
+      `ui.lista_definizione`. ⇒ Chiesti al DB: il catalogo `dbops.presidi` e una
+      riga in `dbops.processi` (`classe=MANUTENZIONE`, quindi senza identità né
+      emittente). Il backend riparte lo stesso giorno: §5 del brief.
 * [ ] **INFRA-1** — 🔴 **datato e ricorrente**: la chiave del nodo Tailscale di
       `dbdev` è scaduta il **2026-09-09 alle 10:51 UTC**, e con essa il server
       backend di sviluppo ha smesso di raggiungere il database — gunicorn fermo
@@ -1264,6 +1531,13 @@ mancata, taciuta, diventa una misura implicita**.
 | **4** | `OpenApiAuthenticationExtension` per `JwtAuditAuthentication`  | ~30 min, ~20 righe | `check --deploy` da **677 a 124**; `securityScheme` presente; `security:` su tutte le 815 operazioni                                                                            | D3-a | ✅   |
 | **5** | 7 errori `oxlint` sanati e `--fix` tolti dagli script `lint:*` | ~20 min            | `npm run lint` da **formattatore** a **cancello**; la comodità su `npm run fix`, che di proposito non si chiama `lint:*`                                                        | D1-b | ✅   |
 
+✅✅ **E tutti e cinque hanno girato in CI la sera del 2026-09-09** (merge #1547
+su `Tito-dev`): `CI-Frontend` verde in 47 s con tutti i passi, e nel passo
+`pre-commit` di `CI-Validate` sia `ruff check ... Passed` sia l'hook della
+licenza che dichiara **3 file nuovi controllati**. ⇒ La riserva scritta poche ore
+prima — *«scritti, non attivi: un cancello che non ha mai girato non è ancora un
+cancello»* — è **caduta**.
+
 ⭐ **Due cose imparate eseguendo, che la stima non conteneva:**
 
 1. **La configurazione minima di `ruff` non era `E,F,I`** come avevo scritto in
@@ -1285,9 +1559,16 @@ di essere l'unica metà del prodotto che nessuna macchina guarda.
 
 ### 🥈 Poi — ore, ed è quello che vede l'operatore
 
+> ✅ **Il numero 6 è stato eseguito il 2026-09-09**, su indicazione di Tid.
+> L'esito è nel blocco «Com'è finita» di §3 D4. ⭐ La stima diceva ~1 h e ha
+> retto, ma il pezzo che non conteneva stava nel **backend**: mostrare il campo
+> senza il filtro sui tre codici tecnici avrebbe chiuso D4 introducendo un
+> difetto — un'istruzione di PostgreSQL, in inglese, sotto un messaggio che la
+> policy ha già sostituito.
+
 | #   | Cosa                                                                                | Sforzo | Cosa compra                                                                                                                                           | Voce |
 | --- | ----------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| 6   | `hint` a video, in **un** posto (sotto il messaggio d'errore)                       | ~1 h   | L'unica frase che dice all'operatore **cosa fare adesso**: oggi il DB la scrive, il BE la trasporta, lo schermo la butta                              | D4   |
+| 6   | ✅ `hint` a video, in **un** posto (sotto il messaggio d'errore)                    | ~1 h   | ✅ **fatto il 2026-09-09.** L'unica frase che dice all'operatore **cosa fare adesso**: il DB la scriveva, il BE la trasportava, lo schermo la buttava | D4   |
 | 7   | `onActivated` sulle 11 view di `amministrazione/`                                   | ~2 h   | Modifica meccanica identica ×11. Toglie un difetto **intermittente** — che per via del `:max="10"` è peggio di uno costante, perché non viene creduto | D8   |
 | 8   | Separare i due `_build_results_response`: lookup (con `limit`) da collezioni figlie | ~1 h   | Toglie il controesempio vivo sull'**autocomplete articoli**, la ricerca più usata dell'applicazione                                                   | D6   |
 
@@ -1311,10 +1592,12 @@ di essere l'unica metà del prodotto che nessuna macchina guarda.
 * **`manage.py check --deploy` in CI (D3-b).** Chiuso il punto 4, restano
   **66 `W002`** più `mail.E001`. Non è configurazione: è aprire un registro da 66
   e dargli un verso.
-* **I test frontend (D1-d).** Il *primo* test costa poco, la **suite** no. Va
-  dopo il tier 1, e nasce da due file soli — `useApiHandler` e
-  `ListaConfigurabile`, che sono l'unico punto HTTP e l'unico modo di montare una
-  lista. ⚠️ Dipendenza npm nuova: vuole un ok esplicito.
+* **I test frontend (D1-d).** ✅ La prima metà è fatta il 2026-09-09 (`vitest`,
+  18 test su `useApiHandler`, provati per mutazione) e la previsione ha retto:
+  il *primo* test costa poco. ⚠️ **La seconda metà resta il cantiere**: il test
+  di componente vuole `@vue/test-utils` + `jsdom`, e soprattutto vuole che
+  qualcuno decida **cosa** un test di `ListaConfigurabile` deve asserire — che è
+  la parte che non si compra con un pacchetto.
 * **`acquisti` / `magazzino` (D11).** Sta qui per un motivo opposto: nella colonna
   «sforzo» è la voce **più economica di tutte** — una riga — e non è una cosa da
   *fare*, è una cosa da **dire**. Un dominio a metà senza una data è il debito che

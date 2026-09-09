@@ -92,6 +92,55 @@ def richiedi_db_provvisto(sonda: str = SONDA_SCHEMA_LIQUIBASE) -> None:
         )
 
 
+# Scopo: apre il CONTESTO OPERATORE su un cursore, cioe' le due GUC senza le
+#        quali ogni tabella sotto RLS risponde ZERO RIGHE. Torna l'id
+#        dell'utente su cui il contesto e' stato aperto.
+#
+# ⭐ ESTRATTO IL 2026-09-09 (regola del 2, ok di Tid): le stesse cinque righe
+#    stavano in tre file e2e — `test_lotto_gruppi_ordine`,
+#    `test_pull_tutte_fallite_scrittura_reale` e
+#    `test_riepilogo_esclude_trattenuti`. Non e' comodita': e' il pezzo la cui
+#    assenza NON da' errore, e per questo va scritto una volta sola.
+#
+# ⛔ PERCHE' LO ZERO E' IL PERICOLO, e non il rosso. Senza contesto le viste di
+#    dominio non falliscono: rispondono un insieme VUOTO. Un test che cerca
+#    materiale trova zero righe, chiama `skipTest` e si dichiara «ok» —
+#    verde per sottrazione, che e' il difetto che questi presidi esistono per
+#    non avere.
+#
+# 🔴 IL GUARD SULLA TRANSAZIONE, ed e' la ragione per cui questa funzione vale
+#    piu' delle tre copie che sostituisce. `SET LOCAL` FUORI da un blocco
+#    transazionale PostgreSQL lo IGNORA — con un semplice avviso, non un errore.
+#    Il contesto non si apre, RLS taglia tutto, e si legge zero credendo di aver
+#    misurato. Successo il 2026-09-09 misurando a mano: «zero lotti in totale»
+#    su un database che ne aveva 85. Nessuna delle tre copie aveva questo
+#    controllo, ed e' esattamente cio' che un building block deve aggiungere:
+#    non solo togliere la ripetizione, ma chiudere il modo di sbagliare che la
+#    ripetizione lasciava aperto a tutti.
+#
+# ⚠️ Solleva `SkipTest` quando non c'e' un utente su cui aprirlo — un database
+#    senza operatori e' una condizione d'AMBIENTE, non un difetto del codice
+#    sotto test. Il guard sulla transazione invece FALLISCE: quello e' un errore
+#    di chi scrive il test, e uno skip lo nasconderebbe.
+def apri_contesto_operatore(cur) -> int:
+    from django.db import connection
+
+    if not connection.in_atomic_block:
+        raise AssertionError(
+            "apri_contesto_operatore chiamata FUORI da una transazione: "
+            "`SET LOCAL` sarebbe ignorato da PostgreSQL, RLS risponderebbe "
+            "zero righe e il test misurerebbe il vuoto credendolo un dato. "
+            "Avvolgi la chiamata in `with transaction.atomic():`."
+        )
+    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+    cur.execute("SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1")
+    riga = cur.fetchone()
+    if riga is None:
+        raise unittest.SkipTest("nessun utente su cui aprire il contesto operatore")
+    cur.execute("SET LOCAL app.current_user_id = %s", [str(riga[0])])
+    return int(riga[0])
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  I VOCABOLARI SPECCHIATI — Python contro il CHECK che li possiede
 # ══════════════════════════════════════════════════════════════════════

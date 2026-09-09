@@ -979,11 +979,35 @@ del backend: il presidio va dove sta il calcolo. Si appoggia a
 | Decisioni | ✅ **nessuna aperta**: D-1, D-2 e V-1 chiuse in §8.0 |
 | Contratto DB ↔ BE ↔ FE | ✅ scritto per intero — §8.2 |
 | DB | ✅ **L1** (`-51..-55`), **L2** (`-56`, `-57`), **L3** (`-58`..`-63`) e **L4** (`-64`..`-67`) applicati il 2026-09-09, pgTAP verdi · ⚠️ **L4-bis**: un secondo lettore della vista ritirata è emerso dopo l'apply e il suo pgTAP è stato sanato · 🔴 **L6**: i quattro presidi nuovi erano MUTI su `zeroerp_ci` (fixture che *cercava* emittente e cliente invece di costruirli) — sanati, verdi ora su **entrambi** i database |
-| BE / FE | 🟦 **L4 e L5 scritti** (repository, service, helpers, types, view, locales, test) — ⛔ **non provati sul loro server**: né `vite` né Django girano sul server DB |
-| ⛔ Resta da fare | lanciare la suite Django e la build FE **sul server backend** · il **collaudo a video** |
+| BE / FE | ✅ **L4 e L5 scritti e ora PROVATI** sul server backend (2026-09-09): suite Django **4574 verde**, `npm run build` verde, lint pulito |
+| ✅ Chiuso | suite · build · **collaudo a video** fatto da Tid, e i numeri riletti dal backend sulla cella `09/2026 · DA_EMETTERE`: riepilogo **1**, trattenuti **2**, perimetro **3** — `1 + 2 = 3`, le tre cifre si riconciliano fra loro e con la lista |
 
 ⛔ **`changelog-autogen.yaml` non è stato toccato**: si rigenera con lo script,
 e non a mano. I cinque file nuovi entrano in quel giro.
+
+### ✅ CHIUSO il 2026-09-09
+
+Il difetto di partenza è chiuso: la card diceva **4** e la lista ne mostrava
+**3**. Ora la card conta **solo ciò che si può prendere**, **dichiara** quanti ne
+ha tolti, e il totale di perimetro resta quello di tutta la cella.
+
+⚠️ **Quello che la prova sul server backend ha trovato, e che il DB non poteva
+vedere**: 31 test rossi, per tre cause tutte della stessa famiglia — colonne e
+firme avanzate a DB, fixture rimaste indietro. La terza merita di essere
+ricordata: `fn_segna_esito_gruppo_lotto` non è più uno scalare ma
+`TABLE(marcati, usciti, fuori_perimetro)`, e chiamata in contesto scalare il
+record esce **intero** — `fetchone()[0]` restituiva la stringa `('1','0','0')`,
+che non solleva e non sarà mai `1`. La produzione era già allineata.
+
+⭐ **P-10 del §8.4 è in casa** (`test_riepilogo_esclude_trattenuti.py`), e il
+caso lo **costruisce**: il lotto in gioco si fabbrica invece di cercarlo, o su
+un database ricostruito da zero il test farebbe `skipTest` e diventerebbe verde
+smettendo di verificare — che è ciò che questo stesso §8.4 vieta.
+
+📌 **Ricade sul BE, e non è di questo brief**: il contesto operatore RLS è stato
+estratto in `apri_contesto_operatore` (BB in `apps/core/tests/db_e2e.py`), col
+guard che le tre copie non avevano — `SET LOCAL` fuori da una transazione
+PostgreSQL lo **ignora**, e lì si legge zero credendo di aver misurato.
 
 ## 9. Riuso — il censimento fatto **prima** di scrivere
 

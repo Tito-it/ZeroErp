@@ -95,6 +95,22 @@ jobs:
       - name: Guard frontend (liste · pinia · drawer · icone)
         run: npm run guards
 
+      # ⭐ I PRIMI TEST DEL FRONTEND (2026-09-09). Fino a quel giorno non ne
+      #    esisteva nemmeno l'attrezzo: zero file, nessuno script, nessun
+      #    pacchetto. `vitest` legge lo stesso `vite.config.js` della build,
+      #    quindi non c'e' una seconda configurazione da tenere allineata.
+      # ⚠️ Il primo file provato non e' un caso: `useApiHandler` e' l'UNICO punto
+      #    in cui il frontend legge una risposta del backend (axios e' importato
+      #    in un file solo). Quello che fissa e' il CONTRATTO dell'envelope —
+      #    `fields`, `targets`, `ui_action`, `hint`, `message` — cioe' il lavoro
+      #    che il backend ha costruito e che a video si perde se qualcuno lo
+      #    rinomina.
+      # ⛔ L'elenco qui sopra e' gia' invecchiato una volta, il giorno stesso:
+      #    `hint` e' entrato poche ore dopo. La sede autorevole di cosa fissa il
+      #    test e' l'intestazione del file, non questo commento.
+      - name: Test (vitest)
+        run: npm run test:run
+
       - name: Build (vite)
         run: npm run build
 

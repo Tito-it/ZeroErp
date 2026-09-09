@@ -49,7 +49,7 @@ from uuid import uuid4
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import (
     STATI_ESECUZIONE_LOTTO,
     STATO_ESECUZIONE_ESCLUSO,
@@ -74,18 +74,6 @@ class RiepilogoEscludeTrattenuti(TestCase):
     def setUpClass(cls) -> None:
         super().setUpClass()
         richiedi_db_provvisto()
-
-    # Scopo: apre il contesto operatore.
-    # ⚠️ Le GUC prima di ogni lettura: senza, le tabelle sotto RLS rispondono
-    #    zero righe e il test si spegnerebbe da solo credendo di non avere
-    #    materiale — un verde per sottrazione travestito da skip.
-    def _contesto_operatore(self, cur) -> None:
-        cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-        cur.execute("SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1")
-        utente = cur.fetchone()
-        if utente is None:
-            self.skipTest("nessun utente su cui aprire il contesto operatore")
-        cur.execute("SET LOCAL app.current_user_id = %s", [str(utente[0])])
 
     # Scopo: il GRUPPO su cui misurare — libero, cioe' non gia' trattenuto.
     # ⚠️ QUESTO SI TROVA E NON SI COSTRUISCE, ed e' una scelta dichiarata: un
@@ -218,7 +206,7 @@ class RiepilogoEscludeTrattenuti(TestCase):
     def test_il_riepilogo_esclude_e_dichiara_il_trattenuto(self) -> None:
         with transaction.atomic():
             with connection.cursor() as cur:
-                self._contesto_operatore(cur)
+                apri_contesto_operatore(cur)
                 gruppo_key, competenza, stadio = self._gruppo_libero(cur)
                 # ⭐ Il lotto nasce sulla STESSA competenza del gruppo: la
                 #    regola e' cumulativa (`lotto >= riga`), e l'uguaglianza e'

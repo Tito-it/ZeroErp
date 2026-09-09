@@ -276,7 +276,7 @@ verde**, che è la prova che il filtro non blocca troppo.
    che porta giù il riepilogo con sé. Separati, i due rollback non stavano in
    piedi da soli.
 
-### 8.5 Cosa resta — e non è DB
+### 8.5 ✅ Cosa restava, e non era DB — **CHIUSO il 2026-09-09**
 
 Il frontend: riga non selezionabile, motivo dalla `reason_key`, gesto «vai al
 lotto» dal `lotto_id`. ⚠️ Finché non arriva, i quattro campi sono **dichiarati e
@@ -284,4 +284,15 @@ non letti** — che §12.5.5 chiama peggiore della loro assenza, perché sembran
 presidiati. La `reason_key`
 `vendite.emissione.blocco_reason.trattenuto_da_lotto` va nei `locales`, o è un
 tooltip vuoto.
+
+> ✅ **Tutte e quattro verificate nel codice il 2026-09-09**, in
+> `DashboardCompetenzaView.vue`: la riga non si seleziona
+> (`isGruppoEmittibile(row) && !row.emissione_blocco_reason`), il motivo passa
+> dalla `reason_key`, il gesto ha il suo bersaglio (`ultimo_lotto_id`), e la
+> chiave è nei `locales` **it** e **en** — guard i18n pulito.
+> ⭐ E i campi non sono più «dichiarati e non letti»: il collaudo a video di Tid
+> li ha visti resi sul caso vero.
+> Il seguito — la card che li contava lo stesso — è in
+> [brief-db-il-trattenuto-passa-lo-stesso](brief-db-il-trattenuto-passa-lo-stesso.md),
+> anch'esso chiuso.
 

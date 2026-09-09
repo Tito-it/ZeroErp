@@ -17,6 +17,7 @@ from django.db import transaction
 from apps.core.services.db_error_fields import bersagli_envelope
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
@@ -1193,12 +1194,32 @@ class LottoPipelineRunner:
                 #    `targets`) di proposito: a video il gesto lo disegna un
                 #    consumatore solo, e due nomi diversi per la stessa cosa
                 #    sarebbero due strade da tenere allineate a mano.
+                # 🔴 LE POLITICHE SI CHIEDONO A CHI LE POSSIEDE (2026-09-09).
+                #    `hint` e `targets` non sono campi che si ricopiano
+                #    dall'eccezione: sono campi su cui l'envelope applica una
+                #    REGOLA — niente bersaglio su un tecnico o su un 500, niente
+                #    suggerimento sui tre codici in cui `HINT` porta il testo di
+                #    PostgreSQL invece della soluzione a catalogo.
+                #    ⛔ Fino a oggi qui si leggeva `exc.hint` / `exc.targets`
+                #    diretti, quindi **da questa strada uscivano sempre**: stesso
+                #    nome dell'envelope, regola diversa. Ed e' peggio di due nomi
+                #    diversi — due nomi si notano, due regole no. Il difetto e'
+                #    diventato visibile il giorno in cui il frontend ha
+                #    cominciato a RENDERE il suggerimento (D4).
+                #    ⇒ Si passa da `to_api_error`, che e' la sede unica di quelle
+                #    due decisioni.
+                # ⚠️ `message` e `detail` restano quelli dell'eccezione, e NON
+                #    quelli della policy: questo blob alimenta il pannello di
+                #    diagnostica di un lotto, dove il testo grezzo del database e'
+                #    l'informazione utile. La differenza e' voluta e sta qui,
+                #    perche' e' qui che si vede.
+                api_error = ErrorTranslator.to_api_error(exc)
                 errore = {
                     "code": exc.code,
                     "message": getattr(exc, "message", None) or str(exc),
                     "detail": getattr(exc, "detail", None),
                     # La SOLUZIONE a catalogo: cosa puo' fare l'operatore adesso.
-                    "hint": exc.hint,
+                    "hint": api_error.hint,
                     "fields": list(exc.fields) if exc.fields else None,
                     # ⭐ IL BERSAGLIO: su quale cosa. Sul 937 e' la fattura da
                     #    numerare prima — cioe' l'unica informazione che dice
@@ -1206,7 +1227,7 @@ class LottoPipelineRunner:
                     # ⚠️ Stessa conversione dell'envelope, e dallo STESSO posto:
                     #    il consumatore a video e' uno solo, e due forme
                     #    sarebbero due strade da tenere allineate a mano.
-                    "targets": bersagli_envelope(exc.targets),
+                    "targets": bersagli_envelope(api_error.targets),
                 }
                 if lotto_id is None:
                     # Primo run su lotto nuovo fallito: nessun id da riportare → propaga.

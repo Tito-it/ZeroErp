@@ -27,6 +27,7 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
     fetchone_scalar,
+    jsonb_out,
     row_to_dict,
     rows_to_list,
     sql_order_direction,
@@ -305,7 +306,7 @@ class EmailRepository:
             cursor.execute(sql, [unita_organizzativa_id])
             row = cursor.fetchone()
             if row and row[0]:
-                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                return jsonb_out(row[0])
         return None
 
     # -------------------------------------------------------
@@ -460,7 +461,7 @@ class EmailRepository:
             cursor.execute(sql, [codice, unita_organizzativa_id, tipo_prestazione_id, lingua])
             row = cursor.fetchone()
             if row and row[0]:
-                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                return jsonb_out(row[0])
         return None
 
     # -------------------------------------------------------

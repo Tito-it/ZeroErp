@@ -30,6 +30,17 @@ export const TOAST_DURATION = {
   INFO: 3000,
   WARN: 4000,
   ERROR: 5000,
+  // ⭐ L'errore che porta anche la SOLUZIONE (2026-09-09): il `hint` che il team
+  // DB scrive a catalogo — «Numerare prima i documenti che questo rettifica,
+  // poi ripetere» — e che dal 2026-09-09 il toast rende sotto il messaggio.
+  // ⚠️ Dura di piu' perche' il TESTO E' IL DOPPIO, non perche' e' piu' grave:
+  // la durata di un toast si calibra su quanto c'e' da leggere, e qui le frasi
+  // sono due — cosa e' successo e cosa fare adesso.
+  // ⛔ E NON e' persistente come `AZIONI`: la soluzione e' a catalogo per ogni
+  // codice, quindi `life: 0` qui farebbe di OGNI errore di dominio un toast da
+  // chiudere a mano. Un gesto ha un pulsante da premere e puo' aspettare; una
+  // frase si legge e se ne va.
+  ERROR_CON_SOLUZIONE: 9000,
   SYSTEM_ERROR: 0,  // 0 = persistente, chiusura manuale
   // ⭐ L'errore che porta un GESTO: persistente per la stessa ragione tecnica
   // (0 = chiusura manuale) ma per un motivo diverso — non «e' grave», bensi'

@@ -1,7 +1,7 @@
 ## 🔍 Documentazione Concettuale – Vista `vendite.vw_lotti_fase`
 
 > **Versione**: 2026-09-09 — nata con
-> [brief-db-il-trattenuto-passa-lo-stesso](/dev/work-in-progress/brief-db-il-trattenuto-passa-lo-stesso)
+> [brief-db-il-trattenuto-passa-lo-stesso](/dev/work-done/brief-db-il-trattenuto-passa-lo-stesso)
 > (lotto L1 · migration `20260909-51`)
 
 > **Vedi anche**
