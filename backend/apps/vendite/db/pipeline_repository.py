@@ -34,7 +34,6 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.commesse_repository import (
     TIPO_MOVIMENTO_NORMALE,
-    TIPO_MOVIMENTO_RETTIFICA,
 )
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.db._data_documento_sql import (

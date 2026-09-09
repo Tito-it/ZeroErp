@@ -42,7 +42,6 @@ from django.db import connection
 from apps.core.db._helpers import (
     fetch_paged_with_total,
     row_to_dict,
-    rows_to_list,
     sql_order_clause,
 )
 

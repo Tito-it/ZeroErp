@@ -18,7 +18,6 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from django.contrib.auth import get_user_model
 
 
 def _mock_request(user_id: int = 1, is_superuser: bool = False) -> MagicMock:

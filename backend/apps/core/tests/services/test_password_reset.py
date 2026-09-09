@@ -51,8 +51,6 @@ class RequestTests(TestCase):
         MockUser.objects.filter.return_value.first.return_value = mock_user
         mock_token.create.return_value = "abc123token"
 
-        from apps.core.api.password_reset_views import PasswordResetRequestView
-        view = PasswordResetRequestView()
         request = MagicMock()
         request.body = b'{"email": "mario@test.com"}'
         request.content_type = "application/json"

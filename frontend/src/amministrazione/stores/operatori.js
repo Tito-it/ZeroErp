@@ -73,7 +73,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
-    buildParams: (f, searchTerm) => {
+    buildParams: (f, _searchTerm) => {
       const params = {}
       if (f.search) params.search = f.search
       if (f.is_super_admin != null) params.is_super_admin = f.is_super_admin

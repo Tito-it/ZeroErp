@@ -156,7 +156,6 @@ class DefinizioniServiceTests(SimpleTestCase):
     # Scopo: marker DB (id 511) → ServiceError parlante su pubblica non ammessa.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_pubblica_definizione_non_pubblicabile(self, MockRepo):
-        from django.db import DatabaseError
 
         MockRepo.return_value.pubblica_definizione.side_effect = make_db_error(
             "Definizione workflow 9 non pubblicabile: la BOZZA non ha modifiche.",
@@ -175,7 +174,6 @@ class DefinizioniServiceTests(SimpleTestCase):
     # Scopo: guard invariante «≤1 BOZZA per scope» (fork) → marker parlante.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_fork_bozza_esistente(self, MockRepo):
-        from django.db import DatabaseError
 
         MockRepo.return_value.fork_definizione.side_effect = make_db_error(
             "Esiste gia' una bozza di edizione workflow per lo scope "
@@ -189,7 +187,6 @@ class DefinizioniServiceTests(SimpleTestCase):
     # Scopo: nuova-versione da sorgente non PUBBLICATA → marker parlante.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_nuova_versione_no_pubblicata(self, MockRepo):
-        from django.db import DatabaseError
 
         MockRepo.return_value.nuova_versione_definizione.side_effect = make_db_error(
             "Nuova versione non ammessa: la definizione 419 non e' in stato PUBBLICATA.",
@@ -243,7 +240,6 @@ class DefinizioniServiceTests(SimpleTestCase):
     # Scopo: guard immutabilità (edizione emessa) → marker TEMPLATE_DEFINIZIONE_CONGELATA.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_create_step_congelata_marker(self, MockRepo):
-        from django.db import DatabaseError
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004, "stato": "PUBBLICATA"}
         repo.create_step.side_effect = make_db_error(
@@ -331,7 +327,6 @@ class DefinizioniServiceTests(SimpleTestCase):
     # Scopo: guard immutabilità sul figlio (edizione emessa) → marker parlante.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_create_figlio_congelata_marker(self, MockRepo):
-        from django.db import DatabaseError
         repo = MockRepo.return_value
         repo.step_in_definizione.return_value = True
         repo.create_child.side_effect = make_db_error(
@@ -432,7 +427,6 @@ class DefinizioniServiceTests(SimpleTestCase):
     # Scopo: guard immutabilità sull'arco (edizione emessa) → marker parlante.
     @patch(f"{_SVC}.DefinizioniRepository")
     def test_create_arco_congelata_marker(self, MockRepo):
-        from django.db import DatabaseError
         repo = MockRepo.return_value
         repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004}
         repo.step_in_definizione.return_value = True

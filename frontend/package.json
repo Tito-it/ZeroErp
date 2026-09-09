@@ -8,8 +8,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "run-s lint:*",
-    "lint:oxlint": "oxlint . --fix",
-    "lint:eslint": "eslint . --fix --cache",
+    "lint:oxlint": "oxlint .",
+    "lint:eslint": "eslint . --cache",
+    "guards": "run-s guard:*",
+    "guard:liste": "node scripts/check-liste-configurabili.mjs",
+    "guard:pinia": "node scripts/check-pinia-user-scoped-reset.mjs",
+    "guard:drawer": "node scripts/check-drawer-width.mjs",
+    "guard:icone": "node scripts/check-primeicons-codepoints.mjs",
+    "verify": "run-s lint guards build",
+    "fix": "oxlint . --fix && eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
@@ -42,6 +49,6 @@
     "form-data": "^4.0.6"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "node": "^24.0.0"
   }
 }

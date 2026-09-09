@@ -33,7 +33,6 @@ from apps.catalogo.db.catalogo_uom_repository import (
     UOM_OPERATIVA_WRITE_COLUMNS,
     CatalogoUomRepository,
 )
-from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager

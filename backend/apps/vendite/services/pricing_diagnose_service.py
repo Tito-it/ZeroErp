@@ -141,7 +141,7 @@ class PricingDiagnoseService:
                     contratto_motivo = None
                 else:
                     contratto_motivo = (
-                        f"Contratto modalita C trovato ma l'articolo non "
+                        "Contratto modalita C trovato ma l'articolo non "
                         "ha riga negoziata: il resolver solleverebbe "
                         "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C."
                     )

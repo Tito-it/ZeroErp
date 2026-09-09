@@ -13,17 +13,31 @@
 
 ## Stack tecnologico
 
-| Componente | Versione | Ruolo                   |
-| ---------- | -------- | ----------------------- |
-| Vue.js     | 3.5.x    | Framework UI            |
-| Vite       | 8.x      | Build tool e dev server |
-| PrimeVue   | 4.5.x    | Libreria componenti     |
-| PrimeIcons | latest   | Iconografia             |
-| Pinia      | 3.x      | Gestione stato          |
-| Vue Router | 5.x      | Navigazione             |
-| vue-i18n   | 10.x     | Multilingua             |
-| Axios      | latest   | Client HTTP             |
-| Node.js    | 24 LTS   | Runtime di sviluppo     |
+> ⛔ **Le versioni non stanno qui.** Fonte unica di verità:
+> **`frontend/package.json`** (versione risolta in `package-lock.json`, runtime
+> Node in `engines.node`). Questa tabella dichiara **a cosa serve** ogni pezzo —
+> il ruolo non invecchia, il numero sì.
+>
+> ⚠️ **Perché la colonna «Versione» è sparita il 2026-09-09.** Lo stesso stack
+> era scritto in tre documenti — qui, in `.codex/AGENTS.md` e in
+> `.codex/PROJECT_CONTEXT.md` — e li diceva **tutti e tre diversi e tutti e tre
+> sbagliati**: `Pinia 3` contro un lock a **4.0.3**, `vue-i18n 10` contro
+> **11.4.10**, `Vite 7` contro **8.2.2**. Due salti di **major** passati senza
+> che nessuno dei tre se ne accorgesse. ⭐ Vale il precedente di Python
+> (`.python-version`): *un numero scritto in due posti ne ha sempre uno stantio,
+> e quello senza presidio è sempre il documento.*
+
+| Componente | Ruolo                   |
+| ---------- | ----------------------- |
+| Vue.js     | Framework UI            |
+| Vite       | Build tool e dev server |
+| PrimeVue   | Libreria componenti     |
+| PrimeIcons | Iconografia             |
+| Pinia      | Gestione stato          |
+| Vue Router | Navigazione             |
+| vue-i18n   | Multilingua             |
+| Axios      | Client HTTP (⛔ importato in **un solo file**: `src/core/api.js`) |
+| Node.js    | Runtime di sviluppo (via nvm) |
 
 ---
 
@@ -927,10 +941,14 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
 
 ### Regole (PrimeVue 4 — `Tabs`)
 
-> Siamo su **PrimeVue 4.5**. I componenti da usare sono `Tabs`, `TabList`, `Tab`,
-> `TabPanels`, `TabPanel`. `TabView` (PrimeVue 3) è **eliminato dal repo**
-> (migrazione completata 2026-07-22): se lo trovi in un esempio, l'esempio è
+> I componenti da usare sono `Tabs`, `TabList`, `Tab`, `TabPanels`, `TabPanel`.
+> `TabView` (l'API di PrimeVue 3) è **eliminato dal repo** — migrazione
+> completata il 2026-07-22, zero residui: se lo trovi in un esempio, l'esempio è
 > vecchio.
+> ⚠️ La versione di PrimeVue in uso si legge in `frontend/package.json`, non qui:
+> ciò che questa sezione fissa è **quale API si usa**, e quella non cambia con la
+> patch. Il salto alla generazione successiva ha un piano suo
+> ([piano-migrazione-primevue-5.md](../work-in-progress/piano-migrazione-primevue-5.md)).
 
 - Usare `Tabs` con `lazy` (carica il contenuto solo quando il tab è attivo)
 - Il div root della vista ha `class="app-page"` — `Tabs` si espande in altezza

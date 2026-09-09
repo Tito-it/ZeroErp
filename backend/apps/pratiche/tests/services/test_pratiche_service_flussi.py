@@ -341,7 +341,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # catalogo si traduce nel ServiceError parlante FLUSSI_ESITO_NON_AMMESSO.
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_esito_non_ammesso_504(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_flusso.side_effect = make_db_error(
@@ -408,7 +407,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # flusso tradotto in ServiceError parlante via marker.
     @patch(f"{_SVC}.PraticheRepository")
     def test_crea_flusso_non_ripetibile_483(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 1
@@ -425,7 +423,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # parlante via marker.
     @patch(f"{_SVC}.PraticheRepository")
     def test_crea_flusso_pratica_terminale_490(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 1
@@ -442,7 +439,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # flusso → ServiceError parlante invece di E_DATABASE generico.
     @patch(f"{_SVC}.PraticheRepository")
     def test_crea_flusso_prerequisiti_non_soddisfatti(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.resolve_stato_flusso.return_value = 1
@@ -459,7 +455,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # completa/cambia_stato) → ServiceError parlante via marker.
     @patch(f"{_SVC}.PraticheRepository")
     def test_avvia_flusso_pratica_terminale_491(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.get_flusso_esito_config.return_value = ("MANUALE", None)
@@ -474,7 +469,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_pratica_terminale_491(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_flusso.side_effect = make_db_error(
@@ -488,7 +482,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_flusso_pratica_terminale_491(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_flusso.side_effect = make_db_error(
@@ -504,7 +497,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # completarsi finche' restano obbligatori bloccanti → ServiceError parlante.
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_chiusura_prematura(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_flusso.side_effect = make_db_error(
@@ -520,7 +512,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # invece di E_DATABASE 500 (gap ① allineamento marker+policy 2026-06-14).
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_flusso_transizione_non_ammessa(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_flusso.side_effect = make_db_error(
@@ -535,7 +526,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: guard esito-aware — COMPLETATO senza esito → ServiceError parlante.
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_flusso_esito_obbligatorio(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_flusso.side_effect = make_db_error(
@@ -550,7 +540,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: guard transizione pratica (matrice config) → ServiceError parlante.
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_pratica_transizione_non_ammessa(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_pratica.side_effect = make_db_error(
@@ -798,7 +787,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: prendi_in_carico — competenza mancante (caso A/D) tradotta via marker.
     @patch(f"{_SVC}.PraticheRepository")
     def test_prendi_in_carico_competenza_mancante(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.prendi_in_carico_flusso.side_effect = make_db_error(
@@ -813,7 +801,6 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: prendi_in_carico — operatore fuori reparto (caso B) → 496 via marker.
     @patch(f"{_SVC}.PraticheRepository")
     def test_prendi_in_carico_non_eligibile(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.prendi_in_carico_flusso.side_effect = make_db_error(

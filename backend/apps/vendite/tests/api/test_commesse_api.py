@@ -46,7 +46,7 @@ import json
 
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError

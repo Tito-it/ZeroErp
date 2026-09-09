@@ -43,7 +43,7 @@ export function createListaStore(storeId, { options = {}, extend = null, ...core
     //    e' cosi' che un caller aggiunge il proprio stato senza che il BB debba
     //    prevederlo. Chi sovrascrive una chiave del base lo fa apposta.
     return typeof extend === 'function'
-      ? { ...base, ...(extend(base) || {}) }
+      ? { ...base, ...extend(base) }
       : base
   }, { userScoped: true, ...options })
 }

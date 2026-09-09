@@ -194,7 +194,6 @@ class TestAIAssistantService(unittest.TestCase):
             tool_response=ToolCall(id="tc_loop", name="cerca_pratiche", input={}),
         )
         # Override: restituisci sempre tool_call, anche dopo la prima
-        original_send = provider.send_message
 
         def always_tool_call(**kwargs):
             from apps.ai_assistant.types import ProviderResponse, TokenUsage

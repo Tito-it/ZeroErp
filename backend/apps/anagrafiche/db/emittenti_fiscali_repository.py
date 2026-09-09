@@ -21,7 +21,6 @@ from apps.core.db._helpers import (
     extract_paginated,
     jsonb_out,
     row_to_dict,
-    rows_to_list,
 )
 
 

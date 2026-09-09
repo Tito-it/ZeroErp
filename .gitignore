@@ -18,3 +18,7 @@ liquibase.properties
 
 # Changelog auto-generato localmente (incluso da changelog-master-v2.yaml)
 db/changelog/migrations_v2/changelog-autogen.yaml
+
+# Cache di ruff (analisi statica backend, dal 2026-09-09). La crea chiunque
+# lanci `ruff check`, anche solo tramite l'hook pre-commit.
+.ruff_cache/

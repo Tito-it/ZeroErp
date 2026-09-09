@@ -22,7 +22,6 @@ from unittest.mock import MagicMock, patch
 
 from django.db import IntegrityError
 
-from apps.core.services.service_errors import ServiceError
 
 
 class TestToponomasticaRepository(TestCase):

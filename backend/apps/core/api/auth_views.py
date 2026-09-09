@@ -135,7 +135,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
         if user:
             try:
                 _auth_repo.check_blocco_login(user.id)
-            except Exception as exc:
+            except Exception:
                 # L'errore DB viene propagato al middleware che lo converte in JSON
                 logger.warning("security.login_blocked user=%s", username)
                 raise

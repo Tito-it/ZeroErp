@@ -26,7 +26,7 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client, SimpleTestCase
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError

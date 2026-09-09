@@ -32,7 +32,7 @@ export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
   const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
-    buildParams: (f, searchTerm) => {
+    buildParams: (f, _searchTerm) => {
       const params = {}
       if (f.search) params.search = f.search
       params.limit = f.limit

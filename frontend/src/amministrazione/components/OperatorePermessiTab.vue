@@ -288,7 +288,7 @@ function setOverrideArea(areaId, livello) {
   if (livello == null) return resetArea(areaId)
   overrideAree.value = {
     ...overrideAree.value,
-    [areaId]: { ...(overrideAree.value[areaId] || {}), area_id: areaId, livello },
+    [areaId]: { ...overrideAree.value[areaId], area_id: areaId, livello },
   }
 }
 
@@ -296,7 +296,7 @@ function setOverrideAzione(azioneId, abilitata) {
   if (abilitata == null) return resetAzione(azioneId)
   overrideAzioni.value = {
     ...overrideAzioni.value,
-    [azioneId]: { ...(overrideAzioni.value[azioneId] || {}), azione_id: azioneId, abilitata },
+    [azioneId]: { ...overrideAzioni.value[azioneId], azione_id: azioneId, abilitata },
   }
 }
 
@@ -306,7 +306,7 @@ function setOverrideOggetto(voce, livello) {
   overrideOggetti.value = {
     ...overrideOggetti.value,
     [k]: {
-      ...(overrideOggetti.value[k] || {}),
+      ...overrideOggetti.value[k],
       app_label: voce.app_label,
       model_name: voce.model_name,
       livello,

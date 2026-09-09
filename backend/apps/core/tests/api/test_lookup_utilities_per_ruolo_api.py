@@ -14,7 +14,7 @@ Indice test eseguiti:
 
 from unittest.mock import Mock, patch
 
-from django.test import Client, SimpleTestCase
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 

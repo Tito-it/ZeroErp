@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema

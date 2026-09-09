@@ -42,7 +42,7 @@ Indice test eseguiti:
 29) PraticheServiceTests.test_pratica_di_flusso_id_non_valido
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -344,7 +344,6 @@ class PraticheServiceTests(SimpleTestCase):
     # parlante via marker, non E_DATABASE generico.
     @patch(f"{_SVC}.PraticheRepository")
     def test_cambia_stato_pratica_chiusura_bloccata_485(self, MockRepo):
-        from django.db import DatabaseError
 
         repo = MockRepo.return_value
         repo.update_stato_pratica.side_effect = make_db_error(

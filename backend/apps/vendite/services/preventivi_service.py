@@ -12,7 +12,7 @@
 import json
 import logging
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -25,8 +25,6 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services._pricing_gate_helpers import (
-    check_limite_variazione_prezzo,
-    check_permesso_override_prezzo,
     guard_uom_id_positive,
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
@@ -38,7 +36,6 @@ from apps.vendite.services._smistamento_gate_helpers import (
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
     normalize_componenti_overrides,
-    resolve_emittente_sr_id_safe,
     resolve_emittente_sr_id_for_testata,
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
@@ -53,10 +50,6 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_APPROVED,
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
-)
-from apps.vendite.services.pricing_service import (
-    PARAM_MAX_MAGGIORAZIONE_PCT,
-    PARAM_MAX_SCONTO_PCT,
 )
 from apps.core.api.payload_validators import paginated_envelope
 
