@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L3 — IL CLASSIFICATORE: UNA RIGA DI COMMESSA, E PERCHE' PUO' O NON PUO'
+#      ENTRARE IN UN GIRO DI FATTURAZIONE
+#
+# ── ⭐ PERCHE' NASCE: I CRITERI ERANO SCRITTI DUE VOLTE ──────────
+#   `fn_list_emittibili_lane` FILTRA le righe ammesse; `fn_diagnostica_gruppi_-
+#   fatturabili` le CONTA per classe di esclusione — ed e' dichiarata, nel suo
+#   manuale, «lo specchio della lane: i criteri che questa fotografia conta uno
+#   per uno». Due oggetti diversi che scrivono lo STESSO criterio.
+#   🔴 E il 2026-09-09 lo specchio si e' rotto in silenzio: il changeSet
+#   `20260909-25` ha aggiunto un criterio alla lane (il trattenuto) e non allo
+#   specchio. Da li' un gruppo trattenuto che l'operatore chiedeva di fatturare
+#   non veniva servito, e la diagnostica rispondeva «n_pronte = 1», cioe'
+#   «era pronto»: una diagnosi FALSA, che mandava a controllare emittente e
+#   utility — che erano a posto.
+#   ⇒ Il criterio smette di essere scritto in tutte e due: sta QUI, e loro lo
+#   LEGGONO. Una filtra `classe = PRONTA`, l'altra conta `GROUP BY classe`.
+#
+# ── ⭐ I DUE FATTORI SONO ORTOGONALI, ED E' IL PUNTO ─────────────
+#   Il difetto non era che i criteri fossero due: era che UNO ERA IMPLICITO.
+#   La lane pretende anche che la TESTATA della commessa sia emittibile; la
+#   diagnostica no — e di proposito, per poter dire «le righe sarebbero pronte,
+#   e' la commessa a essere in BOZZA». Due oggetti «uguali tranne un punto
+#   voluto», e un lettore non puo' distinguere una differenza NUOVA da una
+#   VOLUTA.
+#     ⇒ La RIGA ha una CLASSE. La TESTATA ha un FLAG. Chi decide dichiara
+#       quali dei due usa.
+#   ⛔ Per questo `commessa_emittibile` NON entra in `classe_emittibilita`:
+#   fonderli toglierebbe alla diagnostica la sola cosa che sa dire meglio
+#   della lane.
+#
+# ── ⛔ COSA NON STA QUI: IL PERIMETRO DELLA DOMANDA ──────────────
+#   L'ammissibilita' della RIGA e' intrinseca; il perimetro di CHI CHIEDE no.
+#   Restano quindi al chiamante:
+#     · il tetto di competenza (`competenza_mese <= …`) — ed e' anche la
+#       ragione per cui «fuori competenza» NON e' una classe: quella riga e'
+#       PRONTA, solo non per QUEL mese;
+#     · billing account, utility, emittente, corsia immediata/differita,
+#       `p_gruppi`;
+#     · l'auto-esclusione del pull (il PROPRIO lotto), che esiste solo per chi
+#       sta eseguendo un giro — e una vista non sa quale sia.
+#
+# ── ⭐ IL LEGAME DI COMPETENZA DEL TRATTENUTO, INVECE, STA QUI ───
+#   E' l'unica cosa che il brief dava ai consumatori e che invece appartiene
+#   alla vista: qui la competenza della RIGA c'e'. Il legame e'
+#   `lotto_competenza_mese >= ca.competenza_mese`, perche' la selezione e'
+#   CUMULATIVA — un lotto di settembre lavora anche agosto, non ottobre.
+#   ⛔ NON e' un'uguaglianza: il LATERAL dell'esito su vw_dash_competenza_gruppi
+#   lega `=`, e copiarlo a occhio darebbe un blocco piu' STRETTO della regola.
+#   ⭐ Scritto qui, i tre consumatori non devono ricordarselo — ed era la riga
+#   che si dimentica.
+#
+# ── ⚠️ `tipo_doc_fiscale_id IS NOT NULL` NON E' UN CRITERIO ──────
+#   Lo era nella lane. E' un ramo IRRAGGIUNGIBILE da quando il CHECK
+#   `chk_commesse_attivita_tipo_doc_emittibile` e' VALIDATO (`20260815-30`):
+#   dice esattamente «se APPROVATA e NON_EMESSA allora tipo_doc NOT NULL»,
+#   cioe' la precondizione di PRONTA e TRATTENUTA. La diagnostica aveva gia'
+#   tolto il proprio contatore per questa ragione (`20260815-31`), e i due
+#   presidi che lo tengono vero esistono: test 9 e 10 di
+#   `test-diagnostica-gruppi-fatturabili-v1.sql`.
+#   ⛔ Un ramo che sembra coperto e non lo e' vale meno di zero.
+#
+# ── ⚠️ `trattenuta_da_lotti`: NULL, non array vuoto ──────────────
+#   `array_agg` su zero righe torna NULL, ed e' la convenzione di casa (il
+#   perimetro del lotto): NULL = «non trattenuta». Un array vuoto direbbe
+#   «trattenuta da nessuno», che non significa niente.
+#   ⚠️ ORDINATO per lotto_id: chi ne vuole UNO prende il primo e non scommette.
+#
+# ⚠️ `security_invoker` va specificato: commesse e commesse_attivita hanno la
+#   RLS, e il perimetro resta quello di chi interroga — come quando la lane
+#   leggeva le tabelle per conto proprio.
+#
+# Verifica: db/pgtap/vendite/test-vw-commesse-attivita-emittibilita-v1.sql
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3, §8.1, §8.2.2)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-59-create-vw-commesse-attivita-emittibilita-mctit.yaml
+
+  - changeSet:
+      id: 20260909-59-create-vw-commesse-attivita-emittibilita
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_commesse_attivita_emittibilita: la SEDE UNICA del criterio
+        «questa riga di commessa puo' entrare in un giro di fatturazione, e se
+        no perche'». La lane filtra la classe, la diagnostica la conta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_documenti_trattenuti_da_lotto'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_commesse_attivita_emittibilita
+              WITH (security_invoker=on) AS
+              SELECT ca.id                           AS commessa_attivita_id,
+                     co.id                           AS commessa_id,
+                     co.codice                       AS commessa_codice,
+                     sc.codice_interno               AS commessa_stato_codice_interno,
+                     COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                     -- ⭐ IL SECONDO FATTORE, esposto e MAI fuso nella classe:
+                     --    la classe descrive la RIGA, questo la TESTATA. Chi
+                     --    decide dichiara quali dei due usa — la lane pretende
+                     --    entrambi, la diagnostica li tiene separati per poter
+                     --    dire «le righe sarebbero pronte, e' la commessa».
+                     sc.emittibile                   AS commessa_emittibile,
+                     -- ⭐ La chiave dall'UNICA fonte, mai ricostruita qui.
+                     vendite.fn_build_gruppo_fatturabile_key(
+                         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                     )                               AS gruppo_key,
+                     ca.competenza_mese,
+                     ca.tipo_doc_fiscale_id,
+                     -- La TERNA su cui la lane raggruppa, presa dove sta.
+                     co.emittente_soggetto_ruolo_id,
+                     co.utility_id,
+                     co.billing_account_id,
+                     co.fatturazione_immediata,
+                     -- I fatti grezzi, per chi deve mostrarli.
+                     ca.stato_emissione,
+                     ca.stato_approvazione,
+                     -- ⭐ LA CLASSE — vocabolario CHIUSO di sei valori.
+                     -- ⚠️ L'ordine dei rami e' portante: `stato_emissione` e
+                     --    `stato_approvazione` sono due assi, e i primi due
+                     --    rami consumano tutto cio' che non e' NON_EMESSA.
+                     -- ⛔ `tipo_doc_fiscale_id IS NOT NULL` NON c'e': il CHECK
+                     --    chk_commesse_attivita_tipo_doc_emittibile e' VALIDATO
+                     --    e lo garantisce esattamente su APPROVATA+NON_EMESSA.
+                     (CASE
+                        WHEN ca.stato_emissione   = 'EMESSA'    THEN 'EMESSA'
+                        WHEN ca.stato_emissione   = 'ANNULLATA' THEN 'ANNULLATA'
+                        WHEN ca.stato_approvazione = 'RIFIUTATA' THEN 'RIFIUTATA'
+                        -- ⚠️ `<>` e non `= 'BOZZA'`: se un giorno nascesse un
+                        --    quarto stato di approvazione, «non approvata» e'
+                        --    la risposta prudente, non un buco.
+                        WHEN ca.stato_approvazione <> 'APPROVATA' THEN 'NON_APPROVATA'
+                        WHEN trat.lotti IS NOT NULL THEN 'TRATTENUTA'
+                        ELSE 'PRONTA'
+                      END)::character varying        AS classe_emittibilita,
+                     trat.lotti                      AS trattenuta_da_lotti
+                FROM vendite.commesse_attivita ca
+                JOIN vendite.commesse co        ON co.id = ca.commessa_id
+                JOIN vendite.stati_commessa sc  ON sc.id = co.stato_commessa_id
+                -- ⭐ IL TRATTENUTO, dalla sede unica e col LEGAME DI COMPETENZA
+                --   gia' applicato: `>=` e non `=`, perche' la selezione e'
+                --   cumulativa (un lotto di settembre lavora anche agosto, non
+                --   ottobre). Scritto qui, i tre consumatori non se lo devono
+                --   ricordare.
+                -- ⚠️ array_agg su zero righe torna NULL = «non trattenuta»;
+                --   ORDER BY per avere un primo elemento deterministico.
+                LEFT JOIN LATERAL (
+                    SELECT array_agg(t.lotto_id ORDER BY t.lotto_id) AS lotti
+                      FROM vendite.vw_documenti_trattenuti_da_lotto t
+                     WHERE t.gruppo_key = vendite.fn_build_gruppo_fatturabile_key(
+                               ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+                       AND t.lotto_competenza_mese >= ca.competenza_mese
+                ) trat ON true;
+
+              COMMENT ON VIEW vendite.vw_commesse_attivita_emittibilita IS
+              'SEDE UNICA del criterio «questa riga di commessa puo'' entrare in un giro di fatturazione, e se no perche''». Una riga per riga di commessa. Consumatori: vendite.fn_list_emittibili_lane (filtra classe = PRONTA), vendite.fn_list_commesse_emittibili (quali commesse visitare), vendite.fn_emit_attivita_fatturabili_da_commessa (quali righe emettere) e vendite.fn_diagnostica_gruppi_fatturabili (conta per classe).
+              ⭐ NASCE PERCHE'' IL CRITERIO ERA SCRITTO DUE VOLTE: la lane lo FILTRA, la diagnostica lo CONTA, ed e'' dichiarata «lo specchio della lane». Il 2026-09-09 lo specchio si e'' rotto in silenzio — un criterio aggiunto alla lane e non alla diagnostica, che rispondeva «era pronto» su un documento che la lane non aveva offerto. Ora il criterio non e'' scritto in nessuna delle due.
+              ⭐ I DUE FATTORI SONO ORTOGONALI: `classe_emittibilita` descrive la RIGA, `commessa_emittibile` la TESTATA, e chi decide dichiara quali dei due usa. ⛔ Fonderli toglierebbe alla diagnostica la sola cosa che sa dire meglio della lane («le righe sarebbero pronte, e'' la commessa a essere in BOZZA»).
+              ⭐ VOCABOLARIO CHIUSO di sei valori: EMESSA · ANNULLATA · RIFIUTATA · NON_APPROVATA · TRATTENUTA · PRONTA.
+              ⛔ NON contiene il PERIMETRO DELLA DOMANDA — tetto di competenza, billing account, utility, emittente, corsia, p_gruppi, e l''auto-esclusione del proprio lotto nel pull: quelli dipendono da chi chiede. E'' anche il motivo per cui «fuori competenza» non e'' una classe: quella riga e'' PRONTA, solo non per quel mese.
+              ⭐ MA IL LEGAME DI COMPETENZA DEL TRATTENUTO SI'': qui la competenza della riga c''e''. E'' `lotto_competenza_mese >= ca.competenza_mese`, perche'' la selezione e'' CUMULATIVA. ⛔ Non e'' un''uguaglianza: il LATERAL dell''esito su vw_dash_competenza_gruppi lega =, e copiarlo darebbe un blocco piu'' stretto della regola.
+              ⚠️ `tipo_doc_fiscale_id IS NOT NULL` non e'' fra i criteri: e'' un ramo irraggiungibile da quando chk_commesse_attivita_tipo_doc_emittibile e'' VALIDATO, e i presidi sono i test 9 e 10 di test-diagnostica-gruppi-fatturabili-v1.sql.
+              ⚠️ `trattenuta_da_lotti` e'' NULL quando la riga non e'' trattenuta (mai un array vuoto) ed e'' ORDINATO per lotto_id: chi ne vuole uno prende il primo e non scommette.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_commesse_attivita_emittibilita;

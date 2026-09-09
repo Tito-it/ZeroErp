@@ -246,6 +246,15 @@ const cards = computed(() => {
     // deduce quali stadi ce l'abbiano.
     nResidui: cella.n_residui ?? 0,
     valoreResidui: Number(cella.valore_residui ?? 0),
+    // ⭐ La quota che un GIRO IN CORSO sta trattenendo, e che `nAttivita` NON
+    // conta più (DB `20260909-67`). Stessa forma della quota residua: la card
+    // deve dire due cose — quanto lavoro si può prendere, e quanto ce n'è che
+    // non si può prendere perché è già in mano a un giro.
+    // ⛔ Senza, il numero cala e nessuno sa di quanto: era il difetto del
+    // collaudo 09-09 girato di 180 gradi (là la card diceva 4 su un elenco di
+    // 3; qui direbbe 3 senza spiegare il quarto).
+    nTrattenute: cella.n_trattenute ?? 0,
+    valoreTrattenuto: Number(cella.valore_trattenuto ?? 0),
     statiFattura: cella.stati_fattura ?? [],
   }))
 })
@@ -1027,21 +1036,39 @@ function haUltimoEsitoErrore(row) {
 // ⛔ Elenco vuoto senza commessa: `BersaglioAzioni` non disegna niente, e il
 //        messaggio resta leggibile. Mai un pulsante che porta in un vicolo
 //        cieco (regola §4.3 di `brief-db-bersaglio-errore`).
+// ⭐ E il GESTO verso il lotto del tentativo si offre SOLO se quel lotto conta
+//    ancora: un bersaglio verso un giro concluso o annullato è un pulsante in
+//    un vicolo cieco, che api.md vieta esplicitamente.
+// ⚠️ La commessa invece resta sempre: quella c'è comunque, ed è il gesto utile
+//    quando il lotto non lo è più.
 function bersagliUltimoEsito(row) {
-  return row.commessa_id
-    ? [{ type: BERSAGLIO_TIPI.COMMESSA, id: row.commessa_id }]
-    : []
+  const bersagli = []
+  if (row.ultimo_lotto_id && row.ultimo_lotto_pre_fiscale === true) {
+    bersagli.push({ type: BERSAGLIO_TIPI.LOTTO, id: row.ultimo_lotto_id })
+  }
+  if (row.commessa_id) bersagli.push({ type: BERSAGLIO_TIPI.COMMESSA, id: row.commessa_id })
+  return bersagli
 }
 
 // Scopo: il titolo del pannello dell'errore, che NOMINA il lotto in cui il
-//        tentativo è avvenuto. ⭐ È l'unico uso di `ultimo_lotto_codice`
-//        nell'icona: il codice serve a dire «quale giro», non a navigarci — la
-//        vista espone il codice e non l'id, e inventare un salto da un codice
-//        vorrebbe dire cercarlo.
+//        tentativo è avvenuto — e DICE SE quel tentativo conta ancora.
+// ⭐ Rilievo di Tid sul collaudo del 2026-09-09: la colonna mostrava
+//    LTF-0010332 su tre righe «anche se quel lotto è annullato», cioè un
+//    tentativo concluso letto come uno ancora in corso.
+// ⛔ Il dato NON si toglie — è l'unica traccia che spieghi perché il documento
+//    è tornato disponibile. Quello che non reggeva era mostrarlo COME SE
+//    CONTASSE ANCORA: ora il DB manda anche lo stato (`20260909-66`) e la
+//    frase lo dice.
+// ⚠️ `ultimo_lotto_pre_fiscale === false` e non `!...`: `null` significa
+//    «nessun tentativo», che è un terzo caso e non «concluso».
 function titoloUltimoEsito(row) {
-  return row.ultimo_lotto_codice
-    ? t('vendite.dashboard_competenza.ultimo_esito_titolo_lotto', { lotto: row.ultimo_lotto_codice })
-    : t('vendite.dashboard_competenza.ultimo_esito_titolo')
+  if (!row.ultimo_lotto_codice) return t('vendite.dashboard_competenza.ultimo_esito_titolo')
+  return row.ultimo_lotto_pre_fiscale === false
+    ? t('vendite.dashboard_competenza.ultimo_esito_titolo_lotto_concluso', {
+        lotto: row.ultimo_lotto_codice,
+        stato: row.ultimo_lotto_stato ?? '',
+      })
+    : t('vendite.dashboard_competenza.ultimo_esito_titolo_lotto', { lotto: row.ultimo_lotto_codice })
 }
 
 // Scopo: paginazione DataTable errori (lazy, paginator top; calcolo
@@ -1480,9 +1507,20 @@ function notificaNonServiti(nonServiti, nLotti, context) {
     //    hanno centinaia.
     dettagli: elencoTroncato(
       nonServiti,
-      (s) => (motivoUnico
-        ? etichettaGruppoKey(s.gruppo_key, s.commessa_codice)
-        : `${etichettaGruppoKey(s.gruppo_key, s.commessa_codice)}: ${etichettaMotivo(s.motivo, 1)}`),
+      // ⭐ Se il gruppo è trattenuto, la voce NOMINA IL LOTTO. «Trattenuto»
+      //    senza dire da cosa non è azionabile: chi legge non saprebbe dove
+      //    andare a guardare. Il codice arriva strutturato dal BE
+      //    (`lotto_codice`), non si ricava da nessuna frase.
+      // ⚠️ Il GESTO «vai al lotto» sta sulla RIGA della lista, non qui: un
+      //    pulsante dentro un toast che sparisce dopo cinque secondi non è un
+      //    gesto, e la riga ce l'ha già (`bersagliLottoTrattiene`) e RESTA.
+      //    Qui bastano le parole per sapere dove andare.
+      (s) => {
+        const base = motivoUnico
+          ? etichettaGruppoKey(s.gruppo_key, s.commessa_codice)
+          : `${etichettaGruppoKey(s.gruppo_key, s.commessa_codice)}: ${etichettaMotivo(s.motivo, 1)}`
+        return s.lotto_codice ? `${base} (${s.lotto_codice})` : base
+      },
       '; ',
     ),
   }))
@@ -2226,6 +2264,24 @@ onActivated(() => {
                 {{ t('vendite.dashboard_competenza.residui_nessuno_da_recuperare') }}
               </template>
             </span>
+            <!-- ⭐ LA CARD «DA EMETTERE» DICE ANCHE CIÒ CHE NON PUÒ OFFRIRE.
+                 Il numero è una PROMESSA su quanto lavoro si può prendere: fino
+                 al 2026-09-09 comprendeva anche i documenti che un lotto ancora
+                 in gioco stava trattenendo, e l'elenco sotto ne mostrava meno —
+                 due cifre diverse sulla stessa schermata (collaudo di Tid).
+                 ⛔ Adesso il numero li esclude, e QUESTA riga dice di quanti:
+                 un numero che cala senza spiegare il calo è un numero che non
+                 si sa leggere. Il conteggio arriva dal BE, non si deduce dalla
+                 lista — che è paginata. -->
+            <span
+              v-if="card.nTrattenute > 0"
+              class="app-dash-residui-hint"
+              v-tooltip.bottom="t('vendite.dashboard_competenza.trattenuti_tooltip')"
+            >
+              <i class="pi pi-lock" />
+              {{ t('vendite.dashboard_competenza.trattenuti_di_cui', { n: card.nTrattenute }) }}
+              · {{ formatCurrency(card.valoreTrattenuto) }}
+            </span>
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />
               {{ t('vendite.dashboard_competenza.in_ritardo', { n: card.nInRitardo }) }}
@@ -2483,6 +2539,17 @@ onActivated(() => {
                   <span v-if="gruppiRiepilogo.n_gruppi_oneri > 0">
                     {{ t('vendite.dashboard_competenza.tot_gruppi_oneri') }}
                     <strong>{{ gruppiRiepilogo.n_gruppi_oneri }}</strong>
+                  </span>
+                  <!-- ⭐ E quanti ne sono stati TOLTI dai tre totali qui sopra:
+                       i gruppi che un giro ancora in corso sta trattenendo.
+                       ⛔ Restano VISIBILI nella lista (decisione D-1: una riga
+                       che sparisce non insegna niente) ma non si possono
+                       prendere, quindi non si contano — e la differenza fra
+                       ciò che si vede e ciò che si conta va detta, o le due
+                       cifre sembrano contraddirsi. -->
+                  <span v-if="gruppiRiepilogo.n_gruppi_trattenuti > 0">
+                    {{ t('vendite.dashboard_competenza.tot_gruppi_trattenuti') }}
+                    <strong>{{ gruppiRiepilogo.n_gruppi_trattenuti }}</strong>
                   </span>
                 </div>
 

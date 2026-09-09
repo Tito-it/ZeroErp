@@ -50,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(20);
+SELECT plan(23);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -586,13 +586,61 @@ SELECT is(
   '15-bis. la riga si spegne col motivo e nomina il lotto che la trattiene (esito COMPLETED, lotto VIVO)'
 );
 
+-- ⭐ rev 2026-09-09 — IL CONTEGGIO SI LEGGE DOVE IL NUMERO VIVE.
+--   Prima questa asserzione stava su vw_dash_competenza_gruppi_riepilogo, che
+--   pero' NON e' la card: quella vista non la legge nessuno (misurato il
+--   2026-09-09, zero consumatori) ed e' stata ritirata. La card e'
+--   `vw_dash_competenza_mensile`, e il numero e' `n_attivita`.
+-- ⛔ E' la §12.5.3 applicata a un numero invece che a un pulsante: si consegna
+--   dove il numero VIENE LETTO, non dove parlerebbe della stessa cosa.
+-- ⭐ Le due meta' contano entrambe: il numero CALA e la riga RESTA. Con una
+--   `WHERE` al posto del `FILTER` il bucket sparirebbe, e sparirebbe con lui
+--   la dichiarazione che spiega il calo.
+SELECT results_eq(
+  $$ SELECT count(*)::int AS righe,
+            COALESCE(sum(m.n_attivita_trattenute), 0)::int AS trattenute
+       FROM vendite.vw_dash_competenza_mensile m, tmp_dc_trat t
+      WHERE m.competenza_mese = t.competenza_mese AND m.stadio = t.stadio $$,
+  $$ VALUES (1, 1) $$,
+  '15-ter. la card ESCLUDE la trattenuta e la DICHIARA, e il bucket non sparisce'
+);
+
+-- ============================================================
+-- 15-quinquies) ⭐ Il verdetto e' SPENTO su cio' che e' gia' fatturato
+-- ============================================================
+-- ⛔ E' il difetto §6.3 del brief: un documento appena fatturato ha esito
+--   COMPLETED sul PROPRIO lotto, che resta DRAFT fino a «Rendi definitive».
+--   Un verdetto che guardasse l'esito invece della CLASSE lo direbbe
+--   «trattenuto» — e lo toglierebbe dai conteggi dei FATTURATI.
+-- ⭐ Non serve nessun filtro sullo stadio: la classe TRATTENUTA vuole
+--   NON_EMESSA + APPROVATA, quindi su FATTURATA non puo' accendersi.
 SELECT is(
-  (SELECT r.n_gruppi_trattenuti::text
-     FROM vendite.vw_dash_competenza_gruppi_riepilogo r, tmp_dc_trat t
-    WHERE r.competenza_mese = t.competenza_mese AND r.stadio = t.stadio
-      AND r.emittente_soggetto_ruolo_id IS NOT DISTINCT FROM t.emittente_soggetto_ruolo_id),
-  '1',
-  '15-ter. il conteggio della card la ESCLUDE e la dichiara in n_gruppi_trattenuti'
+  (SELECT count(*)::int
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.stadio <> 'DA_EMETTERE' AND g.emissione_blocco_reason IS NOT NULL),
+  0,
+  '15-quinquies. il verdetto e'' spento fuori da DA_EMETTERE: un documento gia'' fatturato non e'' «trattenuto»'
+);
+
+-- ============================================================
+-- 15-sexies) ⭐ V-1: il lotto del TENTATIVO esce con il suo STATO
+-- ============================================================
+-- ⛔ Domanda di Tid: «la colonna mostra il lotto anche se e' annullato». Il
+--   dato non si toglie — e' l'unica traccia che spieghi perche' il documento
+--   e' tornato disponibile — ma va detto SE quel tentativo conta ancora.
+-- ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il frontend spegne il GESTO:
+--   testo si', pulsante no.
+-- ⚠️ Sta PRIMA dell'annullamento del 15-quater, e non e' un caso: la
+--   transizione ANNULLATA -> DRAFT non esiste (guard di stato), quindi i casi
+--   «lotto vivo» vanno tutti prima. L'ordine di questo blocco e' portante.
+SELECT results_eq(
+  $$ SELECT g.ultimo_lotto_id = (SELECT id FROM tmp_dc_lotto_vivo),
+            g.ultimo_lotto_stato::text,
+            g.ultimo_lotto_pre_fiscale
+       FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+      WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio $$,
+  $$ VALUES (true, 'DRAFT', true) $$,
+  '15-sexies. il lotto del tentativo esce con identita'' e STATO: si sa se conta ancora'
 );
 
 -- ⭐ IL VERSO OPPOSTO. Annullato il lotto, il documento torna fatturabile: e'
@@ -608,6 +656,23 @@ SELECT ok(
      FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
     WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio),
   '15-quater. annullato il lotto la riga torna libera: il verdetto e'' lo STATO, non l''esito'
+);
+
+-- ============================================================
+-- 15-septies) ⭐ E il contrario: annullato, il tentativo NON conta piu'
+-- ============================================================
+-- ⛔ Col solo 15-sexies passerebbe anche una vista che dice sempre «in corso»:
+--   e' il caso del collaudo, dove tre righe mostravano un lotto ANNULLATO come
+--   se fosse ancora vivo.
+-- ⚠️ Il lotto e' gia' annullato dal 15-quater: non si ri-annulla e soprattutto
+--   non si torna indietro — la transizione ANNULLATA -> DRAFT non esiste.
+SELECT results_eq(
+  $$ SELECT g.ultimo_lotto_stato::text, g.ultimo_lotto_pre_fiscale,
+            g.ultimo_lotto_codice IS NOT NULL
+       FROM vendite.vw_dash_competenza_gruppi g, tmp_dc_trat t
+      WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio $$,
+  $$ VALUES ('ANNULLATA', false, true) $$,
+  '15-septies. annullato: pre_fiscale falso (il gesto si spegne) ma il codice RESTA (la traccia non si perde)'
 );
 
 -- ============================================================

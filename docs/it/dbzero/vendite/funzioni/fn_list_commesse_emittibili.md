@@ -69,15 +69,33 @@ BEGIN
     c.fatturazione_immediata,
     c.competenza_dal,
     c.competenza_al,
-    count(ca.id)::bigint AS total_non_emesse
+    count(e.commessa_attivita_id)::bigint AS total_non_emesse
   FROM vendite.commesse c
   JOIN vendite.stati_commessa sc
     ON sc.id = c.stato_commessa_id
    AND sc.emittibile = true
-  INNER JOIN vendite.commesse_attivita ca
-    ON ca.commessa_id = c.id
-   AND ca.stato_emissione = 'NON_EMESSA'
-   AND (v_competenza_mese IS NULL OR ca.competenza_mese = v_competenza_mese)
+  -- ⭐ rev 2026-09-09 — LA SEDE UNICA DEL CRITERIO (changeSet 20260909-59).
+  --   Qui non si scrive piu' quali righe «contano»: si legge la CLASSE.
+  INNER JOIN vendite.vw_commesse_attivita_emittibilita e
+    ON e.commessa_id = c.id
+   -- ⭐ WHITELIST e non `<> 'TRATTENUTA'`: le tre classi che il pull PUO'
+   --   ancora prendere. Una classe nuova non entra da sola, ed e' la
+   --   convenzione di casa (linee-guida-sql §7c).
+   -- ⚠️ Equivale a «NON_EMESSA e non trattenuta»: EMESSA e ANNULLATA sono
+   --   esattamente le righe che NON_EMESSA escludeva.
+   -- ⛔ TRATTENUTA esce, ed e' il punto: una commessa che ha SOLO righe
+   --   trattenute non ha niente da dare, e visitarla produrrebbe un pull a
+   --   vuoto che il giro registra come lavorato.
+   -- ⚠️ Ma la classe NON basta da sola: il filtro per RIGA dentro
+   --   fn_emit_attivita_fatturabili_da_commessa resta indispensabile, perche'
+   --   una commessa con righe sane E trattenute passa comunque di qui.
+   AND e.classe_emittibilita IN ('PRONTA', 'RIFIUTATA', 'NON_APPROVATA')
+   -- ⚠️ UGUAGLIANZA e non `<=`, come e' sempre stato in questa funzione: la
+   --   lane e fn_select_attivita_fatturabili usano invece il cumulativo.
+   --   L'asimmetria e' PREESISTENTE e non si tocca qui — cambiarla di
+   --   straforo dentro un cantiere sul trattenuto allargherebbe il perimetro
+   --   di ogni pull senza che nessuno l'abbia deciso.
+   AND (v_competenza_mese IS NULL OR e.competenza_mese = v_competenza_mese)
   WHERE true
     -- Filtro perimetro billing/utility/emittente
     AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
@@ -85,16 +103,10 @@ BEGIN
     AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
     -- Filtro corsia immediata/differita (NULL = indifferente)
     AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
-    -- EMISSIONE MIRATA (rev 2026-07-27): il conteggio
-    -- total_non_emesse segue il filtro, cioe' riporta le righe
-    -- dei soli gruppi richiesti. E' voluto: e' il numero che
-    -- l'emit lavorera' davvero su quella commessa.
-    AND (
-         p_gruppi IS NULL
-         OR vendite.fn_build_gruppo_fatturabile_key(
-                ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
-            ) = ANY (p_gruppi)
-        )
+    -- EMISSIONE MIRATA (rev 2026-07-27): il conteggio total_non_emesse segue
+    -- il filtro, cioe' riporta le righe dei soli gruppi richiesti. E' voluto:
+    -- e' il numero che l'emit lavorera' davvero su quella commessa.
+    AND (p_gruppi IS NULL OR e.gruppo_key = ANY (p_gruppi))
   GROUP BY
     c.id,
     c.codice,
@@ -103,7 +115,6 @@ BEGIN
     c.billing_account_id,
     c.utility_id,
     c.emittente_soggetto_ruolo_id,
-    c.fatturazione_immediata,
     c.competenza_dal,
     c.competenza_al
   ORDER BY c.id
@@ -112,7 +123,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
-IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id e fatturazione_immediata (corsia immediata/differita, NULL=indifferente). Espone fatturazione_immediata in output. Usata dal backend per il batch di emissione. rev 2026-07-27 (brief emissione mirata A6): p_gruppi text[] restringe alle commesse che contengono almeno una riga di un gruppo richiesto — NULL = nessuna restrizione (G1). ⚠️ NON sostituisce il filtro per RIGA dentro fn_emit_attivita_fatturabili_da_commessa: qui si sceglie QUALI COMMESSE visitare, li'' QUALI RIGHE emettere; una commessa multi-sorgente passa comunque il filtro e sara'' l''emit a prendere solo le righe richieste. Con p_gruppi valorizzato anche total_non_emesse segue il filtro: e'' il numero di righe che l''emit lavorera'' davvero.';
+IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id e fatturazione_immediata (corsia immediata/differita, NULL=indifferente). Espone fatturazione_immediata in output. Usata dal backend per il batch di emissione. rev 2026-07-27 (brief emissione mirata A6): p_gruppi text[] restringe alle commesse che contengono almeno una riga di un gruppo richiesto — NULL = nessuna restrizione (G1). ⚠️ NON sostituisce il filtro per RIGA dentro fn_emit_attivita_fatturabili_da_commessa: qui si sceglie QUALI COMMESSE visitare, li'' QUALI RIGHE emettere; una commessa multi-sorgente passa comunque il filtro e sara'' l''emit a prendere solo le righe richieste. Con p_gruppi valorizzato anche total_non_emesse segue il filtro: e'' il numero di righe che l''emit lavorera'' davvero. ⭐ rev 2026-09-09: le righe «che contano» non sono piu'' descritte qui — si legge `classe_emittibilita` da vendite.vw_commesse_attivita_emittibilita, con la whitelist PRONTA/RIFIUTATA/NON_APPROVATA. ⛔ Ne esce TRATTENUTA: una commessa con SOLE righe trattenute da un altro lotto in gioco non ha niente da dare, e visitarla produrrebbe un pull a vuoto registrato come lavorato. ⚠️ Ma non sostituisce il filtro per RIGA dentro l''emit: una commessa con righe sane E trattenute passa comunque di qui, ed e'' li'' che le trattenute vanno lasciate fuori.';
 ```
 
 ---

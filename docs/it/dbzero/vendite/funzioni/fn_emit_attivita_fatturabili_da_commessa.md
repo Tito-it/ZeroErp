@@ -63,6 +63,10 @@ DECLARE
     v_existing_id           vendite.attivita_fatturabili.id%TYPE;
     v_existing_fatturato    vendite.attivita_fatturabili.fatturato%TYPE;
     v_sorgente_uid_uuid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
+    -- ⭐ IL LOTTO DI QUESTO GIRO, risolto dal marchio che il chiamante passa
+    --   gia'. Serve a non escludere le righe che il giro sta trattenendo DA
+    --   SE' — vedi il blocco piu' sotto.
+    v_lotto_corrente        vendite.fatturazione_lotti.id%TYPE;
     v_row                   RECORD;
 BEGIN
     total_candidate := 0;
@@ -119,6 +123,18 @@ BEGIN
         );
     END IF;
 
+    -- ⭐ IL LOTTO DI QUESTO GIRO (rev 2026-09-09).
+    --   `lock_batch_id` ha un UNIQUE, quindi al piu' una riga.
+    -- ⚠️ Puo' restare NULL, ed e' legittimo: un chiamante fuori pipeline
+    --   (backfill, riconciliazione) non ha un lotto. In quel caso NON c'e'
+    --   nessuna auto-esclusione da fare, e le righe trattenute restano tutte
+    --   fuori — che e' la risposta prudente.
+    IF p_emit_batch_id IS NOT NULL THEN
+        SELECT l.id INTO v_lotto_corrente
+          FROM vendite.fatturazione_lotti l
+         WHERE l.lock_batch_id = p_emit_batch_id;
+    END IF;
+
     -- Loop emissione righe
     FOR v_row IN
         SELECT ca.id, ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
@@ -136,19 +152,43 @@ BEGIN
                ca.promo_id, ca.contratto_id,
                ca.categoria_cliente_id_snapshot, ca.classe_utenza_id_snapshot
           FROM vendite.commesse_attivita ca
+          -- ⭐ rev 2026-09-09 — LA SEDE UNICA DEL CRITERIO (changeSet -59).
+          --   Qui non si scrive piu' quali righe si possono emettere: si
+          --   legge la CLASSE. La vista risponde «puo' entrare in un giro?»,
+          --   questa funzione resta padrona di COSA COPIARE — ed e' il motivo
+          --   per cui il JOIN c'e' ma le colonne restano quelle di `ca`.
+          JOIN vendite.vw_commesse_attivita_emittibilita e
+            ON e.commessa_attivita_id = ca.id
          WHERE ca.commessa_id = p_commessa_id
-           AND ca.stato_emissione = 'NON_EMESSA'
-           AND (p_only_approved IS FALSE OR ca.stato_approvazione = 'APPROVATA')
+           AND (
+                -- La riga e' libera e approvata.
+                e.classe_emittibilita = 'PRONTA'
+                -- Il chiamante ha chiesto di prendere anche il non approvato:
+                -- e' la vecchia `p_only_approved IS FALSE`, scritta per classi.
+                OR (p_only_approved IS FALSE
+                    AND e.classe_emittibilita IN ('NON_APPROVATA', 'RIFIUTATA'))
+                -- ⭐⭐ L'AUTO-ESCLUSIONE, ed e' la riga senza la quale questo
+                --   changeSet romperebbe piu' di quanto ripara.
+                --   Un RERUN dello stesso lotto trova i PROPRI documenti gia'
+                --   marcati in `fatturazione_lotti_esiti`: il giro precedente
+                --   ha fallito la commessa, il savepoint ha rimesso le righe a
+                --   NON_EMESSA, ma l'esito e' stato scritto FUORI dal
+                --   savepoint. Senza questa riga il rilancio salterebbe
+                --   esattamente le righe che deve riprovare — in silenzio, con
+                --   un lotto che riparte e non produce niente.
+                -- ⚠️ `<@` e non `= ANY`: la riga e' libera solo se TUTTI i
+                --   lotti che la tengono sono il mio. Se la tiene anche un
+                --   altro giro vivo, resta fuori.
+                OR (e.classe_emittibilita = 'TRATTENUTA'
+                    AND v_lotto_corrente IS NOT NULL
+                    AND e.trattenuta_da_lotti <@ ARRAY[v_lotto_corrente])
+               )
            -- EMISSIONE MIRATA (rev 2026-07-27): NULL = nessuna
            -- restrizione; array vuoto = richiesta vuota -> zero righe;
            -- chiave inesistente -> zero righe, nessun errore (G6).
-           -- La chiave viene dalla funzione A1, mai ricostruita qui.
-           AND (
-                p_gruppi IS NULL
-                OR vendite.fn_build_gruppo_fatturabile_key(
-                       ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
-                   ) = ANY (p_gruppi)
-               )
+           -- ⭐ La chiave arriva gia' costruita dal classificatore, dalla
+           --   sola fonte di verita': qui non si ricostruisce piu'.
+           AND (p_gruppi IS NULL OR e.gruppo_key = ANY (p_gruppi))
          ORDER BY ca.id
     LOOP
         total_candidate := total_candidate + 1;

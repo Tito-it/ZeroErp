@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L4 — SI RITIRA vw_dash_competenza_gruppi_riepilogo (decisione D-1)
+#
+# ── 🔴 IL FATTO: NESSUNO LA LEGGE ────────────────────────────────
+#   Il riepilogo che il frontend mostra sotto la lista dei gruppi lo calcola
+#   una query scritta nel backend (`get_dash_competenza_gruppi_accessori`), che
+#   legge vw_dash_competenza_gruppi UNA volta e ci fa girare sopra cinque
+#   conteggi piu' tre facet.
+#   ⚠️ Misurato il 2026-09-09: `n_gruppi_trattenuti` — la colonna che il
+#   changeSet `20260909-24` aveva aggiunto a questa vista per dichiarare il
+#   calo — compare in TUTTO il repository solo nel changeSet che la crea, nel
+#   suo pgTAP e nei due brief. ZERO consumatori.
+#   ⇒ Ne discende che T-3 di quel cantiere non ha cambiato niente a video.
+#
+# ── ⛔ NON E' STATA SCAVALCATA PER SBAGLIO: E' SUPERATA PER PROGETTO
+#   Il riepilogo che serve applica i FILTRI DELL'OPERATORE (tipo gruppo,
+#   cliente, registro, ricerca libera). Una vista aggregata per
+#   (competenza, stadio, emittente) non puo' applicarli: e' un'altra domanda.
+#   E la query del backend fa in un colpo anche le tre facet, che le tendine
+#   pretendono.
+#   ⇒ Le due sedi non convivono, e quella che ha perso e' la vista.
+#
+# ── ⚠️ E TENERLA VIVA E' PEGGIO CHE TOGLIERLA ───────────────────
+#   Un oggetto che SEMBRA presidiare un conteggio e non ne presidia nessuno e'
+#   esattamente cio' che ha fatto passare T-3: qualcuno l'ha corretta credendo
+#   di correggere la card.
+#
+# ── ⭐ DOVE VA L'INVARIANTE CHE QUESTA VISTA PORTAVA ─────────────
+#   «Il conteggio esclude i trattenuti e lo dichiara» resta, e si sposta DOVE
+#   IL NUMERO SI CALCOLA: nella query del backend, presidiata da un test
+#   Django con database (P-10). Un invariante si asserisce dove sta il calcolo,
+#   non dove starebbe comodo.
+#   ⚠️ Il test 15-ter di test-vw-dash-competenza-v1.sql, che asseriva il
+#   conteggio su questa vista, va tolto nello stesso giro: senza l'oggetto
+#   diventerebbe un rosso che non insegna niente.
+#
+# ⛔ E si cancella anche il file manual/ della vista: un oggetto ritirato non
+#   lascia dietro di se' una pagina di documentazione che lo descrive vivo.
+#   ⚠️ La pagina auto-generata sparisce da sola alla prossima rigenerazione.
+#
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L4, D-1, §5.2)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-64-drop-vw-dash-competenza-gruppi-riepilogo-mctit.yaml
+
+  - changeSet:
+      id: 20260909-64-drop-vw-dash-competenza-gruppi-riepilogo
+      author: mctit
+      failOnError: true
+      comment: >
+        Ritira vendite.vw_dash_competenza_gruppi_riepilogo: superata dalla query
+        del backend, che applica i filtri dell'operatore e fa anche le facet.
+        Zero consumatori misurati il 2026-09-09.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname = 'vw_dash_competenza_gruppi_riepilogo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi_riepilogo;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il ritorno indietro ricrea la vista NELLA FORMA CHE AVEVA,
+              --   trattenuti esclusi compresi (changeSet 20260909-24). Non e'
+              --   la forma «giusta»: e' quella che c'era, ed e' cio' che un
+              --   rollback deve restituire.
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker=true) AS
+              SELECT competenza_mese,
+                     stadio,
+                     emittente_soggetto_ruolo_id,
+                     (count(*) FILTER (WHERE emissione_blocco_reason IS NULL))::integer AS n_gruppi,
+                     (COALESCE(sum(n_attivita) FILTER (WHERE emissione_blocco_reason IS NULL), 0::numeric))::bigint AS n_attivita,
+                     COALESCE(sum(valore) FILTER (WHERE emissione_blocco_reason IS NULL), 0::numeric) AS valore,
+                     (count(*) FILTER (WHERE tipo_gruppo::text = 'ONERI_COMMESSA'::text
+                                         AND emissione_blocco_reason IS NULL))::integer AS n_gruppi_oneri,
+                     (count(*) FILTER (WHERE emissione_blocco_reason IS NOT NULL))::integer AS n_gruppi_trattenuti
+                FROM vendite.vw_dash_competenza_gruppi g
+               GROUP BY competenza_mese, stadio, emittente_soggetto_ruolo_id;

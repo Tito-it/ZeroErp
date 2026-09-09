@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L3 — L'INDICE CHE IL CLASSIFICATORE CHIEDE
+#
+# ── ⭐ PERCHE' L'UNIQUE CHE C'E' NON SERVE A QUESTA RICERCA ──────
+#   `fatturazione_lotti_esiti` ha `uq_fatturazione_lotti_esiti_documento`
+#   su (lotto_id, gruppo_key). Un B-tree si usa per PREFISSO: quell'indice
+#   serve «dammi l'esito di QUESTO documento in QUESTO lotto», ma non
+#   «quali lotti tengono questo documento», che parte dalla SECONDA colonna.
+#   ⇒ Senza indice dedicato, la ricerca per `gruppo_key` e' una scansione.
+#
+# ── ⚠️ E QUI SI PAGA PER RIGA ────────────────────────────────────
+#   `vendite.vw_commesse_attivita_emittibilita` (changeSet -59) interroga i
+#   trattenuti per OGNI riga di commessa candidata, e alimenta la lane, la
+#   discovery delle commesse, il pull e la diagnostica. E' l'unico punto del
+#   cantiere in cui una scansione si moltiplica.
+#
+# ── ⛔ INDICE MANUALE, NON GOVERNATO DALLA POLICY FK ─────────────
+#   `gruppo_key` non e' una foreign key: e' una chiave di dominio composta
+#   altrove (vendite.fn_build_gruppo_fatturabile_key). Quindi non entra in
+#   `dbops.fk_index_policy` e non lo tocca `apply_fk_index_policy()`.
+#   ⚠️ Da NON registrare nella policy: quella governa gli acceleratori delle
+#   FK, e il ramo `consentito=false` ci fa un DROP INDEX sopra.
+#
+# ⭐ `IF NOT EXISTS`: il changeSet resta idempotente e non litiga con un
+#   database su cui l'indice fosse gia' stato creato a mano.
+#
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3, §8.2.3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-58-create-ix-fatturazione-lotti-esiti-gruppo-key-mctit.yaml
+
+  - changeSet:
+      id: 20260909-58-create-ix-fatturazione-lotti-esiti-gruppo-key
+      author: mctit
+      failOnError: true
+      comment: >
+        Indice su vendite.fatturazione_lotti_esiti(gruppo_key): la ricerca
+        «quali lotti tengono questo documento» parte dalla seconda colonna
+        della UNIQUE esistente, che quindi non la serve.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti_esiti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La ricerca del classificatore: dato un documento, quali lotti
+              -- lo tengono. La UNIQUE (lotto_id, gruppo_key) non la serve —
+              -- gruppo_key non e' il prefisso.
+              CREATE INDEX IF NOT EXISTS ix_fatturazione_lotti_esiti_gruppo_key
+                  ON vendite.fatturazione_lotti_esiti (gruppo_key);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_fatturazione_lotti_esiti_gruppo_key;

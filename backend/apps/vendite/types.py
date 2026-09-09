@@ -1117,6 +1117,17 @@ class DashCompetenzaMensileRow(TypedDict):
     # distingue il RESIDUO (chiede un'azione) dalle tre situazioni di transito
     # (non chiedono niente). `None` sugli altri stadi.
     motivo_non_fatturata: str | None
+    # ⭐ `20260909-67` — LE ATTIVITA' CHE LA CARD NON CONTA PIU'.
+    # `n_attivita` e `valore` ESCLUDONO le attivita' trattenute da un lotto
+    # ancora in gioco: sono lavoro che l'operatore non puo' prendere, e un
+    # numero che le comprende e' una promessa che non si mantiene.
+    # ⛔ Questi due non sono decorazione: un numero che cala senza dire di
+    # quanto e' un numero che non si sa leggere — «non c'e' niente da fare» e
+    # «c'e' lavoro che un giro sta gia' tenendo» si leggerebbero uguali.
+    # Stessa forma di `ritirate_count` sul giornale e di `archiviate_count`
+    # sulle code.
+    n_attivita_trattenute: int
+    valore_trattenuto: str
 
 
 class DashCompetenzaResiduoRow(TypedDict):
@@ -1363,6 +1374,20 @@ class DashCompetenzaGruppoRow(TypedDict):
     # bersaglio ci porta senza far ricopiare un codice a mano.
     emissione_blocco_lotto_id: int | None
     emissione_blocco_lotto_codice: str | None
+    # ═══ V-1 · IL LOTTO DEL TENTATIVO, CON IL SUO STATO (2026-09-09) ════════
+    # ⭐ `ultimo_lotto_codice` qui sopra diceva DOVE si e' tentato, non SE quel
+    # tentativo conta ancora: a video un lotto ANNULLATO si leggeva come uno in
+    # corso — rilievo di Tid sul collaudo del 09-09, dove la colonna mostrava
+    # LTF-0010332 (annullato) su tre righe.
+    # ⛔ Il dato NON si toglie: e' l'unica traccia che spieghi perche' il
+    # documento e' tornato disponibile. Si aggiunge il fatto che mancava.
+    # ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il frontend spegne il
+    # GESTO — testo si', pulsante no: un bersaglio verso un lotto che non conta
+    # piu' e' un pulsante in un vicolo cieco.
+    # ⚠️ Tutte e tre `None` quando nessun giro ha ancora toccato il gruppo.
+    ultimo_lotto_id: int | None
+    ultimo_lotto_stato: str | None
+    ultimo_lotto_pre_fiscale: bool | None
 
 
 class DashCompetenzaGruppoRegistroRow(TypedDict):
@@ -1415,14 +1440,22 @@ class DashCompetenzaGruppoTipoRow(TypedDict):
 
 
 class DashCompetenzaGruppiRiepilogoRow(TypedDict):
-    # Totali di perimetro dell'elenco gruppi (vw_dash_competenza_gruppi_riepilogo):
-    # aggregano la vista di dettaglio, quindi non possono divergere da essa.
-    # Vengono dal DB e non dal FE di proposito: sommare la pagina corrente
-    # mostrerebbe un parziale che sembra un totale.
+    # Totali di perimetro dell'elenco gruppi: aggregano la vista di dettaglio,
+    # quindi non possono divergere da essa. Vengono dal DB e non dal FE di
+    # proposito: sommare la pagina corrente mostrerebbe un parziale che sembra
+    # un totale.
+    # ⚠️ Li calcola `get_dash_competenza_gruppi_accessori`, NON la vista
+    # `vw_dash_competenza_gruppi_riepilogo` che questo commento nominava: quella
+    # non applicava i filtri dell'operatore, non e' mai stata letta da qui ed e'
+    # stata ritirata il 2026-09-09 (`20260909-64`).
+    # ⭐ Dal 2026-09-09 i tre totali ESCLUDONO i gruppi trattenuti da un lotto
+    # in gioco, e `n_gruppi_trattenuti` dichiara quanti: un numero che cala
+    # senza dire di quanto e' un numero che non si sa leggere.
     n_gruppi: int
     n_attivita: int
     valore: str | None
     n_gruppi_oneri: int
+    n_gruppi_trattenuti: int
 
 
 class DashBacklogRiepilogoRow(TypedDict):

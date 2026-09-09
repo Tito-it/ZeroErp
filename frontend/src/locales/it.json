@@ -2269,7 +2269,12 @@
       "col_ultimo_errore_quando": "Tentato il",
       "col_ultimo_lotto": "Lotto del tentativo",
       "ultimo_esito_titolo": "L’ultimo tentativo di fatturazione è fallito",
-      "ultimo_esito_titolo_lotto": "Ultimo tentativo fallito — lotto {lotto}"
+      "ultimo_esito_titolo_lotto": "Ultimo tentativo fallito — lotto {lotto}",
+      "trattenuti_di_cui": "di cui {n} già in un giro in corso",
+      "trattenuti_tooltip": "Documenti che un lotto ancora in lavorazione sta trattenendo: restano visibili nell'elenco ma non si possono prendere finché quel giro non si chiude o non li rilascia.",
+      "tot_gruppi_trattenuti": "trattenuti (non conteggiati):",
+      "ultimo_esito_titolo_lotto_concluso": "Tentativo nel lotto {lotto} — {stato}, non più in corso",
+      "motivo_trattenuto_da_lotto": "trattenuto da un giro in corso | trattenuti da un giro in corso"
     },
     "ddt": {
       "titolo": "DDT di vendita",

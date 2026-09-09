@@ -58,6 +58,7 @@ from apps.vendite.services._fatturazione_job_helpers import (
     MOTIVO_RIGHE_ANNULLATE,
     MOTIVO_RIGHE_NON_APPROVATE,
     MOTIVO_RIGHE_RIFIUTATE,
+    MOTIVO_TRATTENUTO_DA_LOTTO,
     classifica_gruppo_non_servito,
     messaggio_gruppi_non_serviti,
     spiega_gruppi_non_serviti,
@@ -82,6 +83,10 @@ def _foto(**kwargs) -> dict:
         "n_pronte": 0,
         # `[]` e mai None: «nessuna corsia» e «non calcolato» restano distinti.
         "terne_pronte": [],
+        # ⭐ Le due colonne del `20260909-63`: il gruppo trattenuto da un lotto
+        # in gioco, e QUALE lotto. `[]` e mai None, per la stessa ragione.
+        "n_trattenute": 0,
+        "lotti_trattenenti": [],
     }
     base.update(kwargs)
     return base
@@ -196,6 +201,93 @@ class ClassificaGruppoNonServitoTests(SimpleTestCase):
             commessa_emittibile=False, stato_commessa="BOZZA",
         ))
         self.assertEqual(motivo, MOTIVO_COMMESSA_NON_EMITTIBILE)
+
+
+class TrattenutoDaLottoTests(SimpleTestCase):
+    """🔴 La diagnosi che diceva il falso — collaudo del 2026-09-09.
+
+    Dal changeSet `20260909-25` la lane non offre piu' un documento trattenuto
+    da un lotto in gioco. La diagnostica pero' continuava a contarlo fra i
+    PRONTI, quindi il gruppo cadeva sul ripiego e l'operatore leggeva:
+
+        «N attività risultano pronte ma il gruppo non è entrato in nessun
+         lotto: verificare emittente e utility della commessa»
+
+    Emittente e utility erano A POSTO. Una frase che manda a controllare due
+    cose giuste e non nomina l'unica che conta.
+    """
+
+    # 0. Il caso del collaudo: nessuna riga pronta, una trattenuta.
+    def test_trattenuto_non_cade_piu_sul_ripiego(self) -> None:
+        motivo, testo = classifica_gruppo_non_servito(_foto(
+            n_righe=1, n_pronte=0, n_trattenute=1,
+            lotti_trattenenti=[{"id": 11764, "codice": "LTF-0010331"}],
+        ))
+        self.assertEqual(motivo, MOTIVO_TRATTENUTO_DA_LOTTO)
+        self.assertNotEqual(motivo, MOTIVO_NON_DETERMINATO)
+        # ⭐ E la frase NOMINA il lotto: «trattenuto» senza dire da cosa non e'
+        #    azionabile — l'operatore non saprebbe dove guardare.
+        self.assertIn("LTF-0010331", testo)
+        # ⛔ E non manda piu' a controllare cose che sono a posto.
+        self.assertNotIn("emittente", testo)
+
+    # 1. ⭐ Il verso opposto, e serve: senza, il test 0 passerebbe anche su una
+    #    funzione che dice «trattenuto» sempre.
+    def test_senza_trattenute_il_ripiego_resta_quello_di_prima(self) -> None:
+        motivo, testo = classifica_gruppo_non_servito(_foto(
+            n_righe=1, n_pronte=1, n_trattenute=0,
+        ))
+        self.assertEqual(motivo, MOTIVO_NON_DETERMINATO)
+        self.assertIn("emittente", testo)
+
+    # 2. ⚠️ Righe pronte E trattenute: il gruppo e' passato a meta', e la parte
+    #    che non e' passata e' quella trattenuta. Batte il ripiego, non le due
+    #    cause certe.
+    def test_pronte_e_trattenute_insieme_vince_il_trattenuto(self) -> None:
+        motivo, _ = classifica_gruppo_non_servito(_foto(
+            n_righe=2, n_pronte=1, n_trattenute=1,
+            lotti_trattenenti=[{"id": 1, "codice": "LTF-1"}],
+        ))
+        self.assertEqual(motivo, MOTIVO_TRATTENUTO_DA_LOTTO)
+
+    # 3. ⛔ Ma la TESTATA bloccata vale comunque: e' una causa certa e sta
+    #    prima. Stessa precedenza del test `test_priorita_testata_sopra_le_righe`.
+    def test_testata_bloccata_vince_sul_trattenuto(self) -> None:
+        motivo, _ = classifica_gruppo_non_servito(_foto(
+            n_righe=2, n_pronte=1, n_trattenute=1,
+            commessa_emittibile=False,
+            lotti_trattenenti=[{"id": 1, "codice": "LTF-1"}],
+        ))
+        self.assertEqual(motivo, MOTIVO_COMMESSA_NON_EMITTIBILE)
+
+    # 4. ⚠️ Piu' lotti: si nomina il primo e si dice che ce ne sono altri. Un
+    #    elenco dentro la frase di un toast non si legge.
+    def test_piu_lotti_nomina_il_primo_e_conta_gli_altri(self) -> None:
+        _, testo = classifica_gruppo_non_servito(_foto(
+            n_righe=1, n_trattenute=1,
+            lotti_trattenenti=[{"id": 1, "codice": "LTF-1"}, {"id": 2, "codice": "LTF-2"}],
+        ))
+        self.assertIn("LTF-1", testo)
+        self.assertIn("e altri 1", testo)
+
+    # 5. ⭐ Il LOTTO viaggia STRUTTURATO accanto alla frase: e' da li' che il
+    #    frontend costruisce il gesto, senza far ricopiare un codice a mano.
+    def test_il_dettaglio_strutturato_porta_il_lotto(self) -> None:
+        esiti = spiega_gruppi_non_serviti([_foto(
+            n_righe=1, n_trattenute=1,
+            lotti_trattenenti=[{"id": 11764, "codice": "LTF-0010331"}],
+        )])
+        self.assertEqual(esiti[0]["motivo"], MOTIVO_TRATTENUTO_DA_LOTTO)
+        self.assertEqual(esiti[0]["lotto_id"], 11764)
+        self.assertEqual(esiti[0]["lotto_codice"], "LTF-0010331")
+
+    # 6. ⛔ E su un altro motivo il lotto NON esce: un id sempre presente
+    #    inviterebbe a disegnare un pulsante che non ha senso.
+    def test_su_un_altro_motivo_il_lotto_non_esce(self) -> None:
+        esiti = spiega_gruppi_non_serviti([_foto(n_righe=1, n_non_approvate=1)])
+        self.assertEqual(esiti[0]["motivo"], MOTIVO_RIGHE_NON_APPROVATE)
+        self.assertIsNone(esiti[0]["lotto_id"])
+        self.assertIsNone(esiti[0]["lotto_codice"])
 
 
 class MessaggioGruppiNonServitiTests(SimpleTestCase):

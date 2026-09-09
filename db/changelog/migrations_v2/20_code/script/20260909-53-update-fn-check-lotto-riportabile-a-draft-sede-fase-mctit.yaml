@@ -1,0 +1,292 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L1 — fn_check_lotto_riportabile_a_draft LEGGE LA FASE DALLA SEDE UNICA
+#
+# ⭐ COSA CAMBIA: il confine pre-fiscale arriva GIA' fail-closed dalla vista
+#   (`pre_fiscale`), invece di essere ricomposto qui con `COALESCE(..., true)`.
+#   La stessa COALESCE era ricopiata in TRE funzioni.
+#
+# ⛔ COSA NON CAMBIA: i quattro motivi, il loro ordine, i codici, le chiavi
+#   i18n e il comportamento sullo stato non risolvibile.
+#     COALESCE(v_congela, true)  ==  NOT COALESCE(NOT congela_fiscale, false)
+#   su tutti e tre i casi: congelato, non congelato, ignoto.
+#
+# ⭐ QUESTA FUNZIONE E' IL PRECEDENTE DEL CANTIERE: il suo stesso commento
+#   racconta che `NOT IN ('DRAFT','EMESSA')` erano OTTO copie della stessa
+#   frase, e che `congela_fiscale` nacque per toglierle. Il flag aveva ucciso
+#   l'elenco di stati; restava duplicato IL MODO DI LEGGERLO.
+#
+# ⚠️ %TYPE ANCHE IN FIRMA (regola di progetto): i parametri che riflettono una
+#   colonna la nominano. Risolve agli stessi tipi concreti di prima (bigint,
+#   text), quindi l'IDENTITA' della funzione non cambia e non nasce nessun
+#   overload — CREATE OR REPLACE resta lecito e il COMMENT ON FUNCTION continua
+#   a combaciare.
+#
+# ⭐ LA PROVA: il pgTAP resta verde SENZA essere toccato. Provato anche sui
+#   dati veri, 2026-09-09: 83 lotti, zero divergenze.
+#
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-53-update-fn-check-lotto-riportabile-a-draft-sede-fase-mctit.yaml
+
+  - changeSet:
+      id: 20260909-53-update-fn-check-lotto-riportabile-a-draft-sede-fase
+      author: mctit
+      failOnError: true
+      comment: >
+        script.fn_check_lotto_riportabile_a_draft: la fase del lotto si legge da
+        vendite.vw_lotti_fase e il confine pre-fiscale arriva gia' fail-closed.
+        Nessuna decisione cambia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id vendite.fatturazione_lotti.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono il RITORNO IN BOZZA di
+              --   un lotto. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: vendite.fn_riporta_lotto_a_draft
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_lotto (che espone enabled + reasons).
+              -- Ritorna: [] se riportabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_stato_cod   vendite.vw_lotti_fase.stato_codice_interno%TYPE;
+                -- ⭐ rev 2026-09-09: il DERIVATO gia' fail-closed della sede unica, non piu'
+                --   il flag grezzo con la COALESCE ricopiata qui sotto. La difesa e' scritta
+                --   in un posto solo, e ha un NOME.
+                v_pre_fiscale vendite.vw_lotti_fase.pre_fiscale%TYPE;
+                v_trovato   boolean;
+                v_numerate  integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md).
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                -- ⭐ rev 2026-09-09 — SI LEGGE DALLA SEDE UNICA, vendite.vw_lotti_fase, che
+                --   fa la stessa LEFT JOIN che stava qui: un lotto senza stato risolvibile
+                --   ha comunque la sua riga e arriva al confronto.
+                SELECT true, f.stato_codice_interno, f.pre_fiscale
+                  INTO v_trovato, v_stato_cod, v_pre_fiscale
+                  FROM vendite.vw_lotti_fase f
+                 WHERE f.lotto_id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il lotto e' oltre il pre-fiscale.
+                -- Oltre EMESSA c'e' la numerazione: il punto di non ritorno
+                -- del documento fiscale, non una scelta di questa funzione.
+                -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+                --    Fino al 2026-08-30 questa funzione portava la propria copia di
+                --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+                --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+                --    per toglierle: era stata collegata a un solo lettore.
+                -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+                --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+                --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+                -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+                --    decisione di questa funzione, non della soglia.
+                -- ⚠️ Il fail-closed non e' sparito: si e' SPOSTATO dentro `pre_fiscale`,
+                --    che su uno stato non risolvibile vale FALSE. Il ritorno a bozza resta
+                --    bloccato esattamente come prima — e la stessa decisione non e' piu'
+                --    ricopiata in tre funzioni.
+                IF NOT v_pre_fiscale THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_RIPORTABILE_A_DRAFT',
+                    'reason',     'STATO_NON_PRE_FISCALE',
+                    'reason_key', 'vendite.lotti.azione_reason.stato_non_pre_fiscale',
+                    'dettaglio',  COALESCE(v_stato_cod, '-'));
+                END IF;
+
+                -- MOTIVO 2 — fatture oltre il pre-fiscale (sede unica).
+                v_motivi := v_motivi
+                          || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
+
+                -- MOTIVO 3 — fatture gia' numerate.
+                -- ⚠️ Ridondante per costruzione rispetto al motivo 2 (a EMESSA
+                -- la fattura non e' numerata, C-19) e va tenuto lo stesso: il
+                -- danno sarebbe irreversibile, quindi si guarda il FATTO e non
+                -- lo stato che dovrebbe implicarlo.
+                SELECT count(*)
+                  INTO v_numerate
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.numero IS NOT NULL;
+
+                IF v_numerate > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_FATTURE_NUMERATE',
+                    'reason',     'FATTURE_NUMERATE',
+                    'reason_key', 'vendite.lotti.azione_reason.fatture_numerate',
+                    'dettaglio',  v_numerate);
+                END IF;
+
+                -- ⭐ MOTIVO 4 (2026-08-22) — righe gia' RETTIFICATE.
+                -- Delegato: la domanda vive in un posto solo, condiviso dalle
+                -- tre porte di reset.
+                -- ⚠️ NON e' coperto dal motivo 3, ed e' il punto: la
+                -- protezione dei documenti numerati non arriva qui, perche'
+                -- l'accredito si registra PRIMA della numerazione — e' ancorato
+                -- alla coda dei resi, non al numero. Senza questo motivo il
+                -- reset passa il gate e poi esplode con una violazione di
+                -- chiave esterna grezza dentro fn_cleanup_fatture_by_ids.
+                v_motivi := v_motivi
+                          || script.fn_check_fatture_con_rettifiche(
+                                 ARRAY(SELECT lf.fattura_id
+                                         FROM vendite.fatturazione_lotti_fatture lf
+                                        WHERE lf.lotto_id = p_lotto_id));
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (codice 800). Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: guarda il numero e non lo stato che dovrebbe implicarlo. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ NON e'' coperto dal motivo 3, ed e'' il punto: l''accredito si registra PRIMA della numerazione (e'' ancorato alla coda dei resi), quindi la protezione dei documenti numerati non arriva fin li''. Senza, il reset passava il gate e poi esplodeva con un 23503 dentro fn_cleanup_fatture_by_ids. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons). rev 2026-08-22. rev 2026-09-09: la fase del lotto si legge da vendite.vw_lotti_fase (sede unica) e il confine pre-fiscale arriva gia'' fail-closed nel derivato pre_fiscale, invece di essere ricomposto qui con una COALESCE; parametri con %TYPE — nessuna decisione cambia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono il RITORNO IN BOZZA di
+              --   un lotto. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: vendite.fn_riporta_lotto_a_draft
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_lotto (che espone enabled + reasons).
+              -- Ritorna: [] se riportabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+                v_congela   config.stati_doc_fiscale.congela_fiscale%TYPE;
+                v_trovato   boolean;
+                v_numerate  integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md).
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                SELECT true, sdf.codice_interno, sdf.congela_fiscale
+                  INTO v_trovato, v_stato_cod, v_congela
+                  FROM vendite.fatturazione_lotti fl
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = fl.stato_doc_fiscale_id
+                 WHERE fl.id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il lotto e' oltre il pre-fiscale.
+                -- Oltre EMESSA c'e' la numerazione: il punto di non ritorno
+                -- del documento fiscale, non una scelta di questa funzione.
+                -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+                --    Fino al 2026-08-30 questa funzione portava la propria copia di
+                --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+                --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+                --    per toglierle: era stata collegata a un solo lettore.
+                -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+                --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+                --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+                -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+                --    decisione di questa funzione, non della soglia.
+                -- ⚠️ `COALESCE(..., true)` tiene il fail-closed di prima: con lo stato
+                --    non risolvibile la vecchia forma confrontava '' contro la lista e
+                --    quindi bloccava il ritorno a bozza.
+                IF COALESCE(v_congela, true) THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_RIPORTABILE_A_DRAFT',
+                    'reason',     'STATO_NON_PRE_FISCALE',
+                    'reason_key', 'vendite.lotti.azione_reason.stato_non_pre_fiscale',
+                    'dettaglio',  COALESCE(v_stato_cod, '-'));
+                END IF;
+
+                -- MOTIVO 2 — fatture oltre il pre-fiscale (sede unica).
+                v_motivi := v_motivi
+                          || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
+
+                -- MOTIVO 3 — fatture gia' numerate.
+                -- ⚠️ Ridondante per costruzione rispetto al motivo 2 (a EMESSA
+                -- la fattura non e' numerata, C-19) e va tenuto lo stesso: il
+                -- danno sarebbe irreversibile, quindi si guarda il FATTO e non
+                -- lo stato che dovrebbe implicarlo.
+                SELECT count(*)
+                  INTO v_numerate
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.numero IS NOT NULL;
+
+                IF v_numerate > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_FATTURE_NUMERATE',
+                    'reason',     'FATTURE_NUMERATE',
+                    'reason_key', 'vendite.lotti.azione_reason.fatture_numerate',
+                    'dettaglio',  v_numerate);
+                END IF;
+
+                -- ⭐ MOTIVO 4 (2026-08-22) — righe gia' RETTIFICATE.
+                -- Delegato: la domanda vive in un posto solo, condiviso dalle
+                -- tre porte di reset.
+                -- ⚠️ NON e' coperto dal motivo 3, ed e' il punto: la
+                -- protezione dei documenti numerati non arriva qui, perche'
+                -- l'accredito si registra PRIMA della numerazione — e' ancorato
+                -- alla coda dei resi, non al numero. Senza questo motivo il
+                -- reset passa il gate e poi esplode con una violazione di
+                -- chiave esterna grezza dentro fn_cleanup_fatture_by_ids.
+                v_motivi := v_motivi
+                          || script.fn_check_fatture_con_rettifiche(
+                                 ARRAY(SELECT lf.fattura_id
+                                         FROM vendite.fatturazione_lotti_fatture lf
+                                        WHERE lf.lotto_id = p_lotto_id));
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (codice 800). Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: guarda il numero e non lo stato che dovrebbe implicarlo. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ NON e'' coperto dal motivo 3, ed e'' il punto: l''accredito si registra PRIMA della numerazione (e'' ancorato alla coda dei resi), quindi la protezione dei documenti numerati non arriva fin li''. Senza, il reset passava il gate e poi esplodeva con un 23503 dentro fn_cleanup_fatture_by_ids. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons). rev 2026-08-22.';

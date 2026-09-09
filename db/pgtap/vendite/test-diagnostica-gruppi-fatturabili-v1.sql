@@ -45,7 +45,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- fixture non vedrebbe nulla e le asserzioni passerebbero per sottrazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(14);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -338,6 +338,93 @@ SELECT ok(
             AND (f.n_pronte = 0) = (jsonb_array_length(f.terne_pronte) = 0))
      FROM tmp_dg_foto f),
   '11. terne_pronte: la corsia delle righe pronte e'' misurata (non prevista), vuota e mai NULL quando non c''e'' nulla di pronto, e sempre coerente con n_pronte'
+);
+
+-- ============================================================
+-- Addendum rev 2026-09-09 — la classe TRATTENUTA
+-- ============================================================
+-- ⭐ Un gruppo in piu', tenuto da un lotto IN GIOCO. Serve ai test 12 e 13.
+-- ⛔ E' il caso che questa funzione contava fra i PRONTI: dal 20260909-25 la
+--   lane non lo offriva piu', e la fotografia continuava a dire «era pronto».
+--   Il backend ne ricavava «verificare emittente e utility della commessa» —
+--   due cose giuste da controllare, e non una parola sull'unica che contava.
+CREATE TEMP TABLE tmp_dg_trat (commessa_id bigint, gruppo_key text, lotto_id bigint);
+
+DO $addendum$
+DECLARE
+    v_r    record;
+    v_comm vendite.commesse.id%TYPE;
+    v_lot  vendite.fatturazione_lotti.id%TYPE;
+    v_mese vendite.commesse_attivita.competenza_mese%TYPE;
+BEGIN
+    SELECT * INTO v_r FROM tmp_dg_refs;
+    v_mese := date_trunc('month', CURRENT_DATE)::date;
+
+    INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
+                                  emittente_soggetto_ruolo_id, stato_commessa_id)
+    VALUES ('PGTAP-DG-TRAT-' || substr(md5(clock_timestamp()::text), 1, 6),
+            v_r.billing_account_id, v_r.utility_id, v_r.ef_sr, v_r.stato_emittibile_id)
+    RETURNING id INTO v_comm;
+
+    INSERT INTO vendite.commesse_attivita (
+        commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+        uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+        tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    VALUES (v_comm, 'PGTAP-DG-TRAT-' || substr(md5(clock_timestamp()::text), 1, 12),
+            v_r.articolo_id, v_r.istanza_utility_id, v_mese,
+            v_r.uom_id, 1, v_mese, v_mese,
+            (v_mese + INTERVAL '1 month - 1 day')::date,
+            v_r.tipo_doc_fiscale_id, v_r.valuta_id, 10.000000, 'FIXED',
+            'APPROVATA', 'NON_EMESSA', NULL, NULL);
+
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, competenza_mese, tipo_doc_fiscale_id,
+         emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
+    VALUES ('PGTAP-DG-LOTTO', v_mese, v_r.tipo_doc_fiscale_id, v_r.ef_sr,
+            (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'))
+    RETURNING id INTO v_lot;
+
+    INSERT INTO tmp_dg_trat
+    VALUES (v_comm, vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm), v_lot);
+
+    INSERT INTO vendite.fatturazione_lotti_esiti
+        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
+    SELECT v_lot, t.gruppo_key, 'ERRORE', 'E_PULL_COMMESSA', 'rotto per la prova'
+      FROM tmp_dg_trat t;
+END;
+$addendum$;
+
+CREATE TEMP TABLE tmp_dg_foto_trat AS
+  SELECT d.* FROM vendite.fn_diagnostica_gruppi_fatturabili(
+                     (SELECT array_agg(gruppo_key) FROM tmp_dg_trat),
+                     date_trunc('month', CURRENT_DATE)::date) d;
+
+-- ============================================================
+-- 12) ⭐ La riga TRATTENUTA esce dai pronti ed entra in n_trattenute
+-- ============================================================
+-- ⛔ E' IL VERSO DELLA CORREZIONE, e va letto insieme al test 3: li' una riga
+--   pronta e' contata pronta, qui una trattenuta NON lo e' piu'. Con il solo
+--   12 passerebbe anche una funzione che non conta mai niente come pronto.
+SELECT results_eq(
+  $$ SELECT n_righe, n_pronte, n_trattenute FROM tmp_dg_foto_trat $$,
+  $$ VALUES (1::bigint, 0::bigint, 1::bigint) $$,
+  '12. una riga trattenuta da un lotto in gioco ESCE da n_pronte ed entra in n_trattenute'
+);
+
+-- ============================================================
+-- 13) ⭐ E il lotto si NOMINA: «trattenuto» senza dire da cosa non e' azionabile
+-- ============================================================
+-- ⚠️ `[]` e mai NULL, come terne_pronte: «nessun lotto» e «non calcolato»
+--   devono restare distinguibili. Il gruppo GA non e' trattenuto da niente, e
+--   la sua colonna deve essere un array VUOTO.
+SELECT results_eq(
+  $$ SELECT (SELECT (lotti_trattenenti -> 0 ->> 'codice') FROM tmp_dg_foto_trat),
+            (SELECT jsonb_array_length(lotti_trattenenti) FROM tmp_dg_foto_trat),
+            (SELECT jsonb_array_length(f.lotti_trattenenti) FROM tmp_dg_foto f
+              WHERE f.gruppo_key = (SELECT gruppo_key FROM tmp_dg_key WHERE slot = 'GA')) $$,
+  $$ VALUES ('PGTAP-DG-LOTTO', 1, 0) $$,
+  '13. lotti_trattenenti NOMINA il lotto che trattiene, ed e'' un array vuoto (mai NULL) su un gruppo libero'
 );
 
 SELECT * FROM finish();
