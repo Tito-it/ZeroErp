@@ -647,10 +647,10 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `detail`            | no              | Dettaglio tecnico aggiuntivo                                        |
 | `technical_message` | no              | Solo se `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` (mai in produzione) |
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
-| `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Letto, e ramificato su un valore su sette** — vedi sotto |
+| `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Ramificato su un valore su sette**; gli altri sei li serve il default, e dal 2026-09-09 è dichiarato — vedi sotto |
 | `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
 | `targets`           | no              | **Su quale cosa**: `[{type, id}]`, al massimo cinque                |
-| `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso            |
+| `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso. ✅ Reso a video dal 2026-09-09, sotto il messaggio |
 
 ⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
 `ui_action: highlight_form_fields` non è azionabile: diceva *«evidenzia il
@@ -672,17 +672,39 @@ restava annegata nel testo grezzo di `detail`.
 
 Ne discendeva che un dominio che volesse mostrarla doveva **riscriverla in
 Python**, cioè duplicare il catalogo. Ora il campo viaggia strutturato fino
-all'envelope. ⛔ **Il frontend non lo legge ancora** — `error.hint`, **zero
-occorrenze** in `frontend/src`, riverificato il **2026-09-09**: il primo
-consumatore sarà la coda accrediti, dove distingue «non si può» da «resetta il
-lotto, ma sappi che la nota si rigenera».
+all'envelope.
 
-⚠️ **Questa riga è vera, e va tolta chiudendo il difetto, non correggendo il
-documento.** `hint` è la `soluzione` che il team DB scrive a catalogo per ogni
-codice, cioè **l'unica frase che dice all'operatore cosa fare adesso**: viaggia
-dal DB al `ServiceError` all'envelope e si ferma davanti allo schermo. Finché
-resta così, un campo dichiarato e mai letto *sembra* presidiato e non presidia
-niente.
+✅ **E dal 2026-09-09 il frontend lo LEGGE e lo mostra.** Fino a quella data la
+riga qui sopra diceva *«il frontend non lo legge ancora — zero occorrenze in
+`frontend/src`»*, ed era vera: il database la scriveva, il backend la
+trasportava con cinque punti di traduzione allineati e un BB dedicato, e lo
+schermo la buttava. ⭐ **Non è stata corretta la frase: è stato corretto il
+codice** — è la stessa mossa già usata per lo stack, e la regola è che *un
+documento che dice il vero su un difetto non si aggiorna, si rende falso
+chiudendolo*.
+
+Il consumatore è **uno solo**, ed è la sede giusta: `useApiHandler` lo estrae
+(`soluzione`) e lo consegna al toast, che lo rende **sotto il messaggio** — nel
+`detail` di PrimeVue, non concatenato al testo. ⚠️ Come per il gesto, non c'è
+niente da scrivere nei componenti: i file che usano `execute` ce l'hanno senza
+una riga di modifica.
+
+⛔ **Su un codice tecnico il suggerimento NON esce**, ed è la condizione perché
+il campo sia mostrabile. `_apply_policy` lo toglie sui **tre** codici di
+`is_technical_code` — `E_DATABASE`, `E_PIPELINE`, `E_GENERICO` — perché lì il
+canale `HINT` non porta la soluzione di nessun catalogo: porta ciò che
+PostgreSQL scrive per lo **sviluppatore**, in inglese (*«Perhaps you meant to
+reference the column …»*). Sono gli stessi tre in cui `message` è già sostituito
+dalla policy e `detail` da `_sanitize_public_detail`: *il suggerimento
+accompagna il messaggio, e dove il messaggio non è più quello dell'errore il
+suggerimento accompagnerebbe un'altra frase.*
+
+⚠️ **E la regola NON è quella del bersaglio**, che guarda **anche** lo status. Su
+un codice di classe `TECNICO` **registrato a catalogo** il bersaglio non esce e
+la soluzione sì: su un 500 non c'è nessun gesto da offrire, ma «segnalare al
+supporto citando il request_id» è esattamente ciò che chi legge può fare. Due
+campi, due regole, e la differenza è scritta nei test
+(`test_error_translator_soluzione.py`, casi 5 e 6).
 
 ⚠️ **Escono solo i nomi, e solo dalla chiave `field`.** Il `context` è una borsa
 diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
@@ -767,6 +789,25 @@ lotto che il database aveva rifiutato.
 ⭐ **I nomi dentro `errore` sono gli stessi dell'envelope**, di proposito: a
 video il gesto lo disegna un consumatore solo. Due nomi per la stessa cosa
 sarebbero due strade da tenere allineate a mano.
+
+🔴 **E dal 2026-09-09 sono le stesse anche le REGOLE — prima non lo erano.** Il
+blob leggeva `exc.hint` ed `exc.targets` **diretti**, mentre l'envelope li fa
+passare da `_apply_policy`, che su un codice tecnico li toglie. ⛔ Stesso nome,
+regola diversa: ed è **peggio** di due nomi diversi, perché due nomi si notano e
+due regole no. Da questa strada uscivano quindi un bersaglio su un guasto (un
+pulsante che non doveva esserci) e il `HINT` grezzo di PostgreSQL. ⇒ Ora i due
+campi si prendono da `ErrorTranslator.to_api_error(exc)`, che è la sede unica di
+quelle decisioni. Presidio:
+`test_il_blob_di_errore_applica_le_politiche_dell_envelope`.
+
+⚠️ **`message` e `detail` restano invece quelli grezzi dell'eccezione**, e la
+differenza è voluta: questo blob alimenta il **pannello di diagnostica di un
+lotto**, dove il testo del database è l'informazione utile — non una schermata
+per il cliente.
+
+⭐ Il difetto era vivo da prima e non lo vedeva nessuno: si è reso visibile il
+giorno in cui il frontend ha cominciato a **rendere** il suggerimento. *Un campo
+che nessuno mostra non ha comportamenti sbagliati — ne ha di invisibili.*
 
 **Da dove arriva `fields`, due strade:**
 
@@ -1484,10 +1525,30 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 > `azioneUi`. Le 176 righe di override vanno riguardate **prima** di accendere il
 > secondo consumatore, non dopo.
 >
-> ⚠️ E `hint` è oggi dove `ui_action` era il 2026-08-18: **emesso, trasportato,
-> zero consumatori** (`error.hint`, zero occorrenze in `frontend/src`, verificato
-> il 2026-09-09). ⛔ Con una differenza che lo rende più costoso: `hint` è
-> l'unica frase che dice all'operatore **cosa fare adesso**.
+> ✅ E `hint` **non è più lì**: era «emesso, trasportato, zero consumatori» la
+> mattina del 2026-09-09 ed è stato reso a video la sera stessa (D4) — vedi
+> §Envelope qui sopra. ⭐ Resta il precedente, che è la parte utile: *un campo
+> emesso e non consumato non si nota, perché niente fallisce* — e la sola cosa
+> che lo ha reso visibile, in entrambi i casi, è stato qualcuno che è andato a
+> cercarlo.
+>
+> ⭐ **DECISIONE (Tid, 2026-09-09): le altre sei `ui_action` sono SERVITE, non
+> ignorate — e la voce si chiude dichiarandolo.** Il default del client copre
+> l'intero vocabolario tranne `confirm_and_retry`, che è l'unico a chiedere un
+> comportamento che il default non sa produrre (una domanda invece di un
+> rifiuto):
+>
+> | valore | chi lo serve oggi |
+> | --- | --- |
+> | `highlight_form_fields` | **`campiErrati`**, che è l'informazione azionabile: `fields` dice *quale* campo, e senza quello l'`ui_action` non direbbe niente |
+> | `redirect_login` | lo **status 401**, in `core/api.js` — il refresh del token, prima ancora che il codice si legga |
+> | `show_error_banner` · `show_toast_error` · `show_retry_dialog` · `show_info_banner` | il **toast**, che dal 2026-09-09 porta anche la soluzione e, quando c'è un bersaglio, il gesto |
+>
+> ⛔ **Non vuol dire che il vocabolario sia inutile**: vuol dire che oggi il
+> default è *corretto* per sei valori su sette, quindi ramificarli comprerebbe
+> zero. ⚠️ E la condizione per accendere il settimo resta quella già scritta: le
+> **176 righe di override** vanno riguardate **prima**, non dopo — sono state
+> decise quando nessuno poteva verificarle a video.
 >
 > ⚠️ **Le tre conseguenze pratiche qui sotto non cambiano di una virgola**, e
 > il punto 3 diventa più concreto: il giorno in cui un componente reagirà a

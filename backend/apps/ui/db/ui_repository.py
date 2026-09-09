@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import jsonb_out, rows_to_list
 
 
 # Espressione SQL pura per leggere la GUC `app.ruolo_applicativo` con
@@ -165,10 +165,18 @@ class UiRepository:
             # fn_log_and_raise_error invece di tornare NULL. Se mai arriva
             # NULL, il service lo traduce in E_UI_LISTA_NON_TROVATA.
             return {}
-        # psycopg ritorna gia' dict per JSONB; cinghia di sicurezza per str.
-        if isinstance(row[0], str):
-            return json.loads(row[0])
-        return dict(row[0])
+        # ⚠️ Il driver NON decodifica i jsonb fuori dall'ORM: su un cursor RAW
+        #    quel valore arriva come `str`. La cinghia di sicurezza e' il BB
+        #    `jsonb_out`, non una scritta a mano.
+        # ⛔ E non `coerce_jsonb_dict`: il suo ripiego a `{}` farebbe scattare il
+        #    `if not config` del service, cioe' direbbe «lista non trovata» su
+        #    una lista che c'e'. Qui un JSON illeggibile e' un bug del contratto
+        #    e deve esplodere.
+        # ⚠️ Il vecchio `dict(row[0])` faceva anche una COPIA: non serviva a
+        #    nessuno — la riga nasce da questa query e non e' condivisa — ma il
+        #    service scrive dentro il risultato (`richiede_scelta_emittente`),
+        #    quindi valeva la pena verificarlo prima di toglierla.
+        return jsonb_out(row[0])
 
     # Scopo: Restituisce la `lista_definizione.id` data il codice. None se
     #        inesistente o non attivo. Usato dai service per distinguere

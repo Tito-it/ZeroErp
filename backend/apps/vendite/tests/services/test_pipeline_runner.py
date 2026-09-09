@@ -70,6 +70,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.core.services.db_error_fields import Bersaglio
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.lotto_segnalazioni_service import LottoSignalStatus
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
@@ -1387,6 +1388,70 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(
             [c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8],
         )
+
+    # ------------------------------------------------------------------
+    # Il blob `errore` dentro il 200: stessi NOMI dell'envelope, e dal
+    # 2026-09-09 anche le stesse REGOLE.
+    # ------------------------------------------------------------------
+
+    # Scopo: 🔴 LA REGOLA CHE MANCAVA. Questi endpoint rispondono **200 anche
+    #        quando la catena si ferma**: il fallimento e' un campo del payload,
+    #        quindi `useApiHandler` non vede nessun envelope e a video arriva
+    #        SOLO cio' che sta in questo dizionario.
+    #        ⛔ Fino al 2026-09-09 il blob leggeva `exc.hint` ed `exc.targets`
+    #        DIRETTI, mentre l'envelope li fa passare da `_apply_policy` — che su
+    #        un codice tecnico li toglie. Stesso nome, regola diversa: e due
+    #        regole non si notano come si notano due nomi. Il difetto e' diventato
+    #        visibile quando il frontend ha cominciato a RENDERE il suggerimento.
+    #        ⚠️ `message` e `detail` restano invece quelli grezzi dell'eccezione,
+    #        di proposito: qui alimentano il pannello di diagnostica di un lotto.
+    def test_il_blob_di_errore_applica_le_politiche_dell_envelope(self):
+        class _StepChe(self._StepExecutorMock):
+            def __init__(self, exc):
+                super().__init__()
+                self._exc = exc
+
+            def execute_step(self, **kwargs):
+                raise self._exc
+
+        casi = {
+            # Tecnico: niente suggerimento (il canale HINT li' porta il testo di
+            # PostgreSQL) e niente bersaglio (su un guasto non c'e' un gesto).
+            "E_DATABASE": (None, None),
+            # Rimediabile: escono entrambi, o il test sopra passerebbe anche se
+            # non uscissero MAI.
+            "E_FATTURA_RETTIFICATA_SENZA_NUMERO": (
+                "Numerare prima i documenti che questo rettifica.",
+                [{"type": "FATTURA", "id": "820"}],
+            ),
+        }
+        for codice, (hint_atteso, targets_attesi) in casi.items():
+            with self.subTest(codice=codice):
+                exc = ServiceError(
+                    code=codice,
+                    message="non numerabile",
+                    detail="dettaglio grezzo del database",
+                    hint="Numerare prima i documenti che questo rettifica.",
+                    targets=(Bersaglio(tipo="FATTURA", id="820"),),
+                )
+                repo = self._StatefulRepo(chiude_su=8)
+                runner = LottoPipelineRunner(
+                    repository=repo, step_executor=_StepChe(exc),
+                )
+                with _fake_tx():
+                    esito = runner.run_lotto_until_done(
+                        LottoPipelineParams(lotto_id=10, dry_run=False)
+                    )
+                self.assertEqual(esito["motivo_stop"], "ERRORE")
+                self.assertEqual(esito["errore"]["hint"], hint_atteso)
+                self.assertEqual(esito["errore"]["targets"], targets_attesi)
+                # ⚠️ Il codice e il messaggio NON passano dalla policy: restano
+                #    quelli dell'eccezione. E' la differenza voluta.
+                self.assertEqual(esito["errore"]["code"], codice)
+                self.assertEqual(esito["errore"]["message"], "non numerabile")
+                self.assertEqual(
+                    esito["errore"]["detail"], "dettaglio grezzo del database"
+                )
 
     # ------------------------------------------------------------------
     # Fase 6 — ritorno del lotto a DRAFT (brief DB→BE ritorno-lotto-a-draft)

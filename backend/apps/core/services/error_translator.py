@@ -178,7 +178,33 @@ class ErrorTranslator:
             message=public_message,
             detail=detail,
             technical_message=technical_message,
-            hint=api_error.hint,
+            # ⛔ SU UN CODICE TECNICO IL SUGGERIMENTO NON ESCE (2026-09-09), ed
+            # e' la condizione perche' il campo sia MOSTRABILE a video: da oggi
+            # il frontend lo rende sotto il messaggio d'errore.
+            #
+            # `hint` e' la `soluzione` che il team DB scrive a catalogo PER IL
+            # CODICE sollevato, e `script.fn_log_and_raise_error` la consegna nel
+            # canale `HINT` dell'eccezione. Su questi tre codici quel canale non
+            # porta la soluzione di nessun catalogo: `E_DATABASE` ed `E_GENERICO`
+            # nascono da un'eccezione che di dominio non e', quindi li' `HINT` e'
+            # quello che PostgreSQL scrive per lo SVILUPPATORE, in inglese
+            # («Perhaps you meant to reference the column ...»).
+            #
+            # ⭐ La misura e' `is_technical` e NON lo status, e la differenza e' di
+            #    modello, non di prudenza. Un codice di CLASSE `TECNICO` e'
+            #    registrato a catalogo, quindi una `soluzione` scritta apposta ce
+            #    l'ha — «segnalare al supporto citando il request_id» e' proprio
+            #    cio' che serve a chi legge un 500 — e toglierla butterebbe via
+            #    una frase scritta per quel caso. ⇒ Qui la regola diverge da
+            #    quella del bersaglio qui sotto, che invece guarda ANCHE lo
+            #    status: un gesto su un 500 non c'e', una frase si'.
+            #
+            # ⚠️ La regola in una riga: *il suggerimento accompagna il messaggio;
+            #    dove il messaggio non e' piu' quello dell'errore — qui lo
+            #    sostituisce `policy.user_message` e il dettaglio lo sostituisce
+            #    `_sanitize_public_detail` — il suggerimento accompagnerebbe
+            #    un'altra frase.*
+            hint=None if is_technical else api_error.hint,
             tx_id=api_error.tx_id,
             retryable=api_error.retryable,
             ui_action=policy.ui_action,

@@ -47,6 +47,15 @@ function eseguiAzione(azione, chiudi) {
     <template #message="{ message, closeCallback }">
       <div class="app-toast-azioni">
         <span class="app-toast-azioni-testo">{{ message.summary }}</span>
+        <!--
+          ⭐ LA SOLUZIONE (2026-09-09): cosa fare adesso, dal catalogo del
+          database (`error.hint`). Sta FRA il testo e i pulsanti perche' quello
+          e' l'ordine del ragionamento — cosa e' successo → cosa fare → il
+          pulsante che lo fa. ⚠️ Qui va scritta a mano: il gruppo `azioni` ha un
+          template suo, quindi il `detail` che PrimeVue renderebbe da se' nel
+          toast normale qui non lo rende nessuno.
+        -->
+        <span v-if="message.detail" class="app-toast-azioni-soluzione">{{ message.detail }}</span>
         <div class="app-toast-azioni-pulsanti">
           <Button
             v-for="(azione, i) in message.azioni"
@@ -87,6 +96,19 @@ function eseguiAzione(azione, chiudi) {
 
 .app-toast-azioni-testo {
   font-weight: 500;
+}
+
+/* La soluzione arretra rispetto al messaggio: sono due frasi con due ruoli, e
+   la gerarchia dice quale si legge per prima. Stessa cosa che il tema Aura fa
+   da se' su `summary`/`detail` nel toast normale — qui va ripetuta perche'
+   questo gruppo ha un template suo.
+   ⛔ Il peso e la dimensione, MAI `opacity`: la regola sta in
+   frontend-standards §«Glifo vs controllo» — l'opacita' si somma ai veli dei
+   contenitori e smorza anche cio' che resta da leggere. E nemmeno un colore
+   scritto qui: il toast d'errore porta il proprio, e sovrascriverlo per un
+   figlio vorrebbe dire indovinare il contrasto su due temi. */
+.app-toast-azioni-soluzione {
+  font-size: var(--app-font-size-sm);
 }
 
 /* `wrap`: i bersagli possono essere fino a cinque, e su schermi stretti

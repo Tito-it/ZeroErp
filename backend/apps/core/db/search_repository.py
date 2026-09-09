@@ -9,9 +9,8 @@
 
 from __future__ import annotations
 
-import json
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import jsonb_out, rows_to_list
 from typing import Any
 
 from django.db import connection
@@ -79,7 +78,7 @@ class SearchRepository:
         results: list[dict[str, Any]] = []
         total_count = 0
         for row in rows:
-            data = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            data = jsonb_out(row[0])
             # total_count è presente in ogni riga (COUNT(*) OVER())
             if total_count == 0 and "total_count" in data:
                 total_count = data["total_count"]
@@ -121,8 +120,7 @@ class SearchRepository:
         if not row or row[0] is None:
             return None
 
-        result = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-        return result
+        return jsonb_out(row[0])
 
     # Scopo: Restituisce i tipi ruolo con ricerca_visibile = true,
     # ordinati per descrizione. Usato dal dropdown della ricerca universale.
