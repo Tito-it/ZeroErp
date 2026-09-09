@@ -3873,6 +3873,11 @@
       "col_errore_codice": "Error code",
       "col_errore_messaggio": "Reason",
       "col_errore_quando": "Failed on"
+    },
+    "emissione": {
+      "blocco_reason": {
+        "trattenuto_da_lotto": "A live batch is already holding this document: to invoice it separately, remove it from that run first."
+      }
     }
   },
   "pagamenti": {

@@ -10,6 +10,7 @@ import Button from 'primevue/button'
 import Popover from 'primevue/popover'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 
@@ -46,10 +47,10 @@ onMounted(load)
 
 <template>
   <span v-if="count > 0" class="alert-scadenze-widget">
-    <Button type="button" icon="pi pi-exclamation-triangle" severity="warn"
+    <Button type="button" :icon="MANAGE_ICONS.ERRORE" severity="warn"
       text rounded size="small" @click="toggle" :loading="loading">
       <template #icon>
-        <i class="pi pi-exclamation-triangle" />
+        <i :class="MANAGE_ICONS.ERRORE" />
         <Badge :value="count" severity="danger" class="alert-scadenze-badge" />
       </template>
     </Button>

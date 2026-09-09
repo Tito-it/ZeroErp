@@ -7,6 +7,7 @@
 // Nascosto se count == 0.
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const { t } = useI18n()
 defineProps({
@@ -17,7 +18,7 @@ defineProps({
 <template>
   <Message v-if="count > 0" severity="warn" :closable="false" class="mt-05">
     <template #icon>
-      <i class="pi pi-exclamation-triangle" />
+      <i :class="MANAGE_ICONS.ERRORE" />
     </template>
     <strong>{{ t('amministrazione.banner_non_assegnati_title', { count }) }}</strong>
     <div class="app-banner-detail">

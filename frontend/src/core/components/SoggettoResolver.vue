@@ -224,7 +224,7 @@ async function onSoggettoCreatoDaDrawer(data) {
               <span v-if="option.partita_iva" class="ml-2">P.IVA: {{ option.partita_iva }}</span>
             </div>
             <div v-if="option._ruoloDuplicato" class="resolver-warning">
-              <i class="pi pi-exclamation-triangle" />
+              <i :class="MANAGE_ICONS.ERRORE" />
               {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
             </div>
             <div v-else-if="option._naturaBloccata" class="resolver-warning">

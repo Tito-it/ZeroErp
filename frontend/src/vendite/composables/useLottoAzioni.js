@@ -35,6 +35,7 @@ import {
   resetLottoDraft,
   runLottoPipeline,
 } from '../api/lotti'
+import { MANAGE_ICONS } from '../../core/constants'
 
 // Permesso di processo per verbo. La numerazione ha un gate fiscale SEPARATO
 // (I-7); annullamento e ritorno in lavorazione condividono `reset_lotto_draft`
@@ -78,7 +79,7 @@ const VERBI_PIPELINE = Object.keys(LOTTO_AZIONE_PIPELINE_UI)
 const LOTTO_AZIONE_ICONA = {
   numera: 'pi pi-verified',
   ristampa: 'pi pi-print',
-  annulla: 'pi pi-times-circle',
+  annulla: MANAGE_ICONS.ANNULLA,
   riporta_a_draft: 'pi pi-undo',
 }
 

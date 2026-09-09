@@ -5,6 +5,10 @@
 > [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md)
 > e [esito-gruppo-lotto](../work-done/brief-db-esito-gruppo-lotto.md).
 >
+> **Stato:** 🟢 **CHIUSO e archiviato il 2026-09-09** (decisione di Tid). DB
+> consegnato (§6), backend adeguato e provato con la chiamata vera (§7), doc
+> auto-gen rigenerata (§7.1). Nessuna voce aperta.
+>
 > **In una riga:** `fn_segna_esito_gruppo_lotto` marca **tutti** i documenti di
 > una commessa, compresi quelli `ESCLUSO`. Il trigger dell'uscita rifiuta — e fa
 > bene — ma il rifiuto **abbatte il rilancio**. ⇒ Il verbo che esiste per far
@@ -68,7 +72,11 @@ dice `critical = 0` mentre la critica è ancora lì. Il **trigger** lo sa. Il
 
 ---
 
-## 4. 🔵 Che cosa serve
+## 4. ✅ Che cosa serviva — consegnato il 2026-09-09
+
+> Le richieste qui sotto restano come **erano poste**; la risposta è il §6, e il
+> consumo lato backend il §7. ⚠️ Il testo non si riscrive per farlo sembrare
+> facile: la forma della domanda è metà del lavoro.
 
 **Che il marcatore non tenti di scrivere su un documento che ha già lasciato il
 giro.**
@@ -78,13 +86,13 @@ database possiede già in due punti, e la terza è quella che diverge.
 
 ### Due cose da decidere nello stesso giro, non dopo
 
-1. 🔵 **Distinguere i due zeri del marcatore.** Con lo scarto, una commessa il
+1. ✅ **Distinguere i due zeri del marcatore** — e sono risultati **tre** (§6.7). Con lo scarto, una commessa il
    cui unico documento è uscito produrrà **zero righe marcate** — e il backend lì
    ha un avviso in servizio (`pull_commesse.esito_non_appeso`) che diventerebbe
    rumore su un caso legittimo. Ci serve separare «nessun documento appeso a
    questa commessa» (difetto) da «gli unici documenti sono usciti» (normale). La
    forma è vostra.
-2. 🔵 **La segnalazione critica per documento.** Al rilancio il backend ne
+2. ✅ **La segnalazione critica per documento** — `20260909-21`: su un documento uscito non si scrivono `W` e `C`. Al rilancio il backend ne
    riscrive una per ogni documento della commessa fallita, compreso quello
    uscito. Non blocca — il conteggio la scarta — ma se ne accumula una a ogni
    rilancio su un documento che non è più in gioco. Va scartata anche lì, o è un
@@ -222,3 +230,42 @@ fragile.
 ⚠️ **Chiude il rubinetto, non ripulisce il pregresso**: le critiche già scritte
 su documenti usciti restano dove sono, e il conteggio continua a scartarle.
 Cancellare righe di giornale è un'altra decisione, e non è stata presa qui.
+
+---
+
+## 7. ✅ Il backend, adeguato lo stesso giorno — 2026-09-09
+
+`segna_esito_gruppo_lotto()` legge tre colonne (`SELECT marcati, usciti,
+fuori_perimetro FROM …`) e ritorna un `EsitoMarcaturaGruppi`; `_marca_esito_gruppi`
+avvisa **solo** quando tutti e tre sono zero **o** quando `fuori_perimetro > 0`.
+⇒ Su un documento uscito l'avviso tace: è il caso normale del verbo.
+
+⭐ **Provato con la chiamata VERA**, sul lotto del difetto e in transazione
+annullata — non con un mock, che una firma cambiata non la vede:
+
+| Caso | Esito |
+| --- | --- |
+| marcare il documento **uscito** — l'errore di produzione | `{marcati: 0, usciti: 1, fuori_perimetro: 0}`, **nessuna eccezione** |
+| marcare un documento **sano** della stessa commessa | `{marcati: 1, …}` — il §6.2 regge: gli altri passano |
+| una chiave **non del lotto** | `{fuori_perimetro: 1}` — il terzo zero si distingue |
+
+Tre test nuovi: il consuntivo a tre, l'avviso che **non** suona sugli usciti,
+l'avviso che suona su `fuori_perimetro`. **4563 verdi.**
+
+### 7.1 🔴 Una cosa che vi chiediamo: la doc auto-gen è rimasta indietro
+
+`docs/it/dbzero/vendite/funzioni/fn_segna_esito_gruppo_lotto.md` dichiara ancora
+**`RETURNS integer`**. Il vivo dice
+`RETURNS TABLE(marcati, usciti, fuori_perimetro)`.
+
+⚠️ **Non è una svista formale: è la fonte che questa casa dichiara di leggere per
+la struttura.** Adeguando il backend l'abbiamo aperta per prima e diceva la firma
+VECCHIA — con quella avremmo riscritto la chiamata sbagliata, e `SELECT fn(...)`
+su una `RETURNS TABLE` non fallisce: consegna la tupla intera in un campo solo.
+Un valore plausibile e falso.
+
+⇒ Ce ne siamo accorti solo perché abbiamo chiesto a `pg_proc`.
+✅ **Rigenerata**: verificato il 2026-09-09 dopo il merge, la pagina dichiara
+`RETURNS TABLE(marcati, usciti, fuori_perimetro)`. Le altre due funzioni toccate
+erano già allineate (verificate tutte e tre).
+

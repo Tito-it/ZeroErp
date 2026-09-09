@@ -73,6 +73,7 @@ import {
   variazionePrezzoAttivita,
 } from '../api/commesse'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -954,7 +955,7 @@ const drawerActions = computed(() => [
               />
               <i
                 v-if="data.prezzo_da_riallineare"
-                class="pi pi-exclamation-triangle app-dash-ritardo"
+                :class="[MANAGE_ICONS.ERRORE, 'app-dash-ritardo']"
                 v-tooltip.bottom="t('vendite.commesse.prezzo_da_riallineare')"
               />
             </span>

@@ -412,6 +412,30 @@ class LottoListRow(TypedDict):
     stato_congela_fiscale: bool | None
 
 
+class EsitoMarcaturaGruppi(TypedDict):
+    """Consuntivo di `vendite.fn_segna_esito_gruppo_lotto` (changeSet `-20`).
+
+    ⭐ TRE numeri e non uno, ed e' la ragione per cui la firma e' cambiata: lo
+    zero del marcatore aveva tre cause diverse e ne raccontava una sola.
+
+    ⚠️ Prima la funzione tornava un `integer`. Chi legge per posizione o si
+    aspetta uno scalare NON fallisce in modo utile: `SELECT fn(...)` su una
+    `RETURNS TABLE` a tre colonne consegna una tupla.
+    """
+
+    # Documenti che hanno ricevuto l'esito: il caso normale.
+    marcati: int
+    # ⭐ Documenti SALTATI perche' gia' usciti dal giro. `> 0` non e' un
+    # difetto: e' il motivo per cui il verbo «togli dal giro» esiste, e prima
+    # del `-18` era il caso che faceva CADERE l'intero statement — quindi
+    # lasciava senza esito anche i documenti SANI della stessa commessa.
+    usciti: int
+    # ⚠️ Documenti che esistono ma non appartengono al perimetro di QUESTO
+    # lotto. Non nasce da questo difetto: c'era gia', nascosto nello stesso
+    # zero. `> 0` resta sospetto e va detto.
+    fuori_perimetro: int
+
+
 class EsclusioneDocumentoDaGiroResult(TypedDict):
     """Consuntivo di `vendite.fn_escludi_documento_da_giro`.
 
@@ -1325,6 +1349,20 @@ class DashCompetenzaGruppoRow(TypedDict):
     # navigarci. Il giorno in cui servisse il salto, l'id lo deve aggiungere la
     # vista — comporlo qui vorrebbe dire una seconda lettura per una colonna.
     ultimo_lotto_codice: str | None
+    # ═══ TRATTENUTO DA UN LOTTO VIVO (brief-db-documento-trattenuto-da-un-lotto-vivo)
+    # ⭐ Il VERDETTO, non la materia per dedurlo: «questo documento lo sta
+    # trattenendo un lotto ancora vivo, quindi non si offre due volte».
+    # ⛔ NON si ricava da `ultimo_esito`: quello risponde giusto per caso —
+    # misurato il 2026-09-08, due documenti su tre avevano `COMPLETED` con il
+    # lotto ANNULLATO, cioe' erano liberi. Dedurlo avrebbe tenuto bloccato per
+    # sempre il contenuto di ogni lotto annullato.
+    # ⚠️ `None` = la riga si puo' prendere.
+    emissione_blocco_reason: str | None
+    emissione_blocco_reason_key: str | None
+    # ⭐ Il lotto che trattiene, come BERSAGLIO: la frase dice cosa fare, il
+    # bersaglio ci porta senza far ricopiare un codice a mano.
+    emissione_blocco_lotto_id: int | None
+    emissione_blocco_lotto_codice: str | None
 
 
 class DashCompetenzaGruppoRegistroRow(TypedDict):

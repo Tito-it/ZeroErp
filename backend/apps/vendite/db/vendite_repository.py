@@ -2136,7 +2136,24 @@ class VenditeRepository:
                 g.ultimo_errore_codice,
                 g.ultimo_errore_messaggio,
                 g.ultimo_errore_quando,
-                g.ultimo_lotto_codice
+                g.ultimo_lotto_codice,
+                -- ⭐ IL VERDETTO «questo documento e' trattenuto da un lotto
+                --    VIVO» (`20260909-24`), non la materia per dedurlo.
+                -- ⛔ E il perche' e' una misura: `ultimo_esito` sembrava
+                --    bastare e rispondeva GIUSTO PER CASO. Su tre documenti in
+                --    `DA_EMETTERE` due avevano `COMPLETED` con il lotto
+                --    ANNULLATO — cioe' liberi — e sbarrare la riga da li'
+                --    avrebbe bloccato per sempre il contenuto di ogni lotto
+                --    annullato.
+                -- ⚠️ Colonne che nominano IL VERBO (§12.5.4): `emissione_*`, e
+                --    non un `blocco_` generico che domani risponde a due
+                --    domande diverse.
+                g.emissione_blocco_reason,
+                g.emissione_blocco_reason_key,
+                -- ⭐ Il lotto viaggia come BERSAGLIO e non come frase: chi
+                --    legge non deve ricopiare un codice per poi cercarlo.
+                g.emissione_blocco_lotto_id,
+                g.emissione_blocco_lotto_codice
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -2240,6 +2257,22 @@ class VenditeRepository:
                         row[26].isoformat() if row[26] is not None else None
                     ),
                     "ultimo_lotto_codice": None if row[27] is None else str(row[27]),
+                    # ═══ TRATTENUTO DA UN LOTTO VIVO (2026-09-09) ═══════════
+                    # ⚠️ `None` = la riga si puo' prendere. Il motivo e la
+                    # chiave i18n viaggiano insieme al BERSAGLIO del lotto: la
+                    # frase dice cosa fare, il bersaglio ci porta.
+                    "emissione_blocco_reason": (
+                        None if row[28] is None else str(row[28])
+                    ),
+                    "emissione_blocco_reason_key": (
+                        None if row[29] is None else str(row[29])
+                    ),
+                    "emissione_blocco_lotto_id": (
+                        None if row[30] is None else int(row[30])
+                    ),
+                    "emissione_blocco_lotto_codice": (
+                        None if row[31] is None else str(row[31])
+                    ),
                     # ═══ D3 · la bandiera della commessa respinta ════════════
                     # Nascono vuote e le riempie `_applica_bandiera_respinta`
                     # sulla SOLA pagina: vedi il commento del metodo per il

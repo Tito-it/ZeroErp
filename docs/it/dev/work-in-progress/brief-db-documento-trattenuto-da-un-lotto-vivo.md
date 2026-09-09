@@ -10,7 +10,7 @@
 > **Origine.** Analisi del backend, 2026-09-08, mentre cercava di sbarrare la
 > riga a video — e la domanda che ha fermato tutto è stata: *«con quale dato?»*.
 >
-> **Correlati:** [brief-db-il-marcatore-scrive-su-un-documento-uscito](brief-db-il-marcatore-scrive-su-un-documento-uscito.md) ·
+> **Correlati:** [brief-db-il-marcatore-scrive-su-un-documento-uscito](../work-done/brief-db-il-marcatore-scrive-su-un-documento-uscito.md) ·
 > [linee-guida-sql §12.5](../../linee-guida-sql.md) — le azioni per riga
 
 ---
