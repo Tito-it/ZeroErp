@@ -746,6 +746,17 @@ class _CellaCompetenza:
     # sommarle al residuo darebbe un numero solo per rimedi opposti.
     n_residui: int = 0
     valore_residui: Decimal = Decimal(0)
+    # ⭐ Il lavoro che un GIRO ANCORA IN CORSO sta trattenendo, e che quindi
+    # `n_attivita` non conta piu' (changeSet `20260909-67`). Stessa forma della
+    # quota residua qui sopra, e per la stessa ragione: la card deve dire DUE
+    # cose — quanto lavoro si puo' prendere, e quanto ce n'e' che non si puo'
+    # prendere perche' e' gia' in mano a qualcuno.
+    # ⛔ Senza questa meta' il numero cala e nessuno sa di quanto: «non c'e'
+    # niente da fare» e «c'e' del lavoro in un giro vivo» si leggerebbero
+    # uguali. Era il difetto del collaudo 09-09 girato di 180 gradi — li' la
+    # card diceva 4 su un elenco di 3, qui direbbe 3 senza spiegare il quarto.
+    n_trattenute: int = 0
+    valore_trattenuto: Decimal = Decimal(0)
 
 
 # Scopo: Serializza una cella-stadio nel payload API. Contratto SIMMETRICO su
@@ -820,6 +831,13 @@ def _cella_stadio_payload(
         # transito legittimo e non va toccata.
         "n_residui": cella.n_residui,
         "valore_residui": str(cella.valore_residui),
+        # ⭐ La quota TRATTENUTA da un giro ancora in corso. Contratto
+        # simmetrico come il resto: il campo c'e' su ogni stadio e vale 0 dove
+        # non si applica — e su `DA_EMETTERE` e' l'unico posto in cui la card
+        # puo' spiegare perche' il suo numero e' piu' piccolo dell'elenco che
+        # l'operatore ricorda.
+        "n_trattenute": cella.n_trattenute,
+        "valore_trattenuto": str(cella.valore_trattenuto),
         # Le voci del breakdown, serializzate qui una volta sola: dentro la
         # cella i valori restano Decimal (si sommano fra loro), fuori sono
         # stringhe come ogni altro importo del payload.
@@ -919,6 +937,11 @@ def fn_dash_competenza_mensile(
             #    sede sola in questa funzione ed e' `valore_abs`, che serve al
             #    donut di copertura — dove non compensare e' proprio il punto.
             cella.valore_residui += Decimal(r["valore"])
+        # ⭐ La quota che un giro in corso trattiene. ⚠️ Arriva GIA' esclusa da
+        #    `n_attivita` e da `valore` (il `FILTER` sta nella vista): qui non
+        #    si sottrae niente, si DICHIARA quanto e' stato tolto.
+        cella.n_trattenute += r["n_attivita_trattenute"]
+        cella.valore_trattenuto += Decimal(r["valore_trattenuto"])
         if r["stadio"] == "FATTURATA":
             # Una voce per STATO FATTURA, con i movimenti sommati dentro: il
             # breakdown risponde a «di cio' che e' fatturato, in che stato sono

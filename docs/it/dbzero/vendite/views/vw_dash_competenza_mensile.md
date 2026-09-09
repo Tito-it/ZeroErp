@@ -13,13 +13,15 @@ WITH (security_invoker=on) AS
 SELECT competenza_mese,
     stadio,
     stato_fattura_codice_interno,
-    (count(*))::integer AS n_attivita,
-    COALESCE(sum(valore), (0)::numeric) AS valore_tot,
+    (count(*) FILTER (WHERE (NOT emissione_trattenuta)))::integer AS n_attivita,
+    COALESCE(sum(valore) FILTER (WHERE (NOT emissione_trattenuta)), (0)::numeric) AS valore_tot,
     COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
     (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
     COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
     tipo_movimento,
-    motivo_non_fatturata
+    motivo_non_fatturata,
+    (count(*) FILTER (WHERE emissione_trattenuta))::integer AS n_attivita_trattenute,
+    COALESCE(sum(valore) FILTER (WHERE emissione_trattenuta), (0)::numeric) AS valore_trattenuto
    FROM vendite.vw_dash_competenza_attivita
   GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento, motivo_non_fatturata;
 ```

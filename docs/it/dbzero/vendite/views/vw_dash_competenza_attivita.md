@@ -75,8 +75,13 @@ SELECT ca.competenza_mese,
     fl.id AS lotto_provenienza_id,
     fl.codice AS lotto_provenienza_codice,
     art.codice AS articolo_codice,
-    art.descrizione AS articolo_descrizione
-   FROM ((((((((((((((((((vendite.commesse co
+    art.descrizione AS articolo_descrizione,
+    COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+        CASE
+            WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+            ELSE NULL::bigint[]
+        END AS emissione_trattenuta_da_lotti
+   FROM (((((((((((((((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
      LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
@@ -105,6 +110,7 @@ SELECT ca.competenza_mese,
                     ELSE 'FATTURATA'::text
                 END)::character varying AS stadio) st)
      CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+     LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
   WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
 ```
 

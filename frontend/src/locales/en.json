@@ -2269,7 +2269,12 @@
       "col_ultimo_errore_quando": "Attempted on",
       "col_ultimo_lotto": "Attempt batch",
       "ultimo_esito_titolo": "The last invoicing attempt failed",
-      "ultimo_esito_titolo_lotto": "Last attempt failed — batch {lotto}"
+      "ultimo_esito_titolo_lotto": "Last attempt failed — batch {lotto}",
+      "trattenuti_di_cui": "of which {n} already in a running batch",
+      "trattenuti_tooltip": "Documents held by a batch that is still running: they stay visible in the list but cannot be picked up until that batch closes or releases them.",
+      "tot_gruppi_trattenuti": "held (not counted):",
+      "ultimo_esito_titolo_lotto_concluso": "Attempt in batch {lotto} — {stato}, no longer running",
+      "motivo_trattenuto_da_lotto": "held by a running batch | held by a running batch"
     },
     "ddt": {
       "titolo": "Sales delivery notes",

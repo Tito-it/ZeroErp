@@ -31,7 +31,9 @@ WITH aggregato AS (
             bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
             array_agg(DISTINCT a.registro_id) AS registri_ids,
             min((a.registro_codice)::text) AS registro_codice_unico,
-            min(a.data_documento_prevista) AS data_prevista_unica
+            min(a.data_documento_prevista) AS data_prevista_unica,
+            bool_or(a.emissione_trattenuta) AS trattenuto,
+            min(a.emissione_trattenuta_da_lotti[1]) AS lotto_blocco_id
            FROM vendite.vw_dash_competenza_attivita a
           GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
         )
@@ -76,10 +78,19 @@ WITH aggregato AS (
     esito.errore_messaggio AS ultimo_errore_messaggio,
     esito.errore_quando AS ultimo_errore_quando,
     esito.lotto_codice AS ultimo_lotto_codice,
-    trat.reason AS emissione_blocco_reason,
-    trat.reason_key AS emissione_blocco_reason_key,
-    trat.lotto_id AS emissione_blocco_lotto_id,
-    trat.lotto_codice AS emissione_blocco_lotto_codice
+        CASE
+            WHEN g.trattenuto THEN 'TRATTENUTO_DA_LOTTO'::text
+            ELSE NULL::text
+        END AS emissione_blocco_reason,
+        CASE
+            WHEN g.trattenuto THEN 'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text
+            ELSE NULL::text
+        END AS emissione_blocco_reason_key,
+    g.lotto_blocco_id AS emissione_blocco_lotto_id,
+    fb.lotto_codice AS emissione_blocco_lotto_codice,
+    esito.lotto_id AS ultimo_lotto_id,
+    esito.lotto_stato AS ultimo_lotto_stato,
+    esito.lotto_pre_fiscale AS ultimo_lotto_pre_fiscale
    FROM ((((((((((aggregato g
      LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
      LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON ((s.area IS NOT NULL)))
@@ -93,20 +104,16 @@ WITH aggregato AS (
             le.errore_codice,
             le.errore_messaggio,
             le.errore_quando,
-            l.codice AS lotto_codice
+            f.lotto_codice,
+            f.lotto_id,
+            f.stato_codice_interno AS lotto_stato,
+            f.pre_fiscale AS lotto_pre_fiscale
            FROM (vendite.fatturazione_lotti_esiti le
-             JOIN vendite.fatturazione_lotti l ON ((l.id = le.lotto_id)))
-          WHERE ((le.gruppo_key = g.gruppo_key) AND (l.competenza_mese = g.competenza_mese))
+             JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+          WHERE ((le.gruppo_key = g.gruppo_key) AND (f.lotto_competenza_mese = g.competenza_mese))
           ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
          LIMIT 1) esito ON (true))
-     LEFT JOIN LATERAL ( SELECT 'TRATTENUTO_DA_LOTTO'::text AS reason,
-            'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text AS reason_key,
-            t.lotto_id,
-            t.lotto_codice
-           FROM vendite.vw_documenti_trattenuti_da_lotto t
-          WHERE (t.gruppo_key = g.gruppo_key)
-          ORDER BY t.lotto_id
-         LIMIT 1) trat ON (true));
+     LEFT JOIN vendite.vw_lotti_fase fb ON ((fb.lotto_id = g.lotto_blocco_id)));
 ```
 
 

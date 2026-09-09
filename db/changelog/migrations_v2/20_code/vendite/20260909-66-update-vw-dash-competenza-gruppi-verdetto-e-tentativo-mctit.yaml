@@ -1,0 +1,323 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L4 — LA LISTA DEI GRUPPI: IL VERDETTO SALE, E IL TENTATIVO DICE IL SUO STATO
+#
+# ── ⭐ IL VERDETTO NON SI CALCOLA PIU' QUI ───────────────────────
+#   Il LATERAL su vw_documenti_trattenuti_da_lotto sparisce. Il verdetto arriva
+#   dall'aggregato, che lo prende dalla grana ATTIVITA' (changeSet -65), che lo
+#   prende dalla SEDE UNICA (-59). Una catena, un predicato.
+#   ⛔ E il LEGAME DI COMPETENZA rientra proprio cosi': il vecchio LATERAL
+#   agganciava la SOLA `gruppo_key`, quindi un lotto di settembre tratteneva
+#   anche il documento di OTTOBRE — che quel lotto non lavorera' mai. Il legame
+#   ora vive nel classificatore ed e' `>=`, cumulativo come la selezione del
+#   giro. ⚠️ Nella stessa vista il LATERAL dell'ESITO legava gia' la competenza
+#   (con `=`), e i due erano asimmetrici a tre righe di distanza.
+#
+# ── ⚠️ IL CONTRATTO VERSO IL FRONTEND NON CAMBIA ────────────────
+#   `emissione_blocco_reason`, `_reason_key`, `_lotto_id`, `_lotto_codice`:
+#   stessi nomi, stessa semantica, stessa chiave i18n. Cambia solo da dove
+#   arriva il valore — e adesso non puo' piu' divergere dal predicato che il
+#   giro applica davvero.
+#
+# ── ⭐ V-1: IL LOTTO DEL TENTATIVO ESCE CON IL SUO STATO ─────────
+#   Domanda di Tid, §4 del brief: «la colonna mostra il lotto anche se e'
+#   annullato». ⛔ Il dato NON si toglie — e' l'unica traccia a video che
+#   spieghi perche' il documento e' tornato disponibile. Quello che non regge
+#   e' mostrarlo COME SE CONTASSE ANCORA.
+#   ⇒ Si aggiunge il fatto che mancava: `ultimo_lotto_stato` e
+#   `ultimo_lotto_pre_fiscale`, piu' `ultimo_lotto_id` per il gesto. Chi rende
+#   attenua il testo e SPEGNE il pulsante quando il tentativo non conta piu'.
+#
+# ── ⭐ E IL VERDETTO SI ACCENDE SOLO SU DA_EMETTERE, GRATIS ──────
+#   §6.3 chiedeva di limitarlo. Non serve un filtro: la classe TRATTENUTA vuole
+#   NON_EMESSA + APPROVATA, che E' quello stadio. Un documento appena fatturato
+#   — esito COMPLETED su un lotto ancora DRAFT — non puo' piu' comparire come
+#   «trattenuto» e uscire dai conteggi dei fatturati.
+#
+# ⚠️ `min(array[1])` e non un LIMIT 1: l'array della sede e' ORDINATO per
+#   lotto_id, quindi il primo elemento e' deterministico e il min fra le righe
+#   del gruppo pure. Un LIMIT 1 senza ordine scommette.
+#
+# ⚠️ Colonne nuove IN CODA (il backend legge per posizione) e
+#   `security_invoker` ri-specificato.
+#
+# Verifica: db/pgtap/vendite/test-vw-dash-competenza-v1.sql
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L4, §6.2, §6.3, §7)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-66-update-vw-dash-competenza-gruppi-verdetto-e-tentativo-mctit.yaml
+
+  - changeSet:
+      id: 20260909-66-update-vw-dash-competenza-gruppi-verdetto-e-tentativo
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_dash_competenza_gruppi: il verdetto arriva dalla grana attivita'
+        invece che da un LATERAL proprio (e col legame di competenza), e il lotto del
+        tentativo esce con il suo stato. +3 colonne in coda.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name = 'vw_dash_competenza_attivita'
+                     AND column_name = 'emissione_trattenuta'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=true) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min((a.registro_codice)::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica,
+                          -- ⭐ IL VERDETTO sale dalla grana ATTIVITA' (changeSet -65), che lo
+                          --   legge dalla sede unica. Qui non c'e' piu' nessun LATERAL sui
+                          --   trattenuti: il predicato e il legame di competenza stanno un
+                          --   piano sotto, scritti una volta sola.
+                          bool_or(a.emissione_trattenuta) AS trattenuto,
+                          -- ⚠️ Il PRIMO dei lotti che tengono, e non «uno qualsiasi»:
+                          --   l'array della sede e' ORDINATO per lotto_id, quindi `[1]` e'
+                          --   deterministico e il `min` fra le righe del gruppo pure. Un
+                          --   LIMIT 1 senza ordine scommette.
+                          min(a.emissione_trattenuta_da_lotti[1]) AS lotto_blocco_id
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  (cardinality(g.registri_ids))::smallint AS registri_n,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice,
+                  -- ⚠️ Il verdetto NON cambia forma: stessi quattro nomi, stessa semantica.
+                  --   Cambia da dove arriva — e adesso non puo' piu' divergere dal predicato
+                  --   che il giro applica davvero.
+                  CASE WHEN g.trattenuto THEN 'TRATTENUTO_DA_LOTTO'::text END AS emissione_blocco_reason,
+                  CASE WHEN g.trattenuto
+                       THEN 'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text END AS emissione_blocco_reason_key,
+                  g.lotto_blocco_id AS emissione_blocco_lotto_id,
+                  fb.lotto_codice AS emissione_blocco_lotto_codice,
+                  -- ⭐ V-1 — IL LOTTO DEL TENTATIVO ESCE CON IL SUO STATO.
+                  --   `ultimo_lotto_codice` c'era gia' e non diceva se quel tentativo conta
+                  --   ancora: a video un lotto ANNULLATO si leggeva come uno in corso.
+                  -- ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il frontend spegne il
+                  --   GESTO: testo si', pulsante no. Un bersaglio verso un lotto che non
+                  --   conta piu' e' un pulsante in un vicolo cieco.
+                  esito.lotto_id AS ultimo_lotto_id,
+                  esito.lotto_stato AS ultimo_lotto_stato,
+                  esito.lotto_pre_fiscale AS ultimo_lotto_pre_fiscale
+                 FROM ((((((((((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON ((s.area IS NOT NULL)))
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          f.lotto_codice,
+                          -- ⭐ rev 2026-09-09 (V-1): il lotto del tentativo esce con la sua
+                          --   IDENTITA' e la sua FASE. Prima usciva il solo codice, e a
+                          --   video un tentativo in un lotto ANNULLATO si leggeva come uno
+                          --   ancora in corso: il fatto c'era, il suo stato no.
+                          -- ⛔ Il dato NON si toglie: e' l'unica traccia che spiega perche'
+                          --   il documento e' tornato disponibile. Si aggiunge cio' che
+                          --   mancava, e chi rende spegne il GESTO quando non conta piu'.
+                          f.lotto_id,
+                          f.stato_codice_interno AS lotto_stato,
+                          f.pre_fiscale          AS lotto_pre_fiscale
+                         FROM (vendite.fatturazione_lotti_esiti le
+                           -- ⭐ Alla SEDE della fase, non a fatturazione_lotti: cosi' lo
+                           --   stato del lotto si legge in un posto solo.
+                           JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+                        WHERE ((le.gruppo_key = g.gruppo_key) AND (f.lotto_competenza_mese = g.competenza_mese))
+                        ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
+                       LIMIT 1) esito ON (true))
+                   -- ⭐ Il codice del lotto che TRATTIENE, dalla sede della fase.
+                   --   ⚠️ Il LATERAL sui trattenuti non c'e' piu': il verdetto arriva
+                   --   dall'aggregato, che lo prende dalla grana attivita', che lo prende
+                   --   dalla sede unica. Una catena, un predicato.
+                   --   ⛔ E il LEGAME DI COMPETENZA e' cosi' rientrato: il vecchio LATERAL
+                   --   agganciava la sola gruppo_key, quindi un lotto di settembre
+                   --   tratteneva anche il documento di ottobre. Ora il legame vive nel
+                   --   classificatore, ed e' `>=` — cumulativo, come la selezione del giro.
+                   LEFT JOIN vendite.vw_lotti_fase fb ON ((fb.lotto_id = g.lotto_blocco_id)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=true) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min((a.registro_codice)::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  (cardinality(g.registri_ids))::smallint AS registri_n,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice,
+                  trat.reason AS emissione_blocco_reason,
+                  trat.reason_key AS emissione_blocco_reason_key,
+                  trat.lotto_id AS emissione_blocco_lotto_id,
+                  trat.lotto_codice AS emissione_blocco_lotto_codice
+                 FROM ((((((((((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON ((s.area IS NOT NULL)))
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          l.codice AS lotto_codice
+                         FROM (vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = le.lotto_id)))
+                        WHERE ((le.gruppo_key = g.gruppo_key) AND (l.competenza_mese = g.competenza_mese))
+                        ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
+                       LIMIT 1) esito ON (true))
+                   LEFT JOIN LATERAL ( SELECT 'TRATTENUTO_DA_LOTTO'::text AS reason,
+                          'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text AS reason_key,
+                          t.lotto_id,
+                          t.lotto_codice
+                         FROM vendite.vw_documenti_trattenuti_da_lotto t
+                        WHERE (t.gruppo_key = g.gruppo_key)
+                        ORDER BY t.lotto_id
+                       LIMIT 1) trat ON (true));

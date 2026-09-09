@@ -386,6 +386,7 @@
 
 ## 🔍 Views
 - [vw_af_merce_per_riga](views/vw_af_merce_per_riga.md) — (latest review 2026-08-17)
+- [vw_commesse_attivita_emittibilita](views/vw_commesse_attivita_emittibilita.md)
 - [vw_contatore_merce](views/vw_contatore_merce.md) — (latest review 2026-08-17)
 - [vw_contratti_lista](views/vw_contratti_lista.md) — (rev 2026-08-21)
 - [vw_dash_aperto_documenti](views/vw_dash_aperto_documenti.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo **stock dei documenti aperti e non conclusi** delle 4 aree documento (PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a: *"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"** è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla notte dei tempi* documenti già passati avanti, informazione non azionabile.
@@ -396,7 +397,6 @@
 - [vw_dash_competenza_attivita](views/vw_dash_competenza_attivita.md) — (latest review 06-07-2026) Vista di dettaglio della **Lente 1 Competenza** (cruscotti fatturazione a due lenti, brief `brief-db-fatturazione-due-lenti` §4): una riga per **attività di commessa computabile**, con la sua posizione nel funnel a valle (commessa → attività fatturabile → riga fattura → stato fiscale) e la dimensione dei **recuperi tardivi**. L'asse è la competenza **vera** (`commesse_attivita.competenza_mese`, NOT NULL) — nessun proxy.
 - [vw_dash_competenza_errori](views/vw_dash_competenza_errori.md) — (latest review 06-07-2026) Blocco **errori** della Lente 1 Competenza (blocco 4 del design, assorbe §12.3 del brief pre-fatturazione): gli eventi di errore **vivi** della pipeline di fatturazione, per mese di competenza — dal cruscotto si vede subito se c'è un lotto o una fattura inceppati, senza andare a caccia nei log.
 - [vw_dash_competenza_gruppi](views/vw_dash_competenza_gruppi.md) — L'**elenco dei gruppi fatturabili** che alimenta la card «Da emettere» della Lente Competenza. Prima di agire, l'operatore deve vedere cosa può fatturare, raggruppato nelle unità su cui può decidere, con **quante righe** e **quanto valore** ciascuna pesa.
-- [vw_dash_competenza_gruppi_riepilogo](views/vw_dash_competenza_gruppi_riepilogo.md) — I **totali del perimetro** per la riga di riconciliazione sotto la lista dei gruppi fatturabili:
 - [vw_dash_competenza_mensile](views/vw_dash_competenza_mensile.md) — (latest review 26-08-2026) Aggregata mensile della **Lente 1 Competenza** in **formato lungo**: una riga per `competenza_mese × stadio × stato_fattura_codice_interno × tipo_movimento × motivo_non_fatturata`. Gli stati fattura sono **dati** (`config.stati_doc_fiscale`), non colonne: il formato lungo regge il breakdown per stato (blocco 3a del design) senza rincorrere il vocabolario; il **BE pivota**.
 - [vw_dash_fatturazione_commesse](views/vw_dash_fatturazione_commesse.md) — (latest review 03-07-2026) Resolver dell'area **COMMESSE** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per **commessa × `competenza_mese`** delle attività (la competenza "vera" del funnel, la stessa che perimetra i lotti): valore **imponibile** totale vs **transitato** (attività emesse in `attivita_fatturabili`). È il tratto finale pre-fattura.
 - [vw_dash_fatturazione_contratti](views/vw_dash_fatturazione_contratti.md) — (latest review 07-07-2026) Resolver dell'area **CONTRATTI** per la famiglia dash fatturazione / Situazione aperta (brief `brief-db-situazione-aperta` SA-1, decisione **DL-12**): **una riga per contratto vivo**, **de-esplosa** (fino al 2026-07-07 era una riga per contratto × mese coperto — l'asse mensile serviva alla 5-card, dismessa). Area **a conteggi** (D-3), con **giudizio di transito SOSPESO** finché non esiste il push ricorrente dei canoni.
@@ -417,6 +417,7 @@
 - [vw_fatture_lista](views/vw_fatture_lista.md)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_chiusi_con_gruppi_in_errore](views/vw_lotti_chiusi_con_gruppi_in_errore.md)
+- [vw_lotti_fase](views/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](views/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
 - [vw_lotti_gruppi_serviti](views/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)

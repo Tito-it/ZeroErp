@@ -1,0 +1,146 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L2 — IL PREDICATO DEL TRATTENUTO SI CORREGGE, E ADOTTA LA SEDE
+#
+# ── 🔴 IL DIFETTO: «VIVO» ERA SCRITTO COME «NON ANNULLATO» ───────
+#   Il `20260909-23` ha definito «il lotto e' ancora in gioco» come
+#   `NOT is_abortito`. Ma `is_abortito` e' TRUE solo su ANNULLATA: un lotto
+#   DEFINITIVA — cioe' REGOLARMENTE CHIUSO — non e' abortito, quindi risultava
+#   ancora «vivo».
+#   ⇒ Un documento fatturato in un lotto chiuso restava TRATTENUTO PER SEMPRE.
+#
+# ── ⛔ E NON E' UN CASO DI BORDO: DISARMA UN VERBO INTERO ────────
+#   vendite.fn_riporta_attivita_da_emettere («Riporta da emettere») riporta le
+#   righe di commessa a NON_EMESSA e NON tocca gli esiti. Con il predicato
+#   vecchio, quel lavoro tornava in «Da emettere», la riga restava spenta con
+#   un gesto verso un lotto chiuso, e la lane non lo offriva MAI PIU'.
+#   ⭐ E l'uscita non c'era: script.fn_check_documento_escludibile_da_giro
+#   ammette di togliere un documento dal giro solo da un lotto PRE-FISCALE, e
+#   un lotto DEFINITIVA non lo e'. Cancello senza chiave.
+#
+# ── ⭐ IL PREDICATO GIUSTO: `in_gioco` DALLA SEDE UNICA ──────────
+#   `vendite.vw_lotti_fase.in_gioco` = COALESCE(NOT congela_fiscale, true).
+#   TRUE su DRAFT ed EMESSA; FALSE su DEFINITIVA, INVIATA, REGISTRATA e
+#   ANNULLATA; TRUE sullo stato non risolvibile.
+#
+#   ⚠️ IL FAIL-CLOSED DI PRIMA E' CONSERVATO, ed e' il punto delicato di questo
+#   changeSet: `in_gioco` ripiega su TRUE proprio perche' QUESTA vista lo
+#   pretende. Il gemello `pre_fiscale` ripiega su FALSE, e serve alle quattro
+#   fn_check_*. Sono lo stesso asse con la prudenza girata: usare qui
+#   `pre_fiscale` avrebbe capovolto il test 4 senza che nessuno lo notasse
+#   scrivendo — un lotto senza stato sarebbe diventato LIBERO.
+#
+#   ⛔ E NON si deriva da `chiude_lotto`: quel flag marca la TRANSIZIONE che
+#   chiude (solo DEFINITIVA), non la proprieta' di essere chiuso. Il catalogo
+#   ammette DEFINITIVA -> INVIATA, e INVIATA non lo porta: un lotto chiuso e
+#   poi inviato sarebbe tornato «in gioco».
+#
+# ── ⚠️ IL LEGAME DI COMPETENZA NON STA QUI, E VA DETTO ───────────
+#   La vista non conosce la competenza della RIGA che la interroga: espone
+#   `lotto_competenza_mese` e chi aggancia deve legarlo. Il legame giusto e'
+#   `lotto_competenza_mese >= competenza della riga`, perche' la selezione e'
+#   CUMULATIVA (un lotto di settembre lavora anche agosto, non ottobre).
+#   ⛔ NON e' un'uguaglianza, e copiarla a occhio dal LATERAL dell'esito —
+#   che invece lega `=` — sarebbe un blocco piu' stretto della regola.
+#   I consumatori lo applicano in L3 (lane, pull) e L4 (dashboard).
+#
+# ── ⭐ COSA NON CAMBIA ───────────────────────────────────────────
+#   Le sei colonne, i loro nomi e i loro tipi: e' un CREATE OR REPLACE, e i
+#   consumatori non si accorgono di niente. Cambia CHI risponde alla domanda
+#   «questo lotto tiene ancora?» e cosa risponde su un lotto chiuso.
+#
+# ⚠️ `security_invoker` va ri-specificato: PostgreSQL lo azzera in silenzio.
+#
+# Verifica: db/pgtap/vendite/test-documento-trattenuto-da-lotto-v1.sql (plan 7)
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L2, §6.1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-57-update-vw-documenti-trattenuti-sede-e-predicato-mctit.yaml
+
+  - changeSet:
+      id: 20260909-57-update-vw-documenti-trattenuti-sede-e-predicato
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_documenti_trattenuti_da_lotto: «in gioco» si legge dalla
+        sede unica (vw_lotti_fase.in_gioco) e non piu' come «non annullato».
+        Un lotto CHIUSO non trattiene piu' i suoi documenti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite' AND table_name = 'vw_lotti_fase'
+                     AND column_name = 'in_gioco'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documenti_trattenuti_da_lotto
+              WITH (security_invoker=true) AS
+              SELECT le.gruppo_key,
+                     f.lotto_id,
+                     f.lotto_codice,
+                     f.lotto_competenza_mese,
+                     f.stato_codice_interno AS lotto_stato,
+                     le.stato_esecuzione    AS esito
+                FROM vendite.fatturazione_lotti_esiti le
+                -- ⭐ Una sola JOIN, alla SEDE UNICA: la vista di fase fa gia'
+                --   il LEFT JOIN a config.stati_doc_fiscale e risolve il
+                --   fail-closed. Qui non si ricopia nessuna difesa.
+                -- ⚠️ INNER e non LEFT: un esito senza lotto non esiste (FK), e
+                --   un lotto fuori dal perimetro RLS deve sparire — e' il
+                --   comportamento di prima, quando la JOIN era a
+                --   vendite.fatturazione_lotti.
+                JOIN vendite.vw_lotti_fase f ON f.lotto_id = le.lotto_id
+               WHERE le.stato_esecuzione <> 'ESCLUSO'
+                 -- ⭐ IL PREDICATO. `in_gioco` e' TRUE su DRAFT ed EMESSA, e
+                 --   FALSE anche su DEFINITIVA: un lotto CHIUSO non trattiene
+                 --   piu' niente. Prima era `NOT is_abortito`, cioe' «non
+                 --   annullato», e teneva bloccato per sempre ogni documento
+                 --   mai fatturato.
+                 AND f.in_gioco;
+
+              COMMENT ON VIEW vendite.vw_documenti_trattenuti_da_lotto IS
+              'SEDE UNICA della domanda «questo documento e'' trattenuto da un lotto ancora in gioco?». Una riga per (documento, lotto che lo trattiene): la gruppo_key e il lotto, col suo stato e la sua competenza. Consumatori: la riga di vw_dash_competenza_gruppi (il motivo a video), il conteggio della card, vendite.fn_list_emittibili_lane e il pull (perche'' un secondo giro non se lo prenda).
+              ⭐ «IN GIOCO» SI LEGGE DALLA SEDE UNICA vendite.vw_lotti_fase (rev 2026-09-09), mai da un elenco di stati e mai piu'' da `is_abortito`. ⛔ Fino al 20260909-23 il predicato era `NOT is_abortito`, cioe'' «non annullato»: ma un lotto DEFINITIVA non e'' annullato, e'' CHIUSO — quindi un documento fatturato in un lotto regolarmente chiuso restava trattenuto PER SEMPRE, e il verbo «Riporta da emettere» smetteva di avere effetto senza che niente lo segnalasse.
+              ⛔ E NON si deriva da `chiude_lotto`: quel flag marca la TRANSIZIONE che chiude (solo DEFINITIVA), non la proprieta'' di essere chiuso — il catalogo ammette DEFINITIVA -> INVIATA, e INVIATA non lo porta.
+              ⭐ FAIL-CLOSED CONSERVATO: un lotto il cui stato non si risolve TRATTIENE. Sta dentro `in_gioco`, che ripiega su TRUE proprio per questa vista — il gemello `pre_fiscale` ripiega su FALSE e serve alla porta d''uscita. Stesso asse, prudenza girata: usare qui `pre_fiscale` capovolgerebbe il caso.
+              ⛔ UN DOCUMENTO USCITO DAL GIRO NON TRATTIENE NIENTE: l''esito ESCLUSO e'' escluso. E'' la regola «un documento fuori dal giro non si marca, non si conta, non blocca», vista dal terzo lato.
+              ⚠️ IL LEGAME DI COMPETENZA NON E'' QUI: la vista non conosce la competenza della riga che la interroga, espone `lotto_competenza_mese` e chi aggancia deve legarlo con `lotto_competenza_mese >= competenza della riga`, perche'' la selezione e'' CUMULATIVA (un lotto di settembre lavora anche agosto, non ottobre). ⛔ NON e'' un''uguaglianza: copiarla dal LATERAL dell''esito, che invece lega =, darebbe un blocco piu'' stretto della regola.
+              ⚠️ PUO'' TORNARE PIU'' DI UNA RIGA per la stessa gruppo_key: e'' esattamente il difetto che questa vista serve a chiudere (lo stesso documento in due lotti in gioco). Chi ne vuole UNO deve ordinare — un LIMIT 1 senza ORDER BY scommette.
+              ⚠️ PERCHE'' NON BASTAVA CIO'' CHE C''ERA: script.fn_get_stato_push_segment sa dire LIBERA / ALLOCATA / EMESSA, cioe'' misura l''ESITO del lavoro, non il fatto che il lavoro sia IN CORSO. Manca la terza domanda — «e'' dentro un giro che non ha ancora finito?» — ed e'' questa vista. Per la stessa ragione le cinque fn_list_*_da_pushare NON si toccano: la regola loro (LIBERA) c''e'' gia''.
+              Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documenti_trattenuti_da_lotto
+              WITH (security_invoker=true) AS
+              SELECT le.gruppo_key,
+                     l.id                AS lotto_id,
+                     l.codice            AS lotto_codice,
+                     l.competenza_mese   AS lotto_competenza_mese,
+                     sdf.codice_interno  AS lotto_stato,
+                     le.stato_esecuzione AS esito
+                FROM vendite.fatturazione_lotti_esiti le
+                JOIN vendite.fatturazione_lotti l ON l.id = le.lotto_id
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = l.stato_doc_fiscale_id
+               WHERE le.stato_esecuzione <> 'ESCLUSO'
+                 AND COALESCE(sdf.is_abortito, false) = false;

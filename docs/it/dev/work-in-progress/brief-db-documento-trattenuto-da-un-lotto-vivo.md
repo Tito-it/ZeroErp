@@ -219,7 +219,30 @@ lascia passare documenti che un giro vivo sta tenendo. I test 1 e 2 coprono i du
 versi apposta — con uno solo, il presidio passerebbe su una regola che blocca
 tutto o su una che non blocca mai.
 
-### 8.3 ✅ Il perimetro DB è completo — tutto applicato il 2026-09-09, pgTAP verdi
+### 8.3 ~~✅ Il perimetro DB è completo~~ — 🔴 **NON lo era: leggere prima il seguito**
+
+> 🔴 **Rilettura del 2026-09-09, e corregge il titolo di questa sezione.** Due
+> delle quattro consegne qui sotto non fanno ciò che questa pagina dichiara, e il
+> predicato di `20260909-23` ha tre difetti. Tutto è scritto in
+> [brief-db-il-trattenuto-passa-lo-stesso](brief-db-il-trattenuto-passa-lo-stesso.md)
+> §5 e §6; in due righe:
+>
+> * ⛔ **`20260909-24` ha corretto una vista che l'applicazione non legge**
+>   (`vw_dash_competenza_gruppi_riepilogo`): il riepilogo a video lo calcola una
+>   query del backend, che non esclude niente. ⇒ T-3 **non ha cambiato niente a
+>   video** — è il §12.5.3, applicato a un numero invece che a un pulsante;
+> * ⛔ **`20260909-25` ha messo il filtro sulla porta che decide quanti lotti
+>   nascono, non su quella che decide quale lavoro entra.** Il giro passa dal
+>   **pull**, e lì non c'è nessun filtro: un lotto di massa ha ripreso un
+>   documento trattenuto il giorno stesso;
+> * ⛔ **«vivo» = `NOT is_abortito` include i lotti CHIUSI**, quindi un documento
+>   fatturato in un lotto DEFINITIVA resta trattenuto **per sempre** e «Riporta
+>   da emettere» non ha più effetto. Il flag giusto è anche `chiude_lotto`.
+>
+> ⚠️ Le righe della tabella qui sotto restano com'erano: dicono **cosa è stato
+> applicato**, ed è vero. Quello che era falso è il **titolo**.
+
+Applicato il 2026-09-09, pgTAP verdi:
 
 | changeSet | Cosa | Stato |
 | --- | --- | --- |

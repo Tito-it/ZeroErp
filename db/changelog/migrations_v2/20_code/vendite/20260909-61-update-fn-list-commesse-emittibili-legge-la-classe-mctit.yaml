@@ -1,0 +1,302 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L3 — LA DISCOVERY DELLE COMMESSE LEGGE LA CLASSE
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────
+#   «Quali righe contano» non e' piu' descritto qui: si legge
+#   `classe_emittibilita` dalla sede unica, con la WHITELIST
+#   PRONTA / RIFIUTATA / NON_APPROVATA.
+#   ⚠️ Equivale al vecchio `stato_emissione = 'NON_EMESSA'` — EMESSA e
+#   ANNULLATA sono esattamente cio' che quel filtro escludeva — PIU'
+#   l'esclusione di TRATTENUTA.
+#
+# ── ⛔ E TRATTENUTA ESCE, ma non basta ───────────────────────────
+#   Una commessa con SOLE righe trattenute non ha niente da dare: visitarla
+#   produce un pull a vuoto che il fan-out registra come lavorato.
+#   ⚠️ MA il filtro per RIGA dentro fn_emit_attivita_fatturabili_da_commessa
+#   resta indispensabile (changeSet -62): una commessa con righe sane E
+#   trattenute passa comunque di qui, e li' dentro le trattenute vanno
+#   lasciate fuori una per una. E' la stessa divisione di `p_gruppi`, scritta
+#   nel COMMENT di questa funzione dal 2026-07-27: «qui si sceglie QUALI
+#   COMMESSE visitare, li' QUALI RIGHE emettere».
+#
+# ── ⚠️ UN'ASIMMETRIA PREESISTENTE, DICHIARATA E NON TOCCATA ──────
+#   Questa funzione filtra la competenza con l'UGUAGLIANZA; la lane e
+#   fn_select_attivita_fatturabili usano il CUMULATIVO (<=). Non e' una
+#   svista di oggi ed e' fuori dal perimetro di questo cantiere: cambiarla di
+#   straforo allargherebbe il perimetro di ogni pull senza che nessuno
+#   l'abbia deciso. Resta scritta qui perche' si vede leggendo, e chi la
+#   affrontera' deve saperla gia' nota.
+#
+# ⚠️ %TYPE in FIRMA e in RETURNS TABLE. Se un ancoraggio risolvesse a un tipo
+#   diverso, PostgreSQL rifiuterebbe di cambiare il tipo di ritorno ad alta
+#   voce: il CREATE OR REPLACE che passa E' la prova che l'uscita non cambia.
+#
+# ⛔ FIRMA E USCITA INVARIATE.
+#
+# Verifica: db/pgtap/vendite/test-fn-list-commesse-emittibili-fatturazione-immediata-v1.sql
+# Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-61-update-fn-list-commesse-emittibili-legge-la-classe-mctit.yaml
+
+  - changeSet:
+      id: 20260909-61-update-fn-list-commesse-emittibili-legge-la-classe
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.fn_list_commesse_emittibili: le righe che contano si leggono dalla
+        classe (whitelist PRONTA/RIFIUTATA/NON_APPROVATA). Ne esce TRATTENUTA, ma il
+        filtro per riga dentro l'emit resta indispensabile.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite' AND viewname = 'vw_lotti_fase'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_commesse_attivita_emittibilita'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date, p_billing_account_id vendite.commesse.billing_account_id%TYPE DEFAULT NULL::bigint, p_utility_id vendite.commesse.utility_id%TYPE DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint, p_fatturazione_immediata vendite.commesse.fatturazione_immediata%TYPE DEFAULT NULL::boolean, p_limit integer DEFAULT 1000, p_gruppi text[] DEFAULT NULL::text[])
+               RETURNS TABLE(commessa_id vendite.commesse.id%TYPE, codice vendite.commesse.codice%TYPE, stato_commessa_id vendite.commesse.stato_commessa_id%TYPE, stato_commessa vendite.stati_commessa.codice%TYPE, billing_account_id vendite.commesse.billing_account_id%TYPE, utility_id vendite.commesse.utility_id%TYPE, emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE, fatturazione_immediata vendite.commesse.fatturazione_immediata%TYPE, competenza_dal vendite.commesse.competenza_dal%TYPE, competenza_al vendite.commesse.competenza_al%TYPE, total_non_emesse bigint)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elencare le commesse pronte per l'emissione verso AF.
+                --   Usata dal backend come discovery per il batch di
+                --   emissione (fn_emit_attivita_fatturabili_da_commessa).
+                --
+                -- Criteri:
+                --   1. Stato emittibile (stati_commessa.emittibile = true)
+                --   2. Esistono righe commesse_attivita NON_EMESSA
+                --   3. Competenza: se p_competenza_mese fornito, filtra righe
+                --      commesse_attivita il cui competenza_mese coincide
+                --      (coerente con pipeline AF che opera per mese)
+                --   4. Filtri opzionali per perimetro billing/utility/emittente
+                --   5. Filtro opzionale corsia: p_fatturazione_immediata
+                --      (true=solo immediate / false=solo differite /
+                --       NULL=indifferente, comportamento storico)
+                --   6. rev 2026-07-27: p_gruppi restringe alle commesse che
+                --      contengono almeno una riga di un gruppo richiesto.
+                --      NON sostituisce il filtro per RIGA dentro l'emit: qui si
+                --      sceglie QUALI COMMESSE visitare, li' QUALI RIGHE emettere.
+                --      NULL = nessuna restrizione (comportamento storico).
+                --
+                -- Regole:
+                --   - p_limit max 10000, default 1000
+                --   - p_competenza_mese normalizzato al primo del mese
+                --   - funzione STABLE (read-only)
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                -- Normalizza al primo del mese
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                RETURN QUERY
+                SELECT
+                  c.id AS commessa_id,
+                  c.codice,
+                  c.stato_commessa_id,
+                  sc.codice AS stato_commessa,
+                  c.billing_account_id,
+                  c.utility_id,
+                  c.emittente_soggetto_ruolo_id,
+                  c.fatturazione_immediata,
+                  c.competenza_dal,
+                  c.competenza_al,
+                  count(e.commessa_attivita_id)::bigint AS total_non_emesse
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = c.stato_commessa_id
+                 AND sc.emittibile = true
+                -- ⭐ rev 2026-09-09 — LA SEDE UNICA DEL CRITERIO (changeSet 20260909-59).
+                --   Qui non si scrive piu' quali righe «contano»: si legge la CLASSE.
+                INNER JOIN vendite.vw_commesse_attivita_emittibilita e
+                  ON e.commessa_id = c.id
+                 -- ⭐ WHITELIST e non `<> 'TRATTENUTA'`: le tre classi che il pull PUO'
+                 --   ancora prendere. Una classe nuova non entra da sola, ed e' la
+                 --   convenzione di casa (linee-guida-sql §7c).
+                 -- ⚠️ Equivale a «NON_EMESSA e non trattenuta»: EMESSA e ANNULLATA sono
+                 --   esattamente le righe che NON_EMESSA escludeva.
+                 -- ⛔ TRATTENUTA esce, ed e' il punto: una commessa che ha SOLO righe
+                 --   trattenute non ha niente da dare, e visitarla produrrebbe un pull a
+                 --   vuoto che il giro registra come lavorato.
+                 -- ⚠️ Ma la classe NON basta da sola: il filtro per RIGA dentro
+                 --   fn_emit_attivita_fatturabili_da_commessa resta indispensabile, perche'
+                 --   una commessa con righe sane E trattenute passa comunque di qui.
+                 AND e.classe_emittibilita IN ('PRONTA', 'RIFIUTATA', 'NON_APPROVATA')
+                 -- ⚠️ UGUAGLIANZA e non `<=`, come e' sempre stato in questa funzione: la
+                 --   lane e fn_select_attivita_fatturabili usano invece il cumulativo.
+                 --   L'asimmetria e' PREESISTENTE e non si tocca qui — cambiarla di
+                 --   straforo dentro un cantiere sul trattenuto allargherebbe il perimetro
+                 --   di ogni pull senza che nessuno l'abbia deciso.
+                 AND (v_competenza_mese IS NULL OR e.competenza_mese = v_competenza_mese)
+                WHERE true
+                  -- Filtro perimetro billing/utility/emittente
+                  AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                  AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+                  AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                  -- Filtro corsia immediata/differita (NULL = indifferente)
+                  AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
+                  -- EMISSIONE MIRATA (rev 2026-07-27): il conteggio total_non_emesse segue
+                  -- il filtro, cioe' riporta le righe dei soli gruppi richiesti. E' voluto:
+                  -- e' il numero che l'emit lavorera' davvero su quella commessa.
+                  AND (p_gruppi IS NULL OR e.gruppo_key = ANY (p_gruppi))
+                GROUP BY
+                  c.id,
+                  c.codice,
+                  c.stato_commessa_id,
+                  sc.codice,
+                  c.billing_account_id,
+                  c.utility_id,
+                  c.emittente_soggetto_ruolo_id,
+                  c.competenza_dal,
+                  c.competenza_al
+                ORDER BY c.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
+              IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id e fatturazione_immediata (corsia immediata/differita, NULL=indifferente). Espone fatturazione_immediata in output. Usata dal backend per il batch di emissione. rev 2026-07-27 (brief emissione mirata A6): p_gruppi text[] restringe alle commesse che contengono almeno una riga di un gruppo richiesto — NULL = nessuna restrizione (G1). ⚠️ NON sostituisce il filtro per RIGA dentro fn_emit_attivita_fatturabili_da_commessa: qui si sceglie QUALI COMMESSE visitare, li'' QUALI RIGHE emettere; una commessa multi-sorgente passa comunque il filtro e sara'' l''emit a prendere solo le righe richieste. Con p_gruppi valorizzato anche total_non_emesse segue il filtro: e'' il numero di righe che l''emit lavorera'' davvero. ⭐ rev 2026-09-09: le righe «che contano» non sono piu'' descritte qui — si legge `classe_emittibilita` da vendite.vw_commesse_attivita_emittibilita, con la whitelist PRONTA/RIFIUTATA/NON_APPROVATA. ⛔ Ne esce TRATTENUTA: una commessa con SOLE righe trattenute da un altro lotto in gioco non ha niente da dare, e visitarla produrrebbe un pull a vuoto registrato come lavorato. ⚠️ Ma non sostituisce il filtro per RIGA dentro l''emit: una commessa con righe sane E trattenute passa comunque di qui, ed e'' li'' che le trattenute vanno lasciate fuori.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_fatturazione_immediata boolean DEFAULT NULL::boolean, p_limit integer DEFAULT 1000, p_gruppi text[] DEFAULT NULL::text[])
+               RETURNS TABLE(commessa_id bigint, codice character varying, stato_commessa_id bigint, stato_commessa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, fatturazione_immediata boolean, competenza_dal date, competenza_al date, total_non_emesse bigint)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Elencare le commesse pronte per l'emissione verso AF.
+                --   Usata dal backend come discovery per il batch di
+                --   emissione (fn_emit_attivita_fatturabili_da_commessa).
+                --
+                -- Criteri:
+                --   1. Stato emittibile (stati_commessa.emittibile = true)
+                --   2. Esistono righe commesse_attivita NON_EMESSA
+                --   3. Competenza: se p_competenza_mese fornito, filtra righe
+                --      commesse_attivita il cui competenza_mese coincide
+                --      (coerente con pipeline AF che opera per mese)
+                --   4. Filtri opzionali per perimetro billing/utility/emittente
+                --   5. Filtro opzionale corsia: p_fatturazione_immediata
+                --      (true=solo immediate / false=solo differite /
+                --       NULL=indifferente, comportamento storico)
+                --   6. rev 2026-07-27: p_gruppi restringe alle commesse che
+                --      contengono almeno una riga di un gruppo richiesto.
+                --      NON sostituisce il filtro per RIGA dentro l'emit: qui si
+                --      sceglie QUALI COMMESSE visitare, li' QUALI RIGHE emettere.
+                --      NULL = nessuna restrizione (comportamento storico).
+                --
+                -- Regole:
+                --   - p_limit max 10000, default 1000
+                --   - p_competenza_mese normalizzato al primo del mese
+                --   - funzione STABLE (read-only)
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                -- Normalizza al primo del mese
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                RETURN QUERY
+                SELECT
+                  c.id AS commessa_id,
+                  c.codice,
+                  c.stato_commessa_id,
+                  sc.codice AS stato_commessa,
+                  c.billing_account_id,
+                  c.utility_id,
+                  c.emittente_soggetto_ruolo_id,
+                  c.fatturazione_immediata,
+                  c.competenza_dal,
+                  c.competenza_al,
+                  count(ca.id)::bigint AS total_non_emesse
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = c.stato_commessa_id
+                 AND sc.emittibile = true
+                INNER JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = c.id
+                 AND ca.stato_emissione = 'NON_EMESSA'
+                 AND (v_competenza_mese IS NULL OR ca.competenza_mese = v_competenza_mese)
+                WHERE true
+                  -- Filtro perimetro billing/utility/emittente
+                  AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                  AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+                  AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                  -- Filtro corsia immediata/differita (NULL = indifferente)
+                  AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
+                  -- EMISSIONE MIRATA (rev 2026-07-27): il conteggio
+                  -- total_non_emesse segue il filtro, cioe' riporta le righe
+                  -- dei soli gruppi richiesti. E' voluto: e' il numero che
+                  -- l'emit lavorera' davvero su quella commessa.
+                  AND (
+                       p_gruppi IS NULL
+                       OR vendite.fn_build_gruppo_fatturabile_key(
+                              ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                          ) = ANY (p_gruppi)
+                      )
+                GROUP BY
+                  c.id,
+                  c.codice,
+                  c.stato_commessa_id,
+                  sc.codice,
+                  c.billing_account_id,
+                  c.utility_id,
+                  c.emittente_soggetto_ruolo_id,
+                  c.fatturazione_immediata,
+                  c.competenza_dal,
+                  c.competenza_al
+                ORDER BY c.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
+              IS 'Read-only: elenca commesse in stato emittibile con attivita` NON_EMESSA. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id e fatturazione_immediata (corsia immediata/differita, NULL=indifferente). Espone fatturazione_immediata in output. Usata dal backend per il batch di emissione. rev 2026-07-27 (brief emissione mirata A6): p_gruppi text[] restringe alle commesse che contengono almeno una riga di un gruppo richiesto — NULL = nessuna restrizione (G1). ⚠️ NON sostituisce il filtro per RIGA dentro fn_emit_attivita_fatturabili_da_commessa: qui si sceglie QUALI COMMESSE visitare, li'' QUALI RIGHE emettere; una commessa multi-sorgente passa comunque il filtro e sara'' l''emit a prendere solo le righe richieste. Con p_gruppi valorizzato anche total_non_emesse segue il filtro: e'' il numero di righe che l''emit lavorera'' davvero.';

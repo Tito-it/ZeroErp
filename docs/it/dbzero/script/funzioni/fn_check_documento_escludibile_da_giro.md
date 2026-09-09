@@ -24,8 +24,9 @@ AS $function$
 DECLARE
     v_motivi        jsonb := '[]'::jsonb;
     v_lotto_trovato boolean;
-    v_lotto_stato   config.stati_doc_fiscale.codice_interno%TYPE;
-    v_lotto_congela config.stati_doc_fiscale.congela_fiscale%TYPE;
+    v_lotto_stato   vendite.vw_lotti_fase.stato_codice_interno%TYPE;
+    -- ⭐ rev 2026-09-09: il derivato gia' fail-closed della sede unica.
+    v_lotto_pre_fiscale vendite.vw_lotti_fase.pre_fiscale%TYPE;
     v_esito         vendite.fatturazione_lotti_esiti.stato_esecuzione%TYPE;
 BEGIN
     -- Guard parametri: id assenti o non validi sono errori di
@@ -45,13 +46,19 @@ BEGIN
     END IF;
 
     -- Stato del LOTTO per codice_interno: la chiave stabile e' quella,
-    -- l'id no. LEFT JOIN perche' un lotto senza stato deve arrivare al
-    -- confronto e fallirlo, non sparire.
-    SELECT true, sdf.codice_interno, sdf.congela_fiscale
-      INTO v_lotto_trovato, v_lotto_stato, v_lotto_congela
-      FROM vendite.fatturazione_lotti fl
-      LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = fl.stato_doc_fiscale_id
-     WHERE fl.id = p_lotto_id;
+    -- l'id no.
+    -- ⭐ rev 2026-09-09 — dalla sede unica vendite.vw_lotti_fase, che fa la
+    --   stessa LEFT JOIN di prima: un lotto senza stato risolvibile ha
+    --   comunque la sua riga e arriva al confronto, non sparisce.
+    -- ⭐ E QUESTA E' LA PORTA D'USCITA: `pre_fiscale` e' lo stesso predicato
+    --   con cui vendite.vw_documenti_trattenuti_da_lotto dice «trattenuto».
+    --   Trattenuto ⇔ si puo' ancora uscire: se non fossero lo stesso flag, un
+    --   documento potrebbe risultare trattenuto senza avere piu' una via
+    --   d'uscita — un cancello senza chiave.
+    SELECT true, f.stato_codice_interno, f.pre_fiscale
+      INTO v_lotto_trovato, v_lotto_stato, v_lotto_pre_fiscale
+      FROM vendite.vw_lotti_fase f
+     WHERE f.lotto_id = p_lotto_id;
 
     IF NOT COALESCE(v_lotto_trovato, false) THEN
         PERFORM script.fn_log_and_raise_error(
@@ -64,7 +71,9 @@ BEGIN
     -- ⚠️ Fail-closed: con lo stato non risolvibile si blocca, come
     --    fa la sorella. Non sapere in che stato e' il giro non e'
     --    un buon motivo per lasciarci mettere le mani.
-    IF COALESCE(v_lotto_congela, true) THEN
+    -- ⚠️ Il fail-closed non e' sparito: sta dentro `pre_fiscale`, che su uno
+    --    stato non risolvibile vale FALSE. Stesso esito di prima.
+    IF NOT v_lotto_pre_fiscale THEN
         v_motivi := v_motivi || jsonb_build_object(
             'codice',     'E_LOTTO_NON_PRE_FISCALE',
             'reason',     'STATO_LOTTO_NON_PRE_FISCALE',
@@ -124,7 +133,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_documento_escludibile_da_giro(p_lotto_id bigint, p_gruppo_key text)
-IS 'I motivi che impediscono di togliere UN documento dal giro di fatturazione: [] se si puo'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. ⭐ SEDE UNICA del predicato: vendite.fn_escludi_documento_da_giro la CHIAMA e solleva il codice del primo motivo, il frontend legge lo stesso elenco per spegnere il pulsante col perche'' — cosi'' tooltip e rifiuto non possono divergere. ⚠️ L''ORDINE e'' il contratto (la madre solleva il primo): lotto, poi assenza di esito, poi «gia'' uscito», poi «non in errore». La terza precede la quarta perche'' un documento ESCLUSO e'' ANCHE non-in-errore, e senza precedenza scatterebbero entrambe. ⭐ Riusa E_LOTTO_NON_PRE_FISCALE e la sua chiave i18n dalla sorella fn_check_fattura_eliminabile_da_lotto: stessa condizione, stesso rimedio, un codice solo. Il confine pre-fiscale e'' il flag config.stati_doc_fiscale.congela_fiscale letto fail-closed, mai un elenco di stati scritto a mano. ⛔ La bozza CONDIVISA non e'' un motivo: e'' una conseguenza (D-2b), la dichiara script.fn_gruppi_trascinati_da_uscita e la nomina la conferma. Brief: brief-db-uscita-documento-dal-giro §5.4.';
+IS 'I motivi che impediscono di togliere UN documento dal giro di fatturazione: [] se si puo'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. ⭐ SEDE UNICA del predicato: vendite.fn_escludi_documento_da_giro la CHIAMA e solleva il codice del primo motivo, il frontend legge lo stesso elenco per spegnere il pulsante col perche'' — cosi'' tooltip e rifiuto non possono divergere. ⚠️ L''ORDINE e'' il contratto (la madre solleva il primo): lotto, poi assenza di esito, poi «gia'' uscito», poi «non in errore». La terza precede la quarta perche'' un documento ESCLUSO e'' ANCHE non-in-errore, e senza precedenza scatterebbero entrambe. ⭐ Riusa E_LOTTO_NON_PRE_FISCALE e la sua chiave i18n dalla sorella fn_check_fattura_eliminabile_da_lotto: stessa condizione, stesso rimedio, un codice solo. Il confine pre-fiscale arriva dal derivato pre_fiscale di vendite.vw_lotti_fase (rev 2026-09-09, sede unica della fase di un lotto), gia'' fail-closed: mai un elenco di stati scritto a mano, e mai la COALESCE ricopiata qui. ⭐ E'' lo STESSO flag con cui vw_documenti_trattenuti_da_lotto dice «trattenuto»: trattenuto ⇔ si puo'' ancora uscire. ⛔ La bozza CONDIVISA non e'' un motivo: e'' una conseguenza (D-2b), la dichiara script.fn_gruppi_trascinati_da_uscita e la nomina la conferma. Brief: brief-db-uscita-documento-dal-giro §5.4.';
 ```
 
 ---

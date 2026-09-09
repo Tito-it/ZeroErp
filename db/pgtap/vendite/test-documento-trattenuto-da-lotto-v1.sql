@@ -5,12 +5,14 @@
 -- Test: T-1 — vendite.vw_documenti_trattenuti_da_lotto, la SEDE UNICA della
 --       domanda «questo documento e' trattenuto da un lotto ancora in gioco?».
 --
--- Elenco test (plan 5) — numerati come li stampa il TAP:
+-- Elenco test (plan 7) — numerati come li stampa il TAP:
 --  1) ⭐ lotto DRAFT + esito COMPLETED  -> TRATTENUTO
 --  2) ⭐ lotto ANNULLATA + esito ERRORE -> LIBERO
 --  3) ⛔ esito ESCLUSO su lotto vivo    -> LIBERO (uscito dal giro)
 --  4) ⭐ lotto SENZA stato risolvibile  -> TRATTENUTO (fail-closed)
 --  5) ⚠️ lo stesso documento in DUE lotti vivi -> DUE righe
+--  6) 🔴 lotto DEFINITIVA (CHIUSO) + COMPLETED -> LIBERO   [rev 2026-09-09]
+--  7) 🔴 lotto INVIATA (dopo la chiusura) + COMPLETED -> LIBERO
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I TEST 1 E 2 VANNO LETTI INSIEME, ed e' tutto il senso del cantiere.
@@ -34,8 +36,26 @@
 --   renderebbe il test 2 verde a vuoto, e su un database ricostruito da zero
 --   girerebbe identico solo per coincidenza.
 --
+-- ⭐ I TEST 6 E 7 SONO ARRIVATI DOPO, E DICONO PERCHE' (rev 2026-09-09).
+--   La prima stesura definiva «in gioco» come `NOT is_abortito`, cioe' «non
+--   annullato». Ma `is_abortito` e' TRUE solo su ANNULLATA: un lotto
+--   DEFINITIVA non e' annullato, e' CHIUSO — e risultava ancora «vivo».
+--   ⇒ Un documento fatturato in un lotto chiuso restava trattenuto PER SEMPRE,
+--   e «Riporta da emettere» smetteva di avere effetto. Cancello senza chiave:
+--   dal giro non lo si poteva nemmeno togliere, perche' l'uscita vuole un
+--   lotto PRE-FISCALE.
+--   ⛔ E il test 7 e' il seguito: la correzione ovvia — `NOT chiude_lotto` —
+--   sbaglia anch'essa, perche' quel flag e' TRUE solo su DEFINITIVA e il
+--   catalogo ammette DEFINITIVA -> INVIATA. Il flag giusto e' `in_gioco` di
+--   vendite.vw_lotti_fase.
+--   ⚠️ Nessuno dei due casi esisteva nei dati di sviluppo, dove i lotti
+--   finiscono quasi tutti ANNULLATA: erano verdi per sottrazione, e vanno
+--   COSTRUITI.
+--
 -- Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-1)
+--        brief-db-il-trattenuto-passa-lo-stesso.md (L2, §6.1)
 -- ChangeSet: 20260909-23-create-vw-documenti-trattenuti-da-lotto
+--            20260909-57-update-vw-documenti-trattenuti-sede-e-predicato
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -44,7 +64,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(5);
+SELECT plan(7);
 
 -- ============================================================
 -- Fixture — cinque lotti-testimone, uno per forma
@@ -72,7 +92,11 @@ BEGIN
             ('vivo_escluso',    'DRAFT',      'ESCLUSO'),
             ('senza_stato',     NULL,         'COMPLETED'),
             ('doppio_a',        'DRAFT',      'ERRORE'),
-            ('doppio_b',        'EMESSA',     'PENDING')
+            ('doppio_b',        'EMESSA',     'PENDING'),
+            -- ⭐ rev 2026-09-09: i due casi del difetto. CHIUSO non e'
+            --   ANNULLATO, e INVIATA viene DOPO la chiusura.
+            ('chiuso_completed',  'DEFINITIVA', 'COMPLETED'),
+            ('inviato_completed', 'INVIATA',    'COMPLETED')
         ) AS v(caso, stato, esito)
     LOOP
         INSERT INTO vendite.fatturazione_lotti
@@ -178,6 +202,36 @@ SELECT is(
       WHERE gruppo_key = 'PGTAP:TRAT:doppio'),
     2,
     '5. un documento tenuto da DUE lotti vivi rende due righe: la vista non lo nasconde'
+);
+
+-- ============================================================
+-- 6) 🔴 Lotto CHIUSO (DEFINITIVA): non trattiene piu' niente
+-- ============================================================
+-- ⛔ E' IL DIFETTO CHE HA APERTO IL CANTIERE SEGUENTE. Con `NOT is_abortito`
+--   questo caso risultava TRATTENUTO: DEFINITIVA non e' abortita, e'
+--   regolarmente chiusa. Un documento fatturato in un lotto chiuso restava
+--   bloccato per sempre, e «Riporta da emettere» non aveva piu' effetto.
+-- ⭐ E non c'era via d'uscita: togliere un documento dal giro vuole un lotto
+--   PRE-FISCALE, e DEFINITIVA non lo e'. Un cancello senza chiave.
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM vendite.vw_documenti_trattenuti_da_lotto
+                 WHERE gruppo_key = 'PGTAP:TRAT:chiuso_completed'),
+    '6. un lotto DEFINITIVA (chiuso) non trattiene piu'': chiuso non e'' annullato'
+);
+
+-- ============================================================
+-- 7) 🔴 E dopo la chiusura: INVIATA non riapre niente
+-- ============================================================
+-- ⛔ E' IL CASO CHE LA CORREZIONE OVVIA SBAGLIA. `NOT chiude_lotto` sembra dire
+--   «non ha finito», ma quel flag e' TRUE solo su DEFINITIVA: marca la
+--   TRANSIZIONE che chiude, non la proprieta' di essere chiuso. Il catalogo
+--   ammette DEFINITIVA -> INVIATA (asse lotto), e INVIATA non lo porta.
+--   ⇒ Un lotto chiuso e poi inviato sarebbe tornato «in gioco», e i suoi
+--   documenti trattenuti di nuovo — dopo essere stati liberati.
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM vendite.vw_documenti_trattenuti_da_lotto
+                 WHERE gruppo_key = 'PGTAP:TRAT:inviato_completed'),
+    '7. un lotto INVIATA (dopo la chiusura) non trattiene: chiuso RESTA chiuso'
 );
 
 SELECT * FROM finish();

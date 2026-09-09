@@ -357,6 +357,9 @@ _ACCESSORI_COLONNE_AGGREGATI = (
     "g.ba_codice_fatturazione",
     "g.id_fiscale",
     "g.registri_ids",
+    # ⭐ `20260909-66`: il riepilogo ESCLUDE i gruppi trattenuti e li dichiara.
+    #    Serve agli aggregati, quindi sta qui.
+    "g.emissione_blocco_reason",
 )
 
 
@@ -1215,7 +1218,18 @@ class VenditeRepository:
                 --    Serve alla card «Emesse non fatturate», che senza di lei
                 --    somma DUE cose con rimedi opposti: il RESIDUO, che chiede
                 --    un'azione, e il transito legittimo, su cui non si fa nulla.
-                m.motivo_non_fatturata
+                m.motivo_non_fatturata,
+                -- ⭐ Le due colonne del `20260909-67`, IN CODA come la
+                --    precedente e per la stessa ragione: qui si legge per
+                --    POSIZIONE.
+                -- ⛔ E vanno LETTE, non solo lasciate arrivare: da quel
+                --    changeSet `n_attivita` ESCLUDE le attivita' trattenute da
+                --    un lotto in gioco, e senza la dichiarazione il numero
+                --    cala in silenzio — che e' il difetto di partenza girato
+                --    di 180 gradi (la card diceva 4 dove la lista ne mostrava
+                --    3; adesso direbbe 3 senza spiegare il quarto).
+                m.n_attivita_trattenute,
+                m.valore_trattenuto
             FROM vendite.vw_dash_competenza_mensile m
             LEFT JOIN config.stati_doc_fiscale sdf
                 ON sdf.codice_interno = m.stato_fattura_codice_interno
@@ -1244,6 +1258,11 @@ class VenditeRepository:
                     "n_in_ritardo": int(row[8]),
                     "valore_in_ritardo": str(row[9]) if row[9] is not None else "0",
                     "motivo_non_fatturata": None if row[10] is None else str(row[10]),
+                    "n_attivita_trattenute": int(row[11]),
+                    # ⚠️ Stringa e non numero: e' denaro, e un `numeric` che
+                    #    passa da JSON diventa un float. Stessa regola di
+                    #    `valore` qui sopra.
+                    "valore_trattenuto": str(row[12]) if row[12] is not None else "0",
                 }
             )
         return result
@@ -2153,7 +2172,18 @@ class VenditeRepository:
                 -- ⭐ Il lotto viaggia come BERSAGLIO e non come frase: chi
                 --    legge non deve ricopiare un codice per poi cercarlo.
                 g.emissione_blocco_lotto_id,
-                g.emissione_blocco_lotto_codice
+                g.emissione_blocco_lotto_codice,
+                -- ⭐ V-1 (`20260909-66`): il lotto del TENTATIVO esce con il
+                --    suo STATO. Prima usciva il solo codice, e a video un
+                --    tentativo in un lotto ANNULLATO si leggeva come uno
+                --    ancora in corso — rilievo di Tid sul collaudo.
+                -- ⛔ Il dato non si toglie: e' l'unica traccia che spieghi
+                --    perche' il documento e' tornato disponibile. Si dice SE
+                --    conta ancora, e il frontend spegne il GESTO — testo si',
+                --    pulsante no.
+                g.ultimo_lotto_id,
+                g.ultimo_lotto_stato,
+                g.ultimo_lotto_pre_fiscale
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -2272,6 +2302,18 @@ class VenditeRepository:
                     ),
                     "emissione_blocco_lotto_codice": (
                         None if row[31] is None else str(row[31])
+                    ),
+                    # ═══ V-1 · il lotto del TENTATIVO, col suo stato ═════════
+                    # ⚠️ `ultimo_lotto_pre_fiscale` e' il flag su cui il
+                    # frontend decide se offrire il gesto: un bersaglio verso
+                    # un lotto che non conta piu' e' un pulsante in un vicolo
+                    # cieco. `None` quando non c'e' nessun tentativo.
+                    "ultimo_lotto_id": None if row[32] is None else int(row[32]),
+                    "ultimo_lotto_stato": (
+                        None if row[33] is None else str(row[33])
+                    ),
+                    "ultimo_lotto_pre_fiscale": (
+                        None if row[34] is None else bool(row[34])
                     ),
                     # ═══ D3 · la bandiera della commessa respinta ════════════
                     # Nascono vuote e le riempie `_applica_bandiera_respinta`
@@ -2441,11 +2483,28 @@ class VenditeRepository:
                     {where_filtri}
                 ),
                 riepilogo AS (
-                    SELECT COUNT(*)::int                          AS n_gruppi,
-                           COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita,
-                           COALESCE(SUM(g.valore), 0)::text       AS valore,
-                           COUNT(*) FILTER (WHERE g.tipo_gruppo = %s)::int
-                                                                  AS n_gruppi_oneri
+                    -- ⭐ 2026-09-09: i tre totali ESCLUDONO i gruppi trattenuti
+                    --    da un lotto ancora in gioco — sono lavoro che
+                    --    l'operatore non puo' prendere, e un totale che li
+                    --    comprende e' la stessa promessa non mantenuta della
+                    --    card («4» sopra un elenco che ne mostrava 3).
+                    -- ⛔ `FILTER` e mai una `WHERE` sulla CTE: filtrando le
+                    --    righe fuori sparirebbero anche dalla LISTA, e la
+                    --    decisione D-1 del brief precedente e' che la riga
+                    --    RESTA visibile e spenta — sparire non spiega niente.
+                    -- ⭐ E `n_gruppi_trattenuti` non e' un di piu': senza, il
+                    --    numero cala e nessuno sa di quanto.
+                    SELECT COUNT(*) FILTER (WHERE g.emissione_blocco_reason IS NULL)::int
+                                                                  AS n_gruppi,
+                           COALESCE(SUM(g.n_attivita) FILTER (WHERE g.emissione_blocco_reason IS NULL), 0)::bigint
+                                                                  AS n_attivita,
+                           COALESCE(SUM(g.valore) FILTER (WHERE g.emissione_blocco_reason IS NULL), 0)::text
+                                                                  AS valore,
+                           COUNT(*) FILTER (WHERE g.tipo_gruppo = %s
+                                              AND g.emissione_blocco_reason IS NULL)::int
+                                                                  AS n_gruppi_oneri,
+                           COUNT(*) FILTER (WHERE g.emissione_blocco_reason IS NOT NULL)::int
+                                                                  AS n_gruppi_trattenuti
                       FROM filtrato g
                 ),
                 tipi AS (

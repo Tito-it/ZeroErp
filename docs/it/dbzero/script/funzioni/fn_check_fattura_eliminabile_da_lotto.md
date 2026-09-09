@@ -24,8 +24,11 @@ AS $function$
 --   ordinato di {codice, reason, reason_key, dettaglio}.
 DECLARE
   v_motivi        jsonb := '[]'::jsonb;
-  v_lotto_stato   config.stati_doc_fiscale.codice_interno%TYPE;
-  v_lotto_congela config.stati_doc_fiscale.congela_fiscale%TYPE;
+  v_lotto_stato   vendite.vw_lotti_fase.stato_codice_interno%TYPE;
+  -- ⭐ rev 2026-09-09: per il LOTTO il derivato gia' fail-closed della sede
+  --   unica. ⚠️ Per la FATTURA resta il flag grezzo qui sotto: e' un'altra
+  --   entita', e vw_lotti_fase parla solo di lotti.
+  v_lotto_pre_fiscale vendite.vw_lotti_fase.pre_fiscale%TYPE;
   v_fatt_stato    config.stati_doc_fiscale.codice_interno%TYPE;
   v_fatt_congela  config.stati_doc_fiscale.congela_fiscale%TYPE;
   v_fatt_numero   vendite.fatture.numero%TYPE;
@@ -49,14 +52,14 @@ BEGIN
   END IF;
 
   -- Stato del LOTTO, per codice: il codice_interno e' la chiave
-  -- stabile, l'id no (lezione B-4). LEFT JOIN perche' un lotto
-  -- senza stato deve arrivare al confronto e fallirlo.
-  SELECT true, sdf.codice_interno, sdf.congela_fiscale
-    INTO v_trovato, v_lotto_stato, v_lotto_congela
-    FROM vendite.fatturazione_lotti fl
-    LEFT JOIN config.stati_doc_fiscale sdf
-      ON sdf.id = fl.stato_doc_fiscale_id
-   WHERE fl.id = p_lotto_id;
+  -- stabile, l'id no (lezione B-4).
+  -- ⭐ rev 2026-09-09 — dalla sede unica vendite.vw_lotti_fase, che fa la
+  --   stessa LEFT JOIN di prima: un lotto senza stato risolvibile ha comunque
+  --   la sua riga e arriva al confronto.
+  SELECT true, f.stato_codice_interno, f.pre_fiscale
+    INTO v_trovato, v_lotto_stato, v_lotto_pre_fiscale
+    FROM vendite.vw_lotti_fase f
+   WHERE f.lotto_id = p_lotto_id;
 
   IF NOT COALESCE(v_trovato, false) THEN
     PERFORM script.fn_log_and_raise_error(
@@ -89,7 +92,9 @@ BEGIN
   -- ⚠️ `COALESCE(..., true)` tiene il comportamento di prima: con lo stato
   --    non risolvibile la vecchia forma confrontava '' contro la lista e
   --    quindi BLOCCAVA. Qui resta fail-closed, come era.
-  IF COALESCE(v_lotto_congela, true) THEN
+  -- ⚠️ Il fail-closed non e' sparito: sta dentro `pre_fiscale`, che su uno
+  --    stato non risolvibile vale FALSE. Stesso esito di prima.
+  IF NOT v_lotto_pre_fiscale THEN
     v_motivi := v_motivi || jsonb_build_object(
       'codice',     'E_LOTTO_NON_PRE_FISCALE',
       'reason',     'STATO_LOTTO_NON_PRE_FISCALE',
