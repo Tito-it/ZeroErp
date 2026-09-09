@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # fn_resolve_prezzo_listino_v2 diventa il GUSCIO del nucleo 20260819-07.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice A.
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice A.
 # Secondo dei due changeSet: il primo (20260819-07) crea
 # vendite.fn_resolve_prezzo_listino_v2_esito, che risolve e RIPORTA l'esito
 # invece di sollevarlo. Questo riscrive la funzione storica come un guscio che

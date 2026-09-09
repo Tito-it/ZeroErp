@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-3 — LA REGOLA DELLA DATA VIVE SUL REGISTRO
 #   vendite.registri_fatturazione.politica_data_documento
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-3
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-3
 #   Decisione 3 di Tid (2026-08-25)
 #
 # ── ⭐ PERCHE' SUL REGISTRO E NON SUL LOTTO ─────────────────────────

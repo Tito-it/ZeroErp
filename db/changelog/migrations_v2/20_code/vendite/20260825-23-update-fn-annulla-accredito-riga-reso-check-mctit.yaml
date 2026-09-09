@@ -45,7 +45,7 @@
 # Origine: doc auto-gen (oggetto vivo), coi punti 4 e 5 sostituiti.
 # Dipendenze: 20260825-22 (la funzione di check, verificata in precondizione).
 # Verifica: db/pgtap/vendite/test-annulla-accredito-riga-reso-v1.sql
-# Cantiere: docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §45
+# Cantiere: brief-design-note-credito-resi.md §45
 # ------------------------------------------------------------
 
 databaseChangeLog:

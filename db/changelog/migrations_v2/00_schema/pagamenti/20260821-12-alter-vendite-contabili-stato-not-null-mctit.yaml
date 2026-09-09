@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA TESTATA CONTABILE SENZA STATO PASSA I FILTRI DI ENTRAMBI — passo P-4
 #   pagamenti.vendite_contabili.stato_id
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-4
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.0 P-4
 #   Decisione: brief-incassi-riconciliazione-rate-promemoria.md, D9-d-2
 #
 # ── IL DIFETTO ──────────────────────────────────────────────────────────

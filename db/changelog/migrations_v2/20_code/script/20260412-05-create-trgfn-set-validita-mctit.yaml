@@ -8,7 +8,7 @@
 # che abbia le tre colonne convenzionali.
 #
 # Prerequisito per tutte le migration daterange (Fase 1, 2, 3).
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.3
+# Vedi: migrazione-daterange.md §4.3
 # ------------------------------------------------------------
 
 databaseChangeLog:

@@ -32,7 +32,7 @@
 --    sono?» si fa fuori dalla row security, e un guard che la facesse sotto
 --    direbbe «di un altro cliente» anche quando il cliente e' lo stesso.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3-bis S4-1/S4-2 · Decisioni: brief madre D15-b, D15-c, D15-e · lotto 7
 -- ------------------------------------------------------------
 

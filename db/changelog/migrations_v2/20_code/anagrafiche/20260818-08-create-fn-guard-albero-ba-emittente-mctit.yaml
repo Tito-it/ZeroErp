@@ -38,7 +38,7 @@
 #    in dbops.sec_functions_owner: quella serve alle DEFINER che richiedono
 #    `postgres`, e qui non serve.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

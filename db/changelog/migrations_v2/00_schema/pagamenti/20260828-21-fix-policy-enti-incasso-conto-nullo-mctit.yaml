@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA POLICY NON DEVE COPRIRE IL «MANCA IL CONTO» — correzione in avanti
 #   pagamenti.enti_incasso · corregge 20260828-17 (S6-1, lotto 10)
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §6.17
 #
 # ── 🔴 IL DIFETTO, TROVATO DA UN pgTAP CHE C'ERA GIA' ───────────────

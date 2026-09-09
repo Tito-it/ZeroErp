@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# OF-1 — Gli adattatori di scope per la famiglia OFFERTE_COMMERCIALI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §4 e §7 (passo 6)
+#   Slice 20260909-47..49 (helper -> policy inerti -> armamento).
+#   E' l'ULTIMA delle sei famiglie di documento del brief.
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Una riga di documento appartiene all'emittente della sua testata.
+#   `vendite.offerte_commerciali` e' protetta
+#   (`rls_offerte_commerciali_ef_whitelist`); i suoi cinque satelliti non hanno
+#   nessuna policy e `zeroerp_app` ha su tutti SELECT, INSERT, UPDATE e DELETE.
+#
+# ── UNA VESTE, come ddt, resi e contratti ────────────────────────────
+#   `vendite.offerte_commerciali` porta la sola veste `OPERATORE`, `FOR ALL`.
+#
+# ── Le due funzioni, e da quale chiave risalgono ──────────────────────
+#     * `offerte_commerciali_eccezioni`, `_indirizzi`, `_utilities`,
+#       `note_offerte_commerciali`   offerta_id / target_id -> `_via_offerta`
+#     * `offerte_commerciali_eccezioni_componenti`
+#                                    eccezione_offerta_id   -> `_via_offerta_eccezione`
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#
+# ⭐ E `_via_offerta` serve anche al PASSO 8, quello che chiude il padre
+#   partizionato `vendite.note`: la sua policy smista su `target_tipo` e deve
+#   poter nominare tutti e sette gli adattatori. Fino a questa slice `OFFERTA`
+#   era uno dei due che mancavano — l'altro e' `ATTIVITAFT`.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — come gli altri
+#   `script.fn_scope_*`. Una funzione `SECURITY DEFINER` dentro una policy
+#   guarderebbe con gli occhi dell'owner, che la RLS non vede: il filtro
+#   passerebbe sempre, e in silenzio.
+#
+# Permessi: funzioni di titodb, nessun GRANT esplicito (l'ALTER DEFAULT
+# PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-47-create-fn-scope-ef-whitelist-via-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20260909-47-create-fn-scope-ef-whitelist-via-offerta
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatori di scope per la famiglia offerte_commerciali:
+        script.fn_scope_ef_whitelist_via_offerta(auth_user_id, offerta_id) e
+        script.fn_scope_ef_whitelist_via_offerta_eccezione(auth_user_id,
+        eccezione_id), che risalgono alla testata e delegano alla canonica
+        fn_scope_ef_whitelist. Nessuna policy li usa ancora: le crea 20260909-48.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta(
+                  p_auth_user_id integer,
+                  p_offerta_id   vendite.offerte_commerciali.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente dell'offerta indicata.
+                  -- ⚠️ Offerta inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT o.emittente_fiscale_id
+                         FROM vendite.offerte_commerciali o
+                        WHERE o.id = p_offerta_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta_eccezione(
+                  p_auth_user_id integer,
+                  p_eccezione_id vendite.offerte_commerciali_eccezioni.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una ECCEZIONE di offerta —
+                  --   e' la chiave che porta
+                  --   vendite.offerte_commerciali_eccezioni_componenti.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: la
+                  --   regola «come un'offerta nomina il proprio emittente»
+                  --   resta scritta in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_offerta(
+                      p_auth_user_id,
+                      (SELECT e.offerta_id
+                         FROM vendite.offerte_commerciali_eccezioni e
+                        WHERE e.id = p_eccezione_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_offerta(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.offerte_commerciali: risale dalla chiave della testata a `emittente_fiscale_id` e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer, come gli altri fn_scope_*. Offerta inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). ⭐ Serve anche alla policy del padre partizionato vendite.note, che smista su target_tipo. Brief: brief-db-perimetro-emittente-righe-documento.md';
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_offerta_eccezione(integer, bigint)
+              IS 'Come fn_scope_ef_whitelist_via_offerta ma a partire da una eccezione di offerta: e'' la chiave che porta vendite.offerte_commerciali_eccezioni_componenti. Delega alla sorella invece di ripetere la risalita alla testata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_offerta_eccezione(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_offerta(integer, bigint);

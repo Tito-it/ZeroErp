@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL CONTO SU CUI IL DENARO ATTERRA — passo S3-1 (lotto 6)
 #   pagamenti.enti_incasso.soggetto_ruolo_conto_bancario_id
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3 S3-1 · Decisione: brief madre D5
 #
 # ── ⭐ IL PROBLEMA CHE QUESTA COLONNA RISOLVE ─────────────────────────

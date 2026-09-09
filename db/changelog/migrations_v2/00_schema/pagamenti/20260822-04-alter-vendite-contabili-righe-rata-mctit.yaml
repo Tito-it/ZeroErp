@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # L'INCASSO ARRIVA ALLA RATA — passi S2-1 e S2-5 (lotto 5)
 #   pagamenti.vendite_contabili_righe: scadenza_id, forzata, motivo_forzatura
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.2 S2-1 / S2-5 · Decisioni: brief madre D1, D14-b/c/d
 #
 # ── ⭐ PERCHE' SULLA RIGA, E NON IN UNA TABELLA DI MEZZO ───────────────

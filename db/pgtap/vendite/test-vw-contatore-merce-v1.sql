@@ -10,7 +10,7 @@
 --    delle partite di merce (vw_partite_merce). Le sei colonne storiche restano
 --    invariate nella semantica — questo file e' anche il loro presidio di
 --    parita' — e i test 1..9 non sono stati toccati proprio per questo.
---    Brief: docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+--    Brief: brief-design-partita-merce-generalizzata.md
 -- ------------------------------------------------------------
 -- Indice test (1..11):
 --   1) la vista esiste

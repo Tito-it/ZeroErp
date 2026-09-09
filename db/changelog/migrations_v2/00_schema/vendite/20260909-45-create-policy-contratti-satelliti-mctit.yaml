@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-2 — Le cinque policy sui satelliti di CONTRATTI. INERTI: la RLS si accende
+#   in 20260909-46.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 5)
+#   Slice 20260909-44..46.
+#
+# ── Le cinque tabelle, e da quale chiave risalgono ────────────────────
+#     vendite.contratti_righe             contratto_id       -> testata
+#     vendite.contratti_indirizzi         contratto_id       -> testata
+#     vendite.contratti_utilities         contratto_id       -> testata
+#     vendite.note_contratto              target_id          -> testata
+#     vendite.contratti_righe_componenti  riga_contratto_id  -> riga
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#   ⚠️ `note_contratto` porta anche `target_riga_id`, nullable: la policy NON la
+#   usa. La sede del perimetro e' `target_id`, che e' NOT NULL e ha una FK vera
+#   verso `vendite.contratti`.
+#
+# ── ⛔ COSA NON ENTRA, e non e' una dimenticanza ──────────────────────
+#   `vendite.fatture_atti` (figlia anche di `fatture`, si aggancia li' — §6.3) e
+#   `vendite.attivita_fatturabili` (rotta portante `commessa_id`, perche'
+#   `contratto_id` e' nullable — §6.1). Ragionamento per esteso in 20260909-44.
+#
+# ── ⛔ `FOR ALL` con `WITH CHECK` ─────────────────────────────────────
+#   E' la forma della testata, tradotta. Il `WITH CHECK` e' cio' che impedisce a
+#   un operatore di appendere una riga al contratto di un'altra azienda: senza,
+#   la policy difenderebbe la sola lettura — la meta' che si dimentica, perche'
+#   il sintomo non si vede leggendo.
+#
+# ⭐ Nessuna vista da sistemare: verificato il 2026-09-09, NESSUNA vista del
+#   database legge questi cinque satelliti. E' la famiglia piu' isolata delle
+#   sei.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Collaudo funzionale: db/pgtap/rls/test-rls-contratti-satelliti.sql, dopo
+# l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-45-create-policy-contratti-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-45-create-policy-contratti-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Cinque policy sui satelliti di vendite.contratti (contratti_righe,
+        contratti_indirizzi, contratti_utilities, note_contratto,
+        contratti_righe_componenti): veste OPERATORE FOR ALL con WITH CHECK,
+        come la testata. INERTI: l'armamento e' 20260909-46.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_contratto',
+                                   'fn_scope_ef_whitelist_via_contratto_riga')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.contratti_righe (chiave: contratto_id) ----------
+              CREATE POLICY rls_contratti_righe_ef_whitelist
+                  ON vendite.contratti_righe
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contratto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contratto_id)
+                  );
+
+              -- ---------- vendite.contratti_indirizzi (chiave: contratto_id) ----------
+              CREATE POLICY rls_contratti_indirizzi_ef_whitelist
+                  ON vendite.contratti_indirizzi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contratto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contratto_id)
+                  );
+
+              -- ---------- vendite.contratti_utilities (chiave: contratto_id) ----------
+              CREATE POLICY rls_contratti_utilities_ef_whitelist
+                  ON vendite.contratti_utilities
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contratto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contratto_id)
+                  );
+
+              -- ---------- vendite.note_contratto (chiave: target_id) ----------
+              CREATE POLICY rls_note_contratto_ef_whitelist
+                  ON vendite.note_contratto
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  );
+
+              -- ---------- vendite.contratti_righe_componenti (chiave: riga_contratto_id) ----------
+              CREATE POLICY rls_contratti_righe_componenti_ef_whitelist
+                  ON vendite.contratti_righe_componenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_contratto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_contratto_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_contratto_id)
+                  );
+
+              COMMENT ON POLICY rls_contratti_righe_ef_whitelist ON vendite.contratti_righe IS
+                  'Perimetro emittente per vendite.contratti_righe: rispecchia rls_contratti_ef_whitelist della testata, risale da contratto_id. Slice 20260909-44..46.';
+              COMMENT ON POLICY rls_contratti_indirizzi_ef_whitelist ON vendite.contratti_indirizzi IS
+                  'Perimetro emittente per vendite.contratti_indirizzi: rispecchia rls_contratti_ef_whitelist della testata, risale da contratto_id. Slice 20260909-44..46.';
+              COMMENT ON POLICY rls_contratti_utilities_ef_whitelist ON vendite.contratti_utilities IS
+                  'Perimetro emittente per vendite.contratti_utilities: rispecchia rls_contratti_ef_whitelist della testata, risale da contratto_id. Slice 20260909-44..46.';
+              COMMENT ON POLICY rls_note_contratto_ef_whitelist ON vendite.note_contratto IS
+                  'Perimetro emittente per vendite.note_contratto: rispecchia rls_contratti_ef_whitelist della testata, risale da target_id. Slice 20260909-44..46.';
+              COMMENT ON POLICY rls_contratti_righe_componenti_ef_whitelist ON vendite.contratti_righe_componenti IS
+                  'Perimetro emittente per vendite.contratti_righe_componenti: rispecchia rls_contratti_ef_whitelist della testata, risale di due livelli. Slice 20260909-44..46.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_contratti_righe_componenti_ef_whitelist ON vendite.contratti_righe_componenti;
+              DROP POLICY IF EXISTS rls_note_contratto_ef_whitelist ON vendite.note_contratto;
+              DROP POLICY IF EXISTS rls_contratti_utilities_ef_whitelist ON vendite.contratti_utilities;
+              DROP POLICY IF EXISTS rls_contratti_indirizzi_ef_whitelist ON vendite.contratti_indirizzi;
+              DROP POLICY IF EXISTS rls_contratti_righe_ef_whitelist ON vendite.contratti_righe;

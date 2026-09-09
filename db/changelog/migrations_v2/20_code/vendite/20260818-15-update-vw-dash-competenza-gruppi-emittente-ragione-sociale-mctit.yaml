@@ -35,7 +35,7 @@
 #    colonna: si spunta e resta vuota, cioe' *sembra* la garanzia che il flag
 #    multi_emittente pretendera'.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

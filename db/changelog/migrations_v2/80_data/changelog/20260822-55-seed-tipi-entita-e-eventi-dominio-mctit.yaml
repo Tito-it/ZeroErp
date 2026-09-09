@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # I DUE CATALOGHI, SEMINATI — lotto L4
 #   config.tipi_entita + config.eventi_dominio
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §3.7 e §3.8
 #
 # ── ⚠️ SULL'ORDINE DELLE FASI, E PERCHE' NON SERVE NESSUNA ECCEZIONE

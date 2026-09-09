@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui quattro satelliti di RESI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-40..42. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Non e' un'ipotesi: il
+#   2026-09-09 `acquisti.ddt`, `acquisti.ordini` e `shop.ricevute` erano
+#   esattamente in quello stato — e sono le uniche tre rimaste in tutto il
+#   database. Il pgTAP di questa slice asserisce `relrowsecurity`, non
+#   l'esistenza della policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.resi` e come
+#   i satelliti di `fatture`, `preventivi`, `ordini` e `ddt`: l'owner (`titodb`)
+#   resta esente, cosi' migrazioni, job owner e i pgTAP marcati
+#   `pgtap-runner: owner` non si bloccano. ⚠️ Il runtime applicativo e'
+#   `zeroerp_app`, che NON e' l'owner ed e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista da sistemare, verificato il 2026-09-09: le sei che leggono
+#   i satelliti di `resi` — vw_resi_righe_dettaglio, vw_resi_righe_effettive,
+#   vw_resi_da_accreditare, vw_resi_da_riconsegnare, vw_partite_merce,
+#   vw_documento_lineage_archi — hanno gia' tutte `security_invoker`.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. I punti in
+#   cui una divergenza si vedrebbe:
+#     - il drawer reso e le sue righe;
+#     - il giro accrediti (nota di credito) e il giro riconsegne;
+#     - ⚠️ il LINEAGE: `vw_documento_lineage_archi` cuce DDT, resi, accrediti e
+#       riconsegne in un grafo solo. E' il punto in cui due perimetri diversi si
+#       incontrerebbero, quindi il primo posto da guardare se un arco sparisce.
+#
+#   ⭐ Nessun cambiamento per portale o shop: `vendite.resi` non ha vesti
+#   cliente, quindi non ne hanno i suoi satelliti.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-resi-satelliti.sql, che
+#   costruisce DUE aziende, per ciascuna un DDT portato a CONSEGNATO e il reso
+#   che ne nasce, e verifica che l'una non veda le righe dell'altra — in lettura,
+#   in scrittura, e da ENTRAMBI i genitori di `resi_righe`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-42-enable-rls-resi-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-42-enable-rls-resi-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui quattro satelliti di
+        vendite.resi. Da qui le policy di 20260909-41 filtrano davvero. Isolato
+        apposta: si disarma con il rollback di questo solo changeSet, e le
+        policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('resi_righe', 'resi_righe_accrediti',
+                                   'resi_righe_riconsegne', 'resi_righe_rinunce')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi_righe            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.resi_righe_accrediti  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.resi_righe_riconsegne ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.resi_righe_rinunce    ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.resi_righe_rinunce    DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.resi_righe_riconsegne DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.resi_righe_accrediti  DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.resi_righe            DISABLE ROW LEVEL SECURITY;

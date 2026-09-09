@@ -9,7 +9,7 @@
 -- pgTAP test STRUTTURALE — postura ruolo batch per-job zeroerp_batch_fatturazione
 --
 -- Canale di sistema headless per il batch di fatturazione sotto RLS (Path A).
--- Vedi: docs/it/dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md
+-- Vedi: brief-db-contesto-sistema-batch-fatturazione-rls.md
 --       scripts/sql/provision_db_role_batch_fatturazione.sql (provisioning)
 --       scripts/sql/check_db_role_batch_fatturazione.sql (verifica manuale)
 --

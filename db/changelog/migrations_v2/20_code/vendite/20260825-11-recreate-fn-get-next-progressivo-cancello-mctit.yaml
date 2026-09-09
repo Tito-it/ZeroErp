@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-8 — ⭐ IL CANCELLO SULLA SEQUENZA
 #   vendite.fn_get_next_progressivo — DROP + CREATE
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-8
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-8
 #   Analisi: analisi-numerazione-fattura-data-e-sequenza.md §3 D3 e §6.B
 #
 # ── IL DIFETTO CHE CHIUDE ───────────────────────────────────────────

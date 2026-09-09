@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il divieto del prezzo zero sui componenti obbligatori vale se il DDT vende.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C,
 # punto C3 (decisione D-5 = K2). Richiede 20260819-14 (la funzione della WHEN).
 #
 # IL DIVIETO E LA SUA PREMESSA. script.trgfn_componenti_check_prezzo_obbligatorio

@@ -4,7 +4,7 @@
 -- Test: script.fn_available_actions_ordine — decoupling fatturazione <->
 --       spedizione (rev 20260710-02): can_push su PARZIALMENTE_EVASO/EVASO,
 --       nuovi reason ORDINE_GIA_FATTURATO / ORDINE_FATTURA_DA_DDT
--- Piano: docs/it/dev/work-in-progress/piano-db-fix-orfano-push-ordine-confermato.md §4.2
+-- Piano: piano-db-fix-orfano-push-ordine-confermato.md §4.2
 -- Brief: brief-db-ddt-vendita-evasione-e-stati §16
 -- ------------------------------------------------------------
 -- Indice test (1..9):

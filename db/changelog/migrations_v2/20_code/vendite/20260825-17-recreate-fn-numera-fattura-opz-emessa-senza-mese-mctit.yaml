@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-12 (seconda parte) — VIA IL `mese` DAL RETURNS
 #   vendite.fn_numera_fattura_opz_emessa — DROP + CREATE
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-12
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-12
 #
 # ── ⛔ PERCHE' UN `DROP` E NON UN `CREATE OR REPLACE` ───────────────
 #   Togliere una colonna dal `RETURNS TABLE` cambia il tipo di ritorno, e

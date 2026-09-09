@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL GIRO DI PUSH SI APRE E SI CHIUDE — lotto L5, seconda meta'
 #   vendite.fn_start_commessa_push_run · vendite.fn_close_commessa_push_run
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §5-bis (richiesta del backend, 2026-08-22) · Decisioni D-3 e D-7
 #
 # ── IL DIFETTO, MISURATO DAL BACKEND SUL CORPO VIVO ────────────────

@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # IL DOSATORE LEGGE LA PARTITA — fn_list_ddt_da_pushare
-#   Slice S5 di docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#   Slice S5 di brief-design-partita-merce-generalizzata.md
 #
 # 🔴 **E' l'unica slice del cantiere che tocca QUANTO finisce in una riga di
 #    fattura.** Va letta con quell'occhio.

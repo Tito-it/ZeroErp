@@ -16,7 +16,7 @@
 -- pgTAP test per Zero ERP
 -- Test: I7 / D10-bis — lo stesso soggetto verso DUE emittenti ha DUE plafond,
 --       e il consumo dell'uno non intacca l'altro.
---       Piano: docs/it/dev/work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md
+--       Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --       D10-bis · §6 «pgTAP su I7, ed e' quello che nessuno penserebbe di scrivere»
 -- ------------------------------------------------------------
 -- Elenco test (plan 5):

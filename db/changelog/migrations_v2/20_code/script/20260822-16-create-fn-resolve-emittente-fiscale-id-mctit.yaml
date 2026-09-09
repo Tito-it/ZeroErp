@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA RISOLUZIONE DELL'EMITTENTE, FUORI DALLA ROW SECURITY — passo S3-4 (lotto 6)
 #   script.fn_resolve_emittente_fiscale_id
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3 S3-4 · Decisione: brief madre D5
 #
 # ── 🔴 IL DIFETTO CHE QUESTA FUNZIONE CHIUDE — misurato il 2026-08-22 ─

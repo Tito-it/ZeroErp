@@ -11,7 +11,7 @@
 # categoria nel resolver prezzi v5 (STADIO 0).
 # Ammette tipo_variazione PREZZO_FISSO (solo qui; vietato in listino
 # e matrice categoria).
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 6.
 # ------------------------------------------------------------
 

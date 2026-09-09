@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL CANALE DI SCRITTURA SI ALLINEA ALLA RIGA — L1 del Passo 0
 #   vendite.fn_log_event — nove parametri diventano sette
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §3.1 · Decisioni D-2, D-6
 #
 # ── PERCHE' ESISTE QUESTO CHANGESET (e il brief non lo aveva previsto) ─

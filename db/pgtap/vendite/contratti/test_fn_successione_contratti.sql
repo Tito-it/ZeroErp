@@ -8,7 +8,7 @@
 --   vendite.fn_chiudi_contratto_per_successione(contratto_id,
 --       nuovo_valido_dal) RETURNS date
 --
--- Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md §4
+-- Riferimento: brief-db-offerta-push-successione-contratto-overlap.md §4
 --
 -- Indice test (1..12):
 --   1)  fn_contratto_sovrapposto presente

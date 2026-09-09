@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3 — `security_invoker` sulle due viste che leggono i satelliti di
+#   PREVENTIVI. Va PRIMA dell'armamento (20260909-30), non dopo.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §3
+#   Slice 20260909-27..30.
+#
+# ── ⛔ PERCHE' PRIMA, E NON DOPO ──────────────────────────────────────
+#   Una vista senza `security_invoker` gira come il suo OWNER. `titodb` possiede
+#   sia le viste sia le tabelle, e la RLS non e' `FORCE`: l'owner ne e' esente.
+#   ⇒ Se si accendesse la RLS sulle righe lasciando le viste come sono, quelle
+#   viste continuerebbero a rispondere — **rispondendo di piu'**. Nessun errore,
+#   nessuna pagina rotta, il perimetro semplicemente non c'e'. Invertire i due
+#   changeSet aprirebbe esattamente il buco che questa slice chiude.
+#
+# ── ⭐ E SONO PROPRIO QUESTE DUE, non a caso ──────────────────────────
+#   Delle 60 viste di `vendite`, 58 hanno gia' il flag. Le due che non ce
+#   l'hanno sono queste, cioe' **esattamente quelle che leggono i satelliti di
+#   preventivi** (misurato il 2026-09-09). Non e' una coincidenza: il presidio
+#   `db/pgtap/rls/test-rls-viste-security-invoker.sql` pretende il flag solo
+#   dove la vista tocca dati in RLS, e finora quei dati in RLS non erano. La
+#   difesa di secondo livello taceva perche' mancava quella di primo.
+#   ⇒ Dopo 20260909-30 quel presidio le vedrebbe. Sistemarle qui non e' una
+#   cortesia al presidio: e' cio' che gli permette di continuare a dire il vero.
+#
+# ── ⚠️ E `vw_preventivi_righe_dettaglio` E' IL CONTROESEMPIO DELLA SLICE
+#   Legge `preventivi_righe` senza passare dalla testata — le sue dipendenze
+#   sono `catalogo.articoli`, `catalogo.unita_misura`, `config.iva` e le righe:
+#   `vendite.preventivi` non compare — ed e' concessa in SELECT a `zeroerp_app`.
+#   E' la prova che «tanto si passa sempre dalla testata» non regge.
+#
+# ⚠️ `ALTER VIEW … SET` e non `CREATE OR REPLACE VIEW`: la reloption si AZZERA
+#   su un CREATE OR REPLACE, e non compare in `pg_get_viewdef`. Chi un domani
+#   ricreasse una di queste due viste partendo dalla definizione stampata
+#   perderebbe il flag senza nessun avviso — e quel giorno il presidio pgTAP e'
+#   l'unica cosa che se ne accorge.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-29-alter-view-preventivi-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260909-29-alter-view-preventivi-security-invoker
+      author: mctit
+      runOnChange: false
+      comment: >
+        security_invoker = true su vendite.vw_preventivi_righe_dettaglio e
+        vendite.vw_preventivi_riepilogo_iva_dettaglio, le sole due viste di
+        vendite che ne erano prive — e sono quelle che leggono i satelliti di
+        preventivi. Va prima dell'armamento della RLS (20260909-30), o le viste
+        continuerebbero a rispondere con gli occhi dell'owner.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite' AND c.relkind = 'v'
+                 AND c.relname IN ('vw_preventivi_righe_dettaglio',
+                                   'vw_preventivi_riepilogo_iva_dettaglio')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_preventivi_righe_dettaglio
+                  SET (security_invoker = true);
+
+              ALTER VIEW vendite.vw_preventivi_riepilogo_iva_dettaglio
+                  SET (security_invoker = true);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER VIEW vendite.vw_preventivi_riepilogo_iva_dettaglio SET (security_invoker = false);
+              ALTER VIEW vendite.vw_preventivi_righe_dettaglio         SET (security_invoker = false);

@@ -4,7 +4,7 @@
 # ------------------------------------------------------------
 # Aggiunge anagrafiche.billing_account.categoria_cliente_id.
 # Nullable in questo step; backfill e SET NOT NULL nel changeSet 20260414-03.
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 4.4.
 # ------------------------------------------------------------
 

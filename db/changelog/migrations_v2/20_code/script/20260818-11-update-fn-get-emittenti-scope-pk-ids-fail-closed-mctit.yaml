@@ -28,7 +28,7 @@
 # I due adapter fn_scope_ef_whitelist_via_* NON si toccano: ereditano, perche'
 # trattano gia' cardinality = 0 come «nessun accesso».
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

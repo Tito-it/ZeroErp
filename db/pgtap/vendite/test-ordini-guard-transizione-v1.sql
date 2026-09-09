@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_ordini_guard_transizione (+ trigger)
 -- ------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-ordini-azioni-data-driven.md
+-- Brief: brief-ordini-azioni-data-driven.md
 -- Enforcement DB-first del grafo transizioni stato ordine letto da
 -- config.transizioni_stati_ordini.
 -- Indice test (1..6):
@@ -38,7 +38,7 @@
 -- controlli che devono impedirla. Il test segue la decisione nuova e diventa
 -- piu' forte: non basta che l'annullamento sia ammesso, deve essere ammesso
 -- SOLO quando non c'e' gia' qualcosa a valle.
--- Brief: docs/it/dev/work-in-progress/brief-db-vie-uscita-operatore.md
+-- Brief: brief-db-vie-uscita-operatore.md
 -- ------------------------------------------------------------
 
 -- Nota emittente: gli ordini passano emittente_fiscale_id esplicito e

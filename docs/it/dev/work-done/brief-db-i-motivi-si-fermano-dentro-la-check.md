@@ -623,3 +623,35 @@ più il commento nel database. Il nome nudo li avrebbe resi tutti inutili.
 ⚠️ **Perché è successo qui**: i changeSet sono stati generati da uno script, e il
 percorso era scritto **una volta** nel modello. Un errore in un template si
 moltiplica per il numero di file, e non lo si vede rileggendone uno.
+
+### 9.4 🔴 `C-2` è stato disfatto un'ora dopo, da un altro cantiere
+
+Il `20260909-11` porta `vendite.fn_escludi_documento_da_giro` sull'helper alle
+**00:27**. Alle **01:30** il `20260909-22` — cantiere
+[il-marcatore-scrive-su-un-documento-uscito](brief-db-il-marcatore-scrive-su-un-documento-uscito.md),
+§4.2 — riscrive la **stessa funzione** per aggiungere la riga di giornale
+dell'uscita, e nel farlo **rimette la coda a mano**.
+
+⛔ **Con la coda torna il difetto che il `C-2` dichiarava di chiudere**: sul
+primo motivo `E_LOTTO_NON_PRE_FISCALE` («*stato attuale: %s*») a video ricompare
+il gruppo del documento al posto dello stato del lotto. Arità giusta, frase
+falsa — la stessa cosa, alla lettera, di §8.3 di quel brief.
+
+⭐ **Lo ha visto il rubinetto**, `P-2`: test 2 (un punto in perimetro con la coda
+a mano, invece di zero) e test 5 (15 funzioni invece di 16). ⇒ *È il presidio che
+conta più della bonifica*, e questa è la prima volta che lo dimostra su un caso
+vero: la bonifica era stata fatta, e senza il rubinetto sarebbe tornata indietro
+in silenzio dopo un'ora.
+
+⚠️ **E il test 5 ha morso perché è un'uguaglianza ESATTA.** Una soglia
+`>= 16` sarebbe stata rossa lo stesso qui, ma il commento che accompagna il test
+lo dice già: quel numero *«scende se una bonifica viene disfatta, sale se
+qualcuno ne bonifica un'altra senza aggiornare questa riga. In entrambi i casi va
+guardato.»* È il caso di sinistra, ed è arrivato tre ore dopo che la riga era
+stata scritta.
+
+✅ **Rimedio**: `20260909-68-update-fn-escludi-documento-da-giro-ripristina-helper`
+— corpo **vivo** (con la riga di giornale del `-22`) e la sola coda sostituita
+dalla chiamata all'helper. 🔴 **Da applicare**: fino ad allora il rubinetto resta
+rosso e la frase resta falsa. Dettaglio, cronologia e misure prima/dopo:
+§8.3 del brief del marcatore.

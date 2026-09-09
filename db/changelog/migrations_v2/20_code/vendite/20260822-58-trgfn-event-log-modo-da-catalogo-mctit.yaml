@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL DISPATCH SMETTE DI ESSERE SCRITTO A MANO — lotto L4
 #   vendite.trgfn_event_log_deriva_scope
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.7
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.7
 #
 # ── ⭐ COSA CAMBIA, E PERCHE' VALE ──────────────────────────────────
 #   Il `CASE NEW.entity_type WHEN 'LOTTO' ... END` sparisce: il modo di

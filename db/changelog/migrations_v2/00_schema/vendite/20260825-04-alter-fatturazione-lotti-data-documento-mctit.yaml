@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-4 — LA DATA DICHIARATA SUL LOTTO
 #   vendite.fatturazione_lotti.data_documento
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-4
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-4
 #   Decisione 3 di Tid (2026-08-25): la regola sta sul registro, con una data
 #   FACOLTATIVA sul lotto che la scavalca.
 #

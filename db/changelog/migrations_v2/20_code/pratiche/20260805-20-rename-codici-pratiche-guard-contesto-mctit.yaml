@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Rinomina a `E_*` dei 4 codici di trgfn_pratiche_guard_contesto — 2o lotto
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.8
+#   Brief: brief-db-codice-errore-strutturato.md §15.8
 #   1o lotto: 20260805-19 · Ritiro dei vecchi nomi: CSV (nessun changeSet)
 #
 #   Quattro codici in una sola funzione, la guard di coerenza del contesto

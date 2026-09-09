@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # ROLL-OUT DEL BERSAGLIO — secondo scaglione, 3 di 3
 #   vendite.fn_genera_scadenze_fattura
-#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 lotto L6
+#   Brief: brief-db-bersaglio-errore.md §6 lotto L6
 #
 # ── IL TEMA DI QUESTO SCAGLIONE: GLI ERRORI DENTRO UN GIRO ──────────
 #   Il primo scaglione aveva convertito errori che nascono da un gesto: apri

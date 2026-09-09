@@ -20,7 +20,7 @@
 #
 # Riferimenti:
 #   - docs/it/linee-guida-sql.md §7c
-#   - docs/it/dev/work-in-progress/automazione-chiusure-scadenze.md
+#   - automazione-chiusure-scadenze.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

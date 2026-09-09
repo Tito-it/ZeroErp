@@ -28,7 +28,7 @@
 # Il UNIQUE INDEX parziale su is_default=TRUE garantisce un solo preset
 # di default per combinazione (dashboard, ambito, profilo, emittente).
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3c/§3.ter
+# Ref: brief-db-dashboard-home.md §3c/§3.ter
 # ------------------------------------------------------------
 
 databaseChangeLog:

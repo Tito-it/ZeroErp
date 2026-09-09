@@ -60,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera()
-IS 'Restituisce una partita IVA VALIDA (checksum verificato da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, per le fixture pgTAP. Serve perche'' il vincolo che faceva collidere le corse dei vecchi test e'' uq_soggetto_idstato_id_fiscale_univoco: con un identificativo fisso la seconda corsa sbatte sul residuo della prima, e dal 2026-01-23 quel residuo non si puo'' piu'' cancellare (dbops.automation_delete_block_ruoli). Vede anche le righe non ancora committate, quindi due chiamate nella stessa transazione danno valori diversi. Brief: work-in-progress/brief-db-bonifica-baseline-pgtap-vendite.md';
+IS 'Restituisce una partita IVA VALIDA (checksum verificato da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, per le fixture pgTAP. Serve perche'' il vincolo che faceva collidere le corse dei vecchi test e'' uq_soggetto_idstato_id_fiscale_univoco: con un identificativo fisso la seconda corsa sbatte sul residuo della prima, e dal 2026-01-23 quel residuo non si puo'' piu'' cancellare (dbops.automation_delete_block_ruoli). Vede anche le righe non ancora committate, quindi due chiamate nella stessa transazione danno valori diversi. Brief: brief-db-bonifica-baseline-pgtap-vendite.md';
 ```
 
 ---

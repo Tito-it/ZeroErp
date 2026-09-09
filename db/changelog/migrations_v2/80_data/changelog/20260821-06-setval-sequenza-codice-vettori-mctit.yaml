@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Allineamento della sequenza dei codici vettore, subito dopo la sua nascita.
-#   Piano: docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md
+#   Piano: analisi-copertura-doc-manual-dbzero.md
 #
 # ── DA DOVE VIENE ───────────────────────────────────────────────────────
 #   `anagrafiche.vettori.codice` e' `NOT NULL` e `UNIQUE`

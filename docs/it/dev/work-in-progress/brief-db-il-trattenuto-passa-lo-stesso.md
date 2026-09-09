@@ -791,6 +791,124 @@ testata bloccata, che vale comunque.
 
 ---
 
+#### 🔴 L6 — I quattro presidi nuovi erano MUTI proprio dove gira la CI
+
+> Trovato il 2026-09-09 sera lanciando la baseline contro `zeroerp_ci`, cioè il
+> database **ricostruito dai changelog**. Su `dbdev` erano tutti e quattro
+> verdi.
+
+```text
+❌ REGRESSIONI — rossi NUOVI, non erano in baseline:
+   test-pull-non-prende-trattenuti-v1.sql            ERRORE_FIXTURE   (P-5)
+   test-specchio-lane-diagnostica-v1.sql             ERRORE_FIXTURE   (P-8)
+   test-vw-commesse-attivita-emittibilita-v1.sql     ERRORE_FIXTURE   (L3)
+   test-vw-lotti-fase-v1.sql                         ERRORE_FIXTURE   (P-9)
+```
+
+**Una sola causa**, identica per tutti e quattro:
+
+```text
+ERRORE: Nessun emittente fiscale attivo: le fixture non hanno su cosa lavorare.
+CONTESTO: funzione PL/pgSQL fn_pgtap_emittente_operatore() riga 55 a RAISE
+```
+
+⛔ **E non è un rosso qualunque: è un ERRORE, quindi il file non esegue NEMMENO
+UNA asserzione.** `pg_prove` stampa `Bad plan. You planned 8 tests but ran 0`.
+La copertura di quei quattro presidi su un database ricostruito valeva **zero**,
+non «parziale».
+
+### Che cosa era successo
+
+Le intestazioni dei quattro file dichiarano tutte, con parole loro, *«i casi si
+costruiscono, non si cercano: su un database ricostruito da zero un testimone
+trovato non esiste»*. **E costruivano tutto — tranne il mondo sotto**: l'emittente
+lo prendevano con `script.fn_pgtap_emittente_sr_operatore()` (che lo **cerca**) e
+il cliente con un `ORDER BY b.id LIMIT 1` su `anagrafiche.billing_account`.
+
+⇒ Su `zeroerp_ci` `anagrafiche` è **vuoto**, e non per un difetto: emittenti,
+soggetti e billing account sono seed di **`dati_macchina`** — nascono dall'uso,
+e un database ricostruito dai changelog non li ha. Misurato quel giorno:
+`emittenti_fiscali` 0 · `auth_user` 0 · `user_emittenti_fiscali` 0 ·
+`billing_account` 0. Il **catalogo** invece c'è tutto (articoli, unità di
+misura, valute, tipi documento, stati commessa): il confine è esattamente
+quello dichiarato in [linee-guida-sql §11.7](/linee-guida-sql).
+
+⭐ **La disciplina era scritta e non applicata fino in fondo.** Non è una svista
+di distrazione: è che «costruire i casi» sembra riferirsi alle *righe di
+dominio* — le commesse, i lotti, le attività — mentre il pezzo che manca è
+sempre lo stesso e sta sotto: **l'azienda e chi ci lavora**.
+
+### Il rimedio, e la sede c'era già
+
+Lo stesso 2026-09-09 questa casa ha costruito i mattoncini che servono, per il
+cantiere del perimetro emittente sui satelliti:
+`dbops.fn_pgtap_crea_emittente_operatore()` (`20260909-26`) e
+`dbops.fn_pgtap_crea_cliente_ba()` (`20260909-31`, terzo argomento dal `-43`).
+⇒ Non c'era niente da inventare: i quattro file **non li usavano**.
+
+| File | Come è stato sanato | Runner |
+| --- | --- | --- |
+| `test-vw-lotti-fase-v1.sql` | costruisce l'azienda e apre il contesto sul suo operatore | **resta `app`** |
+| `test-vw-commesse-attivita-emittibilita-v1.sql` | azienda + cliente costruiti | `owner`, motivato |
+| `test-pull-non-prende-trattenuti-v1.sql` | idem | `owner`, motivato |
+| `test-specchio-lane-diagnostica-v1.sql` | idem | `owner`, motivato |
+
+### ⚠️ Perché tre su quattro passano a `owner`, e uno no
+
+Il primo ha bisogno del **solo emittente**, e quello un operatore lo può
+costruire: resta `app`, quindi continua a esercitare la RLS.
+
+Gli altri tre hanno bisogno anche di un **cliente fatturabile**, e lì
+`dbops.fn_pgtap_crea_cliente_ba` **non gira come `zeroerp_app`** — verificato in
+transazione annullata su entrambi i database:
+
+* l'`INSERT` su `anagrafiche.billing_account` è un `… RETURNING id`, quindi la
+  riga appena scritta va anche **riletta**;
+* la policy di lettura è `fn_scope_ef_whitelist_via_efba(utente, ba)`, cioè
+  «questo BA è legato a un emittente del tuo perimetro?»;
+* ma il legame lo scrive `trg_billing_account_z90_link_ef_ins`, che è un
+  trigger **z90**, cioè *dopo*.
+
+⇒ Al momento del `RETURNING` il legame non esiste ancora e la riga non è
+visibile a chi l'ha appena scritta. ⚠️ Su `zeroerp_ci` il difetto **non si
+vedeva**, perché con un solo emittente il ripiego al gestore di default cade
+sulla stessa azienda: è il caso in cui due database rispondono diverso alla
+stessa domanda, e quello popolato ha ragione.
+
+⛔ **E aprire il contesto prima non risolve, peggiora**: con un operatore in
+sessione il legame lo scrive **anche** il trigger, e i due si scontrano su
+`uq_emittenti_fiscali_ba` — *un BA ha esattamente un emittente*.
+
+⇒ Il marcatore `pgtap-runner: owner` è quello previsto dal **criterio 2** di
+`scripts/testpgtap.sh` (*«la fixture costruisce un mondo che l'operatore non
+deve/può creare»*), ed è la stessa motivazione dei **sei** call-site esistenti
+di quel building block (`db/pgtap/rls/*-satelliti.sql`), che infatti su
+`zeroerp_ci` sono verdi.
+⚠️ **Il costo va detto**: da owner quei tre file non esercitano più la RLS. Non
+è la cosa che verificano — le loro asserzioni filtrano sugli id costruiti, e la
+`security_invoker` delle viste è presidiata da
+`rls/test-rls-viste-security-invoker.sql` — ma è un passo indietro, ed è il
+prezzo di un building block che oggi non ha una via per l'applicazione.
+🔴 **Resta aperto**: se `fn_pgtap_crea_cliente_ba` imparasse a farsi rileggere
+(legame scritto *prima* del `RETURNING`, o nessun `RETURNING`), i tre
+tornerebbero `app` e il marcatore sparirebbe da nove file. È un cantiere suo.
+
+### ⭐ La lezione, e non è «usare il building block»
+
+Un test verde su `dbdev` e un test verde su un database ricostruito **non sono
+la stessa affermazione**, e la differenza non si vede rileggendo il file: si
+vede solo lanciandolo là. Questi quattro *dichiaravano* in intestazione di
+essere costruiti, e la dichiarazione era sincera — semplicemente si fermava un
+livello sopra il punto in cui il database si svuota.
+
+⇒ **Un presidio nuovo si prova sui DUE database prima di dichiararlo fatto**,
+e il comando è già in casa:
+
+```bash
+PGTAP_ENV_FILE=db/internal.ci.env PGTAP_BASELINE=db/pgtap/baseline-rossi-ci.tsv \
+  scripts/pgtap-baseline.sh vendite
+```
+
 ### 8.4 I presidi
 
 ⭐ **Ogni prova ha il suo contrario.** Col solo verso «blocca» passerebbe anche
@@ -860,7 +978,7 @@ del backend: il presidio va dove sta il calcolo. Si appoggia a
 | Censimento del riuso | ✅ fatto — §9 |
 | Decisioni | ✅ **nessuna aperta**: D-1, D-2 e V-1 chiuse in §8.0 |
 | Contratto DB ↔ BE ↔ FE | ✅ scritto per intero — §8.2 |
-| DB | ✅ **L1** (`-51..-55`), **L2** (`-56`, `-57`), **L3** (`-58`..`-63`) e **L4** (`-64`..`-67`) applicati il 2026-09-09, pgTAP verdi · ⚠️ **L4-bis**: un secondo lettore della vista ritirata è emerso dopo l'apply e il suo pgTAP è stato sanato |
+| DB | ✅ **L1** (`-51..-55`), **L2** (`-56`, `-57`), **L3** (`-58`..`-63`) e **L4** (`-64`..`-67`) applicati il 2026-09-09, pgTAP verdi · ⚠️ **L4-bis**: un secondo lettore della vista ritirata è emerso dopo l'apply e il suo pgTAP è stato sanato · 🔴 **L6**: i quattro presidi nuovi erano MUTI su `zeroerp_ci` (fixture che *cercava* emittente e cliente invece di costruirli) — sanati, verdi ora su **entrambi** i database |
 | BE / FE | 🟦 **L4 e L5 scritti** (repository, service, helpers, types, view, locales, test) — ⛔ **non provati sul loro server**: né `vite` né Django girano sul server DB |
 | ⛔ Resta da fare | lanciare la suite Django e la build FE **sul server backend** · il **collaudo a video** |
 

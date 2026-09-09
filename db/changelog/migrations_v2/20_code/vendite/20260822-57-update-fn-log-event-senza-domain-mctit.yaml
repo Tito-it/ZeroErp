@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # SETTE PARAMETRI DIVENTANO SEI — lotto L4
 #   vendite.fn_log_event
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.8
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.8
 #
 #   `20260822-56` toglie la colonna `domain`. Il corpo di questa funzione la
 #   elenca nel proprio INSERT: senza questa revisione fallirebbe **a runtime**

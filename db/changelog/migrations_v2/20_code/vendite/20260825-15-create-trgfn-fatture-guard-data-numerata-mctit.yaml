@@ -9,7 +9,7 @@
 # DB-14 — ⭐ LA PORTA DI SERVIZIO CHE NESSUNO PRESIDIAVA
 #   vendite.trgfn_fatture_guard_data_numerata
 #   + trg_fatture_a10_guard_data_numerata_upd
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-14
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-14
 #
 # ── COME E' SALTATA FUORI ───────────────────────────────────────────
 #   Il brief diceva, di passaggio, che oltre `EMESSA`

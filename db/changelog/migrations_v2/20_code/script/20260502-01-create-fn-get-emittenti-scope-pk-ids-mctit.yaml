@@ -9,7 +9,7 @@
 #
 # Origine: brief preventivi rev2 §9 (sessione 2026-05-01) +
 # analisi pattern SR vs PK 2026-05-02
-# (vedi docs/it/dev/work-in-progress/refactor-emittente-id-canonico.md).
+# (vedi refactor-emittente-id-canonico.md).
 # ------------------------------------------------------------
 
 databaseChangeLog:

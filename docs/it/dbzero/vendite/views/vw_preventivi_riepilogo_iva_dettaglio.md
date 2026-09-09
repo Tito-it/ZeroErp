@@ -5,8 +5,11 @@
 >
 > Riepilogo IVA per preventivo arricchito con codice/descrizione/aliquota IVA e codice natura. Per UI riepilogo IVA del preventivo (simmetrico a quello fatture).
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_preventivi_riepilogo_iva_dettaglio AS
+CREATE OR REPLACE VIEW vendite.vw_preventivi_riepilogo_iva_dettaglio
+WITH (security_invoker=true) AS
 SELECT ri.id,
     ri.preventivo_id,
     ri.iva_id,

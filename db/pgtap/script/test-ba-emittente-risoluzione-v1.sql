@@ -4,7 +4,7 @@
 --
 -- Fase E del cantiere «perimetro emittente», R-5: la risoluzione
 --   «quale emittente fattura questo billing account?»
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+-- Brief: brief-db-perimetro-emittente-fase-e-e-ricerca.md
 --
 -- Elenco test (plan 13):
 --   0) PRECONDIZIONE: esiste almeno un mapping BA->emittente da esercitare

@@ -9,7 +9,7 @@
 # IL BERSAGLIO ARRIVA SULLA SCHEDA SEGNALAZIONI
 #   vendite.fn_list_lotto_segnalazioni
 #   Richiesta del team BE/FE, 2026-08-24 · Brief:
-#   docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §1, §4.3
+#   brief-db-bersaglio-errore.md §1, §4.3
 #
 # ── IL BISOGNO ─────────────────────────────────────────────────────
 #   La scheda Segnalazioni e' dove un errore di fatturazione si legge DOPO —

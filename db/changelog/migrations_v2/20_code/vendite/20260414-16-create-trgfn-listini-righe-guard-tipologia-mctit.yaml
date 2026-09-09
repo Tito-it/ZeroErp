@@ -10,7 +10,7 @@
 # la tipologia dell'articolo (catalogo.articoli.listino_tipologia_id)
 # deve coincidere con la tipologia del listino a cui appartiene la
 # versione in cui viene inserita la riga.
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 7.2.
 # ------------------------------------------------------------
 

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # L'ULTIMO E_GENERICO DI pagamenti — passo P-7 (6 di 6)
 #   pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.0 P-7
 #
 # ── ⭐ NON NASCE UN CODICE NUOVO: SE NE RIUSA UNO ───────────────────────
 #   Questo guard e il ramo finale di

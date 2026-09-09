@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # SCOPE EMITTENTE SULLA UNION script.vw_stato_sorgente
 #   Coppia di 20_code/vendite/20260821-08 (le sei viste di dominio).
-#   Piano: docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md §4/C
+#   Piano: analisi-copertura-doc-manual-dbzero.md §4/C
 #
 # ── PERCHE' SERVE ANCHE QUI, E NON BASTA IL -08 ─────────────────────────
 #   🔴 In PostgreSQL `security_invoker` NON si propaga lungo la catena delle

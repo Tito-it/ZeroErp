@@ -7,6 +7,15 @@
 --       «questa commessa quali documenti alimenta» e' chiamabile da fuori.
 -- ChangeSet: 20260908-18 (la funzione estratta), -19 (la madre la chiama),
 --            -20 (il canale del log accetta il proprietario)
+-- ⭐ REV 2026-09-09, due adeguamenti e vengono da due changeSet diversi:
+--   · il test 7 legge TRE conteggi e non un intero — dal 20260909-20
+--     `fn_segna_esito_gruppo_lotto` e' una `RETURNS TABLE`;
+--   · la fixture fa USCIRE il documento DOPO avergli scritto la critica — dal
+--     20260909-21 `fn_log_pipeline_fase` rifiuta `W` e `C` su un documento gia'
+--     uscito, quindi nato ESCLUSO la riga dei test 11-12 non nascerebbe e i due
+--     sarebbero verdi per sottrazione.
+--   ⚠️ Il secondo si vedeva SOLO dopo aver riparato il primo: l'errore di firma
+--   sul test 7 abortiva il file e i test 8-15 non giravano affatto.
 --
 -- Elenco test (plan 15):
 --   1) la firma che il backend chiamera' esiste, ed e' quella dichiarata
@@ -90,14 +99,24 @@ BEGIN
     INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
     VALUES (v_lotto, 'PGTAP:GK:uscito'), (v_lotto, 'PGTAP:GK:vivo');
 
-    -- Gli esiti: uno gia' fuori dal giro, uno ancora rotto dentro.
+    -- Gli esiti: due documenti rotti dentro il giro.
+    -- ⭐ REV 2026-09-09 — IL PRIMO NASCE ANCORA IN `ERRORE`, E L'ORDINE E' IL
+    --   PUNTO. Dal changeSet 20260909-21 `fn_log_pipeline_fase` RIFIUTA di
+    --   scrivere `W` e `C` su un documento gia' uscito dal giro: nato ESCLUSO,
+    --   la critica del test 11 non si scriverebbe piu' e i test 11-12
+    --   proverebbero il conteggio su una riga che non esiste — verdi per
+    --   sottrazione, cioe' verdi anche se il filtro del conteggio sparisse.
+    -- ⇒ Il documento esce DOPO che la sua critica e' stata scritta (blocco
+    --   $uscita$ piu' sotto), che e' esattamente il modo in cui il pregresso e'
+    --   venuto al mondo: il rubinetto e' chiuso da oggi, le righe di ieri sono
+    --   li'. Il conteggio deve continuare a scartarle, ed e' cio' che l'11
+    --   verifica.
     INSERT INTO vendite.fatturazione_lotti_esiti
-        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio,
-         uscita_motivo)
-    VALUES (v_lotto, 'PGTAP:GK:uscito', 'ESCLUSO', 'E_PULL_COMMESSA',
-            'rotto per la prova', 'uscito per la prova'),
+        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
+    VALUES (v_lotto, 'PGTAP:GK:uscito', 'ERRORE', 'E_PULL_COMMESSA',
+            'rotto per la prova'),
            (v_lotto, 'PGTAP:GK:vivo', 'ERRORE', 'E_PULL_COMMESSA',
-            'ancora rotto', NULL);
+            'ancora rotto');
 END;
 $fixture$;
 
@@ -179,14 +198,25 @@ SELECT throws_ok(
 -- ============================================================
 -- La chiama un gestore d'eccezione: un errore su di se' coprirebbe quello
 -- vero. Le due promesse convivono solo perche' il guard precede la chiamata.
+--
+-- ⭐ REV 2026-09-09 — dal changeSet 20260909-20 la madre torna
+--   `(marcati, usciti, fuori_perimetro)` e i guard di parametro rendono
+--   `0, 0, 0`. Si leggono tutti e tre: qui il rifiuto arriva dal GUARD, e
+--   `0|0|0` lo distingue da «i documenti c'erano ma sono usciti» (`0|N|0`) o
+--   «erano fuori dal perimetro» (`0|0|N`) — che e' la ragione per cui quel
+--   changeSet ha smesso di rispondere con un numero solo.
+-- ⚠️ `SELECT ... FROM fn(...)`: su una `RETURNS TABLE` la forma `fn(...)` in
+--   lista di select consegna la tupla intera in un campo solo, cioe' un valore
+--   plausibile e falso.
 SELECT is(
-    vendite.fn_segna_esito_gruppo_lotto(
+    (SELECT format('%s|%s|%s', marcati, usciti, fuori_perimetro)
+       FROM vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => (SELECT id FROM tmp_lotto),
         p_stato            => 'ERRORE',
         p_commessa_id      => -1,
         p_errore_codice    => 'E_PULL_COMMESSA',
-        p_errore_messaggio => 'commessa non valida'),
-    0,
+        p_errore_messaggio => 'commessa non valida')),
+    '0|0|0',
     '7) la madre non solleva su una commessa non valida: torna 0'
 );
 
@@ -244,8 +274,8 @@ SELECT ok(
 -- ============================================================
 -- 11..12 — ⭐ LA CATENA INTERA, che e' la ragione dei tre changeSet
 -- ============================================================
--- Due critiche scritte DAL CANALE VERO: una del documento gia' uscito, una del
--- giro. Il conteggio deve vedere solo la seconda.
+-- Due critiche scritte DAL CANALE VERO: una del documento che poi uscira', una
+-- del giro. Il conteggio deve vedere solo la seconda.
 DO $critiche$
 BEGIN
     PERFORM vendite.fn_log_pipeline_fase(
@@ -259,6 +289,22 @@ BEGIN
         'E_PULL_COMMESSA');
 END;
 $critiche$;
+
+-- ⭐ E ADESSO il documento esce, con la sua critica gia' scritta: e' la
+--   situazione che il conteggio deve saper leggere. ⛔ In un'istruzione a se',
+--   dopo le critiche: invertire i due blocchi rimetterebbe i test 11-12 a
+--   contare una riga che il rubinetto del -21 non lascia piu' nascere.
+-- ⚠️ `uscita_quando` e `uscita_da` NON si scrivono: le deriva il trigger dalla
+--   GUC. Il motivo si', perche' il CHECK di tabella lo pretende.
+DO $uscita$
+BEGIN
+    UPDATE vendite.fatturazione_lotti_esiti
+       SET stato_esecuzione = 'ESCLUSO',
+           uscita_motivo    = 'uscito per la prova'
+     WHERE lotto_id = (SELECT id FROM tmp_lotto)
+       AND gruppo_key = 'PGTAP:GK:uscito';
+END;
+$uscita$;
 
 SELECT is(
     (SELECT lotto_critical_count

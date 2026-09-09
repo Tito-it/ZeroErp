@@ -4,7 +4,7 @@
 --
 -- Passo 4 (P-1) del cantiere «perimetro emittente»: un singolo albero di
 -- billing account non puo' attraversare due emittenti fiscali.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §3.5, §11.2, §11.3
+-- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §3.5, §11.2, §11.3
 --
 -- Elenco test (plan 8):
 --   0) PRECONDIZIONI: due emittenti distinti + fixture creata

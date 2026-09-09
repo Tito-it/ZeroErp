@@ -36,7 +36,7 @@
 #    solo il commento, quindi non c'e' nessun rischio di regressione su una
 #    funzione che tre chiamanti danno per infallibile.
 #
-# docs/it/dev/work-in-progress/brief-db-note-credito-prerequisiti-be-fe.md §7 C-1
+# brief-db-note-credito-prerequisiti-be-fe.md §7 C-1
 # ------------------------------------------------------------
 
 databaseChangeLog:

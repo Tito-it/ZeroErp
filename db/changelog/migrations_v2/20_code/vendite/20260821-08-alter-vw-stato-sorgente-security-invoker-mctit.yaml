@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # SCOPE EMITTENTE SULLA FAMIGLIA vendite.vw_stato_sorgente_* (6 viste)
-#   Piano: docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md §4/C
+#   Piano: analisi-copertura-doc-manual-dbzero.md §4/C
 #
 # ── IL DIFETTO ──────────────────────────────────────────────────────────
 #   Le sei viste leggono le tabelle documentali che hanno la RLS attiva

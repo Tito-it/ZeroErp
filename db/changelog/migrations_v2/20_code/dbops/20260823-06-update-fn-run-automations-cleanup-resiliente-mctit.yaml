@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # UNA TABELLA CHE RIFIUTA NON FERMA IL GIRO
 #   dbops.fn_run_automations_cleanup
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §1.3
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §1.3
 #   Rilievo di Tid, 2026-08-23, chiudendo il cantiere di event_log.
 #
 # ── 🔴 IL DIFETTO ──────────────────────────────────────────────────

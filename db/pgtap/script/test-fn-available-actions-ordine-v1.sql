@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_ordine — capability data-driven ordine
 -- ------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-ordini-azioni-data-driven.md
+-- Brief: brief-ordini-azioni-data-driven.md
 -- Indice test (1..10):
 -- 1)  Ordine inesistente -> NULL
 -- 2)  DRAFT -> available_actions = 2 (conferma + annulla)

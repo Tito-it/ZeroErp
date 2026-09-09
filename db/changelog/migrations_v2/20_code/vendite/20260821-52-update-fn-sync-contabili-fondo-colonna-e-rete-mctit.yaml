@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL SYNC PASSA ALLA COLONNA, SI DA' UNA RETE E CHIUDE IL FAIL-OPEN
 #   vendite.fn_sync_contabili_fondo_fattura — passi S1-14, S1-8 e C-6 (lotto 3)
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.1 S1-8/S1-14, §1.4 C-2/C-6, §6.8
 #
 # ── TRE MODIFICHE, UNA SOLA FUNZIONE ───────────────────────────────────

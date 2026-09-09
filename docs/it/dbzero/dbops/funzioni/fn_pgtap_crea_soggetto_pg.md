@@ -114,7 +114,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id integer, p_stato_id integer, p_piva text)
-IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: work-in-progress/brief-db-bonifica-baseline-pgtap-vendite.md';
+IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md';
 ```
 
 ---

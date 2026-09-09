@@ -3,7 +3,7 @@
 -- pgTAP — registrazione run job headless: colonne origine/meta + funzioni
 --         script.fn_job_run_start / fn_job_run_end (J1/J2/J3).
 --
--- Vedi: docs/it/dev/work-in-progress/brief-db-job-run-registrazione.md
+-- Vedi: brief-db-job-run-registrazione.md
 --
 -- Copre struttura + happy-path start/end + postura SECURITY DEFINER + REVOKE PUBLIC.
 -- NON copre l'anti-overlap reale: l'advisory lock di sessione e' re-entrant -> due

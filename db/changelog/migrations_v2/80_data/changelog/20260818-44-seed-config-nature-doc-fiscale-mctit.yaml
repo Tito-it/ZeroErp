@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # N1 — il MIRROR del vocabolario delle nature documento
-#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md D-NC-3
+#   brief-design-note-credito-resi.md D-NC-3
 #
 # Tre voci: FATTURA / NOTA_CREDITO / NOTA_DEBITO. Il codice italiano
 # (TD01/TD04/TD05) vive in `meta.sdi_tipo_documento` come parametro di PROFILO

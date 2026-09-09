@@ -9,7 +9,7 @@
 # UNA DISTINTA NATA DA UN ATTO NON STA IN UN LOTTO — passo S4-2 (lotto 7)
 #   pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione
 #   (sostituisce trgfn_vendite_contabili_lotti_guard_compensazione)
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3-bis S4-2 · Decisione: brief madre D15-e
 #
 # ── ⭐ LA REGOLA NON CAMBIA, CAMBIANO IL NOME E IL PERIMETRO ─────────

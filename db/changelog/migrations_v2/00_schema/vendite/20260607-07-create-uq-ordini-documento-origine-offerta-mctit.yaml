@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Univocita' offerta -> ordine (1:1 strutturale e permanente).
-# Brief: docs/it/dev/work-in-progress/brief-db-univocita-offerta-ordine.md
+# Brief: brief-db-univocita-offerta-ordine.md
 #
 # Indice UNIQUE parziale su vendite.ordini (documento_origine_tipo,
 # documento_origine_id) limitato a tipo = 'OFFERTA': un'offerta commerciale

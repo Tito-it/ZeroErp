@@ -5,7 +5,7 @@
 # Aggiorna fn_apply_automazione_overlap con doppio codepath:
 # se range_col IS NOT NULL usa la colonna daterange nativa,
 # altrimenti mantiene il comportamento attuale.
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.4
+# Vedi: migrazione-daterange.md §4.4
 # ------------------------------------------------------------
 
 databaseChangeLog:

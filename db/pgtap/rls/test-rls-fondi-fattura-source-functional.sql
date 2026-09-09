@@ -50,7 +50,7 @@
 -- primo endpoint portale. E' la direzione meno critica: un falso negativo nega
 -- un accesso legittimo, un falso positivo espone i dati di un altro cliente.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md
+-- Piano: brief-db-fondo-fattura-ricalcolo-e-governo.md
 --        §9.9 (G-2) · §9.3 D-20
 -- ------------------------------------------------------------
 

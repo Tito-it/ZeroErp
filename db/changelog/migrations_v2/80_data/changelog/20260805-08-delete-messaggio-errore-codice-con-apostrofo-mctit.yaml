@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Riga morta in config.messaggi_errore: un APOSTROFO in coda al codice
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §7
+#   Brief: brief-db-codice-errore-strutturato.md §7
 #
 #   id 76, codice `E_NOTE_RIGA_MISMATCH'` — con l'apostrofo dentro al codice.
 #   Nessun call site puo' nominarlo: il codice vero e' `E_NOTE_RIGA_MISMATCH`,

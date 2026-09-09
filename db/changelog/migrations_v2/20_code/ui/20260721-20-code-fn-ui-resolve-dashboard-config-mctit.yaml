@@ -33,7 +33,7 @@
 # Deep-link/contatore/soglia (§3f): campi opachi, restituiti freschi da
 # ui.widget (il JSONB preferenza referenzia solo il codice, §3d).
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3/§4
+# Ref: brief-db-dashboard-home.md §3/§4
 # ------------------------------------------------------------
 
 databaseChangeLog:

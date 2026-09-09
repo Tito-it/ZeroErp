@@ -9,7 +9,7 @@
 # BOZZA del template Preventivo sulla forma a SLOT degli indirizzi — l'ultimo
 #   dei sei domini. La pubblicazione e' il changeSet successivo: qui si scrive.
 #   Richiesta del BE del 2026-08-16; sede DB del cantiere:
-#   docs/it/dev/work-in-progress/brief-db-template-preventivo-slot-indirizzi.md
+#   brief-db-template-preventivo-slot-indirizzi.md
 #
 # IL FATTO. Dal merge del BE il context builder del Preventivo espone
 #   `indirizzi` come DICT DI SLOT (`indirizzi.consegna`, `.fatturazione`,

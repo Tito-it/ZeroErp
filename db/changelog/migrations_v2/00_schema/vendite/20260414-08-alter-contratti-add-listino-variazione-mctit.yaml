@@ -7,7 +7,7 @@
 #   - tipo_variazione_globale      (PERCENTUALE | VALORE_FISSO)
 #   - valore_variazione_globale    numeric(10,4)
 #
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 5.1 / 5.3.
 # ------------------------------------------------------------
 

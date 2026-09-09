@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LO SCORPORO PASSA ALLA COLONNA, E LA SUA ASSUNZIONE SI SCRIVE
 #   vendite.fn_saldo_sorgente_fondo — passi S1-14 e S1-9 (lotto 3)
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.1 S1-9/S1-14, §6.8
 #
 # ── S1-14: TERZO E ULTIMO LETTORE DEL LEGAME ───────────────────────────

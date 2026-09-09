@@ -3,7 +3,7 @@
 # Liquibase changelog per Zero ERP
 # ------------------------------------------------------------
 # Migrazione daterange: aggiunge colonna validita a listini_versioni.
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md
+# Vedi: migrazione-daterange.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

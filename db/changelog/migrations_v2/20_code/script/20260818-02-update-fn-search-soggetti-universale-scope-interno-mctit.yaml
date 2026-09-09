@@ -25,7 +25,7 @@
 #    che e' PARALLEL SAFE), perche' lo scope si risolve PRIMA, in una
 #    variabile, e non dentro la query.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

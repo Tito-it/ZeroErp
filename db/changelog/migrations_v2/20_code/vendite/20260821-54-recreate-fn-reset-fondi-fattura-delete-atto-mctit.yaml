@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL RESET CANCELLA CIO' CHE NON E' STATO ESEGUITO — passo S1-17 (lotto 3)
 #   vendite.fn_reset_fondi_fattura
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.1 S1-17 · Decisione: brief madre, D11
 #
 # ── LA REGOLA, IN UNA RIGA ─────────────────────────────────────────────

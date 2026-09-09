@@ -41,7 +41,7 @@
 --   `preventivi_righe` NON HA `riga_nr`, e la colonna `ordine` ha default 0 —
 --   un messaggio che dicesse «la riga 0» non aiuterebbe nessuno.
 --
---   Piano: docs/it/dev/work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md
+--   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     I9 / §R-3 · changeSet 20260829-09 (fn pura), -10 (guard), -11 (capability)
 -- ------------------------------------------------------------
 

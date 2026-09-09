@@ -12,10 +12,8 @@ CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varyi
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: creare per una fixture pgTAP un emittente fiscale nuovo,
---   completo del soggetto persona giuridica e del ruolo EF.
--- Uso:
---   CREATE TEMP TABLE tmp_ef AS
---   SELECT * FROM dbops.fn_pgtap_crea_emittente();
+--   completo del soggetto persona giuridica, del ruolo EF e della
+--   valuta.
 DECLARE
     v_soggetto_id anagrafiche.soggetti.id%TYPE;
     v_sr_id       anagrafiche.soggetti_ruoli.id%TYPE;
@@ -24,11 +22,9 @@ DECLARE
     v_try         integer := 0;
     v_libera      boolean := FALSE;
 BEGIN
-    -- La sigla: se non la impone il chiamante se ne cerca una
-    -- LIBERA. ⚠️ `uq:codice` e' UNIQUE senza filtro su `attivo`,
-    -- quindi una sigla fissa farebbe collidere la seconda corsa
-    -- con il residuo della prima — lo stesso difetto per cui
-    -- esiste dbops.fn_pgtap_piva_libera.
+    -- Sigla LIBERA: `uq:codice` e' UNIQUE senza filtro su
+    -- `attivo`, quindi una sigla fissa farebbe collidere la
+    -- seconda corsa col residuo della prima.
     -- ⚠️ La forma la impone chk_emittenti_fiscali_codice_forma:
     -- solo maiuscole e cifre, da 2 a 10 caratteri.
     IF p_sigla IS NOT NULL THEN
@@ -52,19 +48,25 @@ BEGIN
         END IF;
     END IF;
 
-    -- I due helper aprono e richiudono da soli la finestra dei
-    -- guard differiti, quindi qui non serve toccarla.
     v_soggetto_id := dbops.fn_pgtap_crea_soggetto_pg(
                          'Emittente pgTAP ' || v_codice);
     v_sr_id       := dbops.fn_pgtap_crea_soggetto_ruolo(
                          v_soggetto_id, 'EF'::character varying);
 
-    -- ⭐ Nascendo, l'emittente fa nascere anche i suoi registri di
-    --   numerazione (vendite.fn_provision_registri_emittente): e'
-    --   il percorso reale, e un test che ne avesse bisogno li
-    --   trova gia' pronti.
-    INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice)
-    VALUES (v_sr_id, v_codice)
+    -- ⚠️ `valuta_id` VALORIZZATA (rev 20260909-32).
+    --   `vendite.fn_get_valuta_id` risolve «BA -> EMITTENTE ->
+    --   gestore». Su dbdev regge l'ultimo anello; da zero non ne
+    --   regge nessuno, e il primo documento muore su
+    --   E_CONFIG_MANCANTE.
+    --   ⛔ Il primo anello non basta: quando il resolver gira
+    --   dentro un trigger sull'INSERT del billing account, la
+    --   riga del BA non e' ancora visibile.
+    -- ⭐ Nascendo, l'emittente fa nascere anche i propri registri
+    --   di numerazione (vendite.fn_provision_registri_emittente).
+    INSERT INTO anagrafiche.emittenti_fiscali
+        (soggetto_ruolo_id, codice, valuta_id)
+    VALUES (v_sr_id, v_codice,
+            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1))
     RETURNING id INTO v_ef_id;
 
     RETURN QUERY SELECT v_ef_id, v_codice, v_sr_id, v_soggetto_id;
@@ -72,7 +74,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varying)
-IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera. Ritorna emittente_fiscale_id, emittente_codice, soggetto_ruolo_id, soggetto_id. ⚠️ Da sola NON basta a far vedere l''emittente a un test: il contesto operatore sceglie un utente che abbia gia'' un emittente in config.user_emittenti_fiscali, e su un database ricostruito non ce n''e'' nessuno — per quello serve dbops.fn_pgtap_crea_emittente_operatore. ⭐ Nascendo, l''emittente fa nascere i propri registri di numerazione (vendite.fn_provision_registri_emittente).';
+IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera e la VALUTA valorizzata. ⚠️ La valuta non e'' un di piu'': vendite.fn_get_valuta_id risolve «BA -> emittente -> gestore», e su un database ricostruito dai changelog nessuno dei tre e'' valorizzato — il primo documento morirebbe su E_CONFIG_MANCANTE. Da sola NON basta a far vedere l''emittente a un test: per quello serve dbops.fn_pgtap_crea_emittente_operatore. Rev 20260909-32.';
 ```
 
 ---

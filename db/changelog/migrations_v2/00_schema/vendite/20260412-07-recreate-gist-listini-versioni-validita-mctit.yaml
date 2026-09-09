@@ -5,7 +5,7 @@
 # Migrazione daterange: ricrea il vincolo EXCLUDE USING GIST
 # per listini_versioni usando la colonna validita nativa
 # al posto dell'espressione daterange(valido_dal, ...).
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.5
+# Vedi: migrazione-daterange.md §4.5
 # ------------------------------------------------------------
 
 databaseChangeLog:

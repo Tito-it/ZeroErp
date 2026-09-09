@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # L'IDENTITA' DEL GIRO — L2, prima meta'
 #   vendite.fatturazione_lotti_task_runs.correlation_id
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §1.2 (difetto S3) · Decisione D-7
 #
 # ── 🔴 IL DIFETTO: `correlation_id` NON IDENTIFICA UN GIRO ──────────

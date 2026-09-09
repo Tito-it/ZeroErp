@@ -29,7 +29,7 @@
 --    un giorno qualcuno la riscrivesse, questo test diventa rosso;
 --  - verificare che i due numeri VECCHI rispondano come prima (test 2, 6, 11).
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3-ter S5-1 · lotto 8 · richiesta DB-10 del brief BE/FE (Q-10)
 -- ------------------------------------------------------------
 

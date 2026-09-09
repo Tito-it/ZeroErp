@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BONIFICA — i rimandi ai brief nei COMMENT vivi perdono il percorso.
+#   Precedente puntuale: 20260909-17 (una vista sola). Questo li prende tutti.
+#
+# ── ⛔ IL DIFETTO: ventuno di questi link sono GIA' MORTI ─────────────
+#   Un `COMMENT ON` che cita un documento col percorso della cartella dei
+#   cantieri aperti smette di funzionare il giorno
+#   in cui il cantiere chiude e il brief passa in `work-done/`. Non e' un
+#   rischio futuro: misurato il 2026-09-09, **24 commenti vivi** portano quel
+#   percorso e per **21** di essi il documento e' gia' altrove.
+#     * `brief-db-bersaglio-errore.md`                → work-done  (8 oggetti)
+#     * `brief-db-numerazione-data-documento-e-sequenza.md` → work-done (8)
+#     * `brief-db-bonifica-baseline-pgtap-vendite.md` → work-done  (4)
+#     * `brief-db-event-log-scope-e-riga-parlante.md` → work-done  (1)
+#     * `brief-db-perimetro-emittente-righe-documento.md` → ancora aperto (2)
+#     * `piano-migrazione-primevue-5.md`              → ancora aperto (1)
+#   Le ultime tre righe non sono «a posto»: sono le prossime a morire.
+#
+# ⭐ E questi commenti non stanno solo nel database: `pg_description` e' la
+#   sorgente della doc auto-generata in `docs/it/dbzero/…`, quindi il link rotto
+#   ricompare li'. Non lo si corregge editando un file — serve riscrivere il
+#   commento, cioe' questo changeSet.
+#
+# ── LA REGOLA, ed e' una sola ─────────────────────────────────────────
+#   Si cita il documento per **NOME NUDO**. I brief hanno nomi unici in tutto il
+#   repo: chi legge lo trova con un `grep` in due secondi — che e' comunque
+#   quello che fa, perche' nel frattempo il documento puo' essersi spostato.
+#
+# ── ⚠️ PERCHE' UN CICLO E NON VENTIQUATTRO `COMMENT ON` A MANO ────────
+#   `COMMENT ON` **sostituisce l'intero commento**: scriverli a mano vorrebbe
+#   dire ricopiare ventiquattro testi lunghi, e un carattere perso in copiatura
+#   non lo segnala nessuno. Qui il testo non viene mai riscritto: viene LETTO da
+#   `pg_description` e gli si toglie il prefisso con una `regexp_replace`.
+#   L'unica cosa che cambia e' il percorso.
+#   ⛔ Il ciclo NON e' silenzioso sui casi che non sa esprimere: una specie di
+#   oggetto diversa da funzione / tabella / vista / colonna solleva. Un
+#   `ELSE NULL` avrebbe saltato l'oggetto lasciando il link rotto, e la conta
+#   finale sarebbe stata verde lo stesso.
+#
+# ⚠️ NON e' un cancello: e' una bonifica. Il rubinetto resta la regola scritta
+#   in AGENTS.md e nelle linee guida — nei changeSet il brief si nomina, non si
+#   percorre. Un changeSet futuro che reintroducesse il percorso non verrebbe
+#   fermato da qui.
+#
+# Oggetti toccati (per `grep`, visto che il DDL e' dinamico): dbops.fn_pgtap_cf_libero,
+#   dbops.fn_pgtap_crea_soggetto_pg, dbops.fn_pgtap_crea_soggetto_ruolo,
+#   dbops.fn_pgtap_piva_libera, pratiche.fn_fork_definizione,
+#   pratiche.fn_prendi_in_carico_flusso, script.fn_data_operativa,
+#   script.fn_log_and_raise_error, script.fn_scope_ef_whitelist_via_ordine,
+#   script.fn_scope_ef_whitelist_via_preventivo, script.vw_giornale_entita,
+#   vendite.fn_genera_ddt_da_ordine, vendite.fn_genera_scadenze_fattura,
+#   vendite.fn_get_or_create_lotto, vendite.fn_numera_fattura_opz_emessa,
+#   vendite.fn_push_offerta_a_contratto, vendite.fn_push_preventivo_a_ordine,
+#   vendite.trgfn_fatture_guard_data_numerata, vendite.vw_fatture_lista,
+#   e le colonne di vendite.registri_fatturazione, vendite.fatture,
+#   vendite.fatturazione_lotti, vendite.registri_fatturazione_progressivi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260909-39-comment-rimandi-brief-per-nome-mctit.yaml
+
+  - changeSet:
+      id: 20260909-39-comment-rimandi-brief-per-nome
+      author: mctit
+      runOnChange: false
+      comment: >
+        Bonifica: toglie il prefisso di percorso work-in-progress/ dai rimandi ai
+        brief contenuti nei COMMENT vivi (funzioni, viste, colonne). Ventuno dei
+        ventiquattro puntavano a un documento gia' spostato in work-done. Il
+        testo del commento non viene riscritto: viene letto da pg_description e
+        gli si toglie il solo prefisso.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  r     record;
+                  v_new text;
+                  v_n   integer := 0;
+              BEGIN
+                  -- Scopo: riscrivere ogni COMMENT che cita un brief col
+                  --   percorso, lasciando il solo nome del file.
+                  FOR r IN
+                      SELECT d.classoid, d.objoid, d.objsubid, d.description
+                        FROM pg_description d
+                       WHERE d.description LIKE '%work-in-progress/%'
+                       ORDER BY d.classoid, d.objoid, d.objsubid
+                  LOOP
+                      -- ⚠️ Il testo NON si riscrive: gli si toglie il prefisso.
+                      v_new := regexp_replace(r.description,
+                                              '(docs/it/dev/)?work-in-progress/', '', 'g');
+
+                      IF r.classoid = 'pg_proc'::regclass THEN
+                          EXECUTE format('COMMENT ON FUNCTION %s(%s) IS %L',
+                                         r.objoid::regproc::text,
+                                         pg_get_function_identity_arguments(r.objoid),
+                                         v_new);
+
+                      ELSIF r.classoid = 'pg_class'::regclass AND r.objsubid > 0 THEN
+                          EXECUTE format('COMMENT ON COLUMN %s.%I IS %L',
+                                         r.objoid::regclass::text,
+                                         (SELECT a.attname FROM pg_attribute a
+                                           WHERE a.attrelid = r.objoid
+                                             AND a.attnum   = r.objsubid),
+                                         v_new);
+
+                      ELSIF r.classoid = 'pg_class'::regclass THEN
+                          EXECUTE format('COMMENT ON %s %s IS %L',
+                                         CASE (SELECT c.relkind FROM pg_class c
+                                                WHERE c.oid = r.objoid)
+                                             WHEN 'r' THEN 'TABLE'
+                                             WHEN 'p' THEN 'TABLE'
+                                             WHEN 'v' THEN 'VIEW'
+                                             WHEN 'm' THEN 'MATERIALIZED VIEW'
+                                         END,
+                                         r.objoid::regclass::text,
+                                         v_new);
+                      ELSE
+                          -- ⛔ Si ferma, non salta: un oggetto saltato
+                          --   resterebbe col link rotto e la conta finale
+                          --   sarebbe verde lo stesso.
+                          RAISE EXCEPTION
+                              'bonifica rimandi: specie di oggetto non gestita (classoid=%, objoid=%)',
+                              r.classoid::regclass, r.objoid;
+                      END IF;
+
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RAISE NOTICE 'bonifica rimandi ai brief: % commenti riscritti', v_n;
+              END
+              $bonifica$;
+      rollback:
+        # ⭐ Vuoto DI PROPOSITO: l'unico rollback fedele sarebbe rimettere i
+        #   percorsi, cioe' reintrodurre ventuno link rotti. Non si torna
+        #   indietro da una bonifica di sola documentazione.
+        - empty: {}

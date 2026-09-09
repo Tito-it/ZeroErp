@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # N3 (2/2) — IL LOOKUP E LA INSERT IMPARANO LE STESSE DUE COSE
-#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §15 (N3)
+#   brief-design-note-credito-resi.md §15 (N3)
 #
 #   Gemello obbligatorio di -33. Il commento vivo di questa funzione avverte
 #   gia' del pericolo, ed e' scritto da chi ci era passato:

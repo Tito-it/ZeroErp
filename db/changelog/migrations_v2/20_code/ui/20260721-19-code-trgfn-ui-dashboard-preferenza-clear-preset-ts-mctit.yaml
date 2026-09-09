@@ -20,7 +20,7 @@
 #
 # IS DISTINCT FROM copre: NULL->valore, valore->NULL, valore->valore.
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3.ter
+# Ref: brief-db-dashboard-home.md §3.ter
 # ------------------------------------------------------------
 
 databaseChangeLog:

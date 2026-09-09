@@ -51,7 +51,7 @@
 --    pgTAP gia' verdi, e questo file non lo copriva: e' la ragione per cui i
 --    test 9 e 10 esistono. Correzione in avanti: changeSet 20260822-24.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3 S3-4/S3-5 · Decisione: brief madre D5 · lotto 6
 -- ------------------------------------------------------------
 

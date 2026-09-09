@@ -4,7 +4,7 @@
 -- Test: i due ruoli di pagamenti.centri_riscossione, e il seed dei centri
 --
 -- Presidia i passi P-1 e P-2 del lotto 1 del cantiere incassi
---   (docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0).
+--   (brief-db-posting-e-abbinamento-rata.md §2.0).
 --
 -- ⭐ ASSERISCE IL COMPORTAMENTO, NON L'ESISTENZA DEI VINCOLI. «Il vincolo
 --    esiste» verificherebbe l'ipotesi su CHI impedisce una cosa, non il fatto

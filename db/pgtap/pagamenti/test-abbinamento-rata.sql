@@ -35,7 +35,7 @@
 --  - presidiare che «incassato» non sia «registrato» (test 12): i centri
 --    interni saldano il documento ma in banca non entra niente.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.2 S2-1…S2-8 · Decisioni: brief madre D14-b/c/d/e · lotto 5
 -- ------------------------------------------------------------
 

@@ -27,7 +27,7 @@
 #    due visibilita' diverse — ed e' un'altra ragione per cui la lettura di
 #    billing_account sta dentro una SECURITY DEFINER invece che qui.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

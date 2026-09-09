@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # ROLL-OUT DEL BERSAGLIO — primo scaglione, 1 di 2
 #   vendite.fn_push_offerta_a_contratto
-#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 lotto L6
+#   Brief: brief-db-bersaglio-errore.md §6 lotto L6
 #
 # ── LA COSA CHE QUESTO SCAGLIONE HA INSEGNATO ───────────────────────
 #   ⭐ IL BERSAGLIO NON E' L'ENTITA' NOMINATA NELLA FRASE.

@@ -19,7 +19,7 @@
 #   PREZZO_FISSO: valore                      (prezzo assoluto)
 # Convenzione segno: gestita lato UI/business, nessun CHECK DB.
 #
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 9.
 # ------------------------------------------------------------
 

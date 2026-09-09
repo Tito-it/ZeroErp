@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL GUARD SUI DATI DELL'ATTO — passo S4-1 (lotto 7)
 #   pagamenti.trgfn_sistemazioni_guard_dati
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3-bis S4-1 · Decisione: brief madre D15
 #
 # ── ⭐ TRE REGOLE, TRE LETTORI DIVERSI ───────────────────────────────

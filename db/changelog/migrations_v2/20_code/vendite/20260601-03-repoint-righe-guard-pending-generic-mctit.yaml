@@ -27,7 +27,7 @@
 # Nuovo trigger offerta: nome coerente con i domain-trigger gia' presenti su
 # offerte_commerciali_eccezioni (prefisso trg_offerte_eccezioni_a10_*).
 #
-# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §1.1, §3.3
+# Riferimento: refactor-prezzi-db.md §1.1, §3.3
 # ------------------------------------------------------------
 
 databaseChangeLog:

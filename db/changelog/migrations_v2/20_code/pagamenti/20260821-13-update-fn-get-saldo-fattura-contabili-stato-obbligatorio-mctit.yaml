@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL RAMO CHE RACCONTA UN CASO IMPOSSIBILE, E UN E_GENERICO — passi P-5 e P-7
 #   pagamenti.fn_get_saldo_fattura_contabili
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.0 P-5 (ramo morto) e P-7 (codici errore)
 #
 # ── DUE COSE IN UN CHANGESET, E PERCHE' ─────────────────────────────────

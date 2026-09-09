@@ -31,7 +31,7 @@
 #
 # Raise: E_RIGA_PREZZO_PENDENTE (id 390), gia' usato dalle due copie dedicate.
 #
-# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §1.1, §3.2
+# Riferimento: refactor-prezzi-db.md §1.1, §3.2
 # ------------------------------------------------------------
 
 databaseChangeLog:

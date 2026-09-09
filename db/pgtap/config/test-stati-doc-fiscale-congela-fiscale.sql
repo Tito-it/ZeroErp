@@ -34,7 +34,7 @@
 --   silenzio uno snapshot fiscale. Un `DEFAULT false` sarebbe passato inosservato
 --   in review e avrebbe invertito la direzione di sicurezza.
 --
---   Piano: docs/it/dev/work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md
+--   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     D15 / I10 · changeSet 20260829-03 (colonna + seed) e -04 (funzione)
 -- ------------------------------------------------------------
 

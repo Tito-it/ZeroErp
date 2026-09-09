@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # script.fn_pgtap_emittente_sr_operatore() — terzo helper di contesto pgTAP
-#   Brief: docs/it/dev/work-in-progress/brief-db-pgtap-runner-rls-baseline.md §26
+#   Brief: brief-db-pgtap-runner-rls-baseline.md §26
 #   Compagne: fn_pgtap_set_contesto_operatore (20260805-27),
 #             fn_pgtap_emittente_operatore    (20260805-38)
 #
