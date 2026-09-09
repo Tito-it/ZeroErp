@@ -109,9 +109,18 @@ class LottoGruppiOrdineDiApertura(TestCase):
                     "DELETE FROM vendite.fatturazione_lotti_esiti WHERE lotto_id = %s",
                     [lotto_id],
                 )
+                # ⚠️ SI CHIAMA COME TABLE FUNCTION, e non e' uno stile: dal
+                #    `20260909-20` `fn_segna_esito_gruppo_lotto` ritorna
+                #    `TABLE(marcati, usciti, fuori_perimetro)`, non piu' uno
+                #    scalare. In contesto SELECT scalare il record esce INTERO
+                #    e `fetchone()[0]` restituisce la stringa `('1','0','0')` —
+                #    che non e' 1 e non lo sara' mai, ma nemmeno solleva.
+                # ⭐ Cosi' e' anche il modo in cui la chiama la produzione
+                #    (`pipeline_repository.list_...`, `FROM vendite.fn_...`):
+                #    il test esercita la stessa forma del chiamante vero.
                 cur.execute(
                     """
-                    SELECT vendite.fn_segna_esito_gruppo_lotto(
+                    SELECT marcati FROM vendite.fn_segna_esito_gruppo_lotto(
                         %s, 'ERRORE', %s, NULL, 'E_PULL_COMMESSA',
                         'Prova: documento caduto')
                     """,

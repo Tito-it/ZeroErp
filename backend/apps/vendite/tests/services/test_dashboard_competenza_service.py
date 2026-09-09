@@ -97,6 +97,8 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 5,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "5019.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -110,6 +112,8 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 12,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "8400.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -123,6 +127,8 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 3,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "150.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -139,6 +145,8 @@ _ROWS_DUE_POPOLAZIONI = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 1,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "70.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -156,6 +164,8 @@ _ROWS_BUCKET_SPEZZATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 25,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "924.00",
         "valore_fatturato": "924.00",
         "n_in_ritardo": 0,
@@ -168,6 +178,8 @@ _ROWS_BUCKET_SPEZZATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "ONERE",
         "n_attivita": 1,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "5000.00",
         "valore_fatturato": "5000.00",
         "n_in_ritardo": 0,
@@ -186,6 +198,8 @@ _ROWS_COMPENSAZIONE = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 10,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "1000.00",
         "valore_fatturato": "1000.00",
         "n_in_ritardo": 0,
@@ -198,6 +212,8 @@ _ROWS_COMPENSAZIONE = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 1,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "29.50",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -210,6 +226,8 @@ _ROWS_COMPENSAZIONE = [
         "stato_fattura_codice": None,
         "tipo_movimento": "RETTIFICA",
         "n_attivita": 2,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "-29.50",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -230,6 +248,8 @@ _ROWS_TUTTO_FATTURATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 10,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "1000.00",
         "valore_fatturato": "1000.00",
         "n_in_ritardo": 0,
@@ -242,6 +262,8 @@ _ROWS_TUTTO_FATTURATO = [
         "stato_fattura_codice": "EMESSA",
         "tipo_movimento": "RETTIFICA",
         "n_attivita": 2,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "-29.50",
         "valore_fatturato": "-29.50",
         "n_in_ritardo": 0,
@@ -259,6 +281,8 @@ _ROWS_GENNAIO = [
         "stato_fattura_codice": None,
         "tipo_movimento": "NORMALE",
         "n_attivita": 2,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "300.00",
         "valore_fatturato": "0",
         "n_in_ritardo": 0,
@@ -271,6 +295,8 @@ _ROWS_GENNAIO = [
         "stato_fattura_codice": "DRAFT",
         "tipo_movimento": "NORMALE",
         "n_attivita": 3,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "1000.00",
         "valore_fatturato": "990.00",
         "n_in_ritardo": 1,
@@ -283,6 +309,8 @@ _ROWS_GENNAIO = [
         "stato_fattura_codice": "DEFINITIVA",
         "tipo_movimento": "NORMALE",
         "n_attivita": 4,
+        "n_attivita_trattenute": 0,
+        "valore_trattenuto": "0",
         "valore": "2000.00",
         "valore_fatturato": "2010.50",
         "n_in_ritardo": 0,
@@ -535,6 +563,8 @@ class DashCompetenzaMensileServiceTests(TestCase):
                 "valore_fatturato": "0",
                 "n_in_ritardo": 0,
                 "valore_in_ritardo": "0",
+                "n_attivita_trattenute": 0,
+                "valore_trattenuto": "0",
             }
         ],
     )
@@ -1003,7 +1033,9 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
               ultimo_errore_messaggio=None, ultimo_errore_quando=None,
               ultimo_lotto_codice=None,
               blocco_reason=None, blocco_reason_key=None,
-              blocco_lotto_id=None, blocco_lotto_codice=None):
+              blocco_lotto_id=None, blocco_lotto_codice=None,
+              ultimo_lotto_id=None, ultimo_lotto_stato=None,
+              ultimo_lotto_pre_fiscale=None):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
@@ -1024,6 +1056,15 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             # sopra NON risponde alla stessa domanda — su un lotto ANNULLATO
             # vale `COMPLETED` e il documento e' LIBERO.
             blocco_reason, blocco_reason_key, blocco_lotto_id, blocco_lotto_codice,
+            # ⭐ V-1 (`20260909-66`): il lotto del TENTATIVO esce col suo STATO,
+            # non col solo codice — a video un tentativo dentro un lotto
+            # ANNULLATO si leggeva come uno ancora in corso.
+            # ⛔ `ultimo_lotto_id` NON e' `blocco_lotto_id` qui sopra: quello e'
+            # il lotto che TRATTIENE adesso, questo e' l'ultimo che ci ha
+            # provato — su un lotto annullato il secondo c'e' e il primo no.
+            # I default `None` sono la forma che il database produce su un
+            # gruppo che nessun giro ha ancora lavorato, cioe' il caso normale.
+            ultimo_lotto_id, ultimo_lotto_stato, ultimo_lotto_pre_fiscale,
         )]
 
     # 24-novies) 🟢 IL VERDETTO «TRATTENUTO DA UN LOTTO VIVO» arriva dalla vista
@@ -1779,6 +1820,8 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
  "tipo_movimento": "NORMALE",
             "n_attivita": 9, "valore": "900.00", "valore_fatturato": "900.00",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
+            "n_attivita_trattenute": 0,
+            "valore_trattenuto": "0",
         },
         {
             "competenza_mese": "2026-01-01", "stadio": "DA_EMETTERE",
@@ -1786,6 +1829,8 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
  "tipo_movimento": "NORMALE",
             "n_attivita": 3, "valore": "300.00", "valore_fatturato": "0",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
+            "n_attivita_trattenute": 0,
+            "valore_trattenuto": "0",
         },
         {
             "competenza_mese": "2026-01-01", "stadio": "EMESSA_NON_FATTURATA",
@@ -1793,6 +1838,8 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
  "tipo_movimento": "NORMALE",
             "n_attivita": 5, "valore": "500.00", "valore_fatturato": "0",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
+            "n_attivita_trattenute": 0,
+            "valore_trattenuto": "0",
         },
     ]
 
@@ -1997,6 +2044,8 @@ class CardResiduiTests(TestCase):
                 "n_in_ritardo": 0,
                 "valore_in_ritardo": "0",
                 "motivo_non_fatturata": "RESIDUO",
+                "n_attivita_trattenute": 0,
+                "valore_trattenuto": "0",
             },
         ],
     )
@@ -2007,3 +2056,50 @@ class CardResiduiTests(TestCase):
         # Lo stesso segno del `valore` accanto a cui viene reso.
         self.assertEqual(card["valore_residui"], "-500.00")
         self.assertEqual(card["valore_residui"], card["valore"])
+
+    # Scopo: LA QUOTA TRATTENUTA DA UN GIRO IN CORSO arriva alla card, e ci
+    #        arriva DICHIARATA — non sottratta una seconda volta.
+    # ⛔ Il presidio serve perche' senza di lui questo file e' verde per
+    #    SOTTRAZIONE: dal 2026-09-09 il servizio aggrega `n_attivita_trattenute`
+    #    e `valore_trattenuto`, ma ogni fixture qui dentro li porta a ZERO —
+    #    quindi le due righe girano e non provano niente. Uno scambio fra le due
+    #    (`n_trattenute += valore_trattenuto`) passerebbe tutto il resto.
+    # ⭐ E l'asserzione che conta davvero e' la terza: `n_attivita` NON si
+    #    riduce. Il `FILTER` sta nella VISTA, quindi la quota arriva gia'
+    #    esclusa dal totale; se qui si sottraesse ancora, il totale mostrerebbe
+    #    meno righe di quante ne esistono — e a video sarebbe un numero
+    #    plausibile, cioe' un difetto che nessuno nota.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "count_dash_competenza_errori_mensile", return_value={},
+    )
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=[
+            {
+                "competenza_mese": "2026-07-01",
+                "stadio": "DA_EMETTERE",
+                "stato_fattura_codice_interno": None,
+                "stato_fattura_codice": None,
+                "tipo_movimento": "NORMALE",
+                "n_attivita": 5,
+                "valore": "500.00",
+                "valore_fatturato": "0",
+                "n_in_ritardo": 0,
+                "valore_in_ritardo": "0",
+                "n_attivita_trattenute": 2,
+                "valore_trattenuto": "200.00",
+            },
+        ],
+    )
+    def test_la_quota_trattenuta_arriva_alla_card_e_non_si_sottrae(
+        self, _mock_rows, _mock_err,
+    ):
+        luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
+        card = next(s for s in luglio["stadi"] if s["stadio"] == "DA_EMETTERE")
+        self.assertEqual(card["n_trattenute"], 2)
+        self.assertEqual(card["valore_trattenuto"], "200.00")
+        # ⛔ Il totale resta quello della vista: la quota e' gia' esclusa la'.
+        self.assertEqual(card["n_attivita"], 5)
+        self.assertEqual(card["valore"], "500.00")
