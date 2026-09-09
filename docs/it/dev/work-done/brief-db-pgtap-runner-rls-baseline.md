@@ -3010,3 +3010,77 @@ sorveglierebbe un passo che lo script fa da sé. Il quarto è una divergenza
 binaria: sorvegliarlo vorrebbe dire confrontare due schemi, che è un altro
 mestiere. Resta dichiarato, ed è il candidato successivo se costerà un'altra
 indagine.
+
+---
+
+## 34. ⛔ Il rubinetto vero: era lo SCRIPT a suggerire l'aggiornamento sbagliato (2026-09-09)
+
+> **Come è emerso**: dodici finte regressioni sulla CI, tutte su
+> utenti/identità/profili. Non un difetto nuovo: dodici righe **sparite dal
+> registro**.
+
+Il commit che le ha tolte ha eseguito `--update` sulla baseline della CI
+**misurando lo scratch locale**:
+
+```text
+28 righe tolte · 16 rimesse col solo cambio di causa (ERRORE_FIXTURE → ASSERZIONE)
+= 12 davvero cadute  ⇒  esattamente le 12 che GitHub segnala
+```
+
+⚠️ **E non è stato un gesto arbitrario: lo script lo aveva chiesto.** Sulla riga
+dei RIENTRATI stampava
+
+```text
+✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:
+   → PGTAP_ENV_FILE=… PGTAP_BASELINE=db/pgtap/baseline-rossi-ci.tsv … --update
+```
+
+*«ora verdi»* voleva dire **verdi QUI**. Il comando era anche corretto nel senso
+del §24-bis — porta il proprio contesto, quindi non finisce sul database
+sbagliato — ma la **coppia** che porta è essa stessa il difetto: la baseline
+della CI misurata su uno scratch. ⇒ *Un suggerimento è un'istruzione: se lo
+strumento lo stampa, prima o poi qualcuno lo esegue, ed è successo tre volte in
+un giorno.*
+
+### 34.1 Il cancello, e perché il discriminante è `GITHUB_ACTIONS`
+
+`--update` su `baseline-rossi-ci.tsv` fuori dalla CI **esce 2 prima di
+eseguire**, con la valvola dichiarata `PGTAP_BASELINE_CI_FORZA=1`.
+
+⭐ Il segnale è **diretto**: `GITHUB_ACTIONS` lo imposta il runner di GitHub e
+dice ciò che serve sapere — *«questa corsa È la CI»*.
+⛔ Non si indovina dal nome del database né dell'env file: sono convenzioni, e
+una convenzione la si rispetta finché non la si dimentica.
+⚠️ Scartata anche la sonda «`django.django_migrations` è vuota ⇒ schema
+copiato ⇒ non è la CI» (0 sullo scratch, 30 su `dbdev`): misura *una* delle
+differenze, non il fatto. Resta buona come **spiegazione** nel messaggio, non
+come cancello.
+
+### 34.2 E il suggerimento si adatta al bersaglio
+
+Sulla baseline della CI, fuori dalla CI, la riga dei RIENTRATI non consegna più
+un comando: dice che quei file sono verdi **qui** e che potrebbero essere rossi
+**là**. È la metà che mancava — un cancello che vieta e uno strumento che
+continua a suggerire la cosa vietata sono due messaggi contrari.
+
+### 34.3 ⭐ Perché proprio quei dodici
+
+`crea-auth-user`, `is-super-admin`, `profili-accesso`, `uo-id-for-user`,
+`emittenti-scope`, `setup-status`… tutti su **utenti, identità e profili**: è
+l'asse **schema `django`**, l'unico dei quattro rimasto senza cancello.
+
+| | `dbdev` | `zeroerp_ci` | CI |
+| --- | --- | --- | --- |
+| come nasce `django` | `manage.py migrate` | **`pg_dump` da `dbdev`** | `manage.py migrate` |
+| `django_migrations` | 30 | **0** | popolata |
+
+⇒ Resta dichiarato e senza cancello, ma da oggi **non serve più uno**: la
+baseline della CI non si può più scrivere da qui, che era l'unico modo in cui
+quella differenza faceva danno.
+
+### 34.4 Un difetto di contorno, corretto in due file
+
+`-h` stampava un intervallo di righe **inchiodato** (`2,81` qui, `2,73` in
+`ci-local.sh`): allungando l'intestazione l'aiuto troncava in silenzio la coda —
+ed entrambe le intestazioni sono cresciute oggi. Adesso l'ultima riga si
+calcola dal `set -uo pipefail`.

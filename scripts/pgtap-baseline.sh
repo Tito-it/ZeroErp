@@ -82,10 +82,14 @@
 # EXIT CODE
 #   0 = nessuna regressione (eventuali rientri sono solo segnalati)
 #   1 = almeno un rosso nuovo
-#   2 = la corsa NON e' partita: il metro non e' omogeneo (runner diverso da
-#       quello registrato in baseline, oppure automazioni non applicate) o il
-#       perimetro non esiste. ⭐ Si esce PRIMA di eseguire: scoprirlo dopo
-#       costerebbe i sette minuti della suite e consegnerebbe finte regressioni.
+#   2 = la corsa NON e' partita. Tre cause, tutte di METRO:
+#         · runner diverso da quello registrato in baseline;
+#         · automazioni (`ci_apply`) non applicate su questo database;
+#         · `--update` su `baseline-rossi-ci.tsv` fuori dalla CI — la scrive la
+#           CI, e la valvola dichiarata e' PGTAP_BASELINE_CI_FORZA=1.
+#       (piu' il perimetro inesistente, che non e' di metro).
+#       ⭐ Si esce PRIMA di eseguire: scoprirlo dopo costerebbe i sette minuti
+#       della suite e consegnerebbe finte regressioni.
 #
 # Tempo: ~1s per file. La suite intera (~400 file) richiede circa 7 minuti;
 # restringere agli schemi toccati e' quasi sempre sufficiente.
@@ -109,7 +113,11 @@ SCHEMI=()
 for arg in "$@"; do
   case "$arg" in
     --update) UPDATE=1 ;;
-    -h|--help) sed -n '2,81p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    # ⚠️ L'ultima riga si CALCOLA. Inchiodata a 81 l'aiuto troncava in silenzio
+    #   la coda dell'intestazione ogni volta che qualcuno la allungava — e
+    #   l'intestazione e' cresciuta due volte oggi. Stessa correzione fatta in
+    #   scripts/ci-local.sh, per lo stesso motivo.
+    -h|--help) sed -n "2,$(($(grep -n '^set -uo pipefail' "${BASH_SOURCE[0]}" | head -1 | cut -d: -f1) - 1))p" "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     -*) echo "Opzione sconosciuta: $arg" >&2; exit 2 ;;
     *) SCHEMI+=("$arg") ;;
   esac
@@ -232,6 +240,47 @@ elif [ "$AUTOMAZIONI" -eq 3 ]; then
   #   primo file e con un messaggio piu' preciso di questo. Un cancello che
   #   ferma tutto su «non ho potuto chiedere» nasce rosso e viene spento.
   echo "⚠️  Non ho potuto verificare la passata delle automazioni (database non raggiungibile?)." >&2
+fi
+
+# ⛔ LA BASELINE DELLA CI LA MISURA LA CI — e adesso e' un cancello.
+#   `baseline-rossi-ci.tsv` e' il registro dei rossi della CORSA DI GITHUB. Un
+#   `--update` fatto altrove ci scrive dentro la misura di un ALTRO database, e
+#   ogni file verde qui e rosso la' sparisce dal registro: alla corsa successiva
+#   torna come «regressione», e non perche' si sia rotto qualcosa.
+#
+# ⚠️ NON E' UN ERRORE DI CHI LO LANCIA: fino al 2026-09-09 era questo script a
+#   suggerirlo. Sulla riga dei RIENTRATI stampava «vanno tolti dalla baseline»
+#   e consegnava il comando gia' pronto — su un database che quella baseline non
+#   la misura. Successo tre volte in un giorno: prima un file, poi la sua
+#   re-inserzione, poi dodici insieme.
+#
+# ⭐ Il discriminante e' DIRETTO: `GITHUB_ACTIONS` lo imposta il runner di
+#   GitHub, e dice cio' che serve sapere — «questa corsa E' la CI». ⛔ Non si
+#   indovina dal nome del database o dell'env file: sono convenzioni, e una
+#   convenzione la si rispetta finche' non la si dimentica.
+#   ⚠️ E il perche' i due database non coincidono e' misurato: lo schema
+#   `django` in CI lo costruisce `manage.py migrate`, sullo scratch locale e'
+#   una COPIA di `dbdev` (`ci-local.sh` lo dichiara: «e' fedele oggi, e
+#   invecchia in silenzio»). Sono i dodici file su utenti/identita'/profili.
+#
+# La valvola c'e', ed e' esplicita: chi rigenera di proposito sa cosa sta
+# facendo e lo scrive.
+if [ "$UPDATE" -eq 1 ] \
+   && [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \
+   && [ "${GITHUB_ACTIONS:-}" != "true" ] \
+   && [ "${PGTAP_BASELINE_CI_FORZA:-}" != "1" ]; then
+  echo "❌ La baseline della CI si aggiorna DALLA CI, non da qui." >&2
+  echo "   Questo file registra i rossi della corsa di GitHub: riscriverlo con" >&2
+  echo "   la misura di un altro database toglie le righe che qui sono verdi e" >&2
+  echo "   la' no, e alla corsa successiva tornano come finte regressioni." >&2
+  echo >&2
+  echo "   Se un file e' RIENTRATO davvero, lo dira' la CI: la sua corsa lo" >&2
+  echo "   elenca, e la riga si toglie a mano da $BASELINE." >&2
+  echo "   Per rigenerarla per intero: cancella il file e lascia che la CI la" >&2
+  echo "   stampi (il passo della suite la genera fra due marcatori 8<)." >&2
+  echo >&2
+  echo "   So cosa sto facendo: PGTAP_BASELINE_CI_FORZA=1" >&2
+  exit 2
 fi
 
 TOT=$(echo "$FILES" | grep -c '' )
@@ -385,9 +434,22 @@ echo "Rossi ora: $ROSSI su $TOT   |   noti in baseline (perimetro): $(grep -c ''
 echo
 
 if [ -n "$RIENTRATI" ]; then
-  echo "✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:"
-  echo "$RIENTRATI" | sed 's/^/   /'
-  echo "   → $(invocazione --update ${SCHEMI[*]:-})"
+  # ⛔ IL SUGGERIMENTO SI ADATTA AL BERSAGLIO, e non e' una sfumatura: e' la
+  #   riga che ha causato il difetto tre volte. Su `baseline-rossi-ci.tsv`
+  #   misurata fuori dalla CI, «ora verdi» vuol dire «verdi QUI»: consegnare il
+  #   comando di aggiornamento invita a scrivere la misura di questo database
+  #   nel registro di un altro.
+  if [ "$(basename "$BASELINE")" = "baseline-rossi-ci.tsv" ] \
+     && [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+    echo "ℹ️  Verdi QUI, e questa non e' la CI — potrebbero essere rossi la':"
+    echo "$RIENTRATI" | sed 's/^/   /'
+    echo "   ⛔ Non si aggiorna da qui: $(basename "$BASELINE") registra i rossi"
+    echo "      della corsa di GitHub. Se sono rientrati davvero, lo dira' la CI."
+  else
+    echo "✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:"
+    echo "$RIENTRATI" | sed 's/^/   /'
+    echo "   → $(invocazione --update ${SCHEMI[*]:-})"
+  fi
   echo
 fi
 

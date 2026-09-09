@@ -16,6 +16,9 @@ db/pgtap/anagrafiche/test-contatti-soggetto-cliente.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-conti-bancari-istanza-cascata.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-conto-incasso-un-solo-soggetto.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql	ASSERZIONE
+db/pgtap/anagrafiche/test-emittente-denominazione-da-soggetto-v1.sql	ERRORE_FIXTURE
+db/pgtap/anagrafiche/test-emittenti-fiscali-codice-forma.sql	ASSERZIONE
+db/pgtap/anagrafiche/test-fn-crea-auth-user.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test_fn_get_conto_bancario_predefinito.sql	ASSERZIONE
@@ -63,6 +66,7 @@ db/pgtap/config/test-stati-doc-fiscale-congela-fiscale.sql	ERRORE_FIXTURE
 db/pgtap/config/test-user-emittenti-fiscali-immutable.sql	ERRORE_FIXTURE
 db/pgtap/dbops/test-coda-archiviazione.sql	ERRORE_FIXTURE
 db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql	ASSERZIONE
+db/pgtap/dbops/test-processi-jobname-wrapper.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-generati-eventi.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-generati-file.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-generati.sql	ERRORE_FIXTURE
@@ -149,16 +153,22 @@ db/pgtap/script/test-fn-check-ultimo-super-admin-attivo.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-check-user-can-create-ba.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-crea-utente-tecnico.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-disdetta-cliente.sql	ERRORE_FIXTURE
+db/pgtap/script/test-fn-get-emittenti-scope-pk-ids-and-parity.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-operatore-detail.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-parameter-full-emittente.sql	ASSERZIONE
+db/pgtap/script/test-fn-get-profili-accesso-applicabili-overload.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-profili-accesso-applicabili.sql	ERRORE_FIXTURE
+db/pgtap/script/test-fn-get-setup-status.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-soggetto-dati-and-user-profile.sql	ERRORE_FIXTURE
+db/pgtap/script/test-fn-get-uo-id-for-user.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-user-emittenti-scope.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-get-user-profile-guc-aware.sql	ERRORE_FIXTURE
+db/pgtap/script/test-fn-is-super-admin-operatore-only.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-is-super-admin.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-list-parameters-for-user.sql	ASSERZIONE
 db/pgtap/script/test-fn-raise-primo-motivo-se-presente-v1.sql	ASSERZIONE
 db/pgtap/script/test-fn-resolve-emittente-for-user.sql	ERRORE_FIXTURE
+db/pgtap/script/test-fn-resolve-regression-operatore.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-riattiva-utente-tecnico.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-scope-ba-ownership.sql	ASSERZIONE
 db/pgtap/script/test-fn-scope-cliente-ownership.sql	ASSERZIONE
@@ -177,6 +187,7 @@ db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ERRORE_FIXTURE
 db/pgtap/script/test-vw-giornale-entita.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-fn-resolve-dashboard-config.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-fn-resolve-lista-config-contatore-colonne-nuove-v1.sql	ASSERZIONE
+db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-fn-resolve-lista-config.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql	ASSERZIONE
 db/pgtap/vendite/contratti/test_fn_successione_contratti.sql	ERRORE_FIXTURE
@@ -340,6 +351,7 @@ db/pgtap/vendite/test-preventivi-righe-guard-natura-ricorrente-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-push-list-gia-inviato-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-registri-log-orario-reale.sql	ERRORE_FIXTURE
+db/pgtap/vendite/test-registri-motore-trasloco-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-registri-per-emittente-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-registri-progressivi.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-registro-forma-numero-immutabile-v1.sql	ERRORE_FIXTURE
