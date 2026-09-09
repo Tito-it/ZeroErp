@@ -44,6 +44,7 @@ from apps.vendite.db._data_documento_sql import (
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
     EsclusioneDocumentoDaGiroResult,
+    EsitoMarcaturaGruppi,
     EsitoDataDocumento,
     EliminaFatturaDaLottoResult,
     LottoPipelineMeta,
@@ -3568,11 +3569,19 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         commessa_id: int | None = None,
         errore_codice: str | None = None,
         errore_messaggio: str | None = None,
-    ) -> int:
+    ) -> EsitoMarcaturaGruppi:
+        # ⛔ `SELECT * FROM`, non `SELECT fn(...)`: dal changeSet `20260909-20`
+        #    la funzione e' una `RETURNS TABLE` a TRE colonne, e chiamata come
+        #    scalare consegnerebbe la tupla intera in un campo solo — un valore
+        #    plausibile e sbagliato, non un errore.
+        # ⭐ TRE numeri perche' lo zero del marcatore aveva tre cause e ne
+        #    raccontava una: nessun documento appeso, tutti gia' usciti dal
+        #    giro, oppure fuori dal perimetro di questo lotto.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT vendite.fn_segna_esito_gruppo_lotto(
+                SELECT marcati, usciti, fuori_perimetro
+                FROM vendite.fn_segna_esito_gruppo_lotto(
                     p_lotto_id         => %s,
                     p_stato            => %s,
                     p_gruppo_key       => %s,
@@ -3583,4 +3592,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 [lotto_id, stato, gruppo_key, commessa_id,
                  errore_codice, errore_messaggio],
             )
-            return int(fetchone_scalar(cursor) or 0)
+            row = cursor.fetchone()
+        # ⚠️ Nessuna riga non capita — la funzione ne torna sempre una — ma lo
+        #    zero e' la risposta sicura: fa scattare l'avviso del chiamante
+        #    invece di far passare un giro muto.
+        if not row:
+            return {"marcati": 0, "usciti": 0, "fuori_perimetro": 0}
+        return {
+            "marcati": int(row[0] or 0),
+            "usciti": int(row[1] or 0),
+            "fuori_perimetro": int(row[2] or 0),
+        }

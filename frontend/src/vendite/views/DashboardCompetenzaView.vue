@@ -24,6 +24,7 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import NumerazioneDataDialog from '../components/NumerazioneDataDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import {
   exportDashboardCompetenzaCommesse,
@@ -177,6 +178,15 @@ const { nomiMesi, competenzaCorrente, selezionaMese, cambiaAnno, stepMese } = us
     // percorso futuro che riapre la lista senza passare da selezionaStadio
     // per fatturare, col mese nuovo, i gruppi del mese vecchio.
     azzeraStatoGruppi()
+    // ⭐ E ULTIMO, dopo TUTTI i reset, si riapre sulla card di default: il mese
+    //    nuovo si presenta come quello vecchio, con davanti la lista che si
+    //    lavora.
+    // ⛔ L'ordine non è estetico: qui sopra si azzera, e aprire prima
+    //    significherebbe caricare una lista e poi passarle sopra l'azzeramento.
+    //    Oggi `azzeraStatoGruppi` tocca la sola selezione e non farebbe danno —
+    //    ma è una riga che può crescere, e allora il difetto sarebbe una fetch
+    //    che sparisce senza fallire.
+    apriStadioDefault()
   },
   onAnnoChange: loadMensile,
 })
@@ -401,7 +411,10 @@ const commesseSection = ref(null)
 //    un'informazione, non un motivo per cambiare la forma della pagina.
 const TAB_AREA = 'area'
 const TAB_ERRORI = 'errori'
-const tabAttiva = ref(TAB_ERRORI)
+// ⭐ SI APRE SULL'AREA, non sugli errori (Tid, 2026-09-09). Vedi
+//    `apriStadioDefault`: adesso una card è sempre scelta, quindi il tab
+//    dell'area ha sempre qualcosa da mostrare — che è la premessa che mancava.
+const tabAttiva = ref(TAB_AREA)
 
 // Scopo: click sul corpo di una card = SELEZIONE ESCLUSIVA dello stadio.
 //
@@ -421,6 +434,28 @@ const tabAttiva = ref(TAB_ERRORI)
 // ⛔ Senza ricaricare, pero': una fetch sulla card gia' scelta perderebbe
 //    pagina, ordinamento, filtri e le spunte gia' messe dall'operatore, che e'
 //    lavoro suo — e su «Da emettere» sono le righe che sta per fatturare.
+// Scopo: ⭐ LA CARD CHE SI APRE DA SOLA — «Da emettere» (Tid, 2026-09-09).
+//
+// ⭐ Perché quella: è l'unica card AZIONABILE del funnel — è lì che si preme
+//    «Fattura» — ed è la domanda con cui si apre un mese di competenza. Le
+//    altre si guardano; questa si lavora.
+// ⚠️ `STADIO_GRUPPI` **è** `'DA_EMETTERE'`: si usa la costante e non il
+//    letterale, che in questo file compare già scritto a mano due volte.
+//
+// ⛔ NON passa da `selezionaStadio`, e la differenza è una sola riga: quella
+//    fa `scrollIntoView`, giusto dopo un CLICK e sbagliato all'apertura o al
+//    cambio mese — la pagina scenderebbe da sola sotto le card che l'operatore
+//    stava guardando.
+// ⚠️ Idempotente: se una card è già scelta non la sostituisce. Serve perché
+//    `onActivated` scatta a ogni rientro in foreground, e la scelta
+//    dell'operatore è sua (memoria feedback_keepalive_onactivated).
+function apriStadioDefault() {
+  if (stadioSelezionato.value) return
+  stadioSelezionato.value = STADIO_GRUPPI
+  tabAttiva.value = TAB_AREA
+  loadDrillDown()
+}
+
 function selezionaStadio(stadio) {
   const cambiaStadio = stadioSelezionato.value !== stadio
   if (cambiaStadio) {
@@ -453,12 +488,14 @@ watch([competenzaCorrente, mesi], () => {
   }
 })
 
-// Cambiando mese nessuna area resta selezionata (`onMeseChange` azzera il
-// drill-down): il tab dell'area mostrerebbe il vuoto. Si torna agli errori,
-// che e' il modo in cui il mese si apre.
-watch(competenzaCorrente, () => {
-  tabAttiva.value = TAB_ERRORI
-})
+// ⛔ QUI C'ERA UN `watch` CHE RIPORTAVA AL TAB ERRORI a ogni cambio mese, e la
+//    sua ragione era scritta: «nessuna area resta selezionata, il tab dell'area
+//    mostrerebbe il vuoto». ⭐ Quella premessa non c'è più — `apriStadioDefault`
+//    ne sceglie sempre una — e una regola che sopravvive alla propria ragione
+//    combatte con chi l'ha sostituita: il tab sarebbe tornato agli errori
+//    subito dopo che il default ha aperto l'area.
+// ⚠️ Gli errori non si perdono: il badge del mese resta acceso e il tab è a un
+//    click (rilievo di Tid, 2026-09-09).
 
 // Scopo: toggle filtro recuperi tardivi del drill-down (riparte da pagina 1).
 function onSoloRitardoChange() {
@@ -498,6 +535,43 @@ function isGruppoEmittibile(row) {
   return row.commessa_emittibile !== false
 }
 
+// Scopo: ⭐ IL DOCUMENTO È TRATTENUTO DA UN LOTTO VIVO — il verdetto arriva in
+//        riga (`20260909-24`), non si ricava qui.
+//
+// ⛔ E NON SI RICAVA DA `ultimo_esito`, che sembrava bastare e risponde giusto
+//    PER CASO: misurato il 2026-09-08, due documenti su tre in `DA_EMETTERE`
+//    avevano `COMPLETED` col lotto ANNULLATO — cioè erano liberi. Dedurlo qui
+//    avrebbe tenuto bloccato per sempre il contenuto di ogni lotto annullato,
+//    e sarebbe stata la seconda sede di «questo documento è in gioco?».
+// ⚠️ `labelOrCode` e non `t()` secco: il vocabolario dei motivi vive a
+//    database ed è estensibile — una chiave che i locales non conoscono ancora
+//    mostra il codice grezzo invece del vuoto.
+function motivoTrattenuto(row) {
+  if (!row.emissione_blocco_reason) return undefined
+  return labelOrCode(
+    t, te, row.emissione_blocco_reason_key, row.emissione_blocco_reason,
+  )
+}
+
+// Scopo: si può PRENDERE questa riga per fatturarla? Due blocchi diversi, e
+//        vanno tenuti distinti perché hanno due vie d'uscita diverse: la
+//        testata non emittibile si sblocca cambiando stato alla commessa, il
+//        documento trattenuto si sblocca togliendolo dal giro del suo lotto.
+function isGruppoPrendibile(row) {
+  return isGruppoEmittibile(row) && !row.emissione_blocco_reason
+}
+
+// Scopo: il lotto che trattiene, come BERSAGLIO. ⭐ La frase dice cosa fare, il
+//        bersaglio ci porta: senza, l'operatore ricopia un codice e poi lo
+//        cerca a mano.
+// ⛔ Elenco vuoto quando non c'è: `BersaglioAzioni` non disegna niente — mai un
+//    pulsante che porta in un vicolo cieco (§4.3).
+function bersagliLottoTrattiene(row) {
+  return row.emissione_blocco_lotto_id
+    ? [{ type: BERSAGLIO_TIPI.LOTTO, id: row.emissione_blocco_lotto_id }]
+    : []
+}
+
 // Gruppi attualmente IN LAVORAZIONE, per GIRO: `jobId → gruppo_key[]`.
 // ⭐ La macchina (mappa per giro + sostituzione invece di mutazione, con le due
 //    trappole che ne sono la ragione) e' stata estratta il 2026-08-27 nel BB
@@ -520,7 +594,7 @@ const {
 // riportandolo come «non servito» per una ragione che non e' un problema.
 const gruppiSelezionabili = computed(
   () => gruppi.value.filter(
-    (row) => isGruppoEmittibile(row) && !gruppiInCorso.value.has(row.gruppo_key),
+    (row) => isGruppoPrendibile(row) && !gruppiInCorso.value.has(row.gruppo_key),
   ),
 )
 
@@ -561,7 +635,13 @@ const {
 watch([gruppi, gruppiInCorso], ([rows]) => {
   const nonSelezionabili = new Set(
     (rows ?? [])
-      .filter((r) => !isGruppoEmittibile(r) || gruppiInCorso.value.has(r.gruppo_key))
+      // ⚠️ `isGruppoPrendibile` e non `isGruppoEmittibile`: dal 2026-09-09 i
+      //    motivi di blocco sono DUE, e il prune deve conoscerli entrambi. Con
+      //    il solo primo, una riga che diventa TRATTENUTA mentre è spuntata
+      //    resta selezionata con la casella spenta — non rimovibile, contata
+      //    dal pulsante e ri-sottomessa: il contatore che mente, che è
+      //    precisamente il difetto per cui questo prune esiste.
+      .filter((r) => !isGruppoPrendibile(r) || gruppiInCorso.value.has(r.gruppo_key))
       .map((r) => r.gruppo_key),
   )
   if (!nonSelezionabili.size) return
@@ -1158,6 +1238,9 @@ const cardDaApprovare = computed(() => cards.value.find((c) => c.stadio === 'DA_
 //        seguono l'aggregata via watch).
 function reloadDopoAzione() {
   loadMensile()
+  // ⛔ Nessun default da aprire qui: dopo un'azione una card è per forza già
+  //    scelta — l'azione parte da una sua riga. Aggiungerlo sarebbe una fetch
+  //    su un ramo irraggiungibile, cioè codice che nessuno può provare.
   if (stadioSelezionato.value) loadDrillDown()
 }
 
@@ -1660,6 +1743,12 @@ function buildGruppoRowActions(row) {
   // esposto data-driven dalle capability (fn_available_actions_commessa,
   // enabled+reasons dalla stessa funzione pura del guard).
   const bloccato = !isGruppoEmittibile(row)
+  // ⚠️ Il SECONDO motivo, e va tenuto separato dal primo: si esce dai due
+  //    blocchi in due modi diversi — la testata si sblocca cambiando stato alla
+  //    commessa, il documento trattenuto togliendolo dal giro del suo lotto.
+  //    Fonderli in un `bloccato` solo farebbe comparire «Sblocca commessa» su
+  //    una riga dove non c'è niente da sbloccare.
+  const trattenuto = !!row.emissione_blocco_reason
   // Riga già in lavorazione: il motivo lo dice la riga stessa (chip «in
   // corso»), ma l'azione resta disabilitata col suo tooltip — chi apre il
   // kebab senza aver visto il chip deve leggere perché non può premere.
@@ -1684,10 +1773,17 @@ function buildGruppoRowActions(row) {
         ? t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')
         : bloccato
           ? tooltipBloccato(row)
-          : attesaMese
-            ? t('vendite.dashboard_competenza.fattura_selezionati_attesa_mese_tooltip')
-            : '',
-      disabled: azioneLoading.value || inCorso || bloccato || giroMeseInCorso.value,
+          : trattenuto
+            ? motivoTrattenuto(row)
+            : attesaMese
+              ? t('vendite.dashboard_competenza.fattura_selezionati_attesa_mese_tooltip')
+              : '',
+      // 🔴 `trattenuto` mancava, e il kebab offriva «Fattura questo» su una riga
+      //    che un lotto vivo sta gia' tenendo — cioe' proprio il doppio giro che
+      //    questo cantiere esiste per impedire. La casella era spenta e il kebab
+      //    no: due superfici dello stesso verbo che dicevano cose diverse.
+      disabled: azioneLoading.value || inCorso || bloccato || trattenuto
+        || giroMeseInCorso.value,
       command: () => fatturaGruppi([row]),
     },
     {
@@ -1843,7 +1939,11 @@ function buildCommessaRowActions(row) {
 // (memoria feedback_keepalive_onactivated).
 onActivated(() => {
   loadMensile()
+  // ⚠️ O l'una o l'altra, mai tutte e due: `apriStadioDefault` carica già il
+  //    drill-down, e chiamarle entrambe farebbe due fetch identiche a ogni
+  //    rientro in foreground.
   if (stadioSelezionato.value) loadDrillDown()
+  else apriStadioDefault()
   // ⚠️ Riprende il follow-up dei giri vivi. Il BB SOSPENDE i tick quando il tab
   // va in background (mai timer che girano su una pagina che nessuno guarda),
   // ma fino al 2026-08-17 li DIMENTICAVA: uscivi dal tab, il job finiva lato
@@ -1889,14 +1989,14 @@ onActivated(() => {
             class="app-dash-mese-errori"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_errori', { n: statiMesi[idx].errori })"
           >
-            <i class="pi pi-times-circle" /> {{ statiMesi[idx].errori }}
+            <i :class="MANAGE_ICONS.ERRORE" /> {{ statiMesi[idx].errori }}
           </span>
           <span
             v-if="statiMesi[idx].aperti > 0"
             class="app-dash-mese-fermi"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_aperti', { n: statiMesi[idx].aperti })"
           >
-            <i class="pi pi-exclamation-triangle" /> {{ statiMesi[idx].aperti }}
+            <i :class="MANAGE_ICONS.ATTESA" /> {{ statiMesi[idx].aperti }}
           </span>
           <i
             v-if="statiMesi[idx].stato === 'ok'"
@@ -1922,10 +2022,10 @@ onActivated(() => {
         >
           <template #badge>
             <span v-if="statoMeseCorrente.errori > 0" class="app-dash-mese-errori">
-              <i class="pi pi-times-circle" /> {{ statoMeseCorrente.errori }}
+              <i :class="MANAGE_ICONS.ERRORE" /> {{ statoMeseCorrente.errori }}
             </span>
             <span v-if="statoMeseCorrente.aperti > 0" class="app-dash-mese-fermi">
-              <i class="pi pi-exclamation-triangle" /> {{ statoMeseCorrente.aperti }}
+              <i :class="MANAGE_ICONS.ATTESA" /> {{ statoMeseCorrente.aperti }}
             </span>
             <i v-if="statoMeseCorrente.stato === 'ok'" class="pi pi-check app-dash-mese-ok" />
             <i v-else-if="statoMeseCorrente.stato === 'vuoto'" class="pi pi-minus app-dash-mese-vuoto" />
@@ -1933,8 +2033,12 @@ onActivated(() => {
         </DashMeseStepper>
 
         <div class="app-dash-cards">
-          <!-- Copertura del mese: totali BE (fatturato = imponibile, DB-6). -->
-          <div class="app-dash-card" style="cursor: default;">
+          <!-- Copertura del mese: totali BE (fatturato = imponibile, DB-6).
+               ⛔ NON SELEZIONABILE, e non è una dimenticanza: è un TOTALE, non
+               uno stadio del funnel, e sotto non ha nessuna lista da aprire.
+               La classe spegne mano del puntatore e bordo al passaggio — con
+               quelle accese la card prometteva un drill-down che non arriva. -->
+          <div class="app-dash-card app-dash-card--statica">
             <span class="app-dash-card-title">
               {{ t('vendite.dashboard_competenza.copertura_titolo') }}
             </span>
@@ -2033,7 +2137,7 @@ onActivated(() => {
               @click.stop
               @keydown.enter.stop
             >
-              <i class="pi pi-exclamation-triangle" />
+              <i :class="MANAGE_ICONS.ERRORE" />
               {{ t('vendite.dashboard_competenza.n_fatture_errore') }}
             </span>
             <span class="app-dash-stat-euro">{{ formatCurrency(card.valoreDisplay) }}</span>
@@ -2179,8 +2283,7 @@ onActivated(() => {
             </Tab>
             <Tab :value="TAB_ERRORI">
               <i
-                class="pi pi-times-circle"
-                :class="{ 'app-dash-mese-errori': nErroriMese > 0 }"
+                :class="[MANAGE_ICONS.ERRORE, { 'app-dash-mese-errori': nErroriMese > 0 }]"
               />
               {{ t('vendite.dashboard_competenza.tab_errori', { n: nErroriMese }) }}
             </Tab>
@@ -2420,7 +2523,7 @@ onActivated(() => {
                     <Checkbox
                       binary
                       :model-value="isGruppoSelezionato(data)"
-                      :disabled="!isGruppoEmittibile(data)"
+                      :disabled="!isGruppoPrendibile(data)"
                       @update:model-value="toggleGruppo(data)"
                     />
                   </template>
@@ -2439,6 +2542,22 @@ onActivated(() => {
                       v-if="!isGruppoEmittibile(data)"
                       class="pi pi-lock app-dash-gruppo-bloccato"
                       v-tooltip.bottom="tooltipBloccato(data)"
+                    />
+                    <!-- ⭐ TRATTENUTO DA UN LOTTO VIVO: si spegne col MOTIVO e
+                         si offre il GESTO, mai si nasconde la riga (D-1) —
+                         sparire non spiega niente.
+                         ⛔ Il segno del LOTTO e non un secondo lucchetto: le
+                         due vie d'uscita sono diverse — là si cambia stato alla
+                         commessa, qui si toglie il documento dal giro del suo
+                         lotto — e su una riga che ha ENTRAMBI i blocchi due
+                         lucchetti identici affiancati non distinguono niente.
+                         L'icona dice CHI trattiene.
+                         ⚠️ Il `v-if` guarda il DATO e non la traduzione: la
+                         frase serve al tooltip, non a decidere. -->
+                    <i
+                      v-if="data.emissione_blocco_reason"
+                      :class="[MANAGE_ICONS.LOTTO, 'app-dash-gruppo-bloccato']"
+                      v-tooltip.bottom="motivoTrattenuto(data)"
                     />
                     <!-- Fatturazione in corso su QUESTA riga: il verbo è asincrono
                          (accoda + polling) e senza un segno qui la riga restava
@@ -2468,6 +2587,18 @@ onActivated(() => {
                       :bersagli="bersagliUltimoEsito(data)"
                       :titolo="titoloUltimoEsito(data)"
                     />
+                    <!-- ⭐ IL GESTO IN CODA, e i SEGNI tutti insieme prima: le
+                         icone si leggono in fila accanto al nome, il pulsante —
+                         l'unica cosa larga della cella — non si infila in mezzo
+                         a separarle (rilievo di Tid, 2026-09-09).
+                         ⚠️ E in un `<span>` inline: `BersaglioAzioni` ha una
+                         radice `<div>` flex, cioè di BLOCCO, e in una cella di
+                         contenuto inline mandava a capo tutto ciò che veniva
+                         dopo — l'icona d'errore finiva su una seconda riga e la
+                         riga cresceva in altezza. -->
+                    <span v-if="data.emissione_blocco_reason" class="app-cella-gesto-inline">
+                      <BersaglioAzioni :bersagli="bersagliLottoTrattiene(data)" />
+                    </span>
                   </template>
                   <!-- Le cinque colonne dell'esito nascono SPENTE a catalogo
                        (D-4: si aggiungono al preset con `visibile = FALSE`, e

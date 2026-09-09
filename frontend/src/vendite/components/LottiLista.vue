@@ -147,7 +147,7 @@ onMounted(() => emit('lista-pronta', listaRef.value))
         <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
         <i
           v-if="data.ha_errori_gravi"
-          class="pi pi-exclamation-triangle app-lotto-spia-errore"
+          :class="[MANAGE_ICONS.ERRORE, 'app-lotto-spia-errore']"
           v-tooltip.top="t('vendite.lotti.spia_errori_gravi')"
         />
       </span>

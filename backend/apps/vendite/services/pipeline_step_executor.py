@@ -1388,21 +1388,49 @@ class PipelineStepExecutor:
             #    rifiuta — dentro un gestore d'eccezione, cioe' proprio dove
             #    l'errore vero verrebbe coperto.
             stato = STATO_ESECUZIONE_ERRORE if fallita else STATO_ESECUZIONE_COMPLETED
-            marcati = self.repository.segna_esito_gruppo_lotto(
+            esito_marcatura = self.repository.segna_esito_gruppo_lotto(
                 lotto_id,
                 stato,
                 commessa_id=commessa_id,
                 errore_codice="E_PULL_COMMESSA" if fallita else None,
                 errore_messaggio=messaggi.get(commessa_id),
             )
-            if not marcati:
+            # ⭐ LO ZERO DEL MARCATORE AVEVA TRE CAUSE E NE RACCONTAVA UNA, e
+            #    dal changeSet `20260909-20` le distingue. L'avviso vale per due
+            #    di esse, e la terza e' il caso NORMALE del verbo «togli dal
+            #    giro»:
+            #      · tutto a zero        → nessun documento appeso a questa
+            #        commessa: e' il difetto che l'avviso e' nato per dire;
+            #      · `fuori_perimetro>0` → i documenti ci sono ma non sono di
+            #        questo lotto — sospetto, e c'era gia' prima di questo giro;
+            #      · `usciti>0`          → sono stati tolti dal giro, apposta.
+            #
+            # 🔴 SENZA LA DISTINZIONE L'AVVISO DIVENTAVA RUMORE su un caso
+            #    legittimo — e un avviso che suona quando va tutto bene e' un
+            #    avviso che si smette di leggere, cioe' peggio di nessun avviso.
+            #    ⚠️ E' la ragione per cui i tre conteggi sono stati chiesti
+            #    NELLO STESSO giro del filtro, non dopo
+            #    (`brief-db-il-marcatore-scrive-su-un-documento-uscito` §4.1).
+            # ⚠️ I tre si NOMINANO invece di sommare `.values()`: quel dict e'
+            #    un `EsitoMarcaturaGruppi`, e il giorno che guadagna un campo
+            #    che conteggio non e' — una bandiera, un messaggio — `any()` lo
+            #    leggerebbe insieme agli altri e l'avviso cambierebbe
+            #    significato senza che niente fallisca.
+            muto = not (
+                esito_marcatura["marcati"]
+                or esito_marcatura["usciti"]
+                or esito_marcatura["fuori_perimetro"]
+            )
+            if muto or esito_marcatura["fuori_perimetro"]:
                 # ⚠️ `logging.getLogger(__name__)` in linea: e' l'idioma di
                 #    questo modulo, che non tiene un logger di modulo.
                 logging.getLogger(__name__).warning(
                     "pull_commesse.esito_non_appeso lotto_id=%s commessa_id=%s "
-                    "stato=%s — nessun gruppo marcato: il lotto raccontera' un "
-                    "esito su un documento che non mostra",
+                    "stato=%s marcati=%s usciti=%s fuori_perimetro=%s — il "
+                    "lotto raccontera' un esito su un documento che non mostra",
                     lotto_id, commessa_id, stato,
+                    esito_marcatura["marcati"], esito_marcatura["usciti"],
+                    esito_marcatura["fuori_perimetro"],
                 )
 
     # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti

@@ -1801,6 +1801,24 @@ a {
   box-shadow: 0 0 0 1px var(--p-primary-color);
 }
 
+/* ⭐ La card che NON si sceglie — oggi la copertura del mese, che è un totale e
+   non uno stadio del funnel: non ha una lista sotto, quindi non c'è niente da
+   aprire (rilievo di Tid, 2026-09-09).
+   ⛔ Non basta togliere il `@click`: con la mano del puntatore e il bordo che
+   si accende al passaggio la card PROMETTE un drill-down che non arriva — e
+   una promessa che non si mantiene si prova due o tre volte prima di
+   rinunciare. Qui si spengono entrambe le affordance, non solo il gesto.
+   ⚠️ Sostituisce uno `style="cursor: default"` in linea: il colore e il
+   comportamento delle card stanno qui, non nel template
+   (feedback_css_centralizzazione). */
+.app-dash-card--statica {
+  cursor: default;
+}
+
+.app-dash-card--statica:hover {
+  border-color: var(--app-card-border);
+}
+
 /* Voci del residuo sotto un donut di card (copertura competenza: «Da
    addebitare» / «Da accreditare»). ⭐ STESSA FORMA per tutte: cambia la parola
    e il colore, mai la struttura — due lavori dello stesso tipo in due versi
@@ -2208,6 +2226,19 @@ a {
   margin-left: 0.4rem;
   color: var(--app-in-corso-color);
   font-size: 0.85rem;
+}
+
+/* Un gesto (`BersaglioAzioni`) dentro una cella di contenuto INLINE. La radice
+ * di quel componente è un `<div>` flex — di blocco — e senza questo wrapper
+ * manda a capo tutto ciò che lo segue: nella cella «riferimento» del cruscotto
+ * competenza l'icona d'errore finiva su una seconda riga, e la riga della
+ * tabella cresceva in altezza per ospitarla.
+ * ⚠️ Il wrapper e non una modifica a `BersaglioAzioni`: là la radice di blocco
+ * è giusta — vive dentro un popover, dove i pulsanti stanno su una riga loro. */
+.app-cella-gesto-inline {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.4rem;
 }
 
 /* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello

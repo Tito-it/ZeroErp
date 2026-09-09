@@ -823,7 +823,12 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         commesse_repo.list_commesse_emittibili.return_value = list(commesse)
         commesse_repo.emit_attivita_fatturabili.side_effect = self._emit_che_fallisce_su(*ko)
         executor.commesse_repository = commesse_repo
-        repo.segna_esito_gruppo_lotto.return_value = 1
+        # ⚠️ Il marcatore torna TRE conteggi dal changeSet `20260909-20`,
+        #    non piu' uno scalare: un `1` qui direbbe che il chiamante
+        #    legge un intero, e il chiamante non lo legge piu'.
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 1, "usciti": 0, "fuori_perimetro": 0,
+        }
         return executor, repo
 
     # Scopo: `{commessa_id: (stato, codice)}` da come il repository e' stato chiamato.
@@ -909,13 +914,15 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             self.assertIsNone(chiamata.kwargs.get("errore_codice"))
             self.assertIsNone(chiamata.kwargs.get("errore_messaggio"))
 
-    # 4. ⚠️ La funzione torna 0 — «non l'ho appeso a niente». Non solleva mai, e
-    #    quindi il valore di ritorno E' l'unico segnale: va almeno scritto nel
-    #    log, o il lotto racconta un errore su un documento che non mostra.
+    # 4. ⚠️ La funzione non solleva mai, quindi il suo consuntivo E' l'unico
+    #    segnale: va almeno scritto nel log, o il lotto racconta un errore su un
+    #    documento che non mostra.
     @patch("apps.core.services.fan_out.transaction")
     def test_pull_avvisa_quando_l_esito_non_viene_appeso(self, _mock_txn):
         executor, repo = self._executor_pull([10], ko=(10,))
-        repo.segna_esito_gruppo_lotto.return_value = 0
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 0, "usciti": 0, "fuori_perimetro": 0,
+        }
 
         with self.assertLogs(
             "apps.vendite.services.pipeline_step_executor", level="WARNING",
@@ -928,6 +935,48 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             any("esito_non_appeso" in r for r in log.output),
             "nessun avviso: un esito non appeso resterebbe invisibile",
         )
+
+    # 4-bis. ⭐ ZERO MARCATI PERCHE' SONO USCITI DAL GIRO — e qui l'avviso NON
+    #    deve suonare. E' il caso NORMALE del verbo «togli dal giro»: il
+    #    documento e' stato tolto apposta, e il marcatore lo salta apposta
+    #    (changeSet `20260909-18`).
+    # 🔴 Senza questa distinzione l'avviso diventava rumore su un caso
+    #    legittimo, a ogni rilancio — e un avviso che suona quando va tutto bene
+    #    e' un avviso che si smette di leggere, cioe' peggio di nessun avviso.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_non_avvisa_se_i_documenti_sono_usciti_dal_giro(self, _mock_txn):
+        executor, repo = self._executor_pull([10], ko=(10,))
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 0, "usciti": 2, "fuori_perimetro": 0,
+        }
+
+        with self.assertNoLogs(
+            "apps.vendite.services.pipeline_step_executor", level="WARNING",
+        ):
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
+
+    # 4-ter. ⚠️ E il terzo zero resta SOSPETTO: documenti che esistono ma non
+    #    sono di questo lotto. Non nasce dal cantiere dell'uscita — c'era gia',
+    #    nascosto nello stesso zero — e adesso che si distingue va detto anche
+    #    quando qualcosa e' stato marcato.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_pull_avvisa_sui_documenti_fuori_perimetro(self, _mock_txn):
+        executor, repo = self._executor_pull([10], ko=(10,))
+        repo.segna_esito_gruppo_lotto.return_value = {
+            "marcati": 1, "usciti": 0, "fuori_perimetro": 1,
+        }
+
+        with self.assertLogs(
+            "apps.vendite.services.pipeline_step_executor", level="WARNING",
+        ) as log:
+            executor.execute_step(
+                lotto_id=1, stato_doc_fiscale_id=2, tipo_lotto="MASSIVO",
+                rollback=False, dry_run=False,
+            )
+        self.assertTrue(any("fuori_perimetro=1" in r for r in log.output))
 
     # Scopo: Verifica il caso `test_pull_attivita_da_commessa_dry_run_skips_emit`.
     def test_pull_attivita_da_commessa_dry_run_skips_emit(self):

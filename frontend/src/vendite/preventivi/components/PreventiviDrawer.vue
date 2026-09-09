@@ -922,7 +922,7 @@ const drawerActions = computed(() => {
             <Tag
               :value="t('vendite.preventivi.contesto_pricing_none')"
               severity="warn"
-              icon="pi pi-exclamation-triangle"
+              :icon="MANAGE_ICONS.ERRORE"
               v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_none_tooltip')"
             />
           </template>

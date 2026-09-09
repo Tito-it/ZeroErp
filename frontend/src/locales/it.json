@@ -3873,6 +3873,11 @@
       "col_errore_codice": "Cod. errore",
       "col_errore_messaggio": "Motivo",
       "col_errore_quando": "Fallito il"
+    },
+    "emissione": {
+      "blocco_reason": {
+        "trattenuto_da_lotto": "È già preso in carico dal lotto che lo trattiene: per fatturarlo a parte va prima tolto da quel giro."
+      }
     }
   },
   "pagamenti": {

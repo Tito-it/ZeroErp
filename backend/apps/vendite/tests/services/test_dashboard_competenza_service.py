@@ -50,6 +50,8 @@ Indice test eseguiti:
 24-quinquies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittente_ragione_sociale
 24-sexies) DashCompetenzaGruppiRepositoryTests.test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 24-septies) DashCompetenzaGruppiRepositoryTests.test_larghezza_riga_finta_uguale_al_select
+24-novies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_il_blocco_di_emissione_col_bersaglio
+24-novies-bis) DashCompetenzaGruppiRepositoryTests.test_senza_blocco_di_emissione_i_quattro_campi_restano_none
 24-decies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_l_esito_dell_ultimo_tentativo
 24-undecies) DashCompetenzaGruppiRepositoryTests.test_esito_assente_resta_none
 24-octies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_riferimento_non_nullo
@@ -999,7 +1001,9 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
               data_prevista=date(2026, 8, 31),
               ultimo_esito=None, ultimo_errore_codice=None,
               ultimo_errore_messaggio=None, ultimo_errore_quando=None,
-              ultimo_lotto_codice=None):
+              ultimo_lotto_codice=None,
+              blocco_reason=None, blocco_reason_key=None,
+              blocco_lotto_id=None, blocco_lotto_codice=None):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
@@ -1013,7 +1017,64 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
             # il caso normale. Chi prova il ramo «e' fallito» lo chiede.
             ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio,
             ultimo_errore_quando, ultimo_lotto_codice,
+            # ⭐ Il VERDETTO «trattenuto da un lotto vivo» (changeSet DB
+            # `20260909-24`). Default `None` = la riga si puo' prendere, che e'
+            # il caso normale.
+            # ⛔ E' un verdetto, non materia da dedurre: `ultimo_esito` qui
+            # sopra NON risponde alla stessa domanda — su un lotto ANNULLATO
+            # vale `COMPLETED` e il documento e' LIBERO.
+            blocco_reason, blocco_reason_key, blocco_lotto_id, blocco_lotto_codice,
         )]
+
+    # 24-novies) 🟢 IL VERDETTO «TRATTENUTO DA UN LOTTO VIVO» arriva dalla vista
+    #     e il mapping lo consegna intero, bersaglio compreso
+    #     (brief-db-documento-trattenuto-da-un-lotto-vivo, changeSet
+    #     `20260909-24`).
+    # ⛔ E si presidia che NON venga dedotto da `ultimo_esito`: qui la riga ha
+    #     `ultimo_esito = COMPLETED` — che su un lotto annullato significa
+    #     LIBERO — e insieme il verdetto di blocco. Sono due domande diverse, e
+    #     un mapping che le confondesse passerebbe questo test solo per caso.
+    # ⚠️ Il `lotto_id` viaggia perche' il frontend ci disegna un GESTO: senza,
+    #     l'operatore ricopia un codice e poi lo cerca a mano.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_il_blocco_di_emissione_col_bersaglio(
+        self, mock_query, _band,
+    ):
+        mock_query.return_value = (
+            self._rows(
+                99, ultimo_esito="COMPLETED",
+                blocco_reason="TRATTENUTO_DA_LOTTO",
+                blocco_reason_key="vendite.emissione.blocco_reason.trattenuto_da_lotto",
+                blocco_lotto_id=11764, blocco_lotto_codice="LTF-0010331",
+            ),
+            1,
+        )
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio="DA_EMETTERE", limit=10, offset=0,
+        )
+        self.assertEqual(righe[0]["emissione_blocco_reason"], "TRATTENUTO_DA_LOTTO")
+        self.assertEqual(
+            righe[0]["emissione_blocco_reason_key"],
+            "vendite.emissione.blocco_reason.trattenuto_da_lotto",
+        )
+        self.assertEqual(righe[0]["emissione_blocco_lotto_id"], 11764)
+        self.assertEqual(righe[0]["emissione_blocco_lotto_codice"], "LTF-0010331")
+
+    # 24-novies-bis) ⚠️ E senza blocco resta `None` su tutti e quattro: la riga
+    #     si puo' prendere. Uno zero o una stringa vuota direbbero un'altra cosa.
+    @patch.object(VenditeRepository, "_applica_bandiera_respinta")
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_senza_blocco_di_emissione_i_quattro_campi_restano_none(
+        self, mock_query, _band,
+    ):
+        mock_query.return_value = (self._rows(99), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 9, 1), stadio="DA_EMETTERE", limit=10, offset=0,
+        )
+        for campo in ("emissione_blocco_reason", "emissione_blocco_reason_key",
+                      "emissione_blocco_lotto_id", "emissione_blocco_lotto_codice"):
+            self.assertIsNone(righe[0][campo], campo)
 
     # 24-decies) 🟢 L'ESITO DELL'ULTIMO TENTATIVO arriva dalla VISTA e il
     #     mapping lo consegna (brief-db-esito-gruppo-lotto R-3, changeSet DB

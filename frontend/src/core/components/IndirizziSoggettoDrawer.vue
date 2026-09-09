@@ -396,7 +396,7 @@ const onClose = useDrawerClose(emit)
 
         <!-- Warning tipi mancanti -->
         <div v-if="tipiMancanti.length > 0 && !formMode" class="indirizzi-warning">
-          <i class="pi pi-exclamation-triangle" />
+          <i :class="MANAGE_ICONS.ERRORE" />
           {{ t('anagrafiche.indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
         </div>
 
