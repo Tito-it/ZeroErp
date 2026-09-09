@@ -42,7 +42,7 @@ from unittest import TestCase
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.services.vendite_service import fn_list_lotto_gruppi
 
 
@@ -62,14 +62,7 @@ class LottoGruppiOrdineDiApertura(TestCase):
     #        non avere materiale.
     def _lotto_con_piu_documenti(self) -> tuple[int, list[str]]:
         with connection.cursor() as cur:
-            cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-            cur.execute(
-                "SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1"
-            )
-            utente = cur.fetchone()
-            if utente is None:
-                self.skipTest("nessun utente su cui aprire il contesto operatore")
-            cur.execute("SET LOCAL app.current_user_id = %s", [str(utente[0])])
+            apri_contesto_operatore(cur)
             cur.execute(
                 """
                 SELECT lg.lotto_id, array_agg(lg.gruppo_key ORDER BY lg.gruppo_key)

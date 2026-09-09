@@ -43,7 +43,7 @@ from unittest.mock import create_autospec
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.pipeline_step_executor import (
@@ -89,14 +89,7 @@ class PullTutteFalliteScritturaReale(TestCase):
     #        classico in cui questo test diventerebbe verde per sottrazione.
     def _prepara(self):
         with connection.cursor() as cur:
-            cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-            cur.execute(
-                "SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1"
-            )
-            riga = cur.fetchone()
-            if riga is None:
-                self.skipTest("nessun utente su cui aprire il contesto operatore")
-            cur.execute("SET LOCAL app.current_user_id = %s", [str(riga[0])])
+            apri_contesto_operatore(cur)
             # ⭐ Un lotto SENZA perimetro: e' il caso che prima di oggi non
             #    aveva dove essere marcato, quindi quello che vale la pena
             #    provare. `NOT EXISTS` e non «tipo_lotto = MASSIVO»: il
