@@ -181,7 +181,7 @@ PostgreSQL 18, Liquibase 5, `daterange`/`tstzrange` nativi su 18 tabelle (con
 
 ## 3. I difetti che pesano oggi, in ordine di conseguenza
 
-### 🔴 D1 — Il cancello pgTAP in CI non misura niente, e non l'ha mai fatto
+### ✅ D1 — Il cancello pgTAP in CI non misurava niente — CHIUSO il 2026-09-09
 
 **Il difetto più grave del progetto**, e ha la forma esatta contro cui la guida
 sui presidi mette in guardia.
