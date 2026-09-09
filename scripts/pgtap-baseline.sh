@@ -70,6 +70,11 @@
 #   stesso: `--ci-apply` (senza, mancano i trigger di audit/tx_id/storico) e
 #   `scripts/sql/provision_db_roles.sql` con `migrator_role=zeroerp` (senza,
 #   `zeroerp_app` non ha nessun diritto e i rossi sono tutti permessi).
+#   ⭐ Dal 2026-09-09 la PRIMA delle due non e' piu' solo questa riga di prosa:
+#   e' un cancello che ferma la corsa PRIMA di eseguirla (exit 2). La seconda
+#   resta prosa — un ruolo senza diritti si riconosce dal primo rosso, una
+#   passata di automazioni mancante no: da' rossi plausibili sui soli test che
+#   asseriscono sui trigger generati, cioe' finte regressioni sparse.
 #
 # La scelta dell'utente sta in scripts/testpgtap.sh (variabile PGTAP_RUNNER e
 # marcatore `-- pgtap-runner: owner` per i file che richiedono l'owner).
@@ -77,6 +82,10 @@
 # EXIT CODE
 #   0 = nessuna regressione (eventuali rientri sono solo segnalati)
 #   1 = almeno un rosso nuovo
+#   2 = la corsa NON e' partita: il metro non e' omogeneo (runner diverso da
+#       quello registrato in baseline, oppure automazioni non applicate) o il
+#       perimetro non esiste. ⭐ Si esce PRIMA di eseguire: scoprirlo dopo
+#       costerebbe i sette minuti della suite e consegnerebbe finte regressioni.
 #
 # Tempo: ~1s per file. La suite intera (~400 file) richiede circa 7 minuti;
 # restringere agli schemi toccati e' quasi sempre sufficiente.
@@ -183,6 +192,46 @@ if [ -f "$BASELINE" ]; then
     echo "      PGTAP_RUNNER=$RUNNER $(invocazione --update)" >&2
     exit 2
   fi
+fi
+
+# Metro omogeneo, SECONDA FACCIA: le AUTOMAZIONI.
+# ⛔ Il migrate costruisce lo schema; i trigger di audit, tx_id, storico,
+#   lock-columns e require_attivo li GENERA il framework nella seconda
+#   invocazione di Liquibase (`--contexts=ci_apply`). Un database senza quella
+#   passata ha lo schema giusto e i presidi a meta': i test che asseriscono su
+#   quei trigger diventano rossi, e sono rossi che NON dicono niente sul codice.
+#
+# ⚠️ Perche' serviva un cancello e non la riga di prosa che c'era gia' (in cima
+#   a questo file: «il database scratch va preparato come la CI»). Il
+#   2026-09-09 `scripts/ci-local.sh --fresh` — senza `--ci-apply`, che e' un
+#   flag SEPARATO — ha prodotto uno scratch a cui mancavano tre dei cinque
+#   guard `require_attivo` su ogni `*_righe_componenti`: quattro finte
+#   regressioni, scoperte dopo sette minuti di corsa e un'indagine. La CI di
+#   GitHub la passata la fa sempre, quindi la' erano verdi: due metri diversi,
+#   che e' lo stesso difetto per cui esistono due baseline.
+#
+# ⭐ La domanda si fa a testpgtap.sh, che e' l'unico posto che sa come si
+#   raggiunge il database bersaglio (env file, mapping, utente). Qui si legge
+#   solo la risposta.
+# ⚠️ Nessun `set +e`/`set -e` attorno: questo script gira con `set -uo pipefail`
+#   e NON con `-e`. Riaccenderlo qui lo lascerebbe acceso per tutto il resto del
+#   file, cambiando il comportamento di ogni comando che segue.
+AUTOMAZIONI=0
+"$SCRIPT_DIR/testpgtap.sh" --check-automazioni || AUTOMAZIONI=$?
+if [ "$AUTOMAZIONI" -eq 1 ]; then
+  echo "❌ Su questo database la passata delle AUTOMAZIONI non e' stata eseguita." >&2
+  echo "   I trigger generati (audit, tx_id, storico, lock-columns, require_attivo)" >&2
+  echo "   non ci sono: i test che li asseriscono sarebbero rossi per l'ambiente," >&2
+  echo "   non per il codice — finte regressioni." >&2
+  echo "   Se e' lo scratch locale:" >&2
+  echo "      scripts/ci-local.sh --ci-apply" >&2
+  echo "   (\`--fresh\` NON la comprende: sono due flag distinti.)" >&2
+  exit 2
+elif [ "$AUTOMAZIONI" -eq 3 ]; then
+  # ⚠️ Non si blocca: se il database non risponde, la corsa lo dira' da sola al
+  #   primo file e con un messaggio piu' preciso di questo. Un cancello che
+  #   ferma tutto su «non ho potuto chiedere» nasce rosso e viene spento.
+  echo "⚠️  Non ho potuto verificare la passata delle automazioni (database non raggiungibile?)." >&2
 fi
 
 TOT=$(echo "$FILES" | grep -c '' )

@@ -1,5 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce un'AZIENDA — emittente fiscale,
+--   utente tecnico e identita' digitale (dbops.fn_pgtap_crea_emittente_operatore)
+--   — e un operatore dentro un perimetro non crea l'azienda in cui lavora.
+--   E' il criterio 2 di scripts/testpgtap.sh, lo stesso dei tre file gemelli di
+--   questo cantiere e dei sei db/pgtap/rls/*-satelliti.sql.
+--   🔴 Ed e' una CORREZIONE del 2026-09-09 sera: era rimasto `app` perche' come
+--   `app` passava sullo scratch locale — cioe' per una MISURA, non per il
+--   modello. Su GitHub, dove la CI ricostruisce tutto da zero, era rosso.
 -- pgTAP test per Zero ERP
 --
 -- Test: P-9 — vendite.vw_lotti_fase, la SEDE UNICA della domanda

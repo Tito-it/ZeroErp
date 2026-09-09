@@ -3,6 +3,15 @@
 > Stato: ✅ **TUTTI E OTTO I PASSI APPLICATI** — su database di sviluppo e su
 > database ricostruito dai changelog. `db/pgtap/rls/`: **30 file su 30 verdi**.
 > Analisi e realizzazione del 2026-09-09.
+>
+> 🟠 **DA LEGGERE PER PRIMO: il §11.** Il presidio che il §10 dichiarava «la
+> cosa da fare per prima» è **scritto** (slice `20260909-75..77` +
+> `db/pgtap/rls/test-rls-perimetro-scoperto.sql`) e **non ancora applicato**:
+> i tre changeSet sono provati in transazione, il pgTAP è verde 8/8 in dry-run,
+> e aspettano il migrate di Tid.
+> ⛔ E ha portato un fatto che cambia il §10: applicato a **tutto** il database
+> invece che al solo `vendite`, lo stesso criterio non trova dodici tabelle
+> scoperte ma **trenta**, più tre con una policy che non filtra.
 > Origine: `migliorie-generali-da-test-valutazione.md` §D2.
 > ⚠️ **D3 (lo `storico` senza RLS) è deliberatamente FUORI da questo brief**:
 > decisione di Tid del 2026-09-09, e il motivo sta in fondo (§9).
@@ -587,7 +596,11 @@ un'informazione che il brief non portava.
 ⇒ Ogni changeSet di questo brief deve fare **entrambe** le cose, e il pgTAP deve
 asserire `relrowsecurity`, non l'esistenza della policy.
 
-### ⭐ Il presidio che serve, e che NON è stato scritto (→ §10)
+### ✅ Il presidio che serve — SCRITTO il 2026-09-09 (→ §11)
+
+⚠️ Questa sezione si intitolava *«Il presidio che serve, e che NON è stato
+scritto»*. Il criterio qui sotto è rimasto quello, parola per parola; è cambiato
+il fatto che ora esiste. Realizzazione, misure e forma nel **§11**.
 
 Un pgTAP unico, sulla falsariga di `test-rls-viste-security-invoker.sql` (che è
 il presidio meglio scritto del repo: criterio **transitivo**, casi costruiti,
@@ -656,6 +669,12 @@ Letto dal catalogo a cantiere chiuso (struttura, non popolazione).
 
 ### 🟠 Cosa resta scoperto, e non è una dimenticanza
 
+⚠️ **Questa tabella è VERA ma PARZIALE, e il §11 la corregge**: il criterio è
+stato applicato *«a ogni tabella di `vendite`»*, cioè con un perimetro scelto a
+mano — lo stesso errore che il §2 aveva già fatto sull'elenco delle figlie di
+`fatture`, alla scala dello schema invece che della famiglia. Su tutto il
+database le tabelle sono **trenta**, più tre di un secondo criterio.
+
 Applicando il criterio **transitivo** del §8 — *ogni tabella di `vendite` con
 una FK verso una tabella in RLS, priva di policy* — restano **dodici** tabelle,
 in quattro gruppi:
@@ -677,18 +696,18 @@ partizionate come `vendite.note` era, quindi nella stessa condizione. E
 **RLS spenta** — l'unico caso rimasto in tutto il database di «policy che non
 è una difesa».
 
-### ⛔ Il presidio del §8 non è stato scritto, ed è la cosa da fare per prima
+### ✅ Il presidio del §8 — scritto il 2026-09-09 (dettaglio nel §11)
+
+⚠️ Questa sezione si intitolava *«Il presidio del §8 non è stato scritto, ed è
+la cosa da fare per prima»*, e diceva che il registro del debito sarebbe stato
+«esattamente quelle dodici righe con le loro quattro ragioni». **La prima metà
+è stata fatta; la seconda era sbagliata, e di parecchio**: dodici era il conto
+del solo `vendite`. Il §11 porta il numero vero.
 
 Questo cantiere ha prodotto **un** presidio transitivo, ed è piccolo: il test 4
 di `test-rls-note-padre.sql`, che confronta i rami dello smistatore con il
 `CHECK` della tabella. Funziona perché il suo perimetro è un **contratto** e non
-una lista.
-
-Il presidio generale — *ogni tabella con una FK verso una tabella in RLS ha a
-sua volta una policy e la RLS accesa, oppure è dichiarata nel registro del
-debito con la sua ragione tecnica* — **non esiste ancora**. La query che lo
-alimenta è quella usata per la tabella qui sopra; il registro del debito
-sarebbe, oggi, esattamente quelle dodici righe con le loro quattro ragioni.
+una lista. Il presidio generale è ora della stessa specie.
 
 ⭐ **Perché conta più delle dodici tabelle**: senza quel presidio, la prossima
 tabella con una FK verso un documento nascerà scoperta e nessuno lo saprà — che
@@ -707,6 +726,138 @@ tabella con una FK verso un documento nascerà scoperta e nessuno lo saprà — 
    accorge della riparazione — e quando la riparazione arriva si **sostituisce**
    con l'asserzione positiva, non si allarga per farlo tacere. È successo una
    volta, sul test 11 delle offerte, ed è andata come doveva.
+
+---
+
+## 11. Il presidio — scritto il 2026-09-09, da applicare
+
+> Stato: 🟠 **scritto e provato, NON applicato.** I tre changeSet girano in
+> transazione contro il database di sviluppo con l'SQL **estratto dagli YAML**
+> (non ricopiato); il pgTAP è verde **8/8** in dry-run, sopra la slice caricata
+> nella stessa transazione. Manca il migrate.
+
+### 11.1 I pezzi
+
+| # | ChangeSet / file | Che cosa porta |
+| --- | --- | --- |
+| 1 | `20260909-75` (`00_schema/dbops`) | `dbops.rls_perimetro_debito` — il registro, con `criterio` nella chiave |
+| 2 | `20260909-76` (`20_code/dbops`) | `dbops.vw_rls_perimetro_scoperto` — il criterio, e i tre stati |
+| 3 | `20260909-77` (`80_data`) | il mirror CSV con le **33 righe** di debito, ognuna con la sua ragione |
+| — | `db/pgtap/rls/test-rls-perimetro-scoperto.sql` | il presidio, plan 8 |
+| — | `docs/it/dbzero/dbops/manual/` | le due schede concettuali (tabella e vista) |
+
+⚠️ **Numerazione**: gli slot liberi del 2026-09-09 sotto il massimo erano
+**uno solo** (il `-50`), e la slice ne vuole tre consecutivi e crescenti —
+tabella prima della vista, o l'autogen esegue la vista su una tabella che non
+c'è. Quindi `75..77`, sopra il massimo. **Il `-50` resta libero.**
+
+### 11.2 ⛔ Il fatto che cambia il §10: trenta, non dodici
+
+Il criterio non è cambiato di una parola. È cambiato il **perimetro su cui lo si
+applica**: il §10 lo aveva ristretto a `vendite`.
+
+| | tabelle |
+| --- | ---: |
+| §10, criterio applicato al solo schema `vendite` | 12 |
+| stesso criterio, **tutto il database** | **30** |
+| secondo criterio — una policy scritta e mai applicata | **3** |
+
+Le diciotto in più non sono una scoperta di questo passo: sono la **terza
+occorrenza della stessa lezione**, dopo le sei figlie di `fatture` (§2) e le
+sette partizioni di `vendite.note` (§6.4). Le famiglie nuove:
+
+| Famiglia | Tabelle | In una riga |
+| --- | ---: | --- |
+| **pratiche** | 7 | `pratiche.pratiche` è protetta, i suoi sette satelliti no. È la forma dei passi 1-6 su un altro dominio, e vuole **un solo** adattatore `_via_pratica` |
+| **anagrafiche** | 4 | `clienti` più le due tabelle che **definiscono** il legame emittente ↔ BA, e quelle sono un caso a parte (§11.4) |
+| **documenti** | 2 | gli eventi e il **file** di `documenti_generati` |
+| **pagamenti** | 2 | `sepa_mandati`, e il ponte con **due perimetri diversi** sulla stessa riga |
+| **config** | 1 | `email_allegato`: qui l'asse non è l'emittente ma l'**ambito** |
+| **magazzino** | 1 | `assets`: due rotte protette, **tutte e due nullable** |
+| **shop / acquisti** | 3 | le tre policy inerti (§11.3) |
+
+### 11.3 ⛔ Il secondo criterio: una policy che non filtra
+
+Il §8 di questo brief apre proprio di lì — *«`pg_policy` avrebbe la riga e il
+filtro non si applicherebbe»* — e nomina tre tabelle. Il primo criterio ne
+prende **una sola**: le altre due non sono figlie di niente di protetto.
+
+⇒ Sono due **domande** diverse, e restano due righe diverse.
+`shop.ricevute` le porta entrambe: non è rumore, sono due difetti indipendenti.
+
+⭐ E il registro ha reso leggibile **perché** quelle tre non erano state armate,
+che il brief non sapeva: `acquisti.ddt` e `acquisti.ordini` hanno una policy di
+sola veste `FORNITORE_PORTALE`, e la RLS è **default-deny** — accenderla oggi
+renderebbe le due tabelle invisibili e non scrivibili all'**operatore**, che ci
+ha `SELECT/INSERT/UPDATE/DELETE`. E la veste operatore non è nemmeno scrivibile:
+**quelle due tabelle non hanno nessuna colonna emittente.** Manca il modello,
+non l'accensione.
+
+⚠️ `shop.ricevute` è invece un caso da un minuto, ed è scritto nella sua riga di
+registro: `zeroerp_app` non ha **nessun** GRANT su quella tabella, quindi
+accendere la RLS non toglie niente a nessuno. Costa una riga. Resta spenta
+perché il dominio shop è allo Stage D e la decisione appartiene a quel cantiere
+— ma è la prima da pagare, ed è segnalata come tale.
+
+### 11.4 ⭐ Due tabelle che non sono un armamento, ma una domanda
+
+`anagrafiche.emittenti_fiscali_billing_account` e la gemella
+`resellers_billing_account` **definiscono** il legame da cui la whitelist
+dell'operatore si deriva. Una policy che le filtrasse per perimetro emittente si
+appoggerebbe a **sé stessa**.
+
+⇒ Non è un lavoro rimandato per mancanza di tempo: è una domanda di modello — *il
+legame è catalogo, o è dato di perimetro?* — e le due si decidono insieme, o due
+tabelle gemelle risponderebbero in due modi.
+
+### 11.5 ⚠️ L'invariante NON è «la vista è vuota»
+
+Trenta tabelle sono scoperte oggi. Un cancello rosso dal primo giorno viene
+disattivato, e *un presidio spento è peggio di uno assente*. L'invariante
+verificabile è **«nessuna riga fuori da `DEBITO_DICHIARATO`»**, e morde nei due
+versi:
+
+* `NON_DICHIARATO` — una tabella è nata scoperta e non se n'è accorto nessuno;
+* `DEBITO_ESTINTO` — una riga di registro **non ha più il suo difetto**. Va
+  tolta dal CSV, o continuerebbe a far tacere il presidio su quella tabella
+  anche il giorno in cui tornasse scoperta per un'altra strada. ⭐ È il verso in
+  cui un registro marcisce **senza che nessuno se ne accorga**, cioè quello
+  permissivo, ed è il motivo per cui esiste.
+
+⚠️ **E va detto dove sta il prezzo: dichiarare un debito zittisce il test 2.**
+Per una tabella nuova il presidio vero sono i **casi costruiti** (test 4..8), che
+provano che il flag è un **gesto** e non l'impostazione di fabbrica.
+
+### 11.6 ⭐ La mutazione che ha trovato un verde per sottrazione — nel presidio
+
+Il file è stato provato **facendolo fallire**, non solo passare. Due mutazioni:
+
+| Mutazione | Atteso | Esito |
+| --- | --- | --- |
+| tolta una riga dal registro (`pratiche.flussi`) | rosso il test 2 | ✅ |
+| tolto alla vista il ramo `POLICY_INERTE` | rossi 2, **3** e 7 | 🔴 il **3 restava VERDE** |
+
+⛔ **E il test 3 era proprio quello che doveva accorgersene.** Chiede *«ogni
+criterio ammesso dal `CHECK` ha un ramo vivo nella vista?»* — ma il ramo del
+**debito estinto** ripubblica il `criterio` leggendolo dal **registro**: la
+parola `POLICY_INERTE` continuava a comparire nella vista perché stava scritta
+nel CSV, non perché la regola la producesse ancora.
+
+⇒ Corretto guardando solo ciò che il criterio produce (`stato <> 'DEBITO_ESTINTO'`).
+⭐ È la forma esatta del **verde per sottrazione**, trovata sul test che esiste
+per impedirlo — e si è vista solo perché il presidio è stato mutato. *Un
+presidio che non è mai stato fatto fallire non è stato provato.*
+
+### 11.7 Che cosa resta, dopo l'apply
+
+* le **33 righe** del registro sono trentatré lavori con un nome, il più corto
+  dei quali (`shop.ricevute`) è una riga di SQL;
+* la famiglia più grossa e più pronta è **pratiche**: sette satelliti, una sola
+  rotta (`pratica_id`, `NOT NULL`), un solo adattatore da scrivere;
+* ⚠️ resta fuori dal criterio, e va ricordato, il debito dello **`storico`**
+  (§9): 120 tabelle senza RLS. Non entrano qui perché non hanno una FK verso le
+  madri — sono **gemelle**, non figlie. Il criterio non le vede, e questo brief
+  non deve far credere il contrario.
 
 ---
 

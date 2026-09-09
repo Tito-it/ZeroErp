@@ -1,0 +1,194 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-perimetro-emittente-righe-documento §8/§10 — IL PRESIDIO che quel
+# cantiere ha dichiarato come «la cosa da fare per prima», e non aveva scritto.
+#
+# ── ⭐ IL CRITERIO, E PERCHE' NON E' UN ELENCO ──────────────────────
+#   Il cantiere si e' chiuso con questa lezione, scritta nel suo §10:
+#   *«Un elenco scritto a mano ha per perimetro cio' che chi lo scriveva aveva
+#   in mente.»* Il §2 diceva «fatture: tutte protette» ed erano protette le
+#   cinque che l'elenco nominava; sei figlie e una nipote non c'erano.
+#   ⇒ Qui il perimetro lo dice `pg_constraint`, cioe' il contratto: **ogni
+#     tabella con una FK verso una tabella in row level security**. Il giorno in
+#     cui nasce una tabella nuova appesa a un documento, compare da sola.
+#
+# ── ⛔ E IL CRITERIO SI ESTENDE DA SOLO, che e' il punto ────────────
+#   Armata una figlia, le SUE figlie entrano nel perimetro al giro dopo: la
+#   transitivita' non e' scritta da nessuna parte, e' una conseguenza. Per la
+#   stessa ragione NON si calcola la chiusura transitiva a priori — sarebbe la
+#   stessa trappola del §11.7 delle linee guida SQL, dove 181 tabelle dipendono
+#   da `anagrafiche` per qualche cammino e il criterio utile e' la citazione
+#   DIRETTA.
+#
+# ── ⛔ IL SECONDO CRITERIO: una policy senza RLS non e' una difesa ──
+#   §8 del brief apre proprio di li': `pg_policy` ha la riga e il filtro non si
+#   applica. Chi verifica con `EXISTS (SELECT 1 FROM pg_policies …)` legge
+#   verde su una tabella aperta a tutti. Succede oggi su tre tabelle
+#   (acquisti.ddt, acquisti.ordini, shop.ricevute), e il primo criterio ne
+#   prende una sola: le altre due non sono figlie di niente di protetto.
+#   ⇒ Sono due DOMANDE diverse e restano due righe diverse. Una tabella che
+#     fallisce entrambe le porta tutte e due, e non e' rumore: sono due
+#     difetti indipendenti, che si tolgono insieme solo per fortuna.
+#
+# ── ⭐ LA TERZA COSA CHE LA VISTA DICE: il debito ESTINTO ───────────
+#   Una riga di registro che non trova piu' la sua tabella nel perimetro esce
+#   come DEBITO_ESTINTO. Senza quel verso il registro marcirebbe nel senso
+#   PERMISSIVO — l'unico in cui un presidio marcisce senza che nessuno se ne
+#   accorga: una riga rimasta li' zittisce per sempre una tabella che nel
+#   frattempo e' tornata scoperta per un'altra strada.
+#   E' lo stesso terzo verso del cancello dei codici errore.
+#
+# ⚠️ FORCE ROW LEVEL SECURITY non entra nel criterio, e la ragione e' la stessa
+#   gia' scritta in dbops.vw_processi_dominio_senza_difesa: in questo database
+#   nessuna tabella lo usa (misurato: 69 tabelle in RLS, zero con FORCE) perche'
+#   l'owner deve poter leggere fuori dalla row security per le SECURITY DEFINER
+#   che derivano il perimetro. L'applicazione si connette come `zeroerp_app`,
+#   che owner non e': per lei le policy si applicano comunque.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260909-76-create-vw-rls-perimetro-scoperto-mctit.yaml
+
+  - changeSet:
+      id: 20260909-76-create-vw-rls-perimetro-scoperto
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.vw_rls_perimetro_scoperto: ogni tabella con una FK verso una
+        tabella in RLS, e ogni tabella con una policy inerte, che non filtra —
+        con lo stato NON_DICHIARATO / DEBITO_DICHIARATO / DEBITO_ESTINTO letto
+        dal registro dbops.rls_perimetro_debito. E' il presidio del §8 di
+        brief-db-perimetro-emittente-righe-documento.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_rls_perimetro_scoperto AS
+              WITH stato_rel AS (
+                      -- Lo stato di difesa di ogni tabella, una volta sola.
+                      SELECT c.oid,
+                             n.nspname::text AS schema_tabella,
+                             c.relname::text AS nome_tabella,
+                             c.relrowsecurity AS rls_attiva,
+                             EXISTS (SELECT 1 FROM pg_policy pol
+                                      WHERE pol.polrelid = c.oid) AS ha_policy
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])
+                         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                   ), figlie AS (
+                      -- ⭐ Il perimetro del primo criterio: il contratto, non un
+                      --   elenco. Una partizione conta come tabella a se': le
+                      --   policy del padre partizionato NON risalgono ne'
+                      --   scendono, ed e' il difetto che il passo 8 del brief
+                      --   ha chiuso su vendite.note.
+                      SELECT k.conrelid AS oid,
+                             string_agg(DISTINCT pn.nspname || '.' || p.relname,
+                                        ', ') AS padri_in_rls
+                        FROM pg_constraint k
+                        JOIN pg_class p      ON p.oid = k.confrelid
+                                            AND p.relrowsecurity
+                        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+                       WHERE k.contype = 'f'
+                       GROUP BY k.conrelid
+                   ), perimetro AS (
+                      SELECT 'FIGLIA_DI_TABELLA_PROTETTA'::text AS criterio,
+                             s.schema_tabella,
+                             s.nome_tabella,
+                             f.padri_in_rls,
+                             CASE
+                                 WHEN NOT s.ha_policy AND NOT s.rls_attiva
+                                     THEN 'la policy e l''accensione: la tabella non filtra in nessun modo'::text
+                                 WHEN s.ha_policy AND NOT s.rls_attiva
+                                     THEN 'l''accensione: la policy c''e'' ma la row level security e'' spenta, quindi non filtra niente'::text
+                                 ELSE 'la policy: la row level security e'' accesa e nessuna policy la accompagna (deny-all)'::text
+                             END AS manca
+                        FROM figlie f
+                        JOIN stato_rel s ON s.oid = f.oid
+                       WHERE NOT (s.rls_attiva AND s.ha_policy)
+                      UNION ALL
+                      -- ⛔ Secondo criterio, e non e' un doppione del primo:
+                      --   una policy inerte va vista anche dove la tabella non
+                      --   e' figlia di niente di protetto — due delle tre di
+                      --   oggi sono esattamente cosi'.
+                      SELECT 'POLICY_INERTE'::text,
+                             s.schema_tabella,
+                             s.nome_tabella,
+                             NULL::text,
+                             'l''accensione: la policy e'' scritta e la row level security e'' spenta, quindi non viene applicata'::text
+                        FROM stato_rel s
+                       WHERE s.ha_policy
+                         AND NOT s.rls_attiva
+                   )
+              SELECT p.criterio,
+                     p.schema_tabella,
+                     p.nome_tabella,
+                     p.padri_in_rls,
+                     p.manca,
+                     CASE WHEN d.id IS NULL THEN 'NON_DICHIARATO'::text
+                          ELSE 'DEBITO_DICHIARATO'::text END AS stato,
+                     d.ragione,
+                     d.data_registrazione
+                FROM perimetro p
+                LEFT JOIN dbops.rls_perimetro_debito d
+                       ON d.criterio       = p.criterio
+                      AND d.schema_tabella = p.schema_tabella
+                      AND d.nome_tabella   = p.nome_tabella
+              UNION ALL
+              -- ⭐ Il terzo verso: una riga di registro che non ha piu' il suo
+              --   difetto. Va TOLTA dal CSV — un debito pagato che resta scritto
+              --   e' un cancello spento su quella tabella, per sempre.
+              SELECT d.criterio,
+                     d.schema_tabella,
+                     d.nome_tabella,
+                     NULL::text,
+                     'niente: la tabella non e'' piu'' scoperta per questo criterio, o non esiste piu''. La riga va tolta dal CSV del registro'::text,
+                     'DEBITO_ESTINTO'::text,
+                     d.ragione,
+                     d.data_registrazione
+                FROM dbops.rls_perimetro_debito d
+               WHERE NOT EXISTS (
+                       SELECT 1 FROM perimetro p
+                        WHERE p.criterio       = d.criterio
+                          AND p.schema_tabella = d.schema_tabella
+                          AND p.nome_tabella   = d.nome_tabella);
+
+              COMMENT ON VIEW dbops.vw_rls_perimetro_scoperto IS
+                  'Le tabelle che dovrebbero filtrare e non filtrano, per due criteri indipendenti letti dal catalogo di PostgreSQL: FIGLIA_DI_TABELLA_PROTETTA (ha una FK verso una tabella con la row level security accesa) e POLICY_INERTE (porta una policy e la row level security spenta). ⛔ L''invariante NON e'' «la vista e'' vuota»: e'' «nessuna riga fuori da DEBITO_DICHIARATO» — un debito dichiarato in dbops.rls_perimetro_debito e'' una riga attesa, un NON_DICHIARATO e'' un allarme, un DEBITO_ESTINTO e'' una riga di registro da togliere. ⚠️ FORCE ROW LEVEL SECURITY non entra nel criterio: in questo database nessuna tabella lo usa, e l''applicazione non e'' owner. Presidio: db/pgtap/rls/test-rls-perimetro-scoperto.sql. Brief: brief-db-perimetro-emittente-righe-documento §8.';
+
+              -- ⛔ Il GRANT che le sorelle di presidio hanno tutte: una vista
+              --   che solo l'owner puo' leggere e' un presidio che nessuna
+              --   schermata potra' mai mostrare.
+              -- ⚠️ Solo zeroerp_app: i privilegi dei ruoli batch stanno nel
+              --   provisioning, che concede su ALL TABLES dei 14 schemi piu'
+              --   ALTER DEFAULT PRIVILEGES — quindi copre anche cio' che nasce
+              --   dopo (linee-guida-sql §11.6).
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_rls_perimetro_scoperto TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_rls_perimetro_scoperto;
