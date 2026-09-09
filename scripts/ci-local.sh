@@ -41,6 +41,27 @@
 #   scripts/ci-local.sh --ci-apply   # + la passata delle automazioni (vedi sopra)
 #   CI_DB=altro_nome scripts/ci-local.sh
 #
+# ── ⭐ E PREPARA LO SCRATCH ANCHE PER I pgTAP, sempre e da solo ────────
+#   Il migrate costruisce lo schema, ma la suite pretende altre tre cose che in
+#   CI fanno tre passi separati dopo Liquibase. Qui si fanno in fondo, sempre,
+#   e sono tutte e tre idempotenti:
+#
+#     1. l'estensione `pgtap` — non la crea nessun changelog. Senza, ogni file
+#        muore su `SELECT plan(N)`;
+#     2. i privilegi di `zeroerp_app` (`scripts/sql/provision_db_roles.sql`) —
+#        senza, ogni rosso e' un permesso e non un difetto;
+#     3. lo schema `django`, COPIATO da `$DEV_DB` — lo costruisce
+#        `manage.py migrate`, che su questa macchina non c'e'. Diciassette
+#        funzioni plpgsql scrivono e leggono `django.auth_user`.
+#
+#   ⚠️ Nessun flag: una preparazione che dipende da cosa uno si ricorda non
+#   sopravvive a un `--fresh`. E' la lezione del `GRANT USAGE` su `maintenance`,
+#   che esisteva solo su dbdev perche' era stato dato a mano — e per questo un
+#   pgTAP era verde qui e rosso su ogni installazione nuova.
+#   ⛔ Lo schema `django` si COPIA: e' fedele oggi, e invecchia in silenzio il
+#   giorno in cui arriva una migration Django nuova. La strada fedele resta
+#   lanciare `manage.py migrate` DAL SERVER BACKEND puntando a questo host.
+#
 # PREREQUISITI: `sudo -u postgres` (per creare il database) e `db/internal.env`
 #   per host/porta.
 # ⚠️ Liquibase si invoca SEMPRE via `scripts/liquibase5.sh`, mai un binario nel
@@ -64,7 +85,7 @@ for a in "$@"; do
   case "$a" in
     --fresh)    FRESH=true ;;
     --ci-apply) CI_APPLY=true ;;
-    -h|--help)  sed -n '2,50p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '2,73p' "$0"; exit 0 ;;
     *) echo "Opzione sconosciuta: $a" >&2; exit 1 ;;
   esac
 done
@@ -308,6 +329,101 @@ if $CI_APPLY; then
   echo "   ⚠️ senza il ruolo batch provisionato, i grant runtime possono fallire"
   "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username=zeroerp --password=secret \
     --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts=ci_apply
+fi
+
+# ══════════════════════════════════════════════════════════════════════
+# Preparazione al collaudo: cio' che serve ai pgTAP e che il migrate non fa.
+# Tutte e tre idempotenti: a regime non stampano niente e non cambiano niente.
+# ══════════════════════════════════════════════════════════════════════
+
+# 0. ⛔ IL CANALE DI LOG dblink, SPENTO PER QUESTO DATABASE.
+#    Il cluster ha un default `myapp.dblink_log_connection` che punta al
+#    database di SVILUPPO come `titodb` e senza password. Su `zeroerp` non si
+#    vede, perche' li' un override per-database lo copre con
+#    `service=zeroerp_log`; su uno scratch appena creato quel default affiora.
+#    ⇒ Ogni funzione che solleva un errore prova a scriverlo via dblink, e come
+#    ruolo applicativo muore su «password or GSSAPI delegated credentials
+#    required» — un 2F003 al posto del P0001 del dominio.
+#    ⚠️ Misurato il 2026-09-09: 151 dei 194 file di `vendite` che fallivano nel
+#    fixture riportavano QUEL messaggio invece del proprio. Non un rosso in
+#    piu': un rosso che MENTE sulla causa, e che avrebbe mandato il triage a
+#    inseguire un fantasma.
+#    ⭐ Svuotarlo e' cio' che rende lo scratch simile alla CI, dove quella GUC
+#    non e' impostata affatto: `fn_get_or_create_session_tx_id` prende il ramo
+#    della sentinella, avvisa e prosegue.
+#    ⚠️ Il ruolo `zeroerp` non e' toccato: ha un `ALTER ROLE ... IN DATABASE`
+#    suo, impostato piu' sopra, che ha la precedenza. Il migratore continua a
+#    registrare i propri tx_id.
+psql_admin -d postgres -c \
+  "ALTER DATABASE \"$CI_DB\" SET myapp.dblink_log_connection = '';" >/dev/null
+
+# 1. L'estensione pgtap. In CI la crea il passo della suite; qui nessuno.
+if ! psql_admin -d "$CI_DB" -tAc "SELECT 1 FROM pg_extension WHERE extname='pgtap'" | grep -q 1; then
+  echo "── installo l'estensione pgtap su $CI_DB"
+  psql_admin -d "$CI_DB" -c "CREATE EXTENSION IF NOT EXISTS pgtap;" >/dev/null
+fi
+
+# 2. I privilegi del ruolo applicativo, come il passo `provision_db_roles` della
+#    CI. ⛔ La password si LEGGE da ~/.pgpass e non si inventa: lo script fa
+#    `ALTER ROLE ... PASSWORD` e i ruoli sono di CLUSTER, quindi un valore nuovo
+#    spaccherebbe l'accesso di zeroerp_app al database di sviluppo. Con la
+#    password che ha gia', quella riga e' un non-evento.
+#
+# ⛔ E SI RILANCIA SEMPRE, non «solo se mancano i grant». `GRANT ... ON ALL
+#   TABLES IN SCHEMA` e' una FOTOGRAFIA: copre le tabelle che esistono
+#   nell'istante in cui gira, non quelle che nascono dopo. E dopo ne nascono
+#   eccome — le tabelle `storico.*` le genera il framework delle automazioni
+#   nella passata `ci_apply`, cioe' piu' tardi.
+#   ⚠️ Successo il 2026-09-09 su questo script, con un guard «salta se i grant
+#   ci sono gia'» che sembrava innocuo: quattro tabelle (`storico.user_override_*`,
+#   `storico.user_emittenti_fiscali`) sono rimaste senza `SELECT` per
+#   `zeroerp_app`, e `db/pgtap/dbops/test-audit-sources-seed.sql` e' diventato
+#   rosso — perche' `information_schema.columns` mostra solo le colonne su cui
+#   il ruolo ha privilegi, quindi quelle quattro «non esistevano».
+#   ⭐ E' la ragione per cui in `ci-validate.yaml` il passo `provision_db_roles`
+#   sta DOPO `--contexts=ci_apply` e non prima: qui si copia quell'ordine.
+APP_PWD="$(awk -F: -v db="$DEV_DB" '$3==db && $4=="zeroerp_app" {print $5; exit}' ~/.pgpass 2>/dev/null || true)"
+if [ -n "$APP_PWD" ]; then
+  echo "── privilegi di zeroerp_app su $CI_DB (provision_db_roles)"
+  # ⚠️ Dallo STDIN e non con `-f`: `/home/tid` e' `drwx------`, quindi l'utente
+  #   `postgres` non puo' attraversarlo e un percorso non lo aprirebbe mai. Cosi'
+  #   il file lo apre la shell, che gira come l'utente giusto, e a psql arriva
+  #   gia' un descrittore.
+  psql_admin -d "$CI_DB" \
+    -v app_role=zeroerp_app -v app_password="$APP_PWD" -v migrator_role=zeroerp \
+    < scripts/sql/provision_db_roles.sql >/dev/null
+else
+  echo "⚠️  password di zeroerp_app non trovata in ~/.pgpass: salto i privilegi." >&2
+  echo "    (riga attesa: $PGHOST:$PGPORT:$DEV_DB:zeroerp_app:<password>)" >&2
+  echo "    NON la invento: un ALTER ROLE con un valore nuovo e' di CLUSTER e" >&2
+  echo "    romperebbe l'accesso al database di sviluppo. I pgTAP falliranno" >&2
+  echo "    tutti per permessi finche' non la aggiungi." >&2
+fi
+
+# 3. Lo schema django, copiato da $DEV_DB. ⚠️ E' una COPIA, non un migrate: il
+#    DDL e' quello che Django ha prodotto la', quindi fedele oggi. Si carica
+#    come `zeroerp` cosi' le tabelle le possiede lui — i pgTAP marcati
+#    `pgtap-runner: owner` girano con quel ruolo e ci scrivono dentro.
+#    ⚠️ `django_migrations` resta vuota: e' dichiarato in intestazione.
+if ! psql_admin -d "$CI_DB" -tAc \
+       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='django' AND c.relname='auth_user'" | grep -q 1; then
+  if psql_admin -d "$DEV_DB" -tAc \
+       "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='django' AND c.relname='auth_user'" | grep -q 1; then
+    echo "── copio lo schema django da $DEV_DB (sola lettura di la')"
+    # -T token_blacklist: quelle due tabelle su CI_DB le ha gia' create Liquibase.
+    # Si tolgono `CREATE SCHEMA` (lo schema c'e' gia') e le ALTER DEFAULT
+    # PRIVILEGES di un altro ruolo (zeroerp non puo' cambiarle, e qui non servono).
+    sudo -u postgres pg_dump -d "$DEV_DB" --schema-only --no-owner \
+         -n django -T 'django.token_blacklist_*' \
+      | sed -e '/^CREATE SCHEMA django;$/d' -e '/^ALTER DEFAULT PRIVILEGES FOR ROLE/d' \
+      | PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+          -X -q -v ON_ERROR_STOP=1 >/dev/null
+  else
+    echo "⚠️  django.auth_user non c'e' nemmeno su $DEV_DB: niente da copiare." >&2
+    echo "    Lancia 'manage.py migrate' dal server backend puntando a questo host." >&2
+  fi
 fi
 
 DEV_DOPO="$(testimone_dev)"

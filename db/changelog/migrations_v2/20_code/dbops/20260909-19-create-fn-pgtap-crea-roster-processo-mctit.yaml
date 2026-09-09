@@ -1,0 +1,227 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: una coppia (processo automatico, azienda) che
+# compare davvero in `dbops.vw_processi_roster`.
+#
+# IL PROBLEMA CHE CHIUDE. Il roster e' il punto da cui partono tutti i processi
+# automatici: `dbops.fn_accoda_chiusura_scadenze` ci legge le aziende da
+# svegliare, e senza una riga li' dentro non accoda niente. Tre test di dbops
+# quel roster lo CERCAVANO invece di costruirlo:
+#
+#   db/pgtap/dbops/test-fn-accoda-chiusura-scadenze.sql
+#   db/pgtap/dbops/test-vw-processi-roster.sql
+#   db/pgtap/dbops/test-fn-apply-chiusura-scadenze-v1.sql
+#
+# Su dbdev funzionavano — ci sono due emittenti veri e otto coppie a roster —
+# e su un database ricostruito dai changelog no: emittenti e soggetti sono
+# `dati_macchina`, quindi non esistono e non devono esistere. E' il corollario
+# sui test della Regola zero (AGENTS.md): un test che si appoggia alla
+# popolazione prova i soli casi che quella popolazione per caso contiene.
+# Misurato il 2026-09-09 sul database scratch di scripts/ci-local.sh:
+# `vw_processi_roster` da' 0 righe, contro 8 su dbdev.
+#
+# ⭐ PERCHE' UN BUILDING BLOCK E NON TRE COPIE. I chiamanti sono tre dal primo
+# giorno, e la catena da costruire e' lunga: soggetto -> ruolo EF -> emittente
+# -> utente Django -> identita' -> perimetro -> legame col processo. Copiata
+# tre volte, il prossimo guard che entra su uno di quegli anelli la rompe in
+# tre punti diversi. Regola del 2, ampiamente superata.
+#
+# ⭐ E SI APPOGGIA AL PERCORSO REALE, che e' la parte che conta. La seconda
+# meta' del lavoro non la fa questa funzione: la fa
+# `script.fn_crea_utente_tecnico`, cioe' esattamente la funzione che in
+# produzione crea l'utente con cui un processo lavora i documenti di
+# un'azienda. Se un giorno quella catena cambia — un guard nuovo,
+# un'obbligatorieta' in piu' — i test lo scoprono, invece di continuare a
+# montare a mano un mondo che il modello non ammette piu'.
+# ⇒ Qui resta solo cio' che sta PRIMA: l'azienda.
+#
+# ⚠️ PRETENDE `django.auth_user`, e non e' un dettaglio di ambiente.
+# `fn_crea_utente_tecnico` inserisce l'utente Django (e' il primo dei suoi sette
+# passi). Lo schema `django` non lo costruisce Liquibase: lo costruisce
+# `manage.py migrate`, che in CI gira PRIMA della suite pgTAP e sul database
+# scratch di `ci-local.sh` non gira affatto. ⇒ I tre test passano in CI e su
+# dbdev; sullo scratch restano rossi finche' non ci si lancia il migrate di
+# Django. Non e' un difetto dei test: e' una lacuna della replica locale.
+#
+# ⛔ NIENTE `%TYPE` SU `django.*` NELLA FIRMA. `auth_user_id` prende il tipo da
+# `anagrafiche.identita_digitali.auth_user_id`, non da `django.auth_user.id`,
+# e i due sono lo stesso `integer`. Un `%TYPE` sulla tabella Django si
+# risolverebbe al momento della CREATE, cioe' durante `20_code` — quando in CI
+# lo schema `django` e' ancora vuoto: il changeSet morirebbe li'. E' la regola
+# «il DB puo' CHIAMARE dentro django.*, non DIPENDERNE» applicata alla firma.
+#
+# Permessi: funzione di titodb, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner -> CREATE OR REPLACE liscio, nessun GRANT.
+# Stessa forma di dbops.fn_pgtap_crea_soggetto_pg (20260818-76), di cui e' la
+# naturale continuazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260909-19-create-fn-pgtap-crea-roster-processo-mctit.yaml
+
+  - changeSet:
+      id: 20260909-19-create-fn-pgtap-crea-roster-processo
+      author: mctit
+      runOnChange: false
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_roster_processo() crea
+        un'azienda nuova (soggetto + ruolo EF + emittente fiscale) e le
+        aggancia l'utente tecnico di un processo automatico chiamando
+        script.fn_crea_utente_tecnico, cosi' la coppia compare in
+        dbops.vw_processi_roster. Ritorna le coordinate della riga di roster.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_roster_processo(
+                  p_processo_codice text,
+                  p_sigla           anagrafiche.emittenti_fiscali.codice%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE (
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  identita_id                 anagrafiche.identita_digitali.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una coppia (processo, azienda)
+              --   che compaia davvero in dbops.vw_processi_roster, costruendo
+              --   l'intera catena invece di cercarla fra i dati esistenti.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_roster AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_roster_processo('chiusura_scadenze_daily');
+              DECLARE
+                  v_soggetto_id  anagrafiche.soggetti.id%TYPE;
+                  v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_codice       anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_id        anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+                  v_try          integer := 0;
+                  v_libera       boolean := FALSE;
+              BEGIN
+                  IF p_processo_codice IS NULL OR btrim(p_processo_codice) = '' THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_roster_processo: p_processo_codice e'' obbligatorio';
+                  END IF;
+
+                  -- La sigla: se non la impone il chiamante se ne cerca una
+                  -- LIBERA. ⚠️ `uq:codice` e' UNIQUE senza filtro su `attivo`,
+                  -- quindi una sigla fissa farebbe collidere la seconda corsa
+                  -- con il residuo della prima — lo stesso difetto per cui
+                  -- esiste dbops.fn_pgtap_piva_libera.
+                  -- ⚠️ La forma la impone chk_emittenti_fiscali_codice_forma:
+                  -- solo maiuscole e cifre, da 2 a 10 caratteri.
+                  IF p_sigla IS NOT NULL THEN
+                      v_codice := p_sigla;
+                  ELSE
+                      LOOP
+                          v_try := v_try + 1;
+                          EXIT WHEN v_try > 9999;
+                          v_codice := 'PGTR' || lpad(v_try::text, 4, '0');
+                          IF NOT EXISTS (SELECT 1
+                                           FROM anagrafiche.emittenti_fiscali e
+                                          WHERE e.codice = v_codice) THEN
+                              v_libera := TRUE;
+                              EXIT;
+                          END IF;
+                      END LOOP;
+
+                      IF NOT v_libera THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_roster_processo: nessuna sigla PGTRnnnn libera';
+                      END IF;
+                  END IF;
+
+                  -- 1. L'azienda: soggetto persona giuridica + ruolo EF.
+                  --    I due helper aprono e richiudono da soli la finestra dei
+                  --    guard differiti, quindi qui non serve toccarla.
+                  v_soggetto_id := dbops.fn_pgtap_crea_soggetto_pg(
+                                       'Emittente pgTAP ' || v_codice);
+                  v_sr_id       := dbops.fn_pgtap_crea_soggetto_ruolo(
+                                       v_soggetto_id, 'EF'::character varying);
+
+                  -- 2. L'emittente fiscale. ⭐ Nascendo fa nascere anche i suoi
+                  --    registri di numerazione (vendite.fn_provision_registri_emittente):
+                  --    e' il percorso reale, e un test che ne avesse bisogno li
+                  --    trova gia' pronti.
+                  INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice)
+                  VALUES (v_sr_id, v_codice)
+                  RETURNING id INTO v_ef_id;
+
+                  -- 3. ⭐ Da qui in poi NON si monta niente a mano: l'utente
+                  --    Django, il soggetto del processo, l'identita' OPERATORE
+                  --    tecnica, la riga di perimetro in
+                  --    config.user_emittenti_fiscali e il legame in
+                  --    dbops.processi_identita li scrive la funzione di
+                  --    produzione. Se quella catena cambia, il test se ne
+                  --    accorge invece di continuare a costruire un mondo
+                  --    che il modello non ammette piu'.
+                  --    ⚠️ Solleva lei, coi suoi codici registrati, se il
+                  --    processo non esiste o non e' eleggibile.
+                  --
+                  -- ⛔ E VA CHIAMATA DENTRO UNA FINESTRA DIFFERITA, o non parte.
+                  --   `fn_crea_utente_tecnico` e' a sua volta una SAGA: scrive
+                  --   il soggetto del processo e SOLO DOPO il suo contatto. Il
+                  --   guard `trgfn_soggetti_guard_soggetto_contatti` e'
+                  --   DEFERRABLE INITIALLY DEFERRED proprio per questo, ma qui
+                  --   i vincoli sono IMMEDIATE per due motivi che si sommano:
+                  --   il preambolo obbligatorio dei pgTAP (`SET CONSTRAINTS ALL
+                  --   IMMEDIATE`, presidiato in CI) e la richiusura che
+                  --   `fn_pgtap_crea_soggetto_pg` fa in uscita, dichiarata nel
+                  --   suo stesso COMMENT.
+                  --   ⇒ Senza queste due righe si muore su «Il soggetto non ha
+                  --   contatti validi» al primo INSERT, cioe' prima che la saga
+                  --   possa esistere. In produzione non succede: li' nessuno ha
+                  --   mai messo i vincoli IMMEDIATE.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  v_auth_user_id := script.fn_crea_utente_tecnico(
+                                        p_processo_codice  := p_processo_codice,
+                                        p_emittente_codice := v_codice);
+
+                  -- Saga completa: i guard differiti scattano QUI, su un mondo
+                  -- finito. ⚠️ La richiusura non e' facoltativa — senza, il
+                  -- ROLLBACK del test se li porterebbe via NON verificati, e il
+                  -- test sarebbe verde per sottrazione.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  SELECT idg.id
+                    INTO v_identita_id
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_auth_user_id
+                     AND idg.attivo;
+
+                  -- ⚠️ Guard sul risultato, non sul parametro: se l'identita'
+                  --   non si trova la riga di roster non esiste, e restituire
+                  --   una tupla con un NULL dentro manderebbe il chiamante a
+                  --   cercare il difetto tre passi piu' in la'.
+                  IF v_identita_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_roster_processo: nessuna identita'' attiva per auth_user_id=%',
+                          v_auth_user_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_ef_id, v_codice, v_sr_id, v_auth_user_id, v_identita_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_roster_processo(text,character varying)
+              IS 'Helper di fixture pgTAP: crea un''azienda nuova (soggetto persona giuridica + ruolo EF + emittente fiscale con sigla PGTRnnnn libera) e le aggancia l''utente tecnico di un processo automatico, cosi'' la coppia (processo, azienda) compare in dbops.vw_processi_roster. Ritorna emittente_fiscale_id, emittente_codice, emittente_soggetto_ruolo_id, auth_user_id, identita_id. ⭐ La seconda meta'' del lavoro la fa script.fn_crea_utente_tecnico, cioe'' il percorso di produzione: utente Django, identita'' OPERATORE tecnica, riga di perimetro in config.user_emittenti_fiscali e legame in dbops.processi_identita. ⚠️ Pretende quindi django.auth_user, che costruisce manage.py migrate e non Liquibase: i test che la usano passano in CI e su un database di lavoro, e restano rossi sul database scratch di scripts/ci-local.sh finche'' non ci si lancia il migrate di Django. ⛔ Nasce perche'' tre test di dbops il roster lo CERCAVANO fra i dati esistenti: verdi su dbdev, rossi su qualunque database ricostruito dai changelog, dove emittenti e soggetti sono dati_macchina e non esistono.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_roster_processo(text,character varying);

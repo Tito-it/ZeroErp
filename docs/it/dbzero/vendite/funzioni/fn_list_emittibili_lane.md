@@ -104,6 +104,22 @@ BEGIN
       -- EMISSIONE MIRATA (rev 2026-07-27): chiave dalla funzione A1,
       -- mai ricostruita qui. Un gruppo con righe di tipo doc diverso
       -- resta su piu' terne, e vengono restituite tutte (G15).
+      -- ⛔ UN DOCUMENTO GIA' TRATTENUTO DA UN LOTTO VIVO NON SI OFFRE A UN
+      --   SECONDO GIRO, ed e' il lato MACCHINA della regola: la casella spenta
+      --   a video non basta, perche' chi costruisce il lotto lo prende da qui.
+      -- ⭐ Il predicato non si riscrive: si INTERROGA la sede unica
+      --   (vendite.vw_documenti_trattenuti_da_lotto, changeSet 20260909-23),
+      --   che legge il flag `is_abortito` fail-closed.
+      -- ⚠️ E non e' un doppione di cio' che c'era: script.fn_get_stato_push_-
+      --   segment, che guarda le cinque fn_list_*_da_pushare, sa dire LIBERA /
+      --   ALLOCATA / EMESSA — cioe' misura l'ESITO del lavoro, non il fatto che
+      --   il lavoro sia IN CORSO. Quelle cinque non si toccano: la loro regola
+      --   c'e' gia'.
+      AND NOT EXISTS (
+            SELECT 1
+              FROM vendite.vw_documenti_trattenuti_da_lotto t
+             WHERE t.gruppo_key = vendite.fn_build_gruppo_fatturabile_key(
+                       ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id))
       AND (
            p_gruppi IS NULL
            OR vendite.fn_build_gruppo_fatturabile_key(

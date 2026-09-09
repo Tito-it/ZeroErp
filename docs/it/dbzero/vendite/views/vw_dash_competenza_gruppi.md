@@ -75,8 +75,12 @@ WITH aggregato AS (
     esito.errore_codice AS ultimo_errore_codice,
     esito.errore_messaggio AS ultimo_errore_messaggio,
     esito.errore_quando AS ultimo_errore_quando,
-    esito.lotto_codice AS ultimo_lotto_codice
-   FROM (((((((((aggregato g
+    esito.lotto_codice AS ultimo_lotto_codice,
+    trat.reason AS emissione_blocco_reason,
+    trat.reason_key AS emissione_blocco_reason_key,
+    trat.lotto_id AS emissione_blocco_lotto_id,
+    trat.lotto_codice AS emissione_blocco_lotto_codice
+   FROM ((((((((((aggregato g
      LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
      LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON ((s.area IS NOT NULL)))
      LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
@@ -94,7 +98,15 @@ WITH aggregato AS (
              JOIN vendite.fatturazione_lotti l ON ((l.id = le.lotto_id)))
           WHERE ((le.gruppo_key = g.gruppo_key) AND (l.competenza_mese = g.competenza_mese))
           ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
-         LIMIT 1) esito ON (true));
+         LIMIT 1) esito ON (true))
+     LEFT JOIN LATERAL ( SELECT 'TRATTENUTO_DA_LOTTO'::text AS reason,
+            'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text AS reason_key,
+            t.lotto_id,
+            t.lotto_codice
+           FROM vendite.vw_documenti_trattenuti_da_lotto t
+          WHERE (t.gruppo_key = g.gruppo_key)
+          ORDER BY t.lotto_id
+         LIMIT 1) trat ON (true));
 ```
 
 

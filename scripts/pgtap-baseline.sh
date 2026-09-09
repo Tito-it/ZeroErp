@@ -40,14 +40,27 @@
 #
 #   PGTAP_RUNNER=app scripts/pgtap-baseline.sh vendite   # come gira l'applicazione
 #
-# ── LA BASELINE DELLA CI, PRESA IN LOCALE ─────────────────────────────
-#   Il database scratch di `scripts/ci-local.sh` e' ricostruito da zero come
-#   quello di GitHub: e' li' che si misura la baseline della CI, senza
-#   aspettare una corsa. Servono DUE variabili, e nessuna e' facoltativa:
+# ── TRE BASELINE, PERCHE' I METRI SONO TRE ────────────────────────────
+#     db/pgtap/baseline-rossi.tsv          <- dbdev, dati veri (default)
+#     db/pgtap/baseline-rossi-scratch.tsv  <- il database di scripts/ci-local.sh
+#     db/pgtap/baseline-rossi-ci.tsv       <- la CI. LA SCRIVE LA CI.
+#
+#   Sullo scratch si lavora cosi', e servono DUE variabili:
 #
 #     PGTAP_ENV_FILE=db/internal.ci.env \
-#     PGTAP_BASELINE=db/pgtap/baseline-rossi-ci.tsv \
+#     PGTAP_BASELINE=db/pgtap/baseline-rossi-scratch.tsv \
 #       scripts/pgtap-baseline.sh --update
+#
+#   ⛔ E LO SCRATCH NON E' LA CI, per quanto ci somigli. Il 2026-09-09 la
+#   baseline della CI e' stata riempita con una corsa sullo scratch, ed era
+#   sbagliato: li' lo schema `django` e' una COPIA e non un migrate, il canale
+#   di log dblink e' spento a mano, i privilegi arrivano da un provisioning
+#   rilanciato a parte. Tre differenze note piu' quelle che non sappiamo.
+#   ⇒ Un confronto CI contro un metro preso qui produce finte regressioni, che
+#   e' lo stesso difetto — metro disomogeneo — per cui esistono piu' baseline.
+#   ⭐ `baseline-rossi-ci.tsv` si prende dal LOG di una corsa vera: il passo
+#   della suite, quando quel file non esiste, la genera e la stampa fra due
+#   marcatori `----- 8< -----`. Si copia da li' e si committa.
 #
 #   ⛔ `PGDATABASE=zeroerp_ci` NON basta e non avvisa: l'env file viene
 #   caricato con `set -a; source` e sovrascrive l'ambiente, quindi la corsa
@@ -73,11 +86,12 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# ⚠️ Due baseline, e non e' un capriccio. Quella di default e' misurata sul DB
-#   di SVILUPPO, che ha dati veri; la CI ricostruisce il database da zero, quindi
-#   i test che dipendono da dati preesistenti falliscono la' e non qui. Sono due
-#   popolazioni diverse: confrontarle produrrebbe decine di finte regressioni,
-#   che e' lo stesso difetto — metro disomogeneo — che ha originato questo brief.
+# ⚠️ Piu' baseline, e non e' un capriccio: sono POPOLAZIONI diverse. Quella di
+#   default e' misurata sul DB di SVILUPPO, che ha dati veri; lo scratch e la CI
+#   ricostruiscono il database da zero, quindi i test che dipendono da dati
+#   preesistenti falliscono la' e non qui. Confrontarne una con l'altra produce
+#   decine di finte regressioni — metro disomogeneo, lo stesso difetto che ha
+#   originato questo brief. L'elenco delle tre e' in intestazione.
 #   Si sceglie con PGTAP_BASELINE.
 BASELINE="${PGTAP_BASELINE:-$ROOT_DIR/db/pgtap/baseline-rossi.tsv}"
 
@@ -86,7 +100,7 @@ SCHEMI=()
 for arg in "$@"; do
   case "$arg" in
     --update) UPDATE=1 ;;
-    -h|--help) sed -n '2,69p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help) sed -n '2,81p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     -*) echo "Opzione sconosciuta: $arg" >&2; exit 2 ;;
     *) SCHEMI+=("$arg") ;;
   esac
@@ -130,6 +144,25 @@ baseline_runner() {
 # Righe vere della baseline (senza intestazione).
 baseline_righe() { grep -v '^#' "$BASELINE" 2>/dev/null; }
 
+# ⛔ OGNI COMANDO SUGGERITO PORTA IL PROPRIO CONTESTO, e non e' una gentilezza.
+#   Un suggerimento scritto nudo — «scripts/pgtap-baseline.sh --update dbops» —
+#   si copia e si incolla, e chi lo incolla NON sta piu' nel contesto in cui e'
+#   stato stampato: senza `PGTAP_ENV_FILE` la corsa va sul database di SVILUPPO,
+#   e senza `PGTAP_BASELINE` riscrive la baseline di sviluppo con i risultati di
+#   un'altra popolazione. Due metri mescolati in un file solo, cioe' esattamente
+#   il difetto per cui esistono due baseline.
+#   ⚠️ Segnalato da Tid il 2026-09-09 guardando la riga dei RIENTRATI: «si
+#   potrebbe essere portati a ricopiarli e si applica sul db sbagliato».
+#   ⇒ Il comando si ricompone dalle variabili VERE di questa corsa.
+invocazione() {
+  local pre=""
+  [ -n "${PGTAP_ENV_FILE:-}" ] && pre="${pre}PGTAP_ENV_FILE=$PGTAP_ENV_FILE "
+  if [ "$BASELINE" != "$ROOT_DIR/db/pgtap/baseline-rossi.tsv" ]; then
+    pre="${pre}PGTAP_BASELINE=${BASELINE#"$ROOT_DIR"/} "
+  fi
+  echo "${pre}scripts/pgtap-baseline.sh $*"
+}
+
 # Metro omogeneo, verificato PRIMA di eseguire: un confronto fra utenti diversi
 # non dice niente sulle regressioni, dice solo che i due utenti hanno permessi
 # diversi. Il controllo sta qui e non in fondo perche' scoprirlo dopo costerebbe
@@ -147,7 +180,7 @@ if [ -f "$BASELINE" ]; then
       echo "   produrrebbe finte regressioni." >&2
     fi
     echo "   O si gira con PGTAP_RUNNER=$PRECED, o si ribaselina l'INTERA suite:" >&2
-    echo "      PGTAP_RUNNER=$RUNNER $0 --update" >&2
+    echo "      PGTAP_RUNNER=$RUNNER $(invocazione --update)" >&2
     exit 2
   fi
 fi
@@ -280,7 +313,7 @@ fi
 # --- modalita' confronto -----------------------------------------------------
 if [ ! -f "$BASELINE" ]; then
   echo "Baseline assente ($BASELINE)." >&2
-  echo "Generala con: scripts/pgtap-baseline.sh --update" >&2
+  echo "Generala con: $(invocazione --update)" >&2
   exit 2
 fi
 
@@ -305,7 +338,7 @@ echo
 if [ -n "$RIENTRATI" ]; then
   echo "✅ RIENTRATI — ora verdi, vanno tolti dalla baseline:"
   echo "$RIENTRATI" | sed 's/^/   /'
-  echo "   → scripts/pgtap-baseline.sh --update ${SCHEMI[*]:-}"
+  echo "   → $(invocazione --update ${SCHEMI[*]:-})"
   echo
 fi
 
