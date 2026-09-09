@@ -1,0 +1,335 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# T-2 + T-3 — LA RIGA SI SPEGNE COL MOTIVO, E IL CONTEGGIO LA TOGLIE
+#
+# ── ⚠️ PERCHE' UN CHANGESET SOLO PER DUE VISTE ────────────────────
+#   Il riepilogo LEGGE la riga: consegnarne una sola lascia la card che dice una
+#   cosa e la lista un'altra. E il ritorno indietro deve togliere colonne, cosa
+#   che `CREATE OR REPLACE VIEW` non sa fare: serve un DROP, che porta giu' il
+#   riepilogo con se'. Separarli darebbe due rollback che non stanno in piedi da
+#   soli.
+#
+# ── ⭐ IL PREDICATO NON SI RISCRIVE: SI INTERROGA ─────────────────
+#   La sede e' vendite.vw_documenti_trattenuti_da_lotto (changeSet 20260909-23).
+#   ⛔ Ricavare il verdetto da `ultimo_esito`, che la vista gia' espone, sarebbe
+#   la seconda sede della stessa regola — ed e' anche SBAGLIATO, in entrambe le
+#   direzioni (misurato il 2026-09-09):
+#     · COMPLETED su un lotto DRAFT     -> l'esito direbbe «libero»: e' TENUTO
+#     · ERRORE   su un lotto ANNULLATA  -> l'esito direbbe «bloccato»: e' LIBERO
+#   Il verdetto e' lo STATO DEL LOTTO, che la dashboard non portava.
+#
+# ── ⚠️ `emissione_blocco_*`, non un `blocco_*` nudo ───────────────
+#   Un verbo, una colonna col nome che dice quale (§12.5.4): su questa vista un
+#   prefisso generico domani risponderebbe a due domande diverse, e la stessa
+#   colonna direbbe «bottone A spento» e «bottone B acceso» insieme.
+#   ⭐ Il lotto viaggia come DATO (`_lotto_id`, `_lotto_codice`), non dentro la
+#   frase: il frontend ci disegna il gesto «vai al lotto» invece di far ricopiare
+#   un codice a mano (§5, il bersaglio).
+#
+# ── ⛔ IL CONTEGGIO SI FILTRA CON `FILTER`, NON CON UNA `WHERE` ───
+#   E questa riga e' costata un test rosso. Con la WHERE il GRUPPO SPARISCE
+#   quando TUTTE le sue righe sono trattenute — cioe' esattamente quando il
+#   numero serve — e con lui sparisce `n_gruppi_trattenuti`, che stava li' per
+#   spiegare il calo. Col FILTER il gruppo resta e si legge «0 da emettere, 1
+#   trattenuto da un giro» invece di vedere 1 diventare 0.
+#
+# ── ⭐ PERCHE' IL CONTEGGIO E LA RIGA SI COMPORTANO DIVERSAMENTE ──
+#   Decisione D-1 del brief: la riga RESTA visibile (sparire non spiega niente e
+#   non da' la via d'uscita), il conteggio la ESCLUDE (un numero e' una promessa
+#   su quanto lavoro si puo' prendere, e comprendeva lavoro che non si puo'
+#   prendere). Non e' un'incoerenza: sono due domande diverse.
+#
+# ⚠️ `security_invoker` va ri-specificato: PostgreSQL lo azzera a ogni CREATE OR
+#   REPLACE VIEW, in silenzio.
+# ⭐ I corpi sono quelli VIVI (pg_get_viewdef), non ricostruiti da uno YAML.
+#
+# Verifica: db/pgtap/vendite/test-vw-dash-competenza-v1.sql, test 15-bis /
+#   15-ter / 15-quater — un verso e il suo contrario.
+# Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-2, T-3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-24-update-vw-dash-competenza-gruppi-blocco-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20260909-24-update-vw-dash-competenza-gruppi-blocco-emissione
+      author: mctit
+      failOnError: true
+      comment: >
+        vw_dash_competenza_gruppi guadagna il verdetto per riga
+        (`emissione_blocco_*`, dalla sede unica) e
+        vw_dash_competenza_gruppi_riepilogo smette di contare i documenti
+        trattenuti, dichiarandoli in n_gruppi_trattenuti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname = 'vw_documenti_trattenuti_da_lotto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=true) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min(a.registro_codice::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  cardinality(g.registri_ids)::smallint AS registri_n,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice,
+                  -- ⭐ IL VERDETTO PER RIGA (§12.5.1): NULL = emittibile. `emissione_blocco_*`
+                  --   e non un `blocco_*` generico — un verbo, una colonna col nome che dice
+                  --   quale (§12.5.4): su questa vista un `blocco_` nudo domani risponderebbe
+                  --   a due domande diverse.
+                  trat.reason       AS emissione_blocco_reason,
+                  trat.reason_key   AS emissione_blocco_reason_key,
+                  -- Il lotto viaggia come DATO, non dentro la frase: il frontend ci disegna
+                  -- il gesto «vai al lotto» invece di far ricopiare un codice a mano.
+                  trat.lotto_id     AS emissione_blocco_lotto_id,
+                  trat.lotto_codice AS emissione_blocco_lotto_codice
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON s.area IS NOT NULL
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ba_riga.id = g.billing_account_id
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON sr_fatt.id = ba_fatt.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr_fatt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = g.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          l.codice AS lotto_codice
+                         FROM vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.fatturazione_lotti l ON l.id = le.lotto_id
+                        WHERE le.gruppo_key = g.gruppo_key AND l.competenza_mese = g.competenza_mese
+                        ORDER BY (COALESCE(le.errore_quando, le.data_update)) DESC, le.id DESC
+                       LIMIT 1) esito ON true
+                   -- ⭐ IL PREDICATO NON SI RISCRIVE QUI: si INTERROGA. La sede e'
+                   --   vendite.vw_documenti_trattenuti_da_lotto (changeSet 20260909-23), che
+                   --   legge il flag `is_abortito` fail-closed. ⛔ Ricavarlo da `ultimo_esito`
+                   --   sarebbe la seconda sede della stessa regola — ed e' anche sbagliato:
+                   --   COMPLETED su un lotto DRAFT e' trattenuto, ERRORE su uno ANNULLATO e'
+                   --   libero. L'esito e' muto in entrambe le direzioni.
+                   LEFT JOIN LATERAL ( SELECT 'TRATTENUTO_DA_LOTTO'::text AS reason,
+                                              'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text AS reason_key,
+                                              t.lotto_id,
+                                              t.lotto_codice
+                                         FROM vendite.vw_documenti_trattenuti_da_lotto t
+                                        WHERE t.gruppo_key = g.gruppo_key
+                                        -- ⚠️ ORDER BY obbligatorio: se DUE lotti vivi tengono
+                                        --   lo stesso documento — il difetto che la sede
+                                        --   serve a mostrare — un LIMIT 1 senza ordine
+                                        --   nominerebbe un lotto diverso a ogni corsa. Si
+                                        --   nomina il PRIMO che l'ha preso.
+                                        ORDER BY t.lotto_id
+                                        LIMIT 1) trat ON true;
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker=true) AS
+               SELECT competenza_mese,
+                  stadio,
+                  emittente_soggetto_ruolo_id,
+                  -- ⭐ IL CONTEGGIO ESCLUDE I TRATTENUTI (decisione D-1 del brief). Un
+                  --   conteggio e' una PROMESSA su quanto lavoro si puo' prendere, e prima
+                  --   comprendeva lavoro che non si puo' prendere: era lui il difetto, non la
+                  --   riga — che infatti resta a video, spenta e col motivo.
+                  -- ⛔ SI FILTRA CON `FILTER`, NON CON UNA `WHERE`, e non e' stile: con la
+                  --   WHERE il GRUPPO SPARISCE quando tutte le sue righe sono trattenute,
+                  --   cioe' esattamente quando il numero serve — e con lui sparisce
+                  --   `n_gruppi_trattenuti`, che era li' per spiegarlo. Provato: il test
+                  --   15-ter di test-vw-dash-competenza-v1.sql leggeva NULL invece di 1.
+                  count(*) FILTER (WHERE emissione_blocco_reason IS NULL)::integer AS n_gruppi,
+                  COALESCE(sum(n_attivita) FILTER (WHERE emissione_blocco_reason IS NULL), 0::numeric)::bigint AS n_attivita,
+                  COALESCE(sum(valore) FILTER (WHERE emissione_blocco_reason IS NULL), 0::numeric) AS valore,
+                  count(*) FILTER (WHERE tipo_gruppo::text = 'ONERI_COMMESSA'::text
+                                     AND emissione_blocco_reason IS NULL)::integer AS n_gruppi_oneri,
+                  -- ⭐ QUANTI NE SONO STATI TOLTI, e non e' un di piu': senza, il numero cala
+                  --   e nessuno sa perche'. Cosi' si legge «0 da emettere, 1 trattenuto da un
+                  --   giro» invece di vedere 1 diventare 0.
+                  count(*) FILTER (WHERE emissione_blocco_reason IS NOT NULL)::integer AS n_gruppi_trattenuti
+                 FROM vendite.vw_dash_competenza_gruppi g
+                GROUP BY competenza_mese, stadio, emittente_soggetto_ruolo_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ DROP e non CREATE OR REPLACE: un REPLACE non sa TOGLIERE colonne, e il
+              --   ritorno indietro deve togliere le quattro `emissione_blocco_*`. Il
+              --   riepilogo dipende dalla riga, quindi cade e si ricostruisce con lei —
+              --   ed e' il motivo per cui le due viste stanno in UN changeSet solo.
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi_riepilogo;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;
+
+              CREATE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=true) AS
+               WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), 0::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(a.tipo_movimento::text = 'ONERE'::text) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min(a.registro_codice::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  cardinality(g.registri_ids)::smallint AS registri_n,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN cardinality(g.registri_ids) = 1 THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON s.area IS NOT NULL
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ba_riga.id = g.billing_account_id
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON sr_fatt.id = ba_fatt.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr_fatt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = g.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          l.codice AS lotto_codice
+                         FROM vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.fatturazione_lotti l ON l.id = le.lotto_id
+                        WHERE le.gruppo_key = g.gruppo_key AND l.competenza_mese = g.competenza_mese
+                        ORDER BY (COALESCE(le.errore_quando, le.data_update)) DESC, le.id DESC
+                       LIMIT 1) esito ON true;
+
+              CREATE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker=true) AS
+               SELECT competenza_mese,
+                  stadio,
+                  emittente_soggetto_ruolo_id,
+                  count(*)::integer AS n_gruppi,
+                  COALESCE(sum(n_attivita), 0::numeric)::bigint AS n_attivita,
+                  COALESCE(sum(valore), 0::numeric) AS valore,
+                  count(*) FILTER (WHERE tipo_gruppo::text = 'ONERI_COMMESSA'::text)::integer AS n_gruppi_oneri
+                 FROM vendite.vw_dash_competenza_gruppi g
+                GROUP BY competenza_mese, stadio, emittente_soggetto_ruolo_id;

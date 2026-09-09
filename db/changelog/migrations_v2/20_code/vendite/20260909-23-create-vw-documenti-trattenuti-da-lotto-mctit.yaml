@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# T-1 — LA SEDE UNICA: «QUESTO DOCUMENTO E' TRATTENUTO DA UN LOTTO VIVO?»
+#
+# ── ⭐ PERCHE' NON SI RISPONDE CON `ultimo_esito` ──────────────────
+#   La dashboard espone gia' `ultimo_esito` e `ultimo_lotto_codice`, e sembra
+#   bastare. Non basta, e non sbaglia in un verso solo — misurato il 2026-09-09:
+#     · COMPLETED su un lotto DRAFT   -> TRATTENUTO (l'esito direbbe «libero»)
+#     · ERRORE   su un lotto ANNULLATA -> LIBERO    (l'esito direbbe «bloccato»)
+#   ⇒ L'esito e' muto in ENTRAMBE le direzioni: da solo blocca documenti
+#   fatturabili e lascia passare documenti che un giro vivo sta tenendo.
+#   Il verdetto vero e' «e' trattenuto da un lotto VIVO?», e lo stato del lotto
+#   la dashboard non lo porta.
+#
+# ── ⭐ «VIVO» SI LEGGE DA UN FLAG, E NON E' QUELLO CHE SEMBRA ─────
+#   `config.stati_doc_fiscale` ha TRE assi distinti, e vanno chiamati per nome:
+#     stato        is_abortito  congela_fiscale  chiude_lotto
+#     DRAFT             f             f               f
+#     EMESSA            f             f               f
+#     ANNULLATA         T             t               f
+#     DEFINITIVA        f             t               T
+#     INVIATA/REGISTR.  f             t               f
+#   ⇒ «vivo» = NOT is_abortito. ⛔ Mai `codice_interno <> 'ANNULLATA'`.
+#   ⚠️ E MAI `congela_fiscale`, che e' l'asse piu' usato in questo dominio e su
+#   ANNULLATA vale TRUE: chi cercasse li' «il lotto e' ancora in gioco»
+#   prenderebbe la risposta sbagliata proprio sulla riga che conta.
+#
+# ── ⭐ FAIL-CLOSED, e la LEFT JOIN e' voluta ──────────────────────
+#   Un lotto il cui stato non si risolve deve ARRIVARE al confronto e farlo
+#   scattare, non sparire dal risultato: con la LEFT JOIN a vuoto
+#   `COALESCE(is_abortito, false) = false` e' vero, quindi TRATTENUTO. Non
+#   sapere in che stato e' il giro non e' un buon motivo per lasciarci mettere
+#   le mani — stessa scelta di fn_check_documento_escludibile_da_giro.
+#
+# ── ⛔ UN DOCUMENTO USCITO DAL GIRO NON TRATTIENE NIENTE ──────────
+#   L'esito ESCLUSO e' escluso: e' la regola «un documento fuori dal giro non si
+#   marca, non si conta, non blocca», vista dal terzo lato.
+#
+# ── ⚠️ PERCHE' NON BASTAVA CIO' CHE C'ERA — obiezione di Tid ──────
+#   «Mentre e' in esecuzione la lavorazione di un lotto i documenti risultano
+#   bloccati: il meccanismo non e' simile?» Vero per meta'.
+#   script.fn_get_stato_push_segment sa dire LIBERA / ALLOCATA / EMESSA, e le
+#   cinque fn_list_*_da_pushare pretendono LIBERA.
+#   ⭐ Ma quel classificatore misura l'ESITO del lavoro, non il fatto che il
+#   lavoro sia IN CORSO: `EMESSA` dice «e' andato», `LIBERA` dice «non e' mai
+#   partito». Manca la terza — «e' dentro un giro che non ha ancora finito» — ed
+#   e' questa vista.
+#   ⛔ Per la stessa ragione le cinque `da_pushare` NON si toccano: la loro
+#   regola c'e' gia', e insegnargliela di nuovo sarebbe una seconda sede.
+#
+# ── ⚠️ PUO' TORNARE PIU' DI UNA RIGA PER DOCUMENTO ────────────────
+#   Ed e' esattamente il difetto che serve a chiudere: lo stesso documento in
+#   due lotti vivi. Chi ne vuole UNO deve ordinare — un LIMIT 1 senza ORDER BY
+#   scommette.
+#
+# ⚠️ `security_invoker` va specificato: PostgreSQL lo azzera a ogni CREATE OR
+#   REPLACE VIEW, in silenzio.
+#
+# Misura del 2026-09-09 (fatto datato): 3 documenti trattenuti, tutti dallo
+# stesso lotto DRAFT LTF-0010331; e i lotti ANNULLATI con esiti non esclusi
+# (LTF-0009900, -0009901, -0009931, -0009960) correttamente NON trattengono.
+#
+# Verifica: db/pgtap/vendite/test-documento-trattenuto-da-lotto-v1.sql
+# Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260909-23-create-vw-documenti-trattenuti-da-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260909-23-create-vw-documenti-trattenuti-da-lotto
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.vw_documenti_trattenuti_da_lotto: sede unica della domanda
+        «questo documento e' trattenuto da un lotto ancora in gioco?». «Vivo» si
+        legge dal flag is_abortito, fail-closed; un documento uscito dal giro
+        (ESCLUSO) non trattiene niente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'config' AND table_name = 'stati_doc_fiscale'
+                     AND column_name = 'is_abortito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documenti_trattenuti_da_lotto
+              WITH (security_invoker=true) AS
+              SELECT le.gruppo_key,
+                     l.id                AS lotto_id,
+                     l.codice            AS lotto_codice,
+                     l.competenza_mese   AS lotto_competenza_mese,
+                     sdf.codice_interno  AS lotto_stato,
+                     le.stato_esecuzione AS esito
+                FROM vendite.fatturazione_lotti_esiti le
+                JOIN vendite.fatturazione_lotti l ON l.id = le.lotto_id
+                -- LEFT JOIN, e non INNER: un lotto senza stato risolvibile deve ARRIVARE al
+                -- confronto e farlo scattare, non sparire dal risultato.
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = l.stato_doc_fiscale_id
+               WHERE le.stato_esecuzione <> 'ESCLUSO'
+                 AND COALESCE(sdf.is_abortito, false) = false;
+
+              COMMENT ON VIEW vendite.vw_documenti_trattenuti_da_lotto IS
+              'SEDE UNICA della domanda «questo documento e'' trattenuto da un lotto ancora in gioco?». Una riga per (documento, lotto che lo trattiene): la gruppo_key e il lotto, col suo stato. Consumatori: la riga di vw_dash_competenza_gruppi (il motivo a video), vw_dash_competenza_gruppi_riepilogo (il conteggio della card) e vendite.fn_list_emittibili_lane (perche'' un secondo giro non se lo prenda).
+              ⭐ «IN GIOCO» SI LEGGE DAL FLAG `config.stati_doc_fiscale.is_abortito`, mai da un elenco di stati. ⚠️ E mai da `congela_fiscale`, che e'' l''asse piu'' usato in questo dominio e su ANNULLATA vale TRUE: chi cercasse li'' «il lotto e'' ancora vivo» prenderebbe la risposta sbagliata proprio sulla riga che conta. Sono tre assi distinti (is_abortito, congela_fiscale, chiude_lotto) e vanno chiamati per nome.
+              ⭐ FAIL-CLOSED: un lotto il cui stato non si risolve (LEFT JOIN a vuoto) risulta TRATTENUTO. Non sapere in che stato e'' il giro non e'' un buon motivo per lasciarci mettere le mani — stessa scelta di script.fn_check_documento_escludibile_da_giro sul confine pre-fiscale.
+              ⛔ UN DOCUMENTO USCITO DAL GIRO NON TRATTIENE NIENTE: l''esito ESCLUSO e'' escluso. E'' la regola «un documento fuori dal giro non si marca, non si conta, non blocca», vista dal terzo lato.
+              ⚠️ PUO'' TORNARE PIU'' DI UNA RIGA per la stessa gruppo_key: e'' esattamente il difetto che questa vista serve a chiudere (lo stesso documento in due lotti vivi). Chi ne vuole UNO deve ordinare — un LIMIT 1 senza ORDER BY scommette.
+              ⚠️ PERCHE'' NON BASTAVA CIO'' CHE C''ERA: script.fn_get_stato_push_segment sa dire LIBERA / ALLOCATA / EMESSA, cioe'' misura l''ESITO del lavoro, non il fatto che il lavoro sia IN CORSO. Manca la terza domanda — «e'' dentro un giro che non ha ancora finito?» — ed e'' questa vista. Per la stessa ragione le cinque fn_list_*_da_pushare NON si toccano: la regola loro (LIBERA) c''e'' gia''.
+              Brief: brief-db-documento-trattenuto-da-un-lotto-vivo.md (T-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_documenti_trattenuti_da_lotto;

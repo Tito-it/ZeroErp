@@ -77,6 +77,44 @@ BEGIN
             p_lotto_id;
     END IF;
 
+    -- ⛔ SU UN DOCUMENTO USCITO DAL GIRO NON SI SCRIVE UNA SEGNALAZIONE.
+    --   La regola del dominio e' «un documento fuori dal giro non si marca, non
+    --   si conta, non blocca», e non aveva ragione di fermarsi prima di «non si
+    --   racconta»: al rilancio il pull di quella commessa fallisce ancora e il
+    --   backend riscriveva una critica per OGNI suo documento, compreso quello
+    --   uscito. Non bloccava — il conteggio le scarta gia' — ma se ne
+    --   accumulava una a ogni giro su un documento che non e' piu' in gioco.
+    --
+    --   ⭐ SI FERMANO `W` e `C`, NON LE `I`, e la distinzione e' portante:
+    --     · `W`/`C` dicono «qualcosa non va su questo documento» — su uno che
+    --       e' uscito e' rumore, e qui si smette proprio di scriverlo;
+    --     · `I` e' un FATTO del giornale, e l'uscita stessa e' un fatto: la
+    --       riga che la racconta (fn_escludi_documento_da_giro) e' una `I`.
+    --   ⛔ Fermare tutto avrebbe funzionato solo scrivendo quella riga PRIMA di
+    --   passare a ESCLUSO, cioe' appendendo la traccia dell'uscita all'ORDINE
+    --   di due istruzioni: il giorno che qualcuno le riordina, la traccia
+    --   sparisce in silenzio. Questa regola non ha quel punto fragile.
+    --
+    --   ⚠️ Chiude il RUBINETTO, non ripulisce il pregresso: le critiche gia'
+    --   scritte su documenti usciti restano dove sono. Cancellare righe di
+    --   giornale e' un'altra decisione.
+    --   ⚠️ `ESCLUSO` letterale: e' il sesto punto del database che lo scrive a
+    --   mano. Vale la nota di fn_segna_esito_gruppo_lotto — l'asse gemello ha
+    --   un flag, questo no, e farne un catalogo e' un cantiere suo.
+    --   Brief: brief-db-il-marcatore-scrive-su-un-documento-uscito.md §4.2
+    IF v_gruppo_key IS NOT NULL
+       AND p_status IN ('W', 'C')
+       AND EXISTS (SELECT 1
+                     FROM vendite.fatturazione_lotti_esiti e
+                    WHERE e.lotto_id   = p_lotto_id
+                      AND e.gruppo_key = v_gruppo_key
+                      AND e.stato_esecuzione = 'ESCLUSO') THEN
+        RAISE NOTICE
+            'fn_log_pipeline_fase: segnalazione % sul documento % del lotto % non scritta: quel documento ha gia'' lasciato il giro.',
+            p_status, v_gruppo_key, p_lotto_id;
+        RETURN;
+    END IF;
+
     INSERT INTO vendite.fatturazione_lotti_log (
         lotto_id, data_ora, messaggio, status, disabilitato, fase,
         stato_doc_fiscale_id, tipo_lotto, stato_operativo, meta,

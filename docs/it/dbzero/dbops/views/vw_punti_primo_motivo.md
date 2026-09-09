@@ -8,7 +8,7 @@
 > ⭐ PESSIMISTA DI PROPOSITO, ed e' la scelta portante: i codici sono l'UNIONE di quelli nominati da TUTTE le check citate nel corpo, perche' la vista legge il testo e non sa quale ramo sia stato preso. Un presidio che scegliesse il ramo ottimista assolverebbe il caso che deve segnalare; e un falso positivo qui costa una riga in piu' nel VARIADIC, non un rifiuto sbagliato.
 > ⚠️ RAMO CIECO — un punto con check_funzione NULL non e' «a posto»: e' un sito che la lettura non sa legare alla sua check, e va visto. E' il test 3 di test-rubinetto-primo-motivo-v1.sql.
 > ⛔ NON serve a dbops.vw_codici_errore_forme_condizione: quella classifica la forma della GUARDIA, e sopra questi punti la guardia e' sempre «IF jsonb_array_length(v_motivi) &gt; 0», che non dice niente. Li' si classifica dove il codice e' NOMINATO (changeSet 20260908-35).
-> ⚠️ E' un'euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: docs/it/dev/work-in-progress/brief-db-i-motivi-si-fermano-dentro-la-check.md, passo V-0.
+> ⚠️ E' un'euristica su pg_proc.prosrc: riconosce la forma scritta, non il significato. Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md, passo V-0.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
