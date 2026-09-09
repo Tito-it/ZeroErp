@@ -16,10 +16,10 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.api.error_responses import drf_exception_handler

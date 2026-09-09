@@ -8,14 +8,13 @@
 
 from __future__ import annotations
 
-import json
 import re
 from functools import lru_cache
 from typing import Any, ClassVar
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction, sql_tiebreak_direction
+from apps.core.db._helpers import rows_to_list, sql_order_direction, sql_tiebreak_direction
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager

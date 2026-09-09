@@ -30,12 +30,9 @@ TestPreventivoEmissioneAllegati:
 3) test_post_documento_allegati_upload_ok — POST allegati: append multipart
 """
 
-import json
-import unittest
-from unittest.mock import ANY, Mock, patch, MagicMock
+from unittest.mock import ANY, Mock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 # Patch path per il flusso documenti/emissione preventivi (refactor 2026-05-28).

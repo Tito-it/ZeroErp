@@ -649,7 +649,6 @@ class TestMapIntegrityError(TestCase):
 
 
 from apps.core.services.payload_helpers import make_db_errors_translator
-from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_error_fakes import make_db_error
 
 

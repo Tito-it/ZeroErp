@@ -17,7 +17,7 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 from apps.core.mixins import EmittenteFiscaleScopeMixin
 
@@ -150,7 +150,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
         view = _ViewWithMixin(qs, request)
         view.emittente_field = "billing_account__emittente_fiscale_id"
 
-        result = view.get_queryset()
+        view.get_queryset()
 
         qs.filter.assert_called_once_with(
             billing_account__emittente_fiscale_id__in=[2, 4]

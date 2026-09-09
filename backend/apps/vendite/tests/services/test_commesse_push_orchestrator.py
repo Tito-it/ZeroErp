@@ -32,7 +32,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.vendite.db.commesse_repository import CommesseRepository
-from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator, PushReport
+from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator
 from apps.vendite.services.commesse_source_handlers import BaseSourceHandler, HandlerResult
 
 

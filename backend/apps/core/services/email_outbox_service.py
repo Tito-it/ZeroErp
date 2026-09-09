@@ -18,7 +18,7 @@ from django.conf import settings
 from django.db import transaction
 
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import E_EMAIL, EmailDispatchService
+from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 
 E_OUTBOX = "E_OUTBOX"

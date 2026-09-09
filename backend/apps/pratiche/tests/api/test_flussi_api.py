@@ -34,7 +34,7 @@ Indice test eseguiti:
 import json
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client, SimpleTestCase
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"

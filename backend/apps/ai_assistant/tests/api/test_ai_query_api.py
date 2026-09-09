@@ -16,7 +16,6 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from django.http import JsonResponse
 
 from apps.ai_assistant.api.views import AIQueryView
 
@@ -77,7 +76,6 @@ class TestAIQueryAPI(unittest.TestCase):
         from apps.ai_assistant.services import ai_assistant_service
         ai_assistant_service.clear_conversations()
 
-        view = AIQueryView()
         request = self._make_request({"message": "ciao"})
 
         # handle_post_json gestisce il parsing, qui testiamo il flusso diretto

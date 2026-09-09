@@ -21,7 +21,7 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.service_errors import ServiceError
@@ -194,7 +194,7 @@ class ResolveTests(TestCase):
         repo.resolve_account.return_value = {"id": 1, "codice": "SISTEMA"}
 
         service = EmailDispatchService()
-        result = service._repo.resolve_account(42)
+        service._repo.resolve_account(42)
         repo.resolve_account.assert_called_with(42)
 
     # Scopo: Verifica che resolve_template venga chiamato con tutti i parametri.

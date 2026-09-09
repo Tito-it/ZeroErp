@@ -21,6 +21,13 @@ repos:
         language: system
         files: \.(py|js|vue|ya?ml)$
         exclude: ^docs/
+        # ⭐ `verbose` perche' questo hook e' stato VERDE IN CI PER MESI senza
+        #    guardare niente (correzione 2026-09-09): pre-commit nasconde lo
+        #    stdout di cio' che passa, quindi un «Passed» non distingueva «ho
+        #    controllato dodici file nuovi» da «non ne ho visto nessuno».
+        #    Con verbose il log dice sempre QUANTI file ha guardato e DA DOVE
+        #    li ha presi (range della CI o indice staged del commit).
+        verbose: true
 
       # Guard delle chiavi i18n: chiavi rotte, parita' it/en, radici, chiavi
       # EMESSE DAL DB non risolvibili, e chiavi definite due volte.
@@ -49,3 +56,20 @@ repos:
         language: system
         pass_filenames: false
         files: '^(frontend/src/.*\.(vue|js|json)|docs/it/dbzero/.*\.md|db/changelog/migrations_v2/80_data/sql/.*\.csv|scripts/check_i18n_keys\.py)$'
+
+  # ⭐ La PRIMA analisi statica del backend (2026-09-09). Fino a quel giorno su
+  #    258.000 righe di Python non girava nessun linter, nessun type checker e
+  #    nessun formattatore — mentre il frontend ne aveva gia' due.
+  # ⛔ La selezione delle regole sta in `ruff.toml`, NON qui: un elenco di
+  #    argomenti dentro un hook e' una seconda sorgente di verita' che diverge
+  #    dal `ruff check` lanciato a mano. Il file spiega anche PERCHE' la
+  #    selezione e' `F,E9` e non `E` (che aprirebbe un registro da 4.853 righe,
+  #    il 96% delle quali di sola lunghezza riga).
+  # ⭐ Il cancello nasce a ZERO: i 136 rilievi preesistenti sono stati sanati
+  #    prima di accenderlo. Un rosso qui significa davvero «l'hai introdotto tu».
+  # ⚠️ In CI lo esegue il passo `pre-commit run` di `ci-validate.yaml`, sui soli
+  #    file cambiati — che e' la forma giusta per un cancello incrementale.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff-check

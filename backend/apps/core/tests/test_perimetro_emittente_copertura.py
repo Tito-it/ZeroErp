@@ -49,7 +49,6 @@ from pathlib import Path
 
 from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
-    _colonne_attive,
     _seed,
 )
 

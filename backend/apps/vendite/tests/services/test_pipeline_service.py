@@ -14,7 +14,7 @@ Indice test eseguiti:
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.core.services.service_errors import ServiceError
 

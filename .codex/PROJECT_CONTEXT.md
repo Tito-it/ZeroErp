@@ -32,7 +32,7 @@
 | Django | 6.01 | DRF 3.16, SimpleJWT, drf-spectacular |
 | PostgreSQL | 18 (CI) | PostGIS 3.6, pgTAP, pgAgent |
 | Liquibase | 5 Community | Migrazioni YAML in `db/changelog/migrations_v2/` |
-| Vue 3 | 3.5 | **Frontend sviluppato e in uso** (non più placeholder): Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Node 24 LTS. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
+| Frontend Vue | da `frontend/package.json` | **Fonte unica di verità per le versioni** (Vue, Vite, PrimeVue, Pinia, Vue Router, vue-i18n, Axios; Node in `engines.node`). ⛔ Non ricopiarle qui: il 2026-09-09 questa riga, `AGENTS.md` e `frontend-standards.md` dicevano tre cose diverse e tutte e tre sbagliate. **Frontend sviluppato e in uso**, non più placeholder. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
 
 ## Infrastruttura di Sviluppo
 
@@ -48,17 +48,24 @@
 ZeroErp/
 ├── backend/                  # Django project
 │   ├── zeroerp_backend/      # Config Django (settings, urls, wsgi)
-│   ├── apps/                 # App per dominio
+│   ├── apps/                 # App per dominio — 17, elenco COMPLETO (2026-09-09)
 │   │   ├── core/             # Utilities trasversali (error_manager, middleware, throttling)
-│   │   ├── acquisti/
+│   │   ├── ai_assistant/     # Assistente AI: 18 tool, provider pluggabile. Dietro AI_ENABLED
+│   │   ├── amm_software/     # Amministrazione software (AdminAPIView, SUPER_ADMIN)
 │   │   ├── anagrafiche/
 │   │   ├── catalogo/
 │   │   ├── config/
-│   │   ├── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro
-│   │   ├── magazzino/
+│   │   ├── documenti/        # Motore documentale parametrico + ristampa fedele
 │   │   ├── pagamenti/
-│   │   ├── storico/
-│   │   └── vendite/          # App più attiva — pipeline fatturazione
+│   │   ├── portale/          # Veste CLIENTE_PORTALE / FORNITORE_PORTALE (auth + attivazione)
+│   │   ├── pratiche/         # Motore di workflow versionato
+│   │   ├── shop/             # Veste SHOP_CUSTOMER (auth + attivazione)
+│   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
+│   │   ├── vendite/          # App più attiva — pipeline fatturazione
+│   │   ├── acquisti/         # ⚠️ scheletro (13 file, 26 righe, 0 test) — modello a DB, comportamento no
+│   │   ├── magazzino/        # ⚠️ scheletro — idem
+│   │   ├── storico/          # ⚠️ scheletro — idem
+│   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
 │   └── requirements.txt      # Generato da pip-compile (non editare)
 ├── db/

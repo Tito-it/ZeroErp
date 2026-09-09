@@ -647,7 +647,7 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `detail`            | no              | Dettaglio tecnico aggiuntivo                                        |
 | `technical_message` | no              | Solo se `DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1` (mai in produzione) |
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
-| `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
+| `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Letto, e ramificato su un valore su sette** — vedi sotto |
 | `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
 | `targets`           | no              | **Su quale cosa**: `[{type, id}]`, al massimo cinque                |
 | `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso            |
@@ -672,9 +672,17 @@ restava annegata nel testo grezzo di `detail`.
 
 Ne discendeva che un dominio che volesse mostrarla doveva **riscriverla in
 Python**, cioè duplicare il catalogo. Ora il campo viaggia strutturato fino
-all'envelope. ⚠️ **Il frontend non lo legge ancora** (zero occorrenze di
-`error.hint`): il primo consumatore sarà la coda accrediti, dove distingue
-«non si può» da «resetta il lotto, ma sappi che la nota si rigenera».
+all'envelope. ⛔ **Il frontend non lo legge ancora** — `error.hint`, **zero
+occorrenze** in `frontend/src`, riverificato il **2026-09-09**: il primo
+consumatore sarà la coda accrediti, dove distingue «non si può» da «resetta il
+lotto, ma sappi che la nota si rigenera».
+
+⚠️ **Questa riga è vera, e va tolta chiudendo il difetto, non correggendo il
+documento.** `hint` è la `soluzione` che il team DB scrive a catalogo per ogni
+codice, cioè **l'unica frase che dice all'operatore cosa fare adesso**: viaggia
+dal DB al `ServiceError` all'envelope e si ferma davanti allo schermo. Finché
+resta così, un campo dichiarato e mai letto *sembra* presidiato e non presidia
+niente.
 
 ⚠️ **Escono solo i nomi, e solo dalla chiave `field`.** Il `context` è una borsa
 diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
@@ -887,6 +895,8 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente. Meta-API trasversale (`skip_area_check=True`).
 * **UI — Personalizzazioni liste (admin Blocco F)**: [api_ui_admin_personalizzazioni.md](/backend/ui/manual/api_ui_admin_personalizzazioni) — Fase 1: CRUD preset (testata + composizione atomica) + UPSERT/DELETE permessi colonna; auth via azioni di processo `ui_preset_manage`/`ui_permesso_manage` o SUPER_ADMIN. Fase 2 (DEF-5b 2026-05-10): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only via `AdminAPIView`.
 * **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24, `GET /api/v1/vendite/contratti/export/?formato=csv|xlsx` dal 2026-06-02; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer. **Coda invariante estratta** (regola del 2, 2026-06-02) in `apps.ui.api.export_helpers.{parse_export_format,build_export_response}`: ogni view export mantiene solo il parsing dei propri filtri + la chiamata al service con `limit=EXPORT_MAX_ROWS+1`; validazione formato, guard limite, risoluzione colonne dalla config runtime, render e `HttpResponse` vivono nel building block.
+
+* **AI Assistant** (registrato qui il 2026-09-09: l'app esisteva e questo elenco non la nominava): [api_ai_query.md](/backend/ai-assistant/manual/api_ai_query) | [api_ai_status.md](/backend/ai-assistant/manual/api_ai_status) | [ai_tool_registry.md](/backend/ai-assistant/manual/ai_tool_registry) — `POST /api/v1/ai-assistant/query/` (linguaggio naturale + function calling su 18 tool di dominio) e `GET .../status/`. ⛔ **Le rotte sono montate solo se `AI_ENABLED=1`**: a flag spento l'app non e' nemmeno in `INSTALLED_APPS`. ⭐ I tool non aggirano il perimetro: leggono con la connessione dell'utente (quindi RLS attiva) e ciascuno puo' dichiarare la propria azione di processo, speculare al `<action>_permission` dell'endpoint corrispondente. 🔴 **Difetto aperto al 2026-09-09**: `AIQueryView` dichiara `area_funzionale = "ai_assistant"`, che **non esiste in `config.aree_funzionali`** (13 righe a catalogo, quella non c'e'). `script.fn_resolve_livello_area` cade percio' sul default `BLOCCATO` ⇒ l'endpoint e' raggiungibile **solo da un `SUPER_ADMIN`**, e a nessun altro operatore il permesso puo' essere concesso, perche' non esiste la riga a cui appenderlo. Da sanare **prima** di accendere il flag: vedi `docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md` §3 D5.
 
 Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
@@ -1454,9 +1464,30 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 >
 > Il campo è arrivato insieme a `fields` (2026-08-08), dallo stesso envelope e
 > nella stessa riga: `useApiHandler` **estrae** entrambi, ma solo `campiErrati`
-> ha un consumatore. Quindi `ui_action` oggi è **emessa, trasportata e non
-> consumata** — un passo più avanti di «non la legge nessuno», e **zero passi**
-> più avanti sul comportamento a video.
+> ha un consumatore. Quindi `ui_action` a quella data era **emessa, trasportata e
+> non consumata** — un passo più avanti di «non la legge nessuno», e **zero
+> passi** più avanti sul comportamento a video.
+>
+> ⭐ **AGGIORNAMENTO (2026-09-09): il primo consumatore è arrivato, ed è uno su
+> sette.** Rimisurato su `frontend/src`:
+>
+> | Cosa | 2026-08-18 | 2026-09-09 |
+> | --- | --- | --- |
+> | i **consumatori** di `azioneUi` | zero | **1** — `useForzaturaConfermata.js`, che ramifica su `CONFERMA_E_RIPETI` |
+> | i **valori** del vocabolario nominati nel FE | zero | **1 su 7**: `confirm_and_retry` |
+> | gli altri sei (`highlight_form_fields` su 129 codici, `show_error_banner`, `show_toast_error`, `redirect_login`, `show_retry_dialog`, `show_info_banner`) | zero | **zero** |
+>
+> ⚠️ **Il salto è di categoria, non di quantità**: esiste ora un posto dove un
+> componente reagisce a `ui_action`, quindi il campo non è più solo un contratto
+> in attesa. ⛔ Ma il punto 3 qui sotto **resta intero**: 129 codici chiedono
+> `highlight_form_fields` e a video quella richiesta la serve `campiErrati`, non
+> `azioneUi`. Le 176 righe di override vanno riguardate **prima** di accendere il
+> secondo consumatore, non dopo.
+>
+> ⚠️ E `hint` è oggi dove `ui_action` era il 2026-08-18: **emesso, trasportato,
+> zero consumatori** (`error.hint`, zero occorrenze in `frontend/src`, verificato
+> il 2026-09-09). ⛔ Con una differenza che lo rende più costoso: `hint` è
+> l'unica frase che dice all'operatore **cosa fare adesso**.
 >
 > ⚠️ **Le tre conseguenze pratiche qui sotto non cambiano di una virgola**, e
 > il punto 3 diventa più concreto: il giorno in cui un componente reagirà a
@@ -1478,8 +1509,11 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 > ⚠️ E c'era un difetto conseguente, corretto lo stesso giorno: dei due percorsi
 > che costruiscono l'envelope, `exception_to_error_response` spediva `ui_action`
 > e `drf_exception_handler` la **calcolava e la buttava via**. Lo stesso codice
-> usciva con due forme diverse a seconda di chi lo sollevava. Oggi non se ne
-> accorgeva nessuno proprio perché il campo non lo legge nessuno.
+> usciva con due forme diverse a seconda di chi lo sollevava. Non se n'era
+> accorto nessuno proprio perché a quella data il campo non lo leggeva nessuno —
+> ⚠️ e questa è la ragione per cui va corretto **prima** che i consumatori
+> crescano: un'asimmetria che oggi nessuno vede, domani è un comportamento che
+> cambia a seconda di chi solleva l'errore.
 
 Utile saperlo prima di discutere se un codice è 400 o 409. Gli unici
 status con un effetto globale sono:
@@ -1694,14 +1728,33 @@ per il contratto completo dei flussi invito + attivazione portale e shop.
 
 ### Test
 
-Test progressivi insieme allo sviluppo, due livelli:
+Test progressivi insieme allo sviluppo, **tre livelli** — erano due fino al
+2026-09-09, quando ci si è accorti che il terzo esisteva già da mesi e nessun
+documento lo nominava:
 
-| Livello | Dove | Cosa | DB reale |
-| --- | --- | --- | --- |
-| Unit test service | `apps/*/tests/services/` | Validazione, dedup, not found, orchestrazione (mock repository) | No |
-| Smoke test curl | `backend/scripts/tests/` | Endpoint HTTP reali end-to-end | Si' |
+| Livello | Dove | Cosa | DB reale | In CI |
+| --- | --- | --- | --- | --- |
+| Unit test service / API | `apps/*/tests/services/`, `apps/*/tests/api/` | Validazione, dedup, not found, orchestrazione, envelope (repository mockati) | No | ✅ sempre |
+| **Guardrail su DB provvisto** | `apps/*/tests/db/` + i guardrail di `core` | La **giuntura**: che `diag.constraint_name` sopravviva a libpq, che ogni codice del DB abbia una policy, che i tipi di handler della coda esistano davvero | Sì | ✅ via `ZEROERP_TEST_DB_E2E=1` |
+| Smoke end-to-end | `backend/scripts/tests/smoke-*.py` | Percorsi HTTP reali, in `transaction.atomic()` + `set_rollback(True)` | Sì | ⛔ **mai**: la CI non li nomina |
 
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
+
+⭐ **Il secondo livello si accende con `richiedi_db_provvisto`**
+(`apps/core/tests/db_e2e.py`) ed è oggi in **19 file**, 34 punti di chiamata. È
+l'unico che vede il pezzo in mezzo: i pgTAP coprono il lato DB, i test unitari col
+`diag` finto coprono il lato Python, e **nessuno dei due vede la giuntura**.
+
+⛔ **Il terzo livello non lo esegue niente**, ed è il difetto che quel livello si
+porta dietro dal giorno in cui è nato: vedi `.codex/AGENTS.md` §«Gli smoke:
+nessuno li lancia». Il registro `baseline-smoke.tsv` ha due righe — cioè è nella
+condizione migliore per accendere un cancello, non nella peggiore.
+
+⚠️ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**, anche se la
+regola in `.codex/AGENTS.md` le offre come alternative: solo `SimpleTestCase`
+**impedisce** al codice sotto test di parlare col database
+(`DatabaseOperationForbidden`). `unittest.TestCase` glielo *permette*
+soltanto — quindi un mock dimenticato lì non fallisce: parla col DB di sviluppo.
 
 ---
 

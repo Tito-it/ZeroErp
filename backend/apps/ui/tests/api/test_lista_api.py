@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from django.test import Client
 

@@ -222,9 +222,17 @@ Dettaglio e motivazioni: `docs/it/dev/frontend/frontend-standards.md`
 - Codice frontend in `frontend/`
 - **Documento di riferimento obbligatorio**: `docs/it/dev/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
 - **Guida sviluppo frontend**: `docs/it/dev/work-in-progress/frontend/guida-sviluppo-frontend.md` — convenzioni componenti, composable, routing, CSS, pattern operativi
-- Stack: Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Axios
-- Runtime: Node.js 24 LTS (gestito via nvm)
-- Dipendenze: `frontend/package.json`
+- **Stack e versioni — fonte unica di verità: `frontend/package.json`**
+  (versione risolta in `package-lock.json`). Runtime Node: vincolo dichiarato in
+  `engines.node`, gestito via nvm.
+  ⛔ **I numeri non si ricopiano qui.** Fino al 2026-09-09 questa riga diceva
+  «Vite 7, Pinia 3, vue-i18n 10» mentre il lock era a **Vite 8, Pinia 4,
+  vue-i18n 11**: due salti di **major** non registrati, e lo stesso fatto
+  sbagliato in **tre** documenti diversi e in tre modi diversi.
+  ⭐ Vale la regola già in uso per Python (`.python-version`): *un numero scritto
+  in due posti ne ha sempre uno stantio, e quello senza presidio è sempre il
+  documento.*
+- Dipendenze: `frontend/package.json` (non aggiungerne senza conferma dell'utente)
 - Non aggiungere dipendenze npm senza conferma dell'utente
 - Filosofia: **zero logica business nel frontend** — solo presentazione, validazione UX e orchestrazione chiamate API
 - Struttura cartelle allineata ai domini DB (es. `src/vendite/`, `src/anagrafiche/`)
@@ -620,13 +628,17 @@ Regola completa, esempi e criterio «riuso o conio un codice?»:
 
 ### ⚠️ Gli smoke: nessuno li lancia, e per un giorno erano rotti in sei
 
-`backend/scripts/tests/smoke-*.py` — undici script che parlano col database di
-sviluppo, ognuno in `transaction.atomic()` + `set_rollback(True)`, quindi
-**eseguibili senza lasciare niente**.
+`backend/scripts/tests/smoke-*.py` — **sedici** script (2026-09-09; erano undici
+il 2026-08-27) che parlano col database di sviluppo, ognuno in
+`transaction.atomic()` + `set_rollback(True)`, quindi **eseguibili senza lasciare
+niente**.
+
+⚠️ **Il numero cresce e il cancello no**, ed e' la parte che conta: ogni script
+nuovo allarga la superficie che nessun automatismo guarda.
 
 ⛔ **Non li raccoglie il runner Django** (stanno fuori da `apps/`, hanno il
 trattino nel nome e il pattern di scoperta e' `test*.py`) e **non li esegue la
-CI**. Il 2026-08-27 sei degli undici erano rossi **da un giorno** senza che
+CI**. Il 2026-08-27 sei degli undici di allora erano rossi **da un giorno** senza che
 nessuno se ne accorgesse: `vendite.attivita_fatturabili.fatturato` era diventata
 `GENERATED` e le fixture continuavano a scriverla. Il difetto veniva da un
 cantiere che quei file non li aveva nemmeno aperti.

@@ -19,7 +19,6 @@
 # 9. test_cerca_operatori_required_area
 
 import unittest
-from unittest.mock import patch
 
 from apps.ai_assistant.services import tool_registry
 

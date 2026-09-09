@@ -19,3 +19,11 @@ class CoreConfig(AppConfig):
             register as register_chiusura_scadenze,
         )
         register_chiusura_scadenze()
+
+        # Estensioni drf-spectacular: si registrano per IMPORT, alla definizione
+        # della sottoclasse. Senza questa riga lo schema OpenAPI non dichiara
+        # nessuno `securityScheme` e descrive l'intera API come anonima
+        # (607 avvisi W001 il 2026-09-09). Vedi `api/openapi_extensions.py`.
+        # ⚠️ `noqa: F401` e' il caso in cui un import "inutilizzato" e' il
+        #    lavoro: serve l'effetto collaterale, non il nome.
+        from apps.core.api import openapi_extensions  # noqa: F401

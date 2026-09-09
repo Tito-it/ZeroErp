@@ -158,7 +158,6 @@ class RequestLogMiddlewareTests(TestCase):
     @patch(_CONNECTION)
     def test_excluded_path_not_logged(self, mock_conn):
         request = _mock_request(path="/api/docs/")
-        response = _mock_response()
 
         self.middleware.process_request(request)
         self.assertFalse(hasattr(request, "_request_log_start"))
@@ -168,7 +167,6 @@ class RequestLogMiddlewareTests(TestCase):
     def test_disabled_via_setting(self, mock_conn):
         self._mock_settings.REQUEST_LOG_ENABLED = False
         request = _mock_request()
-        response = _mock_response()
 
         self.middleware.process_request(request)
         self.assertFalse(hasattr(request, "_request_log_start"))

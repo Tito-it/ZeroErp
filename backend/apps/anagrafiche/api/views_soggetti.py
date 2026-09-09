@@ -24,7 +24,6 @@ from apps.core.api.payload_validators import (
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.anagrafiche.services.cf_validator_it import genera_cf_it
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 

@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 

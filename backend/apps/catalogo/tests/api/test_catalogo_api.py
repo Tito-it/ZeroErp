@@ -39,7 +39,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client, SimpleTestCase
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 

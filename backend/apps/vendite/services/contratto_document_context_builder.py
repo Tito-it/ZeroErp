@@ -23,7 +23,6 @@ from typing import Any
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
-    format_misura,
     formatta_campi,
 )
 from apps.documenti.services.context_builders._date_formatting import (

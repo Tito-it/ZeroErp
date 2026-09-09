@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+#
+# ⭐ IL PRIMO CANCELLO DEL FRONTEND, ed e' nato il 2026-09-09.
+#
+# Fino a quel giorno 117.000 righe — 390 componenti, 73 rotte, l'intera
+# superficie che un operatore tocca — non incontravano NESSUN controllo
+# automatico prima di arrivare su `Tito-dev`: `frontend/**` non compariva nei
+# `paths:` di nessuno dei due workflow, non esisteva un test, `vite build` non
+# girava mai e il `Dockerfile` (`COPY backend/ .`) l'immagine non la conteneva
+# nemmeno.
+#
+# ⛔ E la poca rete che c'era si svegliava PER CASO: gli hook pre-commit
+# (chiavi i18n, header di licenza) li rilanciava `ci-validate.yaml`, che pero'
+# non si sveglia su una push che tocca **solo** `frontend/`. Lo stesso lavoro
+# passava o non passava a seconda di cosa altro c'era nel commit.
+#
+# ⭐ PERCHE' UN WORKFLOW SUO e non due righe nei `paths:` di `ci-validate`:
+# quel workflow tira su Postgres, Java, Liquibase e l'intero migrate — cinque
+# minuti. Una modifica al CSS non ha bisogno di un database. Qui il giro
+# completo sta sotto il minuto, e i due cancelli restano indipendenti: un rosso
+# dice subito DA CHE PARTE guardare.
+#
+# ⚠️ Nasce VERDE, di proposito: i sette errori `oxlint` preesistenti sono stati
+# sanati prima di accenderlo, e i quattro guard erano gia' a posto. Un cancello
+# che nasce rosso viene spento, e un presidio spento e' peggio di uno assente.
+
+name: CI-Frontend
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [Tito-dev]
+    paths:
+      - frontend/**
+      - scripts/check_i18n_keys.py
+      - .github/workflows/ci-frontend.yaml
+  pull_request:
+    branches: [Tito-dev, main]
+    paths:
+      - frontend/**
+      - scripts/check_i18n_keys.py
+      - .github/workflows/ci-frontend.yaml
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # ⚠️ La versione Node NON si ricopia qui: la dichiara
+      #    `frontend/package.json` in `engines.node`, che dal 2026-09-09 e' la
+      #    fonte unica di verita' dello stack frontend (come `.python-version`
+      #    per Python). `node-version-file` la legge da li'.
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` e non `npm install`: installa ESATTAMENTE il lock, e fallisce
+      # se `package.json` e `package-lock.json` divergono. E' anche il primo
+      # controllo del job, gratis.
+      - name: Install (npm ci)
+        run: npm ci
+
+      # ⛔ `npm run lint` = oxlint + eslint SENZA `--fix`. Fino al 2026-09-09
+      #    entrambi gli script portavano `--fix`, cioe' RISCRIVEVANO i sorgenti:
+      #    un comando che modifica i file non e' un cancello, e' un
+      #    formattatore. La comodita' resta su `npm run fix`, che qui non gira.
+      - name: Lint (oxlint + eslint, senza --fix)
+        run: npm run lint
+
+      # ⭐ I quattro presidi scritti apposta per il frontend, che fino a oggi
+      #    lanciava una persona quando se ne ricordava:
+      #    · check-liste-configurabili   — il contratto @row-click del BB lista
+      #    · check-pinia-user-scoped-reset — che il reset al logout sia efficace
+      #      (9 verifiche, e sa contro quale versione di Pinia gira)
+      #    · check-drawer-width          — le chiavi DRAWER_WIDTH esistono
+      #    · check-primeicons-codepoints — i codepoint cablati risolvono, con
+      #      baseline anti-drift
+      - name: Guard frontend (liste · pinia · drawer · icone)
+        run: npm run guards
+
+      - name: Build (vite)
+        run: npm run build
+
+      # ⚠️ Il guard delle chiavi i18n e' GLOBALE (`pass_filenames: false`):
+      #    confronta l'intero frontend con i due locales, la doc auto-generata e
+      #    i seed. Girava solo come hook pre-commit, quindi su una push di solo
+      #    frontend non girava affatto — vedi il commento in testa a questo file.
+      #    Qui si esegue direttamente lo script invece di installare pre-commit:
+      #    e' globale per costruzione, un elenco di file cambiati non gli serve.
+      - name: Setup Python (per il guard i18n)
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Guard chiavi i18n (parita' it/en, radici, chiavi emesse dal DB)
+        working-directory: ${{ github.workspace }}
+        run: python scripts/check_i18n_keys.py
