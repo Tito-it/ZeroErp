@@ -1,0 +1,266 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# F-2 — Le quattordici policy sul RESIDUO della famiglia FATTURE. INERTI: la
+#   RLS si accende in 20260909-71.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 7)
+#   Slice 20260909-69..71.
+#
+# ── ⭐ QUATTORDICI: sette tabelle per DUE vesti ───────────────────────
+#   `vendite.fatture` e' l'unica testata del brief con due policy — operatore e
+#   cliente del portale — e ogni satellite le rispecchia entrambe, come gia'
+#   fanno `fatture_righe`, `fatture_scadenze` e le altre tre protette prima.
+#
+#     rls_<tab>_ef_whitelist   OPERATORE        FOR ALL     perimetro emittente
+#     rls_<tab>_ba_ownership   CLIENTE_PORTALE  FOR SELECT  proprieta' del BA
+#
+# ── Le sette tabelle, e da quale chiave risalgono ─────────────────────
+#     vendite.fatture_atti            fattura_id      -> testata
+#     vendite.fatture_fondi_fattura   fattura_id      -> testata
+#     vendite.fatture_log             fattura_id      -> testata
+#     vendite.fatture_rettifiche      fattura_id      -> testata
+#     vendite.fatture_sdi             fattura_id      -> testata
+#     vendite.note_fatture            target_id       -> testata
+#     vendite.fatture_sdi_eventi      fattura_sdi_id  -> trasmissione (2 livelli)
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#
+# ── ⛔ DUE TABELLE HANNO DUE GENITORI, e si sceglie quello di appartenenza ──
+#   * `fatture_atti` porta anche `contratto_id` NOT NULL: e' figlia di
+#     `contratti` **e** di `fatture`. Si aggancia a `fatture` — brief §6.3 — e
+#     ora entrambe le strade sono protette, quindi devono concordare.
+#   * `fatture_rettifiche` porta `fattura_id` **e** `rettificata_id`, entrambe
+#     `NOT NULL` e verso `vendite.fatture`. Il perimetro e' `fattura_id`: e' il
+#     documento a cui la riga appartiene. `rettificata_id` e' la fattura
+#     CORRETTA, e che le due condividano l'emittente e' un invariante di
+#     dominio, non una cosa che una policy decide. Il pgTAP lo asserisce.
+#   ⚠️ `fatture_fondi_fattura` porta anche `riferimento_fattura_id`, **nullable**:
+#   la policy non la usa. Una policy costruita su una chiave nullable ha un buco
+#   esatto dove il NULL passa.
+#
+# ── ⛔ COSA NON ENTRA ─────────────────────────────────────────────────
+#   * `fatturazione_lotti_fatture`: ha `fattura_id` NOT NULL ma anche
+#     `lotto_id` NOT NULL verso `vendite.fatturazione_lotti`, che e' protetta.
+#     Appartiene al mondo del LOTTO, non al documento — ed e' un satellite
+#     scoperto di quella famiglia, cioe' un cantiere suo.
+#   * `attivita_consumi` (`fattura_id` nullable) e `attivita_fatturabili`
+#     (`fattura_riga_id` nullable): rotta portante altrove, §6.1.
+#
+# ── ⚠️ LE VESTI SI RISPECCHIANO ANCHE SU `fatture_log` E `fatture_sdi` ──
+#   Verrebbe da dare a un log diagnostico la sola veste operatore. Sarebbe una
+#   modifica funzionale mascherata da cantiere di sicurezza: oggi quelle tabelle
+#   non hanno NESSUNA policy e `zeroerp_app` ha tutti i privilegi, quindi un
+#   `CLIENTE_PORTALE` le legge TUTTE; con la sola veste operatore non ne
+#   leggerebbe piu' nessuna, nemmeno delle proprie fatture.
+#   ⇒ Questa slice CHIUDE UN BUCO, non apre e non chiude una porta. Se si
+#   decide che il portale non deve vedere il log o gli esiti SDI, quella e' una
+#   decisione di dominio e si prende TOGLIENDO la policy, con la sua ragione
+#   scritta — non per omissione dentro un cantiere di RLS.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Collaudo: db/pgtap/rls/test-rls-fatture-residuo.sql, dopo l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-70-create-policy-fatture-residuo-mctit.yaml
+
+  - changeSet:
+      id: 20260909-70-create-policy-fatture-residuo
+      author: mctit
+      runOnChange: false
+      comment: >
+        Quattordici policy sulle sette figlie scoperte di vendite.fatture
+        (fatture_atti, fatture_fondi_fattura, fatture_log, fatture_rettifiche,
+        fatture_sdi, note_fatture, fatture_sdi_eventi): per ognuna le DUE vesti
+        della testata, operatore FOR ALL e cliente del portale FOR SELECT.
+        INERTI: l'armamento e' 20260909-71.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_fattura',
+                                   'fn_scope_ba_ownership_via_fattura',
+                                   'fn_scope_ef_whitelist_via_fattura_sdi',
+                                   'fn_scope_ba_ownership_via_fattura_sdi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.fatture_atti (chiave: fattura_id) ----------
+              CREATE POLICY rls_fatture_atti_ef_whitelist
+                  ON vendite.fatture_atti FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id));
+
+              CREATE POLICY rls_fatture_atti_ba_ownership
+                  ON vendite.fatture_atti FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, fattura_id));
+
+              -- ---------- vendite.fatture_fondi_fattura (chiave: fattura_id) ----------
+              -- ⚠️ `fattura_id`, non `riferimento_fattura_id`: la seconda e' nullable.
+              CREATE POLICY rls_fatture_fondi_fattura_ef_whitelist
+                  ON vendite.fatture_fondi_fattura FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id));
+
+              CREATE POLICY rls_fatture_fondi_fattura_ba_ownership
+                  ON vendite.fatture_fondi_fattura FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, fattura_id));
+
+              -- ---------- vendite.fatture_log (chiave: fattura_id) ----------
+              CREATE POLICY rls_fatture_log_ef_whitelist
+                  ON vendite.fatture_log FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id));
+
+              CREATE POLICY rls_fatture_log_ba_ownership
+                  ON vendite.fatture_log FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, fattura_id));
+
+              -- ---------- vendite.fatture_rettifiche (chiave: fattura_id) ----------
+              -- ⛔ `fattura_id`, non `rettificata_id`: la riga appartiene alla
+              --   fattura che rettifica, non a quella rettificata. Entrambe sono
+              --   NOT NULL e devono condividere l'emittente — invariante di
+              --   dominio, asserito nel pgTAP.
+              CREATE POLICY rls_fatture_rettifiche_ef_whitelist
+                  ON vendite.fatture_rettifiche FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id));
+
+              CREATE POLICY rls_fatture_rettifiche_ba_ownership
+                  ON vendite.fatture_rettifiche FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, fattura_id));
+
+              -- ---------- vendite.fatture_sdi (chiave: fattura_id) ----------
+              CREATE POLICY rls_fatture_sdi_ef_whitelist
+                  ON vendite.fatture_sdi FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_id));
+
+              CREATE POLICY rls_fatture_sdi_ba_ownership
+                  ON vendite.fatture_sdi FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, fattura_id));
+
+              -- ---------- vendite.note_fatture (chiave: target_id) ----------
+              -- ⚠️ `target_id`, non `target_riga_id`: la seconda e' nullable.
+              -- ⛔ La tabella e' una PARTIZIONE di vendite.note: questa policy
+              --   copre l'accesso diretto, non la lettura dal padre (passo 8).
+              CREATE POLICY rls_note_fatture_ef_whitelist
+                  ON vendite.note_fatture FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, target_id));
+
+              CREATE POLICY rls_note_fatture_ba_ownership
+                  ON vendite.note_fatture FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, target_id));
+
+              -- ---------- vendite.fatture_sdi_eventi (chiave: fattura_sdi_id) ----------
+              CREATE POLICY rls_fatture_sdi_eventi_ef_whitelist
+                  ON vendite.fatture_sdi_eventi FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura_sdi(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_sdi_id))
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura_sdi(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer, fattura_sdi_id));
+
+              CREATE POLICY rls_fatture_sdi_eventi_ba_ownership
+                  ON vendite.fatture_sdi_eventi FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura_sdi(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint, fattura_sdi_id));
+
+              COMMENT ON POLICY rls_fatture_atti_ef_whitelist ON vendite.fatture_atti IS
+                  'Perimetro emittente per gli atti di fattura: risale da fattura_id. ⚠️ La tabella e'' figlia anche di vendite.contratti (brief §6.3): si aggancia a fatture, e le due strade devono concordare. Slice 20260909-69..71.';
+              COMMENT ON POLICY rls_fatture_rettifiche_ef_whitelist ON vendite.fatture_rettifiche IS
+                  'Perimetro emittente per le rettifiche: risale da fattura_id, non da rettificata_id. ⚠️ Entrambe sono NOT NULL verso vendite.fatture: il perimetro e'' il documento a cui la riga appartiene, e che le due fatture condividano l''emittente e'' un invariante di dominio, asserito nel pgTAP. Slice 20260909-69..71.';
+              COMMENT ON POLICY rls_note_fatture_ef_whitelist ON vendite.note_fatture IS
+                  'Perimetro emittente per le note di fattura: risale da target_id. ⛔ La tabella e'' una PARTIZIONE di vendite.note: questa policy copre l''accesso diretto, non la lettura dal padre partizionato — passo 8 del brief. Slice 20260909-69..71.';
+              COMMENT ON POLICY rls_fatture_sdi_eventi_ef_whitelist ON vendite.fatture_sdi_eventi IS
+                  'Perimetro emittente per gli eventi SDI: risale di due livelli via fn_scope_ef_whitelist_via_fattura_sdi. Slice 20260909-69..71.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_sdi_eventi_ba_ownership ON vendite.fatture_sdi_eventi;
+              DROP POLICY IF EXISTS rls_fatture_sdi_eventi_ef_whitelist ON vendite.fatture_sdi_eventi;
+              DROP POLICY IF EXISTS rls_note_fatture_ba_ownership ON vendite.note_fatture;
+              DROP POLICY IF EXISTS rls_note_fatture_ef_whitelist ON vendite.note_fatture;
+              DROP POLICY IF EXISTS rls_fatture_sdi_ba_ownership ON vendite.fatture_sdi;
+              DROP POLICY IF EXISTS rls_fatture_sdi_ef_whitelist ON vendite.fatture_sdi;
+              DROP POLICY IF EXISTS rls_fatture_rettifiche_ba_ownership ON vendite.fatture_rettifiche;
+              DROP POLICY IF EXISTS rls_fatture_rettifiche_ef_whitelist ON vendite.fatture_rettifiche;
+              DROP POLICY IF EXISTS rls_fatture_log_ba_ownership ON vendite.fatture_log;
+              DROP POLICY IF EXISTS rls_fatture_log_ef_whitelist ON vendite.fatture_log;
+              DROP POLICY IF EXISTS rls_fatture_fondi_fattura_ba_ownership ON vendite.fatture_fondi_fattura;
+              DROP POLICY IF EXISTS rls_fatture_fondi_fattura_ef_whitelist ON vendite.fatture_fondi_fattura;
+              DROP POLICY IF EXISTS rls_fatture_atti_ba_ownership ON vendite.fatture_atti;
+              DROP POLICY IF EXISTS rls_fatture_atti_ef_whitelist ON vendite.fatture_atti;

@@ -5,7 +5,7 @@
 # Aggiunge catalogo.articoli.listino_tipologia_id (nullable) + FK a
 # config.listini_tipologie. Il campo serve a imporre coerenza semantica
 # fra articolo e riga listino (guard in 20260414-16).
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 7.1.
 # ------------------------------------------------------------
 

@@ -35,7 +35,7 @@
 --   potrebbe venire dalla fixture (un permesso, un altro guard, la matrice)
 --   invece che dalla regola che si vuole provare.
 --
---   Piano: docs/it/dev/work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md
+--   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     I9 / §R-3 · changeSet 20260829-06 (fn pura), -07 (guard), -08 (capability)
 -- ------------------------------------------------------------
 

@@ -29,7 +29,7 @@
 --  - la fattura era l'unico documento del ciclo attivo senza vista canonica;
 --    questa vista e' il primo dei tre pezzi (vista, endpoint, rotta) che
 --    aprono la strada diretta al documento fiscale.
---  - Brief: docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md §9
+--  - Brief: piano-migrazione-primevue-5.md §9
 --
 -- ⚠️ COSA QUESTO FILE **NON** MISURA, e va detto invece di lasciarlo credere:
 --   il ramo in cui `anagrafiche.billing_account` e' INVISIBILE all'operatore

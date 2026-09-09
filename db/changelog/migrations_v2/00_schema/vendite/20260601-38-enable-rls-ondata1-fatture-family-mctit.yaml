@@ -24,7 +24,7 @@
 # istantanea fuori Liquibase: `ALTER TABLE <t> DISABLE ROW LEVEL SECURITY;`.
 #
 # >> Gate benchmark §12: eseguire EXPLAIN (ANALYZE, BUFFERS) prima/dopo
-#    (script docs/it/dev/work-in-progress/benchmark-rls-ondata1.sql, come
+#    (script benchmark-rls-ondata1.sql, come
 #    zeroerp_app + GUC operatore con whitelist). Soglia regressione <= 10%; oltre ->
 #    kill-switch + indice/ottimizzazione prima di riattivare.
 # ------------------------------------------------------------

@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: l'ASSUNZIONE del ponte di ri-consegna — §23.3 di
---       docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+--       brief-design-partita-merce-generalizzata.md
 --
 -- Elenco test (plan 2):
 --   1) COPERTURA della misura: quanti ponti esistono (se zero, skip

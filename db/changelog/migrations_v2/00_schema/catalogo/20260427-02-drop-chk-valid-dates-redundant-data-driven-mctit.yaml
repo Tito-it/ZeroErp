@@ -43,7 +43,7 @@
 #   "gap >= 2 giorni" in apps/vendite/services/listini_service.py
 #   (_plan_versione_state_change). Allineamento BE richiesto
 #   post-merge -> brief-be-listini-versioni-allineamento-drop-chk-date.md
-#   in docs/it/dev/work-in-progress/.
+#   in .
 #
 # 4 changeSet in sequenza (sub-progressivi 02-01..02-04):
 #   02-01 catalogo.articoli_componenti

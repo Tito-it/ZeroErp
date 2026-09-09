@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-5 — CHE DATA PORTA QUESTO DOCUMENTO
 #   vendite.fn_calcola_data_documento(registro, competenza, dichiarata)
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-5
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-5
 #
 # ── LA REGOLA, IN TRE RIGHE ─────────────────────────────────────────
 #   1. se qualcuno ha DICHIARATO una data sul lotto, vince quella;

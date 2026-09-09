@@ -63,7 +63,7 @@
 --    del codice nuovo.
 --
 -- ⭐ AGGIUNTO IL 2026-08-23 — i test 6 e 7: il rifiuto porta un BERSAGLIO.
---   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L2.
+--   Brief: brief-db-bersaglio-errore.md §6 L2.
 --
 -- ⭐ AGGIORNATO IL 2026-08-24 — il passo T-3b (changeSet 20260824-13 + la riga
 --   937 di messaggi_errore.csv). Due cose cambiano, e vanno lette insieme:

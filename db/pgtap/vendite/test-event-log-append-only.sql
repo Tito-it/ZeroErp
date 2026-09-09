@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test — vendite.trgfn_event_log_append_only
---   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.4
+--   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.4
 --
 -- ⭐ LA DISTINZIONE CHE QUESTO FILE PRESIDIA:
 --     append-only vuol dire che non puoi ALTERARE ne' CANCELLARE LA STORIA;

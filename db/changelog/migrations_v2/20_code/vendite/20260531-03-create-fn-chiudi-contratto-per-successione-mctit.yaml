@@ -26,7 +26,7 @@
 # valido_al. L'accorciamento su un contratto ATTIVO e' quindi consentito
 # (verificato 2026-05-31; coperto da test di regressione).
 #
-# Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md §3.2.2
+# Riferimento: brief-db-offerta-push-successione-contratto-overlap.md §3.2.2
 # ------------------------------------------------------------
 
 databaseChangeLog:

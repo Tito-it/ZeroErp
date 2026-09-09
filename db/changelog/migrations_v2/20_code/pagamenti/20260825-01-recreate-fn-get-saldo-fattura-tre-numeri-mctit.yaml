@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL SALDO DELLA FATTURA IN TRE NUMERI — passo S5-1 (lotto 8)
 #   pagamenti.fn_get_saldo_fattura  +  pagamenti.vw_eccedenze_da_sistemare
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3-ter S5-1 · Richiesta: brief-be-fe §6 DB-10 (Q-10, chiusa da Tid
 #          il 2026-08-24) · Decisione di dominio: brief madre §4
 #

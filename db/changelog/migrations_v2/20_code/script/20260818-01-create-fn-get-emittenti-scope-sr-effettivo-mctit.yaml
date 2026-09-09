@@ -9,7 +9,7 @@
 # Passo 1 del cantiere «perimetro emittente» (decisione Q2/C):
 # lo scope non viaggia piu' fuori dal database.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

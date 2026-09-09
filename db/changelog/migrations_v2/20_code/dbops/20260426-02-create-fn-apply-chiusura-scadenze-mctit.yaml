@@ -24,7 +24,7 @@
 # per costruzione la precondizione temporale dei guard (valido_al<
 # CURRENT_DATE), nessun bypass.
 #
-# Riferimento: docs/it/dev/work-in-progress/automazione-chiusure-scadenze.md
+# Riferimento: automazione-chiusure-scadenze.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

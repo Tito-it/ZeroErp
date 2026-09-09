@@ -24,7 +24,7 @@
 #     resta il presidio se il CSV tornasse a 50;
 #   - per una lista NUOVA non serve un changeSet come questo: basta l'append a
 #     lista_colonna.csv con priorita valorizzata, che il loader runOnChange
-#     ripesca. Vedi docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md
+#     ripesca. Vedi piano-migrazione-primevue-5.md
 #     §8-bis.
 #
 # Definizione lista + colonne: append a

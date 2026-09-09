@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # L'init dei componenti scrive NULL invece di fallire.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice C,
 # punto C5 (decisione D-5 = K2). E' il punto in cui la slice diventa visibile:
 # fin qui il DB AMMETTEVA il prezzo assente sui componenti, ma nessuno lo
 # produceva.

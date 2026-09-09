@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL PERIMETRO DEL GIORNALE — L1 del Passo 0
 #   rls_event_log_ef_whitelist su vendite.event_log
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §3.3 · Decisione D-1
 #
 #   Mirror **esatto** di `rls_commesse_ef_whitelist` (20260720-05): stessa

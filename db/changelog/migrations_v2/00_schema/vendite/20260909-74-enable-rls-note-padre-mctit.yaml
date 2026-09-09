@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sul PADRE `vendite.note` e sulla
+#   partizione `note_attivita_fatturabili`.
+#   ⭐ E' il changeSet che CHIUDE il buco delle note, e con esso il passo 8 —
+#   l'ultimo del brief.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §6.4 e §7
+#   Slice 20260909-72..74.
+#
+# ── ⛔ COSA CAMBIA DAVVERO, e non e' poco ─────────────────────────────
+#   Fino a oggi `SELECT FROM vendite.note` restituiva le note di TUTTI gli
+#   emittenti, anche quelle delle sei partizioni gia' protette: il padre non
+#   aveva RLS e le policy delle figlie non risalgono. Da qui in avanti anche il
+#   padre filtra, con le tre vesti di 20260909-73.
+#
+# ── ⚠️ E COSA NON CAMBIA PER L'APPLICAZIONE ──────────────────────────
+#   Il backend non passa mai dal padre: `apps/core/db/partitioned_note_repository.py`
+#   interroga sempre `vendite.note_<tipo>` per nome, e il routing alla partizione
+#   corretta lo fa lui dal `target_tipo`. ⇒ Nessun percorso applicativo odierno
+#   cambia comportamento. Questa slice chiude una porta che l'applicazione non
+#   usa — ed e' esattamente il motivo per cui era rimasta aperta senza che
+#   nessuno se ne accorgesse.
+#
+# ── NO FORCE, a parita' con tutto il resto ────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`. L'owner (`titodb`) resta
+#   esente; il runtime e' `zeroerp_app`, `NOBYPASSRLS`, pienamente soggetto.
+#
+# ── ⭐ IL PADRE SI ARMA, LE PARTIZIONI RESTANO COME SONO ──────────────
+#   Accendere la RLS sul padre non tocca le partizioni: ognuna mantiene la
+#   propria, che governa l'accesso diretto. Le due difese sono indipendenti e
+#   servono a due percorsi diversi — ed e' il motivo per cui i passi 1-7 non
+#   erano inutili: senza di loro, chiudere il padre non avrebbe protetto niente
+#   di cio' che il backend legge davvero.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ────────────────────────────────
+#   ⚠️ Un pgTAP gia' esistente diventa ROSSO, ed e' voluto:
+#   `db/pgtap/rls/test-rls-offerte-satelliti.sql` test 11 asseriva il buco
+#   («dal padre la nota altrui si vede ancora») come DEBITO DICHIARATO. Va
+#   sostituito con la sua asserzione positiva — non allargato. Questa slice lo
+#   fa: il file e' aggiornato nello stesso commit.
+#
+# ⭐ Collaudo: db/pgtap/rls/test-rls-note-padre.sql, che verifica le tre vesti
+#   dal padre E il presidio sui rami dello smistatore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-74-enable-rls-note-padre-mctit.yaml
+
+  - changeSet:
+      id: 20260909-74-enable-rls-note-padre
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sul padre partizionato
+        vendite.note e sulla partizione note_attivita_fatturabili. Da qui le
+        policy di 20260909-73 filtrano davvero, e SELECT FROM vendite.note
+        smette di essere la via che aggira le policy delle sette partizioni.
+        Chiude il passo 8, l'ultimo del brief.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('note', 'note_attivita_fatturabili')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.note                      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_attivita_fatturabili ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.note_attivita_fatturabili DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note                      DISABLE ROW LEVEL SECURITY;

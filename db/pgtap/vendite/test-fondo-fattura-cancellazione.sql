@@ -44,7 +44,7 @@
 --    Si chiude quando esistera' una fixture a due emittenti su questo file,
 --    come quella di db/pgtap/rls/test-rls-fondi-fattura-source-functional.sql.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md
+-- Piano: brief-db-fondo-fattura-ricalcolo-e-governo.md
 --        §9.3 D-21/D-22/D-24 · §9.5-a · §9.7 · changeSet 20260831-61/-63/-64/-65
 -- ------------------------------------------------------------
 

@@ -4,7 +4,7 @@
 --
 -- Fase E del cantiere «perimetro emittente», R-3 + R-4: l'emittente nella
 -- riga delle cinque liste che restano.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+-- Brief: brief-db-perimetro-emittente-fase-e-e-ricerca.md
 --
 -- Elenco test (plan 12):
 --   0) PRECONDIZIONE: le sei liste esistono in catalogo

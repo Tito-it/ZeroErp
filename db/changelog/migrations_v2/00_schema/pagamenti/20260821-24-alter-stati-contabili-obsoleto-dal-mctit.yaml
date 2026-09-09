@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # RITIRARE UNA VOCE DI CATALOGO SENZA ROMPERE CHI LA REFERENZIA — passo S1-1
 #   pagamenti.vendite_contabili_stati · pagamenti.vendite_contabili_righe_stati
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §1.4 C-6, §2.1 S1-1
 #
 # ── PERCHE' SERVE ───────────────────────────────────────────────────────

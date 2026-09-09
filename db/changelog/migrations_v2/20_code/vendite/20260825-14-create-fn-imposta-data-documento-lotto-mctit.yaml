@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-11 — DICHIARARE LA DATA DI UN LOTTO
 #   vendite.fn_imposta_data_documento_lotto(lotto, data)
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-11
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-11
 #
 # ── E' UNA FUNZIONE «MADRE» ─────────────────────────────────────────
 #   Compone QUATTRO scritture — la data sul lotto, la data sulle fatture, la

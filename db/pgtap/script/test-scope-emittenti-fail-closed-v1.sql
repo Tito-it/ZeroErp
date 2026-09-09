@@ -5,7 +5,7 @@
 -- Passo 2 (P-2a) del cantiere «perimetro emittente»: fail-closed nella catena
 -- canonica dello scope. Un operatore SENZA riga in
 -- config.user_emittenti_fiscali non vede piu' TUTTI gli emittenti.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §2.5
+-- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §2.5
 --
 -- Elenco test (plan 8):
 --   0) PRECONDIZIONI: un operatore con riga, diverso da quello di contesto

@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # LA MISURA del terzo lato: quali codici errore il database puo' nominare
-#   Brief: docs/it/dev/work-in-progress/brief-db-be-terzo-lato-presidio-codici.md
+#   Brief: brief-db-be-terzo-lato-presidio-codici.md
 #   Registro: 20260805-36 · Seed: 20260805-37
 #
 # ── PERCHE' UNA VISTA E NON UNA QUERY IN OGNI PRESIDIO ──────────────────

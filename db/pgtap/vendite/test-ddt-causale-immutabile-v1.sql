@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: la causale di trasporto non si cambia dopo l'emissione.
---   Slice B del brief docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md
+--   Slice B del brief brief-ddt-righe-senza-prezzo.md
 --   (decisione D-4, rilievo R-4), changeSet 20260819-20 e -21.
 --
 -- COSA PRESIDIA. Il gate all'emissione guarda SOLO la transizione verso

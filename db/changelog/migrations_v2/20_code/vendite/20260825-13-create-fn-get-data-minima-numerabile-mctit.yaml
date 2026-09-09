@@ -9,7 +9,7 @@
 # DB-10 — LA TARGA CHE DICE QUANTO E' ALTO IL CANCELLO
 #   vendite.fn_get_data_minima_numerabile        (registro, serie)
 #   vendite.fn_get_data_minima_numerabile_lotto  (lotto)
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-10
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-10
 #
 # ── A CHE SERVE ─────────────────────────────────────────────────────
 #   Il frontend apre il DatePicker con `minDate` gia' giusta, e l'errore del

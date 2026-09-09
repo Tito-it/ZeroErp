@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Rinomina a `E_*` di TUTTI i codici DB-only rimasti — 11 codici, 14 funzioni
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.14
+#   Brief: brief-db-codice-errore-strutturato.md §15.14
 #   Lotti precedenti: 20260805-19 (4), -20 (4), -25 (3)
 #
 #   Registro del debito: **39 -> 28**.

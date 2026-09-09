@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-1 — Gli adattatori di scope per la famiglia RESI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §4
+#   Slice 20260909-40..42 (helper -> policy inerti -> armamento).
+#   Precedenti: PREVENTIVI (27..30), ORDINI (33..35), DDT (36..38).
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Una riga di documento appartiene all'emittente della sua testata.
+#   `vendite.resi` e' protetta (`rls_resi_ef_whitelist`); i suoi quattro
+#   satelliti non hanno nessuna policy e `zeroerp_app` ha su tutti SELECT,
+#   INSERT, UPDATE e DELETE.
+#
+# ── UNA VESTE, come DDT ──────────────────────────────────────────────
+#   `vendite.resi` porta la sola veste `OPERATORE`, `FOR ALL`. I satelliti la
+#   rispecchiano. La regola resta «il satellite rispecchia TUTTE le vesti della
+#   propria testata»: qui la testata ne ha una.
+#
+# ── Le due funzioni, e perche' sono due ───────────────────────────────
+#     * `resi_righe`                              reso_id      -> `_via_reso`
+#     * `resi_righe_accrediti`, `_riconsegne`,
+#       `_rinunce`                                resi_riga_id -> `_via_reso_riga`
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#   La seconda delega alla prima: la regola «come un reso nomina il proprio
+#   emittente» resta scritta in un posto solo.
+#
+# ── ⚠️ `resi_righe` HA DUE GENITORI, ed e' il caso proprio di questa famiglia ──
+#   Porta `reso_id` **e** `ddt_riga_id`, entrambe `NOT NULL`. Il perimetro si
+#   risolve dal RESO — e' il documento a cui la riga appartiene (brief §6.2) —
+#   ma dal 2026-09-09 `vendite.ddt_righe` e' a sua volta in RLS, quindi la
+#   stessa riga e' raggiungibile per due strade.
+#   ⇒ Le due strade devono dare la stessa risposta. Se dissentissero non sarebbe
+#   la policy da allargare: sarebbe un guard mancante fra DDT e reso
+#   sull'emittente. Il pgTAP della slice lo ASSERISCE, cosi' la domanda non
+#   resta un'opinione.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — come gli altri
+#   `script.fn_scope_*`. Una policy che chiamasse una funzione `SECURITY
+#   DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non vede: il
+#   filtro passerebbe sempre, e in silenzio.
+#
+# Permessi: funzioni di titodb, nessun GRANT esplicito (l'ALTER DEFAULT
+# PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260909-40-create-fn-scope-ef-whitelist-via-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260909-40-create-fn-scope-ef-whitelist-via-reso
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatori di scope per la famiglia resi:
+        script.fn_scope_ef_whitelist_via_reso(auth_user_id, reso_id) e
+        script.fn_scope_ef_whitelist_via_reso_riga(auth_user_id, riga_id), che
+        risalgono alla testata e delegano alla canonica fn_scope_ef_whitelist.
+        Nessuna policy li usa ancora: le crea 20260909-41.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso(
+                  p_auth_user_id integer,
+                  p_reso_id      vendite.resi.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del reso indicato.
+                  -- ⚠️ Reso inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT r.emittente_fiscale_id
+                         FROM vendite.resi r
+                        WHERE r.id = p_reso_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso_riga(
+                  p_auth_user_id integer,
+                  p_riga_id      vendite.resi_righe.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una RIGA di reso — e' la
+                  --   chiave che portano accrediti, riconsegne e rinunce.
+                  -- ⛔ Si risale dal RESO, non dal DDT: la riga appartiene al
+                  --   documento di reso. `resi_righe` ha due genitori
+                  --   `NOT NULL` e questa e' la scelta, non una svista.
+                  SELECT script.fn_scope_ef_whitelist_via_reso(
+                      p_auth_user_id,
+                      (SELECT rr.reso_id
+                         FROM vendite.resi_righe rr
+                        WHERE rr.id = p_riga_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_reso(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.resi: risale dalla chiave della testata a `emittente_fiscale_id` e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer, come gli altri fn_scope_*. Reso inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md';
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_reso_riga(integer, bigint)
+              IS 'Come fn_scope_ef_whitelist_via_reso ma a partire da una riga di reso: e'' la chiave che portano resi_righe_accrediti, resi_righe_riconsegne e resi_righe_rinunce. ⚠️ Risale dal RESO e non dal DDT: vendite.resi_righe ha due genitori NOT NULL (reso_id e ddt_riga_id) e la riga appartiene al documento di reso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_reso_riga(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_reso(integer, bigint);

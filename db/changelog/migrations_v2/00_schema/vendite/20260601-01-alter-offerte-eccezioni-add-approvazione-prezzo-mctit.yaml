@@ -23,7 +23,7 @@
 #   01-01  ADD COLUMN stato_approvazione_prezzo + pratica_approvazione_prezzo_id + FK
 #   01-02  CREATE INDEX parziale ix_vendite_offerte_eccezioni_stato_approvazione
 #
-# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §3.1
+# Riferimento: refactor-prezzi-db.md §3.1
 # ------------------------------------------------------------
 
 databaseChangeLog:

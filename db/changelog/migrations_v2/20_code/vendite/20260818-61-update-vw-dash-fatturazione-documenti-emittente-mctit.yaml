@@ -32,7 +32,7 @@
 #       l'ultima. Il `d.*` la mette li' da solo, perche' si espande alla
 #       creazione nell'ordine esatto della union.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# brief-db-perimetro-emittente-fase-e-e-ricerca.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

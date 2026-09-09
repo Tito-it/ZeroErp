@@ -18,7 +18,7 @@
 # del preset (ui.dashboard_widget) — vincolo di seed, non strutturale
 # (widget_id e' FK al catalogo globale ui.widget, non a dashboard_widget).
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3.ter
+# Ref: brief-db-dashboard-home.md §3.ter
 # ------------------------------------------------------------
 
 databaseChangeLog:

@@ -7,7 +7,7 @@
 # di una tabella da EXCLUDE USING gist a temporal UNIQUE, una run
 # successiva di fn_apply_automazione_overlap ricreerebbe il vecchio
 # EXCLUDE perche' non trova piu' vincoli contype='x'.
-# Vedi: docs/it/dev/work-in-progress/piano-miglioramenti-db-pg18.md §D-OPEN-3
+# Vedi: piano-miglioramenti-db-pg18.md §D-OPEN-3
 # ------------------------------------------------------------
 
 databaseChangeLog:

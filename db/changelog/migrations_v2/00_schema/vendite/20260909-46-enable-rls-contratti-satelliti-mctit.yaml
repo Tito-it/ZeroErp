@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui cinque satelliti di CONTRATTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 5)
+#   Slice 20260909-44..46. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Restano tre tabelle cosi'
+#   in tutto il database (`acquisti.ddt`, `acquisti.ordini`, `shop.ricevute`),
+#   quindi non e' un caso teorico. Il pgTAP di questa slice asserisce
+#   `relrowsecurity`, non l'esistenza della policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.contratti` e
+#   come i satelliti gia' armati: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista da sistemare, e qui non e' «tutte ce l'hanno gia'»: e' che
+#   NESSUNA vista del database legge questi cinque satelliti (verificato
+#   2026-09-09). E' la famiglia piu' isolata delle sei — il che significa anche
+#   che una divergenza si vedrebbe SOLO dalle query dirette del backend.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. I punti in
+#   cui guardare:
+#     - il drawer contratto: righe, utilities, indirizzi, note;
+#     - il push offerta -> contratto (`fn_push_offerta_a_contratto`), che scrive
+#       testata e righe: ⚠️ se scrivesse le due cose nello STESSO statement la
+#       policy della riga non vedrebbe la testata appena creata e negherebbe
+#       fail-closed. E' la trappola padre/figlio nella stessa CTE, ed e' gia'
+#       costata due pgTAP il 2026-09-09.
+#
+#   ⭐ Nessun cambiamento per portale o shop: `vendite.contratti` non ha vesti
+#   cliente, quindi non ne hanno i suoi satelliti.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-contratti-satelliti.sql, che
+#   costruisce DUE aziende con il billing account LEGATO al proprio emittente
+#   (`fn_pgtap_crea_cliente_ba` terzo parametro, changeSet 20260909-43) e
+#   verifica che l'una non veda le righe dell'altra, in lettura e in scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-46-enable-rls-contratti-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-46-enable-rls-contratti-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui cinque satelliti di
+        vendite.contratti. Da qui le policy di 20260909-45 filtrano davvero.
+        Isolato apposta: si disarma con il rollback di questo solo changeSet, e
+        le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 5
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('contratti_righe', 'contratti_indirizzi',
+                                   'contratti_utilities', 'note_contratto',
+                                   'contratti_righe_componenti')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.contratti_indirizzi         ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.contratti_utilities         ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_contratto              ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.contratti_righe_componenti  ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe_componenti  DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_contratto              DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.contratti_utilities         DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.contratti_indirizzi         DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.contratti_righe             DISABLE ROW LEVEL SECURITY;

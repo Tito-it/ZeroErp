@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Rinomina a `E_*` dei 3 codici di fn_crea_revisione_preventivo — 3o lotto
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §15.11
+#   Brief: brief-db-codice-errore-strutturato.md §15.11
 #   Lotti precedenti: 20260805-19 (4 codici), 20260805-20 (4 codici)
 #
 #     PREV_REVISIONE_STATO_NON_AMMESSO (354) -> E_... (850)

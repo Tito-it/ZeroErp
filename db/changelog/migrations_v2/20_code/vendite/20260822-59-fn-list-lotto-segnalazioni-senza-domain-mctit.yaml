@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # UN FILTRO CHE NON FILTRAVA NIENTE — lotto L4
 #   vendite.fn_list_lotto_segnalazioni
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.8
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.8
 #
 #   `20260822-56` toglie `vendite.event_log.domain`. Questa funzione la usava,
 #   nell'unico punto in cui cerca l'ancora del «job corrente»:

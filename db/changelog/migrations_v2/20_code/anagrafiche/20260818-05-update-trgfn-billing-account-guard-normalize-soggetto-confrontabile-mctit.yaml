@@ -32,7 +32,7 @@
 #    ⚠️ Il guard non finge di distinguere «non esiste» da «non lo vedi»:
 #    non puo', e il messaggio lo dichiara.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

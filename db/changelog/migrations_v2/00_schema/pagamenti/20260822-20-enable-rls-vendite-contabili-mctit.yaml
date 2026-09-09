@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA RLS SULLA DISTINTA — passo S3-5 (lotto 6)
 #   pagamenti.vendite_contabili
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3 S3-5 · Decisione: brief madre D5
 #
 # ── 🔴 IL PREDICATO NON PUO' ESSERE «VIA FATTURA», E QUI SI VEDE ─────

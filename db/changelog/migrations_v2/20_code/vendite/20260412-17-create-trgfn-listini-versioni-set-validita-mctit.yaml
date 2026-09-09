@@ -4,7 +4,7 @@
 # ------------------------------------------------------------
 # Migrazione daterange: trigger sync validita per listini_versioni.
 # Usa la funzione generica script.trgfn_set_validita().
-# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.3
+# Vedi: migrazione-daterange.md §4.3
 # ------------------------------------------------------------
 
 databaseChangeLog:

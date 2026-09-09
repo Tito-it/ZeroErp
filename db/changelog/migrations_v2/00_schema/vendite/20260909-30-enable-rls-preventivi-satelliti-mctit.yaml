@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui cinque satelliti di PREVENTIVI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-27..30. ⭐ E' QUESTO il changeSet in cui il comportamento
+#   del database cambia: i tre precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Non e' un'ipotesi:
+#   il 2026-09-09 `acquisti.ddt`, `acquisti.ordini` e `shop.ricevute` erano
+#   esattamente in quello stato. Chi verifica con
+#   `EXISTS (SELECT 1 FROM pg_policies …)` legge verde e si sbaglia.
+#   ⇒ Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza
+#   della policy.
+#
+# ── NO FORCE, a parita' con tutta la famiglia ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `preventivi` e come i
+#   satelliti di `fatture`: l'owner (`titodb`) resta esente, cosi' migrazioni,
+#   job owner e i pgTAP marcati `pgtap-runner: owner` non si bloccano.
+#   ⚠️ NO FORCE non significa «la RLS non morde». Il runtime applicativo e'
+#   `zeroerp_app`, che NON e' l'owner ed e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── PRIMA DI APPLICARE: la catena che precede questo changeSet ────────
+#   1. gli adattatori di scope esistono (20260909-27);
+#   2. le policy sono create e inerti (20260909-28);
+#   3. le due viste hanno `security_invoker` (20260909-29) — senza, girerebbero
+#      come l'owner e risponderebbero di piu' proprio da domani.
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   Sei viste leggono i satelliti; quattro avevano gia' `security_invoker`, due
+#   l'hanno preso in 20260909-29. Da sessione OPERATORE i conteggi devono
+#   restare quelli di prima:
+#     - vw_preventivi_righe_dettaglio            (letta dal drawer preventivo)
+#     - vw_preventivi_riepilogo_iva_dettaglio
+#     - vw_preventivi_righe_smistabili_commessa  ⚠️ alimentano lo smistamento:
+#     - vw_preventivi_righe_smistabili_ordine       una riga che sparisce qui
+#     - vw_preventivi_smistamento_righe             e' una riga che non si
+#                                                   smista piu'
+#     - vw_dash_fatturazione_preventivi          (cruscotto)
+#   ⚠️ E diciotto funzioni nominano `preventivi_righe`: quelle che girano come
+#   `zeroerp_app` vedono ora solo il proprio perimetro. E' l'intento — ma se una
+#   di esse dovesse leggere oltre (un giro di sistema, un confronto globale),
+#   il posto giusto e' un ruolo `BYPASSRLS`, non una policy piu' larga.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-preventivi-satelliti.sql, che
+#   costruisce DUE emittenti con `dbops.fn_pgtap_crea_emittente_operatore()` e
+#   verifica che l'uno non veda le righe dell'altro — in lettura E in scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-30-enable-rls-preventivi-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-30-enable-rls-preventivi-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui cinque satelliti di
+        vendite.preventivi. Da qui le policy di 20260909-28 filtrano davvero.
+        Isolato apposta: si disarma con il rollback di questo solo changeSet, e
+        le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 5
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND policyname IN ('rls_preventivi_righe_ef_whitelist',
+                                    'rls_preventivi_indirizzi_ef_whitelist',
+                                    'rls_preventivi_riepiloghi_iva_ef_whitelist',
+                                    'rls_note_preventivo_ef_whitelist',
+                                    'rls_preventivi_righe_componenti_ef_whitelist')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.preventivi_indirizzi        ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.preventivi_riepiloghi_iva   ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_preventivo             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.preventivi_righe_componenti ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.note_preventivo             DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.preventivi_riepiloghi_iva   DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.preventivi_indirizzi        DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.preventivi_righe            DISABLE ROW LEVEL SECURITY;

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il trigger che aggancia il guard sulla causale immutabile.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice B
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice B
 # (decisione D-4). La funzione e' il changeSet 20260819-20.
 #
 # NOME: fase a10 come tutti i guard di questa tabella (linee-guida-trigger),

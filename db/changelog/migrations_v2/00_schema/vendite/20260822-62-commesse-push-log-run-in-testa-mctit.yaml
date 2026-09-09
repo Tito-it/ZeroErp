@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA RIGA DEL GIRO NASCE IN TESTA, NON IN CODA — L2, seconda meta'
 #   vendite.commesse_push_log: correlation_id, tx_id, stato IN_ESECUZIONE
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §1.2 (difetto S4) · Decisioni D-3 e D-7
 #
 # ── 🔴 IL DIFETTO: `entity_id = 0` NON ERA UN SEGNAPOSTO ────────────

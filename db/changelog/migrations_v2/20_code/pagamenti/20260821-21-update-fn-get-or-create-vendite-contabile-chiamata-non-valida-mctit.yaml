@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # I GUARD DI CHIAMATA ESCONO DA `E_PARAMETRO_INVALIDO` — passo P-7-bis (1 di 3)
 #   pagamenti.fn_get_or_create_vendite_contabile
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §6.7
+#   Piano: brief-db-posting-e-abbinamento-rata.md §6.7
 #
 # ── PERCHE' UN SECONDO GIRO, E PERCHE' IN AVANTI ────────────────────────
 #   Il lotto 1 e' stato applicato il 2026-08-21 alle 19:38. Il changeSet

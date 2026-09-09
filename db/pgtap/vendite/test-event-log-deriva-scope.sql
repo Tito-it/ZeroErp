@@ -3,7 +3,7 @@
 -- pgTAP test — vendite.trgfn_event_log_deriva_scope (+ fn_event_log_ttl_days)
 --   La riga di `vendite.event_log` si compila da sola: perimetro, identita' e
 --   scadenza li scrive il database, non il chiamante.
---   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.2
+--   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.2
 --
 -- ⭐ LA REGOLA CHE QUESTO FILE PRESIDIA (D-12):
 --     Il diario rifiuta una riga SOLO quando non riesce a dire di chi e'.

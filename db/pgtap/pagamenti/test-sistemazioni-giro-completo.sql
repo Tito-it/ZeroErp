@@ -33,7 +33,7 @@
 --    arrivare un altro incasso — una garanzia data prima e' una garanzia che
 --    scade.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3-bis S4-3/S4-4 · Decisioni: brief madre D15 · lotto 7
 -- ------------------------------------------------------------
 

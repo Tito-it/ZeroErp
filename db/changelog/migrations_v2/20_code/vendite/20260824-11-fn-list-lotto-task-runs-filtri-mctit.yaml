@@ -11,7 +11,7 @@
 #   Richiesta del BACKEND, 2026-08-24 — senza brief: la richiesta era chiara e
 #   l'analisi sta qui, dove vive la funzione.
 #   ⚠️ Il limite dell'ancora rimanda alla Q-7 di
-#   docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §8
+#   brief-db-event-log-scope-e-riga-parlante.md §8
 #
 # ── IL PROBLEMA, MISURATO ───────────────────────────────────────────
 #   Lotto 6260, 90 righe a video: 80 ANNULLATO, 8 COMPLETATO, 2 ERRORE. Le

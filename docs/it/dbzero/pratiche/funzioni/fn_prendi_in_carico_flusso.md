@@ -185,7 +185,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_prendi_in_carico_flusso(p_flusso_id bigint, p_risorsa_umana_id bigint)
-IS 'Assegna un flusso DA_ESEGUIRE all''operatore con policy eligibilita'' reparto-first + competenza opzionale (casi A/B/C/D). FOR UPDATE anti-race. ⭐ rev 2026-08-24: i due rifiuti della presa in carico portano il BERSAGLIO sul flusso. Chi prende in carico arriva da una LISTA: la frase dice quale flusso ha rifiutato, e senza bersaglio deve ritrovarselo. Il flusso e'' gia'' letto (SELECT ... FOR UPDATE), quindi esiste ed e'' visibile: nessuna query in piu''. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
+IS 'Assegna un flusso DA_ESEGUIRE all''operatore con policy eligibilita'' reparto-first + competenza opzionale (casi A/B/C/D). FOR UPDATE anti-race. ⭐ rev 2026-08-24: i due rifiuti della presa in carico portano il BERSAGLIO sul flusso. Chi prende in carico arriva da una LISTA: la frase dice quale flusso ha rifiutato, e senza bersaglio deve ritrovarselo. Il flusso e'' gia'' letto (SELECT ... FOR UPDATE), quindi esiste ed e'' visibile: nessuna query in piu''. Brief: brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

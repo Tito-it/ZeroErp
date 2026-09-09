@@ -10,7 +10,7 @@
 #
 # ── ⛔ LA REGOLA, E QUI E' STATA INFRANTA ──────────────────────────
 #   Il changeSet 20260908-34 ha messo dentro il `COMMENT ON VIEW` il percorso
-#   `docs/it/dev/work-in-progress/...`. A cantiere chiuso il brief si sposta in
+#   `...`. A cantiere chiuso il brief si sposta in
 #   `work-done/` e quel percorso diventa morto.
 #
 # ── ⭐ E IL COSTO NON E' LO YAML: E' LA COPIA NEL DATABASE ─────────

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-12 (prima parte) — IL CATALOGO SMETTE DI PROMETTERE TRE COSE
 #   chk_registri_fatturazione_reset -> solo 'ANNUALE'
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §2 e §4 DB-12
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §2 e §4 DB-12
 #   Decisione 2 di Tid (2026-08-25)
 #
 # ── IL PROBLEMA ─────────────────────────────────────────────────────

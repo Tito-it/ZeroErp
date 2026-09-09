@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # N1b + N5 — LA CATENA IMPARA DUE COSE, IN UN SOLO PASSAGGIO
-#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §15 (N1b, N5)
+#   brief-design-note-credito-resi.md §15 (N1b, N5)
 #
 #   commesse_attivita  ->  attivita_fatturabili
 #     fn_upsert_commessa_attivita        fn_emit_attivita_fatturabili_da_commessa

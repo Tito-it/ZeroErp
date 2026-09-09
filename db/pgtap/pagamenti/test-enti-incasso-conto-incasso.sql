@@ -26,7 +26,7 @@
 --    pagata dal lotto 5, dove un VARIADIC di arita' sbagliata rendeva
 --    impossibile proprio il caso che il guard esiste per gestire.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+-- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3 S3-1 · Decisione: brief madre D5 · lotto 6
 -- ------------------------------------------------------------
 

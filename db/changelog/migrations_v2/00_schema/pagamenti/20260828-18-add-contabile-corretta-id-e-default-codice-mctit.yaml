@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL LEGAME DELLA CORREZIONE, E IL CODICE CHE SI GENERA DA SE'
 #   pagamenti.vendite_contabili — passo S6-3 (lotto 10)
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3-quater S6-3 · Decisioni C-3 e C-4 (Tid, 2026-08-28)
 #
 # ── ⭐ C-3: IL LEGAME E' UNA COLONNA, NON UNA CHIAVE DI `meta` ───────

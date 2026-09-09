@@ -43,7 +43,7 @@
 #
 # Origine: doc auto-gen (oggetto vivo), con una colonna in coda.
 # Dipendenze: 20260825-22 (la funzione di check, verificata in precondizione).
-# Cantiere: docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §45
+# Cantiere: brief-design-note-credito-resi.md §45
 # ------------------------------------------------------------
 
 databaseChangeLog:

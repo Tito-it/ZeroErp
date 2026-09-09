@@ -33,7 +33,7 @@
 #
 # ⚠️ security_invoker = on va RI-SPECIFICATA o PostgreSQL la azzera.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# brief-db-perimetro-emittente-fase-e-e-ricerca.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

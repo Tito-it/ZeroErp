@@ -29,7 +29,7 @@
 #    `z95` perche' deve ordinarsi DOPO `z90_link_ef` (i trigger di pari
 #    timing scattano in ordine alfabetico di nome).
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

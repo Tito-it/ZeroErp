@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # CORREZIONE — il bersaglio del preventivo cita l'ID, non l'uid
 #   vendite.fn_push_preventivo_a_ordine
-#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 lotto L6
+#   Brief: brief-db-bersaglio-errore.md §6 lotto L6
 #   Rilievo del BACKEND, 2026-08-24. Correzione in avanti del 20260824-02.
 #
 # ── COSA ERA SBAGLIATO, E COME SI CHIAMA ────────────────────────────

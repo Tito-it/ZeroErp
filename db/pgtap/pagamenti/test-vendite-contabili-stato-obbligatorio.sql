@@ -5,7 +5,7 @@
 --       si ferma al confine della distinta finale
 --
 -- Presidia i passi P-4 e P-5 del lotto 1 del cantiere incassi
---   (docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0).
+--   (brief-db-posting-e-abbinamento-rata.md §2.0).
 --
 -- Elenco test (plan 7):
 -- 1) In pagamenti.vendite_contabili_stati l'id 1 e' BOZZA

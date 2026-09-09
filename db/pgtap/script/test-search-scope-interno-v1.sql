@@ -4,7 +4,7 @@
 --
 -- Passo 1 del cantiere «perimetro emittente» (decisione Q2/C):
 -- la ricerca universale risolve lo scope emittente DA SE'.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+-- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 --
 -- Elenco test (plan 15):
 --    0) PRECONDIZIONE: il contesto pgTAP e' un operatore con scope proprio

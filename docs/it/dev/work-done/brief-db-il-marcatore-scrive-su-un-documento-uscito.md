@@ -5,9 +5,11 @@
 > [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md)
 > e [esito-gruppo-lotto](../work-done/brief-db-esito-gruppo-lotto.md).
 >
-> **Stato:** 🟢 **CHIUSO e archiviato il 2026-09-09** (decisione di Tid). DB
-> consegnato (§6), backend adeguato e provato con la chiamata vera (§7), doc
-> auto-gen rigenerata (§7.1). Nessuna voce aperta.
+> **Stato:** 🟠 **RIAPERTO il 2026-09-09 sera** — §8. Era chiuso: DB consegnato
+> (§6), backend adeguato e provato con la chiamata vera (§7), doc auto-gen
+> rigenerata (§7.1). Poi i pgTAP hanno segnalato **due code lasciate indietro
+> dalla consegna** e **una regressione** che questa consegna ha introdotto in
+> un'altra funzione. Due voci aperte, entrambe in §8.4.
 >
 > **In una riga:** `fn_segna_esito_gruppo_lotto` marca **tutti** i documenti di
 > una commessa, compresi quelli `ESCLUSO`. Il trigger dell'uscita rifiuta — e fa
@@ -269,3 +271,154 @@ Un valore plausibile e falso.
 `RETURNS TABLE(marcati, usciti, fuori_perimetro)`. Le altre due funzioni toccate
 erano già allineate (verificate tutte e tre).
 
+
+---
+
+## 8. 🟠 Il seguito, la sera del 2026-09-09 — quello che la consegna ha lasciato indietro
+
+> **Chi scrive:** team DB, `dev/db-tid`. **Come è emerso:** rilanciando i pgTAP
+> del cantiere, non da una segnalazione a video.
+
+Quattro file rossi segnalati. Uno era già rientrato da solo, due erano **code
+della consegna** e uno era una **regressione vera**, introdotta da un changeSet
+di questo stesso cantiere.
+
+| File | Che cos'era |
+| --- | --- |
+| `vendite/test-lotti-gruppi-esito.sql` | ⚠️ coda della consegna: il `-20` cambia la firma, il test no |
+| `vendite/test-gruppo-key-segnalazioni-v1.sql` | ⚠️ idem, **più** una seconda cosa che il primo rosso nascondeva |
+| `vendite/test-vw-dash-competenza-v1.sql` | ✅ già verde: la misura era stata presa prima del `20260909-67` |
+| `script/test-rubinetto-primo-motivo-v1.sql` | 🔴 **regressione**, e non è di questo file: §8.3 |
+
+### 8.1 ⚠️ La firma cambiata e i due pgTAP che nessuno ha adeguato
+
+Il `-20` porta `fn_segna_esito_gruppo_lotto` da `RETURNS integer` a
+`RETURNS TABLE(marcati, usciti, fuori_perimetro)`. Il §6.6 elencava la verifica
+su `test-uscita-documento-dal-giro-v1.sql` (test 19-20), che infatti è stato
+scritto nella forma nuova. Gli **altri due** file che chiamavano quella
+funzione — sei chiamate in tutto — sono rimasti sulla forma vecchia:
+
+```text
+ERRORE: la funzione is(record, integer, unknown) non esiste
+```
+
+⛔ **E non è un rosso qualunque: è un ERRORE DI ESECUZIONE, quindi il file si
+ferma lì.** `test-gruppo-key-segnalazioni-v1.sql` ne dichiarava 15 e ne eseguiva
+**6**: i test 7-15 non giravano affatto, e `pg_prove` lo diceva in una riga
+(`Bad plan. You planned 15 tests but ran 6`) che in mezzo a un elenco di file si
+legge come un rosso solo. *Un test che non compila non è un test che fallisce:
+è copertura che sparisce, e ne porta via anche quella dei vicini.*
+
+✅ **Adeguati**: si legge `SELECT … FROM fn(…)` e si asseriscono **tutti e tre**
+i conteggi (`'0|0|0'`, `'1|0|0'`), non il solo `marcati`.
+⭐ **Perché tutti e tre, ed è la ragione per cui il `-20` esiste**: «zero
+marcati» ha tre cause e una sola è un difetto. Asserire il solo `marcati` le
+rimetterebbe dentro lo stesso zero, cioè disferebbe nel presidio la distinzione
+che il changeSet ha appena introdotto nel codice.
+⚠️ E `fn(…)` in lista di select su una `RETURNS TABLE` **non fallisce**:
+consegna la tupla intera in un campo solo. È lo stesso inciampo del §7.1, dalla
+parte del test invece che da quella del backend.
+
+### 8.2 ⭐ Il rosso che si vedeva solo dopo aver riparato il primo
+
+Riparato il test 7 di `test-gruppo-key-segnalazioni-v1.sql`, il file è arrivato
+in fondo e il **12** era rosso: `have 1, want 2`.
+
+La causa non è un difetto: è il `-21` di questo cantiere. La fixture creava il
+documento **già `ESCLUSO`** e poi gli scriveva una critica per verificare che il
+conteggio la scartasse. Dal `-21` quella critica **non si scrive più** — è
+esattamente il rubinetto che abbiamo chiuso.
+
+⛔ **E il test 11 sarebbe rimasto verde per il motivo sbagliato.** Chiede
+`lotto_critical_count = 1`, e con la critica mai scritta il conteggio fa 1 **da
+solo**: sarebbe passato anche cancellando il filtro del `20260908-07`, cioè
+proprio ciò che dichiara di sorvegliare.
+
+✅ **Rimedio: la fixture fa uscire il documento DOPO avergli scritto la
+critica** — che è il modo in cui il pregresso è venuto al mondo. Il §6.7 lo
+dice già in una riga: *«chiude il rubinetto, non ripulisce il pregresso: le
+critiche già scritte restano dove sono, e il conteggio continua a scartarle»*.
+Quella riga è l'invariante dei test 11-12, e ora la fixture la costruisce invece
+di presupporla.
+
+### 8.3 🔴 La regressione: il `-22` ha disfatto il `-11`
+
+`script/test-rubinetto-primo-motivo-v1.sql`, test **2** (1 invece di 0) e **5**
+(15 invece di 16). Il colpevole è `vendite.fn_escludi_documento_da_giro`.
+
+| Ora | ChangeSet | Che cosa fa alla stessa funzione |
+| --- | --- | --- |
+| 00:27 | `20260909-11` (cantiere «i motivi si fermano dentro la check», C-2) | la porta su `script.fn_raise_primo_motivo_se_presente` |
+| 01:30 | `20260909-22` (questo cantiere, §4.2) | la riscrive per la riga di giornale — **e rimette la coda a mano** |
+
+⛔ **Non è una regressione cosmetica: la frase torna falsa.**
+`E_LOTTO_NON_PRE_FISCALE` dice «*stato attuale: %s*» e quel `%s` è lo **stato del
+lotto**; la coda a mano passa per primo `p_gruppo_key` — giusto per i motivi
+2-4, che cominciano con «*Il documento %s*». È **il difetto vivo** che il `-11`
+dichiarava di chiudere, tornato dopo un'ora: arità giusta, frase falsa, e nessun
+vincolo che se ne accorga.
+
+⚠️ **Com'è successo, e si legge dal file.** Il `-22` dichiara in intestazione
+*«il corpo è quello VIVO (`pg_get_functiondef`)»*. Non lo era: anche il suo
+`rollback` porta la coda a mano, cioè il corpo di **prima** del `-11`. Le due
+metà concordano fra loro e dissentono dal vivo — è la firma di un corpo
+**ricostruito da uno YAML** invece che letto dal database, cioè esattamente ciò
+che [AGENTS.md §SQL Conventions](../../../../.codex/AGENTS.md) vieta. La
+dichiarazione in intestazione non è una prova: si scrive prima di rileggere.
+
+⭐ **Perché l'ha visto il rubinetto e non il pgTAP dell'uscita.** Il test 18 di
+`test-uscita-documento-dal-giro-v1.sql` compone la frase dai `valori` che la
+**check** emette: verifica la sede del dato, non chi solleva. Il rubinetto
+guarda l'altra metà — *chi solleva* — ed è l'unica che si era rotta. Due
+presidi, due domande diverse: è il motivo per cui il rubinetto è dichiarato «il
+presidio che conta più della bonifica».
+⚠️ **E il §6.4 di questo brief va letto insieme**: là si diceva «nessuno lo
+*copriva*». Qui qualcuno copriva, e ha parlato il giorno stesso.
+
+✅ **Rimedio**: `20260909-68-update-fn-escludi-documento-da-giro-ripristina-helper`.
+Corpo **vivo** (dalla doc auto-gen rigenerata dopo il `-22`, quindi con la riga
+di giornale) e la sola coda sostituita dalla chiamata all'helper.
+⛔ Il `-22` **non si tocca**: è applicato e pushato su tre rami, riscriverne
+l'SQL fermerebbe il migrate sul checksum.
+⚠️ Il `rollback` del `-68` riporta al corpo del `-22`, non a quello del `-11`:
+tornare al `-11` cancellerebbe la riga di giornale, cioè disferebbe un changeSet
+che non è questo.
+
+**Provato in transazione annullata**, eseguendo l'SQL **estratto** dal changeSet
+e rifacendo le due misure del rubinetto:
+
+| Misura | Prima | Dopo |
+| --- | --- | --- |
+| test 2 — punti in perimetro con la coda a mano | **1** | **0** |
+| test 4 — debito fuori perimetro (soglia ≤ 6) | 6 | 6 |
+| test 5 — funzioni che chiamano l'helper | **15** | **16** |
+
+### 8.4 Le due voci aperte
+
+1. 🔴 **Il `-68` è da applicare** (`make db-migrate`). Finché non lo è, il
+   rubinetto resta rosso sui test 2 e 5 **e** la frase di
+   `E_LOTTO_NON_PRE_FISCALE` continua a mostrare il documento al posto dello
+   stato del lotto. ⛔ Il team DB non applica migrazioni da sé.
+2. 🔴 **Un test Django è rimasto sulla firma vecchia**, ed è il gemello del
+   §7.1 dall'altra parte: `apps/vendite/tests/db/test_lotto_gruppi_ordine.py`
+   fa `SELECT vendite.fn_segna_esito_gruppo_lotto(…)` + `cur.fetchone()[0]` e
+   confronta con `1`. Su una `RETURNS TABLE` quella lettura torna la **tupla
+   intera** — `'(1,0,0)'` — quindi l'asserzione fallisce. ⚠️ Gira con
+   `ZEROERP_TEST_DB_E2E=1`, **accesa in CI**. Il §7 dichiara «4563 verdi»: quel
+   file è opt-in e con la flag spenta **salta**, quindi non era fra i 4563.
+   ⛔ Fuori dal perimetro DB: la correzione è del backend (`SELECT marcati FROM
+   …`, o leggere tutte e tre le colonne come fa `pipeline_repository`).
+
+### 8.5 ⭐ La lezione, e non è «adeguare i test»
+
+Il `-20` **sapeva** di cambiare la firma: lo scrive in intestazione a caratteri
+rossi e nomina il chiamante da adeguare (`pipeline_repository.py`). Quello è
+stato adeguato. Ciò che è mancato è la stessa domanda fatta ai **presidi**: il
+censimento dei chiamanti si era fermato a `pg_proc` («dentro il database non la
+chiama nessuno: zero») e al codice applicativo, e i pgTAP non sono né l'uno né
+l'altro.
+
+⇒ **Cambiare una firma è censire tre popolazioni, non due**: chi la chiama nel
+database, chi la chiama fuori, e **chi la verifica**. La terza è l'unica che, se
+la si dimentica, non produce un guasto — produce copertura che smette in
+silenzio, e che si scopre solo la volta in cui qualcuno rilancia la suite.

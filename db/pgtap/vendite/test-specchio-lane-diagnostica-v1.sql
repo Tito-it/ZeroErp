@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce un'AZIENDA e un CLIENTE
+--   (dbops.fn_pgtap_crea_emittente_operatore + fn_pgtap_crea_cliente_ba), e un
+--   operatore dentro un perimetro non puo' crearli: l'INSERT su
+--   anagrafiche.billing_account e' un `... RETURNING id`, e la RLS non lascia
+--   RILEGGERE una riga il cui legame all'emittente non esiste ancora — lo
+--   scrive il trigger z90, cioe' DOPO. E' la stessa ragione per cui girano da
+--   owner tutti e sei i call-site di quel building block (rls/*-satelliti).
 -- pgTAP test per Zero ERP
 --
 -- Test: P-8 — LO SPECCHIO. `fn_list_emittibili_lane` e
@@ -46,9 +54,31 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⭐ L'AZIENDA, L'OPERATORE E IL CLIENTE SI COSTRUISCONO (rev 2026-09-09).
+--   Prima l'emittente si CERCAVA (`fn_pgtap_emittente_sr_operatore`) e il
+--   billing account pure (`ORDER BY b.id LIMIT 1`). Su un database ricostruito
+--   dai changelog — cioe' in CI — `anagrafiche` e' vuoto: sono seed di
+--   `dati_macchina`. ⇒ Il file sollevava «Nessun emittente fiscale attivo» e
+--   non eseguiva NEMMENO UNA asserzione — cioe' il presidio che secondo la sua
+--   stessa intestazione «quel giorno sarebbe stato ROSSO» era muto proprio
+--   dove gira la CI.
+-- ⛔ Il mondo si costruisce PRIMA di aprire il contesto: dopo, il legame
+--   BA→emittente lo scriverebbe anche `trg_billing_account_z90_link_ef_ins` e
+--   i due si scontrerebbero su `uq_emittenti_fiscali_ba`.
+CREATE TEMP TABLE tmp_sp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+CREATE TEMP TABLE tmp_sp_cliente AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'specchio lane', NULL, (SELECT soggetto_ruolo_id FROM tmp_sp_mondo));
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM tmp_sp_mondo));
+END $ctx$;
 
 SELECT plan(4);
 
@@ -56,18 +86,11 @@ SELECT plan(4);
 -- Fixture — tre gruppi, tre situazioni
 -- ============================================================
 CREATE TEMP TABLE tmp_sp_rif AS
-WITH ba AS (
-  SELECT b.id, b.utility_id, b.istanza_utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL AND b.istanza_utility_id IS NOT NULL
-     AND b.soggetto_ruolo_id IS NOT NULL
-   ORDER BY b.id LIMIT 1
-)
 SELECT
-  script.fn_pgtap_emittente_sr_operatore()                 AS emittente_sr,
-  (SELECT id FROM ba)                                      AS billing_account_id,
-  (SELECT utility_id FROM ba)                              AS utility_id,
-  (SELECT istanza_utility_id FROM ba)                      AS istanza_utility_id,
+  (SELECT m.soggetto_ruolo_id FROM tmp_sp_mondo m)         AS emittente_sr,
+  (SELECT c.billing_account_id FROM tmp_sp_cliente c)      AS billing_account_id,
+  (SELECT c.utility_id FROM tmp_sp_cliente c)              AS utility_id,
+  (SELECT c.istanza_utility_id FROM tmp_sp_cliente c)      AS istanza_utility_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u

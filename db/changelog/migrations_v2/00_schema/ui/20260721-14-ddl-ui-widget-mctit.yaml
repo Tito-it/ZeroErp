@@ -29,7 +29,7 @@
 # widget con area_id/azione_id entrambi NULL e' non-gated (card di
 # benvenuto): garante del vincolo "mai vuota" a livello di seed (§3.bis).
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3a/§3b/§3f
+# Ref: brief-db-dashboard-home.md §3a/§3b/§3f
 # ------------------------------------------------------------
 
 databaseChangeLog:

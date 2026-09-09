@@ -39,7 +39,7 @@
 --    c'e' il motivo», il registro smetterebbe di sapere che quell'atto era stato
 --    eseguito davvero.
 --
--- Piano: docs/it/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo.md
+-- Piano: brief-db-fondo-fattura-ricalcolo-e-governo.md
 --        §9.6 (G-4) · §9.8 (G-5) · §9.3 D-25 · changeSet 20260831-66/-67
 -- ------------------------------------------------------------
 

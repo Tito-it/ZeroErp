@@ -17,7 +17,7 @@
 # Definito nello schema ui gia' esistente (creato in 20260506-01).
 # Usato da: ui.widget.tipo_widget
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3.ter
+# Ref: brief-db-dashboard-home.md §3.ter
 # ------------------------------------------------------------
 
 databaseChangeLog:

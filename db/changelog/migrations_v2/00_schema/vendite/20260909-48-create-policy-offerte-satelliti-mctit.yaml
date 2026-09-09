@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# OF-2 — Le cinque policy sui satelliti di OFFERTE_COMMERCIALI. INERTI: la RLS
+#   si accende in 20260909-49.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7 (passo 6)
+#   Slice 20260909-47..49.
+#
+# ── Le cinque tabelle, e da quale chiave risalgono ────────────────────
+#     vendite.offerte_commerciali_eccezioni             offerta_id           -> testata
+#     vendite.offerte_commerciali_indirizzi             offerta_id           -> testata
+#     vendite.offerte_commerciali_utilities             offerta_id           -> testata
+#     vendite.note_offerte_commerciali                  target_id            -> testata
+#     vendite.offerte_commerciali_eccezioni_componenti  eccezione_offerta_id -> eccezione
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#
+# ── ⛔ `note_offerte_commerciali` E' UNA PARTIZIONE, E QUESTA POLICY NON BASTA ──
+#   Le sette `note_*` sono partizioni di `vendite.note`, che e' partizionata, ha
+#   la RLS SPENTA e su cui `zeroerp_app` ha tutti i privilegi. Misurato il
+#   2026-09-09 con `note_ddt` gia' armata: un operatore vede UNA riga leggendo
+#   la partizione e DUE leggendo `vendite.note`.
+#   ⇒ Questa policy protegge l'accesso DIRETTO alla partizione — che e' l'unico
+#   che il backend usa oggi (`partitioned_note_repository.py` interroga sempre
+#   `vendite.note_<tipo>`, mai il padre). CHIUDERE il buco e' il passo 8 del
+#   brief: una policy sul PADRE che smista su `target_tipo`.
+#   ⚠️ E le policy delle partizioni NON risalgono: provato, col padre armato e
+#   senza policy propria risponde ZERO. Al padre serve una policy sua.
+#
+# ── ⛔ `FOR ALL` con `WITH CHECK` ─────────────────────────────────────
+#   E' la forma della testata, tradotta. Il `WITH CHECK` e' cio' che impedisce a
+#   un operatore di appendere una riga all'offerta di un'altra azienda: senza,
+#   la policy difenderebbe la sola lettura.
+#
+# ⭐ Nessuna vista da sistemare: come per `contratti`, NESSUNA vista del
+#   database legge questi cinque satelliti (verificato 2026-09-09).
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Collaudo: db/pgtap/rls/test-rls-offerte-satelliti.sql, dopo l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-48-create-policy-offerte-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-48-create-policy-offerte-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Cinque policy sui satelliti di vendite.offerte_commerciali: veste
+        OPERATORE FOR ALL con WITH CHECK, come la testata. Nota:
+        note_offerte_commerciali e' una partizione di vendite.note, quindi
+        questa policy copre l'accesso diretto e non la lettura dal padre (passo
+        8 del brief). INERTI: l'armamento e' 20260909-49.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_offerta',
+                                   'fn_scope_ef_whitelist_via_offerta_eccezione')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.offerte_commerciali_eccezioni (chiave: offerta_id) ----------
+              CREATE POLICY rls_offerte_commerciali_eccezioni_ef_whitelist
+                  ON vendite.offerte_commerciali_eccezioni
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              offerta_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              offerta_id)
+                  );
+
+              -- ---------- vendite.offerte_commerciali_indirizzi (chiave: offerta_id) ----------
+              CREATE POLICY rls_offerte_commerciali_indirizzi_ef_whitelist
+                  ON vendite.offerte_commerciali_indirizzi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              offerta_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              offerta_id)
+                  );
+
+              -- ---------- vendite.offerte_commerciali_utilities (chiave: offerta_id) ----------
+              CREATE POLICY rls_offerte_commerciali_utilities_ef_whitelist
+                  ON vendite.offerte_commerciali_utilities
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              offerta_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              offerta_id)
+                  );
+
+              -- ---------- vendite.note_offerte_commerciali (chiave: target_id) ----------
+              -- ⚠️ `target_id`, non `target_riga_id`: la prima e' NOT NULL con FK
+              --   verso vendite.offerte_commerciali, la seconda e' nullable.
+              CREATE POLICY rls_note_offerte_commerciali_ef_whitelist
+                  ON vendite.note_offerte_commerciali
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  );
+
+              -- ---------- vendite.offerte_commerciali_eccezioni_componenti (chiave: eccezione_offerta_id) ----------
+              CREATE POLICY rls_offerte_commerciali_ecc_comp_ef_whitelist
+                  ON vendite.offerte_commerciali_eccezioni_componenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta_eccezione(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              eccezione_offerta_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_offerta_eccezione(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              eccezione_offerta_id)
+                  );
+
+              COMMENT ON POLICY rls_offerte_commerciali_eccezioni_ef_whitelist ON vendite.offerte_commerciali_eccezioni IS
+                  'Perimetro emittente per le eccezioni di offerta: rispecchia rls_offerte_commerciali_ef_whitelist risalendo da offerta_id. Slice 20260909-47..49.';
+              COMMENT ON POLICY rls_offerte_commerciali_indirizzi_ef_whitelist ON vendite.offerte_commerciali_indirizzi IS
+                  'Perimetro emittente per gli indirizzi di offerta: risale da offerta_id. Slice 20260909-47..49.';
+              COMMENT ON POLICY rls_offerte_commerciali_utilities_ef_whitelist ON vendite.offerte_commerciali_utilities IS
+                  'Perimetro emittente per le utilities di offerta: risale da offerta_id. Slice 20260909-47..49.';
+              COMMENT ON POLICY rls_note_offerte_commerciali_ef_whitelist ON vendite.note_offerte_commerciali IS
+                  'Perimetro emittente per le note di offerta: risale da target_id (NOT NULL, FK verso vendite.offerte_commerciali). ⚠️ La tabella e'' una PARTIZIONE di vendite.note: questa policy copre l''accesso diretto, non la lettura dal padre partizionato — che e'' il passo 8 del brief. Slice 20260909-47..49.';
+              COMMENT ON POLICY rls_offerte_commerciali_ecc_comp_ef_whitelist ON vendite.offerte_commerciali_eccezioni_componenti IS
+                  'Perimetro emittente per i componenti di eccezione: risale di due livelli via fn_scope_ef_whitelist_via_offerta_eccezione. Slice 20260909-47..49.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_offerte_commerciali_ecc_comp_ef_whitelist ON vendite.offerte_commerciali_eccezioni_componenti;
+              DROP POLICY IF EXISTS rls_note_offerte_commerciali_ef_whitelist ON vendite.note_offerte_commerciali;
+              DROP POLICY IF EXISTS rls_offerte_commerciali_utilities_ef_whitelist ON vendite.offerte_commerciali_utilities;
+              DROP POLICY IF EXISTS rls_offerte_commerciali_indirizzi_ef_whitelist ON vendite.offerte_commerciali_indirizzi;
+              DROP POLICY IF EXISTS rls_offerte_commerciali_eccezioni_ef_whitelist ON vendite.offerte_commerciali_eccezioni;

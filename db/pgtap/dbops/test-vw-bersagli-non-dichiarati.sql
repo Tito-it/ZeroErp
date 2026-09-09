@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test — dbops.vw_bersagli_non_dichiarati: il cancello del vocabolario
---   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L3, T-4
+--   Brief: brief-db-bersaglio-errore.md §6 L3, T-4
 --
 -- ⭐ PERCHE' QUESTO FILE ESISTE, in una riga:
 --     Tid ha deciso che config.tipi_entita cresca UNA VOCE PER VOLTA, insieme

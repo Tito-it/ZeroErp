@@ -28,7 +28,7 @@
 # 20260721-23) perche' auth_user e' creata da Django migrate, che gira
 # dopo Liquibase. Pattern identico a ui.lista_preferenza_utente.
 #
-# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3e/§3.ter
+# Ref: brief-db-dashboard-home.md §3e/§3.ter
 # ------------------------------------------------------------
 
 databaseChangeLog:

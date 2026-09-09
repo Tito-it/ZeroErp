@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # CON QUALE CHIAVE SI RAGGIUNGE QUESTA ENTITA'
 #   config.tipi_entita.key_selector
-#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md
+#   Brief: brief-db-bersaglio-errore.md
 #          §6 lotto L1 · passo T-1d · domanda Q-C (chiusa da Tid il 2026-08-22)
 #
 # ── IL PROBLEMA, IN UNA RIGA ────────────────────────────────────────
@@ -44,7 +44,7 @@
 #   colonna e' `bigint`, quindi non potrebbe essere altrimenti. `key_selector`
 #   serve a chi PUNTA a un'entita' da fuori: il bersaglio di un errore e, un
 #   domani, le rotte della timeline per entita'. La distinzione era gia' scritta
-#   nella domanda 12 di docs/it/dev/work-in-progress/analisi-osservabilita-log.md
+#   nella domanda 12 di analisi-osservabilita-log.md
 #   («il key_selector serve al grafo di lineage, non al giornale») ed e' esatta:
 #   qui si aggiunge il terzo lettore, non si cambia il primo.
 #

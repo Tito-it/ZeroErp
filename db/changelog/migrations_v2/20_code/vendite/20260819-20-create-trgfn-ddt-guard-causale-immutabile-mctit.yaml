@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Una volta emesso, il documento e' quello: la causale non si cambia piu'.
 #
-# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice B
+# Brief: brief-ddt-righe-senza-prezzo.md §9 slice B
 # (decisione D-4). Il trigger che la usa e' il changeSet 20260819-21.
 #
 # IL BUCO CHE CHIUDE (rilievo R-4 del brief). Il gate all'emissione —

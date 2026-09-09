@@ -38,7 +38,7 @@
 # Tutto il resto del corpo (copia eccezioni+componenti, utility UPSERT,
 # collegamento pratica) e' invariato rispetto a 20260526-26 rev3.
 #
-# Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md §3.3/§3.4
+# Riferimento: brief-db-offerta-push-successione-contratto-overlap.md §3.3/§3.4
 # ------------------------------------------------------------
 
 databaseChangeLog:

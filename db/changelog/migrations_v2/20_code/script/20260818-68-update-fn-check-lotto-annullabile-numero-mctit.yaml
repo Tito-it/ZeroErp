@@ -55,7 +55,7 @@
 #    piu' puo' solo far crescere quel conteggio, e l'equivalenza regge perche'
 #    fn_available_actions_lotto legge la STESSA funzione.
 #
-# docs/it/dev/work-in-progress/brief-db-note-credito-prerequisiti-be-fe.md §8
+# brief-db-note-credito-prerequisiti-be-fe.md §8
 # ------------------------------------------------------------
 
 databaseChangeLog:

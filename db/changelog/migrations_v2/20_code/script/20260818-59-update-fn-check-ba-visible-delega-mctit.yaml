@@ -40,7 +40,7 @@
 #    quel ramo si arriverebbe a `x = ANY(NULL)` che vale NULL, non false — e un
 #    NULL in un WHERE non filtra: non nega, sparisce.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# brief-db-perimetro-emittente-fase-e-e-ricerca.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

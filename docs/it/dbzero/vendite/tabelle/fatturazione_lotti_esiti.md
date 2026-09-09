@@ -38,6 +38,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_fatturazione_lotti_esiti_gruppo_key | `CREATE INDEX ix_fatturazione_lotti_esiti_gruppo_key ON vendite.fatturazione_lotti_esiti USING btree (gruppo_key)` |
 | pk_fatturazione_lotti_esiti | `CREATE UNIQUE INDEX pk_fatturazione_lotti_esiti ON vendite.fatturazione_lotti_esiti USING btree (id)` |
 | uq_fatturazione_lotti_esiti_documento | `CREATE UNIQUE INDEX uq_fatturazione_lotti_esiti_documento ON vendite.fatturazione_lotti_esiti USING btree (lotto_id, gruppo_key)` |
 

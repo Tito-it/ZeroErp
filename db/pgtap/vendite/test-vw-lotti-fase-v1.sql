@@ -56,9 +56,30 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⭐ L'AZIENDA E IL SUO OPERATORE SI COSTRUISCONO (rev 2026-09-09).
+--   Prima si prendeva l'emittente dell'operatore con
+--   `script.fn_pgtap_emittente_sr_operatore()`, che lo CERCA. Su un database
+--   ricostruito dai changelog — cioe' in CI — `anagrafiche` e' vuoto: zero
+--   emittenti, zero utenti, zero assegnazioni, perche' quei seed sono
+--   `dati_macchina`. ⇒ La funzione sollevava «Nessun emittente fiscale attivo»
+--   e il file non eseguiva NEMMENO UNA asserzione.
+-- ⛔ Ed era in contraddizione con l'intestazione di questo file, che dichiara
+--   «I CASI SI COSTRUISCONO»: i sette lotti si', ma il mondo sotto no.
+-- ⚠️ `dbops.fn_pgtap_crea_emittente_operatore` apre e richiude da sola la
+--   finestra dei vincoli differiti di cui ha bisogno: va chiamata DOPO la riga
+--   `SET CONSTRAINTS ALL IMMEDIATE`, non prima.
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- Contesto applicativo: questo test gira come gira l'applicazione, e
+-- l'operatore e' quello che ha nel perimetro l'azienda appena creata.
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM tmp_mondo));
+END $ctx$;
 
 SELECT plan(8);
 
@@ -79,7 +100,7 @@ DECLARE
     v_tipo     vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE;
     r          record;
 BEGIN
-    v_emit_sr := script.fn_pgtap_emittente_sr_operatore();
+    SELECT m.soggetto_ruolo_id INTO v_emit_sr FROM tmp_mondo m;
 
     SELECT t.id INTO v_tipo
       FROM config.tipi_doc_fiscale t

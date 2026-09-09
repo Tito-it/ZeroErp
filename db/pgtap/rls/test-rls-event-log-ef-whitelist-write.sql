@@ -3,7 +3,7 @@
 -- pgTAP test FUNZIONALE lettura/scrittura RLS — vendite.event_log
 --   Policy: rls_event_log_ef_whitelist (FOR ALL, adapter SR
 --           script.fn_scope_ef_whitelist_via_sr, gate OPERATORE)
---   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.3
+--   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.3
 --
 -- ⭐ PERCHE' QUESTO TEST NON FA DDL, a differenza dei gemelli in `rls/`.
 --   Su commesse/resi/ddt il test deve accendere `ENABLE + FORCE` dentro la

@@ -54,7 +54,7 @@
 # Origine: doc auto-gen docs/it/dbzero/vendite/views/vw_resi_lista.md (oggetto
 #          VIVO: include il rename di 20260803-01, che lo YAML 20260802-20 non ha).
 # Dipendenze: 20260825-19 (l'arco S, verificato in precondizione).
-# Cantiere: docs/it/dev/work-in-progress/brief-db-lineage-arco-reso-nota-credito.md §5 DB-F
+# Cantiere: brief-db-lineage-arco-reso-nota-credito.md §5 DB-F
 # Verifica: db/pgtap/vendite/test-colonne-lineage-liste-v1.sql (plan 30)
 # ------------------------------------------------------------
 

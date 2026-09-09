@@ -9,7 +9,7 @@
 # Creazione tabella anagrafiche.categorie_clienti.
 # Categorie commerciali cliente (STANDARD, BASE, SILVER, GOLD, PLATINUM)
 # con flag di partecipazione alla promo. Pricing v5 - riferimento
-# docs/it/dev/work-in-progress/sviluppo-listini-v5.md sezione 4.1.
+# sviluppo-listini-v5.md sezione 4.1.
 # ------------------------------------------------------------
 
 databaseChangeLog:

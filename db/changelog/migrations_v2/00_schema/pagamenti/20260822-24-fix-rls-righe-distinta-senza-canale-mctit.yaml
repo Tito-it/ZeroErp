@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # CORREZIONE IN AVANTI — la riga senza documento su una distinta senza canale
 #   pagamenti.vendite_contabili_righe · rls_vendite_contabili_righe_perimetro_incasso
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §2.3 S3-5 · lotto 6
 #
 # ── 🔴 IL DIFETTO, e non era dei test ────────────────────────────────

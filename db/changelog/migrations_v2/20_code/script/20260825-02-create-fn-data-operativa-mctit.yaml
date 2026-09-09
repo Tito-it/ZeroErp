@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-2 — LA «DATA DI OGGI» SMETTE DI DIPENDERE DA CHI CHIAMA
 #   script.fn_data_operativa()
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2
 #   Analisi: analisi-numerazione-fattura-data-e-sequenza.md §3 D2
 #
 # ── IL PROBLEMA, IN UNA RIGA ────────────────────────────────────────

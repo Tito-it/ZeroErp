@@ -116,88 +116,70 @@ $pgtap$;
 -- EXISTS check diverso sul trigger di transizione.
 CREATE TEMP TABLE _t_prev (tag text, preventivo_id bigint, riga_id bigint);
 
--- p_pending: riga stato=PENDING
-WITH ins_p AS (
-    INSERT INTO vendite.preventivi (
-        numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id
-    )
-    SELECT 'pgtap_appr_pnd_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id
-      FROM _t_ctx
-    RETURNING id
-),
-ins_r AS (
-    INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, iva_id, stato_approvazione_prezzo
-    )
-    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, c.iva_id, 'PENDING'::config.stato_approvazione_prezzo
-      FROM ins_p p, _t_ctx c
-    RETURNING preventivo_id, id AS riga_id
-)
-INSERT INTO _t_prev (tag, preventivo_id, riga_id)
-SELECT 'p_pending', preventivo_id, riga_id FROM ins_r;
+-- ⛔ PADRE E FIGLIO IN DUE STATEMENT SEPARATI, e non e' uno stile.
+--   Fino al 2026-09-09 questi quattro blocchi erano una CTE sola
+--   (`WITH ins_p AS (INSERT INTO preventivi …), ins_r AS (INSERT INTO
+--   preventivi_righe …)`). Da quando `vendite.preventivi_righe` ha la sua
+--   policy (slice 20260909-27..30) quella forma NON PUO' funzionare: le CTE che
+--   scrivono condividono la stessa snapshot, quindi il preventivo appena
+--   inserito NON e' visibile al ramo che inserisce la riga. La policy della
+--   riga risolve il perimetro passando dalla testata
+--   (`fn_scope_ef_whitelist_via_preventivo`), non la trova, il perimetro
+--   risolve a NULL e il `WITH CHECK` nega — fail-closed, che e' il
+--   comportamento giusto.
+--   ⚠️ Il sintomo mente: l'errore parla di violazione RLS sulla RIGA e sembra un
+--   problema di whitelist o di permessi. Non lo e': e' visibilita' dentro lo
+--   statement. ⛔ Non si corregge la policy — nel percorso applicativo reale la
+--   testata nasce in uno step e le righe in quello dopo.
+--   ⭐ In `LANGUAGE sql` non c'e' modo di concatenare due scritture se non con
+--   una CTE: serve plpgsql con due INSERT e una variabile in mezzo.
+DO $fixture$
+DECLARE
+    c            record;
+    v_prev_id    vendite.preventivi.id%TYPE;
+    v_riga_id    vendite.preventivi_righe.id%TYPE;
+    v_caso       record;
+BEGIN
+    SELECT * INTO c FROM _t_ctx;
 
--- p_approved: riga stato=APPROVED
-WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
-    SELECT 'pgtap_appr_app_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
-    RETURNING id
-),
-ins_r AS (
-    INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, iva_id, stato_approvazione_prezzo
-    )
-    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, c.iva_id, 'APPROVED'::config.stato_approvazione_prezzo
-      FROM ins_p p, _t_ctx c
-    RETURNING preventivo_id, id AS riga_id
-)
-INSERT INTO _t_prev (tag, preventivo_id, riga_id)
-SELECT 'p_approved', preventivo_id, riga_id FROM ins_r;
+    FOR v_caso IN
+        SELECT * FROM (VALUES
+            ('p_pending',  'pnd', 'PENDING'),
+            ('p_approved', 'app', 'APPROVED'),
+            ('p_rejected', 'rej', 'REJECTED'),
+            -- ⚠️ stato NULL: riga NON in approvazione, baseline libero (test 9).
+            ('p_null',     'nul', NULL)
+        ) AS v(tag, sigla, stato)
+    LOOP
+        -- 1) La testata.
+        INSERT INTO vendite.preventivi (
+            numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
+            data, emittente_fiscale_id
+        )
+        VALUES (
+            'pgtap_appr_' || v_caso.sigla || '_'
+                || substring(md5(clock_timestamp()::text) from 1 for 6),
+            c.stato_draft_id, c.utility_id, c.istanza_utility_id,
+            CURRENT_DATE, c.emittente_fiscale_id
+        )
+        RETURNING id INTO v_prev_id;
 
--- p_rejected: riga stato=REJECTED
-WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
-    SELECT 'pgtap_appr_rej_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
-    RETURNING id
-),
-ins_r AS (
-    INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, iva_id, stato_approvazione_prezzo
-    )
-    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, c.iva_id, 'REJECTED'::config.stato_approvazione_prezzo
-      FROM ins_p p, _t_ctx c
-    RETURNING preventivo_id, id AS riga_id
-)
-INSERT INTO _t_prev (tag, preventivo_id, riga_id)
-SELECT 'p_rejected', preventivo_id, riga_id FROM ins_r;
+        -- 2) La riga: statement SUO, cosi' la policy vede la testata.
+        INSERT INTO vendite.preventivi_righe (
+            preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
+            prezzo_unitario, iva_id, stato_approvazione_prezzo
+        )
+        VALUES (
+            v_prev_id, c.articolo_id, 1, 1, c.uom_id,
+            100, c.iva_id, v_caso.stato::config.stato_approvazione_prezzo
+        )
+        RETURNING id INTO v_riga_id;
 
--- p_null: riga stato=NULL (non in approvazione, baseline libero)
-WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
-    SELECT 'pgtap_appr_nul_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
-    RETURNING id
-),
-ins_r AS (
-    INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
-        prezzo_unitario, iva_id
-    )
-    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, c.iva_id
-      FROM ins_p p, _t_ctx c
-    RETURNING preventivo_id, id AS riga_id
-)
-INSERT INTO _t_prev (tag, preventivo_id, riga_id)
-SELECT 'p_null', preventivo_id, riga_id FROM ins_r;
+        INSERT INTO _t_prev (tag, preventivo_id, riga_id)
+        VALUES (v_caso.tag, v_prev_id, v_riga_id);
+    END LOOP;
+END
+$fixture$;
 
 -- =========================================================
 -- I preventivi nascono in DRAFT, ma i test qui sotto verificano il guard
@@ -342,24 +324,40 @@ SELECT lives_ok(
 -- altre (es. passaggio a EMESSO, RIFIUTATO, ANNULLATO).
 -- Uso un preventivo fresh per evitare interferenze con test 1.
 -- =========================================================
-CREATE TEMP TABLE _t_prev_draft2 AS
-WITH ins_p AS (
-    INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id, data, emittente_fiscale_id)
-    SELECT 'pgtap_appr_drt_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-           stato_draft_id, utility_id, istanza_utility_id, CURRENT_DATE, emittente_fiscale_id FROM _t_ctx
-    RETURNING id
-),
-ins_r AS (
+-- ⛔ Anche qui due statement, e per la stessa ragione scritta sopra: una CTE
+--   che inserisce testata e riga insieme non supera la policy della riga.
+CREATE TEMP TABLE _t_prev_draft2 (preventivo_id bigint);
+
+DO $draft2$
+DECLARE
+    c         record;
+    v_prev_id vendite.preventivi.id%TYPE;
+BEGIN
+    SELECT * INTO c FROM _t_ctx;
+
+    INSERT INTO vendite.preventivi (
+        numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
+        data, emittente_fiscale_id
+    )
+    VALUES (
+        'pgtap_appr_drt_' || substring(md5(clock_timestamp()::text) from 1 for 6),
+        c.stato_draft_id, c.utility_id, c.istanza_utility_id,
+        CURRENT_DATE, c.emittente_fiscale_id
+    )
+    RETURNING id INTO v_prev_id;
+
     INSERT INTO vendite.preventivi_righe (
         preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
         prezzo_unitario, iva_id, stato_approvazione_prezzo
     )
-    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
-           100, c.iva_id, 'PENDING'::config.stato_approvazione_prezzo
-      FROM ins_p p, _t_ctx c
-    RETURNING preventivo_id
-)
-SELECT preventivo_id FROM ins_r;
+    VALUES (
+        v_prev_id, c.articolo_id, 1, 1, c.uom_id,
+        100, c.iva_id, 'PENDING'::config.stato_approvazione_prezzo
+    );
+
+    INSERT INTO _t_prev_draft2 VALUES (v_prev_id);
+END
+$draft2$;
 
 -- Recupero un stato != ACCETTATO (EMESSO id=2 dal seed).
 SELECT lives_ok(

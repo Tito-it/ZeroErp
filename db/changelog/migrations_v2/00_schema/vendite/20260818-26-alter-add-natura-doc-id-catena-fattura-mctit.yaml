@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # N1 — la natura entra nelle TRE tabelle della catena
-#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis.10
+#   brief-design-note-credito-resi.md §12.4-bis.10
 #
 #   commesse_attivita  ->  attivita_fatturabili  ->  fatture
 #        (l'intento)          (l'emissione)        (il documento)

@@ -9,7 +9,7 @@
 # L'AVVISO SULLA RIGA MANUALE SOSPETTA — slice S6b
 #   vw_partite_merce, colonna `sospetto_duplicato_ordine`.
 #   Risponde alla domanda §6.4 del brief
-#   docs/it/dev/work-in-progress/brief-design-partita-merce-generalizzata.md
+#   brief-design-partita-merce-generalizzata.md
 #
 # ── LA DOMANDA ──────────────────────────────────────────────────────────
 #

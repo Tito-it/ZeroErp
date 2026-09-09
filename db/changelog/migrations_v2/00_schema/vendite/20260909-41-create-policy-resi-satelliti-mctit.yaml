@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-2 — Le quattro policy sui satelliti di RESI. INERTI: la RLS si accende in
+#   20260909-42.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-40..42.
+#
+# ── Le quattro tabelle, e da quale chiave risalgono ───────────────────
+#     vendite.resi_righe              reso_id       -> testata
+#     vendite.resi_righe_accrediti    resi_riga_id  -> riga
+#     vendite.resi_righe_riconsegne   resi_riga_id  -> riga
+#     vendite.resi_righe_rinunce      resi_riga_id  -> riga
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09).
+#   ⭐ Questa famiglia e' l'unica finora con TRE figlie di secondo livello e una
+#   sola di primo: e' un albero stretto e profondo, non largo.
+#
+# ── ⚠️ `resi_righe` E `resi_righe_riconsegne` HANNO DUE GENITORI ──────
+#   Entrambe portano anche un `ddt_riga_id` `NOT NULL` verso `vendite.ddt_righe`,
+#   che dal 2026-09-09 e' in RLS (slice 36..38). Il perimetro si risolve dal
+#   RESO — e' il documento a cui la riga appartiene — e la strada del DDT resta
+#   una seconda via verso la stessa riga.
+#   ⇒ Le due devono concordare. Il pgTAP della slice lo asserisce invece di
+#   darlo per buono: se un giorno dissentissero, il difetto sarebbe un guard
+#   mancante fra DDT e reso sull'emittente, non questa policy.
+#
+# ── ⛔ `FOR ALL` con `WITH CHECK` ─────────────────────────────────────
+#   E' la forma della testata, tradotta. Il `WITH CHECK` e' cio' che impedisce a
+#   un operatore di appendere una riga al reso di un'altra azienda: senza, la
+#   policy difenderebbe la sola lettura, ed e' la meta' che si dimentica perche'
+#   il sintomo non si vede leggendo.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Collaudo funzionale: db/pgtap/rls/test-rls-resi-satelliti.sql, dopo l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-41-create-policy-resi-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-41-create-policy-resi-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Quattro policy sui satelliti di vendite.resi (resi_righe,
+        resi_righe_accrediti, resi_righe_riconsegne, resi_righe_rinunce): veste
+        OPERATORE FOR ALL con WITH CHECK, come la testata. INERTI: l'armamento
+        e' 20260909-42.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_reso',
+                                   'fn_scope_ef_whitelist_via_reso_riga')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.resi_righe (chiave: reso_id) ----------
+              -- ⛔ `reso_id`, non `ddt_riga_id`: la riga appartiene al reso.
+              CREATE POLICY rls_resi_righe_ef_whitelist
+                  ON vendite.resi_righe
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              reso_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              reso_id)
+                  );
+
+              -- ---------- vendite.resi_righe_accrediti (chiave: resi_riga_id) ----------
+              CREATE POLICY rls_resi_righe_accrediti_ef_whitelist
+                  ON vendite.resi_righe_accrediti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  );
+
+              -- ---------- vendite.resi_righe_riconsegne (chiave: resi_riga_id) ----------
+              CREATE POLICY rls_resi_righe_riconsegne_ef_whitelist
+                  ON vendite.resi_righe_riconsegne
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  );
+
+              -- ---------- vendite.resi_righe_rinunce (chiave: resi_riga_id) ----------
+              CREATE POLICY rls_resi_righe_rinunce_ef_whitelist
+                  ON vendite.resi_righe_rinunce
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_reso_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              resi_riga_id)
+                  );
+
+              COMMENT ON POLICY rls_resi_righe_ef_whitelist ON vendite.resi_righe IS
+                  'Perimetro emittente per le righe di reso: rispecchia rls_resi_ef_whitelist della testata risalendo da reso_id. ⚠️ La tabella ha due genitori NOT NULL (reso_id e ddt_riga_id): il perimetro si risolve dal RESO, e la strada del DDT deve dare la stessa risposta. Slice 20260909-40..42.';
+              COMMENT ON POLICY rls_resi_righe_accrediti_ef_whitelist ON vendite.resi_righe_accrediti IS
+                  'Perimetro emittente per gli accrediti di riga reso: risale di due livelli via fn_scope_ef_whitelist_via_reso_riga. Slice 20260909-40..42.';
+              COMMENT ON POLICY rls_resi_righe_riconsegne_ef_whitelist ON vendite.resi_righe_riconsegne IS
+                  'Perimetro emittente per le riconsegne di riga reso: risale di due livelli via fn_scope_ef_whitelist_via_reso_riga. Slice 20260909-40..42.';
+              COMMENT ON POLICY rls_resi_righe_rinunce_ef_whitelist ON vendite.resi_righe_rinunce IS
+                  'Perimetro emittente per le rinunce di riga reso: risale di due livelli via fn_scope_ef_whitelist_via_reso_riga. Slice 20260909-40..42.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_resi_righe_rinunce_ef_whitelist ON vendite.resi_righe_rinunce;
+              DROP POLICY IF EXISTS rls_resi_righe_riconsegne_ef_whitelist ON vendite.resi_righe_riconsegne;
+              DROP POLICY IF EXISTS rls_resi_righe_accrediti_ef_whitelist ON vendite.resi_righe_accrediti;
+              DROP POLICY IF EXISTS rls_resi_righe_ef_whitelist ON vendite.resi_righe;

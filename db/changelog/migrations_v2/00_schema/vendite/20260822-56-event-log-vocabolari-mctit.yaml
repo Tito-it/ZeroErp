@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # LA RIGA SMETTE DI PORTARE COSE CHE NON DEVE — lotto L4
 #   vendite.event_log: il vocabolario passa al catalogo, `domain` esce
-#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#   Brief: brief-db-event-log-scope-e-riga-parlante.md
 #          §3.7, §3.8 · Decisioni D-17 e D-18
 #
 # ── 1) `entity_type`: dal CHECK al CATALOGO ────────────────────────

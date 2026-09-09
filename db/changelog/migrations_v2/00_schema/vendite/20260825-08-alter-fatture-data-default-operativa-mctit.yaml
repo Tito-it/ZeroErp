@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # DB-2 (seconda meta') — IL DEFAULT DI COLONNA SMETTE DI MENTIRE
 #   vendite.fatture.data  DEFAULT CURRENT_DATE -> script.fn_data_operativa()
-#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2
+#   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2
 #
 # ── ℹ️ QUESTO FILE DA SOLO NON CAMBIA NIENTE, ED E' IL PUNTO ────────
 #   Il default e' INERTE sul percorso reale: `fn_get_or_create_fattura_header`

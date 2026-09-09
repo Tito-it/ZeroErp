@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # Codice errore strutturato — IL REGISTRO DEI CODICI FUORI CONVENZIONE
-#   Brief: docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md §7 e §10
+#   Brief: brief-db-codice-errore-strutturato.md §7 e §10
 #   Guardrail che lo legge: scripts/sql/guardrail_codice_errore_strutturato.sql
 #   Seed delle 57 voci: 20260805-07
 #

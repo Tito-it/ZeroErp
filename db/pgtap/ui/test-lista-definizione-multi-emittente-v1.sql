@@ -4,7 +4,7 @@
 --
 -- Passo 7 (P-2b) del cantiere «perimetro emittente»: il flag multi_emittente
 -- esiste, non si scrive dall'applicazione, e nasce spento su tutte le liste.
--- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §11.5, Q1
+-- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §11.5, Q1
 --
 -- Elenco test (plan 9):
 --   0) PRECONDIZIONE: il test gira come applicazione, NON come proprietario

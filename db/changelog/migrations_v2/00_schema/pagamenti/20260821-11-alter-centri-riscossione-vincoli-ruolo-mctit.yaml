@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # DUE VINCOLI MAI NATI SU pagamenti.centri_riscossione — passo P-1
-#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#   Piano: brief-db-posting-e-abbinamento-rata.md
 #          §1.4 C-1 e C-1-bis, §2.0 P-1
 #
 # ── IL PRIMO DIFETTO (C-1): un unico "parziale" che parziale non e' mai stato

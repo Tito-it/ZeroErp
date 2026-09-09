@@ -25,7 +25,7 @@
 #    la colonna arrivi a video (quello dipende dal repository di dominio per le
 #    liste con vista_sql NULL): prova che qualcuno l'abbia almeno dichiarata.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

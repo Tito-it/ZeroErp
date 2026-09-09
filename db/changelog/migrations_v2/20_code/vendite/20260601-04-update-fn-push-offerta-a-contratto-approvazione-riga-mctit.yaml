@@ -21,7 +21,7 @@
 #   valorizzate da v_eccezione. Firma e resto del corpo INVARIATI
 #   (CREATE OR REPLACE, nessun DROP).
 #
-# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §3.4
+# Riferimento: refactor-prezzi-db.md §3.4
 # ------------------------------------------------------------
 
 databaseChangeLog:

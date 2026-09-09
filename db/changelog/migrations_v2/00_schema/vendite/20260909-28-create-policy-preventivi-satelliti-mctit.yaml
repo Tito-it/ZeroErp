@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — Le policy sui cinque satelliti di PREVENTIVI. INERTI: la RLS si accende
+#   in 20260909-30.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §7
+#   Slice 20260909-27..30.
+#
+# ── ⭐ PERCHE' LE POLICY PRIMA E L'ARMAMENTO DOPO ─────────────────────
+#   E' la forma della slice 20260729-01..06 (satelliti fattura), e la ragione e'
+#   scritta la': una policy senza `ENABLE ROW LEVEL SECURITY` non filtra nulla,
+#   quindi non puo' rompere niente. Il momento in cui il comportamento del
+#   database cambia per tutti e' UNO SOLO, sta in un changeSet suo, e si disarma
+#   con un rollback di quello — le policy restano dove sono.
+#   ⛔ Mescolare le due cose renderebbe l'armamento irriconoscibile in
+#   DATABASECHANGELOG e non annullabile da solo.
+#
+# ── Le cinque tabelle, e da quale chiave risalgono ────────────────────
+#     vendite.preventivi_righe             preventivo_id       -> testata
+#     vendite.preventivi_indirizzi         preventivo_id       -> testata
+#     vendite.preventivi_riepiloghi_iva    preventivo_id       -> testata
+#     vendite.note_preventivo              target_id           -> testata
+#     vendite.preventivi_righe_componenti  riga_preventivo_id  -> riga
+#   ⚠️ Tutte `NOT NULL` (verificato 2026-09-09): nessun ramo con la chiave nulla.
+#
+# ── ⚠️ UNA SOLA VESTE, e non e' una dimenticanza ──────────────────────
+#   La testata `vendite.preventivi` ha UNA policy, per `OPERATORE`. A differenza
+#   di `fatture` — che ne ha due, perche' il cliente del portale le sue fatture
+#   le vede — un preventivo il portale non lo espone. I satelliti copiano la
+#   testata: una policy, `OPERATORE`.
+#   ⭐ E resta fail-closed: la policy e' permissiva e condizionata alla veste,
+#   quindi una sessione senza GUC o con un'altra veste non vede NIENTE, non
+#   vede tutto.
+#
+# ── ⛔ `FOR ALL`, e il `WITH CHECK` non e' decorativo ─────────────────
+#   `FOR SELECT` lascerebbe SCRIVERE fuori perimetro. Il `WITH CHECK` e' cio'
+#   che impedisce a un operatore di creare una riga su un preventivo che non e'
+#   suo, ed e' la meta' della difesa che si dimentica piu' facilmente.
+#
+# DOPO L'APPLICAZIONE di questo changeSet: nulla cambia, per costruzione.
+# Il collaudo funzionale e' in db/pgtap/rls/test-rls-preventivi-satelliti.sql,
+# che gira dopo l'armamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260909-28-create-policy-preventivi-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260909-28-create-policy-preventivi-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Policy rls_<tabella>_ef_whitelist sui cinque satelliti di
+        vendite.preventivi (righe, indirizzi, riepiloghi_iva, note, componenti).
+        INERTI: nessuna ENABLE ROW LEVEL SECURITY qui — l'armamento e'
+        20260909-30, isolato apposta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_preventivo',
+                                   'fn_scope_ef_whitelist_via_preventivo_riga')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I quattro che risalgono direttamente alla testata.
+              CREATE POLICY rls_preventivi_righe_ef_whitelist
+                  ON vendite.preventivi_righe
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              preventivo_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              preventivo_id)
+                  );
+
+              CREATE POLICY rls_preventivi_indirizzi_ef_whitelist
+                  ON vendite.preventivi_indirizzi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              preventivo_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              preventivo_id)
+                  );
+
+              CREATE POLICY rls_preventivi_riepiloghi_iva_ef_whitelist
+                  ON vendite.preventivi_riepiloghi_iva
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              preventivo_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              preventivo_id)
+                  );
+
+              -- ⚠️ La nota porta la testata in `target_id`, non in
+              --   `preventivo_id`: e' la forma delle note partizionate, uguale
+              --   per tutte e sette le famiglie. La FK c'e' ed e' NOT NULL,
+              --   quindi non c'e' nessun polimorfismo da risolvere qui.
+              CREATE POLICY rls_note_preventivo_ef_whitelist
+                  ON vendite.note_preventivo
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              target_id)
+                  );
+
+              -- Il nipote: risale dalla RIGA, con l'adattatore dedicato.
+              CREATE POLICY rls_preventivi_righe_componenti_ef_whitelist
+                  ON vendite.preventivi_righe_componenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_preventivo_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_preventivo_riga(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              riga_preventivo_id)
+                  );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_preventivi_righe_componenti_ef_whitelist ON vendite.preventivi_righe_componenti;
+              DROP POLICY IF EXISTS rls_note_preventivo_ef_whitelist             ON vendite.note_preventivo;
+              DROP POLICY IF EXISTS rls_preventivi_riepiloghi_iva_ef_whitelist   ON vendite.preventivi_riepiloghi_iva;
+              DROP POLICY IF EXISTS rls_preventivi_indirizzi_ef_whitelist        ON vendite.preventivi_indirizzi;
+              DROP POLICY IF EXISTS rls_preventivi_righe_ef_whitelist            ON vendite.preventivi_righe;

@@ -6,9 +6,10 @@
 --       (vendite.fatturazione_lotti_esiti) a quello dove si vede
 --       (vendite.vw_dash_competenza_gruppi), piu' il presidio
 -- ChangeSet: 20260907-12 (la casa), -13 (chi scrive), -14 e -15 (chi legge),
---            -16 (il perimetro torna a fare solo il perimetro)
+--            -16 (il perimetro torna a fare solo il perimetro),
+--            20260909-20 (il marcatore torna TRE conteggi invece di uno)
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 13):
 --   1) la casa dell'esito ha le sue colonne
 --   2) ⭐ il vocabolario e' lo STESSO del gemello, e si legge dai vincoli
 --   3) ⛔ un errore senza causa ne' frase non si scrive
@@ -22,6 +23,18 @@
 --  10) ⛔ e NON ha smesso di dire se il documento e' ancora da emettere
 --  11) ⛔ un lotto chiuso coi documenti a posto NON viene nominato (COSTRUITO)
 --  12) ⭐ ...e si accende davvero, su un caso COSTRUITO
+--  13) ⭐ il TERZO zero: un documento fuori dal perimetro si distingue
+--
+-- ⭐ REV 2026-09-09 — IL MARCATORE TORNA TRE NUMERI, NON UNO. Dal changeSet
+--   20260909-20 `fn_segna_esito_gruppo_lotto` e' `RETURNS TABLE(marcati,
+--   usciti, fuori_perimetro)`: «zero marcati» ha TRE cause e una sola e' un
+--   difetto. I test 3-4-6-7 leggono tutti e tre i conteggi — asserire il solo
+--   `marcati` rimetterebbe le tre cause dentro lo stesso zero — e il 13 e'
+--   nuovo: e' il terzo, che nessun pgTAP provava e su cui il backend ha un
+--   allarme suo.
+-- ⚠️ E si legge `SELECT ... FROM fn(...)`: su una `RETURNS TABLE` la forma
+--   `fn(...)` in lista di select consegna la tupla intera in un campo solo — un
+--   valore plausibile e falso.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL CASO DA CUI NASCE. Il lotto LTF-0009578 ha preso in carico tre ordini
@@ -56,7 +69,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture: due lotti — uno CON perimetro e uno SENZA
@@ -149,12 +162,26 @@ SELECT is(
 -- ============================================================
 -- Se passasse, la riga direbbe «è andata male» e nient'altro: chi la legge non
 -- saprebbe né che cosa sistemare né dove andare.
+--
+-- ⭐ REV 2026-09-09 — SI LEGGONO TUTTI E TRE I CONTEGGI, e non e' cosmesi.
+--   Dal changeSet 20260909-20 la funzione torna `(marcati, usciti,
+--   fuori_perimetro)` invece di un intero: «zero marcati» ha TRE cause e una
+--   sola e' un difetto — nessun documento appeso (difetto), gli unici documenti
+--   sono usciti dal giro (normale), i documenti ci sono ma nessuno e' nel
+--   perimetro (sospetto). ⛔ Asserire il solo `marcati` rimetterebbe le tre
+--   cause dentro lo stesso zero, cioe' proprio l'ambiguita' che quel changeSet
+--   ha tolto: qui il rifiuto arriva dal GUARD, e `0|0|0` lo dice.
+-- ⚠️ `SELECT ... FROM fn(...)`, non `fn(...)`: su una `RETURNS TABLE` la
+--   seconda forma consegna la tupla intera in un campo solo — un valore
+--   plausibile e falso, ed e' come la firma vecchia era sopravvissuta al
+--   cambio.
 SELECT is(
-    vendite.fn_segna_esito_gruppo_lotto(
+    (SELECT format('%s|%s|%s', marcati, usciti, fuori_perimetro)
+       FROM vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id   => current_setting('pgtap.lotto')::bigint,
         p_stato      => 'ERRORE',
-        p_gruppo_key => 'PGTAP:documento-che-fallisce'),
-    0,
+        p_gruppo_key => 'PGTAP:documento-che-fallisce')),
+    '0|0|0',
     '3. un ERRORE senza causa ne'' frase non viene scritto'
 );
 
@@ -162,13 +189,14 @@ SELECT is(
 -- 4. ✅ Marcare un documento
 -- ============================================================
 SELECT is(
-    vendite.fn_segna_esito_gruppo_lotto(
+    (SELECT format('%s|%s|%s', marcati, usciti, fuori_perimetro)
+       FROM vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => current_setting('pgtap.lotto')::bigint,
         p_stato            => 'ERRORE',
         p_gruppo_key       => 'PGTAP:documento-che-fallisce',
         p_errore_codice    => 'E_PULL_COMMESSA',
-        p_errore_messaggio => 'ROOT source mancante'),
-    1,
+        p_errore_messaggio => 'ROOT source mancante')),
+    '1|0|0',
     '4. l''esito viene appeso al documento indicato, e a quello solo'
 );
 
@@ -209,14 +237,21 @@ SELECT ok(
 --   risoluzione: il test sarebbe passato anche a risoluzione rotta — verde per
 --   sottrazione. Un id positivo e inesistente percorre la strada vera e trova
 --   zero documenti, che e' la condizione che questo test dichiara di provare.
+--
+-- ⭐ E I TRE ZERI DICONO QUALE dei tre casi e' questo: la commessa non alimenta
+--   NESSUN documento, quindi non c'e' niente da marcare, niente di uscito e
+--   niente fuori perimetro. `0|0|0` distingue questo caso da «i documenti
+--   c'erano ma sono tutti usciti» (`0|N|0`) e da «c'erano ma nessuno e' nel
+--   perimetro» (`0|0|N`), che il ritorno a un numero solo confondeva.
 SELECT is(
-    vendite.fn_segna_esito_gruppo_lotto(
+    (SELECT format('%s|%s|%s', marcati, usciti, fuori_perimetro)
+       FROM vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => current_setting('pgtap.lotto')::bigint,
         p_stato            => 'ERRORE',
         p_commessa_id      => 2147483647,
         p_errore_codice    => 'E_PULL_COMMESSA',
-        p_errore_messaggio => 'commessa che non c''entra'),
-    0,
+        p_errore_messaggio => 'commessa che non c''entra')),
+    '0|0|0',
     '6. una commessa che non alimenta niente in quel lotto non scrive'
 );
 
@@ -228,14 +263,19 @@ SELECT is(
 --   e tornava 0. Il documento fallito restava muto, e nessuno lo sapeva.
 -- ⭐ Adesso la riga si CREA. E il backend non e' cambiato: e' la stessa
 --   chiamata di prima, che prima non trovava casa.
+-- ⚠️ `fuori_perimetro` DEVE essere 0, e la coppia col test 13 e' il punto: qui
+--   il lotto non dichiara nessun perimetro, quindi «fuori» non e' una domanda
+--   che si possa fare — se contasse 1 il backend avviserebbe su un giro di
+--   massa perfettamente normale.
 SELECT is(
-    vendite.fn_segna_esito_gruppo_lotto(
+    (SELECT format('%s|%s|%s', marcati, usciti, fuori_perimetro)
+       FROM vendite.fn_segna_esito_gruppo_lotto(
         p_lotto_id         => current_setting('pgtap.lotto_massa')::bigint,
         p_stato            => 'ERRORE',
         p_gruppo_key       => 'PGTAP:documento-di-un-giro-di-massa',
         p_errore_codice    => 'E_PULL_COMMESSA',
-        p_errore_messaggio => 'fallito in un giro senza perimetro'),
-    1,
+        p_errore_messaggio => 'fallito in un giro senza perimetro')),
+    '1|0|0',
     '7. un lotto senza perimetro riceve comunque l''esito del suo documento'
 );
 
@@ -385,6 +425,33 @@ SELECT is(
       WHERE lotto_id = current_setting('pgtap.lotto_chiuso')::bigint),
     1,
     '12. un lotto COMPLETATO con un documento in ERRORE viene nominato'
+);
+
+-- ============================================================
+-- 13. ⭐ IL TERZO ZERO: «fuori dal perimetro» si distingue
+-- ============================================================
+-- ⭐ E' il caso su cui il backend ha un allarme SUO (`fuori_perimetro > 0` in
+--   `_marca_esito_gruppi`), ed e' l'unico dei tre che il database non provava
+--   da nessuna parte: i test del backend lo verificano su un ritorno FINTO, e
+--   un mock non si accorge se la funzione smettesse di contarlo.
+-- ⚠️ Un documento che il lotto NON ha dichiarato non si marca — marcarlo
+--   attribuirebbe un errore a un documento che questo giro non ha mai preso in
+--   carico — ma il rifiuto va DETTO, e detto in modo diverso da «non c'era
+--   niente da fare»: e' l'unico dei tre zeri che chiede a qualcuno di andare a
+--   guardare.
+-- ⛔ Il lotto e' quello MIRATO, che un perimetro ce l'ha: sul lotto di massa la
+--   stessa chiamata scrive (test 7), perche' senza perimetro non c'e' nessun
+--   fuori.
+SELECT is(
+    (SELECT format('%s|%s|%s', marcati, usciti, fuori_perimetro)
+       FROM vendite.fn_segna_esito_gruppo_lotto(
+        p_lotto_id         => current_setting('pgtap.lotto')::bigint,
+        p_stato            => 'ERRORE',
+        p_gruppo_key       => 'PGTAP:documento-mai-dichiarato',
+        p_errore_codice    => 'E_PULL_COMMESSA',
+        p_errore_messaggio => 'documento che questo lotto non ha preso in carico')),
+    '0|0|1',
+    '13. un documento fuori dal perimetro non si marca, e il conteggio lo dice'
 );
 
 SELECT * FROM finish();

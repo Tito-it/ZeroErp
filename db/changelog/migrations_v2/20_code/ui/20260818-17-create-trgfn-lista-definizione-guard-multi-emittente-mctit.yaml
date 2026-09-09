@@ -46,7 +46,7 @@
 #    della tabella, letto da pg_class. Un nome di ruolo hardcoded sarebbe giusto
 #    su questa istanza e falso sulla prossima.
 #
-# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 # ------------------------------------------------------------
 
 databaseChangeLog:

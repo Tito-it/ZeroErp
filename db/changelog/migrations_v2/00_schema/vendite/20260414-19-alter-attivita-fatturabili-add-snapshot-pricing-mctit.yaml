@@ -7,7 +7,7 @@
 # al layer di fatturazione. Schema identico a vendite.commesse_attivita.
 # La valorizzazione avviene in fase di passaggio attivita' ->
 # attivita_fatturabili (gestita dai service Django in Fase 2).
-# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# Pricing v5 - riferimento sviluppo-listini-v5.md
 # sezione 10.2.
 # ------------------------------------------------------------
 

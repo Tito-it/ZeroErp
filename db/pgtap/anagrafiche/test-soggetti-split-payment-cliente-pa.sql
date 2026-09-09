@@ -32,7 +32,7 @@
 --   l'anagrafica. La domanda «qual e' la direzione sicura?» si rifa' ogni volta,
 --   non si eredita.
 --
---   Piano: docs/it/dev/work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md
+--   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     D8 / I0 · changeSet 20260829-14
 -- ------------------------------------------------------------
 
