@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-perimetro-emittente-righe-documento §8/§10 — il REGISTRO DEL DEBITO
+# del presidio che quel cantiere ha lasciato da scrivere.
+#
+# ── ⭐ LA DOMANDA A CUI IL PRESIDIO RISPONDE, e da cui discende tutto ──
+#   *«Esiste nel database una tabella che dovrebbe filtrare e non filtra?»*
+#   Non «i processi automatici rispettano il perimetro» — quella e' la domanda
+#   di dbops.vw_processi_dominio_senza_difesa, e ha un perimetro suo (le
+#   tabelle DICHIARATE come bersaglio di un processo). Qui il perimetro non lo
+#   dichiara nessuno: lo dice il catalogo di PostgreSQL.
+#
+# ── ⛔ PERCHE' UN REGISTRO, E NON SOLO UN TEST VERDE ────────────────
+#   Il criterio del presidio pesca 30 tabelle oggi. Un cancello rosso dal primo
+#   giorno viene disattivato — e' la lezione gia' pagata da
+#   dbops.codici_errore_senza_policy (141 righe il giorno in cui e' nato, zero
+#   tre giorni dopo). Quindi il cancello si accende SUBITO e il debito si
+#   dichiara, riga per riga, con la sua ragione tecnica scritta.
+#   ⚠️ Dichiarare un debito non lo assolve: dice «sappiamo perche' e' qui», non
+#   «va bene che ci sia». E' un registro, DEVE calare, e il presidio pretende
+#   che una riga rientrata venga TOLTA (stato DEBITO_ESTINTO).
+#
+# ── ⚠️ LA CHIAVE E' A TRE PEZZI, E IL TERZO E' IL CRITERIO ──────────
+#   Una tabella puo' essere scoperta per due ragioni indipendenti: e' figlia di
+#   una tabella protetta, e/o porta una policy che nessuno applica. shop.ricevute
+#   e' entrambe le cose. Due righe, due ragioni, due debiti che si pagano — e si
+#   tolgono — separatamente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260909-75-create-rls-perimetro-debito-mctit.yaml
+
+  - changeSet:
+      id: 20260909-75-create-rls-perimetro-debito
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.rls_perimetro_debito: il registro delle tabelle che il
+        criterio del perimetro RLS pesca e che restano scoperte di proposito,
+        ciascuna con la sua ragione tecnica. Alimenta la vista di presidio
+        dbops.vw_rls_perimetro_scoperto (changeSet 20260909-76).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                { schemaName: dbops, tableName: rls_perimetro_debito }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Le tabelle che il criterio del perimetro RLS trova scoperte
+              --   e che restano tali per una decisione, non per una svista.
+              --   Una riga qui zittisce il presidio su QUELLA tabella e su
+              --   QUEL criterio, e su nient'altro.
+              --
+              -- ⚠️ Limite dichiarato: il registro non prova niente sul
+              --   database. Prova che qualcuno ha guardato quella riga e ha
+              --   scritto perche' la lascia li'. E' il suo unico mestiere.
+              --
+              -- Id assegnati a mano nel CSV: e' un seed di CATALOGO — il suo
+              -- contenuto nomina tabelle del software, non righe di questa
+              -- installazione, quindi vale identico ovunque.
+              -- =========================================================
+              CREATE TABLE dbops.rls_perimetro_debito (
+                  id                 int  NOT NULL
+                                       CONSTRAINT pk_rls_perimetro_debito PRIMARY KEY,
+                  criterio           text NOT NULL,
+                  schema_tabella     text NOT NULL,
+                  nome_tabella       text NOT NULL,
+                  ragione            text NOT NULL,
+                  data_registrazione date NOT NULL DEFAULT CURRENT_DATE,
+                  data_insert        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert        text NOT NULL DEFAULT CURRENT_USER,
+                  data_update        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update        text NOT NULL DEFAULT CURRENT_USER,
+                  tx_id              uuid NULL,
+                  -- ⚠️ Il criterio ENTRA nella chiave: la stessa tabella puo'
+                  --   essere scoperta per due ragioni indipendenti, e i due
+                  --   debiti si pagano separatamente.
+                  CONSTRAINT uq_rls_perimetro_debito_target
+                      UNIQUE (criterio, schema_tabella, nome_tabella),
+                  -- ⭐ Questo CHECK e' il CONTRATTO del vocabolario, ed e' la
+                  --   sorgente da cui il pgTAP legge i criteri ammessi: un
+                  --   criterio nuovo senza il suo ramo nella vista fa rosso li'.
+                  --   Un elenco scritto nel test sarebbe la fotografia di oggi.
+                  CONSTRAINT chk_rls_perimetro_debito_criterio
+                      CHECK (criterio IN ('FIGLIA_DI_TABELLA_PROTETTA',
+                                          'POLICY_INERTE')),
+                  -- ⚠️ Il CHECK misura la LUNGHEZZA, non la qualita': ferma
+                  --   'TODO' e 'vedi brief', non una frase vuota di sessanta
+                  --   caratteri. La ragione la legge una persona, in review.
+                  --   E' un cancello economico su un difetto frequente, non
+                  --   una garanzia — dichiararlo e' meglio che fingere.
+                  CONSTRAINT chk_rls_perimetro_debito_ragione
+                      CHECK (length(btrim(ragione)) >= 40)
+              );
+
+              COMMENT ON TABLE dbops.rls_perimetro_debito IS
+                  'Registro del debito del perimetro RLS: le tabelle che il criterio di dbops.vw_rls_perimetro_scoperto trova scoperte e che restano tali per una DECISIONE. Una riga zittisce il presidio su quella tabella e su quel criterio soltanto. ⚠️ Dichiarare un debito non lo assolve: dice «sappiamo perche'' e'' qui», non «va bene che ci sia». E'' un registro e DEVE calare — il presidio pretende che una riga rientrata venga tolta (stato DEBITO_ESTINTO). Brief: brief-db-perimetro-emittente-righe-documento §8.';
+              COMMENT ON COLUMN dbops.rls_perimetro_debito.criterio IS
+                  'Per QUALE regola la tabella e'' nel perimetro. FIGLIA_DI_TABELLA_PROTETTA = ha una FK verso una tabella con la row level security accesa, quindi le sue righe appartengono a righe protette. POLICY_INERTE = porta almeno una policy e la row level security spenta, cioe'' una difesa scritta e mai applicata. ⚠️ Entra nella chiave: una tabella puo'' essere entrambe le cose, e i due debiti si pagano separatamente.';
+              COMMENT ON COLUMN dbops.rls_perimetro_debito.ragione IS
+                  'La ragione TECNICA per cui la tabella resta scoperta: che cosa manca perche'' si possa armare (un adattatore, una veste, una decisione di modello) e dove vive quel lavoro. ⛔ Non un''etichetta e non un rimando nudo: chi legge il presidio rosso deve capire da qui se la riga e'' un allarme o un cantiere aperto.';
+              COMMENT ON COLUMN dbops.rls_perimetro_debito.data_registrazione IS
+                  'Quando il debito e'' stato dichiarato. E'' l''orologio del registro: un debito che non si muove da mesi e'' un''informazione, non una riga in piu''.';
+
+              CREATE TRIGGER trg_rls_perimetro_debito_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.rls_perimetro_debito
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+              CREATE TRIGGER trg_rls_perimetro_debito_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.rls_perimetro_debito
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.rls_perimetro_debito;

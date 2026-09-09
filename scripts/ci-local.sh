@@ -27,6 +27,20 @@
 #   ⇒ Copre la passata `--contexts="!provision and !dati_macchina"`, che e' dove il migrate si
 #   ferma ogni volta.
 #
+# ── ⭐ LE PASSATE, E SONO QUATTRO — nello stesso ordine di ci-validate.yaml ──
+#     1. provision PRE   (superuser) · changelog-provision-pre.yaml
+#     2. principale      (zeroerp)   · `!provision and !dati_macchina`
+#     3. provision POST  (superuser) · changelog-provision-post.yaml
+#     4. automazioni     (zeroerp)   · `ci_apply` — solo con `--ci-apply`
+#   ⚠️ La 3 e' arrivata il 2026-09-09, e mancava: contiene i changeSet
+#   `context: provision` che la passata principale (`!provision`) non vede MAI
+#   — fra cui quello che da a `postgres` l'owner delle sei funzioni dichiarate
+#   in `dbops.sec_functions_owner`. Senza, `dblink` le rifiuta e il canale del
+#   giornale dei job TACE. Dettaglio accanto al passo.
+#   ⛔ La 4 resta dietro un flag: `--fresh` NON la comprende, e uno scratch
+#   senza automazioni non e' confrontabile con la CI — dal 2026-09-09 lo dice
+#   un cancello in scripts/pgtap-baseline.sh invece di una riga di prosa.
+#
 # ── ⚠️ ISOLAMENTO DAL DATABASE DI SVILUPPO ────────────────────────────
 #   I ruoli PostgreSQL sono di cluster, i database no. Percio' qui:
 #     * il ruolo `zeroerp` NON si ricrea se esiste;
@@ -85,7 +99,11 @@ for a in "$@"; do
   case "$a" in
     --fresh)    FRESH=true ;;
     --ci-apply) CI_APPLY=true ;;
-    -h|--help)  sed -n '2,73p' "$0"; exit 0 ;;
+    # ⚠️ Il numero di riga finale si CALCOLA, non si scrive: inchiodato a 73
+    #   l'aiuto troncava in silenzio la coda dell'intestazione ogni volta che
+    #   qualcuno la allungava — successo il 2026-09-09 aggiungendo l'elenco
+    #   delle quattro passate, che ha spinto fuori i PREREQUISITI.
+    -h|--help)  sed -n "2,$(($(grep -n '^set -euo pipefail' "$0" | head -1 | cut -d: -f1) - 1))p" "$0"; exit 0 ;;
     *) echo "Opzione sconosciuta: $a" >&2; exit 1 ;;
   esac
 done
@@ -323,6 +341,27 @@ echo "── passata principale  (--contexts=\"!provision and !dati_macchina\")"
 echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
 "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_APP" --username=zeroerp --password=secret \
   --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts="!provision and !dati_macchina"
+
+# ⛔ PROVISION *POST*, e mancava. Il passo gemello di ci-validate.yaml
+#   («Liquibase admin (provision - post)») gira come SUPERUSER DOPO la passata
+#   principale, e non e' un doppione del provision-pre: `changelog-provision-post.yaml`
+#   contiene cio' che si puo' fare solo quando lo schema esiste GIA' — fra
+#   l'altro `90_end/20251123-12`, che da a `postgres` l'owner di
+#   `dbops.fn_sync_functions_owner()` e poi la esegue per allineare le SEI
+#   funzioni dichiarate in `dbops.sec_functions_owner`.
+#   ⚠️ Quel changeSet dichiara `context: provision`: la passata principale gira
+#   con `!provision` e quindi NON lo vede mai. Senza questo passo le sei
+#   funzioni restano di `zeroerp`, che non e' superuser — e `dblink` rifiuta la
+#   connessione a un non-superuser senza password.
+#   🔴 Il sintomo, misurato il 2026-09-09: `maintenance/test-job-run-log-failure-out-of-tx.sql`
+#   rosso al test 2 («l'owner della funzione e' un superuser») sullo scratch e
+#   verde in CI. Non contaminazione: una preparazione mancante.
+#   ⛔ E il danno vero non e' il test: e' che il canale fuori transazione TACE
+#   (emette un WARNING e tira dritto), quindi un job fallito non lascerebbe
+#   traccia — che e' esattamente il difetto per cui quel canale e' nato.
+echo "── provision post  (come il passo 'Liquibase admin (provision - post)' di ci-validate.yaml)"
+"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username="$ADMIN_USER" --password="$ADMIN_PWD" \
+  --changeLogFile=db/changelog/changelog-provision-post.yaml update --contexts=provision
 
 if $CI_APPLY; then
   echo "── automazioni  (--contexts=ci_apply)"
