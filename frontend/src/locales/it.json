@@ -4,6 +4,7 @@
       "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
       "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi."
     },
+    "refine_hint_troncato": "Mostrati i primi {shown}. Affina la ricerca per vedere gli altri.",
     "save": "Salva",
     "cancel": "Annulla",
     "back": "Indietro",

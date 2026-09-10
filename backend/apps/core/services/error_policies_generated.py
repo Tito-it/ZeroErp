@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 852, di cui 89 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 853, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -827,6 +827,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": "CONFLITTO_STATO",
     # <- PRATICHE_TRANSIZIONE_NON_AMMESSA  (vivo)
     "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # dbops.fn_conta_presidio: la vista chiesta non e dichiarata in dbops.presidi, oppure e spenta (attivo false) o ritirata (obsoleto_dal valorizzato). TECNICO e non DATO_ERRATO perche quel parametro non lo fornisce nessuna persona in un form: lo passa il digest leggendo il catalogo, quindi una vista sconosciuta significa che il chiamante sta chiedendo qualcosa che il catalogo non conosce. Il perimetro del catalogo e voluto: senza, la funzione sarebbe una porta per contare qualunque relazione del database aggirando la row level security. Brief: brief-db-un-destinatario-per-i-presidi.
+    "E_PRESIDIO_NON_A_CATALOGO": "TECNICO",
     # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione.
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "CONFLITTO_STATO",
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",

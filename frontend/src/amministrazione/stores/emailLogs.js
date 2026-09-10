@@ -28,7 +28,7 @@ export const useEmailLogsStore = defineStore('amm-email-logs', () => {
   // Lista via BB condiviso (migrazione 2026-08-10): la guardia di versione
   // anti-race che qui mancava. `alwaysFetch` conserva il comportamento: questa
   // lista si e' sempre caricata anche senza filtri.
-  const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
     buildParams: (f, _searchTerm) => {
@@ -59,7 +59,7 @@ export const useEmailLogsStore = defineStore('amm-email-logs', () => {
   }
 
   return {
-    items, totalRecords, loading, filters, fetchList,
+    items, totalRecords, loading, hasSearched, filters, fetchList,
     currentLog, loadingDetail, fetchDetail
   }
 }, { userScoped: true })

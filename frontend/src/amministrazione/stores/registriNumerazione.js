@@ -46,7 +46,7 @@ export const useRegistriNumerazioneStore = defineStore('amm-registri-numerazione
   })
 
   const {
-    items, totalRecords, loading, fetchList: fetchListBase, svuota,
+    items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota,
   } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
@@ -109,7 +109,7 @@ export const useRegistriNumerazioneStore = defineStore('amm-registri-numerazione
   }
 
   return {
-    items, totalRecords, loading, filters, emittenteSoggettoRuoloId,
+    items, totalRecords, loading, hasSearched, filters, emittenteSoggettoRuoloId,
     fetchList, crea, aggiorna, cambiaAttivo, reset,
   }
 }, { userScoped: true })

@@ -637,6 +637,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": "Impossibile modificare il flusso: la pratica e' in stato terminale.",
     "E_PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": "Impossibile creare un flusso: la pratica e' in stato terminale.",
     "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato pratica non ammessa.",
+    # ⚠️ Il messaggio a catalogo NOMINA la vista con un `%s`: qui la frase deve
+    #    reggere senza, perche' il ripiego serve proprio quando gli argomenti
+    #    non sono arrivati — e un `%s` a video sarebbe la cosa peggiore da
+    #    mostrare in un caso gia' tecnico.
+    "E_PRESIDIO_NON_A_CATALOGO": "Vista di presidio non dichiarata nel catalogo dbops.presidi, oppure spenta o ritirata. Non e' un errore di dati: segnalalo a chi mantiene il catalogo.",
     "E_PREVENTIVO_RIGA_NON_TROVATA": "Riga preventivo non trovata.",
     "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "Esistono righe con prezzo in attesa di approvazione. Attendi esito o annulla la richiesta prima di accettare il preventivo.",
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "Righe del preventivo gia' fatturate in commessa: l'annullamento non e' ammesso. Storna le attivita' emesse dal lato fatturazione, oppure crea una revisione del preventivo.",

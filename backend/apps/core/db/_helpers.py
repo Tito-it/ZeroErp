@@ -450,6 +450,52 @@ def fetch_paged_with_total(
     return results, total_count
 
 
+def fetch_con_sonda(
+    data_sql: str, params: list[Any], *, limite: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Esegue un LOOKUP e dice se l'elenco e' COMPLETO — senza un secondo conto.
+
+    `data_sql` deve finire con `LIMIT %s` e `params` NON deve portare il limite:
+    lo aggiunge questa funzione, maggiorato di uno. Ritorna le prime `limite`
+    righe piu' il flag `troncato`, che vale «ce n'erano altre».
+
+    ⭐ SONDA `+1`, e non un `count(*)`: si chiede UNA riga in piu' del dovuto, si
+    consegnano le `limite` e si dichiara se ce n'erano altre. Costa zero — nessuna
+    seconda query, e nessun `COUNT(*) OVER ()` che obbligherebbe a materializzare
+    l'intero insieme a ogni tasto premuto in un autocomplete — e risponde
+    all'unica domanda che serve a video: **l'elenco e' completo?**
+
+    ⛔ Non e' un doppione di `fetch_paged_with_total`, ed e' la ragione per cui
+    sono due funzioni: quello serve una LISTA PAGINATA, che il totale vero ce
+    l'ha e ne ha bisogno (il paginator deve sapere quante pagine sono). Un
+    lookup non ha pagine: ha un tetto, e la sola cosa che deve dire e' se quel
+    tetto ha tagliato qualcosa.
+
+    🔴 PERCHE' STA QUI E NON NEL REPOSITORY CHE LA USA (2026-09-10, ok Tid). I
+    tre pezzi — il `+1` nella query, il taglio a `limite`, il flag dedotto dal
+    conteggio — sono UNA cosa sola: separati, si dimentica il taglio e la riga
+    di sonda **trapela a chi legge**, oppure si dimentica il `+1` e il flag e'
+    sempre falso. Nessuno dei due errori fallisce: il primo mostra una riga in
+    piu', il secondo dice «elenco completo» su un elenco tagliato.
+
+    ⚠️ Consumatore UNO (`CatalogoRepository.lookup_articoli`), e va detto: il
+    gemello sulle unita' di misura e' stato tolto lo stesso giorno perche' non
+    lo esponeva nessun endpoint. Resta un BB e non una riga nel repository per
+    la ragione qui sopra — e perche' e' la sede dove il prossimo lookup che deve
+    dichiarare il troncamento lo trovera' gia' fatto. Gli altri lookup ricchi
+    (billing account, istanze utility, `dbops.fn_get_lookup_codici`) NON sono
+    candidati: hanno gia' un `total_count` vero, che dice di piu'.
+
+    ⚠️ Regge finche' i JOIN della query sono 1:1. Uno che moltiplicasse le righe
+    le farebbe contare due volte: la sonda direbbe «troncato» su un elenco
+    intero, e il taglio a `limite` butterebbe righe vere.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(data_sql, [*params, limite + 1])
+        righe = rows_to_list(cursor)
+    return righe[:limite], len(righe) > limite
+
+
 def query_paged_view(
     *,
     select_sql: str,

@@ -34,7 +34,7 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
   // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race.
   // La precondizione sul contesto (`emittenteId`) resta un wrapper sottile e NON
   // e' un'opzione del BB: e' uno stato del chiamante, non un filtro della lista.
-  const { items, totalRecords, loading, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
+  const { items, totalRecords, loading, hasSearched, fetchList: fetchListBase, svuota } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
     buildParams: (f) => {
@@ -100,7 +100,7 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
   }
 
   return {
-    items, totalRecords, loading, filters, emittenteId,
+    items, totalRecords, loading, hasSearched, filters, emittenteId,
     hasDefaultMapping, countSpecifici,
     fetchList, fetchSummary, addMapping, removeMapping, reset
   }

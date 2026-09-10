@@ -27,7 +27,7 @@ export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
 
   // Lista via BB condiviso (migrazione 2026-08-10): guardia di versione anti-race.
   // `alwaysFetch`: questa lista si e' sempre caricata anche senza filtri.
-  const { items, totalRecords, loading, fetchList } = useListaEmptyStateFetch({
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
     buildParams: (f) => {
@@ -62,7 +62,7 @@ export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
   }
 
   return {
-    items, totalRecords, loading, filters, fetchList,
+    items, totalRecords, loading, hasSearched, filters, fetchList,
     currentTemplate, loadingDetail, fetchDetail,
     update
   }

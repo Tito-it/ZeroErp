@@ -19,7 +19,7 @@
 // ⚠️ Niente `useReadonlyMode`: in `amm-software` non c'è un livello d'area da
 //    risolvere — o sei super admin e vedi tutto, o non arrivi alla pagina. Un
 //    terzo cancello che non decide niente sarebbe rumore.
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -69,8 +69,18 @@ const canaleOptions = [
 //    «Ricarica» della lista: un registro di catalogo non cambia ogni pochi
 //    secondi, e un polling qui sarebbe lavoro sprecato che sfarfalla sotto gli
 //    occhi di chi legge.
+// La LISTA al mount: il rientro lo rinfresca gia' lo scaffolding
+// (`useListaConfigurabilePage` → `useSearchTable`).
 onMounted(() => {
   store.fetchList()
+})
+
+// ⚠️ I PRESIDI no: nessuno li rinfresca al rientro, e sono proprio il dato che
+//    invecchia — un processo che stanotte ha smesso di dare segni di vita si
+//    vede solo rileggendoli. `onActivated` copre il primo montaggio E ogni
+//    rientro, quindi stanno qui e NON in `onMounted`: tenerli in tutti e due
+//    li caricherebbe due volte all'apertura.
+onActivated(() => {
   store.caricaPresidi()
 })
 

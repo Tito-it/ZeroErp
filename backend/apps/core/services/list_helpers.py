@@ -132,3 +132,25 @@ def validate_pagination(
         log_to_db=True,
     )
     return (page - 1) * page_size
+
+
+# Scopo: Envelope di una collezione CONSEGNATA PER INTERO — le figlie di
+#        un'entita' (UoM operative, componenti, note, versioni di un listino).
+#        Nessun `LIMIT` a monte, quindi `count` e' il totale e non una stima.
+#
+# ⭐ Qui `len(results)` e' legittimo, ed e' l'unico caso in cui lo e': non
+#    descrive le righe consegnate, LE CONTA TUTTE — la query non ha tetto.
+#
+# ⛔ NON si usa per un LOOKUP, che un `LIMIT` puo' aver tagliato: li' `count`
+#    varrebbe `limit` su un insieme piu' grande, cioe' CONFERMEREBBE il
+#    troncamento invece di rivelarlo (api.md §«Il `count` non si deriva MAI
+#    dalle righe che stai consegnando»). Il lookup dichiara `troncato` accanto
+#    al conteggio, e per costruirlo c'e' `apps.core.db._helpers.fetch_con_sonda`.
+#
+# Regola del 2 (2026-09-10, ok Tid): lo stesso helper era scritto in
+# `catalogo_service` e in `listini_service` con lo stesso nome privato. Il
+# valore dell'estrazione non e' la riga risparmiata — e' che il NOME dica di
+# quale delle due nature si tratta, perche' era proprio l'averle servite dallo
+# stesso helper a rendere la forma sbagliata indistinguibile da quella giusta.
+def collezione_completa(results: list[dict[str, object]]) -> dict[str, object]:
+    return {"count": len(results), "results": results}

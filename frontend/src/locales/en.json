@@ -4,6 +4,7 @@
       "senza_righe": "The document has no rows: add at least one to proceed.",
       "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section."
     },
+    "refine_hint_troncato": "Showing the first {shown}. Refine your search to see the others.",
     "save": "Save",
     "cancel": "Cancel",
     "back": "Back",

@@ -5,7 +5,7 @@
 // pubblica (BOZZA → PUBBLICATA). Le fn DB restano l'unica sede di validazione.
 // Co-requisito lockstep: le 3 fn devono essere SECURITY DEFINER perché la scrittura
 // passi col ruolo web (brief-db-accesso-be-definizioni-workflow §P1).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
@@ -159,7 +159,11 @@ function buildRowActions(data) {
   ]
 }
 
-onMounted(() => store.load())
+// ⚠️ `onActivated` e non `onMounted`: la view vive sotto `<KeepAlive :max="10">`
+//    (AppLayout), quindi al rientro `onMounted` non riscatta e a video resterebbe
+//    l'elenco di prima. ⛔ Sostituisce, non si aggiunge: sotto KeepAlive al primo
+//    montaggio scattano ENTRAMBI, quindi tenerli tutti e due farebbe due fetch.
+onActivated(() => store.load())
 </script>
 
 <template>

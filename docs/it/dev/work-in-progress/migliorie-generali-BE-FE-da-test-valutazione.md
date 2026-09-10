@@ -252,18 +252,34 @@ d'errore italiani**. Il documento gemello lo classifica come «una capacità, no
 un fatto» (§2.3); da questa parte si vede meglio: **il consumatore esiste,
 è completo, e aspetta**.
 
-### 2.6 ⭐ Quattro presidi scritti apposta per il frontend
+### 2.6 ⭐ I presidi scritti apposta per il frontend — quattro allora, sei adesso
 
 `frontend/scripts/`: `check-liste-configurabili.mjs` (contratto `@row-click`),
 `check-pinia-user-scoped-reset.mjs` (9 verifiche sul reset al logout, e sa contro
 quale Pinia gira), `check-drawer-width.mjs` (chiavi `DRAWER_WIDTH`),
 `check-primeicons-codepoints.mjs` (codepoint cablati + baseline anti-drift).
 
-**Lanciati oggi, uno per uno: tutti e quattro verdi, exit 0.** Sono presidi seri,
-scritti da chi conosceva il difetto che volevano fermare.
+**Lanciati il 2026-09-09, uno per uno: tutti e quattro verdi, exit 0.** Sono
+presidi seri, scritti da chi conosceva il difetto che volevano fermare.
 
-⛔ **E non li lancia nessun automatismo** — vedi D1. Compaiono solo nei brief,
-come cose fatte a mano.
+⛔ **E non li lanciava nessun automatismo** — era il D1. Comparivano solo nei
+brief, come cose fatte a mano.
+
+### ✅ Come è finita, e come sono diventati sei
+
+Raccolti sotto `npm run guards` (`run-s guard:*`) e lanciati dal job — quindi in
+CI. ⭐ Raccoglierli in **uno script** invece di quattro righe di YAML non è
+cosmesi: chi ne aggiunge un quinto lo trova in CI **senza toccare il workflow**,
+ed è esattamente quello che è successo due volte nelle ventiquattr'ore dopo.
+
+| Presidio | Nato | Cosa tiene |
+| --- | --- | --- |
+| `check-keepalive-onactivated.mjs` | 2026-09-10 (D8) | Una view sotto `<KeepAlive>` non può restare senza `onActivated`, suo o di un composable. ⭐ Deriva **entrambi** i criteri: chi sta sotto KeepAlive dal router, chi è già coperto risolvendo i composable in modo transitivo |
+| `check-datatable-baseline.mjs` | 2026-09-10 (D10) | Il registro delle `DataTable` grezze **può solo calare**: rosso se cresce, e rosso anche se cala senza aggiornare il registro |
+
+⭐ **E il primo dei due ha trovato due errori miei nello stesso giro**: una view
+che avevo mancato, e otto che avevo convertito a torto. *Un presidio scritto bene
+paga il primo giorno.*
 
 ### 2.7 ⭐ La convenzione `# Scopo:` è reale
 
@@ -347,7 +363,7 @@ parte guardare**.
 | --------------------------------------------------------- | ------------ |
 | `npm ci` (fallisce se `package.json` e il lock divergono) | ✅            |
 | `npm run lint` — oxlint + eslint, **senza `--fix`**       | ✅            |
-| `npm run guards` — i quattro presidi FE                   | ✅            |
+| `npm run guards` — i presidi FE (quattro, quel giorno; oggi sei) | ✅      |
 | `npm run build` (vite)                                    | ✅            |
 | `scripts/check_i18n_keys.py`                              | ✅            |
 
@@ -923,6 +939,57 @@ guarda**: confronta `rows.length` con `total` e si rifiuta di disegnare la tabel
 se divergono. Il giorno in cui una di queste risposte finisce lì, il guard
 confronta un numero con sé stesso e tace.
 
+### ✅ Chiuso il 2026-09-10 — e i consumatori erano due, non zero
+
+⛔ **«Latente» era ottimismo**, e cercando i consumatori ne sono usciti due vivi.
+
+| | |
+| --- | --- |
+| `fn_lookup_unita_misura` (tetto **200**) | Le UoM attive sono **334**: il select ne mostrava 200 e rispondeva `count: 200`. **134 unità invisibili**, e il numero lo confermava |
+| L'**assistente AI** (`CercaArticoliTool`) | Legge quel `count` come `total`, e chiede `page_size=10` di default ⇒ direbbe a una persona *«ho trovato 10 articoli»* con **257** a catalogo. Non un numero impreciso: **una frase falsa, detta con sicurezza** |
+
+**Il rimedio è una sonda `+1`, non un `count(*)`**: si chiede una riga in più del
+dovuto, si consegnano `safe_limit`, si dichiara `troncato`.
+
+⭐ **Perché non il conteggio vero**: un `COUNT(*) OVER ()` obbligherebbe
+PostgreSQL a materializzare l'intero insieme **a ogni tasto premuto** in un
+autocomplete, mentre con `LIMIT 20` si ferma prima. La sonda costa zero e
+risponde all'unica domanda che serve a video: *questo elenco è completo?*
+⚠️ `fetch_paged_with_total` resta la forma giusta per le **liste paginate**:
+altra natura, altro strumento.
+
+⭐ **E sta nel repository, non nel service**: `safe_limit` lo conosce solo lui,
+perché è lui che clampa. Ricavarlo di là avrebbe scritto il tetto in una seconda
+sede, e le due sarebbero divergute al primo cambio.
+
+**E l'helper unico è diventato due, perché erano due nature:**
+
+| Helper | Quando | `count` |
+| --- | --- | --- |
+| `_collezione_completa` | nessun `LIMIT` a monte | ⭐ legittimo: non stima il totale, **è** il totale |
+| `_lookup_response` | c'è un `LIMIT` | porta **`troncato`**, ciò che `count` da solo non può dire |
+
+⇒ Il difetto non era il numero: era che **la forma sbagliata e quella giusta
+erano la stessa riga di codice**.
+
+**Provato dove si poteva provare davvero.** I test di `tests/services/` mockano
+il repository: verificano che il service **trasporti** il flag, non che il flag
+sia **vero** — la mutazione «torna sempre False» li lascia verdi, ed è corretto.
+Il presidio sta in `apps/catalogo/tests/db/test_lookup_troncamento.py`, sul
+database vero, quattro test e **nessuno saltato**:
+
+| Mutazione del repository | Esito |
+| --- | --- |
+| flag sempre `False` | ⛔ 1 rosso |
+| flag sempre `True` | ⛔ 2 rossi |
+| tolta la riga di sonda (`+1`) | ⛔ 1 rosso |
+
+⚠️ **E la prima stesura di quel test era verde per sottrazione.** Costruivo il
+caso «nessun taglio» alzando il `limit` fino al totale — ma il tetto è 200 e le
+UoM sono 334, quindi il test **si saltava da solo**, proprio quello che impedisce
+al flag di essere una decorazione. Riscritto **restringendo l'insieme** (si cerca
+il codice esatto di una UoM che esiste) invece di allargare il tetto.
+
 ---
 
 ### 🟡 D7 — Endpoint costruiti, documentati, e mai raggiunti da nessuna schermata
@@ -989,10 +1056,81 @@ con undici o più view visitate, la LRU ne sfratta una — quella rimontata **si
 ricarica e sembra corretta**, quella ancora in cache no. Un difetto che si
 riproduce a giorni alterni non viene creduto.
 
-⭐ La forma giusta è già scritta e commentata nel repo
-(`SessioniAttivePanel.vue`: *«`onActivated` oltre a `onMounted`: la home vive
-sotto KeepAlive»*) e in memoria: il caricamento va reso **idempotente** e messo
-in `onActivated`, non spostato.
+### 🔴 CORREZIONE (2026-09-10) — la misura qui sopra era sbagliata, ed erano **tre**
+
+⛔ **«Undici view» è falso, e il modo in cui l'ho sbagliato è la parte utile.**
+Il criterio usato era *«il file della view contiene `onActivated`?»*. Ma
+`onActivated` può arrivare da un **composable**, e lì non si vede: `useSearchTable`
+ne ha uno che **salta la prima attivazione** — apposta, per non raddoppiare il
+fetch del mount — e dalla seconda in poi rinfresca la pagina corrente.
+`useListaConfigurabilePage` lo usa, e per quella strada **otto delle undici erano
+già a posto**:
+
+| | View | Rientro |
+| --- | --- | --- |
+| 8 | audit log, i tre pannelli email, emittenti fiscali, famiglie documento, operatori, processi automatici | ✅ già coperto da `useListaConfigurabilePage` → `useSearchTable` |
+| **3** | `DefinizioneEditorView`, `DefinizioniWorkflowListView`, `RepartiProfiloView` | ⛔ **davvero scoperto** — nessun composable, nessun `onActivated` |
+
+⛔ **E la correzione l'ho sbagliata anche in senso opposto**: convertite tutte e
+undici, poi **annullate otto** — su quelle il mio `onActivated` si sarebbe
+sommato a quello dello scaffolding, cioè **due fetch a ogni rientro**. Il difetto
+che volevo togliere, al contrario.
+
+⚠️ **Anche il modello citato qui sopra andava letto meglio.** `SessioniAttivePanel`
+fa `onMounted` **e** `onActivated`: sotto KeepAlive al primo montaggio scattano
+**entrambi**, quindi quel pannello carica due volte all'apertura. Le view fatte
+bene (`SituazioneApertaView`, `HomeView`, `LottiListView`) mettono il caricamento
+nel **solo** `onActivated`. ⇒ *Si sostituisce, non si aggiunge.*
+
+### ✅ Chiuso il 2026-09-10 — e con un presidio, perché non rientri
+
+Le tre view convertite (caricamento in `onActivated`, `onMounted` tolto), e
+soprattutto **un quinto guard**: `frontend/scripts/check-keepalive-onactivated.mjs`,
+agganciato a `npm run guards` — quindi in CI **senza toccare il workflow**, che è
+la ragione per cui i guard erano stati raccolti in uno script.
+
+⭐ **Deriva entrambi i criteri, e nessuno dei due è un elenco:**
+
+1. **chi sta sotto KeepAlive** si legge da `router/index.js` (le rotte figlie di
+   `AppLayout`) — così le nove di primo livello sono esenti *per costruzione*,
+   non per una riga scritta a mano;
+2. **chi è già coperto** si risolve **transitivamente** sui composable: oggi ne
+   trova otto che portano un `onActivated`, e dice quale copre quale.
+
+⚠️ **E il criterio 2 non è teoria: la prima versione del guard non ce l'aveva, e
+ha dichiarato violate le otto view che erano a posto** — la stessa svista che mi
+aveva fatto convertire tutte e undici. *Un presidio che non sa da dove arriva la
+difesa segnala la difesa come un difetto.*
+
+⭐ **E il guard ha trovato un dodicesimo caso che io non avevo visto**:
+`vendite/views/ApprovazioniPrezzoListView.vue`. Lì il commento diceva *«la
+freshness al rientro la gestisce già l'`onActivated` di `useSearchTable`»* — ed è
+**vero**, verificato seguendo la catena. Una frase rassicurante che regge al
+controllo: la si tiene.
+
+### ✅ E il residuo, sanato lo stesso giorno — con un dettaglio che lo decideva
+
+`OperatoriListView` e `ProcessiAutomaticiListView` caricavano al mount, oltre
+alla lista, un dato compagno (`loadSetupStatus`, `caricaPresidi`): lo
+scaffolding rinfresca **la lista**, non quelli. La forma applicata è simmetrica e
+non ha bisogno di nessun guard:
+
+| Cosa | Dove | Perché |
+| --- | --- | --- |
+| la **lista** | `onMounted` | il rientro lo copre già `useSearchTable`, che salta la prima attivazione apposta |
+| il **compagno** | `onActivated` | copre il primo montaggio **e** ogni rientro ⇒ una chiamata per volta, mai due |
+
+🔴 **E su `OperatoriListView` c'era una mina.** `useSetupStatus.load(force = false)`
+apre con `if (loaded.value && !force) return`, e quella cache vive
+nell'**istanza** — che è esattamente ciò che KeepAlive tiene in vita. ⇒ Un
+`loadSetupStatus()` nudo in `onActivated` **non avrebbe riletto niente**: il
+banner «operatori non assegnati» sarebbe rimasto quello della prima apertura, e
+la correzione sarebbe *sembrata fatta*. Serve `loadSetupStatus(true)`.
+
+⭐ È la stessa forma del difetto che questo documento insegue dappertutto — un
+gesto che passa e non misura — colta stavolta **dentro il rimedio**, non nel
+codice da rimediare. Il `force` è una parola, e senza quella parola tutto il
+resto sarebbe stato scenografia.
 
 ---
 
@@ -1062,28 +1200,63 @@ diciannove, in una PR che non c'entra nulla.
 
 ### 🟡 D10 — I registri di debito non hanno un verso
 
-Stato al 2026-09-09, per il solo perimetro applicativo:
+Un registro è una buona invenzione **a condizione che scenda**. Stato al
+**2026-09-10**, con accanto la sola cosa che conta: *chi lo abbassa, e cosa
+succede se cresce*.
 
-| Registro                                                            | Oggi                                   | Chi lo abbassa                                                                                                                                       |
-| ------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DataTable` grezza in una view                                      | **48** file (57 il 30-08, 48 il 03-08) | dichiarato, con la regola in cima ad `AGENTS.md`                                                                                                     |
-| …di cui **senza** il commento di motivazione richiesto dalla regola | **34**                                 | ⛔ nessuno: la regola chiede il motivo scritto sopra l'import                                                                                         |
-| File `frontend/src` senza header di licenza                         | **576 su 680** (85%)                   | ⚠️ l'hook guarda `--diff-filter=AC`: solo i file **aggiunti**. Il pregresso cala solo se riscritto                                                    |
-| File tracciati senza header (filtro dell'hook, escluso `docs/`)     | **1.169 su 5.729**                     | ⭐ erano **2.042 su 5.189** il 2026-08-26: **cala davvero**                                                                                           |
-| `skip_area_check = True`                                            | 81 occorrenze in 24 file               | ⚠️ `api.md` lo ammette «solo per endpoint cross-dominio»; in `core/api/` è la regola, in `anagrafiche/`, `catalogo/`, `pagamenti/`, `ui/` va guardato |
-| `"count": len(...)`                                                 | 8 (D6)                                 | ⛔ nessun cancello                                                                                                                                    |
-| `baseline-smoke.tsv`                                                | 2 su 16                                | ⛔ nessuno lo esegue                                                                                                                                  |
-| Errori `oxlint`                                                     | 7                                      | ⛔ nessuno lo esegue                                                                                                                                  |
+| Registro | Oggi | Il suo verso |
+| --- | --- | --- |
+| Errori `oxlint` | **0** | ✅ **cancello in CI** (`npm run lint`, senza `--fix`). Erano 7 il 2026-09-09 |
+| Rilievi `ruff` (`F`+`E9`) | **0** | ✅ **cancello** in pre-commit e CI. Erano 136, sanati prima di accendere |
+| `DataTable` grezza in una view | **48** | ✅ **cricchetto dal 2026-09-10** — vedi sotto. Era 48 il 03-08, **risalita a 57** il 30-08, di nuovo 48 |
+| …di cui senza il commento di motivazione | **34** | ✅ seconda soglia dello stesso cricchetto |
+| File tracciati senza header di licenza | **1.169** su 5.787 | ✅ **cala davvero**: erano 2.042 su 5.189 il 2026-08-26. L'hook guarda i soli file **aggiunti**, e quel «non blocca il pregresso» è la ragione per cui non è stato spento |
+| …di cui sotto `frontend/src` | **576** su 682 (84%) | ⚠️ scende solo quando un file viene riscritto: è un verso lento, ma dichiarato |
+| `baseline-smoke.tsv` | 2 su 16 | ⛔ **nessun verso**: non lo esegue nessuno, e portarlo in CI è un cantiere (§8) |
+| `skip_area_check = True` | 81 in 24 file | ⛔ **nessun verso**, e non è meccanizzabile: `api.md` lo ammette «solo per endpoint cross-dominio», e distinguere caso per caso è una lettura, non un conteggio |
 
-⭐ **La riga dell'header di licenza è l'unica fatta bene**, ed è istruttiva: cala
-di 873 file in due settimane **perché l'hook non blocca il pregresso**. Un
-presidio che avesse preteso tutto e subito sarebbe stato spento al primo commit
-sul frontend — e allora non presidierebbe più nemmeno i casi per cui è nato. È
-esattamente il criterio da applicare al cancello del frontend (D1).
+### ✅ Il cricchetto delle `DataTable`, dal 2026-09-10
 
-⛔ **Le altre righe non hanno un verso**: nessuna dice chi la abbassa, di quanto,
-entro quando. Un registro senza verso è una lista, e una lista lunga non la legge
-nessuno.
+⛔ **La regola c'era già, e la verifica pure — ma non confrontava niente.**
+`.codex/AGENTS.md` chiude la regola zero della lista con
+`grep -rl "from 'primevue/datatable'" … | wc -l` e la frase *«se il numero SALE
+dopo il tuo lavoro, hai aggiunto una lista fuori standard»*. Sale **rispetto a
+cosa?** A una cifra che chi legge dovrebbe ricordare a memoria. Ed è andata come
+doveva andare: 48 il 03-08, **57 il 30-08**, di nuovo 48.
+
+⇒ `frontend/scripts/check-datatable-baseline.mjs` + un registro committato che
+**elenca i file**, non li conta soltanto: così il messaggio dice *quale* file è
+comparso e il `git diff` del registro si legge.
+
+| Il conto | Esito |
+| --- | --- |
+| **cresce** | ⛔ rosso, con i nomi dei file nuovi e la regola da applicare |
+| **cala** | ⛔ rosso **anche questo**: «bene, ora abbassa il registro» |
+| **uguale** | ✅ verde |
+
+⭐ **Rosso anche quando migliora, e non è pedanteria**: una baseline che resta
+alta dopo un miglioramento **riapre in silenzio lo spazio che si era appena
+chiuso**. *Un cricchetto che non si stringe non è un cricchetto.* Provato in
+entrambi i versi: aggiunta una `DataTable` finta → rosso col nome; tolta una riga
+dal registro → rosso con «abbassalo».
+
+⭐ **Due soglie e non una**, perché la regola chiede due cose: che le eccezioni
+siano poche **e** che ognuna sia motivata. Tenerle separate permette di far
+scendere quella che si può far scendere subito — scrivere un commento costa una
+riga — senza aspettare la riscrittura di una lista.
+
+⚠️ **E il criterio della «motivazione» è dichiarato nel codice**: un commento in
+una delle **quattro** righe sopra l'import. Non si giudica *cosa* dica: un
+cancello che valuta il contenuto di una frase boccia a caso, e dopo due blocchi
+sbagliati qualcuno lo spegne — è lo stesso motivo per cui il progetto **non** ha
+un cancello automatico sui messaggi d'errore. ⛔ La finestra sta scritta perché
+il numero ci dipende: con tre righe invece di quattro il conto passa da 34 a 43,
+e un registro che nessuno può riprodurre non è un registro.
+
+⛔ **Restano due righe senza verso, e sono decisioni, non lavoro**: gli 81
+`skip_area_check` (vanno letti uno per uno) e la baseline degli smoke (che vive
+o muore con §8). Un registro senza verso è una lista, e una lista lunga non la
+legge nessuno.
 
 ---
 
@@ -1214,6 +1387,36 @@ verde:
 | **End-to-end** sul database vero, in transazione annullata | ✅ `chiusure` è un `dict`, nessuna eccezione |
 | Suite backend completa sul DB vero | ✅ **4533 test, OK** |
 
+### ✅✅ E il giro delle 22:05 è passato — la prova end-to-end
+
+Corsa del **2026-09-09 22:05:04 UTC**, la prima dopo la correzione. Il produttore
+`chiusura_scadenze_daily` accoda, il drenatore prende, l'handler esegue:
+
+| id | stato | tentativi | eseguito |
+| --- | --- | --- | --- |
+| 2887 (`EMITEST`) | **FATTO** | **0** | 22:05:38 |
+| 2888 (`PGTAPEF202`) | **FATTO** | **0** | 22:05:38 |
+
+⭐ **`tentativi = 0`**: non è servito nemmeno un ritentativo. E `ultimo_errore` è
+`NULL` su entrambe, dove per quattro notti c'era la stessa `ValueError`.
+
+⭐ **Ma la prova che chiude il caso è il `result`**, perché è *esattamente il
+valore che `dict()` distruggeva*:
+
+```json
+{"chiusure": {"_total": 0, "_executed_at": "2026-09-09T22:05:38.140697+00:00",
+              "vendite.contratti": 0, "vendite.listini_versioni": 0},
+ "emittente_codice": "EMITEST", "emittente_fiscale_id": 44}
+```
+
+⇒ Non è «il job non ha dato errore»: è che **il riepilogo per tabella è arrivato
+integro fino alla coda**, cioè la cosa per cui quel job esiste. Un job che
+fallisce e un job che riesce consegnando un esito vuoto si leggerebbero uguali
+nello stato; qui si vede la differenza.
+
+⭐ E `vw_coda_lavori_da_guardare` è rimasta a **zero** — la prima notte in cui
+quella vista dice qualcosa invece di ripetere un fondo di magazzino.
+
 ⚠️ **Restano le 8 righe vecchie** in `vw_coda_lavori_da_guardare`: sono
 fallimenti storici a tentativi esauriti, e non si sanano da sé. Vanno **rimesse
 in coda** (`requeue/`) o **archiviate** — è una decisione operativa, non una
@@ -1262,11 +1465,11 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Contratto d'errore — lato backend**       | 🟠 medio | **9/10**     | 763 codici vivi, zero senza ripiego, zero orfani, zero `%s`, classi motivate. Il pezzo migliore del backend                                                                                                                                                      |
 | **Contratto d'errore — arrivo a video**     | 🟠 medio | **8/10** ⬆⬆  | ✅ 2026-09-09: `fields`, `targets` e ora anche **`hint`** arrivano a video — il toast lo rende sotto il messaggio, e sui tre codici tecnici il backend lo toglie perché lì non è la soluzione a catalogo. Le sei `ui_action` non ramificate sono **dichiarate servite** dal default, non ignorate. ⚠️ Non è 10: il canale è `execute`, e chi mostra un errore chiamando `notify.error` a mano resta fuori (D4) |
 | **Perimetro e permessi (lato applicativo)** | 🟠 medio | **7,5/10**   | Catena unica, fail-closed, reset GUC incondizionato; un'area dichiarata e non a catalogo (D5), `skip_area_check` senza un registro (D10)                                                                                                                         |
-| **Correttezza dei contratti di lista**      | 🟠 medio | **6/10**     | La regola sul `count` è scritta e ha un controesempio vivo sull'autocomplete più usato (D6); nessun cancello la difende                                                                                                                                          |
+| **Correttezza dei contratti di lista**      | 🟠 medio | **8/10** ⬆ | ✅ 2026-09-10: i lookup dichiarano `troncato` (sonda `+1`, nel repository) e i due envelope hanno nomi che non si confondono; presidiato sul DB vero. ⚠️ Restano i `count: len(...)` su collezioni **senza** `LIMIT` — lì il numero è giusto, ma nessun cancello impedisce a un `LIMIT` di comparirci sopra un giorno (D6) |
 | **Simmetria del dominio**                   | 🟠 medio | **4/10**     | `acquisti` e `magazzino` modellati a DB e vuoti su BE e FE, senza una data (D11). Stesso voto del gemello, per lo stesso motivo                                                                                                                                  |
-| **Building block — frontend**               | 🟡 basso | **8,5/10**   | 83 composable, 97 componenti, un solo punto HTTP, `bersagli` e `useDrawerChiusuraGlobale` sono lavoro di qualità; restano 34 `DataTable` senza motivo e 11 view fuori dal contratto KeepAlive                                                                    |
+| **Building block — frontend**               | 🟡 basso | **8,5/10**   | 83 composable, 97 componenti, un solo punto HTTP, `bersagli` e `useDrawerChiusuraGlobale` sono lavoro di qualità. ✅ 2026-09-10: contratto KeepAlive **presidiato** (quinto guard, criterio derivato dal router e risolto transitivamente sui composable) e dati compagni sanati. Restano 34 `DataTable` senza motivo (D10) |
 | **Multilingua**                             | 🟡 basso | **9/10**     | 4.697 chiavi in parità perfetta, guard in pre-commit, condotta `Accept-Language` completa. Il voto non è 10 perché il catalogo a monte è monolingue (§2.5)                                                                                                       |
-| **Gestione del debito**                     | 🟡 basso | **5/10**     | Un registro che cala davvero (header licenza, −873 in due settimane) e sette che non hanno un verso (D10)                                                                                                                                                        |
+| **Gestione del debito**                     | 🟡 basso | **8/10** ⬆⬆ | ✅ 2026-09-10: `oxlint` e `ruff` a **zero con cancello**, e le `DataTable` grezze con un **cricchetto** che è rosso in entrambi i versi — anche quando migliora, perché una baseline stantia riapre lo spazio appena chiuso. ⛔ Restano senza verso gli 81 `skip_area_check` e la baseline degli smoke: sono decisioni, non lavoro (D10-bis) |
 | **Documentazione di contesto**              | 🟡 basso | **9/10** ⬆   | ✅ 2026-09-09: **sette righe su sette**. Lo stack **tolto** dalle tre sedi invece che aggiornato (fonte unica `frontend/package.json`, come `.python-version`), e l'ultima riga — quella su `hint` — chiusa **rendendola falsa** invece che riscrivendola (§1, D4) |
 
 ### Il giudizio, in una frase
@@ -1310,6 +1513,36 @@ quarta che è di qui: un prodotto la cui interfaccia non ha **nessuna prova di
 comportamento** non è pronto per essere modificato da qualcuno che non sia chi
 l'ha scritto — cioè non è pronto per un secondo sviluppatore, prima ancora che
 per un secondo cliente.
+
+### ✅ E riletto di nuovo il 2026-09-10 — cosa è cambiato, e cosa no
+
+**Cambiato**, in due giorni: il frontend è passato da **zero** controlli a un job
+di CI con lint, **sei** guard, 29 test e la build; il backend ha la sua prima
+analisi statica, a registro zero; lo schema OpenAPI ha smesso di dichiararsi
+anonimo; il contratto d'errore arriva a video per intero; tre registri hanno un
+verso. E due difetti che stavano **rompendo qualcosa** sono chiusi: un job
+notturno fermo da quattro notti e due lookup che confermavano il proprio
+troncamento.
+
+**Non cambiato**, e va detto con la stessa chiarezza: la copertura dei test
+frontend è **un file su 680**; la suite backend resta larga e poco profonda; non
+c'è un type checker; `acquisti` e `magazzino` non hanno ancora una decisione; gli
+smoke non li lancia nessuno. E il perimetro dei dati — D2 e D3 del gemello — è
+roba di là, intatta.
+
+⭐ **E c'è un'osservazione sul METODO che vale più dell'elenco.** I difetti
+*strutturali* — nessun cancello sul frontend, nessuna analisi statica, lo schema
+che si dichiara anonimo — li ha trovati tutti la **lettura della struttura**, che
+è il metodo di questo documento e ha funzionato.
+⛔ **Ma i due difetti che stavano rompendo qualcosa adesso non li ha trovati la
+lettura: li ha trovati l'ESECUZIONE.** D13 è saltato fuori leggendo una vista di
+presidio dopo aver rimesso in piedi il database; D6 inseguendo i consumatori di
+un campo, e sono risultati due dove il documento ne dava zero.
+⇒ *La lettura della struttura dice cosa manca; solo l'esecuzione dice cosa è
+rotto.* Sono due domande diverse, e questo documento sapeva rispondere bene solo
+alla prima. È la ragione per cui `D13-bis` — dare un destinatario ai presidi —
+vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
+**abitudine** la seconda domanda, invece di lasciarla al caso di chi passa di lì.
 
 ---
 
@@ -1390,17 +1623,33 @@ per un secondo cliente.
 * [ ] **D5** — `ai_assistant` a catalogo in `config.aree_funzionali` (brief al
       team DB), **oppure** `AdminAPIView` se l'assistente è admin-only per
       decisione. ⚠️ Da fare prima di accendere `AI_ENABLED`, non dopo.
-* [ ] **D6** — separare i due `_build_results_response`: quello dei **lookup**
-      (con `limit`) deve dire se ha troncato — o restituire il `count(*)` vero,
-      o un flag `troncato`. Quello delle **collezioni figlie** resta com'è, con
-      il commento che dice perché lì `len()` è legittimo.
+* [x] **D6** — ✅ **fatto il 2026-09-10**: sonda `+1` nel repository (che è
+      l'unico a conoscere `safe_limit`), `troncato` nell'envelope, e l'helper
+      unico separato in `_collezione_completa` / `_lookup_response`. Presidiato
+      da un test sul **DB vero**, provato con tre mutazioni.
+      ⭐ I consumatori del `count` fasullo erano **due**, non zero: il select UoM
+      (200 su **334**) e l'**assistente AI**, che con `page_size=10` avrebbe
+      detto *«ho trovato 10 articoli»* su 257 a catalogo.
 * [ ] **D7** — per ciascuno degli otto endpoint senza consumatore rispondere per
       iscritto a *«questa la deve poter usare una persona?»*. Il primo della
       lista è `/core/email/log/`, che oggi lascia l'operatore senza il registro
       delle proprie mail mentre l'amministratore ce l'ha.
-* [ ] **D8** — portare in `onActivated` (idempotente) il caricamento delle
-      **undici** view di `amministrazione/views/`. ⚠️ Non spostare: aggiungere,
-      e rendere il caricamento ripetibile.
+* [x] **D8** — ✅ **fatto il 2026-09-10**, e la misura di partenza era sbagliata:
+      non undici view ma **tre** (`DefinizioneEditorView`,
+      `DefinizioniWorkflowListView`, `RepartiProfiloView`). Le altre otto il
+      rientro ce l'avevano già da `useListaConfigurabilePage` → `useSearchTable`,
+      e convertirle avrebbe prodotto **due fetch a ogni rientro**: le conversioni
+      sono state annullate. ⭐ Chiuso con un **quinto guard**
+      (`check-keepalive-onactivated.mjs`, in `npm run guards` quindi in CI da
+      sé), che deriva dal router chi sta sotto KeepAlive e risolve
+      **transitivamente** quali composable portano già un `onActivated`.
+* [x] **D8-bis** — ✅ **fatto il 2026-09-10**: il compagno in `onActivated`, la
+      lista lasciata in `onMounted` (il rientro lo copre lo scaffolding) ⇒ una
+      chiamata per volta, mai due. 🔴 Con la parola che decideva tutto:
+      `loadSetupStatus(**true**)` — senza il `force`, la cache per-istanza di
+      `useSetupStatus` sopravvive al KeepAlive e il rientro non rileggerebbe
+      nulla, lasciando una correzione che *sembra* fatta.
+
 * [ ] **D9-a** — gli smoke in CI. Sono già isolati in transazione con rollback,
       il registro ha **due** righe: è il cancello più facile del repo dopo
       D1-a. ⚠️ Prima va corretto lo smoke che esce `0` su «ESITO: FALLITO».
@@ -1410,9 +1659,14 @@ per un secondo cliente.
 
 ### 🟡 Ordine e verità dei documenti
 
-* [ ] **D10** — dare un **verso** ai sette registri senza (chi lo abbassa, di
-      quanto, entro quando) o dichiararli congelati con il motivo. Il modello è
-      la riga dell'header di licenza, che cala perché non blocca il pregresso.
+* [x] **D10 (in parte)** — ✅ **2026-09-10**: tre registri hanno ora un verso —
+      `oxlint` e `ruff` a **zero con cancello**, e le `DataTable` grezze con un
+      **cricchetto** (`check-datatable-baseline.mjs`, in `npm run guards`) che è
+      rosso sia se cresce sia se cala senza aggiornare il registro.
+* [ ] **D10-bis** — le due righe che restano **senza** verso, e sono decisioni:
+      gli **81 `skip_area_check`** (`api.md` li ammette solo cross-dominio: vanno
+      letti uno per uno, non contati) e la **baseline degli smoke**, che vive o
+      muore con la scelta di §8.
 * [ ] **D11** — decidere se `acquisti` e `magazzino` sono un cantiere **aperto o
       congelato**, e scriverlo nei documenti di contesto. È la stessa voce del
       documento gemello: la decisione è una sola per tutti e tre gli strati.
@@ -1538,6 +1792,19 @@ licenza che dichiara **3 file nuovi controllati**. ⇒ La riserva scritta poche 
 prima — *«scritti, non attivi: un cancello che non ha mai girato non è ancora un
 cancello»* — è **caduta**.
 
+### 📍 Dove sta la classifica, al 2026-09-10
+
+✅ **Tutto il tier 🥇 e tutto il tier 🥈**, più due voci che nella classifica non
+c'erano perché sono nate dopo:
+
+| Fuori classifica | Perché non c'era |
+| --- | --- |
+| **D13** — il job notturno rotto da quattro notti | Trovato **lanciando i controlli** dopo il tier 🥇, non leggendo il codice. Una riga (`coerce_jsonb_dict`), un building block che esisteva da giugno e un call site che non l'aveva cercato |
+| **D10** — il cricchetto delle `DataTable` | La classifica lo dava come «dare un verso ai registri», cioè una decisione. Si è rivelato **codice**: la regola e il numero c'erano già, mancava solo qualcosa che li confrontasse |
+
+⇒ Restano aperte le voci 🥉 (che dipendono da altri o da una decisione) e le tre
+di «sembrano facili e non lo sono», più `D13-bis`, che aspetta il DB.
+
 ⭐ **Due cose imparate eseguendo, che la stima non conteneva:**
 
 1. **La configurazione minima di `ruff` non era `E,F,I`** come avevo scritto in
@@ -1569,8 +1836,8 @@ di essere l'unica metà del prodotto che nessuna macchina guarda.
 | #   | Cosa                                                                                | Sforzo | Cosa compra                                                                                                                                           | Voce |
 | --- | ----------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | 6   | ✅ `hint` a video, in **un** posto (sotto il messaggio d'errore)                    | ~1 h   | ✅ **fatto il 2026-09-09.** L'unica frase che dice all'operatore **cosa fare adesso**: il DB la scriveva, il BE la trasportava, lo schermo la buttava | D4   |
-| 7   | `onActivated` sulle 11 view di `amministrazione/`                                   | ~2 h   | Modifica meccanica identica ×11. Toglie un difetto **intermittente** — che per via del `:max="10"` è peggio di uno costante, perché non viene creduto | D8   |
-| 8   | Separare i due `_build_results_response`: lookup (con `limit`) da collezioni figlie | ~1 h   | Toglie il controesempio vivo sull'**autocomplete articoli**, la ricerca più usata dell'applicazione                                                   | D6   |
+| 7   | ✅ `onActivated` sulle view di `amministrazione/` | ~2 h | ✅ **fatto il 2026-09-10, e non erano 11: erano 3.** Otto avevano già il rientro da `useSearchTable`, e convertirle avrebbe fatto **due fetch**. ⭐ Chiuso con un **guard** che deriva il criterio dal router e risolve i composable transitivamente — ed è stato lui a trovare l'errore | D8 |
+| 8   | ✅ Separare i due `_build_results_response` | ~1 h | ✅ **fatto il 2026-09-10.** Sonda `+1` nel repository e `troncato` nell'envelope. ⭐ I consumatori del `count` fasullo erano **due**, non zero: il select UoM (200 su **334**) e l'**assistente AI**, che avrebbe detto a una persona «ho trovato 10 articoli» su 257 | D6 |
 
 ### 🥉 Costano poco, ma il ritorno non dipende da chi scrive
 
@@ -1579,7 +1846,7 @@ di essere l'unica metà del prodotto che nessuna macchina guarda.
 | 9   | `ai_assistant` a catalogo in `config.aree_funzionali`           | 20 min di brief, ma passa dal **team DB** e la funzione è dietro un flag spento. Va fatto **prima** di accendere `AI_ENABLED`, non adesso                                                                                               |
 | 10  | `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT`                   | 10 min di `settings.py`, ma l'effetto lo decide il **reverse proxy**: da concordare con chi gestisce nginx                                                                                                                              |
 | 11  | Gli otto endpoint senza consumatore                             | Lo sforzo non è scrivere: è **decidere**. Il primo è `/core/email/log/`, che oggi lascia l'operatore senza il registro delle proprie mail mentre l'amministratore ce l'ha                                                               |
-| 12  | *Disable key expiry* sui nodi Tailscale `dbdev` e `backend-dev` | Non è codice, ed è qui perché costa **due click**: il 2026-09-09 la scadenza di `dbdev` ha fermato il database di sviluppo e con esso l'applicazione, senza che niente lo segnalasse. `backend-dev` scade il **19 settembre** (INFRA-1) |
+| 12  | ✅ *Disable key expiry* sui nodi Tailscale | ✅ **fatto da Tid il 2026-09-09**, e nella forma giusta: `KeyExpiry: None`, cioè scadenza **disabilitata** e non rinnovata — su un nodo server è la differenza fra chiudere il difetto e riprogrammarlo. La scadenza di `dbdev` aveva fermato il database di sviluppo, e con esso l'applicazione, senza che niente lo segnalasse (INFRA-1) |
 
 ### ⛔ Sembrano facili e non lo sono — e questa è la parte che vale
 
