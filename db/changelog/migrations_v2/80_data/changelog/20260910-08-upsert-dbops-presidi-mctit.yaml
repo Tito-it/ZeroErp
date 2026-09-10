@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi §4.1 — il seed di CATALOGO del catalogo
+# dei presidi: trentadue righe, una per vista `dbops.vw_*`.
+#
+# ── ⭐ LA CLASSIFICAZIONE NON E' LAVORO MECCANICO ───────────────────
+#   Ogni riga e' derivata dal COMMENT della vista, che e' CONTRATTO — non dai
+#   conteggi di oggi, che sono una fotografia. Le cinque nature escono da quella
+#   lettura, non da una categoria inventata prima:
+#     ZERO 13 · REGISTRO 1 · LAVORAZIONE 8 · CANCELLO 3 · INVENTARIO 7.
+#
+#   ⚠️ E tre righe sono classificate DIVERSAMENTE da come il brief le proponeva,
+#     ognuna sulla scorta del COMMENT della vista stessa:
+#     · vw_codici_errore_da_dichiarare — il brief la da' come registro di debito
+#       con 508 righe. E' la MISURA, «volutamente larga», e cresce a ogni codice
+#       errore nuovo e legittimo; il debito sono le voci del suo registro, oggi
+#       vuoto, e il presidio e' un cancello che blocca gia' il merge. ⇒ CANCELLO.
+#     · vw_fk_con_indice_missing_policy — idem come registro. Il suo COMMENT dice
+#       «letta da dbops.fn_seed_fk_index_policy»: e' una CODA che una funzione
+#       consuma. ⇒ LAVORAZIONE.
+#     · vw_processi_che_bypassano — il brief la porta come «la riga fatta bene»
+#       da tenere a soglia 1. Il suo COMMENT dice «ZERO righe con stato =
+#       NON_DICHIARATO»: non e' una soglia, e' uno zero su una colonna. ⇒ ZERO
+#       con `stato_atteso`.
+#   ⭐ Non e' un rilievo contro il brief: e' la sua tesi, verificata. Sette righe
+#     scritte con cura da chi aveva letto tutto, e tre non tornano col contratto
+#     della vista. La natura la deve scrivere chi ha scritto la vista.
+#
+# ── ⭐ SONO TRENTADUE, NON TRENTUNO ─────────────────────────────────
+#   dbops.vw_rls_perimetro_scoperto e' nata il 2026-09-09 (changeSet 20260909-76),
+#   lo STESSO GIORNO in cui il brief contava trentuno e argomentava che un elenco
+#   in Python «diverge alla trentaduesima vista». La trentaduesima e' arrivata
+#   prima della risposta.
+#
+# ⚠️ CATALOGO PURO: nessuna FK verso anagrafiche.*, nessun indirizzo, nessun dato
+#   che descriva QUESTA installazione ⇒ nessun `context: dati_macchina`.
+#
+# ⛔ La sede del dato e' il CSV. Le modifiche si fanno editando il file, mai con
+#   UPDATE SQL a parte: due sorgenti divergono fra sviluppo e CI.
+# ⚠️ E appendere una riga non e' gratis: il mirror e' runOnChange e rilegge TUTTO
+#   il file, quindi ogni riga gia' scritta viene ri-proposta ai CHECK. Prima di
+#   toccarlo, l'upsert di prova su tutte le righe dentro una transazione che si
+#   annulla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-08-upsert-dbops-presidi-mctit.yaml
+
+  - changeSet:
+      id: 20260910-08-upsert-dbops-presidi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed di catalogo di dbops.presidi dal CSV (mirror loadUpdateData): 32
+        righe, una per vista dbops.vw_*, con la natura derivata dal COMMENT di
+        ciascuna. Catalogo puro - nessuna FK verso anagrafiche, nessun
+        destinatario, quindi nessun context dati_macchina. Passo 4 di
+        brief-db-un-destinatario-per-i-presidi.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+      changes:
+        # ⚠️ La chiave dell'upsert e' `vista`, non `id`: la chiave naturale
+        #   stabile e' il nome qualificato della vista (linee-guida-sql §6b), e
+        #   `id` e' IDENTITY proprio perche' non lo si scriva a mano. Il CSV non
+        #   porta la colonna id.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/presidi.csv
+            tableName: presidi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            # Token letterale `NULL`, non la cella vuota: su una colonna
+            # dichiarata STRING la cella vuota entrerebbe come stringa vuota, e
+            # lo farebbe IN SILENZIO.
+            nullValue: "NULL"
+            primaryKey: "vista"
+            columns:
+              - column: { name: vista,         type: STRING }
+              - column: { name: natura,        type: STRING }
+              - column: { name: colonna_stato, type: STRING }
+              - column: { name: stato_atteso,  type: STRING }
+              - column: { name: registro,      type: STRING }
+              - column: { name: presidiato_da, type: STRING }
+              - column: { name: cadenza,       type: STRING }
+              - column: { name: perimetro,     type: STRING }
+              - column: { name: attivo,        type: BOOLEAN }
+              - column: { name: obsoleto_dal,  type: DATE }
+              - column: { name: nota,          type: STRING }
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.presidi;

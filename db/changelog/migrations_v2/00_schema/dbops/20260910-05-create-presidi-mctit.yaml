@@ -1,0 +1,252 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi §4.1 — il CATALOGO delle viste di
+# presidio. E' il terzo pezzo accanto ai due che la guida
+# `presidi-e-registri-del-debito.md` §2 gia' descrive: la MISURA (la vista) e il
+# REGISTRO del debito (le voci note, con il motivo scritto). Questo dice chi la
+# legge e che cosa significa una sua riga.
+#
+# ── ⛔ PERCHE' NON E' UN ELENCO IN PYTHON ───────────────────────────
+#   Sarebbe una seconda sorgente di verita', e diverge il giorno in cui nasce
+#   la vista successiva: il presidio nuovo nascerebbe fuori dal digest, in
+#   silenzio — cioe' alla lettera lo stesso guasto che il digest chiude.
+#   ⭐ E non e' un'ipotesi: la trentaduesima vista (dbops.vw_rls_perimetro_scoperto)
+#     e' nata il 2026-09-09, lo STESSO GIORNO in cui il brief contava «31».
+#
+# ── ⭐ PERCHE' NON C'E' UNA COLONNA `soglia` ────────────────────────
+#   Il debito si tiene con un REGISTRO di voci per nome, non con un numero
+#   (decisione di Tid, 2026-09-10). Un intero vede solo il delta del conteggio
+#   ed e' cieco sullo SCAMBIO: un debito saldato e un difetto nuovo comparsi lo
+#   stesso giorno lasciano il numero fermo e il presidio tace. Il caso non e'
+#   teorico — e' dbops.vw_processi_che_bypassano alla fase 6-bis.
+#   ⇒ La colonna `registro` porta il NOME della tabella che tiene le voci note.
+#     Il progetto ne ha gia' tre: dbops.riferimenti_morti_esenzioni,
+#     dbops.codici_errore_senza_policy, dbops.rls_perimetro_debito.
+#   ⚠️ E dove il registro non esiste ancora, `registro` e' NULL e la `nota` dice
+#     che quello E' il lavoro. Un NULL dichiarato, non una dimenticanza.
+#
+# ── ⭐ PERCHE' SI DICHIARA LO STATO ATTESO, NON QUELLI DI ALLARME ───
+#   Perche' la domanda non e' sempre «la vista e' vuota?». Su quattro viste
+#   l'invariante scritto nel COMMENT e' «nessuna riga NON_DICHIARATO»: una riga
+#   DEBITO_DICHIARATO e' ATTESA, e contarla suonerebbe su una cosa gia' decisa.
+#
+#   ⛔ E il verso conta. Elencare i valori DI ALLARME sembra piu' naturale ed e'
+#     la scelta permissiva: uno stato NUOVO, aggiunto domani alla vista, non
+#     sarebbe nell'elenco e cadrebbe nel SILENZIO. E' l'unico verso in cui un
+#     presidio marcisce senza che nessuno se ne accorga.
+#   ⇒ Si dichiara invece l'unico stato ACCETTATO (`stato_atteso`), e l'allarme e'
+#     tutto il resto: uno stato nuovo cade nell'ALLARME, cioe' fail-loud, e chi
+#     lo aggiunge deve venire qui a decidere. E' la stessa scelta che
+#     dbops.vw_processi_programmazione scrive per la sua colonna `da_guardare`:
+#     «uno stato nuovo non ha un default in cui cadere».
+#   ⭐ E prende gratis il caso a due valori: su dbops.vw_rls_perimetro_scoperto
+#     gli stati sono TRE — NON_DICHIARATO (un allarme), DEBITO_DICHIARATO
+#     (atteso), DEBITO_ESTINTO (una riga di registro da togliere) — e «diverso
+#     da DEBITO_DICHIARATO» li prende entrambi senza nominarli.
+#
+#   ⚠️ Ed e' anche l'unica forma seminabile: Liquibase non sa caricare un
+#     `text[]` da un CSV (nessun precedente in casa: dbops.automazione_overlap
+#     ha colonne array e infatti NON ha un mirror CSV), e la sede di una tabella
+#     di configurazione e' il suo CSV.
+#
+# ── ⛔ CHE COSA NON STA QUI: il DESTINATARIO ────────────────────────
+#   Un indirizzo email descrive UNA installazione, non il contratto del
+#   software: dentro un CSV di catalogo o viaggia su ogni installazione o rende
+#   la riga non seminabile (linee-guida-sql §11.7). Ed e' la stessa ragione per
+#   cui la cadenza dei job pgAgent non sta su dbops.processi e le sveglie dei
+#   COMMAND stanno in backend/deploy/sveglie.json: *a chi arriva la posta di
+#   questa macchina e' un fatto di deploy, e vive dove vive il deploy*.
+#
+# ⚠️ Tabella NUOVA: fino a `--contexts=ci_apply` non ha i trigger di audit,
+#   tx_id e storico — quindi niente DDL ne' preCondition sui loro nomi, e le
+#   colonne di audit nascono con i propri DEFAULT perche' i primi INSERT del
+#   seed funzionino comunque.
+#
+# ⚠️ Catalogo puro: nessuna FK verso anagrafiche.*, nessun dato di macchina
+#   ⇒ nessun `context: dati_macchina`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260910-05-create-presidi-mctit.yaml
+
+  - changeSet:
+      id: 20260910-05-create-presidi
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.presidi: catalogo delle viste di presidio di dbops. Per ogni
+        vista dice che cosa significa una sua riga (natura), che cosa si conta
+        (colonna_stato + stato_atteso), dove stanno le voci note (registro),
+        ogni quanto si guarda (cadenza) e se il conteggio e' onesto senza un
+        perimetro (perimetro). Passo 1 di brief-db-un-destinatario-per-i-presidi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'dbops';
+            - not:
+                - tableExists:
+                    { schemaName: dbops, tableName: presidi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Dire, per ogni vista di presidio, CHE COSA SIGNIFICA una
+              --   sua riga. E' la conoscenza che oggi vive nei COMMENT delle
+              --   viste — cioe' in prosa, in una forma che nessun programma
+              --   puo' leggere — resa leggibile a una macchina.
+              --
+              -- ⛔ La `nota` e' NOT NULL e non vuota, ed e' un vincolo del
+              --   DATABASE e non un test: la guida dei presidi lo mette li'
+              --   apposta, perche' «senza un motivo scritto la voce non si
+              --   aggiunge» non deve poter dipendere da chi si ricorda di
+              --   lanciare un controllo.
+              --
+              -- Id IDENTITY e mirror chiavato su `vista`: la chiave naturale
+              -- stabile e' il nome qualificato della vista (linee-guida-sql
+              -- §6b), e assegnare id a mano per trentadue righe sarebbe
+              -- attrito senza contropartita — qui non ci sono figlie che si
+              -- agganciano per id, a differenza di dbops.processi.
+              -- =========================================================
+              CREATE TABLE dbops.presidi (
+                  id              integer GENERATED BY DEFAULT AS IDENTITY
+                                    CONSTRAINT pk_presidi PRIMARY KEY,
+                  vista           text    NOT NULL,
+                  natura          text    NOT NULL,
+                  colonna_stato   text    NULL,
+                  stato_atteso    text    NULL,
+                  registro        text    NULL,
+                  presidiato_da   text    NULL,
+                  cadenza         text    NOT NULL,
+                  perimetro       text    NOT NULL,
+                  attivo          boolean NOT NULL DEFAULT true,
+                  obsoleto_dal    date    NULL,
+                  nota            text    NOT NULL,
+                  data_insert     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert     text    NOT NULL DEFAULT CURRENT_USER,
+                  data_update     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update     text    NOT NULL DEFAULT CURRENT_USER,
+                  tx_id           uuid    NULL,
+
+                  CONSTRAINT uq_presidi_vista UNIQUE (vista),
+
+                  -- ⛔ Mai un nome nudo appoggiato al search_path: la vista si
+                  --   nomina qualificata, e il contatore la risolve da qui.
+                  CONSTRAINT chk_presidi_vista_qualificata
+                      CHECK (vista ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'),
+
+                  -- Le cinque nature escono dalla lettura dei COMMENT delle
+                  -- viste, non da una categoria inventata:
+                  --   ZERO        qualunque riga e' un allarme ADESSO;
+                  --   REGISTRO    debito noto: l'allarme e' la voce NON
+                  --               registrata (e quella registrata e RIENTRATA);
+                  --   LAVORAZIONE coda o spia: la consuma una funzione o una
+                  --               persona, il numero si guarda per tendenza;
+                  --   CANCELLO    gia' presidiata in CI o in pgTAP: fuori dal
+                  --               digest, e la riga dice DOVE;
+                  --   INVENTARIO  panorama: elenca anche i sani, mai in un
+                  --               digest.
+                  CONSTRAINT chk_presidi_natura
+                      CHECK (natura IN ('ZERO', 'REGISTRO', 'LAVORAZIONE',
+                                        'CANCELLO', 'INVENTARIO')),
+
+                  CONSTRAINT chk_presidi_cadenza
+                      CHECK (cadenza IN ('GIORNALIERA', 'SETTIMANALE', 'MAI')),
+
+                  -- LIBERO: il conteggio e' onesto letto da chiunque abbia il
+                  -- SELECT. DEFINER: la vista e' security_invoker e attraversa
+                  -- una tabella in row level security, quindi senza le GUC di
+                  -- sessione tornerebbe ZERO per cecita' — e su una natura ZERO
+                  -- «zero righe» e «non ho potuto vedere» si scrivono uguale.
+                  CONSTRAINT chk_presidi_perimetro
+                      CHECK (perimetro IN ('LIBERO', 'DEFINER')),
+
+                  CONSTRAINT chk_presidi_nota_non_vuota
+                      CHECK (btrim(nota) <> ''),
+
+                  -- ⛔ Un dato composito spostato a meta' e' un filtro che non
+                  --   filtra: o ci sono tutte e due, o nessuna delle due. E una
+                  --   stringa vuota come stato atteso non e' «nessuno stato»,
+                  --   e' un filtro che accende su TUTTO.
+                  CONSTRAINT chk_presidi_coppia_stato
+                      CHECK ((colonna_stato IS NULL) = (stato_atteso IS NULL)
+                             AND (stato_atteso IS NULL
+                                  OR btrim(stato_atteso) <> '')),
+
+                  -- «E' gia' presidiata altrove» senza dire DOVE e' un'etichetta
+                  -- rassicurante, che la guida dei presidi §4-bis dichiara piu'
+                  -- pericolosa di un errore.
+                  CONSTRAINT chk_presidi_cancello_ha_presidio
+                      CHECK (natura <> 'CANCELLO'
+                             OR (presidiato_da IS NOT NULL
+                                 AND btrim(presidiato_da) <> '')),
+
+                  CONSTRAINT chk_presidi_registro_qualificato
+                      CHECK (registro IS NULL
+                             OR registro ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'),
+
+                  -- Un inventario e un cancello non entrano in un digest: il
+                  -- primo elenca anche i sani, il secondo ferma gia' il merge.
+                  -- Il vocabolario deve essere coerente con se stesso, o la
+                  -- prima riga sbagliata la scrive il prossimo.
+                  CONSTRAINT chk_presidi_fuori_digest_cadenza_mai
+                      CHECK (natura NOT IN ('INVENTARIO', 'CANCELLO')
+                             OR cadenza = 'MAI')
+              );
+
+              COMMENT ON TABLE dbops.presidi IS
+                  'Catalogo delle viste di presidio: per ogni vista, CHE COSA SIGNIFICA una sua riga. E'' il terzo pezzo accanto alla misura (la vista) e al registro del debito (le voci note): dice chi la legge. ⛔ Non e'' un elenco in Python perche'' sarebbe una seconda sorgente di verita'', e diverge alla prima vista nuova — il presidio nascerebbe fuori dal digest, in silenzio, cioe'' lo stesso guasto che il digest chiude. ⭐ Non e'' un''ipotesi: la trentaduesima vista e'' nata il 2026-09-09, lo stesso giorno in cui il brief ne contava trentuno. ⛔ Nessuna colonna `soglia`: il debito si tiene con un registro di voci PER NOME, perche'' un intero e'' cieco sullo scambio (un debito saldato piu'' un difetto nuovo lasciano il numero fermo). ⛔ E nessun destinatario: a chi arriva la posta di questa macchina e'' un fatto di deploy, non di catalogo. Brief: brief-db-un-destinatario-per-i-presidi §4.1.';
+
+              COMMENT ON COLUMN dbops.presidi.vista IS
+                  'Nome QUALIFICATO della vista (schema.vista). E'' la chiave naturale stabile e la chiave del mirror CSV; il CHECK rifiuta un nome nudo, che si appoggerebbe al search_path. ⚠️ Il perimetro del presidio pgTAP si legge DA QUI (gli schemi distinti presenti in questa colonna), non da un LIKE su un prefisso: un glob di un livello solo diventa un ramo cieco il giorno in cui un presidio nasce fuori da dbops.';
+
+              COMMENT ON COLUMN dbops.presidi.natura IS
+                  'Che cosa significa una riga della vista. ZERO: qualunque riga e'' un allarme adesso. REGISTRO: debito noto, l''allarme e'' la voce non registrata. LAVORAZIONE: coda o spia, la consuma una funzione o una persona e il numero si guarda per tendenza. CANCELLO: gia'' presidiata in CI o in pgTAP, quindi fuori dal digest — e `presidiato_da` dice dove. INVENTARIO: panorama che elenca anche i sani, mai in un digest. ⛔ Nessuna delle cinque e'' deducibile dal nome della vista: la scrive chi ha scritto la vista.';
+
+              COMMENT ON COLUMN dbops.presidi.colonna_stato IS
+                  'La colonna su cui si filtra quando la domanda NON e'' «la vista e'' vuota?». NULL = si conta la vista intera. ⚠️ Non ogni colonna che si chiama `stato` va qui: su dbops.vw_coda_lavori_da_guardare `stato` e'' lo stato del LAVORO (ERRORE, IN_CORSO, PENDING) e ogni riga e'' comunque un allarme — metterla qui spegnerebbe il presidio da cui questo cantiere e'' nato.';
+
+              COMMENT ON COLUMN dbops.presidi.stato_atteso IS
+                  'L''unico valore di `colonna_stato` che NON chiede un intervento: l''allarme e'' «diverso da questo». ⛔ Si dichiara lo stato ATTESO e non quelli di allarme, e il verso e'' la scelta portante: elencare gli allarmi e'' permissivo, perche'' uno stato NUOVO aggiunto domani alla vista non sarebbe nell''elenco e cadrebbe nel silenzio — l''unico verso in cui un presidio marcisce senza che nessuno se ne accorga. Cosi'' invece uno stato nuovo cade nell''allarme, e chi lo aggiunge deve venire qui a decidere: e'' la stessa scelta scritta nel COMMENT di dbops.vw_processi_programmazione per la colonna `da_guardare`. ⭐ E prende gratis il caso a piu'' valori: su dbops.vw_rls_perimetro_scoperto gli stati sono tre, e «diverso da DEBITO_DICHIARATO» prende sia NON_DICHIARATO (un allarme) sia DEBITO_ESTINTO (una riga di registro da togliere) senza nominarli.';
+
+              COMMENT ON COLUMN dbops.presidi.registro IS
+                  'Tabella qualificata che tiene le voci NOTE di questo debito (dbops.riferimenti_morti_esenzioni, dbops.codici_errore_senza_policy, dbops.rls_perimetro_debito). NULL su una natura REGISTRO significa che il registro non esiste ancora, e la `nota` dice che quello e'' il lavoro: un NULL dichiarato, non una dimenticanza. ⛔ Al suo posto NON c''e'' un numero: una soglia vede il delta del conteggio e non lo scambio.';
+
+              COMMENT ON COLUMN dbops.presidi.presidiato_da IS
+                  'Dove il presidio gia'' vive, per la natura CANCELLO: il file del test o del guardrail. Obbligatorio su quella natura — «e'' gia'' presidiata» senza dire dove e'' l''etichetta rassicurante che la guida dei presidi §4-bis dichiara piu'' pericolosa di un errore.';
+
+              COMMENT ON COLUMN dbops.presidi.cadenza IS
+                  'Ogni quanto il digest la guarda. GIORNALIERA: un allarme di oggi va visto domattina. SETTIMANALE: un debito non cambia in un giorno. MAI: fuori dal digest. ⚠️ Non e'' solo una scelta di rumore, e'' anche una di COSTO: dbops.vw_riferimenti_morti_da_sanare ricompila circa cinquecento funzioni a ogni SELECT, e non e'' una vista da interrogare tutte le notti.';
+
+              COMMENT ON COLUMN dbops.presidi.perimetro IS
+                  'Se il conteggio e'' onesto letto senza un perimetro. LIBERO: si'', chiunque abbia il SELECT lo legge giusto. DEFINER: la vista e'' security_invoker e attraversa una tabella in row level security — un percorso senza le GUC di sessione (un management command) legge ZERO righe, e su una natura ZERO «zero righe» e «non ho potuto vedere» si scrivono uguale. ⇒ Quelle si contano SOLO da dbops.fn_conta_presidio, e di quelle il digest riporta il numero e non le righe.';
+
+              COMMENT ON COLUMN dbops.presidi.attivo IS
+                  'Spegne una riga senza cancellarla. ⚠️ Non e'' un interruttore per far sparire un fastidio: la `nota` e'' NOT NULL e non vuota comunque, quindi spegnere una riga costa una frase che qualcuno ha dovuto scrivere. Per RITIRARE una vista dal catalogo si usa `obsoleto_dal`, che e'' la convenzione di deprecabilita'' del progetto.';
+
+              COMMENT ON COLUMN dbops.presidi.nota IS
+                  'Il MOTIVO: perche'' quella natura, e su un debito che cosa lo chiuderebbe. ⛔ NOT NULL e non vuota per vincolo del DATABASE e non per test, come vuole la guida dei presidi §2: e'' l''unica regola che non si puo'' dimenticare di applicare.';
+
+              -- ⛔ Il GRANT che le viste di presidio hanno tutte: un catalogo
+              --   che solo l'owner puo' leggere e' un catalogo che nessun
+              --   digest e nessuna schermata potra' mai leggere.
+              -- ⚠️ Solo zeroerp_app: i privilegi dei ruoli batch stanno nel
+              --   provisioning, mai in un changeSet — e il perimetro ampio del
+              --   provisioning copre gia' gli oggetti che nascono dopo.
+              GRANT SELECT ON dbops.presidi TO zeroerp_app;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.presidi;

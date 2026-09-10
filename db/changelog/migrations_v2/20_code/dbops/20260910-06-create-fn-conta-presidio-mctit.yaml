@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi §4.1 — IL CONTATORE ONESTO.
+#
+# ── 🔴 IL DIFETTO CHE CHIUDE, ed e' verificato ─────────────────────
+#   Tre delle trentadue viste sono `security_invoker` e attraversano una
+#   tabella in row level security:
+#     dbops.vw_eventi_non_dichiarati  -> vendite.event_log
+#     dbops.vw_af_senza_giro          -> vendite.attivita_fatturabili
+#     dbops.vw_diag_v_clienti_links   -> anagrafiche.clienti
+#   La policy rls_event_log_ef_whitelist pretende
+#   `current_setting('app.ruolo_applicativo') = 'OPERATORE'`. Un management
+#   command NON ha le GUC di sessione ⇒ la policy e' falsa su ogni riga ⇒ la
+#   vista torna ZERO.
+#   ⛔ E su una vista di natura ZERO «zero righe» e «non ho potuto vedere» si
+#     scrivono uguale: il digest dei presidi riporterebbe «tutto a posto»
+#     PROPRIO PERCHE' e' cieco. E' il verde per sottrazione, sul presidio dei
+#     presidi.
+#   ⚠️ E' gia' scritto, in un altro contesto, in linee-guida-sql §12.3: «una
+#     policy che pretende app.ruolo_applicativo = OPERATORE rende zero ogni
+#     lettura senza quella GUC; il caso piu' probabile non e' un permesso
+#     mancante, e' un contesto di lettura sbagliato».
+#
+# ── ⭐ PERCHE' SECURITY DEFINER, e perche' e' accettabile ───────────
+#   La row level security e' ENABLE senza FORCE su ogni tabella di questo
+#   database (l'owner deve poter leggere fuori dalla row security per le
+#   SECURITY DEFINER che derivano il perimetro): una funzione di proprieta'
+#   dell'owner la attraversa. E' lo stesso identico meccanismo, con la stessa
+#   identica motivazione, di config.fn_accoda_email_sistema.
+#   ⛔ DEFINER del PROPRIETARIO, non di un superuser.
+#   ⛔ E torna un bigint, MAI le righe: attraversa i perimetri per dire QUANTI,
+#     non QUALI. Il dettaglio lo va a guardare una persona con il suo
+#     perimetro, e in una email non finisce niente fuori scope.
+#
+# ── ⛔ NON E' UNA PORTA PER CONTARE QUALUNQUE COSA ──────────────────
+#   Risolve il nome DENTRO dbops.presidi, e la coppia (colonna_stato,
+#   stato_atteso) la legge dal catalogo — non da un parametro. Sa contare
+#   solo cio' che e' a catalogo, ed e' tutto il suo valore: la stessa frase, e
+#   la stessa ragione, del COMMENT di config.fn_accoda_email_sistema.
+#   ⇒ Un ruolo BYPASSRLS dedicato sarebbe stato l'altra strada, e piu' larga:
+#     avrebbe letto tutto, righe comprese, e sarebbe comparso come riga in
+#     dbops.vw_processi_che_bypassano — un debito nuovo su uno dei presidi che
+#     questo cantiere sta censendo.
+#
+# ⚠️ Il conteggio passa da qui per TUTTE le viste, non solo per le tre: cosi'
+#   l'allarme e' onesto ovunque e il chiamante non deve scegliere. La colonna
+#   `perimetro` dice un'altra cosa — se il backend puo' ANCHE elencare le righe.
+#
+# ⛔ Nessuna preCondition sul contenuto di 80_data: il codice errore si nomina
+#   come stringa e si risolve a runtime, quando 80_data e' passato da un pezzo
+#   (linee-guida-sql §11.4).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260910-06-create-fn-conta-presidio-mctit.yaml
+
+  - changeSet:
+      id: 20260910-06-create-fn-conta-presidio
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.fn_conta_presidio(text): conta le righe di una vista di
+        presidio a catalogo, applicando il filtro (colonna_stato,
+        stato_atteso) letto da dbops.presidi. SECURITY DEFINER del
+        proprietario perche' tre viste sono security_invoker su tabelle in RLS
+        e da un percorso senza GUC tornerebbero zero per cecita'. Torna un
+        conteggio, mai le righe. Passo 2 di brief-db-un-destinatario-per-i-presidi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: presidi }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_conta_presidio(
+                  p_vista dbops.presidi.vista%TYPE
+              ) RETURNS bigint
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_riga     dbops.presidi%ROWTYPE;
+                  v_schema   text;
+                  v_relname  text;
+                  v_sql      text;
+                  v_conta    bigint;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Contare le righe che CHIEDONO UN INTERVENTO su una vista
+                  --   di presidio, attraversando la row level security dove
+                  --   serve, e senza mai restituire le righe.
+                  --
+                  -- ⛔ Il perimetro e' il CATALOGO: una vista non dichiarata
+                  --   non si conta. Non e' prudenza — e' cio' che impedisce a
+                  --   questa funzione di diventare una porta per leggere il
+                  --   conteggio di qualunque relazione del database aggirando
+                  --   la row level security.
+                  -- =========================================================
+
+                  -- ⚠️ Il NULL cade nello stesso ramo del nome sconosciuto, ed
+                  --   e' voluto: `vista = NULL` non trova niente, quindi un
+                  --   rifiuto a parte direbbe la stessa cosa in un punto in
+                  --   piu'. UN SOLO SITO CHE SOLLEVA.
+                  SELECT * INTO v_riga
+                    FROM dbops.presidi
+                   WHERE vista = p_vista
+                     AND attivo
+                     AND obsoleto_dal IS NULL;
+
+                  -- ⚠️ SELECT INTO senza righe NON solleva: lascia il record a
+                  --   NULL. Il controllo va scritto, o si prosegue su un
+                  --   catalogo che non ha risposto.
+                  IF NOT FOUND THEN
+                      -- ⛔ Nel VARIADIC va il NOME DELLA VISTA CHIESTA — la
+                      --   cosa che una persona riconosce — mai `p_vista`, che
+                      --   e' il nome del parametro e produrrebbe un messaggio
+                      --   di qualita' E_GENERICO passando tutti i cancelli.
+                      --   Il ripiego serve al caso NULL: un `%s` vuoto e' una
+                      --   frase che non dice niente.
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'fn_conta_presidio',
+                          'E_PRESIDIO_NON_A_CATALOGO',
+                          jsonb_build_object('vista', p_vista),
+                          NULL::uuid,
+                          coalesce(nullif(btrim(p_vista), ''), '(nessuna vista indicata)'));
+                  END IF;
+
+                  v_schema  := split_part(v_riga.vista, '.', 1);
+                  v_relname := split_part(v_riga.vista, '.', 2);
+
+                  -- ⛔ SQL dinamico con %I, mai per concatenazione: il nome
+                  --   viene da una tabella, e una tabella si scrive.
+                  IF v_riga.colonna_stato IS NULL THEN
+                      v_sql := format('SELECT count(*) FROM %I.%I',
+                                      v_schema, v_relname);
+                      EXECUTE v_sql INTO v_conta;
+                  ELSE
+                      -- ⭐ Il filtro NON e' un dettaglio: su quattro viste
+                      --   l'invariante scritto nel COMMENT e' «nessuna riga
+                      --   NON_DICHIARATO», non «la vista e' vuota». Contare
+                      --   tutto suonerebbe su un debito gia' dichiarato, e un
+                      --   digest che suona su cio' che e' gia' deciso viene
+                      --   ignorato al secondo invio.
+                      --
+                      -- ⛔ E si conta «DIVERSO DALLO STATO ATTESO», non «uguale
+                      --   a uno degli stati di allarme»: uno stato NUOVO
+                      --   aggiunto domani alla vista cade cosi' nell'allarme
+                      --   invece che nel silenzio. Il verso opposto e' quello
+                      --   in cui un presidio si spegne da solo.
+                      -- ⚠️ IS DISTINCT FROM e non <>: un NULL nella colonna di
+                      --   stato e' «non atteso», e con <> il confronto darebbe
+                      --   NULL, cioe' la riga uscirebbe dal conteggio in
+                      --   silenzio.
+                      v_sql := format(
+                          'SELECT count(*) FROM %I.%I WHERE %I IS DISTINCT FROM $1',
+                          v_schema, v_relname, v_riga.colonna_stato);
+                      EXECUTE v_sql INTO v_conta USING v_riga.stato_atteso;
+                  END IF;
+
+                  RETURN v_conta;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_conta_presidio(dbops.presidi.vista%TYPE) IS
+                  'Conta le righe che CHIEDONO UN INTERVENTO su una vista di presidio dichiarata in dbops.presidi, applicando il filtro (colonna_stato, stato_atteso) letto dal catalogo. ⭐ SECURITY DEFINER del PROPRIETARIO, non di un superuser: tre viste sono security_invoker su tabelle in row level security, e da un percorso senza le GUC di sessione — un management command — tornerebbero ZERO per cecita''. Su una vista di natura ZERO «zero righe» e «non ho potuto vedere» si scrivono uguale, quindi il digest riporterebbe «tutto a posto» proprio perche'' e'' cieco. La row level security e'' ENABLE senza FORCE, quindi l''owner la attraversa: e'' lo stesso meccanismo di config.fn_accoda_email_sistema. ⛔ Torna un bigint e MAI le righe: attraversa i perimetri per dire QUANTI, non QUALI, cosi'' in una email non finisce niente fuori scope. ⛔ E il perimetro e'' il catalogo: una vista non dichiarata non si conta — sa contare solo cio'' che e'' a catalogo, ed e'' tutto il suo valore. ⚠️ Il conteggio passa da qui per TUTTE le viste, non solo per le tre: la colonna dbops.presidi.perimetro dice un''altra cosa, cioe'' se il chiamante puo'' anche ELENCARE le righe. Brief: brief-db-un-destinatario-per-i-presidi §4.1.';
+
+              -- ⚠️ Solo zeroerp_app: i privilegi dei ruoli batch stanno nel
+              --   provisioning, mai in un changeSet.
+              GRANT EXECUTE ON FUNCTION dbops.fn_conta_presidio(dbops.presidi.vista%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_conta_presidio(text);

@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi — la riga che mancava.
+#
+# ⭐ Il brief conta «30 COMMENT su 31» e porta dbops.vw_trigger_functions come
+#   ESEMPIO DI RUMORE: e' la vista che con le sue duemila righe aprirebbe un
+#   digest ingenuo. E' anche, misurato, l'UNICA delle trentadue senza COMMENT.
+#   ⇒ Cioe': l'unica vista la cui natura non e' scritta da nessuna parte e'
+#     proprio quella che il brief usa per dimostrare che la natura non e'
+#     deducibile dal nome. Le due cose sono lo stesso fatto.
+#
+# ⚠️ Non e' «cambiare una vista», che il §6 del brief esclude: e' un COMMENT ON
+#   VIEW, e non tocca ne' la definizione ne' le reloption.
+# ⛔ E soprattutto NON e' un CREATE OR REPLACE VIEW: quello azzererebbe
+#   `security_invoker` se ci fosse. Qui non c'e' — questa vista legge pg_trigger
+#   e non ha bisogno di perimetro — ma la regola vale comunque per la mano che
+#   scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260910-07-comment-vw-trigger-functions-mctit.yaml
+
+  - changeSet:
+      id: 20260910-07-comment-vw-trigger-functions
+      author: mctit
+      failOnError: true
+      comment: >
+        COMMENT su dbops.vw_trigger_functions, l'unica delle 32 viste di dbops
+        che non ne aveva: e' un INVENTARIO e non un presidio, e va scritto
+        perche' e' proprio la vista che il brief porta come esempio di rumore.
+        Nessuna modifica alla definizione.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_trigger_functions
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_trigger_functions IS
+                  'INVENTARIO: ogni trigger montato nel database con la tabella su cui sta, la funzione che esegue e la definizione COMPLETA di quella funzione (pg_get_functiondef). E'' un attrezzo per leggere, non un presidio: la sua non-vuotezza e'' la condizione NORMALE — a database sano ha una riga per trigger, e nel 2026 sono migliaia. ⛔ Non entra in nessun digest, ed e'' il caso da cui la regola si vede meglio: un elenco che si apre con duemila righe non e'' un allarme, e un avviso rumoroso viene ignorato al secondo invio, cioe'' finisce come il presidio che voleva salvare. ⚠️ Porta il corpo INTERO di ogni funzione-trigger: una SELECT senza WHERE su questa vista e'' pesante, e non e'' il modo di usarla — si filtra per tabella o per nome funzione. ⭐ Dichiarata come INVENTARIO in dbops.presidi: se una vista mancasse dal catalogo non si saprebbe se e'' un inventario o una dimenticanza. Brief: brief-db-un-destinatario-per-i-presidi §2.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_trigger_functions IS NULL;

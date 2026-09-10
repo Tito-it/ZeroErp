@@ -82,6 +82,69 @@ storia.
 
 ---
 
+## 2-bis. Il terzo pezzo: il catalogo, cioè **chi la legge**
+
+> ⭐ Nato il 2026-09-10, e chiude il §1 di questa guida in un punto che era
+> rimasto aperto. Sede: [`dbops.presidi`](/dbzero/dbops/manual/presidi).
+
+La misura e il registro rispondono a *«com'è messa adesso»* e *«che cosa sappiamo
+già»*. Nessuno dei due risponde alla domanda che viene dopo:
+
+> **Chi va a leggerli, e quando?**
+
+Per i tre presidi del §3 la risposta c'è ed è un cancello: girano in CI, bloccano
+l'integrazione, nessuno deve ricordarsene. Ma il database ha anche una trentina
+di **viste di controllo** che nessun cancello legge — e lì la risposta era
+*«qualcuno, prima o poi»*, che è la stessa risposta del promemoria del §1.
+
+⛔ **Ed è costata quanto quel promemoria.** Il 2026-09-09 un lavoro notturno era
+fallito **quattro notti di fila**. Le righe che lo dicevano stavano in
+`dbops.vw_coda_lavori_da_guardare` — una vista che porta nel nome ciò che
+serviva — e sono rimaste lì. Il presidio aveva funzionato perfettamente:
+*guardare non è di nessuno*.
+
+### Perché serve una tabella e non un elenco nel programma
+
+Un programma può leggere le viste e mandarne il contenuto a una persona. Non può
+decidere da solo **quali righe siano un allarme**, e le tre nature non si
+deducono dal nome:
+
+* una riga di `vw_coda_lavori_da_guardare` è un guasto **di adesso**;
+* le righe di `vw_riferimenti_morti_da_sanare` sono un **debito noto**, e
+  l'allarme è la voce che il registro **non conosce**;
+* le duemila righe di `vw_trigger_functions` sono l'**inventario dei trigger**, e
+  la loro presenza è la condizione normale.
+
+Un elenco scritto nel programma sarebbe una seconda sorgente di verità, e
+divergerebbe alla prima vista nuova: il presidio nuovo nascerebbe **fuori** dal
+giro, in silenzio, cioè lo stesso guasto che il catalogo chiude.
+
+⭐ E non è un'ipotesi: la **trentaduesima** vista è nata il 2026-09-09, lo stesso
+giorno in cui il brief ne contava trentuno e argomentava proprio così.
+
+### Le due regole che lo tengono onesto, e sono le stesse del §2
+
+| Regola | Dove vive |
+|---|---|
+| Senza un motivo scritto la riga non si aggiunge | **vincolo del database** (`nota` non vuota) |
+| Una vista nuova non può nascere fuori dal catalogo | **test** (`test-catalogo-presidi-v1.sql`, verso 1) |
+| Una riga che non trova più la sua vista va tolta | **test** (stesso file, verso 2) |
+
+⚠️ **E il debito si tiene con un registro, non con una soglia.** La tentazione è
+una colonna «oggi sono 508, l'allarme scatta a 509». Un numero vede solo il
+totale ed è cieco sullo **scambio**: un debito saldato e un difetto nuovo
+comparsi lo stesso giorno lasciano il conteggio fermo. È il §C5 di
+`analisi-presidi-percorso-storto.md` — *«un numero scritto a mano che
+invecchia»* — applicato a un presidio invece che a un commento.
+
+⛔ **Attenzione al verso.** Dove la vista porta una colonna di stato, il catalogo
+dichiara l'unico stato **atteso** e l'allarme è tutto il resto — non l'elenco
+degli stati di allarme. Con la seconda forma uno stato *nuovo*, aggiunto domani,
+non sarebbe nell'elenco e cadrebbe nel **silenzio**: è l'unico verso in cui un
+presidio marcisce senza che nessuno se ne accorga.
+
+---
+
 ## 3. I presidi che esistono oggi
 
 ### 3.1 Riferimenti morti nelle funzioni del database
