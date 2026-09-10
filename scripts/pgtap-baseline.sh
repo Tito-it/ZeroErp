@@ -299,6 +299,7 @@ while IFS= read -r f; do
   printf '\r  %d/%d  %-58.58s' "$n" "$TOT" "$rel" >&2
 
   out=$(timeout 90 "$SCRIPT_DIR/testpgtap.sh" "db/$rel" 2>&1)
+  esito=$?
   echo "$out" | grep -q "Result: PASS" && continue
 
   # Il primo rosso si conserva per intero: se alla fine sono rossi TUTTI, e'
@@ -323,7 +324,33 @@ while IFS= read -r f; do
   #   volta e poi ci si fida. Qui l'etichetta sbagliata non l'avrebbe scritta
   #   una persona: la produceva lo strumento, in silenzio, solo fuori da una
   #   macchina italiana.
-  if echo "$out" | grep -q "key_selector"; then
+  # ⛔ IL TIMEOUT VA CHIESTO A `timeout`, NON DEDOTTO DALL'OUTPUT — ed e' il
+  #   terzo esito, non un rosso. `timeout` esce **124** quando uccide il figlio,
+  #   e fino al 2026-09-10 quell'exit code non lo leggeva nessuno: si guardava
+  #   solo se l'output conteneva «Result: PASS». Un file ucciso a meta' non ce
+  #   l'ha, quindi finiva fra i rossi — e siccome non contiene nemmeno
+  #   «ERRORE:», usciva etichettato **ASSERZIONE**.
+  #
+  # ⚠️ Cioe' esattamente il difetto che il commento qui sopra descrive per
+  #   `lc_messages`, per una causa che quel commento non copre: *un file che non
+  #   ha eseguito nemmeno un'asserzione registrato come se ne avesse fallita
+  #   una*. La sua copertura vale **zero**, non «una in meno».
+  #
+  # ⭐ E il danno vero e' l'INSTABILITA': un file che gira attorno alla soglia
+  #   entra ed esce dall'elenco a seconda del carico della macchina, quindi
+  #   compare come «regressione nuova» in una corsa e sparisce in quella dopo.
+  #   Successo davvero (2026-09-10): `vendite/test-documento-lineage-v1.sql`
+  #   passa in 111 s da solo — `Result: PASS` — e in baseline veniva ucciso a
+  #   90 s e contato fra i rossi. Non era in nessuna delle due baseline, quindi
+  #   ogni corsa lo vedeva come regressione mai vista prima.
+  #
+  # ⛔ Un TIMEOUT non si mette a tacere registrandolo in baseline come gli
+  #   altri: un test che non finisce va reso economico o va alzata la soglia
+  #   **per decisione**. L'etichetta serve a far vedere QUALE delle due domande
+  #   si ha davanti. Stessa forma del terzo esito `SENZA_MATERIA` degli smoke.
+  if [ "$esito" -eq 124 ]; then
+    causa="TIMEOUT"
+  elif echo "$out" | grep -q "key_selector"; then
     causa="SORGENTE_POLIMORFA"
   elif echo "$out" | grep -qE "(ERRORE|ERROR):"; then
     causa="ERRORE_FIXTURE"

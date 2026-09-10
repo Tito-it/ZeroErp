@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: Lineage documenti vendite (Step 5).
---   Oggetti: vendite.vw_documento_lineage_nodi, vw_documento_lineage_archi,
+--   Oggetti: vw_documento_lineage_nodi, vw_documento_lineage_archi,
 --            vw_documento_lineage, vendite.fn_documento_lineage.
 --   Brief: brief-db-lineage-documenti-vendite §5.
 --
@@ -121,6 +121,50 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+-- ============================================================
+-- ⭐ IL GRAFO SI LEGGE UNA VOLTA SOLA — e non e' un'ottimizzazione cosmetica.
+--
+-- ⛔ Il difetto, misurato il 2026-09-10. Le tre viste di lineage costano ~10
+--   volte tanto quando le legge l'APPLICAZIONE invece dell'owner: sotto RLS con
+--   il contesto operatore una scansione di `vw_documento_lineage_archi` passa da
+--   **38 ms a 430 ms**, e il summary da 40 a 357. Questo file le rilegge decine
+--   di volte — alcune dentro `EXISTS` correlati, che le rivalutano **riga per
+--   riga** su 465 nodi. Risultato: **109 secondi** contro l'unico secondo che
+--   costa lo stesso file girato come owner.
+--
+-- ⚠️ E il danno non era la lentezza, era l'INSTABILITA': `pgtap-baseline.sh`
+--   uccide ogni file a **90 secondi**, quindi questo entrava e usciva
+--   dall'elenco dei rossi a seconda del carico della macchina, comparendo come
+--   «regressione nuova» in una corsa e sparendo in quella dopo. E non essendo in
+--   nessuna baseline, ogni corsa lo vedeva per la prima volta.
+--
+-- ⭐ Perche' materializzare NON indebolisce il test: le tre tabelle si popolano
+--   **dopo** aver preso il contesto operatore, quindi contengono esattamente le
+--   righe che la RLS lascia vedere a quell'operatore — le stesse su cui le
+--   asserzioni giravano prima. Cambia quante volte si paga il filtro, non cosa
+--   si vede.
+--
+-- ⛔ L'ECCEZIONE, ed e' una sola: il **test 38** («nessun arco esce dal
+--   perimetro RLS») continua a interrogare le VISTE VIVE. E' l'unico che non
+--   asserisce una proprieta' del grafo ma il comportamento del **filtro**:
+--   chiederlo a una copia vorrebbe dire misurare la RLS attraverso una tabella
+--   che la RLS non ha, cioe' un presidio che si auto-neutralizza.
+--
+-- ⚠️ Chi aggiunge un'asserzione qui dentro si fermi un attimo: se parla del
+--   GRAFO usa `_lin_*`; se parla del PERIMETRO usa la vista.
+-- ============================================================
+CREATE TEMP TABLE _lin_nodi    AS SELECT * FROM vendite.vw_documento_lineage_nodi;
+CREATE TEMP TABLE _lin_archi   AS SELECT * FROM vendite.vw_documento_lineage_archi;
+CREATE TEMP TABLE _lin_summary AS SELECT * FROM vendite.vw_documento_lineage;
+
+-- Gli indici servono agli EXISTS correlati, che sono il grosso del costo.
+CREATE INDEX ON _lin_nodi  (tipo_id, uid);
+CREATE INDEX ON _lin_archi (from_tipo_id, from_uid);
+CREATE INDEX ON _lin_archi (to_tipo_id, to_uid);
+ANALYZE _lin_nodi;
+ANALYZE _lin_archi;
+ANALYZE _lin_summary;
 
 SELECT plan(47);
 
@@ -240,18 +284,18 @@ SELECT is(
 --    un ordinamento silenzioso nel root. Le due asserzioni vanno lette
 --    insieme: l'elenco dice CHI esiste, il rango dice QUANTO conta.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S','T','U')),
     0, 'archi: arco sempre in A..H,R,N,S,T,U');
 
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco = 'R'
         AND to_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'RESO_VENDITA')),
     0, 'archi: arco R punta sempre a un nodo RESO_VENDITA');
 
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_nodi
+    (SELECT count(*)::int FROM _lin_nodi
       WHERE pipeline_rank NOT BETWEEN 0 AND 5),
     0, 'nodi: pipeline_rank sempre in 0..5');
 
@@ -261,7 +305,7 @@ SELECT ok(
 
 -- ---- 17..20: invarianti sulla summary/frontiera --------------------------
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage WHERE frontiera_tipo_id IS NULL),
+    (SELECT count(*)::int FROM _lin_summary WHERE frontiera_tipo_id IS NULL),
     0, 'summary: frontiera sempre valorizzata (il nodo stesso e'' candidato)');
 
 -- Un RESO non e' mai raggiunto via forward (arco R escluso), quindi non e' mai
@@ -274,18 +318,18 @@ SELECT is(
 --   vera lo stesso, perche' parla di chi PUNTA a un reso, non di dove va il reso:
 --   l'arco S porta verso una FATTURA, e nessun arco forward porta a un reso.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage
+    (SELECT count(*)::int FROM _lin_summary
       WHERE frontiera_tipo_id = (SELECT id FROM config.sorgenti WHERE codice_interno = 'RESO_VENDITA')
         AND tipo_id           <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'RESO_VENDITA')),
     0, 'summary: RESO mai frontiera di un nodo non-reso (forward)');
 
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage
+    (SELECT count(*)::int FROM _lin_summary
       WHERE n_discendenti_attivi > 0 AND frontiera_fase = 'CHIUSO'),
     0, 'invariante: discendenti attivi -> frontiera non CHIUSO');
 
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage
+    (SELECT count(*)::int FROM _lin_summary
       WHERE fase <> 'CHIUSO' AND NOT is_abortito AND frontiera_fase = 'CHIUSO'),
     0, 'invariante: nodo attivo -> frontiera attiva');
 
@@ -334,7 +378,7 @@ END;
 -- ⭐ L'arco N sta fra due nodi dello STESSO tipo: e' il primo del grafo, e la
 --    coppia di controlli qui sotto e' quello che impedisce che diventi altro.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco = 'N'
         AND (   from_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA')
              OR to_tipo_id   <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA'))),
@@ -343,7 +387,7 @@ SELECT is(
 -- Un arco X->X non direbbe una genealogia, direbbe un ciclo. Il traversal lo
 -- scarterebbe comunque (ha il set dei visitati), ma la vista non deve produrlo.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco = 'N' AND from_tipo_id = to_tipo_id AND from_uid = to_uid),
     0, '28) archi: l''arco N non e'' mai un cappio (nessun documento rettifica se stesso)');
 
@@ -351,7 +395,7 @@ SELECT is(
 --    un domani nascesse un terzo ramo di ritorno senza entrare nell'elenco,
 --    questo test lo direbbe subito — ed e' l'unico posto che lo direbbe.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE is_ramo_inverso <> (arco IN ('R','N'))),
     0, '29) archi: is_ramo_inverso e'' true esattamente per i rami di ritorno (R, N)');
 
@@ -372,7 +416,7 @@ SELECT is(
 --    scriverlo: zero fatture con frontiera diversa da se'.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
+       FROM _lin_summary s
       WHERE s.tipo_id = (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA')
         AND NOT (s.frontiera_tipo_id = s.tipo_id AND s.frontiera_uid = s.uid)),
     0, '30) summary: una fattura e'' sempre frontiera di se stessa (l''arco N resta fuori dal forward)');
@@ -380,7 +424,7 @@ SELECT is(
 -- La natura e' un asse delle sole fatture: sugli altri sette rami dei nodi
 -- deve restare NULL. Un valore li' vorrebbe dire che un ramo l'ha copiata.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_nodi
+    (SELECT count(*)::int FROM _lin_nodi
       WHERE natura_doc_codice_interno IS NOT NULL
         AND tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA')),
     0, '31) nodi: la natura e'' valorizzata solo sui nodi FATTURA');
@@ -388,14 +432,14 @@ SELECT is(
 -- Spot-check sui dati reali, protetto da skip come i due del §5: senza una
 -- nota di credito in archivio non c'e' niente da misurare.
 SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM vendite.vw_documento_lineage_archi WHERE arco = 'N') THEN
+    WHEN EXISTS (SELECT 1 FROM _lin_archi WHERE arco = 'N') THEN
         is(
             (SELECT count(*)::int
-               FROM vendite.vw_documento_lineage_archi a
+               FROM _lin_archi a
               WHERE a.arco = 'N'
                 AND a.to_natura_doc_codice_interno   = 'NOTA_CREDITO'
                 AND a.from_natura_doc_codice_interno IS DISTINCT FROM 'NOTA_CREDITO'),
-            (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi WHERE arco = 'N'),
+            (SELECT count(*)::int FROM _lin_archi WHERE arco = 'N'),
             '32) §44: ogni arco N va da un documento non-NC a una NOTA DI CREDITO'
         )
     ELSE
@@ -413,13 +457,13 @@ END;
 --    diventa rosso se qualcuno aggiunge S ai rami di ritorno «per simmetria».
 
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco = 'S'
         AND from_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'RESO_VENDITA')),
     0, '33) archi: l''arco S parte sempre da un nodo RESO_VENDITA');
 
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco = 'S'
         AND to_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA')),
     0, '34) archi: l''arco S arriva sempre a un nodo FATTURA');
@@ -442,7 +486,7 @@ SELECT is(
 --    espone in LEFT JOIN. Con <> una natura a NULL darebbe NULL, la riga non
 --    verrebbe contata e il test passerebbe PROPRIO sul caso peggiore.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE arco = 'S'
         AND to_natura_doc_codice_interno IS DISTINCT FROM 'NOTA_CREDITO'),
     0, '35) archi: l''arco S arriva sempre a una NOTA DI CREDITO');
@@ -450,8 +494,8 @@ SELECT is(
 -- ⭐ Il presidio della decisione «S non e' un ramo di ritorno», lato discendenti:
 --    e' cio' che fa smettere al reso di essere una foglia.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage s
-      WHERE EXISTS (SELECT 1 FROM vendite.vw_documento_lineage_archi a
+    (SELECT count(*)::int FROM _lin_summary s
+      WHERE EXISTS (SELECT 1 FROM _lin_archi a
                      WHERE a.arco = 'S' AND a.from_tipo_id = s.tipo_id AND a.from_uid = s.uid)
         AND NOT s.is_transitato),
     0, '36) summary: un reso con arco S non e'' piu'' una foglia (is_transitato)');
@@ -467,8 +511,8 @@ SELECT is(
 --    o abortite, per le quali il reso resta legittimamente frontiera di se'.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
-       JOIN vendite.vw_documento_lineage_archi a
+       FROM _lin_summary s
+       JOIN _lin_archi a
          ON a.arco = 'S' AND a.from_tipo_id = s.tipo_id AND a.from_uid = s.uid
       WHERE a.to_fase <> 'CHIUSO'
         AND NOT COALESCE(a.to_is_abortito, false)
@@ -516,7 +560,7 @@ SELECT is(
 --    diversa in ogni lista. Il 29) non lo direbbe: quello confronta la
 --    proprieta' con l'elenco, e se cambiassero INSIEME resterebbe verde.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi a
+    (SELECT count(*)::int FROM _lin_archi a
       WHERE a.arco = 'T'
         AND (a.from_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'RESO_VENDITA')
           OR a.to_tipo_id   <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')
@@ -542,11 +586,11 @@ SELECT is(
 --    asserisce zero. Non e' una riproduzione del caso del reso 24.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
+       FROM _lin_summary s
       WHERE s.frontiera_tipo_id IS NOT NULL
         AND s.frontiera_natura_doc_codice_interno IS DISTINCT FROM
             (SELECT n.natura_doc_codice_interno
-               FROM vendite.vw_documento_lineage_nodi n
+               FROM _lin_nodi n
               WHERE n.tipo_id = s.frontiera_tipo_id
                 AND n.uid     = s.frontiera_uid)),
     0, '40) summary: frontiera_natura_doc_codice_interno e'' la natura del nodo di FRONTIERA');
@@ -562,7 +606,7 @@ SELECT is(
 --    ritorno, che nella inc non entrano mai: un'eccezione «tanto non serve» e'
 --    il buco da cui passa il prossimo arco senza rango.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+    (SELECT count(*)::int FROM _lin_archi
       WHERE rango_origine IS NULL),
     0, '41) archi: ogni arco ha un rango_origine dichiarato');
 
@@ -587,7 +631,7 @@ SELECT is(
        JOIN vendite.ddt      d  ON d.id::text = cs.sorgente_uid
        JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
       WHERE NOT EXISTS (
-              SELECT 1 FROM vendite.vw_documento_lineage_archi a
+              SELECT 1 FROM _lin_archi a
                WHERE a.arco     = 'U'
                  AND a.from_uid = d.id::text
                  AND a.to_uid   = cm.id::text)),
@@ -624,15 +668,15 @@ SELECT is(
 --    di oggi e' proprio la ragione per cui il difetto era invisibile.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
-       JOIN vendite.vw_documento_lineage_archi ar
+       FROM _lin_summary s
+       JOIN _lin_archi ar
          ON  ar.to_tipo_id   = s.tipo_id      AND ar.to_uid   = s.uid
          AND ar.from_tipo_id = s.root_tipo_id AND ar.from_uid = s.root_uid
          AND NOT ar.is_ramo_inverso
       WHERE s.root_tipo_id IS NOT NULL
         AND EXISTS (
               SELECT 1
-                FROM vendite.vw_documento_lineage_archi a2
+                FROM _lin_archi a2
                WHERE a2.to_tipo_id = s.tipo_id AND a2.to_uid = s.uid
                  AND NOT a2.is_ramo_inverso
                  AND (CASE WHEN a2.ruolo = 'ROOT' THEN 0
@@ -660,10 +704,10 @@ SELECT is(
 --    il 44 dice che il root e' una riga vera, il 43 che e' la riga giusta.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
+       FROM _lin_summary s
       WHERE s.root_tipo_id IS NOT NULL
         AND NOT EXISTS (
-              SELECT 1 FROM vendite.vw_documento_lineage_archi a
+              SELECT 1 FROM _lin_archi a
                WHERE a.to_tipo_id   = s.tipo_id      AND a.to_uid   = s.uid
                  AND a.from_tipo_id = s.root_tipo_id AND a.from_uid = s.root_uid
                  AND NOT a.is_ramo_inverso)),
@@ -682,14 +726,14 @@ SELECT is(
 -- ⚠️ Seed-agnostici: su un DB vuoto contano zero e asseriscono zero.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
+       FROM _lin_summary s
        JOIN config.sorgenti so ON so.id = s.tipo_id
       WHERE s.tipo_codice_interno IS DISTINCT FROM so.codice_interno),
     0, '45) summary: tipo_codice_interno e'' il codice_interno di tipo_id');
 
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage s
+       FROM _lin_summary s
        JOIN config.sorgenti so ON so.id = s.frontiera_tipo_id
       WHERE s.frontiera_tipo_id IS NOT NULL
         AND s.frontiera_tipo_codice_interno IS DISTINCT FROM so.codice_interno),
@@ -725,7 +769,7 @@ SELECT is(
 --    mostrare il contatore nudo su tutte le altre.
 SELECT is(
     (SELECT count(*)::int
-       FROM vendite.vw_documento_lineage_nodi n
+       FROM _lin_nodi n
        JOIN config.sorgenti s ON s.id = n.tipo_id AND s.codice_interno = 'FATTURA'
        JOIN vendite.fatture f ON f.id::text = n.uid
       WHERE n.codice IS DISTINCT FROM

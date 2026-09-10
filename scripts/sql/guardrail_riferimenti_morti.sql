@@ -4,6 +4,10 @@
 --   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
 --
 -- FALLISCE (RAISE EXCEPTION) se trova:
+--   A-bis) una funzione che plpgsql_check NON HA POTUTO controllare
+--      (classe NON_MISURATO). ⭐ Va per prima: se lo strumento non ha
+--      misurato, (A) non sa dire quali difetti ci sono e (B) vedrebbe ogni
+--      voce del registro come «rientrata». Dal 2026-09-10, brief §9.3
 --   A) un difetto REALE/ORFANA non presente nel registro del debito
 --      (dbops.riferimenti_morti_esenzioni)
 --   B) una voce del registro che non corrisponde piu' a nessun difetto:
@@ -39,9 +43,11 @@
 
 DO $guardrail$
 DECLARE
-    v_da_sanare  text;
-    v_rientrati  text;
-    v_dati       text;
+    v_da_sanare    text;
+    v_rientrati    text;
+    v_dati         text;
+    v_non_misurate text;
+    v_quante       bigint;
 BEGIN
     -- ── (C) prima, perche' non dipende dall'estensione ──────────────
     SELECT string_agg(sc.codice_interno || ' -> ' || sc.schema_tabella || '.' || sc.nome_tabella,
@@ -75,6 +81,44 @@ BEGIN
     --    viste la pagherebbe due volte.
     CREATE TEMP TABLE tmp_misura ON COMMIT DROP AS
     SELECT * FROM dbops.fn_check_funzioni_riferimenti_morti();
+
+    -- ── (A-bis) 🔴 LO STRUMENTO HA MISURATO DAVVERO? ────────────────
+    --   Va PRIMA di (A) e (B), e non e' un ordine estetico: se
+    --   plpgsql_check ha sollevato invece di rispondere, (A) non sa dire
+    --   quali difetti ci sono e (B) vedrebbe OGNI voce del registro come
+    --   «rientrata» — due risposte sbagliate con l'aria di essere giuste.
+    --
+    -- ⛔ Il caso e' successo il 2026-09-10: su dbdev plpgsql_check ha fallito
+    --   su quasi ogni funzione e la misura ha prodotto 779 righe su 780. Fino
+    --   al changeSet 20260910-36 quelle uscivano come REALE, quindi (A)
+    --   sollevava dicendo «779 riferimenti morti»: la diagnosi sbagliata, e
+    --   779 cose da cercare che non esistono.
+    --
+    -- ⭐ La regola era gia' qui sopra, per l'estensione ASSENTE: «NON si passa
+    --   in silenzio: un guardrail che non misura e non lo dice e' peggio di
+    --   uno assente». Questo e' lo stesso caso — l'estensione c'e' e si rompe —
+    --   e fino a oggi aveva l'esito opposto.
+    SELECT count(*),
+           string_agg(x.riga, E'\n  ' ORDER BY x.riga)
+      INTO v_quante, v_non_misurate
+      FROM (
+        SELECT DISTINCT m.schema_nome || '.' || m.funzione || '  ->  ' || m.esito AS riga
+          FROM tmp_misura m
+         WHERE m.classe = 'NON_MISURATO'
+      ) x;
+
+    IF v_non_misurate IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'plpgsql_check NON HA POTUTO CONTROLLARE % funzioni:\n  %\n\n'
+          'Non e'' un elenco di difetti: e'' lo STRUMENTO che ha sollevato invece di '
+          'rispondere, e quindi di quelle funzioni non si sa niente. Il guardrail si '
+          'ferma qui di proposito: dire «nessun riferimento morto» dopo aver mancato '
+          'la misura sarebbe la cosa peggiore che possa fare. '
+          'Da guardare: la versione di plpgsql_check contro quella di PostgreSQL, e il '
+          'log del server — se il processo e'' MORTO (segnale 11) il messaggio non '
+          'arriva nemmeno qui. Brief: brief-db-un-destinatario-per-i-presidi §9.3.',
+          v_quante, v_non_misurate;
+    END IF;
 
     -- ── (A) difetti non registrati ──────────────────────────────────
     SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)

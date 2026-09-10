@@ -699,6 +699,11 @@ questo paragrafo. Nessun lavoro sprecato e nessuna riga che solleva.
 
 ### 9.0 🔵 Che cosa serve dal team DB, in ordine
 
+> ✅ **Risposto al §10** (team DB, 2026-09-10): **2 e 3 chiuse e applicate**; la
+> **1 cambia diagnosi** — i 779 non erano riferimenti morti, ed è riparato ciò
+> che si poteva riparare. La tabella qui sotto resta com'è scritta: è il
+> documento di chi ha chiesto.
+
 | # | Cosa | Che cosa sblocca | Dove |
 | --- | --- | --- | --- |
 | **1** | 🔴 Trovare perché leggere `dbops.fn_check_funzioni_riferimenti_morti` **uccide il backend PostgreSQL** (il log del server ha il segnale) | il pannello dei presidi torna sicuro da aprire; la corsia **settimanale** del digest si può accendere — e con lei il **battito**, che oggi non c'è | §9.3 |
@@ -956,3 +961,162 @@ chiudere una connessione sana è un effetto che nessuno si aspetta da una
 lettura), e più destinatari separati da virgola diventano destinatario + copie
 invece di finire interi in un campo solo — un invio che sarebbe fallito dentro
 la coda email, cioè tardi e per caso.
+
+---
+
+## 10. 🔵 Risposta DB — le tre richieste del §9, 2026-09-10
+
+> **Chi risponde:** team DB (`dev/db-tid`). **Stato:** richieste **2 e 3
+> CHIUSE e applicate**; la **1 cambia diagnosi** — i 779 non erano difetti, e la
+> parte riparabile è riparata. Resta aperta la causa dei segfault, che non è di
+> questo cantiere.
+>
+> Applicato su dbdev alle 23:12: `20260910-35`, `-36`, `-37`. `dbops.presidi`
+> ha **33 righe**, 5 `DEFINER`, 1 in `maintenance`. pgTAP del catalogo 11/11,
+> `test-riferimenti-morti-v1.sql` verde con `plan(6)`.
+
+### 10.1 🟠 Richiesta 2 — chiusa
+
+`perimetro` → **`DEFINER`** su `dbops.vw_riferimenti_morti_rientrati` e
+`..._da_sanare`, changeSet **`20260910-35`** (mirror ri-ancorato sullo stesso
+CSV: il `-08` è mergiato e non si tocca).
+
+Il ragionamento del §9.4 regge, e con la §10.3 acquista un secondo effetto: su
+`DEFINER` il backend **non elenca**, quindi sparisce il percorso *invoker* che
+era morto tre volte su tre.
+
+### 10.2 🔵 Richiesta 3 — chiusa, con la lettura che il §8.4 chiedeva a noi
+
+`maintenance.vw_job_run_da_guardare` è a catalogo. Valori come proposti, e
+verificati uno per uno contro il `COMMENT` della vista — «DEVE restare VUOTA»
+→ `ZERO`, «Niente RLS» → `LIBERO`, la colonna `motivo` dice *perché* la riga è
+lì e ognuna è da guardare → nessun filtro.
+
+⭐ **Il §8.4 chiedeva al team DB di contare, prima, che cosa sarebbe entrato nel
+perimetro del test 2 allargandolo a `maintenance`. Contate: in quello schema
+c'è QUELLA SOLA vista.** Nessun caso da decidere, nessun rosso: lo schema si
+chiude in un colpo, e il test resta verde.
+
+### 10.3 🔴 Richiesta 1 — la diagnosi cambia: **i 779 non erano difetti**
+
+Il §9.3 e il §9.4 leggono il numero 779 come una popolazione di riferimenti
+morti. Non lo era, e si dimostra dal codice senza eseguire niente.
+
+`dbops.fn_check_funzioni_riferimenti_morti` avvolge ogni chiamata a
+`plpgsql_check_function` in un `EXCEPTION WHEN OTHERS` che scrive
+`error:CHECK-KO:` + il `SQLERRM`. Poi classifica **per forma del messaggio**:
+
+| ramo | pretende |
+| --- | --- |
+| `FP_RAMO_ALTRA_TABELLA` | più tabelle sul trigger |
+| `FP_TRANSITION_TABLE` | `^error:42P01:` |
+| `FP_SQL_DINAMICO` | `^error:42601:` + `:EXECUTE:` |
+| `FP_VARIADIC` | `^error:42883:` |
+| **`ELSE`** | **→ `REALE`** |
+
+⛔ `error:CHECK-KO:` non corrisponde a **nessuno** dei quattro: cadeva
+nell'`ELSE`. ⇒ **Ogni funzione che non si è potuta controllare usciva riportata
+come riferimento morto.** 779 su 780 funzioni plpgsql, con un registro del
+debito di **due** voci e lo stesso controllo verde in CI.
+
+⭐ **E il crash conferma la diagnosi invece di essere un capitolo a parte**: un
+`EXCEPTION WHEN OTHERS` cattura qualunque errore SQL. Se il processo muore lo
+stesso, quello che muore è **dentro l'estensione in C** — nessun gestore
+PL/pgSQL può intercettare un segfault. Su alcune funzioni `plpgsql_check`
+*errava* (i 779), su altre *crollava* (i quattro segnali 11).
+
+**Riparato**, e su tutti e quattro i lati del presidio:
+
+| Dove | Cosa |
+| --- | --- |
+| `20260910-36` | la forma `error:CHECK-KO:` esce come classe **`NON_MISURATO`**, non più `REALE` |
+| `20260910-37` | `vw_riferimenti_morti_da_sanare` **include** la classe nuova |
+| `scripts/sql/guardrail_riferimenti_morti.sql` | controllo **(A-bis)**, che solleva **prima** di (A) e (B) |
+| `db/pgtap/dbops/test-riferimenti-morti-v1.sql` | test **1-bis**, `plan` da 5 a 6 |
+| `scripts/sql/check_funzioni_riferimenti_morti.sql` | la lente lo mostra per primo |
+
+⛔ **Perché la vista deve VEDERE la classe nuova, e non filtrarla via.**
+Togliere quelle righe le farebbe sparire, e la vista che «deve restare vuota»
+tornerebbe **vuota** — cioè direbbe «nessun riferimento morto» proprio quando
+nessuno ha potuto guardare. Sarebbe stato peggio del difetto di partenza: i 779
+falsi almeno si vedevano. ⭐ E la conta anche il **digest**, per cui quella
+vista è un `REGISTRO` a cadenza settimanale: una vista che torna zero perché lo
+strumento è rotto è esattamente ciò che il digest è nato per non fare.
+
+⭐ **La regola era già scritta, nello stesso file.**
+`guardrail_riferimenti_morti.sql` gestisce già l'estensione **assente**, e la
+gestisce bene: *«NON si passa in silenzio: un guardrail che non misura e non lo
+dice è peggio di uno assente»*. Estensione assente → rosso parlante; estensione
+presente che si rompe → 779 falsi difetti. Stesso principio, due esiti opposti.
+È anche il §6 punto 5 della guida dei presidi: *fai fallire il controllo quando
+non può misurare*.
+
+⚠️ **Limite dichiarato**: il ramo `NON_MISURATO` è scritto, compila, e il test
+1-bis ne asserisce l'**assenza** — ma da quando esiste **non si è mai acceso**,
+perché lo strumento ha ripreso a funzionare (§10.4). Che non produca falsi
+positivi è provato; che si accenda quando deve, no.
+
+### 10.4 ⭐ Il crash: due ipotesi ELIMINATE, e una sola resta
+
+Dopo il riavvio della macchina (**19:18**, riavvio del sistema intero — non del
+solo servizio) `test-riferimenti-morti-v1.sql` è tornato **verde**: la funzione
+ha ricontrollato tutte e **780** le funzioni senza sollevare e senza morire.
+
+Quel fatto elimina due cose, perché **il software non è cambiato**:
+
+| Ipotesi | Verificato dopo il riavvio | Esito |
+| --- | --- | --- |
+| incompatibilità `plpgsql_check` ↔ PostgreSQL | **2.10** e **18.6**, le stesse di prima | ⛔ **esclusa** |
+| una funzione «velenosa» entrata alle 17:24 | `vendite.trgfn_attivita_fatturabili_guard_ba_coerenza` è ancora lì, stessi 2345 caratteri, stesso trigger | ⛔ **esclusa** |
+| stato della **macchina** | l'unica variabile che è cambiata | 🔴 **resta** |
+
+**Il fatto datato che la sostiene**, e va letto come indizio, non come prova:
+
+| | |
+| --- | ---: |
+| RAM totale della macchina | **5,2 GiB** |
+| `shared_buffers` | 1 GiB |
+| `maintenance_work_mem` | 512 MiB |
+| `autovacuum_work_mem` | `-1` → eredita i 512 MiB, **× 3 worker** |
+
+2,5 GiB impegnabili prima di qualunque query, su una macchina che ospita anche
+il backend Django. ⭐ E il **quinto** processo morto, alle 18:34, è proprio un
+**worker di autovacuum** — quello che si prende i 512 MiB, e che
+`plpgsql_check` non lo esegue affatto.
+
+⚠️ **Non è una prova, e va detto**: la memoria esaurita di solito dà `SIGKILL`
+(segnale 9), non `SIGSEGV` (11). Ma un'estensione in C che non controlla una
+`malloc` fallita dereferenzia NULL, e quello è segnale 11 — spiegherebbe tutti e
+cinque i morti con **una** causa invece di due coincidenze.
+⚠️ E il log del kernel non aiuta: `kernel.print-fatal-signals = 0`, quindi i
+segfault dello spazio utente **non vengono registrati affatto**. Il silenzio lì
+era atteso e non significa niente. Nessun errore EDAC/MCE: la memoria non
+segnala guasti hardware.
+
+⇒ **Cosa resta da fare, e non è di questo cantiere**: guardare la pressione di
+memoria nella finestra 17:30–19:20, e decidere se i parametri del server sono
+tarati per una macchina da 5 GiB. Finché non è chiuso, `NON_MISURATO` è la rete
+che impedisce al presidio di **mentire** la prossima volta che succede.
+
+### 10.5 ⛔ Che cosa il team DB NON ha fatto, e perché
+
+* **Non ha riprodotto il crash.** Ogni riproduzione manda il cluster in crash
+  recovery e butta giù tutte le connessioni, non solo la propria. Il §9.3 aveva
+  già deciso così, e la decisione regge.
+* **Non ha toccato `vw_riferimenti_morti_rientrati`.** Guarda le voci del
+  *registro* che non trovano più un difetto, e nel registro non entrano né
+  entreranno voci `NON_MISURATO`: quelle non si registrano come debito, si
+  riparano nello strumento.
+* **Non ha spento nessuna riga** (§9.3, richiesta 1-bis): `attivo = f` era il
+  tampone se la causa non si fosse trovata. Lo strumento funziona, il tampone
+  non serve — e una riga spenta è un controllo che non presidia.
+* **Le tre righe 🔶 del §7.4** restano da confermare quando i loro cantieri le
+  toccheranno (`vw_af_senza_giro`, `vw_run_senza_attore`,
+  `vw_processi_dominio_su_pgagent`). Sono dichiarate nelle note del catalogo:
+  è debito scritto, non nascosto.
+
+*Risposta DB del 2026-09-10. Le misure sono letture del catalogo PostgreSQL e
+del database di sviluppo di quel giorno: valgono come controesempio, non come
+motivo. Il motivo sta sul modello, ed è che un presidio che non sa distinguere
+«non ho trovato difetti» da «non ho potuto guardare» dice la cosa più pericolosa
+che un presidio possa dire.*
