@@ -20,6 +20,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
+import { useAutocompleteRefineHint } from '../composables/useAutocompleteRefineHint'
 import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
 import AutoComplete from 'primevue/autocomplete'
@@ -97,6 +98,13 @@ function _buildLookupParams(query) {
   return params
 }
 
+// ⚠️ L'elenco degli articoli e' TAGLIATO dal tetto del lookup (50 lato
+//    repository, 20 di default dalla view), e fino al 2026-09-10 chi guardava
+//    non aveva modo di saperlo: il backend dichiarava `troncato` e a video non
+//    lo leggeva nessuno. Il footer lo dice, con la stessa forma degli altri
+//    quattro lookup ricchi — la condizione vive nel composable, non qui.
+const { mostrati, daAffinare, onResponse } = useAutocompleteRefineHint()
+
 const ac = useServerAutocomplete(async (query) => {
   return await lookupArticoli(_buildLookupParams(query))
 }, {
@@ -104,7 +112,8 @@ const ac = useServerAutocomplete(async (query) => {
   transform: (res) => (res.data.data.results ?? res.data.data ?? []).map(r => ({
     ...r,
     _display: `${r.codice} — ${r.descrizione}`
-  }))
+  })),
+  onResponse,
 })
 
 function buildDisplay(r) {
@@ -138,5 +147,11 @@ function onClear() {
     :placeholder="placeholder || t('catalogo.search_placeholder')"
     :disabled="disabled"
     dropdown
-  />
+  >
+    <template #footer v-if="daAffinare">
+      <div class="app-lookup-hint">
+        {{ t('common.refine_hint_troncato', { shown: mostrati }) }}
+      </div>
+    </template>
+  </AutoComplete>
 </template>

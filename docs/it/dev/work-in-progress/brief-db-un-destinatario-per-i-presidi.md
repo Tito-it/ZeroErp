@@ -439,3 +439,173 @@ PostgreSQL e conteggi sulle viste di `dbops` del database di sviluppo, datati
 modello: un presidio senza destinatario non presidia.*
 *Risposta DB del 2026-09-10: la classificazione delle 32 righe è derivata dai
 `COMMENT` delle viste — che sono contratto — non dai conteggi.*
+
+---
+
+## 8. 🔵 Risposta backend — il piano, 2026-09-10
+
+> **Chi risponde:** backend (`dev/backend-tid`). **Stato:** §7.7 punto 0
+> **chiuso**; il resto è un piano in quattro fasi, con due decisioni che chiedono
+> una risposta prima della fase 3.
+
+### 8.0 ✅ Il punto 0 è chiuso — e con una riga che il §7.7 non chiedeva
+
+`error_policies_generated.py` rigenerato: il diff è **una sola voce**,
+`E_PRESIDIO_NON_A_CATALOGO: TECNICO`, più il contatore di intestazione
+(852 → 853). Nessun altro codice: il DB non era avanti su altro, verificato col
+`--check` prima di rigenerare.
+
+⭐ **E serviva anche il ripiego**, che il §7.7 non nomina: il messaggio a
+catalogo porta un `%s` («*Vista di presidio sconosciuta: %s non è dichiarata…*»),
+e `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` pretende per ogni codice
+vivo una frase **senza segnaposto** — è proprio quando gli argomenti non arrivano
+che il ripiego entra in scena, e un `%s` a video sarebbe la cosa peggiore da
+mostrare in un caso già tecnico. Scritta in `error_messages_fallback.py`.
+
+I tre cancelli del contratto errori sono verdi: `test_error_codes_db_policy_guardrail`,
+`test_error_policies_divergenza_db`, `test_error_policies_classi`.
+
+### 8.1 🔵 Le due decisioni, e dove il backend propone di metterle
+
+| Cosa | Dove | Perché |
+| --- | --- | --- |
+| **Cadenza** | `backend/deploy/sveglie.json` | Non è una preferenza: è l'`OnCalendar` che `install-timers.sh` scrive nel timer, e quel file è **la sede unica** già presidiata in CI dal job `validate-deploy`. Due sveglie sullo stesso processo sono ammesse (`run_fatturazione_batch` ne ha due), quindi la cadenza doppia del §5 non chiede niente di nuovo |
+| **Destinatario** | `config.parameters`, valore messo come **override** dalla schermata Impostazioni | È il posto **facile da configurare**: si cambia dall'applicazione, senza toccare un file, senza riavviare un timer, senza un deploy |
+
+⚠️ **La seconda riga diverge dal §7.7a, e la divergenza va guardata perché
+l'argomento del §7.7a è giusto.** Un indirizzo descrive *questa* installazione, e
+in un CSV di catalogo o viaggia su ogni installazione o rende la riga non
+seminabile. ⭐ Ma quell'argomento colpisce il **seed**, non il **valore**: in
+`config.parameters` si semina il *codice* del parametro (che è contratto del
+software, e su ogni installazione ci sta benissimo) mentre il **valore** vive in
+`config.parameter_overrides`, che è dato di macchina e non viene seminato da
+nessuno.
+
+⭐ **Il precedente esiste ed è dello stesso genere** —
+`VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`, il destinatario delle richieste di
+approvazione prezzo, letto con la cascata di scope e **assente = skip
+silenzioso**.
+
+🔴 **E il suo esito è il motivo per cui il parametro va SEMINATO, non lasciato
+nascere da un override** (misurato il 2026-09-10 leggendo il catalogo, non la
+popolazione): `config.parameters` ha **53 righe** e quel codice **non è fra
+quelle** — nessun parametro con `EMAIL` o `RECIPIENT` nel nome. Quindi
+`_risolvi_email_approver` non lo trova mai, `_invia_email_richiesta_approvazione`
+esce sul `if not destinatario` e **quell'email non è mai partita**, da quando
+esiste il workflow L3. L'unica traccia è un `logger.info`.
+
+⚠️ **È esattamente il difetto che questo cantiere combatte, in un altro punto**:
+non un errore, un'ASSENZA. E dice due cose sul digest:
+
+1. il parametro va **a catalogo con `default_value` vuoto** — così compare nella
+   schermata Impostazioni e qualcuno *può* configurarlo. Un parametro che esiste
+   solo se qualcuno indovina il codice non è configurabile: è invisibile;
+2. il «non configurato» del digest non può essere un `logger.info`. Va **in coda
+   al digest stesso** e nell'esito del `registered_job`, dove chi guarda le corse
+   lo vede senza cercarlo.
+
+⛔ **Perché NON `sveglie.json` per il destinatario**, che sarebbe la lettura
+letterale del §7.7a: quel file è **versionato**, e questo repository è
+**pubblico** (GPL v3, su GitHub). Un indirizzo aziendale committato è
+ricognizione regalata e non si ritira più. La cadenza lì ci sta perché non è un
+dato di nessuno.
+
+⚠️ **In entrambi i casi il default è «non configurato», e non è la stessa cosa di
+«spento»**: il digest si calcola comunque e lo **dichiara** in coda
+(«*digest calcolato, nessun destinatario configurato: non è stato inviato*»).
+Un invio che non parte in silenzio sarebbe la prima cosa da non fare in un
+cantiere che nasce contro il silenzio.
+
+### 8.2 Il piano, in quattro fasi
+
+| # | Cosa | File | Il test che lo chiude |
+| --- | --- | --- | --- |
+| **1** | Il **lettore** del catalogo: `dbops.presidi` → righe attive, con natura, `colonna_stato`/`stato_atteso`, `registro`, `perimetro` | `apps/core/db/presidi_repository.py` | Su DB provvisto: il lettore torna le 32 righe e la natura di ciascuna viene dal catalogo, non da un elenco Python |
+| **2** | Il **digest**: tre elenchi (allarmi `ZERO` con righe · registri **cresciuti** · registri stabili in una riga di riepilogo), il conteggio via `dbops.fn_conta_presidio` | `apps/core/services/presidi_digest.py` | ⭐ Il test della forma del §5.5: **un registro stabile non produce invio**. Più: uno stato NUOVO su una vista con `stato_atteso` cade nell'allarme (`IS DISTINCT FROM`), non nel silenzio |
+| **3** | Il **command** + invio: `manage.py digest_presidi`, `registered_job` sul processo `digest_presidi` (id 26), corpo via `config.fn_accoda_email_sistema`, `--secco` per guardarlo senza inviare | `apps/core/management/commands/digest_presidi.py` | Il comando gira a mano e non invia niente se il destinatario non è configurato, dicendolo |
+| **4** | Il **deploy**: voce in `sveglie.json` con `tolleranza_minuti` **valorizzato**, coppia di template systemd con `OnFailure=`, e il **battito** del §7.7b (alla cadenza dei registri il digest parte comunque, con in testa la propria ultima corsa da `maintenance.job_run_log`) | `backend/deploy/sveglie.json`, `deploy/systemd/` | `test-install-timers.sh` (CI, `validate-deploy`) + `test_ogni_processo_del_backend_ha_una_sveglia` |
+
+⭐ **Le fasi 1 e 2 non aspettano nessuna delle due decisioni**: un digest che si
+può guardare a mano è già meglio di niente (§5.2), e senza destinatario si
+calcola lo stesso. Le decisioni servono alla **fase 3**.
+
+### 8.3 ⚠️ Il pannello a video: cosa cambia, e cosa il catalogo ha appena reso visibile
+
+`apps/core/db/processi_repository.py` porta `PRESIDI_PROCESSI`, una tupla di
+**dieci** viste cablate: da oggi è la **seconda sede** di un fatto che il DB ha
+messo a catalogo, ed è esattamente ciò contro cui il §3 argomenta. Confrontate:
+
+| | |
+| --- | --- |
+| Viste `ZERO` a catalogo | **13** |
+| …di cui nel pannello | **8** |
+| 🔴 `ZERO` che **nessuno guarda** | **5** — `vw_operatori_senza_emittente`, `vw_liste_multi_emittente_non_certificate`, `vw_parameter_fk_surrogate_dangling`, `vw_riferimenti_morti_rientrati`, `vw_rls_perimetro_scoperto` |
+| Nel pannello ma **non** `ZERO` | 2 — `vw_run_senza_attore` (LAVORAZIONE) e `maintenance.vw_job_run_da_guardare` |
+
+⇒ **Decisione presa (Tid, 2026-09-10): il pannello mostra le `ZERO` lette dal
+catalogo.** Sono gli allarmi veri — «questa vista deve restare vuota» — e
+`LAVORAZIONE`, `CANCELLO` e `INVENTARIO` non lo sono: una coda con righe è
+lavoro in corso, non un guasto, e un pannello che mostra righe verdi insegna a
+leggere il verde come debito (è l'argomento già scritto nella costante per
+`vw_processi_programmazione`).
+
+⚠️ **Conseguenza da sapere prima**: cinque presidi compaiono, e
+`vw_run_senza_attore` **sparisce** dal pannello — è `LAVORAZIONE`, quindi va nel
+digest, non fra gli allarmi. È una delle tre righe 🔶 che il §7.4 lascia da
+confermare: se il team DB la riclassifica `ZERO`, torna nel pannello senza che
+nessuno tocchi il backend. *È il catalogo che decide, ed è il punto.*
+
+### 8.4 🔵 RICHIESTA AL TEAM DB — iscrivere `maintenance.vw_job_run_da_guardare`
+
+> **Decisione di Tid, 2026-09-10: si iscrive.** Qui sotto la riga pronta, con i
+> valori derivati dal `COMMENT` della vista — non scelti dal backend.
+
+Il pannello la interroga; il catalogo non la conosce. **Non è una svista**: il
+perimetro del test 2 è derivato dagli schemi che il catalogo stesso nomina
+(`SELECT DISTINCT split_part(vista,'.',1) FROM dbops.presidi`), e oggi nomina
+solo `dbops` — quindi `maintenance` è fuori perimetro **per costruzione**, e il
+pgTAP è verde a ragione.
+
+⚠️ **Ma diventa un guasto alla fase 2**, non oggi: appena il conteggio passerà da
+`dbops.fn_conta_presidio`, quella vista solleverà `E_PRESIDIO_NON_A_CATALOGO` —
+il codice che questo stesso brief ha appena introdotto. ⭐ E sarebbe il caso
+migliore: la funzione **rifiuta** invece di rispondere zero, quindi il difetto si
+vede subito. È il test 8 del pgTAP che lo garantisce.
+
+⭐ **La natura non la propone il backend: la dichiara il `COMMENT` della vista**,
+che dice testualmente **«DEVE restare VUOTA»** — ed è il criterio del §3. Lo
+stesso `COMMENT` chiude dicendo *«Chi la vede lo decide il backend con area
+funzionale e profilo, come per le viste di presidio **sorelle**»*: la vista è
+nata per stare accanto alle altre, ed è rimasta fuori solo perché sta in un
+altro schema.
+
+**La riga, pronta per `80_data/sql/dbops/presidi.csv`:**
+
+```csv
+maintenance.vw_job_run_da_guardare,ZERO,NULL,NULL,NULL,NULL,GIORNALIERA,LIBERO,t,NULL,"L ultima corsa di un job e fallita, o e rimasta aperta da oltre un ora, o il job e intermittente (verde adesso ma con rossi negli ultimi sette giorni). DEVE restare vuota. colonna_stato resta NULL DI PROPOSITO: la vista HA una colonna motivo, ma dice PERCHE la riga e li - FALLITA, APERTA DA TROPPO, INTERMITTENTE - e ognuna e comunque da guardare; filtrarla spegnerebbe il presidio, esattamente come su vw_coda_lavori_da_guardare. GIORNALIERA perche un lavoro fallito stanotte va visto stamattina. LIBERO perche la vista non ha RLS: un giro di manutenzione non appartiene a un azienda. Iscritta su richiesta del backend il 2026-09-10: e la decima spia del pannello presidi e l unica che il catalogo non conosceva."
+```
+
+| Campo | Valore | Da dove viene |
+| --- | --- | --- |
+| `natura` | `ZERO` | il `COMMENT` della vista: «DEVE restare VUOTA» |
+| `colonna_stato` / `stato_atteso` | `NULL` | ogni riga è da guardare: `motivo` dice *perché* è lì, non se conta — stesso ragionamento già scritto nella nota di `vw_coda_lavori_da_guardare` |
+| `cadenza` | `GIORNALIERA` | §5: «un lavoro fallito stanotte va visto stamattina» |
+| `perimetro` | `LIBERO` | il `COMMENT`: «Niente RLS» |
+| `registro` / `presidiato_da` | `NULL` | non è un registro di debito e non è un `CANCELLO` |
+
+⚠️ **Effetto collaterale voluto**: iscrivendola, lo schema `maintenance` entra nel
+perimetro del **test 2** — che è derivato dal catalogo, quindi si allarga da sé.
+Da quel momento *ogni* vista di `maintenance` dovrà essere a catalogo. ⭐ Vale la
+pena saperlo prima: se in `maintenance` ci sono viste che presidio non sono, il
+test 2 diventerà rosso e andrà deciso caso per caso. Il backend non le ha
+contate — è una lettura che tocca a chi possiede lo schema.
+
+⛔ **Fino all'iscrizione la fase 2 non passa il conteggio da `fn_conta_presidio`
+per quella vista**: la tiene sul conteggio diretto, con un commento che rimanda a
+questo paragrafo. Nessun lavoro sprecato e nessuna riga che solleva.
+
+### 8.5 ⛔ Cosa questo piano NON fa
+
+* non tocca le viste, né i registri di debito (§6);
+* non introduce un tipo di coda (§4.2);
+* non decide la natura di nessuna riga di catalogo, comprese le tre 🔶 del §7.4.

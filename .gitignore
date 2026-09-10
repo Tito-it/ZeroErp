@@ -5,8 +5,18 @@ site-zensical/
 # Dipendenze Node (tooling root)
 node_modules/
 
-# Tooling locale (installazione Liquibase, scaffold) — non va committato
-tools/
+# Tooling locale (installazione Liquibase, scaffold) — non va committato.
+# ⛔ ANCORATA ALLA ROOT (`/tools/`), e la barra iniziale non e' cosmetica: senza,
+#    la regola matcha OGNI directory `tools/` a qualsiasi profondita' — compresa
+#    `backend/apps/ai_assistant/tools/`, che sono i 18 tool AI. I nove file di
+#    oggi restano in git perche' sono gia' tracciati (git non ignora cio' che
+#    traccia), ma un tool NUOVO non entrerebbe: `git add -A` lo salta in
+#    SILENZIO (l'avviso compare solo passando il percorso a mano), il commit
+#    parte senza, e in CI non fallisce niente — il file non esiste.
+# 🔴 Trovato il 2026-09-10 su `backend/apps/ai_assistant/tests/tools/`: i test
+#    di `safe_page_size` erano rimasti fuori dall'indice mentre la correzione
+#    che presidiano c'era. Verde per sottrazione, alla lettera.
+/tools/
 
 # Credenziali e configurazione locale — non vanno committati
 # ⚠️ Il glob copre anche le varianti per database: `internal.env` da solo NON

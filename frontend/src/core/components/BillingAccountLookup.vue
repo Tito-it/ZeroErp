@@ -31,7 +31,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'select', 'clear'])
 
 // Hint "affina la ricerca" (total_count > limit). BB condiviso (B6).
-const { totalCount, limitShown, onResponse } = useAutocompleteRefineHint()
+const { totalCount, mostrati, daAffinare, onResponse } = useAutocompleteRefineHint()
 
 const ac = useServerAutocomplete(async (query) => {
   const params = {
@@ -133,9 +133,9 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
         </div>
       </div>
     </template>
-    <template #footer v-if="totalCount > limitShown && limitShown > 0">
+    <template #footer v-if="daAffinare">
       <div class="app-lookup-hint">
-        {{ t('billing_account.refine_hint', { shown: limitShown, total: totalCount }) }}
+        {{ t('billing_account.refine_hint', { shown: mostrati, total: totalCount }) }}
       </div>
     </template>
   </AutoComplete>

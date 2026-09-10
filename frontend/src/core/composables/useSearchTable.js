@@ -163,6 +163,27 @@ export function useSearchTable(store, options = {}) {
   // va saltata per non raddoppiarlo. Dalle riattivazioni successive in poi si
   // rinfresca la pagina corrente.
   let firstActivation = true
+  // ⛔ E il refresh qui sotto DIPENDE da `store.hasSearched`: uno store che non
+  //    lo espone lo disattiva in silenzio — `undefined && ...` e' falso, quindi
+  //    la lista non ricarica mai al rientro e nessuno se ne accorge, perche' la
+  //    pagina non sbaglia: e' solo ferma.
+  // 🔴 Non e' un'ipotesi: il 2026-09-10 erano SETTE store di `amministrazione`
+  //    (operatori, email account/log/template, famiglie documento, registri
+  //    numerazione, mapping BA) — cioe' cinque liste di rotta il cui rientro
+  //    sotto KeepAlive non ricaricava, mentre i loro commenti dichiaravano che
+  //    lo scaffolding se ne stava occupando.
+  // ⭐ Il difetto era muto perche' il BB LEGGE una proprieta' che il chiamante
+  //    puo' dimenticare: qui non si puo' fare piu' che renderlo rumoroso, e si
+  //    fa in DEV — `useListaEmptyStateFetch` e `useListaStoreCore` lo espongono
+  //    entrambi, quindi mancarlo significa non averlo ri-esportato dallo store.
+  if (import.meta.env.DEV && !('hasSearched' in store)) {
+    console.warn(
+      `[useSearchTable] lo store "${store.$id}" non espone \`hasSearched\`: il refresh ` +
+      'al rientro sotto <KeepAlive> resta SPENTO, in silenzio. ' +
+      'Ri-esportalo dal return dello store (lo producono sia `useListaEmptyStateFetch` ' +
+      'sia `useListaStoreCore`).',
+    )
+  }
   onActivated(() => {
     const qs = route.query.search
     // Applica solo un deep-link NUOVO (query cambiata da quando l'abbiamo

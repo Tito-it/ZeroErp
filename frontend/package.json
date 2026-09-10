@@ -15,6 +15,8 @@
     "guard:pinia": "node scripts/check-pinia-user-scoped-reset.mjs",
     "guard:drawer": "node scripts/check-drawer-width.mjs",
     "guard:icone": "node scripts/check-primeicons-codepoints.mjs",
+    "guard:keepalive": "node scripts/check-keepalive-onactivated.mjs",
+    "guard:datatable": "node scripts/check-datatable-baseline.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "verify": "run-s lint guards test:run build",

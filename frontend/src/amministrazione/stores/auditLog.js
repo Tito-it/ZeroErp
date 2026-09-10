@@ -14,6 +14,7 @@ export const useAuditLogStore = defineStore('amm-audit-log', () => {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
+  const hasSearched = ref(false)
 
   // Guard anti-race: la pagina cambia filtro piu' in fretta di quanto torni la
   // fetch (tre filtri tutti a portata di click). Senza, una risposta vecchia
@@ -59,10 +60,17 @@ export const useAuditLogStore = defineStore('amm-audit-log', () => {
       const data = res.data?.data || {}
       items.value = data.results || []
       totalRecords.value = data.count || 0
+      hasSearched.value = true
     } finally {
       if (seq === fetchSeq) loading.value = false
     }
   }
 
-  return { items, totalRecords, loading, filters, fetchList }
+  // ⚠️ `hasSearched` non serve a questa pagina — che non ha empty-state e parte
+  //    piena — ma lo LEGGE `useSearchTable.onActivated` per decidere il refresh
+  //    al rientro sotto KeepAlive: senza, quel rientro non ricarica niente e non
+  //    lo dice nessuno. Gli store che passano da `useListaEmptyStateFetch` o
+  //    dalle factory lo espongono da se'; questo e' scritto a mano, quindi va
+  //    dichiarato qui.
+  return { items, totalRecords, loading, hasSearched, filters, fetchList }
 }, { userScoped: true })

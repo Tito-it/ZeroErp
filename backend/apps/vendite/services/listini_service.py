@@ -15,7 +15,7 @@ from uuid import UUID
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
@@ -88,11 +88,6 @@ def _validate_righe_order(order_by: str, order_dir: str, function_name: str) -> 
         error_code="E_VENDITE_VALIDATION",
         function_name=function_name,
     )
-
-
-# Scopo: Costruisce envelope uniforme count/results per collezioni figlie non paginate.
-def _build_results_response(results: list[dict[str, object]]) -> dict[str, object]:
-    return {"count": len(results), "results": results}
 
 
 # Scopo: Delega a `PayloadValidator.validate_allowed_keys` del core. Mantiene
@@ -1189,7 +1184,7 @@ def fn_list_versioni(listino_id: int) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_list_versioni"
     _get_listino_or_raise(listino_id, function_name=function_name)
     repository = ListiniRepository()
-    return _build_results_response(repository.list_versioni(listino_id))
+    return collezione_completa(repository.list_versioni(listino_id))
 
 
 # Scopo: Restituisce il dettaglio singolo di una versione del listino.

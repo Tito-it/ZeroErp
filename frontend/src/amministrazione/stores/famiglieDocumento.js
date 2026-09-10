@@ -57,7 +57,7 @@ export const useFamiglieDocumentoStore = defineStore('amm-famiglie-documento', (
   }
 
   const {
-    items, totalRecords, loading, fetchList, svuota,
+    items, totalRecords, loading, hasSearched, fetchList, svuota,
   } = useListaEmptyStateFetch({
     filters,
     alwaysFetch: true,
@@ -99,7 +99,7 @@ export const useFamiglieDocumentoStore = defineStore('amm-famiglie-documento', (
   }
 
   return {
-    items, totalRecords, loading, filters, paramsFiltro,
+    items, totalRecords, loading, hasSearched, filters, paramsFiltro,
     fetchList, crea, aggiorna, cambiaAttivo, reset,
   }
 }, { userScoped: true })
