@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi §9.3 — la meta' della riparazione che
+# sta dal lato di CHI LEGGE. Coppia del 20260910-36.
+#
+# ── ⛔ PERCHE' LA VISTA DEVE VEDERE `NON_MISURATO` ──────────────────
+#   Il 20260910-36 toglie le righe `error:CHECK-KO:` da `REALE` e le mette in
+#   una classe loro. Se la vista restasse su `REALE`/`ORFANA`, quelle righe
+#   sparirebbero — e la vista che «deve restare vuota» tornerebbe VUOTA.
+#   ⇒ Cioe' direbbe «nessun riferimento morto» proprio nel momento in cui
+#   nessuno ha potuto guardare. Sarebbe il verde per sottrazione, e sarebbe
+#   PEGGIO del difetto di partenza: i 779 falsi almeno si vedevano.
+#
+#   ⭐ E c'e' un secondo lettore, che al momento del difetto non esisteva
+#   ancora: il **digest dei presidi** conta questa vista
+#   (`dbops.presidi` -> `natura = REGISTRO`, cadenza SETTIMANALE). Una vista
+#   che torna zero perche' lo strumento e' rotto e' esattamente la cosa che il
+#   digest e' nato per non fare.
+#
+# ── ⭐ E ALLORA COS'E' LA «LISTA DI LAVORO»? ─────────────────────────
+#   Resta quella, e si allarga di una specie: «questa funzione non si e'
+#   potuta controllare» E' lavoro — va capito perche'. Non e' un riferimento
+#   morto, ed e' per questo che porta una classe diversa invece di essere
+#   rimessa in `REALE`: chi legge vede *quale* delle due cose ha davanti.
+#
+# ⚠️ `security_invoker=on` RI-SPECIFICATA, e non e' pignoleria: un
+#   `CREATE OR REPLACE VIEW` che la omette la AZZERA, e la vista comincerebbe a
+#   girare col perimetro del proprietario senza che nessuno se ne accorga. La
+#   reloption non compare in `pg_get_viewdef`, quindi l'unico posto in cui si
+#   legge e' la doc auto-gen — dove infatti e' scritta.
+# ⚠️ Definizione presa dalla doc auto-gen (l'oggetto VIVO), non da un YAML.
+#
+# ⚠️ La sorella `vw_riferimenti_morti_rientrati` NON si tocca: guarda le voci
+#   del REGISTRO che non trovano piu' un difetto, e il registro non contiene
+#   ne' contera' mai voci `NON_MISURATO` — quelle non si registrano come
+#   debito, si riparano nello strumento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260910-37-update-vw-riferimenti-morti-da-sanare-non-misurato-mctit.yaml
+
+  - changeSet:
+      id: 20260910-37-update-vw-riferimenti-morti-da-sanare-non-misurato
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_riferimenti_morti_da_sanare include ora la classe
+        NON_MISURATO introdotta dal 20260910-36. Senza, le righe che prima
+        uscivano come falsi REALE sparirebbero e la vista tornerebbe vuota
+        mentre lo strumento e' rotto - cioe' direbbe tutto a posto proprio
+        quando nessuno ha guardato. security_invoker ri-specificata. Brief 9.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_riferimenti_morti_da_sanare
+            - tableExists:
+                schemaName: dbops
+                tableName: riferimenti_morti_esenzioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_riferimenti_morti_da_sanare
+              WITH (security_invoker=on) AS
+              SELECT classe,
+                  schema_nome,
+                  funzione,
+                  argomenti,
+                  esito
+                 FROM dbops.fn_check_funzioni_riferimenti_morti() m(classe, schema_nome, funzione, argomenti, esito)
+                WHERE ((classe = ANY (ARRAY['REALE'::text, 'ORFANA'::text, 'NON_MISURATO'::text]))
+                       AND (NOT (EXISTS ( SELECT 1
+                         FROM dbops.riferimenti_morti_esenzioni e
+                        WHERE ((e.schema_nome = m.schema_nome) AND (e.funzione = m.funzione) AND (m.esito ~~ e.esito_like))))));
+
+              COMMENT ON VIEW dbops.vw_riferimenti_morti_da_sanare IS
+                  'Riferimenti morti (REALE/ORFANA) e funzioni che NON SI SONO POTUTE CONTROLLARE (NON_MISURATO), non coperti dal registro del debito: e'' la lista di lavoro. Deve essere vuota. ⚠️ Ogni SELECT ri-compila ~500 funzioni. ⭐ NON_MISURATO entra qui dal 2026-09-10 (20260910-37) e non e'' un dettaglio: quelle righe prima uscivano come falsi REALE, e toglierle senza rimetterle da un''altra porta avrebbe fatto tornare la vista VUOTA mentre plpgsql_check era rotto — cioe'' avrebbe detto «nessun riferimento morto» proprio quando nessuno aveva potuto guardare. ⛔ Una riga NON_MISURATO non e'' un riferimento morto e non si registra come debito: si ripara lo strumento. Ma resta lavoro, e resta VISIBILE — la conta anche il digest dei presidi, per cui questa vista e'' un REGISTRO a cadenza settimanale.';
+      rollback:
+        # ⛔ Vuoto DI PROPOSITO: la definizione precedente escludeva
+        #   NON_MISURATO, cioe' faceva sparire quelle righe e riportava la
+        #   vista a dire «vuota» mentre lo strumento e' rotto. Non si torna
+        #   indietro da questo. Se servisse davvero, la revisione precedente
+        #   sta nella doc auto-gen del giorno.
+        - empty: {}

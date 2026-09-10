@@ -7,11 +7,12 @@
 --   - CHECK esito (OK/KO/WARN)
 --   - CHECK messaggio non-vuoto / detail jsonb object
 --   - guard append-only: block UPDATE / block DELETE
---   - FK documento_generato_id
+--   - FK documento_generato_id (asserita dal CATALOGO: da quando la tabella e'
+--     in RLS il perimetro rifiuta prima della foreign key — vedi test 12 e 16)
 --   - storico OFF (no provisioning automatico)
 --   - default audit popolati su INSERT minimo
 -- ------------------------------------------------------------
--- Indice test (1..15):
+-- Indice test (1..16):
 --  1) Setup: documento generato di riferimento creato
 --  2) INSERT evento GENERATO esito=OK passa
 --  3) INSERT evento SCARICATO con messaggio passa
@@ -23,10 +24,11 @@
 --  9) CHECK detail: jsonb non-object (array) rifiutato
 -- 10) Guard block UPDATE: UPDATE messaggio bloccato
 -- 11) Guard block DELETE: DELETE evento bloccato
--- 12) FK: documento_generato_id inesistente -> 23503
+-- 12) FK: documento_generato_id dichiarata a catalogo verso documenti_generati
 -- 13) Storico OFF: storico.documenti_generati_eventi NON esiste
 -- 14) Default audit: data_insert e user_insert popolati su INSERT minimo
 -- 15) CHECK evento_tipo: RISTAMPA_FEDELE ammesso, con esito WARN
+-- 16) RLS: un documento fuori perimetro e' rifiutato PRIMA della FK -> 42501
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================
 -- Setup contesto: emittente + template + versione + documento generato
@@ -261,16 +263,35 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 12) FK violata: documento_generato_id inesistente
+-- 12) FK documento_generato_id -> documenti_generati
+--
+-- ⛔ SI ASSERISCE DAL CATALOGO, e non provando a violarla. Fino al
+--   2026-09-10 questo test faceva un INSERT con `documento_generato_id =
+--   999999999` e pretendeva `23503`. Da quando la tabella e' in RLS
+--   (slice 20260910-31..34) quell'INSERT prende **42501**: la `WITH CHECK`
+--   risale a un documento che non esiste, l'adattatore risponde `false`, e
+--   il perimetro parla PRIMA che la foreign key possa dire la sua.
+--
+-- ⭐ E' la forma nota del guard che oscura il vincolo, in versione row level
+--   security — e non e' riparabile costruendo il caso: **un id inesistente e'
+--   fuori dal perimetro di chiunque**, per definizione. Non esiste un contesto
+--   in cui la FK torni a parlare, salvo girare come owner, che vorrebbe dire
+--   non esercitare nessuna policy.
+--
+-- ⇒ La copertura si spezza in due: qui la FK si asserisce dove e' **scritta**
+--   (il catalogo, che non dipende dal ruolo di chi guarda), e il comportamento
+--   che l'applicazione vede davvero diventa il test 16.
 -- ============================================================
-SELECT throws_ok(
-  $$INSERT INTO documenti.documenti_generati_eventi (
-      documento_generato_id, evento_tipo, esito
-    )
-    VALUES (999999999, 'GENERATO', 'OK')$$,
-  '23503',
-  NULL,
-  'FK: documento_generato_id inesistente -> 23503'
+SELECT is(
+  (SELECT c.confrelid::regclass::text
+     FROM pg_constraint c
+    WHERE c.conrelid = 'documenti.documenti_generati_eventi'::regclass
+      AND c.contype  = 'f'
+      AND c.conkey   = ARRAY[(SELECT a.attnum FROM pg_attribute a
+                               WHERE a.attrelid = 'documenti.documenti_generati_eventi'::regclass
+                                 AND a.attname  = 'documento_generato_id')]::smallint[]),
+  'documenti.documenti_generati',
+  'FK: documento_generato_id dichiarata a catalogo verso documenti_generati'
 );
 
 -- ============================================================
@@ -321,6 +342,33 @@ SELECT is(
       AND (detail->>'pdf_hash_match')::boolean IS FALSE),
   1,
   'CHECK evento_tipo: RISTAMPA_FEDELE ammesso, con esito WARN'
+);
+
+-- ============================================================
+-- 16) RLS: un documento fuori perimetro e' rifiutato PRIMA della FK
+--
+-- ⭐ E' la meta' comportamentale di cio' che il test 12 asseriva prima della
+--   slice 20260910-31..34: l'INSERT viene rifiutato, ma il codice che
+--   l'applicazione legge e' quello del PERIMETRO, non quello della foreign key.
+--   Scriverlo qui e' il modo di non perdere la copertura fingendo che il
+--   comportamento non sia cambiato.
+--
+-- ⚠️ Lo SQLSTATE e' esplicito: `throws_ok` senza discriminante accetterebbe
+--   QUALUNQUE errore — compreso il 23503 di prima, cioe' proprio la cosa che
+--   questo test deve distinguere.
+--
+-- ⛔ E il verso positivo che lo tiene onesto e' gia' nel file: i test 2, 3 e 4
+--   inseriscono sul documento del setup e PASSANO. Senza di loro un `42501` su
+--   tutto sarebbe indistinguibile da una policy rotta che chiude ogni cosa.
+-- ============================================================
+SELECT throws_ok(
+  $$INSERT INTO documenti.documenti_generati_eventi (
+      documento_generato_id, evento_tipo, esito
+    )
+    VALUES (999999999, 'GENERATO', 'OK')$$,
+  '42501',
+  NULL,
+  'RLS: un documento fuori perimetro e'' rifiutato prima della FK -> 42501'
 );
 
 SELECT * FROM finish();

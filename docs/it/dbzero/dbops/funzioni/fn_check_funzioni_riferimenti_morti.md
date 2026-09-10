@@ -189,6 +189,33 @@ BEGIN
         classe := 'REALE';
       END IF;
 
+    -- (5) 🔴 LO STRUMENTO NON HA MISURATO, e non e' un difetto del codice.
+    --     `error:CHECK-KO:` lo scrive il gestore EXCEPTION qui sopra quando
+    --     `plpgsql_check_function` SOLLEVA invece di rispondere. Fino al
+    --     2026-09-10 quella forma non aveva un ramo e cadeva nell'ELSE, cioe'
+    --     usciva come REALE: una funzione che non si e' potuta controllare
+    --     veniva riferita come «riferimento morto».
+    --
+    -- ⛔ NON e' un caso di bordo: il 2026-09-10 su dbdev plpgsql_check ha
+    --     fallito su quasi ogni funzione e la vista di lavoro ha esposto 779
+    --     righe su 780 funzioni plpgsql, mentre il registro del debito ne ha
+    --     DUE e lo stesso controllo passava in CI. Un presidio che, quando il
+    --     suo strumento si rompe, riferisce 779 difetti invece di dire «non ho
+    --     misurato» e' peggio di un presidio assente: manda a cercare 779 cose
+    --     che non ci sono, e nasconde l'unica che c'e'.
+    --
+    -- ⭐ La regola era gia' scritta, e in casa: `guardrail_riferimenti_morti.sql`
+    --     tratta cosi' l'estensione ASSENTE — «NON si passa in silenzio: un
+    --     guardrail che non misura e non lo dice e' peggio di uno assente».
+    --     Qui l'estensione c'e' e si rompe: stesso principio, e fino a oggi due
+    --     esiti opposti.
+    --
+    -- ⚠️ E NON si nasconde: chi consuma questa classe deve trattarla come un
+    --     ROSSO, non come un'assenza di difetti. La vista di lavoro la include
+    --     e il guardrail solleva con un messaggio suo.
+    ELSIF r.msg LIKE 'error:CHECK-KO:%' THEN
+      classe := 'NON_MISURATO';
+
     ELSE
       classe := 'REALE';
     END IF;
@@ -199,7 +226,7 @@ END
 $function$
 
 COMMENT ON FUNCTION dbops.fn_check_funzioni_riferimenti_morti()
-IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check.';
+IS 'Compila con plpgsql_check ogni funzione plpgsql non-estensione e classifica i difetti (REALE, ORFANA, NON_MISURATO, FP_*). Fonte unica: la usano sia scripts/sql/check_funzioni_riferimenti_morti.sql sia il pgTAP db/pgtap/dbops/test-riferimenti-morti-v1.sql. Richiede l''estensione plpgsql_check. NON_MISURATO dal 2026-09-10: e'' la classe di chi NON SI E'' POTUTO CONTROLLARE - plpgsql_check ha sollevato invece di rispondere, e il gestore EXCEPTION ha scritto error:CHECK-KO:. Prima quella forma cadeva nell''ELSE e usciva come REALE, cioe'' una funzione non misurata veniva riferita come riferimento morto: il 2026-09-10 su dbdev sono uscite 779 righe su 780 funzioni, con un registro del debito di DUE voci e lo stesso controllo verde in CI. NON_MISURATO va trattato come un ROSSO da chi consuma, mai come assenza di difetti: e'' la stessa regola che questo presidio applica gia'' all''estensione ASSENTE.';
 ```
 
 ---

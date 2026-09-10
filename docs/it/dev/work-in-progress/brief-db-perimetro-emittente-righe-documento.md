@@ -1571,7 +1571,10 @@ pagate, una nuova.
 
 > Stato: ✅ **applicata** il 2026-09-10 alle **19:17** — slice `20260910-31..34`
 > + `db/pgtap/rls/test-rls-documenti-satelliti.sql`, pgTAP **13/13 verde**,
-> **nessuna regressione** (esito riportato da Tid dopo l'apply).
+> **una regressione**, trovata da Tid dopo l'apply e **riparata**: il test 12 di
+> `db/pgtap/documenti/test-documenti-generati-eventi.sql`, che pretendeva un
+> `23503` dove ora parla per primo il perimetro (`42501`). Il file è ora 16/16 —
+> dettaglio e lezione in fondo a questa sezione.
 > Verificato a valle sul catalogo: i due satelliti hanno `relrowsecurity` e una
 > policy ciascuno, `fn_scope_ef_whitelist_via_documento_generato` è `STABLE` e
 > non `SECURITY DEFINER`, il registro è a **12 righe** e
@@ -1664,6 +1667,56 @@ cioè la quinta. Da lì avevo concluso che «il test 8 non distingue `FOR ALL` d
 sosteneva. ⚠️ Verificato interrogando `pg_policies` invece di fidarsi dello
 script: *una mutazione va guardata in ciò che PRODUCE, non in ciò che il diff
 sembra dire.*
+
+#### 🔴 La regressione trovata DOPO l'apply, e cosa insegna
+
+> Trovata da Tid il 2026-09-10 lanciando
+> `db/pgtap/documenti/test-documenti-generati-eventi.sql`: **1 rossa su 15**, ed
+> è l'unica regressione dell'intera slice. ✅ Riparata, il file è ora **16/16**.
+
+Il test 12 inseriva un `documento_generato_id = 999999999` e pretendeva
+**`23503`** (violazione di chiave esterna). Da quando la tabella è in RLS quello
+stesso `INSERT` prende **`42501`**: la `WITH CHECK` risale a un documento che
+non esiste, l'adattatore risponde `false`, e **il perimetro parla prima che la
+foreign key possa dire la sua**.
+
+⭐ È la forma nota del *guard che oscura il vincolo*, in versione row level
+security — la stessa famiglia del `BEFORE ROW` che nasconde un `CHECK`.
+
+⛔ **E non è riparabile costruendo il caso**: un id inesistente è fuori dal
+perimetro di *chiunque*, per definizione. Non c'è nessun contesto in cui la FK
+torni a parlare — salvo girare come owner, che vorrebbe dire non esercitare
+nessuna policy, cioè un verde per sottrazione.
+
+⇒ **La copertura si spezza in due**, ed è la regola già scritta per i test che
+pinnano un sintomo:
+
+| | Cosa asserisce | Perché lì |
+| --- | --- | --- |
+| test **12** | la FK è dichiarata **a catalogo** verso `documenti_generati` | il catalogo non dipende dal ruolo di chi guarda, quindi non invecchia |
+| test **16** | un documento **fuori perimetro** è rifiutato con `42501` | è ciò che l'applicazione vede davvero, ed è la cosa che è cambiata |
+
+⭐ Provate tutte e due facendole fallire: con la **RLS spenta** cade il 16 (e
+cattura proprio il `23503` di prima); con la **FK droppata** cade il 12. Sono
+indipendenti, ed è il senso di averle separate.
+⚠️ Il verso positivo che tiene onesto il 16 era già nel file: i test 2, 3 e 4
+scrivono sul documento del setup e **passano**. Senza di loro un `42501` su tutto
+sarebbe indistinguibile da una policy rotta che chiude ogni cosa.
+
+#### ⛔ E il difetto di METODO è mio, ed è il §11.14 in un'altra forma
+
+Per `commesse` avevo **censito** i pgTAP che scrivono sulle tabelle da armare
+(§11.14). Per `documenti` **non l'ho fatto**: ho verificato le viste, i nipoti,
+i grant e i trigger — cioè la *struttura* — e non ho guardato chi quelle tabelle
+le **esercita**. Il censimento sarebbe costato un `grep` e avrebbe trovato i due
+file di `db/pgtap/documenti/` prima dell'apply.
+
+⭐ La lezione non è «fare più controlli»: è che *armare una tabella cambia il
+CODICE D'ERRORE che i suoi scrittori ricevono*, e chi lo assertava se ne accorge.
+⚠️ Il gemello `test-documenti-generati-file.sql` è invece rimasto verde, e per
+una ragione che conferma la regola: tutti i suoi `INSERT` usano il documento del
+setup, che è **dentro** il perimetro. A rompersi è solo chi costruisce
+deliberatamente un riferimento che non esiste.
 
 #### Il registro dopo questa slice
 

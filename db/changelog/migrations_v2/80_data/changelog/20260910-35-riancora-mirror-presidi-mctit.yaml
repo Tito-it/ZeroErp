@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-un-destinatario-per-i-presidi §9 — le richieste 2 e 3 del backend.
+# Mirror RI-ANCORATO di `presidi.csv`: stesso CSV, stesse colonne, numerazione
+# nuova. Il 20260910-08 resta dov'e' ed e' gia' applicato.
+#
+# ── ⚠️ PERCHE' UN CHANGESET NUOVO E NON L'EDIT DEL PRECEDENTE ───────
+#   Tecnicamente non servirebbe: il mirror `-08` e' `runOnChange` e il suo
+#   checksum comprende il CONTENUTO del CSV, quindi editare il file lo fa
+#   ri-eseguire da solo (AGENTS §80_data). Ma il `-08` e' gia' MERGIATO, e un
+#   changeSet mergiato non si tocca — nemmeno nei commenti: la ragione di una
+#   modifica deve stare in una riga NUOVA della timeline, dove chi legge la
+#   storia la trova al suo posto. Decisione di Tid, 2026-09-10.
+#   ⚠️ I due mirror caricano lo stesso CSV: e' un upsert idempotente sulla
+#   chiave `vista`, quindi il secondo giro non cambia niente. Non e' spreco da
+#   togliere, e' il prezzo di non riscrivere la storia.
+#
+# ── 🟠 RICHIESTA 2 — due righe passano a `perimetro = DEFINER` ──────
+#   `dbops.vw_riferimenti_morti_rientrati` e `..._da_sanare` dichiaravano
+#   `LIBERO` ed erano CIECHE: la funzione a monte
+#   (`dbops.fn_check_funzioni_riferimenti_morti`) e' `SECURITY INVOKER`, quindi
+#   da un ruolo che non possiede gli oggetti ispezionati risponde vuoto —
+#   misurato dal backend il 2026-09-10: `zeroerp_app` legge 0 dove il
+#   proprietario legge 1 e 779.
+#   ⭐ E toglie anche il percorso che il 2026-09-10 ha fatto morire il backend
+#   PostgreSQL TRE VOLTE SU TRE (brief §9.3): su `DEFINER` il chiamante conta e
+#   NON elenca, quindi la lettura *invoker* sparisce.
+#   ⛔ Non e' la cura del crash: quella e' aperta, e il conteggio continua a
+#   passare da `fn_conta_presidio`.
+#
+# ── ⭐ E VA LETTO COME SI LEGGE IL 779 ───────────────────────────────
+#   NON sono 779 riferimenti morti. Su dbdev `plpgsql_check` fallisce su quasi
+#   ogni funzione; il gestore `EXCEPTION WHEN OTHERS` scrive `error:CHECK-KO:`
+#   e la classificazione non ha un ramo per quella forma, quindi cade
+#   nell'`ELSE` e diventa `REALE` — 779 righe su 780 funzioni plpgsql, mentre
+#   il registro del debito ne ha DUE e lo stesso controllo passa in CI.
+#   ⇒ Il difetto di classificazione si ripara nel 20260910-36; la causa del
+#   crash resta aperta nel brief §9.3.
+#
+# ── 🔵 RICHIESTA 3 — iscritta `maintenance.vw_job_run_da_guardare` ──
+#   Trentatreesima riga, e la prima FUORI da `dbops`. Valori derivati dal
+#   COMMENT della vista, non scelti: «DEVE restare VUOTA» -> `ZERO`; «Niente
+#   RLS» -> `LIBERO`; la colonna `motivo` dice PERCHE' la riga e' li'
+#   (FALLITA / APERTA / INTERMITTENTE) e ognuna e' da guardare -> nessun
+#   filtro, esattamente come su `vw_coda_lavori_da_guardare`.
+#   ⭐ EFFETTO VOLUTO: lo schema `maintenance` entra nel perimetro del test 2
+#   del pgTAP, che legge gli schemi DAL CATALOGO e non da un prefisso. Il §8.4
+#   chiedeva al team DB di contare prima che cosa ci sarebbe finito dentro:
+#   contate il 2026-09-10, in `maintenance` c'e' QUELLA SOLA vista — lo schema
+#   si chiude in un colpo e il test resta verde.
+#
+# ⚠️ CATALOGO PURO: nessuna FK verso `anagrafiche.*`, nessun indirizzo, nessun
+#   dato che descriva QUESTA installazione ⇒ nessun `context: dati_macchina`.
+# ⛔ La sede del dato resta il CSV: si edita il file, mai con UPDATE a parte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-35-riancora-mirror-presidi-mctit.yaml
+
+  - changeSet:
+      id: 20260910-35-riancora-mirror-presidi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror ri-ancorato di dbops.presidi dal CSV: 33 righe. Richiesta 2 del
+        brief (perimetro DEFINER sulle due viste riferimenti_morti, che da
+        zeroerp_app rispondono vuote perche' la funzione a monte e' SECURITY
+        INVOKER) e richiesta 3 (iscrizione di
+        maintenance.vw_job_run_da_guardare, unica vista dello schema, che entra
+        cosi' nel perimetro del test 2 del pgTAP).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+      changes:
+        # ⚠️ Chiave dell'upsert: `vista`, non `id`. La chiave naturale stabile
+        #   e' il nome qualificato della vista (linee-guida-sql §6b), e `id` e'
+        #   IDENTITY proprio perche' non lo si scriva a mano.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/presidi.csv
+            tableName: presidi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            # Token letterale `NULL`, non la cella vuota: su una colonna
+            # dichiarata STRING la cella vuota entrerebbe come stringa vuota, e
+            # lo farebbe IN SILENZIO.
+            nullValue: "NULL"
+            primaryKey: "vista"
+            columns:
+              - column: { name: vista,         type: STRING }
+              - column: { name: natura,        type: STRING }
+              - column: { name: colonna_stato, type: STRING }
+              - column: { name: stato_atteso,  type: STRING }
+              - column: { name: registro,      type: STRING }
+              - column: { name: presidiato_da, type: STRING }
+              - column: { name: cadenza,       type: STRING }
+              - column: { name: perimetro,     type: STRING }
+              - column: { name: attivo,        type: BOOLEAN }
+              - column: { name: obsoleto_dal,  type: DATE }
+              - column: { name: nota,          type: STRING }
+      rollback:
+        # ⛔ Niente DELETE, e vuoto DI PROPOSITO: il catalogo lo popola anche il
+        #   20260910-08, quindi svuotare la tabella qui cancellerebbe il lavoro
+        #   di un altro changeSet. Il ritorno indietro di un mirror ri-ancorato
+        #   e' non fare nulla.
+        - empty: {}

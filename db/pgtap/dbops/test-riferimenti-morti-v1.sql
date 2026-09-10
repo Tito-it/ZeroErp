@@ -13,8 +13,9 @@
 --   scripts/sql/guardrail_riferimenti_morti.sql        il gate della CI
 --   questo file                                        il gate della suite
 --
--- Indice test (1..5):
+-- Indice test (6 asserzioni):
 --   1. l'estensione plpgsql_check c'e' (senza, i test 2 e 3 fanno skip)
+--   1-bis. plpgsql_check ha potuto controllare OGNI funzione (NON_MISURATO)
 --   2. nessun difetto REALE/ORFANA fuori dal registro del debito
 --   3. nessuna voce RIENTRATA nel registro (il debito deve calare)
 --   4. ogni voce del registro ha un motivo scritto
@@ -51,7 +52,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(5);
+SELECT plan(6);
 
 -- ============================================================
 -- 1. L'estensione c'e'?
@@ -71,6 +72,37 @@ CREATE TEMP TABLE misura ON COMMIT DROP AS
 SELECT *
   FROM dbops.fn_check_funzioni_riferimenti_morti()
  WHERE EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'plpgsql_check');
+
+-- ============================================================
+-- 1-bis. 🔴 LO STRUMENTO HA MISURATO? — e va PRIMA dell'asserzione centrale
+--
+-- ⛔ Se `plpgsql_check` solleva invece di rispondere, il gestore EXCEPTION
+--    della misura scrive `error:CHECK-KO:` e la funzione classifica quelle
+--    righe come `NON_MISURATO` (changeSet 20260910-36). Di quelle funzioni
+--    non si sa NIENTE: il test 2 direbbe «nessun riferimento morto» avendo
+--    guardato la meta' delle cose, e il test 3 vedrebbe ogni voce del
+--    registro come «rientrata».
+-- ⚠️ Fino al 2026-09-10 quella forma cadeva nell'ELSE e usciva come REALE:
+--    su dbdev sono state 779 righe su 780 funzioni, con un registro di DUE
+--    voci — il test 2 falliva elencando 779 difetti che non esistevano.
+--    Brief: brief-db-un-destinatario-per-i-presidi §9.3.
+-- ============================================================
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'plpgsql_check')
+    THEN skip('plpgsql_check assente: misura non eseguibile', 1)
+  ELSE is(
+    COALESCE((
+      SELECT string_agg(x.riga, E'\n  ' ORDER BY x.riga)
+        FROM (
+          SELECT DISTINCT m.schema_nome || '.' || m.funzione || ' -> ' || m.esito AS riga
+            FROM misura m
+           WHERE m.classe = 'NON_MISURATO'
+        ) x
+    ), ''),
+    '',
+    'plpgsql_check ha potuto controllare OGNI funzione (nessuna NON_MISURATO)'
+  )
+END;
 
 -- ============================================================
 -- 2. Nessun difetto fuori registro — l'asserzione centrale
