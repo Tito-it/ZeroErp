@@ -1,5 +1,27 @@
 name: CI-Validate
 
+# ── ⭐ CONCURRENCY, e i due eventi NON si trattano allo stesso modo ──────────
+#   `ci.yaml` ce l'aveva dal principio; qui mancava, quindi due push ravvicinate
+#   pagavano due corse intere (5-7,6 min l'una) sullo stesso identico albero.
+#
+#   ⚠️ Ma `cancel-in-progress: true` secco sarebbe stato sbagliato, ed e' la
+#   parte che vale la pena leggere:
+#
+#   · su una **pull_request** la corsa nuova SOPPIANTA la vecchia — il commit
+#     precedente non e' piu' quello che verra' mergiato, e il suo verdetto non
+#     serve a nessuno. Si annulla.
+#   · su una **push a Tito-dev** ogni corsa e' il verdetto di uno STATO DI
+#     INTEGRAZIONE che e' esistito. Annullarla vuol dire che di quel merge non
+#     si sapra' mai niente — e li' gira la suite pgTAP, che non gira altrove.
+#     Non si annulla, si accoda.
+#
+#   ⭐ Vale il criterio gia' scritto nel passo «Il DB e' cambiato in questa
+#     push?»: *un controllo che salta in silenzio quando non sa e' peggio di uno
+#     che gira di troppo*.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches: [Tito-dev]
@@ -398,6 +420,11 @@ jobs:
             update --contexts=provision
 
       - name: Liquibase CI apply (run automations)
+        # ⭐ L'`id` non e' decorativo: e' la condizione da cui dipende la suite
+        #   pgTAP piu' in basso. Da qui in avanti il database e' COMPLETO — i
+        #   due migratori hanno finito e le automazioni sono passate — quindi
+        #   «il pgTAP puo' girare?» e' esattamente «questo passo e' andato?».
+        id: ci_apply
         # Come lo step "standard, no provision": nessun bypass, la validazione
         # del tx_id resta attiva.
         run: |
@@ -602,6 +629,11 @@ jobs:
       #   - PR verso Tito-dev  -> mai (basta il cancello statico sul preambolo)
       - name: Il DB e' cambiato in questa push?
         id: db_cambiato
+        # ⚠️ `!cancelled()` e non `always()`: deve girare anche dopo un passo
+        #   rosso — altrimenti la suite pgTAP qui sotto resta senza la sua
+        #   risposta e viene saltata per il motivo sbagliato — ma NON deve
+        #   girare quando la corsa e' stata annullata a mano o soppiantata.
+        if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
           if [ "${{ github.event_name }}" != "push" ]; then
@@ -628,7 +660,35 @@ jobs:
         #   passerebbe (il passo sopra risponde 'si' per ogni non-push).
         #   Trovato provando la tabella dei quattro casi a tavolino, non
         #   leggendo la condizione.
-        if: github.base_ref == 'main' || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')
+        #
+        # ── 🔴 `!cancelled()` + `ci_apply`, e non `success()` implicito ──────
+        #   Fino al 2026-09-10 questo passo ereditava il `success()` implicito
+        #   di GitHub Actions: bastava che UN QUALUNQUE passo precedente fosse
+        #   rosso perche' la suite venisse SALTATA. E il passo che precede e'
+        #   «Django tests».
+        #   ⛔ Successo davvero, quel giorno: un codice errore nuovo seminato da
+        #     un changeSet DB ha fatto arrossire due presidi del backend
+        #     (`test_error_codes_db_policy_guardrail`,
+        #     `test_error_policies_divergenza_db`) — debito legittimo e di
+        #     un'altra squadra — e la suite pgTAP non e' MAI PARTITA. Su una
+        #     push che toccava solo `db/`, del database non si e' saputo niente.
+        #   ⭐ *Un cancello non deve poter zittire un altro cancello*: sono due
+        #     domande indipendenti e vogliono due risposte.
+        #   ⚠️ Ma NON `always()`: il pgTAP ha senso solo su un database
+        #     COMPLETO. La condizione e' `steps.ci_apply.outcome == 'success'`,
+        #     cioe' «i due migratori hanno finito e le automazioni sono
+        #     passate». Se e' il migrate a fallire, saltare e' giusto: una
+        #     suite su un database a meta' non direbbe niente di vero, e
+        #     direbbe rosso per il motivo sbagliato.
+        #   ⚠️ E il job resta ROSSO lo stesso: qui non si perdona niente, si
+        #     smette solo di perdere una risposta. Non e' un `continue-on-error`
+        #     — quello e' vietato due paragrafi piu' sotto, e per un'altra
+        #     ragione ancora.
+        if: >-
+          ${{ !cancelled()
+              && steps.ci_apply.outcome == 'success'
+              && (github.base_ref == 'main'
+                  || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')) }}
         # ⭐ ARMATO IL 2026-09-09, e fino a quel giorno non lo era: `continue-on-error`
         #   piu' una baseline mai committata tenevano questo passo nel ramo del
         #   bootstrap dal 2026-08-07. Per un mese la suite ha girato in CI e il

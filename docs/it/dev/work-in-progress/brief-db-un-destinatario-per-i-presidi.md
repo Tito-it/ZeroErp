@@ -337,7 +337,36 @@ porta come esempio di rumore. L'unica la cui natura non era scritta da nessuna
 parte era quella usata per dimostrare che la natura non è deducibile dal nome.
 Il `COMMENT` è stato aggiunto (`20260910-07`); non è «cambiare una vista».
 
-### 7.7 🔵 Due cose che restano al backend
+### 7.7 🔵 Tre cose che restano al backend
+
+**0) 🔴 URGENTE — rigenerare `error_policies_generated.py`.** Il codice nuovo
+`E_PRESIDIO_NON_A_CATALOGO` è a catalogo nel DB e **non** nel file generato del
+backend: dal merge della PR #1552, `Tito-dev` è **rosso** con due fallimenti.
+
+```bash
+cd backend && ./manage-env.sh genera_error_policies   # poi committare il file
+```
+
+| Test rosso | Che cosa dice |
+| --- | --- |
+| `test_error_codes_db_policy_guardrail` · `test_nessun_codice_nuovo_senza_policy` | *«1 codice che il database può nominare non ha una policy e non è nel registro del debito: `E_PRESIDIO_NON_A_CATALOGO` (`dbops.fn_conta_presidio`)»* |
+| `test_error_policies_divergenza_db` · `test_il_file_generato_e_allineato_al_catalogo` | *«diverge dal catalogo (12 righe). Rigenerare con `manage.py genera_error_policies` e committare»* |
+
+⭐ **Non è un difetto: è il terzo lato che funziona.** Un codice seminato dal DB
+deve ricevere una **classe** lato backend prima di poter rispondere con lo
+status giusto, e il cancello è esattamente ciò che impedisce di dimenticarsene.
+La classe è già decisa e sta nel CSV: **`TECNICO` (500)** — quel parametro non lo
+fornisce nessuna persona in un form, lo passa il digest leggendo il catalogo.
+⛔ Il DB non lo rigenera da sé: `backend/` è fuori dal perimetro di `dev/db-tid`,
+e `error_policies_generated.py` è del backend anche quando la causa è nostra.
+
+⚠️ **Ordine delle operazioni:** il DB è già dentro. Il commit del backend può
+entrare quando volete — fino ad allora `Tito-dev` resta rosso su quei due test,
+e **solo** su quelli.
+
+---
+
+**Le due che erano già scritte:**
 
 **a) Il destinatario non è una colonna di `dbops.presidi`.** Un indirizzo
 descrive *questa* installazione: dentro un CSV di catalogo o viaggia su ogni
