@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DG-1 — L'adattatore dei satelliti del MOTORE DOCUMENTALE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.16
+#   Slice 20260910-31..34 (helper -> policy inerti -> armamento -> registro).
+#
+# ── ⭐ LA RISALITA PIU' CORTA DELLA FAMIGLIA ──────────────────────────
+#   `documenti.documenti_generati` porta `emittente_fiscale_id` **NOT NULL** e
+#   la sua policy usa `script.fn_scope_ef_whitelist` **diretta** — non
+#   l'adattatore `_via_sr` (che serve a chi nomina l'emittente per
+#   soggetto-ruolo) e non `_via_efba` (che serve a chi lo nomina per billing
+#   account). ⇒ Un anello solo:
+#
+#     documenti_generati ──(fn_scope_ef_whitelist)──> whitelist operatore
+#            ^
+#            │ _via_documento_generato   <- QUESTO changeSet
+#     documenti_generati_eventi / documenti_generati_file
+#
+# ── ⛔ IL REFUSO CHE NON FA RUMORE, ed e' diverso dalle altre famiglie ─
+#   Qui le tre canoniche NON hanno la stessa firma per caso: prendono tutte
+#   `(integer, bigint)`. Passare un `emittente_soggetto_ruolo_id` a
+#   `fn_scope_ef_whitelist`, o un `emittente_fiscale_id` a `_via_sr`, compila e
+#   gira — e confronta due numerazioni diverse, cioe' risponde **quasi sempre
+#   false**. ⚠️ Un fail-closed per la ragione sbagliata somiglia moltissimo a una
+#   difesa che funziona: e' la lezione della slice `lotti` (§11.9), e a
+#   smascherarlo e' il verso POSITIVO del pgTAP.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa dei
+#   `script.fn_scope_*` gia' in servizio. Una policy che chiamasse una funzione
+#   `SECURITY DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non
+#   vede: il filtro passerebbe sempre, e in silenzio.
+#
+# ⭐ Delega alla canonica invece di ricopiare la lettura della whitelist: la
+#   regola su come si giudica un emittente resta scritta in un posto solo — ed
+#   e' gia' quella che protegge la testata, quindi le due non possono divergere.
+#
+# Permessi: funzione di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260910-31-create-fn-scope-ef-whitelist-via-documento-generato-mctit.yaml
+
+  - changeSet:
+      id: 20260910-31-create-fn-scope-ef-whitelist-via-documento-generato
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatore di scope per i satelliti del motore documentale:
+        script.fn_scope_ef_whitelist_via_documento_generato(auth_user_id,
+        documento_generato_id), che risale dal documento generato al suo
+        emittente_fiscale_id (NOT NULL) e delega a script.fn_scope_ef_whitelist,
+        gia' in servizio sulla testata. Nessuna policy lo usa ancora: le crea
+        20260910-32.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_documento_generato(
+                  p_auth_user_id          integer,
+                  p_documento_generato_id documenti.documenti_generati.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del documento generato a cui la riga
+                  --   appartiene.
+                  -- ⭐ Delega alla CANONICA, non a un altro adattatore: la
+                  --   testata porta `emittente_fiscale_id` NOT NULL, quindi la
+                  --   risalita e' di un anello solo — ed e' esattamente cio'
+                  --   che fa rls_documenti_generati_ef_whitelist, cosi' il
+                  --   satellite e la testata non possono divergere.
+                  -- ⚠️ Documento inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come tutta la famiglia.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT dg.emittente_fiscale_id
+                         FROM documenti.documenti_generati dg
+                        WHERE dg.id = p_documento_generato_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_documento_generato(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di documenti.documenti_generati (documenti_generati_eventi, documenti_generati_file): risale da documento_generato_id all''emittente_fiscale_id (NOT NULL) e delega a script.fn_scope_ef_whitelist — la CANONICA, la stessa che protegge la testata, cosi'' il satellite e il documento non possono divergere. ⛔ Non _via_sr e non _via_efba: questa testata nomina l''emittente per emittente fiscale, e le tre hanno la stessa firma (integer, bigint) — scambiarle compila, gira e confronta due numerazioni diverse, cioe'' risponde quasi sempre false. STABLE e NON security definer, come gli altri fn_scope_*. Documento inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). ⚠️ documenti_generati_file porta storage_key, file_name e sha256: fuori perimetro non si leggono metadati, si leggono le coordinate del PDF di un''altra azienda. Brief: brief-db-perimetro-emittente-righe-documento.md §11.16';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_documento_generato(integer, bigint);

@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CM-4 — Il DEBITO PAGATO esce dal registro, e uno NUOVO ci entra.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.15
+#   Slice 20260910-27..30, ultimo pezzo.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LE RIGHE TOLTE DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme — il CSV perche' un database ricostruito da zero non le crei, questa
+#   `DELETE` perche' dove ci sono gia' se ne vadano. Senza, escono come
+#   `DEBITO_ESTINTO` e il test 2 di
+#   `db/pgtap/rls/test-rls-perimetro-scoperto.sql` diventa rosso.
+#
+# ── ⭐ E LA RIGA NUOVA NON STA QUI, sta nel CSV ───────────────────────
+#   `vendite.attivita_fatturabili_log` (id 14) entra nel registro da oggi. E'
+#   una riga NUOVA di una tabella di configurazione ⇒ si scrive in coda al CSV
+#   `80_data/sql/dbops/rls_perimetro_debito.csv` e la porta dentro il mirror
+#   `20260909-77` (`runOnChange`), che gira PRIMA di questo changeSet — mai un
+#   `INSERT` a parte, o nascerebbe una seconda sorgente di verita' che diverge
+#   fra sviluppo e CI.
+#
+# ── ⛔ PERCHE' UNA TABELLA IN PIU' SI SCOPRE ADESSO ───────────────────
+#   `attivita_fatturabili_log` ha una FK verso `attivita_consumi`, che fino a
+#   ieri non era protetta: era **fuori perimetro**, non nascosta. Armando la
+#   madre entra nel criterio — e' la transitivita' gia' vista su `pratiche`
+#   (§11.7), che qui costa una riga di registro invece di un rosso.
+#   ⚠️ La sua unica FK e' NULLABLE, quindi non si arma «per simmetria»: una
+#   policy su una chiave nullable ha un buco esatto dove passa il NULL. La
+#   ragione nel CSV porta la domanda per intero — quella colonna deve diventare
+#   `NOT NULL`, oppure la tabella (che non ha nessuno scrittore) va ritirata.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-30-delete-debito-rls-commesse-mctit.yaml
+
+  - changeSet:
+      id: 20260910-30-delete-debito-rls-commesse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito le quattro righe della famiglia commesse
+        (vendite.attivita_fatturabili, attivita_consumi, commesse_attivita_log,
+        commesse_sorgenti), armate dalla slice 20260910-27..29. loadUpdateData
+        non cancella, quindi togliere le righe dal CSV non basta. La riga nuova
+        di vendite.attivita_fatturabili_log entra invece dal CSV, con il mirror
+        20260909-77.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (10, 'vendite', 'attivita_fatturabili'),
+                         (11, 'vendite', 'attivita_consumi'),
+                         (12, 'vendite', 'commesse_attivita_log'),
+                         (13, 'vendite', 'commesse_sorgenti'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu'. Ha senso solo
+              --   insieme al rollback di 20260910-29, che disarma le quattro.
+              -- ⛔ Le `ragione` qui sono quelle di RIPRISTINO, non le originali:
+              --   due delle quattro dicevano il falso — quella di
+              --   attivita_consumi sosteneva che l'adattatore da un billing
+              --   account all'emittente non esistesse (fn_scope_ef_whitelist_via_efba
+              --   esiste dal cantiere billing account), quella di
+              --   attivita_consumi/attivita_fatturabili si rimandavano a
+              --   vicenda. Riscriverle sbagliate per fedelta' storica sarebbe
+              --   ricreare la trappola, non l'archivio.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (10, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'attivita_fatturabili',
+                 'Ripristino di rollback: satellite di vendite.commesse via commessa_id NOT NULL, con adattatore fn_scope_ef_whitelist_via_commessa gia'' in servizio. Lavoro pronto, nessuna decisione mancante.', DATE '2026-09-09'),
+                (11, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'attivita_consumi',
+                 'Ripristino di rollback: satellite di anagrafiche.billing_account via billing_account_id NOT NULL, con adattatore fn_scope_ef_whitelist_via_efba gia'' in servizio sulla testata. Restava da decidere quante vesti rispecchiare.', DATE '2026-09-09'),
+                (12, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'commesse_attivita_log',
+                 'Ripristino di rollback: satellite di vendite.commesse_attivita via commessa_attivita_id NOT NULL. Serve l''adattatore _via_commessa_attivita, che arriva con 20260910-27.', DATE '2026-09-09'),
+                (13, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'commesse_sorgenti',
+                 'Ripristino di rollback: satellite di vendite.commesse via commessa_id NOT NULL. L''adattatore fn_scope_ef_whitelist_via_commessa esiste gia'': manca solo l''armamento.', DATE '2026-09-09');

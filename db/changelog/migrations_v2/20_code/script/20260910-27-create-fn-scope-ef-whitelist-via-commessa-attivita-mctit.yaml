@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CM-1 — L'UNICO adattatore che alla famiglia COMMESSE mancava davvero.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.15
+#   Slice 20260910-27..30 (helper -> policy inerti -> armamento -> registro).
+#
+# ── ⛔ IL REGISTRO NE PROMETTEVA DUE, E NE SERVE UNO ──────────────────
+#   La riga di `vendite.attivita_consumi` diceva: *«l'adattatore che risale da
+#   un billing account all'emittente non esiste ancora: e' l'unico pezzo da
+#   scrivere della famiglia commesse»*. E' FALSO:
+#   `script.fn_scope_ef_whitelist_via_efba` esiste, ed e' esattamente la
+#   funzione che protegge `anagrafiche.billing_account` — cioe' il padre di
+#   quella tabella. ⇒ Il consumo delega alla stessa funzione del proprio BA e
+#   i due non possono divergere, come la riga di listino con la sua versione
+#   (§11.11).
+#   ⭐ E' la SECONDA `ragione` del registro trovata sbagliata dopo quella
+#   corretta al §11.12. Il campo `ragione` esiste per dire a chi legge se ha
+#   davanti *un allarme*, *un lavoro pronto* o *una domanda aperta*: quando
+#   dice «manca un attrezzo» e l'attrezzo c'e', ferma un cantiere che poteva
+#   partire — e lo ferma in silenzio.
+#
+# ── ⭐ COSA FA QUESTA FUNZIONE, e perche' e' un anello e non una risalita ─
+#   `vendite.commesse_attivita_log` pende da `commesse_attivita`, che e' gia'
+#   protetta con `fn_scope_ef_whitelist_via_commessa` sulla propria
+#   `commessa_id` (`NOT NULL`). L'adattatore nuovo fa UN passo — dal log alla
+#   riga di commessa — e delega alla sorella:
+#
+#     commesse ──(_via_sr)──────────────> emittente     [gia' protetta]
+#     commesse_attivita ──(_via_commessa)──>            [gia' protetta]
+#     commesse_attivita_log ──(_via_commessa_attivita)──>  [QUESTO changeSet]
+#
+#   ⭐ Delegare invece di ricopiare la risalita fino all'emittente non e'
+#   eleganza: la regola su come una commessa nomina il proprio emittente resta
+#   scritta in UN posto solo, e la riga di log non puo' rispondere diversamente
+#   dalla riga di commessa che racconta.
+#
+# ── ⛔ IL REFUSO CHE NON FA RUMORE, ed e' il motivo del test 3 del pgTAP ──
+#   `_via_commessa` e `_via_commessa_attivita` hanno la STESSA firma
+#   `(integer, bigint)` e le due chiavi sono entrambe `bigint`: scambiarle
+#   compila e gira. ⚠️ E nel verso NEGATIVO lo scambio *sembra funzionare*
+#   (un id di riga di commessa letto come id di commessa non trova quasi mai
+#   una commessa ⇒ fail-closed). A smascherarlo e' il verso POSITIVO.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa dei
+#   `script.fn_scope_*` gia' in servizio. Una policy che chiamasse una funzione
+#   `SECURITY DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non
+#   vede: il filtro passerebbe sempre, e in silenzio.
+#
+# Permessi: funzione di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260910-27-create-fn-scope-ef-whitelist-via-commessa-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260910-27-create-fn-scope-ef-whitelist-via-commessa-attivita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatore di scope per il diario delle righe di commessa:
+        script.fn_scope_ef_whitelist_via_commessa_attivita(auth_user_id,
+        commessa_attivita_id), che risale dalla riga di commessa alla commessa
+        e delega a fn_scope_ef_whitelist_via_commessa, gia' in servizio su
+        vendite.commesse_attivita. Nessuna policy lo usa ancora: le crea
+        20260910-28.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_commessa'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa_attivita(
+                  p_auth_user_id          integer,
+                  p_commessa_attivita_id  vendite.commesse_attivita.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente della commessa a cui la riga appartiene.
+                  -- ⭐ Delega alla sorella `_via_commessa`, che e' la stessa
+                  --   che protegge vendite.commesse_attivita: cosi' il diario
+                  --   e la riga che racconta non possono rispondere in due modi.
+                  -- ⚠️ Riga inesistente -> commessa NULL -> la sorella risponde
+                  --   false quando la whitelist e' valorizzata: fail-closed,
+                  --   come tutta la famiglia.
+                  SELECT script.fn_scope_ef_whitelist_via_commessa(
+                      p_auth_user_id,
+                      (SELECT ca.commessa_id
+                         FROM vendite.commesse_attivita ca
+                        WHERE ca.id = p_commessa_attivita_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_commessa_attivita(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.commesse_attivita (oggi: commesse_attivita_log): risale da commessa_attivita_id alla commessa e delega a script.fn_scope_ef_whitelist_via_commessa — la stessa che protegge commesse_attivita, cosi'' il diario e la riga che racconta non possono divergere. STABLE e NON security definer, come gli altri fn_scope_*. ⛔ Stessa firma di _via_commessa e chiavi entrambe bigint: scambiarle compila e gira, e nel verso negativo sembra pure funzionare — lo presidia il verso POSITIVO del pgTAP. Riga inesistente -> commessa NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md §11.15';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_commessa_attivita(integer, bigint);

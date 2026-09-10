@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CM-2 — Le QUATTRO policy della famiglia COMMESSE. INERTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.15
+#   Slice 20260910-27..30. L'armamento e' 20260910-29.
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Una riga di lavoro appartiene all'emittente della propria commessa.
+#   `vendite.commesse` e `vendite.commesse_attivita` sono protette; le quattro
+#   tabelle qui sotto no, e `zeroerp_app` ha su tutte SELECT, INSERT, UPDATE e
+#   DELETE. ⚠️ Il contenuto e' il LAVORO FATTURABILE: articolo, quantita',
+#   prezzo, competenza e il diario di chi ha toccato cosa.
+#
+# ── LE QUATTRO, E DA DOVE PRENDONO IL PERIMETRO ──────────────────────
+#
+#   | tabella                | chiave `NOT NULL`      | adattatore                 |
+#   | ---------------------- | ---------------------- | -------------------------- |
+#   | attivita_fatturabili   | commessa_id            | _via_commessa       [c'era]|
+#   | commesse_sorgenti      | commessa_id            | _via_commessa       [c'era]|
+#   | commesse_attivita_log  | commessa_attivita_id   | _via_commessa_attivita [-27]|
+#   | attivita_consumi       | billing_account_id     | _via_efba           [c'era]|
+#
+#   ⭐ Un solo adattatore nuovo, non due: vedi 20260910-27.
+#
+# ── ⛔ `attivita_fatturabili` RISALE DALLA COMMESSA, e la ragione e' CAMBIATA ─
+#   Il §6.1 scelse `commessa_id` perche' `billing_account_id` era NULLABLE.
+#   Dal 2026-09-10 (slice 20260910-25) quella colonna e' `NOT NULL`, quindi
+#   quell'argomento non regge piu' — e la decisione resta la stessa, per DUE
+#   ragioni che non dipendono dalla nullabilita':
+#     * sul modello, un'attivita' fatturabile e' una riga del **giornale della
+#       commessa**: e' l'emittente che fatturera' a decidere chi la vede, non
+#       l'anagrafica del cliente;
+#     * `script.fn_scope_ef_whitelist_via_attivita_fatturabile` — che protegge
+#       gia' `note_attivita_fatturabili` — risale per `commessa_id`. Prendere
+#       qui una rotta diversa farebbe rispondere in due modi **la nota e il suo
+#       soggetto**.
+#   ⚠️ Chi un giorno volesse spostarla sul billing account deve cambiare anche
+#   quell'adattatore, o le due divergono in silenzio.
+#
+# ── ⭐ UNA VESTE SOLA, ED E' UNA DECISIONE — non un'omissione ─────────
+#   Le prime tre rispecchiano una testata che di vesti ne ha **una**
+#   (`rls_commesse_ef_whitelist`, OPERATORE `FOR ALL`): stessa regola dei
+#   satelliti di `ddt` e di `pratiche`.
+#   ⛔ `attivita_consumi` e' il caso che andava DECISO, perche' la sua testata
+#   — `anagrafiche.billing_account` — di policy ne ha QUATTRO: OPERATORE
+#   `FOR ALL`, una `FOR INSERT`, `CLIENTE_PORTALE` `FOR SELECT` e
+#   `SHOP_CUSTOMER` `FOR SELECT` con la condizione in piu' sul canale.
+#   ⇒ **Decisione di Tid, 2026-09-10: solo `OPERATORE`.** La ragione sta sul
+#   modello: `attivita_consumi` non e' una faccia dell'anagrafica, e' un
+#   documento SORGENTE della pipeline di fatturazione che NOMINA un cliente —
+#   non ha nessuna colonna emittente, e il cliente i consumi li vede resi sulla
+#   fattura, non come righe grezze.
+#   ⚠️ E va detto per intero, perche' non e' gratis: oggi la tabella non filtra
+#   affatto, quindi una sessione `CLIENTE_PORTALE` o `SHOP_CUSTOMER` ne vede
+#   TUTTE le righe, e da domani non ne vedra' **nessuna**. E' una porta che si
+#   chiude, dichiarata qui. Il giorno in cui il portale dovesse mostrare i
+#   consumi, la veste si **aggiunge** con la sua ragione — non la si eredita di
+#   straforo. Oggi nessun percorso del backend legge questa tabella
+#   (verificato 2026-09-10: zero riferimenti in `backend/`).
+#
+# ── ⛔ `FOR ALL` E `WITH CHECK`, non `FOR SELECT` ─────────────────────
+#   `zeroerp_app` ha SELECT, INSERT, UPDATE e DELETE su tutte e quattro
+#   (verificato 2026-09-10). Una policy di sola lettura lascerebbe **scrivere**:
+#   la `WITH CHECK` e' cio' che impedisce a un operatore di appendere una riga
+#   di lavoro — o una sorgente — alla commessa di un'altra azienda.
+#
+# ⭐ `zeroerp_batch_fatturazione` e' `BYPASSRLS`: la pipeline non si accorge di
+#   questa slice. Il perimetro morde su `zeroerp_app`, che e' `NOBYPASSRLS`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-28-create-policy-commesse-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-28-create-policy-commesse-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Quattro policy sulla famiglia commesse: attivita_fatturabili e
+        commesse_sorgenti risalgono dalla commessa, commesse_attivita_log dalla
+        riga di commessa, attivita_consumi dal billing account. Veste OPERATORE
+        FOR ALL con WITH CHECK. Su attivita_consumi la veste unica e' una
+        DECISIONE (Tid, 2026-09-10), non un rispecchiamento: la testata
+        anagrafiche.billing_account ne ha quattro. INERTI: l'armamento e'
+        20260910-29.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_commessa',
+                                   'fn_scope_ef_whitelist_via_commessa_attivita',
+                                   'fn_scope_ef_whitelist_via_efba')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ---------- vendite.attivita_fatturabili (chiave: commessa_id) ----------
+              -- ⛔ `commessa_id`, non `billing_account_id`: dal 2026-09-10 sono
+              --   NOT NULL tutte e due, quindi a decidere e' il modello — la
+              --   riga e' il giornale della commessa — e la coerenza con
+              --   fn_scope_ef_whitelist_via_attivita_fatturabile, che protegge
+              --   le note risalendo per la stessa rotta.
+              CREATE POLICY rls_attivita_fatturabili_ef_whitelist
+                  ON vendite.attivita_fatturabili
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              commessa_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              commessa_id)
+                  );
+
+              -- ---------- vendite.commesse_sorgenti (stessa chiave) ----------
+              -- ⚠️ E' la tabella che dice DA DOVE viene una commessa: leggerla
+              --   fuori perimetro vuol dire sapere quali documenti di un'altra
+              --   azienda sono confluiti in quale lavoro.
+              CREATE POLICY rls_commesse_sorgenti_ef_whitelist
+                  ON vendite.commesse_sorgenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              commessa_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              commessa_id)
+                  );
+
+              -- ---------- vendite.commesse_attivita_log (chiave: commessa_attivita_id) ----------
+              -- ⛔ Qui l'adattatore e' `_via_commessa_attivita`, non
+              --   `_via_commessa`: la chiave e' la RIGA di commessa, e le due
+              --   funzioni hanno la stessa firma (integer, bigint). Scambiarle
+              --   non da' nessun errore e filtra sulla cosa sbagliata.
+              CREATE POLICY rls_commesse_attivita_log_ef_whitelist
+                  ON vendite.commesse_attivita_log
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa_attivita(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              commessa_attivita_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa_attivita(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              commessa_attivita_id)
+                  );
+
+              -- ---------- vendite.attivita_consumi (chiave: billing_account_id) ----------
+              -- ⛔ Terzo adattatore, terza chiave: `_via_efba` e' la STESSA
+              --   funzione che protegge anagrafiche.billing_account, cioe' il
+              --   padre. Delegando a lei, il consumo e il suo billing account
+              --   non possono divergere.
+              -- ⛔ UNA VESTE SOLA, ed e' una DECISIONE (Tid, 2026-09-10): la
+              --   testata ne ha quattro, e le tre non rispecchiate chiudono al
+              --   portale e allo shop una porta oggi aperta. Motivo per esteso
+              --   nell'intestazione di questo changeSet.
+              CREATE POLICY rls_attivita_consumi_ef_whitelist
+                  ON vendite.attivita_consumi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              billing_account_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              billing_account_id)
+                  );
+
+              COMMENT ON POLICY rls_attivita_fatturabili_ef_whitelist ON vendite.attivita_fatturabili IS
+                  'Perimetro emittente del LAVORO FATTURABILE: risale da commessa_id (NOT NULL) e rispecchia rls_commesse_ef_whitelist. ⛔ Non da billing_account_id, che dal 2026-09-10 e'' NOT NULL quanto la commessa: a decidere e'' il modello — la riga e'' il giornale della commessa — e la coerenza con fn_scope_ef_whitelist_via_attivita_fatturabile, che protegge le note per la stessa rotta. Slice 20260910-27..30.';
+              COMMENT ON POLICY rls_commesse_sorgenti_ef_whitelist ON vendite.commesse_sorgenti IS
+                  'Perimetro emittente della tracciabilita'' documento -> commessa: risale da commessa_id (NOT NULL). ⚠️ Dice DA DOVE viene una commessa, quindi fuori perimetro rivelerebbe quali documenti di un''altra azienda sono confluiti in quale lavoro. Slice 20260910-27..30.';
+              COMMENT ON POLICY rls_commesse_attivita_log_ef_whitelist ON vendite.commesse_attivita_log IS
+                  'Perimetro emittente del diario delle righe di commessa: risale da commessa_attivita_id (NOT NULL) con fn_scope_ef_whitelist_via_commessa_attivita. ⛔ La chiave e'' la RIGA, non la commessa: i due adattatori hanno la stessa firma e scambiarli non da'' nessun errore. Slice 20260910-27..30.';
+              COMMENT ON POLICY rls_attivita_consumi_ef_whitelist ON vendite.attivita_consumi IS
+                  'Perimetro emittente della testata consumi: risale da billing_account_id (NOT NULL) con fn_scope_ef_whitelist_via_efba, la stessa che protegge anagrafiche.billing_account — cosi'' il consumo e il suo BA non divergono. ⛔ UNA veste sola mentre la testata ne ha quattro, ed e'' una DECISIONE (Tid, 2026-09-10): attivita_consumi non e'' una faccia dell''anagrafica ma un documento sorgente della pipeline di fatturazione, e il cliente i consumi li vede resi sulla fattura. ⚠️ Chiude a CLIENTE_PORTALE e SHOP_CUSTOMER una porta oggi aperta: se un giorno il portale dovra'' mostrarli, la veste si AGGIUNGE con la sua ragione. Slice 20260910-27..30.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_attivita_consumi_ef_whitelist      ON vendite.attivita_consumi;
+              DROP POLICY IF EXISTS rls_commesse_attivita_log_ef_whitelist ON vendite.commesse_attivita_log;
+              DROP POLICY IF EXISTS rls_commesse_sorgenti_ef_whitelist     ON vendite.commesse_sorgenti;
+              DROP POLICY IF EXISTS rls_attivita_fatturabili_ef_whitelist  ON vendite.attivita_fatturabili;
