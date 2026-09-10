@@ -39,6 +39,13 @@ from pathlib import Path
 
 import yaml
 
+# ⭐ Il parser YAML in C dove c'e', quello in puro Python dove non c'e'.
+#   Il 99% del costo di questo cancello e' il parsing (misurato il
+#   2026-09-10): ~14x. Stesso risultato, provato su tutti i changelog del
+#   repo — vedi scripts/_yaml_veloce.py.
+#   ⚠️ `yaml` resta importato: serve per `yaml.YAMLError` nei rami di errore.
+from _yaml_veloce import carica as carica_yaml
+
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "db" / "changelog" / "migrations_v2"
 FASI_VIETATE = ("00_schema", "20_code")
@@ -56,7 +63,7 @@ def trova_violazioni() -> list[tuple[str, str]]:
             if not p.is_file() or not FILENAME_RE.match(p.name):
                 continue
             try:
-                doc = yaml.safe_load(p.read_text(encoding="utf-8"))
+                doc = carica_yaml(p.read_text(encoding="utf-8"))
             except yaml.YAMLError as exc:
                 print(f"⚠️  YAML non parsabile, saltato: {p} ({exc})", file=sys.stderr)
                 continue

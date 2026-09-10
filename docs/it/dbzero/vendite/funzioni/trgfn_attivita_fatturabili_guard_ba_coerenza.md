@@ -24,15 +24,19 @@ BEGIN
   --   - se billing_account_id e` valorizzato, deve esistere
   --   - istanza_utility_id deve coincidere con quella del BA
   --   - variadic su fn_log_and_raise_error sempre testuali
-  --   - Commessa-aware: quando commessa_attivita_id IS NOT NULL
-  --     la coerenza BA/utility e` garantita a monte dal push
-  --     (fn_get_or_create_commessa), skip validazione.
+  --
+  -- 🔴 REV 2026-09-10 — TOLTA l'uscita anticipata.
+  --   Il corpo apriva con:
+  --       IF NEW.commessa_attivita_id IS NOT NULL THEN RETURN NEW;
+  --   motivata cosi': «righe da commessa: coerenza garantita a
+  --   monte dal push (fn_get_or_create_commessa)». Ma
+  --   `commessa_attivita_id` e` NOT NULL: quell'uscita valeva per
+  --   OGNI riga che sopravvive, e il guard non validava mai
+  --   niente. Un presidio che sembra esserci e non c'e`.
+  --   ⛔ E «garantita a monte» e` una convenzione, non una
+  --   garanzia: un guard esiste per il giorno in cui qualcuno
+  --   scrive da un'altra parte.
   -- =========================================================
-
-  -- Righe da commessa: coerenza BA/utility garantita dal push.
-  IF NEW.commessa_attivita_id IS NOT NULL THEN
-    RETURN NEW;
-  END IF;
 
   IF NEW.billing_account_id IS NOT NULL THEN
     SELECT b.istanza_utility_id
@@ -77,7 +81,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()
-IS 'Valida coerenza BA/istanza_utility su attivita_fatturabili; variadic error helper normalizzati a text. Commessa-aware: skip quando commessa_attivita_id IS NOT NULL.';
+IS 'Guard BEFORE INSERT OR UPDATE su vendite.attivita_fatturabili: la riga e il suo billing account devono nominare la stessa istanza di utility. 🔴 Dal 2026-09-10 valida DAVVERO: prima usciva su commessa_attivita_id IS NOT NULL, che essendo la colonna NOT NULL valeva per ogni riga sopravvissuta — un presidio che sembrava esserci e non c''era. Brief: brief-db-perimetro-emittente-righe-documento.md §11.13.';
 ```
 
 ---

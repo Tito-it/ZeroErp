@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| billing_account_id | bigint | YES |  |
+| billing_account_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
 | quantita | numeric | NO |  |

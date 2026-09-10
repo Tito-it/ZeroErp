@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L-2 — Le CINQUE policy sui satelliti di vendite.fatturazione_lotti. INERTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.9
+#   Slice 20260910-14..17. L'armamento e' 20260910-16.
+#
+# ── ⭐ UNA VESTE SOLA, E VA DETTO PERCHE' ─────────────────────────────
+#   `vendite.fatturazione_lotti` porta UNA policy —
+#   `rls_fatturazione_lotti_ef_whitelist`, `OPERATORE`, `FOR ALL`. ⇒ I cinque
+#   satelliti rispecchiano una veste, che e' la stessa regola di sempre — *il
+#   satellite rispecchia TUTTE le vesti della propria testata* — applicata a una
+#   testata che di vesti ne ha una.
+#
+# ── ⛔ LA DECISIONE DI `fatturazione_lotti_fatture`: il LOTTO ─────────
+#   Decisione di Tid, 2026-09-10. Quella tabella e' l'unica dei cinque con DUE
+#   genitori protetti e tutti e due `NOT NULL`: `lotto_id` e `fattura_id`. E i
+#   due non hanno le stesse vesti — il lotto ha la sola `OPERATORE`, la fattura
+#   ha anche `CLIENTE_PORTALE` (`rls_fatture_ba_ownership`, `FOR SELECT`).
+#
+#   ⭐ Il perimetro lo risolve il **lotto**, e la ragione sta sul modello: quella
+#   riga racconta **com'e' andato il giro di fatturazione** — porta
+#   `stato_esecuzione`, `stato_sdi_id`, `stato_doc_fiscale_id` — ed esiste solo
+#   perche' un lotto ha girato. La fattura esiste anche senza. E' macchina
+#   dell'emissione, non parte del documento.
+#
+#   ⛔ Agganciarla alla fattura avrebbe portato dentro anche la veste del
+#   portale: un cliente vedrebbe in quale giro la propria fattura e' stata
+#   prodotta e come e' andato. Oggi quella porta e' chiusa. ⇒ Sarebbe stata una
+#   **modifica funzionale mascherata da cantiere di sicurezza**, ed e' la stessa
+#   trappola gia' evitata su `ordini` al passo 2: *questa slice chiude un buco,
+#   non apre e non chiude una porta.*
+#   ⚠️ Se un giorno si decidera' che il portale deve vedere il giro delle proprie
+#   fatture, quella e' una decisione di dominio e si prende **aggiungendo** la
+#   veste, con la sua ragione scritta — non ereditandola di straforo da qui.
+#
+#   ⚠️ E non e' piu' permissiva della fattura: un operatore che ha il lotto nel
+#   proprio perimetro ha anche il suo emittente, e le fatture di quel lotto sono
+#   dello stesso emittente. Le due strade coincidono per costruzione.
+#
+# ── ⛔ `FOR ALL` E `WITH CHECK`, non `FOR SELECT` ─────────────────────
+#   `zeroerp_app` ha SELECT, INSERT, UPDATE e DELETE su tutti e cinque
+#   (verificato 2026-09-10). Una policy di sola lettura lascerebbe scrivere, e
+#   la `WITH CHECK` e' cio' che impedisce di **appendere** una riga al lotto di
+#   un altro emittente — o di spostarcela con un UPDATE.
+#
+# ⚠️ Il ruolo batch `zeroerp_batch_fatturazione` ha `BYPASSRLS`: il giro
+#   notturno non e' toccato da queste policy. Il giro lanciato dal cockpit gira
+#   invece con l'identita' dell'operatore (`run_as = OPERATORE`, cinque GUC
+#   ripopolate dal worker), quindi le policy risolvono come nel web — ed e'
+#   proprio cio' che si vuole.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-15-create-policy-lotti-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-15-create-policy-lotti-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Cinque policy sui satelliti di vendite.fatturazione_lotti (esiti,
+        fatture, gruppi, log, task_runs): veste OPERATORE FOR ALL con WITH
+        CHECK, come la testata, tutte risalendo da lotto_id. INERTI:
+        l'armamento e' 20260910-16.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_lotto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE POLICY rls_fatturazione_lotti_esiti_ef_whitelist
+                  ON vendite.fatturazione_lotti_esiti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  );
+
+              -- ⛔ Due genitori protetti, comanda il LOTTO: vedi l'intestazione.
+              CREATE POLICY rls_fatturazione_lotti_fatture_ef_whitelist
+                  ON vendite.fatturazione_lotti_fatture
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  );
+
+              CREATE POLICY rls_fatturazione_lotti_gruppi_ef_whitelist
+                  ON vendite.fatturazione_lotti_gruppi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  );
+
+              CREATE POLICY rls_fatturazione_lotti_log_ef_whitelist
+                  ON vendite.fatturazione_lotti_log
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  );
+
+              CREATE POLICY rls_fatturazione_lotti_task_runs_ef_whitelist
+                  ON vendite.fatturazione_lotti_task_runs
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_lotto(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              lotto_id)
+                  );
+
+              COMMENT ON POLICY rls_fatturazione_lotti_esiti_ef_whitelist ON vendite.fatturazione_lotti_esiti IS
+                  'Perimetro emittente per gli esiti del lotto: rispecchia rls_fatturazione_lotti_ef_whitelist della testata risalendo da lotto_id. Slice 20260910-14..17.';
+              COMMENT ON POLICY rls_fatturazione_lotti_fatture_ef_whitelist ON vendite.fatturazione_lotti_fatture IS
+                  'Perimetro emittente per il legame lotto-fattura. ⛔ Ha DUE genitori protetti e NOT NULL (lotto_id, fattura_id) e comanda il LOTTO — decisione di Tid del 2026-09-10: la riga racconta com''e'' andato il giro di emissione, non fa parte del documento fattura. Agganciarla alla fattura avrebbe portato dentro anche la veste CLIENTE_PORTALE, cioe'' una modifica funzionale mascherata da cantiere di sicurezza. Slice 20260910-14..17.';
+              COMMENT ON POLICY rls_fatturazione_lotti_gruppi_ef_whitelist ON vendite.fatturazione_lotti_gruppi IS
+                  'Perimetro emittente per i gruppi fatturabili presi in carico dal lotto: risale da lotto_id. ⭐ Finora il perimetro lo teneva il backend con il JOIN sulla testata, conteggio compreso: quella difesa applicativa resta e si somma. Slice 20260910-14..17.';
+              COMMENT ON POLICY rls_fatturazione_lotti_log_ef_whitelist ON vendite.fatturazione_lotti_log IS
+                  'Perimetro emittente per il diario del lotto: risale da lotto_id. ⚠️ I messaggi nominano documenti e commesse di un solo emittente — leggerli fuori perimetro e'' leggere il lavoro altrui. Slice 20260910-14..17.';
+              COMMENT ON POLICY rls_fatturazione_lotti_task_runs_ef_whitelist ON vendite.fatturazione_lotti_task_runs IS
+                  'Perimetro emittente per le esecuzioni dei task di pipeline del lotto: risale da lotto_id. Slice 20260910-14..17.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_task_runs_ef_whitelist ON vendite.fatturazione_lotti_task_runs;
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_log_ef_whitelist       ON vendite.fatturazione_lotti_log;
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_gruppi_ef_whitelist    ON vendite.fatturazione_lotti_gruppi;
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_fatture_ef_whitelist   ON vendite.fatturazione_lotti_fatture;
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_esiti_ef_whitelist     ON vendite.fatturazione_lotti_esiti;

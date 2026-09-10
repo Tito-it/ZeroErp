@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-1 — Gli adattatori di scope per la famiglia PRATICHE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.7
+#   Slice 20260910-01..04 (helper -> policy inerti -> armamento -> registro).
+#   Precedenti: le sei famiglie di documento, 20260909-27..49.
+#
+# ── ⭐ E' LA PRIMA FAMIGLIA CHE IL PRESIDIO HA CONSEGNATO ─────────────
+#   Le sei slice di ieri nascono da un elenco letto a mano; questa nasce da
+#   `dbops.vw_rls_perimetro_scoperto`, che il 2026-09-09 ha nominato sette
+#   satelliti di `pratiche.pratiche` che nessuno aveva mai guardato. E' il
+#   presidio che fa il suo mestiere: *senza, la prossima tabella con una FK
+#   verso un documento nasce scoperta e nessuno lo sa.*
+#
+# ── ⛔ E IL PERIMETRO E' NOVE, NON SETTE. Se ne accorge il criterio ───
+#   Il registro del debito ne dichiarava **sette** — quelle con una FK diretta
+#   verso `pratiche.pratiche`. Ma `pratiche.allegati_flussi` e
+#   `pratiche.note_flussi` hanno una FK `NOT NULL` verso `pratiche.flussi`, e
+#   `flussi` oggi non e' protetta: quindi il criterio non le vedeva.
+#   ⭐ Armando `flussi` sarebbero entrate nel perimetro **al giro dopo**, e il
+#   presidio sarebbe diventato rosso su due tabelle mai censite. E' la
+#   transitivita' descritta nel §11 del brief, vista funzionare prima ancora di
+#   costare un rosso: *il criterio si estende da solo.*
+#   ⇒ Questa slice ne arma NOVE. Le due in piu' non erano un debito nascosto:
+#     erano fuori perimetro finche' il loro padre lo era.
+#
+# ── Le due funzioni, e perche' sono due ───────────────────────────────
+#   I satelliti stanno su due livelli e portano chiavi diverse:
+#     * sette puntano alla TESTATA (`pratica_id`)           -> `_via_pratica`
+#     * due puntano al FLUSSO (`flusso_id`)                 -> `_via_flusso`
+#   La seconda delega alla prima invece di ripetere la risalita: la regola
+#   «come una pratica nomina il proprio emittente» resta scritta in un posto
+#   solo. E' la stessa forma di `_via_ddt_riga` (20260909-36).
+#   ⚠️ Tutte quelle FK sono `NOT NULL` (verificato 2026-09-10): nessun ramo con
+#   la chiave nulla, quindi nessun buco esatto dove il NULL passa.
+#
+# ── ⭐ LA RISALITA E' CORTA ───────────────────────────────────────────
+#   `pratiche.pratiche` porta `emittente_fiscale_id` (`bigint NOT NULL`), che
+#   e' esattamente cio' che `script.fn_scope_ef_whitelist` accetta — come
+#   ddt, ordini, preventivi, contratti, resi e offerte. E' `fatture` il caso
+#   lungo, perche' porta `emittente_soggetto_ruolo_id`.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa dei
+#   `script.fn_scope_*` gia' in servizio. Una policy che chiamasse una funzione
+#   `SECURITY DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non
+#   vede: il filtro passerebbe sempre, e in silenzio.
+#
+# Permessi: funzioni di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260910-01-create-fn-scope-ef-whitelist-via-pratica-mctit.yaml
+
+  - changeSet:
+      id: 20260910-01-create-fn-scope-ef-whitelist-via-pratica
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatori di scope per la famiglia pratiche:
+        script.fn_scope_ef_whitelist_via_pratica(auth_user_id, pratica_id) e
+        script.fn_scope_ef_whitelist_via_flusso(auth_user_id, flusso_id), che
+        risalgono alla testata e delegano alla canonica fn_scope_ef_whitelist.
+        Nessuna policy li usa ancora: le crea 20260910-02.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_pratica(
+                  p_auth_user_id integer,
+                  p_pratica_id   pratiche.pratiche.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente della pratica indicata.
+                  -- ⚠️ Pratica inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come per le sei famiglie di documento.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT p.emittente_fiscale_id
+                         FROM pratiche.pratiche p
+                        WHERE p.id = p_pratica_id)
+                  );
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_flusso(
+                  p_auth_user_id integer,
+                  p_flusso_id    pratiche.flussi.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da un FLUSSO — e' la chiave
+                  --   che portano pratiche.allegati_flussi e pratiche.note_flussi.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: se un
+                  --   giorno cambia il modo in cui una pratica nomina il proprio
+                  --   emittente, si corregge in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_pratica(
+                      p_auth_user_id,
+                      (SELECT f.pratica_id
+                         FROM pratiche.flussi f
+                        WHERE f.id = p_flusso_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_pratica(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di pratiche.pratiche: risale da pratica_id a `emittente_fiscale_id` e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer, come gli altri fn_scope_*: una funzione security definer dentro una policy guarderebbe con gli occhi dell''owner, che la RLS non vede. Pratica inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md §11.7';
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_flusso(integer, bigint)
+              IS 'Come fn_scope_ef_whitelist_via_pratica ma a partire da un flusso: e'' la chiave che portano pratiche.allegati_flussi e pratiche.note_flussi. Delega alla sorella invece di ripetere la risalita alla testata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_flusso(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_pratica(integer, bigint);

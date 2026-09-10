@@ -1,0 +1,51 @@
+{% include-markdown "it/dbzero/dbops/manual/presidi.md" %}
+# 📚 Tabella `presidi`
+
+> 📝 **Descrizione**
+>
+> Catalogo delle viste di presidio: per ogni vista, CHE COSA SIGNIFICA una sua riga. E' il terzo pezzo accanto alla misura (la vista) e al registro del debito (le voci note): dice chi la legge. ⛔ Non e' un elenco in Python perche' sarebbe una seconda sorgente di verita', e diverge alla prima vista nuova — il presidio nascerebbe fuori dal digest, in silenzio, cioe' lo stesso guasto che il digest chiude. ⭐ Non e' un'ipotesi: la trentaduesima vista e' nata il 2026-09-09, lo stesso giorno in cui il brief ne contava trentuno. ⛔ Nessuna colonna `soglia`: il debito si tiene con un registro di voci PER NOME, perche' un intero e' cieco sullo scambio (un debito saldato piu' un difetto nuovo lasciano il numero fermo). ⛔ E nessun destinatario: a chi arriva la posta di questa macchina e' un fatto di deploy, non di catalogo. Brief: brief-db-un-destinatario-per-i-presidi §4.1.
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | integer | NO |  |
+| vista | text | NO |  |
+| natura | text | NO |  |
+| colonna_stato | text | YES |  |
+| stato_atteso | text | YES |  |
+| registro | text | YES |  |
+| presidiato_da | text | YES |  |
+| cadenza | text | NO |  |
+| perimetro | text | NO |  |
+| attivo | boolean | NO | true |
+| obsoleto_dal | date | YES |  |
+| nota | text | NO |  |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_presidi_cadenza |  |
+| CHECK | chk_presidi_cancello_ha_presidio |  |
+| CHECK | chk_presidi_coppia_stato |  |
+| CHECK | chk_presidi_fuori_digest_cadenza_mai |  |
+| CHECK | chk_presidi_natura |  |
+| CHECK | chk_presidi_nota_non_vuota |  |
+| CHECK | chk_presidi_perimetro |  |
+| CHECK | chk_presidi_registro_qualificato |  |
+| CHECK | chk_presidi_vista_qualificata |  |
+| PRIMARY KEY | pk_presidi | id |
+| UNIQUE | uq_presidi_vista | vista |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_presidi | `CREATE UNIQUE INDEX pk_presidi ON dbops.presidi USING btree (id)` |
+| uq_presidi_vista | `CREATE UNIQUE INDEX uq_presidi_vista ON dbops.presidi USING btree (vista)` |
+
+---
+{% include-markdown "signature-core.md" %}
