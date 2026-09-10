@@ -1,26 +1,36 @@
 name: CI-Validate
 
-# ── ⭐ CONCURRENCY, e i due eventi NON si trattano allo stesso modo ──────────
-#   `ci.yaml` ce l'aveva dal principio; qui mancava, quindi due push ravvicinate
-#   pagavano due corse intere (5-7,6 min l'una) sullo stesso identico albero.
-#
-#   ⚠️ Ma `cancel-in-progress: true` secco sarebbe stato sbagliato, ed e' la
-#   parte che vale la pena leggere:
-#
-#   · su una **pull_request** la corsa nuova SOPPIANTA la vecchia — il commit
-#     precedente non e' piu' quello che verra' mergiato, e il suo verdetto non
-#     serve a nessuno. Si annulla.
+# ── ⭐ CONCURRENCY: le PR si soppiantano, i push NON si accodano ─────────────
+#   Il principio resta quello:
+#   · su una **pull_request** la corsa nuova SOPPIANTA la vecchia — quel commit
+#     non e' piu' quello che verra' mergiato, e il suo verdetto non serve a
+#     nessuno. Si annulla, e si risparmia un runner.
 #   · su una **push a Tito-dev** ogni corsa e' il verdetto di uno STATO DI
 #     INTEGRAZIONE che e' esistito. Annullarla vuol dire che di quel merge non
 #     si sapra' mai niente — e li' gira la suite pgTAP, che non gira altrove.
-#     Non si annulla, si accoda.
 #
-#   ⭐ Vale il criterio gia' scritto nel passo «Il DB e' cambiato in questa
-#     push?»: *un controllo che salta in silenzio quando non sa e' peggio di uno
-#     che gira di troppo*.
+#   ⛔ MA `cancel-in-progress: false` NON VUOL DIRE «gira comunque»: vuol dire
+#     **«mettiti in fila»**. E' la trappola in cui questo file e' caduto il
+#     2026-09-10, appena messo il gruppo: la corsa del merge #1555 e' rimasta
+#     ferma **4 minuti e 8 secondi** ad aspettare quella del #1554.
+#
+#       #1554  creata 15:38:16   job partito 15:38:19   finito 15:43:23
+#       #1555  creata 15:39:19   job partito 15:43:27 ← in coda   finito 15:50:04
+#
+#     Il job era diventato piu' VELOCE (7,6 -> 6,6 min, i sei cancelli da 53 s a
+#     4 s col parser YAML in C) e la CORSA piu' LENTA (7,6 -> 10,8 min). Il
+#     guadagno reale era nascosto da una coda che prima non c'era.
+#
+#   ⇒ Sui push il gruppo non porta NIENTE — non annulla, non risparmia un
+#     runner — e aggiunge latenza pura. Quindi ogni push ha un gruppo **suo**
+#     (`run_id`, unico per corsa) e non incontra mai nessuno; le PR restano
+#     raggruppate per `ref`, dove il soppiantamento serve davvero.
+#   ⚠️ Con un gruppo di uno solo, `cancel-in-progress: true` non ha niente da
+#     annullare: e' vero solo dove conta, ed e' piu' onesto di un booleano
+#     condizionale che sembrava dire un'altra cosa.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.run_id || 'pr' }}
+  cancel-in-progress: true
 
 on:
   push:

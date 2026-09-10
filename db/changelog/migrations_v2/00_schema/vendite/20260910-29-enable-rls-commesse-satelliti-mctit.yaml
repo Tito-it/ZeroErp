@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CM-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sulla famiglia COMMESSE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.15
+#   Slice 20260910-27..30. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica — e' il secondo criterio
+#   di `dbops.vw_rls_perimetro_scoperto`, che oggi pesca tre tabelle proprio
+#   cosi'. Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza
+#   della policy.
+#
+# ── NO FORCE, a parita' con le due testate ────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.commesse` e
+#   `vendite.commesse_attivita`: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto. ⭐ E `zeroerp_batch_fatturazione` e'
+#   `BYPASSRLS`, quindi la pipeline di fatturazione non cambia comportamento.
+#
+# ── ⛔ E QUI SI CHIUDE UNA PORTA, non solo un buco ────────────────────
+#   Le prime tre tabelle rispecchiano la veste unica della loro testata: nessuna
+#   porta si muove. `vendite.attivita_consumi` no — la sua testata
+#   `anagrafiche.billing_account` ha anche `CLIENTE_PORTALE` e `SHOP_CUSTOMER`,
+#   e da questo changeSet quelle due vesti non vedranno **nessuna** riga di
+#   consumo (oggi le vedono tutte, perche' la tabella non filtra affatto).
+#   ⇒ Decisione di Tid del 2026-09-10, motivata in 20260910-28. Va scritta qui
+#   perche' e' qui che il comportamento cambia.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ───────────────────────────────
+#   ⭐ **Nessuna vista da sistemare**: le otto che leggono queste tabelle hanno
+#   gia' tutte `security_invoker` (verificato 2026-09-10) — `dbops.vw_af_senza_giro`,
+#   `script.vw_lotto_documento_righe`, `vendite.vw_af_merce_per_riga`,
+#   `vw_dash_competenza_attivita`, `vw_dash_competenza_errori`,
+#   `vw_documento_lineage_archi`, `vw_lotti_gruppi_serviti`,
+#   `vw_preventivi_smistamento_righe`.
+#
+#   ⚠️ I punti da guardare a mano:
+#     - il cockpit fatturazione e le liste «da emettere» / «residui»;
+#     - i cruscotti di competenza (`vw_dash_competenza_*`), che contano righe:
+#       un conteggio che cala e' il perimetro che lavora, non un difetto — ma
+#       se calasse **dentro** il proprio emittente, allora e' un dato con la
+#       commessa di un'altra azienda, non un filtro sbagliato;
+#     - il lineage documento -> commessa (`vw_documento_lineage_archi`), che
+#       legge `commesse_sorgenti`.
+#
+#   ⭐ **La nipote gia' protetta**: `vendite.note_attivita_fatturabili` e' in RLS
+#   dal passo 8 con `fn_scope_ef_whitelist_via_attivita_fatturabile`, che risale
+#   per `commessa_id` — la stessa rotta che questa slice da' alla madre. Le due
+#   non possono divergere, ed e' voluto.
+#   ⚠️ **La nipote che NON si arma**: `vendite.attivita_fatturabili_log` entra
+#   nel criterio da oggi, perche' pende da `attivita_consumi`. La sua unica FK
+#   e' NULLABLE ⇒ resta un debito DICHIARATO nel registro (20260910-30), non un
+#   armamento zitto.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-commesse-satelliti.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-29-enable-rls-commesse-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-29-enable-rls-commesse-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su vendite.attivita_fatturabili,
+        vendite.commesse_sorgenti, vendite.commesse_attivita_log e
+        vendite.attivita_consumi. Da qui le policy di 20260910-28 filtrano
+        davvero. Isolato apposta: si disarma con il rollback di questo solo
+        changeSet, e le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename IN ('attivita_fatturabili', 'commesse_sorgenti',
+                                   'commesse_attivita_log', 'attivita_consumi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.commesse_sorgenti     ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.commesse_attivita_log ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.attivita_consumi      ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_consumi      DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.commesse_attivita_log DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.commesse_sorgenti     DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.attivita_fatturabili  DISABLE ROW LEVEL SECURITY;
