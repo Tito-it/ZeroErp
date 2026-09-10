@@ -1690,7 +1690,7 @@ class DashCompetenzaRespintaEErroriRepositoryTests(TestCase):
         # sede unica del numero documento, che colonna della vista non e'.
         colonne = [
             r for r in (x.strip() for x in proiezione.splitlines())
-            if r.startswith("e.") or r.startswith("vendite.fn_numero_documento_fattura")
+            if r.startswith(("e.", "vendite.fn_numero_documento_fattura"))
         ]
         self.assertEqual(
             len(colonne), len(self._riga_errore()),

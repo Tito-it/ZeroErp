@@ -28,6 +28,14 @@ PROCESSO_DRAINA_CODA_STAMPA = "draina_coda_stampa"
 PROCESSO_DRAINA_CODA_LAVORI = "draina_coda_lavori"
 PROCESSO_SEND_PENDING_EMAILS = "send_pending_emails"
 PROCESSO_LISTEN_CAMBIO_REPARTO = "listen_cambio_reparto"
+# ⭐ 2026-09-10: il DESTINATARIO che alle viste di presidio mancava. Classe
+#    `MANUTENZIONE` e canale `COMMAND` (riga 26 di `dbops.processi`): legge
+#    `dbops` e non i dati di un'azienda, quindi non vuole ne' identita' ne'
+#    emittente — e' una lettura periodica che nel dominio non scrive niente.
+# ⚠️ Ha DUE corsie, come `run_fatturazione_batch`: si registra sul giornale come
+#    `digest_presidi:<cadenza>`, e la chiave del battito resta il codice del
+#    processo. Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md.
+PROCESSO_DIGEST_PRESIDI = "digest_presidi"
 
 # ⛔ `sync_auth_user_active` NON sta piu' qui: la riga 23 di `dbops.processi` e'
 #    RITIRATA (`obsoleto_dal = 2026-09-07`) a favore del gemello pgAgent

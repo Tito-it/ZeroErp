@@ -61,6 +61,6 @@ class TestProviderFactory(unittest.TestCase):
     def test_factory_defaults_to_mock(self, mock_settings):
         # getattr con default "mock" quando AI_PROVIDER non e' definito
         del mock_settings.AI_PROVIDER
-        mock_settings.configure_mock(**{"AI_PROVIDER": "mock"})
+        mock_settings.configure_mock(AI_PROVIDER="mock")
         provider = get_ai_provider()
         self.assertIsInstance(provider, MockProvider)

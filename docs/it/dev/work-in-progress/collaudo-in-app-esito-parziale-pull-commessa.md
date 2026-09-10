@@ -233,11 +233,11 @@ tutte nate da push, con la riga di `commesse_sorgenti` da guastare.
 Imparato il 2026-09-05, ripulendo settembre. Annullare il lotto **non basta**, e
 ognuno dei tre passi ha un padrone diverso:
 
-| # | Che cosa resta su | Come si abbassa |
-| --- | --- | --- |
-| 1 | il **guasto** (`ROOT` tolta a 34137) | si rimette `ruolo_link='ROOT'` sulla riga **per id** — l'annullo non lo tocca |
-| 2 | i **task run** in `ERRORE` | ✅ l'annullo li porta ad `ANNULLATO` da sé (**D4**). ⚠️ I lotti annullati *prima* del 2026-09-04 sono rimasti indietro e vanno allineati a mano |
-| 3 | le **segnalazioni di lotto** (`fatturazione_lotti_log`, `status='C'`) | ⛔ **nessuno le abbassa**: restano accese anche a lotto `ANNULLATA`, e sono la sorgente della lista «commesse respinte». Oggi si spengono a mano (`disabilitato=true`) — è un tampone, la cura è del DB |
+| #   | Che cosa resta su                                                     | Come si abbassa                                                                                                                                                                                        |
+| --- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | il **guasto** (`ROOT` tolta a 34137)                                  | si rimette `ruolo_link='ROOT'` sulla riga **per id** — l'annullo non lo tocca                                                                                                                          |
+| 2   | i **task run** in `ERRORE`                                            | ✅ l'annullo li porta ad `ANNULLATO` da sé (**D4**). ⚠️ I lotti annullati *prima* del 2026-09-04 sono rimasti indietro e vanno allineati a mano                                                          |
+| 3   | le **segnalazioni di lotto** (`fatturazione_lotti_log`, `status='C'`) | ⛔ **nessuno le abbassa**: restano accese anche a lotto `ANNULLATA`, e sono la sorgente della lista «commesse respinte». Oggi si spengono a mano (`disabilitato=true`) — è un tampone, la cura è del DB |
 
 ⭐ Il criterio per sapere se si è puliti davvero: `vw_dash_competenza_errori` e
 `vw_dash_commesse_respinte` **entrambe a zero** sul mese, e le tre commesse di
@@ -391,14 +391,14 @@ SELECT pipeline_id, task_code, resume_mode, annullabile
 commessa, poi lancia **«Fattura adesso»** (o l'emissione mirata sui gruppi, se
 preferisci restringere il perimetro).
 
-- [ ] il giro **arriva in fondo**: non compare un errore rosso che ferma tutto;
-- [ ] viene creato un **lotto**, e lo trovi in `vendite/lotti`.
+- [X] il giro **arriva in fondo**: non compare un errore rosso che ferma tutto;
+- [X] viene creato un **lotto**, e lo trovi in `vendite/lotti`.
 
 Apri il lotto, scheda **Task** (i `task_run`):
 
-- [ ] la riga di **`pull_attivita_da_commessa`** ha stato **`ERRORE`**, non
+- [X] la riga di **`pull_attivita_da_commessa`** ha stato **`ERRORE`**, non
       `COMPLETATO`;
-- [ ] il suo `meta` porta i quattro numeri: `totale`, `ok`, `falliti`, e
+- [X] il suo `meta` porta i quattro numeri: `totale`, `ok`, `falliti`, e
       **`commesse_fallite`** con dentro **l'id della commessa che hai guastato**.
 
 ⚠️ **Se il task_run è `COMPLETATO`**: è il difetto originale del cantiere,
@@ -421,14 +421,14 @@ che gli `ok` siano **zero su N**.
 
 Sul lotto, scheda **Documenti**:
 
-- [ ] ci sono documenti, e **non sono zero**;
-- [ ] le attività delle commesse **non guastate** sono dentro — confronta con
+- [X] ci sono documenti, e **non sono zero**;
+- [X] le attività delle commesse **non guastate** sono dentro — confronta con
       l'elenco che ti eri annotato.
 
 Poi, sul cruscotto (`Vendite → Fatturazione`, stesso mese):
 
-- [ ] le commesse sane **non compaiono più** fra quelle da emettere;
-- [ ] la commessa guastata **c'è ancora**: il suo lavoro non è stato consumato.
+- [X] le commesse sane **non compaiono più** fra quelle da emettere;
+- [X] la commessa guastata **c'è ancora**: il suo lavoro non è stato consumato.
 
 ⚠️ **Se il lotto è vuoto, o mancano attività di commesse che non hai toccato**:
 🔴 **fermati e segnala.** È l'isolamento per item che non regge, ed è il difetto
@@ -449,8 +449,8 @@ SELECT execution_mode, last_task_stato, last_tentativo
          <lotto_id>, <pipeline_id>, 'pull_attivita_da_commessa');
 ```
 
-- [ ] `last_task_stato` = **`ERRORE`**;
-- [ ] `execution_mode` = **`RESUME`** — ⛔ **non `SKIP`**.
+- [X] `last_task_stato` = **`ERRORE`**;
+- [X] `execution_mode` = **`RESUME`** — ⛔ **non `SKIP`**.
 
 ⚠️ **Se dice `SKIP`**: il difetto è tornato, e la prova 1 aveva già dato il
 segnale (task_run COMPLETATO). ⚠️ **Se dice `RESET_REQUIRED`**: la policy non è
@@ -458,13 +458,13 @@ più `RESUME_TASK` — vedi il prerequisito nella Materia.
 
 **Poi** rilancia lo step **lasciando il guasto in piedi**, dal drawer del lotto.
 
-- [ ] il pulsante c'è e si può premere: **«Riprova step»** se il lotto è in
+- [X] il pulsante c'è e si può premere: **«Riprova step»** se il lotto è in
       `ERRORE`, **«Rigenera la bozza»** se è stato riportato in lavorazione,
       **«Avanza step»** altrimenti;
-- [ ] il tentativo **riparte** e la commessa guastata viene **ritentata** — nella
+- [X] il tentativo **riparte** e la commessa guastata viene **ritentata** — nella
       scheda **Task** compare un run **nuovo** (`last_tentativo` incrementato),
       non un salto;
-- [ ] fallisce **di nuovo**, con lo stesso motivo: il guasto è ancora lì, ed è
+- [X] fallisce **di nuovo**, con lo stesso motivo: il guasto è ancora lì, ed è
       giusto così.
 
 ⚠️ **Se «Avanza step» è DISABILITATO** con il tooltip sulle segnalazioni: è
@@ -560,13 +560,13 @@ SELECT c.id
 
 **Chiuso il**: — · **Da**: — · **Ambiente**: sviluppo (`dbdev`)
 
-| #   | Prova                                                     | Scrive | Esito | Note |
-| --- | --------------------------------------------------------- | ------ | ----- | ---- |
-| 0   | La policy del task è `RESUME_TASK`                        | no     |       |      |
-| 1   | Il giro non si ferma, il task_run va in **ERRORE**        | **sì** |       |      |
-| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint) | no     |       |      |
-| 3   | 🔴 Il rilancio **RITENTA**, non salta                      | **sì** |       |      |
-| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni  | **sì** |       |      |
+| #   | Prova                                                        | Scrive | Esito | Note |
+| --- | ------------------------------------------------------------ | ------ | ----- | ---- |
+| 0   | La policy del task è `RESUME_TASK`                           | no     |       |      |
+| 1   | Il giro non si ferma, il task_run va in **ERRORE**           | **sì** |       |      |
+| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint)    | no     |       |      |
+| 3   | 🔴 Il rilancio **RITENTA**, non salta                         | **sì** |       |      |
+| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni     | **sì** |       |      |
 | 5   | Tutto-rosso → nessuna eccezione, segni scritti, catena ferma | **sì** |       |      |
 
 ### Che cosa ha trovato il collaudo
@@ -657,12 +657,12 @@ il suo rifiuto arriva da solo.
 
 **Deve succedere:**
 
-| | |
-| --- | --- |
-| esito | `PARZIALE` — e la risposta è **200**, non un errore |
-| messaggio | «Tolti dal giro 1 documenti su 2. I restanti non sono passati: …» |
-| il motivo | quello **vero** della riga — `E_LOTTO_DOC_NON_IN_ERRORE`, non un codice generico |
-| la selezione | resta spuntata **solo la riga fallita** |
+|              |                                                                                  |
+| ------------ | -------------------------------------------------------------------------------- |
+| esito        | `PARZIALE` — e la risposta è **200**, non un errore                              |
+| messaggio    | «Tolti dal giro 1 documenti su 2. I restanti non sono passati: …»                |
+| il motivo    | quello **vero** della riga — `E_LOTTO_DOC_NON_IN_ERRORE`, non un codice generico |
+| la selezione | resta spuntata **solo la riga fallita**                                          |
 
 ⛔ **E il numero dei «tornati da emettere» deve dire `0`, non `2`.** I due sono
 usciti entrambi: nessuno torna in coda. Si contano per **insieme** e non
@@ -688,8 +688,8 @@ scoprirebbe dopo, sul lotto successivo.
 
 ### Verbale delle prove aggiuntive
 
-| N° | Cosa dimostra | Atteso | Esito | Note |
-| --- | --- | --- | --- | --- |
-| 6   | Il gesto di massa è lo stesso verbo della riga | **sì** |       |      |
+| N°  | Cosa dimostra                                                               | Atteso | Esito | Note |
+| --- | --------------------------------------------------------------------------- | ------ | ----- | ---- |
+| 6   | Il gesto di massa è lo stesso verbo della riga                              | **sì** |       |      |
 | 7   | Esito PARZIALE: codice per riga, spunta sulle fallite, riaperti per insieme | **sì** |       |      |
-| 8   | La conseguenza si dichiara prima | **sì** |       |      |
+| 8   | La conseguenza si dichiara prima                                            | **sì** |       |      |

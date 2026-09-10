@@ -56,7 +56,6 @@ class _FakeParentView:
 class _ViewWithMixin(EmittenteFiscaleScopeMixin, _FakeParentView):
     """Scopo: View concreta che combina mixin + parent per i test."""
 
-    pass
 
 
 class EmittenteFiscaleScopeMixinTests(TestCase):

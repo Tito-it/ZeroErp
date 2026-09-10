@@ -366,10 +366,20 @@ class ProcessiPresidiView(AdminAPIView):
     debito che deve calare» — arriva dal COMMENTO della vista a database, non
     da un elenco nel backend: e' il team DB a dichiararla, e a dirla e' una
     sede sola.
+    ⭐ E DAL 2026-09-10 NEMMENO QUALI SIANO: le viste sono quelle che il
+    catalogo `dbops.presidi` marca di natura `ZERO` (decisione di Tid). Erano
+    una tupla di dieci nomi nel backend, e le due gia' non coincidevano —
+    cinque `ZERO` a catalogo non le guardava nessuno, e una `LAVORAZIONE` stava
+    fra gli allarmi. ⚠️ Una vista `LAVORAZIONE` non e' un allarme: una coda con
+    righe e' lavoro in corso, e un pannello che mostra righe verdi insegna a
+    leggere il verde come debito.
     ⚠️ QUANTI SIANO non si scrive qui, e non e' pignoleria: fino al 2026-09-07
-    questa riga diceva «SEI», e alla stessa data `PRESIDI_PROCESSI` ne elencava
-    dieci. Un numero copiato accanto a un elenco che cresce invecchia in
-    silenzio — l'elenco e' la sede, e si legge da li'.
+    questa riga diceva «SEI», e alla stessa data la tupla ne elencava dieci. Un
+    numero copiato accanto a un elenco che cresce invecchia in silenzio — la
+    sede e' il catalogo, e si legge da li'.
+    ⛔ E un presidio che non si e' potuto LEGGERE arriva con il suo `errore` e
+    `conteggio` a `null`: non e' «zero righe», ed e' l'unica differenza che
+    conta su una schermata dove il verde vuol dire «tutto a posto».
     """
 
     @extend_schema(

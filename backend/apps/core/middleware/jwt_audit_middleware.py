@@ -179,10 +179,9 @@ class JwtAuditMiddleware(MiddlewareMixin):
             with connection.cursor() as cursor:
                 cursor.execute(JWT_GUC_RESET_SQL)
         except DatabaseError:
-            logger.error(
+            logger.exception(
                 "jwt_audit_middleware.guc_reset_at_start_failed path=%s",
                 request.path,
-                exc_info=True,
             )
             return _json_error(
                 "E_GUC_RESET_FAILED",
@@ -207,10 +206,9 @@ class JwtAuditMiddleware(MiddlewareMixin):
         try:
             bypasses = connection_role_bypasses_rls()
         except DatabaseError:
-            logger.error(
+            logger.exception(
                 "jwt_audit_middleware.bypassrls_check_failed path=%s",
                 request.path,
-                exc_info=True,
             )
             return _json_error(
                 "E_DB_ROLE_UNSAFE",

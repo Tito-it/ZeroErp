@@ -11,7 +11,7 @@
 #        Vantaggi del design "renderer no-fetch":
 #          - zero SQL dinamico (no rischio injection sulla `vista_sql`)
 #          - riuso massimo: ogni dominio adotta il pattern in DEF-8
-#            estendendo solo il proprio endpoint con `?format=csv|xlsx`
+#            estendendo solo il proprio endpoint con `?formato=csv|xlsx`
 #          - sicurezza: le whitelist colonne/filtri sono garantite dai
 #            repository di dominio gia' esistenti
 #
@@ -71,7 +71,7 @@ class ListaExportService:
     #            Le chiavi devono coincidere con `colonne[i].campo_sorgente`.
     #          - filtri_applicati: dict generico filtri usati dal caller.
     #            Verra' incluso nel file come metadato. Pass {} se nessuno.
-    #          - format: 'csv' | 'xlsx'.
+    #          - formato: 'csv' | 'xlsx'.
     #
     #        Ritorna: tuple (bytes, content_type, filename).
     def render(
@@ -81,15 +81,15 @@ class ListaExportService:
         colonne: list[dict[str, Any]],
         righe: list[dict[str, Any]],
         filtri_applicati: dict[str, Any] | None,
-        format: str,
+        formato: str,
     ) -> tuple[bytes, str, str]:
         # Validazione formato lato service (defense-in-depth oltre alla
         # view che gia' filtra il query param).
         ErrorManager.require(
-            format in _FORMATS_AMMESSI,
+            formato in _FORMATS_AMMESSI,
             code=E_EXPORT_FORMAT_INVALID,
             message="Formato export non supportato.",
-            detail=f"format='{format}', ammessi={sorted(_FORMATS_AMMESSI)!r}",
+            detail=f"formato='{formato}', ammessi={sorted(_FORMATS_AMMESSI)!r}",
         )
 
         # Hard cap righe applicato qui (single source of truth): se il
@@ -114,7 +114,7 @@ class ListaExportService:
         safe_codice = lista_codice.replace(".", "_").replace(":", "_")
         filename_base = f"{safe_codice}_{timestamp}"
 
-        if format == "csv":
+        if formato == "csv":
             body = self._render_csv(colonne_export, righe, filtri)
             return (
                 body,
@@ -122,7 +122,7 @@ class ListaExportService:
                 f"{filename_base}.csv",
             )
 
-        # format == "xlsx" (validato sopra)
+        # formato == "xlsx" (validato sopra)
         body = self._render_xlsx(colonne_export, righe, filtri)
         return (
             body,

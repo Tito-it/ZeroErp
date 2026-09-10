@@ -602,6 +602,69 @@ per conteggio (221 righe `ERROR:`/`FAIL:`, `diff` vuoto). Più `manage.py check`
 pulito e `spectacular` che rigenera 815 operazioni — cioè tutte le view si
 importano ancora.
 
+### ✅ Il seguito, 2026-09-10 — la selezione si allarga, e trova due difetti veri
+
+Il `ruff.toml` prescriveva la disciplina per allargare: *«prima si misura quante
+righe apre la regola nuova, poi si sana, poi si accende. Mai il contrario.»*
+Misurati **diciotto** gruppi; accesi i sei che nascevano a zero o quasi.
+
+| Gruppo | Rilievi | Esito |
+| --- | ---: | --- |
+| `T20` (nessun `print`) | **0** in `backend/apps` | ✅ acceso — chiudeva un'asimmetria: *«nessun `console.log` in produzione»* valeva per il solo frontend |
+| `PIE` | 6 | ✅ acceso — e uno era un **difetto vero**, vedi sotto |
+| `G` + `LOG` (uso del logging) | 9 | ✅ acceso |
+| `C4` (costruzioni inutili) | 3 | ✅ acceso |
+| `A` (shadowing di builtin) | 3 | ✅ acceso |
+| `B` (bugbear) | 54 | ⛔ **non** acceso: `B905` (34, `zip()` senza `strict=`) e `B023` (5) sono 39 decisioni una per una. `B017` (2) sanato subito |
+| `DTZ` · `S` · `N` · `RUF` · `SIM` · `ARG` · `UP` | 63 · 824 · 451 · 481 · 138 · 687 · 46 | ⛔ stile, o falsi positivi strutturali (in Django le firme le impone il framework) |
+
+⭐ **I due difetti veri, e sono della stessa specie di quelli che questo documento
+insegue** — non danno errore:
+
+* **`B017`** — due test facevano `assertRaises(Exception)`, cioè passavano su
+  **qualunque** errore, anche un `TypeError` da una firma cambiata sotto. ⭐ È la
+  regola che il progetto ha **già scritto per i pgTAP** (*«`throws_ok(sql, NULL,
+  NULL)` accetta qualunque errore: passare sempre lo SQLSTATE»*, `AGENTS.md`)
+  applicata al lato Python, dove non la presidiava nessuno. Ora pretendono tipo
+  **e** codice — provato per mutazione: cambiando il codice errore nel
+  repository, il test cade;
+* **`PIE794`** — `stato_codice_interno` dichiarato **due volte** nello stesso
+  `TypedDict` (`OffertaRow`). In Python vince l'ultima e la prima è morta, senza
+  errori e senza test rossi: è la **stessa forma** della chiave i18n duplicata
+  che il progetto ha pagato il 2026-08-26 (`vendite.lotti.numera_esito`, dove il
+  segnaposto `{numerati}` spariva). Il difetto qui era latente — i due tipi
+  coincidevano — ma il giorno in cui uno dei due fosse cambiato, il contratto
+  avrebbe detto una cosa e il type checker un'altra.
+
+⚠️ **`B904` è stato guardato e SCARTATO, ed è la decisione che vale più delle
+altre.** Sembrava il candidato ovvio (12 rilievi, `raise` dentro `except` senza
+`from`), e in questo progetto `__cause__` **è funzionale**: `db_error_fields` lo
+legge in cinque punti per estrarre codice, campo e bersaglio dalla diagnostica
+psycopg. Ma guardando i dodici punti: **otto** sono
+`raise AssertionError("unreachable")  # pragma: no cover` — righe che non si
+eseguono mai — e i quattro restanti non traducono errori di database (due
+nascono da `User.DoesNotExist`, che una `diag` non ce l'ha). ⇒ **Nessuno perdeva
+diagnostica**: correggerli sarebbe stato rumore su righe morte.
+
+⛔ **E un errore di metodo, che vale la pena scrivere perché è quello contro cui
+il `ruff.toml` mette in guardia.** La prima misura di `T20` l'ho fatta su
+`backend/apps` — zero rilievi — e ho acceso la regola. Ma ruff gira su **tutto il
+repository**: i `print` sono **352**, tutti in `scripts/` e `backend/scripts/`.
+⭐ Il rimedio non è stato spegnere la regola ma **dichiarare il perimetro**: in
+uno script da riga di comando `print` *è* l'interfaccia utente, non un residuo di
+debug — due `per-file-ignores` con la ragione scritta, e la regola resta dove un
+`print` è davvero un difetto (finisce sullo stdout di gunicorn, senza livello e
+senza `request_id`). *Misurare sul perimetro sbagliato è il modo più facile di
+accendere un cancello che non presidia quello che si crede.*
+
+🧹 **E una cosa tolta**: `_check_fn_tmp.py`, dodici righe di diagnostica finite in
+git il 2026-08-02 dentro un commit «Migliorei vari A UI» — non in `scripts/`, non
+chiamato da nessuno. Cancellato (ok di Tid, 2026-09-10).
+
+**Stato del cancello dopo l'allargamento**: `ruff check .` → **zero su tutto il
+repo**, i tre hook `pre-commit` verdi, suite backend **4590 verdi**. E provato
+che morde: un `print()` aggiunto a mano fa rosso.
+
 ---
 
 ### 🟠 D3 — Lo schema OpenAPI pubblicato dichiara che l'API è anonima. E il controllo che lo direbbe non lo lancia nessuno
@@ -1108,6 +1171,58 @@ freshness al rientro la gestisce già l'`onActivated` di `useSearchTable`»* —
 **vero**, verificato seguendo la catena. Una frase rassicurante che regge al
 controllo: la si tiene.
 
+### 🔴 Il seguito del 2026-09-10 — la catena si spezzava UN PASSO PIÙ IN LÀ
+
+> ⚠️ Questa sezione corregge, in parte, la frase «verificato seguendo la catena»
+> qui sopra: la catena era giusta fino all'ultimo anello, e l'ultimo anello non
+> c'era.
+
+`useSearchTable.onActivated` rinfresca la lista al rientro **solo se**
+`store.hasSearched && !store.loading`. Ed è la riga che decide tutto: uno store
+che **non espone** `hasSearched` rende `undefined && …` falso, quindi il refresh
+non avviene **mai** — senza un errore, senza un log, con la pagina che non
+sbaglia: è solo ferma.
+
+**Misurati otto store senza `hasSearched` nel `return`** — `operatori`,
+`emailAccounts`, `emailLogs`, `emailTemplates`, `famiglieDocumento`,
+`registriNumerazione`, `emittentiFiscaliBA` (che lo producono da
+`useListaEmptyStateFetch` e non lo ri-esportano) e `auditLog` (scritto a mano, che
+non ce l'aveva affatto). ⇒ **Cinque liste di rotta sotto `<KeepAlive>` non si
+sono mai rinfrescate al rientro.**
+
+⛔ **E il guard le dichiarava «coperte dallo scaffolding»**: cercava il *nome* del
+composable nel sorgente, non l'ultimo anello. Cioè il presidio nato per trovare
+questo difetto lo **confermava**. È la terza volta che questa specie compare in
+questo documento — un contratto dichiarato che si interrompe prima di arrivare a
+video (D4 con `hint`, D13 col building block non cercato, adesso questa).
+
+⭐ **La correzione ha due metà, e la seconda è quella che conta:**
+
+1. gli otto store espongono `hasSearched` (una riga ciascuno);
+2. **il building block lo DICE**: `useSearchTable` avvisa in DEV quando lo store
+   non espone il campo. ⚠️ Non poteva fare di più — un BB che *legge* una
+   proprietà del chiamante non può obbligarlo a fornirla — ma può smettere di
+   spegnersi in silenzio. *Ciò che un BB si prende in carico da solo deve avere
+   il suo contrario nello stesso posto* (`feedback_bb_legge_non_trasporta`).
+
+⭐ **E il guard è stato corretto in tre punti**, tutti della stessa natura — un
+presidio che guarda la cosa sbagliata:
+
+* **cercava i simboli nella PROSA**: `onActivated`, `onMounted` e i nomi dei
+  composable comparivano anche nei commenti, e in questo repo `useSearchTable` è
+  nominato in commento in una trentina di file che non lo chiamano. Ora il
+  sorgente si legge **senza commenti**, e il criterio è *chiamato* (`useX(`), non
+  *nominato*. ⚠️ È la stessa lezione già pagata a backend il 2026-08-26
+  (`_sorgente_senza_commenti`), e sbagliava nel verso peggiore: una view che
+  spiega perché **non** usa lo scaffolding veniva dichiarata coperta;
+* **saltava in silenzio i percorsi non risolti** (`existsSync` → `continue`): ora
+  si ferma e li nomina;
+* **conosceva una sola forma di import** (`../`): un `@/` l'avrebbe reso cieco
+  senza dirlo. Ora le accetta entrambe, e confronta le rotte **dichiarate** con
+  quelle **risolte** — se il guard sta guardando meno di quanto crede, lo dice.
+
+---
+
 ### ✅ E il residuo, sanato lo stesso giorno — con un dettaglio che lo decideva
 
 `OperatoriListView` e `ProcessiAutomaticiListView` caricavano al mount, oltre
@@ -1423,6 +1538,61 @@ in coda** (`requeue/`) o **archiviate** — è una decisione operativa, non una
 conseguenza della correzione. ⛔ E finché quel registro non torna a zero, la
 vista continua a non poter fare il suo mestiere: una lista sempre lunga smette di
 essere letta (D13-bis).
+
+---
+
+### 🔴 Il seguito di D6, 2026-09-10 — uno dei due «consumatori vivi» non esisteva
+
+> ⚠️ Questa sezione **corregge un fatto** scritto poche ore prima qui sopra, e la
+> correzione è arrivata da una domanda semplice: *chi chiama questa funzione?*
+
+La tabella dei consumatori dava `fn_lookup_unita_misura` come vivo — *«le UoM
+attive sono 334: il select ne mostrava 200… 134 unità invisibili»*. **Quel select
+non esiste.** Nessuna view espone quella funzione, e la view di catalogo lo
+scrive di suo pugno due righe sotto il lookup articoli:
+
+```python
+# Nota: il lookup UoM usa l'endpoint generico /api/v1/core/lookup/codici/?rel=catalogo.unita_misura
+```
+
+⇒ Le UoM a video passano dal **lookup generico**, che ha un `total_count` vero e
+la paginazione: le 134 unità invisibili non le ha mai viste nessuno, perché quel
+ramo non lo percorreva nessuno. ⛔ Il consumatore vivo era **uno**, l'assistente
+AI — e quello sì, diceva *«ho trovato 10 articoli»* su un catalogo che ne ha 257.
+
+⚠️ **E la conseguenza peggiore era sul presidio, non sul codice**: il test e2e
+scritto per provare la sonda contro il database vero provava
+`fn_lookup_unita_misura`, cioè **il ramo che nessuno percorre**, mentre
+`fn_lookup_articoli` — l'autocomplete più usato dell'app, con **tre JOIN
+condizionali** — restava senza rete. *Un presidio può essere verde e guardare
+dalla parte sbagliata.*
+
+**Cosa è stato fatto** (2026-09-10, ok di Tid punto per punto):
+
+* **cancellati** `fn_lookup_unita_misura` e `CatalogoRepository.lookup_unita_misura`
+  con i loro test: codice che nessun endpoint raggiungeva;
+* **il test e2e prova ora il lookup vivo**, incluso il ramo con i JOIN — con il
+  caso che serviva davvero: *escludere una destinazione può solo togliere righe,
+  mai aggiungerne*. Se un JOIN moltiplicasse, la sonda `+1` conterebbe doppioni e
+  direbbe «troncato» su un elenco intero;
+* **la sonda è un building block**, `fetch_con_sonda` in `apps/core/db/_helpers.py`
+  (regola del 2 dichiarata prima, ok di Tid). ⚠️ Nasce con **un solo**
+  consumatore, e il docstring lo dichiara: non de-duplica, tiene insieme i tre
+  pezzi che devono stare insieme — il `+1`, il taglio a `limite`, il flag dedotto
+  dal conteggio. Separati, si dimentica il taglio e **la riga di sonda trapela a
+  chi legge**, oppure si dimentica il `+1` e il flag è sempre falso: due errori
+  che non falliscono;
+* **provato per mutazione**: «sempre False», «la sonda trapela» e «niente `+1`»
+  fanno cadere i test, una mutazione per test.
+
+⭐ **E il `troncato` è arrivato a video**, che era la metà mancante: fino a quel
+giorno il backend lo dichiarava e nessuno lo leggeva — «emesso e non consumato»,
+la specie che questo documento insegue. Ora lo rende `useAutocompleteRefineHint`,
+**lo stesso** che serve gli altri quattro lookup ricchi: là con `total_count`, qui
+con `troncato`, perché a video la domanda è una sola — *l'elenco è completo?*
+⛔ Cablarlo dentro `ArticoloLookup` avrebbe creato la seconda sede della stessa
+frase, e il lookup più usato dell'app avrebbe detto in un modo suo una cosa che
+gli altri quattro dicono già in un altro.
 
 ---
 

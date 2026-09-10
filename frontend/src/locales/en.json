@@ -1333,7 +1333,10 @@
       "presidi_titolo": "Checks that must stay empty",
       "presidi_help": "Anything listed below is something to fix. Each check's explanation comes from the database, which is where that rule is written.",
       "presidi_errore": "The checks could not be read. «No rows» below would mean «all clear»: that is not what is happening.",
-      "presidi_troncato": "first {n} rows"
+      "presidi_troncato": "first {n} rows",
+      "presidi_non_letto": "not read",
+      "presidi_non_letti_conteggio": "{n} not read",
+      "presidi_non_elencabili": "rows not listable: the view has a perimeter"
     }
   },
   "indirizzi": {

@@ -59,59 +59,13 @@ _ORDER_COLS_PROCESSI: dict[str, str] = {
     "ultimo_run": "ur.ultimo_run",
 }
 
-# ⭐ I PRESIDI del cantiere «nessun processo senza operatore», nell'ordine in
-#    cui conviene leggerli. ⛔ Qui c'e' SOLO il nome: che natura abbia ciascuno
-#    — «deve restare vuota» oppure «registro di debito che deve calare» — lo
-#    dichiara il DATABASE nel commento della vista, e si legge da li'
-#    (`obj_description`). Scriverlo anche qui sarebbe la seconda sede dello
-#    stesso fatto, e la seconda sede e' quella che diverge.
-# ⚠️ E il loro NUMERO non si scrive da nessuna parte, per la stessa ragione: e'
-#    passato da sei a otto il 2026-09-05, e ogni commento che diceva «i sei
-#    presidi» era gia' una riga da correggere.
-# ⚠️ QUALIFICATI COLLO SCHEMA, e non e' pedanteria: fino al 2026-09-05 il
-#    prefisso `dbops.` era interpolato nel repository, quindi questa tupla
-#    poteva ospitare SOLO viste di quello schema. Il presidio nuovo del giornale
-#    dei run vive in `maintenance`, e per aggiungerlo bisognava toccare l'SQL —
-#    cioe' l'elenco non era davvero un elenco.
-PRESIDI_PROCESSI: tuple[str, ...] = (
-    "dbops.vw_processi_che_bypassano",
-    "dbops.vw_processi_dominio_senza_emittente",
-    "dbops.vw_processi_dominio_senza_difesa",
-    "dbops.vw_processi_dominio_senza_identita",
-    "dbops.vw_emittenti_non_serviti",
-    "dbops.vw_run_senza_attore",
-    # ⭐ 2026-09-05, con la migrazione della chiusura scadenze sulla coda.
-    #    `..._su_pgagent` verifica la regola presa quel giorno — nessun processo
-    #    di DOMINIO su pgAgent — e `..._da_guardare` e' il prezzo di quella
-    #    scelta: spostando il lavoro nella coda si sposta anche il SILENZIO, e
-    #    un lavoro che nessuno prende ha lo stesso effetto di un job morto.
-    #    ⛔ Va letto anche quando tutto sembra a posto: la sua riga piu'
-    #    pericolosa e' «mai preso», che si legge solo se il worker e' spento.
-    "dbops.vw_processi_dominio_su_pgagent",
-    "dbops.vw_coda_lavori_da_guardare",
-    # ⭐ 2026-09-07: la sveglia. `vw_processi_programmazione` e' un PANORAMA —
-    #    elenca anche i sani, perche' senza sapere quanti sono i sani un guasto
-    #    sembra la norma — e proprio per questo NON puo' stare qui: un pannello
-    #    che mostra righe verdi insegna a leggere il verde come debito, cioe' a
-    #    saltare l'avviso. ⛔ E il filtro non lo scriviamo noi: il criterio «quali stati
-    #    sono un guasto» e' del modello e vive in UNA sede, la colonna
-    #    `da_guardare` calcolata accanto al CASE che produce gli stati. Questa
-    #    vista la proietta.
-    # ⚠️ NASCE NON VUOTA, ed e' la prima cosa che ha da dire (brief §8.1).
-    #    Fatto datato, letto sul dbdev il 2026-09-07 al cablaggio: UNA riga,
-    #    `apply_storicizza_weekly` — pgAgent dice 05-09, il giornale si ferma al
-    #    2026-02-21. Il gemello `chiusura_scadenze_daily` era gia' rientrato da
-    #    solo, come previsto. ⛔ Non si compensa nascondendo la riga: la natura
-    #    la dichiara il commento della vista, che il pannello rende.
-    "dbops.vw_processi_programmazione_da_guardare",
-    # ⭐ 2026-09-05: il giornale dei run sa finalmente registrare un fallimento.
-    #    Fino al changeSet `20260905-36` non poteva: `fn_run_and_log` scriveva la
-    #    riga rossa e il `RAISE` ne faceva il rollback, quindi NESSUNO dei dodici
-    #    job poteva lasciare traccia di un errore. Questa vista e' cio' che si
-    #    vede adesso che la traccia resta.
-    "maintenance.vw_job_run_da_guardare",
-)
-
+# ⛔ LA TUPLA DEI PRESIDI NON STA PIU' QUI (2026-09-10), ed e' il punto del
+#    cantiere «un destinatario per i presidi». Erano dieci nomi scritti a mano,
+#    e dal giorno in cui `dbops.presidi` esiste sarebbero stati la SECONDA sede
+#    di un fatto che il database dichiara — quella che diverge alla prima vista
+#    nuova, in silenzio. ⚠️ E le due gia' non coincidevano: cinque viste di
+#    natura ZERO non le guardava nessuno, e una LAVORAZIONE stava fra gli
+#    allarmi. Il lettore e' `apps.core.db.presidi_repository`.
 # ⚠️ MIRROR DICHIARATO, non una seconda definizione. «Un processo vuole un
 #    utente tecnico» e' una regola del DATABASE, scritta in TRE punti che
 #    restano autoritativi: `script.fn_crea_utente_tecnico` (che rifiuta gli
@@ -133,11 +87,6 @@ _CLASSE_CON_IDENTITA = "DOMINIO"
 #    dedotto dal nome: fosse rimasto a due, `chiusura_scadenze_daily` sarebbe
 #    apparso a video come «non ne vuole» proprio mentre ne usa una.
 _CANALI_CON_IDENTITA = ("PGAGENT", "COMMAND", "CODA_AUTOMATICA")
-
-# Quante righe di esempio si consegnano per presidio: il pannello serve a dire
-# CHE c'e' qualcosa e a farsi un'idea, non a essere una lista paginata.
-_RIGHE_PRESIDIO = 20
-
 
 class ProcessiRepository:
     """Lettura del registro dei processi automatici e del loro roster."""
@@ -356,54 +305,3 @@ class ProcessiRepository:
              LIMIT %s OFFSET %s
         """
         return fetch_paged_with_total(data_sql, [codice, limit, offset])
-
-    # ══════════════════════════════════════════════════════════
-    #  I presidi: le viste che devono restare vuote
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Lo stato dei presidi in un round-trip: per ognuno il conteggio,
-    #        le prime righe e — ⭐ letta dal DATABASE, non riscritta qui — la
-    #        DESCRIZIONE che dice che natura ha quel presidio.
-    #
-    # ⭐ La descrizione arriva da `obj_description`, cioe' dal commento che il
-    #    team DB ha scritto sulla vista: e' li' che sta «DEVE restare VUOTA»
-    #    contro «e' un registro di DEBITO, deve CALARE». Il frontend rende quel
-    #    testo invece di avere una tabella di eccezioni in casa.
-    # ⚠️ Finche' la richiesta DB-2 non e' fatta, una delle sei NON e' mai vuota
-    #    per costruzione (la riga dichiarata di `config.email_outbox`). ⛔ Non si
-    #    compensa nascondendola qui: sarebbe scrivere nel frontend un elenco di
-    #    righe attese, cioe' la cosa che DB-2 chiede di mettere nel dato.
-    # ⚠️ `count(*)` PRIMA delle righe e senza filtro: e' il numero che dice
-    #    quanto sta fuori dalle prime venti.
-    def stato_presidi(self, righe_per_presidio: int = _RIGHE_PRESIDIO) -> list[dict[str, Any]]:
-        esito: list[dict[str, Any]] = []
-        for qualificata in PRESIDI_PROCESSI:
-            # ⛔ Il nome viene da una tupla COSTANTE del modulo, mai
-            #    dall'esterno: qui e' interpolato nell'SQL.
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT obj_description(%s::regclass, 'pg_class')", [qualificata],
-                )
-                riga = cursor.fetchone()
-                descrizione = riga[0] if riga else None
-
-                cursor.execute(f"SELECT count(*) FROM {qualificata}")  # noqa: S608
-                conteggio = int(cursor.fetchone()[0])
-
-                cursor.execute(
-                    f"SELECT * FROM {qualificata} LIMIT %s",  # noqa: S608
-                    [righe_per_presidio],
-                )
-                righe = rows_to_list(cursor)
-
-            esito.append({
-                # ⚠️ Il nome esce QUALIFICATO anche a video: due schemi diversi
-                #    possono avere viste omonime, e un pannello che ne mostra
-                #    una sola meta' manderebbe a guardare quella sbagliata.
-                "vista": qualificata,
-                "descrizione": descrizione,
-                "conteggio": conteggio,
-                "righe": righe,
-                "troncato": conteggio > len(righe),
-            })
-        return esito

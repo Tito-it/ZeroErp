@@ -33,16 +33,16 @@ class LottiWhereConteggioTests(TestCase):
     """Il costruttore di `WHERE` condiviso da lista e conteggio."""
 
     def _where(self, **kwargs):
-        base = dict(
-            competenza_mese=date(2026, 8, 1),
-            utility_id=None,
-            stato_lotto=None,
-            area_geografica_id=None,
-            tipo_doc_fiscale_id=None,
-            emittente_soggetto_ruolo_id=None,
-            auth_user_id=None,
-            solo_recuperi_mese=False,
-        )
+        base = {
+            "competenza_mese": date(2026, 8, 1),
+            "utility_id": None,
+            "stato_lotto": None,
+            "area_geografica_id": None,
+            "tipo_doc_fiscale_id": None,
+            "emittente_soggetto_ruolo_id": None,
+            "auth_user_id": None,
+            "solo_recuperi_mese": False,
+        }
         base.update(kwargs)
         return VenditeRepository()._lotti_where(**base)
 

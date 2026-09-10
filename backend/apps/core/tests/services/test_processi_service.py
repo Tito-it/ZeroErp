@@ -39,10 +39,15 @@ def _service(**metodi):
     repo.list_processi.return_value = ([], 0)
     repo.list_run_processo.return_value = ([], 0)
     repo.emittenti_non_serviti.return_value = []
-    repo.stato_presidi.return_value = []
+    # ⭐ Dal 2026-09-10 i presidi hanno un repository LORO: il pannello legge il
+    #    catalogo `dbops.presidi`, non piu' una tupla di nomi nel repository dei
+    #    processi. Qui restano due doppi, uno per lettore.
+    presidi = MagicMock()
+    presidi.stato_presidi.return_value = []
     for nome, valore in metodi.items():
-        getattr(repo, nome).return_value = valore
-    return ProcessiService(repo=repo), repo
+        bersaglio = presidi if nome == "stato_presidi" else repo
+        getattr(bersaglio, nome).return_value = valore
+    return ProcessiService(repo=repo, presidi=presidi), repo
 
 
 class ProcessiServiceVocabolarioTests(unittest.TestCase):
@@ -152,6 +157,21 @@ class ProcessiServicePresidiTests(unittest.TestCase):
             {"vista": "c", "conteggio": 2, "righe": [{}], "descrizione": "d"},
         ])
         self.assertEqual(svc.stato_presidi()["con_righe"], 2)
+
+    # 11. ⛔ Un presidio NON LETTO non e' «a posto» e non e' «acceso»: ha un
+    #     conteggio `None` e un errore, e va contato a parte. Sommarlo agli
+    #     accesi direbbe che c'e' un guasto dove c'e' una cecita'; ometterlo
+    #     lascerebbe leggere «tutto verde» a chi non ha visto niente.
+    def test_un_presidio_non_letto_si_conta_a_parte(self):
+        svc, _repo = _service(stato_presidi=[
+            {"vista": "a", "conteggio": 0, "righe": [], "descrizione": "d",
+             "errore": None},
+            {"vista": "b", "conteggio": None, "righe": [], "descrizione": "d",
+             "errore": "connessione persa"},
+        ])
+        esito = svc.stato_presidi()
+        self.assertEqual(esito["con_righe"], 0)
+        self.assertEqual(esito["non_letti"], 1)
 
     # 7. ⛔ Il service NON classifica i presidi. La differenza fra «deve restare
     #    vuota» e «registro di debito che deve calare» la dichiara il database

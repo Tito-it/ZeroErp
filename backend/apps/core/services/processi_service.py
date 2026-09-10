@@ -24,6 +24,7 @@ from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import LIST_MAX_LIMIT
+from apps.core.db.presidi_repository import PresidiRepository
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
@@ -69,8 +70,16 @@ _ORDER_AMMESSI = (
 class ProcessiService:
     """Registro dei processi automatici: letture e creazione utente tecnico."""
 
-    def __init__(self, repo: ProcessiRepository | None = None) -> None:
+    def __init__(
+        self,
+        repo: ProcessiRepository | None = None,
+        presidi: PresidiRepository | None = None,
+    ) -> None:
         self._repo = repo or ProcessiRepository()
+        # ⭐ I presidi hanno un lettore LORO dal 2026-09-10: non sono i presidi
+        #    «dei processi», sono il catalogo intero — e li leggono in due, questa
+        #    schermata e il digest.
+        self._presidi = presidi or PresidiRepository()
 
     # Scopo: Elenco paginato dei processi, con i filtri del pannello.
     def list_processi(
@@ -143,15 +152,24 @@ class ProcessiService:
         return {"count": totale, "results": righe}
 
     # Scopo: Lo stato dei presidi, in un round-trip.
-    # ⭐ La NATURA di ogni presidio («deve restare vuota» / «registro di debito»)
-    #    arriva dal commento della vista a database, non da un elenco qui: e'
-    #    il team DB che la dichiara, ed e' giusto che a dirla sia una sede sola.
+    #
+    # ⭐ QUALI presidi si guardino lo dice il CATALOGO (`dbops.presidi`, natura
+    #    `ZERO`), non un elenco nel backend; e che cosa significhi una loro riga
+    #    lo dice il commento della vista. Il service non classifica niente: le
+    #    due decisioni hanno una sede sola, ed e' il database.
+    # ⚠️ `con_righe` conta i presidi ACCESI, e un presidio NON LETTO non e' uno
+    #    di quelli — ma non e' nemmeno «a posto»: viaggia con il suo `errore` e
+    #    lo conta `non_letti`. Sommarlo agli accesi direbbe che c'e' un guasto
+    #    dove c'e' una cecita', e tacerlo sarebbe peggio.
     def stato_presidi(self) -> dict[str, Any]:
-        presidi = self._repo.stato_presidi()
+        presidi = self._presidi.stato_presidi()
         return {
             "presidi": presidi,
             # Il numero che si guarda per primo: quanti presidi hanno righe.
-            "con_righe": sum(1 for p in presidi if p["conteggio"] > 0),
+            "con_righe": sum(
+                1 for p in presidi if (p["conteggio"] or 0) > 0
+            ),
+            "non_letti": sum(1 for p in presidi if p.get("errore")),
         }
 
     # Scopo: Crea l'utente tecnico di un processo PER UN EMITTENTE, chiamando la

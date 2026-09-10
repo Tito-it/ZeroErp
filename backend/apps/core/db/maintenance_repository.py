@@ -80,29 +80,58 @@ class MaintenanceRepository:
         return results, total_count
 
     # Scopo: Liveness dei worker schedulati (badge UI code, BE-4): per ogni
-    #        jobname richiesto ritorna ultimo run, esito dell'ultimo run e flag
+    #        jobname ritorna ultimo run, esito dell'ultimo run e flag
     #        `attivo` = ultimo run entro `soglia_minuti` (confronto in SQL col
     #        clock DB — nessun parsing timestamp in Python, tz-safe). Jobname
     #        MAI girati non compaiono nel dict (il caller li tratta come
     #        "worker giù"). Sola lettura su maintenance.job_run_log.
+    #
+    # ⭐ DUE CHIAVI, UNA DOMANDA (2026-09-10). Si chiede per `jobnames` — il caso
+    #    dei due drainer, dove il jobname È il codice del processo — oppure per
+    #    `processo_codice`, che è la chiave ONESTA (FK dura verso
+    #    `dbops.processi`) e serve ai processi con PIÙ CORSIE: quelli si
+    #    registrano come `<codice>:<corsia>`, quindi chiederli per nome
+    #    vorrebbe dire COMPORRE quei nomi in una seconda sede — e il giorno in
+    #    cui la forma cambia il lettore guarderebbe nomi che non esistono,
+    #    rispondendo «mai girato» invece di «non lo so».
+    # ⚠️ È la risposta alla domanda che `coda_lavori/gestione_service` dichiara
+    #    aperta: «dove jobname e processo non coincidono, la liveness non si fa
+    #    da qui». Adesso si fa, dall'altra chiave.
+    # ⛔ Esattamente UNA delle due, e mai nessuna: senza filtro questa query
+    #    leggerebbe il giornale INTERO e risponderebbe la liveness di tutto —
+    #    un errore che non fallisce, restituisce solo la cosa sbagliata.
     def job_liveness(
-        self, jobnames: list[str], *, soglia_minuti: int,
+        self,
+        jobnames: list[str] | None = None,
+        *,
+        soglia_minuti: int,
+        processo_codice: str | None = None,
     ) -> dict[str, dict]:
-        if not jobnames:
+        if (jobnames is None) == (processo_codice is None):
+            raise ValueError(
+                "job_liveness: si chiede per `jobnames` OPPURE per "
+                "`processo_codice`, mai per entrambi e mai per nessuno"
+            )
+        if jobnames is not None and not jobnames:
             return {}
+        filtro, valore = (
+            ("jobname = ANY(%s)", list(jobnames))
+            if jobnames is not None
+            else ("processo_codice = %s", processo_codice)
+        )
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT jobname,
                        MAX(started_at) AS last_run_at,
                        MAX(started_at) > now() - make_interval(mins => %s)
                            AS attivo,
                        (ARRAY_AGG(ok ORDER BY started_at DESC))[1] AS last_ok
                   FROM maintenance.job_run_log
-                 WHERE jobname = ANY(%s)
+                 WHERE {filtro}
                  GROUP BY jobname
-                """,
-                [int(soglia_minuti), list(jobnames)],
+                """,  # noqa: S608 — due frammenti costanti, il valore è parametro
+                [int(soglia_minuti), valore],
             )
             rows = cursor.fetchall()
         return {

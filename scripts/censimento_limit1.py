@@ -130,7 +130,7 @@ print(f"{'schema':<14}{'LIMIT 1 senza ORDER BY':>24}{'di cui ALTO':>13}{'file':>
 for s in sorted(schemi, key=lambda x: -schemi[x]):
     print(f"{s:<14}{schemi[s]:>24}{alti[s]:>13}{len(files[s]):>7}")
 print(f"{'TOTALE':<14}{sum(schemi.values()):>24}{sum(alti.values()):>13}"
-      f"{len(set(f for f,_,_,_ in righe)):>7}  su {len(list(pathlib.Path('db/pgtap').rglob('*.sql')))} file")
+      f"{len({f for f,_,_,_ in righe}):>7}  su {len(list(pathlib.Path('db/pgtap').rglob('*.sql')))} file")
 print()
 tabelle = collections.Counter(tab for _, _, tab, r in righe if r == 'ALTO')
 print("Tabelle piu' pescate a caso (rischio ALTO):")

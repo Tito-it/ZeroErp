@@ -313,7 +313,7 @@ def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[
         wants_trailing_slash = normalized.endswith("/")
         if normalized.startswith("dbzero/"):
             normalized = f"it/{normalized}"
-        elif not (normalized.startswith("it/") or normalized.startswith("en/")):
+        elif not (normalized.startswith(("it/", "en/"))):
             normalized = f"it/{normalized}"
 
         rel_target = os.path.relpath(normalized, start=current_rel_dir.as_posix())

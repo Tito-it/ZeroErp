@@ -51,6 +51,24 @@
       "nota": "Nato il 2026-09-06: prima questo processo non aveva NESSUN artefatto di deploy, ed e' quello che il brief della sveglia usa come esempio del guasto-per-assenza. Cadenza piu' lenta dei due drainer perche' le email di SISTEMA partono gia' in sincrono (brief email §1): questo giro e' il ripiego e il ritentativo, non la strada principale."
     },
     {
+      "unit": "zeroerp-digest-presidi-giornaliero",
+      "processo_codice": "digest_presidi",
+      "forma": "timer",
+      "oncalendar": "*-*-* 07:00",
+      "abilita": true,
+      "tolleranza_minuti": 1560,
+      "nota": "Gli ALLARMI: le viste che il catalogo dbops.presidi marca cadenza GIORNALIERA. Alle 07:00 perche' un lavoro fallito stanotte va visto stamattina, non stanotte. Tolleranza 26 ore = un giro piu' due ore di margine: la legge il battito del digest settimanale, che dichiara quando ha girato ciascuna corsia. QUALI viste si guardino non sta qui: lo dice il catalogo."
+    },
+    {
+      "unit": "zeroerp-digest-presidi-settimanale",
+      "processo_codice": "digest_presidi",
+      "forma": "timer",
+      "oncalendar": "Mon *-*-* 07:30",
+      "abilita": false,
+      "tolleranza_minuti": 11520,
+      "nota": "I REGISTRI e le tendenze (cadenza SETTIMANALE a catalogo) piu' il BATTITO: questa corsa parte e si fa viva anche quando non ha niente da dire, perche' un digest muto e un digest morto si scrivono uguale. Lunedi' 07:30, mezz'ora dopo la giornaliera per non accavallarsi. Tolleranza 8 giorni (la tolleranza del PROCESSO e' la piu' larga fra le due corsie: la morte della sola giornaliera si legge nell'elenco per corsia del battito, non da questo numero). 🔴 SCRITTA E SPENTA il 2026-09-10: fra le sue viste c'e' la famiglia `riferimenti_morti`, e leggerla FA CADERE il backend PostgreSQL (tre occorrenze in un'ora sul dbdev, cluster in modalita' di ripristino). Accenderla vorrebbe dire far cadere il database ogni lunedi'. Prerequisito per accenderla: la richiesta al team DB nel §9 di brief-db-un-destinatario-per-i-presidi.md. La corsa giornaliera resta accesa: le sue viste non toccano quella famiglia. ⚠️ DA SAPERE: spegnendo questa corsia si spegne anche il BATTITO, cioe' l'unica cosa che rende visibile la morte del digest stesso — la giornaliera non lo porta, per non mandare un messaggio al giorno che dice «niente da segnalare». Finche' resta spenta, che il digest sia vivo lo si vede solo dal giornale dei run."
+    },
+    {
       "unit": "zeroerp-listen-cambio-reparto",
       "processo_codice": "listen_cambio_reparto",
       "forma": "servizio",
