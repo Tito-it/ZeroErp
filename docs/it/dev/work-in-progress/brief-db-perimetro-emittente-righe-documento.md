@@ -1189,8 +1189,21 @@ attivita_fatturabili»*: la FK va nel verso opposto
 ### 11.13 ✅ `attivita_fatturabili.billing_account_id` è `NOT NULL` — analisi e realizzazione
 
 > Domanda aperta dal §6.1, decisa da Tid il **2026-09-10**.
-> 🟠 Slice `20260910-25..26` + `db/pgtap/vendite/test-af-billing-account-obbligatorio-v1.sql`:
-> **scritta e provata, NON applicata**. Manca il migrate.
+> ✅ Slice `20260910-25..26` + `db/pgtap/vendite/test-af-billing-account-obbligatorio-v1.sql`:
+> **applicata** il 2026-09-10, pgTAP **6/6 verde**, nessuna regressione.
+> ⚠️ Ha richiesto la correzione di **sette `INSERT` in quattro pgTAP** esistenti,
+> le cui fixture costruivano attività fatturabili senza billing account (§11.14).
+>
+> 📄 Doc aggiornata: `dbzero/vendite/manual/attivita_fatturabili.md` (il BA non è
+> più «opz.», e la riga sulle FK diceva **due** cose false — vedi sotto) e
+> `dbzero/vendite/manual/trgfn_attivita_fatturabili_guard_ba_coerenza.md`,
+> riscritta perché descriveva un controllo che il codice non faceva.
+>
+> 🔴 **Trovato aggiornando la doc**: il manual dichiarava la FK verso il billing
+> account come `ON DELETE SET NULL`. Sul vincolo vivo **non c'è nessuna azione di
+> cancellazione** (`ON UPDATE CASCADE` e basta): era gia' falso prima di questa
+> slice, e nessuno se ne era accorto perché la doc di una FK non la rilegge
+> nessuno finché non la si tocca.
 
 #### L'argomento di dominio, ed è quello che mancava
 
