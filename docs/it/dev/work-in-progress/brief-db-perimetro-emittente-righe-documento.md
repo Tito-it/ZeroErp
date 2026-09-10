@@ -4,11 +4,10 @@
 > database ricostruito dai changelog. `db/pgtap/rls/`: **30 file su 30 verdi**.
 > Analisi e realizzazione del 2026-09-09.
 >
-> 🟠 **DA LEGGERE PER PRIMO: il §11.** Il presidio che il §10 dichiarava «la
-> cosa da fare per prima» è **scritto** (slice `20260909-75..77` +
-> `db/pgtap/rls/test-rls-perimetro-scoperto.sql`) e **non ancora applicato**:
-> i tre changeSet sono provati in transazione, il pgTAP è verde 8/8 in dry-run,
-> e aspettano il migrate di Tid.
+> ✅ **DA LEGGERE PER PRIMO: il §11.** Il presidio che il §10 dichiarava «la
+> cosa da fare per prima» è **scritto e APPLICATO** (slice `20260909-75..77` +
+> `db/pgtap/rls/test-rls-perimetro-scoperto.sql`): applicato su dbdev il
+> 2026-09-09 alle 22:52, e **verde in CI su database ricostruito da zero**.
 > ⛔ E ha portato un fatto che cambia il §10: applicato a **tutto** il database
 > invece che al solo `vendite`, lo stesso criterio non trova dodici tabelle
 > scoperte ma **trenta**, più tre con una policy che non filtra.
@@ -729,12 +728,18 @@ tabella con una FK verso un documento nascerà scoperta e nessuno lo saprà — 
 
 ---
 
-## 11. Il presidio — scritto il 2026-09-09, da applicare
+## 11. Il presidio — scritto e applicato il 2026-09-09
 
-> Stato: 🟠 **scritto e provato, NON applicato.** I tre changeSet girano in
-> transazione contro il database di sviluppo con l'SQL **estratto dagli YAML**
-> (non ricopiato); il pgTAP è verde **8/8** in dry-run, sopra la slice caricata
-> nella stessa transazione. Manca il migrate.
+> Stato: ✅ **applicato.** Slice `20260909-75..77` sul database di sviluppo il
+> 2026-09-09 alle **22:52**; pgTAP **8/8 verde**.
+>
+> ⭐ **E verde anche in CI, che è la prova che vale.** Il merge #1551 tocca
+> `db/**`, quindi `ci-validate.yaml` ha eseguito la suite su un PostgreSQL
+> ricostruito **da zero**: il file non compare in nessuna delle due baseline dei
+> rossi, quindi è passato davvero. ⇒ Le **33 righe del registro di quel giorno combaciavano con
+> il perimetro calcolato su un database vergine**, non solo su quello di
+> sviluppo — cioè il registro descrive il *contratto* e non la macchina di chi
+> l'ha scritto. Era l'unica cosa che il dry-run non poteva dire.
 
 ### 11.1 I pezzi
 
@@ -742,7 +747,7 @@ tabella con una FK verso un documento nascerà scoperta e nessuno lo saprà — 
 | --- | --- | --- |
 | 1 | `20260909-75` (`00_schema/dbops`) | `dbops.rls_perimetro_debito` — il registro, con `criterio` nella chiave |
 | 2 | `20260909-76` (`20_code/dbops`) | `dbops.vw_rls_perimetro_scoperto` — il criterio, e i tre stati |
-| 3 | `20260909-77` (`80_data`) | il mirror CSV con le **33 righe** di debito, ognuna con la sua ragione |
+| 3 | `20260909-77` (`80_data`) | il mirror CSV del registro, ognuna con la sua ragione — **33 righe alla nascita**, 26 dopo la slice `pratiche` (§11.7) |
 | — | `db/pgtap/rls/test-rls-perimetro-scoperto.sql` | il presidio, plan 8 |
 | — | `docs/it/dbzero/dbops/manual/` | le due schede concettuali (tabella e vista) |
 
@@ -848,12 +853,482 @@ nel CSV, non perché la regola la producesse ancora.
 per impedirlo — e si è vista solo perché il presidio è stato mutato. *Un
 presidio che non è mai stato fatto fallire non è stato provato.*
 
-### 11.7 Che cosa resta, dopo l'apply
+### 11.7 ✅ La prima famiglia consegnata dal presidio: `pratiche`
 
-* le **33 righe** del registro sono trentatré lavori con un nome, il più corto
-  dei quali (`shop.ricevute`) è una riga di SQL;
-* la famiglia più grossa e più pronta è **pratiche**: sette satelliti, una sola
-  rotta (`pratica_id`, `NOT NULL`), un solo adattatore da scrivere;
+> Stato: ✅ **applicata** il 2026-09-10 — slice `20260910-01..04` +
+> `db/pgtap/rls/test-rls-pratiche-satelliti.sql`, pgTAP **12/12 verde**.
+
+⭐ **È la prima slice che non nasce da un elenco letto a mano.** Le sei di ieri
+venivano dal §5 di questo brief; questa viene da
+`dbops.vw_rls_perimetro_scoperto`, che ha nominato sette satelliti di
+`pratiche.pratiche` che nessuno aveva mai guardato.
+
+#### ⛔ E il criterio ne ha trovate NOVE, non sette
+
+Il registro dichiarava le sette con una FK **diretta** verso la testata. Ma
+`pratiche.allegati_flussi` e `pratiche.note_flussi` hanno una FK `NOT NULL`
+verso `pratiche.flussi`, che non era protetta — quindi erano **fuori
+perimetro**, non nascoste.
+
+⇒ Armando `flussi` sarebbero entrate nel perimetro **al giro dopo**, facendo
+rosso il presidio su due tabelle mai censite. È la transitività descritta nel
+§11.2, vista funzionare **prima** che costasse un rosso: *il criterio si estende
+da solo*. La slice ne arma nove.
+
+#### La forma, e le due cose che valgono per le prossime famiglie
+
+| | |
+| --- | --- |
+| vesti | **una** — `pratiche.pratiche` ha la sola `OPERATORE` `FOR ALL`. I nove la rispecchiano: stessa regola, testata con una veste sola |
+| chiavi | sette da `pratica_id`, due da `flusso_id` → due adattatori, il secondo **delega** al primo |
+| viste | ⭐ **nessuna da sistemare**: le dieci che leggono i satelliti hanno già tutte `security_invoker` |
+| registro | le sette righe **tolte** dal CSV *e* cancellate con `20260910-04` |
+
+⛔ **Il quarto changeSet non è una pulizia, ed è stato provato.** Armando senza
+cancellare, le sette righe escono come `DEBITO_ESTINTO` e il test 2 del presidio
+diventa **rosso** — verificato. Il registro non può marcire nel verso
+permissivo, ed è il presidio stesso a pretenderlo.
+
+#### ⭐ Le due cose che le mutazioni hanno insegnato
+
+Il pgTAP è stato provato **facendolo fallire**, non solo passare:
+
+| Mutazione | Chi se ne accorge |
+| --- | --- |
+| `_via_pratica` al posto di `_via_flusso` su `note_flussi` | test 3 (struttura) **e** test 12 |
+| `pratiche.flussi` senza `ENABLE` | test 2, 6, 10 |
+
+⛔ **La prima è il refuso che non fa rumore**: le due chiavi sono entrambe
+`bigint`, quindi scambiarle compila e gira. E alla prima stesura la prendeva
+**solo** il test strutturale: sul verso negativo la policy sbagliata sembra
+corretta — un `flusso_id` letto come `pratica_id` non trova nessuna pratica,
+quindi la riga altrui resta invisibile lo stesso. ⇒ Aggiunto il **gemello
+positivo** (test 12): con l'adattatore sbagliato sparirebbe anche la nota
+*propria*, e lì il difetto si vede.
+
+⚠️ **Due inciampi della fixture, entrambi istruttivi**: il tipo di prestazione
+non può essere «il primo attivo» (il suo preset non ha step, e il flusso non
+nasce), e il `FORCE` va messo su **tutte e nove** — sulle tre che la fixture non
+popola l'owner restava esente e contava le righe vere di sviluppo. ⭐ Su un
+database ricostruito da zero quelle tabelle sono vuote: il test sarebbe passato
+**per sottrazione**, cioè proprio dove nessuno guarda.
+
+#### Il registro dopo questa slice
+
+**33 → 26 righe** (23 `FIGLIA_DI_TABELLA_PROTETTA` + 3 `POLICY_INERTE`).
+
+---
+
+### 11.9 🟠 La seconda famiglia: `lotti` — scritta, da applicare
+
+> Stato: ✅ **applicata** il 2026-09-10 — slice `20260910-14..17` +
+> `db/pgtap/rls/test-rls-lotti-satelliti.sql`, pgTAP **12/12 verde**, nessuna
+> regressione.
+> ⚠️ Numerazione da `-14`: i progressivi `05..13` sono di un altro cantiere
+> (indicazione di Tid, 2026-09-10).
+
+I cinque satelliti di `vendite.fatturazione_lotti`: `esiti`, `fatture`,
+`gruppi`, `log`, `task_runs`. Una chiave sola (`lotto_id`, `NOT NULL`), quindi
+un adattatore solo; **nessun nipote**, quindi nessuna sorpresa al giro dopo —
+al contrario di `pratiche`.
+
+#### ⭐ La decisione: `fatturazione_lotti_fatture` risale dal LOTTO
+
+Decisione di Tid, 2026-09-10. È l'unica dei cinque con **due** genitori protetti
+e tutti e due `NOT NULL` — e i due non hanno le stesse vesti: il lotto ha la sola
+`OPERATORE`, la fattura ha anche `CLIENTE_PORTALE`.
+
+⭐ Comanda il **lotto**, e la ragione sta sul modello: quella riga racconta
+*com'è andato il giro di emissione* — porta `stato_esecuzione`, `stato_sdi_id`,
+`stato_doc_fiscale_id` — ed esiste solo perché un lotto ha girato. La fattura
+esiste anche senza.
+
+⛔ Agganciarla alla fattura avrebbe portato dentro la veste del portale: un
+cliente vedrebbe in quale giro la propria fattura è stata prodotta. Oggi quella
+porta è chiusa ⇒ sarebbe stata una **modifica funzionale mascherata da cantiere
+di sicurezza**, la stessa trappola già evitata su `ordini` al passo 2.
+⚠️ Se un giorno si deciderà che il portale deve vederlo, si **aggiunge** la
+veste con la sua ragione — non la si eredita di straforo.
+
+#### ⛔ Il refuso muto di questa famiglia è diverso dagli altri
+
+`vendite.fatturazione_lotti` nomina l'emittente per **soggetto-ruolo**, non per
+emittente fiscale: l'adattatore delega a `fn_scope_ef_whitelist_via_sr`, non
+alla canonica. Scambiarle non dà errore — confronterebbe un id di soggetto-ruolo
+con una whitelist di id di emittente fiscale, cioè **zero righe**.
+
+⚠️ **Un fail-closed per la ragione sbagliata somiglia a una difesa che
+funziona.** Provato mutando l'adattatore: i test negativi (6, 7, 8) restano
+**verdi**; a cadere sono il **5** («A vede il PROPRIO») e il **12** (l'adattatore
+interrogato nei due versi). È la stessa lezione del gemello positivo di
+`pratiche`, su un errore diverso.
+
+| Mutazione | Chi se ne accorge |
+| --- | --- |
+| l'adattatore delega alla canonica invece che a `_via_sr` | test 5 e 12 |
+| il legame agganciato alla **fattura** (decisione ribaltata) | test 3, 4 e 10 |
+
+⭐ Il test 4 pinna la decisione **dove vive**, cioè nella definizione della
+policy: il giorno in cui qualcuno la cambia deve cambiare anche quella riga, e
+leggere perché.
+
+#### Il registro dopo questa slice
+
+**26 → 21 righe** (18 `FIGLIA_DI_TABELLA_PROTETTA` + 3 `POLICY_INERTE`).
+
+⚠️ **`pagamenti.vendite_contabili_lotti` resta**, e non è una dimenticanza:
+nomina `vendite.fatturazione_lotti` ma ha due genitori con **due perimetri
+diversi** — il lotto (whitelist emittente) e `pagamenti.vendite_contabili`
+(perimetro di incasso). Quale comandi è una domanda aperta, non un armamento.
+
+---
+
+### 11.10 ✅ `pagamenti.vendite_contabili_lotti` — la riga che era una DOMANDA
+
+> Stato: ✅ **applicata** il 2026-09-10 — slice `20260910-18..20` +
+> `db/pgtap/rls/test-rls-vendite-contabili-lotti.sql`, pgTAP **10/10 verde**,
+> nessuna regressione.
+
+⭐ **Questa riga del registro non era un arretrato: era una domanda.** Le altre
+dicono «manca un adattatore», «va con il cantiere X». Questa diceva *«due
+perimetri diversi sulla stessa riga, va deciso quale comanda»*: due genitori
+protetti e `NOT NULL` — `pagamenti.vendite_contabili` (perimetro di incasso) e
+`vendite.fatturazione_lotti` (whitelist emittente).
+
+⇒ Esce dal registro non perché è stato scritto del codice, ma perché è stata
+presa una **decisione**: *«è legato a `pagamenti.vendite_contabili`»* (Tid,
+2026-09-10). Sul modello regge — la riga dice **quali lotti una distinta
+raccoglie**, quindi è il manifesto della distinta; il lotto esiste anche senza.
+
+⚠️ È la decisione **speculare** a quella presa lo stesso giorno su
+`fatturazione_lotti_fatture` (§11.9), dove comandava il *lotto*. Non è una
+contraddizione: in tutti e due i casi **comanda il documento di cui la riga è il
+manifesto**.
+
+#### ⭐ La slice è di tre pezzi, non quattro
+
+`script.fn_scope_ef_whitelist_via_contabile` **esiste già** ed è usata da
+`vendite_contabili_righe`: nessuna funzione nuova. *La regola su come una
+distinta nomina il proprio emittente resta scritta in un posto solo.*
+
+#### ⛔ Il ramo scritto a mano: la distinta INTERNA
+
+L'adattatore risolve l'emittente dal **canale di incasso**. Su una distinta
+interna (fondo fattura, compensazione) canale non ce n'è, l'emittente resta NULL
+e la funzione risponde `false` — mentre la **testata è visibile**, perché la sua
+policy ammette esplicitamente `ente_incasso_id IS NULL`.
+
+⇒ Con il solo adattatore il manifesto di una distinta interna sarebbe invisibile
+a tutti mentre la distinta si vede: un satellite **più chiuso** della propria
+testata, cioè un pannello vuoto senza spiegazione. La policy porta un secondo
+ramo che rispecchia esattamente ciò che la testata concede — la stessa forma che
+la sorella `vendite_contabili_righe` ha già.
+
+#### ⛔ E l'invariante si è auto-neutralizzato, come il presidio a §11.6
+
+Il test 8 doveva dire *«nessuna distinta visibile ha un manifesto nascosto»*, e
+la prima stesura chiedeva quali distinte hanno un manifesto con un `EXISTS` su
+`vendite_contabili_lotti` — cioè **leggendo attraverso la policy che stava
+verificando**. Con il manifesto nascosto l'`EXISTS` è falso, la distinta non
+entra nel confronto: togliendo il ramo della distinta interna il test restava
+**verde**.
+
+⭐ *Un invariante che si misura attraverso il proprio filtro non misura niente.*
+Riscritto sul denominatore noto — le tre distinte che la fixture costruisce da
+owner — ora la mutazione lo fa cadere.
+
+| Mutazione | Chi se ne accorge |
+| --- | --- |
+| via il ramo della distinta interna | test 7 e 8 |
+| il manifesto agganciato al **lotto** (decisione ribaltata) | test 3, 4 e 9 |
+
+⚠️ E la seconda dice una cosa che vale per le prossime: nel verso della
+**lettura** le due scelte sono indistinguibili (A vede il proprio manifesto in
+entrambi i casi). A separarle sono la **struttura** e la **scrittura** — chi può
+appendere un lotto al manifesto di chi.
+
+#### ⚠️ Due trappole della fixture, per chi tocca `pagamenti`
+
+* `anagrafiche.bank_branches` **non ha un seed**: una riga sola su sviluppo,
+  creata a mano, e `conti_bancari.bank_branch_id` è `NOT NULL`. Un test che
+  cercasse una filiale esistente sarebbe verde qui e **senza materia in CI**. La
+  fixture la costruisce — e il soggetto-ruolo della filiale vuole il ruolo
+  **`BANK_B`**, non quello dell'emittente: c'è un guard, e ha ragione.
+* i lotti si costruiscono **prima** di entrare nei panni di qualcuno:
+  `trgfn_guard_emittente_scope` è un trigger e scatta anche per l'owner.
+
+#### Il registro dopo questa slice
+
+**21 → 20 righe** (17 `FIGLIA_DI_TABELLA_PROTETTA` + 3 `POLICY_INERTE`).
+
+---
+
+### 11.11 ✅ `listini` — la catena, e un anello solo da aggiungere
+
+> Stato: ✅ **applicata** il 2026-09-10 — slice `20260910-21..24` +
+> `db/pgtap/rls/test-rls-listini-satelliti.sql`, pgTAP **10/10 verde**, nessuna
+> regressione.
+
+⭐ **La catena era già mezza costruita**, e la slice aggiunge un anello:
+
+```
+listini ──(_via_sr)──────────> emittente        [già protetta]
+listini_versioni ──(_via_listino)──>            [già protetta]
+listini_righe / _componenti ──(_via_listino_versione)──>   [QUESTA slice]
+categorie_clienti_listini ──(_via_listino)──>              [QUESTA slice]
+```
+
+Un solo adattatore nuovo: `fn_scope_ef_whitelist_via_listino_versione`, che
+delega a `_via_listino` — la stessa che già protegge `listini_versioni`, quindi
+la riga e la sua versione **non possono divergere**.
+
+⚠️ Il contenuto qui sono **i prezzi**: articolo, unità di misura e prezzo dei
+listini di ogni emittente erano leggibili da chiunque.
+⚠️ `anagrafiche.categorie_clienti_listini` sta in un altro schema ma è un
+satellite di `vendite.listini`: la slice è cross-schema, con il precedente di
+`20260601-39-enable-rls-ondata2`.
+
+#### Le mutazioni
+
+| Mutazione | Chi se ne accorge |
+| --- | --- |
+| adattatore scambiato su `categorie_clienti_listini` | test 3 **e 7** |
+| `listini_righe` senza `ENABLE` | test 2, 5, 9 |
+
+⛔ Le due chiavi — `listino_versione_id` e `listino_id` — sono entrambe `bigint`
+e i due adattatori hanno la **stessa firma**: scambiarli non dà nessun errore. E
+nel verso negativo lo scambio *sembra funzionare* (un id di versione letto come
+listino non trova quasi mai un listino ⇒ fail-closed). ⇒ A smascherarlo sono i
+versi **positivi**: il test 7 esiste solo per questo.
+
+#### 🔴 Il guard che legge sotto RLS — seconda occorrenza
+
+`vendite.trgfn_listini_righe_guard_tipologia` **non è `SECURITY DEFINER`** e la
+sua query risale `listini_versioni → listini` per confrontare le tipologie.
+Sotto RLS quella lettura torna **zero righe**, il `SELECT INTO` lascia le
+variabili NULL e il guard rifiuta **prima** della `WITH CHECK` — con un
+messaggio che parla d'altro: *«articolo privo di listino_tipologia_id»*.
+
+⭐ La scrittura è rifiutata lo stesso, quindi il perimetro tiene. ⚠️ Ma il
+*motivo* che l'operatore leggerebbe è falso. Non è un difetto introdotto da
+questa slice e non si corregge qui: è la trappola nota del guard che legge sotto
+row level security, e questa slice ne registra la **seconda occorrenza**.
+⇒ Candidato a un cantiere suo: rendere il guard `SECURITY DEFINER`, come è già
+stato fatto altrove per la stessa ragione.
+
+#### ⚠️ Due trappole della fixture, e la seconda è grossa
+
+* `catalogo/articoli.csv` è **vuoto** (sola intestazione): i 257 articoli di
+  sviluppo sono **dati di macchina**. Un test che cercasse un articolo esistente
+  sarebbe verde qui e **senza materia in CI** ⇒ la fixture se lo costruisce. È
+  la stessa specie di `anagrafiche.bank_branches` (§11.10).
+* la tipologia **non si sceglie separatamente** dall'articolo:
+  `trgfn_listini_righe_guard_tipologia` pretende
+  `articolo.listino_tipologia_id = listino.tipologia_id`.
+* e il `FORCE` va su **tutte e cinque** le tabelle toccate, non solo su quelle
+  che la fixture popola — stesso inciampo di `pratiche`, stessa conseguenza: su
+  un database ricostruito il test sarebbe passato **per sottrazione**.
+
+#### Il registro dopo questa slice
+
+**20 → 17 righe** (14 `FIGLIA_DI_TABELLA_PROTETTA` + 3 `POLICY_INERTE`).
+
+⚠️ **`vendite.attivita_fatturabili` resta**, e non è una dimenticanza: punta a
+`listini_righe` (`listino_riga_id`, *nullable*) e da oggi ha un padre protetto in
+più — ma la sua riga non è mai stata «manca un adattatore», è il debito
+dichiarato del §6.1. *Aggiungere un padre protetto a una tabella scoperta non la
+protegge: la rende scoperta per una ragione in più.*
+
+---
+
+### 11.12 🔴 Correzione: la riga di registro di `attivita_fatturabili` diceva il falso
+
+Scritta il 2026-09-09, corretta il 2026-09-10 dopo una domanda di Tid.
+
+La `ragione` diceva *«manca la DECISIONE, non l'attrezzo»*. ⛔ È **il contrario**
+di ciò che il §6.1 aveva concluso, e con parole esplicite: *«la rotta portante è
+`commessa_id`; `vendite.commesse` è già protetta e
+`script.fn_scope_ef_whitelist_via_commessa` esiste già. **Zero helper nuovi, zero
+decisioni.**»*
+
+La domanda che il §6.1 lascia aperta è **un'altra** — *`billing_account_id`
+dovrebbe essere `NOT NULL`?* — ed è lo stesso §6.1 a dire che **non blocca**:
+*«è un cantiere suo, non si risolve mettendoci sopra una policy»*.
+
+⇒ `vendite.attivita_fatturabili` non aspetta nessuna decisione: è **lavoro
+pronto**.
+
+⭐ **Perché la correzione conta più della riga.** Il campo `ragione` esiste per
+dire a chi legge se ha davanti *un allarme*, *un lavoro pronto* o *una domanda
+aperta*. Una riga che dice «manca una decisione» quando la decisione c'è
+**ferma un cantiere che poteva partire** — e lo ferma in silenzio, perché nessuno
+va a rileggere il paragrafo del brief per verificare la riga del registro.
+⚠️ È lo stesso difetto che il registro serve a prevenire, capitato al registro
+stesso.
+
+⚠️ Corretta anche la riga di `attivita_consumi`, che diceva *«pende da
+attivita_fatturabili»*: la FK va nel verso opposto
+(`attivita_fatturabili.attivita_consumi_id`).
+
+#### Che cosa manca davvero alla famiglia `commesse`
+
+| Tabella | Rotta `NOT NULL` | Adattatore |
+| --- | --- | --- |
+| `attivita_fatturabili` | `commessa_id` → `vendite.commesse` | ✅ `_via_commessa` |
+| `commesse_sorgenti` | `commessa_id` → `vendite.commesse` | ✅ `_via_commessa` |
+| `commesse_attivita_log` | `commessa_attivita_id` → `vendite.commesse_attivita` | 🟠 da scrivere (un livello) |
+| `attivita_consumi` | `billing_account_id` → `anagrafiche.billing_account` | 🟠 da scrivere |
+
+⇒ **Nessuna decisione, due adattatori da scrivere.** È una slice come le altre.
+
+⚠️ Le due `ragione` corrette vivono nel CSV: le porta nel database il mirror
+`20260909-77` (`runOnChange`) al prossimo migrate, non serve un changeSet.
+
+---
+
+### 11.13 ✅ `attivita_fatturabili.billing_account_id` è `NOT NULL` — analisi e realizzazione
+
+> Domanda aperta dal §6.1, decisa da Tid il **2026-09-10**.
+> 🟠 Slice `20260910-25..26` + `db/pgtap/vendite/test-af-billing-account-obbligatorio-v1.sql`:
+> **scritta e provata, NON applicata**. Manca il migrate.
+
+#### L'argomento di dominio, ed è quello che mancava
+
+Tid: *«se sono attività fatturabili devono per forza essere associate a un BA.
+Tra l'altro la tabella BA esiste apposta, e si differenzia da `clienti` proprio
+per rendere possibile la fatturazione di attività prima che un cliente sia
+definito — l'utility del gas che fattura un allaccio.»*
+
+⭐ È il pezzo che il §6.1 non aveva: non solo *«serve un BA»*, ma **perché il BA
+è la cosa giusta da pretendere**. Il billing account è stato separato da
+`clienti` proprio per esistere *prima* del cliente. ⇒ «non c'è ancora un
+cliente» non è un motivo per cui il BA possa mancare: è la ragione per cui il BA
+esiste.
+
+#### La struttura dice la stessa cosa, e in modo indipendente
+
+Letto dal catalogo il 2026-09-10 — **contratto, non popolazione**:
+
+| Fatto | Conseguenza |
+| --- | --- |
+| `attivita_fatturabili.commessa_id` è **`NOT NULL`** | ogni attività ha una commessa |
+| `vendite.commesse.billing_account_id` è **`NOT NULL`** | ogni commessa ha un BA |
+| `vendite.fatture.billing_account_id` è **`NOT NULL`** | a fatturare, il BA è obbligatorio |
+
+⇒ **Ogni attività fatturabile ha già un BA garantito, raggiungibile per una
+catena di sole colonne obbligatorie.** Un `NULL` su
+`attivita_fatturabili.billing_account_id` non può quindi significare *«non ce
+n'è uno»*: può significare solo *«non è ancora stato copiato giù»*.
+
+⭐ E questo risponde anche all'obiezione del §6.1 — *«una policy su una chiave
+nullable ha un buco esatto dove il NULL passa»*: il buco esiste perché la
+colonna è nullable **senza che il modello lo richieda**, non perché il dato
+manchi.
+
+#### ⚠️ Il fatto datato, e vale solo come assenza di controesempio
+
+2026-09-10, su 59 righe: **0** con BA nullo, **59** con BA uguale a quello della
+propria commessa, **0 dissenzienti**.
+
+⛔ Questo **non è** l'argomento: «oggi non capita mai» non dice che il caso non
+esista. Vale in un verso solo — *non c'è nessun controesempio da spiegare*, e un
+eventuale backfill non troverebbe righe incoerenti da decidere.
+
+#### 🔴 Trovato strada facendo: un guard che non arriva mai a validare
+
+`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza` (BEFORE INSERT OR UPDATE)
+apre così:
+
+```sql
+IF NEW.commessa_attivita_id IS NOT NULL THEN RETURN NEW; END IF;
+```
+
+Ma `commessa_attivita_id` è **`NOT NULL`** sulla tabella. ⇒ Il ramo che valida
+la coerenza BA/utility si raggiunge **solo** su righe che il `NOT NULL`
+rifiuterà comunque un istante dopo — il vincolo si controlla dopo i BEFORE
+trigger. In pratica: su ogni riga che sopravvive, il guard esce subito.
+
+⚠️ Non è un difetto introdotto oggi e non si corregge qui, ma va saputo prima di
+toccare quella tabella: *un guard che sembra presidiare la coerenza del BA, e
+non la presidia.* La sua intestazione lo dice pure — «coerenza garantita a monte
+dal push» — quindi la scelta era consapevole; è la colonna che nel frattempo è
+diventata obbligatoria.
+
+#### Che cosa sarebbe il cantiere
+
+1. il **normalizzatore** deriva il BA dalla commessa quando arriva `NULL`
+   (`trgfn_attivita_fatturabili_normalize`, BEFORE, gira **dopo** il guard);
+   ⭐ derivare qui è lecito perché ciò che si deriva è **completo**: la catena è
+   di sole colonne obbligatorie;
+2. backfill delle righe esistenti (oggi: zero da sistemare);
+3. `SET NOT NULL` + il pgTAP che pinna l'invariante;
+4. ⭐ e a quel punto `attivita_fatturabili` si arma **sulla rotta che il §6.1
+   aveva già scelto** (`commessa_id`) — le due cose restano indipendenti: il
+   perimetro non aspetta il `NOT NULL`.
+
+⛔ **I punti 1-3 NON sono un prerequisito dell'armamento** (§11.12): sono un
+cantiere di modello, e l'ordine fra i due non conta.
+
+---
+
+### 11.14 🔴 Il difetto di METODO che ha quasi fatto passare una regressione
+
+> Successo il 2026-09-10, scrivendo la slice del §11.13. È la cosa più
+> importante di quella giornata, e non riguarda il database.
+
+Prima di rendere `billing_account_id` obbligatorio ho fatto la cosa giusta —
+censire i pgTAP che **scrivono** su `attivita_fatturabili`, 42 file — e li ho
+confrontati prima/dopo. Esito: *«nessuna divergenza, tranne il test nuovo»*.
+
+⛔ **Era falso, e il metodo era cieco proprio al caso peggiore.** Confrontavo il
+numero di righe `not ok`. Ma un file che muore nel **fixture** non produce
+nessun `not ok`: produce *meno asserzioni*. Quattro test collassavano —
+`test-esito-gruppi-giro-v1` da **12 asserzioni a 2**,
+`test-vw-dash-competenza-v1` da **23 a 3**, e altri due — e tre di loro
+risultavano «zero rossi prima, zero rossi dopo».
+
+⭐ **La metrica giusta è il numero di ASSERZIONI ESEGUITE, non quello dei
+fallimenti.** È la stessa cosa che il progetto già scrive della baseline — *«un
+file che fallisce nel fixture non esegue nessuna asserzione: la sua copertura
+vale zero, non parziale»* — ma io la stavo misurando nel modo che quella frase
+descrive come sbagliato.
+
+#### ⚠️ E la causa era un secondo errore di perimetro
+
+Avevo scritto, nel changeSet: *«l'UNICA funzione che scrive in questa tabella è
+`fn_emit_attivita_fatturabili_da_commessa`, e il BA lo passa già»*. Vero — ma il
+censimento era su **`pg_proc`**, cioè sulle funzioni del database. ⛔ **Le
+fixture dei pgTAP inseriscono direttamente**, e non passavano il BA.
+
+⭐ Il che, però, è un argomento **a favore** del vincolo, non contro: quelle
+fixture costruivano righe che il dominio non ammette — attività fatturabili
+senza billing account. ⇒ Corrette tutte e sette le `INSERT` nei quattro file,
+derivando il BA dalla commessa, che è la stessa rotta del backfill.
+
+#### Le mutazioni della slice
+
+| Mutazione | Chi se ne accorge |
+| --- | --- |
+| rimessa l'uscita anticipata nel guard | test 2 (struttura) **e 4** (comportamento) |
+| tolto il `SET NOT NULL` | test 1 |
+
+⚠️ E il **test 2 era rosso alla prima stesura per la ragione sbagliata**: cercava
+`commessa_attivita_id IS NOT NULL` in `prosrc`, e la trovava nel **commento** che
+spiega il difetto. Corretto cercando nel codice privato dei commenti — è la
+trappola nota del presidio che si accende sulla prosa.
+
+---
+
+### 11.8 Che cosa resta, ora che il presidio è in servizio
+
+* le **17 righe** del registro sono diciassette lavori con un nome, il più
+  corto dei quali (`shop.ricevute`) è una riga di SQL;
+* ✅ **`pratiche`** (§11.7) e **`lotti`** (§11.9) sono applicate;
+  **`vendite_contabili_lotti`** (§11.10) e **`listini`** (§11.11) sono
+  applicate. Restano, in ordine di dimensione: **commesse** (4 — ⭐ **nessuna
+  decisione mancante**, due adattatori da scrivere: §11.12), **anagrafiche**
+  (3 + le due che sono una domanda di modello, §11.4), **documenti** (2) e le
+  singole di `config`, `magazzino`, `pagamenti`, `shop`;
 * ⚠️ resta fuori dal criterio, e va ricordato, il debito dello **`storico`**
   (§9): 120 tabelle senza RLS. Non entrano qui perché non hanno una FK verso le
   madri — sono **gemelle**, non figlie. Il criterio non le vede, e questo brief

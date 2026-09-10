@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-4 — Il DEBITO PAGATO esce dal registro.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.7
+#   Slice 20260910-01..04, ultimo pezzo.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LE RIGHE TOLTE DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**: togliere le righe
+#   dal CSV le lascia nel database per sempre. Le due cose vanno insieme — il
+#   CSV perche' un database ricostruito da zero non le crei, questa `DELETE`
+#   perche' dove ci sono gia' se ne vadano. Stessa forma di `20260905-34`.
+#
+# ── ⭐ E NON E' UNA PULIZIA COSMETICA: senza, il presidio va ROSSO ────
+#   `dbops.vw_rls_perimetro_scoperto` ha un terzo stato apposta per questo.
+#   Armate le sette tabelle (20260910-03), le loro righe di registro non hanno
+#   piu' un difetto da dichiarare ed escono come **`DEBITO_ESTINTO`** — che il
+#   test 2 di `db/pgtap/rls/test-rls-perimetro-scoperto.sql` conta come
+#   violazione esattamente quanto un `NON_DICHIARATO`.
+#   ⚠️ E' il verso in cui un registro marcirebbe **nel senso permissivo**: una
+#   riga rimasta li' continuerebbe a far tacere il presidio su una tabella che
+#   un domani potrebbe tornare scoperta per un'altra strada. ⇒ Il presidio
+#   pretende di essere aggiornato, e questo changeSet e' la risposta.
+#
+# ── ⚠️ SETTE, NON NOVE ───────────────────────────────────────────────
+#   La slice arma NOVE tabelle, ma il registro ne dichiarava SETTE:
+#   `pratiche.allegati_flussi` e `pratiche.note_flussi` non ci sono mai state,
+#   perche' pendono da `pratiche.flussi` che fino a ieri non era protetta —
+#   quindi il criterio non le vedeva. Non erano un debito nascosto: erano
+#   **fuori perimetro** finche' il loro padre lo era.
+#   ⭐ E' la transitivita' del criterio, vista dal lato del registro: cancellare
+#   nove righe qui vorrebbe dire cancellarne due che non esistono.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-04-delete-debito-rls-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260910-04-delete-debito-rls-pratiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito le sette righe della famiglia pratiche,
+        armata dalla slice 20260910-01..03. loadUpdateData non cancella, quindi
+        togliere le righe dal CSV non basta: senza questa DELETE escono come
+        DEBITO_ESTINTO e il presidio diventa rosso.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio       = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND d.schema_tabella = 'pratiche'
+                 AND (d.id, d.nome_tabella) IN (
+                         (30, 'allegati_pratiche'),
+                         (31, 'calcoli_tempo'),
+                         (32, 'flussi'),
+                         (33, 'giornale'),
+                         (34, 'note_pratiche'),
+                         (35, 'pratiche_sorgenti'),
+                         (36, 'sospensioni'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu': sette righe
+              --   che dichiarano scoperte tabelle armate. Ha senso solo
+              --   insieme al rollback di 20260910-03, che le disarma.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (30, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'allegati_pratiche',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (31, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'calcoli_tempo',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (32, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'flussi',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (33, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'giornale',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (34, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'note_pratiche',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (35, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'pratiche_sorgenti',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (36, 'FIGLIA_DI_TABELLA_PROTETTA', 'pratiche', 'sospensioni',
+                 'Ripristino di rollback: satellite di pratiche.pratiche via pratica_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09');

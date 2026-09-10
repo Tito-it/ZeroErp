@@ -909,6 +909,46 @@ PGTAP_ENV_FILE=db/internal.ci.env PGTAP_BASELINE=db/pgtap/baseline-rossi-ci.tsv 
   scripts/pgtap-baseline.sh vendite
 ```
 
+#### 🔴 L6-bis — e il quinto è arrivato da solo, su `dbdev`
+
+`db/pgtap/vendite/test-select-perimetro-consegnato-v1.sql`, test 2 rosso e
+**3-4-5 saltati** — cioè il presidio che quel file dichiara «il più importante»
+(il 4: *un altro giro NON prende le righe di A*) non ha girato affatto.
+
+⛔ **E non era un difetto: era il `-62` che funziona.** Il file cerca il suo
+soggetto —
+
+```sql
+FROM vendite.commesse c ... ORDER BY c.id DESC LIMIT 1
+```
+
+— e la commessa più recente su `dbdev` si è trovata a essere **`TRATTENUTA`**.
+Misurato con la sonda del test stesso: `classe_emittibilita = TRATTENUTA`,
+`trattenuta_da_lotti = {12406}`, il pull consegna `(0,0,0,0)`. ⇒ Il nostro
+cantiere ha spostato la popolazione sotto un test che dalla popolazione
+dipendeva.
+
+⚠️ **E la sua intestazione dichiarava il contrario**: *«il soggetto si fabbrica
+con le primitive vere […] il file misura le stesse cose su un database
+ricostruito da zero»*. Fabbricava la **consegna** (il pull), non il
+**soggetto**: su un database ricostruito i quattro test saltavano da sempre, in
+silenzio.
+
+✅ **Sanato come i quattro di L6**: azienda, cliente, commessa, sorgente `ROOT`
+e riga approvata costruiti; il pull resta la primitiva vera, che è ciò che il
+file vuole misurare. Verde **5/5 su entrambi** i database, e i test 3-4-5 ora
+girano davvero.
+⭐ Tolti anche i rami diventati morti: con la commessa costruita, *«nessuna
+commessa con lavoro approvato su questo DB»* non è più una condizione del
+database — è una frase falsa, e uno `skip` che la pronuncia nasconde un difetto
+invece di dichiararlo. Se il pull non consegna niente, adesso è **rosso**.
+
+⇒ **Il conto totale del cantiere sui presidi è cinque file**, tutti con la
+stessa forma: dichiaravano casi costruiti e ne cercavano una parte. Quattro li
+ha trovati la CI, il quinto lo ha trovato il cantiere stesso muovendo i dati
+sotto di lui — che è, letteralmente, il modo in cui un test appoggiato alla
+popolazione si rompe.
+
 ### 8.4 I presidi
 
 ⭐ **Ogni prova ha il suo contrario.** Col solo verso «blocca» passerebbe anche
@@ -978,7 +1018,7 @@ del backend: il presidio va dove sta il calcolo. Si appoggia a
 | Censimento del riuso | ✅ fatto — §9 |
 | Decisioni | ✅ **nessuna aperta**: D-1, D-2 e V-1 chiuse in §8.0 |
 | Contratto DB ↔ BE ↔ FE | ✅ scritto per intero — §8.2 |
-| DB | ✅ **L1** (`-51..-55`), **L2** (`-56`, `-57`), **L3** (`-58`..`-63`) e **L4** (`-64`..`-67`) applicati il 2026-09-09, pgTAP verdi · ⚠️ **L4-bis**: un secondo lettore della vista ritirata è emerso dopo l'apply e il suo pgTAP è stato sanato · 🔴 **L6**: i quattro presidi nuovi erano MUTI su `zeroerp_ci` (fixture che *cercava* emittente e cliente invece di costruirli) — sanati, verdi ora su **entrambi** i database |
+| DB | ✅ **L1** (`-51..-55`), **L2** (`-56`, `-57`), **L3** (`-58`..`-63`) e **L4** (`-64`..`-67`) applicati il 2026-09-09, pgTAP verdi · ⚠️ **L4-bis**: un secondo lettore della vista ritirata è emerso dopo l'apply e il suo pgTAP è stato sanato · 🔴 **L6**: i quattro presidi nuovi erano MUTI su `zeroerp_ci` (fixture che *cercava* emittente e cliente invece di costruirli) — sanati, verdi ora su **entrambi** i database · 🔴 **L6-bis**: e un **quinto**, rotto su `dbdev` dal `-62` stesso — stessa forma, stesso rimedio |
 | BE / FE | ✅ **L4 e L5 scritti e ora PROVATI** sul server backend (2026-09-09): suite Django **4574 verde**, `npm run build` verde, lint pulito |
 | ✅ Chiuso | suite · build · **collaudo a video** fatto da Tid, e i numeri riletti dal backend sulla cella `09/2026 · DA_EMETTERE`: riepilogo **1**, trattenuti **2**, perimetro **3** — `1 + 2 = 3`, le tre cifre si riconciliano fra loro e con la lista |
 

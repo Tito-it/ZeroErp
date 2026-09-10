@@ -62,6 +62,13 @@ from pathlib import Path
 
 import yaml
 
+# ⭐ Il parser YAML in C dove c'e', quello in puro Python dove non c'e'.
+#   Il 99% del costo di questo cancello e' il parsing (misurato il
+#   2026-09-10): ~14x. Stesso risultato, provato su tutti i changelog del
+#   repo — vedi scripts/_yaml_veloce.py.
+#   ⚠️ `yaml` resta importato: serve per `yaml.YAMLError` nei rami di errore.
+from _yaml_veloce import carica as carica_yaml
+
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "db" / "changelog" / "migrations_v2"
 FILENAME_RE = re.compile(r"^\d{8}-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
@@ -77,7 +84,7 @@ TRONCHE = ("e'", "gia'", "piu'", "perche'", "cioe'", "puo'", "la'", "li'",
 # Scopo: estrae i blocchi SQL testuali di un changelog, con la loro provenienza
 #        (changes | rollback) per poterla nominare nell'errore.
 def blocchi_sql(percorso: Path) -> list[tuple[str, str]]:
-    doc = yaml.safe_load(percorso.read_text(encoding="utf-8"))
+    doc = carica_yaml(percorso.read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
         return []
     fuori: list[tuple[str, str]] = []

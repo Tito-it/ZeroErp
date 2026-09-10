@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LI-4 — Il DEBITO PAGATO esce dal registro.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.11
+#   Slice 20260910-21..24, ultimo pezzo.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LE RIGHE TOLTE DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme — il CSV perche' un database ricostruito da zero non le crei, questa
+#   `DELETE` perche' dove ci sono gia' se ne vadano. Senza, escono come
+#   `DEBITO_ESTINTO` e il test 2 di
+#   `db/pgtap/rls/test-rls-perimetro-scoperto.sql` diventa rosso.
+#
+# ── ⚠️ TRE RIGHE, DUE SCHEMI ─────────────────────────────────────────
+#   Le tre righe non stanno tutte in `vendite`: la terza e'
+#   `anagrafiche.categorie_clienti_listini`. Le tre ragioni scritte nel registro
+#   si rimandavano gia' a vicenda — *«si arma in un colpo solo, insieme ad
+#   anagrafiche.categorie_clienti_listini: e' il cantiere listini»* — ed e'
+#   esattamente cio' che e' successo. ⭐ Una ragione scritta bene dice anche
+#   **con chi** un debito si paga.
+#
+# ── ⭐ E UNA RIGA DEL REGISTRO NON ESCE, di proposito ─────────────────
+#   `vendite.attivita_fatturabili` punta a `listini_righe`
+#   (`listino_riga_id`, **nullable**) e da oggi ha un padre protetto in piu'.
+#   ⛔ Ma resta in registro: la sua riga non e' mai stata «manca un adattatore»,
+#   e' il debito dichiarato del §6.1 — una decisione di modello che questa slice
+#   non tocca. *Aggiungere un padre protetto a una tabella scoperta non la
+#   protegge: la rende scoperta per una ragione in piu'.*
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-24-delete-debito-rls-listini-mctit.yaml
+
+  - changeSet:
+      id: 20260910-24-delete-debito-rls-listini
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito le tre righe della catena dei listini
+        (vendite.listini_righe, vendite.listini_righe_componenti,
+        anagrafiche.categorie_clienti_listini), armate dalla slice
+        20260910-21..23. loadUpdateData non cancella, quindi togliere le righe
+        dal CSV non basta.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (20, 'vendite',     'listini_righe'),
+                         (21, 'vendite',     'listini_righe_componenti'),
+                         (50, 'anagrafiche', 'categorie_clienti_listini'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu'. Ha senso solo
+              --   insieme al rollback di 20260910-23, che disarma le tre.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (20, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'listini_righe',
+                 'Ripristino di rollback: satellite di vendite.listini_versioni via listino_versione_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (21, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'listini_righe_componenti',
+                 'Ripristino di rollback: satellite di vendite.listini_versioni via listino_versione_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (50, 'FIGLIA_DI_TABELLA_PROTETTA', 'anagrafiche', 'categorie_clienti_listini',
+                 'Ripristino di rollback: FK listino_id NOT NULL verso vendite.listini, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09');

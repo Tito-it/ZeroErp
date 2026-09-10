@@ -108,8 +108,28 @@ jobs:
           source backend/.venv/bin/activate
           pip install -r backend/requirements.txt
 
-      - name: Install pre-commit
-        run: pip install pre-commit
+      - name: Strumenti dei cancelli (pre-commit + PyYAML)
+        # ── ⚠️ DUE COSE, E NESSUNA E' UN DETTAGLIO ──────────────────────────
+        #   1. PyYAML si nomina ESPLICITAMENTE. E' cio' con cui girano i sei
+        #      guardrail qui sotto — che partono con `python scripts/X.py`,
+        #      cioe' FUORI dal venv del backend — e oggi arriva soltanto perche'
+        #      e' una dipendenza di `pre-commit` (`pyyaml>=5.1`). Funziona, ma
+        #      per rimbalzo: il giorno in cui questo passo cambia, i cancelli
+        #      muoiono con un `ImportError` che non li riguarda.
+        #   2. Le versioni NON si scrivono qui. `-c` e' un file di VINCOLI, non
+        #      di requisiti: pip installa i due pacchetti nominati alle versioni
+        #      pinnate in `requirements.txt` e NON gli altri 42. La sede resta
+        #      una sola, e il peso e' identico a prima.
+        #
+        #   ⛔ Perche' serviva: `ci.yaml` installa `-r requirements.txt`
+        #     (pinnato), questo installava `pre-commit` a mano SENZA versione.
+        #     Due workflow, due toolchain che possono divergere.
+        #   ⚠️ Ed e' un difetto che ASPETTA, non uno in corso: provato in un venv
+        #     pulito il 2026-09-10, con e senza vincolo pip risolve gli stessi
+        #     `pre_commit==4.6.2` / `PyYAML==6.0.3`, perche' sono le ultime su
+        #     PyPI. La divergenza compare alla prima versione nuova, e nessuno
+        #     se ne accorgerebbe.
+        run: pip install -c requirements.txt pre-commit PyYAML
 
       - name: Cache pre-commit
         uses: actions/cache@v5

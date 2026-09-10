@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LI-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sulla catena dei listini.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.11
+#   Slice 20260910-21..24. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ⚠️ Cross-schema, come 20260601-39-enable-rls-ondata2: le tre tabelle sono una
+#   catena sola e si armano insieme. Vedi 20260910-22 per la ragione.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Il pgTAP di questa slice
+#   asserisce `relrowsecurity`, non l'esistenza della policy.
+#
+# ── NO FORCE, a parita' con i due padri ───────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.listini` e
+#   `vendite.listini_versioni`: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ───────────────────────────────
+#   ⭐ **Nessuna vista legge le tre tabelle** — verificato il 2026-09-10, e la
+#   frase e' letterale: **zero**, non «ce l'hanno gia' tutte il
+#   security_invoker». E' la stessa condizione di `contratti` (§7): la famiglia
+#   piu' isolata di tutte. ⇒ Una divergenza dopo l'armamento si vedrebbe **solo**
+#   dalle query dirette del backend, non da una lista che smette di popolarsi.
+#
+#   ⚠️ I punti da guardare a mano, per questo:
+#     - il drawer del listino e le sue righe (pricing, versioni, componenti);
+#     - il **risolutore di prezzo**: legge `listini_righe` per ogni riga di
+#       documento. Se un prezzo smettesse di risolversi, la domanda non e'
+#       «allargo la policy?» ma «quel listino e quel documento hanno davvero
+#       emittenti diversi?» — cioe' un dato incoerente, non un filtro sbagliato;
+#     - l'aggancio categoria cliente - listino nel drawer del cliente.
+#
+#   ⭐ **E una nipote c'e' gia' ed e' protetta**: `vendite.commesse_attivita`
+#   punta a `listini_righe` (`listino_riga_id`, nullable) ed e' in RLS dal suo
+#   cantiere. L'altra — `vendite.attivita_fatturabili` — e' scoperta, ma era
+#   gia' nel registro del debito per conto suo (§6.1): questa slice non le
+#   aggiunge una riga, le aggiunge un padre protetto in piu'.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-listini-satelliti.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-23-enable-rls-listini-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-23-enable-rls-listini-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su vendite.listini_righe,
+        vendite.listini_righe_componenti e
+        anagrafiche.categorie_clienti_listini. Da qui le policy di 20260910-22
+        filtrano davvero. Isolato apposta: si disarma con il rollback di questo
+        solo changeSet, e le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE (schemaname = 'vendite'
+                      AND tablename IN ('listini_righe', 'listini_righe_componenti'))
+                  OR (schemaname = 'anagrafiche'
+                      AND tablename = 'categorie_clienti_listini')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.listini_righe                 ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.listini_righe_componenti      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE anagrafiche.categorie_clienti_listini ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti_listini DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.listini_righe_componenti      DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.listini_righe                 DISABLE ROW LEVEL SECURITY;

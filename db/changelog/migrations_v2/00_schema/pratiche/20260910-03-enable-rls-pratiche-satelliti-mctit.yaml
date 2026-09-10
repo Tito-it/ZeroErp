@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-3, ARMAMENTO — ENABLE ROW LEVEL SECURITY sui nove satelliti di PRATICHE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.7
+#   Slice 20260910-01..04. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i due precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `pg_policy` ha la riga e il filtro non si applica. Non e' un'ipotesi:
+#   `acquisti.ddt`, `acquisti.ordini` e `shop.ricevute` sono esattamente in
+#   quello stato, e stanno nel registro del debito come `POLICY_INERTE`. Il
+#   pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy.
+#
+# ── NO FORCE, a parita' con tutto il database ─────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `pratiche.pratiche` e
+#   come tutte le 69 tabelle gia' in RLS: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── ⭐ L'ORDINE DEI NOVE NON CONTA, MA LA MADRE SI' ───────────────────
+#   `pratiche.flussi` e' la sola dei nove a essere anche MADRE (di
+#   `allegati_flussi` e `note_flussi`). Armati tutti nello stesso changeSet, le
+#   due nipoti sono raggiungibili solo attraverso un flusso gia' filtrato:
+#   **due strade verso la stessa riga**, che devono dare la stessa risposta.
+#   Danno la stessa risposta per costruzione, perche' `_via_flusso` delega a
+#   `_via_pratica` — non e' una coincidenza da verificare, e' una regola scritta
+#   in un posto solo.
+#
+# ── DOPO L'APPLICAZIONE: dove una divergenza si manifesterebbe ────────
+#   ⭐ Nessuna vista da sistemare, verificato il 2026-09-10: le dieci viste che
+#   leggono i satelliti di `pratiche` — `script.vw_pratica_doc_sorgente`,
+#   `vendite.vw_documento_lineage`, `vendite.vw_preventivi_pratiche` e le sei
+#   `vendite.vw_*_lista` — hanno gia' TUTTE `security_invoker`. E' la stessa
+#   condizione di `ddt` e `contratti`, non quella di `preventivi`, che ne aveva
+#   due scoperte.
+#
+#   Da sessione OPERATORE i conteggi devono restare quelli di prima. I punti in
+#   cui una divergenza si vedrebbe:
+#     - la coda di lavoro e il drawer di esecuzione dei flussi;
+#     - il pannello «Passaggi» dei documenti di vendita: `vw_documento_lineage`
+#       legge `pratiche_sorgenti`, che da oggi e' filtrata;
+#     - la colonna «pratica collegata» nelle sei liste documento.
+#   ⚠️ Se una pratica sparisse da una lista, non e' la policy da allargare: e'
+#   il segno che il documento e la sua pratica hanno emittenti diversi — cioe'
+#   un guard mancante, non un perimetro sbagliato. E' la stessa domanda
+#   dichiarata al §6.2 del brief per ordine e DDT.
+#
+#   ⭐ Nessun cambiamento per un utente del portale o dello shop:
+#   `pratiche.pratiche` non ha vesti cliente, quindi non ne hanno i satelliti.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-pratiche-satelliti.sql, che
+#   costruisce DUE aziende con `dbops.fn_pgtap_crea_emittente_operatore()` e
+#   verifica che l'una non veda le righe dell'altra, in lettura E in scrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260910-03-enable-rls-pratiche-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-03-enable-rls-pratiche-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY sui nove satelliti di
+        pratiche.pratiche. Da qui le policy di 20260910-02 filtrano davvero.
+        Isolato apposta: si disarma con il rollback di questo solo changeSet, e
+        le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 9
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'pratiche'
+                 AND tablename IN ('allegati_pratiche', 'calcoli_tempo', 'flussi',
+                                   'giornale', 'note_pratiche', 'pratiche_sorgenti',
+                                   'sospensioni', 'allegati_flussi', 'note_flussi')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.allegati_pratiche  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.calcoli_tempo      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.flussi             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.giornale           ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.note_pratiche      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.pratiche_sorgenti  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.sospensioni        ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.allegati_flussi    ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.note_flussi        ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.note_flussi        DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.allegati_flussi    DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.sospensioni        DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.pratiche_sorgenti  DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.note_pratiche      DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.giornale           DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.flussi             DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.calcoli_tempo      DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.allegati_pratiche  DISABLE ROW LEVEL SECURITY;

@@ -281,28 +281,40 @@ INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, data_insert)
+  commessa_id, commessa_attivita_id, data_insert,
+  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
+  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
+  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
+  billing_account_id)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', 1,
        DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
        r.uom_id, r.valuta_id, 30.000000, r.tipo_doc_fiscale_id,
        (SELECT id FROM tmp_dc_commessa),
        (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A3_EMESSA'),
-       TIMESTAMPTZ '2080-01-05 10:00:00+00'
-FROM tmp_dc_refs r;
+       TIMESTAMPTZ '2080-01-05 10:00:00+00',
+       (SELECT c.billing_account_id FROM vendite.commesse c
+         WHERE c.id = (SELECT id FROM tmp_dc_commessa))
+       FROM tmp_dc_refs r;
 
 INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id, data_insert)
+  commessa_id, commessa_attivita_id, fattura_riga_id, data_insert,
+  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
+  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
+  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
+  billing_account_id)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', 1,
        DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
        r.uom_id, r.valuta_id, 40.000000, r.tipo_doc_fiscale_id,
        (SELECT id FROM tmp_dc_commessa),
        (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA'),
        (SELECT id FROM tmp_dc_fattura_riga),
-       TIMESTAMPTZ '2080-03-15 10:00:00+00'
-FROM tmp_dc_refs r;
+       TIMESTAMPTZ '2080-03-15 10:00:00+00',
+       (SELECT c.billing_account_id FROM vendite.commesse c
+         WHERE c.id = (SELECT id FROM tmp_dc_commessa))
+       FROM tmp_dc_refs r;
 
 -- ============================================================
 -- 3-6) Stadi del funnel

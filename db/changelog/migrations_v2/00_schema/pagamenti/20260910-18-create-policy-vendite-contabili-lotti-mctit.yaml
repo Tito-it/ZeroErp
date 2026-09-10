@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-1 — La policy su pagamenti.vendite_contabili_lotti. INERTE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.10
+#   Slice 20260910-18..20. L'armamento e' 20260910-19.
+#
+# ── ⛔ LA DOMANDA APERTA, E LA SUA RISPOSTA ───────────────────────────
+#   Questa tabella era rimasta in registro come debito **dichiarato** proprio
+#   perche' ha DUE genitori protetti, tutti e due `NOT NULL`, con perimetri
+#   **diversi**: `vendite.fatturazione_lotti` (whitelist emittente) e
+#   `pagamenti.vendite_contabili` (perimetro di incasso). Quale comandi non e'
+#   una cosa che si deduce dalla struttura: e' una decisione.
+#
+#   ⭐ **Comanda la DISTINTA** — decisione di Tid, 2026-09-10: *«questo e'
+#   legato a `pagamenti.vendite_contabili`»*. Sul modello regge: la riga dice
+#   **quali lotti una distinta raccoglie**, quindi e' il manifesto della
+#   distinta. Il lotto esiste anche senza; la riga no.
+#   ⚠️ E' la decisione **speculare** a quella presa il giorno stesso su
+#   `vendite.fatturazione_lotti_fatture` (20260910-15), dove comandava il
+#   **lotto** — e non e' una contraddizione: li' la riga raccontava com'era
+#   andato il giro di emissione, qui racconta che cosa una distinta incassa.
+#   *In tutti e due i casi comanda il documento di cui la riga e' il manifesto.*
+#
+# ── ⭐ L'ADATTATORE ESISTE GIA', e la slice e' di tre pezzi, non quattro ─
+#   `script.fn_scope_ef_whitelist_via_contabile` e' in servizio dal cantiere
+#   pagamenti e la usa gia' `pagamenti.vendite_contabili_righe`. Niente funzione
+#   nuova: *la regola su come una distinta nomina il proprio emittente resta
+#   scritta in un posto solo.*
+#
+# ── ⛔ IL RAMO DELLA DISTINTA INTERNA, e senza si CHIUDE TROPPO ───────
+#   L'adattatore risolve l'emittente dal **canale di incasso**. Su una distinta
+#   **interna** (fondo fattura, compensazione) canale non ce n'e': l'emittente
+#   resta NULL e la risposta e' `false`. Lo dice il commento della funzione
+#   stessa, che aggiunge: *«Che la TESTATA di quella distinta sia invece
+#   visibile e' una decisione diversa, e sta scritta nella policy — non qui
+#   dentro, cosi' chi legge la policy la vede.»*
+#
+#   ⇒ E infatti la testata **e' visibile**: `rls_vendite_contabili_perimetro_incasso`
+#   ammette esplicitamente `ente_incasso_id IS NULL`. Con il solo adattatore, i
+#   lotti di una distinta interna sarebbero **invisibili a tutti** mentre la
+#   distinta si vede: un satellite piu' restrittivo della propria testata, cioe'
+#   un pannello vuoto senza spiegazione.
+#   ⭐ Quindi la policy porta il secondo ramo, che e' il **rispecchiamento
+#   esatto** di cio' che la testata concede — ed e' la stessa forma che la
+#   sorella `vendite_contabili_righe` ha gia' (li' e' il suo terzo ramo).
+#   ⛔ Due tabelle gemelle che rispondono in due modi sono un difetto che si
+#   scopre tardi: qui la forma e' la stessa apposta.
+#
+#   ⚠️ Cosa NON fa: non aggiunge un ramo `_via_lotto`. Sarebbe piu' permissiva
+#   della testata — un operatore che ha il lotto ma non il canale vedrebbe il
+#   manifesto di una distinta fuori dal proprio perimetro di incasso. La
+#   decisione era «legato alla distinta», e questa e' la sua lettura fedele.
+#
+# ── ⛔ `FOR ALL` E `WITH CHECK` ───────────────────────────────────────
+#   `zeroerp_app` ha SELECT, INSERT, UPDATE e DELETE (verificato 2026-09-10),
+#   ed e' la stessa postura delle due sorelle di `pagamenti`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260910-18-create-policy-vendite-contabili-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-18-create-policy-vendite-contabili-lotti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Policy di perimetro incasso su pagamenti.vendite_contabili_lotti: la
+        riga appartiene alla DISTINTA (decisione di Tid, 2026-09-10), quindi
+        risale da contabile_id con l'adattatore gia' in servizio
+        fn_scope_ef_whitelist_via_contabile, piu' il ramo delle distinte interne
+        che rispecchia cio' che la testata gia' concede. INERTE: l'armamento e'
+        20260910-19.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_contabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE POLICY rls_vendite_contabili_lotti_perimetro_incasso
+                  ON pagamenti.vendite_contabili_lotti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          -- ⭐ Distinta INTERNA (nessun canale di incasso): la
+                          --   testata e' visibile per decisione dichiarata in
+                          --   rls_vendite_contabili_perimetro_incasso, e il suo
+                          --   manifesto la rispecchia. Senza questo ramo il
+                          --   satellite sarebbe piu' chiuso della testata.
+                          OR EXISTS (SELECT 1
+                                       FROM pagamenti.vendite_contabili c
+                                      WHERE c.id = vendite_contabili_lotti.contabile_id
+                                        AND c.ente_incasso_id IS NULL)
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR EXISTS (SELECT 1
+                                       FROM pagamenti.vendite_contabili c
+                                      WHERE c.id = vendite_contabili_lotti.contabile_id
+                                        AND c.ente_incasso_id IS NULL)
+                      )
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_lotti_perimetro_incasso ON pagamenti.vendite_contabili_lotti IS
+                  'Perimetro di incasso per il manifesto della distinta: quali lotti una distinta raccoglie. ⛔ Ha DUE genitori protetti e NOT NULL (contabile_id, lotto_id) con perimetri DIVERSI, e comanda la DISTINTA — decisione di Tid del 2026-09-10: la riga e'' il manifesto della distinta, il lotto esiste anche senza. ⭐ Il secondo ramo copre le distinte INTERNE (nessun canale di incasso), che la testata rende visibili per scelta dichiarata: senza, il satellite sarebbe piu'' chiuso della propria testata. Stessa forma del terzo ramo di rls_vendite_contabili_righe_perimetro_incasso. Slice 20260910-18..20.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_vendite_contabili_lotti_perimetro_incasso
+                  ON pagamenti.vendite_contabili_lotti;

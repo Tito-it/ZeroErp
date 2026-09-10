@@ -161,7 +161,11 @@ INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, tipo_movimento)
+  commessa_id, commessa_attivita_id, tipo_movimento,
+  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
+  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
+  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
+  billing_account_id)
 SELECT r.articolo_id,
        (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
          WHERE ba.id = r.billing_account_id),
@@ -172,8 +176,10 @@ SELECT r.articolo_id,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo ORDER BY id LIMIT 1),
        (SELECT commessa_id FROM tmp_com),
        (SELECT attivita_id FROM tmp_ca),
-       'NORMALE'
-FROM tmp_r r;
+       'NORMALE',
+       (SELECT c.billing_account_id FROM vendite.commesse c
+         WHERE c.id = (SELECT commessa_id FROM tmp_com))
+       FROM tmp_r r;
 
 -- Reso PER RI-CONSEGNA di 2 sulla riga DDT, poi CONFERMATO.
 CREATE TEMP TABLE tmp_reso AS

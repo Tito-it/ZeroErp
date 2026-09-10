@@ -1,0 +1,254 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-2 — Le NOVE policy sui satelliti di pratiche.pratiche. INERTI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.7
+#   Slice 20260910-01..04. L'armamento e' 20260910-03.
+#
+# ── ⭐ UNA VESTE SOLA, E VA DETTO PERCHE' ─────────────────────────────
+#   `pratiche.pratiche` porta UNA policy — `rls_pratiche_ef_whitelist`,
+#   `OPERATORE`, `FOR ALL`, con `WITH CHECK` uguale alla `USING`. Non tre come
+#   `vendite.ordini`. ⇒ Qui i satelliti rispecchiano una veste, e non e' una
+#   semplificazione: e' la stessa regola — *il satellite rispecchia TUTTE le
+#   vesti della propria testata* — applicata a una testata che di vesti ne ha
+#   una.
+#   ⚠️ Il giorno in cui `pratiche.pratiche` ricevesse una veste cliente — il
+#   portale che mostra le proprie pratiche — questa slice va estesa **nello
+#   stesso gesto**, o i satelliti restano indietro rispetto alla testata.
+#
+# ── ⛔ `FOR ALL` E `WITH CHECK`, non `FOR SELECT` ─────────────────────
+#   `zeroerp_app` ha SELECT, INSERT, UPDATE e DELETE su tutte e nove
+#   (verificato 2026-09-10). Una policy di sola lettura lascerebbe scrivere, e
+#   la `WITH CHECK` e' cio' che impedisce a un operatore di **creare** una riga
+#   fuori dal proprio perimetro — o di spostarcela con un UPDATE.
+#
+# ── Le due chiavi, e quale si puo' sbagliare ──────────────────────────
+#   Sette risalgono da `pratica_id`, due da `flusso_id`. ⚠️ Sono i secondi il
+#   punto in cui un refuso **non fa rumore**: scrivere `_via_pratica` su
+#   `note_flussi` non darebbe nessun errore — passerebbe un `flusso_id` dove la
+#   funzione aspetta una pratica, e i due sono entrambi `bigint`. Il risultato
+#   sarebbe una tabella che filtra **sulla pratica sbagliata**, in silenzio.
+#   ⇒ Il pgTAP della slice costruisce apposta la nota e l'allegato di flusso.
+#
+# ⚠️ `pratiche.calcoli_tempo` porta anche `flusso_da_id` e `flusso_a_id`, ma la
+#   sua chiave di perimetro resta `pratica_id` (`NOT NULL`): il calcolo
+#   appartiene alla pratica, non ai due flussi che misura. Una policy sui flussi
+#   direbbe la stessa cosa per costruzione — finche' i due flussi sono della
+#   stessa pratica — e sarebbe una seconda affermazione da tenere allineata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260910-02-create-policy-pratiche-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-02-create-policy-pratiche-satelliti
+      author: mctit
+      runOnChange: false
+      comment: >
+        Nove policy sui satelliti di pratiche.pratiche (allegati_pratiche,
+        calcoli_tempo, flussi, giornale, note_pratiche, pratiche_sorgenti,
+        sospensioni via pratica_id; allegati_flussi e note_flussi via
+        flusso_id): veste OPERATORE FOR ALL con WITH CHECK, come la testata.
+        INERTI: l'armamento e' 20260910-03.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_scope_ef_whitelist_via_pratica',
+                                   'fn_scope_ef_whitelist_via_flusso')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ========== I SETTE che risalgono da `pratica_id` ==========
+              CREATE POLICY rls_allegati_pratiche_ef_whitelist
+                  ON pratiche.allegati_pratiche
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              CREATE POLICY rls_calcoli_tempo_ef_whitelist
+                  ON pratiche.calcoli_tempo
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              CREATE POLICY rls_flussi_ef_whitelist
+                  ON pratiche.flussi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              CREATE POLICY rls_giornale_ef_whitelist
+                  ON pratiche.giornale
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              CREATE POLICY rls_note_pratiche_ef_whitelist
+                  ON pratiche.note_pratiche
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              CREATE POLICY rls_pratiche_sorgenti_ef_whitelist
+                  ON pratiche.pratiche_sorgenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              CREATE POLICY rls_sospensioni_ef_whitelist
+                  ON pratiche.sospensioni
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_pratica(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              pratica_id)
+                  );
+
+              -- ========== I DUE che risalgono da `flusso_id` ==========
+              -- ⚠️ Qui l'adattatore e' `_via_flusso`: scrivere `_via_pratica`
+              --   non darebbe nessun errore (le due chiavi sono entrambe
+              --   bigint) e filtrerebbe sulla pratica sbagliata, in silenzio.
+              CREATE POLICY rls_allegati_flussi_ef_whitelist
+                  ON pratiche.allegati_flussi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_flusso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              flusso_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_flusso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              flusso_id)
+                  );
+
+              CREATE POLICY rls_note_flussi_ef_whitelist
+                  ON pratiche.note_flussi
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_flusso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              flusso_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_flusso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              flusso_id)
+                  );
+
+              COMMENT ON POLICY rls_allegati_pratiche_ef_whitelist ON pratiche.allegati_pratiche IS
+                  'Perimetro emittente per gli allegati di pratica: rispecchia rls_pratiche_ef_whitelist della testata risalendo da pratica_id. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_calcoli_tempo_ef_whitelist ON pratiche.calcoli_tempo IS
+                  'Perimetro emittente per i calcoli di tempo: risale da pratica_id (NOT NULL). ⚠️ La riga porta anche flusso_da_id e flusso_a_id, ma il calcolo appartiene alla PRATICA: una seconda chiave sarebbe una seconda affermazione da tenere allineata. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_flussi_ef_whitelist ON pratiche.flussi IS
+                  'Perimetro emittente per i flussi: rispecchia rls_pratiche_ef_whitelist risalendo da pratica_id. ⭐ E'' anche la MADRE di allegati_flussi e note_flussi, che da qui in poi sono raggiungibili solo attraverso un flusso filtrato. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_giornale_ef_whitelist ON pratiche.giornale IS
+                  'Perimetro emittente per il giornale della pratica: risale da pratica_id. ⚠️ Il giornale racconta chi ha fatto cosa — leggerlo fuori perimetro e'' leggere il lavoro di un''altra azienda. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_note_pratiche_ef_whitelist ON pratiche.note_pratiche IS
+                  'Perimetro emittente per le note di pratica: risale da pratica_id. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_pratiche_sorgenti_ef_whitelist ON pratiche.pratiche_sorgenti IS
+                  'Perimetro emittente per il legame pratica-documento di origine: risale da pratica_id. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_sospensioni_ef_whitelist ON pratiche.sospensioni IS
+                  'Perimetro emittente per le sospensioni di pratica: risale da pratica_id. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_allegati_flussi_ef_whitelist ON pratiche.allegati_flussi IS
+                  'Perimetro emittente per gli allegati di FLUSSO: risale di due livelli via fn_scope_ef_whitelist_via_flusso. ⚠️ La chiave e'' flusso_id, non pratica_id: le due sono entrambe bigint e scambiarle non darebbe errore. Slice 20260910-01..04.';
+              COMMENT ON POLICY rls_note_flussi_ef_whitelist ON pratiche.note_flussi IS
+                  'Perimetro emittente per le note di FLUSSO: risale di due livelli via fn_scope_ef_whitelist_via_flusso. Slice 20260910-01..04.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_note_flussi_ef_whitelist        ON pratiche.note_flussi;
+              DROP POLICY IF EXISTS rls_allegati_flussi_ef_whitelist    ON pratiche.allegati_flussi;
+              DROP POLICY IF EXISTS rls_sospensioni_ef_whitelist        ON pratiche.sospensioni;
+              DROP POLICY IF EXISTS rls_pratiche_sorgenti_ef_whitelist  ON pratiche.pratiche_sorgenti;
+              DROP POLICY IF EXISTS rls_note_pratiche_ef_whitelist      ON pratiche.note_pratiche;
+              DROP POLICY IF EXISTS rls_giornale_ef_whitelist           ON pratiche.giornale;
+              DROP POLICY IF EXISTS rls_flussi_ef_whitelist             ON pratiche.flussi;
+              DROP POLICY IF EXISTS rls_calcoli_tempo_ef_whitelist      ON pratiche.calcoli_tempo;
+              DROP POLICY IF EXISTS rls_allegati_pratiche_ef_whitelist  ON pratiche.allegati_pratiche;

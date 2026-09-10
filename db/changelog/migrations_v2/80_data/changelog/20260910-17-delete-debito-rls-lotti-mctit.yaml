@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L-4 — Il DEBITO PAGATO esce dal registro.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.9
+#   Slice 20260910-14..17, ultimo pezzo. Gemello di 20260910-04 (pratiche).
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LE RIGHE TOLTE DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**: togliere le righe
+#   dal CSV le lascia nel database per sempre. Le due cose vanno insieme — il
+#   CSV perche' un database ricostruito da zero non le crei, questa `DELETE`
+#   perche' dove ci sono gia' se ne vadano.
+#
+# ── ⭐ E NON E' UNA PULIZIA COSMETICA: senza, il presidio va ROSSO ────
+#   Armate le cinque tabelle (20260910-16), le loro righe di registro non hanno
+#   piu' un difetto da dichiarare ed escono come **`DEBITO_ESTINTO`** — che il
+#   test 2 di `db/pgtap/rls/test-rls-perimetro-scoperto.sql` conta come
+#   violazione esattamente quanto un `NON_DICHIARATO`. Provato sulla slice
+#   `pratiche`: senza la DELETE gemella, sette righe rosse.
+#   ⚠️ E' il verso in cui un registro marcirebbe **nel senso permissivo**.
+#
+# ── ⚠️ RESTA IN REGISTRO `pagamenti.vendite_contabili_lotti`, ed e' giusto ─
+#   Quella tabella nomina `vendite.fatturazione_lotti`, quindi *sembra* di
+#   questa famiglia. Non lo e': ha DUE genitori con DUE perimetri **diversi** —
+#   il lotto (whitelist emittente) e `pagamenti.vendite_contabili` (perimetro di
+#   incasso) — e quale dei due comandi e' una domanda aperta, non un armamento.
+#   ⇒ La sua riga di debito resta, con la sua ragione. Cancellarla qui vorrebbe
+#   dire dichiarare risolta una decisione che nessuno ha preso.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-17-delete-debito-rls-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-17-delete-debito-rls-lotti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito le cinque righe dei satelliti di
+        vendite.fatturazione_lotti, armati dalla slice 20260910-14..16.
+        loadUpdateData non cancella, quindi togliere le righe dal CSV non
+        basta: senza questa DELETE escono come DEBITO_ESTINTO e il presidio
+        diventa rosso.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio       = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND d.schema_tabella = 'vendite'
+                 AND (d.id, d.nome_tabella) IN (
+                         (1, 'fatturazione_lotti_esiti'),
+                         (2, 'fatturazione_lotti_fatture'),
+                         (3, 'fatturazione_lotti_gruppi'),
+                         (4, 'fatturazione_lotti_log'),
+                         (5, 'fatturazione_lotti_task_runs'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu': cinque righe
+              --   che dichiarano scoperte tabelle armate. Ha senso solo insieme
+              --   al rollback di 20260910-16, che le disarma.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (1, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'fatturazione_lotti_esiti',
+                 'Ripristino di rollback: satellite di vendite.fatturazione_lotti via lotto_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (2, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'fatturazione_lotti_fatture',
+                 'Ripristino di rollback: satellite di vendite.fatturazione_lotti via lotto_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (3, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'fatturazione_lotti_gruppi',
+                 'Ripristino di rollback: satellite di vendite.fatturazione_lotti via lotto_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (4, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'fatturazione_lotti_log',
+                 'Ripristino di rollback: satellite di vendite.fatturazione_lotti via lotto_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09'),
+                (5, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'fatturazione_lotti_task_runs',
+                 'Ripristino di rollback: satellite di vendite.fatturazione_lotti via lotto_id NOT NULL, dichiarato scoperto il 2026-09-09.', DATE '2026-09-09');

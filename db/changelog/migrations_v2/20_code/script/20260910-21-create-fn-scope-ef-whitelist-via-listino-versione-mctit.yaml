@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LI-1 — L'anello che mancava alla catena dei LISTINI.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.11
+#   Slice 20260910-21..24 (helper -> policy inerti -> armamento -> registro).
+#
+# ── ⭐ QUI LA CATENA E' GIA' MEZZA COSTRUITA ──────────────────────────
+#   `vendite.listini` e' protetta (`_via_sr` su `emittente_soggetto_ruolo_id`) e
+#   `vendite.listini_versioni` pure — quest'ultima con
+#   `script.fn_scope_ef_whitelist_via_listino`, che quindi **esiste gia'**.
+#   ⇒ Manca solo l'anello successivo: da una VERSIONE al suo listino.
+#
+#   listini ──(_via_sr)──> emittente
+#      ^                        ^
+#      │ _via_listino            │
+#   listini_versioni             │  <- gia' protetta
+#      ^                        │
+#      │ _via_listino_versione  │  <- QUESTO changeSet
+#   listini_righe / _componenti
+#
+# ── ⛔ IL DIFETTO, DETTO SUL MODELLO ──────────────────────────────────
+#   Una riga di listino appartiene all'emittente del listino. Oggi il perimetro
+#   si ferma alla versione: `listini_righe` e `listini_righe_componenti` non
+#   hanno nessuna policy e `zeroerp_app` ha su entrambe SELECT, INSERT, UPDATE e
+#   DELETE. ⚠️ E il contenuto e' **i prezzi**: leggerli fuori perimetro vuol
+#   dire leggere il listino di un'altra azienda.
+#
+# ── ⭐ UNA FUNZIONE SOLA, e le due righe usano la stessa chiave ───────
+#   `listini_righe_componenti` **non** pende dalla riga: pende direttamente da
+#   `listino_versione_id` (`NOT NULL`), come la riga (verificato 2026-09-10). ⇒
+#   Nessun terzo livello, nessun secondo adattatore.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa dei
+#   `script.fn_scope_*` gia' in servizio. Una policy che chiamasse una funzione
+#   `SECURITY DEFINER` guarderebbe con gli occhi dell'owner, che la RLS non
+#   vede: il filtro passerebbe sempre, e in silenzio.
+#
+# ⭐ Delega alla sorella invece di ripetere la risalita fino all'emittente: la
+#   regola su come un listino nomina il proprio emittente resta scritta in un
+#   posto solo — ed e' gia' quella che protegge `listini_versioni`, quindi le
+#   due non possono divergere.
+#
+# Permessi: funzione di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260910-21-create-fn-scope-ef-whitelist-via-listino-versione-mctit.yaml
+
+  - changeSet:
+      id: 20260910-21-create-fn-scope-ef-whitelist-via-listino-versione
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatore di scope per le righe di listino:
+        script.fn_scope_ef_whitelist_via_listino_versione(auth_user_id,
+        versione_id), che risale dalla versione al listino e delega a
+        fn_scope_ef_whitelist_via_listino, gia' in servizio su
+        vendite.listini_versioni. Nessuna policy lo usa ancora: le crea
+        20260910-22.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_listino'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino_versione(
+                  p_auth_user_id integer,
+                  p_versione_id  vendite.listini_versioni.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del listino a cui la versione appartiene.
+                  -- ⭐ Delega alla sorella `_via_listino`, che e' la stessa che
+                  --   protegge vendite.listini_versioni: cosi' la riga e la sua
+                  --   versione non possono rispondere in due modi.
+                  -- ⚠️ Versione inesistente -> listino NULL -> la sorella
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come tutta la famiglia.
+                  SELECT script.fn_scope_ef_whitelist_via_listino(
+                      p_auth_user_id,
+                      (SELECT v.listino_id
+                         FROM vendite.listini_versioni v
+                        WHERE v.id = p_versione_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_listino_versione(integer, bigint)
+              IS 'Adattatore di scope per i satelliti di vendite.listini_versioni (listini_righe, listini_righe_componenti): risale da listino_versione_id al listino e delega a script.fn_scope_ef_whitelist_via_listino — la stessa che protegge listini_versioni, cosi'' la riga e la sua versione non possono divergere. STABLE e NON security definer, come gli altri fn_scope_*. Versione inesistente -> listino NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md §11.11';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_listino_versione(integer, bigint);

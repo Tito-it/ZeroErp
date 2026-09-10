@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AF-1 — `vendite.attivita_fatturabili.billing_account_id` diventa NOT NULL.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.13
+#   Decisione di Tid, 2026-09-10. Slice 20260910-25..26.
+#
+# ── ⭐ L'ARGOMENTO E' DI DOMINIO, e viene da Tid ──────────────────────
+#   *«Se sono attivita' FATTURABILI devono per forza essere associate a un
+#   billing account. E la tabella BA esiste apposta, separata da `clienti`,
+#   proprio per rendere possibile la fatturazione di attivita' PRIMA che un
+#   cliente sia definito — l'utility del gas che fattura un allaccio.»*
+#   ⇒ «non c'e' ancora un cliente» non e' un motivo per cui il BA possa
+#     mancare: e' la ragione per cui il BA esiste.
+#
+# ── ⭐ E LA STRUTTURA DICE LA STESSA COSA, in modo indipendente ───────
+#   Letto dal catalogo il 2026-09-10 (contratto, non popolazione):
+#     * `attivita_fatturabili.commessa_id` e' NOT NULL;
+#     * `vendite.commesse.billing_account_id` e' NOT NULL;
+#     * `vendite.fatture.billing_account_id` e' NOT NULL.
+#   ⇒ Ogni attivita' fatturabile ha gia' un BA garantito, raggiungibile per una
+#     catena di sole colonne obbligatorie. Un NULL qui non puo' significare
+#     «non ce n'e' uno»: puo' significare solo «non e' stato copiato giu'».
+#
+# ── ⭐ E NON SERVE NESSUN TRIGGER DI DERIVAZIONE ─────────────────────
+#   Misurato sul catalogo: l'UNICA funzione che scrive in questa tabella e'
+#   `vendite.fn_emit_attivita_fatturabili_da_commessa`, e il
+#   `billing_account_id` lo passa gia'. ⇒ La colonna e' nullable senza che
+#   nessun percorso di scrittura ne abbia bisogno: il vincolo non chiude una
+#   porta, dichiara una cosa che era gia' vera.
+#   ⚠️ Vale la regola: `NOT NULL` si mette dove il dato SI PUO' fornire — e qui
+#   si puo', anzi si fornisce gia'.
+#
+# ── ⚠️ PERCHE' IL BACKFILL STA QUI E NON IN `80_data` ────────────────
+#   Il changelog esegue `00_schema` + `20_code` e **poi** `80_data`: un
+#   backfill messo li' girerebbe DOPO il `SET NOT NULL`, cioe' troppo tardi.
+#   L'`UPDATE` del pregresso e il vincolo che lo pretende viaggiano insieme, ed
+#   e' la forma standard.
+#   ⭐ Il backfill deriva il BA dalla COMMESSA, che e' la rotta portante gia'
+#   scelta dal §6.1 — non dal contratto e non dal billing account di un'altra
+#   riga.
+#
+# ⚠️ Fatto datato 2026-09-10, e vale solo come ASSENZA di controesempio: su 59
+#   righe, zero con BA nullo e zero il cui BA dissenta da quello della propria
+#   commessa. Non e' l'argomento — «oggi non capita mai» non dice che il caso non
+#   esista — ma dice che il backfill non trova righe incoerenti da decidere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260910-25-alter-attivita-fatturabili-ba-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260910-25-alter-attivita-fatturabili-ba-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.attivita_fatturabili.billing_account_id diventa NOT NULL, con il
+        backfill del pregresso derivato dalla commessa. Decisione di Tid del
+        2026-09-10: un'attivita' fatturabile ha sempre un billing account, e la
+        catena commessa -> BA e' fatta di sole colonne obbligatorie.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: billing_account_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Backfill dalla COMMESSA: e' la rotta portante (commessa_id
+              --   NOT NULL -> commesse.billing_account_id NOT NULL), quindi il
+              --   valore esiste sempre. Su un database ricostruito da zero
+              --   questo UPDATE tocca zero righe ed e' innocuo.
+              UPDATE vendite.attivita_fatturabili af
+                 SET billing_account_id = c.billing_account_id
+                FROM vendite.commesse c
+               WHERE c.id = af.commessa_id
+                 AND af.billing_account_id IS NULL;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ALTER COLUMN billing_account_id SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.billing_account_id IS
+                  'Il billing account a cui l''attivita'' e'' fatturabile. NOT NULL dal 2026-09-10 (decisione di Tid): se un''attivita'' e'' FATTURABILE deve avere un BA, e la tabella billing_account esiste apposta — separata da clienti — per rendere possibile la fatturazione prima che un cliente sia definito. ⭐ Il valore e'' anche garantito dalla struttura: commessa_id e'' NOT NULL e vendite.commesse.billing_account_id pure, quindi la catena e'' di sole colonne obbligatorie. Brief: brief-db-perimetro-emittente-righe-documento.md §11.13.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback riapre la colonna, NON rimette i NULL: quelli non
+              --   si sanno piu' quali erano, e riportarli sarebbe inventare dati.
+              ALTER TABLE vendite.attivita_fatturabili
+                  ALTER COLUMN billing_account_id DROP NOT NULL;
