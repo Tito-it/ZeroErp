@@ -110,7 +110,6 @@ class TestToponomasticaRepository(TestCase):
         """Descrizione vuota — gestita a livello view con ErrorManager."""
         # La validazione e' nella view, non nel repository.
         # Il repository riceve sempre una stringa pulita.
-        pass
 
     @patch("apps.core.db.sql_write_helpers.connection")
     def test_update_toponomastica(self, mock_conn):

@@ -1,0 +1,34 @@
+# Template systemd — digest SETTIMANALE dei presidi (dbops.presidi) + BATTITO.
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# La cadenza sta in `backend/deploy/sveglie.json`, non qui.
+#
+# ⭐ QUESTA CORSA PARTE ANCHE QUANDO NON HA NIENTE DA DIRE, ed è la ragione per
+# cui è separata dalla giornaliera. Il digest è nato contro il silenzio, ma un
+# digest muto e un digest MORTO si scrivono uguale: è la firma di R-12
+# (`apply_storicizza_weekly`, morto ogni settimana per sei mesi e scoperto per
+# caso). ⇒ Una volta a settimana il messaggio parte comunque, con in testa le
+# proprie ultime corse lette da `maintenance.job_run_log`, corsia per corsia:
+# se la giornaliera è ferma da tre giorni, si vede lì.
+# ⛔ E non poteva farlo il database: `dbops.vw_processi_programmazione`
+# classifica i processi su canale COMMAND come FUORI_PORTATA, ed è una decisione
+# — «il database non può saperlo» — non un limite da aggirare.
+#
+# ⚠️ Un messaggio alla settimana e non uno al giorno: «niente da segnalare» detto
+# ogni mattina è esattamente la posta che si impara ad archiviare senza aprire,
+# cioè il modo in cui questo presidio morirebbe di nuovo.
+#
+# ⚠️ Per il `OnFailure=` mancante vale la nota scritta nel gemello giornaliero:
+# è un'assenza dichiarata, non una dimenticanza.
+[Unit]
+Description=ZeroERP digest settimanale dei presidi (registri, tendenze, battito)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh digest_presidi --cadenza settimanale

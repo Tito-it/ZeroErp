@@ -79,20 +79,14 @@ def list_md_stems(dir_path: Path) -> list[str]:
 
 def _is_api_manual_stem(stem: str) -> bool:
     return (
-        stem.startswith("api_")
-        or stem.startswith("api-")
-        or stem.endswith("_api")
-        or stem.endswith("-api")
-        or "-api-" in stem
+        stem.startswith(("api_", "api-")) or stem.endswith(("_api", "-api")) or "-api-" in stem
     )
 
 
 def _is_utility_manual_stem(stem: str) -> bool:
     return (
-        stem.startswith("utility_")
-        or stem.startswith("util_")
-        or stem.endswith("_utils")
-        or stem.endswith("-utils")
+        stem.startswith(("utility_", "util_"))
+        or stem.endswith(("_utils", "-utils"))
         or "normalizer" in stem
         or "helper" in stem
     )

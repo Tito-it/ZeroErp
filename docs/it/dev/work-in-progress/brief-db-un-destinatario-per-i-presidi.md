@@ -448,6 +448,28 @@ modello: un presidio senza destinatario non presidia.*
 > **chiuso**; il resto è un piano in quattro fasi, con due decisioni che chiedono
 > una risposta prima della fase 3.
 
+> ### ✅ VERIFICATO E CONSEGNATO — lo stesso giorno, e non da questo piano
+>
+> **Il §5 è stato costruito mentre questo §8 lo pianificava**, da un secondo
+> cantiere sullo stesso repository. La consegna è il **§9**, che è la sede da
+> leggere: qui restano il ragionamento e le due richieste che ne sono uscite.
+>
+> **Che cosa è stato verificato** (backend, 2026-09-10, eseguito — non letto):
+>
+> | Verifica | Esito |
+> | --- | --- |
+> | I test del cantiere (`test_presidi_catalogo`, `test_presidi_repository`, `test_presidi_digest`, `test_processi_service`) | ✅ **43 verdi** |
+> | Il test della FORMA che il §5.5 chiedeva — «un registro stabile non produce un invio» | ✅ c'è, ed è il primo del file |
+> | Il **battito** del §7.7b | ✅ tre test, fra cui «una corsia mai girata non sparisce dal battito» |
+> | La suite backend intera | ✅ **4590 verdi** |
+> | `deploy/sveglie.json` | ✅ due corsie, `tolleranza_minuti` valorizzato su entrambe |
+> | La seconda sede che il §8.3 denunciava (`PRESIDI_PROCESSI`) | ✅ **rimossa**: il pannello legge il catalogo |
+>
+> ⚠️ **Due cose sono uscite diverse da come le proponeva questo §8**, ed entrambe
+> hanno una ragione migliore della mia — sono dichiarate al §9.2 e qui sotto,
+> voce per voce. Restano scritte perché un piano corretto a posteriori non
+> insegna niente: si vede solo dove si è cambiato idea, e perché.
+
 ### 8.0 ✅ Il punto 0 è chiuso — e con una riga che il §7.7 non chiedeva
 
 `error_policies_generated.py` rigenerato: il diff è **una sola voce**,
@@ -465,7 +487,29 @@ mostrare in un caso già tecnico. Scritta in `error_messages_fallback.py`.
 I tre cancelli del contratto errori sono verdi: `test_error_codes_db_policy_guardrail`,
 `test_error_policies_divergenza_db`, `test_error_policies_classi`.
 
-### 8.1 🔵 Le due decisioni, e dove il backend propone di metterle
+### 8.1 ⛔ RITIRATO — Le due decisioni, e dove il backend proponeva di metterle
+
+> **Ritirato il 2026-09-10 (decisione di Tid, §9.2).** Il destinatario sta in
+> un setting del backend (`ZEROERP_PRESIDI_DIGEST_DESTINATARIO` in
+> `.env.systemd`), non in `config.parameters`. ⭐ Il §7.7a aveva ragione, e la
+> sede scelta regge anche l'obiezione che questo paragrafo muoveva a
+> `sveglie.json`: `.env.systemd` è **per-host e non versionato**, quindi
+> nessun indirizzo finisce in un repository pubblico. ⚠️ E costa un
+> prerequisito in meno: non serve il seed di un parametro, quindi la fase 3
+> non aspettava più nessuno.
+> ⭐ Resta valido ciò che questo paragrafo ha portato e che è stato adottato:
+> il **precedente** di `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL` (mai
+> partito, unica traccia un `logger.info`) e la regola che ne discende —
+> *vuoto ≠ spento, e il «non configurato» si dichiara dove chi guarda le
+> corse lo vede*. La cadenza invece è finita dove diceva: `sveglie.json`.
+
+> 🔴 **RITIRATA la riga sul destinatario** (Tid, 2026-09-10): il §7.7a aveva
+> ragione, il destinatario sta nel **backend** e non in `config.parameters`.
+> Dove sia finito, e perché `.env.systemd` regge anche l'obiezione sul
+> repository pubblico, sta nel **§9.2**. ⚠️ Questo paragrafo resta per il
+> ragionamento che ha portato alla decisione — e perché il precedente che porta
+> (`VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`, l'email mai partita) vale
+> identico nella sede nuova. La riga sulla **cadenza** resta invece in vigore.
 
 | Cosa | Dove | Perché |
 | --- | --- | --- |
@@ -516,7 +560,13 @@ dato di nessuno.
 Un invio che non parte in silenzio sarebbe la prima cosa da non fare in un
 cantiere che nasce contro il silenzio.
 
-### 8.2 Il piano, in quattro fasi
+### 8.2 ✅ CONSEGNATO — Il piano, in quattro fasi
+
+> Le quattro fasi esistono tutte (§9.1). ⚠️ Con **due riserve dichiarate**,
+> che non erano nel piano perché nessuno poteva prevederle: la corsia
+> **settimanale è scritta e SPENTA** (leggere `vw_riferimenti_morti_*` fa
+> cadere il cluster, §9.3) — e con lei è spento il battito — e `OnFailure=`
+> non c'è, come **assenza dichiarata** e non come dimenticanza.
 
 | # | Cosa | File | Il test che lo chiude |
 | --- | --- | --- | --- |
@@ -529,7 +579,27 @@ cantiere che nasce contro il silenzio.
 può guardare a mano è già meglio di niente (§5.2), e senza destinatario si
 calcola lo stesso. Le decisioni servono alla **fase 3**.
 
-### 8.3 ⚠️ Il pannello a video: cosa cambia, e cosa il catalogo ha appena reso visibile
+### 8.3 ✅ CONSEGNATO — Il pannello a video, e una conseguenza che va saputa
+
+> Il pannello legge le `ZERO` dal catalogo: `PRESIDI_PROCESSI` non esiste più.
+>
+> 🔴 **MA fra le `ZERO` c'è `vw_riferimenti_morti_rientrati`, e leggerla fa
+> cadere il cluster** (§9.3, rischio **aperto**). Il rimedio giusto è già
+> scritto lì — la colonna `attivo` del catalogo, non un elenco di esclusioni nel
+> backend — e finché quella riga non è spenta **aprire quella schermata è
+> pericoloso**.
+>
+> ⚠️ **E c'è un fatto in più, che nessuno ha ancora messo insieme: il pannello
+> viene ricaricato PIÙ SPESSO di ieri, per una correzione entrata stamattina.**
+> `ProcessiAutomaticiListView` caricava i presidi in `onMounted`; il difetto D8
+> (view sotto `<KeepAlive>` che non ricaricano al rientro) l'ha spostato in
+> `onActivated`, che è **giusto** — quei conteggi erano stantii — ma significa
+> una lettura **a ogni rientro nella pagina** invece di una sola per montaggio.
+> ⇒ La correzione non ha creato il difetto e non va disfatta: ne ha **alzato la
+> frequenza**, e questo va saputo finché la riga di catalogo non è spenta.
+> Chi lavora sul dbdev in queste ore: quella schermata si evita.
+
+#### Il ragionamento di allora, che resta valido
 
 `apps/core/db/processi_repository.py` porta `PRESIDI_PROCESSI`, una tupla di
 **dieci** viste cablate: da oggi è la **seconda sede** di un fatto che il DB ha
@@ -555,7 +625,15 @@ digest, non fra gli allarmi. È una delle tre righe 🔶 che il §7.4 lascia da
 confermare: se il team DB la riclassifica `ZERO`, torna nel pannello senza che
 nessuno tocchi il backend. *È il catalogo che decide, ed è il punto.*
 
-### 8.4 🔵 RICHIESTA AL TEAM DB — iscrivere `maintenance.vw_job_run_da_guardare`
+### 8.4 🔵 APERTA — RICHIESTA AL TEAM DB: iscrivere `maintenance.vw_job_run_da_guardare`
+
+> ⭐ **Nel frattempo il backend non la perde**: `presidi_repository` porta la
+> riga in `_IN_ATTESA_DI_CATALOGO` — la STESSA che sta qui sotto — come
+> debito dichiarato, e `test_il_debito_delle_viste_in_attesa_e_rientrato`
+> diventa rosso il giorno dell'iscrizione, dicendo di cancellarla. ⛔ Toglierla
+> dal pannello nell'attesa sarebbe stata la cosa peggiore: quella vista dice
+> «l'ultima corsa di un job è fallita», ed è il presidio da cui il cantiere è
+> nato. Vedi anche §9.5.
 
 > **Decisione di Tid, 2026-09-10: si iscrive.** Qui sotto la riga pronta, con i
 > valori derivati dal `COMMENT` della vista — non scelti dal backend.
@@ -609,3 +687,272 @@ questo paragrafo. Nessun lavoro sprecato e nessuna riga che solleva.
 * non tocca le viste, né i registri di debito (§6);
 * non introduce un tipo di coda (§4.2);
 * non decide la natura di nessuna riga di catalogo, comprese le tre 🔶 del §7.4.
+
+---
+
+## 9. 🔵 Risposta backend — il §5 è fatto, 2026-09-10
+
+> **Chi risponde:** backend (`dev/backend-tid`). **Stato:** le quattro fasi del
+> §8.2 sono scritte e provate; il digest gira e riferisce. ⛔ Restano **tre
+> richieste al team DB**, e la prima è urgente perché non riguarda questo
+> cantiere: **leggere una vista di presidio fa cadere il cluster**.
+
+### 9.0 🔵 Che cosa serve dal team DB, in ordine
+
+| # | Cosa | Che cosa sblocca | Dove |
+| --- | --- | --- | --- |
+| **1** | 🔴 Trovare perché leggere `dbops.fn_check_funzioni_riferimenti_morti` **uccide il backend PostgreSQL** (il log del server ha il segnale) | il pannello dei presidi torna sicuro da aprire; la corsia **settimanale** del digest si può accendere — e con lei il **battito**, che oggi non c'è | §9.3 |
+| **1-bis** | *Se la causa non si trova subito*: `attivo = f` sulla sola `dbops.vw_riferimenti_morti_rientrati` — riga pronta nel §9.3 | toglie il rischio dal **pannello** senza toccare il backend. ⚠️ È un tampone: la riga sparisce dai controlli, e la nota deve dirlo | §9.3 |
+| **2** | 🟠 `perimetro = DEFINER` sulle **due** righe `riferimenti_morti` — righe pronte nel §9.4 | il conteggio resta onesto e sparisce il percorso che è morto **tre volte su tre** (le letture *invoker*). ⛔ Non sostituisce la 1 | §9.4 |
+| **3** | 🔵 Iscrivere `maintenance.vw_job_run_da_guardare` — riga pronta nel §8.4, già decisa (Tid, 2026-09-10) | toglie l'ultima riga di debito dal backend, e il suo presidio diventa rosso da solo il giorno dell'apply | §8.4, §9.5 |
+
+⭐ **Nessuna delle tre blocca il resto**: il digest giornaliero gira già, e il
+backend non aspetta niente. Sono cose che *tolgono un rischio* e *chiudono un
+debito*, non prerequisiti di ciò che è stato consegnato.
+
+✅ **Le righe CSV proposte qui sotto sono PROVATE, non solo scritte**: applicate
+tutte e tre sul dbdev il 2026-09-10 dentro una transazione annullata (il pattern
+degli smoke del progetto), passano ogni `CHECK` di `dbops.presidi` — e il
+database è rimasto intatto, 32 righe come prima. È la prova che il §7.8 chiede
+di suo pugno dopo il migrate morto su un apostrofo: *eseguire davvero l'SQL, in
+una transazione che si annulla*.
+
+⚠️ **E i tre punti del §7.7 sono chiusi**, così il team DB non deve andarli a
+ricontrollare: il **punto 0** (`error_policies_generated`) è chiuso dal §8.0; il
+**punto a** (destinatario) è chiuso dal §9.2, e la conclusione è quella del
+§7.7a — sta nel backend; il **punto b** (digest muto contro digest morto) è
+chiuso per due terzi — `tolleranza_minuti` è valorizzata **e letta** e il battito
+c'è (§9.7), mentre `OnFailure=` resta un'assenza dichiarata con la sua ragione
+(§9.6).
+
+### 9.1 Che cosa c'è adesso
+
+| Cosa | File | Prova |
+| --- | --- | --- |
+| Il **lettore** del catalogo | `apps/core/db/presidi_repository.py` | `tests/db/test_presidi_repository.py` (7, senza DB) |
+| I **mirror** contro i `CHECK` veri | idem | `tests/db/test_presidi_catalogo.py` (8, su DB provvisto) |
+| Il **digest** | `apps/core/services/presidi_digest.py` | `tests/services/test_presidi_digest.py` (17, senza DB) |
+| Il **command** e l'invio | `apps/core/management/commands/digest_presidi.py` | `tests/services/test_digest_presidi_command.py` (6) + provato sul dbdev, run a giornale |
+| La **liveness a due chiavi** | `MaintenanceRepository.job_liveness` | `tests/db/test_job_liveness_due_chiavi.py` (5) |
+| Il **deploy** | `deploy/sveglie.json` + 4 template in `deploy/systemd/` | `tests/services/test_sveglie.py` (11) + `test-install-timers.sh` |
+| Il **pannello** dalle `ZERO` a catalogo | `presidi_repository.stato_presidi` + `processi_service` | `tests/services/test_processi_service.py` (11) |
+
+Suite intera: **4646 test verdi** (lettura del 2026-09-10).
+
+⭐ **Il command non sa quali viste esistono.** Fa una domanda sola — «cosa
+guardo a questa cadenza?» — e il catalogo risponde. ⛔ E non c'è nessun elenco
+di nature da escludere: il `CHECK chk_presidi_fuori_digest_cadenza_mai` già
+garantisce che INVENTARIO e CANCELLO abbiano cadenza `MAI`, quindi **filtrare
+per cadenza è filtrare per digest**. Una seconda copia di quella regola non
+conoscerebbe la natura che nascerà domani.
+
+### 9.2 Le due decisioni, come sono state prese
+
+**Destinatario → un setting del backend** (`PRESIDI_DIGEST_DESTINATARIO`, da
+`ZEROERP_PRESIDI_DIGEST_DESTINATARIO` in `.env.systemd`). **Il §7.7a aveva
+ragione e il §8.1 è ritirato** (decisione di Tid, 2026-09-10): a chi arriva la
+posta è un fatto di *questa* installazione. ⭐ E `.env.systemd` è per-host e
+**non versionato**, quindi regge anche l'obiezione che il §8.1 muoveva a
+`sveglie.json`: nessun indirizzo aziendale finisce in un repository pubblico.
+⚠️ Vuoto ≠ spento: il digest si calcola lo stesso e lo **dichiara** — su stderr e
+nel `meta` del run (`"inviato": "NON_CONFIGURATO"`), dove chi guarda le corse lo
+vede senza cercarlo. È la lezione di `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`,
+che non è mai partita lasciando come unica traccia un `logger.info`.
+
+**Cadenza → `deploy/sveglie.json`**, la sede unica del dichiarato, con due
+corsie (`digest_presidi:giornaliera` alle 07:00, `:settimanale` il lunedì alle
+07:30) e `tolleranza_minuti` valorizzato su entrambe.
+⚠️ **Quando** si guarda è del deploy; **cosa** si guarda a quella cadenza lo dice
+il catalogo. Sono due domande diverse e stanno in due sedi diverse, di proposito.
+
+### 9.3 🔴 RICHIESTA 1 — leggere `vw_riferimenti_morti_*` FA CADERE IL CLUSTER
+
+> Fatto datato, dbdev, 2026-09-10 fra le 18:16 e le 18:23: **tre** occorrenze in
+> un'ora, tutte su viste che passano da `dbops.fn_check_funzioni_riferimenti_morti`.
+
+Il sintomo è `consuming input failed: SSL error: unexpected eof while reading`,
+seguito da `FATALE: il database è in modalità di ripristino`: non è un errore
+applicativo, è un **backend PostgreSQL morto** e il cluster che fa crash
+recovery — quindi **tutte** le connessioni cadono, non solo la nostra.
+(`pg_postmaster_start_time` non cambia: muore il processo, non il postmaster.)
+
+| Quando | Che cosa stava leggendo |
+| --- | --- |
+| 18:16 | `SELECT *` da una vista settimanale, dopo il conteggio, nella stessa connessione |
+| 18:19 | `SELECT count(*) FROM dbops.vw_riferimenti_morti_da_sanare` (ruolo `zeroerp_app`) |
+| 18:23 | `SELECT *` da `dbops.vw_riferimenti_morti_rientrati` |
+
+⛔ **Non l'ho riprodotto una quarta volta di proposito**: far cadere il database
+di sviluppo per completezza non vale il disturbo, e le tre occorrenze bastano a
+dire dov'è. La riproduzione controllata la faccia chi può guardare il log del
+server, dove ci sarà il segnale che ha ucciso il processo.
+
+⭐ **E c'è un denominatore che vale più delle tre morti.** Le letture di quelle
+viste, quel giorno, sono state di due tipi:
+
+| Percorso | Come | Morti |
+| --- | --- | ---: |
+| **invoker** — `SELECT` diretto sulla vista come `zeroerp_app` | il pannello che elenca, il digest che chiede un esempio | **3 su 3** |
+| **definer** — `dbops.fn_conta_presidio` (proprietario) | ogni conteggio | **0 su ~6** |
+
+⚠️ **Non è una prova che il percorso definer sia sicuro** — sei letture non lo
+dicono, e un campione piccolo che «non ha mai fallito» è esattamente il modo in
+cui ci si convince di una cosa non vera. È un fatto datato con il suo
+denominatore, e serve a **indirizzare la ricerca**: la differenza fra i due
+percorsi non è la query, sono i privilegi di chi la esegue.
+
+**Chi rischia oggi, vista per vista** — e sono due schermate diverse:
+
+| Vista | Natura | Chi la legge | Rischio |
+| --- | --- | --- | --- |
+| `vw_riferimenti_morti_rientrati` | `ZERO` | **il pannello dei presidi** (legge tutte le `ZERO`) | 🔴 aperto |
+| `vw_riferimenti_morti_da_sanare` | `REGISTRO` | il solo **digest settimanale**, che è **spento** | 🟡 dormiente |
+
+⇒ **La mossa minima che toglie il rischio subito** è una riga sola, se la causa
+non si trova in giornata:
+
+```csv
+dbops.vw_riferimenti_morti_rientrati,ZERO,NULL,NULL,NULL,NULL,SETTIMANALE,LIBERO,f,NULL,"Voci del registro che non corrispondono piu a nessun difetto: righe da TOGLIERE dal CSV. E il verso che impedisce al registro di diventare un elenco di eccezioni permanenti, cioe l unico verso in cui un presidio marcisce senza che nessuno se ne accorga. SPENTA il 2026-09-10 e NON per una scelta di merito: leggerla fa morire il backend PostgreSQL e trascina il cluster in crash recovery, tre occorrenze in un ora (brief 9.3). Si riaccende appena la causa e chiusa: finche resta spenta questo controllo NON GUARDA NIENTE, ed e un buco dichiarato."
+```
+
+⚠️ **Le righe qui sopra e nel §9.4 sono scritte SENZA apostrofi e senza accenti**,
+e non e' pigrizia: e' la convenzione del file — trentadue righe su trentadue —
+e ha una ragione pagata il 2026-09-10, quando un `si'` dentro un `COMMENT` ha
+fatto morire il migrate con «errore di sintassi presso ","» (§7.8). Chi le
+copia non deve inciampare nello stesso punto.
+
+⛔ **E va detto che cos'è**: un controllo spento è un controllo che non presidia.
+La nota lo dichiara perché nessuno lo legga come «risolto» — è la stessa
+differenza fra un debito registrato e un debito nascosto che questo catalogo
+esiste per tenere.
+
+⚠️ **Conseguenze già prese lato backend, e sono due:**
+
+1. la corsia **settimanale** è **scritta e SPENTA** (`abilita: false` in
+   `sveglie.json`, con la ragione nella nota): fra le sue viste c'è quella
+   famiglia, e accenderla vorrebbe dire far cadere il database ogni lunedì. La
+   giornaliera resta accesa — le sue viste non la toccano.
+   ⚠️ **E va saputo che spegnendola si spegne anche il BATTITO**: è la corsa
+   settimanale a portarlo, perché la giornaliera manderebbe un messaggio al
+   giorno che dice «niente da segnalare» — cioè la posta che si impara ad
+   archiviare senza aprire. Finché resta spenta, che il digest sia vivo lo si
+   vede solo dal giornale dei run;
+2. il **pannello dei presidi** ora legge le `ZERO` dal catalogo, e fra quelle
+   c'è `vw_riferimenti_morti_rientrati`: finché il difetto è aperto, **aprire
+   quella schermata può far cadere il cluster**. ⛔ Non l'ho provata in app per
+   questo. Il rimedio non è un elenco di esclusioni nel backend: è la colonna
+   `attivo` del catalogo, che esiste apposta — spegnere quelle righe con la nota
+   che dice perché, e il pannello smette di leggerle **senza che nessuno tocchi
+   il backend**.
+
+### 9.4 🟠 RICHIESTA 2 — due righe dichiarano `perimetro = LIBERO` e sono cieche
+
+Misurato lo stesso giorno, e regge a quattro letture consecutive:
+
+| Vista | Letta da `zeroerp_app` | Letta dal proprietario (`fn_conta_presidio`) |
+| --- | ---: | ---: |
+| `dbops.vw_riferimenti_morti_da_sanare` | **0** | **779** |
+| `dbops.vw_riferimenti_morti_rientrati` | **0** | **1** |
+
+La causa è a monte della vista: `dbops.fn_check_funzioni_riferimenti_morti` è
+`SECURITY INVOKER`, quindi da un ruolo che non possiede gli oggetti ispezionati
+risponde vuoto. ⇒ Il `perimetro` di quelle due righe è **`DEFINER`**, non
+`LIBERO`.
+
+⭐ **E questa è la conferma più forte della scelta del §7.3.** Il §7.3 aveva
+individuato **tre** viste da contare per forza dalla funzione; il backend ha
+deciso di far passare **tutte** le letture da `fn_conta_presidio` «così l'allarme
+è onesto ovunque e il chiamante non deve scegliere». Sono proprio le due viste
+che quell'elenco non nominava: con un `count(*)` scritto nel backend, il digest
+avrebbe riferito **«tutto a posto»** su 779 riferimenti morti e su un rientro —
+il verde per sottrazione, sul presidio dei presidi, su due righe che nessuno
+aveva classificato come a rischio.
+
+⚠️ Intanto il digest **lo dichiara invece di tacere**: quando il conteggio dice
+N e l'elenco torna vuoto su una vista marcata elencabile, il messaggio scrive
+*«il conteggio dice N ma da qui la vista risponde VUOTA: il perimetro dichiarato
+non regge»*. Un numero seguito dal nulla si leggerebbe come un difetto del
+digest.
+
+⭐ **E la correzione ha un secondo effetto, che vale da solo**: su `DEFINER` il
+backend **non elenca** le righe — è il guard che sta nel repository. Cioè
+sparisce proprio il percorso *invoker* che è morto tre volte su tre (§9.3).
+⛔ Ma non sostituisce la richiesta 1: il conteggio continua a passare dalla
+funzione, e finché non si sa **perché** quel codice uccide il processo, «non è
+mai successo su questo percorso» non è una garanzia.
+
+**Le due righe pronte per `80_data/sql/dbops/presidi.csv`** (cambia il solo
+`perimetro`, `LIBERO` → `DEFINER`; la coda della nota dice il perché):
+
+```csv
+dbops.vw_riferimenti_morti_rientrati,ZERO,NULL,NULL,NULL,NULL,SETTIMANALE,DEFINER,t,NULL,"Voci del registro che non corrispondono piu a nessun difetto: righe da TOGLIERE dal CSV. E il verso che impedisce al registro di diventare un elenco di eccezioni permanenti, cioe l unico verso in cui un presidio marcisce senza che nessuno se ne accorga. DEFINER dal 2026-09-10: dbops.fn_check_funzioni_riferimenti_morti e SECURITY INVOKER, quindi da un ruolo che non possiede gli oggetti ispezionati la vista risponde ZERO — misurato, zeroerp_app legge 0 dove il proprietario legge 1."
+dbops.vw_riferimenti_morti_da_sanare,REGISTRO,NULL,NULL,dbops.riferimenti_morti_esenzioni,NULL,SETTIMANALE,DEFINER,t,NULL,"Riferimenti morti non coperti dal registro del debito: e la lista di lavoro, e deve essere vuota. Ogni SELECT ri-compila circa cinquecento funzioni: e il motivo della cadenza settimanale e non giornaliera. Il costo di lettura e un attributo della riga, non del digest. DEFINER dal 2026-09-10: la funzione a monte e SECURITY INVOKER e da zeroerp_app la vista risponde 0 dove il proprietario legge 779 — il conteggio era onesto solo perche passa da fn_conta_presidio."
+```
+
+⚠️ **Il conteggio non cambia di una riga**: passava già dalla funzione. Cambia
+che il backend smette di **elencare** — cioè smette di mostrare un elenco vuoto
+accanto a un numero che non è zero.
+
+### 9.5 🔵 RICHIESTA 3 — resta aperta l'iscrizione del §8.4
+
+`maintenance.vw_job_run_da_guardare` non è ancora a catalogo. Il backend la
+tiene con una **riga di debito dichiarata** in `presidi_repository`
+(`_IN_ATTESA_DI_CATALOGO`) che porta gli stessi valori della riga CSV del §8.4:
+toglierla dal pannello nell'attesa sarebbe stato il rimedio peggiore, perché è
+la spia che dice «l'ultima corsa di un job è fallita».
+⭐ Il giorno dell'apply il presidio
+`test_presidi_catalogo.test_il_debito_delle_viste_in_attesa_e_rientrato` diventa
+**rosso** e dice di cancellare quella riga: il debito ha il suo verso di ritiro.
+
+⚠️ E oggi quella vista **non è vuota**: il digest giornaliero riporta
+`sync_auth_user_active` — ultima corsa verde ma 31 rossi negli ultimi sette
+giorni, cioè il ramo «intermittente». È un processo **ritirato** il 2026-09-07
+(`obsoleto_dal`), quindi la riga è probabilmente il residuo di un timer ancora
+acceso su un host: vale la pena guardarlo, ed è esattamente il genere di cosa
+per cui il digest esiste.
+
+### 9.6 ⛔ Che cosa NON è stato fatto, e perché
+
+* **`OnFailure=` sugli unit** (§7.7b punto 3): **assenza dichiarata**, scritta
+  nei template. Un `OnFailure=` serve a dire che il giro è fallito, ma l'unico
+  canale che raggiunge una persona qui è la coda email, che vive nel database:
+  se il giro è fallito perché il database non risponde, la notifica non parte
+  comunque, e senza database resta una riga nel journal — che systemd scrive già
+  da sé. ⇒ Un fallimento **con il database vivo** lascia `ok=false` su
+  `job_run_log`, che è ciò che `vw_job_run_da_guardare` raccoglie e che il digest
+  riporta al giro seguente. Il residuo — «fallito con il database
+  irraggiungibile» — resta aperto e vuole un canale che dal database non
+  dipenda: è una decisione sua, non un pezzo di questo cantiere.
+* **Sanare i registri di debito** (§6): fuori perimetro, come da patto.
+* **Un destinatario per vista** (§4.1): il campo non serve ancora, e il §6 lo
+  dichiarava rimandabile.
+
+*Risposta backend del 2026-09-10. Le misure di questo paragrafo sono letture del
+dbdev di quel giorno e valgono come controesempio — «questo caso esiste ed è
+gestito male» — non come motivo: il motivo sta sul modello, ed è che un presidio
+che non si può leggere non presidia.*
+
+### 9.7 ⭐ Quello che la revisione ha trovato — e sono tutti della stessa specie
+
+Riletto il proprio codice a freddo (2026-09-10), i difetti veri erano **sei**, e
+nessuno avrebbe fatto fallire niente:
+
+| Difetto | Perché contava |
+| --- | --- |
+| `tolleranza_minuti` **stampata e mai confrontata** | era un campo del deploy dichiarato senza lettore, cioè un presidio che sembra tale e non lo è — il difetto contro cui nasce questo cantiere. ⇒ Ora il battito la usa per dire quali corsie sono **ferme**, e la liveness si chiede per `processo_codice` (la chiave con la FK) invece di comporre i nomi delle corsie |
+| Una corsia **mai girata spariva** dal battito | `job_liveness` non elenca i jobname che il giornale non conosce — sta nel suo contratto. Senza le corsie **attese**, «mai partita» si leggeva come «nessun problema» |
+| `CADENZE_DEL_DIGEST` e le scelte della CLI **scritte a mano** | una cadenza nuova a catalogo non sarebbe stata guardata da nessuna corsa, in silenzio. ⇒ Derivate dal vocabolario del catalogo, con il presidio che lo verifica contro il `CHECK` |
+| Il **jobname della corsia** composto in due sedi | il comando lo scriveva, il battito lo cercava: al primo cambio di forma il battito avrebbe risposto «mai girato» invece di «non lo so» |
+| `troncato` calcolato **anche dove le righe non si chiedono** | sul pannello produceva *«prime 0 righe»* su una vista con perimetro; nel digest avrebbe scritto «e altre 779» sotto un elenco che non c'è |
+| La testata del pannello **verde con presidi non letti** | zero accesi e tre non letti dava un tag verde: «tutto a posto» detto proprio da chi non ha visto niente |
+
+⭐ **Sono tutti la stessa specie**, ed è quella che questo cantiere combatte: un
+dato che *sembra* dire «va bene» mentre dice «non lo so». Il difetto non era
+nella logica — era nel modo in cui l'assenza si traveste da esito.
+
+⚠️ Corretti anche due punti di fragilità: la connessione si chiude ora con
+`close_if_unusable_or_obsolete` (il pannello gira dentro una richiesta web, e
+chiudere una connessione sana è un effetto che nessuno si aspetta da una
+lettura), e più destinatari separati da virgola diventano destinatario + copie
+invece di finire interi in un campo solo — un invio che sarebbe fallito dentro
+la coda email, cioè tardi e per caso.

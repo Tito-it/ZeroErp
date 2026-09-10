@@ -72,11 +72,10 @@ class AIQueryLogRepository:
             # l'audit e' anche il sistema di rilevamento anomalie: un fallimento
             # va emesso a livello ERROR (alert), non solo WARNING.
             if reliable:
-                logger.error(
+                logger.exception(
                     "AUDIT FALLITO su ai_query_log per operazione affidabile "
                     "(request_id=%s): traccia mancante per operazione confermata/privilegiata.",
                     request_id,
-                    exc_info=True,
                 )
             else:
                 logger.warning(

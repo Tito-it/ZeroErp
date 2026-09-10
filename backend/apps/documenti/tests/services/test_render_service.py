@@ -187,7 +187,12 @@ class RenderPdfWeasyPrintTests(TestCase):
     def test_render_pdf_weasyprint_native_dep_mancante_mapped(self) -> None:
         real_import = builtins.__import__
 
-        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        # ⚠️ `globals`/`locals` ombreggiano due builtin, e qui NON si
+        #    rinominano: questa funzione imita la firma di
+        #    `builtins.__import__`, che quei nomi li ha per contratto — un
+        #    chiamante che passasse per parola chiave non troverebbe piu'
+        #    l'argomento.
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
             if name == "weasyprint":
                 raise OSError("cannot load library 'libpango-1.0-0'")
             return real_import(name, globals, locals, fromlist, level)

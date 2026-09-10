@@ -139,7 +139,7 @@ def registered_job(
                     ],
                 )
         except DatabaseError:
-            logger.error(
+            logger.exception(
                 "job_run.fn_job_run_end_failed job=%s id=%s (run-log non chiuso)",
-                job_name, handle.id, exc_info=True,
+                job_name, handle.id,
             )

@@ -363,7 +363,7 @@ def gen_view_md(schema, view, cur):
     reloptions = (opt_row['reloptions'] if opt_row else None) or []
     sec_opts = [
         o for o in reloptions
-        if o.startswith('security_invoker') or o.startswith('security_barrier')
+        if o.startswith(('security_invoker', 'security_barrier'))
     ]
     with_clause = f"\nWITH ({', '.join(sec_opts)})" if sec_opts else ""
 

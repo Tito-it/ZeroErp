@@ -956,7 +956,6 @@ class OffertaRow(TypedDict):
     can_push_contratto_reason: str | None
     can_push_contratto_reason_key: str | None
     non_editable_fields: list[str]
-    stato_codice_interno: str
     # Audit
     data_insert: str
     user_insert: str

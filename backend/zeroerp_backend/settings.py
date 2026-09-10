@@ -356,6 +356,22 @@ DOCUMENTI_STORAGE_ROOT = env(
 # --- Frontend URL (per link in email: reset password, invito, ecc.) ---
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
 
+# --- Digest dei presidi: a chi arriva ---
+# ⭐ A CHI ARRIVA LA POSTA E' UN FATTO DI QUESTA INSTALLAZIONE, non del software
+# (decisione di Tid, 2026-09-10; brief-db-un-destinatario-per-i-presidi §7.7a).
+# Vive qui, cioe' in `.env.systemd`, che e' per-host e NON versionato: un
+# indirizzo aziendale committato in un repository pubblico (GPL v3, su GitHub) e'
+# ricognizione regalata e non si ritira piu'.
+# ⛔ E per la stessa ragione NON sta in `deploy/sveglie.json`, che invece e'
+# versionato: li' c'e' la cadenza, che non e' un dato di nessuno.
+# ⚠️ Vuoto = NON CONFIGURATO, e non e' «spento»: il digest si calcola comunque e
+# lo DICHIARA in coda al proprio esito. Un invio che non parte in silenzio
+# sarebbe la prima cosa da non fare in un cantiere nato contro il silenzio —
+# ed e' successo davvero altrove (`VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`,
+# mai a catalogo: quell'email non e' MAI partita, e l'unica traccia era un
+# `logger.info`).
+PRESIDI_DIGEST_DESTINATARIO = env("ZEROERP_PRESIDI_DIGEST_DESTINATARIO", "")
+
 # --- Email ---
 # ⚠️ LA POSTA DELL'APPLICAZIONE NON PASSA DA QUI. `EmailService` risolve
 # l'account da `config.email_account` e parla SMTP con `smtplib` per conto suo:

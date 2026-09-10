@@ -1333,7 +1333,10 @@
       "presidi_titolo": "Controlli che devono restare vuoti",
       "presidi_help": "Ogni riga qui sotto è una cosa da sistemare. La spiegazione di ciascun controllo arriva dal database, che è dove quella regola è scritta.",
       "presidi_errore": "Non è stato possibile leggere i controlli. «Nessuna riga» qui sotto significherebbe «tutto a posto»: non è quello che sta succedendo.",
-      "presidi_troncato": "prime {n} righe"
+      "presidi_troncato": "prime {n} righe",
+      "presidi_non_letto": "non letto",
+      "presidi_non_letti_conteggio": "{n} non letti",
+      "presidi_non_elencabili": "righe non elencabili: la vista ha un perimetro"
     }
   },
   "indirizzi": {

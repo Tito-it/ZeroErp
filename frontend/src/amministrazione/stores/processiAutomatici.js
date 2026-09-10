@@ -4,7 +4,8 @@
 // Doc: JavaScript
 // ------------------------------------------------------------
 // Scopo: store della lista dei PROCESSI AUTOMATICI (`dbops.processi`) e dello
-//        stato dei sei presidi del cantiere «nessun processo senza operatore».
+//        stato dei presidi: le viste che il catalogo `dbops.presidi` marca
+//        di natura ZERO — quelle che devono restare vuote.
 //
 // ⭐ `createListaStore` e non `createCrudStore`: questa lista NON possiede
 //    l'entità che mostra. Il registro dei processi è CATALOGO — nasce da un
@@ -38,6 +39,11 @@ export const useProcessiAutomaticiStore = createListaStore(
       //    cose opposte. Su un pannello che serve a dire «va tutto bene» la
       //    differenza è tutto.
       const presidiErrore = ref(false)
+      // ⛔ E il QUARTO caso, che è il peggiore: presidi letti a metà. Un
+      //    controllo che non si è potuto interrogare non è «zero righe», ma
+      //    senza questo numero la testata resterebbe VERDE mentre non si è
+      //    visto niente — cioè direbbe «tutto a posto» proprio perché è cieca.
+      const presidiNonLetti = ref(0)
 
       async function caricaPresidi() {
         presidiLoading.value = true
@@ -46,9 +52,11 @@ export const useProcessiAutomaticiStore = createListaStore(
           const res = await getProcessiPresidi()
           presidi.value = res.data.data.presidi
           presidiConRighe.value = res.data.data.con_righe
+          presidiNonLetti.value = res.data.data.non_letti ?? 0
         } catch {
           presidi.value = []
           presidiConRighe.value = 0
+          presidiNonLetti.value = 0
           presidiErrore.value = true
         } finally {
           presidiLoading.value = false
@@ -56,7 +64,8 @@ export const useProcessiAutomaticiStore = createListaStore(
       }
 
       return {
-        presidi, presidiConRighe, presidiLoading, presidiErrore, caricaPresidi,
+        presidi, presidiConRighe, presidiNonLetti, presidiLoading, presidiErrore,
+        caricaPresidi,
       }
     },
   },

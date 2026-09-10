@@ -4,9 +4,13 @@
   Doc: Vue
 -->
 <script setup>
-// Scopo: il pannello dei PRESIDI del cantiere «nessun processo senza
-//        operatore»: per ognuno quante righe ha, cosa vuol dire, e le prime.
+// Scopo: il pannello dei PRESIDI — le viste che devono restare vuote: per
+//        ognuna quante righe ha, cosa vuol dire, e le prime.
 //
+// ⭐ QUALI SIANO LE VISTE NON LO DECIDE NESSUNO DEI DUE LATI: dal 2026-09-10
+//    sono quelle che il catalogo `dbops.presidi` marca di natura `ZERO`
+//    (decisione di Tid). Prima erano dieci nomi scritti nel backend, e le due
+//    sedi già non coincidevano.
 // ⭐ LA NATURA DI OGNI PRESIDIO ARRIVA DAL DATABASE, non da un elenco qui. È il
 //    commento della vista a dire se «DEVE restare VUOTA» o se è «un registro di
 //    DEBITO che deve CALARE»: il backend lo consegna in `descrizione`, e questo
@@ -16,6 +20,10 @@
 //    nasconde i debiti già dichiarati: finché una vista non è mai vuota, si
 //    vede che non è mai vuota. Sistemarlo è una richiesta al team DB (DB-2),
 //    non un trucco di presentazione.
+// ⛔ E un presidio NON LETTO non è uno zero: arriva con `errore` valorizzato e
+//    `conteggio` a `null`, e si mostra rosso. Su questa schermata il verde vuol
+//    dire «tutto a posto», e dirlo mentre non si è visto niente è il difetto
+//    peggiore che possa avere.
 // ⚠️ `troncato` dice che le righe mostrate non sono tutte: senza, venti righe su
 //    duecento si leggerebbero come «sono venti».
 import { useI18n } from 'vue-i18n'
@@ -60,14 +68,36 @@ function cella(valore) {
       <div v-for="p in presidi" :key="p.vista" class="app-presidio">
         <div class="app-presidio-testa">
           <span class="app-presidio-nome">{{ p.vista }}</span>
+          <!-- ⛔ «NON LETTO» NON È «ZERO RIGHE», ed è l'unica differenza che
+               conta su una schermata dove il verde vuol dire «tutto a posto»:
+               un presidio che non si è potuto interrogare arriva col conteggio
+               a `null` e il suo errore, e si mostra rosso. Renderlo come uno
+               zero direbbe «tutto a posto» proprio perché siamo ciechi. -->
           <Tag
+            v-if="p.errore"
+            :value="t('amministrazione.processi.presidi_non_letto')"
+            severity="danger"
+          />
+          <Tag
+            v-else
             :value="String(p.conteggio)"
             :severity="p.conteggio === 0 ? 'success' : 'warn'"
           />
           <span v-if="p.troncato" class="app-presidio-troncato">
             {{ t('amministrazione.processi.presidi_troncato', { n: p.righe.length }) }}
           </span>
+          <!-- ⭐ «Non elencabile» e «non c'è niente da elencare» si leggono
+               uguali se non lo si dice: la vista ha un perimetro, il conteggio
+               arriva dalla funzione che le righe non le restituisce apposta. -->
+          <span
+            v-else-if="!p.elencabili && p.conteggio > 0"
+            class="app-presidio-troncato"
+          >
+            {{ t('amministrazione.processi.presidi_non_elencabili') }}
+          </span>
         </div>
+
+        <p v-if="p.errore" class="app-presidio-errore">{{ p.errore }}</p>
 
         <!-- ⭐ La descrizione è quella che il team DB ha scritto sulla vista:
              è lì che sta la differenza fra «deve essere zero» e «deve calare». -->
@@ -100,6 +130,12 @@ function cella(valore) {
 .app-presidio-nome { font-weight: 600; font-family: monospace; }
 .app-presidio-troncato { font-size: 0.8rem; opacity: 0.7; }
 .app-presidio-desc { margin: 0.4rem 0 0.6rem; font-size: 0.85rem; opacity: 0.85; }
+/* Il motivo per cui un presidio non si è letto: si legge, non si attenua. */
+.app-presidio-errore {
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.85rem;
+  color: var(--app-severity-danger, var(--p-red-400));
+}
 /* Le tabelle larghe scorrono dentro il proprio contenitore: la pagina non
    scrolla mai in orizzontale. */
 .app-presidio-righe { width: 100%; display: block; overflow-x: auto; font-size: 0.8rem; }

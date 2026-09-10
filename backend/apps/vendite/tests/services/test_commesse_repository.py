@@ -58,6 +58,7 @@ from apps.vendite.db.commesse_repository import (
     UpsertAttivitaResult,
     _SORGENTE_FN_MAP,
 )
+from apps.core.services.service_errors import ServiceError
 from apps.vendite.tests._helpers.mock_cursor import mock_cursor as _mock_cursor
 
 
@@ -420,9 +421,15 @@ class CommesseRepositoryUnitTests(TestCase):
 
     # Scopo: Verifica che sorgente_codice sconosciuto lanci errore.
     def test_fetch_pushable_rows_unknown_sorgente_raises(self):
+        # ⛔ `assertRaises(Exception)` accetterebbe QUALUNQUE errore — anche un
+        #    TypeError da una firma cambiata sotto, cioe' proprio il difetto che
+        #    questo test dovrebbe scoprire. E' la stessa regola gia' scritta per
+        #    i pgTAP (`throws_ok(sql, NULL, NULL)` accetta tutto: si passa
+        #    sempre lo SQLSTATE): qui si pretendono il TIPO e il CODICE.
         repo = CommesseRepository()
-        with self.assertRaises(Exception):
+        with self.assertRaises(ServiceError) as ctx:
             repo.fetch_pushable_rows("SCONOSCIUTO")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_SORGENTE_SCONOSCIUTA")
 
     # Scopo: righe_ids valorizzato su sorgente PREVENTIVO → chiamata fn a 5
     # parametri con p_righe_ids in coda (smistamento selettivo, brief
@@ -441,10 +448,14 @@ class CommesseRepositoryUnitTests(TestCase):
     # errore esplicito, niente chiamata SQL malformata.
     def test_fetch_pushable_rows_righe_ids_sorgente_non_supportata(self):
         repo = CommesseRepository()
-        with self.assertRaises(Exception):
+        with self.assertRaises(ServiceError) as ctx:
             repo.fetch_pushable_rows(
                 "ORDINE_VENDITA", sorgente_uid=42, righe_ids=[7],
             )
+        # ⚠️ Il codice distingue QUESTO rifiuto da quello del test sopra: senza,
+        #    i due test proverebbero la stessa cosa e uno dei due rami potrebbe
+        #    sparire senza che nessuno se ne accorga.
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
     # Scopo: Verifica mapping colonne condivise in PushableRow.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

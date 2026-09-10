@@ -6,14 +6,15 @@
 <script setup>
 // Scopo: la schermata dei PROCESSI AUTOMATICI — quali programmi girano da soli,
 //        di che classe sono, con quale identità e per quali aziende — più lo
-//        stato dei sei presidi del cantiere «nessun processo senza operatore».
+//        stato dei presidi: le viste che il catalogo `dbops.presidi` marca
+//        di natura ZERO — quelle che devono restare vuote.
 //
 // ⭐ Fino al 2026-09-05 tutto questo si vedeva solo da `psql`, e
 //    `GET /tracciamento/job-runs/` esisteva da mesi senza un solo consumatore
 //    nel frontend. Un presidio che si interroga a mano lo guarda chi sta
 //    lavorando a quel pezzo; uno che sta in una schermata lo guarda anche chi
 //    passa di lì.
-// ⛔ `amm-software` e non `strumenti`: le sei viste nominano TUTTE le aziende e
+// ⛔ `amm-software` e non `strumenti`: quelle viste nominano TUTTE le aziende e
 //    non hanno RLS, quindi il gate è `AdminAPIView` (SUPER_ADMIN). Il posto e il
 //    permesso dicono la stessa cosa, e non c'è nessuna eccezione da ricordare.
 // ⚠️ Niente `useReadonlyMode`: in `amm-software` non c'è un livello d'area da
@@ -199,6 +200,14 @@ function onIdentitaCreata() {
         <Tag
           :value="String(store.presidiConRighe)"
           :severity="store.presidiConRighe === 0 ? 'success' : 'warn'"
+        />
+        <!-- ⛔ Un controllo NON LETTO non è uno zero: senza questo tag la
+             testata resterebbe verde mentre non si è visto niente, che su una
+             schermata nata per dire «va tutto bene» è il difetto peggiore. -->
+        <Tag
+          v-if="store.presidiNonLetti > 0"
+          :value="t('amministrazione.processi.presidi_non_letti_conteggio', { n: store.presidiNonLetti })"
+          severity="danger"
         />
       </h3>
       <p class="app-proc-help">{{ t('amministrazione.processi.presidi_help') }}</p>

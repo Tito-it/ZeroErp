@@ -101,7 +101,7 @@ class ExportValidationTests(SimpleTestCase):
                 colonne=_colonne_clienti(),
                 righe=[],
                 filtri_applicati={},
-                format="pdf",
+                formato="pdf",
             )
         self.assertEqual(ctx.exception.code, "E_UI_EXPORT_FORMAT_INVALID")
 
@@ -115,7 +115,7 @@ class ExportValidationTests(SimpleTestCase):
                 colonne=_colonne_clienti(),
                 righe=too_many,
                 filtri_applicati={},
-                format="csv",
+                formato="csv",
             )
         self.assertEqual(ctx.exception.code, "E_UI_EXPORT_LIMIT_EXCEEDED")
 
@@ -131,7 +131,7 @@ class ExportCsvTests(SimpleTestCase):
             colonne=_colonne_clienti(),
             righe=righe,
             filtri_applicati=filtri or {},
-            format="csv",
+            formato="csv",
         )
         # Verifica BOM e content-type prima del parse
         self.assertTrue(body.startswith(b"\xef\xbb\xbf"))
@@ -160,7 +160,7 @@ class ExportCsvTests(SimpleTestCase):
             colonne=cols,
             righe=_righe_clienti(),
             filtri_applicati={},
-            format="csv",
+            formato="csv",
         )
         text = body[3:].decode("utf-8")
         header_line = text.split("\n")[1]
@@ -183,7 +183,7 @@ class ExportCsvTests(SimpleTestCase):
             colonne=_colonne_clienti(),
             righe=[{"ragione_sociale_completa": "Caffè à la Sicilienne"}],
             filtri_applicati={},
-            format="csv",
+            formato="csv",
         )
         # BOM presente per Excel-friendly
         self.assertTrue(body.startswith(b"\xef\xbb\xbf"))
@@ -200,7 +200,7 @@ class ExportCsvTests(SimpleTestCase):
         body, _, _ = ListaExportService().render(
             lista_codice="x.y", colonne=cols,
             righe=[{"is_active": True}, {"is_active": False}],
-            filtri_applicati={}, format="csv",
+            filtri_applicati={}, formato="csv",
         )
         text = body[3:].decode("utf-8")
         self.assertIn("Si", text)
@@ -230,7 +230,7 @@ class ExportCsvTests(SimpleTestCase):
         body, _, _ = ListaExportService().render(
             lista_codice="x.y", colonne=cols,
             righe=[{"data_att": date(2026, 5, 10)}, {"data_att": None}],
-            filtri_applicati={}, format="csv",
+            filtri_applicati={}, formato="csv",
         )
         text = body[3:].decode("utf-8")
         self.assertIn("10-05-2026", text)
@@ -249,7 +249,7 @@ class ExportXlsxTests(SimpleTestCase):
             colonne=_colonne_clienti(),
             righe=righe,
             filtri_applicati=filtri or {},
-            format="xlsx",
+            formato="xlsx",
         )
         self.assertIn("spreadsheetml", ct)
         self.assertTrue(fn.endswith(".xlsx"))
@@ -286,7 +286,7 @@ class ExportXlsxTests(SimpleTestCase):
             colonne=_colonne_clienti(),
             righe=[],
             filtri_applicati={},
-            format="xlsx",
+            formato="xlsx",
         )
         self.assertTrue(fn.startswith("catalogo_articoli_picker_"))
         # Niente punti/due punti nel filename (oltre l'estensione).

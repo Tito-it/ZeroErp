@@ -602,6 +602,69 @@ per conteggio (221 righe `ERROR:`/`FAIL:`, `diff` vuoto). Più `manage.py check`
 pulito e `spectacular` che rigenera 815 operazioni — cioè tutte le view si
 importano ancora.
 
+### ✅ Il seguito, 2026-09-10 — la selezione si allarga, e trova due difetti veri
+
+Il `ruff.toml` prescriveva la disciplina per allargare: *«prima si misura quante
+righe apre la regola nuova, poi si sana, poi si accende. Mai il contrario.»*
+Misurati **diciotto** gruppi; accesi i sei che nascevano a zero o quasi.
+
+| Gruppo | Rilievi | Esito |
+| --- | ---: | --- |
+| `T20` (nessun `print`) | **0** in `backend/apps` | ✅ acceso — chiudeva un'asimmetria: *«nessun `console.log` in produzione»* valeva per il solo frontend |
+| `PIE` | 6 | ✅ acceso — e uno era un **difetto vero**, vedi sotto |
+| `G` + `LOG` (uso del logging) | 9 | ✅ acceso |
+| `C4` (costruzioni inutili) | 3 | ✅ acceso |
+| `A` (shadowing di builtin) | 3 | ✅ acceso |
+| `B` (bugbear) | 54 | ⛔ **non** acceso: `B905` (34, `zip()` senza `strict=`) e `B023` (5) sono 39 decisioni una per una. `B017` (2) sanato subito |
+| `DTZ` · `S` · `N` · `RUF` · `SIM` · `ARG` · `UP` | 63 · 824 · 451 · 481 · 138 · 687 · 46 | ⛔ stile, o falsi positivi strutturali (in Django le firme le impone il framework) |
+
+⭐ **I due difetti veri, e sono della stessa specie di quelli che questo documento
+insegue** — non danno errore:
+
+* **`B017`** — due test facevano `assertRaises(Exception)`, cioè passavano su
+  **qualunque** errore, anche un `TypeError` da una firma cambiata sotto. ⭐ È la
+  regola che il progetto ha **già scritto per i pgTAP** (*«`throws_ok(sql, NULL,
+  NULL)` accetta qualunque errore: passare sempre lo SQLSTATE»*, `AGENTS.md`)
+  applicata al lato Python, dove non la presidiava nessuno. Ora pretendono tipo
+  **e** codice — provato per mutazione: cambiando il codice errore nel
+  repository, il test cade;
+* **`PIE794`** — `stato_codice_interno` dichiarato **due volte** nello stesso
+  `TypedDict` (`OffertaRow`). In Python vince l'ultima e la prima è morta, senza
+  errori e senza test rossi: è la **stessa forma** della chiave i18n duplicata
+  che il progetto ha pagato il 2026-08-26 (`vendite.lotti.numera_esito`, dove il
+  segnaposto `{numerati}` spariva). Il difetto qui era latente — i due tipi
+  coincidevano — ma il giorno in cui uno dei due fosse cambiato, il contratto
+  avrebbe detto una cosa e il type checker un'altra.
+
+⚠️ **`B904` è stato guardato e SCARTATO, ed è la decisione che vale più delle
+altre.** Sembrava il candidato ovvio (12 rilievi, `raise` dentro `except` senza
+`from`), e in questo progetto `__cause__` **è funzionale**: `db_error_fields` lo
+legge in cinque punti per estrarre codice, campo e bersaglio dalla diagnostica
+psycopg. Ma guardando i dodici punti: **otto** sono
+`raise AssertionError("unreachable")  # pragma: no cover` — righe che non si
+eseguono mai — e i quattro restanti non traducono errori di database (due
+nascono da `User.DoesNotExist`, che una `diag` non ce l'ha). ⇒ **Nessuno perdeva
+diagnostica**: correggerli sarebbe stato rumore su righe morte.
+
+⛔ **E un errore di metodo, che vale la pena scrivere perché è quello contro cui
+il `ruff.toml` mette in guardia.** La prima misura di `T20` l'ho fatta su
+`backend/apps` — zero rilievi — e ho acceso la regola. Ma ruff gira su **tutto il
+repository**: i `print` sono **352**, tutti in `scripts/` e `backend/scripts/`.
+⭐ Il rimedio non è stato spegnere la regola ma **dichiarare il perimetro**: in
+uno script da riga di comando `print` *è* l'interfaccia utente, non un residuo di
+debug — due `per-file-ignores` con la ragione scritta, e la regola resta dove un
+`print` è davvero un difetto (finisce sullo stdout di gunicorn, senza livello e
+senza `request_id`). *Misurare sul perimetro sbagliato è il modo più facile di
+accendere un cancello che non presidia quello che si crede.*
+
+🧹 **E una cosa tolta**: `_check_fn_tmp.py`, dodici righe di diagnostica finite in
+git il 2026-08-02 dentro un commit «Migliorei vari A UI» — non in `scripts/`, non
+chiamato da nessuno. Cancellato (ok di Tid, 2026-09-10).
+
+**Stato del cancello dopo l'allargamento**: `ruff check .` → **zero su tutto il
+repo**, i tre hook `pre-commit` verdi, suite backend **4590 verdi**. E provato
+che morde: un `print()` aggiunto a mano fa rosso.
+
 ---
 
 ### 🟠 D3 — Lo schema OpenAPI pubblicato dichiara che l'API è anonima. E il controllo che lo direbbe non lo lancia nessuno
