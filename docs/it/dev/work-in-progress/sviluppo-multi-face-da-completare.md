@@ -81,9 +81,12 @@ attivare servono **tutti** questi:
 - [ ] Concessioni `BYPASSRLS` ai ruoli tecnici `zeroerp_admin` /
       `zeroerp_migration` (via `ALTER ROLE`), così gli operatori interni non
       vengono filtrati. Verifica preventiva `zeroerp_app` = `NOBYPASSRLS`.
-- [ ] **§4.9.8** Benchmark pre/post su query chiave (list fatture, list ordini)
-      con `EXPLAIN (ANALYZE, BUFFERS)`. Tolleranza regressione ≤ 10%
-      (linee-guida-sql §10.9). Richiede dati production-like.
+- [~] **§4.9.8** Benchmark pre/post su query chiave — **ritirato il 2026-09-11**:
+      la RLS operatori è in esercizio dal 02-06 senza benchmark, e la voce
+      «≤ 10%» è uscita da linee-guida-sql §10.9 perché il predicato RLS è una
+      chiamata di funzione per riga, non un confronto indicizzabile. Per le
+      tabelle portale/shop vale la regola nuova di §10.9: decisione dichiarata
+      in `dbops.fk_index_policy` per la FK di scope, non una misura.
 - [ ] **§4.9.9** pgTAP per ogni policy attivata: utente visibile, utente non
       autorizzato, senza GUC (fail-closed), bypass ruolo tecnico. File in
       `db/pgtap/rls/<schema>_<tabella>_rls.sql`.
@@ -179,8 +182,9 @@ dominio portale/shop sopra. Raggruppato per livello.
 ### 2.9 Rollout (§8) — *fuori scope finché non in produzione*
 > ZeroErp non è in produzione (`project_no_produzione_solo_sviluppo`): la parte
 > staging/feature-flag/pilota è da riconsiderare, niente gradient di rilascio.
-- [ ] Smoke staging, benchmark post-RLS (no regression >10%), rollback plan,
-      deprecazione + drop fisico `risorse_umane_auth_user` (milestone +3 mesi).
+- [ ] Smoke staging, rollback plan, deprecazione + drop fisico
+      `risorse_umane_auth_user` (milestone +3 mesi). *(Il «benchmark post-RLS
+      >10%» che stava qui è ritirato — vedi §4.9.8.)*
 
 ---
 

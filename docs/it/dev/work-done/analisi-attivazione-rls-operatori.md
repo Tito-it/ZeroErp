@@ -233,6 +233,7 @@ Un *predicato booleano* e un *generatore di array* hanno shape diverse e non si 
 
 1. **Chiave attore = `auth_user_id`** (NON `identita_id`): è la chiave della tabella whitelist, del write-guard e del Python → unifica i tre. Le policy RLS passano `current_setting('app.current_user_id')::int` (GUC già presente). L'`identita_id` esce dalla regola.
 2. **Canonica in `LANGUAGE sql STABLE`** (non plpgsql): resta **inlineable** dal planner nelle RLS (perf per-riga). L'attuale write-guard plpgsql va riscritto come SQL inlineable equivalente. Da benchmarkare (§7).
+   > ⚠️ **Com'è andata (verificato il 2026-09-11)**: gli *adapter* `script.fn_scope_ef_whitelist*` sono `sql STABLE`, ma la **canonica** `script.fn_check_user_emittente_scope` a cui delegano è **plpgsql** (sei regole con uscite anticipate, rev. P-2a). Quindi il predicato della policy è una chiamata di funzione per riga, opaca al planner: l'inlining promesso qui **non c'è**, e un indice sulla colonna emittente non lo serve — i seed `20260822-39/-41` e `20260829-33` decidono gli indici EF su questo criterio. Non è una svista da correggere qui: è una decisione di forma che il team DB ha preso implementando, e va conosciuta prima di ragionare sulle prestazioni della RLS.
 3. **`script.fn_is_super_admin`** deve accettare `auth_user_id` (integer) come input — `[DA VERIFICARE SU DB]` la firma; è l'unico input GUC disponibile nelle policy (`app.current_user_id`).
 
 #### 5.4.4 Passi (estraibili poi in brief DB + brief BE/FE)
@@ -308,6 +309,8 @@ Lavoro **DB-prevalente** (~6 changeset fn/policy + pgTAP) + ritocco BE. Non è l
 4. write-path INSERT fatture/contratti con trigger guard (overhead atteso trascurabile).
 
 **Soglia:** regressione di latenza ≤ **10%** sulle list-view operatore; nessuna transizione index→seq-scan per effetto RLS. Oltre soglia → indice EF obbligatorio prima dell'ENABLE.
+
+> ⚠️ **Ritirato il 2026-09-11.** Mai eseguito; l'`ENABLE` è applicato dal 2026-06-02 e la RLS è in esercizio. E il piano atteso al punto 1 — *«index-scan su `ix_fatture_emittente_soggetto_ruolo_id` + `fn_scope_ef_whitelist` come Filter»* — poggiava su una premessa falsa: la policy è una chiamata plpgsql per riga (nota a §5.4.3 punto 2), quindi un indice sull'emittente serve alla **query dell'applicazione** che filtra per emittente, non alla policy. La regola in vigore è in [linee-guida-sql §10.9](/linee-guida-sql); il seguito in `analisi-attivazione-rls-db.md` §12 e §15.
 
 ---
 
@@ -386,7 +389,7 @@ Su una `vw_*` che legge `vendite.fatture`, RLS attiva + GUC operatore-whitelist:
 - [ ] `CREATE INDEX ix_pratiche_emittente_fiscale_id` (gap certo).
 - [ ] `CREATE INDEX IF NOT EXISTS` su contratti/offerte/documenti_generati (EF PK).
 - [ ] `[DA VERIFICARE SU DB]` FK+indice su `fatturazione_lotti`.
-- [ ] Benchmark EXPLAIN ANALYZE list (fatture/contratti/offerte/preventivi/pratiche) + write-path; soglia ≤10%, no index→seq-scan.
+- [~] Benchmark EXPLAIN ANALYZE list (fatture/contratti/offerte/preventivi/pratiche) + write-path; soglia ≤10%, no index→seq-scan — **ritirato il 2026-09-11** (§7.3).
 
 **Test e attivazione:**
 - [ ] `test-rls-fatture-ef-runtime.sql` (8 casi incl. NULL e riciclo).
