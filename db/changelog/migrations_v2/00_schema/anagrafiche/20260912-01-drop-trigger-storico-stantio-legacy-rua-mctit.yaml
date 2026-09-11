@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 UN TRIGGER STANTIO CHE BLOCCA OGNI SCRITTURA STORICIZZATA.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4d (decisione dell'11/12-09)
+#
+# `anagrafiche.risorse_umane_auth_user` è stata rinominata in
+# `_legacy_risorse_umane_auth_user` (oggi il nome vecchio è una VISTA). La
+# tabella ha DUE trigger di storico:
+#   · `trg_legacy_risorse_umane_auth_user_z90_storico_upd_dlt`
+#     (`_legacy_risorse_umane_auth_user_id`) — quello giusto, generato
+#     dall'automazione sul nome nuovo;
+#   · `trg_risorse_umane_auth_user_z90_storico_upd_dlt`
+#     (`risorse_umane_auth_user_id`) — quello VECCHIO, rimasto addosso alla
+#     tabella dopo la rinomina.
+# Entrambi scrivono in `storico._legacy_risorse_umane_auth_user`, che ha solo la
+# colonna del nome nuovo. ⇒ Il vecchio fallisce: `E_SNAPSHOT_CLOSE_ERROR — la
+# colonna risorse_umane_auth_user_id non esiste`, e la scrittura sulla madre va
+# in errore. Provato l'11-09 in ROLLBACK con un UPDATE a `storicizza = true`.
+# Oggi non si vede solo perché le righe hanno `storicizza = false`.
+#
+# ── ✅ `DROP TRIGGER IF EXISTS`: la forma lecita su un trigger da ci_apply ──
+#   Su un database ricostruito da zero il trigger vecchio non nasce (le
+#   automazioni lavorano per pattern sul nome corrente): IF EXISTS passa. E la
+#   notte l'automazione non lo rigenera, per la stessa ragione.
+#   ⛔ Niente preCondition che lo conti: §11.5 delle linee guida.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260912-01-drop-trigger-storico-stantio-legacy-rua-mctit.yaml
+
+  - changeSet:
+      id: 20260912-01-drop-trigger-storico-stantio-legacy-rua
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da anagrafiche._legacy_risorse_umane_auth_user il trigger di
+        storico rimasto dal nome vecchio (trg_risorse_umane_auth_user_z90_storico_upd_dlt,
+        colonna risorse_umane_auth_user_id che la shadow non ha): con storicizza
+        true ogni UPDATE/DELETE falliva con E_SNAPSHOT_CLOSE_ERROR. Resta il
+        trigger generato sul nome nuovo. IF EXISTS: in CI non esiste.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: anagrafiche, tableName: _legacy_risorse_umane_auth_user }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_risorse_umane_auth_user_z90_storico_upd_dlt
+                  ON anagrafiche._legacy_risorse_umane_auth_user;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non si ricrea un trigger rotto: la sua chiusura dello snapshot
+              -- nomina una colonna che non esiste. Forward-only.
+              SELECT 1;

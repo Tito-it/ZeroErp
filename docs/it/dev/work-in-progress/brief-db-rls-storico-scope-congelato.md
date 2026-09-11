@@ -3,7 +3,7 @@
 > Stato: ✅ **storico: APPLICATO l'11-09-2026 alle 19:54 (passi 1-7, §4b-§4d), pgTAP senza regressioni** — 37 shadow armate, 65.751 versioni attribuite. ✅ **§8 (`audit_log`): consegnato
 > e applicato il 2026-09-11** (`-09`, `-20` in `databasechangelog` alle 12:42; postura
 > viva verificata a catalogo). Il §8.4 originale sbagliava due volte: vedi §8.4.
-> ⏳ Restano: la **decisione §8.3** (registro tecnico o di dominio) — di Tid — e i debiti di §4d (shadow del job pgAgent, 4 shadow orfane, `fn_admin_merge_*`).
+> ✅ **§8.3 deciso: «No», registro tecnico** — il cancello è costruito (§8.6, in attesa di apply). ⏳ Restano: `fn_admin_merge_*` (scrivono l'audit a mano) e la vista di presidio della mappa per il digest (6b), da decidere una alla volta. Consegna BE: `permissions_audit_repository` smette di leggere `storico.risorse_umane_auth_user` (§4d).
 > Origine: **D3** di
 > [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).
 > Eredita il §9 di
@@ -294,15 +294,49 @@ dry-run da `titodb` era proprietario e sostituiva la variabile a mano. Memoria:
 
 ### 🟠 Debiti registrati
 
-* **Le shadow del job pgAgent nascono di `postgres`**. Il provisioning le
-  riassegna una volta, ma il job crea le nuove come `postgres`: quelle nascono
-  armate (il generatore gira come chi le crea), però la **convergenza** da
-  Liquibase (`-29`, `fn_grant_storico_shadows`) le salta finché il provisioning
-  non ripassa. Rimedio vero: il job pgAgent che si collega come il migratore, o
-  il provisioning nel calendario. Non deciso qui.
+* ✅ **Le shadow del job pgAgent nascevano di `postgres`** → **deciso (a), Tid
+  11-09**: *l'archivio di una tabella è di chi possiede la tabella*. Il
+  generatore, creata e **armata** la shadow (arma chi la crea, perché ne è
+  proprietario), la **cede al proprietario della madre** — se chi crea può farlo
+  (superuser o membro), altrimenti WARN. Vale identico su dev e in CI senza
+  toccare il job. `20_code/dbops/20260911-34`; presidio: test 23 del pgTAP
+  storico (ogni shadow ha il proprietario della madre). Scartate: (b) il job
+  come migratore (password nella connessione, due configurazioni), (c) il
+  provisioning nel calendario (cura il sintomo).
 * Le versioni legacy **senza padre né archivio** (4 su `fatture_scadenze`, e
   simili altrove) restano a scope NULL: invisibili agli operatori, visibili
   all'amministrazione. Non ricostruibili: si lascia in chiaro.
+* Correzione alla nota di §8.4: `fn_grant_storico_shadows` **non** concedeva
+  DELETE; il DELETE dell'app sulle shadow veniva dal loop `20260205-41`, dal
+  provisioning e dai DEFAULT PRIVILEGES. Ora tutte e tre le sedi lo negano.
+* ✅ **Le «quattro shadow orfane»** — **decise da Tid l'11-09, costruite il 12**:
+  «non teniamo sporcizia». Ma il censimento dei lettori ha corretto la mia
+  classificazione, e la risposta è diversa per natura:
+  · `storico.comune_trasformazioni` e `storico.stradario_trasformazioni` **non
+    sono shadow**: sono i **registri delle fusioni** di comuni e vie, scritti da
+    `fn_admin_merge_*` e letti da `script.fn_get_vie_discendenti` — vuote perché
+    nessuna fusione è ancora avvenuta. **Restano.** Abitano nello schema sbagliato
+    per il nome che portano: debito di *nome*, da valutare a parte, non sporcizia;
+  · `storico.fatturazione_lotti_attivita` (dominio ritirato, 0 righe, zero
+    lettori) → **DROP**, `00_schema/storico/20260912-02`;
+  · `storico.risorse_umane_auth_user` (12 versioni di prima della rinomina della
+    madre) → **DROP**, `00_schema/storico/20260912-03`. 🔴 **Consegna al backend**:
+    `backend/apps/core/db/permissions_audit_repository.py`, `_USER_TABLES` riga
+    48, legge questa tabella nella timeline della storia dei permessi — deve
+    togliere la riga o puntarla alla shadow viva
+    `storico._legacy_risorse_umane_auth_user` (il filtro è sullo snapshot,
+    `auth_user_id`, presente anche lì). **Prima** del changeSet, altrimenti su dev
+    l'endpoint risponde 500 (`42P01`, rumoroso). La riga 5 di `dbops.audit_sources`
+    era già `attivo = f` e resta: è la dichiarazione della dismissione.
+* ✅ **Il «doppio trigger» sulla legacy era un BLOCCO, non un doppione.**
+  `trg_risorse_umane_auth_user_z90_storico_upd_dlt`, rimasto dal nome vecchio,
+  scriveva nella shadow viva con la colonna `risorse_umane_auth_user_id`, che lì
+  non esiste: con `storicizza = true` **ogni** UPDATE/DELETE su
+  `_legacy_risorse_umane_auth_user` falliva (`E_SNAPSHOT_CLOSE_ERROR`, provato in
+  ROLLBACK). Non si vedeva perché le 6 righe hanno `storicizza = false`.
+  `DROP TRIGGER IF EXISTS` in `00_schema/anagrafiche/20260912-01` (la forma
+  lecita di §11.5: in CI non nasce). Dopo, l'UPDATE scrive la versione nella
+  shadow viva.
 * Correzione alla nota di §8.4: `fn_grant_storico_shadows` **non** concedeva
   DELETE; il DELETE dell'app sulle shadow veniva dal loop `20260205-41`, dal
   provisioning e dai DEFAULT PRIVILEGES. Ora tutte e tre le sedi lo negano.
@@ -560,10 +594,23 @@ Regola: [[reference_grant_loop_ci_apply_annulla_grant_per_colonna]] aggiornata.
 
 | | |
 | --- | --- |
-| La **decisione** §8.3 (registro tecnico o di dominio) | ⛔ ancora aperta, di modello, viene prima del cancello o della colonna |
+| La **decisione** §8.3 | ✅ **«No»** (Tid, 2026-09-11): è il registro delle automazioni e degli strumenti DBA, letto dall'amministrazione. Nessun dato di dominio |
 | Il REVOKE di §8.4 + eccezione nel loop + default `executed_by` + pgTAP + doc | ✅ **fatto** il 2026-09-11 — una giornata, non mezza: il resto era la premessa sbagliata |
-| Il cancello (ramo «No») | ½ giornata — un guardrail sullo stile di quelli già in CI |
-| La colonna di scope (ramo «Sì») | 1-1½ giornate: firma, 18 chiamanti, policy, backfill |
+| Il cancello (ramo «No») | ✅ **costruito** il 2026-09-11, §8.6 — un'ora, non mezza giornata: la forma dei presidi CANCELLO esisteva già |
+| La colonna di scope (ramo «Sì») | ⛔ non si fa: ramo scartato dalla decisione |
+
+### 8.6 Il cancello — costruito (11-09-2026, in attesa di apply)
+
+| Cosa | Dove |
+| --- | --- |
+| `dbops.vw_audit_log_scrittori_fuori_perimetro`: le funzioni che scrivono nel registro (DML diretto o via `fn_audit_log_once`/`begin`/`end`) e stanno **fuori dal perimetro dichiarato nella vista stessa**, `dbops` e `maintenance`. Sorgente letto senza i commenti; le letture non contano; le tre funzioni di audit escluse per nome. `security_invoker` | `20_code/dbops/20260911-32` |
+| Riga in `dbops.presidi`, natura **CANCELLO**, `cadenza MAI`, `presidiato_da` il pgTAP | `80_data/sql/dbops/presidi.csv` |
+| `GRANT SELECT` all'app (pgTAP e digest la leggono come app) | `90_end/20260911-33` |
+| pgTAP, 6 asserzioni: vuota; gemello «esiste» (scrittori dentro il perimetro, stessa regex, senza passare dalla vista); il perimetro è {dbops, maintenance}; una funzione **costruita** in `pg_temp` che chiama la porta viene vista e classificata; la riga di catalogo c'è | `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` |
+
+Provato in `ROLLBACK`: vista vuota oggi (19 scrittori, tutti in `dbops`), 6/6.
+⭐ Il perimetro è il contratto: se un giorno `script` dovesse scrivere l'audit,
+è un changeSet su questa vista, firmato — non una riga che passa in silenzio.
 
 ---
 

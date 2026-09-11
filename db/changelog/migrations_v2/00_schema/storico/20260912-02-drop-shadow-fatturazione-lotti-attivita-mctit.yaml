@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Una shadow ORFANA di un dominio ritirato: si elimina.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4d (decisione Tid, 11-09)
+#
+# `storico.fatturazione_lotti_attivita` era la tabella di storico di
+# `vendite.fatturazione_lotti_attivita`, che apparteneva alla pipeline
+# «attività fatturabili» — dominio RITIRATO per decisione. La madre non esiste
+# più, nessun trigger la alimenta, zero righe, nessun lettore (né funzioni, né
+# viste, né backend: censito l'11-09). Non archivia niente: è rumore per ogni
+# presidio che conta le shadow.
+#
+# ⚠️ Non confonderla con `storico.comune_trasformazioni` e
+#   `storico.stradario_trasformazioni`: quelle stanno nello schema storico ma
+#   NON sono shadow — sono i registri delle fusioni di comuni e vie, scritti da
+#   fn_admin_merge_* e letti da fn_get_vie_discendenti. Restano.
+#
+# In CI la tabella non nasce (la madre non esiste): IF EXISTS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260912-02-drop-shadow-fatturazione-lotti-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260912-02-drop-shadow-fatturazione-lotti-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Elimina storico.fatturazione_lotti_attivita: shadow orfana del dominio
+        «attività fatturabili» ritirato — madre inesistente, zero righe, nessun
+        lettore. IF EXISTS: su un database ricostruito non nasce.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TABLE IF EXISTS storico.fatturazione_lotti_attivita;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La madre non esiste: non c'è niente da cui rigenerarla. Forward-only.
+              SELECT 1;
