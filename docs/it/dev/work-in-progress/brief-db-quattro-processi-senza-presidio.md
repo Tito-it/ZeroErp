@@ -205,6 +205,333 @@ presidi nuovi entrano nel pannello e nel digest **senza una riga di backend**.
 * **niente per `run_fatturazione_batch`**: è spento per decisione, e un timer
   spento non ha una liveness da presidiare.
 
+---
+
+# 10. 🔵 Risposta DB — lettura critica e piano, 2026-09-11
+
+> **Chi scrive:** DB (`dev/db-tid`). Letto il brief contro il catalogo vivo del
+> dbdev, non contro gli YAML: `dbops.presidi` e i suoi `CHECK`,
+> `vw_processi_programmazione`, `maintenance.vw_job_run_da_guardare`, le due
+> tabelle di coda, `config.email_log`, `deploy/sveglie.json`, e le decisioni
+> già prese nei due brief precedenti (sveglia §8.6, presidi §7.3 / §9.2 / §11.5).
+
+## 10.1 Che cosa regge, e che cosa no
+
+**§1 e §3 reggono, e sono il pezzo migliore del brief.** «Si presidia l'effetto,
+non lo schedulatore» è già il criterio della gemella, ed è più forte di
+qualunque interfaccia verso systemd: prende anche il processo che gira e sbaglia.
+Lo tengo come regola per tutte e quattro le richieste — **compresa la quarta**,
+dove il brief non lo applica (§10.5).
+
+**§4 regge, e la D1 non è una domanda: è già scritta nella tabella.** Su
+`vendite.fatture_stampa_coda` **ogni** transizione di stato scrive
+`data_update = now()` (claim → `IN_CORSO`, esito → `FATTO`/`ERRORE`/`PENDING`,
+reaper), e su una riga `PENDING` o `IN_CORSO` nessun altro `UPDATE` è possibile —
+`archiviato` è ammesso solo sugli stati terminali (`chk_..._archiviato_non_vivo`).
+⇒ **`data_update` è il momento in cui la riga è entrata nello stato in cui si
+trova.** Non è un ripiego: è *meglio* di `claimed_at`, perché misura da quando la
+riga è tornata `PENDING`, non da quando è nata. ⭐ E il reaper del drenatore la usa
+già così (`WHERE stato = 'IN_CORSO' AND data_update < now() - 30 min`): il
+predicato del presidio e quello del recupero leggono la stessa colonna.
+
+**§4, D2 — un'ora, come la gemella, e «30 giri» non è un argomento.** Il
+`COMMENT` della gemella lo dice per esteso: *«le soglie di un'ora non vengono da
+una misura ma dal fatto che il drenatore gira di continuo: una soglia dedotta dai
+tempi di oggi si taglierebbe addosso al carico di oggi»*. La soglia del presidio
+non è la tolleranza di liveness: è «oltre questo, qualcosa è chiaramente
+sbagliato». Una stampa `PENDING` da un'ora con un drenatore ogni due minuti che
+prende 500 righe a giro è un drenatore morto o un arretrato che nessuno ha
+deciso. Le due soglie uguali tengono anche la promessa del pgTAP di simmetria.
+
+**§5 regge, ma il predicato «viva» è sbagliato — e lo dice il vostro brief
+gemello.** `stato IN ('PENDING','RETRY')` non è ciò che `send_pending_emails`
+ripesca: §5-bis dell'altro brief ha appena scoperto che ripesca anche i **`FAILED`
+con `tentativi < max_tentativi`**, e li ripesca **apposta** (è il recupero). Una
+riga `FAILED/1` con l'SMTP configurato un'ora dopo e il cron morto resta lì per
+sempre, e il presidio scritto come nel §5 **non la vede**.
+⛔ E copiare la `WHERE` del cron nella vista sarebbe la **seconda sede** dello
+stesso predicato — il difetto esatto che il §5-bis ha pagato (commento ≠ SELECT).
+⇒ La definizione di «email ancora in coda» va scritta **una volta, nel database**:
+`config.vw_email_in_coda`. Il presidio la proietta con la soglia; **il cron la
+legge** al posto della sua `SELECT` (una riga di backend, §10.7). Da quel giorno
+non ci sono più due sedi da tenere allineate.
+
+**D3 — le soglie delle email.** Un'ora, stessa ragione del §4. Ma la colonna del
+tempo cambia per stato, perché il backoff è legittimo: `PENDING` misura da
+`data_insert` («nessuno l'ha mai presa»); `RETRY` e `FAILED` ripescabili misurano
+da **`COALESCE(prossimo_tentativo, data_insert)`** — «era dovuta un'ora fa e
+nessuno è passato». Un `RETRY` col prossimo tentativo fra dieci minuti non è un
+guasto e non compare. ⚠️ `config.email_log` non ha `data_update`: non c'è una
+colonna migliore.
+
+**D4 — `DEFINER` su entrambe, e non è una scelta: è il modello.** Le due tabelle
+hanno la RLS attiva. Le viste nascono `security_invoker = true` come le tre
+sorelle già a perimetro `DEFINER` (`vw_af_senza_giro`, `vw_eventi_non_dichiarati`,
+`vw_riferimenti_morti_da_sanare`): una persona le legge col **suo** perimetro,
+`fn_conta_presidio` le conta da proprietario. Il digest porta il numero. ⚠️ Il
+`security_invoker` va nel `CREATE VIEW` stesso: un `CREATE OR REPLACE` successivo
+senza la clausola lo **azzera** (è già successo).
+
+**D7 — `NULL`.** Sono viste che devono restare vuote; la colonna `motivo` è
+informazione per chi legge, non uno stato da confrontare.
+
+**§9 regge tutto.** Niente systemd, niente backfill, niente sulle code.
+
+## 10.2 ⛔ §6 — il brief ha ragione sulla conclusione e sbaglia la premessa
+
+**La premessa sbagliata: «il backend non può fare niente da solo».** Per §6 può.
+`apps.core.services.sveglie` + `job_run_log` sono già un building block del
+backend (è il badge di liveness dei due drenatori): generalizzarlo a tutte le
+sveglie con `tolleranza_minuti` è un `for`, e il pannello dei presidi lo
+mostrerebbe a ogni apertura. Zero database.
+
+**Ma il pannello è un canale PULL, e la premessa di tutto il cantiere dei
+presidi è che «guardare non è di nessuno».** Un presidio che qualcuno deve
+aprire è il difetto da cui il digest è nato. ⇒ Per §6 serve un **push che non
+stia dentro il digest**. La forma giusta è la **guardia reciproca**: il digest
+guarda tutti; **qualcosa fuori dal backend** guarda il digest. pgAgent è quel
+qualcosa — l'avete visto bene: vive dentro il database, e non muore con systemd.
+
+⭐ **E qui la D5 si decide da sola, con una ragione più solida di
+«tolleranza è modello»**: il guardiano dall'altra parte del muro **deve sapere
+che cosa aspettarsi**, e l'unica cosa che legge è il catalogo. Non è che la
+tolleranza *sia* modello in astratto — è che **il lettore che serve sta nel
+database, quindi il dato deve stare dove lui legge**. Una sede sola resta una
+sede sola: il campo **esce** da `sveglie.json`.
+
+**Sulla distinzione cadenza/tolleranza, una correzione.** Non sono indipendenti:
+il vostro stesso JSON scrive `1560 = un giro più due ore`. La lettura che regge
+è un'altra: la tolleranza è il **contratto** del processo (*«se sto bene, lascio
+un segno almeno ogni N minuti»*); la cadenza è **come il deploy lo onora**. Il
+contratto è del software, uguale su ogni installazione ⇒ catalogo. Il modo di
+onorarlo è dell'host ⇒ deploy. ⚠️ E il deploy può **violare** il contratto (un
+timer più lento della tolleranza): quella è una verifica **vostra**, sul JSON
+(§10.7), e non serve al DB.
+
+⛔ **Il limite che D5 porta, e va dichiarato ora.** Il catalogo non sa quali
+processi sono **accesi su questo host** (`abilita`). Oggi non morde: ogni sveglia
+`abilita: true` è universale, e `run_fatturazione_batch` è spento **per decisione
+di prodotto**, non per host — quindi a catalogo ha tolleranza `NULL` (= «non si
+presidia»), e il giorno in cui si accende è una release, non un tweak. Il giorno
+in cui un processo sarà acceso su un host e spento su un altro, la risposta non
+è una colonna nel JSON: è un **registro di silenziamento** a database, come tutti
+i debiti dichiarati di questa famiglia. Scritto qui perché non sembri una
+dimenticanza.
+
+**Che cosa il catalogo compra, oltre a §6.** Con la tolleranza a catalogo,
+`vw_processi_programmazione` smette di dire `FUORI_PORTATA` ai `COMMAND` che
+dichiarano un contratto: un `COMMAND` con l'ultima corsa più vecchia della
+tolleranza è **`MUTO`**, e finisce in `da_guardare` — cioè nel pannello **e** nel
+digest — senza nessuna vista nuova e nessuna riga di catalogo nuova. ⭐ E chiude
+il **§11.5 del brief dei presidi** dal lato che il backend aveva lasciato aperto:
+un timer dichiarato e mai installato non ha corse ⇒ `MAI_PARTITO` ⇒ presidio.
+`maintenance.vw_job_run_da_guardare` lo aveva già scritto nel proprio `COMMENT`:
+*«non vede il job che non parte affatto: per quello servirebbe che ogni processo
+dichiarasse ogni quanto deve girare, e `dbops.processi` non ce l'ha»*. Adesso ce
+l'avrebbe.
+
+**Il push — e il brief non se lo chiede.** pgAgent **non spedisce** e **non
+conosce il destinatario**: quello è di deploy (`.env.systemd`, decisione §9.2),
+e resta lì. ⇒ Il guardiano non manda una mail: **accoda un lavoro** su
+`dbops.coda_lavori` (`fn_accoda_lavoro`, con `idempotency_key` per non
+accodarne due). Lo esegue `draina_coda_lavori` — il processo **più vivo** del
+backend, ogni minuto, con badge in topbar — che manda la mail col destinatario
+**suo**. Nessun indirizzo entra nel database. ⭐ È già un pattern di casa:
+`20260905-25` è un job pgAgent che accoda su `coda_lavori`.
+**Perimetro del guardiano: SOLO `digest_presidi`.** Tutto il resto lo guarda già
+il digest; un guardiano generale sarebbe un secondo allarme sulle stesse cose.
+
+## 10.3 ⛔ §7-bis — il listener ha una terza forma, e costa zero righe
+
+Le due forme del brief (battito su `job_run_log`, timestamp che si sovrascrive)
+sono entrambe **un processo che dichiara di essere vivo**. Ma un listener
+`LISTEN/NOTIFY` tiene **una connessione aperta al database**, e quella
+connessione è visibile in `pg_stat_activity` — con `application_name`,
+`usename`, `backend_start`. Verificato sul dbdev: `application_name` si legge
+anche **senza** `pg_read_all_stats`, da qualunque ruolo.
+
+⇒ **Il segno di vita del listener è la sua connessione**: se il processo muore,
+la sessione sparisce; se sta riconnettendo, non c'è — ed è vero. Non una
+dichiarazione, un fatto. Nessuna riga sul giornale, nessuna tabella nuova, e la
+decisione del 2026-09-05 (un solo run) **resta**: *«è vivo adesso?»* ha la sua
+sede, ed è `pg_stat_activity`.
+
+Costo lato backend: **una riga** — `application_name = 'listen_cambio_reparto'`
+in `_get_conninfo()` (§10.7). Costo lato DB: il database deve sapere che per quel
+processo il segno di vita è una **sessione** e non una **corsa** — e qui vale
+quello che il brief della sveglia §8.6 aveva già scritto: *«che sia un listener
+il database non lo sa… se serve, è una colonna»*. Serve.
+
+## 10.4 Le decisioni prese dal DB, in una riga ciascuna
+
+| # | Decisione |
+| --- | --- |
+| D1 | `data_update`: è l'ingresso nello stato corrente, per costruzione della tabella |
+| D2 | un'ora, come la gemella — la soglia non deriva dalla cadenza |
+| D3 | un'ora; `PENDING` da `data_insert`, `RETRY`/`FAILED` ripescabili da `COALESCE(prossimo_tentativo, data_insert)`; il predicato «in coda» sta in `config.vw_email_in_coda`, una volta sola |
+| D4 | `DEFINER` su entrambe, `security_invoker = true` nel `CREATE VIEW` |
+| D7 | `NULL`: viste che devono restare vuote |
+
+## 10.5 🟠 Le domande a Tid — una alla volta, in questo ordine
+
+| # | Domanda | Raccomandazione DB |
+| --- | --- | --- |
+| **Q1 (= D5)** | `tolleranza_minuti` va a catalogo su `dbops.processi`, e **esce** da `sveglie.json`? | **sì**, per la ragione di §10.2: il guardiano vive nel database e legge solo il catalogo. Col limite dichiarato su `abilita`. ✅ **Deciso da Tid, 2026-09-11: sì** |
+| **Q2** | Il guardiano pgAgent del digest **accoda un lavoro** su `coda_lavori` che il drenatore esegue e spedisce col destinatario del backend? | **sì**: nessun indirizzo nel DB, e il canale è il processo più vivo. ✅ **Deciso da Tid, 2026-09-11: sì** |
+| **Q3 (= D6)** | Il listener si presidia dalla **sessione** (`pg_stat_activity` + `application_name`), senza battito né tabella? | **sì**: è un fatto, non una dichiarazione, e la decisione del 2026-09-05 resta in piedi. ✅ **Deciso da Tid, 2026-09-11: sì** |
+
+## 10.6 Il piano — due blocchi, il secondo dipende dalle risposte
+
+### Blocco A — le due viste (non aspetta nessuna risposta)
+
+| # | File | Che cosa fa |
+| --- | --- | --- |
+| A1 | `20_code/dbops/…-create-vw-fatture-stampa-coda-da-guardare` | la gemella: `ERRORE` / `IN_CORSO` > 1h / `PENDING` > 1h su `data_update`, `NOT archiviato`; `security_invoker`; `GRANT SELECT` a `zeroerp_app`; `COMMENT` che dichiara la natura |
+| A2 | `20_code/config/…-create-vw-email-in-coda` | **la definizione unica** di «ancora in coda per il cron»: `PENDING`, `RETRY`, e `FAILED` con `tentativi < max_tentativi`, con la colonna `dovuta_dal`; `security_invoker`. ⚠️ **Non è un presidio**: è una vista di dominio, e sta in `config` |
+| A3 | `20_code/dbops/…-create-vw-email-da-guardare` | il presidio: A2 con la soglia di un'ora su `dovuta_dal`, più il `motivo` |
+
+⛔ **I presidi stanno in `dbops`, non nello schema della tabella che guardano** —
+e il brief lo sbagliava (`vendite.vw_coda_stampa_da_guardare`). Non è una
+preferenza: il test 2 di `test-catalogo-presidi-v1` legge il perimetro **dagli
+schemi che compaiono nel catalogo**, e pretende che *ogni* vista di quegli schemi
+sia a catalogo. Una riga `vendite.vw_…` porterebbe dentro tutte le `vw_*_lista`
+di `vendite` — decine di righe `INVENTARIO` da dichiarare per un presidio solo.
+È la stessa ragione per cui `vw_af_senza_giro` e `vw_eventi_non_dichiarati`
+leggono `vendite.*` e vivono in `dbops`.
+| A4 | `80_data/sql/dbops/presidi.csv` | due righe: `ZERO`, `GIORNALIERA`, `DEFINER`, stato `NULL`, nota che dice il perché |
+| A5 | pgTAP | `vendite/test-vw-fatture-stampa-coda-da-guardare.sql` **gemello riga per riga** di `dbops/test-vw-coda-lavori-da-guardare.sql` (7 test: i tre motivi, le due soglie, archiviato; ⚠️ niente `ANNULLATO`, che la stampa non ha); `config/test-vw-email-da-guardare.sql` (PENDING vecchia, RETRY con backoff non ancora dovuto **non** compare, FAILED ripescabile compare, FAILED terminale **non** compare, SENT/SIMULATA no); il test del catalogo (`test-catalogo-presidi-v1`) diventa rosso da solo senza A4 — è il verso giusto |
+| A6 | doc manuale | `vendite/manual/vw_fatture_stampa_coda_da_guardare.md`, `config/manual/vw_email_in_coda.md`, `config/manual/vw_email_da_guardare.md` |
+
+### Blocco B — il contratto di liveness (se Q1 = sì)
+
+| # | File | Che cosa fa |
+| --- | --- | --- |
+| B1 | `00_schema/dbops/…-alter-processi-contratto-liveness` | `tolleranza_minuti integer NULL CHECK (> 0)`, ammesso solo su `canale = 'COMMAND'`; `segno_di_vita text NOT NULL DEFAULT 'GIORNALE' CHECK IN ('GIORNALE','SESSIONE')` (se Q3 = sì); `SESSIONE` ⇒ tolleranza `NULL` |
+| B2 | `80_data/sql/dbops/processi.csv` | ⚠️ le due colonne nuove entrano nel CSV senza toccare il mirror `20260904-13`: `loadUpdateData` carica ogni colonna dell'intestazione, la lista `columns` è solo un override di tipo (è così che `jobname_pgagent` è arrivato). I valori: `draina_coda_lavori` 10, `draina_coda_stampa` 10, `send_pending_emails` 30, `digest_presidi` 11520 (la più larga delle due corsie, come dice il JSON), `run_fatturazione_batch` `NULL`, `listen_cambio_reparto` `SESSIONE`. ⚠️ E si corregge la descrizione di `send_pending_emails`, che dice ancora «`config.email_outbox`» mentre legge `email_log` (lo dice `processi_bersagli` dal 2026-09-05) |
+| B3 | `20_code/dbops/…-update-vw-processi-programmazione-muto` | `COMMAND` con contratto: `OK` / **`MUTO`** / `MAI_PARTITO`; `SESSIONE`: `OK` se esiste una sessione con `application_name = codice`, altrimenti `MUTO`; `FUORI_PORTATA` resta per i `COMMAND` **senza** contratto. `da_guardare` nello stesso `CASE`, come oggi |
+| B4 | pgTAP | `dbops/test-vw-processi-programmazione.sql`: il test 7 cambia (un `COMMAND` con contratto **non** è più `FUORI_PORTATA`); tre test nuovi: `MUTO` su corsa vecchia, `OK` su corsa fresca, `SESSIONE` letta da `pg_stat_activity` (la sessione del test stesso, con `SET application_name`) |
+| B5 | `80_data/sql/dbops/coda_lavori_tipi.csv` (se Q2 = sì) | tipo `NOTIFICA_DIGEST_MUTO`, `attivo = false` **finché il backend non ha l'handler** — è la regola del binding |
+| B6 | `85_pgagent/…-create-pgagent-job-guardiano-digest` (se Q2 = sì) | ogni ora: se `digest_presidi` è `MUTO` sul panorama, `fn_accoda_lavoro('NOTIFICA_DIGEST_MUTO', …, p_idempotency_key => 'guardiano_digest:' || giorno)`. Un lavoro al giorno al massimo. ⚠️ `MARK_RAN` in CI come i fratelli |
+| B7 | doc manuale | `dbops/manual/processi.md` (le due colonne e il limite su `abilita`), `dbops/manual/vw_processi_programmazione.md` (`MUTO`) |
+
+### 10.7 Che cosa tocca al backend, a valle
+
+| # | Cosa | Perché |
+| --- | --- | --- |
+| 1 | `send_pending_emails` legge `config.vw_email_in_coda` al posto della sua `SELECT` | una sede sola per «in coda» — è la lezione del vostro §5-bis |
+| 2 | `tolleranza_minuti` **esce** da `sveglie.json`; `apps.core.services.sveglie` la legge dal catalogo | una sede sola (se Q1 = sì) |
+| 3 | un test: per ogni sveglia con `oncalendar`, l'intervallo ≤ tolleranza del processo | il deploy non può violare il contratto in silenzio |
+| 4 | `application_name = processo_codice` in `notify_listener._get_conninfo()` | una riga (se Q3 = sì) |
+| 5 | handler del tipo `NOTIFICA_DIGEST_MUTO`: una mail a `PRESIDI_DIGEST_DESTINATARIO` | il destinatario resta vostro (se Q2 = sì) |
+| 6 | niente per §4 e §5 nel pannello e nel digest | le due viste entrano dal catalogo, come avete scritto |
+
+⛔ **Non si applica niente**: i changeSet si scrivono e si provano con l'SQL
+estratto in transazione ritirata; l'`update` e i pgTAP li lancia Tid.
+
+## 10.8 ✅ Fatto e APPLICATO — 2026-09-11 12:42
+
+**Otto changeSet** (`20260911-10` … `-17`, numerati dopo il cantiere arrotondamenti
+che occupava `01..09`), **tre CSV**, **quattro pgTAP**, **sei pagine di manuale**.
+Tid ha applicato mentre i test venivano scritti: `databasechangelog` ha i nove id
+`EXECUTED` alle 12:42 e i tre mirror `RERAN`; i seed sono a bordo (due righe in
+`presidi`, `guardiano_digest` in `processi`, `NOTIFICA_DIGEST_MUTO` spento nei
+tipi, il contratto sui `COMMAND`).
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| A2 | `config.vw_email_in_coda` — la definizione unica, con `dovuta_dal` | `20_code/config/20260911-10` |
+| A3 | `dbops.vw_email_da_guardare` — il presidio (soglia 1h) | `20_code/dbops/20260911-11` |
+| A1 | `dbops.vw_fatture_stampa_coda_da_guardare` — la gemella | `20_code/dbops/20260911-12` |
+| B1 | `dbops.processi.tolleranza_minuti` + `segno_di_vita`, quattro `CHECK` | `00_schema/dbops/20260911-13` |
+| B3 | `vw_processi_programmazione`: `MUTO`, contratto, `SESSIONE`, tre colonne in coda | `20_code/dbops/20260911-14` |
+| B6 | `dbops.fn_guardiano_digest()` | `20_code/dbops/20260911-15` |
+| B6 | `maintenance.proc_guardiano_digest_job()` — passa dal giornale | `20_code/maintenance/20260911-16` |
+| B6 | job pgAgent `guardiano_digest`, ogni ora al minuto 20 | `85_pgagent/20260911-17` |
+| A4/B2/B5 | `presidi.csv` (+2), `processi.csv` (+2 colonne, +`guardiano_digest`, descrizione di `send_pending_emails` corretta), `coda_lavori_tipi.csv` (+1, `attivo=false`) | `80_data/sql/dbops/` |
+
+**Provato prima dell'apply, con l'SQL estratto in transazione ritirata**: gli otto
+changeSet applicano puliti; il panorama dà `OK` / `MUTO` / `MAI_PARTITO` /
+`FUORI_PORTATA` come da tabella; una sessione che si presenta col codice del
+processo porta il listener a `OK`; il guardiano torna `DIGEST_OK` a digest vivo,
+**solleva** `E_JOB_TYPE_NON_ATTIVO` a digest muto col tipo spento, accoda
+(`SISTEMA`, chiave del giorno, payload con `muto_da`) col tipo acceso, e dice
+`GIA_NOTIFICATO_OGGI` alla seconda chiamata; le email danno i quattro casi
+attesi; la stampa i tre; `fn_conta_presidio` conta entrambe le viste nuove. I sei
+guardrail statici della CI sono verdi.
+
+### ⚠️ Tre cose emerse costruendo, che il piano non diceva
+
+1. **`pg_stat_activity` è una fotografia per transazione**: la prima lettura la
+   fissa, e un `SET application_name` successivo non la aggiorna finché non si
+   chiama `pg_stat_clear_snapshot()`. Un lettore vero (pannello, digest) legge in
+   una transazione sua e non ha il problema; il pgTAP sì, e lo dichiara.
+2. **`data_update` non è un vincolo**: l'audit trigger lo porta a `now()` a ogni
+   scrittura, e la D1 regge perché sulle righe vive il drenatore fa **solo**
+   transizioni — un comportamento, non un `CHECK`. Una scrittura non di stato
+   azzererebbe l'orologio: il presidio tacerebbe un'ora in più, non suonerebbe a
+   vuoto. Scritto nel `COMMENT` e nel manuale. ⇒ Il pgTAP della stampa gira da
+   owner e **spegne l'audit trigger nella transazione** per retrodatare.
+3. **Una riga viva per fattura** (`uq_fatture_stampa_coda_vivo`): la fixture della
+   stampa vuole quattro fatture libere dell'operatore, e dove non ci sono lo
+   dichiara con `skip()`.
+
+### 🔴 Una riga che il digest mostra da subito — ed è il verso di ritiro
+
+* **`listen_cambio_reparto` → `MUTO`** finché il backend non si presenta con
+  `application_name = 'listen_cambio_reparto'` (§10.7 punto 4). Non è un falso
+  allarme dal punto di vista del database: *«non vedo nessuna sessione con quel
+  nome»* è vero. È la riga che dice al backend che cosa fare.
+* ~~`guardiano_digest` → `MAI_PARTITO`~~ — **chiuso da solo**: il job gira ogni
+  ora dalle 13:20 (verificato alle 18:20: tre corse consecutive `ok`, `done`),
+  e il panorama lo dà `OK`.
+
+## 10.9 ✅ CHIUSO LATO DB — 2026-09-11, sera
+
+Stato vivo, riletto dal dbdev:
+
+| Processo | Stato | |
+| --- | --- | --- |
+| `digest_presidi` | `OK` | contratto 11520 min |
+| `draina_coda_lavori` · `draina_coda_stampa` · `send_pending_emails` | `OK` | contratto 10 · 10 · 30 min |
+| `guardiano_digest` | `OK` | PGAGENT, tre corse `ok` |
+| `run_fatturazione_batch` | `FUORI_PORTATA` | senza contratto, spento per prodotto |
+| `listen_cambio_reparto` | **`MUTO`** | ⇒ backend, §10.7 punto 4 |
+
+`fn_conta_presidio('dbops.vw_email_da_guardare')` = 0 ·
+`fn_conta_presidio('dbops.vw_fatture_stampa_coda_da_guardare')` = 0: le due
+viste nuove sono vuote come devono. pgTAP verdi, guardrail verdi, guida per le
+persone aggiornata (`processi-automatici-classe-e-identita.md`: il limite
+«FUORI_PORTATA sui COMMAND» non c'è più, e la tabella delle viste porta le
+tre nuove).
+
+**Tutto ciò che resta è del backend, ed è in §10.7.** Il primo rosso che vedrà
+è la riga `MUTO` del listener nel digest — una riga di codice la spegne.
+
+
+### I pgTAP — lanciati da Tid, ✅ verdi (2026-09-11)
+
+Tre correzioni dopo la prima corsa, tutte del test e non del modello: `like` →
+`alike` (in pgTAP `like` è una parola chiave), un apostrofo non raddoppiato, e la
+fixture della stampa che sul database ricostruito da zero moriva **prima** dello
+`skip()` — per due cause distinte, entrambe «CI = database da zero»:
+`fn_pgtap_emittente_operatore()` solleva senza emittenti (e un `CASE` in una
+query non basta: il pianificatore può eseguire una funzione `STABLE` già in fase
+di stima, quindi la chiamata è diventata procedurale dentro un `IF`), e l'audit
+trigger nasce da `ci_apply` e sulla CI può non esistere (si spegne solo se c'è,
+letto da `pg_trigger`). ⭐ Il file ora arriva allo `skip()` dove i tre fratelli
+(`test-coda-archiviazione`, `test-rls-fatture-stampa-coda*`) restano
+`ERRORE_FIXTURE` in baseline.
+
+| File | Plan | Runner |
+| --- | --- | --- |
+| `db/pgtap/dbops/test-vw-email-da-guardare.sql` | 8 | owner (retrodata `email_log`, rilegge le righe di sistema) |
+| `db/pgtap/dbops/test-vw-fatture-stampa-coda-da-guardare.sql` | 6 | owner (spegne l'audit trigger nella transazione); `skip()` senza 4 fatture libere |
+| `db/pgtap/dbops/test-fn-guardiano-digest.sql` | 9 | owner (scrive `job_run_log`, cambia `coda_lavori_tipi.attivo`) |
+| `db/pgtap/dbops/test-vw-processi-programmazione.sql` | 13 → **19** | owner (già) — test 7 riscritto in due, cinque nuovi (14..18) |
+
+E il **test 2 di `test-catalogo-presidi-v1`** deve restare verde: le due viste
+nuove sono in `dbops` e a catalogo.
+
 *Brief del 2026-09-11. Le misure sono letture di `backend-dev` e del dbdev di
 quel giorno: valgono come controesempio, non come motivo. Il motivo sta sul
 modello, ed è che un processo che non parte non lascia una riga da nessuna

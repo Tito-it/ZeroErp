@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL CATALOGO DICHIARA IL CONTRATTO DI LIVENESS — non la sveglia.
+#   Brief: brief-db-quattro-processi-senza-presidio §6 · §10.2 · §10.3 · B1
+#   Decisione di Tid, 2026-09-11 (Q1 e Q3).
+#
+# Due colonne su `dbops.processi`:
+#
+#   tolleranza_minuti  «se sto bene, lascio un segno almeno ogni N minuti».
+#                      NULL = la liveness non si presidia da qui.
+#   segno_di_vita      DOVE il database cerca quel segno:
+#                        GIORNALE  una corsa su maintenance.job_run_log (timer)
+#                        SESSIONE  una connessione viva in pg_stat_activity con
+#                                  application_name = codice (servizi sempre
+#                                  accesi, es. un listener LISTEN/NOTIFY)
+#
+# ── ⭐ PERCHE' A CATALOGO, e non e' «la tolleranza e' modello» ─────────
+#   `maintenance.vw_job_run_da_guardare` lo aveva scritto nel proprio COMMENT:
+#   «non vede il job che non parte affatto: per quello servirebbe che ogni
+#   processo dichiarasse ogni quanto deve girare, e dbops.processi non ce l'ha».
+#   E il guardiano del digest (§10.2) vive in pgAgent, cioe' nel database: puo'
+#   leggere SOLO il catalogo. ⇒ Il dato sta dove sta il lettore che serve.
+#   ⭐ Una sede sola resta una sede sola: `tolleranza_minuti` ESCE da
+#   `backend/deploy/sveglie.json` (lavoro del backend, brief §10.7).
+#
+# ── ⚠️ LA CORREZIONE ALLA DISTINZIONE DEL BRIEF ────────────────────
+#   Cadenza e tolleranza NON sono indipendenti (il JSON stesso scrive «1560 =
+#   un giro piu' due ore»). La lettura che regge: la tolleranza e' il CONTRATTO
+#   del processo, uguale su ogni installazione; la cadenza e' COME il deploy lo
+#   onora, e resta nel deploy. Il deploy puo' violarlo (un timer piu' lento
+#   della tolleranza): e' una verifica del backend sul JSON, non del database.
+#
+# ── ⛔ IL LIMITE, dichiarato ORA ────────────────────────────────────
+#   Il catalogo non sa quali processi sono ACCESI su questo host (`abilita` sta
+#   nel JSON). Oggi non morde: ogni sveglia accesa e' universale, e
+#   `run_fatturazione_batch` e' spento per decisione di PRODOTTO — tolleranza
+#   NULL a catalogo, e il giorno in cui si accende e' una release. Il giorno in
+#   cui un processo sara' acceso su un host e spento su un altro, la risposta
+#   sara' un registro di silenziamento a database, non una colonna nel JSON.
+#
+# ── ⭐ `SESSIONE`: il segno di vita e' un FATTO, non una dichiarazione ─
+#   Un listener LISTEN/NOTIFY tiene una connessione aperta: se muore, la
+#   sessione sparisce. `application_name` si legge da qualunque ruolo, senza
+#   pg_read_all_stats (verificato sul dbdev il 2026-09-11). Nessun battito sul
+#   giornale, nessuna tabella nuova, e la decisione del 2026-09-05 (un solo run
+#   all'avvio) resta in piedi. Brief della sveglia §8.6 lo aveva gia' detto:
+#   «che sia un listener il database non lo sa… se serve, e' una colonna».
+#   ⚠️ Per SESSIONE la tolleranza e' NULL: la domanda e' «c'e' ADESSO?».
+#
+# ── ⚠️ SOLO SUI `COMMAND` ───────────────────────────────────────────
+#   Per PGAGENT la programmazione si legge da pgagent.*, per CODA una cadenza
+#   non esiste. Il contratto serve dove il database non vede la sveglia.
+#
+# Verifica: db/pgtap/dbops/test-vw-processi-programmazione.sql (test 7, 14..17)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260911-13-alter-processi-contratto-liveness-mctit.yaml
+
+  - changeSet:
+      id: 20260911-13-alter-processi-contratto-liveness
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi prende il contratto di liveness: tolleranza_minuti (entro
+        quanto l'ultimo segno di vita vale ancora «vivo»; NULL = non si presidia
+        da qui) e segno_di_vita (GIORNALE = una corsa su job_run_log; SESSIONE =
+        una connessione viva in pg_stat_activity con application_name = codice).
+        Solo sui COMMAND: e' il contratto per i processi di cui il database non
+        vede la sveglia. Decisione di Tid 2026-09-11; tolleranza_minuti ESCE da
+        deploy/sveglie.json, una sede sola.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi }
+            - not:
+                - columnExists:
+                    schemaName: dbops
+                    tableName: processi
+                    columnName: tolleranza_minuti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN tolleranza_minuti integer,
+                  ADD COLUMN segno_di_vita text NOT NULL DEFAULT 'GIORNALE';
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_tolleranza_positiva
+                  CHECK (tolleranza_minuti IS NULL OR tolleranza_minuti > 0);
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_segno_di_vita
+                  CHECK (segno_di_vita IN ('GIORNALE', 'SESSIONE'));
+
+              -- ⚠️ Il contratto vale dove il database NON vede la sveglia: i
+              --   COMMAND. Per PGAGENT la programmazione sta in pgagent.*, per
+              --   CODA una cadenza non esiste.
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_contratto_solo_command
+                  CHECK (canale = 'COMMAND'
+                         OR (tolleranza_minuti IS NULL AND segno_di_vita = 'GIORNALE'));
+
+              -- ⚠️ SESSIONE non ha una tolleranza: la domanda e' «c'e' ADESSO?».
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_sessione_senza_tolleranza
+                  CHECK (segno_di_vita <> 'SESSIONE' OR tolleranza_minuti IS NULL);
+
+              COMMENT ON COLUMN dbops.processi.tolleranza_minuti IS
+                  'Il CONTRATTO di liveness del processo: «se sto bene, lascio un segno di '
+                  'vita almeno ogni N minuti». NULL = la liveness non si presidia da qui '
+                  '(un timer spento per decisione, un processo a SESSIONE, i PGAGENT che '
+                  'hanno la programmazione in pgagent.*). ⭐ Sta a CATALOGO e non nel '
+                  'deploy (rev 2026-09-11, decisione di Tid) perche'' il lettore che serve '
+                  'vive nel database: il guardiano del digest e'' un job pgAgent e legge '
+                  'solo qui. Una sede sola: il campo tolleranza_minuti ESCE da '
+                  'backend/deploy/sveglie.json. ⚠️ Non e'' indipendente dalla cadenza: la '
+                  'tolleranza e'' il contratto, la cadenza (oncalendar, nel deploy) e'' come '
+                  'l''host lo onora — e un timer piu'' lento della tolleranza lo viola. '
+                  'Quella verifica e'' del backend, sul JSON. ⛔ LIMITE DICHIARATO: il '
+                  'catalogo non sa quali processi sono ACCESI su questo host. Oggi ogni '
+                  'sveglia accesa e'' universale e run_fatturazione_batch e'' spento per '
+                  'decisione di prodotto (NULL); un processo acceso su un host e spento su '
+                  'un altro vorra'' un registro di silenziamento, non una colonna nel JSON. '
+                  'Solo sui COMMAND (chk_processi_contratto_solo_command). Lo legge '
+                  'dbops.vw_processi_programmazione: un COMMAND con contratto e'' OK, MUTO o '
+                  'MAI_PARTITO — non piu'' FUORI_PORTATA.';
+
+              COMMENT ON COLUMN dbops.processi.segno_di_vita IS
+                  'DOVE il database cerca il segno di vita del processo. GIORNALE (default): '
+                  'l''ultima corsa su maintenance.job_run_log, confrontata con '
+                  'tolleranza_minuti — e'' la forma dei timer. SESSIONE: una connessione '
+                  'VIVA in pg_stat_activity con application_name = codice — e'' la forma dei '
+                  'servizi sempre accesi, come un listener LISTEN/NOTIFY, che scrivono un '
+                  'solo run all''avvio (decisione di Tid del 2026-09-05, che RESTA). ⭐ Una '
+                  'sessione e'' un FATTO, non una dichiarazione: se il processo muore la '
+                  'sessione sparisce, se sta riconnettendo non c''e'' — ed e'' vero. Niente '
+                  'battito sul giornale (che e'' il giornale delle CORSE), niente tabella '
+                  'nuova. application_name si legge da qualunque ruolo senza '
+                  'pg_read_all_stats (verificato 2026-09-11). ⚠️ Il backend deve presentarsi '
+                  'con application_name = codice del processo: e'' una riga in '
+                  'notify_listener._get_conninfo(). Per SESSIONE la tolleranza e'' NULL '
+                  '(chk_processi_sessione_senza_tolleranza): la domanda e'' «c''e'' ADESSO?». '
+                  'Brief della sveglia §8.6: «che sia un listener il database non lo sa… se '
+                  'serve, e'' una colonna». Serviva. rev 2026-09-11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_sessione_senza_tolleranza,
+                  DROP CONSTRAINT IF EXISTS chk_processi_contratto_solo_command,
+                  DROP CONSTRAINT IF EXISTS chk_processi_segno_di_vita,
+                  DROP CONSTRAINT IF EXISTS chk_processi_tolleranza_positiva;
+              ALTER TABLE dbops.processi
+                  DROP COLUMN IF EXISTS segno_di_vita,
+                  DROP COLUMN IF EXISTS tolleranza_minuti;

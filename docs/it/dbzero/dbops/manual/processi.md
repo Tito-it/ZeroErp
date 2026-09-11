@@ -90,10 +90,64 @@ premuto il pulsante. Per questo i presidi che cercano gli utenti tecnici
   dei run di riconoscere chi sta girando senza che si debba toccare la
   configurazione dello scheduler.
 * `classe`: `MANUTENZIONE` | `AMMINISTRAZIONE` | `DOMINIO` (CHECK).
-* `canale`: `PGAGENT` | `COMMAND` | `CODA` (CHECK).
+* `canale`: `PGAGENT` | `COMMAND` | `CODA` | `CODA_AUTOMATICA` (CHECK).
 * `attivo` / `obsoleto_dal`: un processo ritirato **non si cancella**, si
   spegne. La sua storia nel giornale dei run resta leggibile.
 * `meta`: estensioni JSONB.
+* `tolleranza_minuti` / `segno_di_vita` (dal 2026-09-11): il **contratto di
+  liveness** — sezione sotto. Solo sui `COMMAND`.
+
+---
+
+### ⭐ Il contratto di liveness — il catalogo dichiara l'attesa, non la sveglia
+
+Per i `PGAGENT` la programmazione si legge da `pgagent.*`; per i `CODA` una
+cadenza non esiste. Per i **`COMMAND`** — quelli che sveglia systemd — il
+database non vedeva niente, e li chiamava `FUORI_PORTATA`.
+[maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare)
+lo aveva scritto: *«non vede il job che non parte affatto: per quello servirebbe
+che ogni processo dichiarasse ogni quanto deve girare, e `dbops.processi` non ce
+l'ha»*. Ora ce l'ha.
+
+| Colonna | Che cosa dice | Valori |
+| --- | --- | --- |
+| `tolleranza_minuti` | *«se sto bene, lascio un segno di vita almeno ogni N minuti»* | intero > 0, oppure `NULL` = non si presidia da qui |
+| `segno_di_vita` | **dove** il database cerca quel segno | `GIORNALE` (default): l'ultima corsa su `job_run_log` · `SESSIONE`: una connessione viva in `pg_stat_activity` con `application_name = codice` |
+
+**Perché a catalogo e non nel deploy.** Non perché «la tolleranza è modello» in
+astratto: perché **il lettore che serve vive nel database**. Il guardiano del
+digest ([fn_guardiano_digest](/dbzero/dbops/manual/fn_guardiano_digest)) è un job
+pgAgent, e legge solo qui. Una sede sola resta una sede sola: `tolleranza_minuti`
+**esce** da `backend/deploy/sveglie.json` (lavoro del backend).
+
+⚠️ **Cadenza e tolleranza non sono indipendenti** — il deploy stesso scriveva
+*«1560 = un giro più due ore»*. La lettura che regge: la tolleranza è il
+**contratto** del processo, uguale su ogni installazione; la cadenza
+(`oncalendar`, nel deploy) è **come l'host lo onora**. Un timer più lento della
+tolleranza lo viola: quella verifica è del backend, sul JSON.
+
+⭐ **`SESSIONE` è un fatto, non una dichiarazione.** Un listener `LISTEN/NOTIFY`
+tiene una connessione aperta: se muore, la sessione sparisce. `application_name`
+si legge da qualunque ruolo, senza `pg_read_all_stats`. Niente battito sul
+giornale (che è il giornale delle *corse*), niente tabella nuova; la decisione
+del 2026-09-05 — un solo run all'avvio — resta. Per `SESSIONE` la tolleranza è
+`NULL`: la domanda è «c'è **adesso**?».
+
+⛔ **Il limite, dichiarato ora.** Il catalogo non sa quali processi sono
+**accesi su questo host** (`abilita` sta nel deploy). Oggi non morde: ogni
+sveglia accesa è universale, e `run_fatturazione_batch` è spento per decisione
+di **prodotto** — tolleranza `NULL`, e il giorno in cui si accende è una
+release. Un processo acceso su un host e spento su un altro vorrà un **registro
+di silenziamento** a database, non una colonna nel JSON.
+
+Vincoli: `chk_processi_tolleranza_positiva`, `chk_processi_segno_di_vita`,
+`chk_processi_contratto_solo_command`, `chk_processi_sessione_senza_tolleranza`.
+Lo legge [vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione):
+`OK` / `MUTO` / `MAI_PARTITO`.
+
+Valori al 2026-09-11 (dal seed): `draina_coda_lavori` 10, `draina_coda_stampa`
+10, `send_pending_emails` 30, `digest_presidi` 11520 (la più larga delle due
+corsie), `listen_cambio_reparto` `SESSIONE`, `run_fatturazione_batch` `NULL`.
 
 ---
 

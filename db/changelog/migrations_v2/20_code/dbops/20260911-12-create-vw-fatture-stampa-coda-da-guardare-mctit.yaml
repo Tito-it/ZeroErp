@@ -1,0 +1,169 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA GEMELLA CHE MANCAVA — il presidio della coda stampa.
+#   Brief: brief-db-quattro-processi-senza-presidio §4 · §10.1 · A1
+#
+# `vendite.fatture_stampa_coda` e' la gemella di `dbops.coda_lavori`: stessa
+# forma, stessa bandiera `archiviato`, e un pgTAP che confronta le due perche'
+# la simmetria non resti una promessa. ⛔ Ma il presidio ce l'aveva una sola: se
+# il drenatore della stampa si ferma, le fatture restano in coda e il digest
+# non dice niente.
+#
+# ── ⭐ D1 — `data_update` E' L'ULTIMA TRANSIZIONE DI STATO ────────────
+#   La tabella non ha `claimed_at`. Non serve: l'audit trigger
+#   (`trgfn_audit_data_user_generic`) porta `data_update` a now() a OGNI
+#   scrittura, e sulle righe VIVE (PENDING, IN_CORSO) l'unica scrittura che il
+#   drenatore fa e' una transizione di stato — claim, esito, reaper.
+#   `archiviato` e' ammesso solo sugli stati terminali
+#   (chk_fatture_stampa_coda_archiviato_non_vivo). ⇒ `data_update` dice da
+#   quando la riga e' nello stato in cui si trova. E' PIU' preciso di
+#   `claimed_at`: misura da quando e' TORNATA PENDING, non da quando e' nata.
+#   ⭐ Il reaper del drenatore la legge gia' cosi'
+#   (`WHERE stato = 'IN_CORSO' AND data_update < now() - 30 min`): il presidio e
+#   il recupero guardano la stessa colonna.
+#   ⚠️ NON e' un vincolo del database, e va detto: una scrittura NON di stato su
+#   una riga viva (oggi nessuno la fa) azzererebbe l'orologio. L'effetto sarebbe
+#   un presidio che tace un'ora IN PIU', non uno che suona a vuoto — il verso
+#   meno grave, ma dichiarato.
+#
+# ── ⚠️ D2 — un'ora, come la gemella, e «30 giri» non e' un argomento ──
+#   Il drenatore gira ogni 2 minuti, ma la soglia non deriva dalla cadenza —
+#   vale il COMMENT della gemella: una soglia dedotta dai tempi di oggi si
+#   taglierebbe addosso al carico di oggi. Una stampa PENDING da un'ora con un
+#   drenatore che prende 500 righe ogni due minuti e' un drenatore morto o un
+#   arretrato che nessuno ha deciso. E due soglie uguali tengono la promessa di
+#   simmetria del pgTAP.
+#   ⚠️ IN_CORSO > 1h NON puo' succedere con il drenatore vivo: il suo reaper
+#   riporta a PENDING dopo 30 minuti. Quindi quel ramo scatta SOLO se il
+#   drenatore e' morto a meta' E non e' piu' ripartito — che e' proprio il caso
+#   da vedere.
+#
+# ── ⛔ PERIMETRO `DEFINER`: la tabella ha la RLS ─────────────────────
+#   `rls_fatture_stampa_coda_ef_whitelist` pretende un operatore con la
+#   whitelist emittenti. La vista e' `security_invoker`: una persona la legge
+#   col suo perimetro; il digest la conta da proprietario con fn_conta_presidio
+#   e riporta il numero. ⛔ Sta in `dbops` e non in `vendite`: il test 2 del
+#   catalogo dei presidi legge il perimetro dagli schemi che vi compaiono, e
+#   `vendite` porterebbe dentro tutte le `vw_*_lista`.
+#
+# ── ⚠️ Niente ANNULLATO: la stampa non ce l'ha ──────────────────────
+#   Quattro stati contro i cinque della gemella. Il ramo «deciso da qualcuno»
+#   qui non esiste; `archiviato` («gia' guardato») si'.
+#
+# Verifica: db/pgtap/dbops/test-vw-fatture-stampa-coda-da-guardare.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260911-12-create-vw-fatture-stampa-coda-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20260911-12-create-vw-fatture-stampa-coda-da-guardare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_fatture_stampa_coda_da_guardare: la gemella di
+        vw_coda_lavori_da_guardare per la coda stampa — falliti (ERRORE), presi
+        e mai chiusi (IN_CORSO da oltre un'ora), mai presi (PENDING da oltre
+        un'ora). DEVE restare VUOTA. data_update e' l'ultima transizione di
+        stato (l'audit trigger lo scrive a ogni UPDATE, e sulle righe vive il
+        drenatore fa solo transizioni). Perimetro DEFINER a catalogo:
+        la tabella ha la RLS.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: fatture_stampa_coda }
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_stampa_coda
+                columnName: archiviato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_fatture_stampa_coda_da_guardare
+              WITH (security_invoker = true) AS
+              SELECT c.id,
+                     c.sorgente_tipo_id,
+                     c.sorgente_id,
+                     c.sorgente_uid,
+                     c.lotto_id,
+                     c.stato,
+                     c.tentativi,
+                     -- ⭐ Tre motivi, perche' sono tre guasti diversi e vogliono
+                     --   tre gesti diversi — gli stessi della gemella.
+                     CASE
+                         WHEN c.stato = 'ERRORE'
+                             THEN 'fallito: tentativi esauriti'
+                         WHEN c.stato = 'IN_CORSO'
+                             THEN 'preso e mai chiuso: il worker e'' morto a meta'''
+                         ELSE 'mai preso: il drenatore della stampa non sta girando'
+                     END AS motivo,
+                     -- ⭐ data_update = ultima transizione di stato: l'audit
+                     --   trigger lo scrive a ogni UPDATE, e sulle righe vive
+                     --   il drenatore fa solo transizioni.
+                     now() - c.data_update AS da_quanto,
+                     c.ultimo_errore,
+                     c.documento_id,
+                     c.data_insert,
+                     c.data_update
+                FROM vendite.fatture_stampa_coda c
+               WHERE NOT c.archiviato
+                 AND (
+                     c.stato = 'ERRORE'
+                     -- Preso da un worker che non l'ha mai chiuso — e il reaper
+                     -- del drenatore, che lo riporterebbe PENDING a 30 minuti,
+                     -- non e' passato: e' morto anche lui.
+                     OR (c.stato = 'IN_CORSO'
+                         AND c.data_update < now() - interval '60 minutes')
+                     -- ⛔ Il caso che conta di piu' e si vede di meno: nessuno
+                     --   l'ha nemmeno preso. Un drenatore spento non produce
+                     --   errori, produce ASSENZA.
+                     OR (c.stato = 'PENDING'
+                         AND c.data_update < now() - interval '60 minutes')
+                 );
+
+              COMMENT ON VIEW dbops.vw_fatture_stampa_coda_da_guardare IS
+                  'PRESIDIO: le stampe in coda che chiedono un occhio — fallite (ERRORE), '
+                  'prese e mai chiuse (IN_CORSO da oltre un''ora: il worker e'' morto a '
+                  'meta'' e il reaper non e'' passato), o mai prese (PENDING da oltre '
+                  'un''ora: ⛔ il drenatore della stampa non sta girando). DEVE restare '
+                  'VUOTA. E'' la gemella di dbops.vw_coda_lavori_da_guardare, nata il '
+                  '2026-09-11 perche'' delle due code gemelle una sola aveva il presidio. '
+                  '⭐ data_update e'' l''ultima transizione di stato: l''audit trigger lo porta '
+                  'a now() a ogni scrittura, e sulle righe vive l''unica scrittura del '
+                  'drenatore e'' una transizione (archiviato vale solo sugli stati terminali) '
+                  '— il reaper lo legge gia'' cosi''. ⚠️ Non e'' un vincolo: una scrittura non '
+                  'di stato su una riga viva azzererebbe l''orologio, e il presidio tacerebbe '
+                  'un''ora in piu'' (non suonerebbe a vuoto). ⚠️ Un''ora non deriva dalla cadenza di '
+                  'due minuti: una soglia dedotta dai tempi di oggi si taglierebbe addosso '
+                  'al carico di oggi. ⚠️ Niente ANNULLATO: la stampa non ce l''ha. Fuori '
+                  'archiviato (gia'' guardato). ⛔ Perimetro DEFINER a catalogo: la tabella '
+                  'ha la RLS e la vista e'' security_invoker — una persona legge col suo '
+                  'perimetro, il digest conta da proprietario e riporta il numero. Brief: '
+                  'brief-db-quattro-processi-senza-presidio §4.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_fatture_stampa_coda_da_guardare TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_fatture_stampa_coda_da_guardare;

@@ -9,22 +9,29 @@
 --   fare: quel giornale lo scrivono i job.
 --
 -- Test: dbops.vw_processi_programmazione — la programmazione e l'ultima corsa
--- ChangeSet: 20260906-03 / -04 / -05 / -06 · 20260907-01 / -06
+-- ChangeSet: 20260906-03 / -04 / -05 / -06 · 20260907-01 / -06 · 20260911-13 / -14
 --
--- Elenco test (plan 13):
+-- Elenco test (plan 19):
 --  1) la colonna `jobname_pgagent` c'e', ed e' nullable
 --  2) ⛔ due processi non possono dichiarare lo stesso job
 --  3) ⚠️ un nome vuoto non e' «nessun job»
 --  4) ⭐ la funzione su pgAgent torna ZERO righe dove non sa: non esplode
 --  5) ⭐ tolto il giornale, il panorama nomina GIRA_E_NON_REGISTRA — costruito
 --  6) ✅ e rimessa una corsa di pgAgent torna OK — costruito anche questo
---  7) ⚠️ i COMMAND sono FUORI_PORTATA, non OK
+--  7) ⚠️ i COMMAND SENZA contratto sono FUORI_PORTATA, non OK — e (7-bis)
+--     quelli CON contratto non lo sono mai
 --  8) ⭐ e i CODA sono SU_RICHIESTA: una cadenza non ce l'hanno affatto
 --  9) ⛔ ogni canale ammesso dal CHECK ha un verdetto DICHIARATO qui
 -- 10) ⛔ e la vista lo classifica come il verdetto dice
 -- 11) ⛔ una corsa di un attore che NON e' pgAgent non spegne il rilevatore
 -- 12) ⛔ ogni origine ammessa dal CHECK ha un verdetto DICHIARATO qui
 -- 13) ⛔ e la vista la tratta come il verdetto dice
+-- 14) ⭐ COMMAND con contratto e corsa fresca: OK — il database ora SA
+-- 15) ⛔ COMMAND con contratto e corsa piu' vecchia della tolleranza: MUTO
+-- 16) ⛔ COMMAND con contratto e nessuna corsa: MAI_PARTITO — il timer mai
+--     installato, visto dal database (presidi §11.5)
+-- 17) ⭐ SESSIONE viva in pg_stat_activity: OK — il segno di vita e' un FATTO
+-- 18) ⛔ SESSIONE assente: MUTO, e da_guardare
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ IL TEST 5 E' LA RAGIONE PER CUI LA VISTA ESISTE.
@@ -73,7 +80,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(13);
+SELECT plan(19);
 
 -- ============================================================
 -- 1..3. La colonna e i suoi cancelli
@@ -199,16 +206,28 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 7. ⚠️ Cio' che non e' misurabile lo dice
+-- 7. ⚠️ Cio' che non e' misurabile lo dice — e cio' che lo e', no
 -- ============================================================
 -- ⛔ `FUORI_PORTATA` non significa «tutto bene»: significa che la sveglia di
---   quel processo vive fuori dal database. Dire OK sarebbe una bugia
---   rassicurante, ed e' il modo piu' efficace di non far guardare piu' nessuno.
+--   quel processo vive fuori dal database E che il catalogo non ha dichiarato
+--   che cosa aspettarsi. Dire OK sarebbe una bugia rassicurante.
+-- ⭐ Dal 20260911-13 un COMMAND puo' dichiarare un CONTRATTO (tolleranza o
+--   sessione): da quel momento il database SA, e FUORI_PORTATA sarebbe una
+--   bugia nell'altro verso — «non posso sapere» detto da chi sa.
 SELECT is_empty(
     $$SELECT processo_codice FROM dbops.vw_processi_programmazione
        WHERE canale = 'COMMAND'
+         AND tolleranza_minuti IS NULL AND segno_di_vita = 'GIORNALE'
          AND stato <> 'FUORI_PORTATA'$$,
-    '7. i COMMAND, che sveglia systemd, sono FUORI_PORTATA — mai OK'
+    '7. i COMMAND SENZA contratto sono FUORI_PORTATA — mai OK'
+);
+
+SELECT is_empty(
+    $$SELECT processo_codice FROM dbops.vw_processi_programmazione
+       WHERE canale = 'COMMAND'
+         AND (tolleranza_minuti IS NOT NULL OR segno_di_vita = 'SESSIONE')
+         AND stato = 'FUORI_PORTATA'$$,
+    '7-bis. i COMMAND CON contratto non sono mai FUORI_PORTATA: il database sa'
 );
 
 -- ============================================================
@@ -454,6 +473,86 @@ SELECT CASE
         '13. e la vista tratta ogni origine come il verdetto dichiarato dice'
     )
 END;
+
+-- ============================================================
+-- 14..18. ⭐ IL CONTRATTO DI LIVENESS — costruito, non osservato
+-- ============================================================
+-- ⛔ Non si guardano i processi veri: il loro stato dipende dal giorno in cui
+--   gira il test. Si SEMINANO processi COMMAND col contratto e si scrivono
+--   le corse a mano, indietro nel tempo — la regola e' sul dato.
+DO $contratto$
+BEGIN
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                jobname_pgagent, tolleranza_minuti, segno_di_vita)
+    VALUES
+        (9901, 'PGTAP-CONTRATTO-OK',      'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
+        (9902, 'PGTAP-CONTRATTO-MUTO',    'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
+        (9903, 'PGTAP-CONTRATTO-MAI',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, 30, 'GIORNALE'),
+        (9904, 'PGTAP-SESSIONE-VIVA',     'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE'),
+        (9905, 'PGTAP-SESSIONE-ASSENTE',  'prova liveness', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE');
+
+    -- corsa di dieci minuti fa: dentro la tolleranza di trenta
+    INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
+    VALUES ('PGTAP-CONTRATTO-OK', 'PGTAP-CONTRATTO-OK', 'CRON',
+            now() - interval '10 minutes', now() - interval '10 minutes', true, 'pgtap');
+    -- corsa di due ore fa: fuori dalla tolleranza
+    INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
+    VALUES ('PGTAP-CONTRATTO-MUTO', 'PGTAP-CONTRATTO-MUTO', 'CRON',
+            now() - interval '2 hours', now() - interval '2 hours', true, 'pgtap');
+    -- PGTAP-CONTRATTO-MAI: nessuna corsa, di proposito.
+END
+$contratto$;
+
+SELECT is(
+    (SELECT stato FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-CONTRATTO-OK'),
+    'OK',
+    '14. COMMAND con contratto e corsa entro la tolleranza: OK — il database ora sa'
+);
+
+SELECT is(
+    (SELECT stato || '/' || da_guardare::text
+       FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-CONTRATTO-MUTO'),
+    'MUTO/true',
+    '15. COMMAND con contratto e corsa piu'' vecchia della tolleranza: MUTO, da guardare'
+);
+
+-- ⭐ E' il §11.5 del brief dei presidi visto dal database: un timer dichiarato
+--   e mai installato non ha corse.
+SELECT is(
+    (SELECT stato || '/' || da_guardare::text
+       FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-CONTRATTO-MAI'),
+    'MAI_PARTITO/true',
+    '16. COMMAND con contratto e nessuna corsa: MAI_PARTITO — il timer mai installato, visto da qui'
+);
+
+-- ⭐ Il segno di vita e' la SESSIONE: questo stesso backend si presenta col
+--   codice del processo, e il panorama lo vede in pg_stat_activity.
+-- ⚠️ pg_stat_activity e' una FOTOGRAFIA per transazione: la prima lettura la
+--   fissa, e un SET successivo non la aggiorna. Si azzera con
+--   pg_stat_clear_snapshot(). Un lettore vero (pannello, digest) legge in una
+--   transazione sua e non ha il problema — e' un fatto del test, non del modello.
+SET application_name = 'PGTAP-SESSIONE-VIVA';
+SELECT pg_stat_clear_snapshot();
+
+SELECT is(
+    (SELECT stato || '/' || (ultimo_segno_di_vita IS NOT NULL)::text
+       FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-SESSIONE-VIVA'),
+    'OK/true',
+    '17. SESSIONE con una connessione viva che porta il suo codice: OK, e da quando'
+);
+
+SELECT is(
+    (SELECT stato || '/' || da_guardare::text
+       FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-SESSIONE-ASSENTE'),
+    'MUTO/true',
+    '18. SESSIONE senza nessuna connessione: MUTO, da guardare'
+);
+
+SET application_name = 'pgtap';
+
+-- ⛔ Si toglie il seminato: nessun processo di prova deve sopravvivere al file.
+DELETE FROM maintenance.job_run_log WHERE processo_codice LIKE 'PGTAP-CONTRATTO-%';
+DELETE FROM dbops.processi WHERE codice LIKE 'PGTAP-CONTRATTO-%' OR codice LIKE 'PGTAP-SESSIONE-%';
 
 SELECT * FROM finish();
 
