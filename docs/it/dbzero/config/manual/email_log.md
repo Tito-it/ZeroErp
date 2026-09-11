@@ -14,21 +14,56 @@
 
 ### 🎯 Scopo Principale
 
-La tabella `config.email_log` registra **ogni email inviata dal sistema**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
+La tabella `config.email_log` registra **ogni email che il sistema ha provato a mandare**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
+
+⚠️ «Provato a mandare», non «inviata»: la distinzione e' il senso della colonna `stato`, e fino al 2026-09-11 la tabella non sapeva farla — vedi `SIMULATA` qui sotto.
 
 ---
 
 ### Ciclo di vita (stato)
 
 ```
-PENDING → SENT     (invio riuscito)
-PENDING → FAILED   (invio fallito)
-FAILED  → RETRY    (tentativo successivo schedulato)
-RETRY   → SENT     (retry riuscito)
-RETRY   → FAILED   (retry fallito, tentativi < max_tentativi → nuova RETRY)
+PENDING → SENT      (invio riuscito)
+PENDING → FAILED    (invio fallito)
+PENDING → SIMULATA  (invio NON tentato, di proposito — terminale)
+FAILED  → RETRY     (tentativo successivo schedulato)
+RETRY   → SENT      (retry riuscito)
+RETRY   → FAILED    (retry fallito, tentativi < max_tentativi → nuova RETRY)
 ```
 
-Il management command `send_pending_emails` processa le email PENDING e RETRY.
+Il management command `send_pending_emails` ripesca le email in `PENDING`, e quelle in `FAILED` o `RETRY` finche' `tentativi < max_tentativi`.
+
+⚠️ **Che ripeschi anche i `FAILED` non e' un dettaglio: e' il recupero.** Se l'SMTP viene configurato entro i tre tentativi di default, la mail parte da sola. Il `tentativi + 1` lo scrivono entrambe le strade dell'esito — l'`UPDATE` diretto e `config.fn_chiudi_email_sistema` — quindi la riga si ferma da se'.
+⛔ Questa riga diceva «processa le email PENDING e RETRY» e **ometteva i `FAILED`**: era sbagliata, e la stessa omissione stava nel commento in testa al command, da dove si e' propagata al codice del backend. *Un commento non e' una fonte.* Corretta il 2026-09-11.
+
+#### ⭐ `SIMULATA` — «non ho nemmeno provato», e non e' un guasto
+
+Introdotto il 2026-09-11 (changeSet `20260911-06`). Dice che l'invio **non e' stato tentato, di proposito**: un ambiente di sviluppo gira senza SMTP e la mail viene mostrata a chi sviluppa invece che spedita.
+
+⛔ **Prima quel ramo scriveva `SENT`**, cioe' affermava una consegna mai avvenuta. Il giornale diceva «inviata», la prova di connessione rispondeva OK, e nessun presidio guardava oltre lo stato: l'unico modo di accorgersene era non veder arrivare la posta.
+
+Perche' non uno dei quattro che c'erano gia':
+
+| Valore | Perche' no |
+| --- | --- |
+| `SENT` | afferma una consegna che non c'e' stata — e' il difetto |
+| `FAILED` | afferma un guasto che non c'e': in sviluppo il comportamento e' **voluto**, e riempire di rossi finti un ambiente insegna a ignorare i rossi |
+| `PENDING` / `RETRY` | la rimetterebbero in coda senza fine |
+
+⚠️ `SIMULATA` e' **terminale**: non compare fra gli stati che `send_pending_emails` ripesca, quindi nessuno la riprende in mano. E la riga **non porta `inviato_at`**: quella colonna data una consegna, e valorizzarla sposterebbe la bugia di una casella invece di toglierla. Il momento c'e' gia' in `data_insert`.
+
+#### 🔵 Il vocabolario ha DUE sedi, e chi ne aggiunge una deve toccarle entrambe
+
+| Sede | Che cosa contiene |
+| --- | --- |
+| `CHECK chk_email_log_stato` | tutti i valori ammessi sulla colonna |
+| whitelist di `p_stato` in `config.fn_chiudi_email_sistema` | gli stessi, **meno `PENDING`** |
+
+⛔ Non e' una ridondanza da sanare: quella funzione **chiude** e non rimette in coda, quindi `PENDING` ne e' escluso di proposito. L'invariante e' `whitelist = CHECK \ {PENDING}`, ed e' l'unica forma sensata — scritta come uguaglianza sarebbe sbagliata.
+
+⚠️ **E la seconda sede non e' aggirabile**: `EmailRepository.update_log_stato` instrada su quella funzione **ogni** chiusura di ambito `SISTEMA` — digest dei presidi e reset password — perche' la row level security rifiuta l'`UPDATE` diretto. Un valore aggiunto al solo `CHECK` resterebbe irraggiungibile proprio per quelle righe.
+
+⇒ Lo presidia `db/pgtap/config/test-fn-email-sistema.sql`, test 9. Il mirror lato backend (`_EMAIL_LOG_STATI_VALIDI`) ha un presidio suo, `test_email_log_stati_guardrail`.
 
 ---
 

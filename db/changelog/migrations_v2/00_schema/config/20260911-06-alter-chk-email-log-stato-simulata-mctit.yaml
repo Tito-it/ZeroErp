@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ UNA MAIL STAMPATA A VIDEO NON E' UNA MAIL INVIATA — il quinto valore.
+#   Brief: brief-db-stato-email-console-non-e-inviata §4 · §7.1
+#
+# `config.email_log.stato` ammetteva quattro valori, e nessuno diceva «l'invio
+# non e' stato tentato, di proposito». Il ramo che stampa a video scriveva
+# `SENT`, cioe' **affermava una consegna mai avvenuta**.
+#
+# ── ⛔ PERCHE' NON BASTAVA UNO DEI QUATTRO ──────────────────────────
+#   `SENT`     afferma una consegna che non c'e' stata — e' il difetto;
+#   `FAILED`   afferma un guasto che non c'e': in sviluppo quel comportamento e'
+#              VOLUTO, e marcarlo fallito riempirebbe di rossi finti ogni
+#              ambiente di sviluppo — cioe' insegnerebbe a ignorare i rossi;
+#   `PENDING`  e `RETRY` la rimetterebbero in coda senza fine.
+#
+# ── ⭐ PERCHE' `SIMULATA` E NON `CONSOLE` ───────────────────────────
+#   Gli altri quattro nominano l'**esito del tentativo**; `CONSOLE` nominerebbe
+#   il **canale**. Chi legge la colonna chiede sempre «e' arrivata?», mai «da
+#   che tubo e' uscita» — e legare il valore a UNA implementazione del non-invio
+#   costringerebbe a coniare un sesto valore per lo stesso fatto il giorno in
+#   cui il non-invio prende un'altra forma.
+#   ⚠️ Scartata `NON_SPEDITA`: e' un negativo che non discrimina — anche
+#   `PENDING`, `RETRY` e `FAILED` sono «non spedite» — e tace proprio sulle due
+#   cose che distinguono questo stato, cioe' che e' TERMINALE e che e' VOLUTO.
+#
+# ── 🔵 E NON BASTA QUESTO CHANGESET: I CANCELLI SONO DUE ────────────
+#   La seconda whitelist e' nel corpo di `config.fn_chiudi_email_sistema`, che
+#   e' la porta obbligata di ogni riga di ambito `SISTEMA` — digest dei presidi
+#   e reset password. La allarga `20260911-08`, che va DOPO questo: al
+#   contrario si aprirebbe una finestra in cui la funzione accetta un valore che
+#   la tabella rifiuta, e l'errore degraderebbe da un messaggio di dominio
+#   (`P0001`) a una violazione di vincolo grezza (`23514`) a video.
+#
+# ── ⛔ NESSUN BACKFILL ──────────────────────────────────────────────
+#   Le righe storiche marcate `SENT` in console mode restano come sono:
+#   riscrivere il passato direbbe che si sa quali lo erano, e non si sa —
+#   nemmeno `email_account_id` le distingue, perche' il placeholder sta
+#   sull'account `SISTEMA` che puo' essere stato configurato dopo.
+#
+# ✅ E' un widening puro: nessuna riga esistente puo' violare il vincolo nuovo,
+#    quindi nasce `VALID` senza bonifiche e senza preCondition sui dati.
+#
+# Verifica: db/pgtap/config/test-fn-email-sistema.sql (test 9)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260911-06-alter-chk-email-log-stato-simulata-mctit.yaml
+
+  - changeSet:
+      id: 20260911-06-alter-chk-email-log-stato-simulata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.email_log.stato ammette il quinto valore SIMULATA: l'invio non e'
+        stato tentato di proposito (ambiente di sviluppo senza SMTP), la mail e'
+        stata mostrata e non consegnata. Serve perche' quel ramo scriveva SENT,
+        cioe' affermava una consegna mai avvenuta, e nessuno degli altri quattro
+        valori sa dirlo. Widening puro. 🔵 Va insieme a 20260911-08, che allarga
+        la seconda whitelist, quella dentro config.fn_chiudi_email_sistema.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: email_log }
+            - columnExists:
+                schemaName: config
+                tableName: email_log
+                columnName: stato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP + ADD nella stessa istruzione, quindi nella stessa
+              --   transazione: non esiste un istante in cui la tabella e'
+              --   senza vincolo. PostgreSQL non sa allargare un CHECK sul posto.
+              ALTER TABLE config.email_log
+                  DROP CONSTRAINT IF EXISTS chk_email_log_stato;
+
+              ALTER TABLE config.email_log
+                  ADD CONSTRAINT chk_email_log_stato
+                  CHECK (stato IN ('PENDING', 'SENT', 'FAILED', 'RETRY', 'SIMULATA'));
+
+              COMMENT ON CONSTRAINT chk_email_log_stato ON config.email_log IS
+                  'Il vocabolario degli esiti di invio. ⭐ SIMULATA (rev 2026-09-11) dice '
+                  '«l''invio non e'' stato tentato, di proposito»: l''ambiente di sviluppo '
+                  'gira senza SMTP e la mail viene mostrata invece che spedita. ⛔ Prima '
+                  'quel ramo scriveva SENT, cioe'' AFFERMAVA UNA CONSEGNA MAI AVVENUTA, e '
+                  'il giornale delle email non aveva modo di distinguere le due cose: '
+                  'l''unico modo di accorgersene era non veder arrivare la posta. ⛔ E non '
+                  'poteva essere FAILED — in sviluppo quel comportamento e'' VOLUTO, e '
+                  'marcarlo fallito riempirebbe di rossi finti ogni ambiente, cioe'' '
+                  'insegnerebbe a ignorare i rossi. ⚠️ SIMULATA e'' TERMINALE: non compare '
+                  'nella SELECT di send_pending_emails (che ripesca PENDING, FAILED e '
+                  'RETRY), quindi nessuno la riprende in mano. 🔵 QUESTA NON E'' L''UNICA '
+                  'SEDE del vocabolario: config.fn_chiudi_email_sistema ha una whitelist '
+                  'sua, che e'' questo elenco MENO PENDING — quella funzione chiude, non '
+                  'rimette in coda. Chi aggiunge un valore qui deve aggiungerlo anche la'', '
+                  'e lo presidia db/pgtap/config/test-fn-email-sistema.sql test 9. '
+                  'Brief: brief-db-stato-email-console-non-e-inviata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Questo rollback PUO' FALLIRE, ed e' giusto che lo faccia: se
+              --   nel frattempo una riga ha preso il valore SIMULATA, il
+              --   vocabolario non si puo' restringere senza decidere che cosa
+              --   farne — e quella decisione non la prende un rollback.
+              ALTER TABLE config.email_log
+                  DROP CONSTRAINT IF EXISTS chk_email_log_stato;
+
+              ALTER TABLE config.email_log
+                  ADD CONSTRAINT chk_email_log_stato
+                  CHECK (stato IN ('PENDING', 'SENT', 'FAILED', 'RETRY'));

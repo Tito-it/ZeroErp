@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AS-2, ARMAMENTO — ENABLE ROW LEVEL SECURITY.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.18
+#   Slice 20260911-01..03. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: il precedente non filtrava niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy: e' il secondo criterio di `dbops.vw_rls_perimetro_scoperto`, che
+#   pesca tre tabelle proprio cosi'.
+#
+# ── NO FORCE, a parita' con le sorelle ────────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come `vendite.commesse` e
+#   `vendite.fatture`: l'owner (`titodb`) resta esente, cosi' migrazioni, job
+#   owner e i pgTAP marcati `pgtap-runner: owner` non si bloccano.
+#   ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed e'
+#   `NOBYPASSRLS`: pienamente soggetto. ⭐ `zeroerp_batch_fatturazione` e'
+#   invece `BYPASSRLS`, quindi i job di fatturazione non cambiano.
+#
+# ── DOPO L'APPLICAZIONE: dove guardare ───────────────────────────────
+#   ⭐ **Nessuna vista legge questa tabella** (verificato 2026-09-11): la usano
+#   quattro FUNZIONI, e nessuna e' `SECURITY DEFINER`.
+#     - `fn_get_arrotondamento_scope` — la lettura che conta. ⭐ Pretende gia'
+#       `p_emittente_soggetto_ruolo_id` **obbligatorio** e ci filtra sopra:
+#       chiede al codice esattamente cio' che la policy chiede alla riga, quindi
+#       nel percorso normale non cambia niente;
+#     - `fn_set_arrotondamento_scope` — la scrittura, ora coperta dalla
+#       `WITH CHECK`;
+#     - `fn_ricalcola_totali_fattura` e `fn_cleanup_fatture_by_ids`.
+#
+#   ⚠️ Se un arrotondamento smettesse di risolversi, la domanda **non** e'
+#   «allargo la policy?» ma «quella configurazione e quell'operatore hanno
+#   davvero emittenti diversi?» — cioe' un dato incoerente, non un filtro
+#   sbagliato. E' la stessa avvertenza gia' scritta per il risolutore di prezzo
+#   nella slice dei listini (§11.11).
+#
+# ⚠️ Nessun nipote: nessuna tabella ha una FK verso questa, quindi armarla non
+#   fa entrare nessuno nel criterio al giro dopo.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-arrotondamenti-scope.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260911-02-enable-rls-arrotondamenti-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260911-02-enable-rls-arrotondamenti-scope
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su
+        vendite.fatture_arrotondamenti_scope. Da qui la policy di 20260911-01
+        filtra davvero. Isolato apposta: si disarma con il rollback di questo
+        solo changeSet, e la policy resta dove sta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'vendite'
+                 AND tablename  = 'fatture_arrotondamenti_scope'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_arrotondamenti_scope ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_arrotondamenti_scope DISABLE ROW LEVEL SECURITY;

@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CL-2 — La vista che aggirerebbe il perimetro, chiusa NELLO STESSO GESTO.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.17
+#   Slice 20260910-38..42.
+#
+# ── ⛔ E' IL CONTROESEMPIO DEL §3, SU UN'ALTRA TABELLA ────────────────
+#   `anagrafiche.vw_pdp` fa `LEFT JOIN anagrafiche.clienti` ed e' concessa in
+#   SELECT a `zeroerp_app`. Non ha `security_invoker`, quindi legge con gli
+#   occhi del PROPRIETARIO — che la row level security non applica.
+#
+#   ⇒ Il giorno in cui `clienti` riceve una policy (changeSet 20260910-40..41),
+#   quella vista diventa la porta di servizio: i dati dei clienti di **ogni**
+#   emittente continuerebbero a passare di li'. Armare la tabella e lasciare la
+#   vista **sposta il punto da cui si legge**, non chiude il buco.
+#
+# ⭐ E' successo gia', ed e' scritto nel brief al §3: delle 60 viste di
+#   `vendite` le uniche due senza `security_invoker` erano proprio quelle che
+#   leggevano i satelliti di `preventivi` — cioe' i dati non ancora protetti. Il
+#   presidio `db/pgtap/rls/test-rls-viste-security-invoker.sql` taceva
+#   legittimamente, perche' il suo criterio e' «tocca dati protetti da RLS» e
+#   quei dati protetti non erano. *La difesa di secondo livello si spegne da
+#   sola quando manca quella di primo.*
+#
+# ⚠️ Corollario operativo, ed e' il motivo per cui questo changeSet viene PRIMA
+#   dell'armamento: nel momento in cui `clienti` riceve la policy, il presidio
+#   delle viste vedrebbe `vw_pdp` e diventerebbe rosso. Le due cose vanno nella
+#   stessa slice, o si sta lavorando in due tempi.
+#
+# ── ⭐ `ALTER VIEW ... SET`, non `CREATE OR REPLACE VIEW` ─────────────
+#   La definizione non si tocca: cambia solo l'opzione. ⛔ Un
+#   `CREATE OR REPLACE VIEW` che non ripetesse l'opzione la **azzererebbe** —
+#   e' la trappola nota per cui `security_invoker` sparisce in silenzio a ogni
+#   riscrittura di una vista. Qui non c'e' nessuna definizione da ricopiare,
+#   quindi non c'e' nessun corpo stantio da rimettere in servizio per sbaglio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260910-39-alter-vw-pdp-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260910-39-alter-vw-pdp-security-invoker
+      author: mctit
+      runOnChange: false
+      comment: >
+        Accende security_invoker su anagrafiche.vw_pdp, che fa LEFT JOIN su
+        anagrafiche.clienti ed e' concessa a zeroerp_app. Senza, quando
+        20260910-41 arma clienti la vista continuerebbe a leggere con gli occhi
+        del proprietario e i clienti di ogni emittente passerebbero di li'.
+        ALTER VIEW SET e non CREATE OR REPLACE: la definizione non si tocca.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND c.relname = 'vw_pdp'
+                 AND c.relkind = 'v'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW anagrafiche.vw_pdp SET (security_invoker = on);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Riapre la porta di servizio: ha senso solo insieme al
+              --   rollback di 20260910-41, che disarma anagrafiche.clienti.
+              ALTER VIEW anagrafiche.vw_pdp RESET (security_invoker);

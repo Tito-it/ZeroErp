@@ -79,9 +79,11 @@
 --
 -- ⚠️ COSA QUESTO FILE NON PROVA. Che i quattro siano TUTTI i satelliti: quello
 --   lo dice il criterio, in `db/pgtap/rls/test-rls-perimetro-scoperto.sql`.
---   ⭐ Ed e' li' che vive anche l'unica tabella che questa slice NON arma,
---   `vendite.attivita_fatturabili_log`: entra nel criterio da oggi (pende da
---   `attivita_consumi`), ha l'unica FK NULLABLE e resta un debito DICHIARATO.
+--   ⭐ Questa slice ne aveva fatta entrare una che NON arma —
+--   `vendite.attivita_fatturabili_log`, che pendeva da `attivita_consumi` con
+--   l'unica FK nullable. ⚠️ Il 2026-09-11 il censimento ha detto che non aveva
+--   nessuno scrittore ne' lettore: era un residuo del dominio pipeline
+--   «attivita fatturabili», ed e' stata **ritirata** (`20260911-04`).
 --
 -- ⭐ PROVATO FACENDOLO FALLIRE, non solo passare (2026-09-10):
 --

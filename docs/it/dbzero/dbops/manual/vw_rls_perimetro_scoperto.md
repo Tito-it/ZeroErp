@@ -93,7 +93,7 @@ ORDER BY data_registrazione, schema_tabella, nome_tabella;
 ```
 
 Presidio: `db/pgtap/rls/test-rls-perimetro-scoperto.sql`.
-Origine: `docs/it/dev/work-in-progress/brief-db-perimetro-emittente-righe-documento.md` §8 e §10.
+Origine: `docs/it/dev/work-done/brief-db-perimetro-emittente-righe-documento.md` §8 e §10.
 
 ---
 

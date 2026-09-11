@@ -1,19 +1,13 @@
 # Brief DB — Il perimetro dell'emittente si ferma alla testata
 
-> ⭐ **DOVE SIAMO, 2026-09-10.** Gli otto passi del cantiere originale sono
-> chiusi (2026-09-09) e da allora il lavoro lo consegna il **presidio** del §11,
-> non più un elenco: **sei famiglie applicate** — `pratiche` (§11.7), `lotti`
-> (§11.9), `vendite_contabili_lotti` (§11.10), `listini` (§11.11), `commesse`
-> (§11.15), `documenti` (§11.16) — e il registro del debito sceso da **33 a 12
-> righe** in due giorni.
-> `db/pgtap/rls/`: **36 file su 36 verdi**, zero rossi — misurato il 2026-09-10
-> dopo l'apply di `commesse`. ⚠️ I file sono poi diventati **37** con
-> `test-rls-documenti-satelliti.sql` (13/13 nella sua prova, e nessuna
-> regressione riportata dopo l'apply): la corsa dell'intera cartella a 37 non è
-> stata rifatta.
-> ⭐ **Lo schema `vendite` è finito**: delle 12 righe rimaste due sono sue, e
-> tutte e due sono domande di modello, non armamenti. Il fronte è ora
-> `anagrafiche` e le singole di `config`/`magazzino`/`pagamenti`/`shop`.
+> ✅ **CANTIERE CHIUSO — 2026-09-11.** Nove famiglie armate, registro del debito
+> da **33 a 10 righe**, un ritiro. ⛔ **Ma il presidio resta in servizio**: le 10
+> righe che restano sono decisioni di modello o cantieri di un altro dominio
+> (`acquisti`, `magazzino`, `shop`), ognuna con la sua ragione scritta, e
+> `dbops.vw_rls_perimetro_scoperto` continua a vedere ogni tabella nuova che
+> nasce scoperta. **Dettaglio, lezioni e cosa resta: il §12, in fondo.**
+> ⚠️ Il debito dello `storico` (120 tabelle, zero RLS) NON è chiuso qui: vive
+> come **D3** in `migliorie-generali-da-test-valutazione.md`.
 >
 > Stato del cantiere originale: ✅ **TUTTI E OTTO I PASSI APPLICATI** — su
 > database di sviluppo e su database ricostruito dai changelog.
@@ -662,6 +656,45 @@ lo si rifarebbe a ogni tabella nuova.
 ⚠️ **Ma il debito va dichiarato adesso, non quando lo si apre**: finché `storico`
 è aperto, chiudere questo brief non chiude il buco — sposta solo il punto da cui
 si legge. Chi legge questo documento deve saperlo.
+
+> 🔴 **Correzione del 2026-09-11 — questa sezione sbaglia DUE cose, e tutte e due
+> manderebbero il cantiere storto.** Restano scritte sopra perché sono la
+> decisione che è stata presa il 09-09; qui c'è cosa non regge.
+>
+> **1. L'argomento di sequenza è rovesciato.** *«Un generatore ha senso quando le
+> madri sono ferme»* è vero per un lavoro **manuale**: 120 policy a mano si
+> rifanno a ogni tabella nuova. ⛔ Ma un **generatore esiste proprio per
+> assorbire le tabelle nuove** — è la sua definizione. ⇒ Farlo **prima** che
+> `acquisti` e `magazzino` crescano significa che quelle tabelle **nascono
+> protette**; farlo dopo significa un backfill più grande e, nel frattempo, uno
+> storico aperto anche sui domini nuovi. *L'argomento giusto porta alla
+> conclusione opposta di quella scritta qui.*
+>
+> **2. «Derivando lo scope dalla madre» è la formula sbagliata.** Lo scope **non
+> si deriva a runtime: si cattura alla scrittura e si congela in una colonna**,
+> e la policy legge quella. Tre ragioni, tutte sul modello:
+> * una riga di storico è un **fatto datato**, e il suo perimetro fa parte del
+>   fatto: ricalcolarlo dalla madre viva lascerebbe che il presente riscriva la
+>   visibilità del passato — *un archivio che cambia col presente non è un
+>   archivio*;
+> * il modello **ammette la riga senza madre**, per progetto:
+>   `fn_ensure_storico_table` **non genera la FK** e lo dichiara nel codice
+>   (*«bloccherebbe la cancellazione delle righe»*) ⇒ la risalita ha un ramo non
+>   determinabile per contratto, da gestire anche se oggi fosse vuoto;
+> * il dato è disponibile **nel momento giusto**: `trgfn_storico_generic` è
+>   `BEFORE UPDATE OR DELETE` e serializza `NEW`/`OLD`, quindi quando scrive ha
+>   la riga intera **e la madre esiste ancora**.
+>
+> ⛔ E non lo snapshot JSONB: è una *serializzazione*, non un contratto — se
+> cambia forma la policy si rompe in silenzio — ed è un cast per ogni riga letta,
+> dove una colonna è indicizzabile.
+> ⚠️ Il trigger è **generico**: serve una **mappa dichiarata**, nello stile di
+> `dbops.fk_index_policy`, che dica per ogni tabella dove sta lo scope.
+>
+> Stima ≈ **3 giornate**, metà delle quali disegno e presidio: il lavoro è
+> **uno**, non 120, perché la forma delle tabelle storico è uniforme e generata.
+> Dettaglio aggiornato nel **D3** di
+> `work-in-progress/migliorie-generali-da-test-valutazione.md`.
 
 ---
 
@@ -1727,18 +1760,287 @@ giro dopo — al contrario di `pratiche` (§11.7) e `commesse` (§11.15).
 
 ---
 
+### 11.17 ✅ La settima famiglia: `anagrafiche.clienti`
+
+> Stato: ✅ **applicata** il 2026-09-11 alle **00:01** — slice `20260910-38..42`
+> + `db/pgtap/rls/test-rls-clienti.sql`, pgTAP **13/13 verde**, **nessuna
+> regressione** (esito riportato da Tid dopo l'apply).
+> Verificato a valle sul catalogo: `clienti` ha `relrowsecurity` e **tre**
+> policy, `anagrafiche.vw_pdp` ha `security_invoker`,
+> `script.fn_scope_shop_via_ba` è in servizio, il registro è a **12 righe** —
+> con `anagrafiche.pdp` entrata, come previsto — e
+> `dbops.vw_rls_perimetro_scoperto` non ha **nessuna riga** fuori da
+> `DEBITO_DICHIARATO`.
+>
+> ⭐ Prima dell'apply era stata provata eseguendo l'**SQL estratto dai changeSet**
+> dentro una transazione chiusa da `ROLLBACK`, con lo stesso esito: 13/13,
+> presidio 8/8, `liquibase validate` pulito, sei guardrail verdi, timeline
+> autogen 38 → 39 → 40 → 41.
+
+Un cliente è una faccia del proprio billing account e ne eredita il perimetro.
+`anagrafiche.billing_account` è protetta; `clienti` no, e `zeroerp_app` ci ha
+`SELECT, INSERT, UPDATE, DELETE`. ⇒ Ragione sociale, stato, modalità e termini di
+pagamento dei clienti di **ogni** emittente erano leggibili da qualunque
+operatore.
+
+#### ⭐ Tre policy per QUATTRO policy di testata, ed è il punto
+
+La regola è *«il satellite rispecchia tutte le VESTI»* — le vesti, non le policy.
+
+| Veste della testata | Qui | Come |
+| --- | --- | --- |
+| `OPERATORE` `FOR ALL` | ✅ | `_via_efba` — la **stessa** funzione della testata |
+| `CLIENTE_PORTALE` `FOR SELECT` | ✅ | `fn_scope_ba_ownership`, diretta |
+| `SHOP_CUSTOMER` `FOR SELECT` | ✅ | `fn_scope_shop_via_ba`, **nuova** (`-38`) |
+| `OPERATORE` `FOR INSERT` gate-only | ⛔ **no** | vedi sotto |
+
+⛔ **La policy `INSERT` non si rispecchia.** Sulla testata dice soltanto «il
+ruolo è OPERATORE» e non usa `_via_efba`; il suo stesso commento spiega perché:
+*«il mapping efba è creato da trigger AFTER INSERT (via_efba rifiuterebbe i BA
+nuovi)»*. È il rimedio a un problema di **ordine di esecuzione**. ⭐ Su `clienti`
+quel problema non esiste — `billing_account_id` è `NOT NULL` e punta a un BA che
+esiste già — quindi la `WITH CHECK` della `FOR ALL` è valutabile fin
+dall'INSERT, e copiarla lascerebbe creare schede fuori perimetro.
+*Rispecchiare le vesti non vuol dire ricopiare le policy: vuol dire ottenere lo
+stesso perimetro.*
+
+#### ⛔ La condizione che non si poteva copiare, e il test che la difende
+
+La testata concede allo shop **due** condizioni insieme: `canale_origine = 'SHOP'`
+**e** la proprietà. La prima si legge da una colonna che sta **sul billing
+account**, e `clienti` non ce l'ha. ⇒ Si **risale** (`fn_scope_shop_via_ba`),
+così le due condizioni restano scritte in un posto solo e il satellite non può
+essere più permissivo del documento — la trappola del passo 2 su `ordini`.
+
+⭐ Il pgTAP costruisce apposta **due schede dello stesso proprietario**, una su
+un BA nato da SHOP e una su un BA nato da ADMIN. Con l'adattatore giusto se ne
+vede una; con la sola proprietà se ne vedrebbero due.
+
+| Mutazione | Chi se ne accorge |
+| --- | --- |
+| `fn_scope_ba_ownership` al posto di `fn_scope_shop_via_ba` | test 3 e **9** |
+| `clienti` senza `ENABLE` | test 2 |
+| `vw_pdp` senza `security_invoker` | test 4 |
+| la policy `INSERT` gate-only **rispecchiata** | test 1 |
+
+#### 🔴 `anagrafiche.vw_pdp` — il controesempio del §3, su un'altra tabella
+
+Fa `LEFT JOIN anagrafiche.clienti`, è concessa a `zeroerp_app` e **non ha
+`security_invoker`**: legge con gli occhi del proprietario, che la RLS non
+applica. ⇒ Armare `clienti` e lasciarla avrebbe **spostato il punto da cui si
+legge**, non chiuso il buco. Sistemata nello stesso gesto (`-39`), con
+`ALTER VIEW … SET` e non `CREATE OR REPLACE`, che azzererebbe l'opzione.
+
+#### ⛔ `anagrafiche.pdp` entra nel registro, non nell'armamento
+
+Armando `clienti`, il criterio transitivo vede `pdp`. ⚠️ Ma il legame è
+**bidirezionale** e tutte e due le chiavi sono **nullable** (`clienti.pdp_id` e
+`pdp.cliente_id`): una policy su chiave nullable ha un buco esatto dove passa il
+NULL. È una domanda di modello, della stessa specie di `magazzino.assets`.
+⇒ Dichiarata nel CSV nello stesso gesto, o il presidio la troverebbe
+`NON_DICHIARATO` al giro dopo. È la transitività vista funzionare **prima** che
+costi un rosso, come su `pratiche` (§11.7).
+
+#### ⚠️ Quattro inciampi della fixture, e uno è una scoperta
+
+* `canale_origine` è **immutabile post-INSERT**: il BA «shop» deve **nascere**
+  così, non essere aggiornato. E gli serve un'**istanza utility sua**
+  (`UNIQUE (istanza_utility_id, utility_id)`).
+* la utility si **sceglie**: con la prima a catalogo (`ENERGIA`) scatta «PDP
+  obbligatorio». Si usa `BASE`, nominata per `codice_interno`.
+* `fn_pgtap_crea_cliente_ba` costruisce il **billing account**, non la scheda
+  cliente — il nome inganna.
+* 🔴 **Il `FORCE` va solo su `clienti`.** Mettendolo anche sulla testata la
+  corsa muore con *«limite di profondità dello stack superato»*: le policy di
+  `billing_account` chiamano funzioni che **rileggono `billing_account`**, e
+  dentro la valutazione della policy di una figlia il ciclo non si chiude.
+  ⚠️ Provato: nessuna delle due vesti lo innesca **da sola**; a innescarlo è la
+  combinazione. ⭐ E non è un difetto della slice — nel percorso vero
+  (`zeroerp_app`, che non è owner) la RLS si applica senza `FORCE`, e leggere
+  `billing_account` in veste shop risponde normalmente. Verificato.
+
+#### Il registro dopo questa slice
+
+**12 → 12 righe**: esce `anagrafiche.clienti`, entra `anagrafiche.pdp`. ⭐ È la
+prima slice che **non fa calare il registro** — e va letta bene: non è un
+pareggio, è il criterio che estende il proprio perimetro mentre lo si chiude.
+
+---
+
+### 11.18 ✅ `fatture_arrotondamenti_scope` — la TERZA riga di registro che diceva il falso
+
+> Stato: ✅ **applicata** il 2026-09-11 alle **01:02** — slice `20260911-01..03`
+> + `db/pgtap/rls/test-rls-arrotondamenti-scope.sql`, pgTAP **9/9 verde**,
+> nessuna regressione. Verificato a valle: la tabella ha `relrowsecurity` e la
+> sua policy.
+
+🔴 **La riga di registro diceva che serviva una decisione** — *«va deciso se le
+sue righe seguano il perimetro dell'emittente o restino leggibili come
+catalogo»*. ⛔ Ma la tabella porta **`emittente_soggetto_ruolo_id` `NOT NULL`**
+(osservazione di Tid, verificata sul catalogo l'11-09): una tabella che nomina
+il proprio emittente in una colonna obbligatoria **ha già risposto**.
+
+⚠️ È la **terza** riga che sbaglia, e sempre nel verso che *ferma un cantiere
+che poteva partire* — le prime due corrette al §11.12. ⭐ Il campo `ragione`
+esiste per dire se si ha davanti un allarme, un lavoro pronto o una domanda
+aperta: quando dice «serve una decisione» e la decisione c'è già, nessuno va a
+rileggere il catalogo per verificarlo.
+
+⭐ **Rotta diretta, zero adattatori**: questa tabella non è il satellite di una
+testata, porta l'emittente da sé — come `vendite.commesse`, di cui la policy è
+la copia parola per parola. **Una veste**, e motivata sul contenuto: saldo,
+termini e modalità di pagamento per una coppia BA/tipo documento sono
+*configurazione di fatturazione dell'emittente*, non un dato che il cliente vede
+di sé.
+
+⚠️ **Quattro funzioni la leggono e nessuna è `SECURITY DEFINER`**, quindi da qui
+guardano attraverso la policy. ⭐ Ma `fn_get_arrotondamento_scope` pretende già
+`p_emittente_soggetto_ruolo_id` **obbligatorio** e ci filtra sopra: la policy
+chiede alla riga esattamente ciò che il codice chiedeva da sé. ⇒ Nel percorso
+normale non cambia niente; cambia il caso in cui qualcuno passi l'emittente di
+un'altra azienda — che è il buco. **Il test 9 lo esercita dalla funzione**, non
+solo dalla tabella.
+
+---
+
+### 11.19 ✅ `attivita_fatturabili_log` — non un armamento, un RITIRO
+
+> Stato: ✅ **applicata** il 2026-09-11 alle **01:02** — slice `20260911-04..05`,
+> più tre pgTAP adeguati e la scheda `manual/` cancellata. La tabella non esiste
+> più (`to_regclass` → `RITIRATA`), il presidio resta 8/8, e i tre pgTAP toccati
+> passano dopo il drop (19, 15 e 16 asserzioni). Nessuna regressione.
+
+La riga era entrata il 2026-09-10 con la domanda giusta: *«o `attivita_consumi_id`
+diventa `NOT NULL` e si arma come le sorelle, oppure è un residuo e si ritira»*.
+⭐ La risposta è la seconda, e la porta l'intuizione di Tid: *«prima c'era un
+processo diverso; ora i log sono su lotti_log o fatturazione_log»*.
+
+#### Il censimento, che è l'unica cosa che autorizza una `DROP`
+
+Letto sul database **vivo** l'11-09 — non dagli YAML:
+
+| Chi | Quanti |
+| --- | ---: |
+| scrittori (funzioni, trigger, backend, frontend) | **0** |
+| lettori vivi (viste, funzioni, `pg_depend`) | **0** |
+| FK entranti | **0** |
+| gemella in `storico` | non esiste |
+
+⚠️ Una funzione la **nomina**, `fn_riporta_attivita_da_emettere` — ma solo in un
+**commento**, e per dire l'opposto: *«Non è attivita_fatturabili_log»*. Scrive su
+`commesse_attivita_log`.
+⚠️ E `vw_giornale_entita` **non la legge**: la nominavano due changeSet vecchi,
+la vista viva no — il suo pgTAP lo diceva pure. ⭐ È il motivo per cui le
+dipendenze si leggono dal **catalogo**, non dai changelog.
+
+#### ⭐ Da dove viene, ed è la conferma
+
+Nasce il **2026-01-24**, dentro il dominio pipeline «attività fatturabili» —
+costruito e **ritirato** da `20260227-16`, che portò via 15 funzioni e 5 tabelle.
+Lei è **sopravvissuta al ritiro**. I log vivi si vedono dai numeri:
+`commesse_attivita_log` ha 6 scrittori, `fatture_log` 5,
+`fatturazione_lotti_log` 1. Lei zero.
+
+⭐ **È un'uscita di specie diversa da tutte le altre**: le righe uscite finora
+sono uscite perché la tabella è stata *armata*; questa perché il **soggetto è
+stato tolto**. La `DROP` è senza `CASCADE` di proposito — una dipendenza non
+censita deve fermare il migrate, non sparire insieme alla tabella.
+
+#### Il registro dopo le due slice
+
+**12 → 10 righe** (7 `FIGLIA_DI_TABELLA_PROTETTA` + 3 `POLICY_INERTE`).
+
+---
+
+### 12. ✅ CANTIERE CHIUSO — 2026-09-11
+
+> Decisione di Tid, 2026-09-11: *«le tabelle rimanenti, per esempio acquisti e
+> magazzino, sono in fase di sviluppo, le farò a parte»*.
+
+#### Che cosa è stato fatto
+
+| | |
+| --- | ---: |
+| Famiglie armate | **9** — le 6 dei passi 1-8, più `pratiche`, `lotti`, `vendite_contabili_lotti`, `listini`, `commesse`, `documenti`, `clienti`, `arrotondamenti_scope` |
+| Registro del debito | **33 → 10** |
+| Un ritiro | `vendite.attivita_fatturabili_log`, residuo di un dominio chiuso a febbraio |
+| pgTAP nella cartella `rls/` | da 30 a **39 file** |
+
+#### ⛔ Chiudere il brief NON chiude il presidio, ed è tutto il punto
+
+`dbops.vw_rls_perimetro_scoperto`, `dbops.rls_perimetro_debito` e
+`db/pgtap/rls/test-rls-perimetro-scoperto.sql` **restano in servizio**. Da oggi
+in avanti:
+
+* una tabella nuova con una FK verso una tabella protetta nasce e il presidio la
+  vede: esce `NON_DICHIARATO`, e il test 2 diventa rosso;
+* una riga di registro che perde il proprio difetto esce `DEBITO_ESTINTO`, e il
+  test 2 diventa rosso lo stesso — il registro non può marcire nel verso
+  permissivo.
+
+⭐ **È il lascito vero del cantiere.** Le nove famiglie sono lavoro fatto una
+volta; il presidio è ciò che impedisce al difetto di rinascere — ed è nato
+proprio perché il §2 di questo brief aveva sbagliato un elenco scritto a mano.
+
+#### Le 10 righe che restano, e perché è giusto lasciarle
+
+⛔ **Nessuna è un armamento rimandato per stanchezza.** Sono di tre specie:
+
+| Specie | Righe | Perché non si armano qui |
+| --- | --- | --- |
+| **Decisioni di modello** | `anagrafiche.pdp`, `magazzino.assets`, `pagamenti.sepa_mandati`, `config.email_allegato` | chiave nullable, o due: una policy su una chiave nullable ha un buco esatto dove passa il NULL |
+| **Una domanda gemella** | `emittenti_fiscali_billing_account`, `resellers_billing_account` | **definiscono** il legame da cui la whitelist si deriva: una policy che le filtrasse per perimetro si appoggerebbe a sé stessa |
+| **Cantieri di un altro dominio** | `acquisti.ddt`, `acquisti.ordini`, `shop.ricevute` ×2 | `acquisti` non ha nessuna colonna emittente — manca il modello, non l'accensione; `shop` è allo Stage D |
+
+⭐ Ognuna ha la propria `ragione` scritta nel registro, quindi il debito resta
+**dichiarato e leggibile** anche a documento chiuso: chi aprirà quei cantieri
+trova la domanda già posta, non un elenco da ricostruire.
+
+#### ⚠️ Il debito che questo brief NON chiude, e va ricordato
+
+Lo **`storico`**: 120 tabelle, **zero** in RLS (verificato il 2026-09-11). Non
+entra nel registro perché il criterio non lo vede — quelle tabelle sono
+**gemelle** delle madri, non figlie, e nessuna FK le lega.
+✅ Ma non si perde chiudendo qui: è dichiarato come **D3** in
+`migliorie-generali-da-test-valutazione.md`, e dal 2026-09-11 ha un **cantiere
+suo** — `work-in-progress/brief-db-rls-storico-scope-congelato.md` — con disegno,
+ragioni e stima (≈ 3 giornate). ⚠️ La forma è una policy **generata dal
+framework** che genera la tabella di storico, con lo scope **catturato alla
+scrittura**: ⛔ *non* derivato dalla madre, come questo brief scriveva al §9 —
+vedi la correzione lì.
+
+#### ⭐ Le lezioni che sopravvivono al cantiere
+
+1. **Un elenco scritto a mano ha per perimetro ciò che chi lo scriveva aveva in
+   mente.** Il §2 diceva «`fatture`: tutte protette», ed erano protette le cinque
+   che l'elenco nominava. ⇒ Un presidio si aggancia al **contratto** — una FK, un
+   `CHECK` — mai a una lista.
+2. **Una difesa parziale non si vede.** Il sintomo di un perimetro mancante è
+   *vedere di più*, non un errore.
+3. **Il verso positivo è quello che smaschera.** Un adattatore sbagliato è quasi
+   sempre fail-closed, quindi i test negativi restano verdi: a distinguerlo è
+   *«e il proprio lo vedo ancora?»*.
+4. **Tre righe di registro su trentatré dicevano il falso**, sempre nel verso che
+   *ferma un cantiere che poteva partire*. ⇒ Quando una `ragione` si legge come
+   «lavoro bloccato», va verificata sul catalogo prima di crederle.
+5. **Un test può asserire un buco**, e allora va scritto nel verso che si accorge
+   della riparazione — e quando la riparazione arriva si **sostituisce**, non si
+   allarga per farlo tacere.
+
+---
+
 ### 11.8 Che cosa resta, ora che il presidio è in servizio
 
 * le **12 righe** del registro sono dodici lavori con un nome, il più corto
   dei quali (`shop.ricevute`) è una riga di SQL;
 * ✅ **`pratiche`** (§11.7), **`lotti`** (§11.9),
   **`vendite_contabili_lotti`** (§11.10), **`listini`** (§11.11),
-  **`commesse`** (§11.15) e **`documenti`** (§11.16) sono **applicate** — e
-  `commesse` ha consegnato al registro una riga nuova
-  (`attivita_fatturabili_log`).
-  Restano: **anagrafiche** (3, di cui due sono una domanda di modello, §11.4) e
-  le singole di `config`, `magazzino`, `pagamenti`, `shop`, più
-  `vendite.fatture_arrotondamenti_scope` e `vendite.attivita_fatturabili_log`;
+  **`commesse`** (§11.15), **`documenti`** (§11.16) e **`anagrafiche.clienti`**
+  (§11.17) sono **applicate** — e due di loro hanno consegnato al registro una
+  riga nuova ciascuna (`attivita_fatturabili_log` e `anagrafiche.pdp`).
+  ⛔ **Le 12 righe rimaste non contengono più nessun «lavoro pronto»**: sono
+  tutte decisioni di modello, o cantieri di un altro dominio. Il criterio
+  transitivo ha finito di consegnare slice che si scrivono da sole;
 * ⭐ **`vendite` è finito.** Delle 12 righe rimaste **due** sono in questo
   schema — `fatture_arrotondamenti_scope` e la nuova `attivita_fatturabili_log`
   — e nessuna delle due è un armamento: sono domande di modello. ⇒ Il cantiere

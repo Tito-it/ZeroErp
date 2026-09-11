@@ -298,7 +298,7 @@ SELECT is(
      WHERE g.registro NOT IN ('EVENT_LOG', 'LOTTO_LOG', 'TASK_RUN', 'FATTURA_LOG')
   ),
   0,
-  '11. nessun registro fuori dai quattro dichiarati (attivita_fatturabili_log resta fuori)'
+  '11. nessun registro fuori dai quattro dichiarati'
 );
 
 --   ⛔ Un diario dice cosa e' SUCCESSO, non cosa e' ancora aperto: la riga

@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CL-1 — L'adattatore della veste SHOP per i satelliti del billing account.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.17
+#   Slice 20260910-38..42 (helper -> vista -> policy inerti -> armamento -> registro).
+#
+# ── ⛔ IL PROBLEMA CHE RISOLVE: UNA CONDIZIONE CHE NON SI PUO' COPIARE ─
+#   `anagrafiche.billing_account` concede allo SHOP_CUSTOMER due condizioni
+#   INSIEME:
+#       canale_origine = 'SHOP'   AND   fn_scope_ba_ownership(identita, id)
+#   La prima si legge da una colonna che sta **sul billing account** — e
+#   `anagrafiche.clienti` quella colonna non ce l'ha.
+#
+#   ⇒ Una policy sul cliente che chiedesse la sola PROPRIETA' sarebbe **piu'
+#   permissiva della propria testata**: un cliente dello shop vedrebbe anche le
+#   schede legate a billing account nati da un altro canale. E' esattamente la
+#   trappola incontrata al passo 2 su `ordini`, e il brief la chiama per nome:
+#   *il rischio non e' «vedo troppo poco», e' che un satellite risulti piu'
+#   permissivo della propria testata*.
+#
+# ── ⭐ LA SOLUZIONE E' RISALIRE, non riscrivere la condizione ─────────
+#   `clienti.billing_account_id` e' **NOT NULL**: la risalita non puo' fallire,
+#   e le due condizioni restano scritte in un posto solo — sul billing account.
+#   Se un domani la regola dello shop cambia, cambia li' e i satelliti la
+#   seguono da se'. ⛔ Ricopiare `canale_origine = 'SHOP'` in ogni policy
+#   figlia sarebbe una seconda sorgente di verita', che prima o poi diverge.
+#
+# ⭐ E la forma non e' inventata: `script.fn_scope_shop_via_ordine` fa
+#   esattamente questo dal passo 2 (le due condizioni insieme, risalendo alla
+#   testata). Questa e' la sua gemella per il billing account.
+#
+# ── ⚠️ LA POSTURA ────────────────────────────────────────────────────
+#   `STABLE`, `LANGUAGE sql`, e NON `SECURITY DEFINER` — la stessa dei
+#   `script.fn_scope_*` gia' in servizio.
+#   ⭐ Qui la conseguenza e' voluta e va detta: leggendo sotto RLS, la funzione
+#   vede `anagrafiche.billing_account` **gia' filtrato dalla policy della
+#   testata**. Non e' una ridondanza da togliere — e' cio' che rende
+#   impossibile al satellite di essere piu' aperto del documento: il satellite
+#   non «rispecchia» il perimetro, ci **passa attraverso**.
+#
+# Permessi: funzione di titodb, non in dbops.sec_functions_owner, nessun GRANT
+# esplicito (l'ALTER DEFAULT PRIVILEGES di provision_db_roles copre EXECUTE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260910-38-create-fn-scope-shop-via-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260910-38-create-fn-scope-shop-via-ba
+      author: mctit
+      runOnChange: false
+      comment: >
+        Adattatore della veste SHOP_CUSTOMER per i satelliti di
+        anagrafiche.billing_account: script.fn_scope_shop_via_ba(identita_id,
+        billing_account_id), che risale al billing account e pretende ENTRAMBE
+        le condizioni della testata (canale_origine = SHOP e proprieta'), cosi'
+        un satellite non puo' risultare piu' permissivo del proprio documento.
+        Nessuna policy lo usa ancora: le crea 20260910-40.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ba_ownership'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_shop_via_ba(
+                  p_identita_id        bigint,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- ⛔ DUE condizioni, non una: la testata pretende anche
+                  --   `canale_origine = 'SHOP'`. Un satellite che chiedesse la
+                  --   sola proprieta' sarebbe PIU' PERMISSIVO della propria
+                  --   testata, che e' l'invariante che questa slice difende.
+                  -- ⭐ Gemella di script.fn_scope_shop_via_ordine, che dal
+                  --   passo 2 fa la stessa cosa risalendo all'ordine.
+                  -- ⚠️ Billing account inesistente -> nessuna riga -> false:
+                  --   fail-closed, come tutta la famiglia.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.id             = p_billing_account_id
+                         AND ba.canale_origine = 'SHOP'::config.canale_origine
+                         AND script.fn_scope_ba_ownership(p_identita_id, ba.id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_shop_via_ba(bigint, bigint)
+              IS 'Adattatore della veste SHOP_CUSTOMER per i satelliti di anagrafiche.billing_account (a partire da anagrafiche.clienti): risale da billing_account_id (NOT NULL) e pretende ENTRAMBE le condizioni che la testata concede allo shop — canale_origine = SHOP e proprieta'' dell''identita'' — perche'' la prima si legge da una colonna che sta sul billing account e che i satelliti non hanno. ⛔ Una policy figlia che chiedesse la sola proprieta'' sarebbe piu'' permissiva della propria testata. ⭐ Gemella di script.fn_scope_shop_via_ordine. STABLE e NON security definer: leggendo sotto RLS vede il billing account gia'' filtrato dalla policy della testata, ed e'' voluto — il satellite non rispecchia il perimetro, ci passa attraverso. Brief: brief-db-perimetro-emittente-righe-documento.md §11.17';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_shop_via_ba(bigint, bigint);

@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LO STESSO VALORE SULLA TABELLA GEMELLA — il gemello dell'`email_log`.
+#   Brief: brief-db-stato-email-console-non-e-inviata §7.1
+#
+# `config.email_outbox` ha lo stesso difetto una tabella piu' in la': quando la
+# mail viene mostrata invece che spedita, `EmailOutboxService.send_from_outbox`
+# riceve «riuscito» e scrive `stato = 'SENT'`. Stessa parola, stessa bugia — e
+# le due righe sono legate da `email_log_id`, quindi con il solo
+# `20260911-06` la divergenza sarebbe leggibile a occhio: il log direbbe
+# `SIMULATA` e la bozza `SENT`, sulla stessa spedizione.
+#
+# ── ⛔ E NON SI PUO' DIRE «L'OUTBOX PARLA DELLA BOZZA, NON DELL'INVIO» ─
+#   Sarebbe l'obiezione ovvia — `DRAFT` / `READY` / `SENT` / `CANCELLED` sembra
+#   il ciclo di vita di una bozza. La smentisce il ramo accanto nello stesso
+#   metodo: **su fallimento SMTP la bozza torna a `DRAFT`**, perche' l'operatore
+#   riprovi. Una colonna che retrocede quando la consegna fallisce parla di
+#   consegna, non di redazione.
+#
+# ── ⭐ PERCHE' ADESSO E NON DOPO ────────────────────────────────────
+#   Aprire un vocabolario e lasciare chiuso il suo gemello e' il modo esatto in
+#   cui due sedi della stessa regola divergono: fra un mese la seconda si
+#   scopre di rimbalzo, che e' come si e' scoperto il difetto da cui nasce
+#   questo cantiere.
+#   ✅ E non aspetta nessuno: e' un widening puro, e lato backend NON esiste
+#   nessun mirror Python degli stati dell'outbox da allineare — `AMBITI_OUTBOX`
+#   specchia l'**ambito**, non lo stato (verificato il 2026-09-11).
+#   ⚠️ L'adeguamento di `email_outbox_service` resta lavoro del backend: questo
+#   changeSet **permette** il valore, non lo scrive.
+#
+# Verifica: db/pgtap/config/test-fn-email-sistema.sql (test 10)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260911-07-alter-chk-email-outbox-stato-simulata-mctit.yaml
+
+  - changeSet:
+      id: 20260911-07-alter-chk-email-outbox-stato-simulata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.email_outbox.stato ammette SIMULATA, come config.email_log dal
+        20260911-06. Serve perche' in console mode send_from_outbox scrive SENT
+        sulla bozza: senza questo, log e outbox direbbero due cose diverse sulla
+        stessa spedizione, legate dallo stesso email_log_id. Che quella colonna
+        parli di CONSEGNA e non del ciclo della bozza lo prova il ramo accanto,
+        che su fallimento SMTP la riporta a DRAFT. Widening puro.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: email_outbox }
+            - columnExists:
+                schemaName: config
+                tableName: email_outbox
+                columnName: stato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP + ADD nella stessa transazione: non esiste un istante
+              --   in cui la tabella e' senza vincolo.
+              ALTER TABLE config.email_outbox
+                  DROP CONSTRAINT IF EXISTS chk_email_outbox_stato;
+
+              ALTER TABLE config.email_outbox
+                  ADD CONSTRAINT chk_email_outbox_stato
+                  CHECK (stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED', 'SIMULATA'));
+
+              COMMENT ON CONSTRAINT chk_email_outbox_stato ON config.email_outbox IS
+                  'Il vocabolario della bozza. ⭐ SIMULATA (rev 2026-09-11) e'' il gemello '
+                  'del valore omonimo su config.email_log: quando la mail viene mostrata '
+                  'invece che spedita, la bozza non e'' stata consegnata. ⛔ Prima quel '
+                  'ramo scriveva SENT, e con il solo allargamento del log le due righe — '
+                  'legate da email_log_id — avrebbero detto due cose diverse sulla stessa '
+                  'spedizione. ⚠️ E questa colonna parla di CONSEGNA, non del ciclo di '
+                  'redazione: lo prova il ramo accanto nello stesso metodo, che su '
+                  'fallimento SMTP riporta la bozza a DRAFT perche'' l''operatore riprovi. '
+                  'Brief: brief-db-stato-email-console-non-e-inviata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Puo' fallire se una bozza ha gia' preso il valore, ed e'
+              --   giusto: un vocabolario in uso non si restringe in silenzio.
+              ALTER TABLE config.email_outbox
+                  DROP CONSTRAINT IF EXISTS chk_email_outbox_stato;
+
+              ALTER TABLE config.email_outbox
+                  ADD CONSTRAINT chk_email_outbox_stato
+                  CHECK (stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED'));

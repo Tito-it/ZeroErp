@@ -11,6 +11,8 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 > **Sviluppo attivo — DB, backend e frontend operativi su core, anagrafiche, catalogo, ciclo attivo completo (preventivi, offerte, contratti, ordini, DDT, resi, fatture, commesse), pratiche, documenti e presentazione configurabile. Non ancora rilasciato per produzione.**
 >
+> *Ultimo aggiornamento dello stato: **10 settembre 2026**.*
+>
 > La fotografia dettagliata, lo stato per componente e la roadmap sono mantenuti in
 > un'unica fonte: la [Mappa Concentrica](./mappa-concentrica.md) (stato per anello +
 > sezione Roadmap), con la storia datata nel suo

@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CL-4, ARMAMENTO — ENABLE ROW LEVEL SECURITY su anagrafiche.clienti.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.17
+#   Slice 20260910-38..42. ⭐ E' QUESTO il changeSet in cui il comportamento del
+#   database cambia: i tre precedenti non filtravano niente.
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   Il pgTAP di questa slice asserisce `relrowsecurity`, non l'esistenza della
+#   policy: e' il secondo criterio di `dbops.vw_rls_perimetro_scoperto`, che
+#   pesca tre tabelle proprio cosi'.
+#
+# ── NO FORCE, a parita' con la testata ────────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`, come
+#   `anagrafiche.billing_account`: l'owner (`titodb`) resta esente, cosi'
+#   migrazioni, job owner e i pgTAP marcati `pgtap-runner: owner` non si
+#   bloccano. ⚠️ Il runtime applicativo e' `zeroerp_app`, che NON e' l'owner ed
+#   e' `NOBYPASSRLS`: pienamente soggetto.
+#
+# ── ⚠️ QUESTA E' PIU' CENTRALE DELLE PRECEDENTI: dove guardare ────────
+#   `anagrafiche.clienti` non e' un satellite di nicchia — la leggono **25
+#   viste**. Ventiquattro hanno gia' `security_invoker` e seguiranno il
+#   perimetro da se'; la venticinquesima, `anagrafiche.vw_pdp`, e' stata
+#   sistemata da 20260910-39 **apposta** perche' l'avrebbe aggirato.
+#
+#   ⚠️ I punti da guardare a mano dopo l'apply:
+#     - le liste e i drawer del cliente (ragione sociale, stato, termini e
+#       modalita' di pagamento);
+#     - il portale cliente e lo shop: le due vesti sono rispecchiate, ma la
+#       veste shop pretende ORA anche `canale_origine = 'SHOP'` sul billing
+#       account — che e' cio' che la testata gia' pretendeva. Se un cliente
+#       shop smettesse di vedere la propria scheda, la domanda non e' «allargo
+#       la policy?» ma «quel billing account e' davvero nato dal canale SHOP?»;
+#     - `anagrafiche.vw_pdp`, che da adesso filtra: e' la vista che prima
+#       mostrava tutto.
+#
+# ── ⛔ E UNA TABELLA ENTRA NEL PERIMETRO AL GIRO DOPO ─────────────────
+#   `anagrafiche.pdp` ha `cliente_id` verso questa tabella, quindi da adesso
+#   il criterio transitivo la vede. ⚠️ Ma NON si arma qui: il legame e'
+#   bidirezionale (`clienti.pdp_id` -> `pdp` e `pdp.cliente_id` -> `clienti`) e
+#   **tutte e due le chiavi sono nullable**. Una policy su una chiave nullable
+#   ha un buco esatto dove passa il NULL: e' una domanda di modello, come
+#   `magazzino.assets`, e va decisa prima di armare.
+#   ⇒ La sua riga entra nel registro del debito con 20260910-42, nello stesso
+#   gesto — altrimenti il presidio la troverebbe `NON_DICHIARATO`.
+#
+# ⭐ Collaudo funzionale: db/pgtap/rls/test-rls-clienti.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260910-41-enable-rls-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-41-enable-rls-clienti
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su anagrafiche.clienti. Da qui le
+        tre policy di 20260910-40 filtrano davvero. Isolato apposta: si disarma
+        con il rollback di questo solo changeSet, e le policy restano dove sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'anagrafiche'
+                 AND tablename  = 'clienti'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti DISABLE ROW LEVEL SECURITY;

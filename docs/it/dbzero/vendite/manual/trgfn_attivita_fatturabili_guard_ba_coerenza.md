@@ -72,7 +72,7 @@ un'attività è *fatturabile*, qualcuno la deve pagare, e il billing account esi
 proprio per rappresentare quel qualcuno anche prima che esista un cliente
 anagrafico (l'utility del gas che fattura un allaccio).
 
-Origine: `docs/it/dev/work-in-progress/brief-db-perimetro-emittente-righe-documento.md` §11.13.
+Origine: `docs/it/dev/work-done/brief-db-perimetro-emittente-righe-documento.md` §11.13.
 
 ---
 

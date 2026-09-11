@@ -32,6 +32,130 @@
 
 ---
 
+## 10 settembre 2026
+
+> Copre il periodo **31 agosto – 10 settembre**. Undici giorni, **384 changeSet**
+> nuovi (175 in `vendite`, 60 in `dbops`, 58 in `script`) e **46 brief chiusi**
+> — il ritmo più alto finora. Anche qui si scrive per **temi**: sono otto.
+>
+> ⚠️ **L'11 settembre è volutamente fuori**, per la stessa ragione del 31 agosto
+> nella voce precedente: quel giorno era in corso mentre questa voce veniva
+> scritta. Ciò che è atterrato l'11 — la chiusura formale del cantiere del
+> perimetro e due slice piccole — entra nella voce successiva.
+>
+> ⭐ **Il tema portante non è un dominio, è la CATENA DI VERIFICA.** Quattro degli
+> otto temi qui sotto riguardano *come si sa che una cosa è vera*: la CI che
+> misura davvero, i presidi che hanno un catalogo, il perimetro dei dati che ha
+> un criterio invece di un elenco, e i motivi d'errore che escono da un posto
+> solo. Il resto del periodo poggia su quelli.
+
+**Anello 0 — I pgTAP misurano davvero, e la CI misura la CI.** La suite era un
+cancello che si poteva attraversare: `continue-on-error` la rendeva un parere, e
+la baseline dei rossi era compilata **a mano** su una macchina di sviluppo — cioè
+descriveva quella macchina, non il contratto. Il 9 settembre la baseline della CI
+viene **misurata dalla CI** su un database ricostruito da zero, il
+`continue-on-error` sparisce, e il ramo di bootstrap **fallisce invece di
+passare**. Escono tre difetti d'ambiente che tenevano rossi interi gruppi di file
+e due building block di fixture riusabili. ⛔ E si scopre la forma peggiore del
+difetto: *un cancello che passa perché non ha misurato niente è peggio di un
+cancello assente*. Vedi
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md).
+
+**Anello 0 — I presidi hanno un catalogo, e un contatore che non mente.** I
+presidi del progetto erano una ventina di file che nessun elenco teneva insieme:
+per sapere *quanti sono e cosa coprono* bisognava cercarli. Nasce `dbops.presidi`
+— il catalogo — con **il contatore onesto**: un presidio che non ha mai girato non
+conta come copertura. Il 10 settembre arriva il corollario in CI: *un cancello non
+deve poter zittire un altro cancello*, perché un guardrail che fallisce e ne
+maschera un secondo lascia passare due difetti al prezzo di uno. Vedi
+[brief-db-un-destinatario-per-i-presidi.md](work-in-progress/brief-db-un-destinatario-per-i-presidi.md).
+
+**Anello 0 + 3 — Il perimetro dei dati smette di fermarsi alla testata.** Delle
+sei famiglie di documento di `vendite`, **una sola** era protetta fino in fondo:
+le righe delle altre cinque erano leggibili da qualunque operatore, e non per
+dimenticanza — perché il perimetro era stato scritto come **elenco a mano**, e un
+elenco ha per confine ciò che chi lo scriveva aveva in mente. Il cantiere (9 → 11
+settembre) arma **nove famiglie**, ritira una tabella residua, e soprattutto
+sostituisce l'elenco con un **criterio transitivo**: `dbops.vw_rls_perimetro_scoperto`
+più il registro `dbops.rls_perimetro_debito` vedono *ogni* tabella con una FK
+verso una protetta, comprese quelle che nasceranno domani. Il debito passa da
+**33 a 10 righe**, e le dieci che restano sono decisioni di modello dichiarate,
+non lavoro rimandato. ⭐ Nello stesso giro il contesto RLS dei test esce da
+venti copie e trova una sede sola (`apri_contesto_operatore`). Vedi
+[brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md),
+[brief-db-viste-security-invoker-criterio.md](work-done/brief-db-viste-security-invoker-criterio.md).
+
+**Anello 0 — I processi automatici hanno un'identità e un perimetro.** I job che
+girano da soli — sveglie, code, pipeline — entravano nel database senza dire *chi
+sono*: nessuna identità applicativa, quindi nessun perimetro da rispettare e
+nessuna riga di log che sapesse attribuirli. Il cantiere (4 → 7 settembre) dà a
+ogni processo del backend un **artefatto di deploy** e un'identità, e chiude i
+residui lato BE. ⇒ Da qui un processo automatico è un attore come gli altri,
+soggetto alle stesse regole. Vedi
+[brief-db-processi-automatici-identita-e-perimetro.md](work-done/brief-db-processi-automatici-identita-e-perimetro.md),
+[brief-db-sveglia-dei-processi.md](work-done/brief-db-sveglia-dei-processi.md),
+[brief-db-processi-automatici-residui-be.md](work-done/brief-db-processi-automatici-residui-be.md),
+[piano-be-fe-processi-automatici-identita-e-perimetro.md](work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md).
+
+**Anello 3 (vendite) — Un documento rotto non tiene più in ostaggio il giro di
+fatturazione.** Un lotto che incontrava un documento non emettibile si fermava, e
+con lui tutti gli altri documenti di quel giro: il difetto di uno diventava il
+blocco di tutti. Il tema si apre in tre tempi — **l'uscita dal giro** (un
+documento può uscire e il lotto prosegue), **il trattenuto** (una sede sola per la
+domanda *«questa riga può entrare in un giro?»*, invece della stessa condizione
+riscritta in più punti) e **il marcatore**, che non scrive più su un documento già
+uscito. ⭐ La lezione che resta: *una condizione scritta in tre posti diverge, e
+diverge in silenzio*. Vedi
+[brief-db-uscita-documento-dal-giro.md](work-done/brief-db-uscita-documento-dal-giro.md),
+[brief-db-documento-trattenuto-da-un-lotto-vivo.md](work-done/brief-db-documento-trattenuto-da-un-lotto-vivo.md),
+[brief-db-il-trattenuto-passa-lo-stesso.md](work-done/brief-db-il-trattenuto-passa-lo-stesso.md),
+[brief-db-il-marcatore-scrive-su-un-documento-uscito.md](work-done/brief-db-il-marcatore-scrive-su-un-documento-uscito.md).
+
+**Anello 3 (vendite) — L'esito di un documento nel lotto ha casa propria.**
+L'esito di ogni documento dentro un giro si deduceva dagli stati altrui, e sui
+giri di massa la deduzione non reggeva. Ora è un dato, con la sua sede, e vale
+anche per i giri massivi; la **segnalazione di un lotto dichiara di quale
+documento parla**, invece di lasciarlo capire. Chiusi anche due residui di
+performance (la `LATERAL` costosa sul riferimento gruppi) e le bandiere
+dell'esito parziale. Vedi
+[brief-db-esito-gruppo-lotto.md](work-done/brief-db-esito-gruppo-lotto.md),
+[brief-be-db-gruppo-key-sulle-segnalazioni.md](work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md),
+[brief-residuo-fatturabili-e-bandiere-esito-parziale.md](work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
+
+**Anello 0 — Il primo motivo di un controllo esce da un posto solo.** Le funzioni
+`script.fn_check_*` producono un array di motivi, e chi doveva sollevarne il primo
+ricopiava la stessa coda di codice — tredici volte, con tredici occasioni di
+divergere. Nasce `script.fn_raise_primo_motivo_se_presente`, e la regola che
+decide è una riga: *il codice che sollevo lo sto **leggendo** da un array o lo sto
+**scrivendo** come letterale?* ⭐ Sbagliare funzione **non compila** — i tipi non
+legano — quindi l'unico modo di sbagliare è non usarla, e quello ha il suo
+presidio. Vedi
+[brief-db-coda-primo-motivo-in-un-posto-solo.md](work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md),
+[brief-db-i-motivi-si-fermano-dentro-la-check.md](work-done/brief-db-i-motivi-si-fermano-dentro-la-check.md).
+
+**Anello 1 + 3 — La numerazione finisce il trasloco, e l'IVA arriva ai
+consumatori.** Il 31 agosto atterra l'esecuzione decisa il giorno prima: la
+commessa passa **sui registri**, con il prefisso e l'allineamento dei contatori, e
+la chiave del contatore diventa esplicita. ⇒ La voce «il trasloco sui registri»
+esce dalla roadmap: **è fatta**, CRUD dei registri compreso — che era anche una
+voce dei «Previsti». Nello stesso periodo il risolutore IVA arriva ai suoi
+consumatori applicativi (fase 3), i titoli IVA del soggetto prendono i movimenti
+di annullo, e il default IVA smette di dipendere da un id di seed per passare a
+una **chiave naturale**. Vedi
+[brief-db-registri-di-numerazione-emittente-e-trasloco.md](work-done/brief-db-registri-di-numerazione-emittente-e-trasloco.md),
+[brief-db-registri-numerazione-chiave-del-contatore.md](work-done/brief-db-registri-numerazione-chiave-del-contatore.md),
+[brief-be-fe-crud-registri-di-numerazione.md](work-done/brief-be-fe-crud-registri-di-numerazione.md),
+[brief-be-fe-iva-fase-3-consumatori-risolutore.md](work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
+[brief-db-default-iva-chiave-naturale.md](work-done/brief-db-default-iva-chiave-naturale.md).
+
+**In breve, senza un tema proprio** — il **fondo fattura** con ricalcolo e governo
+applicato il 31 agosto; l'**archiviazione delle righe di coda** e la
+storicizzazione dei bersagli spariti; il **perimetro delle email** e l'invio di
+sistema; i **riferimenti contratto** sugli atti di fattura; tre giri di **seed
+liste** (lotto, titolo IVA, admin `ui`); due **design** che preparano il magazzino
+— la partita merce generalizzata e la situazione merce di un ordine; e la
+migrazione della clausola `ORDER BY` lato backend.
+
 ## 30 agosto 2026
 
 > Copre il periodo **11 – 30 agosto**. Venti giorni densi — **460 changeSet**
