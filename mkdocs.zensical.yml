@@ -70,6 +70,7 @@ nav:
                   - Perchè Zero ERP: it/perche-zeroerp.md
         - Installazione:
                   - Prerequisiti: it/installazione.md
+                  - Preparare ZeroERP all'uso: it/configurazione-iniziale.md
                   - Licenza: it/LICENSE-GPL3.md
         - Architettura:
                   - it/architettura.md
