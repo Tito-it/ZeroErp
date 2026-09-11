@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Management command per processare email in coda
-#        (stato PENDING o RETRY con tentativi < max_tentativi).
-#        Eseguibile come cron job (pgAgent o crontab).
+# Scopo: Management command per processare email in coda: `PENDING` sempre,
+#        piu' `FAILED` e `RETRY` finche' `tentativi < max_tentativi` e il
+#        `prossimo_tentativo` e' scaduto (la SELECT autorevole e' nel corpo).
+#        ⚠️ Questa riga diceva «PENDING o RETRY» e OMETTEVA `FAILED`: il
+#        2026-09-11 quell'omissione ha portato a scrivere, in `email_service`,
+#        un commento che affermava il contrario di cio' che il codice fa —
+#        «una riga FAILED non torna in coda». *Un commento non e' una fonte:
+#        se descrive un predicato, va riletto contro il predicato.*
+#        Svegliato da un timer systemd (`zeroerp-send-pending-emails.timer`),
+#        non da crontab — vedi `backend/deploy/sveglie.json`.
 # ------------------------------------------------------------
 
 from __future__ import annotations

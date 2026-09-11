@@ -100,7 +100,7 @@ Un lavoro può partire da quattro posti diversi:
 | Canale | Chi lo fa partire |
 | --- | --- |
 | **PGAGENT** | un orologio: ogni notte, ogni ora |
-| **COMMAND** | un comando lanciato a mano o da uno script |
+| **COMMAND** | un **timer systemd** sul server del backend — oppure, piu' raramente, un comando lanciato a mano (vedi §4-bis) |
 | **CODA** | una persona che ha premuto un pulsante |
 | **CODA_AUTOMATICA** | un orologio che invece di lavorare **mette in coda** un lavoro |
 
@@ -127,6 +127,64 @@ l'azienda A dà problemi, B e C vengono comunque servite — prima un intoppo su
 una fermava tutto, per tutti, in silenzio.
 
 ---
+
+
+## 4-bis. Chi suona la sveglia: pgAgent, systemd, la coda
+
+> ⚠️ **Questa sezione e' nata il 2026-09-11 da una domanda**: *«questi lavori
+> sono su crontab, giusto?»*. La risposta e' no — e il fatto che la domanda
+> fosse ragionevole dice che la guida non lo spiegava.
+
+**Non c'e' nessun crontab.** Le sveglie sono di **due** tipi, e stanno in due
+mondi diversi:
+
+| Sveglia | Dove vive | Dove si dichiara | Oggi |
+| --- | --- | --- | --- |
+| **pgAgent** | dentro il **database** | un changeSet in `85_pgagent/` | 13 processi |
+| **timer systemd** | sul **server del backend** | [`backend/deploy/sveglie.json`](../../../backend/deploy/sveglie.json) | 6 processi |
+| *(nessuna)* | il lavoro entra in `dbops.coda_lavori` e lo prende un worker | — | 3 processi |
+
+⛔ **Il canale `COMMAND` NON vuol dire «a mano».** Fino al 2026-09-11 la tabella
+del §4 lo descriveva cosi', e per tutti e sei i processi era falso: sono
+schedulati, alcuni ogni minuto. Il nome dice **come** il lavoro viene eseguito —
+un management command Django — non **chi** lo sveglia.
+
+⚠️ **E nel giornale delle esecuzioni quel canale si chiama `CRON`**
+(`job_run_log.origine`): e' il nome storico di «svegliato da uno schedulatore di
+sistema», che qui e' systemd. Leggendo una riga di giornale sembra dire un'altra
+cosa.
+
+### Due forme, e una non e' un orologio
+
+`sveglie.json` distingue `forma: timer` da `forma: servizio`. La seconda non ha
+cadenza: e' un processo **sempre acceso** — oggi `listen_cambio_reparto`, che sta
+in ascolto su un canale `LISTEN/NOTIFY`. ⚠️ Scrive **un solo run**, quello di
+avvio (decisione di Tid, 2026-09-05): *«e' vivo adesso?»* e' una domanda diversa
+da *«ha girato stanotte?»*, e ha una sede sua.
+
+### ⭐ Perche' systemd e non cron
+
+Un unit porta con se' quello che in una riga di crontab andrebbe ricostruito a
+mano: l'utente, la cartella, il file degli ambienti (`EnvironmentFile`, cioe' i
+segreti senza esporli), il giornale per corsa — e soprattutto `Persistent=true`,
+che **recupera il giro perso** se la macchina era spenta. Un digest settimanale
+sotto cron, con la macchina spenta il lunedi' mattina, salterebbe la settimana
+senza dirlo.
+
+### ⛔ Il limite che questa distinzione porta con se'
+
+La vista `dbops.vw_processi_programmazione` sa tutto dei job **pgAgent** —
+prossima corsa, ultima corsa, esito — e sui **COMMAND** risponde
+`stato = FUORI_PORTATA`. Non e' una lacuna della vista: **il database non puo'
+vedere systemd**, ed e' giusto che lo dichiari invece di indovinare.
+
+⚠️ **La conseguenza si e' vista il 2026-09-11**: su un host quattro timer
+dichiarati accesi non erano **mai stati installati** — l'invio email, i due
+digest e il listener — e nessun controllo se ne era accorto, perche' i presidi
+guardano il **dichiarato**, non l'installato. Chi mette in servizio una macchina
+esegue `sudo backend/bin/install-timers.sh`, che legge `sveglie.json` ed e'
+idempotente; il divario fra dichiarato e installato, oggi, non lo guarda nessuno.
+
 
 ## 5. Per conto di chi lavora
 
@@ -176,6 +234,31 @@ Ogni corsa lascia una riga in
 [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log): quando è
 partita, quanto ci ha messo, com'è finita — e adesso anche **chi era**: quale
 lavoro, e con quale tesserino.
+
+### ⭐ Due registri, e non sono in concorrenza
+
+Un lavoro di **coda** lascia due tracce, e la domanda a cui rispondono è diversa:
+
+| Registro | Che cosa registra |
+| --- | --- |
+| [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) | **il giro** di chi ha lavorato: il drenaggio, il job dell'orologio, il comando |
+| [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori) | **il singolo lavoro**: quando è stato preso in carico, quando è iniziato e finito, quanti tentativi, l'ultimo errore, il risultato |
+
+Le due si tengono per mano con la colonna **`coda_lavori.job_run_id`**, che punta
+al giro dentro cui quel lavoro è stato eseguito.
+
+⚠️ **Da qui una cosa che sorprende, e conviene saperla prima di cercarla**:
+se si va in `job_run_log` a cercare le corse di `FATTURAZIONE_GIRO` per
+`processo_codice`, non se ne trova **nessuna** — e non perché non abbia mai
+girato. Il run porta il codice di **chi lo ha eseguito**, cioè il drenatore; il
+lavoro sta nella coda, e il legame è quella colonna. ⭐ È la stessa regola del
+§4 vista dal lato del registro: *chi suona la sveglia non è chi fa il lavoro*, e
+il giornale registra chi ha lavorato.
+
+⛔ **E c'è un'assenza che nessuno dei due registri può mostrare**: un processo
+che **non parte affatto** non scrive niente, né qui né lì. Una riga che manca non
+si vede — si vede solo confrontandola con l'elenco di ciò che ci si aspettava, e
+quell'elenco vive nel deploy (`sveglie.json`, §4-bis), non nel giornale.
 
 ### ⭐ Il fallimento che spariva
 

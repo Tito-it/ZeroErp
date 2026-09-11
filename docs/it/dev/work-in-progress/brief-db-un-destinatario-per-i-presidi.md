@@ -18,6 +18,23 @@
 
 ---
 
+> ## ✅ STATO — chiuso lato backend il 2026-09-11 · **§12**
+>
+> Il perimetro dei §4-§5 è consegnato e **provato end-to-end**: il 2026-09-11
+> alle 00:16 un digest è partito ed è **arrivato in casella**.
+> ⛔ **Resta in `work-in-progress/` per una ragione sola**: il team DB non ha
+> ancora letto il **§11**, che porta una richiesta (contare le 779 per classe —
+> è una lettura che dal ruolo applicativo risponde zero) e una scoperta che li
+> riguarda (§11.5). *Non si archivia un documento di scambio mentre porta una
+> domanda aperta all'altra parte.*
+> ⇒ Per archiviare: §12.3, dove l'operazione è già scritta per intero.
+>
+> ⚠️ **Il resto del documento è il registro di come ci si è arrivati e NON va
+> riletto come stato corrente**: diversi paragrafi dicono il vero su difetti poi
+> chiusi, e ognuno porta la propria data. Lo stato è qui e al §12.
+
+---
+
 ## 1. Come è nato — e non è un'ipotesi
 
 Il 2026-09-09 il job `CHIUSURA_SCADENZE` risultava fallito **quattro notti
@@ -703,6 +720,18 @@ questo paragrafo. Nessun lavoro sprecato e nessuna riga che solleva.
 > **1 cambia diagnosi** — i 779 non erano riferimenti morti, ed è riparato ciò
 > che si poteva riparare. La tabella qui sotto resta com'è scritta: è il
 > documento di chi ha chiesto.
+> ✅ **E rientrate lato backend al §11** (2026-09-10): debito tolto, corsia
+> settimanale riaccesa dopo prova a secco.
+> ⭐ **Poi chiuso lato backend il 2026-09-11 (§12)**, destinatario e SMTP
+> compresi: la prima mail è arrivata alle 00:16.
+> ⛔ **Resta una sola cosa, ed è del team DB**: contare le **779** per classe
+> (§11.4) — è la lettura che dal ruolo applicativo risponde zero.
+>
+> ⚠️ *Questa riga, fino al 2026-09-11, diceva «restano fuori il destinatario, che
+> su questa macchina non è configurato»: era vera quando è stata scritta ed è
+> invecchiata nel giro di due ore, mentre §11.4 e §12 venivano aggiornati.
+> È il difetto che questo brief denuncia a ogni pagina, trovato al suo interno —
+> e vale la pena lasciarlo scritto invece di cancellarlo.*
 
 | # | Cosa | Che cosa sblocca | Dove |
 | --- | --- | --- | --- |
@@ -1120,3 +1149,299 @@ del database di sviluppo di quel giorno: valgono come controesempio, non come
 motivo. Il motivo sta sul modello, ed è che un presidio che non sa distinguere
 «non ho trovato difetti» da «non ho potuto guardare» dice la cosa più pericolosa
 che un presidio possa dire.*
+
+---
+
+## 11. 🔵 Risposta backend — le tre richieste sono rientrate, 2026-09-10
+
+> **Chi risponde:** backend (`dev/backend-tid`). **Stato:** il §5 e il §8.2 erano
+> gia' consegnati; con il §10 rientrano anche le **tre richieste** del §9.0.
+> Suite **4646 verdi** con `ZEROERP_TEST_DB_E2E=1`. ⛔ Restano fuori tre cose,
+> tutte dichiarate al §11.4 — e una di queste e' il **destinatario**, che da' il
+> nome al cantiere e su questa macchina non c'e'.
+
+### 11.1 ✅ Richiesta 3 — il debito e' stato PAGATO, e il verso di ritiro ha funzionato
+
+`maintenance.vw_job_run_da_guardare` e' a catalogo (§10.2), quindi
+`_IN_ATTESA_DI_CATALOGO` in `presidi_repository.py` e' **vuota**.
+
+⭐ **E il meccanismo ha fatto esattamente cio' per cui era scritto**, il che vale
+piu' della riga tolta: `test_il_debito_delle_viste_in_attesa_e_rientrato` e'
+diventato rosso al primo giro dopo l'apply e ha **nominato la riga da
+cancellare**. Nessuno ha dovuto ricordarsene.
+
+⛔ **Il meccanismo NON e' stato cancellato insieme alla riga**, ed e' una scelta:
+un registro vuoto non e' un registro inutile, e' un registro in pari — la stessa
+ragione per cui `dbops.codici_errore_senza_policy` resta a zero righe invece di
+essere droppata. La prossima vista decisa e non ancora applicata entra li', non
+in un `if` sparso nel pannello.
+
+⚠️ **I due test che ora girano a vuoto lo DICHIARANO** invece di sembrare
+coperti (`test_presidi_catalogo` §7, `test_presidi_repository` §5). ⭐ E il ramo
+dormiente resta **provato**: il test 2 di `test_presidi_repository` la riga se la
+costruisce invece di pescarla dal registro — ed e' il motivo per cui era scritto
+cosi'.
+
+**Verificato in app** (lettura del 2026-09-10, 23:35): il pannello legge **14**
+viste di natura `ZERO`, e `maintenance.vw_job_run_da_guardare` c'e' — arriva dal
+**catalogo** invece che dal debito. Il conteggio e' `1`: e' il residuo di
+`sync_auth_user_active` gia' segnalato al §9.5.
+
+### 11.2 ✅ Richiesta 2 — nessuna riga di codice, ed e' il segno che la sede era giusta
+
+Il passaggio a `DEFINER` (§10.1) **non ha richiesto niente al backend**: il
+digest e il pannello ramificavano gia' su `perimetro`, quindi la rete che il
+§9.4 aveva teso — *«il conteggio dice N ma da qui la vista risponde VUOTA: il
+perimetro dichiarato non regge»* — si e' **spenta da se'**, perche' era scritta
+per il caso `LIBERO`.
+
+La corsa a secco lo mostra: sotto le due viste ora si legge
+*«(righe non elencabili da qui: la vista ha un perimetro)»*, che e' un
+**contratto**, non un difetto. ⭐ Un messaggio diagnostico che smette di
+comparire perche' la causa e' stata corretta a monte e' il modo giusto in cui una
+rete finisce.
+
+### 11.3 ✅ Richiesta 1 — la corsia settimanale e' RIACCESA, dopo averla provata
+
+**Decisione di Tid, 2026-09-10: si prova a secco, e se regge si accende.**
+Provata (`digest_presidi --cadenza settimanale --secco`, 23:32) e riaccesa
+(`abilita: true` in `deploy/sveglie.json`, con la nota riscritta).
+
+| Cosa | Esito |
+| --- | --- |
+| la corsa settimanale, intera | ✅ ha girato: 1 allarme, 1 registro, 6 lavorazioni |
+| il cluster | ✅ in piedi, `pg_postmaster_start_time` **invariato** |
+| il pannello (`stato_presidi`) | ✅ 14 righe, nessun `errore`, postmaster invariato |
+| l'installer con la voce accesa | ✅ `test-install-timers.sh` verde, il timer entra fra gli accesi |
+
+⭐ **Due assenze dichiarate si chiudono qui, e nessuna delle due era una svista**:
+al §9.3 stava scritto *«non l'ho provata in app per questo»* del pannello, e la
+corsia settimanale non aveva **mai** girato — il battito lo diceva di suo pugno:
+*«digest_presidi:settimanale: ⛔ MAI GIRATA»*. Erano vere quel giorno; oggi sono
+false perche' e' stato corretto il codice, non la frase.
+
+⚠️ **La causa dei segfault resta APERTA** (§10.4), e la riaccensione non la
+chiude: la chiude chi guarda la pressione di memoria della macchina. Cio' che e'
+cambiato e' che il percorso *invoker* — morto tre volte su tre — **non lo
+attraversa piu' nessuno**, e che la corsa e' stata esercitata da capo a fondo
+sotto osservazione invece che di lunedi' mattina.
+
+⛔ **E va saputo che spegnerla non toglieva quel rischio**, perche' e' la ragione
+per cui riaccenderla non lo aggiunge: il pannello legge **tutte** le viste `ZERO`,
+comprese le settimanali, quindi `vw_riferimenti_morti_rientrati` la conta gia' a
+ogni apertura della schermata. La corsia spenta toglieva **13 viste** dallo
+sguardo e il **battito** — cioe' l'unica cosa che rende visibile la morte del
+digest — non il pericolo. La nota in `sveglie.json` lo dice per esteso.
+
+### 11.4 🔴 Tre cose restano fuori, e la prima e' quella che da' il nome al cantiere
+
+**1. ✅ IL DESTINATARIO — CHIUSO IL 2026-09-11, e provato fino in fondo.**
+Questo punto diceva *«IL DESTINATARIO NON E' CONFIGURATO»* ed era vero: la corsa
+a secco lo dichiarava in coda (*«Destinatario: NESSUNO»*). ⭐ Il meccanismo si e'
+comportato come progettato — vuoto ≠ spento: il digest si calcolava, lo scriveva
+su stderr e lo segnava nel `meta` del run (`"inviato": "NON_CONFIGURATO"`),
+invece di tacere come faceva `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`.
+
+**Chiuso in tre pezzi, e nessuno dei tre da solo bastava:**
+
+| Pezzo | Dove | Stato |
+| --- | --- | --- |
+| il **destinatario** | `ZEROERP_PRESIDI_DIGEST_DESTINATARIO` in `.env.systemd` (per-host, non versionato) | ✅ valorizzato |
+| gli **unit systemd** | `sudo bin/install-timers.sh` | ✅ installati — vedi §11.5 |
+| l'**SMTP** | account `SISTEMA` di `config.email_account`, da `Amm. Software → Email accounts` | ✅ configurato, test connessione verde |
+
+⛔ **Il terzo pezzo era il piu' insidioso, e non si vedeva da nessun elenco**:
+finche' `smtp_host` resta il placeholder `smtp.example.com`, `is_console_mode`
+risponde vero **anche con `DEBUG = False`**, e la mail viene stampata a video
+invece che spedita. 🔴 **E il giornale la registra `SENT` lo stesso**
+(`email_service` chiama `update_log_stato(log_id, "SENT", …)` su quel ramo):
+una mail mai partita e' indistinguibile da una consegnata, e nessun presidio se
+ne accorge. *E' lo stesso difetto di specie del cantiere — un verde che dice
+«fatto» dove il fatto non c'e'* — e resta **aperto nel codice**: qui e' stato
+tolto configurando l'SMTP, non correggendo la causa.
+
+✅ **Provato end-to-end il 2026-09-11 alle 00:16**: `digest_presidi --cadenza
+giornaliera` (non secco) → coda → `send_pending_emails` → `email_log` **417**,
+`stato=SENT`, `errore=NULL`, **e la mail e' arrivata in casella** (confermato da
+Tid). ⚠️ `SENT` dice «accettata dal server SMTP», non «letta»: la conferma di
+arrivo e' una cosa che il sistema non sa e che ha detto una persona.
+
+**2. 🟠 Il numero 779 e il limite dichiarato al §10.3 — una richiesta di lettura.**
+Il §10.3 chiude dicendo che il ramo `NON_MISURATO` *«da quando esiste non si e'
+mai acceso, perche' lo strumento ha ripreso a funzionare»*. Alle **23:32**, con
+la riparazione applicata e verificata (`NON_MISURATO` e' nel corpo della
+funzione **e** nella `SELECT` della vista, letti da `pg_get_functiondef` /
+`pg_get_viewdef`), `dbops.fn_conta_presidio` su
+`dbops.vw_riferimenti_morti_da_sanare` risponde ancora **779**.
+
+⇒ Delle due l'una, e sono la stessa cosa vista da due lati: o il ramo **si e'
+acceso** — e allora il limite del §10.3 e' chiuso, quel ramo *si accende quando
+deve* — oppure lo strumento e' tornato a non misurare, che e' cio' che il ramo
+esiste per dire. ⭐ In entrambi i casi il presidio sta facendo il suo mestiere:
+riferisce un numero **e** dichiara nella nota che non va letto come debito.
+
+⛔ **La conferma non posso darla io, e va detto invece di dedurla**: la
+ripartizione per classe e' una lettura del **proprietario** — da `zeroerp_app`
+quella vista risponde zero (§9.4), e un `SELECT ... GROUP BY classe` da qui
+tornerebbe vuoto. ⇒ **Richiesta al team DB: contare le 779 per classe.** Se sono
+`NON_MISURATO`, il §10.3 va corretto in un punto solo — la frase «non si e' mai
+acceso» — e la data della prima accensione e' il 2026-09-10.
+
+**3. Invariate dal §9.6**: `OnFailure=` sugli unit (assenza dichiarata, vuole un
+canale che dal database non dipenda), la bonifica dei registri di debito (fuori
+perimetro come da §6), un destinatario **per vista** (§4.1, rimandabile).
+
+
+### 11.5 🔴 SCOPERTO strada facendo: fra «dichiarato» e «acceso» non guarda nessuno
+
+Andando ad accendere la corsia settimanale e' saltato fuori un fatto che questo
+brief non aveva mai considerato, e che valeva piu' della riga che stavo per
+toccare. Misurato su `backend-dev` il 2026-09-11:
+
+| Dichiarato `abilita: true` in `sveglie.json` | Installato in `/etc/systemd/system` |
+| --- | --- |
+| `zeroerp-coda-lavori`, `zeroerp-coda-stampa` | ✅ enabled + active |
+| `zeroerp-send-pending-emails` | ⛔ **assente** |
+| `zeroerp-digest-presidi-giornaliero` | ⛔ **assente** |
+| `zeroerp-digest-presidi-settimanale` | ⛔ **assente** |
+| `zeroerp-listen-cambio-reparto` | ⛔ **assente** |
+
+**Due timer su sei.** I template erano tutti nel repo: mancava solo che qualcuno
+rilanciasse l'installer da quando quei quattro unit sono nati.
+
+⛔ **E le conseguenze si tenevano l'una con l'altra**: il digest non sarebbe
+partito da solo (nessun timer), e anche partendo a mano la sua email non sarebbe
+stata consegnata da nessuno (`send-pending-emails` non installato). ⇒ Il §11.4
+sarebbe rimasto aperto **anche dopo** aver scritto il destinatario: tre pezzi,
+e ne mancavano due.
+
+🔴 **La parte che riguarda questo cantiere e' che nessun presidio lo vede**, ed
+e' un buco che resta aperto:
+
+* `test_ogni_processo_del_backend_ha_una_sveglia` verifica che ogni processo
+  abbia una sveglia **dichiarata**, non che sia **in servizio** — quindi e'
+  verde su una macchina dove quattro processi non partono;
+* il database non puo' saperlo, e lo dice: `vw_processi_programmazione` li
+  chiama giustamente `FUORI_PORTATA`;
+* il **battito** del digest lo direbbe, ma solo per le corsie del digest **e**
+  solo dopo che il digest e' installato — cioe' non copre il caso in cui a
+  mancare e' proprio lui. Al primo giro infatti ha scritto
+  *«digest_presidi:settimanale: ⛔ MAI GIRATA»*, ed era vero da sempre.
+
+⭐ **La forma del presidio che manca si vede gia'**, ed e' la generalizzazione di
+cio' che il battito fa per se': confrontare i processi con **sveglia accesa** in
+`sveglie.json` con quelli che hanno un run **entro la propria
+`tolleranza_minuti`** — i due dati esistono entrambi, sono nella stessa sede, e
+oggi si guardano solo per il digest. ⛔ Non l'ho scritto: e' un cantiere suo, e
+va deciso dove vive (un presidio Python non puo' stare a catalogo, perche' quel
+catalogo e' del database).
+
+**Rimedio applicato**: `sudo backend/bin/install-timers.sh` — idempotente, legge
+`sveglie.json`, ha acceso i sei dichiarati e lasciato installate-e-spente le due
+corsie della fatturazione. ⚠️ Il confronto fra il renderizzato e i due unit gia'
+in servizio non mostrava **nessuna differenza funzionale** (solo le righe di
+intestazione, che l'installer di allora non scriveva): riscriverli non ha
+toccato i due worker attivi.
+
+*Fatto del 2026-09-11 su `backend-dev`. Vale come controesempio — «questo caso
+esiste ed e' gestito male» — non come motivo: il motivo sta sul modello, ed e'
+che un processo dichiarato e mai installato e un processo che non esiste si
+comportano allo stesso modo.*
+
+*Risposta backend del 2026-09-10. Le letture di questo paragrafo sono del dbdev
+di quel giorno e valgono come controesempio, non come motivo: il motivo sta sul
+modello, ed e' che un presidio che nessuno riceve e un presidio che non esiste
+si comportano allo stesso modo.*
+
+---
+
+## 12. ✅ Chiusura — lato backend è finito, 2026-09-11
+
+> **Stato:** il perimetro dichiarato ai §4-§5 è **consegnato e provato
+> end-to-end**. ⛔ Il file resta in `work-in-progress/` per una ragione sola,
+> scritta al §12.3: il team DB non ha ancora letto il §11, che porta una
+> **richiesta** e una **scoperta** che li riguardano.
+
+### 12.1 Che cosa è stato consegnato
+
+| Cosa | Dove | Prova |
+| --- | --- | --- |
+| il **catalogo** dei presidi e il conteggio onesto | `dbops.presidi` + `fn_conta_presidio` (team DB) | 33 righe, pgTAP 11/11 |
+| il **lettore**, senza nessun elenco di viste nel backend | `presidi_repository` | 7 test + 8 sul DB vero |
+| il **digest** e le sue due corsie | `presidi_digest` + `digest_presidi` | 17 + 6 test, e le corse vere |
+| il **dichiarato di deploy** | `deploy/sveglie.json` + 4 template | 11 test + `test-install-timers.sh` |
+| il **pannello** dalle sole `ZERO` a catalogo | `stato_presidi` + `processi_service` | 11 test, e 14 righe lette in app |
+
+⭐ **La prova che conta è una sola, ed è arrivata alla fine**: il 2026-09-11 alle
+00:16 un digest è partito, ha attraversato la coda, è uscito su SMTP ed **è
+arrivato in casella**. Fino a quel momento ogni pezzo era verde e la posta non
+esisteva.
+
+⚠️ **E gli ultimi tre metri non erano nel piano.** Il piano (§8.2) prevedeva
+catalogo, lettore, digest e pannello; fra il «digest che gira» e «la mail che
+arriva» c'erano tre cose che nessuno aveva contato — ✅ **e sono state chiuse
+tutte e tre la notte del 2026-09-10/11**:
+
+| Mancava | Chiuso |
+| --- | --- |
+| il **destinatario** | ✅ `ZEROERP_PRESIDI_DIGEST_DESTINATARIO` valorizzato in `.env.systemd` |
+| gli **unit systemd** | ✅ installati (`install-timers.sh`): 6 accesi, 2 spente come dichiarato |
+| l'**account SMTP** | ✅ configurato dall'amministrazione, test connessione verde |
+
+⭐ Tre assenze **diverse fra loro**, e la proprietà che le accomuna è l'unica che
+conta qui: **nessuna faceva fallire niente**. Il digest girava e si dichiarava
+inviato, il pannello rispondeva, i test erano verdi — e la posta non arrivava a
+nessuno. È la firma di tutto questo cantiere, ritrovata **dentro** il cantiere
+stesso.
+
+### 12.2 Che cosa resta, e dove vive
+
+| Residuo | Sede | Chi |
+| --- | --- | --- |
+| 🟠 contare le **779** per classe | **§11.4 punto 2 di questo brief** | team DB |
+| il presidio «**dichiarato ≠ installato**» | ✅ **aperto il 2026-09-11**: [brief-db-quattro-processi-senza-presidio.md](brief-db-quattro-processi-senza-presidio.md) — e la forma che ha preso non guarda systemd: presidia l'**effetto** (la coda che si accumula, le email ferme), che manca comunque se il timer non è installato | team DB |
+| lo stato onesto per una mail **stampata a video** | [brief-db-stato-email-console-non-e-inviata.md](brief-db-stato-email-console-non-e-inviata.md) | team DB |
+| `OnFailure=` sugli unit | §9.6 — **assenza dichiarata** con la sua ragione | — |
+| le tre righe 🔶 del §7.4 | note del catalogo — rimandate ai loro cantieri | team DB |
+| la causa dei **segfault** | §10.4 — dichiarata **fuori** da questo cantiere | da guardare |
+
+⭐ **Il primo residuo ha un promemoria che si dà da solo**, ed è la cosa più
+vicina a una prova che il cantiere è servito: ogni lunedì il digest riporterà
+quel numero con la nota che spiega come **non** leggerlo. *Un cantiere che
+produce lo strumento che tiene vivo il proprio residuo ha fatto il suo mestiere.*
+
+### 12.3 ⛔ Perché non è ancora archiviato, e cosa serve per farlo
+
+Il §11 non è un resoconto: chiede al team DB una **lettura che il backend non
+può fare** (la ripartizione per classe delle 779 — da `zeroerp_app` quella vista
+risponde zero) e porta una **scoperta che li riguarda** (§11.5: due timer su
+sei, e nessun presidio che veda il divario fra dichiarato e installato).
+
+⇒ Archiviarlo prima che sia letto manderebbe **una domanda in un posto dove
+nessuno la cerca** — che è, alla lettera, il guasto-per-assenza da cui questo
+cantiere prende il nome. *Non si chiude un documento di scambio mentre porta una
+domanda aperta all'altra parte.*
+
+**Alla risposta del team DB**, l'archiviazione è meccanica — `git mv` in
+`work-done/` più **sei** riferimenti al percorso, da riscrivere nello stesso
+commit o restano link rotti:
+
+```
+docs/it/dbzero/dbops/manual/presidi.md
+docs/it/dbzero/dbops/manual/fn_conta_presidio.md
+backend/apps/core/db/presidi_repository.py
+backend/apps/core/services/processi.py
+backend/apps/core/services/presidi_digest.py
+backend/apps/core/management/commands/digest_presidi.py
+```
+
+⚠️ Restano fuori dall'elenco — e **non si toccano** — i file che lo citano per
+**nome** senza percorso: la doc auto-generata di `dbops` (che deriva dai
+`COMMENT` del database), il seed `codici_errore.csv` e
+`error_policies_generated.py`, che è generato. Quelli seguono il loro binario.
+
+*Chiusura backend del 2026-09-11. Il cantiere è nato perché trenta viste di
+presidio non le leggeva nessuno; finisce con una persona che riceve una mail. In
+mezzo, le tre cose che mancavano davvero non erano nel piano — ed è il motivo per
+cui il piano da solo non basta mai.*
+
