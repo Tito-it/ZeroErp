@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA MAPPA «DOVE STA L'EMITTENTE DI QUESTA TABELLA» — passo 2 del brief.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b (D3, deciso 2026-09-11)
+#
+# Il trigger di storico (`script.trgfn_storico_generic`) è uno per tutte le
+# 121 tabelle e non sa nulla della madre che fotografa. Per scrivere nella
+# shadow «di quale emittente è questa versione» deve poter chiedere a una
+# mappa DICHIARATA: per `vendite.fatture_righe`, risali alla fattura con
+# `fattura_id` e poi continua sulla riga di `vendite.fatture`.
+#
+# ── I CINQUE MODI, e sono cinque STRADE verso lo stesso fatto ─────────
+#   EF      la madre ha `emittente_fiscale_id` in riga: si copia
+#   SR      la madre ha `emittente_soggetto_ruolo_id`: si converte in EF (1:1
+#           via anagrafiche.emittenti_fiscali.soggetto_ruolo_id) e si congela
+#   PADRE   la madre è un satellite: `colonna` è la FK verso
+#           (`padre_schema`, `padre_tabella`), e si continua RICORSIVAMENTE
+#           sulla riga di mappa del padre — anche a più salti
+#   BA      la madre porta un billing account: un BA ha ESATTAMENTE UN
+#           emittente (UNIQUE su emittenti_fiscali_billing_account), risolto da
+#           script.fn_get_ba_emittente_sr_id e poi convertito in EF
+#   NESSUNO la madre non è protetta: la shadow non si arma, e la `ragione`
+#           dice perché — obbligatoria e lunga, come in rls_perimetro_debito
+#
+# ── ⭐ PERCHÉ È ANCHE IL PRESIDIO ──────────────────────────────────────
+#   Una madre col trigger di storico SENZA riga qui è una madre che nessuno
+#   ha guardato. Una madre in RLS con modo NESSUNO è un debito che il pgTAP
+#   segnala. Una riga PADRE il cui padre non ha riga non può esistere: la FK
+#   su se stessa lo impedisce. Il resto — la colonna esiste davvero, la FK
+#   punta davvero al padre dichiarato, la catena finisce in EF/SR/BA e non
+#   gira in cerchio — lo asserisce db/pgtap/dbops/test-storico-scope-policy-v1.sql.
+#
+# ── ⚠️ LA CHIAVE PORTA LO SCHEMA ──────────────────────────────────────
+#   `acquisti.ddt` e `vendite.ddt` hanno due righe distinte: sono due madri
+#   che scrivono nella stessa shadow (§4b.2), e la loro strada verso
+#   l'emittente non è la stessa.
+#
+# ── ⚠️ LA FK SU SE STESSA È DIFFERITA ─────────────────────────────────
+#   Il CSV carica una riga alla volta e un satellite può venire prima del suo
+#   padre: il vincolo si verifica al COMMIT del changeSet, quando tutte le
+#   righe ci sono. Chi carica un CSV incoerente fallisce lì, e va bene così.
+#
+# Id assegnati a mano nel CSV: seed di CATALOGO (nomina tabelle del software,
+# non righe di questa installazione).
+#
+# ⚠️ Tabella nuova: i trigger audit e tx_id nascono da `ci_apply`, non qui.
+#   Le colonne però ci sono già, con i default della convenzione §7.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260911-21-create-storico-scope-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260911-21-create-storico-scope-policy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.storico_scope_policy: la mappa dichiarata «dove sta
+        l'emittente di questa tabella», una riga per madre storicizzata. Cinque
+        modi (EF, SR, PADRE, BA, NESSUNO), ricorsione sul padre via FK
+        differita su se stessa, ragione obbligatoria dove non si arma. La legge
+        dbops.fn_storico_risolvi_scope alla scrittura dello storico; è anche il
+        registro del debito che il pgTAP presidia. Brief
+        brief-db-rls-storico-scope-congelato §4b, decisione D3.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                { schemaName: dbops, tableName: storico_scope_policy }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE dbops.storico_scope_policy (
+                  id                 int  NOT NULL
+                                       CONSTRAINT pk_storico_scope_policy PRIMARY KEY,
+                  schema_tabella     text NOT NULL,
+                  nome_tabella       text NOT NULL,
+                  modo               text NOT NULL,
+                  -- EF/SR/BA: la colonna della riga che porta il dato.
+                  -- PADRE: la colonna FK verso il padre.
+                  colonna            text NULL,
+                  padre_schema       text NULL,
+                  padre_tabella      text NULL,
+                  ragione            text NULL,
+                  data_registrazione date NOT NULL DEFAULT CURRENT_DATE,
+                  data_insert        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert        text NOT NULL DEFAULT CURRENT_USER,
+                  data_update        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update        text NOT NULL DEFAULT CURRENT_USER,
+                  tx_id              uuid NULL,
+                  -- ⚠️ Lo schema ENTRA nella chiave: due madri omonime in due
+                  --   schemi sono due righe (acquisti.ddt, vendite.ddt).
+                  CONSTRAINT uq_storico_scope_policy_madre
+                      UNIQUE (schema_tabella, nome_tabella),
+                  -- ⭐ Il CHECK è il CONTRATTO del vocabolario: il pgTAP legge
+                  --   da qui i modi ammessi, e un modo nuovo senza il suo ramo
+                  --   nel resolver fa rosso lì.
+                  CONSTRAINT chk_storico_scope_policy_modo
+                      CHECK (modo IN ('EF', 'SR', 'PADRE', 'BA', 'NESSUNO')),
+                  -- Ogni modo ha la sua forma: niente colonne «di troppo» che
+                  -- il resolver ignorerebbe in silenzio.
+                  CONSTRAINT chk_storico_scope_policy_forma
+                      CHECK (
+                          (modo IN ('EF', 'SR', 'BA')
+                              AND colonna IS NOT NULL
+                              AND padre_schema IS NULL AND padre_tabella IS NULL)
+                       OR (modo = 'PADRE'
+                              AND colonna IS NOT NULL
+                              AND padre_schema IS NOT NULL AND padre_tabella IS NOT NULL)
+                       OR (modo = 'NESSUNO'
+                              AND colonna IS NULL
+                              AND padre_schema IS NULL AND padre_tabella IS NULL)
+                      ),
+                  -- ⚠️ Misura la LUNGHEZZA, non la qualità: ferma un «TODO»,
+                  --   non una frase vuota. La ragione la legge una persona.
+                  CONSTRAINT chk_storico_scope_policy_ragione
+                      CHECK (modo <> 'NESSUNO' OR length(btrim(ragione)) >= 40),
+                  -- ⭐ Un PADRE dichiarato deve avere la sua riga: la catena
+                  --   non può finire nel vuoto. DIFFERITA perché il CSV carica
+                  --   una riga alla volta e il satellite può venire prima.
+                  CONSTRAINT fk_storico_scope_policy_padre
+                      FOREIGN KEY (padre_schema, padre_tabella)
+                      REFERENCES dbops.storico_scope_policy (schema_tabella, nome_tabella)
+                      DEFERRABLE INITIALLY DEFERRED
+              );
+
+              COMMENT ON TABLE dbops.storico_scope_policy IS
+                  'La mappa «dove sta l''emittente di questa tabella», una riga per madre storicizzata (chiave schema + tabella). La legge dbops.fn_storico_risolvi_scope quando il trigger di storico scrive una versione: il valore risolto si congela nella shadow (scope_emittente_fiscale_id) e non si ricalcola più — un archivio che cambia col presente non è un archivio. Cinque modi: EF (colonna emittente_fiscale_id in riga), SR (colonna emittente_soggetto_ruolo_id, convertita in EF 1:1), PADRE (si risale via FK e si continua sulla riga del padre, ricorsivamente), BA (un billing account ha esattamente un emittente), NESSUNO (la madre non è protetta: la shadow non si arma e la ragione dice perché). ⭐ È anche il registro del debito: una madre col trigger di storico senza riga, o in RLS con modo NESSUNO, è un rosso di db/pgtap/dbops/test-storico-scope-policy-v1.sql. Brief: brief-db-rls-storico-scope-congelato §4b (D3).';
+              COMMENT ON COLUMN dbops.storico_scope_policy.modo IS
+                  'La STRADA verso l''emittente: EF, SR, PADRE, BA, NESSUNO. Sono cinque modi di arrivare allo stesso fatto, non cinque fatti: il valore congelato è sempre un emittenti_fiscali.id.';
+              COMMENT ON COLUMN dbops.storico_scope_policy.colonna IS
+                  'Per EF/SR/BA: la colonna della riga che porta il dato (emittente_fiscale_id, emittente_soggetto_ruolo_id, billing_account_id o id). Per PADRE: la colonna FK verso il padre. NULL per NESSUNO.';
+              COMMENT ON COLUMN dbops.storico_scope_policy.padre_schema IS
+                  'Solo per PADRE: lo schema della tabella padre. Insieme a padre_tabella punta a un''altra riga di questa mappa (FK differita su se stessa).';
+              COMMENT ON COLUMN dbops.storico_scope_policy.padre_tabella IS
+                  'Solo per PADRE: la tabella padre, sulla cui riga di mappa la risoluzione continua.';
+              COMMENT ON COLUMN dbops.storico_scope_policy.ragione IS
+                  'Per NESSUNO è obbligatoria (almeno 40 caratteri): perché la shadow di questa madre non si arma, e che cosa dovrebbe cambiare perché si armi. Per gli altri modi è una nota facoltativa.';
+              COMMENT ON COLUMN dbops.storico_scope_policy.data_registrazione IS
+                  'Quando la riga è stata dichiarata. Per i NESSUNO è l''orologio del debito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.storico_scope_policy;

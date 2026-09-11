@@ -98,3 +98,14 @@ SELECT dbops.fn_ensure_storico_table(
 ---
 
 > **In sintesi**: `fn_ensure_storico_table` standardizza la creazione delle tabelle di storico, garantendo coerenza di tipi, indici utili alla consultazione e integrazione con il framework di **audit**/**error handling** dell’automazione.
+
+### 🔒 Dall'11-09-2026: la shadow nasce con lo scope congelato
+
+Creata la tabella, la funzione chiama
+[dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope): la
+shadow riceve subito `origine_schema` (NOT NULL: è vuota) e
+`scope_emittente_fiscale_id` con indice, la revoca del `DELETE`
+all'applicazione e — se [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy)
+dice che la madre è protetta — la RLS con le sue policy. Un errore lì dentro
+esce come `E_STORICO_PROVISION`: una shadow senza scope non nasce zitta.
+Brief: `brief-db-rls-storico-scope-congelato` §4b.

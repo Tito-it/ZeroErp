@@ -18,6 +18,8 @@
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_catasto_unita_immobiliari_scope_ef | `CREATE INDEX ix_catasto_unita_immobiliari_scope_ef ON storico.catasto_unita_immobiliari USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_catasto_unita_immobiliari | `CREATE UNIQUE INDEX pk_storico_catasto_unita_immobiliari ON storico.catasto_unita_immobiliari USING btree (id)` |
 
 ## 🚨 Trigger

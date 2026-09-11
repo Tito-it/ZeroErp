@@ -137,7 +137,7 @@ BEGIN
       IS 'Tipo di cambiamento: A=Active, S=Suppressed, F=Fused, D=Divided';
     COMMENT ON COLUMN %s.tipo_operazione
       IS 'Tipo operazione (1=insert, 2=update, 3=delete)';
-    
+
   -- non si genera più la fk perchè bloccerebbe la cancellazione delle righe della tabella e non è corretto
   -- si crea solo l'indice.
   -- ALTER TABLE %s
@@ -181,6 +181,15 @@ BEGIN
       p_params        => jsonb_build_object('table', v_full_sto, 'action','CREATE_STORICO_TABLE'),
       p_message       => 'Storico table created'
     );
+    -- rev 2026-09-11 (brief-db-rls-storico-scope-congelato §4b): la shadow nasce
+    -- già nella forma dello scope congelato. La primitiva aggiunge le colonne
+    -- origine_schema (NOT NULL: la shadow è vuota) e scope_emittente_fiscale_id
+    -- con indice e, se dbops.storico_scope_policy dice che la madre è protetta,
+    -- accende la RLS con le sue policy. È la STESSA primitiva che il 90_end
+    -- runAlways applica alle shadow esistenti: una sede sola per DDL e commenti.
+    -- Se fallisce, fallisce qui dentro e il blocco EXCEPTION lo riporta come
+    -- E_STORICO_PROVISION: una shadow senza scope non deve nascere zitta.
+    PERFORM dbops.fn_storico_arma_scope(p_schema_base, p_table_base, false);
   EXCEPTION WHEN OTHERS THEN
     PERFORM script.fn_log_and_raise_error(
       'dbops',
@@ -203,7 +212,7 @@ $function$
 COMMENT ON FUNCTION dbops.fn_ensure_storico_table(p_schema_base text, p_table_base text, p_fk_col text, p_create_gin_index boolean, p_dry_run boolean)
 IS 'Provisioning idempotente della tabella di storico (schema storico) per una tabella base.
 Crea storico.<table_base> se mancante, con struttura standard (snapshot jsonb, audit cols, finestre valid_from/to)
-e indice BTree su fk logica. La FK fisica verso la tabella base NON viene creata per scelta progettuale. Supporta dry-run con audit.';
+e indice BTree su fk logica. La FK fisica verso la tabella base NON viene creata per scelta progettuale. Supporta dry-run con audit. Rev 2026-09-11: dopo la creazione chiama dbops.fn_storico_arma_scope, che aggiunge origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre è protetta, accende la RLS con le policy dello scope congelato. Brief: brief-db-rls-storico-scope-congelato §4b.';
 ```
 
 ---

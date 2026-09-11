@@ -18,6 +18,8 @@
 | tipo_operazione | smallint | NO |  |
 | tx_id | uuid | YES |  |
 | change_type | character | NO |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_indirizzi_scope_ef | `CREATE INDEX ix_indirizzi_scope_ef ON storico.indirizzi USING btree (scope_emittente_fiscale_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON storico.indirizzi USING btree (id)` |
 
 ## 🚨 Trigger

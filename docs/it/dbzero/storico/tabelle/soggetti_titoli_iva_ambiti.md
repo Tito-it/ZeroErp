@@ -13,6 +13,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -22,6 +24,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_soggetti_titoli_iva_ambiti_scope_ef | `CREATE INDEX ix_soggetti_titoli_iva_ambiti_scope_ef ON storico.soggetti_titoli_iva_ambiti USING btree (scope_emittente_fiscale_id)` |
 | ix_soggetti_titoli_iva_ambiti_soggetti_titoli_iva_ambiti_id_fk | `CREATE INDEX ix_soggetti_titoli_iva_ambiti_soggetti_titoli_iva_ambiti_id_fk ON storico.soggetti_titoli_iva_ambiti USING btree (soggetti_titoli_iva_ambiti_id)` |
 | pk_storico_soggetti_titoli_iva_ambiti | `CREATE UNIQUE INDEX pk_storico_soggetti_titoli_iva_ambiti ON storico.soggetti_titoli_iva_ambiti USING btree (id)` |
 

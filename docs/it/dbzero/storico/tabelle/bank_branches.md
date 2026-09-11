@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_bank_branches_bank_branches_id_fk | `CREATE INDEX ix_bank_branches_bank_branches_id_fk ON storico.bank_branches USING btree (bank_branches_id)` |
+| ix_bank_branches_scope_ef | `CREATE INDEX ix_bank_branches_scope_ef ON storico.bank_branches USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_bank_branches | `CREATE UNIQUE INDEX pk_storico_bank_branches ON storico.bank_branches USING btree (id)` |
 
 ## 🚨 Trigger

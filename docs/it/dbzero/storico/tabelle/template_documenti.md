@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_template_documenti_scope_ef | `CREATE INDEX ix_template_documenti_scope_ef ON storico.template_documenti USING btree (scope_emittente_fiscale_id)` |
 | ix_template_documenti_template_documenti_id_fk | `CREATE INDEX ix_template_documenti_template_documenti_id_fk ON storico.template_documenti USING btree (template_documenti_id)` |
 | pk_storico_template_documenti | `CREATE UNIQUE INDEX pk_storico_template_documenti ON storico.template_documenti USING btree (id)` |
 

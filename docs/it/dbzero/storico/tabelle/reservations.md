@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_reservations_reservations_id_fk | `CREATE INDEX ix_reservations_reservations_id_fk ON storico.reservations USING btree (reservations_id)` |
+| ix_reservations_scope_ef | `CREATE INDEX ix_reservations_scope_ef ON storico.reservations USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_reservations | `CREATE UNIQUE INDEX pk_storico_reservations ON storico.reservations USING btree (id)` |
 
 ## 🚨 Trigger

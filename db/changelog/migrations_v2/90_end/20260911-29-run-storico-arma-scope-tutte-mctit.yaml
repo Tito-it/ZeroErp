@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convergenza dello scope di storico — la chiamata
+#   dbops.fn_storico_arma_scope_tutte()
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b
+#
+# ── PERCHÉ `90_end` E `runAlways` ────────────────────────────────────
+#   Le shadow nascono dall'automazione, anche dal job pgAgent fra due
+#   migrate; una riga di mappa può passare da NESSUNO a un modo quando una
+#   madre entra in RLS. Un passo che gira una volta risolve il giorno in cui
+#   viene applicato e niente dopo. ⇒ `runAlways`, come `20260902-10`: una RETE
+#   che converge, non una migrazione. E `90_end` perché è l'ultima fase: la
+#   mappa (80_data) è già seminata, tutte le tabelle esistono.
+#
+# ── ⚠️ COSTO ─────────────────────────────────────────────────────────
+#   Zero DDL nel caso normale: la primitiva aggiunge solo ciò che manca e non
+#   registra niente su una shadow già allineata. Un audit di riepilogo per
+#   corsa.
+#
+# ── 🔴 COSA QUESTO PASSO NON PUÒ FARE ───────────────────────────────
+#   ALTER e CREATE POLICY li fa il proprietario. Le shadow di `postgres` (il
+#   job pgAgent) vengono saltate con WARN: resta autorevole
+#   `scripts/sql/provision_storico_scope.sql`, da superuser, che le allinea e
+#   ne riassegna la proprietà al migratore. Questo passo chiude la FINESTRA
+#   fra la nascita di una shadow e la corsa successiva del provisioning.
+#
+# Verifica: db/pgtap/storico/test-storico-scope-congelato-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260911-29-run-storico-arma-scope-tutte-mctit.yaml
+
+  - changeSet:
+      id: 20260911-29-run-storico-arma-scope-tutte
+      author: mctit
+      runAlways: true
+      # Una rete che converge: il corpo può cambiare senza che il checksum
+      # debba invalidare i database dove ha già girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Chiama dbops.fn_storico_arma_scope_tutte() a ogni migrate, in 90_end
+        quando mappa e tabelle esistono: ogni shadow di una madre col trigger
+        di storico riceve, se le mancano, le colonne dello scope e — dove la
+        mappa dice che la madre è protetta — la RLS con le sue policy. Zero
+        DDL dove è già tutto a posto; WARN e prosegue dove il migratore non è
+        proprietario della shadow.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_storico_arma_scope_tutte';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_storico_arma_scope_tutte(false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: le colonne e le policy aggiunte restano.
+              SELECT 1;

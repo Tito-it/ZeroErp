@@ -144,6 +144,22 @@ Conseguenza pratica: cambiare `DB_USER` da `zeroerp_app` a un ruolo owner o
 
 - Provisioning idempotente: `scripts/sql/provision_db_roles.sql`
 - Verifica grant runtime: `scripts/sql/check_db_role_access.sql`
+- **Scope congelato delle shadow di storico**: `scripts/sql/provision_storico_scope.sql`
+  (dall'11-09-2026). Da superuser, una volta: riassegna al migratore la proprietà
+  delle tabelle `storico.*` create dal job pgAgent come `postgres` (68 su 121 su
+  dev), aggiunge a tutte le colonne dello scope, accende la RLS dove la mappa dice
+  che la madre è protetta, rifà il backfill e revoca il `DELETE` all'applicazione.
+  ⚠️ Finché non passa, il changeSet `20260911-28` (trigger di storico) si ferma
+  con una `preCondition`, e i test 2/3/22 di
+  `db/pgtap/storico/test-storico-scope-congelato-v1.sql` sono rossi: è voluto.
+
+  ```bash
+  sudo -u postgres psql -X -d zeroerp -v migrator_role=titodb \
+       -f scripts/sql/provision_storico_scope.sql
+  ```
+
+  Regola e motivazione: guida *Storicizzazione delle tabelle*, sezione *Di chi è
+  una versione*; brief `brief-db-rls-storico-scope-congelato` §4b.
 
 Lo script di provisioning:
 

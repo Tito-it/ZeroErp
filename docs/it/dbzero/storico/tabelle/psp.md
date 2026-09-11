@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_psp_psp_id_fk | `CREATE INDEX ix_psp_psp_id_fk ON storico.psp USING btree (psp_id)` |
+| ix_psp_scope_ef | `CREATE INDEX ix_psp_scope_ef ON storico.psp USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_psp | `CREATE UNIQUE INDEX pk_storico_psp ON storico.psp USING btree (id)` |
 
 ## 🚨 Trigger

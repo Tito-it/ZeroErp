@@ -18,6 +18,8 @@
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_soggetti_scope_ef | `CREATE INDEX ix_soggetti_scope_ef ON storico.soggetti USING btree (scope_emittente_fiscale_id)` |
 | ix_storico_soggetti_soggetto_valid_from_desc | `CREATE INDEX ix_storico_soggetti_soggetto_valid_from_desc ON storico.soggetti USING btree (soggetto_id, valid_from DESC)` |
 | pk_storico_soggetti | `CREATE UNIQUE INDEX pk_storico_soggetti ON storico.soggetti USING btree (id)` |
 

@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_user_emittente_attivo_scope_ef | `CREATE INDEX ix_user_emittente_attivo_scope_ef ON storico.user_emittente_attivo USING btree (scope_emittente_fiscale_id)` |
 | ix_user_emittente_attivo_user_emittente_attivo_id_fk | `CREATE INDEX ix_user_emittente_attivo_user_emittente_attivo_id_fk ON storico.user_emittente_attivo USING btree (user_emittente_attivo_id)` |
 | pk_storico_user_emittente_attivo | `CREATE UNIQUE INDEX pk_storico_user_emittente_attivo ON storico.user_emittente_attivo USING btree (id)` |
 

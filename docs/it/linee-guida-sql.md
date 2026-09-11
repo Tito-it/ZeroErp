@@ -1128,7 +1128,14 @@ appartengono a piu' entita' distinte che non devono vedersi tra loro:
 **Non** abilitare RLS su:
 
 * Tabelle di configurazione lette da tutti (parametri, lookup, enum).
-* Tabelle di sola scrittura tecnica (`dbops.*`, log, storico gia' filtrato a monte).
+* Tabelle di sola scrittura tecnica (`dbops.*`, log). ⚠️ **Lo `storico` NON è più
+  un'eccezione** (dall'11-09-2026): la shadow di una madre protetta porta
+  l'emittente congelato alla scrittura (`scope_emittente_fiscale_id`) e una policy
+  `FOR SELECT` generata da `dbops.fn_storico_arma_scope` secondo la mappa
+  `dbops.storico_scope_policy` — *la storia di una riga protetta è la stessa
+  informazione della riga*. Non si scrive a mano: la genera il framework. Guida
+  [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle), sezione *Di chi è
+  una versione*.
 * Tabelle che non hanno una relazione diretta e verificabile con l'utente corrente.
 
 Se una tabella non ha uno scope evidente, probabilmente **non va messa in RLS**: aggiungere
@@ -1316,8 +1323,24 @@ Prima di attivare RLS su una tabella esistente:
 
 * Funzione `script.fn_scope_*` scritta e coperta da pgTAP
 * Backend popola tutti i GUC necessari in tutte le auth class
-* Benchmark `EXPLAIN` su query principali pre/post attivazione
-* Indici funzionali su colonne usate nella policy, se `EXPLAIN` lo richiede
+* La FK della colonna emittente ha una **decisione dichiarata** in
+  `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**
+  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: la
+  canonica `script.fn_check_user_emittente_scope` è plpgsql, quindi la policy
+  è una **chiamata di funzione per riga**, opaca al planner, non un confronto.
+  Un indice sull'emittente si decide sulla **query dell'applicazione che entra
+  da quella colonna** (una lista per emittente + data, come
+  `ix_fatture_emitt_data`), non sulla policy — è il criterio già scritto nei
+  seed `20260822-39`, `20260822-41` e `20260829-33`.
+  ⛔ E **mai un `CREATE INDEX` a mano** su una FK governata: con la riga a
+  `false` il loop di `90_end` lo rimuove al primo migrate. Successo su
+  `20260601-34` (RLS, Fase 5): quattro indici su sei creati apposta per la
+  RLS e cancellati dalla policy, senza che nessuno se ne accorgesse per tre
+  mesi.
+  ⚠️ Fino al 2026-09-11 queste due righe dicevano *«Benchmark `EXPLAIN`
+  pre/post attivazione»* e *«indici funzionali se `EXPLAIN` lo richiede»*: un
+  gate opzionale mai eseguito, appoggiato a una premessa falsa. Storia in
+  `dev/work-done/analisi-attivazione-rls-db.md` §12.
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
 * `FORCE ROW LEVEL SECURITY` se la tabella e' owned da `zeroerp_app`
 * Policy testata in staging con dati realistici prima del merge
@@ -1770,6 +1793,62 @@ colonna non testuale, ma **nessuno è una mina** — in 19 la colonna non è
 dichiarata `STRING` (Liquibase la rende `NULL`), e nei 7 restanti è un
 `data_update` con `defaultValue: "NOW()"`, che la sostituisce prima di arrivare
 al database. Il difetto era nello **strumento**, non nei dati.
+
+---
+
+### 11.8 ⛔ Una postura più stretta per `zeroerp_app` si dichiara nel loop dei grant, non in un `REVOKE`
+
+**Il meccanismo.** `90_end/ci_apply/20260205-41-apply-runtime-grants-ci` è
+`runOnChange: true` in `ci_apply` — una *rete che converge*, legittima lì (§11.1)
+— e a ogni passata rifà `GRANT SELECT, INSERT, UPDATE, DELETE` a `zeroerp_app` su
+**tutte** le tabelle possedute dal migratore in 14 schemi, più `EXECUTE` su tutte
+le funzioni. Quindi un `REVOKE` all'applicazione scritto in un changeSet normale
+**non tiene**: su un database di sviluppo sopravvive fino al prossimo
+`make db-ci-apply` — e sembra funzionare, a lungo — in CI viene annullato **nello
+stesso build**, dalla passata `ci_apply` che segue quella che l'ha applicato.
+
+> Trovato due volte. Il 2026-08-17 su una **colonna**
+> (`ui.lista_definizione.multi_emittente`, brief perimetro-emittente-liste §11.5):
+> lì il rimedio è un trigger, perché il privilegio di tabella copre ogni colonna
+> e PostgreSQL non sa esprimere «UPDATE tranne una». Il 2026-09-11 su due
+> **tabelle intere**, `dbops.audit_log` e `dbops.error_log`: il brief diceva *«è
+> una riga di REVOKE»*, ed era una riga che il loop avrebbe cancellato.
+
+⭐ **Il rimedio, per una tabella intera, è dichiararla nel loop.** In testa al
+blocco ci sono due elenchi: `v_registri_append_only` (tabelle a cui l'app riceve
+solo `SELECT, INSERT`, e a cui `UPDATE, DELETE` vengono **revocati** a ogni
+passata) e `v_fn_riservate` (funzioni a cui l'`EXECUTE` è revocato **a PUBLIC e
+all'app**). Il presidio sta nell'unico posto che avrebbe potuto annullarlo, e
+si dichiara come dato — non come un secondo file che rincorre il primo.
+
+⚠️ **Servono comunque due file.** Su dev `ci_apply` non gira da solo: il
+changeSet `90_end` forward che revoca subito ci vuole, e il loop lo rende
+stabile. Uno senza l'altro è o un REVOKE che muore, o una postura che su dev
+arriva solo quando qualcuno digita `db-ci-apply`.
+
+⚠️ **Le funzioni hanno `=X`.** Per default PostgreSQL concede `EXECUTE` a
+PUBLIC su ogni funzione nuova, e un `CREATE OR REPLACE` lo conserva. Revocare
+al solo `zeroerp_app` non toglie niente: si revoca `FROM PUBLIC, zeroerp_app`
+insieme. Il proprietario esegue sempre; i grant espliciti (ruoli batch, dal
+provisioning) restano. ⚠️ Un `DROP` + `CREATE` riporterebbe `=X`: lo vede il
+pgTAP di postura, non il migrate.
+
+⭐ **La postura si asserisce con `has_table_privilege(ruolo, …)` e
+`has_function_privilege(ruolo, …)`**, mai con `information_schema.role_table_grants`,
+che mostra solo i grant del ruolo connesso ed è verde per sottrazione quando
+interroga un altro ruolo. E accanto al catalogo va il **comportamento**: come
+app, `UPDATE … WHERE false` deve rispondere `42501` — il permesso si controlla
+prima di guardare le righe. ⚠️ Con una colonna che **esiste** su quella tabella
+(`SET id = id`): il parser risolve i nomi prima del controllo dei permessi, e su
+una colonna assente risponderebbe `42703`, rosso per il motivo sbagliato.
+
+Precedente: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`; guida:
+[Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
+
+✅ **Restano leciti** i `GRANT` in più (una vista nuova a `zeroerp_app`, come i
+`20260904-*`): il loop li rifà uguali, e un grant idempotente non ha niente da
+perdere. È solo il verso **restrittivo** che il loop non sa rispettare finché
+non è dichiarato.
 
 ---
 

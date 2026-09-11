@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ordini_righe_ordini_righe_id_fk | `CREATE INDEX ix_ordini_righe_ordini_righe_id_fk ON storico.ordini_righe USING btree (ordini_righe_id)` |
+| ix_ordini_righe_scope_ef | `CREATE INDEX ix_ordini_righe_scope_ef ON storico.ordini_righe USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_ordini_righe | `CREATE UNIQUE INDEX pk_storico_ordini_righe ON storico.ordini_righe USING btree (id)` |
 
 ## 🚨 Trigger

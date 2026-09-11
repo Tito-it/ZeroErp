@@ -18,6 +18,16 @@ Approdondimento funzioni:
 (latest review 10-01-26)
 La funzione **`fn_audit_log_once`** registra un singolo evento di audit senza richiedere una sessione completa (`fn_audit_begin`/`fn_audit_end`). È utile per eventi puntuali o messaggi informativi.
 
+
+### 🔒 Privilegi — la porta dell'APPLICAZIONE (dal 2026-09-11)
+
+È l'**unica** funzione di audit che `zeroerp_app` può eseguire: registra
+l'evento intero in una volta, senza bisogno di riscrivere la riga dopo. La
+coppia `fn_audit_begin` / `fn_audit_end` è riservata a chi possiede la
+tabella, perché la chiusura è un `UPDATE` del registro.
+Regola e motivazione: guida [Audit Logging](/guide/messaggi-audit), sezione
+*Chi può scrivere*.
+
 ---
 
 ### Dettagli

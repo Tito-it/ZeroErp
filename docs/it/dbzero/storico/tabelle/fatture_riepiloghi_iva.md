@@ -13,6 +13,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fatture_riepiloghi_iva_fatture_riepiloghi_iva_id_fk | `CREATE INDEX ix_fatture_riepiloghi_iva_fatture_riepiloghi_iva_id_fk ON storico.fatture_riepiloghi_iva USING btree (fatture_riepiloghi_iva_id)` |
+| ix_fatture_riepiloghi_iva_scope_ef | `CREATE INDEX ix_fatture_riepiloghi_iva_scope_ef ON storico.fatture_riepiloghi_iva USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_fatture_riepiloghi_iva | `CREATE UNIQUE INDEX pk_storico_fatture_riepiloghi_iva ON storico.fatture_riepiloghi_iva USING btree (id)` |
 
 ## 🚨 Trigger

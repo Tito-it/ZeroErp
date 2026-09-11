@@ -13,6 +13,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_iva_natura_iva_natura_id_fk | `CREATE INDEX ix_iva_natura_iva_natura_id_fk ON storico.iva_natura USING btree (iva_natura_id)` |
+| ix_iva_natura_scope_ef | `CREATE INDEX ix_iva_natura_scope_ef ON storico.iva_natura USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_iva_natura | `CREATE UNIQUE INDEX pk_storico_iva_natura ON storico.iva_natura USING btree (id)` |
 
 ## 🚨 Trigger

@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_attivita_consumi_attivita_consumi_id_fk | `CREATE INDEX ix_attivita_consumi_attivita_consumi_id_fk ON storico.attivita_consumi USING btree (attivita_consumi_id)` |
+| ix_attivita_consumi_scope_ef | `CREATE INDEX ix_attivita_consumi_scope_ef ON storico.attivita_consumi USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_attivita_consumi | `CREATE UNIQUE INDEX pk_storico_attivita_consumi ON storico.attivita_consumi USING btree (id)` |
 
 ## 🚨 Trigger

@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_movimenti_movimenti_id_fk | `CREATE INDEX ix_movimenti_movimenti_id_fk ON storico.movimenti USING btree (movimenti_id)` |
+| ix_movimenti_scope_ef | `CREATE INDEX ix_movimenti_scope_ef ON storico.movimenti USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_movimenti | `CREATE UNIQUE INDEX pk_storico_movimenti ON storico.movimenti USING btree (id)` |
 
 ## 🚨 Trigger

@@ -22,13 +22,19 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | jobname_pgagent | text | YES |  |
+| tolleranza_minuti | integer | YES |  |
+| segno_di_vita | text | NO | 'GIORNALE'::text |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_processi_canale |  |
 | CHECK | chk_processi_classe |  |
+| CHECK | chk_processi_contratto_solo_command |  |
 | CHECK | chk_processi_jobname_pgagent_non_vuoto |  |
+| CHECK | chk_processi_segno_di_vita |  |
+| CHECK | chk_processi_sessione_senza_tolleranza |  |
+| CHECK | chk_processi_tolleranza_positiva |  |
 | PRIMARY KEY | pk_processi | id |
 | UNIQUE | uq_processi_codice | codice |
 

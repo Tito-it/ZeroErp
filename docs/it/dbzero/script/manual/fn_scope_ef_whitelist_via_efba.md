@@ -56,8 +56,9 @@ Allinea la RLS al filtro già attivo lato ricerca (`fn_search_soggetti_universal
 
 * `LANGUAGE plpgsql`, `STABLE`. Lo **scope** è query-constant (dipende solo
   da `auth_user_id`): valutato una volta. Il costo **per-riga** è il lookup
-  `efba` dentro `fn_check_ba_visible_for_emittenti` → punto da osservare nel
-  benchmark pre-`ENABLE` (§12), con indice su `efba`.
+  `efba` dentro `fn_check_ba_visible_for_emittenti`, con indice su `efba`.
+  *(Il «benchmark pre-`ENABLE` §12» che questa riga citava è stato ritirato
+  il 2026-09-11 — vedi `analisi-attivazione-rls-db.md` §12.)*
 * `billing_account` ha già le policy portale/shop: la policy operatore è
   **additiva** (OR), gated su `ruolo_applicativo = 'OPERATORE'`.
 

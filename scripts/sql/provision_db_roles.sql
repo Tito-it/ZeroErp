@@ -114,6 +114,58 @@ FROM _app_schemas s
 \gexec
 
 -- ------------------------------------------------------------------
+-- ⛔ POSTURA DICHIARATA: i registri APPEND-ONLY (dal 2026-09-11)
+--   Brief: brief-db-rls-storico-scope-congelato.md §8.4
+--
+-- I `GRANT ... ON ALL TABLES / ON ALL FUNCTIONS` qui sopra sono una FOTOGRAFIA
+-- larga: danno all'applicazione anche ciò che il modello le NEGA. Due registri
+-- — `dbops.audit_log`, `dbops.error_log` — raccontano ciò che l'applicazione fa
+-- e sbaglia: il ruolo raccontato li legge e li aggiunge, non li riscrive né li
+-- cancella. E la modalità sessione dell'audit (`fn_audit_begin` → `fn_audit_end`)
+-- è un UPDATE del registro: riservata a chi possiede la tabella. L'app scrive
+-- con la sola `fn_audit_log_once`.
+--
+-- 🔴 PERCHÉ STA QUI, e non basta che stia nel changeSet e nel loop ci_apply.
+--   Questo script è l'ULTIMA parola: in `ci-validate.yaml` e in `ci-local.sh`
+--   gira DOPO il migrate e DOPO `--contexts=ci_apply`. Il changeSet
+--   `90_end/20260911-09` revoca, il loop `90_end/ci_apply/20260205-41` porta
+--   l'eccezione — e poi questo script rifaceva `GRANT UPDATE, DELETE` e
+--   `GRANT EXECUTE` su tutto, riaprendo la postura in silenzio. Su dev non si
+--   vede: il provisioning non si rilancia dopo ogni migrate. Trovato il
+--   2026-09-11 da `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`,
+--   verde su dev e rosso sul database ricostruito da zero — che è il presidio
+--   che tiene allineate le TRE sedi di questa postura.
+--
+-- ⚠️ Gli elenchi rispecchiano quelli del loop 20260205-41: chi ne cambia uno
+--   cambia anche l'altro, e quel pgTAP lo dice se non lo fa.
+-- Idempotente e difensivo: dove l'oggetto non esiste (DB parziale) salta.
+-- ------------------------------------------------------------------
+SELECT format('REVOKE UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('dbops.audit_log'), ('dbops.error_log')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ E lo schema `storico` è SENZA DELETE (brief-db-rls-storico-scope-congelato
+--   §4b.2, passo 7): le shadow le scrive il trigger — INSERT della versione,
+--   UPDATE che chiude la precedente — e uno snapshot non si cancella mai; la
+--   retention è del proprietario. Stessa regola di fn_grant_storico_shadows e
+--   dello stesso elenco `v_schemi_senza_delete` nel loop 20260205-41.
+SELECT format('REVOKE DELETE ON ALL TABLES IN SCHEMA %I FROM %I', 'storico', :'app_role')
+WHERE EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'storico')
+\gexec
+
+-- La chiusura va anche a PUBLIC, che sulle funzioni ha EXECUTE per default
+-- (`=X`): revocare al solo ruolo applicativo non toglierebbe niente.
+SELECT format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC, %I',
+              n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), :'app_role')
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'dbops'
+  AND p.proname IN ('fn_audit_begin', 'fn_audit_end')
+  AND p.prokind = 'f'
+\gexec
+
+-- ------------------------------------------------------------------
 -- ⭐ ECCEZIONE: `USAGE` — e SOLO `USAGE` — sullo schema `maintenance`.
 --
 -- `maintenance` resta FUORI dalla whitelist qui sopra, e deve restarci: il

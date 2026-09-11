@@ -15,9 +15,11 @@
 > `work-done/brief-db-perimetro-emittente-righe-documento.md`: nove famiglie
 > armate, registro del debito da 33 a 10 righe, e un **presidio transitivo** che
 > resta in servizio. La metà «`relrowsecurity` in generale» di **D5** è chiusa
-> con lui. ⛔ **D3 (lo storico) resta il debito peggiore** e non è toccato: 120
-> tabelle, zero RLS. **D4** resta aperto ma è ora **dichiarato a registro**, e si
-> sa perché quelle tre tabelle non si armano.
+> con lui. ✅ **D3 (lo storico) è CHIUSO la sera stessa** (applicato alle 19:54):
+> lo scope si cattura alla scrittura e si congela, 37 shadow armate, 65.751
+> versioni attribuite — brief `brief-db-rls-storico-scope-congelato`. **D4**
+> resta aperto ma è ora **dichiarato a registro**, e si sa perché quelle tre
+> tabelle non si armano.
 > ⚠️ Le voci qui sotto NON sono riscritte: restano com'erano al 2026-09-08, con
 > una nota di stato dove il fatto è cambiato. *Una valutazione datata che si
 > riscrive smette di essere una misura.*
@@ -436,13 +438,44 @@ l'automazione sa quale madre sta specchiando.
 > [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md).
 > Stima **≈ 3 giornate** — il lavoro è **uno**, non 120, perché la forma delle
 > tabelle di storico è uniforme e generata.
+>
+> ✅ **CHIUSO l'11-09-2026, applicato alle 19:54, pgTAP senza regressioni.** Ogni
+> versione di storico porta `origine_schema` e `scope_emittente_fiscale_id`
+> congelati alla scrittura (risolti dalla mappa `dbops.storico_scope_policy`, con
+> ripiego sull'archivio del padre); le **37** shadow delle madri protette hanno
+> la RLS con policy generate (`FOR SELECT` sull'emittente congelato, scrittura del
+> trigger libera); backfill di **65.751 versioni, zero residue**; l'applicazione
+> non può più cancellare una versione. Le tabelle nuove nascono armate dal
+> generatore. Letto sul database di sviluppo dopo l'apply: 120 shadow, 116 con le
+> colonne e `origine_schema NOT NULL` — le 4 restanti sono **orfane** (senza madre
+> col trigger), registrate nel brief.
 
 ⚠️ **Stessa classe, secondo caso**: `dbops.audit_log` è il registro delle
-esecuzioni di funzione, con `params` e `result` in JSONB — cioè, per le funzioni
-di dominio, gli **argomenti e l'esito** di operazioni su documenti protetti. È
-senza RLS e `zeroerp_app` ha `SELECT, INSERT, UPDATE, DELETE`. Non è grave quanto
-`storico` (non contiene lo snapshot completo della riga), ma è la stessa forma:
-*il dato è protetto, la sua traccia no*.
+esecuzioni di funzione, con `params` e `result` in JSONB. È senza RLS e
+`zeroerp_app` ha `SELECT, INSERT, UPDATE, DELETE`.
+
+> 🔴 **Correzione del 2026-09-11.** Questa voce diceva che `params` e `result`
+> contengono, *«per le funzioni di dominio, gli argomenti e l'esito di operazioni
+> su documenti protetti»*. ⛔ **Letto dal catalogo: nessuna funzione di dominio ci
+> scrive.** Delle 18 che nominano `audit_log`, **17 sono in `dbops`** e una in
+> `script` (`fn_audit_summary`, una lettura); nessuna in `vendite`,
+> `anagrafiche`, `pagamenti`. È il registro delle **automazioni e degli strumenti
+> DBA**, e lo legge `backend/apps/amm_software` — area `SUPER_ADMIN`.
+>
+> ⚠️ Il problema non sparisce, **si sposta**: la porta `fn_audit_log_once` è
+> aperta, e niente nel modello impedisce che domani una funzione di dominio ci
+> scriva i propri parametri. Ma cambia **quale sia la domanda giusta**, e non è
+> «quale policy»: è *«questo registro deve poter contenere dati di dominio?»*.
+> Se la risposta è **no**, il presidio giusto è un **cancello** alla scrittura,
+> non una policy — il rischio sparisce alla fonte.
+>
+> ⭐ E una cosa vale comunque, indipendente dalla decisione: `zeroerp_app` ha
+> `UPDATE` e `DELETE` su un registro di audit che **non scrive e non modifica**.
+> *Un registro di audit modificabile da chi è auditato non è un registro.* È una
+> riga di `REVOKE`.
+>
+> Analisi e stima: §8 di
+> [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md).
 
 ⚠️ Corollario: finché `storico` è aperto, chiudere D2 non chiude il buco —
 sposta solo il punto da cui si legge.
@@ -829,6 +862,11 @@ torna difendibile — e sono tre cantieri delimitati, non una riscrittura.
 > ogni versione precedente di una riga protetta resta leggibile. ⇒ *Chiudere D2
 > ha spostato il punto da cui si legge, non ha chiuso il buco* — ed è la ragione
 > per cui D3 va fatto prima di dire «production-ready», non dopo.
+>
+> ✅ **E la sera dell'11-09 D3 è chiuso**: le versioni delle 37 madri protette
+> si leggono solo con l'emittente congelato nella riga, come la madre. La frase
+> «non production-ready per lo storico» non regge più; restano D4 (tre policy
+> inerti, a registro) e la decisione §8.3 su `dbops.audit_log`.
 
 ---
 

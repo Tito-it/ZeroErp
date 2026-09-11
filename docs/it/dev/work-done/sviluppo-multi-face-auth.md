@@ -737,9 +737,13 @@ ammette `CLIENTE_PORTALE`/`SHOP_CUSTOMER` via BA, l'altra ammette
       Concessioni `BYPASSRLS` ai ruoli tecnici `zeroerp_admin` /
       `zeroerp_migration` (via `ALTER ROLE`). Verifica preventiva che
       `zeroerp_app` sia `NOBYPASSRLS`.
-- [ ] 4.9.8 Benchmark performance pre/post su query chiave (list
+- [~] 4.9.8 Benchmark performance pre/post su query chiave (list
       fatture, list ordini) con `EXPLAIN (ANALYZE, BUFFERS)`.
       Tolleranza regressione ≤ 10% (linee-guida-sql §10.9).
+      ⚠️ **Ritirato il 2026-09-11** — la voce è uscita da §10.9 (il
+      predicato RLS non è indicizzabile); stato in
+      `sviluppo-multi-face-da-completare.md` §4.9.8. Le altre citazioni
+      del benchmark in questo piano sono storia e restano com'erano.
 - [ ] 4.9.9 pgTAP per ciascuna policy attivata: utente visibile,
       utente non autorizzato, senza GUC (fail-closed), bypass ruolo
       tecnico. File in `db/pgtap/rls/<schema>_<tabella>_rls.sql`.

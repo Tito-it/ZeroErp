@@ -142,6 +142,22 @@ I test strutturali esistenti non esercitano il runtime (serve ruolo non-BYPASSRL
 
 `EXPLAIN (ANALYZE, BUFFERS)` prima/dopo `ENABLE`, con ruolo NOBYPASSRLS + GUC operatore+whitelist, su: lista fatture, lista contratti/offerte/preventivi, coda pratiche, write-path con trigger. **Soglia**: regressione latenza ≤ 10% sulle list-view operatore; nessuna transizione index→seq-scan indotta dalla RLS. Oltre soglia → indice EF obbligatorio prima dell'attivazione.
 
+> ⚠️ **Superato (2026-09-11) — e non solo perché non è mai stato eseguito.**
+> L'`ENABLE` è in `databasechangelog` dal **2026-06-02**, la RLS è la
+> condizione di esercizio da tre mesi e il pgTAP ci gira sotto dall'08-07: il
+> «prima» da confrontare non esiste più, e una soglia misurata sui dati di
+> sviluppo sarebbe una fotografia, non una regola. Ma la premessa era anche
+> **sbagliata sul modello**: la canonica `script.fn_check_user_emittente_scope`
+> è **plpgsql** — quindi il predicato della policy è una **chiamata di
+> funzione per riga**, opaca al planner, non un confronto indicizzabile. Un
+> indice sulla colonna emittente **non lo serve**: serve solo alla query
+> dell'applicazione che entra da quella colonna (una lista per emittente + data,
+> come `ix_fatture_emitt_data`), e si decide **per FK** nel registro
+> `dbops.fk_index_policy`, con il perché scritto nel seed — è già così da
+> agosto (`20260822-39`, `20260822-41`, `20260829-33`). Lo script
+> `benchmark-rls-ondata1.sql` è stato ritirato lo stesso giorno. Regola
+> aggiornata: [linee-guida-sql §10.9](/linee-guida-sql).
+
 ## 13. Prerequisito esterno al DB (da BE)
 
 Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio di leak cross-request (GUC session-scoped + `CONN_MAX_AGE`) che si manifesta solo a RLS attiva (R-GUC, §11.1). La sua risoluzione è **lato backend** (reset GUC all'inizio di ogni richiesta, fail-closed) ed è descritta nel brief BE/FE. **L'`ENABLE` in produzione-interna non va fatto prima che quel fix sia in piedi e testato sotto pool concorrente.**
@@ -171,6 +187,20 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 > **Attivazione `ENABLE`** (no-FORCE, kill-switch DISABLE): **Ondata 1 (`-38`) + Ondata 2-A (`-39`) + 2-B billing_account (`-40`) APPLICATE** ("tutto ok"). **Ondata 2-C `contratti` (`-41`) da applicare** (R4 risolto: pgAgent gira come `postgres` superuser → esente). Prerequisito BE **R-GUC: sbloccato**.
 >
 > **Restano SOLO**: applicare `-41` (se non già); benchmark formali + test multi-policy ordini (opzionali); **dismissione legacy `fn_get_emittenti_scope`** (ora possibile: B5 BE chiuso `4201c0f75`); backlog `acquisti.*`/config cross-EF. *(B5 BE **✅ FATTO 2026-06-02**.)*
+>
+> **Stato (2026-09-11).** `-38`, `-39`, `-40`, `-41` risultano tutti applicati
+> il **2026-06-02** (`databasechangelog`). Il «benchmark formale» **non si
+> esegue più**: superato dai fatti e sbagliato nella premessa — vedi la nota in
+> §12. ⚠️ **Gli indici EF del `-34` su `contratti`, `offerte_commerciali`,
+> `documenti_generati` e `fatturazione_lotti` non esistono più**: le loro FK
+> erano già in `dbops.fk_index_policy` a `consentito = false` (registrate dal
+> populate notturno prima del 06-01) e `apply_fk_index_policy()`, che gira
+> `runAlways` in `90_end`, fa `DROP INDEX IF EXISTS` sul nome scritto nel
+> `dll_command` — lo stesso che il changeSet aveva scelto apposta. Un indice
+> governato dalla policy si accende dal flag, mai con un `CREATE INDEX` a mano
+> (linee-guida-sql §8.7); la decisione per quelle quattro FK oggi è quella di
+> **default**, cioè di nessuno. Restano `ix_pratiche_emittente_fiscale_id` e
+> `ix_ordini_emittente_fiscale_id`, le cui FK non hanno una riga di policy.
 
 ### Fase 0 — Verifiche preliminari (introspezione runtime, a carico DB/BE)
 
@@ -234,7 +264,7 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 
 > **Esito [IMPLEMENTATO 2026-06-01].** Introspezione sez. D: mancavano su 6 tabelle. Creati con `CREATE INDEX IF NOT EXISTS` + naming di policy (come `ix_preventivi_emittente_fiscale_id`). ChangeSet `20260601-34`.
 
-- [x] Indice EF su `contratti`, `offerte_commerciali`, `documenti_generati`, `pratiche`, `ordini`, `fatturazione_lotti` (`-34`)
+- [x] Indice EF su `contratti`, `offerte_commerciali`, `documenti_generati`, `pratiche`, `ordini`, `fatturazione_lotti` (`-34`) — ⚠️ **quattro su sei rimossi dal loop `apply_fk_index_policy()`** (FK a `consentito = false`); verificato il 2026-09-11, vedi Stato in testa al §15
 
 ### Fase 5b — Policy RLS di lettura (dry-run) — *emerso dall'introspezione (sez. F)*
 
@@ -262,21 +292,21 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 
 ### Fase 8 — Ondata 1 (convenzione SR)
 
-> **Esito [IMPLEMENTATO 2026-06-01, da applicare con gate benchmark].** ChangeSet atomico `20260601-38` (ENABLE no-FORCE su `fatture` + `fatture_scadenze` + `fatturazione_lotti`), rollback = **DISABLE** (kill-switch, policy preservate). Benchmark: `docs/it/dev/work-in-progress/benchmark-rls-ondata1.sql`. *Nessun job batch coinvolto in Ondata 1.*
+> **Esito [IMPLEMENTATO 2026-06-01, APPLICATO 2026-06-02].** ChangeSet atomico `20260601-38` (ENABLE no-FORCE su `fatture` + `fatture_scadenze` + `fatturazione_lotti`), rollback = **DISABLE** (kill-switch, policy preservate). Il gate benchmark è **superato** (§12, nota 2026-09-11); lo script `benchmark-rls-ondata1.sql` è stato ritirato. *Nessun job batch coinvolto in Ondata 1.*
 
 - [x] Changeset `ENABLE ROW LEVEL SECURITY` (no `FORCE`) atomico sulla famiglia fatture (`-38`)
 - [x] **Kill-switch** = rollback `DISABLE` (non `DROP POLICY`) + snippet psql istantaneo nel commento
-- [ ] **Eseguire il benchmark** pre/post `ENABLE` (soglia ≤ 10%, nessun index→seq-scan) — *a carico DB, come `zeroerp_app` + GUC operatore*
-- [ ] Applicare `-38` (dopo baseline benchmark) e verificare post-ENABLE
+- [~] **Benchmark** pre/post `ENABLE` — *mai eseguito, e ritirato il 2026-09-11*: il gate è superato dai fatti e il predicato RLS non è indicizzabile (§12)
+- [x] Applicare `-38` — **applicato il 2026-06-02**
 
 ### Fase 9 — Ondata 2 (convenzione PK), per gruppi di rischio
 
-> **Esito [IMPLEMENTATO 2026-06-01, applicare per gruppi dopo Ondata 1].** Changeset ENABLE splittati per **blast radius / rischio**. Tutti no-FORCE, rollback = DISABLE. Da applicare **una alla volta**, ciascuna con benchmark/verifica.
+> **Esito [IMPLEMENTATO 2026-06-01, APPLICATI 2026-06-02].** Changeset ENABLE splittati per **blast radius / rischio**. Tutti no-FORCE, rollback = DISABLE. Erano da applicare una alla volta, ciascuna con benchmark/verifica: sono stati applicati tutti e tre il 2026-06-02, senza benchmark (superato — §12).
 
 - [x] **Parte A** (`-39`): ENABLE su `preventivi`, `offerte_commerciali`, `documenti_generati`, `pratiche`, `ordini` (tabelle documentali, nessun job batch)
 - [x] **Parte B** (`-40`): ENABLE su `anagrafiche.billing_account` — ⚠️ **blast radius alto** (dati master), changeset isolato, da validare a parte
 - [x] **Parte C** (`-41`): ENABLE su `vendite.contratti` — **R4 risolto** (pgAgent = `postgres` superuser, esente; nessun fix)
-- [ ] Applicare A → B → C in sequenza, ognuna con benchmark e verifica consumatori
+- [x] Applicare A → B → C — **applicati il 2026-06-02** (`-39`, `-40`, `-41` in `databasechangelog`)
 
 > **⚠️ Sequencing**: `-38/-39/-40` applicano su `liquibase update`. Per attivare **un'ondata per volta** (come da §9), usare `tag` + `updateToTag`/`updateCount`, non un singolo `update` che le attiverebbe tutte. Kill-switch (`rollbackCount`/`DISABLE`) pronto per ciascuna.
 

@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix__legacy_risorse_umane_auth_user__legacy_risorse_umane_auth_u | `CREATE INDEX ix__legacy_risorse_umane_auth_user__legacy_risorse_umane_auth_u ON storico._legacy_risorse_umane_auth_user USING btree (_legacy_risorse_umane_auth_user_id)` |
+| ix__legacy_risorse_umane_auth_user_scope_ef | `CREATE INDEX ix__legacy_risorse_umane_auth_user_scope_ef ON storico._legacy_risorse_umane_auth_user USING btree (scope_emittente_fiscale_id)` |
 | pk_storico__legacy_risorse_umane_auth_user | `CREATE UNIQUE INDEX pk_storico__legacy_risorse_umane_auth_user ON storico._legacy_risorse_umane_auth_user USING btree (id)` |
 
 ## 🚨 Trigger

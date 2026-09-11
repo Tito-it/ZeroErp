@@ -149,3 +149,4 @@
 ## 🔍 Views
 - [vw_codici_errore](views/vw_codici_errore.md) — (rev 2026-08-21)
 - [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)
+- [vw_email_in_coda](views/vw_email_in_coda.md) — (latest review 11-09-2026)
