@@ -60,7 +60,7 @@ stavano sotto la stessa parola — facendo contare insieme cose diverse.
 
 | | Che cosa vuol dire | Perché non è un guasto |
 | --- | --- | --- |
-| **`FUORI_PORTATA`** | il lavoro lo fa partire il sistema operativo | è un limite di **vista**: il database non può saperlo. Chi può saperlo è il backend, che dal 2026-09-06 lo presidia da `backend/deploy/sveglie.json` |
+| **`FUORI_PORTATA`** | il lavoro lo fa partire il sistema operativo **e il catalogo non ha dichiarato che cosa aspettarsi** | è un limite di **vista**: il database non può saperlo. ⚠️ Dal 2026-09-11 vale **solo** per i `COMMAND` senza contratto: chi dichiara `tolleranza_minuti` o `segno_di_vita = SESSIONE` non è più fuori portata (sezione sotto) |
 | **`SU_RICHIESTA`** | il lavoro lo mette in coda una **persona** | non esiste nessuna cadenza da confrontare: è la **natura** del lavoro, e non cambierà |
 
 Il primo è un confine che un giorno si potrebbe spostare; il secondo no.
@@ -68,12 +68,58 @@ Il primo è un confine che un giorno si potrebbe spostare; il secondo no.
 ⛔ **Dire «tutto bene» su un lavoro che non si vede sarebbe una bugia**, ed è il
 modo più efficace di far smettere di guardare. La vista si ferma dove deve.
 
-⚠️ **Un caso resta fra i `FUORI_PORTATA` di proposito**: il listener sempre
-acceso, che scrive una sola corsa — quella di avvio. Presidiarne la vitalità
+⚠️ **Il listener sempre acceso era fra i `FUORI_PORTATA` di proposito** (fino al
+2026-09-11): scrive una sola corsa — quella di avvio — e presidiarne la vitalità
 sull'ultima corsa direbbe «fermo» su un servizio sano acceso da tre settimane.
-Ma **che sia un listener il database non lo sa**: nessuna colonna lo dice, e
-dedurlo dal nome sarebbe una coincidenza travestita da regola. ⇒ Se servirà, è
-una colonna — cioè un pezzo di modello, non un ramo in più.
+Ma **che sia un listener il database non lo sapeva**: nessuna colonna lo diceva.
+*«Se servirà, è una colonna»* — è servita, ed è `segno_di_vita` (sezione sotto).
+
+---
+
+### ⭐ I `COMMAND` con un contratto non sono più fuori portata
+
+Dal 2026-09-11 `dbops.processi` dichiara il **contratto di liveness** di un
+`COMMAND` (decisione di Tid, brief *quattro processi senza presidio* §10.2):
+
+| Colonna | Che cosa dice |
+| --- | --- |
+| `tolleranza_minuti` | *«se sto bene, lascio un segno almeno ogni N minuti»*. `NULL` = non si presidia da qui |
+| `segno_di_vita` | **dove** il database cerca quel segno: `GIORNALE` (una corsa su `job_run_log`) o `SESSIONE` (una connessione viva in `pg_stat_activity` con `application_name = codice`) |
+
+E il panorama, che prima diceva `FUORI_PORTATA` a tutti i `COMMAND`, ora **sa**:
+
+| Contratto | Stati possibili |
+| --- | --- |
+| `GIORNALE` + tolleranza | `OK` (ultima corsa entro la tolleranza) · **`MUTO`** (più vecchia) · `MAI_PARTITO` (nessuna corsa) |
+| `SESSIONE` | `OK` (una connessione col codice del processo è viva) · **`MUTO`** (non c'è) |
+| nessuno | `FUORI_PORTATA`, come prima |
+
+**`MUTO` è l'unico stato nuovo**: *«era vivo ed è taciuto»*. È la firma di un
+timer morto, di un servizio caduto, di un digest che non gira più. `MAI_PARTITO`
+su un `COMMAND` è il timer **dichiarato e mai installato** — il buco «fra
+dichiarato e acceso non guarda nessuno» (presidi §11.5), visto dal database.
+
+⭐ **Niente da fare su `da_guardare`**: non cambia forma, quindi `MUTO` e
+`MAI_PARTITO` entrano da soli nel presidio, nel pannello e nel digest. E
+[maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare),
+che nel proprio commento dichiarava *«non vede il job che non parte affatto: per
+quello servirebbe che ogni processo dichiarasse ogni quanto deve girare»*, ha il
+suo complemento.
+
+⚠️ **Il segno di vita a `SESSIONE` è un fatto, non una dichiarazione**: se il
+processo muore la sessione sparisce; se sta riconnettendo non c'è — ed è vero.
+Nessun battito sul giornale, nessuna tabella nuova. Il backend si presenta con
+`application_name = codice del processo` (una riga in `notify_listener`).
+
+⛔ **Il limite, dichiarato**: il catalogo non sa quali processi sono **accesi su
+questo host** (`abilita` sta nel deploy). Oggi non morde — ogni sveglia accesa è
+universale, e `run_fatturazione_batch` è spento per decisione di prodotto
+(tolleranza `NULL`). Un processo acceso su un host e spento su un altro vorrà un
+registro di silenziamento, non una colonna nel JSON.
+
+Tre colonne in coda dal 2026-09-11: `tolleranza_minuti`, `segno_di_vita`,
+`ultimo_segno_di_vita` (la corsa per `GIORNALE`, l'avvio della sessione per
+`SESSIONE`).
 
 ---
 

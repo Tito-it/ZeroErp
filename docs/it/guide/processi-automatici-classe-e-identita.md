@@ -171,19 +171,43 @@ che **recupera il giro perso** se la macchina era spenta. Un digest settimanale
 sotto cron, con la macchina spenta il lunedi' mattina, salterebbe la settimana
 senza dirlo.
 
-### ⛔ Il limite che questa distinzione porta con se'
+### ⛔ Il limite che questa distinzione portava con se' — e come si e' chiuso
 
 La vista `dbops.vw_processi_programmazione` sa tutto dei job **pgAgent** —
-prossima corsa, ultima corsa, esito — e sui **COMMAND** risponde
-`stato = FUORI_PORTATA`. Non e' una lacuna della vista: **il database non puo'
-vedere systemd**, ed e' giusto che lo dichiari invece di indovinare.
+prossima corsa, ultima corsa, esito. Sui **COMMAND**, fino al 2026-09-11,
+rispondeva `FUORI_PORTATA`: **il database non puo' vedere systemd**, ed era
+giusto dichiararlo invece di indovinare.
 
-⚠️ **La conseguenza si e' vista il 2026-09-11**: su un host quattro timer
+⚠️ **La conseguenza si e' vista quel giorno**: su un host quattro timer
 dichiarati accesi non erano **mai stati installati** — l'invio email, i due
 digest e il listener — e nessun controllo se ne era accorto, perche' i presidi
-guardano il **dichiarato**, non l'installato. Chi mette in servizio una macchina
-esegue `sudo backend/bin/install-timers.sh`, che legge `sveglie.json` ed e'
-idempotente; il divario fra dichiarato e installato, oggi, non lo guarda nessuno.
+guardavano il **dichiarato**, non l'installato.
+
+⭐ **Dal 2026-09-11 il catalogo dichiara che cosa aspettarsi.** Ogni `COMMAND`
+puo' portare un **contratto di liveness** su
+[dbops.processi](/dbzero/dbops/manual/processi): *«se sto bene, lascio un segno
+almeno ogni N minuti»* (`tolleranza_minuti`), oppure *«sono un servizio sempre
+acceso: guardate se la mia connessione e' viva»* (`segno_di_vita = SESSIONE`,
+il caso del listener). Con il contratto il panorama non dice piu' «non posso
+sapere»: dice **`OK`**, **`MUTO`** (era vivo ed e' taciuto) o **`MAI_PARTITO`**
+— e quest'ultimo e' proprio il timer dichiarato e mai installato, visto dal
+database. Le righe entrano da sole nel digest e nel pannello.
+
+⚠️ Non e' che il database veda systemd: vede **l'effetto** — la corsa che non
+arriva, la connessione che non c'e'. Cio' che non vede e' quali processi sono
+accesi su *questo* host: oggi ogni sveglia accesa lo e' ovunque, e la
+fatturazione automatica e' spenta per decisione di prodotto (senza contratto).
+
+⭐ **E chi guarda il guardiano?** Il digest segnala tutti gli altri; se muore lui,
+nessuno manda il messaggio che lo dice. Da quel giorno un job pgAgent —
+[guardiano_digest](/dbzero/dbops/manual/fn_guardiano_digest), che vive dentro il
+database e non muore con systemd — legge ogni ora lo stato del digest e, se e'
+`MUTO`, mette in coda un lavoro che il drenatore esegue spedendo una mail. Il
+digest guarda il guardiano, il guardiano guarda il digest.
+
+Chi mette in servizio una macchina esegue comunque
+`sudo backend/bin/install-timers.sh`, che legge `sveglie.json` ed e' idempotente.
+Il perche' per esteso: `docs/it/dev/work-in-progress/brief-db-quattro-processi-senza-presidio.md` §10.
 
 
 ## 5. Per conto di chi lavora
@@ -290,6 +314,9 @@ Non si va a memoria: ci sono viste che rispondono a una domanda ciascuna, e che
 | [vw_processi_che_bypassano](/dbzero/dbops/manual/vw_processi_che_bypassano) | è rimasto in giro un passe-partout? |
 | [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore) | c'è una corsa che non dice chi l'ha fatta? |
 | [vw_coda_lavori_da_guardare](/dbzero/dbops/manual/vw_coda_lavori_da_guardare) | c'è un lavoro in coda che si è fermato e nessuno se n'è accorto? |
+| [vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/manual/vw_fatture_stampa_coda_da_guardare) | c'è una stampa in coda che si è fermata? (la gemella, per la coda stampa) |
+| [vw_email_da_guardare](/dbzero/dbops/manual/vw_email_da_guardare) | c'è un'email che la coda deve a qualcuno da più di un'ora e nessuno ha preso in mano? |
+| [vw_processi_programmazione_da_guardare](/dbzero/dbops/manual/vw_processi_programmazione_da_guardare) | c'è un processo che doveva farsi vivo e non l'ha fatto — un job pgAgent, o un COMMAND col suo contratto? |
 
 ### ⚠️ Un debito dichiarato non è un allarme
 
