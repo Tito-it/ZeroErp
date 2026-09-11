@@ -41,7 +41,8 @@ Indice test eseguiti:
 23) test_list_emittente_rounding_modes_ok — 4 codici nell'ordine canonico
 24) test_list_emittente_rounding_modes_coverage — descrizioni coprono enum (no HALF_EVEN)
 25) test_list_audit_sources_delegates_to_repo — service ritorna 8 sorgenti
-26) test_list_email_log_stati_ok — 4 codici default-first SENT/PENDING/RETRY/FAILED
+26) test_list_email_log_stati_ok — l'atteso si deriva da _EMAIL_LOG_STATI_DESCRIZIONI,
+    default-first SENT (5 codici dal 2026-09-11, con SIMULATA)
 27) test_list_email_log_stati_coverage — descrizioni coprono _EMAIL_LOG_STATI_VALIDI
 28) test_get_audit_summary_param_invalido_code_assente — E_AUDIT_SUMMARY_PARAM_NON_VALIDO
 29) test_get_audit_summary_param_invalido_storico_id_zero — E_AUDIT_SUMMARY_PARAM_NON_VALIDO
@@ -617,8 +618,23 @@ class TestListEmailLogStati(TestCase):
         result = AmmSoftwareService().list_email_log_stati()
 
         codici = [r["codice"] for r in result]
-        # Ordering "default-first": SENT primo (stato finale piu' frequente).
-        self.assertEqual(codici, ["SENT", "PENDING", "RETRY", "FAILED"])
+        # ⭐ L'atteso si DERIVA dall'ordine dichiarato, non si ricopia: fino al
+        #    2026-09-11 qui c'era la lista dei quattro codici scritta a mano —
+        #    una SEDE IN PIU' dello stesso vocabolario, che il quinto valore
+        #    (`SIMULATA`) ha fatto emergere facendo rosso in due punti.
+        # ⚠️ E non e' tautologico: pretende che l'ordine di USCITA coincida con
+        #    il campo `ordering`, che nessun codice si perda per strada e che
+        #    «default-first» sopravviva.
+        # ⛔ Attenzione a come e' scritto il service: NON ordina: restituisce la
+        #    tupla nell'ordine in cui e' DICHIARATA. Quindi questo confronto e'
+        #    proprio il presidio di quella coincidenza — una riga aggiunta in
+        #    fondo con `ordering` basso fa rosso qui, che e' cio' che si vuole.
+        from apps.amm_software.services import amm_software_service as _svc
+        atteso = [c for c, _d, _o in sorted(
+            _svc._EMAIL_LOG_STATI_DESCRIZIONI, key=lambda r: r[2],
+        )]
+        self.assertEqual(codici, atteso)
+        self.assertEqual(codici[0], "SENT", "l'ordinamento resta default-first")
         for row in result:
             self.assertTrue(row["descrizione"])
             self.assertIsInstance(row["ordering"], int)

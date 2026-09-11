@@ -1802,7 +1802,8 @@ documento lo nominava:
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 
 ⭐ **Il secondo livello si accende con `richiedi_db_provvisto`**
-(`apps/core/tests/db_e2e.py`) ed è oggi in **19 file**, 34 punti di chiamata. È
+(`apps/core/tests/db_e2e.py`) ed è oggi in **22 file** (rimisurato il
+2026-09-11; erano 19 il 09-09 — il livello cresce). È
 l'unico che vede il pezzo in mezzo: i pgTAP coprono il lato DB, i test unitari col
 `diag` finto coprono il lato Python, e **nessuno dei due vede la giuntura**.
 
@@ -1811,11 +1812,18 @@ porta dietro dal giorno in cui è nato: vedi `.codex/AGENTS.md` §«Gli smoke:
 nessuno li lancia». Il registro `baseline-smoke.tsv` ha due righe — cioè è nella
 condizione migliore per accendere un cancello, non nella peggiore.
 
-⚠️ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**, anche se la
-regola in `.codex/AGENTS.md` le offre come alternative: solo `SimpleTestCase`
-**impedisce** al codice sotto test di parlare col database
+⚠️ **`unittest.TestCase` e `SimpleTestCase` non sono equivalenti**: solo
+`SimpleTestCase` **impedisce** al codice sotto test di parlare col database
 (`DatabaseOperationForbidden`). `unittest.TestCase` glielo *permette*
 soltanto — quindi un mock dimenticato lì non fallisce: parla col DB di sviluppo.
+
+✅ **E dal 2026-09-11 lo dice anche `.codex/AGENTS.md`**, che è il documento
+dove si va a cercarlo scrivendo un test. Fino a quel giorno §Regole test le
+offriva come **alternative equivalenti**, e questa riga lo segnalava — ⭐ *un
+documento che dice il vero su un difetto non si aggiorna, si rende falso
+chiudendolo*. Lì sta anche la misura datata (2026-09-11: **506** classi che non
+bloccano il database contro **202** che lo bloccano) e il caso in cui
+`unittest.TestCase` resta legittimo — un test che non tocca Django affatto.
 
 ---
 

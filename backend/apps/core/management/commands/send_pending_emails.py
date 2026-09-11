@@ -32,7 +32,10 @@ logger = logging.getLogger("zeroerp.email")
 
 
 class Command(BaseCommand):
-    help = "Processa email in coda (PENDING/RETRY). Eseguibile come cron job."
+    help = (
+        "Processa la coda email: PENDING sempre, piu' FAILED e RETRY finche' "
+        "restano tentativi. Svegliato da un timer systemd."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -173,8 +176,11 @@ class Command(BaseCommand):
             "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
         }
 
-    # Scopo: Processa email in coda PENDING/RETRY, con retry automatico
-    #        per i FAILED con tentativi < max_tentativi. Ritorna il riepilogo
+    # Scopo: Processa la coda email — `PENDING` sempre, piu' `FAILED` e `RETRY`
+    #        finche' `tentativi < max_tentativi` e il backoff e' scaduto.
+    #        ⚠️ `SIMULATA` NON si ripesca: e' terminale di proposito (la mail e'
+    #        stata mostrata, non spedita, e ritentarla non la farebbe partire).
+    #        Ritorna il riepilogo
     #        del giro (vuoto sul dry-run, che non e' un'esecuzione).
     # ⚠️ Gira DENTRO l'identita' impostata dal chiamante: qui non si apre nessun
     #    contesto, o sarebbero due sedi a deciderlo.

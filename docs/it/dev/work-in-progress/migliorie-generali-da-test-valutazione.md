@@ -619,6 +619,11 @@ nessuno dei due numeri ferma un merge**.
 
 ### 🟠 D8 — `acquisti` e `magazzino`: modellati, non scritti
 
+> ✅ **DECISO il 2026-09-11 (Tid): sono il PROSSIMO CANTIERE**, non congelati.
+> Scritto in `.codex/PROJECT_CONTEXT.md`. ⇒ Ciò che questa sezione misura resta
+> vero come **fotografia del 2026-09-08**; ciò che chiedeva — una decisione
+> scritta — è arrivato. ⚠️ `storico` **non** è coperto dalla decisione.
+
 | Schema | Tabelle | FK | CHECK | Funzioni | Viste | Test |
 | --- | --- | --- | --- | --- | --- | --- |
 | `magazzino` | 26 | 57 | 71 | **2** | 4 | **1** |
@@ -681,6 +686,18 @@ con più conseguenze e non era misurata.
 ---
 
 ### 🟡 D10 — I presidi non hanno un destinatario
+
+> ✅ **CHIUSO l'11-09-2026 — il destinatario esiste e ha già riferito.** Catalogo
+> `dbops.presidi` applicato dal team DB, digest costruito dal backend, due timer
+> in servizio (giornaliero 07:00, settimanale lunedì 07:30). ⇒ Ciò che questa
+> sezione descrive resta vero come **fotografia del 2026-09-08**.
+> 🔴 **Con un residuo da portare al team DB**: il primo giro, l'11-09 alle 07:00,
+> ha riferito un allarme su `maintenance.vw_job_run_da_guardare` prodotto da
+> `sync_auth_user_active` — processo **ritirato il 07-09**, 31 fallimenti
+> *storici*. La vista guarda sette giorni e **non filtra i processi ritirati**:
+> l'allarme si spegne da sé il 12-09, ma *un presidio che comincia col rumore
+> insegna a non guardarlo*, ed è proprio la proprietà che il cantiere comprava.
+> Storia: [brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md).
 
 30 viste di presidio in `dbops`. Nessun canale che le porti davanti a una persona
 su base regolare: nessun digest, nessun job che le legga e sollevi, nessuna
@@ -774,8 +791,8 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Perimetro dei dati (RLS)** | 🔴 alto | **7/10** ⬆ | ✅ 2026-09-11: D2 chiuso — il dominio documento è protetto **fino ai satelliti** (nove famiglie), e c'è un presidio a criterio transitivo che vede le tabelle nuove. Resta a **zero** lo storico (D3, 120 tabelle) e restano le tre policy inerti (D4): è quello che tiene il voto sotto l'8 |
 | **Copertura test** | 🔴 alto | **4/10** | 600 file e ~6.183 asserzioni, ma su un DB ricostruito da zero **la suite è verde al 31%** (411 rossi su 599, misurato). Il 38% delle funzioni non è mai nominato (D7) |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | **6,5/10** | `security_invoker` presidiato benissimo; `relrowsecurity` e `search_path` no (D5, D6) |
-| **Simmetria del dominio** | 🟠 medio | **4/10** | `acquisti` e `magazzino` modellati e non scritti, e il debito cresce da solo (D8) |
-| **Osservabilità dei presidi** | 🟠 medio | **4/10** | 30 viste, nessun destinatario (D10) |
+| **Simmetria del dominio** | 🟠 medio | **4/10** | `acquisti` e `magazzino` modellati e non scritti (D8). ⚠️ **Il voto NON si muove l'11-09**, e la ragione va detta: quel giorno è arrivata la **decisione** (sono il prossimo cantiere), non il comportamento. Ciò che cambia è che il debito ha un verso dichiarato invece di crescere in silenzio — *una decisione non scrive il codice, e un voto che salisse per una riga scritta in un documento misurerebbe la cosa sbagliata* |
+| **Osservabilità dei presidi** | 🟠 medio | **7/10** ⬆ | ✅ **2026-09-11: D10 chiuso** — le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`), non un elenco in Python. 🔴 Non 8+ per il residuo del debutto: la finestra di `vw_job_run_da_guardare` non filtra i **processi ritirati**, quindi la prima notizia del digest è stata rumore |
 | **Gestione del debito** | 🟠 medio | **6/10** | Registri ben progettati, quattro su otto troppo lunghi per essere letti (D11) |
 | **Pattern trigger e automazioni** | 🟡 basso | **7,5/10** | Riuso raro (758 trigger da due funzioni), framework `ci_apply` eccellente; la forma per-figlia non scala e la fase è al 66% (D9) |
 | **Error handling / codici errore** | 🟡 basso | **8,5/10** | Contratto a tre lati esplicito e presidiato; il registro non cala |
@@ -879,11 +896,23 @@ torna difendibile — e sono tre cantieri delimitati, non una riscrittura.
 
 ### 🟠 La sostanza
 
-* [ ] **D8** — decidere se `acquisti`/`magazzino` sono un cantiere aperto o
-      congelato, e **scriverlo**. Un dominio a metà senza data è il debito che
-      cresce senza che nessuno lo tocchi.
-* [ ] **D10** — un digest periodico delle viste di presidio non vuote; e come
-      prima cosa, guardare i sei `CHIUSURA_SCADENZE` in errore.
+* [x] **D8** — ✅ **deciso il 2026-09-11: sono il PROSSIMO CANTIERE** (Tid),
+      non congelati. Scritto in `.codex/PROJECT_CONTEXT.md`, nell'albero delle
+      app e in una sezione sua. ⭐ La conseguenza che la voce cercava è scritta
+      lì: *ogni decisione presa su `vendite` è presa anche per `acquisti`*, e
+      un'asimmetria fra i due si chiude subito invece che in una «fase due».
+      ⚠️ **`storico` resta senza decisione**: questa voce lo teneva insieme agli
+      altri due, ma non è lo stesso caso. La decisione presa **non** lo copre.
+      ⇒ Vale anche per il §4 di questo documento, dove la RLS di `storico` è
+      dichiarata rimandata a scope congelato: quel rimando resta.
+* [x] **D10** — ✅ **fatto l'11-09-2026**: il digest gira (giornaliero 07:00,
+      settimanale lunedì 07:30), su catalogo `dbops.presidi` e non su un elenco
+      di viste scritto in Python. I sei `CHIUSURA_SCADENZE` erano già stati
+      guardati il 09-09 (D13 del gemello applicativo: `coerce_jsonb_dict`).
+      🔴 **Residuo aperto, e va al team DB**: la finestra di sette giorni di
+      `vw_job_run_da_guardare` **non filtra i processi ritirati**, quindi il
+      primo giro ha riferito un allarme su un processo obsoleto dal 07-09. Si
+      spegne da sé, ma è rumore al debutto di un presidio.
 * [ ] **D7** — portare a zero gli 11 file in baseline che falliscono nella
       *fixture*: sono le aree che sembrano coperte e non lo sono.
 * [ ] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di

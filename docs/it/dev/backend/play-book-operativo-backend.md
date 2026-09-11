@@ -118,6 +118,53 @@ REVOKE CREATE ON SCHEMA public FROM ${DB_USER};
 -- host  ${DB_NAME}  ${DB_USER}  100.x.y.z/32  scram-sha-256
 ```
 
+## 7-bis) Ruoli DB — il passo che non si vede
+
+⛔ **Il `CREATE ROLE` del §7 è il minimo per collegarsi, non il provisioning.**
+I `GRANT` sul perimetro applicativo, la policy del ruolo migratore e i **ruoli
+batch** (`zeroerp_batch_*`, che hanno `BYPASSRLS`) li scrive uno script dedicato,
+e **Liquibase non può farlo**: quei ruoli vogliono un **superuser**, mentre le
+migrazioni girano come `zeroerp`.
+
+⚠️ **Perché sta qui e non altrove**: la procedura è documentata per intero in
+[provisioning-db-roles.md](provisioning-db-roles.md) — con le verifiche dei grant
+e della postura RLS — ma fino al 2026-09-11 **questo play-book non la nominava**,
+e chi lo seguiva dall'alto in basso incontrava il ruolo batch solo al §15, dove è
+già dato per esistente (`DB_BATCH_PASS` sta fra le variabili in cima).
+*Un documento giusto, non agganciato al passo in cui serve, è invisibile quanto
+uno che non c'è.*
+
+**a) Ruolo applicativo e policy migratore — subito dopo il §7**
+
+```bash
+psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
+  -v app_role=${DB_USER} \
+  -v app_password='${DB_PASS}' \
+  -v migrator_role=titodb \
+  -f scripts/sql/provision_db_roles.sql
+```
+
+**b) Ruolo batch della fatturazione — ⛔ DOPO le migrazioni del §11**
+
+L'ordine non è una preferenza: lo script **concede sul perimetro**, e il
+perimetro (schemi e tabelle) deve già esistere.
+
+```bash
+psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
+  -v batch_role=zeroerp_batch_fatturazione \
+  -v batch_password='${DB_BATCH_PASS}' \
+  -f scripts/sql/provision_db_role_batch_fatturazione.sql
+```
+
+⚠️ **Va rilanciato quando serve un privilegio in più**: una tabella nuova non
+concessa fallisce **rumorosamente** (`permission denied`), che è il comportamento
+voluto — ⛔ e il rimedio è aggiungere il grant *qui*, mai in un changeSet, che
+nominando un ruolo inesistente fermerebbe la pipeline (`linee-guida-sql §11.6`).
+
+> ✅ **Come so che è andata bene**: le due sezioni di verifica in
+> [provisioning-db-roles.md](provisioning-db-roles.md) — «Verifica grant runtime»
+> e «Verifica postura RLS».
+
 ## 8) Gunicorn (systemd)
 
 ```bash

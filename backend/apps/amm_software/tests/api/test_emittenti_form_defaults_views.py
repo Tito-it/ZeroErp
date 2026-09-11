@@ -13,7 +13,8 @@ Indice test eseguiti:
  3) test_rounding_modes_lookup_ok — GET 200, lista 4 codici (no HALF_EVEN)
  4) test_rounding_modes_lookup_response_shape — data e' lista nuda, non envelope paginato
  5) test_audit_sources_lookup_ok — GET 200, delega a service.list_audit_sources (Fase 5)
- 6) test_email_log_stati_lookup_ok — GET 200, 4 codici statici (Fase 5)
+ 6) test_email_log_stati_lookup_ok — GET 200, codici statici derivati dalla
+    sede unica _EMAIL_LOG_STATI_DESCRIZIONI (5 dal 2026-09-11, con SIMULATA)
 """
 
 import json
@@ -156,5 +157,12 @@ class TestEmailLogStatiLookupView(TestCase):
         body = json.loads(response.content)
         self.assertIsInstance(body["data"], list)
         codici = [r["codice"] for r in body["data"]]
-        # 4 stati canonici, default-first SENT.
-        self.assertEqual(codici, ["SENT", "PENDING", "RETRY", "FAILED"])
+        # ⭐ Derivato dalla sede unica, non ricopiato (vedi il gemello in
+        #    `test_amm_software_service`): l'elenco scritto a mano qui era la
+        #    quinta copia del vocabolario degli stati email.
+        from apps.amm_software.services import amm_software_service as _svc
+        atteso = [c for c, _d, _o in sorted(
+            _svc._EMAIL_LOG_STATI_DESCRIZIONI, key=lambda r: r[2],
+        )]
+        self.assertEqual(codici, atteso)
+        self.assertEqual(codici[0], "SENT", "default-first: SENT resta il primo")

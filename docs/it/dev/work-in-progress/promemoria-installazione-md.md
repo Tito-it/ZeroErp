@@ -37,7 +37,7 @@ parte del passo 1 («auditare lo stato attuale») è ormai fatta dai fatti.
 | `backend/deploy/sveglie.json` | 2026-09-06 | **sede unica del dichiarato di deploy**: chi sveglia ogni processo, con quale cadenza e con quale tolleranza. Nel giugno non esisteva: le cadenze erano cablate nell'installer |
 | `backend/deploy/systemd/` — **15 template** versionati | lug→set 2026 | gli unit non si generano più con heredoc dentro lo script: sono file reviewabili in PR, con i placeholder per-host |
 | `backend/bin/install-timers.sh` riscritto | 2026-07-21 → 2026-09-07 | legge `sveglie.json`, è **idempotente**, e ha un test in CI (`scripts/tests/test-install-timers.sh`) che prova anche il ramo che ACCENDE |
-| `scripts/sql/provision_db_roles.sql` + `provision_db_role_batch_fatturazione.sql` | 2026-02 / 2026-06, aggiornati fino al 2026-09-09 | ⭐ **un passo di installazione che il promemoria non nominava**: i ruoli `zeroerp_batch_*` hanno `BYPASSRLS`, vogliono **superuser** e **non possono** essere creati da Liquibase |
+| `scripts/sql/provision_db_roles.sql` + `provision_db_role_batch_fatturazione.sql` | 2026-02 / 2026-06, aggiornati fino al 2026-09-09 | ⭐ **un passo di installazione che questo promemoria non nomina**: i ruoli `zeroerp_batch_*` hanno `BYPASSRLS`, vogliono **superuser** e **non possono** essere creati da Liquibase. ⚠️ La documentazione **c'è** ed è completa ([provisioning-db-roles.md](../backend/provisioning-db-roles.md), anche nel menu): quello che manca è l'**aggancio** — vedi la riga qui sotto |
 | play-book §15/§16/§17 | ago→set 2026 | la parte systemd è ora descritta lì, di taglio tecnico |
 
 ⛔ **La decisione bloccante NON si è sbloccata da sé**: `docker-compose` non
@@ -71,6 +71,15 @@ delle segnalazioni non c'era. Nessuno dei tre dava errore.
    ⚠️ E il perimetro di A si è ristretto: la configurazione applicativa è uscita
    in [configurazione-iniziale.md](../../configurazione-iniziale.md), quindi qui
    resta la sola macchina.
+   ⭐ **E il caso del provisioning insegna che cosa cercare**, perché non era
+   «manca un documento»: [provisioning-db-roles.md](../backend/provisioning-db-roles.md)
+   esiste, è completo e sta nel menu — ma il **play-book §7**, cioè il punto in
+   cui si crea il database, non lo nominava, e creava il ruolo applicativo a mano
+   con un `CREATE ROLE` che è la **seconda sede** di quello che lo script fa già.
+   ⇒ Chi segue la procedura dall'alto in basso incontra il ruolo batch solo al
+   §15, dove è dato per esistente. *Un documento giusto, non agganciato al passo
+   in cui serve, è invisibile esattamente quanto uno che non c'è* — ed è la specie
+   di difetto da cercare riprendendo questo lavoro.
 2. **Decidere** Docker vs venv (vs entrambi).
 3. **Riscrivere `installazione.md`** → "Come farlo girare su una macchina qualsiasi":
    servizi + ordine di avvio, env vars, login, applica/rollback migrazione, modello

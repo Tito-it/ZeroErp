@@ -457,3 +457,120 @@ ancora.** La palla e' al backend: §7.5.
 `backend-dev` di quel giorno: valgono come controesempio, non come motivo. Il
 motivo sta sul modello, ed è che «non ho potuto spedire» e «ho consegnato» sono
 due fatti opposti e oggi si scrivono con la stessa parola.*
+
+---
+
+## 8. ✅ Risposta backend — il giro è chiuso, 2026-09-11
+
+> **Chi risponde:** backend (`dev/backend-tid`). **Stato:** i tre punti del §7.5
+> sono fatti, più uno che il passaggio non prevedeva. Suite **4656 verde**.
+
+**`SIMULATA` ci convince**, e non per quieto vivere: l'argomento del §7.1 — *ogni
+lettore della colonna fa una domanda sull'esito, non sul canale* — è quello che
+avevamo in mano e non abbiamo saputo chiudere. E il secondo, che non avevamo
+visto, è più forte del primo: **legare il valore a `_send_console` avrebbe
+chiesto un sesto valore al primo altro modo di non spedire.**
+
+| # | Punto del §7.5 | Fatto |
+| --- | --- | --- |
+| 0 | il vocabolario (`frozenset` + descrizioni) | ✅ `SIMULATA`, descrizione *«Simulata — non spedita»* |
+| 1 | `inviato_at = NULL` sui due rami console | ✅ `send_raw` e `retry_log_entry`: non si passa affatto |
+| 2 | `EmailOutboxService` | ✅ la bozza segue l'**esito della mail**, non il booleano |
+| 3 | il terzo mirror nel frontend | ✅ ramo `secondary`, più il commento «i 4 codici» |
+
+### ⭐ Il quarto mirror, che il passaggio non nominava
+
+Allineate le tre sedi, la suite è diventata rossa in **altri due punti**:
+`test_list_email_log_stati_ok` e `test_email_log_stati_lookup_ok` **ricopiavano
+l'elenco dei quattro codici**. ⇒ Erano la quarta e la quinta sede dello stesso
+vocabolario, e nessuno le aveva mai contate.
+
+⛔ **Non le abbiamo aggiornate aggiungendo `SIMULATA`**: l'atteso ora si **deriva**
+da `_EMAIL_LOG_STATI_DESCRIZIONI`. ⚠️ E non diventa tautologico, perché quello che
+resta da provare è ciò che il service *fa*: che **ordini** per il campo
+`ordering` (potrebbe non ordinare) e che l'ordinamento «default-first» regga.
+
+### ✅ La verifica che il §7.5 chiede — fatta sul database vero
+
+Non da un test verde: un giro reale in `DEBUG`, dentro `BEGIN`/`ROLLBACK`.
+
+```
+canale: CONSOLE
+ESITO → stato=SIMULATA  inviato_at=None
+transazione annullata: nessuna riga lasciata
+```
+
+⇒ I punti 1 e 2 della vostra checklist sono verificati **sul comportamento**, non
+sul codice.
+
+### ⚠️ Due cose da sapere, e una è una segnalazione
+
+**Il punto 3 non l'abbiamo visto a video.** Il ramo `secondary` è scritto e il
+commento allineato, ma la schermata non è stata aperta: resta l'unico dei tre
+verificato solo per lettura. ⭐ Ed è proprio quello che il §7.5 dichiara *senza
+presidio*, quindi lo diciamo invece di darlo per fatto.
+
+**Le chiavi i18n degli stati email non le legge nessuno.** `email_stato_sent`,
+`_failed`, `_pending`, `_retry` esistono in `it.json` **e** in `en.json` — in
+parità, quindi il cancello dell'i18n è verde — e **nessun componente le usa**: il
+tag del giornale rende `data.stato`, cioè il **codice grezzo**. ⇒ Non abbiamo
+aggiunto la quinta: sarebbe stata una chiave morta in più, e la parità non è
+copertura. È un residuo che vale la pena sapere, non un lavoro di questo
+cantiere.
+
+*Risposta backend del 2026-09-11. Il cantiere lato BE è chiuso; resta la verifica
+a video del tag, che è di chi apre la schermata.*
+
+---
+
+## 9. ✅ CHIUSO — 2026-09-11
+
+> **Stato: chiuso da entrambi i lati.** DB al §7.8, backend al §8. Commit
+> `49edc4ee1` su `dev/backend-tid`, suite **4656 verde**.
+
+### Che cosa è stato verificato, e come
+
+Non solo dai test — ogni riga qui sotto è un'esecuzione vera:
+
+| Cosa | Come | Esito |
+| --- | --- | --- |
+| il ramo console scrive il valore giusto | giro reale in `BEGIN`/`ROLLBACK` sul dbdev | `stato=SIMULATA`, `inviato_at=None` |
+| il valore arriva al filtro del giornale | `list_email_log_stati()` eseguita | cinque codici, con *«Simulata — non spedita»* |
+| il tag non si confonde con «in lavorazione» | `getEmailLogStatoSeverity` **eseguita** sui cinque codici | `SIMULATA → secondary`, `PENDING → info` |
+| il vocabolario non diverge dal `CHECK` | `test_email_log_stati_guardrail` sul DB vero | verde (era rosso il giorno dell'apply) |
+
+⭐ **Il terzo era il punto che il §7.5 dichiarava senza presidio**, e ora è
+verificato **per comportamento** e non per lettura del codice. ⚠️ Resta non visto
+il **pixel**: nessuno ha aperto la schermata. È l'unica cosa che questo cantiere
+non può provare da sé, e si vede in tre secondi la prossima volta che si apre il
+giornale email.
+
+### Che cosa resta, e dove vive
+
+| Residuo | Natura |
+| --- | --- |
+| le chiavi i18n `email_stato_*` non le legge nessuno | ⚠️ **segnalazione**: esistono in parità it/en, il tag rende il codice grezzo. *La parità non è copertura* — non è lavoro di questo cantiere |
+| l'outbox **ri-deriva** il canale invece di seguire ciò che è stato scritto | ⚠️ **dichiarato nel codice**, con la ragione per cui l'alternativa è peggio (rileggere `email_log` risponde zero per RLS a un operatore non-admin). Il fix vero è un `send_raw` che dice *cosa ha scritto*: `success: bool` non rappresenta tre esiti |
+| `docs/it/dev/work-done/gestione-autenticazioni.md` cita questo brief col vecchio percorso | ⛔ **non l'ho toccato**: è un file che un'altra sessione sta modificando in questo momento, e aggiustare una riga lì avrebbe trascinato il loro lavoro nel mio commit. **Una riga da correggere**, `work-in-progress/` → `work-done/` |
+
+### ⭐ Che cosa ha insegnato, al di là della colonna
+
+Il cantiere è nato da **una** parola sbagliata in un registro. Quello che ha
+portato a galla, invece, è una famiglia:
+
+* `test_connection` rispondeva **OK** a un account che non poteva spedire — il
+  verde che ha ingannato una persona vera, non un'ipotesi;
+* il predicato del placeholder aveva una **seconda sede**, *sotto un commento che
+  dichiarava di averla centralizzata*;
+* l'elenco dei codici era ricopiato in **cinque** posti, e solo il quinto valore
+  li ha fatti emergere tutti;
+* il commento di `send_pending_emails` diceva «PENDING o RETRY» **omettendo
+  `FAILED`**, e ci si è fidato: da lì è nato un commento che affermava il
+  contrario di ciò che il codice fa. *Un commento non è una fonte.*
+
+⭐ Nessuno di questi faceva fallire niente. È la stessa firma del cantiere dei
+presidi, ed è il motivo per cui i due documenti si citano a vicenda.
+
+*Chiuso il 2026-09-11. Il difetto di partenza — una mail stampata a video
+registrata come consegnata — non era un dettaglio di log: era il modo in cui
+un'assenza si travestiva da esito.*

@@ -379,8 +379,22 @@ class EmailAllegatoDownloadView(DomainAPIView):
 # -------------------------------------------------------
 
 
+# ⛔ LO SCOPE NON STA QUI, E NON VA AGGIUNTO: lo tiene la RLS su
+#    `config.email_log` — policy per `fn_scope_ef_whitelist(user,
+#    emittente_fiscale_id)`, e per l'ambito `SISTEMA` un super admin oppure lo
+#    scope del processo `send_pending_emails`. Un filtro applicativo qui sarebbe
+#    una SECONDA SEDE della stessa regola.
+# ⚠️ Fino al 2026-09-11 il docstring diceva «per ambito/reparto», e i due
+#    parametri che il repository espone per quello (`ambito`,
+#    `unita_organizzativa_id`) non sono mai stati passati: lo scope che questa
+#    vista ha e' per EMITTENTE, non per reparto. La frase prometteva un filtro
+#    che non c'e' — corretta, non implementata (piano-be-fe-endpoint-senza-porta
+#    §1.1).
+# ⚠️ Il docstring resta UNA RIGA di proposito: drf-spectacular lo pubblica come
+#    descrizione dell'operazione nello schema OpenAPI, e le note di
+#    implementazione non appartengono a un contratto pubblico.
 class EmailLogOperatoreListView(DomainAPIView):
-    """GET: log email visibili all'operatore (per ambito/reparto)."""
+    """GET: log email inviate, nel perimetro dell'operatore."""
 
     area_funzionale = "config"
     skip_area_check = True

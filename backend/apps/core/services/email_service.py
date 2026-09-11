@@ -261,16 +261,17 @@ class EmailDispatchService:
             return log_id, False
         if canale == CANALE_CONSOLE:
             self._send_console(account, destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo)
-            now = datetime.now(timezone.utc).isoformat()
-            # ⚠️ RESIDUO DICHIARATO: anche qui `SENT` dice una cosa che non e'
-            #    successa — la mail e' stata stampata, non consegnata. Lo stato
-            #    onesto sarebbe un valore suo (`CONSOLE`), e il vocabolario vive
-            #    nel `CHECK chk_email_log_stato`: e' una richiesta al team DB,
-            #    non una cosa che il backend possa decidere da solo.
-            #    ⭐ Il caso PERICOLOSO — placeholder su un host di esercizio — non
-            #    passa piu' di qui: cade nel ramo sopra. Qui resta lo sviluppo
-            #    dichiarato, dove chi guarda sa gia' che non parte niente.
-            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
+            # ⭐ `SIMULATA`, non `SENT` — il residuo dichiarato qui e' CHIUSO
+            #    (team DB, 2026-09-11: `chk_email_log_stato` ammette il quinto
+            #    valore). La mail e' stata stampata, non consegnata, e adesso il
+            #    giornale lo dice. Il nome parla dell'ESITO e non del canale:
+            #    `_send_console` e' *un* modo di non spedire, e un secondo modo
+            #    non chiedera' un sesto valore (brief §7.1).
+            # ⛔ `inviato_at` resta NULL, ed e' l'altra meta': e' l'unica colonna
+            #    che data una CONSEGNA, e scriverla qui sposterebbe la bugia di
+            #    una casella invece di toglierla. Il momento della stampa e' gia'
+            #    in `data_insert`.
+            self._repo.update_log_stato(log_id, "SIMULATA", ambito=ambito)
             return log_id, True
 
         success = self._send_smtp(
@@ -430,8 +431,13 @@ class EmailDispatchService:
                 log_detail.get("corpo_inviato_html", ""),
                 log_detail.get("corpo_inviato_testo"),
             )
-            now = datetime.now(timezone.utc).isoformat()
-            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
+            # ⭐ Stesso esito del gemello in `send_raw`: stampata, non spedita.
+            #    ⛔ `inviato_at` NULL (brief §7.1) — e qui la riga potrebbe gia'
+            #    averne uno da un tentativo precedente: `fn_chiudi_email_sistema`
+            #    fa `COALESCE(p_inviato_at, l.inviato_at)`, quindi NON passarlo
+            #    conserva quello vecchio invece di sovrascriverlo con una data
+            #    che descriverebbe una consegna mai avvenuta.
+            self._repo.update_log_stato(log_id, "SIMULATA", ambito=ambito)
             return True
         return self._send_smtp(
             account,

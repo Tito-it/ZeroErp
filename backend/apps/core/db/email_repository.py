@@ -552,7 +552,11 @@ class EmailRepository:
             cursor.execute(sql, params)
             return fetchone_scalar(cursor)
 
-    # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY).
+    # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY,
+    #        SIMULATA). ⚠️ L'elenco autorevole e' il `CHECK`
+    #        `chk_email_log_stato`, specchiato in
+    #        `amm_software_service._EMAIL_LOG_STATI_VALIDI`: qui si dice
+    #        cosa passa di qua, non cosa e' ammesso.
     #
     # ⛔ `ambito` NON ha un default, e serve a scegliere la porta — non a
     #    descrivere la riga. Su una `SISTEMA` l'UPDATE diretto e' rifiutato

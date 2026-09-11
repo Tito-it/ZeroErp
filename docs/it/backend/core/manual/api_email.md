@@ -111,7 +111,7 @@ POST /api/v1/amm-software/email-accounts/
 | --- | --- | :---: | --- |
 | `codice` | string | Si | Convertito a UPPER, univoco |
 | `descrizione` | string | Si | — |
-| `smtp_host` | string | No | Vuoto = console mode in DEBUG |
+| `smtp_host` | string | No | Vuoto o `smtp.example.com` = l'account **non puo' spedire**: console mode in `DEBUG`, altrimenti invio rifiutato (vedi sotto) |
 | `smtp_port` | int | No | Default 587 |
 | `smtp_use_tls` | bool | No | Default true |
 | `smtp_use_ssl` | bool | No | Default false (mutuamente esclusivo con TLS) |
@@ -145,8 +145,12 @@ e' fornita, viene ri-crittografata.
 POST /api/v1/amm-software/email-accounts/{id}/test/
 ```
 
-Body vuoto. Tenta login SMTP senza inviare email. In console mode (host vuoto
-o `smtp.example.com`) ritorna successo diretto.
+Body vuoto. Tenta login SMTP senza inviare email.
+
+⚠️ **Dal 2026-09-11 non risponde piu' OK a un account che non puo' spedire.** Host
+vuoto o `smtp.example.com`: in `DEBUG` e' console mode e il test torna successo
+(non c'e' niente da provare); **fuori** da `DEBUG` torna **`success: false`** con
+il motivo — prima rispondeva OK, ed e' il verde che ha ingannato una persona.
 
 L'esito viene **persistito** in `config.email_account.meta` (chiavi
 `last_test_outcome`, `last_test_at`, `last_test_message`) e ritornato nella
@@ -205,8 +209,10 @@ guidano l'abilitazione del pulsante "Testa connessione" lato UI:
 Logica di derivazione (`_derive_test_capability` in `email_views.py`):
 
 1. Account non attivo → `can_test=False`, reason `amm.email_test_reason_inactive`.
-2. Host vuoto o placeholder (`smtp.example.com`) → console mode, `can_test=True`
-   anche senza password (nessuna connessione reale).
+2. Host vuoto o placeholder (`smtp.example.com`) → `can_test=True` anche senza
+   password. ⚠️ Il pulsante resta **premibile di proposito**: dal 2026-09-11 il
+   test dira' «SMTP non configurato» invece di OK, e spegnerlo qui toglierebbe a
+   chi guarda l'unico modo di sentirselo dire.
 3. Host SMTP reale + password non configurata → `can_test=False`, reason
    `amm.email_test_reason_no_password`.
 4. Host SMTP reale + password configurata → `can_test=True`.
@@ -363,11 +369,16 @@ GET include lista allegati. PATCH accetta: `oggetto`, `corpo_html`, `corpo_testo
 POST /api/v1/core/email/outbox/{id}/send/
 ```
 
-Transizione: DRAFT → READY → SENT (se SMTP riuscito) oppure DRAFT → READY → DRAFT
-(se SMTP fallito — l'operatore puo' riprovare). Crea record in `email_log` con corpo
-dalla bozza (non dal template originale). Copia allegati su `email_log_id`.
-Lo stato SMTP e' nel log (`SENT` o `FAILED`); lo stato outbox riflette se l'operatore
-deve agire (DRAFT = da riprovare, SENT = completato).
+Transizione: DRAFT → READY → **SENT** (SMTP riuscito), → **DRAFT** (SMTP fallito,
+l'operatore puo' riprovare) oppure → **SIMULATA** (console mode: la mail e' stata
+mostrata, non spedita — dal 2026-09-11). Crea record in `email_log` con corpo dalla
+bozza (non dal template originale). Copia allegati su `email_log_id`.
+
+Lo stato dell'invio e' nel log (`SENT`, `FAILED`, `SIMULATA`); lo stato outbox dice
+se l'operatore deve agire (DRAFT = da riprovare, SENT = completato).
+⛔ **La bozza segue l'esito della MAIL, non il valore di ritorno**: in console mode
+`send_raw` torna `True` pur non avendo spedito niente, e scrivere `SENT` sarebbe la
+stessa bugia una tabella piu' in la' — con le due righe legate da `email_log_id`.
 
 **Semantica saga/outbox (fix analisi-fix-transazioni #16, 2026-07-08).** Lo stato
 `READY` e' committato **prima** dell'invio SMTP (l'invio esterno sta fuori da ogni

@@ -94,7 +94,7 @@ _EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
 # tabella DB di config. Pattern simmetrico ai rounding modes Fase 3.
 # Ordering "default-first": SENT come stato finale piu' frequente.
 _EMAIL_LOG_STATI_VALIDI: frozenset[str] = frozenset(
-    {"SENT", "PENDING", "RETRY", "FAILED"}
+    {"SENT", "PENDING", "RETRY", "FAILED", "SIMULATA"}
 )
 
 _EMAIL_LOG_STATI_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
@@ -102,6 +102,12 @@ _EMAIL_LOG_STATI_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
     ("PENDING", "In attesa di invio",                       2),
     ("RETRY",   "Tentativo successivo programmato",         3),
     ("FAILED",  "Invio fallito",                            4),
+    # ⭐ `SIMULATA` (2026-09-11): la mail e' stata STAMPATA a video invece che
+    #    spedita — sviluppo senza SMTP. E' terminale e VOLUTA, e per questo non
+    #    e' `FAILED`; e non e' `SENT` perche' non e' arrivata a nessuno.
+    #    ⚠️ La frase dice l'esito, non il canale: chi legge il giornale chiede
+    #    «e' arrivata?», non «da quale strada e' uscita» (brief §7.1).
+    ("SIMULATA", "Simulata — non spedita",                   5),
 )
 
 
@@ -630,8 +636,11 @@ class AmmSoftwareService:
 
     # Scopo: Lookup statico stati email log (Fase 5).
     #        Single source of truth in `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente
-    #        DB: enum chiuso (4 valori) gestito dal log writer. Pattern
-    #        simmetrico ai rounding modes Fase 3.
+    #        DB: enum chiuso (5 valori, `SIMULATA` dal 2026-09-11) gestito dal
+    #        log writer. Pattern simmetrico ai rounding modes Fase 3.
+    # ⚠️ La lista NON viene ordinata: esce nell'ordine in cui la tupla e'
+    #    dichiarata, ed e' `test_list_email_log_stati_ok` a pretendere che
+    #    quell'ordine coincida col campo `ordering`.
     def list_email_log_stati(self) -> list[dict[str, object]]:
         return [
             {"codice": codice, "descrizione": descrizione, "ordering": ordering}
