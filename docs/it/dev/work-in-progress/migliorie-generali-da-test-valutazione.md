@@ -421,9 +421,21 @@ le revisioni.
 
 ⭐ La difesa qui non è una policy per tabella (120 sarebbero ingestibili e
 nascerebbero disallineate): è che lo **stesso framework** che genera la tabella
-storico e il suo trigger generi anche la policy, derivando lo scope dalla tabella
-madre. `dbops.fn_run_automations_storico` + `fn_ensure_storico_table` sono già il
-posto: l'automazione sa quale madre sta specchiando.
+storico e il suo trigger generi anche la policy.
+`dbops.fn_run_automations_storico` + `fn_ensure_storico_table` sono già il posto:
+l'automazione sa quale madre sta specchiando.
+
+> 🔴 **Correzione del 2026-09-11 — «derivando lo scope dalla madre» è la formula
+> sbagliata**, ed è quella che manderebbe il cantiere nella direzione storta: lo
+> scope **non si deriva a runtime, si cattura alla scrittura e si congela in una
+> colonna**. ⛔ E l'argomento di sequenza («aspettare che le madri siano ferme»)
+> è **rovesciato**: un generatore esiste per assorbire le tabelle nuove, quindi
+> si fa **prima** che `acquisti` e `magazzino` crescano.
+>
+> ⇒ **Disegno, ragioni e passi hanno un documento loro**:
+> [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md).
+> Stima **≈ 3 giornate** — il lavoro è **uno**, non 120, perché la forma delle
+> tabelle di storico è uniforme e generata.
 
 ⚠️ **Stessa classe, secondo caso**: `dbops.audit_log` è il registro delle
 esecuzioni di funzione, con `params` e `result` in JSONB — cioè, per le funzioni
@@ -835,8 +847,15 @@ torna difendibile — e sono tre cantieri delimitati, non una riscrittura.
       cinque), registro del debito 33 → 10, un ritiro, e soprattutto un
       **presidio transitivo** che resta in servizio. Brief:
       `work-done/brief-db-perimetro-emittente-righe-documento.md`.
-* [ ] **D3** — generare la policy dello storico **dall'automazione**, derivando
-      lo scope dalla madre (`fn_run_automations_storico` / `fn_ensure_storico_table`).
+* [ ] **D3** — generare la policy dello storico **dall'automazione**
+      (`fn_run_automations_storico` / `fn_ensure_storico_table`), con lo scope
+      **catturato alla scrittura in una colonna** e non derivato a runtime dalla
+      madre (correzione del 2026-09-11, vedi §D3). Stima ≈ 3 giornate, di cui la
+      metà è disegno e presidio: il lavoro è **uno**, non 120, perché la forma
+      delle tabelle storico è uniforme e generata.
+      ⛔ **E si fa PRIMA che `acquisti` e `magazzino` crescano**, non dopo: un
+      generatore esiste per assorbire le tabelle nuove, quindi farlo ora
+      significa che quelle nascono protette.
 * [ ] **D4** — accendere la RLS su `acquisti.ddt`, `acquisti.ordini`,
       `shop.ricevute` (o ritirare le policy, se quelle tabelle non sono nel
       perimetro: ma allora va scritto).

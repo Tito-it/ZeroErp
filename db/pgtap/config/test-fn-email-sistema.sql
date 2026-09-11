@@ -10,19 +10,23 @@
 --   dove va provata: db/pgtap/rls/test-rls-email-log-ambito.sql.
 --
 -- Test: le due porte per le email di sistema
--- ChangeSet: 20260906-01 / -02 / -14 · 20260907-05
+-- ChangeSet: 20260906-01 / -02 / -14 · 20260907-05 · 20260911-06 / -07 / -08
 -- Brief: brief-db-email-perimetro-e-invio-di-sistema §4 ·
---        brief-db-sveglia-dei-processi §23
+--        brief-db-sveglia-dei-processi §23 ·
+--        brief-db-stato-email-console-non-e-inviata §7.2
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 12):
 --  1) la porta accoda, e scrive SEMPRE ambito SISTEMA senza emittente
 --  2) ⭐ e le tre colonne di CONTESTO arrivano: uo, cc, pratica
 --  3) ⛔ un destinatario vuoto si ferma
 --  4) la gemella CHIUDE, e (4-bis) scrive esito, tentativi+1 e la data
---  5) ⛔ `PENDING` non e' un esito ammesso
+--  5) ⛔ `PENDING` non e' un esito ammesso, e la frase lo dice
 --  6) ⛔ un identificativo inesistente si ferma con un codice suo (TECNICO)
 --  7) ⛔ una riga NON di sistema non si chiude da questa porta — ed e' il caso
 --     pericoloso, con un codice suo e una frase che nomina l'ambito
+--  8) ⭐ `SIMULATA` e' un esito ammesso, e (8-bis) NON porta una data di invio
+--  9) ⭐ L'INVARIANTE FRA LE DUE SEDI DEL VOCABOLARIO
+-- 10) `config.email_outbox` ammette lo stesso valore
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ PERCHE' LE DUE FUNZIONI SI COLLAUDANO INSIEME.
@@ -35,6 +39,18 @@
 --   Il pregio di queste funzioni e' che sanno fare una cosa sola. Senza il
 --   test 7, `fn_chiudi_email_sistema` sarebbe un modo per aggiornare QUALUNQUE
 --   email aggirando la policy — cioe' il contrario di cio' per cui esiste.
+--
+-- ⭐ E IL TEST 9 E' QUELLO CHE MANCAVA, rev 2026-09-11.
+--   Il vocabolario di `config.email_log.stato` ha DUE sedi: il
+--   `CHECK chk_email_log_stato` e la whitelist di `p_stato` qui dentro. Fino a
+--   oggi niente le confrontava, e la seconda era invisibile: il brief del
+--   backend chiedeva «un valore nel CHECK, nient'altro», e con quello solo il
+--   valore nuovo sarebbe rimasto IRRAGGIUNGIBILE per le righe di ambito
+--   `SISTEMA` — che passano tutte da questa funzione, perche' la RLS rifiuta
+--   l'`UPDATE` diretto.
+--   ⛔ E l'invariante NON e' l'uguaglianza: la funzione esclude `PENDING` di
+--   proposito («questa chiude, non rimette in coda»). Un test che pretendesse
+--   le due liste identiche nascerebbe rosso e verrebbe spento il giorno dopo.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,7 +59,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(12);
 
 -- ============================================================
 -- 1..2. La porta che accoda
@@ -119,12 +135,18 @@ SELECT is(
 
 -- ⛔ Questa e' la funzione che CHIUDE. Ammettere `PENDING` vorrebbe dire poter
 --   resuscitare una email gia' chiusa.
+-- ⚠️ Si chiede il MESSAGGIO e non il solo SQLSTATE, rev 2026-09-11: tutti gli
+--   errori applicativi sono `P0001`, quindi con `NULL` al posto della frase
+--   questo test sarebbe verde anche se a fermare la chiamata fosse una qualunque
+--   delle altre due guardie. ⭐ E la frase ELENCA gli esiti ammessi: e' la
+--   seconda rete sotto il test 9 — se un domani qualcuno allargasse la whitelist
+--   senza toccare il messaggio, l'operatore leggerebbe un elenco incompleto.
 SELECT throws_ok(
     format($$SELECT config.fn_chiudi_email_sistema(%s, 'PENDING')$$,
            current_setting('pgtap.email_id')),
     'P0001',
-    NULL,
-    '5. PENDING non e'' un esito ammesso'
+    'Validazione fallita: stato ammesso solo fra SENT, FAILED, RETRY e SIMULATA',
+    '5. PENDING non e'' un esito ammesso, e la frase elenca quelli che lo sono'
 );
 
 -- ⚠️ Un UPDATE che non trova niente e' muto per natura, e il chiamante
@@ -183,6 +205,99 @@ SELECT throws_ok(
            'porta si chiudono solo le email di ambito SISTEMA.',
            current_setting('pgtap.email_azienda')),
     '7. una email di un''azienda non si chiude dalla porta di sistema, e la frase dice di chi e'''
+);
+
+-- ============================================================
+-- 8..10. ⭐ `SIMULATA` — e le DUE sedi del vocabolario
+-- ============================================================
+-- ⭐ «Stampata a video» e «consegnata» sono due fatti opposti, e fino al
+--   2026-09-11 si scrivevano con la stessa parola: il ramo che mostra la mail
+--   invece di spedirla chiudeva la riga in `SENT`.
+-- ⛔ Serviva un valore SUO, e non uno dei quattro: `FAILED` affermerebbe un
+--   guasto che non c'e' (in sviluppo quel comportamento e' VOLUTO, e marcarlo
+--   fallito insegnerebbe a ignorare i rossi), `PENDING`/`RETRY` la
+--   rimetterebbero in coda senza fine.
+DO $simulata$
+DECLARE
+    v_id config.email_log.id%TYPE;
+BEGIN
+    v_id := config.fn_accoda_email_sistema(
+        'simulata@example.invalid', 'pgTAP esito simulato', '<p/>');
+    PERFORM set_config('pgtap.email_simulata', v_id::text, true);
+END
+$simulata$;
+
+SELECT lives_ok(
+    format($$SELECT config.fn_chiudi_email_sistema(%s, 'SIMULATA')$$,
+           current_setting('pgtap.email_simulata')),
+    '8. SIMULATA e'' un esito ammesso: la porta di sistema lo scrive'
+);
+
+-- ⛔ E NON PORTA UNA DATA DI INVIO, ed e' la meta' che si dimentica.
+--   `inviato_at` e' l'unica colonna che DATA una consegna, ed e' proiettata sia
+--   nella lista sia nel dettaglio del giornale: valorizzarla su una riga che
+--   dichiara il non-invio sposterebbe la bugia di una casella invece di
+--   toglierla. Il momento c'e' gia' in `data_insert`.
+-- ⭐ Lo rende possibile il `COALESCE(p_inviato_at, l.inviato_at)` della
+--   funzione: il chiamante passa NULL e la colonna resta com'era.
+-- ⚠️ `tentativi` sale lo stesso, e va bene: la riga e' TERMINALE comunque —
+--   `SIMULATA` non compare nella SELECT di `send_pending_emails`, che ripesca
+--   `PENDING`, `FAILED` e `RETRY`. Nessuno la riprende in mano.
+SELECT is(
+    (SELECT stato || '/' || COALESCE(inviato_at::text, 'NULL') || '/' || tentativi::text
+       FROM config.email_log
+      WHERE id = current_setting('pgtap.email_simulata')::bigint),
+    'SIMULATA/NULL/1',
+    '8-bis. e la riga non porta la data di una consegna che non c''e'' stata'
+);
+
+-- ⭐ L'INVARIANTE FRA LE DUE SEDI DEL VOCABOLARIO — il presidio che mancava.
+--
+--     whitelist di fn_chiudi_email_sistema  =  valori di chk_email_log_stato
+--                                              MENO  {PENDING}
+--
+-- ⛔ NON e' l'uguaglianza: `PENDING` e' escluso di proposito, perche' questa
+--   funzione chiude e non rimette in coda. Scritto come uguaglianza, questo
+--   test nascerebbe rosso e verrebbe spento.
+-- ⚠️ E' un presidio SUL TESTO del corpo, quindi il suo perimetro e' la forma
+--   `p_stato NOT IN (...)`: se qualcuno riscrivesse la guardia in un'altra forma
+--   (un `ANY`, una tabella) il `substring` tornerebbe NULL e questo test
+--   fallirebbe invece di tacere — che e' il verso giusto, perche' a quel punto
+--   il presidio va riscritto, non ignorato.
+-- ⭐ Il confronto e' fra TESTI apposta: su un rosso la diagnostica TAP stampa
+--   entrambi gli elenchi, e si vede subito quale dei due e' rimasto indietro.
+SELECT is(
+    (SELECT array_agg(trim(both '''' from trim(x)) ORDER BY trim(both '''' from trim(x)))::text
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace,
+            LATERAL unnest(string_to_array(
+                substring(p.prosrc from 'p_stato NOT IN \(([^)]*)\)'), ',')) AS x
+      WHERE n.nspname = 'config'
+        AND p.proname = 'fn_chiudi_email_sistema'),
+    (SELECT ARRAY(SELECT v FROM (
+                SELECT m[1] AS v
+                  FROM pg_constraint k,
+                       LATERAL regexp_matches(pg_get_constraintdef(k.oid),
+                                              '''([A-Z_]+)''::character varying', 'g') AS m
+                 WHERE k.conrelid = 'config.email_log'::regclass
+                   AND k.conname  = 'chk_email_log_stato'
+             ) AS c WHERE v <> 'PENDING' ORDER BY v)::text),
+    '9. la whitelist della funzione e'' il CHECK meno PENDING: le due sedi del vocabolario non divergono'
+);
+
+-- Il gemello una tabella piu' in la': in console mode `send_from_outbox` scrive
+-- `SENT` sulla bozza. ⛔ E non si puo' dire che quella colonna parli del ciclo
+-- di REDAZIONE e non della consegna: lo smentisce il ramo accanto nello stesso
+-- metodo, che su fallimento SMTP riporta la bozza a `DRAFT` perche' l'operatore
+-- riprovi. Una colonna che retrocede quando la consegna fallisce parla di
+-- consegna.
+-- ⚠️ Prova FUNZIONALE e non una lettura del catalogo: leggere il `CHECK` per
+--   poi asserire cio' che il `CHECK` dice sarebbe misurare attraverso il
+--   meccanismo esaminato.
+SELECT lives_ok(
+    $$INSERT INTO config.email_outbox (destinatario, oggetto, corpo_html, stato)
+      VALUES ('simulata-outbox@example.invalid', 'pgTAP bozza simulata', '<p/>', 'SIMULATA')$$,
+    '10. config.email_outbox ammette SIMULATA, come la sua gemella'
 );
 
 SELECT * FROM finish();

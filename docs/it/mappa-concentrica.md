@@ -433,7 +433,7 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 | Cosa | Dove sta | Stato |
 | --- | --- | --- |
-| **La catena di verifica: presidi e copertura reale** | [migliorie-generali…](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) · [presidi](dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md) | Valutazione dello strato DB in 8 difetti (D1…D8). ✅ **D2 chiuso** (perimetro emittente) e metà D5; il catalogo `dbops.presidi` è in servizio. ⛔ Resta **D3 — lo `storico`**: 120 tabelle, zero RLS, ed è il debito peggiore rimasto |
+| **La catena di verifica: presidi e copertura reale** | [migliorie-generali…](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) · [presidi](dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md) | Valutazione dello strato DB in 8 difetti (D1…D8). ✅ **D2 chiuso** (perimetro emittente) e metà D5; il catalogo `dbops.presidi` è in servizio. ⛔ Resta **D3 — lo `storico`**: 120 tabelle, zero RLS, il debito peggiore rimasto — ora con [cantiere suo](dev/work-in-progress/brief-db-rls-storico-scope-congelato.md) |
 | **Migliorie BE/FE da valutazione** | [migliorie-generali-BE-FE…](dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) | La gemella lato applicazione: si lavora per punti numerati, i primi sono chiusi |
 | **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) · [DB](dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) · [BE/FE](dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | **Posting, abbinamento e sistemazioni scritti** (agosto). ⛔ Resta il [collaudo in-app](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md): dello schema è provato il *percorso*, mai l'*esito* — zero righe |
 | **Fan-out isolato / esito parziale** | [brief-be-fan-out…](dev/work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) | Codice eseguito; ciò che resta sono **collaudi a video**, raccolti in §13 |
@@ -444,6 +444,11 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ### 🎯 Previsti — decisi ma non aperti
 
+- 🔴 **RLS sullo `storico`** — [brief-db-rls-storico-scope-congelato.md](dev/work-in-progress/brief-db-rls-storico-scope-congelato.md):
+  120 tabelle senza perimetro, ed è il **D3**, il debito più grosso rimasto.
+  Disegno e stima pronti (≈ 3 giornate); il lavoro è **uno**, non 120, perché la
+  forma delle tabelle di storico è generata. ⛔ **Si fa prima che `acquisti` e
+  `magazzino` crescano**, così quelle nascono protette
 - **Secondo consumatore di `pratiche`** (Fase F, candidata assistenza/CRM): è ciò
   che promuove le sue astrazioni da *proposte* a *contratti* (manifesto §7)
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico

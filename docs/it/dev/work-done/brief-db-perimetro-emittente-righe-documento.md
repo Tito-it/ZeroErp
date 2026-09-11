@@ -657,6 +657,45 @@ lo si rifarebbe a ogni tabella nuova.
 è aperto, chiudere questo brief non chiude il buco — sposta solo il punto da cui
 si legge. Chi legge questo documento deve saperlo.
 
+> 🔴 **Correzione del 2026-09-11 — questa sezione sbaglia DUE cose, e tutte e due
+> manderebbero il cantiere storto.** Restano scritte sopra perché sono la
+> decisione che è stata presa il 09-09; qui c'è cosa non regge.
+>
+> **1. L'argomento di sequenza è rovesciato.** *«Un generatore ha senso quando le
+> madri sono ferme»* è vero per un lavoro **manuale**: 120 policy a mano si
+> rifanno a ogni tabella nuova. ⛔ Ma un **generatore esiste proprio per
+> assorbire le tabelle nuove** — è la sua definizione. ⇒ Farlo **prima** che
+> `acquisti` e `magazzino` crescano significa che quelle tabelle **nascono
+> protette**; farlo dopo significa un backfill più grande e, nel frattempo, uno
+> storico aperto anche sui domini nuovi. *L'argomento giusto porta alla
+> conclusione opposta di quella scritta qui.*
+>
+> **2. «Derivando lo scope dalla madre» è la formula sbagliata.** Lo scope **non
+> si deriva a runtime: si cattura alla scrittura e si congela in una colonna**,
+> e la policy legge quella. Tre ragioni, tutte sul modello:
+> * una riga di storico è un **fatto datato**, e il suo perimetro fa parte del
+>   fatto: ricalcolarlo dalla madre viva lascerebbe che il presente riscriva la
+>   visibilità del passato — *un archivio che cambia col presente non è un
+>   archivio*;
+> * il modello **ammette la riga senza madre**, per progetto:
+>   `fn_ensure_storico_table` **non genera la FK** e lo dichiara nel codice
+>   (*«bloccherebbe la cancellazione delle righe»*) ⇒ la risalita ha un ramo non
+>   determinabile per contratto, da gestire anche se oggi fosse vuoto;
+> * il dato è disponibile **nel momento giusto**: `trgfn_storico_generic` è
+>   `BEFORE UPDATE OR DELETE` e serializza `NEW`/`OLD`, quindi quando scrive ha
+>   la riga intera **e la madre esiste ancora**.
+>
+> ⛔ E non lo snapshot JSONB: è una *serializzazione*, non un contratto — se
+> cambia forma la policy si rompe in silenzio — ed è un cast per ogni riga letta,
+> dove una colonna è indicizzabile.
+> ⚠️ Il trigger è **generico**: serve una **mappa dichiarata**, nello stile di
+> `dbops.fk_index_policy`, che dica per ogni tabella dove sta lo scope.
+>
+> Stima ≈ **3 giornate**, metà delle quali disegno e presidio: il lavoro è
+> **uno**, non 120, perché la forma delle tabelle storico è uniforme e generata.
+> Dettaglio aggiornato nel **D3** di
+> `work-in-progress/migliorie-generali-da-test-valutazione.md`.
+
 ---
 
 ---
@@ -1963,9 +2002,12 @@ Lo **`storico`**: 120 tabelle, **zero** in RLS (verificato il 2026-09-11). Non
 entra nel registro perché il criterio non lo vede — quelle tabelle sono
 **gemelle** delle madri, non figlie, e nessuna FK le lega.
 ✅ Ma non si perde chiudendo qui: è dichiarato come **D3** in
-`migliorie-generali-da-test-valutazione.md`, che resta aperto, con la forma
-della soluzione già scritta — una policy **generata dallo stesso framework** che
-genera la tabella storico, non 120 policy a mano.
+`migliorie-generali-da-test-valutazione.md`, e dal 2026-09-11 ha un **cantiere
+suo** — `work-in-progress/brief-db-rls-storico-scope-congelato.md` — con disegno,
+ragioni e stima (≈ 3 giornate). ⚠️ La forma è una policy **generata dal
+framework** che genera la tabella di storico, con lo scope **catturato alla
+scrittura**: ⛔ *non* derivato dalla madre, come questo brief scriveva al §9 —
+vedi la correzione lì.
 
 #### ⭐ Le lezioni che sopravvivono al cantiere
 
