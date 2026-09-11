@@ -109,3 +109,26 @@ all'applicazione e — se [dbops.storico_scope_policy](/dbzero/dbops/manual/stor
 dice che la madre è protetta — la RLS con le sue policy. Un errore lì dentro
 esce come `E_STORICO_PROVISION`: una shadow senza scope non nasce zitta.
 Brief: `brief-db-rls-storico-scope-congelato` §4b.
+
+### 🔑 Dal 12-09-2026: la shadow è di chi possiede la madre
+
+> ⭐ *L'archivio di una tabella è di chi possiede la tabella.*
+
+Creata **e armata**, la tabella di storico viene **ceduta al proprietario della
+madre** (`ALTER TABLE … OWNER TO`). Arma chi la crea, perché in quel momento ne è
+proprietario; poi la cede. La cessione avviene solo se chi crea **può** farlo —
+superuser, o membro del ruolo della madre — altrimenti resta un `WARN` nell'audit
+(`action = OWNER_TO_MADRE`) e la shadow rimane di chi l'ha creata, come prima:
+mai un errore che fermi la storicizzazione.
+
+**Perché.** Su un database vivo le shadow le crea il job pgAgent, che si collega
+come `postgres`: fino all'11-09 nascevano di `postgres`, e i changeSet — che girano
+come migratore — non potevano né alterarle né armarle (68 tabelle su 121 sul
+database di sviluppo, riassegnate a mano da `scripts/sql/provision_storico_scope.sql`).
+Con la cessione la convergenza da Liquibase le trova sempre del migratore, su
+sviluppo come in CI, **senza toccare il job**. Scartate le alternative: far girare
+il job come migratore (una password nella connessione, due configurazioni da
+tenere allineate) e mettere il provisioning nel calendario (cura il sintomo).
+
+Presidio: test 23 di `db/pgtap/storico/test-storico-scope-congelato-v1.sql` — ogni
+shadow ha il proprietario della propria madre. Brief: §4d, «Debiti registrati».

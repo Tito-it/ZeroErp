@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LA MAPPA È IL REGISTRO DEL DEBITO, E IL PRESIDIO LA DEVE VEDERE — §4.2.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b (D3), §4d (6b, decisione a)
+#
+# `dbops.storico_scope_policy` dice, per ogni madre storicizzata, da dove si
+# prende l'emittente. Tre cose possono essere sbagliate, e fino a oggi le
+# vedeva solo il pgTAP `test-storico-scope-policy-v1` (test 2, 4, 5), cioè
+# quando qualcuno lancia i test o passa la CI. Questa vista le porta nel
+# DIGEST settimanale, che è il secondo canale del progetto per i debiti:
+#   · SENZA_RIGA        — una madre col trigger di storico che nessuno ha
+#                         ancora guardato: nessuna riga di mappa;
+#   · PROTETTA_NESSUNO  — una madre in RLS dichiarata NESSUNO: la sua storia
+#                         è ancora aperta, e la ragione scritta dice perché;
+#   · RIGA_SENZA_MADRE  — una riga di mappa che non corrisponde più a una madre
+#                         col trigger: tabella cancellata o storicizzazione
+#                         tolta, riga rimasta.
+#
+# ── FORMA ─────────────────────────────────────────────────────────────
+#   Natura ZERO, cadenza SETTIMANALE: la mappa cambia quando cambia lo schema,
+#   non ogni giorno. Il confronto madre ↔ riga passa per `to_regclass` e non per
+#   i nomi: vale anche per gli schemi con alias (`pg_temp`), ed è la stessa
+#   scelta del resolver e della primitiva che arma.
+#   `security_invoker`: legge il catalogo e la mappa, che l'app può leggere.
+#
+# ⚠️ NON sostituisce il pgTAP: quello resta il cancello in CI e calcola le sue
+#   asserzioni per conto suo. Il pgTAP prova ANCHE che questa vista dica il vero,
+#   costruendo i tre casi su tabelle temporanee (test 29-32).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260912-06-create-vw-storico-scope-da-dichiarare-mctit.yaml
+
+  - changeSet:
+      id: 20260912-06-create-vw-storico-scope-da-dichiarare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.vw_storico_scope_da_dichiarare: il debito della mappa dello
+        scope di storico — madri col trigger senza riga (SENZA_RIGA), madri in
+        RLS dichiarate NESSUNO (PROTETTA_NESSUNO), righe di mappa senza madre
+        (RIGA_SENZA_MADRE). Deve restare vuota; natura ZERO nel catalogo
+        dbops.presidi, cadenza SETTIMANALE. Confronto per to_regclass, non per
+        nome. Brief brief-db-rls-storico-scope-congelato §4.2, §4d.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: storico_scope_policy }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_storico_scope_da_dichiarare
+              WITH (security_invoker = true) AS
+              WITH madri AS (
+                  -- Il marcatore è il TRIGGER, non un elenco.
+                  SELECT DISTINCT c.oid AS madre_oid,
+                         n.nspname::text AS sch, c.relname::text AS tab,
+                         c.relrowsecurity AS rls
+                    FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class     c ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_catalog.pg_proc      p ON p.oid = t.tgfoid
+                   WHERE p.proname = 'trgfn_storico_generic'
+                     AND NOT t.tgisinternal
+              ),
+              righe AS (
+                  SELECT m.id, m.schema_tabella, m.nome_tabella, m.modo, m.ragione,
+                         pg_catalog.to_regclass(format('%I.%I', m.schema_tabella, m.nome_tabella)) AS madre_oid
+                    FROM dbops.storico_scope_policy m
+              )
+              -- 1) madre col trigger, nessuna riga di mappa
+              SELECT md.sch || '.' || md.tab                     AS madre,
+                     'storico.' || md.tab                        AS shadow,
+                     'SENZA_RIGA'::text                          AS motivo,
+                     'Madre col trigger di storico e nessuna riga in dbops.storico_scope_policy: nessuno ha ancora detto da dove si prende l''emittente'::text AS dettaglio
+                FROM madri md
+               WHERE NOT EXISTS (SELECT 1 FROM righe r WHERE r.madre_oid = md.madre_oid)
+              UNION ALL
+              -- 2) madre in RLS dichiarata NESSUNO: la storia è ancora aperta
+              SELECT md.sch || '.' || md.tab,
+                     'storico.' || md.tab,
+                     'PROTETTA_NESSUNO',
+                     'Madre con la row level security accesa e modo NESSUNO — la sua storia non è protetta. Ragione dichiarata: ' || COALESCE(r.ragione, '(nessuna)')
+                FROM madri md
+                JOIN righe r ON r.madre_oid = md.madre_oid
+               WHERE md.rls AND r.modo = 'NESSUNO'
+              UNION ALL
+              -- 3) riga di mappa senza una madre col trigger
+              SELECT r.schema_tabella || '.' || r.nome_tabella,
+                     'storico.' || r.nome_tabella,
+                     'RIGA_SENZA_MADRE',
+                     'Riga di mappa (id ' || r.id || ', modo ' || r.modo || ') senza una madre col trigger di storico: tabella cancellata o storicizzazione tolta, riga rimasta'
+                FROM righe r
+               WHERE r.madre_oid IS NULL
+                  OR NOT EXISTS (SELECT 1 FROM madri md WHERE md.madre_oid = r.madre_oid)
+               ORDER BY 3, 1;
+
+              COMMENT ON VIEW dbops.vw_storico_scope_da_dichiarare IS
+                  'ZERO — deve restare VUOTA. Il debito della mappa dello scope di storico (dbops.storico_scope_policy), in tre motivi: SENZA_RIGA (una madre col trigger di storico che nessuno ha ancora guardato), PROTETTA_NESSUNO (una madre in RLS dichiarata NESSUNO: la sua storia è ancora aperta, con la ragione dichiarata), RIGA_SENZA_MADRE (una riga di mappa senza più una madre col trigger: tabella cancellata o storicizzazione tolta). Il marcatore delle madri è il trigger, il confronto con la mappa passa per to_regclass. Porta nel digest settimanale ciò che il pgTAP db/pgtap/dbops/test-storico-scope-policy-v1.sql asserisce in CI (test 2, 4, 5 — e i test 29-32 provano che questa vista dica il vero su casi costruiti). Brief: brief-db-rls-storico-scope-congelato §4.2, §4d.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_storico_scope_da_dichiarare;

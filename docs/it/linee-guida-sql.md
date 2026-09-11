@@ -1733,7 +1733,7 @@ che la CI gira `--contexts="!provision"`.
 > che ha un contesto qualsiasi.
 
 ⇒ Perché il contesto sia un **filtro** e non un'etichetta, va reso esplicito
-nell'invocazione, in `ci.yaml` e nel comando di produzione:
+nell'invocazione:
 
 ```text
 --contexts="!provision and !dati_macchina"
@@ -1742,12 +1742,17 @@ nell'invocazione, in `ci.yaml` e nel comando di produzione:
 | dove | invocazione | effetto |
 |---|---|---|
 | sviluppo | `liquibase update` (nessun `--contexts`) | **gira** — il DB di sviluppo resta com'è |
-| CI / produzione | `--contexts="!provision and !dati_macchina"` | filtrato |
-| CI / produzione | `--contexts="!provision"` (oggi) | ⛔ **NON** filtrato |
+| CI (`ci.yaml`, passata principale) e `scripts/ci-local.sh` | `--contexts="!provision and !dati_macchina"` — ✅ **dal 2026-09-04** | filtrato |
+| produzione | la stessa riga, da scrivere nel provisioning | filtrato solo se la riga c'è |
+| qualunque invocazione | `--contexts="!provision"` | ⛔ **NON** filtrato |
 
-⚠️ **Finché quella riga non c'è, `context: dati_macchina` è documentazione, non un
+⚠️ **Dove quella riga manca, `context: dati_macchina` è documentazione, non un
 cancello** — e va detto, perché un'etichetta che sembra proteggere e non protegge
-è peggio di nessuna etichetta.
+è peggio di nessuna etichetta. In CI la riga c'è dal 2026-09-04: fino ad allora
+era `--contexts="!provision"`, ed è così che il 2026-09-02 il changeSet marcato è
+passato. ⚠️ Fatto datato (2026-09-12): il cancello c'è, ma i seed **SQL** di
+macchina censiti qui sopra non portano ancora il contesto — un DB nuovo li
+esegue lo stesso.
 
 ⭐ **Per i mirror CSV c'è una via che non dipende dal contesto: svuotare il file.**
 Un `loadUpdateData` su un CSV di sola intestazione carica zero righe, ovunque, e

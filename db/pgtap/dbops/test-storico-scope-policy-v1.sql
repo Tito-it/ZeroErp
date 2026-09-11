@@ -25,7 +25,7 @@
 --   percorso da collaudare. Le righe di prova nella mappa le scrive l'app,
 --   che sulle tabelle di dbops ha i DML del loop dei grant.
 --
--- Elenco test (plan 28):
+-- Elenco test (plan 32):
 --   MAPPA — completezza
 --    1  : gemello «esiste»: ci sono madri col trigger di storico
 --    2  : ogni madre col trigger di storico ha la sua riga
@@ -58,6 +58,11 @@
 --   26  : ciclo nella mappa → P0001 (l'unico caso in cui solleva)
 --   27  : ciclo nella mappa → la frase del catalogo
 --   28  : BA non mappato → l'emittente di default (skip dichiarato se manca)
+--   LA VISTA DI PRESIDIO — dbops.vw_storico_scope_da_dichiarare (digest)
+--   29  : oggi è VUOTA: dice la stessa cosa dei test 2, 4, 5
+--   30  : ⭐ una madre costruita col trigger e senza riga → SENZA_RIGA
+--   31  : ⭐ la stessa, con RLS accesa e riga NESSUNO → PROTETTA_NESSUNO (e non più SENZA_RIGA)
+--   32  : ⭐ una riga di mappa senza madre → RIGA_SENZA_MADRE; e la vista è a catalogo (ZERO, settimanale)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -68,7 +73,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   puntano a un padre devono trovarlo GIÀ inserito, o la prova sbaglia bersaglio.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(28);
+SELECT plan(32);
 
 -- ============================================================
 -- MAPPA — completezza
@@ -337,6 +342,49 @@ SELECT CASE
     ELSE
         skip('28. nessun emittente di default su questo database: il ramo BA non si può esercitare qui', 1)
 END;
+
+-- ============================================================
+-- LA VISTA DI PRESIDIO — porta nel digest ciò che i test 2, 4, 5 dicono in CI
+-- ============================================================
+-- ⚠️ Le righe di mappa di prova inserite sopra (pg_temp.padre_prova, …) NON
+--   hanno una madre col trigger: la vista le elenca, a ragione, come
+--   RIGA_SENZA_MADRE. Il «vuota» si asserisce sul mondo vero, escludendo la
+--   fixture di questo file — e il 32 usa proprio quelle righe come caso.
+SELECT is((SELECT count(*) FROM dbops.vw_storico_scope_da_dichiarare v
+            WHERE v.madre NOT LIKE 'pg_temp%'),
+          0::bigint,
+          '29. la vista di presidio è vuota sul mondo vero: dice la stessa cosa dei test 2, 4, 5');
+
+-- Una madre COSTRUITA col trigger di storico e nessuna riga di mappa. Il
+-- trigger non scatta mai (nessuna scrittura): basta che sia montato.
+CREATE TEMP TABLE zz_madre_prova (id bigint PRIMARY KEY, storicizza boolean NOT NULL DEFAULT true) ON COMMIT DROP;
+CREATE TRIGGER trg_zz_madre_prova_z90_storico_upd_dlt BEFORE UPDATE OR DELETE ON zz_madre_prova
+    FOR EACH ROW EXECUTE FUNCTION script.trgfn_storico_generic('zz_madre_prova_id');
+
+SELECT is((SELECT string_agg(v.motivo, ',') FROM dbops.vw_storico_scope_da_dichiarare v
+            WHERE v.madre LIKE '%.zz_madre_prova'),
+          'SENZA_RIGA',
+          '30. una madre col trigger e senza riga di mappa: la vista la elenca come SENZA_RIGA');
+
+-- La stessa madre, protetta e dichiarata NESSUNO: la sua storia è aperta.
+ALTER TABLE zz_madre_prova ENABLE ROW LEVEL SECURITY;
+INSERT INTO dbops.storico_scope_policy (id, schema_tabella, nome_tabella, modo, ragione) VALUES
+    (900201, 'pg_temp', 'zz_madre_prova', 'NESSUNO',
+     'Madre di prova del pgTAP dichiarata NESSUNO con la RLS accesa: serve a provare che la vista veda il debito.');
+
+SELECT is((SELECT string_agg(v.motivo, ',') FROM dbops.vw_storico_scope_da_dichiarare v
+            WHERE v.madre LIKE '%.zz_madre_prova'),
+          'PROTETTA_NESSUNO',
+          '31. la stessa madre in RLS con riga NESSUNO: PROTETTA_NESSUNO, e non più SENZA_RIGA');
+
+-- Le righe di prova dei test 21-27 non hanno madre col trigger: sono il caso
+-- RIGA_SENZA_MADRE. E la vista deve stare a catalogo come ZERO settimanale.
+SELECT ok((SELECT count(*) FROM dbops.vw_storico_scope_da_dichiarare v
+            WHERE v.madre = 'pg_temp.padre_prova' AND v.motivo = 'RIGA_SENZA_MADRE') = 1
+          AND (SELECT natura = 'ZERO' AND cadenza = 'SETTIMANALE' AND attivo AND obsoleto_dal IS NULL
+                      AND registro = 'dbops.storico_scope_policy'
+                 FROM dbops.presidi WHERE vista = 'dbops.vw_storico_scope_da_dichiarare'),
+          '32. una riga di mappa senza madre è RIGA_SENZA_MADRE; e la vista è a catalogo come ZERO settimanale sul registro giusto');
 
 SELECT * FROM finish();
 ROLLBACK;

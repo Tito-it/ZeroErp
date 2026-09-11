@@ -178,7 +178,30 @@ serve di nuovo su qualunque database dove il job abbia creato shadow come
 Controlli: `db/pgtap/dbops/test-storico-scope-policy-v1.sql` (la mappa) e
 `db/pgtap/storico/test-storico-scope-congelato-v1.sql` (colonne, policy,
 congelamento, collisione fra omonime, cancellazione a cascata, lettura per
-operatore, privilegi).
+operatore, privilegi, proprietario delle shadow).
+
+### Le tre chiusure del 12-09-2026
+
+* **La shadow è di chi possiede la madre.** Il generatore, creata e armata una
+  tabella di storico, la **cede al proprietario della madre**: così anche le
+  shadow che il job pgAgent crea come `postgres` restano del migratore, e la
+  convergenza da Liquibase non le salta più. Il passaggio da superuser del
+  riquadro sopra resta necessario **una volta**, sui database dove il job ha
+  creato shadow prima di questa regola. Dettagli in
+  [dbops.fn_ensure_storico_table](/dbzero/dbops/manual/fn_ensure_storico_table).
+* **Il debito della mappa si vede anche fuori dalla CI.**
+  [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare)
+  porta nel digest settimanale i tre motivi che il controllo asserisce in CI:
+  una madre col trigger senza riga di mappa, una madre in RLS dichiarata
+  `NESSUNO`, una riga di mappa senza più madre. Deve restare vuota.
+* **Nello schema `storico` non tutto è una shadow.** `comune_trasformazioni` e
+  `stradario_trasformazioni` sono i **registri delle fusioni** di comuni e vie
+  (scritti da `fn_admin_merge_*`, letti da `fn_get_vie_discendenti`): non hanno
+  una madre, non hanno il trigger, non entrano nella mappa. Le due shadow
+  davvero orfane — `fatturazione_lotti_attivita` (dominio ritirato) e
+  `risorse_umane_auth_user` (la madre si chiama `_legacy_risorse_umane_auth_user`
+  e ha la sua shadow viva) — sono state **cancellate**, insieme al trigger stantio
+  che, rimasto sul nome vecchio, bloccava ogni scrittura sulla madre legacy.
 
 ---
 
@@ -404,6 +427,10 @@ Funzione idempotente che crea la tabella di storico con la struttura standard se
 * Crea indice su FK e opzionalmente indice GIN su snapshot
 * Se la tabella esiste gia: return immediato (idempotente)
 * Non crea FOREIGN KEY (scelta deliberata)
+* Dall'11-09-2026: **arma lo scope** (`origine_schema`, `scope_emittente_fiscale_id`,
+  RLS se la mappa dice che la madre è protetta) chiamando `fn_storico_arma_scope`
+* Dal 12-09-2026: **cede la shadow al proprietario della madre**, se chi la crea
+  può farlo; altrimenti `WARN` nell'audit e nessun errore
 
 ### Provisioning trigger: `fn_run_automations_storico`
 
