@@ -29,7 +29,6 @@
 - [emittenti_fiscali](manual/emittenti_fiscali.md)
 - [eventi_assets](manual/eventi_assets.md)
 - [fatturazione_lotti](manual/fatturazione_lotti.md)
-- [fatturazione_lotti_attivita](manual/fatturazione_lotti_attivita.md)
 - [fatturazione_lotti_fatture](manual/fatturazione_lotti_fatture.md)
 - [fatturazione_lotti_gruppi](manual/fatturazione_lotti_gruppi.md)
 - [fatture](manual/fatture.md)
@@ -82,7 +81,6 @@
 - [rettifiche](manual/rettifiche.md)
 - [rettifiche_righe](manual/rettifiche_righe.md)
 - [risorse_umane](manual/risorse_umane.md)
-- [risorse_umane_auth_user](manual/risorse_umane_auth_user.md)
 - [scope_policy](manual/scope_policy.md)
 - [sepa_mandati](manual/sepa_mandati.md)
 - [soggetti](manual/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
@@ -112,3 +110,7 @@
 - [user_override_oggetti](manual/user_override_oggetti.md)
 - [utilities_tipi_ruolo](manual/utilities_tipi_ruolo.md)
 - [vettori](manual/vettori.md)
+
+## 📘 Altri contenuti manuali
+- [fatturazione_lotti_attivita](manual/fatturazione_lotti_attivita.md)
+- [risorse_umane_auth_user](manual/risorse_umane_auth_user.md)

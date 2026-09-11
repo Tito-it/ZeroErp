@@ -63,6 +63,14 @@ anche che la mappa **non menta**: la colonna dichiarata esiste davvero, la chiav
 verso il padre è davvero una FK verso quel padre, ogni catena arriva davvero a un
 emittente e non gira in cerchio.
 
+⭐ **E dal 12-09-2026 gli stessi tre motivi si vedono anche fuori dalla CI**:
+[dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/manual/vw_storico_scope_da_dichiarare)
+— `SENZA_RIGA`, `PROTETTA_NESSUNO` (con la ragione dichiarata accanto),
+`RIGA_SENZA_MADRE` — è a catalogo in `dbops.presidi` con cadenza settimanale e
+deve restare vuota. Il controllo ferma una consegna sbagliata; il digest si
+accorge di una mappa invecchiata senza nessuna consegna (una tabella entrata in
+RLS con un altro cantiere, una tabella cancellata).
+
 ---
 
 ### ⚠️ Due cose da sapere

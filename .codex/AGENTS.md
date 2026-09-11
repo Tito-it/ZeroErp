@@ -371,8 +371,11 @@ un database ricostruito da zero non esistono.
 Un seed di macchina si marca `context: dati_macchina`.
 🔴 **Ma provato il 2026-09-02: `--contexts="!provision"` NON lo filtra** — quel
 filtro esclude ciò che è `provision`, non ciò che ha un contesto qualsiasi. Serve
-esplicito, in `ci.yaml` e in produzione: `--contexts="!provision and !dati_macchina"`.
-Finché quella riga non c'è, il contesto è documentazione, non un cancello.
+esplicito: `--contexts="!provision and !dati_macchina"`.
+✅ **In CI c'è dal 2026-09-04** (`ci.yaml`, passata principale; `scripts/ci-local.sh`
+la ricalca): lì il contesto è un cancello. ⚠️ Dove quella riga manca — il comando
+di produzione va scritto così dal provisioning — resta un'etichetta, e un
+changeSet applicato prima della marcatura non si de-applica.
 ⭐ Per i **mirror CSV** c'è una via che non dipende dal contesto: **svuotare il
 file** (sola intestazione). Carica zero righe ovunque e non cancella niente dove
 quelle righe già esistono. Il contesto serve per i seed scritti in **SQL**.

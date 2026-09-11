@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GRANT — dbops.vw_storico_scope_da_dichiarare a zeroerp_app
+#
+# Il digest e il pgTAP leggono le viste di presidio come l'applicazione. Su dev
+# il loop `ci_apply` non gira da solo: questo forward lo dà subito. Idempotente,
+# salta se il ruolo manca. Stessa forma di 20260904-35 e 20260911-33.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260912-07-grant-vw-storico-scope-da-dichiarare-app-mctit.yaml
+
+  - changeSet:
+      id: 20260912-07-grant-vw-storico-scope-da-dichiarare-app
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        GRANT SELECT a zeroerp_app su dbops.vw_storico_scope_da_dichiarare:
+        il digest e il pgTAP la leggono come l'applicazione. Idempotente.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_storico_scope_da_dichiarare
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                      RETURN;
+                  END IF;
+                  GRANT SELECT ON dbops.vw_storico_scope_da_dichiarare TO zeroerp_app;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $revoke$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app')
+                     AND to_regclass('dbops.vw_storico_scope_da_dichiarare') IS NOT NULL THEN
+                      REVOKE SELECT ON dbops.vw_storico_scope_da_dichiarare FROM zeroerp_app;
+                  END IF;
+              END
+              $revoke$;

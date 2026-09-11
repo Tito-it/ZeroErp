@@ -3,7 +3,7 @@
 > Stato: ✅ **storico: APPLICATO l'11-09-2026 alle 19:54 (passi 1-7, §4b-§4d), pgTAP senza regressioni** — 37 shadow armate, 65.751 versioni attribuite. ✅ **§8 (`audit_log`): consegnato
 > e applicato il 2026-09-11** (`-09`, `-20` in `databasechangelog` alle 12:42; postura
 > viva verificata a catalogo). Il §8.4 originale sbagliava due volte: vedi §8.4.
-> ✅ **§8.3 deciso: «No», registro tecnico** — il cancello è costruito (§8.6, in attesa di apply). ⏳ Restano: `fn_admin_merge_*` (scrivono l'audit a mano) e la vista di presidio della mappa per il digest (6b), da decidere una alla volta. Consegna BE: `permissions_audit_repository` smette di leggere `storico.risorse_umane_auth_user` (§4d).
+> ✅ **§8.3 deciso: «No», registro tecnico** — cancello costruito (§8.6) e **applicato**. ✅ Tutte le domande aperte di §4d sono decise, costruite e **applicate**: `20260911-32/-33/-34`, `20260912-01…07` sono `EXECUTED` nel `databasechangelog` (ultimo giro **2026-09-12 00:30**, letto il 12-09). Doc scritta (§9). ✅ **pgTAP post-apply tutti verdi** (Tid, 12-09). ⏳ **Resta** 🔴 la **consegna BE** `permissions_audit_repository` (§4d) — il changeSet `-03` è passato **prima** della modifica al backend, quindi su dev l'endpoint della storia permessi risponde 500 finché non viene fatta. Stato finale e chiusura: **§9**.
 > Origine: **D3** di
 > [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).
 > Eredita il §9 di
@@ -224,13 +224,16 @@ frase di ripiego in `USER_MESSAGE_FALLBACK` — il cancello
   (`_legacy_risorse_umane_auth_user_id` e `risorse_umane_auth_user_id`) che
   scrivono nella stessa shadow con due colonne FK diverse: ogni modifica produce
   due versioni. Difetto della legacy, non dello scope; registrato, non toccato.
-* ⏳ **Vista di presidio per il digest**: i test 2 e 4 del pgTAP (madre senza
-  riga, madre in RLS a `NESSUNO`) sono la stessa domanda di una
-  `dbops.vw_storico_scope_da_dichiarare` registrata in `dbops.presidi`, così il
-  debito arriva nel digest quotidiano e non solo alla corsa pgTAP. Non fatta
-  oggi: il catalogo `presidi` e il guardiano del digest sono in cantiere in
-  parallelo (`20260911-15/-16`), e due mani sullo stesso file oggi si pestano.
-  Da fare come passo 6b, a cantiere fermo.
+* ✅ **Vista di presidio per il digest** — **deciso (a) da Tid il 12-09,
+  costruita e applicata (00:30)**: `dbops.vw_storico_scope_da_dichiarare` (`20_code/dbops/20260912-06`,
+  grant `90_end/20260912-07`, riga in `dbops.presidi` natura `ZERO`, cadenza
+  `SETTIMANALE`, registro `dbops.storico_scope_policy`). Tre motivi: `SENZA_RIGA`
+  (madre col trigger senza riga), `PROTETTA_NESSUNO` (madre in RLS dichiarata
+  NESSUNO, con la ragione accanto), `RIGA_SENZA_MADRE` (riga stantia). Confronto
+  per `to_regclass`, non per nome. Il pgTAP della mappa sale a **32**: i test 29-32
+  provano che la vista dica il vero su casi **costruiti** (una madre temporanea
+  col trigger: prima senza riga, poi in RLS con riga NESSUNO; le righe di prova
+  come stantie) e che sia a catalogo. Oggi sul mondo vero è vuota.
 
 ---
 
@@ -320,14 +323,19 @@ dry-run da `titodb` era proprietario e sostituiva la variabile a mano. Memoria:
   · `storico.fatturazione_lotti_attivita` (dominio ritirato, 0 righe, zero
     lettori) → **DROP**, `00_schema/storico/20260912-02`;
   · `storico.risorse_umane_auth_user` (12 versioni di prima della rinomina della
-    madre) → **DROP**, `00_schema/storico/20260912-03`. 🔴 **Consegna al backend**:
-    `backend/apps/core/db/permissions_audit_repository.py`, `_USER_TABLES` riga
-    48, legge questa tabella nella timeline della storia dei permessi — deve
-    togliere la riga o puntarla alla shadow viva
-    `storico._legacy_risorse_umane_auth_user` (il filtro è sullo snapshot,
-    `auth_user_id`, presente anche lì). **Prima** del changeSet, altrimenti su dev
-    l'endpoint risponde 500 (`42P01`, rumoroso). La riga 5 di `dbops.audit_sources`
-    era già `attivo = f` e resta: è la dichiarazione della dismissione.
+    madre) → **DROP**, `00_schema/storico/20260912-03`. 🔴 **Consegna al backend,
+    ANCORA APERTA il 12-09**: `backend/apps/core/db/permissions_audit_repository.py`,
+    `_USER_TABLES` riga 48, legge questa tabella nella timeline della storia dei
+    permessi. ⚠️ **Il changeSet è stato applicato alle 00:30 PRIMA della modifica
+    al backend** (doveva essere il contrario): su dev l'endpoint della storia
+    permessi risponde **500** (`42P01`) finché il BE non cambia quella riga.
+    La correzione è una tupla: `("storico._legacy_risorse_umane_auth_user",
+    "risorse_umane_auth_user")` — il **label** resta (è nella whitelist del filtro
+    `tabella` e nel test `test_permissions_audit.py`), cambia solo la tabella
+    letta; il filtro è sullo snapshot (`auth_user_id`), presente anche nella
+    shadow viva. `amm_software_repository.py` la rinomina l'aveva già assorbita.
+    La riga 5 di `dbops.audit_sources` era già `attivo = f` e resta: è la
+    dichiarazione della dismissione.
 * ✅ **Il «doppio trigger» sulla legacy era un BLOCCO, non un doppione.**
   `trg_risorse_umane_auth_user_z90_storico_upd_dlt`, rimasto dal nome vecchio,
   scriveva nella shadow viva con la colonna `risorse_umane_auth_user_id`, che lì
@@ -575,11 +583,18 @@ Regola: [[reference_grant_loop_ci_apply_annulla_grant_per_colonna]] aggiornata.
 
 #### 🟠 Debiti registrati, non saldati qui
 
-* **`fn_admin_merge_comune` / `fn_admin_merge_stradario`** scrivono l'audit a mano
-  con `INSERT` + `UPDATE` diretti. Nessun chiamante; ma se un giorno le chiamasse
-  l'app (`amm_software` è un candidato naturale) morirebbero sul REVOKE — ed è un
-  difetto **loro**: devono passare per `fn_audit_log_once`. Da sanare quando si
-  toccano.
+* ✅ **`fn_admin_merge_comune` / `fn_admin_merge_stradario`** — **deciso (a) da Tid
+  il 12-09, costruito e applicato (00:30)**: passano dalla porta `fn_audit_log_once`, una chiamata a
+  fine lavoro con esito, conteggio dei ripuntati e durata (`20_code/dbops/20260912-04`,
+  `-05`; firma a `%TYPE`, identità invariata). Il corpo vecchio aveva **tre**
+  difetti, non uno: status iniziale `'STARTED'` che il `CHECK` non ammette (la
+  funzione falliva alla prima riga), `UPDATE` di chiusura che l'app non può più
+  fare, riga `ERROR` annullata dal `RAISE`. Provato in ROLLBACK: fusione di due
+  comuni, audit `OK` dalla porta, riga nel registro delle fusioni.
+  ⏳ **Debito che resta**: le tre validazioni sollevano `RAISE EXCEPTION` in
+  chiaro, senza codice registrato — da coniare (`E_MERGE_ORIGINE_UGUALE_DESTINAZIONE`
+  `DATO_ERRATO`, `E_COMUNE_NON_TROVATO` / `E_STRADARIO_NON_TROVATO` `NON_TROVATO`)
+  quando la funzione avrà un chiamante applicativo.
 * **Le shadow `storico.*`** — ⚠️ riguarda i passi 2-6 di **questo** brief. Letto il
   2026-09-11: 120 shadow, **tutte** con `UPDATE` e `DELETE` per `zeroerp_app` (52
   possedute da `titodb`, via il loop; 68 da `postgres`, via provisioning /
@@ -599,7 +614,7 @@ Regola: [[reference_grant_loop_ci_apply_annulla_grant_per_colonna]] aggiornata.
 | Il cancello (ramo «No») | ✅ **costruito** il 2026-09-11, §8.6 — un'ora, non mezza giornata: la forma dei presidi CANCELLO esisteva già |
 | La colonna di scope (ramo «Sì») | ⛔ non si fa: ramo scartato dalla decisione |
 
-### 8.6 Il cancello — costruito (11-09-2026, in attesa di apply)
+### 8.6 Il cancello — costruito l'11-09-2026, applicato (`-32` alle 20:11, `-33` a seguire)
 
 | Cosa | Dove |
 | --- | --- |
@@ -614,6 +629,55 @@ Provato in `ROLLBACK`: vista vuota oggi (19 scrittori, tutti in `dbops`), 6/6.
 
 ---
 
+## 9. Stato finale (12-09-2026) e che cosa resta
+
+### 9.1 Applicato — letto dal `databasechangelog` e dal catalogo
+
+| ChangeSet | Cosa | Applicato |
+| --- | --- | --- |
+| `20260911-32`, `-33` | cancello su `dbops.audit_log`: `vw_audit_log_scrittori_fuori_perimetro` (CANCELLO a catalogo) + grant | 11-09 20:11 |
+| `20260911-34` | il generatore cede la shadow al proprietario della madre | 12-09 00:04 |
+| `20260912-01` | via il trigger stantio sulla madre legacy (bloccava ogni scrittura con `storicizza = true`) | 12-09 00:30 |
+| `20260912-02` | via `storico.fatturazione_lotti_attivita` (dominio ritirato) | 12-09 00:30 |
+| `20260912-03` | via `storico.risorse_umane_auth_user` — 🔴 con la consegna BE ancora aperta (§4d) | 12-09 00:30 |
+| `20260912-04`, `-05` | le due merge scrivono l'audit dalla porta | 12-09 00:30 |
+| `20260912-06`, `-07` + `presidi.csv` | `vw_storico_scope_da_dichiarare` (ZERO, settimanale) + grant | 12-09 00:30 |
+
+Verificato sul catalogo il 12-09: le due viste esistono, sono a catalogo in
+`dbops.presidi` (`CANCELLO`/`MAI` e `ZERO`/`SETTIMANALE`) e **rispondono zero
+righe**; le due shadow orfane e il trigger stantio non esistono più.
+
+### 9.2 Documentazione scritta il 12-09
+
+Manuali nuovi: `dbops/manual/vw_audit_log_scrittori_fuori_perimetro.md`,
+`vw_storico_scope_da_dichiarare.md`. Aggiornati: `fn_admin_merge_comune.md`,
+`fn_admin_merge_stradario.md` (⛔ dicevano *«scrive l'audit prima di operare»*:
+falso da ieri, e il corpo vecchio non ha mai funzionato), `fn_ensure_storico_table.md`
+(la cessione al proprietario della madre), `storico_scope_policy.md` (il digest).
+Guide: `storicizzazione-tabelle.md` (le tre chiusure del 12-09, il generatore),
+`messaggi-audit.md` (§«Chi può scrivere — le funzioni: il perimetro»).
+⚠️ Le pagine auto-gen delle due viste e delle funzioni riviste le produce il
+giro di generazione: i manuali esistono già, quindi la riga `include-markdown`
+verrà scritta.
+
+### 9.3 Che cosa resta, e di chi è
+
+| | Cosa | Di chi |
+| --- | --- | --- |
+| 🔴 | `permissions_audit_repository._USER_TABLES` riga 48 → `storico._legacy_risorse_umane_auth_user` (§4d). Finché manca, l'endpoint della storia permessi risponde 500 su dev | **BE** |
+| ✅ | pgTAP post-apply **tutti verdi** (Tid, 12-09): `dbops/test-audit-log-perimetro-scrittori-v1` (6), `dbops/test-storico-scope-policy-v1` (32), `storico/test-storico-scope-congelato-v1` (23), `dbops/test-catalogo-presidi-v1` | fatto |
+| ⏳ | Commit dei file del 12-09 ancora non tracciati: `20260912-04…07`, `presidi.csv`, `test-storico-scope-policy-v1.sql`, questo brief, i manuali e le guide di §9.2 | **Tid** |
+| 🟠 | Debito dichiarato: i tre codici errore delle validazioni delle merge (`E_MERGE_ORIGINE_UGUALE_DESTINAZIONE`, `E_COMUNE_NON_TROVATO`, `E_STRADARIO_NON_TROVATO`), da coniare quando le funzioni avranno un chiamante applicativo | DB, cantiere futuro |
+| 🟠 | Debito di **nome**: `storico.comune_trasformazioni` e `storico.stradario_trasformazioni` sono registri, non shadow, e abitano nello schema che dice il contrario. Da valutare a parte | DB, decisione di Tid |
+| 🟠 | Le versioni legacy senza padre né archivio (4 su `fatture_scadenze`, e simili altrove) restano a scope NULL: invisibili agli operatori, visibili all'amministrazione. Non ricostruibili: si lascia in chiaro | nessuno |
+
+⇒ **Il brief passa in `work-done/` quando la riga 🔴 è chiusa** (i pgTAP sono
+confermati): il perimetro DB è completo, e i tre 🟠 sono debiti dichiarati con
+la loro sede, non lavoro rimandato.
+
+---
+
 *Analisi 2026-09-11 — letture di **struttura** sul database `zeroerp`
 (`pg_proc`, `pg_trigger`, `pg_class.relrowsecurity`, colonne delle tabelle di
-storico). ⛔ Nessun conteggio di righe è usato come argomento.*
+storico). ⛔ Nessun conteggio di righe è usato come argomento. Stato finale
+letto il 2026-09-12 dal `databasechangelog` e dal catalogo.*

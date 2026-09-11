@@ -29,7 +29,6 @@
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [eventi_assets](tabelle/eventi_assets.md)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md)
-- [fatturazione_lotti_attivita](tabelle/fatturazione_lotti_attivita.md)
 - [fatturazione_lotti_esiti](tabelle/fatturazione_lotti_esiti.md)
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md)
 - [fatturazione_lotti_gruppi](tabelle/fatturazione_lotti_gruppi.md)
@@ -88,7 +87,6 @@
 - [rettifiche](tabelle/rettifiche.md)
 - [rettifiche_righe](tabelle/rettifiche_righe.md)
 - [risorse_umane](tabelle/risorse_umane.md)
-- [risorse_umane_auth_user](tabelle/risorse_umane_auth_user.md)
 - [scope_policy](tabelle/scope_policy.md)
 - [sepa_mandati](tabelle/sepa_mandati.md)
 - [soggetti](tabelle/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.

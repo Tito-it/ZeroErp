@@ -234,6 +234,33 @@ dichiara lì. Regola e motivazione: [linee-guida-sql](/linee-guida-sql), §11.8
 Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` — verifica sia
 i privilegi a catalogo sia ciò che l'applicazione riesce a fare davvero.
 
+### Chi può scrivere — le funzioni: il perimetro (dal 2026-09-12)
+
+La postura dei ruoli dice **con quale ruolo** si scrive. C'è una seconda domanda,
+e viene prima: **quali funzioni** possono scrivere qui.
+
+`audit_log` è il **registro tecnico** delle automazioni e degli strumenti di
+amministrazione: lo scrivono le funzioni di `dbops` (e `maintenance`), lo legge
+l'area di amministrazione. **Non deve contenere dati di dominio** — i parametri di
+una fattura, l'esito di un'operazione su un cliente — perché quelle righe
+sarebbero leggibili da chiunque legga il registro, senza il perimetro che protegge
+la fattura o il cliente. La decisione (2026-09-11) è che il rimedio **non** è una
+regola di visibilità per riga sul log: è impedire **alla fonte** che una funzione di
+`vendite`, `anagrafiche`, `pagamenti` ci scriva.
+
+Il cancello è
+[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/manual/vw_audit_log_scrittori_fuori_perimetro):
+elenca le funzioni che scrivono nel registro — con DML diretto o passando da
+`fn_audit_log_once` / `fn_audit_begin` / `fn_audit_end` — e stanno fuori dagli schemi
+ammessi, dichiarati nella vista stessa. **Deve restare vuota**; la presidia
+`db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` in CI. Se un giorno un altro
+schema dovesse scrivere l'audit, è un changeSet su quella vista, firmato — non una
+riga che passa in silenzio.
+
+⚠️ Corollario per chi scrive una funzione di dominio: se ha qualcosa da registrare,
+il posto è l'`error_log` per un errore, una tabella del proprio dominio per un fatto
+di dominio. `audit_log` no.
+
 ### Chi ha eseguito: `executed_by`
 
 `executed_by` porta il **ruolo di database** che ha scritto la riga

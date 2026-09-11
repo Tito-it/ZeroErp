@@ -41,8 +41,8 @@
 - [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — (latest update 27-07-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
 - [fn_accoda_chiusura_scadenze](funzioni/fn_accoda_chiusura_scadenze.md) — (latest review 05-09-2026)
 - [fn_accoda_lavoro](funzioni/fn_accoda_lavoro.md) — (latest review 20-07-2026)
-- [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md) — (rev 2026-08-21)
-- [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md) — (rev 2026-08-21)
+- [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md) — (rev 2026-09-12)
+- [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md) — (rev 2026-09-12)
 - [fn_apply_automazione_guard_utility_tipo_ruolo](funzioni/fn_apply_automazione_guard_utility_tipo_ruolo.md) — La funzione **`dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode, p_dry_run)`** crea in modo idempotente i trigger di guardia utility/ruolo sulle tabelle configurate in `dbops.automazione_guard_utility_tipo_ruolo`.
 - [fn_apply_automazione_overlap](funzioni/fn_apply_automazione_overlap.md) — (latest review 02-06-26) La funzione **`dbops.fn_apply_automazione_overlap(p_exec_mode, p_dry_run)`** applica i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in `dbops.automazione_overlap`. Dalla rev 2026-06-02 supporta anche vincoli **parziali** (con clausola `WHERE`) tramite la colonna `where_predicate`.
 - [fn_apply_chiusura_scadenze](funzioni/fn_apply_chiusura_scadenze.md) — (latest review 26-04-2026)
@@ -127,6 +127,7 @@
 
 ## 🔍 Views
 - [vw_af_senza_giro](views/vw_af_senza_giro.md) — (latest review 04-09-2026)
+- [vw_audit_log_scrittori_fuori_perimetro](views/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_bersagli_non_dichiarati](views/vw_bersagli_non_dichiarati.md)
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_coda_lavori_da_guardare](views/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
@@ -159,4 +160,5 @@
 - [vw_riferimenti_morti_rientrati](views/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](views/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
 - [vw_run_senza_attore](views/vw_run_senza_attore.md) — (latest review 04-09-2026)
+- [vw_storico_scope_da_dichiarare](views/vw_storico_scope_da_dichiarare.md) — (latest review 12-09-2026)
 - [vw_trigger_functions](views/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:
