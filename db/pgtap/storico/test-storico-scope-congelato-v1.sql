@@ -28,7 +28,7 @@
 --   una figlia con FK ON DELETE CASCADE (PADRE) — dichiarate nella mappa dentro
 --   la transazione. Il ROLLBACK pulisce tutto.
 --
--- Elenco test (plan 22):
+-- Elenco test (plan 23):
 --   STRUTTURA — le shadow vere
 --    1  : gemello «esiste»: ci sono madri col trigger di storico
 --    2  : ogni shadow di una madre col trigger ha le due colonne (dev: provisioning)
@@ -61,6 +61,9 @@
 --   GRANT — passo 7
 --   22  : ⛔ zeroerp_app non ha DELETE su nessuna shadow: uno snapshot non si
 --         cancella (dev: provisioning)
+--   PROPRIETA' — decisione (a), §4d
+--   23  : ogni shadow ha lo STESSO proprietario della madre: l'archivio di una
+--         tabella e' di chi possiede la tabella (il generatore la cede, rev -34)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -71,7 +74,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(22);
+SELECT plan(23);
 
 -- Canale dblink spento: gli audit delle primitive e le versioni di prova devono
 -- morire col ROLLBACK.
@@ -335,6 +338,19 @@ SELECT is((SELECT count(DISTINCT m.sto_oid) FROM _madri m
               AND has_table_privilege('zeroerp_app', m.sto_oid, 'DELETE')),
           0::bigint,
           '22. zeroerp_app non ha DELETE su nessuna shadow: uno snapshot non si cancella (su dev: provisioning da superuser)');
+
+-- ============================================================
+-- PROPRIETA' — decisione (a)
+-- ============================================================
+-- ⭐ Il job pgAgent crea come `postgres`, il generatore cede al proprietario
+--   della madre (rev -34). Una shadow con proprietario diverso dalla madre e'
+--   una shadow che la convergenza salterebbe: il presidio la vede.
+SELECT is((SELECT count(*) FROM _madri m
+             JOIN pg_class ms ON ms.oid = to_regclass(format('%I.%I', m.sch, m.tab))
+             JOIN pg_class ss ON ss.oid = m.sto_oid
+            WHERE ms.relowner <> ss.relowner),
+          0::bigint,
+          '23. ogni shadow ha lo stesso proprietario della madre: l''archivio e'' di chi possiede la tabella');
 
 SELECT * FROM finish();
 ROLLBACK;
