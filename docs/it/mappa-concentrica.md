@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: **30 agosto 2026** — venti giorni in **nove temi**. **Anello 3 (vendite)**: la **nota di credito** chiude il ramo morto degli accrediti e la genealogia si chiude con l'arco reso→NC; la **data del documento** smette di essere un effetto collaterale (numerazione governata dal registro, limite di emissione, registro visibile in lista) e il 30 si decide il **trasloco sui registri**; il **lavoro rimasto indietro** ha un verbo («Riporta da emettere») e «Rendi definitive» torna sulla lista Lotti. **Anello 1+3**: l'**IVA ha un risolutore** e i **titoli IVA del soggetto** hanno una sede — lato DB chiuso, consumatori applicativi dopo. **Anello 3 (`pagamenti`)**: il **posting esiste** (contabile, saldo rata, sistemazioni, RLS sui canali di incasso) — ⛔ ma è provato il *percorso*, mai l'*esito*: zero righe, collaudo aperto. **Anello 0**: l'errore porta un **bersaglio** e la riga di `event_log` dice *per chi*; i presidi pgTAP escono dal ramo cieco e il debito passa **da 86/442 a 19/551**. **Anello 1 (`ui`)**: la regola della lista si è spostata dove si legge — ⚠️ e il numero che era risalito (48 → 57) conta i **file con `DataTable` grezza**, non le liste: sono quasi tutti drawer e dialog. Dettaglio per tema nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
+*Ultimo aggiornamento: **10 settembre 2026** — undici giorni, **384 changeSet** e **46 brief chiusi**, in **otto temi**. ⭐ Il tema portante non è un dominio ma la **catena di verifica**: la **CI misura la CI** (baseline dei rossi compilata su un database ricostruito da zero, `continue-on-error` tolto, il bootstrap fallisce invece di passare), i **presidi hanno un catalogo** (`dbops.presidi`) con un contatore che non conta chi non ha mai girato, e il **perimetro dei dati** sostituisce l'elenco a mano con un **criterio transitivo** — nove famiglie armate, debito RLS da 33 a 10 righe, e le tabelle che nasceranno domani sono già dentro il criterio. **Anello 0**: i processi automatici hanno un'**identità** e quindi un perimetro; il primo motivo di una `fn_check_*` esce da **un posto solo**. **Anello 3 (vendite)**: un documento rotto **non tiene più in ostaggio** il giro di fatturazione (uscita dal giro, trattenuto, marcatore) e l'esito di un documento nel lotto ha **casa propria**. **Anello 1+3**: la numerazione finisce il **trasloco sui registri** — CRUD compreso — e il risolutore IVA arriva ai consumatori. Dettaglio per tema nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
 > *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
@@ -137,6 +137,32 @@ applicativo**, non l'owner. **Le policy RLS sono esercitate a ogni corsa.**
 | In CI | sempre sulle PR verso `main`; sui push a `Tito-dev` solo se toccano `db/` o `scripts/`. Baseline **separata**: il DB della CI è ricostruito da zero, quello di sviluppo ha dati veri — i rossi sono **popolazioni diverse** |
 | Preambolo obbligatorio | `BEGIN`, riga di contesto, `SET CONSTRAINTS ALL IMMEDIATE` — presidiato da un cancello. Senza, un file diventa **verde per sottrazione** |
 | Debito noto | **19 rossi** su **551 file** (era 86 su 442 al 10 agosto). È un registro che deve calare, non una lista di eccezioni |
+
+### 🔴 Il perimetro dei dati ha un criterio, non un elenco (dal 9 settembre 2026)
+
+Il perimetro RLS era scritto come **elenco a mano**, e un elenco ha per confine
+ciò che chi lo scriveva aveva in mente: mancavano sei figlie di `vendite.fatture`
+e le sette partizioni di `vendite.note`.
+
+| | |
+| --- | --- |
+| Come si misura ora | `dbops.vw_rls_perimetro_scoperto` — criterio **transitivo**: *ogni tabella con una FK verso una tabella in RLS* |
+| Dove vive il debito | `dbops.rls_perimetro_debito`, una riga per tabella **con la sua ragione tecnica** |
+| L'invariante | ⛔ **non** «la vista è vuota»: è «nessuna riga fuori da `DEBITO_DICHIARATO`». Un cancello rosso dal primo giorno viene disattivato |
+| Stato | **10 righe** di debito dichiarato (erano 33 il 9 settembre). Le tabelle nuove entrano nel criterio **da sole** |
+
+⛔ **Ciò che il criterio NON vede**: lo schema `storico` — 120 tabelle, zero RLS.
+Quelle tabelle sono **gemelle** delle madri, non figlie, e nessuna FK le lega.
+Debito dichiarato come **D3** in
+[migliorie-generali-da-test-valutazione.md](dev/work-in-progress/migliorie-generali-da-test-valutazione.md).
+
+### 🧪 I presidi hanno un catalogo (dal 10 settembre 2026)
+
+`dbops.presidi` raccoglie i presidi del progetto, con un **contatore onesto**: un
+presidio che non ha mai girato non conta come copertura. ⭐ E in CI vale il
+corollario — *un cancello non deve poter zittire un altro cancello*: un guardrail
+che fallisce e ne maschera un secondo lascia passare due difetti al prezzo di uno.
+Cantiere: [brief-db-un-destinatario-per-i-presidi.md](dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md).
 
 ### Stabilita'
 
@@ -332,8 +358,10 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Emissione mirata + ritorno a DRAFT      | Operativo — il giro accetta un perimetro ristretto ai **gruppi fatturabili** (stesso verbo, assente = giro di massa invariato); il lotto può **tornare a DRAFT** per rifare un giro andato storto (agosto 2026) |
 | Il lavoro che non torna indietro        | Operativo — le tre porte di reset (elimina fattura, riporta il lotto a DRAFT, annulla il lotto) non disfano più una riga già accreditata: era una violazione di chiave esterna **a metà lavoro**, ora è un rifiuto motivato. Il lavoro rimasto indietro ha un verbo, **«Riporta da emettere»**, con la card spezzata in due per non promettere una fattura che non c'è (agosto 2026) |
 | Nota di credito sui resi                | Operativo — il **ramo economico** dei resi: il reso portava indietro merce e motivo e nessun valore. Righe di accredito (`resi_righe_accrediti`), nature del documento fiscale a catalogo, DB+BE+FE chiusi e **collaudo in-app superato** (agosto 2026) |
-| Numerazione: data documento e registro  | Operativo — la data e la sequenza di un documento fiscale sono una **decisione del registro**, non un effetto del giro: **limite di emissione** (il documento nasce già conforme invece di scoprirsi non più trasmissibile) e **registro + data prevista visibili in lista**, prima di generare. ⭐ Decisione del 30-08: la commessa passa sul **motore dei registri**, e la periodicità dentro `config.sistema_codici` **non si fa più** |
-| IVA di riga: risolutore a due stadi     | Operativo (DB) — l'IVA la decideva l'articolo e nessun altro, e il regime fiscale del cliente era scritto e **letto da nessuno**. Ora c'è un risolutore, e l'influenza del soggetto passa **sempre da un titolo registrato e documentato** (Anello 1, `anagrafiche`), mai da un default sul cliente. Al 30-08 il lato DB è chiuso; i consumatori applicativi vengono dopo |
+| Numerazione: data documento e registro  | Operativo — la data e la sequenza di un documento fiscale sono una **decisione del registro**, non un effetto del giro: **limite di emissione** (il documento nasce già conforme invece di scoprirsi non più trasmissibile) e **registro + data prevista visibili in lista**, prima di generare. ✅ **Trasloco eseguito** (31-08 → 08-09): la commessa è passata sul **motore dei registri** — prefisso, allineamento dei contatori e chiave del contatore esplicita — e la periodicità dentro `config.sistema_codici` non si fa più. Il **CRUD dei registri** ha rotta e maschera |
+| IVA di riga: risolutore a due stadi     | Operativo (DB) — l'IVA la decideva l'articolo e nessun altro, e il regime fiscale del cliente era scritto e **letto da nessuno**. Ora c'è un risolutore, e l'influenza del soggetto passa **sempre da un titolo registrato e documentato** (Anello 1, `anagrafiche`), mai da un default sul cliente. ✅ **Chiuso su tutte le fasi** (settembre 2026): al lato DB si sono aggiunti i **consumatori applicativi** (fase 3), i movimenti di annullo sui titoli del soggetto, e il default IVA che smette di dipendere da un id di seed per passare a una **chiave naturale** |
+| Un documento rotto non blocca il giro    | Operativo — un lotto che incontrava un documento non emettibile si fermava, e con lui tutti gli altri: il difetto di uno era il blocco di tutti. Ora il documento **esce dal giro** e il lotto prosegue; la domanda «questa riga può entrare in un giro?» ha **una sede sola** invece della stessa condizione riscritta altrove, e il marcatore non scrive più su un documento già uscito (settembre 2026) |
+| Esito di un documento nel lotto          | Operativo — l'esito si deduceva dagli stati altrui e sui **giri di massa** la deduzione non reggeva. Ora è un dato con casa propria, e la **segnalazione di un lotto dichiara di quale documento parla** invece di lasciarlo capire (settembre 2026) |
 | Builder XML SDI                         | In corso (payload pronto, generazione XML da fare). ⚠️ Il blocco **`2.4 DatiPagamento`** non è generato: `fn_prepare_sdi_payload` non nomina né le scadenze né il blocco |
 | Persistenza esito SDI                   | Da fare                                                                       |
 | Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente, snapshot pricing v5 nel push, capability azioni stato **con motivo**, pull→`attivita_fatturabili` agganciata agli step DRAFT, **guard di uscita** (niente chiusura/annullo con righe ancora fatturabili), RLS scope emittente anche in scrittura |
@@ -405,8 +433,9 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 | Cosa | Dove sta | Stato |
 | --- | --- | --- |
+| **La catena di verifica: presidi e copertura reale** | [migliorie-generali…](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) · [presidi](dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md) | Valutazione dello strato DB in 8 difetti (D1…D8). ✅ **D2 chiuso** (perimetro emittente) e metà D5; il catalogo `dbops.presidi` è in servizio. ⛔ Resta **D3 — lo `storico`**: 120 tabelle, zero RLS, ed è il debito peggiore rimasto |
+| **Migliorie BE/FE da valutazione** | [migliorie-generali-BE-FE…](dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) | La gemella lato applicazione: si lavora per punti numerati, i primi sono chiusi |
 | **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) · [DB](dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) · [BE/FE](dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | **Posting, abbinamento e sistemazioni scritti** (agosto). ⛔ Resta il [collaudo in-app](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md): dello schema è provato il *percorso*, mai l'*esito* — zero righe |
-| **Numerazione: il trasloco sui registri** | [analisi due motori](dev/work-done/analisi-db-numerazione-documenti-e-due-motori.md) | Decisioni prese il 30-08 (la commessa va sui registri; niente periodicità nel sistema codici), piano scritto. Perimetro secco: **cambia solo l'algoritmo di assegnazione del numero** |
 | **Fan-out isolato / esito parziale** | [brief-be-fan-out…](dev/work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) | Codice eseguito; ciò che resta sono **collaudi a video**, raccolti in §13 |
 | **Fatturazione elettronica SDI** | payload pronto | Builder XML + persistenza esito. Dipende dal blocco `2.4`, che dipende dalle rate: ora esistono |
 | **Liste configurabili / PrimeVue** | [piano-migrazione-primevue-5.md](dev/work-in-progress/piano-migrazione-primevue-5.md) | Disaccoppiamento **chiuso**; l'upgrade è fermo su una **decisione di licenza** (vedi Anello 1) |
@@ -420,8 +449,6 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico
 - **Permessi v3** — sotto-oggetti padre/figlio (v2 a livello oggetto è operativa)
 - **Autenticazione 2FA + provider esterni**
-- **CRUD dei registri di numerazione**: `vendite.registri_fatturazione` non ha
-  né rotta né maschera — per farne uno a mano serve una migrazione
 - **Upload file allegati pratiche** (storage filesystem/object storage)
 
 ### 🧭 Decisioni aperte — non sono lavori
@@ -437,10 +464,16 @@ operativo può prenderle al posto di una persona.
 
 ### 🧹 Debito dichiarato — deve calare, e si misura
 
-- **pgTAP**: **19 rossi noti** su 551 file (erano 86 su 442 il 10 agosto).
+- **pgTAP**: **19 rossi noti** su **625** file sul database di sviluppo (erano
+  19 su 551 il 30 agosto: il denominatore è cresciuto, il numeratore no).
   ⚠️ Un file che fallisce nel *fixture* non esegue nessuna asserzione: la sua
-  copertura vale **zero**, non «parziale», ed è un'area che *sembra* coperta
-- **`DataTable` grezze**: **57 file** al 30-08, erano 48 il 3 agosto.
+  copertura vale **zero**, non «parziale», ed è un'area che *sembra* coperta.
+  🔴 **E il numero che conta è l'altro**: sul database **ricostruito da zero** —
+  cioè in CI, cioè il contratto — i rossi noti sono **406**. Il divario fra i due
+  registri è il debito vero, ed è stato reso misurabile il 9 settembre facendo
+  compilare la baseline **alla CI** invece che a mano
+- **`DataTable` grezze**: **48 file** al 10-09 — **9 in meno** del 30 agosto, e
+  il conto torna a quello del 3 agosto.
   ⚠️ **Il contatore non misura le liste**: 41 dei 57 sono drawer, dialog e
   pannelli annidati — l'eccezione che `AGENTS.md` ammette — e 6 sono i wrapper
   stessi. Il debito vero sta nelle **5 view di lista** e nelle 5 `*SearchTable`
