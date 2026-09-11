@@ -19,6 +19,8 @@
 | snapshot | jsonb | YES |  |
 | tipo_operazione | smallint | YES |  |
 | change_type | character | NO | 'A'::bpchar |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -28,6 +30,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_comuni_scope_ef | `CREATE INDEX ix_comuni_scope_ef ON storico.comuni USING btree (scope_emittente_fiscale_id)` |
 | ix_storico_comuni_provincia_id | `CREATE INDEX ix_storico_comuni_provincia_id ON storico.comuni USING btree (provincia_id)` |
 | ix_storico_comuni_valid | `CREATE INDEX ix_storico_comuni_valid ON storico.comuni USING btree (valid_from, valid_to)` |
 | pk_comuni | `CREATE UNIQUE INDEX pk_comuni ON storico.comuni USING btree (id)` |

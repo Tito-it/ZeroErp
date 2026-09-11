@@ -1,13 +1,20 @@
-# Brief DB — Lo storico porta il proprio perimetro, e non lo ricalcola
+# Brief DB — Lo storico porta il proprio perimetro (e `audit_log` è un'altra domanda)
 
-> Stato: 🟠 **analisi e disegno — non iniziato.**
+> Stato: ✅ **storico: APPLICATO l'11-09-2026 alle 19:54 (passi 1-7, §4b-§4d), pgTAP senza regressioni** — 37 shadow armate, 65.751 versioni attribuite. ✅ **§8 (`audit_log`): consegnato
+> e applicato il 2026-09-11** (`-09`, `-20` in `databasechangelog` alle 12:42; postura
+> viva verificata a catalogo). Il §8.4 originale sbagliava due volte: vedi §8.4.
+> ⏳ Restano: la **decisione §8.3** (registro tecnico o di dominio) — di Tid — e i debiti di §4d (shadow del job pgAgent, 4 shadow orfane, `fn_admin_merge_*`).
 > Origine: **D3** di
 > [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).
 > Eredita il §9 di
 > [brief-db-perimetro-emittente-righe-documento.md](../work-done/brief-db-perimetro-emittente-righe-documento.md),
 > **che su questo punto sbagliava due volte** — vedi §6.
 >
-> Stima: **≈ 3 giornate**, metà delle quali disegno e presidio.
+> Stima: **≈ 3 giornate** per lo `storico`, metà delle quali disegno e presidio.
+> ⚠️ **`dbops.audit_log` è dentro il perimetro di questo brief** (§8, richiesta di
+> Tid) ma **non è una tabella di storico**: stessa famiglia di difetto, rimedio
+> diverso — e la struttura dice che la domanda giusta non è «quale policy», ma
+> *«questo registro deve poter contenere dati di dominio?»*.
 > ⛔ **Il lavoro è UNO, non 120**: la forma delle tabelle di storico è uniforme e
 > generata da `dbops.fn_ensure_storico_table`. Chi legge «120 tabelle» e stima di
 > conseguenza sta stimando il problema sbagliato.
@@ -122,16 +129,207 @@ niente e può bloccare la storicizzazione.
 
 ---
 
+## 4b. Passo 1 — il disegno, letto sulla struttura (2026-09-11)
+
+> ✅ **Disegno DECISO il 2026-09-11** (D1-D4 in §4b.4, una domanda alla volta). ⛔ Nessun argomento qui sotto
+> poggia su un conteggio di righe: dove compare un numero è un fatto di
+> **catalogo** (tabelle, policy, colonne), datato, e non è la ragione.
+
+### 4b.1 Che cosa il censimento ha smentito del §4
+
+| Il §4 diceva | La struttura dice |
+| --- | --- |
+| «gli assi in uso sono l'emittente e il billing account» | Per la veste **OPERATORE** l'asse è **uno**: l'emittente. Le 130 policy si risolvono in 42 `fn_scope_*`, e tutte quelle a `app.current_user_id` finiscono nella canonica `fn_check_user_emittente_scope(auth_user_id, emittente_fiscale_id)`. Gli altri assi (`ba_ownership`, `cliente_ownership`, `shop`, `fornitore_ownership`) appartengono a vesti portale/shop, **che non leggono lo storico** |
+| «la madre porta la colonna, oppure è un satellite» | Sono **quattro modi** di arrivare allo **stesso** fatto: colonna `emittente_fiscale_id` (EF); colonna `emittente_soggetto_ruolo_id` (SR, 1:1 con EF via `emittenti_fiscali.soggetto_ruolo_id`); **risalita** al padre, anche a più salti (`resi_righe_accrediti → resi_righe → resi`); e **via billing account** (`billing_account`, `clienti`, `attivita_consumi`): un BA ha **esattamente un** emittente (`UNIQUE (billing_account_id)` su `emittenti_fiscali_billing_account`, ripiego sul gestore globale), risolto da `script.fn_get_ba_emittente_sr_id`. ⚠️ Prima stesura sbagliata (2026-09-11): avevo letto «specifico-o-default» come una mappatura libera. Corretto da Tid: il legame è **bloccato** appena il BA ha una fattura, una commessa o un documento numerato (`trgfn_efba_guard_storia_emittente`) — è un fatto, con una **finestra di correzione** finché il BA non ha storia |
+| «la storicizzazione è automatica» | È automatica **solo per le madri registrate** in `config.storico_set_storicizza`; le altre storicizzano *a richiesta* (il trigger spegne `storicizza` dopo una modifica). Fra le 37 madri in RLS con trigger, sei sono a richiesta (`fatture_righe`, `fatture_atti`, `fatture_indirizzi`, `fatture_riepiloghi_iva`, `fatturazione_lotti_esiti`, `sospensioni`). Non cambia il disegno dello scope; cambia cosa c'è da proteggere |
+| «120 tabelle» | 121 madri col trigger, 121 shadow, **37** madri in RLS. Le altre 84 shadow specchiano madri **senza** RLS: la mappa le dichiara `NESSUNO`, e la policy non si arma |
+
+### 4b.2 🔴 Due fatti del meccanismo che il disegno deve assorbire
+
+1. **Cinque shadow sono condivise fra due schemi.** Il generatore battezza la shadow col **nome nudo** della madre: `acquisti.ddt` e `vendite.ddt` scrivono entrambe in `storico.ddt`, con la stessa colonna `ddt_id` e **nessun discriminatore di schema** (idem `ddt_righe`, `ordini`, `ordini_righe`, `ordini_righe_fulfillment`). Due `BIGSERIAL` indipendenti nella stessa colonna: il modello **ammette** che lo stesso `ddt_id` indichi due documenti diversi, e allora il trigger che chiude «lo snapshot aperto `WHERE ddt_id = $2`» chiude quello **dell'altro schema**. Per lo scope pesa due volte: nella stessa shadow una riga di `vendite` ha un emittente e una di `acquisti` no. ⇒ **La shadow deve sapere da quale schema viene la riga.**
+2. **Il trigger fa `UPDATE` sulla shadow** (chiude `valid_to`), e gira come chi scrive la madre — cioè `zeroerp_app`. ⇒ Sullo `storico.*` l'app ha bisogno di `SELECT, INSERT, UPDATE`, **mai `DELETE`**. Corregge la nota lasciata in §8.4: la postura per schema da dichiarare nel loop `20260205-41` è «senza DELETE», non «append-only». ⚠️ E vale anche per `fn_grant_storico_shadows`, che oggi allinea la shadow **ai privilegi della madre** — DELETE compreso.
+
+### 4b.3 Il disegno proposto
+
+**D1 — Una colonna sola: `scope_emittente_fiscale_id bigint`**, nullable, indicizzata.
+⭐ Per la veste OPERATORE l'asse è uno, e i quattro modi della mappa (EF, SR, PADRE, BA)
+sono quattro **strade** verso lo stesso fatto, non quattro fatti: si risolvono alla
+scrittura e si congela un valore solo, nella rappresentazione della canonica (EF).
+⚠️ **La prima stesura proponeva due colonne** (EF + billing account) perché avevo letto
+il legame BA→emittente come configurazione mutabile; Tid ha corretto: il BA ha un
+emittente solo ed è bloccato appena ha storia. Resta un caso da decidere, la
+**finestra di correzione**: un BA *senza* documenti può ancora cambiare emittente
+(«un cliente può nascere sbagliato»). Le righe di storico scritte in quella finestra
+— le versioni del BA, del cliente, i consumi — portano l'emittente **di allora**, cioè
+quello sbagliato. Due letture possibili: (a) è la verità di allora, e resta (§2.1);
+(b) il cambio è una **correzione**, e la funzione che sposta il BA ri-attribuisce anche
+lo storico di quel BA — un `UPDATE` dello scope sulle shadow coinvolte, dentro la stessa
+unità atomica. ⭐ Proposta: **(b)** — una correzione che non corregge l'archivio lascia
+la storia di un cliente visibile a chi non c'entra, per sempre; ed è bounded per
+costruzione, perché oltre la finestra il cambio è respinto.
+
+**D2 — Un discriminatore di origine su ogni shadow**: `origine_schema text NOT NULL`, scritto dal trigger (`TG_TABLE_SCHEMA`), e la chiusura dello snapshot diventa `WHERE <fk> = $2 AND origine_schema = $3`. Uniforme su tutte le 121, nella **stessa** rigenerazione che aggiunge lo scope — decidere dopo costerebbe una seconda passata su 121 tabelle. ⚠️ L'alternativa «rinominare le cinque shadow in `acquisti_ddt`» rende irregolare il generatore e rompe i lettori del nome nudo.
+
+**D3 — La mappa: `dbops.storico_scope_policy`**, nello stile di `fk_index_policy` e di `rls_perimetro_debito`, seed CSV in `80_data`:
+
+| Colonna | Che cosa dice |
+| --- | --- |
+| `schema_tabella`, `nome_tabella` | la madre (chiave con lo schema: le cinque condivise hanno **due righe**) |
+| `modo` | `EF` · `SR` · `PADRE` · `BA` · `NESSUNO` (CHECK) |
+| `colonna` | per `EF`/`SR`/`BA`: la colonna della riga; per `PADRE`: la **FK** verso il padre |
+| `padre_schema`, `padre_tabella` | per `PADRE`: dove continuare — la risoluzione è **ricorsiva** sulla mappa stessa |
+| `ragione` | obbligatoria e lunga per `NESSUNO` (come `rls_perimetro_debito`): «la madre non è in RLS», «asse portale, lo storico non lo legge» |
+
+Una funzione `dbops.fn_storico_risolvi_scope(schema, tabella, riga jsonb) → (ef_id, ba_id)` la legge alla scrittura; il trigger la chiama **una volta**, quando la madre esiste ancora (§2.3). ⭐ La mappa è anche il **presidio**: una madre col trigger e in RLS senza riga di mappa è un rosso; una riga `PADRE` il cui padre non ha riga è un rosso; una riga il cui `modo` contraddice il catalogo (dice `EF` ma la colonna non c'è) è un rosso.
+
+**D4 — La policy, generata**: veste `OPERATORE`, `FOR SELECT`, una sola forma:
+`script.fn_scope_ef_whitelist(uid, scope_emittente_fiscale_id)` — è lo stesso adapter
+delle madri con colonna EF, quindi nessuna logica nuova. Con la colonna `NULL` la riga
+**non si vede** (fail-closed), che è il verso giusto per una shadow armata. Si arma solo dove la mappa non dice `NESSUNO`. ⚠️ Sulle cinque shadow condivise: la riga di `acquisti` avrà scope `NULL` e sparirà agli operatori finché `acquisti` non entra in RLS con un asse suo — è la conseguenza onesta di D2, e va scritta nella riga di mappa.
+
+### 4b.4 Che cosa resta di Tid
+
+| | Decisione | Proposta |
+| --- | --- | --- |
+| D1 | la colonna è una (EF); resta la **finestra di correzione** del BA | ✅ **Deciso (Tid, 2026-09-11): (b)** — chi sposta il BA ri-attribuisce anche lo storico di quel BA, nella stessa unità atomica |
+| D2 | discriminatore di schema sulle shadow | ✅ **Deciso (Tid, 2026-09-11): (a)** — `origine_schema` su ogni shadow, scritto dal trigger, chiusura dello snapshot per schema; nella stessa rigenerazione dello scope |
+| D3 | forma della mappa | ✅ **Deciso (Tid, 2026-09-11): (a)** — `dbops.storico_scope_policy` + CSV, ricorsiva su `PADRE`, `ragione` obbligatoria su `NESSUNO`; la mappa è anche il presidio |
+| D4 | quale veste legge lo storico | ✅ **Deciso (Tid, 2026-09-11): (a) solo `OPERATORE`** — una policy, una forma; portale e shop non vedono righe di storico, l'amministrazione passa dal bypass `SUPER_ADMIN` della canonica |
+
+---
+
+## 4c. Passo 2 — la mappa e chi la legge (consegnato l'11-09-2026)
+
+| Cosa | Dove |
+| --- | --- |
+| Tabella `dbops.storico_scope_policy` — chiave (schema, tabella), `modo` `EF/SR/PADRE/BA/NESSUNO`, `colonna`, padre, `ragione` obbligatoria ≥ 40 su `NESSUNO`, **FK differita su se stessa** (un PADRE dichiarato deve avere la sua riga) | `00_schema/dbops/20260911-21-create-storico-scope-policy` |
+| `dbops.fn_storico_risolvi_scope(schema, tabella, riga jsonb) → emittenti_fiscali.id` — ricorsiva su PADRE, `SECURITY DEFINER` del proprietario, `search_path` fissato, padre risolto con `to_regclass` e castato al tipo vero di `id`; non solleva mai tranne sul ciclo | `20_code/dbops/20260911-22-create-fn-storico-risolvi-scope` |
+| Seed CSV, **121 righe generate dal catalogo** (modo dalla policy `ef_whitelist`, padre dalla FK reale): 37 protette (6 EF, 3 SR, 3 BA, 25 PADRE) + 84 `NESSUNO` con ragione | `80_data/sql/dbops/storico_scope_policy.csv` + `80_data/changelog/20260911-23-upsert-dbops-storico-scope-policy` |
+| Codice `E_STORICO_SCOPE_CATENA_CICLICA` (TECNICO), messaggio id 1061 | `codici_errore.csv`, `messaggi_errore.csv` |
+| pgTAP, 28 asserzioni: completezza della mappa (ogni madre col trigger ha riga; nessuna madre in RLS a `NESSUNO`; nessuna riga orfana), coerenza col catalogo (colonne, FK, `id` del padre, catene che terminano, ogni modo del CHECK ha il suo ramo), postura del resolver (DEFINER, search_path, proprietario dei padri in RLS, EXECUTE), comportamento **sui valori** e su tabelle temporanee (EF, SR, PADRE a due salti con tre tipi di `id`, FK nulla, padre sparito, NESSUNO, non mappata, ciclo, BA) | `db/pgtap/dbops/test-storico-scope-policy-v1.sql` |
+| Manuali dei due oggetti; sezione *Di chi è una versione* nella guida della storicizzazione | `docs/it/dbzero/dbops/manual/`, `docs/it/guide/storicizzazione-tabelle.md` |
+
+Prove (SQL estratto, `BEGIN … ROLLBACK`): tabella + funzione + CSV caricato, FK
+differita che respinge un padre senza riga, resolver su tutti i rami, ciclo che
+solleva `P0001`; pgTAP concatenato **28/28** (il 27 con le due righe dei codici
+caricate nella stessa transazione). Sei guardrail statici verdi.
+
+⚠️ **Lato BE**, come per ogni codice nuovo: `manage.py genera_error_policies` e la
+frase di ripiego in `USER_MESSAGE_FALLBACK` — il cancello
+`test_error_codes_db_policy_guardrail` lo ricorda.
+
+### Trovato facendo il seed
+
+* `anagrafiche._legacy_risorse_umane_auth_user` ha **due** trigger di storico
+  (`_legacy_risorse_umane_auth_user_id` e `risorse_umane_auth_user_id`) che
+  scrivono nella stessa shadow con due colonne FK diverse: ogni modifica produce
+  due versioni. Difetto della legacy, non dello scope; registrato, non toccato.
+* ⏳ **Vista di presidio per il digest**: i test 2 e 4 del pgTAP (madre senza
+  riga, madre in RLS a `NESSUNO`) sono la stessa domanda di una
+  `dbops.vw_storico_scope_da_dichiarare` registrata in `dbops.presidi`, così il
+  debito arriva nel digest quotidiano e non solo alla corsa pgTAP. Non fatta
+  oggi: il catalogo `presidi` e il guardiano del digest sono in cantiere in
+  parallelo (`20260911-15/-16`), e due mani sullo stesso file oggi si pestano.
+  Da fare come passo 6b, a cantiere fermo.
+
+---
+
+## 4d. Passi 3-7 — la costruzione (applicata l'11-09-2026 alle 19:54)
+
+| Cosa | Dove |
+| --- | --- |
+| **La primitiva** `dbops.fn_storico_arma_scope(schema, tabella, dry_run)` + `_tutte`: colonne `origine_schema` (NOT NULL se la shadow è vuota) e `scope_emittente_fiscale_id` con indice, `REVOKE DELETE` all'app, e — se la mappa dice protetta — RLS con `rls_sto_<tab>_ef_whitelist` (FOR SELECT, `fn_scope_ef_whitelist` sull'emittente congelato, veste OPERATORE) + `rls_sto_<tab>_trg_ins/upd` con `true`. Idempotente, non disarma mai, WARN dove il migratore non è proprietario | `20_code/dbops/20260911-24` |
+| Il resolver con firma a `%TYPE` e il **ripiego sull'archivio del padre** (sotto) | `20_code/dbops/20260911-25` |
+| Il **generatore** chiama la primitiva sulla shadow appena creata: nasce armata | `20_code/dbops/20260911-26` |
+| One-shot `_tutte` sulle 121 esistenti, **prima** del trigger | `00_schema/storico/20260911-27` |
+| **Il trigger**: `origine_schema` + scope (risolto una volta, su NEW e su OLD per la versione iniziale) nei due INSERT; chiusura `WHERE … AND (origine_schema = $3 OR origine_schema IS NULL)`; **preCondition HALT** «nessuna shadow senza le due colonne» | `20_code/script/20260911-28` |
+| Convergenza `runAlways` in 90_end | `90_end/20260911-29` |
+| **Backfill** `fn_storico_backfill_scope(_tutte)`: dallo snapshot; nelle shadow condivise attribuisce la versione alla madre di cui porta una chiave **esclusiva** (`jsonb_exists_any`, non l'operatore col punto interrogativo, che in Liquibase va scappato); NOT NULL quando nessuna riga resta NULL; residue contate a fine giro per shadow distinta | `20_code/dbops/20260911-30` + `90_end/20260911-31` |
+| **Grant**: schema `storico` «senza DELETE» nell'elenco dichiarato del loop `20260205-41`, nel provisioning `provision_db_roles.sql`, e nella primitiva (i DEFAULT PRIVILEGES darebbero DELETE a ogni shadow nuova) | loop, provisioning, `-24` |
+| **Provisioning da superuser** `scripts/sql/provision_storico_scope.sql`: riassegna al migratore le shadow di `postgres`, arma tutte, backfill | `scripts/sql/` |
+| pgTAP `storico/test-storico-scope-congelato-v1` (22): struttura delle shadow vere; su madri **costruite** (due aziende, tre madri di prova, una omonima in `acquisti`, una figlia con FK a cascata): nasce armata, origine, scope A/B, NESSUNO → NULL, **collisione** (due versioni aperte, una per origine), chiusura, **DELETE a cascata** col ripiego, **congelato** (le versioni precedenti non seguono il cambio), lettura RLS (A vede A, non B, non NULL, non senza veste), il trigger **scrive attraverso la RLS**, nessun DELETE all'app | `db/pgtap/storico/` |
+| Manuali (`fn_storico_arma_scope`, `fn_storico_backfill_scope`, note su generatore e trigger), guida storicizzazione, `provisioning-db-roles.md`, linee-guida §10.1 (lo storico non è più fuori dalla RLS) | `docs/` |
+
+### ⭐ Aggiunta di disegno: il ripiego sull'archivio del padre (D5)
+
+Trovata provando il backfill: 50 versioni di `fatture_scadenze` su 60 avevano la
+fattura **sparita**, e il resolver rispondeva NULL. Ma non è solo pregresso: in un
+`DELETE … CASCADE` il padre è **già cancellato** quando il trigger del figlio
+scrive la versione finale — a runtime, ogni figlia di un documento cancellato
+nascerebbe senza scope, cioè invisibile. ⇒ Il ramo `PADRE` del resolver, se il
+padre non è vivo, legge la sua **ultima versione nello storico** (`storico.<padre>`,
+colonna `STORICO_FK` con override, filtrata per origine) e continua da lì. ⭐
+Leggere l'archivio del padre è leggere il **passato**: il §2.1 resta intatto. Con
+il ripiego: 56 su 60 (le 4 restanti non hanno né padre né archivio). Test 14 del
+pgTAP: DELETE a cascata → la figlia porta l'EF del padre letto dall'archivio.
+
+### Prove (11-09, SQL estratto, `BEGIN … ROLLBACK`)
+
+`_tutte`: 121 madri, 55 shadow allineate, **11 armate**, 66 saltate (`postgres`);
+backfill **12.952 versioni, 0 residue**; `storico.ddt` già `NOT NULL`; scrittura
+vera su `vendite.ddt` (EF) e `fatture_scadenze` (PADRE): versione nuova con
+origine e scope giusti, precedente chiusa; generatore: shadow nuova con RLS, 3
+policy, origine NOT NULL. pgTAP concatenato: **22/22 su `zeroerp_ci`** (tutto di
+`zeroerp`), 19/22 su dev — rossi 2, 3, 22, cioè le 66 shadow di `postgres`, che
+è esattamente ciò che il provisioning risolve. Sei guardrail statici verdi.
+
+### ✅ Com'è andato l'apply (11-09-2026, dalla `databasechangelog` e dall'audit)
+
+| Ora | Cosa |
+| --- | --- |
+| 19:40 | `-24`…`-27` applicati; `_tutte`: 121 madri, 55 allineate, 11 armate, **66 saltate** (di `postgres`) |
+| — | `-28` **fermata** dalla preCondition: `Expected '0' got '66'` — come previsto |
+| 19:50 | prima corsa del provisioning: `ALTER OWNER` di 68 shadow ✅, poi **`saltate_owner: 121`** — la primitiva agisce solo dove «proprietario = chi esegue», e chi eseguiva era `postgres`. Più un `:'var'` dentro un `DO`, che psql non interpola. Due correzioni allo script: `set_config` per il ruolo, **`SET ROLE` al migratore** prima di armare, backfill condizionale (la `-30` viene dopo la `-28`) |
+| 19:54 | seconda corsa: `armate 37, allineate 66, saltate 0`; poi il migrate: `-28`, `-30`, `-29`, `-31` |
+| 19:54 | backfill: **65.751 versioni, 0 residue**; tutte le 116 shadow con madre a `origine_schema NOT NULL`, anche le sei condivise |
+
+Letto sulla struttura dopo l'apply: 120 shadow tutte di `titodb`; **37 armate** con
+111 policy; `DELETE` dell'app revocato su 116 — restano le **4 orfane** (senza madre
+col trigger: nessun passo le tocca). Il trigger vivo scrive origine e scope e
+chiude per origine. pgTAP di Tid: nessuna regressione.
+
+⚠️ Le due trappole del provisioning si vedevano **solo sul percorso vero**: il mio
+dry-run da `titodb` era proprietario e sostituiva la variabile a mano. Memoria:
+`reference_provisioning_da_superuser_set_role_al_migratore`.
+
+### 🟠 Debiti registrati
+
+* **Le shadow del job pgAgent nascono di `postgres`**. Il provisioning le
+  riassegna una volta, ma il job crea le nuove come `postgres`: quelle nascono
+  armate (il generatore gira come chi le crea), però la **convergenza** da
+  Liquibase (`-29`, `fn_grant_storico_shadows`) le salta finché il provisioning
+  non ripassa. Rimedio vero: il job pgAgent che si collega come il migratore, o
+  il provisioning nel calendario. Non deciso qui.
+* Le versioni legacy **senza padre né archivio** (4 su `fatture_scadenze`, e
+  simili altrove) restano a scope NULL: invisibili agli operatori, visibili
+  all'amministrazione. Non ricostruibili: si lascia in chiaro.
+* Correzione alla nota di §8.4: `fn_grant_storico_shadows` **non** concedeva
+  DELETE; il DELETE dell'app sulle shadow veniva dal loop `20260205-41`, dal
+  provisioning e dai DEFAULT PRIVILEGES. Ora tutte e tre le sedi lo negano.
+* **Quattro shadow ORFANE** (letto l'11-09 al primo fermo della `-28`): tabelle
+  in `storico` senza una madre col trigger — `comune_trasformazioni`,
+  `stradario_trasformazioni` (vuote, `titodb`), `fatturazione_lotti_attivita`
+  e `risorse_umane_auth_user` (`postgres`; la madre della seconda oggi è
+  `anagrafiche._legacy_risorse_umane_auth_user`). Nessun passo le tocca, perché
+  il marcatore è il trigger: né colonne, né policy, né revoca del DELETE.
+  ⚠️ `storico.risorse_umane_auth_user` la legge il backend (storia dei permessi):
+  è una shadow viva con la madre rinominata, non un residuo. Da decidere: madre
+  cancellata o storicizzazione tolta → si archivia o si cancella; madre
+  rinominata → si riaggancia. Non deciso qui.
+
+---
+
 ## 5. I passi, e il costo
 
 | # | Passo | Stima |
 | --- | --- | --- |
 | 1 | **Il disegno**: quante colonne di scope, come si chiamano, la forma della mappa | ½ g — ⭐ **è la parte che conta** |
-| 2 | `dbops.fn_ensure_storico_table`: colonna + policy nel `format()` già esistente | ½ g |
-| 3 | La **mappa** (`dbops.storico_scope_policy` o simile) + il suo seed | ½ g |
-| 4 | `trgfn_storico_generic`: valorizzare lo scope leggendo la mappa | ½ g |
-| 5 | **Backfill** delle righe già scritte: uno script parametrico, non uno per tabella | ½ g |
-| 6 | **pgTAP**: una storico nuova *nasce* protetta; lo scope è **congelato** e non segue la madre; una tabella senza riga di mappa è **vista** | ½ g |
+| 2 | ✅ **La mappa** (`dbops.storico_scope_policy` + seed) e **il resolver** (`dbops.fn_storico_risolvi_scope`) — consegnati l'11-09, §4c | ½ g |
+| 3 | ✅ `dbops.fn_storico_arma_scope` (colonne, indice, REVOKE DELETE, RLS + 3 policy) chiamata dal generatore alla nascita e da `_tutte` sulle 121 esistenti — §4d | ½ g |
+| 4 | ✅ `trgfn_storico_generic`: origine + scope in ogni versione, chiusura filtrata sull'origine; preCondition HALT «nessuna shadow senza le colonne» — §4d | ½ g |
+| 5 | ✅ `dbops.fn_storico_backfill_scope(_tutte)`: dallo snapshot, con le chiavi esclusive per le shadow condivise, NOT NULL quando è vero — §4d | ½ g |
+| 6 | ✅ **pgTAP** `storico/test-storico-scope-congelato-v1` (22) + `dbops/test-storico-scope-policy-v1` (28) — §4d | ½ g |
+| 7 | ✅ **Grant**: `storico` senza DELETE per l'app nel loop `20260205-41`, nel provisioning e nella primitiva stessa (`fn_grant_storico_shadows` già non lo dava) — §4d | ¼ g |
 
 ⇒ **≈ 3 giornate.**
 
@@ -174,11 +372,198 @@ il generatore non crea la FK **di proposito**, quindi il caso esiste nel modello
 * ⛔ **niente scope letto dal JSONB** (§3);
 * ⛔ **niente risalita a runtime alla madre** (§2.1, §2.2);
 * ⛔ **niente `FOR ALL`** su una tabella che scrive solo il trigger (§4.3);
-* ⚠️ **non fermarsi allo `storico`**: `dbops.audit_log` è la **stessa forma** —
-  `params` e `result` in JSONB contengono argomenti ed esito di operazioni su
-  documenti protetti, e la tabella è senza RLS con `zeroerp_app` che ci ha
-  `SELECT, INSERT, UPDATE, DELETE`. È dichiarato nel D3 come secondo caso: non è
-  questo brief, ma va deciso se ci entra.
+* ⛔ **non trattare `dbops.audit_log` come una tabella di storico** — è il §8, e
+  la conclusione è che *non* si ripara con una policy di perimetro.
+
+---
+
+## 8. `dbops.audit_log` — stessa FAMIGLIA di difetto, rimedio DIVERSO
+
+> Aggiunto su richiesta di Tid il 2026-09-11: *«dato che è della stessa forma»*.
+> ⭐ La forma del **difetto** lo è — *il dato è protetto, la sua traccia no*. La
+> forma del **rimedio** no, e applicargli il disegno dei §2-§4 sarebbe un errore.
+
+### 8.1 Perché non è una tabella di storico
+
+| | `storico.<tabella>` | `dbops.audit_log` |
+| --- | --- | --- |
+| Ha una **madre** | ✅ una per tabella, con la chiave in colonna | ⛔ **nessuna**: registra l'esecuzione di una *funzione*, non lo stato di una riga |
+| Da dove viene lo scope | dalla riga che il trigger ha in mano | ⛔ da nessuna parte: **non esiste una riga da cui prenderlo** |
+| Quante sono | 120, generate da un framework | **una**, scritta a mano |
+| Chi la scrive | un trigger generico | **18 funzioni**, per la porta `dbops.fn_audit_log_once` |
+
+⇒ Il meccanismo «cattura alla scrittura e congela» **non è trasportabile**: qui
+non c'è una riga madre da cui catturare. Lo scope, se servisse, andrebbe
+**passato da chi chiama** — cioè aggiunto alla firma della porta di scrittura e
+valorizzato da diciotto chiamanti.
+
+### 8.2 ⛔ E la premessa del D3 non regge sulla struttura
+
+Il D3 dice che `params` e `result` contengono, *«per le funzioni di dominio, gli
+argomenti e l'esito di operazioni su documenti protetti»*.
+
+⛔ **Letto dal catalogo il 2026-09-11: nessuna funzione di dominio ci scrive.**
+Delle 18 che nominano `audit_log`, **17 sono in `dbops`** e una in `script`
+(`fn_audit_summary`, che è una lettura). Non ce n'è nessuna in `vendite`,
+`anagrafiche`, `pagamenti`.
+⇒ È il **registro delle automazioni e degli strumenti DBA**, e lo legge
+`backend/apps/amm_software` — l'area di amministrazione, quella del `SUPER_ADMIN`.
+
+⚠️ **Questo non cancella il problema, lo sposta**: la porta `fn_audit_log_once` è
+aperta a chiunque, e niente nel modello impedisce che domani una funzione di
+`vendite` ci scriva i propri parametri. *Zero occorrenze non significa che il
+caso non esiste.* Ma cambia **quale** sia la domanda giusta.
+
+### 8.3 La domanda che viene prima di qualunque policy
+
+> **Questo registro deve poter contenere dati di dominio?**
+
+| Risposta | Che cosa comporta |
+| --- | --- |
+| **No** — è un registro tecnico | ⭐ Il presidio giusto **non è una policy**: è un **cancello** che impedisce a una funzione di dominio di scriverci, nello stile dei guardrail CI già in servizio. Il rischio sparisce **alla fonte**, e non si paga un filtro per riga su un log |
+| **Sì** | serve una colonna di scope **nella firma** di `fn_audit_log_once`, valorizzata dai chiamanti, e una policy che la legge. ⚠️ Con il ramo «riga senza scope» da decidere: un'automazione di manutenzione non ha emittente, e quelle righe sono la maggioranza per natura |
+
+⛔ **In nessuno dei due casi la forma è quella dello storico**, ed è per questo
+che sta in una sezione sua invece che nell'elenco delle tabelle da generare.
+
+### 8.4 Il REVOKE — quello che si è potuto fare subito, e le due cose che questa sezione sbagliava
+
+> ✅ **Consegnato il 2026-09-11.** Decisioni di Tid nello stesso giorno, prese sulla
+> struttura letta e non sulle righe.
+
+Il fatto di struttura resta vero: `zeroerp_app` aveva `SELECT, INSERT, UPDATE,
+DELETE` su un registro che **legge l'amministrazione** e **scrivono le
+automazioni**. E resta vera la frase: *un registro di audit modificabile da chi è
+auditato non è un registro*. ⛔ **Ma la prima stesura di questa sezione sbagliava
+due volte**, e le due cose sono scritte qui perché sono della stessa specie di
+quelle del §6 — una ragione scritta male che avrebbe sviato il cantiere.
+
+#### ⛔ Errore 1 — «privilegi che nessuno usa»: l'UPDATE è PREVISTO DAL DISEGNO
+
+La guida `messaggi-audit` documenta la **modalità sessione**: `fn_audit_begin`
+apre una riga `START`, `fn_audit_end` la chiude — con un
+`UPDATE dbops.audit_log … WHERE id = p_id`. Tutte e tre le funzioni sono
+`SECURITY INVOKER` e l'app aveva `EXECUTE`. Fanno UPDATE diretto anche le due
+`fn_admin_merge_comune/stradario` (strumenti DBA). Letto sulla struttura il
+2026-09-11: **nessuna delle tre ha un chiamante** — né nel DB, né nel backend, né
+in pgAgent — ma il contratto scritto c'è, e «zero chiamanti» non è una ragione.
+
+⇒ **La domanda giusta era di modello**: *l'applicazione deve poter chiudere una
+sessione di audit?* **Decisione (Tid, 2026-09-11): no.** La modalità sessione è
+**riservata a chi possiede la tabella** (migratore, job); l'app scrive con la sola
+`fn_audit_log_once`. Corollario: se non può chiudere non deve poter aprire —
+altrimenti lascia `START` orfane — quindi la coppia begin/end perde l'`EXECUTE`
+per l'app. ⚠️ E le funzioni avevano `=X`: PUBLIC aveva EXECUTE, e revocare al solo
+`zeroerp_app` non avrebbe tolto niente. Si revoca `FROM PUBLIC, zeroerp_app`.
+
+Il `DELETE` invece **non lo fa nessuno**, da nessuna parte; e l'`INSERT` dell'app
+**serve** — `fn_check_funzioni_riferimenti_morti` (guardrail, gira come app) e
+`fn_apply_chiusura_scadenze` (handler `coda_lavori`) scrivono via `fn_audit_log_once`.
+
+#### 🔴 Errore 2 — «è una riga di REVOKE»: quella riga viene CANCELLATA
+
+`90_end/ci_apply/20260205-41-apply-runtime-grants-ci` è `runOnChange` e a ogni
+passata `ci_apply` rifà `GRANT SELECT, INSERT, UPDATE, DELETE` a `zeroerp_app` su
+tutte le tabelle di 14 schemi, `dbops` compreso, più `EXECUTE` su ogni funzione.
+Un REVOKE in un changeSet normale sopravvive su dev fino al prossimo
+`db-ci-apply` — e sembra funzionare, a lungo — e in CI viene annullato **nello
+stesso build**. ⭐ Provato il 2026-09-11 in transazione ritirata: forward +
+loop originale ⇒ `UPDATE, DELETE` tornano concessi e `zeroerp_app=X` riconcesso.
+
+⇒ **Decisione (Tid, 2026-09-11): loop dichiarativo.** La postura più stretta si
+dichiara **dentro** il loop — due elenchi in testa al blocco,
+`v_registri_append_only` e `v_fn_riservate` — che da oggi concede a quei registri
+solo `SELECT, INSERT` e revoca il resto a ogni passata. Più un changeSet `90_end`
+forward che revoca subito, perché su dev `ci_apply` non gira da solo. Regola
+scritta in [linee-guida-sql §11.8](../../linee-guida-sql.md) e in AGENTS.md.
+
+#### ⭐ E non era un caso solo: `dbops.error_log` è della stessa classe
+
+Stessa postura (`arwd`), stessa natura: nessuna funzione e nessun codice Python lo
+aggiorna o cancella. **Decisione (Tid): incluso** — due registri, una regola, ed è il
+secondo caso che giustifica l'elenco dichiarato.
+
+#### Consegnato
+
+| Cosa | Dove |
+| --- | --- |
+| REVOKE forward: `UPDATE, DELETE` su `audit_log`/`error_log`; `EXECUTE` su begin/end `FROM PUBLIC, zeroerp_app` | `90_end/20260911-09-revoke-app-update-delete-registri-audit` |
+| Eccezione dichiarata nel loop dei grant | `90_end/ci_apply/20260205-41` (editato: è `runOnChange` + `validCheckSums: ANY`, il suo ciclo di vita) |
+| Default di `executed_by` (vedi sotto) | `00_schema/dbops/20260911-20-alter-audit-log-executed-by-default` |
+| pgTAP, 24 asserzioni: postura a catalogo (`has_*_privilege`, mai `role_table_grants`) + comportamento come app (`42501`) + la porta `fn_audit_log_once` aperta e firmata | `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` |
+| Guida *Chi può scrivere*, manuali dei cinque oggetti, §11.8 linee guida, AGENTS.md | `docs/it/guide/messaggi-audit.md`, `docs/it/dbzero/dbops/manual/*`, `linee-guida-sql.md`, `.codex/AGENTS.md` |
+
+Prove fatte (2026-09-11, SQL **estratto** dagli YAML, in `BEGIN … ROLLBACK`):
+forward ⇒ postura stretta; loop editato ⇒ **non riapre**; rollback ⇒ ripristina;
+loop originale ⇒ riapre (controprova). pgTAP provato come app sullo stato
+pre-apply: rosse esattamente le 13 asserzioni che i changeSet ribaltano, verdi le
+altre 11. Sei guardrail statici verdi. ✅ **Applicato il 2026-09-11 alle 12:42**
+(`20260911-09`, `20260911-20`); postura viva riletta a catalogo: `INSERT` sì,
+`UPDATE`/`DELETE` no su entrambi, begin/end senza `=X` né app, default
+`CURRENT_USER` funzione. ⚠️ Su dev il loop `20260205-41` non gira dal 2026-05-07:
+la stretta la tiene il forward, l'eccezione nel loop si eserciterà in CI al
+primo build.
+
+#### 🔴 Trovato scrivendo il pgTAP: il registro non ha mai registrato CHI esegue
+
+`executed_by` aveva come default la **stringa** `'CURRENT_USER'` — le virgolette
+fanno la differenza fra la funzione e la parola — e nessuna porta di scrittura
+la valorizza. Struttura: `pg_attrdef` → `'CURRENT_USER'::text`. Controesempio
+sui dati di sviluppo: **3014 righe su 3014** con la parola. Un registro che non
+sa dire chi è l'auditato non è un registro più di uno che si lascia riscrivere:
+stessa domanda, altro lato. ⇒ `20260911-20` porta il default a `current_user`
+(il **ruolo** di database, non l'operatore — quello viaggia nelle GUC e nel
+`tx_id`). ⛔ Nessun backfill: il pregresso non si può ricostruire e resta
+riconoscibile. Test 24 del pgTAP.
+
+#### 🔴 Trovato dalla baseline CI, lo stesso giorno: il loop non era l'ultima parola
+
+Il pgTAP `test-registri-append-only-postura-v1` era **verde su dev e rosso su
+`zeroerp_ci`**. Letta la postura direttamente sul database CI (come `zeroerp`,
+`has_table_privilege` / `proacl`): `UPDATE`/`DELETE` **concessi**, `EXECUTE` su
+begin/end **concesso** — con `20260911-09` regolarmente `EXECUTED`. Chi riapriva?
+**`scripts/sql/provision_db_roles.sql`**: gira come `postgres` **dopo**
+`--contexts=ci_apply` sia in `ci-validate.yaml` sia in `ci-local.sh`, e fa
+`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA` e `GRANT EXECUTE
+ON ALL FUNCTIONS IN SCHEMA` a `zeroerp_app`. Le sedi della postura non erano due
+ma **tre**, e la terza — l'ultima a parlare — non sapeva niente dell'eccezione.
+Su dev non si vede perché il provisioning non si rilancia dopo ogni migrate: è
+la forma esatta del «verde su dev non dice nulla sulla CI».
+
+⇒ Il provisioning porta ora la **stessa eccezione** (blocco «POSTURA DICHIARATA»
+in coda ai `GRANT ON ALL`): `REVOKE UPDATE, DELETE` sui due registri, `REVOKE
+EXECUTE … FROM PUBLIC, zeroerp_app` sulle due porte. Idempotente, salta gli
+oggetti assenti. Provato come `zeroerp` su `zeroerp_ci` in transazione ritirata:
+la postura torna quella che il test pretende. Il commento del loop `-41`, che
+si dichiarava «l'unico posto che non può annullarla», è corretto. ⭐ Il pgTAP è
+il presidio delle tre sedi, e ha morso il primo giorno: è il suo mestiere.
+Regola: [[reference_grant_loop_ci_apply_annulla_grant_per_colonna]] aggiornata.
+
+#### 🟠 Debiti registrati, non saldati qui
+
+* **`fn_admin_merge_comune` / `fn_admin_merge_stradario`** scrivono l'audit a mano
+  con `INSERT` + `UPDATE` diretti. Nessun chiamante; ma se un giorno le chiamasse
+  l'app (`amm_software` è un candidato naturale) morirebbero sul REVOKE — ed è un
+  difetto **loro**: devono passare per `fn_audit_log_once`. Da sanare quando si
+  toccano.
+* **Le shadow `storico.*`** — ⚠️ riguarda i passi 2-6 di **questo** brief. Letto il
+  2026-09-11: 120 shadow, **tutte** con `UPDATE` e `DELETE` per `zeroerp_app` (52
+  possedute da `titodb`, via il loop; 68 da `postgres`, via provisioning /
+  `fn_grant_storico_shadows`). Il §4.3 dice che lo storico *lo scrive il trigger,
+  non l'applicazione*: la stessa domanda del §8.4 vale per tutte e 120, e la
+  forma del rimedio è un'eccezione **per schema** nel loop, non un elenco.
+  ✅ Verificato (§4b.2): `trgfn_storico_generic` **aggiorna** la riga precedente
+  (`valid_to`), quindi all'app servono `INSERT` e `UPDATE`; da togliere è il solo
+  `DELETE`. È il passo 7 della tabella §5.
+
+### 8.5 Stima — aggiornata
+
+| | |
+| --- | --- |
+| La **decisione** §8.3 (registro tecnico o di dominio) | ⛔ ancora aperta, di modello, viene prima del cancello o della colonna |
+| Il REVOKE di §8.4 + eccezione nel loop + default `executed_by` + pgTAP + doc | ✅ **fatto** il 2026-09-11 — una giornata, non mezza: il resto era la premessa sbagliata |
+| Il cancello (ramo «No») | ½ giornata — un guardrail sullo stile di quelli già in CI |
+| La colonna di scope (ramo «Sì») | 1-1½ giornate: firma, 18 chiamanti, policy, backfill |
 
 ---
 

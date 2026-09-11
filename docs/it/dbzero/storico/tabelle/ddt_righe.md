@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ddt_righe_ddt_righe_id_fk | `CREATE INDEX ix_ddt_righe_ddt_righe_id_fk ON storico.ddt_righe USING btree (ddt_righe_id)` |
+| ix_ddt_righe_scope_ef | `CREATE INDEX ix_ddt_righe_scope_ef ON storico.ddt_righe USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_ddt_righe | `CREATE UNIQUE INDEX pk_storico_ddt_righe ON storico.ddt_righe USING btree (id)` |
 
 ## 🚨 Trigger

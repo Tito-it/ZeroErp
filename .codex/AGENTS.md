@@ -401,6 +401,26 @@ sbagliata viene copiata — adiacenti e identiche tranne il nome del ruolo.
 ⛔ Se serve un privilegio *in più* del perimetro ampio, si aggiunge al
 provisioning e si rilancia.
 
+### ⛔ Un `REVOKE` a `zeroerp_app` in un changeSet normale NON tiene
+
+Regola estesa: [linee-guida-sql.md §11.8](../docs/it/linee-guida-sql.md).
+
+`90_end/ci_apply/20260205-41-apply-runtime-grants-ci` è `runOnChange` e a ogni
+passata `ci_apply` rifà `GRANT SELECT, INSERT, UPDATE, DELETE` all'app su
+**tutte** le tabelle di 14 schemi, più `EXECUTE` su tutte le funzioni. Un
+`REVOKE` scritto altrove sopravvive su dev fino al prossimo `db-ci-apply` e in
+CI muore **nello stesso build**. Trovato il 2026-08-17 (una colonna) e il
+2026-09-11 (`dbops.audit_log`, `dbops.error_log` — il brief diceva *«è una riga
+di REVOKE»*).
+
+⭐ Una postura **più stretta** si **dichiara nel loop**, negli elenchi in testa
+al blocco (`v_registri_append_only`, `v_fn_riservate`), **e** si applica subito
+con un changeSet `90_end` forward — su dev `ci_apply` non gira da solo. Per una
+singola **colonna** il privilegio non sa esprimere l'eccezione: lì è un trigger.
+⚠️ Sulle funzioni la revoca va `FROM PUBLIC, zeroerp_app`: hanno `=X` per
+default. Si asserisce con `has_*_privilege(ruolo, …)`, mai con
+`role_table_grants`, che è cieco fuori dal ruolo connesso.
+
 ### ⛔ I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti
 
 La sede di una tabella di configurazione è il suo CSV in `80_data/sql/...`, letto

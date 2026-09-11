@@ -1,0 +1,163 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ UN REGISTRO DI AUDIT MODIFICABILE DA CHI E' AUDITATO NON E' UN REGISTRO.
+#   Brief: brief-db-rls-storico-scope-congelato.md §8.4
+#
+# `zeroerp_app` aveva SELECT, INSERT, UPDATE, DELETE su `dbops.audit_log` e su
+# `dbops.error_log`: i due registri append-only del progetto — l'uno racconta
+# le esecuzioni, l'altro gli errori. Il ruolo con cui gira l'applicazione,
+# cioè il soggetto che quei registri raccontano, poteva riscriverli e
+# cancellarli. Qui gli restano SELECT e INSERT: leggere e aggiungere.
+#
+# ── LETTO SULLA STRUTTURA IL 2026-09-11 (fatto datato, non premessa) ──────
+#   · DELETE: nessuna funzione, nessun job pgAgent, nessun codice Python
+#     cancella da nessuno dei due registri. `cleanup_at` è pensato per una
+#     retention che oggi non ha un job.
+#   · UPDATE su audit_log: lo fanno TRE funzioni, tutte SECURITY INVOKER —
+#     `fn_audit_end` (chiusura della modalità sessione begin/end) e le due
+#     `fn_admin_merge_comune/stradario` (strumenti DBA che scrivono l'audit a
+#     mano). Nessuna delle tre ha un chiamante, né nel DB né nel backend.
+#   · UPDATE su error_log: nessuno, da nessuna parte.
+#   · INSERT dell'app: SERVE. `fn_check_funzioni_riferimenti_morti` (il
+#     guardrail gira come ruolo applicativo) e `fn_apply_chiusura_scadenze`
+#     (handler di coda_lavori, Django) scrivono via `fn_audit_log_once`; e
+#     `script.fn_log_error_only` scrive error_log in locale quando il canale
+#     dblink è spento.
+#
+# ── ⛔ E LA PREMESSA «È UNA RIGA DI REVOKE» SBAGLIAVA DUE VOLTE ─────────
+#   1. L'UPDATE sull'audit è PREVISTO DAL DISEGNO: la guida `messaggi-audit`
+#      documenta la modalità sessione `fn_audit_begin` → `fn_audit_end`, e la
+#      chiusura è un `UPDATE ... WHERE id = p_id`. Decisione di Tid (2026-09-11):
+#      la sessione resta RISERVATA a chi possiede la tabella — migratore e job —
+#      e l'applicazione usa la sola `fn_audit_log_once`. Quindi la coppia
+#      begin/end perde l'EXECUTE per l'app: se non può chiudere una sessione
+#      non deve nemmeno poterla aprire, altrimenti lascia righe START orfane.
+#      ⚠️ Le tre funzioni hanno `=X` nell'ACL: PUBLIC ha EXECUTE. Revocare al
+#      solo `zeroerp_app` non toglierebbe niente — si revoca anche a PUBLIC.
+#      Il proprietario esegue sempre; `zeroerp_batch_fatturazione` conserva il
+#      grant esplicito che gli dà il provisioning.
+#   2. 🔴 Un REVOKE in un changeSet normale NON TIENE. `90_end/ci_apply/
+#      20260205-41-apply-runtime-grants-ci` è `runOnChange` e a ogni passata
+#      `ci_apply` rifà `GRANT SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle
+#      di 14 schemi, `dbops` compreso: su dev la revoca sopravviverebbe fino al
+#      prossimo `db-ci-apply`, in CI verrebbe annullata NELLO STESSO BUILD.
+#      ⇒ Questo file è la metà che agisce SUBITO (su dev `ci_apply` non gira da
+#      solo); l'altra metà è l'ECCEZIONE DICHIARATA dentro il loop stesso, che
+#      da oggi concede ai registri append-only solo SELECT, INSERT e revoca il
+#      resto. Il presidio sta nell'unico posto che avrebbe potuto annullarlo.
+#
+# ── COSA NON FA ──────────────────────────────────────────────────────────
+#   · non tocca `fn_admin_merge_*`: strumenti DBA che scrivono l'audit con
+#     INSERT+UPDATE diretti. Se un giorno li chiamasse l'app morirebbero su
+#     questo REVOKE — ed è un difetto LORO (devono passare per la porta di
+#     scrittura), registrato nel brief;
+#   · non tocca TRUNCATE: l'app non l'ha mai avuto. Il pgTAP lo asserisce.
+#
+# ⚠️ Sta in `90_end` come gli altri grant: dopo che tabelle e funzioni esistono.
+#   Nome del ruolo scritto in chiaro, come nel loop `20260205-41` e negli altri
+#   grant di questa cartella.
+#
+# Verifica: db/pgtap/dbops/test-registri-append-only-postura-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260911-09-revoke-app-update-delete-registri-audit-mctit.yaml
+
+  - changeSet:
+      id: 20260911-09-revoke-app-update-delete-registri-audit
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rende append-only per l'applicazione i due registri dbops.audit_log e
+        dbops.error_log: REVOKE UPDATE, DELETE a zeroerp_app (restano SELECT e
+        INSERT). Riserva la modalità sessione dell'audit (fn_audit_begin /
+        fn_audit_end, che è un UPDATE del registro) a chi possiede la tabella:
+        REVOKE EXECUTE a PUBLIC e a zeroerp_app. L'applicazione scrive l'audit
+        con la sola fn_audit_log_once. La revoca è resa stabile dall'eccezione
+        dichiarata nel loop dei grant runtime (90_end/ci_apply/20260205-41),
+        che altrimenti la annullerebbe a ogni passata ci_apply.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: audit_log }
+        - tableExists:
+            { schemaName: dbops, tableName: error_log }
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname IN ('fn_audit_begin', 'fn_audit_end');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $revoke$
+              BEGIN
+                  -- ⭐ La porta della modalità sessione si chiude a PUBLIC in ogni
+                  --   caso: con `=X` nell'ACL qualunque ruolo poteva chiuderla, e
+                  --   revocare al solo ruolo applicativo non avrebbe tolto niente.
+                  --   Il proprietario (chi migra) esegue sempre, e i ruoli batch
+                  --   conservano il grant esplicito del provisioning.
+                  REVOKE EXECUTE ON FUNCTION
+                      dbops.fn_audit_begin(text, jsonb, text, text[], text, boolean, text, text),
+                      dbops.fn_audit_end(bigint, text, text, text, text, integer, jsonb)
+                  FROM PUBLIC;
+
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      -- I due registri append-only: l'applicazione li legge e li
+                      -- aggiunge, non li riscrive né li cancella.
+                      REVOKE UPDATE, DELETE ON TABLE dbops.audit_log FROM zeroerp_app;
+                      REVOKE UPDATE, DELETE ON TABLE dbops.error_log FROM zeroerp_app;
+
+                      -- La coppia begin/end: se non può chiudere una sessione non
+                      -- deve poterla aprire. Resta fn_audit_log_once.
+                      REVOKE EXECUTE ON FUNCTION
+                          dbops.fn_audit_begin(text, jsonb, text, text[], text, boolean, text, text),
+                          dbops.fn_audit_end(bigint, text, text, text, text, integer, jsonb)
+                      FROM zeroerp_app;
+                  ELSE
+                      RAISE NOTICE
+                          'ruolo zeroerp_app assente: REVOKE sui registri saltato. '
+                          'Il loop 20260205-41 (ci_apply) applica la stessa postura '
+                          'quando il ruolo esiste.';
+                  END IF;
+              END
+              $revoke$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Riporta l'applicazione a poter riscrivere e cancellare i propri
+              --   registri. È il rollback del changeSet, non una postura ammessa:
+              --   e comunque il loop 20260205-41 la rimetterebbe a posto alla
+              --   prossima passata ci_apply, finché porta l'eccezione dichiarata.
+              DO $regrant$
+              BEGIN
+                  GRANT EXECUTE ON FUNCTION
+                      dbops.fn_audit_begin(text, jsonb, text, text[], text, boolean, text, text),
+                      dbops.fn_audit_end(bigint, text, text, text, text, integer, jsonb)
+                  TO PUBLIC;
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT UPDATE, DELETE ON TABLE dbops.audit_log TO zeroerp_app;
+                      GRANT UPDATE, DELETE ON TABLE dbops.error_log TO zeroerp_app;
+                      GRANT EXECUTE ON FUNCTION
+                          dbops.fn_audit_begin(text, jsonb, text, text[], text, boolean, text, text),
+                          dbops.fn_audit_end(bigint, text, text, text, text, integer, jsonb)
+                      TO zeroerp_app;
+                  END IF;
+              END
+              $regrant$;

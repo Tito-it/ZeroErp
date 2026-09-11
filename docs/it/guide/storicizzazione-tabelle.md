@@ -128,6 +128,60 @@ Da un punto di vista tecnico:
 
 ---
 
+## Di chi è una versione — lo scope congelato (dall'11-09-2026)
+
+> ⭐ **La storia di una riga protetta è la stessa informazione della riga.** Se
+> una fattura si può vedere solo da certi operatori, lo stesso vale per ogni sua
+> versione precedente. Oggi non è così: le tabelle di storico non hanno regole di
+> visibilità. Il cantiere che lo risolve è
+> `brief-db-rls-storico-scope-congelato` (§4b: disegno deciso l'11-09-2026).
+
+Il disegno, in breve:
+
+* ogni tabella di storico riceverà una colonna **`scope_emittente_fiscale_id`**,
+  scritta dal trigger **nel momento in cui fotografa la riga** e mai più
+  ricalcolata — *un archivio che cambia col presente non è un archivio*;
+* riceverà anche **`origine_schema`**: il nome della tabella di storico è il nome
+  nudo della tabella madre, e `acquisti.ddt` e `vendite.ddt` scrivono nella
+  stessa `storico.ddt` — senza lo schema le due storie si mescolano;
+* **da dove** si prende l'emittente lo dice una mappa, non il codice:
+  [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy) — una
+  riga per tabella storicizzata, con cinque modi (colonna in riga, soggetto-ruolo,
+  risalita al padre, billing account, nessuno). La legge
+  [dbops.fn_storico_risolvi_scope](/dbzero/dbops/manual/fn_storico_risolvi_scope);
+* una sola regola di lettura, per l'operatore, sulla colonna congelata;
+* se il padre di un satellite **non è più vivo** — succede in ogni `DELETE` a
+  cascata, dove il padre sparisce prima che il figlio scriva la sua versione
+  finale — l'emittente si legge dall'**ultima versione del padre nello
+  storico**: leggere l'archivio del padre è leggere il passato, non il presente.
+
+**Stato: APPLICATO l'11-09-2026** (pgTAP senza regressioni) — mappa e
+risoluzione (passo 2), colonne e regola di lettura generate
+([dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope),
+passo 3), trigger che congela (passo 4), backfill del pregresso
+([dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope),
+passo 5), controlli (passo 6), privilegi (passo 7: l'applicazione non cancella
+mai una versione).
+
+Sul database di sviluppo, dopo l'apply: 120 tabelle di storico, **37 armate**
+(RLS con tre policy generate), **65.751 versioni** attribuite dal backfill, zero
+senza origine; le tabelle nuove nascono già armate dal generatore.
+
+⚠️ **Un passaggio da superuser, dove serve.** Sul database di sviluppo 68 tabelle
+di storico su 121 appartenevano a `postgres` (le aveva create il job pgAgent): i
+changeSet non possono alterarle, e il trigger nuovo — che scrive le due colonne —
+si ferma finché una tabella ne è priva. `scripts/sql/provision_storico_scope.sql`
+le ha allineate e ne ha riassegnato la proprietà al migratore (fatto l'11-09);
+serve di nuovo su qualunque database dove il job abbia creato shadow come
+`postgres`. Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
+
+Controlli: `db/pgtap/dbops/test-storico-scope-policy-v1.sql` (la mappa) e
+`db/pgtap/storico/test-storico-scope-congelato-v1.sql` (colonne, policy,
+congelamento, collisione fra omonime, cancellazione a cascata, lettura per
+operatore, privilegi).
+
+---
+
 ## Perche JSONB per il campo `snapshot`
 
 La scelta di usare JSONB per memorizzare lo stato del record, invece di replicare tutte le colonne della tabella operativa, ha tre motivazioni:

@@ -34,6 +34,7 @@
 - [rls_perimetro_debito](tabelle/rls_perimetro_debito.md) — (latest review 09-09-2026)
 - [sec_functions_owner](tabelle/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 - [sessioni_utente](tabelle/sessioni_utente.md) — (latest review 05-03-2026)
+- [storico_scope_policy](tabelle/storico_scope_policy.md) — (latest review 11-09-2026)
 - [transaction_ids](tabelle/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
 ## ⚙️ Funzioni
@@ -71,6 +72,7 @@
 - [fn_get_pgagent_job_stato](funzioni/fn_get_pgagent_job_stato.md)
 - [fn_get_pipeline_task_implementation](funzioni/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
 - [fn_grant_storico_shadows](funzioni/fn_grant_storico_shadows.md)
+- [fn_guardiano_digest](funzioni/fn_guardiano_digest.md) — (latest review 11-09-2026)
 - [fn_list_indices](funzioni/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
 - [fn_name_from_template](funzioni/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
@@ -105,6 +107,11 @@
 - [fn_seed_automazione_overlap](funzioni/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
 - [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_set_gucs_conn](funzioni/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
+- [fn_storico_arma_scope](funzioni/fn_storico_arma_scope.md) — (latest review 11-09-2026)
+- [fn_storico_arma_scope_tutte](funzioni/fn_storico_arma_scope_tutte.md)
+- [fn_storico_backfill_scope](funzioni/fn_storico_backfill_scope.md) — (latest review 11-09-2026)
+- [fn_storico_backfill_scope_tutte](funzioni/fn_storico_backfill_scope_tutte.md)
+- [fn_storico_risolvi_scope](funzioni/fn_storico_risolvi_scope.md) — (latest review 11-09-2026)
 - [fn_sync_functions_owner](funzioni/fn_sync_functions_owner.md) — * **Applicare automaticamente la policy di sicurezza** definita in `dbops.sec_functions_owner`. * **Rilevare e correggere** owner incoerenti di funzioni critiche. * Rendere ripetibile e idempotente il processo di *hardening* dopo:
 - [fn_table_in_scope](funzioni/fn_table_in_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
 - [fn_trigger_exists_block_by_args](funzioni/fn_trigger_exists_block_by_args.md) — (last review 31-12-25) La funzione **`dbops.fn_trigger_exists_block_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di blocco** basato sulla funzione `trgfn_prevent_deactivate_if_children`, applicato ad una tabella padre per impedire la disattivazione se esistono righe figlio attive.
@@ -127,8 +134,10 @@
 - [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
+- [vw_email_da_guardare](views/vw_email_da_guardare.md) — (latest review 11-09-2026)
 - [vw_emittenti_non_serviti](views/vw_emittenti_non_serviti.md) — (latest review 04-09-2026)
 - [vw_eventi_non_dichiarati](views/vw_eventi_non_dichiarati.md)
+- [vw_fatture_stampa_coda_da_guardare](views/vw_fatture_stampa_coda_da_guardare.md) — (latest review 11-09-2026)
 - [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
 - [vw_fk_senza_indice](views/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:

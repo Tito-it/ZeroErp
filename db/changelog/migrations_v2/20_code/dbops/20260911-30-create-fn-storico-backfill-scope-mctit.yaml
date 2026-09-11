@@ -1,0 +1,280 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL BACKFILL: le versioni già scritte ricevono origine e scope — passo 5.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b, §5
+#
+# `dbops.fn_storico_backfill_scope(schema, tabella)` attribuisce alle righe
+# della shadow che hanno `origine_schema IS NULL`:
+#   · `origine_schema` = lo schema della madre;
+#   · `scope_emittente_fiscale_id` = dbops.fn_storico_risolvi_scope(...) sullo
+#     SNAPSHOT della versione — è l'unica riga che il passato ci ha lasciato.
+#     ⚠️ Per i modi PADRE il resolver risale al padre COM'È OGGI — o, se il
+#     padre non è più vivo, alla sua ULTIMA VERSIONE nello storico (ripiego del
+#     resolver, -25). Il passato viene letto in parte col presente: è il limite
+#     dichiarato del backfill (§2.1 vale da qui in avanti, per le versioni che
+#     il trigger congela). Dove né il padre né il suo archivio rispondono, la
+#     versione resta a NULL e non si vede.
+#
+# ── ⭐ LE SHADOW CONDIVISE: chi ha scritto questa versione? ──────────
+#   In `storico.ddt` ci sono versioni di `acquisti.ddt` e di `vendite.ddt`
+#   senza niente che dica quale. Lo snapshot è `to_jsonb(riga)`: le sue CHIAVI
+#   sono le colonne della madre al momento della scrittura. Le due madri hanno
+#   colonne che l'altra non ha (`emittente_fiscale_id` solo in vendite,
+#   `hash_contenuto` solo in acquisti): una versione si attribuisce alla madre
+#   di cui porta almeno una chiave ESCLUSIVA. Le versioni che non ne portano
+#   nessuna restano NULL, e il pgTAP le conta come debito dichiarato.
+#   ⚠️ `jsonb_exists_any(snapshot, chiavi)` e non l'operatore `?|`: dentro un
+#   changeSet Liquibase il `?` va scappato e si dimentica (memoria di progetto).
+#
+# ── NOT NULL quando è vero ──────────────────────────────────────────
+#   Se dopo il backfill nessuna riga ha origine NULL e la colonna è ancora
+#   nullable, la si porta a NOT NULL: da lì in avanti il trigger la scrive
+#   sempre, e la tolleranza `OR origine_schema IS NULL` nella chiusura dello
+#   snapshot non ha più niente da tollerare.
+#
+# ── 🔴 SOLO IL PROPRIETARIO ──────────────────────────────────────────
+#   L'UPDATE lo può fare chi ha il privilegio, ma il SET NOT NULL solo il
+#   proprietario, e le shadow di `postgres` non hanno ancora le colonne se il
+#   provisioning non è passato: si salta con WARN, come le altre primitive.
+#
+# `fn_storico_backfill_scope_tutte()` percorre le madri col trigger. La chiama
+# il 90_end one-shot -31 e il provisioning da superuser.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260911-30-create-fn-storico-backfill-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260911-30-create-fn-storico-backfill-scope
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.fn_storico_backfill_scope(schema, tabella): alle versioni
+        della shadow con origine_schema NULL assegna lo schema della madre e lo
+        scope risolto dallo snapshot; nelle shadow condivise attribuisce la
+        versione alla madre di cui porta almeno una chiave esclusiva; porta
+        origine_schema a NOT NULL quando nessuna riga resta NULL. E
+        fn_storico_backfill_scope_tutte(). Salta con WARN le shadow di altri
+        proprietari o senza le colonne. Brief
+        brief-db-rls-storico-scope-congelato §4b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_storico_risolvi_scope';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_storico_backfill_scope(
+                  p_schema_base dbops.storico_scope_policy.schema_tabella%TYPE,
+                  p_table_base  dbops.storico_scope_policy.nome_tabella%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: attribuire origine_schema e scope_emittente_fiscale_id alle
+              --   versioni gia' scritte di UNA madre. Idempotente: tocca solo le righe
+              --   con origine NULL.
+              DECLARE
+                  v_sto_oid    oid  := pg_catalog.to_regclass(format('storico.%I', p_table_base));
+                  v_full_sto   text := format('storico.%I', p_table_base);
+                  v_madre      text := p_schema_base || '.' || p_table_base;
+                  v_madre_oid  oid  := pg_catalog.to_regclass(format('%I.%I', p_schema_base, p_table_base));
+                  v_owner      text;
+                  v_condivisa  boolean;
+                  v_chiavi     text[];
+                  v_aggiornate bigint := 0;
+                  v_residue    bigint := 0;
+                  v_nullable   boolean;
+                  v_not_null   boolean := false;
+              BEGIN
+                  IF v_sto_oid IS NULL OR v_madre_oid IS NULL THEN
+                      RETURN jsonb_build_object('madre', v_madre, 'esito', 'NO_SHADOW');
+                  END IF;
+
+                  -- Le colonne devono esserci (le mette fn_storico_arma_scope / il
+                  -- provisioning). Senza, niente da fare qui: WARN e avanti.
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                  WHERE a.attrelid = v_sto_oid AND a.attname = 'origine_schema'
+                                    AND NOT a.attisdropped) THEN
+                      PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'fn_storico_backfill_scope',
+                          p_status        => 'WARN',
+                          p_rule_type     => 'STORICO_SCOPE',
+                          p_params        => jsonb_build_object('madre', v_madre, 'shadow', v_full_sto),
+                          p_message       => 'Shadow senza le colonne dello scope: prima fn_storico_arma_scope (o il provisioning)');
+                      RETURN jsonb_build_object('madre', v_madre, 'esito', 'SENZA_COLONNE');
+                  END IF;
+
+                  SELECT pg_get_userbyid(c.relowner) INTO v_owner
+                    FROM pg_catalog.pg_class c WHERE c.oid = v_sto_oid;
+
+                  -- La shadow e' condivisa se un'altra madre omonima porta il trigger.
+                  SELECT EXISTS (
+                      SELECT 1 FROM pg_catalog.pg_trigger t
+                        JOIN pg_catalog.pg_class     mc ON mc.oid = t.tgrelid
+                        JOIN pg_catalog.pg_namespace mn ON mn.oid = mc.relnamespace
+                        JOIN pg_catalog.pg_proc      pr ON pr.oid = t.tgfoid
+                       WHERE pr.proname = 'trgfn_storico_generic' AND NOT t.tgisinternal
+                         AND mc.relname = p_table_base AND mn.nspname <> p_schema_base)
+                    INTO v_condivisa;
+
+                  IF v_condivisa THEN
+                      -- Le chiavi ESCLUSIVE di questa madre: colonne sue che nessuna
+                      -- delle omonime ha. Una versione che ne porta almeno una e' sua.
+                      SELECT array_agg(a.attname::text) INTO v_chiavi
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = v_madre_oid AND a.attnum > 0 AND NOT a.attisdropped
+                         AND NOT EXISTS (
+                             SELECT 1 FROM pg_catalog.pg_attribute b
+                               JOIN pg_catalog.pg_class     bc ON bc.oid = b.attrelid
+                               JOIN pg_catalog.pg_namespace bn ON bn.oid = bc.relnamespace
+                              WHERE bc.relname = p_table_base AND bn.nspname <> p_schema_base
+                                AND bc.relkind IN ('r', 'p')
+                                AND b.attname = a.attname AND b.attnum > 0 AND NOT b.attisdropped);
+                      IF v_chiavi IS NULL THEN
+                          -- Due madri con le STESSE colonne: nessuna versione e' attribuibile.
+                          PERFORM dbops.fn_audit_log_once(
+                              p_function_name => 'fn_storico_backfill_scope',
+                              p_status        => 'WARN',
+                              p_rule_type     => 'STORICO_SCOPE',
+                              p_params        => jsonb_build_object('madre', v_madre, 'shadow', v_full_sto),
+                              p_message       => 'Shadow condivisa senza chiavi esclusive: le versioni legacy non sono attribuibili');
+                          RETURN jsonb_build_object('madre', v_madre, 'esito', 'NON_ATTRIBUIBILE');
+                      END IF;
+                      EXECUTE format(
+                          'UPDATE %s s
+                              SET origine_schema             = %L,
+                                  scope_emittente_fiscale_id = dbops.fn_storico_risolvi_scope(%L, %L, s.snapshot)
+                            WHERE s.origine_schema IS NULL
+                              AND s.snapshot IS NOT NULL
+                              AND pg_catalog.jsonb_exists_any(s.snapshot, %L::text[])',
+                          v_full_sto, p_schema_base, p_schema_base, p_table_base, v_chiavi);
+                  ELSE
+                      EXECUTE format(
+                          'UPDATE %s s
+                              SET origine_schema             = %L,
+                                  scope_emittente_fiscale_id = dbops.fn_storico_risolvi_scope(%L, %L, s.snapshot)
+                            WHERE s.origine_schema IS NULL',
+                          v_full_sto, p_schema_base, p_schema_base, p_table_base);
+                  END IF;
+                  GET DIAGNOSTICS v_aggiornate = ROW_COUNT;
+
+                  -- Quante restano senza origine (nelle condivise: le non attribuibili).
+                  EXECUTE format('SELECT count(*) FROM %s WHERE origine_schema IS NULL', v_full_sto)
+                     INTO v_residue;
+
+                  -- NOT NULL quando e' vero, e solo se siamo proprietari.
+                  SELECT NOT a.attnotnull INTO v_nullable
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = v_sto_oid AND a.attname = 'origine_schema';
+                  IF v_residue = 0 AND v_nullable AND v_owner = current_user THEN
+                      EXECUTE format('ALTER TABLE %s ALTER COLUMN origine_schema SET NOT NULL', v_full_sto);
+                      v_not_null := true;
+                  END IF;
+
+                  IF v_aggiornate > 0 OR v_not_null THEN
+                      PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'fn_storico_backfill_scope',
+                          p_status        => 'OK',
+                          p_rule_type     => 'STORICO_SCOPE',
+                          p_rows_affected => v_aggiornate::int,
+                          p_params        => jsonb_build_object('madre', v_madre, 'shadow', v_full_sto,
+                                                                'condivisa', v_condivisa, 'chiavi_esclusive', to_jsonb(v_chiavi),
+                                                                'aggiornate', v_aggiornate, 'residue_null', v_residue,
+                                                                'set_not_null', v_not_null),
+                          p_message       => 'Backfill di origine_schema e scope sulle versioni gia'' scritte');
+                  END IF;
+
+                  RETURN jsonb_build_object('madre', v_madre, 'shadow', v_full_sto,
+                                            'esito', CASE WHEN v_aggiornate > 0 THEN 'AGGIORNATA' ELSE 'NIENTE_DA_FARE' END,
+                                            'condivisa', v_condivisa, 'aggiornate', v_aggiornate,
+                                            'residue_null', v_residue, 'set_not_null', v_not_null);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_storico_backfill_scope(text, text) IS
+                  'Backfill dello scope congelato sulle versioni gia'' scritte della shadow storico.<tabella> di una madre: alle righe con origine_schema NULL assegna lo schema della madre e scope_emittente_fiscale_id risolto da dbops.fn_storico_risolvi_scope sullo SNAPSHOT (per i modi PADRE risale al padre com''e'' oggi: e'' il limite dichiarato del backfill). Nelle shadow condivise fra due madri omonime attribuisce la versione alla madre di cui lo snapshot porta almeno una chiave ESCLUSIVA (jsonb_exists_any); le versioni senza chiavi esclusive restano NULL e il pgTAP le conta come debito. Porta origine_schema a NOT NULL quando nessuna riga resta NULL e il chiamante e'' proprietario. Idempotente. Brief: brief-db-rls-storico-scope-congelato §4b.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_storico_backfill_scope_tutte()
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: applicare fn_storico_backfill_scope a ogni madre col trigger di storico.
+              DECLARE
+                  r             record;
+                  v_esito       jsonb;
+                  v_madri       int := 0;
+                  v_aggiornate  bigint := 0;
+                  v_residue     bigint := 0;
+                  v_saltate     int := 0;
+              BEGIN
+                  FOR r IN
+                      SELECT DISTINCT n.nspname AS sch, c.relname AS tab
+                        FROM pg_catalog.pg_trigger t
+                        JOIN pg_catalog.pg_class     c ON c.oid = t.tgrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        JOIN pg_catalog.pg_proc      p ON p.oid = t.tgfoid
+                       WHERE p.proname = 'trgfn_storico_generic' AND NOT t.tgisinternal
+                       ORDER BY 1, 2
+                  LOOP
+                      v_madri := v_madri + 1;
+                      v_esito := dbops.fn_storico_backfill_scope(r.sch, r.tab);
+                      IF v_esito ->> 'esito' IN ('SENZA_COLONNE', 'NON_ATTRIBUIBILE', 'NO_SHADOW') THEN
+                          v_saltate := v_saltate + 1;
+                      END IF;
+                      v_aggiornate := v_aggiornate + COALESCE((v_esito ->> 'aggiornate')::bigint, 0);
+                  END LOOP;
+
+                  -- Le residue si contano A FINE GIRO, per shadow distinta: nelle shadow
+                  -- condivise la prima madre vede ancora le righe che la seconda sta per
+                  -- attribuire, e sommare i conteggi per chiamata le conterebbe due volte.
+                  FOR r IN
+                      SELECT c.oid::regclass AS sto
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'storico' AND c.relkind = 'r'
+                         AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                      WHERE a.attrelid = c.oid AND a.attname = 'origine_schema'
+                                        AND NOT a.attisdropped)
+                  LOOP
+                      EXECUTE format('SELECT count(*) FROM %s WHERE origine_schema IS NULL', r.sto) INTO v_esito;
+                      v_residue := v_residue + (v_esito #>> '{}')::bigint;
+                  END LOOP;
+
+                  PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'fn_storico_backfill_scope_tutte',
+                      p_status        => CASE WHEN v_saltate > 0 THEN 'WARN' ELSE 'OK' END,
+                      p_rule_type     => 'STORICO_SCOPE',
+                      p_rows_affected => v_aggiornate::int,
+                      p_params        => jsonb_build_object('madri', v_madri, 'aggiornate', v_aggiornate,
+                                                            'residue_null', v_residue, 'saltate', v_saltate),
+                      p_message       => 'Backfill dello scope di storico su tutte le madri col trigger');
+
+                  RETURN jsonb_build_object('madri', v_madri, 'aggiornate', v_aggiornate,
+                                            'residue_null', v_residue, 'saltate', v_saltate);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_storico_backfill_scope_tutte() IS
+                  'Applica dbops.fn_storico_backfill_scope a ogni madre col trigger di storico e registra un riepilogo nell''audit (madri, versioni aggiornate, residue a NULL, saltate). Idempotente: la chiamano il 90_end one-shot e il provisioning da superuser. Brief: brief-db-rls-storico-scope-congelato §4b.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_storico_backfill_scope_tutte();
+              DROP FUNCTION IF EXISTS dbops.fn_storico_backfill_scope(text, text);

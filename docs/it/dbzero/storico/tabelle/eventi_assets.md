@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_eventi_assets_eventi_assets_id_fk | `CREATE INDEX ix_eventi_assets_eventi_assets_id_fk ON storico.eventi_assets USING btree (eventi_assets_id)` |
+| ix_eventi_assets_scope_ef | `CREATE INDEX ix_eventi_assets_scope_ef ON storico.eventi_assets USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_eventi_assets | `CREATE UNIQUE INDEX pk_storico_eventi_assets ON storico.eventi_assets USING btree (id)` |
 
 ## 🚨 Trigger

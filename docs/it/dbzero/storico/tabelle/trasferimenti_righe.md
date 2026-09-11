@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_trasferimenti_righe_scope_ef | `CREATE INDEX ix_trasferimenti_righe_scope_ef ON storico.trasferimenti_righe USING btree (scope_emittente_fiscale_id)` |
 | ix_trasferimenti_righe_trasferimenti_righe_id_fk | `CREATE INDEX ix_trasferimenti_righe_trasferimenti_righe_id_fk ON storico.trasferimenti_righe USING btree (trasferimenti_righe_id)` |
 | pk_storico_trasferimenti_righe | `CREATE UNIQUE INDEX pk_storico_trasferimenti_righe ON storico.trasferimenti_righe USING btree (id)` |
 

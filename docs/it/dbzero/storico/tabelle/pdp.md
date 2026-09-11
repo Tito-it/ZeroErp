@@ -17,6 +17,8 @@
 | valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 | Nome | Definizione |
 |------|-------------|
 | idx_storico_pdp_pdp_id | `CREATE INDEX idx_storico_pdp_pdp_id ON storico.pdp USING btree (pdp_id)` |
+| ix_pdp_scope_ef | `CREATE INDEX ix_pdp_scope_ef ON storico.pdp USING btree (scope_emittente_fiscale_id)` |
 | pdp_pkey | `CREATE UNIQUE INDEX pdp_pkey ON storico.pdp USING btree (id)` |
 
 ## 🚨 Trigger

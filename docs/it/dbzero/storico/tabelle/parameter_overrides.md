@@ -18,6 +18,8 @@
 | snapshot | jsonb | NO |  |
 | tipo_operazione | smallint | YES |  |
 | tx_id | uuid | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +29,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_parameter_overrides_scope_ef | `CREATE INDEX ix_parameter_overrides_scope_ef ON storico.parameter_overrides USING btree (scope_emittente_fiscale_id)` |
 | ix_storico_parameter_overrides_parameter_override_id | `CREATE INDEX ix_storico_parameter_overrides_parameter_override_id ON storico.parameter_overrides USING btree (parameter_override_id)` |
 | pk_storico_parameter_overrides | `CREATE UNIQUE INDEX pk_storico_parameter_overrides ON storico.parameter_overrides USING btree (id)` |
 

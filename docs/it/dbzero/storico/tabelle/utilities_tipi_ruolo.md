@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_utilities_tipi_ruolo_scope_ef | `CREATE INDEX ix_utilities_tipi_ruolo_scope_ef ON storico.utilities_tipi_ruolo USING btree (scope_emittente_fiscale_id)` |
 | ix_utilities_tipi_ruolo_utilities_tipi_ruolo_id_fk | `CREATE INDEX ix_utilities_tipi_ruolo_utilities_tipi_ruolo_id_fk ON storico.utilities_tipi_ruolo USING btree (utilities_tipi_ruolo_id)` |
 | pk_storico_utilities_tipi_ruolo | `CREATE UNIQUE INDEX pk_storico_utilities_tipi_ruolo ON storico.utilities_tipi_ruolo USING btree (id)` |
 

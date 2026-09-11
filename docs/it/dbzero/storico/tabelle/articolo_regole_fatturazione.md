@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_articolo_regole_fatturazione_articolo_regole_fatturazione_id | `CREATE INDEX ix_articolo_regole_fatturazione_articolo_regole_fatturazione_id ON storico.articolo_regole_fatturazione USING btree (articolo_regole_fatturazione_id)` |
+| ix_articolo_regole_fatturazione_scope_ef | `CREATE INDEX ix_articolo_regole_fatturazione_scope_ef ON storico.articolo_regole_fatturazione USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_articolo_regole_fatturazione | `CREATE UNIQUE INDEX pk_storico_articolo_regole_fatturazione ON storico.articolo_regole_fatturazione USING btree (id)` |
 
 ## 🚨 Trigger

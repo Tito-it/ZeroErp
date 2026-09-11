@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ambito_causale_ambito_causale_id_fk | `CREATE INDEX ix_ambito_causale_ambito_causale_id_fk ON storico.ambito_causale USING btree (ambito_causale_id)` |
+| ix_ambito_causale_scope_ef | `CREATE INDEX ix_ambito_causale_scope_ef ON storico.ambito_causale USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_ambito_causale | `CREATE UNIQUE INDEX pk_storico_ambito_causale ON storico.ambito_causale USING btree (id)` |
 
 ## 🚨 Trigger

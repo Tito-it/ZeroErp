@@ -21,6 +21,24 @@ La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli 
 
 ---
 
+### 🔒 Privilegi — registro APPEND-ONLY per l'applicazione (dal 2026-09-11)
+
+`zeroerp_app` — il ruolo con cui l'applicazione si collega, cioè il soggetto che
+questo registro racconta — può **leggere** e **aggiungere** (`SELECT`, `INSERT`).
+Non `UPDATE`, non `DELETE`, non `TRUNCATE`: *un registro modificabile da chi è
+auditato non è un registro*. Nessuna funzione e nessun codice del backend
+aggiorna o cancella righe di `error_log`; la retention su `cleanup_at` è
+mestiere del proprietario.
+
+⚠️ La postura **non** è un `REVOKE` scritto una volta: i privilegi dell'app
+vengono riconcessi in blocco a ogni passata `ci_apply`, e la postura più
+stretta è **dichiarata dentro quel loop** (`90_end/ci_apply/20260205-41`).
+Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
+Regola: [linee-guida-sql](/linee-guida-sql) §11.8; motivazione: guida
+[Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
+
+---
+
 ### Significato dei Campi Chiave
 
 * **`id`**: identificativo univoco del record di errore.
@@ -49,7 +67,7 @@ La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli 
 ### 🚨 Trigger
 
 * **`trg_assign_tx_id_error_log`** (BEFORE INSERT OR UPDATE): assegna automaticamente il valore di `tx_id` tramite la trigger function `dbops.trgfn_tx_id_managed()`, garantendo che ogni record di errore sia correlato all’identificativo di transazione.
-* **Protezione modifiche**: implementare, se necessario, trigger di tipo `script.trgfn_prevent_modification_generic()` per bloccare UPDATE/DELETE e preservare l’integrità storica.
+* **Protezione modifiche**: dal 2026-09-11 la protezione è nei **privilegi**: `zeroerp_app` ha `SELECT, INSERT` e basta — vedi *Privilegi* qui sotto. Un trigger `script.trgfn_prevent_modification_generic()` resterebbe l'attrezzo per bloccare anche il proprietario, se un giorno servisse; oggi non è montato.
 
 ---
 

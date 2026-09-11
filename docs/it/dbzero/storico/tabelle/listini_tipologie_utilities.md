@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_listini_tipologie_utilities_listini_tipologie_utilities_id_f | `CREATE INDEX ix_listini_tipologie_utilities_listini_tipologie_utilities_id_f ON storico.listini_tipologie_utilities USING btree (listini_tipologie_utilities_id)` |
+| ix_listini_tipologie_utilities_scope_ef | `CREATE INDEX ix_listini_tipologie_utilities_scope_ef ON storico.listini_tipologie_utilities USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_listini_tipologie_utilities | `CREATE UNIQUE INDEX pk_storico_listini_tipologie_utilities ON storico.listini_tipologie_utilities USING btree (id)` |
 
 ## 🚨 Trigger

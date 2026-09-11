@@ -13,6 +13,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fatture_indirizzi_fatture_indirizzi_id_fk | `CREATE INDEX ix_fatture_indirizzi_fatture_indirizzi_id_fk ON storico.fatture_indirizzi USING btree (fatture_indirizzi_id)` |
+| ix_fatture_indirizzi_scope_ef | `CREATE INDEX ix_fatture_indirizzi_scope_ef ON storico.fatture_indirizzi USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_fatture_indirizzi | `CREATE UNIQUE INDEX pk_storico_fatture_indirizzi ON storico.fatture_indirizzi USING btree (id)` |
 
 ## 🚨 Trigger

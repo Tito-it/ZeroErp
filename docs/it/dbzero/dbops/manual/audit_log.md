@@ -25,13 +25,30 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
+### 🔒 Privilegi — registro APPEND-ONLY per l'applicazione (dal 2026-09-11)
+
+| Ruolo | Privilegi | Perché |
+| --- | --- | --- |
+| `zeroerp_app` | `SELECT`, `INSERT` | legge dall'amministrazione, aggiunge con `fn_audit_log_once`. **Non** `UPDATE`/`DELETE`/`TRUNCATE`: *un registro modificabile da chi è auditato non è un registro* |
+| proprietario (migratore, job) | tutto | scrive le automazioni; la modalità sessione `fn_audit_begin`/`fn_audit_end` — che chiude con un `UPDATE` — è **riservata** a lui |
+| `zeroerp_batch_*` | `SELECT` | perimetro nel provisioning |
+
+⚠️ La postura **non** è un `REVOKE` scritto una volta: i privilegi dell'app
+vengono riconcessi in blocco a ogni passata `ci_apply`, e la postura più
+stretta è **dichiarata dentro quel loop** (`90_end/ci_apply/20260205-41`).
+Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
+Regola: [linee-guida-sql](/linee-guida-sql) §11.8; motivazione e dettaglio:
+guida [Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
+
+---
+
 ### Significato dei Campi
 
 | Campo           | Tipo                | Descrizione                                                                              |
 | --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
 | `id`            | `bigint`            | Chiave primaria, sequenza automatica.                                                    |
 | `function_name` | `text`              | Nome della funzione/method/app che è stata eseguita.                                     |
-| `executed_by`   | `text`              | Utente o ruolo che ha avviato l’esecuzione (default `CURRENT_USER`).                     |
+| `executed_by`   | `text`              | **Ruolo di database** che ha scritto la riga (default `current_user`). L'operatore sta nelle GUC `app.*` e nel `tx_id`. |
 | `executed_at`   | `timestamp with tz` | Timestamp di inizio esecuzione (default `now()`).                                        |
 | `params`        | `jsonb`             | Parametri in ingresso o contesto di esecuzione (JSONB).                                  |
 | `status`        | `text`              | Esito dell’esecuzione (`SUCCESS`, `FAILED`, `WARNING`).                                  |
@@ -47,9 +64,9 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 * **PK**: `pk_audit_log` su `id`.
 * **Default** (solo se non assegnati da applicazione o trigger):
 
-  * `executed_by` → `CURRENT_USER`
+  * `executed_by` → `current_user`, il **ruolo di database** che scrive (non l'operatore). ⛔ Fino al 2026-09-11 il default era la *stringa* `'CURRENT_USER'`: le righe storiche portano la parola, riconoscibili e non ricostruite
   * `executed_at` → `now()`
-  * **`tx_id`** non ha default DDL: il valore è sempre gestito dal trigger **`trg_assign_tx_id_audit_log`**.
+  * **`tx_id`** non ha default DDL: il valore è sempre gestito dal trigger **`trg_audit_log_gen_tx_id_ins_upd`** (generato dall'automazione `tx_id`).
 
 ---
 

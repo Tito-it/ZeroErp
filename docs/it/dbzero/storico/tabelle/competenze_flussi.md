@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_competenze_flussi_competenze_flussi_id_fk | `CREATE INDEX ix_competenze_flussi_competenze_flussi_id_fk ON storico.competenze_flussi USING btree (competenze_flussi_id)` |
+| ix_competenze_flussi_scope_ef | `CREATE INDEX ix_competenze_flussi_scope_ef ON storico.competenze_flussi USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_competenze_flussi | `CREATE UNIQUE INDEX pk_storico_competenze_flussi ON storico.competenze_flussi USING btree (id)` |
 
 ## 🚨 Trigger

@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -24,6 +26,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_pratiche_sorgenti_pratiche_sorgenti_id_fk | `CREATE INDEX ix_pratiche_sorgenti_pratiche_sorgenti_id_fk ON storico.pratiche_sorgenti USING btree (pratiche_sorgenti_id)` |
+| ix_pratiche_sorgenti_scope_ef | `CREATE INDEX ix_pratiche_sorgenti_scope_ef ON storico.pratiche_sorgenti USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_pratiche_sorgenti | `CREATE UNIQUE INDEX pk_storico_pratiche_sorgenti ON storico.pratiche_sorgenti USING btree (id)` |
 
 ## 🚨 Trigger

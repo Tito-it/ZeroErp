@@ -2,6 +2,53 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # ------------------------------------------------------------
+# GRANT RUNTIME A `zeroerp_app` — una RETE che converge, non una migrazione.
+#
+# `runOnChange` + `validCheckSums: ANY` in `ci_apply`: gira a ogni passata di
+# quel contesto (in CI a ogni build, su dev quando qualcuno digita
+# `make db-ci-apply`) e riporta i privilegi dell'applicazione alla postura
+# dichiarata qui. Il corpo si modifica in questo file: è il suo ciclo di vita.
+#
+# ── ⛔ COROLLARIO CHE NON SI VEDE SU DEV ─────────────────────────────────
+#   Qualunque REVOKE a `zeroerp_app` scritto in un changeSet normale viene
+#   ANNULLATO da questo loop alla passata successiva: su dev sopravvive fino
+#   al prossimo `db-ci-apply` (e sembra funzionare, a lungo), in CI muore
+#   nello stesso build. Successo il 2026-08-17 (`ui.lista_definizione.
+#   multi_emittente`) e di nuovo trovato il 2026-09-11 sull'audit.
+#   ⇒ Una postura PIÙ STRETTA del default si dichiara QUI, negli elenchi in
+#   testa al blocco — E NEL PROVISIONING, che questo loop non annulla ma che
+#   annulla lui.
+#   🔴 QUESTO LOOP NON È L'ULTIMA PAROLA, scoperto il 2026-09-11:
+#     `scripts/sql/provision_db_roles.sql` gira DOPO `--contexts=ci_apply` sia
+#     in `ci-validate.yaml` sia in `ci-local.sh`, e fa `GRANT ... ON ALL TABLES`
+#     / `ON ALL FUNCTIONS` a `zeroerp_app`: riapriva UPDATE/DELETE sui registri
+#     e l'EXECUTE sulle porte riservate, in silenzio. Su dev non si vede (il
+#     provisioning non si rilancia dopo ogni migrate). Da quel giorno il
+#     provisioning porta la STESSA eccezione, e le tre sedi le tiene allineate
+#     `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
+#
+# ── ⭐ REGISTRI APPEND-ONLY (dal 2026-09-11) ──────────────────────────────
+#   Brief: brief-db-rls-storico-scope-congelato.md §8.4
+#   `dbops.audit_log` e `dbops.error_log` raccontano ciò che l'applicazione fa
+#   e sbaglia. Il ruolo raccontato li legge e li aggiunge, non li riscrive né
+#   li cancella: SELECT, INSERT — e REVOKE di UPDATE, DELETE.
+#   La modalità sessione dell'audit (`fn_audit_begin` → `fn_audit_end`) è un
+#   UPDATE del registro: riservata a chi possiede la tabella (migratore, job).
+#   L'app usa `fn_audit_log_once`. Le due funzioni hanno `=X` (PUBLIC): la
+#   revoca dell'EXECUTE va a PUBLIC e all'app insieme, o non toglie niente.
+#   Il changeSet che agisce subito su dev è `90_end/20260911-09`; il pgTAP che
+#   pinna l'esito è `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
+#
+# ── ⭐ SCHEMI SENZA DELETE (dal 2026-09-11) ────────────────────────────────
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b.2, passo 7
+#   `storico`: le shadow le scrive il trigger — INSERT della versione, UPDATE
+#   che chiude la precedente — e uno snapshot non si cancella mai. All'app
+#   SELECT, INSERT, UPDATE e REVOKE di DELETE; la retention è del proprietario.
+#   È la stessa regola che `fn_grant_storico_shadows` applica ai ruoli batch.
+#   Su dev agisce subito `dbops.fn_storico_arma_scope` (changeSet -27, poi il
+#   90_end runAlways -29), che revoca il DELETE shadow per shadow; il pgTAP è
+#   `db/pgtap/storico/test-storico-scope-congelato-v1.sql` (test 22).
+# ------------------------------------------------------------
 
 databaseChangeLog:
   - logicalFilePath: migrations_v2/90_end/ci_apply/20260205-41-apply-runtime-grants-ci-mctit.yaml
@@ -28,6 +75,31 @@ databaseChangeLog:
                 v_schema text;
                 v_fn record;
                 v_rel record;
+                -- ⭐ Registri APPEND-ONLY per l'applicazione: SELECT, INSERT e
+                --   basta. Un registro modificabile da chi è auditato non è un
+                --   registro. Voci `schema.tabella`, confrontate sui nomi del
+                --   catalogo (non sul testo di un regclass, che dipende dal
+                --   search_path). Brief: brief-db-rls-storico-scope-congelato §8.4
+                v_registri_append_only text[] := ARRAY[
+                  'dbops.audit_log',
+                  'dbops.error_log'
+                ];
+                -- ⭐ Porte RISERVATE a chi possiede la tabella: la modalità
+                --   sessione dell'audit (begin/end) è un UPDATE del registro.
+                --   L'app usa fn_audit_log_once. Voci `schema.funzione`, tutti
+                --   gli overload; la revoca va anche a PUBLIC, che ha `=X`.
+                v_fn_riservate text[] := ARRAY[
+                  'dbops.fn_audit_begin',
+                  'dbops.fn_audit_end'
+                ];
+                -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
+                --   scrive il trigger (INSERT della versione, UPDATE che chiude la
+                --   precedente) e uno snapshot non si cancella mai — la retention è
+                --   del proprietario. Stessa regola di fn_grant_storico_shadows.
+                --   Brief: brief-db-rls-storico-scope-congelato §4b.2, passo 7.
+                v_schemi_senza_delete text[] := ARRAY[
+                  'storico'
+                ];
                 v_schemas text[] := ARRAY[
                   'acquisti',
                   'anagrafiche',
@@ -60,7 +132,8 @@ databaseChangeLog:
 
                   -- Tabelle: concedi solo sugli oggetti posseduti da current_user.
                   FOR v_rel IN
-                    SELECT c.oid::regclass AS obj_sig
+                    SELECT c.oid::regclass AS obj_sig,
+                           n.nspname || '.' || c.relname AS nome_qualificato
                     FROM pg_class c
                     JOIN pg_namespace n ON n.oid = c.relnamespace
                     WHERE n.nspname = v_schema
@@ -68,7 +141,18 @@ databaseChangeLog:
                       AND pg_get_userbyid(c.relowner) = current_user
                   LOOP
                     BEGIN
-                      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                      IF v_rel.nome_qualificato = ANY (v_registri_append_only) THEN
+                        -- Registro append-only: la REVOKE è la postura, non un
+                        -- rimedio. Senza questo ramo il GRANT sotto la annullerebbe.
+                        EXECUTE format('GRANT SELECT, INSERT ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                        EXECUTE format('REVOKE UPDATE, DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
+                      ELSIF v_schema = ANY (v_schemi_senza_delete) THEN
+                        -- Shadow di storico: si scrive e si chiude, non si cancella.
+                        EXECUTE format('GRANT SELECT, INSERT, UPDATE ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                        EXECUTE format('REVOKE DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
+                      ELSE
+                        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                      END IF;
                     EXCEPTION WHEN OTHERS THEN
                       RAISE NOTICE 'Skip GRANT TABLE %: %', v_rel.obj_sig, SQLERRM;
                     END;
@@ -95,13 +179,19 @@ databaseChangeLog:
                   FOR v_fn IN
                     SELECT
                       p.oid::regprocedure AS fn_sig,
-                      p.prokind AS fn_kind
+                      p.prokind AS fn_kind,
+                      n.nspname || '.' || p.proname AS nome_qualificato
                     FROM pg_proc p
                     JOIN pg_namespace n ON n.oid = p.pronamespace
                     WHERE n.nspname = v_schema
                       AND pg_get_userbyid(p.proowner) = current_user
                   LOOP
-                    IF v_fn.fn_kind = 'p' THEN
+                    IF v_fn.fn_kind = 'f' AND v_fn.nome_qualificato = ANY (v_fn_riservate) THEN
+                      -- Porta riservata: la chiusura va anche a PUBLIC, che sulle
+                      -- funzioni ha EXECUTE per default (`=X`). Il proprietario
+                      -- esegue sempre; i grant espliciti (ruoli batch) restano.
+                      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, %I', v_fn.fn_sig, v_app_role);
+                    ELSIF v_fn.fn_kind = 'p' THEN
                       EXECUTE format('GRANT EXECUTE ON PROCEDURE %s TO %I', v_fn.fn_sig, v_app_role);
                     ELSIF v_fn.fn_kind = 'f' THEN
                       EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', v_fn.fn_sig, v_app_role);

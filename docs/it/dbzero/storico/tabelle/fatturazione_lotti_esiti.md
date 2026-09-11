@@ -13,6 +13,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fatturazione_lotti_esiti_fatturazione_lotti_esiti_id_fk | `CREATE INDEX ix_fatturazione_lotti_esiti_fatturazione_lotti_esiti_id_fk ON storico.fatturazione_lotti_esiti USING btree (fatturazione_lotti_esiti_id)` |
+| ix_fatturazione_lotti_esiti_scope_ef | `CREATE INDEX ix_fatturazione_lotti_esiti_scope_ef ON storico.fatturazione_lotti_esiti USING btree (scope_emittente_fiscale_id)` |
 | pk_storico_fatturazione_lotti_esiti | `CREATE UNIQUE INDEX pk_storico_fatturazione_lotti_esiti ON storico.fatturazione_lotti_esiti USING btree (id)` |
 
 ## 🚨 Trigger

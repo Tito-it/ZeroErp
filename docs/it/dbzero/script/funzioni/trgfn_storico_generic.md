@@ -30,6 +30,12 @@ AS $function$
         v_id_col_type  TEXT; -- Tipo della colonna ID nella tabella originale
         v_should_reset  BOOLEAN;  -- = NOT v_skip_reset, valorizzata in BEGIN
         v_skip_reset    BOOLEAN;
+        -- rev 2026-09-11 (brief-db-rls-storico-scope-congelato §4b): lo scope
+        -- della versione, risolto UNA volta per scrittura dalla mappa
+        -- dbops.storico_scope_policy e congelato nella shadow. Due variabili
+        -- perche' la versione INIZIALE fotografa OLD e quella finale NEW.
+        v_scope         anagrafiche.emittenti_fiscali.id%TYPE;
+        v_scope_old     anagrafiche.emittenti_fiscali.id%TYPE;
 
       BEGIN
         -- 0) Controllo da tabella di configurazione
@@ -100,18 +106,33 @@ AS $function$
         ELSE
           RETURN COALESCE(NEW,OLD); -- Caso non gestito (non dovrebbe verificarsi)
         END IF;
+        -- [Sezione 2b] Lo scope della versione ------------------------------------
+        -- L'emittente a cui la riga appartiene ADESSO, che e' l'unico momento in
+        -- cui e' certo (la madre esiste ancora, §2.3): si congela nella shadow e
+        -- non si ricalcola piu'. La mappa dice da dove prenderlo; una madre non
+        -- protetta (NESSUNO) da' NULL. Il resolver e' SECURITY DEFINER: risale al
+        -- padre anche quando chi scrive non lo vedrebbe sotto RLS.
+        v_scope := dbops.fn_storico_risolvi_scope(orig_schema, orig_table, snapshot_data);
 
         -- [Sezione 3] Chiusura snapshot aperti ------------------------------------
         -- Cerca e chiude eventuali snapshot precedenti ancora aperti (valid_to IS NULL)
         -- per lo stesso record (stesso ID)
         BEGIN
+          -- rev 2026-09-11: si chiude SOLO la versione dello stesso schema di
+          -- origine. Sei shadow sono condivise fra due madri omonime
+          -- (acquisti.ddt e vendite.ddt scrivono entrambe in storico.ddt): senza
+          -- questo filtro, due documenti con lo stesso id si chiuderebbero a
+          -- vicenda. ⚠️ `OR origine_schema IS NULL` per le versioni scritte prima
+          -- del backfill e non attribuibili: e' il comportamento che avevano, non
+          -- una regressione, e sparisce quando la colonna diventa NOT NULL.
           EXECUTE format(
-        'UPDATE %I.%I
-            SET valid_to = $1
-          WHERE %I = $2::%s AND valid_to IS NULL',
-        hist_schema, hist_table, id_col_hist, v_id_col_type
-      )
-  USING v_current_date, v_id_value;
+            'UPDATE %I.%I
+                SET valid_to = $1
+              WHERE %I = $2::%s AND valid_to IS NULL
+                AND (origine_schema = $3 OR origine_schema IS NULL)',
+            hist_schema, hist_table, id_col_hist, v_id_col_type
+          )
+          USING v_current_date, v_id_value, orig_schema;
 
   GET DIAGNOSTICS v_rowcount = ROW_COUNT; -- Controlla se ha chiuso record
   v_snapshot_open := (v_rowcount > 0);    -- Imposta flag se trovati snapshot
@@ -131,13 +152,17 @@ AS $function$
           -- per mantenere traccia dello stato precedente all'operazione corrente
           IF NOT v_snapshot_open THEN
             BEGIN
-
+              -- Lo scope di com'era la riga PRIMA: e' la versione che si sta
+              -- fotografando. Di norma coincide con quello della versione finale
+              -- (l'emittente non cambia), ma si risolve sulla riga giusta.
+              v_scope_old := dbops.fn_storico_risolvi_scope(orig_schema, orig_table, to_jsonb(OLD));
               EXECUTE format(
-                'INSERT INTO %I.%I (%I, valid_from, valid_to, data_insert, user_insert, snapshot, tipo_operazione)
-                VALUES ($1::%s, $2, $3, now(), current_user, $4, 1)',
+                'INSERT INTO %I.%I (%I, valid_from, valid_to, data_insert, user_insert, snapshot, tipo_operazione,
+                                    origine_schema, scope_emittente_fiscale_id)
+                VALUES ($1::%s, $2, $3, now(), current_user, $4, 1, $5, $6)',
                 hist_schema, hist_table, id_col_hist, v_id_col_type
               )
-              USING v_id_value, v_fixed_date, v_current_date, to_jsonb(OLD);
+              USING v_id_value, v_fixed_date, v_current_date, to_jsonb(OLD), orig_schema, v_scope_old;
 
             EXCEPTION WHEN OTHERS THEN
               -- Gestione errore inserimento storico iniziale
@@ -155,11 +180,12 @@ AS $function$
           BEGIN
 
           EXECUTE format(
-        'INSERT INTO %I.%I (%I, valid_from, data_insert, user_insert, snapshot, tipo_operazione)
-          VALUES ($1::%s, $2, now(), current_user, $3, $4)',
-        hist_schema, hist_table, id_col_hist, v_id_col_type
-      )
-      USING v_id_value, v_current_date, snapshot_data, op_type;
+            'INSERT INTO %I.%I (%I, valid_from, data_insert, user_insert, snapshot, tipo_operazione,
+                                origine_schema, scope_emittente_fiscale_id)
+              VALUES ($1::%s, $2, now(), current_user, $3, $4, $5, $6)',
+            hist_schema, hist_table, id_col_hist, v_id_col_type
+          )
+          USING v_id_value, v_current_date, snapshot_data, op_type, orig_schema, v_scope;
 
           EXCEPTION WHEN OTHERS THEN
             -- Gestione errore inserimento storico finale
@@ -193,6 +219,12 @@ IS 'Funzione generica per la gestione dello storico delle modifiche.
       3. Creazione snapshot finale con valid_from = CURRENT_DATE e valid_to NULL
       4. Logging degli errori tramite script.fn_log_and_raise_error
       5. Importante deve essere sempre definita la colonna "storicizza"
+      6. Rev 2026-09-11 (brief-db-rls-storico-scope-congelato §4b): ogni versione porta
+         origine_schema (lo schema della madre: sei shadow sono condivise fra due madri
+         omonime, e la chiusura dello snapshot filtra anche su questo) e
+         scope_emittente_fiscale_id, risolto UNA volta alla scrittura da
+         dbops.fn_storico_risolvi_scope secondo dbops.storico_scope_policy e mai piu''
+         ricalcolato. Le versioni scritte prima ricevono i valori dal backfill.
       6. rev 2026-08-05: il registro config.storico_set_storicizza si consulta col nome QUALIFICATO (schema.tabella). Prima si usava TG_TABLE_NAME, cioe'' il nome nudo, contro un registro che contiene solo nomi qualificati: nessuna riga matchava e l''esenzione dal reset del flag non ha mai funzionato per nessuna tabella — ognuna registrava una sola modifica nella vita (misurato: esattamente 2,00 righe di storico per documento su ordini e ddt). Il nome nudo non sarebbe comunque una chiave valida, perche'' acquisti.ddt e vendite.ddt sono entrambi registrati.';
 ```
 

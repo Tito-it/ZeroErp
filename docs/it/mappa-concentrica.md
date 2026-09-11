@@ -448,7 +448,10 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   120 tabelle senza perimetro, ed è il **D3**, il debito più grosso rimasto.
   Disegno e stima pronti (≈ 3 giornate); il lavoro è **uno**, non 120, perché la
   forma delle tabelle di storico è generata. ⛔ **Si fa prima che `acquisti` e
-  `magazzino` crescano**, così quelle nascono protette
+  `magazzino` crescano**, così quelle nascono protette.
+  ⚠️ Il brief copre anche `dbops.audit_log`, ma come **domanda a sé**: stessa
+  famiglia di difetto, rimedio diverso — lì la domanda non è «quale policy» ma
+  *«questo registro deve poter contenere dati di dominio?»*
 - **Secondo consumatore di `pratiche`** (Fase F, candidata assistenza/CRM): è ciò
   che promuove le sue astrazioni da *proposte* a *contratti* (manifesto §7)
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico

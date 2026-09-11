@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il backfill, una volta — passo 5 del brief.
+#   Brief: brief-db-rls-storico-scope-congelato.md §4b, §5
+#
+# Chiama `dbops.fn_storico_backfill_scope_tutte()`: le versioni già scritte
+# ricevono `origine_schema` e `scope_emittente_fiscale_id`; le shadow senza
+# righe NULL residue passano a `origine_schema NOT NULL`.
+#
+# ── PERCHÉ `90_end` E UNA VOLTA SOLA ─────────────────────────────────
+#   Dopo la mappa (80_data) e dopo la -29, che ha messo le colonne. È una
+#   migrazione di dati del pregresso, non una rete: le versioni nuove le
+#   scrive il trigger già complete. Rieseguirla non farebbe danno (tocca solo
+#   le righe a NULL), ma non ha ragione di girare a ogni migrate su 65 MB di
+#   storico.
+#
+# ── 🔴 SU DEV NON COPRE LE SHADOW DI `postgres` ──────────────────────
+#   Non hanno le colonne finché non passa `scripts/sql/provision_storico_scope.sql`
+#   da superuser, che rifà anche il backfill. Qui vengono saltate con WARN.
+#   In CI le shadow sono vuote: zero righe da attribuire, zero costo.
+#
+# ⚠️ I NULL che restano nelle shadow condivise (versioni senza chiavi
+#   esclusive) sono un debito DICHIARATO: li conta il pgTAP, non li nasconde.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260911-31-run-storico-backfill-scope-tutte-mctit.yaml
+
+  - changeSet:
+      id: 20260911-31-run-storico-backfill-scope-tutte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Chiama dbops.fn_storico_backfill_scope_tutte() una volta: alle versioni
+        di storico già scritte assegna origine_schema e lo scope risolto dallo
+        snapshot (nelle shadow condivise, attribuendo la versione alla madre di
+        cui porta una chiave esclusiva) e porta origine_schema a NOT NULL dove
+        nessuna riga resta NULL. Le shadow di altri proprietari sono saltate:
+        le fa il provisioning da superuser.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_storico_backfill_scope_tutte';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $run$
+              DECLARE
+                  v_esito jsonb;
+              BEGIN
+                  v_esito := dbops.fn_storico_backfill_scope_tutte();
+                  RAISE NOTICE 'storico backfill scope: %', v_esito::text;
+              END
+              $run$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i valori attribuiti restano. Toglierli direbbe di non
+              -- sapere piu' cio' che lo snapshot dice ancora.
+              SELECT 1;

@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_tipi_soggetto_dettaglio_tipi_indirizzo_scope_ef | `CREATE INDEX ix_tipi_soggetto_dettaglio_tipi_indirizzo_scope_ef ON storico.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (scope_emittente_fiscale_id)` |
 | ix_tipi_soggetto_dettaglio_tipi_indirizzo_tipi_soggetto_dettagl | `CREATE INDEX ix_tipi_soggetto_dettaglio_tipi_indirizzo_tipi_soggetto_dettagl ON storico.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipi_soggetto_dettaglio_tipi_indirizzo_id)` |
 | pk_storico_tipi_soggetto_dettaglio_tipi_indirizzo | `CREATE UNIQUE INDEX pk_storico_tipi_soggetto_dettaglio_tipi_indirizzo ON storico.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (id)` |
 

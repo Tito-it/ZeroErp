@@ -14,6 +14,8 @@
 | tx_id | uuid | YES |  |
 | valid_from | timestamp with time zone | YES | now() |
 | valid_to | timestamp with time zone | YES |  |
+| origine_schema | text | NO |  |
+| scope_emittente_fiscale_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +25,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_sepa_mandati_scope_ef | `CREATE INDEX ix_sepa_mandati_scope_ef ON storico.sepa_mandati USING btree (scope_emittente_fiscale_id)` |
 | ix_sepa_mandati_sepa_mandati_id_fk | `CREATE INDEX ix_sepa_mandati_sepa_mandati_id_fk ON storico.sepa_mandati USING btree (sepa_mandati_id)` |
 | pk_storico_sepa_mandati | `CREATE UNIQUE INDEX pk_storico_sepa_mandati ON storico.sepa_mandati USING btree (id)` |
 
