@@ -30,6 +30,9 @@
 7. test_il_debito_delle_viste_in_attesa_e_rientrato
      Il verso che chiude il debito: quando il team DB iscrive la vista, questo
      diventa rosso e dice di cancellare la riga dal backend.
+     ⚠️ Dal 2026-09-10 `_IN_ATTESA_DI_CATALOGO` e' VUOTA — il debito e' in pari,
+     quindi questo test oggi gira a vuoto. E' la condizione giusta, non una
+     copertura che manca: si riaccende da se' alla prossima vista in attesa.
 """
 
 from __future__ import annotations
@@ -167,6 +170,13 @@ class PresidiCatalogoGuardrail(TestCase):
     #    alle viste gia' decise e non ancora iscritte (brief §8.4). Il giorno in
     #    cui il team DB applica la riga, questo test diventa rosso: e' il segnale
     #    che la copia nel backend va cancellata, non un incidente.
+    # ⭐ E' successo davvero il 2026-09-10 con `maintenance.vw_job_run_da_guardare`
+    #    (brief §10.2): il test si e' acceso, ha nominato la riga, la riga e'
+    #    stata tolta. Da allora il registro e' A ZERO e questo confronto gira a
+    #    VUOTO — che e' l'esito corretto di un debito pagato.
+    # ⛔ Non si aggiunge un'asserzione «la tupla dev'essere vuota»: renderebbe
+    #    rosso il prossimo debito legittimo, cioe' punirebbe l'uso corretto del
+    #    meccanismo. Qui si presidia il RIENTRO, non l'assenza.
     def test_il_debito_delle_viste_in_attesa_e_rientrato(self) -> None:
         a_catalogo = {r["vista"] for r in self.catalogo if r["a_catalogo"]}
         rientrate = sorted(

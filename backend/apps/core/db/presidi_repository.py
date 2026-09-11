@@ -96,50 +96,31 @@ class RigaPresidio(TypedDict):
     #    far esplodere: il pgTAP lo presidia, ma un digest che muore su una riga
     #    stantia smette di riferire anche tutte le altre.
     esiste: bool
-    # ⛔ Vedi `_IN_ATTESA_DI_CATALOGO`: `False` solo per il debito dichiarato.
+    # ⛔ Vedi `_IN_ATTESA_DI_CATALOGO`: `False` solo per il debito dichiarato,
+    #    che dal 2026-09-10 e' a zero righe — quindi oggi vale sempre `True`.
     a_catalogo: bool
 
 
-# ⚠️ IL DEBITO DICHIARATO, e deve CALARE — una riga sola, con la sua data.
-#    `maintenance.vw_job_run_da_guardare` e' la decima spia del pannello dei
-#    presidi e l'unica che il catalogo non conosce: la sua iscrizione e' stata
-#    decisa (Tid, 2026-09-10) e la riga CSV e' gia' scritta nel §8.4 del brief,
-#    ma finche' il team DB non la applica il catalogo non la nomina.
-# ⛔ Toglierla dal pannello nell'attesa sarebbe la cosa peggiore: quella vista
-#    dice «l'ultima corsa di un job e' fallita», ed e' esattamente il presidio
-#    da cui questo cantiere e' nato.
-# ⇒ Qui c'e' la STESSA riga che il team DB applichera'. Il giorno in cui la
-#    applica, `test_presidi_catalogo.test_il_debito_delle_viste_in_attesa_e_rientrato`
-#    diventa rosso e dice di cancellare queste righe: nient'altro cambia.
-_IN_ATTESA_DI_CATALOGO: tuple[RigaPresidio, ...] = (
-    {
-        "vista": "maintenance.vw_job_run_da_guardare",
-        "natura": NATURA_ZERO,
-        # ⚠️ `colonna_stato` resta NULL DI PROPOSITO: la vista HA una colonna
-        #    `motivo`, ma dice PERCHE' la riga e' li' — FALLITA, APERTA DA
-        #    TROPPO, INTERMITTENTE — e ognuna e' comunque da guardare.
-        "colonna_stato": None,
-        "stato_atteso": None,
-        "registro": None,
-        "presidiato_da": None,
-        "cadenza": CADENZA_GIORNALIERA,
-        "perimetro": PERIMETRO_LIBERO,
-        # ⚠️ La nota e' quella che il team DB applichera' (§8.4 del brief), non
-        #    una frase di servizio: e' cio' che una persona legge nel digest
-        #    accanto al numero, e «in attesa di iscrizione» non spiega perche'
-        #    quella riga e' un allarme.
-        "nota": (
-            "L'ultima corsa di un job e' fallita, oppure e' rimasta aperta da "
-            "oltre un'ora, oppure il job e' intermittente (verde adesso ma con "
-            "rossi negli ultimi sette giorni). DEVE restare vuota. "
-            "GIORNALIERA perche' un lavoro fallito stanotte va visto stamattina. "
-            "[in attesa di iscrizione a catalogo: brief §8.4]"
-        ),
-        "descrizione": None,
-        "esiste": True,
-        "a_catalogo": False,
-    },
-)
+# ⚠️ IL DEBITO DICHIARATO DELLE VISTE NON ANCORA A CATALOGO — oggi A ZERO.
+#    Qui stanno le viste che il pannello interroga e che il catalogo non conosce
+#    ancora: si portano come riga dichiarata, con la STESSA forma che il team DB
+#    applichera'. Toglierle dal pannello nell'attesa sarebbe la cosa peggiore —
+#    una spia decisa e non ancora iscritta resterebbe spenta, e una spia spenta
+#    non presidia niente.
+# ⭐ SVUOTATA il 2026-09-10: `maintenance.vw_job_run_da_guardare` — l'unica voce
+#    che ci sia mai stata — e' stata iscritta dal team DB (brief
+#    §10.2, changeSet `20260910-35..37`), e il debito e' PAGATO.
+#    Il verso di ritiro ha funzionato da se':
+#    `test_il_debito_delle_viste_in_attesa_e_rientrato` e' diventato rosso il
+#    giorno dell'apply e ha detto quale riga cancellare.
+# ⛔ IL MECCANISMO NON SI CANCELLA INSIEME ALLA RIGA, ed e' una scelta: un
+#    registro vuoto non e' un registro inutile, e' un registro in pari — la
+#    stessa ragione per cui `dbops.codici_errore_senza_policy` resta a zero
+#    righe invece di essere droppata. La prossima vista decisa e non ancora
+#    applicata entra qui, non in un `if` sparso nel pannello.
+# ⚠️ Finche' resta vuota, il ramo «non a catalogo» di `conta()` e
+#    `_decora_in_attesa` non li percorre nessuno: sono DORMIENTI, non morti.
+_IN_ATTESA_DI_CATALOGO: tuple[RigaPresidio, ...] = ()
 
 _COLONNE_CATALOGO = """
     p.vista,
@@ -219,9 +200,11 @@ class PresidiRepository:
     #    Un conteggio scritto qui sarebbe la seconda sede di quel filtro.
     # ⚠️ L'UNICA eccezione e' il debito di `_IN_ATTESA_DI_CATALOGO`: la funzione
     #    RIFIUTA una vista che il catalogo non conosce (`E_PRESIDIO_NON_A_CATALOGO`),
-    #    ed e' giusto che lo faccia. Li' si conta diretto, e il ramo muore da se'
-    #    il giorno dell'iscrizione. Oggi le due strade danno lo stesso numero:
-    #    quella riga non ha colonna di stato e ha perimetro LIBERO.
+    #    ed e' giusto che lo faccia — li' si conta diretto.
+    # ⭐ Dal 2026-09-10 quel debito e' a ZERO, quindi questo ramo e' DORMIENTE:
+    #    non lo percorre nessuno finche' non entra una vista nuova in attesa.
+    # ⛔ E non si toglie: e' l'unica strada per cui una spia gia' decisa e non
+    #    ancora iscritta resta ACCESA invece di sparire dal pannello.
     def conta(self, riga: RigaPresidio) -> int:
         vista = self._vista_valida(riga["vista"])
         with connection.cursor() as cursor:

@@ -24,7 +24,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import SMTP_PLACEHOLDER_HOST, EmailDispatchService
+from apps.core.services.email_service import EmailDispatchService, smtp_non_configurato
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.html_sanitizer_service import sanitize_email_html
 
@@ -39,15 +39,20 @@ E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
 #        chiave i18n (lato FE) usata come tooltip quando `can_test=False`.
 #        Casi gestiti:
 #          - account inattivo            → ("amm.email_test_reason_inactive")
-#          - host vuoto/placeholder      → console mode, test sempre OK
+#          - host vuoto/placeholder      → il test si puo' PREMERE, e dira' di no
 #          - password SMTP non impostata → ("amm.email_test_reason_no_password")
 def _derive_test_capability(account: dict[str, Any]) -> tuple[bool, str | None]:
     if not account.get("attivo"):
         return False, "amm.email_test_reason_inactive"
-    smtp_host = (account.get("smtp_host") or "").strip()
-    # In console mode (host vuoto o placeholder) non serve credenziale:
-    # il test ritorna sempre successo, quindi e' sempre abilitabile.
-    if not smtp_host or smtp_host == SMTP_PLACEHOLDER_HOST:
+    # ⛔ IL PREDICATO NON SI RISCRIVE QUI: `smtp_non_configurato` e' la sede
+    #    unica, e questa era la seconda copia — proprio sotto un commento che
+    #    dichiarava di aver centralizzato la definizione (regola del 2).
+    if smtp_non_configurato(account):
+        # ⚠️ Il pulsante resta ATTIVO ed e' voluto: dal 2026-09-11 il test su un
+        #    account col placeholder risponde «SMTP non configurato» invece di
+        #    «OK». Spegnerlo qui toglierebbe a chi guarda l'unico modo di
+        #    sentirselo dire — e prima quel test rispondeva OK, cioe' il verde
+        #    che ha ingannato una persona vera.
         return True, None
     if not account.get("has_smtp_password"):
         return False, "amm.email_test_reason_no_password"

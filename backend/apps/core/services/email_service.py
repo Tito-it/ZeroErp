@@ -35,6 +35,46 @@ SMTP_PLACEHOLDER_HOST = "smtp.example.com"
 _SMTP_TIMEOUT_SEND = 30
 _SMTP_TIMEOUT_TEST = 10
 
+# ⭐ I TRE CANALI con cui un'email esce, e sono TRE di proposito: fino al
+#    2026-09-11 erano DUE — «SMTP» e «console» — e in «console» ci cadevano due
+#    situazioni opposte, l'una voluta e l'altra un guasto.
+CANALE_SMTP = "SMTP"
+CANALE_CONSOLE = "CONSOLE"
+CANALE_NON_CONFIGURATO = "NON_CONFIGURATO"
+
+
+# Scopo: «Questo account PUO' spedire?» — host assente o ancora quello del seed.
+# ⛔ E' il predicato che `email_views._derive_test_capability` riscriveva a mano
+#    (regola del 2): il commento sopra `SMTP_PLACEHOLDER_HOST` dichiarava di
+#    centralizzare la definizione, ma la copia esisteva lo stesso.
+def smtp_non_configurato(account: dict[str, Any]) -> bool:
+    host = (account.get("smtp_host") or "").strip()
+    return not host or host == SMTP_PLACEHOLDER_HOST
+
+
+# Il messaggio che finisce in `config.email_log.errore`: deve dire che cos'e'
+# successo E dove si rimedia, perche' chi lo legge sta guardando il giornale
+# delle email e non il codice.
+# ⛔ `conseguenza` NON e' un abbellimento: lo stesso predicato serve due percorsi
+#    che hanno fatto due cose diverse. Sulla via dell'invio c'e' una mail che non
+#    e' partita; sul pulsante «prova connessione» non c'e' nessuna mail — e
+#    scriverlo lo stesso, come si e' fatto fino al 2026-09-11, e' un messaggio
+#    che afferma un fatto mai avvenuto proprio nella schermata dove una persona
+#    lo legge (finisce in `email_account.meta.last_test_message`).
+_CONSEGUENZA_INVIO = "L'email NON e' stata spedita."
+_CONSEGUENZA_TEST = "Non c'e' nessuna connessione da provare."
+
+
+def _motivo_non_configurato(
+    account: dict[str, Any], *, conseguenza: str = _CONSEGUENZA_INVIO,
+) -> str:
+    codice = account.get("codice") or account.get("codice_interno") or "?"
+    return (
+        f"SMTP non configurato per l'account '{codice}': smtp_host vale "
+        f"'{account.get('smtp_host') or ''}'. {conseguenza} "
+        f"Configurare l'account da Amm. Software → Email accounts."
+    )
+
 
 class EmailDispatchService:
     """Servizio invio email con risoluzione account/template per reparto."""
@@ -51,14 +91,31 @@ class EmailDispatchService:
 
         return re.sub(r"\{\{(\s*\w+\s*)\}\}", _replace, testo)
 
-    # Scopo: Determina se un account e' in console mode.
-    #        Console mode se: host vuoto/placeholder (indipendentemente da DEBUG),
-    #        oppure DEBUG=True con qualsiasi account.
+    # Scopo: Con quale canale esce DAVVERO questa email: SMTP, console (stampata
+    #        a video) oppure nessuno, perche' l'account non e' configurato.
+    #
+    # ⛔ FINO AL 2026-09-11 I CANALI ERANO DUE, e in «console» cadevano due
+    #    situazioni opposte: lo sviluppo dichiarato (`DEBUG`), dove stampare a
+    #    video E' il comportamento voluto, e un account rimasto col placeholder
+    #    del seed su un host di esercizio, dove e' un GUASTO DI CONFIGURAZIONE.
+    #    Entrambe finivano marcate `SENT`, cioe' indistinguibili da una consegna.
+    # 🔴 Il caso e' successo davvero: il 2026-09-10 il digest dei presidi e' stato
+    #    dichiarato «inviato» su un host con `DEBUG = False` e
+    #    `smtp_host = smtp.example.com`, e nessuno avrebbe potuto accorgersene —
+    #    il giornale diceva SENT e nessun presidio guarda oltre.
+    # ⇒ Il terzo canale non aggiunge un caso: SEPARA due casi che c'erano gia'.
+    def canale_invio(self, account: dict[str, Any]) -> str:
+        if smtp_non_configurato(account):
+            # ⚠️ In DEBUG resta console: senza SMTP lo sviluppo deve poter girare.
+            #    Fuori da DEBUG e' configurazione che manca, e si dice.
+            return CANALE_CONSOLE if settings.DEBUG else CANALE_NON_CONFIGURATO
+        return CANALE_CONSOLE if settings.DEBUG else CANALE_SMTP
+
+    # Scopo: Determina se un account e' in console mode (stampa a video).
+    # ⚠️ Resta come nome storico e delega al canale: NON risponde piu' vero su un
+    #    account col placeholder fuori da DEBUG — li' il canale e' `NON_CONFIGURATO`.
     def is_console_mode(self, account: dict[str, Any]) -> bool:
-        smtp_host = account.get("smtp_host", "")
-        if not smtp_host or smtp_host == SMTP_PLACEHOLDER_HOST:
-            return True
-        return settings.DEBUG
+        return self.canale_invio(account) == CANALE_CONSOLE
 
     # Scopo: Risolve template e account con fallback, renderizza le variabili.
     #        Usato da send_email e da EmailOutboxService.prepare_draft.
@@ -198,9 +255,21 @@ class EmailDispatchService:
         )
 
         # Invio
-        if self.is_console_mode(account):
+        canale = self.canale_invio(account)
+        if canale == CANALE_NON_CONFIGURATO:
+            self._registra_non_configurato(log_id, account, ambito)
+            return log_id, False
+        if canale == CANALE_CONSOLE:
             self._send_console(account, destinatario, destinatari_cc, oggetto, corpo_html, corpo_testo)
             now = datetime.now(timezone.utc).isoformat()
+            # ⚠️ RESIDUO DICHIARATO: anche qui `SENT` dice una cosa che non e'
+            #    successa — la mail e' stata stampata, non consegnata. Lo stato
+            #    onesto sarebbe un valore suo (`CONSOLE`), e il vocabolario vive
+            #    nel `CHECK chk_email_log_stato`: e' una richiesta al team DB,
+            #    non una cosa che il backend possa decidere da solo.
+            #    ⭐ Il caso PERICOLOSO — placeholder su un host di esercizio — non
+            #    passa piu' di qui: cade nel ramo sopra. Qui resta lo sviluppo
+            #    dichiarato, dove chi guarda sa gia' che non parte niente.
             self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
             return log_id, True
 
@@ -280,6 +349,40 @@ class EmailDispatchService:
                 except Exception:
                     pass
 
+    # Scopo: Registra sul giornale che l'email NON e' partita perche' l'account
+    #        non e' configurato — con il motivo e la strada per rimediare.
+    # ⛔ `FAILED` e non `SENT`, ed e' il punto di tutta questa modifica: una mail
+    #    che non e' partita deve leggersi diversa da una consegnata. `FAILED` e'
+    #    gia' nel vocabolario del `CHECK`, quindi questo ramo non aspetta nessuno.
+    # ⭐ E TORNA IN CODA — ed e' un BENE, non un difetto. La `SELECT` di
+    #    `send_pending_emails` ripesca anche i `FAILED` finche'
+    #    `tentativi < max_tentativi` (default 3), e `tentativi` lo incrementa
+    #    l'UPDATE dell'esito da ENTRAMBE le strade (`update_log_stato` e, per
+    #    l'ambito SISTEMA, `config.fn_chiudi_email_sistema`) — quindi la riga si
+    #    ferma da se' dopo tre giri.
+    #    ⇒ Il ripescaggio e' il RECUPERO: se l'SMTP viene configurato entro quei
+    #    tre tick, la mail parte da sola. E' esattamente il caso capitato il
+    #    2026-09-11, dove il digest era stato accodato prima dell'SMTP.
+    # ⚠️ Questo commento diceva l'opposto — «non torna in coda» — leggendo il
+    #    commento in testa a `send_pending_emails`, che nomina «PENDING o RETRY»
+    #    e OMETTE `FAILED`. La SELECT vera dice altro: *un commento non e' una
+    #    fonte, e l'ho scoperto fidandomene.*
+    # ⚠️ IL LIMITE VERO sta a valle e NON e' di questo ramo: esaurito il terzo
+    #    tentativo la riga e' terminale, e un rilancio a mano non esiste —
+    #    `retry_log_entry` ha un chiamante solo (quel command, che non la ripesca
+    #    piu') e su `config.email_log` non c'e' nessuna rotta di scrittura. Vale
+    #    per QUALUNQUE mail fallita, non per il solo placeholder: e' la politica
+    #    di retry del giornale, che esisteva prima di questa modifica.
+    #    ⇒ Il rimedio, se si vuole, e' un verbo «rilancia» sul giornale email —
+    #    il service c'e' gia', manca la rotta. E' lavoro di backend, non una
+    #    richiesta al team DB.
+    def _registra_non_configurato(
+        self, log_id: int, account: dict[str, Any], ambito: str,
+    ) -> None:
+        motivo = _motivo_non_configurato(account)
+        logger.error("Email NON inviata: log_id=%s %s", log_id, motivo)
+        self._repo.update_log_stato(log_id, "FAILED", ambito=ambito, errore=motivo)
+
     # Scopo: Logga email in console (modalita' DEBUG senza SMTP reale).
     def _send_console(
         self,
@@ -312,7 +415,13 @@ class EmailDispatchService:
     #    scrive l'esito, non a descrivere la riga.
     def retry_log_entry(self, log_id: int, account: dict[str, Any], log_detail: dict[str, Any]) -> bool:
         ambito = log_detail["ambito"]
-        if self.is_console_mode(account):
+        canale = self.canale_invio(account)
+        if canale == CANALE_NON_CONFIGURATO:
+            # ⛔ Ritentare su un account che non puo' spedire non e' un tentativo:
+            #    e' lo stesso guasto una seconda volta. Si dice, e si torna False.
+            self._registra_non_configurato(log_id, account, ambito)
+            return False
+        if canale == CANALE_CONSOLE:
             self._send_console(
                 account,
                 log_detail["destinatario"],
@@ -341,7 +450,22 @@ class EmailDispatchService:
         ErrorManager.require(account is not None, code=E_EMAIL, message="Account non trovato.")
         assert account is not None
 
-        if self.is_console_mode(account):
+        canale = self.canale_invio(account)
+        if canale == CANALE_NON_CONFIGURATO:
+            # ⛔ Rispondeva `success: True` — ed e' il verde che ha ingannato di
+            #    persona il 2026-09-10: «test connessione OK» su un account che
+            #    non poteva spedire nulla. Un test che non prova niente non
+            #    risponde OK.
+            # ⚠️ La CONSEGUENZA e' quella del test, non quella dell'invio: qui
+            #    nessuna mail e' in gioco, e questo messaggio lo legge un
+            #    amministratore nel drawer (`meta.last_test_message`).
+            return {
+                "success": False,
+                "message": _motivo_non_configurato(
+                    account, conseguenza=_CONSEGUENZA_TEST,
+                ),
+            }
+        if canale == CANALE_CONSOLE:
             return {"success": True, "message": "Console mode (DEBUG) — nessun test SMTP necessario."}
 
         encrypted_pw = account.get("smtp_password_encrypted")

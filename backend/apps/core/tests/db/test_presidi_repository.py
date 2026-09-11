@@ -30,6 +30,10 @@
 5. test_il_debito_dichiarato_e_una_riga_di_catalogo_completa
      Le righe in attesa hanno la stessa forma delle altre: a video non si
      distinguono per un motivo che non c'entra col loro contenuto.
+     ⚠️ Dal 2026-09-10 il registro e' A ZERO (debito pagato, brief §10.2),
+     quindi questo test gira a VUOTO. ⭐ Il ramo che serve NON resta scoperto:
+     lo copre il test 2, che si costruisce la riga invece di pescarla dal
+     registro — ed e' il motivo per cui era scritto cosi'.
 6. test_il_pannello_guarda_le_sole_viste_zero
      ⭐ La decisione di Tid del 2026-09-10: gli allarmi sono le `ZERO`. Una coda
      con righe e' lavoro in corso, e un pannello che mostra righe verdi insegna
@@ -154,6 +158,10 @@ class PresidiRepositoryGuardieTests(SimpleTestCase):
     # 5. Le righe in attesa di iscrizione devono avere la forma di una riga di
     #    catalogo: a video non si distinguono, ed e' voluto — l'unica differenza
     #    e' `a_catalogo`, che decide come si contano.
+    # ⚠️ Dal 2026-09-10 il registro e' vuoto e questo ciclo non gira: e' un
+    #    presidio DI FORMA, e senza righe non ha forma da guardare. Si riaccende
+    #    da se' alla prossima vista in attesa — e non si trasforma in
+    #    «la tupla dev'essere vuota», che punirebbe l'uso corretto del registro.
     def test_il_debito_dichiarato_e_una_riga_di_catalogo_completa(self) -> None:
         for riga in _IN_ATTESA_DI_CATALOGO:
             with self.subTest(vista=riga["vista"]):
