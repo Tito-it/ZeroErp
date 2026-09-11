@@ -112,7 +112,13 @@ class SendEmailTests(TestCase):
         repo.update_log_stato.assert_called_once()
         call_args = repo.update_log_stato.call_args
         self.assertEqual(call_args[0][0], 42)
-        self.assertEqual(call_args[0][1], "SENT")
+        # ⭐ `SIMULATA` dal 2026-09-11: stampata a video, non consegnata. Questa
+        #    riga asseriva `SENT`, ed era il difetto reso in un test.
+        self.assertEqual(call_args[0][1], "SIMULATA")
+        # ⛔ E `inviato_at` NON si passa: e' l'unica colonna che data una
+        #    consegna: scriverla sposterebbe la bugia di una casella invece di
+        #    toglierla (brief-db-stato-email-console-non-e-inviata §7.1).
+        self.assertNotIn("inviato_at", call_args[1])
 
     # Scopo: Verifica che template non trovato lanci ServiceError.
     @patch(_SETTINGS)

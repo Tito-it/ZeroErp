@@ -75,7 +75,8 @@ Funzioni:
    |
 6. Invia via SMTP (o logga in console se in modalita' sviluppo)
    |
-7. Aggiorna stato: SENT o FAILED
+7. Aggiorna stato: **SENT** (spedita), **FAILED** (non spedita) o **SIMULATA**
+   (mostrata a video invece che spedita — modalita' console, dal 2026-09-11)
 ```
 
 ### Invio diretto vs bozza (outbox)
@@ -109,7 +110,7 @@ Da **Amm. Software → Account Email** (solo ADMIN):
 | --- | --- | --- |
 | Codice | `SISTEMA` | Non modificare — e' il fallback di tutto il sistema |
 | Descrizione | Account di sistema | Libero |
-| SMTP Host | `smtp.gmail.com` | Lasciare vuoto per modalita' console |
+| SMTP Host | `smtp.gmail.com` | ⚠️ Vuoto o `smtp.example.com` = l'account **non spedisce**: e' modalita' console solo in sviluppo, altrove e' configurazione che manca |
 | SMTP Port | `587` | 587 per STARTTLS, 465 per SSL |
 | SMTP TLS | `true` | Abilitare per Gmail e la maggior parte dei provider |
 | SMTP SSL | `false` | Alternativo a TLS (non entrambi) |
@@ -152,8 +153,9 @@ Per produzione: valutare servizio dedicato (SendGrid, Mailgun, Amazon SES, SMTP 
 
 ### Modalita' console (sviluppo)
 
-Quando `DEBUG = True` e l'account ha host SMTP vuoto (o `smtp.example.com`),
-le email **non vengono inviate** ma loggate nel terminale Django:
+Quando `DEBUG = True` le email **non vengono inviate** ma loggate nel terminale
+Django. ⚠️ Basta `DEBUG`: l'host non c'entra — anche con un SMTP reale
+configurato, in sviluppo non parte niente.
 
 ```
 ============================================================
@@ -168,8 +170,20 @@ Benvenuto Mario! Sei stato invitato ad accedere...
 ============================================================
 ```
 
-Il record viene comunque creato in `email_log` con stato `SENT`, permettendo
-di verificare il flusso completo senza SMTP reale.
+Il record viene comunque creato in `email_log`, cosi' si verifica il flusso
+completo senza SMTP reale — ma con stato **`SIMULATA`** e `inviato_at` **vuoto**.
+
+⛔ **Fino al 2026-09-11 quello stato era `SENT`**, ed era un difetto vero: una
+mail stampata a video risultava *consegnata*, indistinguibile da una vera.
+Nessun errore, nessun allarme — la si scopriva solo non vedendo arrivare niente.
+
+### ⛔ E se `DEBUG = False` con l'host ancora finto?
+
+Non e' console mode: e' **configurazione che manca**, e il programma lo dice.
+L'email **non viene ne' spedita ne' stampata**, e il giornale registra
+**`FAILED`** col motivo e la strada per rimediare. ⚠️ Anche il pulsante «prova
+connessione» risponde di no: prima diceva OK, ed e' cosi' che un'installazione
+e' rimasta senza posta senza che nessuno se ne accorgesse.
 
 ### Testare la connessione
 

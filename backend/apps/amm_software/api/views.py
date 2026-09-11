@@ -716,9 +716,11 @@ class EmailLogStatiLookupView(AdminAPIView):
     """GET lookup statico stati email log (Fase 5).
 
     Single source of truth in `amm_software_service._EMAIL_LOG_STATI_VALIDI`
-    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 4 codici fissi
-    (SENT/PENDING/RETRY/FAILED) gestiti dal `EmailDispatchService`.
+    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 5 codici fissi
+    (SENT/PENDING/RETRY/FAILED/SIMULATA) gestiti dal `EmailDispatchService`.
     Pattern simmetrico a `EmittenteRoundingModesLookupView`.
+    ⚠️ Questa docstring finisce nello schema OpenAPI: e' la descrizione che
+    legge chi consuma la rotta, quindi il numero va tenuto col vocabolario.
     """
 
     @extend_schema(

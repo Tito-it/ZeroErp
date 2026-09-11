@@ -457,3 +457,66 @@ ancora.** La palla e' al backend: §7.5.
 `backend-dev` di quel giorno: valgono come controesempio, non come motivo. Il
 motivo sta sul modello, ed è che «non ho potuto spedire» e «ho consegnato» sono
 due fatti opposti e oggi si scrivono con la stessa parola.*
+
+---
+
+## 8. ✅ Risposta backend — il giro è chiuso, 2026-09-11
+
+> **Chi risponde:** backend (`dev/backend-tid`). **Stato:** i tre punti del §7.5
+> sono fatti, più uno che il passaggio non prevedeva. Suite **4656 verde**.
+
+**`SIMULATA` ci convince**, e non per quieto vivere: l'argomento del §7.1 — *ogni
+lettore della colonna fa una domanda sull'esito, non sul canale* — è quello che
+avevamo in mano e non abbiamo saputo chiudere. E il secondo, che non avevamo
+visto, è più forte del primo: **legare il valore a `_send_console` avrebbe
+chiesto un sesto valore al primo altro modo di non spedire.**
+
+| # | Punto del §7.5 | Fatto |
+| --- | --- | --- |
+| 0 | il vocabolario (`frozenset` + descrizioni) | ✅ `SIMULATA`, descrizione *«Simulata — non spedita»* |
+| 1 | `inviato_at = NULL` sui due rami console | ✅ `send_raw` e `retry_log_entry`: non si passa affatto |
+| 2 | `EmailOutboxService` | ✅ la bozza segue l'**esito della mail**, non il booleano |
+| 3 | il terzo mirror nel frontend | ✅ ramo `secondary`, più il commento «i 4 codici» |
+
+### ⭐ Il quarto mirror, che il passaggio non nominava
+
+Allineate le tre sedi, la suite è diventata rossa in **altri due punti**:
+`test_list_email_log_stati_ok` e `test_email_log_stati_lookup_ok` **ricopiavano
+l'elenco dei quattro codici**. ⇒ Erano la quarta e la quinta sede dello stesso
+vocabolario, e nessuno le aveva mai contate.
+
+⛔ **Non le abbiamo aggiornate aggiungendo `SIMULATA`**: l'atteso ora si **deriva**
+da `_EMAIL_LOG_STATI_DESCRIZIONI`. ⚠️ E non diventa tautologico, perché quello che
+resta da provare è ciò che il service *fa*: che **ordini** per il campo
+`ordering` (potrebbe non ordinare) e che l'ordinamento «default-first» regga.
+
+### ✅ La verifica che il §7.5 chiede — fatta sul database vero
+
+Non da un test verde: un giro reale in `DEBUG`, dentro `BEGIN`/`ROLLBACK`.
+
+```
+canale: CONSOLE
+ESITO → stato=SIMULATA  inviato_at=None
+transazione annullata: nessuna riga lasciata
+```
+
+⇒ I punti 1 e 2 della vostra checklist sono verificati **sul comportamento**, non
+sul codice.
+
+### ⚠️ Due cose da sapere, e una è una segnalazione
+
+**Il punto 3 non l'abbiamo visto a video.** Il ramo `secondary` è scritto e il
+commento allineato, ma la schermata non è stata aperta: resta l'unico dei tre
+verificato solo per lettura. ⭐ Ed è proprio quello che il §7.5 dichiara *senza
+presidio*, quindi lo diciamo invece di darlo per fatto.
+
+**Le chiavi i18n degli stati email non le legge nessuno.** `email_stato_sent`,
+`_failed`, `_pending`, `_retry` esistono in `it.json` **e** in `en.json` — in
+parità, quindi il cancello dell'i18n è verde — e **nessun componente le usa**: il
+tag del giornale rende `data.stato`, cioè il **codice grezzo**. ⇒ Non abbiamo
+aggiunto la quinta: sarebbe stata una chiave morta in più, e la parità non è
+copertura. È un residuo che vale la pena sapere, non un lavoro di questo
+cantiere.
+
+*Risposta backend del 2026-09-11. Il cantiere lato BE è chiuso; resta la verifica
+a video del tag, che è di chi apre la schermata.*
