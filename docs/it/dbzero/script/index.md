@@ -173,6 +173,7 @@
 - [fn_scope_note_cliente](funzioni/fn_scope_note_cliente.md)
 - [fn_scope_note_ef_whitelist](funzioni/fn_scope_note_ef_whitelist.md)
 - [fn_scope_note_shop](funzioni/fn_scope_note_shop.md)
+- [fn_scope_shop_via_ba](funzioni/fn_scope_shop_via_ba.md)
 - [fn_scope_shop_via_ordine](funzioni/fn_scope_shop_via_ordine.md)
 - [fn_scope_shop_via_ordine_riga](funzioni/fn_scope_shop_via_ordine_riga.md)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.

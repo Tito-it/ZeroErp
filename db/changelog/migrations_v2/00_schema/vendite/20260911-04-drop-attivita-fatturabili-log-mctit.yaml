@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AFL-1 — RITIRO di vendite.attivita_fatturabili_log.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.19
+#   Slice 20260911-04..05.
+#
+# ── ⛔ NON E' UN ARMAMENTO MANCATO: E' UN RESIDUO ─────────────────────
+#   La tabella era entrata nel registro del perimetro il 2026-09-10 (armando
+#   `vendite.attivita_consumi`) con la domanda giusta: *«o `attivita_consumi_id`
+#   diventa NOT NULL e si arma come le sorelle, oppure e' un residuo e si
+#   ritira»*. ⭐ La risposta e' la seconda, e la porta l'osservazione di Tid
+#   (2026-09-11): *«credo che prima ci fosse un processo diverso; ora
+#   attivita_fatturabili e' solo di transito e i log sono su lotti_log o
+#   fatturazione_log»*.
+#
+# ── ⭐ IL CENSIMENTO, che e' l'unica cosa che autorizza una DROP ──────
+#   Letto sul database VIVO il 2026-09-11 — non dagli YAML:
+#
+#   | Chi | Quanti |
+#   | --- | --- |
+#   | scrittori (funzioni, trigger, backend, frontend) | **zero** |
+#   | lettori vivi (viste, funzioni, `pg_depend`) | **zero** |
+#   | FK entranti | **zero** |
+#   | tabella gemella in `storico` | **non esiste** |
+#
+#   ⚠️ Una funzione la NOMINA — `vendite.fn_riporta_attivita_da_emettere` — ma
+#   solo dentro un **commento**, e per dire l'esatto contrario: *«Non e'
+#   attivita_fatturabili_log: quello e' il log del flusso consumi»*. Scrive su
+#   `vendite.commesse_attivita_log`.
+#   ⚠️ E `script.vw_giornale_entita` **non la legge**: la nominavano due
+#   changeSet vecchi (`20260822-70`, `20260824-14`), la vista viva no — il suo
+#   pgTAP lo dice pure, *«attivita_fatturabili_log resta fuori»*. E' il motivo
+#   per cui le dipendenze si leggono dal catalogo e non dai changelog.
+#
+# ── ⭐ DA DOVE VIENE, ed e' la conferma ───────────────────────────────
+#   Nasce il **2026-01-24** (`20260124-13-create-attivita-fatturabili-log`),
+#   dentro il dominio pipeline «attivita fatturabili» — che e' stato **costruito
+#   e ritirato** da `20260227-16-drop-attivita-pipeline-deprecated`, il
+#   changeSet che ha portato via 15 funzioni e 5 tabelle. Lei e' **sopravvissuta
+#   al ritiro**: nessuno l'ha presa insieme alle altre.
+#   ⇒ I log vivi sono altrove, e si vede: `commesse_attivita_log` ha sei
+#   scrittori, `fatture_log` cinque, `fatturazione_lotti_log` uno. Lei zero.
+#
+# ── ⚠️ COSA VA INSIEME A QUESTO CHANGESET ────────────────────────────
+#   * `db/pgtap/rls/test-role-batch-fatturazione-postura.sql` la elenca fra le
+#     tabelle su cui `zeroerp_batch_fatturazione` ha `i`: la riga va tolta, o il
+#     test cerchera' un grant su una tabella che non esiste;
+#   * `db/pgtap/script/test-vw-giornale-entita.sql` la nomina nel **messaggio**
+#     del test 11: il testo va riscritto (l'asserzione non la tocca);
+#   * `docs/it/dbzero/vendite/manual/attivita_fatturabili_log.md` va
+#     **cancellato**: un oggetto ritirato non lascia dietro la propria scheda.
+#
+# ⛔ La `DROP` e' senza `CASCADE`, ed e' voluto: se un giorno qualcosa dipendesse
+#   davvero da questa tabella, il migrate deve **fermarsi** e farlo vedere, non
+#   portarsi via l'oggetto sconosciuto insieme.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260911-04-drop-attivita-fatturabili-log-mctit.yaml
+
+  - changeSet:
+      id: 20260911-04-drop-attivita-fatturabili-log
+      author: mctit
+      runOnChange: false
+      comment: >
+        RITIRO di vendite.attivita_fatturabili_log: residuo del dominio pipeline
+        «attivita fatturabili», costruito e ritirato da 20260227-16. Censito sul
+        catalogo vivo il 2026-09-11: zero scrittori, zero lettori, zero FK
+        entranti, nessuna gemella in storico. I log vivi sono
+        commesse_attivita_log, fatture_log e fatturazione_lotti_log. Esce anche
+        dal registro del perimetro con 20260911-05.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili_log
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Senza CASCADE: una dipendenza che non abbiamo censito deve
+              --   fermare il migrate, non sparire insieme alla tabella.
+              DROP TABLE vendite.attivita_fatturabili_log;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Ricrea la STRUTTURA, non i dati: la tabella e' stata ritirata
+              --   con zero righe. Il DDL e' copiato dal catalogo vivo prima
+              --   della DROP.
+              -- ⚠️ I trigger di audit/tx_id/storico NON si ricreano qui: li
+              --   genera il framework delle automazioni a `ci_apply`.
+              CREATE TABLE vendite.attivita_fatturabili_log (
+                  id                  bigint GENERATED BY DEFAULT AS IDENTITY,
+                  attivita_consumi_id bigint,
+                  data_ora            timestamptz NOT NULL DEFAULT now(),
+                  messaggio           text        NOT NULL,
+                  status              character(1) NOT NULL DEFAULT 'W'::bpchar,
+                  disabilitato        boolean     NOT NULL DEFAULT false,
+                  meta                jsonb       NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert         timestamptz NOT NULL DEFAULT now(),
+                  user_insert         text        NOT NULL DEFAULT CURRENT_USER,
+                  data_update         timestamptz NOT NULL DEFAULT now(),
+                  user_update         text        NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT pk_attivita_fatturabili_log PRIMARY KEY (id),
+                  CONSTRAINT chk_attivita_fatturabili_log_status
+                      CHECK (status = ANY (ARRAY['W'::bpchar, 'C'::bpchar])),
+                  CONSTRAINT fk_attivita_fatturabili_log_attivita_consumi
+                      FOREIGN KEY (attivita_consumi_id)
+                      REFERENCES vendite.attivita_consumi(id) ON UPDATE CASCADE
+              );
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.attivita_fatturabili_log TO zeroerp_app;

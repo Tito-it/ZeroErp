@@ -83,7 +83,7 @@ dato da cui il perimetro stesso si ricava. Filtrarle con il perimetro
 significherebbe appoggiarle a sé stesse: lì prima serve una decisione, non un
 intervento.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-perimetro-emittente-righe-documento.md` §8.
+Origine: `docs/it/dev/work-done/brief-db-perimetro-emittente-righe-documento.md` §8.
 
 ---
 

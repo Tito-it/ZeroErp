@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AS-1 — La policy di vendite.fatture_arrotondamenti_scope. INERTE.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.18
+#   Slice 20260911-01..03. L'armamento e' 20260911-02.
+#
+# ── 🔴 LA RIGA DI REGISTRO DICEVA IL FALSO, ed e' la TERZA volta ──────
+#   La `ragione` diceva: *«prima va deciso se le sue righe seguano il perimetro
+#   dell'emittente o restino leggibili come catalogo. Domanda di modello, non
+#   armamento»*.
+#   ⛔ Ma la tabella porta `emittente_soggetto_ruolo_id` **NOT NULL** (verificato
+#   sul catalogo il 2026-09-11, osservazione di Tid). Una tabella che nomina il
+#   proprio emittente in una colonna obbligatoria ha gia' risposto a quella
+#   domanda: la riga appartiene a quell'emittente.
+#   ⇒ Non era una decisione, era lavoro pronto. Precedenti identici: §11.12
+#   (due righe corrette lo stesso giorno) e §11.15.
+#
+# ── ⭐ LA ROTTA E' DIRETTA: nessun adattatore nuovo ───────────────────
+#   Questa tabella NON e' il satellite di una testata protetta: porta
+#   l'emittente **da se'**, come `vendite.commesse`. ⇒ La policy chiama
+#   `script.fn_scope_ef_whitelist_via_sr` direttamente sulla colonna, e la forma
+#   e' la stessa, parola per parola, di `rls_commesse_ef_whitelist`.
+#
+# ── ⚠️ UNA VESTE, e va motivata perche' qui NON si copia una testata ──
+#   Le slice precedenti rispecchiavano le vesti di un documento padre. Qui non
+#   c'e' un padre da rispecchiare, quindi la veste si sceglie sul **contenuto**:
+#   `saldo_arrotondamento`, termini e modalita' di pagamento per una coppia
+#   billing account / tipo documento sono **configurazione di fatturazione
+#   dell'emittente**, non un dato che il cliente vede di se'.
+#   ⛔ Nessuna veste `CLIENTE_PORTALE` ne' `SHOP_CUSTOMER`: oggi quelle porte
+#   non ci sono, e questa slice **non ne apre**. Se un domani il portale dovesse
+#   mostrare l'arrotondamento applicato, e' una decisione di dominio e si prende
+#   aggiungendo la veste con la sua ragione.
+#
+# ── ⭐ CHE COSA CAMBIA PER CHI LA LEGGE, ed e' poco per una buona ragione ─
+#   Quattro funzioni la usano — `fn_get_arrotondamento_scope`,
+#   `fn_set_arrotondamento_scope`, `fn_ricalcola_totali_fattura`,
+#   `fn_cleanup_fatture_by_ids` — e **nessuna e' `SECURITY DEFINER`**, quindi da
+#   qui leggono sotto row level security.
+#   ⭐ Ma `fn_get_arrotondamento_scope` pretende gia' `p_emittente_soggetto_ruolo_id`
+#   come parametro **obbligatorio** e ci filtra sopra: la policy chiede
+#   esattamente la stessa cosa che il codice chiedeva da se'. ⇒ Nel percorso
+#   normale non cambia niente; cambia il caso in cui qualcuno passi l'emittente
+#   di un'altra azienda, che e' il buco.
+#   ⚠️ `zeroerp_batch_fatturazione` e' `BYPASSRLS`: i job non se ne accorgono.
+#
+# ⚠️ Nessun nipote: nessuna tabella ha una FK verso questa (verificato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260911-01-create-policy-arrotondamenti-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260911-01-create-policy-arrotondamenti-scope
+      author: mctit
+      runOnChange: false
+      comment: >
+        Policy di perimetro emittente su vendite.fatture_arrotondamenti_scope:
+        veste OPERATORE FOR ALL con WITH CHECK, rotta diretta su
+        emittente_soggetto_ruolo_id (NOT NULL) via
+        script.fn_scope_ef_whitelist_via_sr — la stessa forma di
+        rls_commesse_ef_whitelist. Nessun adattatore nuovo. INERTE: l'armamento
+        e' 20260911-02.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_sr'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Rotta DIRETTA, non un adattatore: la colonna e' qui, ed e'
+              --   NOT NULL. Identica a rls_commesse_ef_whitelist.
+              CREATE POLICY rls_fatture_arrotondamenti_scope_ef_whitelist
+                  ON vendite.fatture_arrotondamenti_scope
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_soggetto_ruolo_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_soggetto_ruolo_id)
+                  );
+
+              COMMENT ON POLICY rls_fatture_arrotondamenti_scope_ef_whitelist ON vendite.fatture_arrotondamenti_scope IS
+                  'Perimetro emittente della configurazione di arrotondamento per billing account: rotta DIRETTA su emittente_soggetto_ruolo_id (NOT NULL), non un adattatore — questa tabella nomina il proprio emittente da se'', come vendite.commesse. ⛔ Una veste sola: saldo, termini e modalita'' di pagamento per una coppia BA/tipo documento sono configurazione di fatturazione dell''emittente, non un dato che il cliente vede di se''. Se un domani il portale dovra'' mostrarlo, si aggiunge la veste con la sua ragione. 🔴 La riga di registro la dava per «domanda di modello»: era falso, la colonna obbligatoria aveva gia'' risposto. Slice 20260911-01..03.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_arrotondamenti_scope_ef_whitelist ON vendite.fatture_arrotondamenti_scope;

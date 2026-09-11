@@ -10,6 +10,17 @@
 >   `proconfig`, `pg_trigger`, `pg_constraint`), il repo al commit `89d36ad1b`
 >   su `dev/db-tid`, e i file di CI. Nessun conteggio di righe di lavoro è usato
 >   come argomento.
+>
+> ✅ **Stato dei cantieri, 2026-09-11.** **D2 è chiuso** — brief in
+> `work-done/brief-db-perimetro-emittente-righe-documento.md`: nove famiglie
+> armate, registro del debito da 33 a 10 righe, e un **presidio transitivo** che
+> resta in servizio. La metà «`relrowsecurity` in generale» di **D5** è chiusa
+> con lui. ⛔ **D3 (lo storico) resta il debito peggiore** e non è toccato: 120
+> tabelle, zero RLS. **D4** resta aperto ma è ora **dichiarato a registro**, e si
+> sa perché quelle tre tabelle non si armano.
+> ⚠️ Le voci qui sotto NON sono riscritte: restano com'erano al 2026-09-08, con
+> una nota di stato dove il fatto è cambiato. *Una valutazione datata che si
+> riscrive smette di essere una misura.*
 
 ---
 
@@ -108,8 +119,11 @@ sessione senza GUC, o con una veste che nessuna policy nomina, non vede **niente
 — non vede troppo. Il costo è che l'accesso amministrativo deve arrivare da un
 meccanismo suo, e non da una policy dimenticata.
 
-⚠️ **Ed è anche l'area con il difetto peggiore** (§3 D2/D3): è costruita bene
-dove è finita, ed è finita su **una famiglia di documenti su sei**.
+⚠️ **Ed era anche l'area con il difetto peggiore** (§3 D2/D3): costruita bene
+dove era finita, ed era finita su **una famiglia di documenti su sei**.
+✅ **D2 è chiuso** (2026-09-11): oggi il dominio documento è protetto fino ai
+satelliti. ⛔ Resta **D3**, lo storico — che è la metà peggiore delle due, perché
+un buco sulle versioni precedenti vale quanto uno sulle righe correnti.
 
 ### 2.2 ⭐ I presidi e i registri del debito — un artefatto raro
 
@@ -329,9 +343,31 @@ baseline sarebbe nata con 407 etichette sbagliate.
 
 ---
 
-### 🔴 D2 — Il perimetro emittente si ferma alla testata
+### ✅ D2 — Il perimetro emittente si ferma alla testata — **CHIUSO 2026-09-11**
 
-Delle sei famiglie di documento, **una sola è protetta fino in fondo**:
+> ✅ **Cantiere chiuso**, brief in
+> `work-done/brief-db-perimetro-emittente-righe-documento.md`.
+> **Nove famiglie armate**, registro del debito da **33 a 10 righe**, più il
+> ritiro di una tabella residua. `db/pgtap/rls/`: da 30 a **39 file**.
+>
+> ⭐ **E ha prodotto più di quanto D2 chiedeva.** La voce parlava di cinque
+> helper e delle figlie di cinque famiglie; il cantiere ha invece scoperto che
+> un **elenco scritto a mano** non è un perimetro — nemmeno questo, che infatti
+> ne mancava sei figlie di `fatture` e le sette partizioni di `vendite.note`.
+> ⇒ Ne è nato un **presidio a criterio transitivo**
+> (`dbops.vw_rls_perimetro_scoperto` + `dbops.rls_perimetro_debito` +
+> `db/pgtap/rls/test-rls-perimetro-scoperto.sql`), che **resta in servizio**: una
+> tabella nuova con una FK verso una protetta esce `NON_DICHIARATO` e fa rosso il
+> test 2.
+>
+> ⚠️ **Le 10 righe che restano non sono D2 non finito**: sono decisioni di
+> modello su chiavi nullable, la domanda gemella del legame emittente-BA, e i
+> cantieri di `acquisti`/`shop` (→ D4, D8). Ognuna con la sua ragione scritta nel
+> registro.
+
+⚠️ **La tabella qui sotto è la fotografia di PARTENZA (2026-09-06)**, e resta per
+memoria di com'era. Delle sei famiglie di documento, allora, **una sola era
+protetta fino in fondo**:
 
 | Famiglia | Testata | Righe / satelliti |
 | --- | --- | --- |
@@ -409,9 +445,30 @@ sposta solo il punto da cui si legge.
 ⛔ È il difetto che si auto-nasconde: chi verifica con `EXISTS (SELECT 1 FROM
 pg_policies …)` legge verde. La policy *esiste*. Non è **accesa**.
 
-⚠️ E non c'è nessun invariante pgTAP che asserisca `relrowsecurity` in generale:
-la colonna compare in cinque file, sempre dentro un test su una tabella
-specifica. Vedi D5, che è la stessa cosa detta bene.
+⚠️ E non c'era nessun invariante pgTAP che asserisse `relrowsecurity` in
+generale: la colonna compariva in cinque file, sempre dentro un test su una
+tabella specifica. Vedi D5.
+
+> ✅ **Quella metà è stata risolta dal cantiere D2** (2026-09-11): il criterio
+> `POLICY_INERTE` di `dbops.vw_rls_perimetro_scoperto` è **esattamente**
+> l'invariante generale che mancava — «porta una policy e la row level security
+> è spenta» — e il test 7 di `test-rls-perimetro-scoperto.sql` lo esercita su un
+> caso costruito. Le tre tabelle di D4 sono le sue tre righe di debito
+> dichiarato.
+>
+> ⛔ **Ma D4 resta APERTO**, e ora si sa **perché** quelle tre non erano state
+> armate — il registro l'ha reso leggibile:
+> * `acquisti.ddt` e `acquisti.ordini` hanno una policy di **sola veste
+>   `FORNITORE_PORTALE`**. La RLS è default-deny: accenderla oggi renderebbe le
+>   due tabelle invisibili e non scrivibili all'**operatore**, che ci ha
+>   `SELECT/INSERT/UPDATE/DELETE`. E la veste operatore non è nemmeno
+>   scrivibile: **quelle due tabelle non hanno nessuna colonna emittente**.
+>   ⇒ *Manca il modello, non l'accensione* — è D8, non D4.
+> * `shop.ricevute` è invece un caso da un minuto: `zeroerp_app` non ha
+>   **nessun** GRANT su quella tabella, quindi accendere la RLS non toglie
+>   niente a nessuno. Costa una riga. Resta spenta perché il dominio shop è allo
+>   Stage D e la decisione appartiene a quel cantiere — ma è **la prima da
+>   pagare**.
 
 ---
 
@@ -423,13 +480,21 @@ violata, non produce nessun errore visibile»:
 | Invariante | Presidiato? |
 | --- | --- |
 | Una vista che tocca dati in RLS ha `security_invoker` | ⭐ **sì, e benissimo**: criterio transitivo, casi costruiti, ha sostituito quattro elenchi a mano (2026-09-07). Oggi è a zero violazioni |
-| Una tabella con policy ha la RLS **accesa** | ⛔ no — 3 violazioni (D4) |
+| Una tabella con policy ha la RLS **accesa** | ✅ **sì dal 2026-09-11**: è il criterio `POLICY_INERTE` di `dbops.vw_rls_perimetro_scoperto`, con il caso costruito nel test 7 di `test-rls-perimetro-scoperto.sql`. Le 3 violazioni (D4) restano, ma **dichiarate a registro con la loro ragione** |
 | Una funzione `SECURITY DEFINER` ha un `search_path` fisso | ⛔ no in generale — asserito **caso per caso** (`maintenance.fn_job_run_start/_end`, due in `vendite`, una in `script`). 3 violazioni (D6) |
 
-⭐ **La differenza fra la riga 1 e le altre due non è tecnica: è che la prima ha
-morso.** Il progetto costruisce un presidio quando un difetto si è già
-manifestato — è un ottimo riflesso, ma è un criterio che arriva sempre **dopo**.
-Le altre due non hanno ancora morso, e infatti sono già violate.
+⭐ **La differenza fra la riga 1 e le altre due non era tecnica: era che la
+prima aveva morso.** Il progetto costruisce un presidio quando un difetto si è
+già manifestato — è un ottimo riflesso, ma è un criterio che arriva sempre
+**dopo**. Le altre due non avevano ancora morso, e infatti erano già violate.
+
+> ✅ **La riga 2 ha morso, e il presidio è nato** (2026-09-11, cantiere D2). ⭐ E
+> conferma la diagnosi in modo utile: è nato **insieme** al criterio
+> `FIGLIA_DI_TABELLA_PROTETTA`, cioè quando serviva a qualcos'altro — non perché
+> qualcuno fosse tornato a chiudere D5. *Un invariante che non ha ancora morso si
+> presidia quando passa di lì un cantiere che ne ha bisogno.*
+> ⛔ **La riga 3 (`search_path`) è ancora scoperta**, ed è ora l'unica delle tre.
+> Resta il rimedio scritto qui sotto.
 
 **Rimedio**: un pgTAP unico «postura di sicurezza», con i tre criteri scritti
 come invarianti generali sul catalogo (non elenchi di nomi) e i debiti
@@ -694,7 +759,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | Area | Peso | Voto | Perché |
 | --- | --- | --- | --- |
 | **Catena di verifica (CI)** | 🔴 alto | **7,5/10** ⬆ | ✅ 2026-09-09: la suite è un cancello vero — baseline misurata dalla CI, `continue-on-error` tolto, il ramo di bootstrap fallisce invece di passare. Resta il registro a 407, che deve calare (D1, D7) |
-| **Perimetro dei dati (RLS)** | 🔴 alto | **5/10** | Progettato bene, applicato a un sesto del dominio documento e a zero dello storico (D2, D3, D4) |
+| **Perimetro dei dati (RLS)** | 🔴 alto | **7/10** ⬆ | ✅ 2026-09-11: D2 chiuso — il dominio documento è protetto **fino ai satelliti** (nove famiglie), e c'è un presidio a criterio transitivo che vede le tabelle nuove. Resta a **zero** lo storico (D3, 120 tabelle) e restano le tre policy inerti (D4): è quello che tiene il voto sotto l'8 |
 | **Copertura test** | 🔴 alto | **4/10** | 600 file e ~6.183 asserzioni, ma su un DB ricostruito da zero **la suite è verde al 31%** (411 rossi su 599, misurato). Il 38% delle funzioni non è mai nominato (D7) |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | **6,5/10** | `security_invoker` presidiato benissimo; `relrowsecurity` e `search_path` no (D5, D6) |
 | **Simmetria del dominio** | 🟠 medio | **4/10** | `acquisti` e `magazzino` modellati e non scritti, e il debito cresce da solo (D8) |
@@ -728,6 +793,14 @@ famiglie di documento su sei e tutto lo storico sono leggibili da chiunque non �
 pronto per un secondo cliente sulla stessa macchina. Chiusi quei tre, la frase
 torna difendibile — e sono tre cantieri delimitati, non una riscrittura.
 
+> ✅ **Aggiornamento 2026-09-11: D2 è chiuso.** Le righe dei documenti non sono
+> più leggibili da chiunque, e non lo sono nemmeno le nuove — c'è un presidio che
+> se ne accorge. ⛔ **Ma la frase sopra regge ancora**, e per un motivo solo:
+> **lo storico (D3)**. 120 tabelle, zero RLS, 52 con `SELECT` a `zeroerp_app`:
+> ogni versione precedente di una riga protetta resta leggibile. ⇒ *Chiudere D2
+> ha spostato il punto da cui si legge, non ha chiuso il buco* — ed è la ragione
+> per cui D3 va fatto prima di dire «production-ready», non dopo.
+
 ---
 
 ## 6. Checklist, in ordine di ritorno
@@ -758,17 +831,26 @@ torna difendibile — e sono tre cantieri delimitati, non una riscrittura.
 
 ### 🔴 Il perimetro
 
-* [ ] **D2** — cinque helper `script.fn_scope_ef_whitelist_via_<testata>` +
-      policy sulle figlie di `ordini`, `preventivi`, `ddt`, `contratti`, `resi`.
-      Modello da copiare: la famiglia `fatture`.
+* [x] ✅ **D2** — **fatto e chiuso il 2026-09-11**: nove famiglie armate (non
+      cinque), registro del debito 33 → 10, un ritiro, e soprattutto un
+      **presidio transitivo** che resta in servizio. Brief:
+      `work-done/brief-db-perimetro-emittente-righe-documento.md`.
 * [ ] **D3** — generare la policy dello storico **dall'automazione**, derivando
       lo scope dalla madre (`fn_run_automations_storico` / `fn_ensure_storico_table`).
 * [ ] **D4** — accendere la RLS su `acquisti.ddt`, `acquisti.ordini`,
       `shop.ricevute` (o ritirare le policy, se quelle tabelle non sono nel
       perimetro: ma allora va scritto).
-* [ ] **D5** — un pgTAP «postura di sicurezza» con i tre invarianti generali
-      (`security_invoker` c'è già; aggiungere `relrowsecurity` e `search_path`
-      sui `SECURITY DEFINER`), debiti **dichiarati con la ragione tecnica**.
+      ✅ **Ora è scritto**, ed è a registro (2026-09-11): `shop.ricevute` costa
+      **una riga** — `zeroerp_app` non ha nessun GRANT, quindi accenderla non
+      toglie niente a nessuno — mentre le due di `acquisti` **non si possono
+      armare**: hanno la sola veste `FORNITORE_PORTALE` e nessuna colonna
+      emittente, quindi accendere le renderebbe invisibili all'operatore che ci
+      scrive. ⇒ Quella metà di D4 è in realtà **D8**: manca il modello.
+* [~] **D5** — ✅ **due invarianti su tre**: `security_invoker` c'era già, e
+      `relrowsecurity` è arrivato il 2026-09-11 col criterio `POLICY_INERTE` di
+      `dbops.vw_rls_perimetro_scoperto` — con i debiti dichiarati con la loro
+      ragione, come chiedeva la voce. ⛔ Resta **`search_path` sui
+      `SECURITY DEFINER`** (→ D6).
 * [ ] **D6** — `SET search_path` sulle tre `dbops.fn_*` di `postgres`; valutare
       il ritiro di `EXECUTE` a PUBLIC su `fn_sync_functions_owner`.
 * [ ] **D6-bis** — scegliere **una** forma canonica di `search_path` per le

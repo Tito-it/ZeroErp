@@ -79,7 +79,6 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
     ('vendite', 'fatture_indirizzi',                'iu'),
     ('vendite', 'event_log',                        'i'),
-    ('vendite', 'attivita_fatturabili_log',         'i'),
     ('pagamenti', 'vendite_contabili_lotti',        'i'),
     -- render documentale (C-2b): il worker fa solo INSERT append.
     ('documenti', 'documenti_generati',             'i'),

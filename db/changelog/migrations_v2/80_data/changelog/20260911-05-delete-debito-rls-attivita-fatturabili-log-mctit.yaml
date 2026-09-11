@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AFL-2 — La riga esce dal registro perche' la TABELLA non c'e' piu'.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.19
+#   Slice 20260911-04..05, ultimo pezzo.
+#
+# ── ⭐ E' UN'USCITA DI SPECIE DIVERSA DALLE ALTRE ─────────────────────
+#   Tutte le righe uscite finora sono uscite perche' la tabella e' stata
+#   **armata**. Questa esce perche' la tabella e' stata **ritirata**
+#   (20260911-04): il difetto non e' stato riparato, e' stato tolto il soggetto.
+#   ⭐ Il criterio se ne accorgerebbe da solo — una tabella che non esiste non
+#   entra nel perimetro — ma la riga di registro resterebbe li' come
+#   `DEBITO_ESTINTO`, e il test 2 del presidio diventerebbe rosso.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LA RIGA TOLTA DAL CSV ──────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme: il CSV perche' un database ricostruito da zero non la crei, questa
+#   `DELETE` perche' dove c'e' gia' se ne vada.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260911-05-delete-debito-rls-attivita-fatturabili-log-mctit.yaml
+
+  - changeSet:
+      id: 20260911-05-delete-debito-rls-attivita-fatturabili-log
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito la riga di
+        vendite.attivita_fatturabili_log, la cui tabella e' stata RITIRATA da
+        20260911-04. Senza, la riga resterebbe come DEBITO_ESTINTO e il test 2
+        di db/pgtap/rls/test-rls-perimetro-scoperto.sql diventerebbe rosso.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (14, 'vendite', 'attivita_fatturabili_log'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Ha senso solo insieme al rollback di 20260911-04, che ricrea
+              --   la tabella: senza di quello si dichiarerebbe scoperto un
+              --   oggetto che non esiste.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (14, 'FIGLIA_DI_TABELLA_PROTETTA', 'vendite', 'attivita_fatturabili_log',
+                 'Ripristino di rollback: log del flusso consumi con attivita_consumi_id NULLABLE e nessuno scrittore. O la chiave diventa NOT NULL e si arma, o la tabella e'' un residuo e si ritira.', DATE '2026-09-10');

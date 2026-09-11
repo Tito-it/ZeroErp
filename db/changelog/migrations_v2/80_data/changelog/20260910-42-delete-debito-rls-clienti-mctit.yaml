@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CL-5 — Il debito PAGATO esce, e quello NUOVO entra.
+#   Brief: brief-db-perimetro-emittente-righe-documento.md §11.17
+#   Slice 20260910-38..42, ultimo pezzo.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LA RIGA TOLTA DAL CSV ──────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme — il CSV perche' un database ricostruito da zero non la crei,
+#   questa `DELETE` perche' dove c'e' gia' se ne vada. Senza, `anagrafiche.clienti`
+#   esce come `DEBITO_ESTINTO` e il test 2 di
+#   `db/pgtap/rls/test-rls-perimetro-scoperto.sql` diventa rosso.
+#
+# ── ⭐ E LA RIGA NUOVA NON SERVE SCRIVERLA QUI ───────────────────────
+#   `anagrafiche.pdp` entra nel registro dal **CSV**, che il mirror `20260909-77`
+#   (`runOnChange`) carica a ogni migrate e che nella timeline sta **prima** di
+#   questo changeSet. Un `INSERT` qui sarebbe una seconda sorgente di verita'
+#   sulla stessa tabella — la trappola che il progetto ha gia' pagato.
+#
+# ── ⛔ PERCHE' `pdp` ENTRA, invece di essere armata ───────────────────
+#   Il legame con il cliente e' **bidirezionale** e tutte e due le chiavi sono
+#   **nullable**: `clienti.pdp_id` -> `pdp` e `pdp.cliente_id` -> `clienti`. Una
+#   policy costruita su una chiave nullable ha un buco esatto dove passa il
+#   NULL. ⇒ Prima va deciso quale verso porta il perimetro, e se quel NULL sia
+#   ammesso davvero: e' una domanda di modello, della stessa specie di
+#   `magazzino.assets`, non un armamento.
+#
+#   ⭐ E' la transitivita' vista funzionare PRIMA che costi un rosso: armando
+#   `clienti`, `pdp` entra nel criterio: dichiararla nello stesso gesto e' cio'
+#   che impedisce al presidio di trovarla `NON_DICHIARATO` al prossimo giro.
+#   Stessa lezione di `pratiche` (§11.7), dove due nipoti sarebbero entrate al
+#   giro dopo.
+#
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260910-42-delete-debito-rls-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260910-42-delete-debito-rls-clienti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito la riga di anagrafiche.clienti, armata
+        dalla slice 20260910-38..41. loadUpdateData non cancella, quindi
+        togliere la riga dal CSV non basta. La riga NUOVA di anagrafiche.pdp,
+        che entra nel criterio proprio perche' clienti e' stata armata, arriva
+        invece dal CSV tramite il mirror 20260909-77.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (51, 'anagrafiche', 'clienti'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Ha senso solo insieme al rollback di 20260910-41, che disarma
+              --   anagrafiche.clienti. Le due righe si muovono in coppia e in
+              --   verso opposto: clienti torna scoperta, pdp esce dal criterio
+              --   (il suo unico padre protetto era proprio clienti) e quindi la
+              --   sua riga di registro diventerebbe DEBITO_ESTINTO.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (51, 'FIGLIA_DI_TABELLA_PROTETTA', 'anagrafiche', 'clienti',
+                 'Ripristino di rollback: FK billing_account_id NOT NULL verso anagrafiche.billing_account (protetta). Il cliente e'' una faccia del billing account e ne eredita il perimetro.', DATE '2026-09-09');
+
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'FIGLIA_DI_TABELLA_PROTETTA'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) IN (
+                         (54, 'anagrafiche', 'pdp'));
