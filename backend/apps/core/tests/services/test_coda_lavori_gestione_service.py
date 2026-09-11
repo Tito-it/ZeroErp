@@ -51,7 +51,11 @@ _SVC = "apps.core.services.coda_lavori.gestione_service"
 
 
 # Scopo: patch standard dei collaboratori del service (resolver + repo code +
-#        repo maintenance). Ritorna i mock per le assert.
+#        repo maintenance + catalogo processi). Ritorna i mock per le assert.
+# ⚠️ Il catalogo dei processi va mockato ANCHE SE il test non lo guarda: dal
+#    2026-09-11 `_liveness_worker` legge la tolleranza da `dbops.processi` e
+#    non piu' da `sveglie.json`, e sotto `SimpleTestCase` una lettura vera del
+#    database fallisce. I due drainer rispondono col contratto del seed (10).
 def _patch_all(
     *,
     emittenti=None,
@@ -61,13 +65,19 @@ def _patch_all(
     p_resolver = patch(f"{_SVC}.PermissionResolver")
     p_repo = patch(f"{_SVC}.CodaLavoriRepository")
     p_maint = patch(f"{_SVC}.MaintenanceRepository")
+    p_proc = patch(f"{_SVC}.ProcessiRepository")
     resolver = p_resolver.start()
     repo_cls = p_repo.start()
     maint_cls = p_maint.start()
+    proc_cls = p_proc.start()
+    proc_cls.return_value.contratti_liveness.return_value = {
+        svc.JOBNAME_WORKER_CODA_LAVORI: {"tolleranza_minuti": 10, "segno_di_vita": "GIORNALE"},
+        svc.JOBNAME_WORKER_CODA_STAMPA: {"tolleranza_minuti": 10, "segno_di_vita": "GIORNALE"},
+    }
     resolver.get_emittenti_ids.return_value = emittenti
     resolver.is_super_admin.return_value = super_admin
     resolver.check_azione.return_value = code_manage
-    return (p_resolver, p_repo, p_maint), resolver, repo_cls, maint_cls
+    return (p_resolver, p_repo, p_maint, p_proc), resolver, repo_cls, maint_cls
 
 
 class ConteggiCodeTests(SimpleTestCase):

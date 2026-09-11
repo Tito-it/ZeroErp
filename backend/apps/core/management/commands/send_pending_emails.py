@@ -2,14 +2,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Management command per processare email in coda: `PENDING` sempre,
-#        piu' `FAILED` e `RETRY` finche' `tentativi < max_tentativi` e il
-#        `prossimo_tentativo` e' scaduto (la SELECT autorevole e' nel corpo).
-#        ⚠️ Questa riga diceva «PENDING o RETRY» e OMETTEVA `FAILED`: il
-#        2026-09-11 quell'omissione ha portato a scrivere, in `email_service`,
-#        un commento che affermava il contrario di cio' che il codice fa —
-#        «una riga FAILED non torna in coda». *Un commento non e' una fonte:
-#        se descrive un predicato, va riletto contro il predicato.*
+# Scopo: Management command per processare le email in coda.
+#        ⭐ CHE COSA SIA «in coda» NON LO DECIDE QUESTO FILE: lo dice
+#        `config.vw_email_in_coda`, una volta sola, nel database (brief
+#        `brief-db-quattro-processi-senza-presidio.md` §10.1 D3, 2026-09-11).
+#        Sono in coda le `PENDING`, sempre, e le `RETRY`/`FAILED` con
+#        `tentativi < max_tentativi` il cui `prossimo_tentativo` e' gia' dovuto
+#        o mai fissato — ma questa frase e' una DESCRIZIONE della vista, non il
+#        predicato: il predicato e' la vista, e la legge anche il presidio
+#        `dbops.vw_email_da_guardare`, che ci mette sopra la soglia di un'ora.
+#        ⛔ Fino al 2026-09-11 la `WHERE` stava qui, e il presidio proposto la
+#        ricopiava «PENDING o RETRY» omettendo i `FAILED` ripescabili: due sedi
+#        dello stesso predicato, gia' divergenti prima di nascere. Ed era la
+#        seconda volta — la riga sopra diceva «PENDING o RETRY» mentre il
+#        codice ripescava i `FAILED`, e da quel commento ne era nato un altro
+#        sbagliato in `email_service`. *Un commento non e' una fonte; e nemmeno
+#        una `SELECT` ricopiata lo e'.* Adesso la sede e' una.
 #        Svegliato da un timer systemd (`zeroerp-send-pending-emails.timer`),
 #        non da crontab — vedi `backend/deploy/sveglie.json`.
 # ------------------------------------------------------------
@@ -176,19 +184,24 @@ class Command(BaseCommand):
             "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
         }
 
-    # Scopo: Processa la coda email — `PENDING` sempre, piu' `FAILED` e `RETRY`
-    #        finche' `tentativi < max_tentativi` e il backoff e' scaduto.
-    #        ⚠️ `SIMULATA` NON si ripesca: e' terminale di proposito (la mail e'
-    #        stata mostrata, non spedita, e ritentarla non la farebbe partire).
+    # Scopo: Processa la coda email — le righe che `config.vw_email_in_coda`
+    #        dice essere ancora in coda (vedi header: il predicato e' la vista).
+    #        ⚠️ `SIMULATA` NON e' in coda: e' terminale di proposito (la mail e'
+    #        stata mostrata, non spedita, e ritentarla non la farebbe partire) —
+    #        lo esclude la vista, non questo file.
     #        Ritorna il riepilogo
     #        del giro (vuoto sul dry-run, che non e' un'esecuzione).
     # ⚠️ Gira DENTRO l'identita' impostata dal chiamante: qui non si apre nessun
-    #    contesto, o sarebbero due sedi a deciderlo.
+    #    contesto, o sarebbero due sedi a deciderlo. E la vista e'
+    #    `security_invoker`: si legge col perimetro di quell'identita', esattamente
+    #    come la tabella sotto — il cambio di sede non cambia cio' che si vede.
     def _esegui_giro(self, options) -> dict:
         dry_run = options["dry_run"]
         limit = options["limit"]
 
         # Seleziona email da processare
+        # ⛔ Nessuna `WHERE` sullo stato: e' la vista a dire chi e' in coda.
+        #    Aggiungerne una qui sarebbe la seconda sede, quella che si dimentica.
         sql = """
             SELECT id, destinatario, oggetto, stato, tentativi, max_tentativi,
                    email_account_id,
@@ -196,11 +209,7 @@ class Command(BaseCommand):
                    --    una riga `SISTEMA` non si aggiorna con un UPDATE
                    --    diretto (policy RLS), passa da `fn_chiudi_email_sistema`.
                    ambito
-              FROM config.email_log
-             WHERE (stato = 'PENDING'
-                    OR (stato IN ('FAILED', 'RETRY')
-                        AND tentativi < max_tentativi
-                        AND (prossimo_tentativo IS NULL OR prossimo_tentativo <= now())))
+              FROM config.vw_email_in_coda
              ORDER BY data_insert
              LIMIT %s
         """

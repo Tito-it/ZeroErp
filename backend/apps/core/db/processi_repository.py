@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, TypedDict
 
 from django.db import connection
@@ -46,6 +47,20 @@ class RigaRoster(TypedDict):
     emittente_fiscale_id: int
     emittente_codice: str
     emittente_soggetto_ruolo_id: int | None
+
+
+# Scopo: il CONTRATTO DI LIVENESS di un processo, come lo dichiara il catalogo
+#        (`dbops.processi`, colonne entrate il 2026-09-11 — brief
+#        `brief-db-quattro-processi-senza-presidio.md` §10.2, decisione D5).
+#        `tolleranza_minuti`: «se sto bene, lascio un segno almeno ogni N
+#        minuti» — `None` = nessun contratto, la liveness NON si presidia.
+#        `segno_di_vita`: `GIORNALE` (l'ultimo run su `maintenance.job_run_log`)
+#        oppure `SESSIONE` (una connessione viva in `pg_stat_activity` con
+#        `application_name = codice`; a `SESSIONE` la tolleranza e' sempre NULL,
+#        lo impone il CHECK `chk_processi_sessione_senza_tolleranza`).
+class ContrattoLiveness(TypedDict):
+    tolleranza_minuti: int | None
+    segno_di_vita: str
 
 
 # Whitelist ORDER BY della lista processi: chiave = nome esposto al frontend,
@@ -249,6 +264,57 @@ class ProcessiRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         return fetch_paged_with_total(data_sql, params + [limit, offset])
+
+    # Scopo: I contratti di liveness dei processi chiesti, per codice. Chi non e'
+    #        a catalogo NON compare nel dict — e' contratto: «non lo conosco» e
+    #        «non ha tolleranza» sono due risposte diverse, e il chiamante decide
+    #        cosa farne (il badge code ripiega, il battito del digest tace).
+    #
+    # ⭐ PERCHE' SI LEGGE QUI E NON DA `deploy/sveglie.json` (dov'era fino al
+    #    2026-09-11). La tolleranza e' il CONTRATTO del processo — uguale su ogni
+    #    installazione — mentre la cadenza e' COME il deploy lo onora, e resta nel
+    #    JSON. E la ragione decisiva non e' di principio: il lettore che ne ha
+    #    piu' bisogno sta nel database — `dbops.vw_processi_programmazione` dice
+    #    `MUTO` sui COMMAND col contratto, e il guardiano pgAgent del digest legge
+    #    solo il catalogo. Una sede sola resta una sede sola: il campo e' USCITO
+    #    dal JSON, e `carica_sveglie` lo rifiuta se ricompare.
+    # ⚠️ IL CONTRATTO HA LA GRANA DEL PROCESSO, il giornale quella della CORSIA
+    #    (`<codice>:<corsia>`). Un processo con due corsie a cadenze diverse ha
+    #    UNA tolleranza, la piu' larga: la morte della sola corsia stretta si
+    #    legge dal battito per corsia («mai girata»), non da questo numero.
+    #    Limite accettato da Tid il 2026-09-11 (brief §11.2); se un giorno serve
+    #    la grana corsia, la sede e' una figlia a catalogo, non il JSON.
+    # ⚠️ `dbops.processi` non ha RLS: la lettura vede tutto anche senza contesto
+    #    operatore, ed e' cio' che serve al badge e al digest.
+    def contratti_liveness(
+        self, codici: Iterable[str],
+    ) -> dict[str, ContrattoLiveness]:
+        elenco = sorted({c for c in codici if c})
+        if not elenco:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT codice, tolleranza_minuti, segno_di_vita
+                  FROM dbops.processi
+                 WHERE codice = ANY(%s)
+                """,
+                [elenco],
+            )
+            rows = cursor.fetchall()
+        return {
+            str(r[0]): ContrattoLiveness(
+                tolleranza_minuti=int(r[1]) if r[1] is not None else None,
+                segno_di_vita=str(r[2]),
+            )
+            for r in rows
+        }
+
+    # Scopo: La tolleranza di UN processo, o `None` se non ha contratto o non e'
+    #        a catalogo. Comodita' sul metodo sopra per chi ne chiede uno solo.
+    def tolleranza_minuti(self, processo_codice: str) -> int | None:
+        contratto = self.contratti_liveness([processo_codice]).get(processo_codice)
+        return contratto["tolleranza_minuti"] if contratto else None
 
     # Scopo: Il dettaglio di un processo: la sua riga, i BERSAGLI che dichiara di
     #        scrivere e con quale percorso raggiungono l'emittente, e le IDENTITA'

@@ -100,4 +100,4 @@ col tipo acceso → accoda, con la forma giusta; un'ora dopo →
 `GIA_NOTIFICATO_OGGI` anche se il lavoro è già `FATTO`; digest tornato vivo →
 `DIGEST_OK`; digest tolto dal catalogo → solleva.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-quattro-processi-senza-presidio.md` §6 · §10.2 — decisione di Tid, 2026-09-11.
+Origine: `docs/it/dev/work-done/brief-db-quattro-processi-senza-presidio.md` §6 · §10.2 — decisione di Tid, 2026-09-11.

@@ -28,6 +28,7 @@ from typing import Any
 
 from apps.core.db.emittente_scope_helpers import fetch_emittenti_scope_ids
 from apps.core.db.maintenance_repository import MaintenanceRepository
+from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.repository import (
     DEFAULT_EXTRA_TENTATIVI,
     ELENCA_SORT_SQL,
@@ -44,7 +45,6 @@ from apps.core.services.processi import (
     PROCESSO_DRAINA_CODA_STAMPA,
 )
 from apps.core.services.service_errors import ServiceError
-from apps.core.services.sveglie import tolleranza_minuti
 
 # Azione di processo che sblocca la vista cross-utente e le azioni su job
 # altrui (D-A). Seed a carico del team DB (brief §6, area core); finché non è
@@ -63,14 +63,14 @@ AZIONE_CODE_MANAGE = "code_manage"
 JOBNAME_WORKER_CODA_LAVORI = PROCESSO_DRAINA_CODA_LAVORI
 JOBNAME_WORKER_CODA_STAMPA = PROCESSO_DRAINA_CODA_STAMPA
 
-# Ripiego della soglia di liveness, per un worker che nel dichiarato di deploy
-# non ha una `tolleranza_minuti`.
+# Ripiego della soglia di liveness, per un worker che a catalogo non ha un
+# contratto (`dbops.processi.tolleranza_minuti` NULL, o codice non a catalogo).
 # ⚠️ NON è «il valore giusto»: è il valore che non fa danno. Un worker senza
-#    tolleranza dichiarata è una voce di `sveglie.json` incompleta, e il posto
-#    dove si corregge è quella — non questa riga.
-# ⛔ E non deve diventare la strada normale: `test_worker_del_badge_hanno_una_tolleranza`
-#    fallisce in CI se uno dei due drainer arriva qui senza tolleranza. Questo
-#    resta per il runtime, dove un badge che si spegne sarebbe peggio.
+#    contratto è una riga di `processi.csv` incompleta, e il posto dove si
+#    corregge è quella — non questa riga.
+# ⛔ E non deve diventare la strada normale: `test_worker_del_badge_hanno_un_contratto`
+#    fallisce in CI se uno dei due drainer arriva qui senza tolleranza nel seed.
+#    Questo resta per il runtime, dove un badge che si spegne sarebbe peggio.
 _SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 
 # Stati "vivi" delle due code (vocabolario condiviso PENDING/IN_CORSO).
@@ -133,9 +133,10 @@ def _valida_ordinamento(
     return sort_by or default, sort_dir_norm or "DESC"
 
 
-# Scopo: liveness dei worker, con la soglia PRESA DAL DICHIARATO DI DEPLOY
-#        (`backend/deploy/sveglie.json`, via `apps.core.services.sveglie`)
-#        invece che da una costante scritta qui.
+# Scopo: liveness dei worker, con la soglia PRESA DAL CONTRATTO A CATALOGO
+#        (`dbops.processi.tolleranza_minuti`, via
+#        `ProcessiRepository.contratti_liveness`) invece che da una costante
+#        scritta qui.
 #
 # ⛔ PERCHE' NON E' PIU' UN NUMERO IN QUESTO FILE. Fino al 2026-09-06 c'era
 #    `WORKER_ATTIVO_SOGLIA_MINUTI = 10`, con il commento «i timer girano a 1-2
@@ -145,6 +146,12 @@ def _valida_ordinamento(
 #    in cui una cadenza fosse passata a 15 minuti, il pallino sarebbe diventato
 #    rosso su un worker sano, che è il modo più rapido di far smettere di
 #    guardare un presidio.
+# ⭐ E dal 2026-09-11 non sta nemmeno in `sveglie.json`: la tolleranza è il
+#    CONTRATTO del processo e la legge anche il database (il panorama dice
+#    `MUTO` con lo stesso numero). Qui e là si confronta lo stesso contratto
+#    con lo stesso giornale: se i due dissentissero, uno dei due avrebbe un
+#    orologio storto — ed è per questo che `job_liveness` confronta col clock
+#    del database, non con quello di Python.
 #
 # ⚠️ SI RAGGRUPPA PER SOGLIA, e non è generalità gratuita: `job_liveness`
 #    accetta UNA soglia per chiamata, e nulla nel modello dice che due worker
@@ -152,18 +159,21 @@ def _valida_ordinamento(
 #    sola; il giorno in cui divergono questo codice fa la cosa giusta invece di
 #    applicarne una alle due.
 def _liveness_worker(jobnames: list[str]) -> dict[str, dict]:
+    # ⚠️ Il jobname dei drainer È il `processo_codice`: sono i command che si
+    #    registrano col proprio nome, e le costanti qui sopra vengono da
+    #    `processi.py` apposta. Dove i due non coincidessero (le corsie di
+    #    `run_fatturazione_batch`, che attaccano la corsia al jobname) la
+    #    liveness non si fa da qui. Una lettura sola per tutti i worker.
+    contratti = ProcessiRepository().contratti_liveness(jobnames)
     per_soglia: dict[int, list[str]] = {}
     for jobname in jobnames:
-        # ⚠️ Il jobname dei drainer È il `processo_codice`: sono i command che si
-        #    registrano col proprio nome, e le costanti qui sopra vengono da
-        #    `processi.py` apposta. Dove i due non coincidessero (le corsie di
-        #    `run_fatturazione_batch`, che attaccano la corsia al jobname) la
-        #    liveness non si fa da qui.
         # ⛔ `is None` e NON `or`: sono due domande diverse. `or` direbbe
-        #    «ripiega» anche su uno zero, e soprattutto confonde «non
-        #    dichiarata» con «dichiarata a niente» — che nel file sono due cose
-        #    opposte (`null` = «non si presidia da qui»).
-        dichiarata = tolleranza_minuti(jobname)
+        #    «ripiega» anche su uno zero, e soprattutto confonde «non a
+        #    catalogo» con «a catalogo senza contratto» — che nel modello sono
+        #    due cose diverse (`NULL` = «non si presidia»). Qui entrambe cadono
+        #    sul ripiego, e il test sul seed impedisce che ci arrivino i drainer.
+        contratto = contratti.get(jobname)
+        dichiarata = contratto["tolleranza_minuti"] if contratto else None
         soglia = _SOGLIA_LIVENESS_RIPIEGO_MINUTI if dichiarata is None else dichiarata
         per_soglia.setdefault(soglia, []).append(jobname)
 

@@ -47,20 +47,12 @@ import ast
 import re
 from pathlib import Path
 from unittest import TestCase
+from apps.core.tests._repo import repo_root
 
 # ⭐ Ogni forma della parola: `archiviato`, `archiviate`, `includi_archiviate`,
 #    `archiviato_il`, `archiviato_da`. Il contratto e' sulla COSA, non su una
 #    grafia — e cercare il solo `archiviato` lascerebbe passare il conteggio.
 _PAROLA = re.compile(r"archiviat", re.IGNORECASE)
-
-
-# Scopo: root del repo cercata risalendo fino a `db/changelog` — stesso helper
-#        degli altri presidi trasversali di questa cartella.
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata (nessun db/changelog risalendo)")
 
 
 # ⭐ I DUE REPOSITORY DELLE CODE, e per ciascuno i metodi che la bandiera puo'
@@ -111,7 +103,7 @@ class ArchiviazioneCodeNonEUnAnnullo(TestCase):
     def test_solo_l_elenco_nomina_la_bandiera(self) -> None:
         colpevoli: list[str] = []
         for relativo, ammessi in _WHITELIST.items():
-            percorso = _repo_root() / relativo
+            percorso = repo_root() / relativo
             for metodo, riga in _metodi_che_la_nominano(percorso).items():
                 if metodo not in ammessi:
                     colpevoli.append(f"{relativo}:{riga} {metodo}()")
@@ -129,7 +121,7 @@ class ArchiviazioneCodeNonEUnAnnullo(TestCase):
     #    farebbe scivolare fuori dal controllo **senza** far fallire il test 1.
     def test_la_whitelist_nomina_metodi_che_esistono(self) -> None:
         for relativo, ammessi in _WHITELIST.items():
-            percorso = _repo_root() / relativo
+            percorso = repo_root() / relativo
             albero = ast.parse(percorso.read_text())
             definiti = {
                 n.name for n in ast.walk(albero)
@@ -147,7 +139,7 @@ class ArchiviazioneCodeNonEUnAnnullo(TestCase):
     #    che mostra le archiviate a chiunque.
     def test_l_elenco_la_nomina_davvero(self) -> None:
         for relativo, ammessi in _WHITELIST.items():
-            percorso = _repo_root() / relativo
+            percorso = repo_root() / relativo
             nominanti = set(_metodi_che_la_nominano(percorso))
             elenco = {m for m in ammessi if m.startswith("elenca")}
             self.assertTrue(

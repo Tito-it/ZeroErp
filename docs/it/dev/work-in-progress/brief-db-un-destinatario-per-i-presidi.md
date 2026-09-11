@@ -1399,7 +1399,7 @@ stesso.
 | Residuo | Sede | Chi |
 | --- | --- | --- |
 | 🟠 contare le **779** per classe | **§11.4 punto 2 di questo brief** | team DB |
-| il presidio «**dichiarato ≠ installato**» | ✅ **aperto il 2026-09-11**: [brief-db-quattro-processi-senza-presidio.md](brief-db-quattro-processi-senza-presidio.md) — e la forma che ha preso non guarda systemd: presidia l'**effetto** (la coda che si accumula, le email ferme), che manca comunque se il timer non è installato | team DB |
+| il presidio «**dichiarato ≠ installato**» | ✅ **aperto il 2026-09-11**: [brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md) — e la forma che ha preso non guarda systemd: presidia l'**effetto** (la coda che si accumula, le email ferme), che manca comunque se il timer non è installato | team DB |
 | lo stato onesto per una mail **stampata a video** | [brief-db-stato-email-console-non-e-inviata.md](../work-done/brief-db-stato-email-console-non-e-inviata.md) | team DB |
 | `OnFailure=` sugli unit | §9.6 — **assenza dichiarata** con la sua ragione | — |
 | le tre righe 🔶 del §7.4 | note del catalogo — rimandate ai loro cantieri | team DB |

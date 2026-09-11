@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Supporto ai test che confrontano il DICHIARATO di deploy
+#        (`backend/deploy/sveglie.json`) con il CONTRATTO di liveness dei
+#        processi (`dbops.processi.tolleranza_minuti` / `segno_di_vita`).
+#        Due cose: la lettura del contratto dal SEED nel repo, e la lettura di
+#        un `OnCalendar` di systemd come «intervallo massimo fra due corse».
+# Note: ⛔ SI LEGGE IL SEED, NON IL DATABASE. I test Django di questo repo non
+#        parlano con un DB reale (regola `SimpleTestCase`, AGENTS.md), e il
+#        contratto ha una sede nel repo: `80_data/sql/dbops/processi.csv`, il
+#        mirror `loadUpdateData` da cui il catalogo vivo viene ricaricato a ogni
+#        migrate. Confrontare due file del repo e' esattamente il presidio che
+#        serve: se il deploy viola il contratto, lo dice la CI, non l'host.
+#        ⚠️ Il parser di `OnCalendar` copre le SOLE forme in uso nel progetto, e
+#        su una forma che non conosce SOLLEVA. Un parser «generoso» che
+#        restituisse un numero a caso passerebbe verde su un timer che nessuno
+#        ha capito — il verde per sottrazione, di nuovo.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+import csv
+import re
+from typing import TypedDict
+
+from apps.core.tests._repo import repo_root
+
+
+SEED_PROCESSI = repo_root() / "db/changelog/migrations_v2/80_data/sql/dbops/processi.csv"
+
+# Vocabolario del seed (mirror dei CHECK `chk_processi_canale` / `chk_processi_segno_di_vita`).
+CANALE_COMMAND = "COMMAND"
+SEGNO_GIORNALE = "GIORNALE"
+SEGNO_SESSIONE = "SESSIONE"
+
+
+# Scopo: una riga del contratto come sta nel seed. `tolleranza_minuti` e'
+#        `None` dove il CSV dice `NULL` («non si presidia»).
+class ContrattoSeed(TypedDict):
+    codice: str
+    canale: str
+    attivo: bool
+    tolleranza_minuti: int | None
+    segno_di_vita: str
+
+
+# Scopo: i contratti di liveness per codice, letti dal seed del catalogo.
+# ⛔ FAIL-LOUD sulla forma: se una colonna sparisce dal CSV il test che ci
+#    poggia deve diventare rosso, non leggere `None` ovunque e passare.
+def leggi_contratti_dal_seed() -> dict[str, ContrattoSeed]:
+    with SEED_PROCESSI.open(encoding="utf-8", newline="") as fh:
+        lettore = csv.DictReader(fh)
+        attese = {"codice", "canale", "attivo", "tolleranza_minuti", "segno_di_vita"}
+        mancanti = attese - set(lettore.fieldnames or ())
+        if mancanti:
+            raise AssertionError(
+                f"{SEED_PROCESSI}: colonne mancanti nel seed: {sorted(mancanti)}"
+            )
+        contratti: dict[str, ContrattoSeed] = {}
+        for riga in lettore:
+            grezza = (riga["tolleranza_minuti"] or "").strip()
+            contratti[riga["codice"]] = ContrattoSeed(
+                codice=riga["codice"],
+                canale=riga["canale"],
+                attivo=riga["attivo"].strip().lower() in ("t", "true", "1"),
+                tolleranza_minuti=None if grezza.upper() in ("", "NULL") else int(grezza),
+                segno_di_vita=riga["segno_di_vita"].strip(),
+            )
+    if not contratti:
+        raise AssertionError(f"{SEED_PROCESSI}: seed vuoto")
+    return contratti
+
+
+# Le forme di `OnCalendar` in uso nel progetto, e quanto puo' passare AL
+# MASSIMO fra due corse consecutive. Ordine: dalla piu' specifica alla piu'
+# generale, e OGNI regex e' ancorata: `*:0/5` non deve combaciare con una forma
+# che non e' la sua.
+_GIORNI_SETTIMANA = "Mon|Tue|Wed|Thu|Fri|Sat|Sun"
+_MINUTI_ORA = 60
+_MINUTI_GIORNO = 24 * _MINUTI_ORA
+# ⚠️ Il giorno del mese si accetta solo fino al 28: `*-*-29`, `-30`, `-31` in
+#    systemd SALTANO i mesi che quel giorno non ce l'hanno, e l'intervallo
+#    massimo non e' piu' «un mese» — e' quanti mesi corti si mettono in fila.
+#    Meglio non capire che rispondere un numero sbagliato.
+_ULTIMO_GIORNO_SICURO = 28
+_FORME: tuple[tuple[re.Pattern[str], int | None], ...] = (
+    # `*:0/N`  → ogni N minuti, dentro l'ora.
+    (re.compile(r"^\*:0/(\d+)$"), None),
+    # `Mon *-*-* HH:MM` → una volta a settimana.
+    # ⚠️ Gruppo NON catturante: l'unico gruppo che il parser legge e' quello
+    #    del passo (`*:0/N`) o del giorno del mese (`*-*-DD`).
+    (re.compile(rf"^(?:{_GIORNI_SETTIMANA}) \*-\*-\* \d{{2}}:\d{{2}}$"), 7 * _MINUTI_GIORNO),
+    # `*-*-* HH:MM` → una volta al giorno.
+    (re.compile(r"^\*-\*-\* \d{2}:\d{2}$"), _MINUTI_GIORNO),
+    # `*-*-DD HH:MM` → una volta al mese; il gap massimo e' 31 giorni (lug→ago).
+    (re.compile(r"^\*-\*-(\d{2}) \d{2}:\d{2}$"), 31 * _MINUTI_GIORNO),
+)
+
+
+# Scopo: l'intervallo MASSIMO, in minuti, fra due corse consecutive di un
+#        timer con questo `OnCalendar`. E' il numero da confrontare con la
+#        tolleranza: se e' piu' grande, il deploy promette meno del contratto.
+# ⛔ Solleva su una forma sconosciuta: e' il contratto di questo helper.
+# ⚠️ `*:0/N` vuol dire «i minuti 0, N, 2N… DENTRO l'ora», poi si ricomincia
+#    al minuto 0 dell'ora dopo: con N che non divide 60 l'ultimo gap e' piu'
+#    corto, e con N >= 60 combacia solo il minuto 0 — cioe' il timer gira OGNI
+#    ORA, non ogni N minuti. Il massimo e' quindi `min(N, 60)`, non N.
+def intervallo_massimo_minuti(oncalendar: str) -> int:
+    espressione = oncalendar.strip()
+    for regex, minuti in _FORME:
+        m = regex.match(espressione)
+        if not m:
+            continue
+        if minuti is None:
+            passo = int(m.group(1))
+            if passo <= 0:
+                raise ValueError(f"OnCalendar con passo non positivo: {oncalendar!r}")
+            return min(passo, _MINUTI_ORA)
+        if m.groups() and int(m.group(1)) > _ULTIMO_GIORNO_SICURO:
+            raise ValueError(
+                f"OnCalendar mensile oltre il giorno {_ULTIMO_GIORNO_SICURO}: "
+                f"{oncalendar!r} salta i mesi corti e l'intervallo non e' piu' un mese"
+            )
+        return minuti
+    raise ValueError(
+        f"forma di OnCalendar non conosciuta da questo parser: {oncalendar!r} — "
+        f"insegnargliela in _FORME (con il suo intervallo), non allargare una regex"
+    )

@@ -481,10 +481,10 @@ difetto di percorso, non di calcolo, e nessun test poteva vederlo.
 Esegui il **RIPRISTINO** (la `UPDATE` speculare della Materia), poi rilancia lo
 step ancora una volta.
 
-- [ ] il task_run **nuovo** chiude in **`COMPLETATO`**;
-- [ ] le attività della commessa prima guastata sono **entrate** nel lotto;
-- [ ] sul cruscotto quella commessa **non risulta più** da emettere;
-- [ ] ⭐ e non ci sono **doppioni**: le attività delle commesse sane non sono
+- [X] il task_run **nuovo** chiude in **`COMPLETATO`**;
+- [X] le attività della commessa prima guastata sono **entrate** nel lotto;
+- [X] sul cruscotto quella commessa **non risulta più** da emettere;
+- [X] ⭐ e non ci sono **doppioni**: le attività delle commesse sane non sono
       state emesse due volte.
 
 ⚠️ **Se compaiono doppioni**: l'idempotenza dell'emit non regge al ri-tentativo.

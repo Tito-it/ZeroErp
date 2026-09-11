@@ -26,7 +26,7 @@
 10. test_una_vista_elencabile_che_risponde_vuota_viene_dichiarata_cieca
 11. test_una_cadenza_fuori_vocabolario_viene_rifiutata
 12. test_il_messaggio_porta_il_numero_nell_oggetto_e_scappa_l_html
-13. test_il_battito_usa_la_tolleranza_dichiarata_nel_deploy   ⭐
+13. test_il_battito_usa_la_tolleranza_del_contratto_a_catalogo   ⭐
 14. test_senza_tolleranza_dichiarata_nessuna_corsia_e_ferma
 15. test_le_due_composizioni_nominano_le_stesse_viste
 16. test_il_nome_della_corsia_viene_dalla_cadenza_non_dalla_riga_di_comando
@@ -123,6 +123,20 @@ class _MaintenanceFinto:
         return dict(self._corse)
 
 
+# Scopo: il catalogo dei processi, finto: risponde la tolleranza del contratto
+#        per il codice chiesto (`None` = nessun contratto). E' la stessa forma
+#        di `ProcessiRepository.tolleranza_minuti`, che dal 2026-09-11 e' la
+#        sede del numero (prima era `sveglie.json`).
+class _ProcessiFinto:
+    def __init__(self, tolleranza: int | None) -> None:
+        self._tolleranza = tolleranza
+        self.codice_chiesto: str | None = None
+
+    def tolleranza_minuti(self, processo_codice: str) -> int | None:
+        self.codice_chiesto = processo_codice
+        return self._tolleranza
+
+
 class PresidiDigestTests(SimpleTestCase):
     """La forma del digest: cosa entra, cosa si spedisce, cosa si dichiara."""
 
@@ -208,6 +222,8 @@ class PresidiDigestTests(SimpleTestCase):
         }}
         digest = calcola_digest(
             CADENZA_SETTIMANALE, repo=repo, maintenance=_MaintenanceFinto(corse),
+            # Il contratto del seed (`processi.csv`): 11520 minuti.
+            processi=_ProcessiFinto(11520),
         )
         self.assertFalse(digest.ha_da_dire)
         self.assertTrue(digest.da_inviare)
@@ -337,11 +353,13 @@ class PresidiDigestTests(SimpleTestCase):
         self.assertNotIn("<script>", html)
         self.assertIn("&lt;script&gt;", html)
 
-    # 13. ⭐ IL LETTORE DELLA TOLLERANZA. `tolleranza_minuti` e' dichiarata in
-    #     `deploy/sveglie.json`, e senza qualcuno che la CONFRONTI sarebbe un
-    #     campo che sembra un presidio senza esserlo. Qui si prova che il
-    #     battito la chiede al giornale e che una corsia ferma esce col nome.
-    def test_il_battito_usa_la_tolleranza_dichiarata_nel_deploy(self) -> None:
+    # 13. ⭐ IL LETTORE DELLA TOLLERANZA. `tolleranza_minuti` e' il contratto
+    #     del processo a catalogo (`dbops.processi`, dal 2026-09-11 — prima
+    #     stava in `deploy/sveglie.json`), e senza qualcuno che la CONFRONTI
+    #     sarebbe una colonna che sembra un presidio senza esserlo. Qui si prova
+    #     che il battito la chiede al catalogo PER IL PROCESSO GIUSTO, la passa
+    #     al giornale, e che una corsia ferma esce col nome.
+    def test_il_battito_usa_la_tolleranza_del_contratto_a_catalogo(self) -> None:
         repo = _RepoFinto(
             [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
             {"dbops.vw_zero": 0},
@@ -356,11 +374,13 @@ class PresidiDigestTests(SimpleTestCase):
                 "attivo": True, "last_ok": True,
             },
         })
-        with patch.object(presidi_digest, "tolleranza_minuti", return_value=1560):
-            digest = calcola_digest(
-                CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
-            )
+        catalogo = _ProcessiFinto(1560)
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=catalogo,
+        )
         assert digest.battito is not None
+        self.assertEqual(catalogo.codice_chiesto, "digest_presidi")
         self.assertEqual(giornale.soglia_chiesta, 1560)
         self.assertEqual(
             digest.battito.corsie_ferme, ["digest_presidi:giornaliera"],
@@ -390,10 +410,11 @@ class PresidiDigestTests(SimpleTestCase):
                 "attivo": False, "last_ok": True,
             },
         })
-        with patch.object(presidi_digest, "tolleranza_minuti", return_value=None):
-            digest = calcola_digest(
-                CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
-            )
+        catalogo = _ProcessiFinto(None)
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=catalogo,
+        )
         assert digest.battito is not None
         self.assertEqual(digest.battito.corsie_ferme, [])
         _oggetto, testo, _html = componi_messaggio(digest)
@@ -462,10 +483,11 @@ class PresidiDigestTests(SimpleTestCase):
                 "attivo": True, "last_ok": True,
             },
         })
-        with patch.object(presidi_digest, "tolleranza_minuti", return_value=11520):
-            digest = calcola_digest(
-                CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
-            )
+        catalogo = _ProcessiFinto(11520)
+        digest = calcola_digest(
+            CADENZA_SETTIMANALE, repo=repo, maintenance=giornale,
+            processi=catalogo,
+        )
         assert digest.battito is not None
         self.assertEqual(
             digest.battito.corsie_mai_girate, ["digest_presidi:giornaliera"],

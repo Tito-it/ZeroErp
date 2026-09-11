@@ -40,7 +40,7 @@ import inspect
 import re
 from unittest import TestCase
 
-# ⭐ Riuso, non copia: `_repo_root`, `_seed` e `_senza_commenti` esistono gia'
+# ⭐ Riuso, non copia: `repo_root` (helper `_repo`), `_seed` e `_senza_commenti` esistono gia'
 #    nel presidio trasversale delle liste configurabili e sono la stessa
 #    identica esigenza (leggere il seed e i `.vue` distinguendo chi USA da chi
 #    NOMINA). Importarli tiene UNA sede sola.
@@ -50,7 +50,8 @@ from unittest import TestCase
 #    (`apps/core/tests/_helpers.py` o simile). ⛔ Non estratto qui di
 #    iniziativa: la regola del progetto e' dichiarare l'estrazione e aspettare
 #    l'ok, e questo commento e' la dichiarazione.
-from apps.core.tests.test_liste_configurabili_seed import _repo_root, _seed, _senza_commenti
+from apps.core.tests._repo import repo_root
+from apps.core.tests.test_liste_configurabili_seed import _seed, _senza_commenti
 
 # ⭐ E lo spogliatore di commenti per il sorgente PYTHON vive dove sta il suo
 #    presidio: il gemello Python del guardrail di naming, in `apps/core`. Era
@@ -190,7 +191,7 @@ def _liste_con_colonna_transito() -> set[str]:
 #    nascondersi dietro l'ordine alfabetico dei file.
 def _vue_per_lista() -> dict[str, list[tuple[str, str]]]:
     mappa: dict[str, list[tuple[str, str]]] = {}
-    for percorso in sorted((_repo_root() / "frontend" / "src").rglob("*.vue")):
+    for percorso in sorted((repo_root() / "frontend" / "src").rglob("*.vue")):
         testo = _senza_commenti(percorso.read_text(encoding="utf-8"))
         for codice in set(_RE_LISTA_CONFIGURABILE.findall(testo)):
             mappa.setdefault(codice, []).append((percorso.name, testo))

@@ -45,24 +45,16 @@ import csv
 import re
 import unittest
 from functools import lru_cache
-from pathlib import Path
 
+from apps.core.tests._repo import repo_root
 from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
     _seed,
 )
 
 
-# Scopo: root del repo, cercata risalendo (vedi test_liste_configurabili_seed).
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata")
-
-
-_APPS = _repo_root() / "backend/apps"
-_USE_API_HANDLER = _repo_root() / "frontend/src/core/composables/useApiHandler.js"
+_APPS = repo_root() / "backend/apps"
+_USE_API_HANDLER = repo_root() / "frontend/src/core/composables/useApiHandler.js"
 
 # ⛔ Liste che NON possono avere il cancello, con la ragione. Non e' una lista
 #    di comodo: sono tutte servite da `AdminAPIView`, e il cancello vive su
@@ -372,7 +364,7 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
 #        cartella, non un'altra logica.
 def _seed_config(nome: str) -> list[dict[str, str]]:
     percorso = (
-        _repo_root() / "db/changelog/migrations_v2/80_data/sql/config" / nome
+        repo_root() / "db/changelog/migrations_v2/80_data/sql/config" / nome
     )
     with percorso.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))

@@ -58,23 +58,16 @@ from __future__ import annotations
 import csv
 import inspect
 import unittest
-from pathlib import Path
 
 from apps.ui.db.ui_repository import UiRepository
+from apps.core.tests._repo import repo_root
 
 _TIPI_CRONOLOGICI = ("date", "datetime")
 
 
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata")
-
-
 def _seed(nome: str) -> list[dict[str, str]]:
     percorso = (
-        _repo_root() / "db/changelog/migrations_v2/80_data/sql/ui" / nome
+        repo_root() / "db/changelog/migrations_v2/80_data/sql/ui" / nome
     )
     with percorso.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
@@ -82,7 +75,7 @@ def _seed(nome: str) -> list[dict[str, str]]:
 
 def _sorgente_lista_configurabile() -> str:
     percorso = (
-        _repo_root() / "frontend/src/core/components/ListaConfigurabile.vue"
+        repo_root() / "frontend/src/core/components/ListaConfigurabile.vue"
     )
     return percorso.read_text(encoding="utf-8")
 
@@ -176,7 +169,7 @@ class OrdinamentoDataDescTests(unittest.TestCase):
         #    watcher di PrimeVue non scattava, e la freccia diceva una cosa
         #    mentre i dati ne dicevano un'altra.
         percorso = (
-            _repo_root() / "frontend/src/core/composables/useSearchTable.js"
+            repo_root() / "frontend/src/core/composables/useSearchTable.js"
         )
         src = percorso.read_text(encoding="utf-8")
         self.assertNotRegex(
