@@ -62,9 +62,9 @@ ZeroErp/
 │   │   ├── shop/             # Veste SHOP_CUSTOMER (auth + attivazione)
 │   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
 │   │   ├── vendite/          # App più attiva — pipeline fatturazione
-│   │   ├── acquisti/         # ⚠️ scheletro (13 file, 26 righe, 0 test) — modello a DB, comportamento no
-│   │   ├── magazzino/        # ⚠️ scheletro — idem
-│   │   ├── storico/          # ⚠️ scheletro — idem
+│   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
+│   │   ├── magazzino/        # 🔵 PROSSIMO CANTIERE (idem) — modello a DB curato, 0 test
+│   │   ├── storico/          # ⚠️ scheletro (13 file, 26 righe, 0 test) — nessuna decisione presa
 │   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
 │   └── requirements.txt      # Generato da pip-compile (non editare)
@@ -184,6 +184,30 @@ def nome_metodo(self, ...):
 - **Listini v3 completo** (12-04-2026): Sprint B-v3 — N8a variazione % massa, N2 alert scadenze, N6 rettifica controllata, N5 riallineamento prezzo, N7 variazione eccezionale + sblocco, trigger DB guard, 6 endpoint API, 24 test, doc API
 - **Migrazione daterange** (12-04-2026): 18 tabelle migrate a `daterange`/`tstzrange` nativo, `script.trgfn_set_validita()`, backend ottimizzato con `@>`, linee guida SQL §7b
 - **Pricing commesse** (12-04-2026): riallineamento prezzo, variazione eccezionale, sblocco — 3 endpoint API con lock FOR UPDATE e audit trail
+
+### 🔵 Il prossimo cantiere — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
+
+Le due app **non sono scheletri congelati: sono il prossimo cantiere**, e la
+decisione è stata presa il 2026-09-11 rispondendo alla voce D11 di
+[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md).
+
+Oggi hanno un **modello DB curato e zero comportamento applicativo**: 26 tabelle
+e 71 CHECK su `magazzino`, 9 tabelle e 42 FK su `acquisti`, 13 file Python e 0
+test per ciascuna.
+
+⭐ **Cosa comporta, ed è la ragione per cui sta scritto qui e non in un piano:**
+ogni decisione che si prende lavorando su `vendite` — envelope, capability di
+riga, scope emittente, ordinamento, export, drawer autonomi,
+`ListaConfigurabile` — è una decisione presa **anche per `acquisti`**. Finché
+erano dichiarati «scheletri», quel debito cresceva in silenzio; da adesso chi
+decide su `vendite` sa di star decidendo per due domini.
+⇒ Ne discende la regola operativa: quando un'asimmetria fra i due domini emerge,
+si chiude **subito**, non in una «fase due» — una simmetria rimandata è un debito
+che nessuno rilegge.
+
+⚠️ `storico` **resta senza decisione** e `contabilita` resta **fuori perimetro**
+(schema DB vuoto, verificato 01-09-2026): non sono la stessa cosa e non vanno
+letti insieme ai due sopra.
 
 ### Aperto — Media priorità
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa

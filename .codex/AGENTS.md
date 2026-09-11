@@ -723,7 +723,22 @@ Bonifica in corso: `docs/it/dev/work-done/brief-db-bonifica-pgtap-sorgente-polim
 
 I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un DB reale accessibile**:
 
-- **Usare `unittest.TestCase`** (o `django.test.SimpleTestCase`) per test unitari con mock. **Non** usare `django.test.TestCase` a meno che il test non necessiti realmente del database.
+- **Usare `django.test.SimpleTestCase`** per i test unitari con mock. **Non** usare `django.test.TestCase` a meno che il test non necessiti realmente del database.
+  ⛔ **`unittest.TestCase` e `SimpleTestCase` NON sono equivalenti, e fino al
+  2026-09-11 questa riga le offriva come alternative.** Solo `SimpleTestCase`
+  **impedisce** al codice sotto test di parlare col database
+  (`DatabaseOperationForbidden`); `unittest.TestCase` glielo *permette*
+  soltanto. ⇒ Un mock dimenticato sotto `unittest.TestCase` non fallisce:
+  **parla col DB di sviluppo**, e il test resta verde raccontando una cosa che
+  in CI non succede.
+  ⚠️ Misurato il 2026-09-11 in `backend/apps`: **506** classi non bloccano il
+  database (53 `unittest.TestCase` qualificate + 453 `(TestCase)` nude, tutte
+  da `from unittest import TestCase`) contro **202** `SimpleTestCase`. Il
+  rapporto è di due e mezzo a uno **a favore della forma che non presidia** —
+  il pregresso è un registro del debito, non un modello da imitare.
+  ⭐ `unittest.TestCase` resta legittimo dove il test non tocca Django affatto
+  (una funzione pura, un helper di formattazione): lì `SimpleTestCase` non
+  aggiunge niente. La regola è *scegliere sapendo*, non un divieto.
 - ⚠️ **Quella regola oggi regge una seconda cosa, non dichiarata: leggere prima di infrangerla.**
   Django crea il database di test usa-e-getta **solo se almeno un test dichiara di
   averne bisogno** (`django.test.TestCase`, `TransactionTestCase`, o `databases = [...]`).

@@ -1257,7 +1257,9 @@ suite verifica sono i **service con i repository finti**, ed è il livello giust
 per validazione, dedup e not-found.
 
 ⭐ **Il livello che attraversa la giuntura esiste ed è cresciuto**: 19 file di
-test usano `richiedi_db_provvisto` (34 punti di chiamata) e girano contro il
+test usano `richiedi_db_provvisto` (34 punti di chiamata al 09-09; ⭐
+**rimisurato il 2026-09-11: 22 file**, uno per punto di chiamata — il livello
+cresce da solo, senza che nessuno lo abbia chiesto) e girano contro il
 database costruito da Liquibase, accesi in CI da `ZEROERP_TEST_DB_E2E=1`. Fra
 questi i guardrail sui codici errore, sull'envelope, sui tipi di handler della
 coda e sull'ordine dei gruppi di lotto. ✅ **`api.md` §Test lo registra dal
@@ -1328,7 +1330,7 @@ succede se cresce*.
 | File tracciati senza header di licenza | **1.169** su 5.787 | ✅ **cala davvero**: erano 2.042 su 5.189 il 2026-08-26. L'hook guarda i soli file **aggiunti**, e quel «non blocca il pregresso» è la ragione per cui non è stato spento |
 | …di cui sotto `frontend/src` | **576** su 682 (84%) | ⚠️ scende solo quando un file viene riscritto: è un verso lento, ma dichiarato |
 | `baseline-smoke.tsv` | 2 su 16 | ⛔ **nessun verso**: non lo esegue nessuno, e portarlo in CI è un cantiere (§8) |
-| `skip_area_check = True` | 81 in 24 file | ⛔ **nessun verso**, e non è meccanizzabile: `api.md` lo ammette «solo per endpoint cross-dominio», e distinguere caso per caso è una lettura, non un conteggio |
+| `skip_area_check = True` | 81 in 24 file → **82 in 22** (11-09) | ⛔ **nessun verso**, e non è meccanizzabile: `api.md` lo ammette «solo per endpoint cross-dominio», e distinguere caso per caso è una lettura, non un conteggio. ⚠️ In due giorni **+1**: senza presidio un registro non cala da sé |
 
 ### ✅ Il cricchetto delle `DataTable`, dal 2026-09-10
 
@@ -1596,6 +1598,54 @@ gli altri quattro dicono già in un altro.
 
 ---
 
+### 🔴 D14 — «Inviata» detto di una mail stampata a video (2026-09-11)
+
+> ⭐ **Non era in questa valutazione, e la ragione per cui non c'era è il punto**:
+> non si trova leggendo il codice né contando i file. È saltato fuori **provando
+> la connessione SMTP** prima di accendere il digest dei presidi — da una persona
+> che stava guardando un'altra cosa. È la terza volta, dopo D13 e il seguito di
+> D6, che a trovare il difetto è **l'uso** e non la lettura.
+
+Su un host con `DJANGO_DEBUG = False` e l'account `SISTEMA` ancora sul
+placeholder del seed (`smtp.example.com`), una mail che **non è partita** veniva
+registrata in `config.email_log` con `stato = 'SENT'`.
+
+⛔ **Nessuno se ne sarebbe accorto**: il giornale diceva «inviata», il pulsante
+«prova connessione» dell'amministrazione rispondeva **OK**, e nessun presidio
+guarda oltre lo stato. L'unico modo di scoprirlo era **non vedere arrivare la
+posta** — cioè il guasto-per-assenza da cui nasce l'intero cantiere dei presidi.
+
+> **Un valore che dice «consegnata» su una cosa che non è partita non è un
+> dettaglio di log: è la forma in cui un'assenza si traveste da esito.**
+
+**La causa**: `EmailDispatchService` aveva **due** canali (SMTP e «console»), e
+in «console» cadevano **due situazioni opposte** — lo sviluppo che stampa a video
+*di proposito*, e la configurazione che *manca* su un host di esercizio.
+Entrambe scrivevano `SENT`.
+
+#### ✅ Chiuso lo stesso giorno, su entrambi i lati
+
+| | |
+| --- | --- |
+| **Backend** | tre canali invece di due: `SMTP` · `CONSOLE` · **`NON_CONFIGURATO`**, quest'ultimo scrive `FAILED` **con il motivo e dove si rimedia**. `test_connection` non risponde più OK a un account che non può spedire — era il verde che aveva ingannato una persona vera; `retry_log_entry` non ritenta contro un placeholder. Sette test **provati per mutazione** |
+| **Database** | il `CHECK chk_email_log_stato` ammette un **quinto valore** (applicato l'11-09 alle 11:43) |
+| **Il nome scelto** | **`SIMULATA`**, non `CONSOLE`: dice l'**esito**, non il canale — «console» è *un* modo di non spedire, e un secondo modo non chiederà un sesto valore |
+| **`inviato_at`** | resta **NULL**, ed è l'altra metà: è l'unica colonna che data una *consegna*, e scriverla avrebbe spostato la bugia di una casella invece di toglierla |
+
+⭐ **Il predicato del placeholder aveva una seconda sede** (`email_views.
+_derive_test_capability`), sotto un commento che dichiarava di averla
+centralizzata. Ora è una sola. *Un commento che afferma una centralizzazione non
+è una centralizzazione.*
+
+⛔ **Nessun backfill**, ed è la decisione giusta: le righe storiche marcate `SENT`
+in console mode restano come sono — riscrivere il passato direbbe che si sa quali
+lo erano, e non si sa.
+
+Brief e risposta del DB:
+[brief-db-stato-email-console-non-e-inviata.md](../work-done/brief-db-stato-email-console-non-e-inviata.md).
+
+---
+
 ## 4. Cosa NON è un difetto
 
 * ⛔ **`contabilita` vuoto su tutti e tre gli strati.** Fuori perimetro per
@@ -1634,12 +1684,12 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Contratto API pubblicato**                | 🟠 medio | **7/10** ⬆   | ✅ 2026-09-09: `securitySchemes` c'è, `security:` su tutte le 815 operazioni, `check --deploy` da 677 a 124 problemi. Restano 66 `W002`, 54 collisioni di `operationId` e il ramo `--deploy` fuori dalla CI (D3, D3-b)                                            |
 | **Contratto d'errore — lato backend**       | 🟠 medio | **9/10**     | 763 codici vivi, zero senza ripiego, zero orfani, zero `%s`, classi motivate. Il pezzo migliore del backend                                                                                                                                                      |
 | **Contratto d'errore — arrivo a video**     | 🟠 medio | **8/10** ⬆⬆  | ✅ 2026-09-09: `fields`, `targets` e ora anche **`hint`** arrivano a video — il toast lo rende sotto il messaggio, e sui tre codici tecnici il backend lo toglie perché lì non è la soluzione a catalogo. Le sei `ui_action` non ramificate sono **dichiarate servite** dal default, non ignorate. ⚠️ Non è 10: il canale è `execute`, e chi mostra un errore chiamando `notify.error` a mano resta fuori (D4) |
-| **Perimetro e permessi (lato applicativo)** | 🟠 medio | **7,5/10**   | Catena unica, fail-closed, reset GUC incondizionato; un'area dichiarata e non a catalogo (D5), `skip_area_check` senza un registro (D10)                                                                                                                         |
+| **Perimetro e permessi (lato applicativo)** | 🟠 medio | **7,5/10**   | Catena unica, fail-closed, reset GUC incondizionato; un'area dichiarata e non a catalogo (D5), `skip_area_check` senza un registro (D10). ⚠️ **Invariato l'11-09**: per D5 la decisione è presa e il brief scritto, ma il catalogo lo applica il **team DB** — finché la riga non c'è, il difetto è vivo com'era |
 | **Correttezza dei contratti di lista**      | 🟠 medio | **8/10** ⬆ | ✅ 2026-09-10: i lookup dichiarano `troncato` (sonda `+1`, nel repository) e i due envelope hanno nomi che non si confondono; presidiato sul DB vero. ⚠️ Restano i `count: len(...)` su collezioni **senza** `LIMIT` — lì il numero è giusto, ma nessun cancello impedisce a un `LIMIT` di comparirci sopra un giorno (D6) |
-| **Simmetria del dominio**                   | 🟠 medio | **4/10**     | `acquisti` e `magazzino` modellati a DB e vuoti su BE e FE, senza una data (D11). Stesso voto del gemello, per lo stesso motivo                                                                                                                                  |
+| **Simmetria del dominio**                   | 🟠 medio | **4/10**     | `acquisti` e `magazzino` modellati a DB e vuoti su BE e FE (D11). Stesso voto del gemello, per lo stesso motivo. ⚠️ **Il voto NON si muove l'11-09**: quel giorno è arrivata la **decisione** (sono il prossimo cantiere), non il comportamento — *una decisione non scrive il codice*. Ciò che cambia è che il debito ha un verso dichiarato invece di crescere in silenzio |
 | **Building block — frontend**               | 🟡 basso | **8,5/10**   | 83 composable, 97 componenti, un solo punto HTTP, `bersagli` e `useDrawerChiusuraGlobale` sono lavoro di qualità. ✅ 2026-09-10: contratto KeepAlive **presidiato** (quinto guard, criterio derivato dal router e risolto transitivamente sui composable) e dati compagni sanati. Restano 34 `DataTable` senza motivo (D10) |
 | **Multilingua**                             | 🟡 basso | **9/10**     | 4.697 chiavi in parità perfetta, guard in pre-commit, condotta `Accept-Language` completa. Il voto non è 10 perché il catalogo a monte è monolingue (§2.5)                                                                                                       |
-| **Gestione del debito**                     | 🟡 basso | **8/10** ⬆⬆ | ✅ 2026-09-10: `oxlint` e `ruff` a **zero con cancello**, e le `DataTable` grezze con un **cricchetto** che è rosso in entrambi i versi — anche quando migliora, perché una baseline stantia riapre lo spazio appena chiuso. ⛔ Restano senza verso gli 81 `skip_area_check` e la baseline degli smoke: sono decisioni, non lavoro (D10-bis) |
+| **Gestione del debito**                     | 🟡 basso | **8/10** ⬆⬆ | ✅ 2026-09-10: `oxlint` e `ruff` a **zero con cancello**, e le `DataTable` grezze con un **cricchetto** che è rosso in entrambi i versi — anche quando migliora, perché una baseline stantia riapre lo spazio appena chiuso. ⛔ Restano senza verso gli `skip_area_check` e la baseline degli smoke: sono decisioni, non lavoro (D10-bis). ⚠️ **Rimisurati l'11-09: 82 in 22 file** (erano 81 in 24) — il numero non scende, e non essendo presidiato da niente non lo farà da sé |
 | **Documentazione di contesto**              | 🟡 basso | **9/10** ⬆   | ✅ 2026-09-09: **sette righe su sette**. Lo stack **tolto** dalle tre sedi invece che aggiornato (fonte unica `frontend/package.json`, come `.python-version`), e l'ultima riga — quella su `hint` — chiusa **rendendola falsa** invece che riscrivendola (§1, D4) |
 
 ### Il giudizio, in una frase
@@ -1790,9 +1840,26 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
 
 ### 🟠 La sostanza
 
-* [ ] **D5** — `ai_assistant` a catalogo in `config.aree_funzionali` (brief al
-      team DB), **oppure** `AdminAPIView` se l'assistente è admin-only per
-      decisione. ⚠️ Da fare prima di accendere `AI_ENABLED`, non dopo.
+* [~] **D5** — 🔵 **decisione presa e brief scritto il 2026-09-11, in attesa del
+      DB**: [brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
+      ⭐ **Decisione di Tid: l'assistente lo devono poter usare anche gli
+      operatori**, non solo gli amministratori ⇒ serve la **riga a catalogo**, e
+      la strada `AdminAPIView` è esclusa (l'avrebbe riservato a `SUPER_ADMIN`
+      per sempre).
+      ⭐ **E la riga non è un'eccezione: è la terza volta.** Verificato quel
+      giorno con un `LEFT JOIN` su `pg_namespace`, **due aree su tredici** hanno
+      già un `schema_db` che non corrisponde a nessuno schema PostgreSQL —
+      `core` e `strumenti`, quest'ultima creata a luglio per la gestione code.
+      ⇒ Il `COMMENT` della tabella (*«ogni area corrisponde a uno schema DB»*)
+      **è già falso da due mesi**, ed è la riga che qualcuno leggerà prima di
+      rifiutare la prossima area senza schema credendo di applicare un vincolo
+      che non c'è: la correzione è chiesta nello stesso brief.
+      ⚠️ Il backend non ha **niente** da cambiare nel codice (la stringa nella
+      view è già quella giusta): quello che farà è il **presidio che manca** —
+      un test su DB provvisto che confronta le `area_funzionale` dichiarate
+      dalle view con i codici a catalogo, derivando l'elenco dalle view e non da
+      una lista a mano. Senza, la prossima area nuova ripete questo difetto
+      identico.
 * [x] **D6** — ✅ **fatto il 2026-09-10**: sonda `+1` nel repository (che è
       l'unico a conoscere `safe_limit`), `troncato` nell'envelope, e l'helper
       unico separato in `_collezione_completa` / `_lookup_response`. Presidiato
@@ -1800,10 +1867,25 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
       ⭐ I consumatori del `count` fasullo erano **due**, non zero: il select UoM
       (200 su **334**) e l'**assistente AI**, che con `page_size=10` avrebbe
       detto *«ho trovato 10 articoli»* su 257 a catalogo.
-* [ ] **D7** — per ciascuno degli otto endpoint senza consumatore rispondere per
-      iscritto a *«questa la deve poter usare una persona?»*. Il primo della
-      lista è `/core/email/log/`, che oggi lascia l'operatore senza il registro
-      delle proprie mail mentre l'amministratore ce l'ha.
+* [x] **D7 (la decisione)** — ✅ **risposto per iscritto il 2026-09-11**:
+      [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) §1.
+      Su **tredici rotte**: due famiglie (10 rotte) sono funzioni finite senza
+      porta, **due sono candidate al RITIRO** (`job-summary`, superato dal
+      pannello code e dal digest dei presidi; `manual-lookup`, superato dai
+      lookup ricchi), una è un cantiere dichiarato (N6 dei listini), il resto è
+      servizio legittimo. ⛔ *Prima si leggevano tutte uguali* — ed era l'unica
+      cosa che la voce chiedeva di cambiare.
+      ⭐ **E scrivendo la tabella è uscito un difetto**: il docstring di
+      `EmailLogOperatoreListView` prometteva un filtro «per ambito/reparto» che
+      la vista non applica. ✅ **Non era un buco** — verificato sul database:
+      `config.email_log` ha la RLS con policy per scope emittente, e l'ambito
+      `SISTEMA` vuole un super admin. ⇒ Corretta la **frase**, non aggiunto il
+      filtro: aggiungerlo sarebbe stata una seconda sede dello scope.
+* [~] **D7 (la schermata)** — 🔵 **cantiere aperto il 2026-09-11**, piano al §2
+      dello stesso documento. ⭐ È più piccolo di quanto la voce lasciasse
+      credere: la configurazione di lista `config.email_log` **è già a catalogo**
+      (id 31, usata dalla schermata admin) ⇒ **niente dal team DB**, niente
+      `gen_seed_lista.py`. Restano client, store, view e voce di menu.
 * [x] **D8** — ✅ **fatto il 2026-09-10**, e la misura di partenza era sbagliata:
       non undici view ma **tre** (`DefinizioneEditorView`,
       `DefinizioniWorkflowListView`, `RepartiProfiloView`). Le altre otto il
@@ -1823,9 +1905,21 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
 * [ ] **D9-a** — gli smoke in CI. Sono già isolati in transazione con rollback,
       il registro ha **due** righe: è il cancello più facile del repo dopo
       D1-a. ⚠️ Prima va corretto lo smoke che esce `0` su «ESITO: FALLITO».
-* [ ] **D9-b** — correggere `AGENTS.md` §Regole test: `unittest.TestCase` e
-      `SimpleTestCase` **non sono equivalenti** — solo la seconda impedisce a un
-      test di parlare col database vero. Chi scrive un test nuovo deve saperlo.
+* [x] **D9-b** — ✅ **fatto il 2026-09-11**: `AGENTS.md` §Regole test ora
+      prescrive `SimpleTestCase` e dichiara perché — solo lei **impedisce**
+      l'accesso al database, l'altra lo *permette* soltanto. Con la misura
+      rifatta quel giorno (**506** classi che non bloccano contro **202** che
+      bloccano) e il caso in cui `unittest.TestCase` resta legittimo: un test
+      che non tocca Django affatto. La riga gemella in `api.md`, che segnalava
+      l'incoerenza, è stata riscritta di conseguenza — *un documento che dice il
+      vero su un difetto si rende falso chiudendolo*.
+      ⚠️ **E rifacendo la misura è emerso il difetto del metodo**: cercare
+      `TransactionTestCase` e `databases =` nei sorgenti dà **cinque** riscontri
+      che sono tutti **prosa nei commenti** — le righe che spiegano la regola.
+      È la stessa specie del `_sorgente_senza_commenti` di `core`: *un presidio
+      che cerca una stringa nel sorgente si accende sulla spiegazione del
+      difetto che deve trovare.* Nessun test dichiara un database: confermato
+      leggendo i riscontri, non contandoli.
 
 ### 🟡 Ordine e verità dei documenti
 
@@ -1837,9 +1931,17 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
       gli **81 `skip_area_check`** (`api.md` li ammette solo cross-dominio: vanno
       letti uno per uno, non contati) e la **baseline degli smoke**, che vive o
       muore con la scelta di §8.
-* [ ] **D11** — decidere se `acquisti` e `magazzino` sono un cantiere **aperto o
-      congelato**, e scriverlo nei documenti di contesto. È la stessa voce del
-      documento gemello: la decisione è una sola per tutti e tre gli strati.
+* [x] **D11** — ✅ **deciso e scritto il 2026-09-11.** ⭐ **Decisione di Tid:
+      `acquisti` e `magazzino` sono il PROSSIMO CANTIERE**, non scheletri
+      congelati. Scritto in `PROJECT_CONTEXT.md` — nell'albero delle app e in una
+      sezione sua — con la conseguenza operativa che è la ragione per cui la voce
+      esisteva: *ogni decisione presa su `vendite` è una decisione presa anche
+      per `acquisti`*, quindi da adesso chi decide su uno sa di decidere per due.
+      ⚠️ **`storico` resta senza decisione** e `contabilita` resta fuori
+      perimetro: la voce li aveva messi insieme, ma non sono la stessa cosa e i
+      documenti ora li distinguono.
+      ⚠️ **La decisione vale anche per il documento gemello** (§3 D8 del DB), che
+      poneva la stessa domanda: là la riga è ancora da allineare.
 * [x] **§1-a** — ✅ **fatto il 2026-09-09**: lo stack **tolto** da tutti e tre i
       documenti, non aggiornato. `AGENTS.md` §Frontend, `PROJECT_CONTEXT.md`
       §Stack Tecnico e `frontend-standards.md` §Stack rimandano a
@@ -1880,7 +1982,26 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
       il produttore accoda due lavori e il drenatore li prende con la correzione
       già sul disco (il timer gira dal working tree, verificato). Domattina la
       vista dirà **0** o **2**: nessuna terza lettura possibile.
-* [~] **D13-bis** — 🔵 **brief scritto il 2026-09-09, in attesa del DB**:
+* [x] **D13-bis** — ✅ **CHIUSO SU ENTRAMBI I LATI l'11-09-2026.** Il team DB ha
+      applicato il catalogo `dbops.presidi` (changeSet `20260910-35..37`), il
+      backend ha ritirato la riga di debito da `_IN_ATTESA_DI_CATALOGO` (che
+      torna **a zero**) e i due timer girano: `digest-presidi-giornaliero` alle
+      07:00, `settimanale` il lunedì alle 07:30.
+      ⭐ **E il verso di ritiro ha funzionato da sé**, come progettato: il test
+      `test_il_debito_delle_viste_in_attesa_e_rientrato` è diventato **rosso in
+      CI** il giorno dell'apply e ha **nominato la riga da cancellare**. Non è
+      stato un incidente: è il meccanismo che fa il suo mestiere.
+      🔴 **Ma la prima notizia del digest è stata RUMORE, e va detto**: il giro
+      delle 07:00 dell'11-09 ha riferito `ALLARMI (1)` su
+      `maintenance.vw_job_run_da_guardare`, e la riga era
+      `sync_auth_user_active` — un processo **ritirato il 2026-09-07**
+      (`obsoleto_dal`, a favore del gemello pgAgent). Sono 31 fallimenti
+      **storici**, ultima corsa il 05-09: la vista guarda una finestra di sette
+      giorni e non filtra i processi ritirati, quindi l'allarme si spegne da sé
+      il 12-09. ⛔ Il difetto non è quella riga: è che **un presidio che comincia
+      col rumore insegna a non guardarlo**, ed è esattamente la proprietà che il
+      brief voleva comprare. ⇒ Da portare al team DB.
+  * **Com'era la richiesta, per chi rilegge** — 🔵 brief scritto il 2026-09-09:
       [brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md).
       ⛔ Non si poteva fare tutto lato backend, e il perché è la parte utile:
       delle 31 viste `dbops.vw_*`, **14 non sono vuote ma quasi tutte sono
@@ -1892,20 +2013,27 @@ vale più di quanto la sua posizione in classifica suggerisca: è ciò che rende
       `ui.lista_definizione`. ⇒ Chiesti al DB: il catalogo `dbops.presidi` e una
       riga in `dbops.processi` (`classe=MANUTENZIONE`, quindi senza identità né
       emittente). Il backend riparte lo stesso giorno: §5 del brief.
-* [ ] **INFRA-1** — 🔴 **datato e ricorrente**: la chiave del nodo Tailscale di
-      `dbdev` è scaduta il **2026-09-09 alle 10:51 UTC**, e con essa il server
-      backend di sviluppo ha smesso di raggiungere il database — gunicorn fermo
-      in `SYN-SENT`, nessun avviso da nessuna parte. ⚠️ `backend-dev` scade il
-      **2026-09-19**: lo stesso blocco arriverà dall'altro lato fra pochi giorni.
-      ⇒ Su due nodi *server* il rimedio non è rinnovare a ogni scadenza ma
-      **disabilitare la scadenza della chiave** dalla admin console. ⭐ Vale la
-      pena tenerlo in questa lista anche se non è codice: è il caso in cui il
-      presidio non manca perché è difficile da scrivere, ma perché **nessuno
-      guarda** se l'applicazione di sviluppo è viva (D10 del gemello).
-* [ ] **§1-d** — ⚠️ **aperto, e nato togliendo**: `AGENTS.md` §Regole test offre
-      `unittest.TestCase` e `SimpleTestCase` come alternative. La differenza è
-      ora scritta in `api.md`; va scritta **anche lì**, che è il documento dove
-      si va a cercarla scrivendo un test (è il D9-b della lista sopra).
+* [x] **INFRA-1** — ✅ **chiuso, e la previsione qui scritta era già superata.**
+      La chiave di `dbdev` era scaduta il **2026-09-09 alle 10:51 UTC**, e con
+      essa il server backend aveva smesso di raggiungere il database — gunicorn
+      fermo in `SYN-SENT`, nessun avviso da nessuna parte. Questa riga prevedeva
+      poi che `backend-dev` scadesse il **2026-09-19**.
+      ⭐ **Verificato il 2026-09-11**: `backend-dev` ha `KeyExpiry: None`, cioè
+      scadenza **disabilitata** — come `dbdev`, `wrk1-dev`, `proxmox-node1`,
+      `pbs` e `fedora`. La scadenza del 19-09 **non arriverà**: il rimedio era
+      già stato applicato su entrambi i lati, nella forma giusta (disabilitare,
+      non rinnovare).
+      ⚠️ Restano scaduti `db01` (da 183 giorni) e `GiacomoZ` (da 50): **non**
+      sono l'ambiente di sviluppo, e vanno rimossi dalla tailnet o riautorizzati
+      per decisione — un nodo scaduto che resta elencato è rumore nel pannello
+      che si guarda quando qualcosa non risponde.
+      ⭐ La voce resta a registro perché il difetto che l'ha generata non era la
+      scadenza: era che **nessuno guarda** se l'applicazione di sviluppo è viva
+      (D10 del gemello). Quello è chiuso da un'altra parte — il digest dei
+      presidi, che dal 2026-09-11 gira e riferisce.
+* [x] **§1-d** — ✅ **chiuso il 2026-09-11** insieme a D9-b: `AGENTS.md` §Regole
+      test non offre più le due forme come alternative, prescrive
+      `SimpleTestCase` e dice perché. Vedi la voce D9-b sopra.
 
 ---
 
@@ -1974,6 +2102,34 @@ c'erano perché sono nate dopo:
 
 ⇒ Restano aperte le voci 🥉 (che dipendono da altri o da una decisione) e le tre
 di «sembrano facili e non lo sono», più `D13-bis`, che aspetta il DB.
+
+### 📍 Riletta l'11-09-2026 — il tier 🥉 è caduto, e non scrivendo codice
+
+| Voce | Com'era | Oggi |
+| --- | --- | --- |
+| **9** `ai_assistant` a catalogo | «20 min di brief, ma passa dal team DB» | 🔵 **decisione presa** (Tid: *anche gli operatori*) e **brief scritto**. Il backend non ha niente da cambiare: la stringa nella view era già giusta |
+| **11** Gli endpoint senza consumatore | «lo sforzo non è scrivere: è **decidere**» | ✅ **deciso per tutte e tredici le rotte**, e due sono risultate candidate al **ritiro** — un esito che la voce non prevedeva |
+| **D11** `acquisti`/`magazzino` | «la voce più economica di tutte — una cosa da **dire**» | ✅ **detta**: sono il prossimo cantiere |
+| **D9-b** / §1-d | non era in classifica | ✅ dieci minuti, e toglie di mezzo la forma di test che non presidia |
+| **INFRA-1** | «🔴 datato e ricorrente» | ✅ **era già chiuso**: la previsione nel documento era invecchiata verso il pessimismo |
+| **D13-bis** | «aspetta il DB» | ✅ **chiuso su entrambi i lati**, e il digest gira |
+
+⭐ **La lezione del tier 🥉, ed è il motivo per cui esisteva quella categoria.**
+Quelle voci stavano in fondo perché *«il ritorno non dipende da chi scrive»*:
+serviva una decisione, o un'altra squadra. In un giorno sono cadute quasi tutte,
+e **nessuna ha richiesto una riga di codice applicativo** — solo risposte
+scritte. ⚠️ *Un lavoro che aspetta una decisione non costa poco: costa **zero**,
+e resta fermo lo stesso finché nessuno fa la domanda.*
+
+⛔ **E ciò che resta aperto è coerente con quella lettura**: le tre voci di
+«sembrano facili e non lo sono» (smoke in CI, `check --deploy` in CI, test di
+componente) sono **cantieri veri**, e non si sono mosse — perché lì il ritorno
+dipende davvero da chi scrive.
+
+🔴 **Fuori classifica, e trovato l'11-09 come D13 era stato trovato il 09-09**:
+**D14**, la mail «inviata» che non era partita. Stessa specie — non lo trova chi
+legge il codice, lo trova chi **prova** — e stessa forma di rimedio: un valore
+nuovo a catalogo, chiesto al DB e applicato lo stesso giorno.
 
 ⭐ **Due cose imparate eseguendo, che la stima non conteneva:**
 
