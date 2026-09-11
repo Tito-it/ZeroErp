@@ -79,20 +79,10 @@ import csv
 import re
 import unittest
 from functools import lru_cache
-from pathlib import Path
+from apps.core.tests._repo import repo_root
 
 
-# Scopo: root del repo cercata risalendo fino a `db/changelog`, invece di
-#        contare i livelli a mano (`parents[N]` si rompe in silenzio se il file
-#        di test viene spostato).
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata (nessun db/changelog risalendo)")
-
-
-_SEED_DIR = _repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
+_SEED_DIR = repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
 
 
 # Scopo: sorgente `.vue` senza commenti. Serve a distinguere chi USA uno slot da
@@ -124,7 +114,7 @@ def _senza_commenti(testo: str) -> str:
 #    veloce (stessa ragione scritta in `test_perimetro_emittente_copertura`).
 @lru_cache(maxsize=1)
 def _montaggi_lista() -> tuple[tuple[str, str, str, str], ...]:
-    src = _repo_root() / "frontend/src"
+    src = repo_root() / "frontend/src"
     trovati: list[tuple[str, str, str, str]] = []
     for percorso in src.rglob("*.vue"):
         senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
@@ -188,7 +178,7 @@ def _whitelist_da_funzione_db(percorso_doc: str):
     def risolvi() -> set[str]:
         import importlib.util
 
-        sorgente = _repo_root() / "scripts" / "gen_seed_lista.py"
+        sorgente = repo_root() / "scripts" / "gen_seed_lista.py"
         spec = importlib.util.spec_from_file_location("_gen_seed_lista", sorgente)
         assert spec and spec.loader
         modulo = importlib.util.module_from_spec(spec)
@@ -690,7 +680,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
     #    slot sbagliato per spiegarlo non lo sta usando. Senza, il presidio si
     #    accende sulla propria documentazione — successo il 2026-08-26.
     def test_lo_slot_delle_azioni_si_chiama_actions(self) -> None:
-        src = _repo_root() / "frontend/src"
+        src = repo_root() / "frontend/src"
         colpevoli: list[str] = []
         for percorso in sorted(src.rglob("*.vue")):
             testo = _senza_commenti(percorso.read_text(encoding="utf-8"))

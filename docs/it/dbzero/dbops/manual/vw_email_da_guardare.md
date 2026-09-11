@@ -96,4 +96,4 @@ porta di sistema (quindi anche su un database vuoto) e li interroga per nome: i
 due che devono comparire, i tre che non devono, `dovuta_dal`, e il conteggio da
 proprietario.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-quattro-processi-senza-presidio.md` §5 · §10.1.
+Origine: `docs/it/dev/work-done/brief-db-quattro-processi-senza-presidio.md` §5 · §10.1.

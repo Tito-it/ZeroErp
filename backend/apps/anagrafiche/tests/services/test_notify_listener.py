@@ -17,6 +17,7 @@ Indice test eseguiti:
 6) CambioRepartoListenerTests.test_run_listens_and_dispatches
 7) CambioRepartoListenerTests.test_run_reconnects_on_connection_loss
 8) CambioRepartoListenerTests.test_stop_terminates_loop
+9) CambioRepartoListenerTests.test_conninfo_porta_il_codice_del_processo_come_application_name
 """
 
 import json
@@ -26,6 +27,7 @@ from unittest.mock import MagicMock, patch
 import psycopg
 
 from apps.anagrafiche.services.notify_listener import CambioRepartoListener
+from apps.core.services.processi import PROCESSO_LISTEN_CAMBIO_REPARTO
 
 _INVALIDATE = "apps.anagrafiche.services.notify_listener.invalidate_user"
 _PSYCOPG_CONNECT = "apps.anagrafiche.services.notify_listener.psycopg.connect"
@@ -196,3 +198,35 @@ class CambioRepartoListenerTests(TestCase):
         listener.stop()
 
         self.assertFalse(listener._running)
+
+
+    # Scopo: Il segno di vita del listener e' la sessione: `application_name`
+    #        DEVE essere il codice del processo a catalogo, perche'
+    #        `dbops.vw_processi_programmazione` (segno_di_vita = SESSIONE) lo
+    #        cerca in `pg_stat_activity` con quel nome esatto. Senza questa
+    #        riga il panorama dice MUTO su un listener vivo — ed e' successo:
+    #        e' la riga che il digest ha mostrato dal 2026-09-11 finche' il
+    #        backend non si e' presentato col proprio nome.
+    # ⚠️ Si legge la stringa che psycopg costruisce DAVVERO, non un mock:
+    #    `make_conninfo` e' pura e non apre connessioni.
+    @patch(_SETTINGS)
+    def test_conninfo_porta_il_codice_del_processo_come_application_name(
+        self, mock_settings,
+    ):
+        mock_settings.DATABASES = {
+            "default": {
+                "HOST": "localhost",
+                "PORT": "5432",
+                "NAME": "testdb",
+                "USER": "testuser",
+                "PASSWORD": "testpass",
+            }
+        }
+
+        conninfo = CambioRepartoListener._get_conninfo()
+
+        parametri = psycopg.conninfo.conninfo_to_dict(conninfo)
+        self.assertEqual(
+            parametri.get("application_name"), PROCESSO_LISTEN_CAMBIO_REPARTO,
+        )
+        self.assertEqual(parametri.get("dbname"), "testdb")

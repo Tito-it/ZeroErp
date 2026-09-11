@@ -21,12 +21,17 @@
 #   2. ogni sveglia dichiarata ha i suoi template su disco
 #   3. ogni processo COMMAND del backend ha almeno una sveglia   ⭐
 #   4. ogni template su disco è dichiarato (nessun unit orfano)
-#   5. `tolleranza_minuti` prende la più larga fra le corsie di un processo
+#   5. `tolleranza_minuti` nel JSON è RIFIUTATO: il contratto vive a catalogo
 #   6. una forma non ammessa fa fallire il caricamento, non lo degrada
 #   7. un timer senza cadenza fa fallire il caricamento
 #   8. `abilita` è obbligatorio: il silenzio non vale «spento»
-#   9. i worker del badge code hanno una tolleranza dichiarata
+#   9. i worker del badge code hanno un contratto nel seed del catalogo
 #  10. un nome di unit con una barra è rifiutato (finisce in un percorso)
+#
+#  ⭐ Dal 2026-09-11 la TOLLERANZA non sta più qui: è il contratto del processo
+#     (`dbops.processi.tolleranza_minuti`, brief
+#     `brief-db-quattro-processi-senza-presidio.md` D5). Il confronto fra la
+#     cadenza di qui e quel contratto sta in `test_contratto_liveness_vs_deploy`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from apps.core.services.coda_lavori.gestione_service import (
     JOBNAME_WORKER_CODA_LAVORI,
     JOBNAME_WORKER_CODA_STAMPA,
 )
+from apps.core.tests._contratto_processi import leggi_contratti_dal_seed
 
 # ⛔ IL PERCORSO ARRIVA DAL MODULO, non ricalcolato qui. Una seconda aritmetica
 #    che puntasse alla cartella sbagliata non farebbe fallire niente: troverebbe
@@ -150,26 +156,29 @@ class SveglieDichiarateTests(SimpleTestCase):
             "template systemd presenti ma non dichiarati in sveglie.json",
         )
 
-    # 5. Un processo con più corsie prende la tolleranza più LARGA: basta che
-    #    una corsia abbia girato perché il processo sia vivo.
-    def test_tolleranza_prende_la_piu_larga(self) -> None:
-        finte = (
-            sveglie.Sveglia("u-a", "p", "timer", "*:0/1", True, 5, ""),
-            sveglie.Sveglia("u-b", "p", "timer", "*:0/9", True, 45, ""),
-            sveglie.Sveglia("u-c", "altro", "timer", "*:0/1", True, 99, ""),
+    # 5. ⛔ `tolleranza_minuti` nel JSON è RIFIUTATO, non ignorato. Dal
+    #    2026-09-11 il contratto vive in `dbops.processi`: chi lo riscrive qui
+    #    crede di aver dichiarato qualcosa, e un numero letto da nessuno è
+    #    peggio di un errore — è la seconda sede che il cantiere ha tolto.
+    def test_tolleranza_nel_json_e_rifiutata(self) -> None:
+        self._assert_dichiarato_rifiutato(
+            {"unit": "x", "processo_codice": "p", "forma": "timer",
+             "oncalendar": "*:0/1", "abilita": True, "tolleranza_minuti": 10},
+            "dbops.processi",
         )
-        with patch.object(sveglie, "carica_sveglie", return_value=finte):
-            self.assertEqual(sveglie.tolleranza_minuti("p"), 45)
-            # Nessuna tolleranza dichiarata → None, non uno zero travestito da
-            # numero: «non si presidia da qui» e «scaduto subito» sono opposti.
-            self.assertIsNone(sveglie.tolleranza_minuti("ignoto"))
+        # E vale anche a `null`: la chiave stessa è la seconda sede.
+        self._assert_dichiarato_rifiutato(
+            {"unit": "x", "processo_codice": "p", "forma": "timer",
+             "oncalendar": "*:0/1", "abilita": True, "tolleranza_minuti": None},
+            "dbops.processi",
+        )
 
     # 6. Una forma non ammessa FERMA il caricamento. Un dichiarato letto «al
     #    meglio» darebbe una sveglia in meno senza dirlo.
     def test_forma_non_ammessa_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
             {"unit": "x", "processo_codice": "p", "forma": "cron",
-             "oncalendar": "*:0/1", "abilita": True, "tolleranza_minuti": None},
+             "oncalendar": "*:0/1", "abilita": True},
             "forma",
         )
 
@@ -178,7 +187,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     def test_timer_senza_cadenza_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
             {"unit": "x", "processo_codice": "p", "forma": "timer",
-             "oncalendar": None, "abilita": True, "tolleranza_minuti": None},
+             "oncalendar": None, "abilita": True},
             "oncalendar",
         )
 
@@ -188,20 +197,27 @@ class SveglieDichiarateTests(SimpleTestCase):
     def test_abilita_omesso_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
             {"unit": "x", "processo_codice": "p", "forma": "servizio",
-             "oncalendar": None, "tolleranza_minuti": None},
+             "oncalendar": None},
             "abilita",
         )
 
-    # 9. I due worker che alimentano il badge code DEVONO avere una tolleranza
-    #    dichiarata: senza, `_liveness_worker` cade sul ripiego e il pallino
-    #    verde poggia su un numero che nessuno ha deciso.
-    def test_worker_del_badge_hanno_una_tolleranza(self) -> None:
+    # 9. I due worker che alimentano il badge code DEVONO avere un contratto a
+    #    catalogo: senza, `_liveness_worker` cade sul ripiego e il pallino verde
+    #    poggia su un numero che nessuno ha deciso. Si legge il SEED nel repo
+    #    (`processi.csv`), non il database: è la sede versionata del contratto.
+    def test_worker_del_badge_hanno_un_contratto(self) -> None:
+        contratti = leggi_contratti_dal_seed()
         for jobname in (JOBNAME_WORKER_CODA_LAVORI, JOBNAME_WORKER_CODA_STAMPA):
             with self.subTest(worker=jobname):
+                contratto = contratti.get(jobname)
                 self.assertIsNotNone(
-                    sveglie.tolleranza_minuti(jobname),
-                    f"{jobname} alimenta la liveness del badge code ma non ha "
-                    f"'tolleranza_minuti' in sveglie.json",
+                    contratto, f"{jobname} non è a catalogo in processi.csv",
+                )
+                assert contratto is not None
+                self.assertIsNotNone(
+                    contratto["tolleranza_minuti"],
+                    f"{jobname} alimenta la liveness del badge code ma nel seed "
+                    f"del catalogo ha tolleranza_minuti NULL",
                 )
 
     # 10. Il nome dell'unit finisce interpolato in un percorso di file e passato
@@ -210,8 +226,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     def test_unit_con_barra_solleva(self) -> None:
         self._assert_dichiarato_rifiutato(
             {"unit": "../../etc/cattivo", "processo_codice": "p",
-             "forma": "servizio", "oncalendar": None, "abilita": True,
-             "tolleranza_minuti": None},
+             "forma": "servizio", "oncalendar": None, "abilita": True},
             "non ammesso",
         )
 

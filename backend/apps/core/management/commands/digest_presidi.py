@@ -34,16 +34,16 @@ from typing import Any
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from apps.core.db.email_repository import EmailRepository
 from apps.core.db.presidi_repository import CADENZA_GIORNALIERA
-from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.presidi_digest import (
     CADENZE_DEL_DIGEST,
     Digest,
+    accoda_email_presidi,
     calcola_digest,
     componi_messaggio,
     jobname_corsia,
+    separa_destinatari,
 )
 from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
 
@@ -60,28 +60,10 @@ from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
 #    quella cadenza non sarebbe lanciabile — con l'aria di non esistere.
 _CADENZE_CLI = {cadenza.lower(): cadenza for cadenza in CADENZE_DEL_DIGEST}
 
-# ⭐ PIU' DI UN DESTINATARIO SI SCRIVE COME SI SCRIVE OVUNQUE: separati da
-#    virgola (o punto e virgola). Il primo e' il destinatario, gli altri vanno in
-#    copia — `config.fn_accoda_email_sistema` ha il parametro apposta.
-# ⛔ Senza questo, «a@x.it, b@y.it» finirebbe INTERO nel campo destinatario e
-#    l'invio fallirebbe a valle, dentro la coda email: un guasto che si scopre
-#    guardando `config.email_log`, cioe' tardi e per caso. Il modo naturale di
-#    scrivere due indirizzi non deve produrre un difetto.
-_SEPARATORI_DESTINATARI = str.maketrans({";": ",", "\n": ","})
-
-
-# Scopo: dal valore configurato alla coppia (destinatario, copie).
-#        `("", [])` se non c'e' nessun indirizzo.
-def separa_destinatari(raw: str | None) -> tuple[str, list[str]]:
-    indirizzi = [
-        pezzo.strip()
-        for pezzo in (raw or "").translate(_SEPARATORI_DESTINATARI).split(",")
-        if pezzo.strip()
-    ]
-    if not indirizzi:
-        return "", []
-    return indirizzi[0], indirizzi[1:]
-
+# ⭐ `separa_destinatari` NON STA PIU' QUI (2026-09-11): la legge anche
+#    l'handler `notifica_digest_muto`, che avvisa la stessa persona quando il
+#    digest tace. Alla seconda occorrenza il pezzo e' salito nel service
+#    (`presidi_digest.separa_destinatari`) — e questo command la importa.
 
 # I tre esiti dell'invio, e sono TRE di proposito: «non c'era niente da dire» e
 # «non c'e' nessuno a cui dirlo» sono opposti, e appiattirli su «non inviato»
@@ -183,35 +165,19 @@ class Command(BaseCommand):
     # Scopo: Invia il digest, se c'e' motivo di inviarlo e se c'e' un
     #        destinatario. Ritorna quale dei tre esiti si e' verificato.
     #
-    # ⛔ NON SI SCRIVE UNA CHIAMATA NUOVA a `config.fn_accoda_email_sistema`: la
-    #    porta di sistema e' gia' dentro `EmailRepository.insert_log`, che
-    #    instrada da se' sull'ambito. Una seconda chiamata sarebbe la seconda
-    #    sede della stessa decisione, e diverge alla prima modifica della firma.
-    # ⚠️ `ambito=SISTEMA` non e' una comodita': `config.email_log` ha la row
-    #    level security, e questo command non ha ne' sessione ne' identita' —
-    #    un INSERT diretto verrebbe rifiutato.
+    # ⭐ Il «come si scrive alla persona dei presidi» sta in
+    #    `presidi_digest.accoda_email_presidi` (dal 2026-09-11), che e' anche
+    #    quello dell'handler del guardiano: qui resta solo la decisione — se
+    #    c'e' motivo di inviare, e come chiamare l'esito.
     def _invia(self, digest: Digest, messaggio: tuple[str, str, str]) -> str:
         if not digest.da_inviare:
             return INVIO_NON_RICHIESTO
 
-        destinatario, copie = separa_destinatari(
-            settings.PRESIDI_DIGEST_DESTINATARIO,
-        )
-        if not destinatario:
-            return INVIO_NON_CONFIGURATO
         oggetto, testo, corpo_html = messaggio
-
-        EmailRepository().insert_log(
-            email_account_id=None,
-            email_template_id=None,
-            destinatario=destinatario,
-            # ⚠️ `None` e non `[]`: la colonna e' un `text[]` nullable, e una
-            #    lista vuota direbbe «copie: nessuna» invece di «non si applica».
-            destinatari_cc=copie or None,
+        accodata = accoda_email_presidi(
             oggetto=oggetto,
-            corpo_inviato_html=corpo_html,
-            corpo_inviato_testo=testo,
-            ambito=AMBITO_SISTEMA,
+            testo=testo,
+            corpo_html=corpo_html,
             # ⭐ Il contesto viaggia con la riga: chi legge il giornale delle
             #    email deve poter dire QUALE giro l'ha prodotta senza aprirla.
             contesto_json={
@@ -220,7 +186,7 @@ class Command(BaseCommand):
                 **digest.riepilogo(),
             },
         )
-        return INVIO_ACCODATO
+        return INVIO_ACCODATO if accodata is not None else INVIO_NON_CONFIGURATO
 
     # Scopo: Racconta il giro a chi lo sta guardando (o al giornale di systemd).
     # ⛔ IL «NON CONFIGURATO» NON E' UN `logger.info`, ed e' il difetto gia'

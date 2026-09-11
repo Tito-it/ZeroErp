@@ -9,6 +9,20 @@
 #       separata dal pool Django. Pensato per essere avviato
 #       come management command long-running. Include
 #       riconnessione automatica con backoff esponenziale.
+#
+#       ⭐ IL SEGNO DI VITA DI QUESTO PROCESSO E' LA SUA CONNESSIONE, non una
+#       riga sul giornale (decisione di Tid, 2026-09-11 — brief
+#       `brief-db-quattro-processi-senza-presidio.md` §10.3). Il listener
+#       scrive UN SOLO run, quello di avvio (2026-09-05): «è vivo adesso?» si
+#       legge in `pg_stat_activity`, dove la sessione si presenta con
+#       `application_name = dbops.processi.codice`. A catalogo il processo ha
+#       `segno_di_vita = 'SESSIONE'`, e `dbops.vw_processi_programmazione` lo
+#       dà `OK` se trova quella sessione, `MUTO` altrimenti: se il processo
+#       muore la sessione sparisce, se sta riconnettendo non c'e' — ed e' vero.
+#       ⛔ Il nome NON si ricopia: e' `PROCESSO_LISTEN_CAMBIO_REPARTO`, la
+#       stessa costante con cui il command registra il run. Scritto a mano qui
+#       sarebbe la seconda sede, e la vista guarderebbe un nome che non esiste
+#       rispondendo «muto» su un listener vivo.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -23,6 +37,7 @@ import psycopg
 from django.conf import settings
 
 from apps.core.services.permissions_cache import invalidate_user
+from apps.core.services.processi import PROCESSO_LISTEN_CAMBIO_REPARTO
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +64,8 @@ class CambioRepartoListener:
         self._conn: psycopg.Connection[Any] | None = None
 
     # Scopo: Costruisce i parametri di connessione psycopg3 dai settings Django.
+    # ⚠️ `application_name` e' il segno di vita del processo (vedi header): il
+    #    database lo legge da `pg_stat_activity` per dire se il listener e' vivo.
     @staticmethod
     def _get_conninfo() -> str:
         db = settings.DATABASES["default"]
@@ -58,6 +75,7 @@ class CambioRepartoListener:
             dbname=db["NAME"],
             user=db.get("USER", ""),
             password=db.get("PASSWORD", ""),
+            application_name=PROCESSO_LISTEN_CAMBIO_REPARTO,
         )
 
     # Scopo: Avvia il loop LISTEN/NOTIFY con riconnessione automatica.

@@ -1,5 +1,26 @@
 # Brief DB — Quattro processi che non guarda nessuno
 
+> **✅ CHIUSO — 2026-09-11.** DB (§10.9: otto changeSet `20260911-10..17`, pgTAP
+> verdi) · BE (§11.3: i sei punti del §10.7, 4670 test verdi) · revisione
+> critica (§11.4). Riletto sul dbdev alla chiusura: il panorama dà **`OK` su
+> tutti i sette processi** (`run_fatturazione_batch` `FUORI_PORTATA` per
+> decisione), `listen_cambio_reparto` compreso — la sua sessione porta
+> `application_name` dal riavvio del servizio (20:06); `fn_conta_presidio` = 0
+> sulle due viste nuove. Documento spostato in `work-done`.
+>
+> ⚠️ **Un residuo dichiarato, del team DB (`dev/db-tid`), una riga di CSV.** Il
+> tipo `NOTIFICA_DIGEST_MUTO` risulta `attivo = true` **sul dbdev** (acceso a
+> mano da `titodb` il 2026-09-11 alle 20:11, dopo la release dell'handler), ma
+> il seed `80_data/sql/dbops/coda_lavori_tipi.csv` dice ancora `false` — nel
+> tree, su `origin/Tito-dev` e su `origin/dev/db-tid`. Il mirror è
+> `runOnChange`: **al prossimo `liquibase update` la riga torna spenta in
+> silenzio** e il guardiano ricomincia a sollevare `E_JOB_TYPE_NON_ATTIVO`
+> invece di accodare. ⇒ Va portato a `true` **nel CSV** (e la descrizione, che
+> dice ancora «attivo=false FINCHE il backend non ha l handler», va riscritta
+> nello stesso gesto): è la regola di AGENTS.md — *i dati di `80_data` si
+> cambiano dal CSV, non con `UPDATE` diretti*. Segnalato qui perché non si
+> scopra a un `MUTO` non notificato.
+>
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-11. **A chi:** team DB.
 > **Origine:** una domanda di Tid a valle del cantiere dei presidi —
 > *«per i lavori che girano ogni minuto ci si accorge subito che non girano;
@@ -531,6 +552,125 @@ letto da `pg_trigger`). ⭐ Il file ora arriva allo `skip()` dove i tre fratelli
 
 E il **test 2 di `test-catalogo-presidi-v1`** deve restare verde: le due viste
 nuove sono in `dbops` e a catalogo.
+
+---
+
+# 11. 🔵 Lato backend — esecuzione del §10.7 (2026-09-11)
+
+> **Chi scrive:** backend (`dev/backend-tid`). Il DB ha chiuso; qui c'è la
+> lettura critica di ciò che è cambiato rispetto alla proposta (§11.1), una
+> scelta di Tid che il piano non registrava (§11.2) e il log dei sei punti.
+
+## 11.1 Che cosa è cambiato rispetto alla proposta — in una riga ciascuno
+
+| Proposta (§1–§9) | Deciso/consegnato (§10) | Effetto BE |
+| --- | --- | --- |
+| presidio stampa in `vendite.` | in `dbops.` — il catalogo legge il perimetro per schema | nessuno |
+| email: `PENDING`/`RETRY` | predicato sbagliato (ometteva i `FAILED` ripescabili); definizione **una sola volta** in `config.vw_email_in_coda`, presidio in `dbops.vw_email_da_guardare` | il cron legge la vista (§10.7-1) |
+| D5 «tolleranza è modello» | sì, ma per un'altra ragione: **il lettore che serve sta nel DB**. Tolleranza = contratto del processo; cadenza = come il deploy lo onora, e può violarlo | catalogo al posto del JSON (§10.7-2) + test contratto ≤ deploy (§10.7-3) |
+| §6 «il BE non può fare niente» | premessa sbagliata, conclusione giusta (il pannello è PULL): costruito il **push** — guardiano pgAgent → `NOTIFICA_DIGEST_MUTO` su `coda_lavori`, tipo spento fino all'handler | handler (§10.7-5) |
+| D6 battito **o** timestamp | terza forma a costo zero: la **sessione** in `pg_stat_activity` | `application_name` (§10.7-4). ⚠️ Fino ad allora `listen_cambio_reparto` è `MUTO` nel panorama, e finisce nel digest |
+| §3 «§11.5 si chiude per effetto» | si chiude **dal DB**, direttamente: `MAI_PARTITO` su un `COMMAND` con contratto | nessuno |
+
+## 11.2 ⚠️ Un limite accettato: il contratto ha la grana del PROCESSO, il giornale quella della CORSIA
+
+Il giornale registra `<codice>:<corsia>` (`digest_presidi:giornaliera` e
+`:settimanale` sono due righe); il catalogo ha **una** `tolleranza_minuti` per
+processo. ⇒ Il panorama dice `MUTO` solo quando **tutte** le corsie tacciono
+oltre l'unica tolleranza, e il battito del digest giudica ogni corsia contro
+quel numero: la giornaliera è «ferma» dopo 8 giorni (11520), non dopo 26 ore.
+
+**Per chi morde:** solo per i processi con **più di una sveglia** — oggi
+`digest_presidi` (2 corsie attive, cadenze 24h/7g) e `run_fatturazione_batch`
+(2 corsie spente, tolleranza `NULL`, niente da presidiare). Gli altri quattro
+sono 1 processo = 1 unit = 1 jobname: nessuna perdita. Il giorno in cui un
+altro processo prende una seconda corsia, il limite si ripresenta lì.
+
+**Non è una perdita nuova nel comportamento — è una perdita nell'opzione.** Il
+codice collassava già a processo (`sveglie.tolleranza_minuti()` = `max` fra le
+corsie: «basta che una abbia girato»); il JSON però **portava il dato per
+unit** (1560 e 11520), e nessuno lo leggeva a quella grana. Con D5 il secondo
+numero sparisce dal modello: per tornare a giudicare la giornaliera da sola non
+basterebbe più un `for` nel backend.
+
+⭐ Resta intero, per corsia, il segnale più forte dei due: **«mai girata»**
+(nessuna riga nel giornale) non ha bisogno di una tolleranza, e il battito lo
+mostra già. Fatto datato: il 2026-09-11 `digest_presidi:settimanale` non ha
+corse negli ultimi 30 giorni, e il battito lo dice così.
+
+✅ **Deciso da Tid, 2026-09-11: il limite si accetta.** Se un giorno servirà la
+giornaliera sulla sua cadenza, la sede è il modello a DB — un contratto a grana
+corsia (`dbops.processi_corsie`, stessa convenzione `<codice>:<corsia>` del
+giornale), **non** una tolleranza per unit rimessa nel deploy: sarebbe la
+seconda sede che il §10.2 ha appena tolto. Scritto qui, accanto al limite su
+`abilita` (§10.2), perché non si legga come una dimenticanza.
+
+## 11.3 ✅ Fatto lato backend — 2026-09-11, sera
+
+Tutti e sei i punti del §10.7. **4670 test verdi** (dopo la revisione §11.4), `ruff` pulito. Ogni
+punto è provato dove si può provare: sul DB vero in transazione ritirata dove
+la prova è un binding, con un test senza database dove è una regola.
+
+| § | Cosa | Dove | Prova |
+| --- | --- | --- | --- |
+| 10.7-4 | `application_name = PROCESSO_LISTEN_CAMBIO_REPARTO` nella conninfo del listener — il nome è la **costante**, non un letterale | `anagrafiche/services/notify_listener.py` | `test_conninfo_porta_il_codice_del_processo_come_application_name` legge la stringa che psycopg costruisce davvero. ⚠️ **Il servizio va riavviato** (`zeroerp-listen-cambio-reparto`, `sudo`): finché gira il processo vecchio, la connessione non porta il nome e il panorama resta `MUTO` |
+| 10.7-1 | `send_pending_emails` legge `config.vw_email_in_coda`: **nessuna `WHERE` sullo stato** nel command | `core/management/commands/send_pending_emails.py` | `--dry-run` reale → 0 in coda (= `fn_conta_presidio`); `test_send_pending_emails_predicato_in_una_sede` vieta che il predicato ricompaia nel sorgente (`FROM config.email_log`, `stato IN (`, `tentativi < max_tentativi`, `prossimo_tentativo`) |
+| 10.7-2 | Tolleranza dal catalogo: `ProcessiRepository.contratti_liveness(codici)` / `.tolleranza_minuti(codice)`; `_liveness_worker` e `_leggi_battito` la leggono da lì; `sveglie.tolleranza_minuti` **non esiste più**; il campo è **uscito** dalle 8 voci di `sveglie.json` e `carica_sveglie` **rifiuta** il file se ricompare (anche a `null`: la chiave stessa è la seconda sede) | `core/db/processi_repository.py`, `core/services/sveglie.py`, `deploy/sveglie.json`, `coda_lavori/gestione_service.py`, `presidi_digest.py` | Repository provato sul dbdev (10 / 10 / 30 / 11520 / `SESSIONE` senza tolleranza / `ignoto` assente); `test_sveglie` 5 (rifiuto) e 9 (i drainer hanno un contratto **nel seed**); `test_presidi_digest` 13 inietta il catalogo finto e verifica che il battito chieda `digest_presidi` |
+| 10.7-3 | `test_contratto_liveness_vs_deploy`: per ogni timer con contratto, `intervallo_massimo(OnCalendar) ≤ tolleranza` **dal seed `processi.csv`**, non dal DB; più `SESSIONE ⇔ servizio`, «ogni `COMMAND` con contratto ha una sveglia accesa», «il parser conosce ogni `OnCalendar` in uso» (solleva su forma ignota). Supporto in `core/tests/_contratto_processi.py` | `core/tests/services/test_contratto_liveness_vs_deploy.py` | 1 ≤ 10 · 2 ≤ 10 · 5 ≤ 30 · 1440 ≤ 11520 · 10080 ≤ 11520; le due corsie di fatturazione saltano (nessun contratto), il listener è `SESSIONE`/`servizio`. Anti verde-per-sottrazione: fallisce se **nessun** timer arriva al confronto |
+| 10.7-5 | Handler `notifica_digest_muto_default` (`coda_lavori/notifica_digest_muto_handler.py`), registrato in `CoreConfig.ready()`; `separa_destinatari` **salita** dal command a `presidi_digest` (secondo lettore); senza destinatario → `E_CONFIG_MANCANTE` **terminale**, non un `FATTO` vuoto | `core/services/coda_lavori/notifica_digest_muto_handler.py`, `core/apps.py`, `presidi_digest.py` | 6 test senza DB; il guardrail del binding (`test_coda_lavori_tipi_handler_guardrail`, DB vero) è verde: l'handler è a catalogo e non è orfano; **prova end-to-end in transazione ritirata**: handler → `fn_accoda_email_sistema` (id 537) → la riga è **visibile all'identità tecnica di `send_pending_emails` attraverso `config.vw_email_in_coda`**, e invisibile a `zeroerp_app` nudo — la cecità RLS di [[feedback_rls_conteggio_zero_non_e_un_dato]], vista di persona prima di leggere col ruolo giusto |
+| 10.7-6 | niente per §4 e §5 | — | il pannello legge il catalogo |
+
+Documentazione allineata: catalogo BB backend (riga `sveglie` riscritta — la
+frase «non va su `dbops.processi`» era giusta per la cadenza e sbagliata per
+la tolleranza; righe nuove per `contratti_liveness`, `separa_destinatari`,
+l'handler), header di `install-timers.sh`, `_contratto` in `sveglie.json`.
+
+### ✅ Che cosa restava, e com'è finita
+
+* ~~Riavviare `zeroerp-listen-cambio-reparto`~~ — **fatto da Tid** il
+  2026-09-11 alle 20:06: la sessione porta `application_name`, il panorama dà
+  `OK`, `da_guardare = false`. gunicorn ricaricato (`kill -HUP`).
+* ~~`NOTIFICA_DIGEST_MUTO` `attivo = true`~~ — acceso **sul dbdev** alle 20:11
+  (`titodb`), ⚠️ **ma non nel seed**: vedi il residuo dichiarato in testa al
+  documento. Finché il CSV dice `false`, ogni migrate lo rispegne.
+* Il brief va in `work-done` con quel residuo scritto in testa.
+* **Derivata** (domanda di Tid, stessa sera): il riavvio dei processi da
+  interfaccia — [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md).
+  Non è di questo brief: lo cita perché nasce dal suo ultimo anello umano.
+
+### ⚠️ Una cosa vista facendo, da non perdere
+
+**Il BE e il DB calcolano lo stesso predicato in due posti.** Il badge code
+(`_liveness_worker` → `job_liveness`) e il panorama
+(`vw_processi_programmazione`) confrontano entrambi `ultimo run` con la
+tolleranza — ora **lo stesso numero, dallo stesso catalogo, col clock del
+database**, quindi non divergono; ma sono due lettori dello stesso fatto. Il
+giorno in cui il badge dovesse mostrare *`MUTO`/`MAI_PARTITO`* e non un
+booleano, la strada è leggere `stato` dal panorama, non riscriverlo. Non è di
+questo brief.
+
+## 11.4 🔍 Revisione critica del codice scritto — 2026-09-11, sera (su richiesta di Tid)
+
+Cercato: bug, codice fragile, duplicazioni, valori scritti a mano. Trovato e
+corretto, tutto con **4670 test verdi** e `ruff` pulito a valle:
+
+| Che cosa | Dov'era | Perché contava | Rimedio |
+| --- | --- | --- | --- |
+| 🔴 **Bug** nel parser `OnCalendar`: `*:0/N` restituiva `N` anche per `N ≥ 60` | `_contratto_processi.intervallo_massimo_minuti` | in systemd `*:0/90` combacia **solo il minuto 0** → il timer gira ogni ORA, non ogni 90 minuti: il presidio avrebbe accettato un contratto di 90 su un timer che promette 60, cioè il contrario di ciò che presidia | `min(N, 60)`; test 5 sui casi che ingannano |
+| 🔴 **Bug** gemello: `*-*-DD` accettava `29`..`31` e rispondeva «31 giorni» | idem | systemd **salta** i mesi senza quel giorno: l'intervallo non è più «un mese» | il parser **rifiuta** `DD > 28` — meglio non capire che stimare |
+| 🟠 Fragile: il test statico del cron vietava la parola `prossimo_tentativo` **ovunque** nel sorgente | `test_send_pending_emails_predicato_in_una_sede` | una scrittura legittima del backoff (`SET prossimo_tentativo`) l'avrebbe fatto scattare, e un cancello che boccia il caso giusto viene spento | ristretto al **predicato di lettura** (`IS NULL` / `<=`) |
+| 🟠 **Duplicato**: la chiamata a `insert_log` con otto argomenti, identica nel command del digest e nell'handler del guardiano | `digest_presidi._invia`, `notifica_digest_muto_handler` | due copie del «come si scrive alla persona dei presidi» divergono alla prima modifica (un `cc` in più, un contesto in meno) | estratta `presidi_digest.accoda_email_presidi(...)` → `EmailPresidiAccodata | None`; il command mappa `None` su `NON_CONFIGURATO`, l'handler lo fa fallire terminale |
+| 🟠 **Scritto a mano**: i nomi delle due unit del digest e il percorso di `manage.py` nel testo della mail | `componi_avviso_digest_muto` | seconda sede di `sveglie.json`: una corsia rinominata e la mail manda a guardare l'unit sbagliata alle sette di mattina | le unit si **leggono** da `sveglie_di_processo(processo)`; il comando suggerito è `bin/run-command.sh` (il wrapper di systemd, con l'env vero) |
+| 🟠 **Duplicato** preesistente, aggravato: `_repo_root()` era in **sette** file di test e la mia `_contratto_processi.py` era l'ottava copia (più un nono lettore che la importava da un modulo di test) | `apps/core/tests/*` | regola del 2 superata da un pezzo | `apps/core/tests/_repo.py` (`repo_root`), nove file ripuntati, `Path` inutilizzati tolti |
+| 🟡 Letterale `"COMMAND"` in un test | `test_contratto_liveness_vs_deploy` | vocabolario del CHECK ricopiato | `CANALE_COMMAND` accanto a `SEGNO_*` nell'helper |
+| 🟡 Il mio stesso primo ritocco al parser catturava il giorno della settimana come gruppo → `int('Mon')` | idem | trovato dalla prova a mano prima del test | gruppo non catturante; è il caso 5 del test |
+
+**Lasciato com'è, e dichiarato**: `_PROCESSO_GUARDIANO = "guardiano_digest"`
+nell'handler è un **mirror dichiarato** di `coda_lavori_tipi.processo_codice`
+— non sta in `processi.py` perché quel modulo elenca solo i processi che il
+backend avvia, e questo lo avvia pgAgent. Serve a una riga di `contesto_json`,
+non a una decisione: se il nome cambia, cambia lì e nel CSV insieme, e nel
+frattempo non si rompe niente.
 
 *Brief del 2026-09-11. Le misure sono letture di `backend-dev` e del dbdev di
 quel giorno: valgono come controesempio, non come motivo. Il motivo sta sul

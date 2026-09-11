@@ -207,7 +207,7 @@ digest guarda il guardiano, il guardiano guarda il digest.
 
 Chi mette in servizio una macchina esegue comunque
 `sudo backend/bin/install-timers.sh`, che legge `sveglie.json` ed e' idempotente.
-Il perche' per esteso: `docs/it/dev/work-in-progress/brief-db-quattro-processi-senza-presidio.md` §10.
+Il perche' per esteso: `docs/it/dev/work-done/brief-db-quattro-processi-senza-presidio.md` §10.
 
 
 ## 5. Per conto di chi lavora

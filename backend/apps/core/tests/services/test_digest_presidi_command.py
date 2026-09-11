@@ -31,7 +31,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase, override_settings
 
-from apps.core.management.commands import digest_presidi as modulo
+from apps.core.services import presidi_digest
 from apps.core.management.commands.digest_presidi import (
     INVIO_ACCODATO,
     INVIO_NON_CONFIGURATO,
@@ -62,7 +62,10 @@ class DigestPresidiInvioTests(SimpleTestCase):
     """Se un'email parte, a chi, e cosa si dichiara quando non parte."""
 
     def setUp(self) -> None:
-        patcher = patch.object(modulo, "EmailRepository")
+        # ⚠️ Dal 2026-09-11 la chiamata a `insert_log` vive in
+        #    `presidi_digest.accoda_email_presidi` (una sede per il command e per
+        #    l'handler del guardiano): il doppio si mette dove sta la chiamata.
+        patcher = patch.object(presidi_digest, "EmailRepository")
         self.repo_email = patcher.start()
         self.addCleanup(patcher.stop)
         self.comando = Command()

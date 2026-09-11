@@ -40,8 +40,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from django.conf import settings
 from django.db import connection
 
+from apps.core.db.email_repository import EmailRepository
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.db.presidi_repository import (
     CADENZA_MAI,
@@ -54,8 +56,9 @@ from apps.core.db.presidi_repository import (
     PERIMETRO_LIBERO,
     PresidiRepository,
 )
+from apps.core.db.processi_repository import ProcessiRepository
+from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
-from apps.core.services.sveglie import tolleranza_minuti
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,89 @@ CADENZA_BATTITO = CADENZA_SETTIMANALE
 #    jobname e spezzerebbe la storia del processo senza che niente fallisca.
 def jobname_corsia(cadenza: str) -> str:
     return f"{PROCESSO_DIGEST_PRESIDI}:{cadenza.lower()}"
+
+
+# ⭐ PIU' DI UN DESTINATARIO SI SCRIVE COME SI SCRIVE OVUNQUE: separati da
+#    virgola (o punto e virgola). Il primo e' il destinatario, gli altri vanno in
+#    copia — `config.fn_accoda_email_sistema` ha il parametro apposta.
+# ⛔ Senza questo, «a@x.it, b@y.it» finirebbe INTERO nel campo destinatario e
+#    l'invio fallirebbe a valle, dentro la coda email: un guasto che si scopre
+#    guardando `config.email_log`, cioe' tardi e per caso. Il modo naturale di
+#    scrivere due indirizzi non deve produrre un difetto.
+# ⚠️ Vive QUI e non nel command (dal 2026-09-11) perche' ha due lettori: il
+#    command del digest e l'handler `notifica_digest_muto`, che avvisa la stessa
+#    persona quando il digest tace. Stesso setting, stessa lettura.
+_SEPARATORI_DESTINATARI = str.maketrans({";": ",", "\n": ","})
+
+
+# Scopo: dal valore configurato (`PRESIDI_DIGEST_DESTINATARIO`) alla coppia
+#        (destinatario, copie). `("", [])` se non c'e' nessun indirizzo.
+def separa_destinatari(raw: str | None) -> tuple[str, list[str]]:
+    indirizzi = [
+        pezzo.strip()
+        for pezzo in (raw or "").translate(_SEPARATORI_DESTINATARI).split(",")
+        if pezzo.strip()
+    ]
+    if not indirizzi:
+        return "", []
+    return indirizzi[0], indirizzi[1:]
+
+
+# Scopo: l'esito di `accoda_email_presidi`: la riga scritta e a chi.
+@dataclass(frozen=True)
+class EmailPresidiAccodata:
+    email_log_id: int | None
+    destinatario: str
+    copie: tuple[str, ...]
+
+
+# Scopo: Accoda UN'email di SISTEMA a chi aspetta i presidi
+#        (`PRESIDI_DIGEST_DESTINATARIO`). `None` se non c'e' nessun
+#        destinatario configurato: che cosa farne lo decide il chiamante — il
+#        digest lo dichiara come esito (`NON_CONFIGURATO`), l'handler del
+#        guardiano FALLISCE, perche' un avviso che nessuno riceve non e' un FATTO.
+#
+# ⭐ E' UNA SEDE SOLA per «scrivo alla persona dei presidi» (2026-09-11):
+#    prima stava dentro il command del digest, e alla seconda occorrenza —
+#    l'handler `notifica_digest_muto` — la stessa chiamata a `insert_log` con
+#    gli stessi otto argomenti sarebbe stata ricopiata. Due copie del modo in cui
+#    si parla alla stessa persona divergono alla prima modifica (un `cc` in
+#    piu', un `contesto` in meno), e la seconda persona a non ricevere e' quella
+#    che serve di piu'.
+# ⛔ NON SI SCRIVE UNA CHIAMATA NUOVA a `config.fn_accoda_email_sistema`: la
+#    porta di sistema e' gia' dentro `EmailRepository.insert_log`, che instrada
+#    da se' sull'ambito.
+# ⚠️ `ambito = SISTEMA` non e' una comodita': `config.email_log` ha la row
+#    level security, e ne' il command ne' il drenatore in `run_as = SISTEMA`
+#    hanno un'identita' — un INSERT diretto verrebbe rifiutato.
+def accoda_email_presidi(
+    *,
+    oggetto: str,
+    testo: str,
+    corpo_html: str,
+    contesto_json: dict[str, Any],
+) -> EmailPresidiAccodata | None:
+    destinatario, copie = separa_destinatari(settings.PRESIDI_DIGEST_DESTINATARIO)
+    if not destinatario:
+        return None
+    email_log_id = EmailRepository().insert_log(
+        email_account_id=None,
+        email_template_id=None,
+        destinatario=destinatario,
+        # ⚠️ `None` e non `[]`: la colonna e' un `text[]` nullable, e una lista
+        #    vuota direbbe «copie: nessuna» invece di «non si applica».
+        destinatari_cc=copie or None,
+        oggetto=oggetto,
+        corpo_inviato_html=corpo_html,
+        corpo_inviato_testo=testo,
+        ambito=AMBITO_SISTEMA,
+        # ⭐ Il contesto viaggia con la riga: chi legge il giornale delle email
+        #    deve poter dire QUALE processo l'ha prodotta senza aprirla.
+        contesto_json=contesto_json,
+    )
+    return EmailPresidiAccodata(
+        email_log_id=email_log_id, destinatario=destinatario, copie=tuple(copie),
+    )
 
 
 # Quante righe di esempio entrano nel corpo del messaggio.
@@ -136,7 +222,7 @@ class PresidioNonLetto:
 #
 # ⭐ `corse` e' un dict `jobname -> {last_run_at, attivo, last_ok}`, cioe' cio'
 #    che `MaintenanceRepository.job_liveness` risponde: `attivo` e' il confronto
-#    con la tolleranza dichiarata nel deploy, fatto in SQL col clock del
+#    con la tolleranza del contratto a catalogo, fatto in SQL col clock del
 #    DATABASE. ⛔ Non si confrontano timestamp in Python: sarebbero due orologi,
 #    e su una macchina con l'ora storta il battito direbbe «morto» su un digest
 #    vivo — il falso allarme che fa smettere di guardare un presidio.
@@ -145,8 +231,8 @@ class PresidioNonLetto:
 @dataclass(frozen=True)
 class Battito:
     corse: dict[str, dict[str, Any]]
-    # ⚠️ `None` = la liveness di questo processo NON si presidia dal dichiarato
-    #    (nessuna sveglia con `tolleranza_minuti`). Allora `attivo` non si puo'
+    # ⚠️ `None` = il processo non ha un contratto a catalogo
+    #    (`dbops.processi.tolleranza_minuti` NULL). Allora `attivo` non si puo'
     #    calcolare, e il messaggio dice le date senza giudicarle.
     tolleranza_minuti: int | None
     # ⭐ Le corsie che DOVREBBERO esserci, cioe' una per cadenza del digest.
@@ -159,11 +245,11 @@ class Battito:
     #    sfilarsi.
     attese: tuple[str, ...] = ()
 
-    # Scopo: le corsie che tacciono da piu' della tolleranza dichiarata.
-    # ⭐ E' IL LETTORE di `tolleranza_minuti`: senza qualcuno che la CONFRONTI,
-    #    quel campo del deploy sarebbe dichiarato e mai usato — cioe' sembrerebbe
-    #    un presidio senza esserlo, che e' il difetto contro cui nasce questo
-    #    cantiere.
+    # Scopo: le corsie che tacciono da piu' della tolleranza del contratto.
+    # ⭐ E' UN LETTORE di `tolleranza_minuti` (l'altro e' il panorama a DB):
+    #    senza qualcuno che la CONFRONTI, quella colonna del catalogo sarebbe
+    #    dichiarata e mai usata — cioe' sembrerebbe un presidio senza esserlo,
+    #    che e' il difetto contro cui nasce questo cantiere.
     # ⛔ Senza tolleranza dichiarata NESSUNA corsia e' ferma, e la garanzia sta
     #    QUI e non nella disciplina di chi legge: `job_liveness` pretende una
     #    soglia per rispondere, quindi in quel caso `attivo` e' calcolato su un
@@ -249,6 +335,7 @@ def calcola_digest(
     *,
     repo: PresidiRepository | None = None,
     maintenance: MaintenanceRepository | None = None,
+    processi: ProcessiRepository | None = None,
     righe_nel_messaggio: int = RIGHE_NEL_MESSAGGIO,
 ) -> Digest:
     if cadenza not in CADENZE_DEL_DIGEST:
@@ -361,7 +448,10 @@ def calcola_digest(
         lavorazioni=lavorazioni,
         non_letti=non_letti,
         battito=(
-            _leggi_battito(maintenance or MaintenanceRepository())
+            _leggi_battito(
+                maintenance or MaintenanceRepository(),
+                processi or ProcessiRepository(),
+            )
             if cadenza == CADENZA_BATTITO else None
         ),
     )
@@ -376,18 +466,25 @@ def calcola_digest(
 #    comporre quei nomi qui sarebbe una SECONDA sede della loro forma — il
 #    giorno in cui cambia, il battito guarderebbe nomi che non esistono e
 #    risponderebbe «mai girato» invece di «non lo so».
-# ⚠️ La tolleranza e' quella del PROCESSO, cioe' la piu' larga fra le corsie
-#    (`sveglie.tolleranza_minuti`): basta che una corsia abbia girato perche' il
-#    processo sia vivo. Ma il confronto lo si fa PER CORSIA, perche' e' li' che
-#    si vede la morte di una sola delle due.
-# ⛔ Senza tolleranza dichiarata NON si inventa un ripiego: le corse si mostrano
+# ⚠️ La tolleranza e' quella del PROCESSO — il contratto a catalogo,
+#    `dbops.processi.tolleranza_minuti` via `ProcessiRepository` (dal
+#    2026-09-11; prima era la piu' larga fra le corsie di `sveglie.json`, e il
+#    numero e' lo stesso: 11520). Il confronto lo si fa PER CORSIA, perche' e'
+#    li' che si vede la morte di una sola delle due — ma contro l'unico numero
+#    del processo: la giornaliera e' «ferma» dopo otto giorni, non dopo 26 ore.
+#    E' il limite «grana processo vs grana corsia» accettato da Tid (brief
+#    `brief-db-quattro-processi-senza-presidio.md` §11.2); «mai girata» invece
+#    non ha bisogno di una tolleranza, e resta per corsia.
+# ⛔ Senza contratto a catalogo NON si inventa un ripiego: le corse si mostrano
 #    con le loro date e nessuna viene giudicata «ferma». Un numero preso a caso
 #    darebbe un falso allarme, che e' il modo piu' rapido di far smettere di
 #    guardare un presidio.
 # ⛔ E se il giornale non risponde non si affonda il digest: il battito diventa
 #    `None` e il messaggio lo dice.
-def _leggi_battito(maintenance: MaintenanceRepository) -> Battito | None:
-    tolleranza = tolleranza_minuti(PROCESSO_DIGEST_PRESIDI)
+def _leggi_battito(
+    maintenance: MaintenanceRepository, processi: ProcessiRepository,
+) -> Battito | None:
+    tolleranza = processi.tolleranza_minuti(PROCESSO_DIGEST_PRESIDI)
     try:
         corse = maintenance.job_liveness(
             processo_codice=PROCESSO_DIGEST_PRESIDI,
@@ -548,14 +645,14 @@ def _battito_testo(b: Battito) -> list[str]:
         r.append(f"  · {jobname}: ⛔ MAI GIRATA — nessuna corsa sul giornale")
     if b.tolleranza_minuti is None:
         # ⚠️ Si dichiara, invece di lasciar credere che le date siano state
-        #    guardate: nessuna sveglia porta `tolleranza_minuti`, quindi qui
+        #    guardate: il processo non ha un contratto a catalogo, quindi qui
         #    nessuno puo' dire se una corsia sia ferma.
         r.append(
-            "  ⚠️ nessuna tolleranza dichiarata nel deploy: le date non sono "
+            "  ⚠️ nessuna tolleranza dichiarata a catalogo: le date non sono "
             "state giudicate"
         )
     else:
-        r.append(f"  tolleranza dichiarata nel deploy: {b.tolleranza_minuti} minuti")
+        r.append(f"  tolleranza dichiarata a catalogo: {b.tolleranza_minuti} minuti")
     return r
 
 
@@ -600,12 +697,12 @@ def _corpo_html(digest: Digest, quando: str) -> str:
             p.append("</ul>")
             if digest.battito.tolleranza_minuti is None:
                 p.append(
-                    "<p style=\"color:#666\">Nessuna tolleranza dichiarata nel "
-                    "deploy: le date non sono state giudicate.</p>"
+                    "<p style=\"color:#666\">Nessuna tolleranza dichiarata a "
+                    "catalogo: le date non sono state giudicate.</p>"
                 )
             else:
                 p.append(
-                    f"<p style=\"color:#666\">Tolleranza dichiarata nel deploy: "
+                    f"<p style=\"color:#666\">Tolleranza dichiarata a catalogo: "
                     f"{e(digest.battito.tolleranza_minuti)} minuti.</p>"
                 )
 

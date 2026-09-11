@@ -52,17 +52,8 @@
 """
 
 import re
-from pathlib import Path
 from unittest import TestCase
-
-
-# Scopo: root del repo, risalendo fino a `db/changelog` invece di contare i
-#        livelli a mano (`parents[N]` si rompe in silenzio se il file si sposta).
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata (nessun db/changelog risalendo)")
+from apps.core.tests._repo import repo_root
 
 
 # Scopo: sorgente Python ripulito dai COMMENTI.
@@ -104,7 +95,7 @@ class CoercizioneJsonbDalBuildingBlockTests(TestCase):
     #        li' i finti costruiscono di proposito le forme che il codice vero
     #        non deve avere.
     def _sorgenti(self):
-        root = _repo_root()
+        root = repo_root()
         for percorso in sorted((root / "backend" / "apps").rglob("*.py")):
             rel = percorso.relative_to(root).as_posix()
             if "/tests/" in rel or rel == _SEDE_BB:
@@ -138,7 +129,7 @@ class CoercizioneJsonbDalBuildingBlockTests(TestCase):
     #    file resterebbe verde presidiando una regola senza sede — la forma di
     #    «verde per sottrazione» che `AGENTS.md` insegue.
     def test_i_due_building_block_esistono_ancora(self):
-        sede = (_repo_root() / _SEDE_BB).read_text(encoding="utf-8")
+        sede = (repo_root() / _SEDE_BB).read_text(encoding="utf-8")
         for nome in ("def jsonb_out(", "def coerce_jsonb_dict("):
             self.assertIn(
                 nome,

@@ -75,4 +75,4 @@ vista: il `RETRY` con backoff non è in coda, il `FAILED` terminale non è in co
 la `PENDING` fresca sì, `SENT`/`SIMULATA` no, e `dovuta_dal` è il prossimo
 tentativo dove c'è.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-quattro-processi-senza-presidio.md` §10.1 (D3).
+Origine: `docs/it/dev/work-done/brief-db-quattro-processi-senza-presidio.md` §10.1 (D3).

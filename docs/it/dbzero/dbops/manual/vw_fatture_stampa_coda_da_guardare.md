@@ -99,4 +99,4 @@ freschi che non devono, l'archiviato. ⚠️ Vuole quattro fatture libere
 dell'operatore (una riga viva per fattura): dove non ci sono, lo dichiara con
 `skip()`.
 
-Origine: `docs/it/dev/work-in-progress/brief-db-quattro-processi-senza-presidio.md` §4 · §10.1 (D1, D2).
+Origine: `docs/it/dev/work-done/brief-db-quattro-processi-senza-presidio.md` §4 · §10.1 (D1, D2).

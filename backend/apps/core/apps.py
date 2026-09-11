@@ -20,6 +20,15 @@ class CoreConfig(AppConfig):
         )
         register_chiusura_scadenze()
 
+        # Handler del job NOTIFICA_DIGEST_MUTO (2026-09-11): la guardia
+        # reciproca del digest dei presidi — lo accoda il job pgAgent
+        # `guardiano_digest`, lo spedisce il drenatore. Il tipo di coda e'
+        # seedato spento finche' questa riga non e' in release.
+        from apps.core.services.coda_lavori.notifica_digest_muto_handler import (
+            register as register_notifica_digest_muto,
+        )
+        register_notifica_digest_muto()
+
         # Estensioni drf-spectacular: si registrano per IMPORT, alla definizione
         # della sottoclasse. Senza questa riga lo schema OpenAPI non dichiara
         # nessuno `securityScheme` e descrive l'intera API come anonima

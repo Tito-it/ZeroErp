@@ -3,8 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Lettura del DICHIARATO di deploy dei processi automatici — chi sveglia
-#        ogni processo del backend, con quale cadenza, e entro quanto il suo
-#        ultimo run vale ancora come segno di vita.
+#        ogni processo del backend e con quale cadenza.
 # Note: ⭐ LA SEDE E' UNA SOLA, ed e' `backend/deploy/sveglie.json`. Questo
 #        modulo la LEGGE, non la ridichiara: l'altro lettore e'
 #        `backend/bin/install-timers.sh`, che dallo stesso file prende
@@ -21,12 +20,24 @@
 #        scritture dello stesso fatto prima o poi dissentono, e qui la
 #        divergenza sarebbe stata muta: un pallino verde su un worker fermo.
 #
-#        ⛔ E NON VA SU `dbops.processi`. Il registro di catalogo dice quali
-#        processi esistono, di che classe e su quale canale; **come li si
-#        sveglia e' un fatto di deploy**, e vive dove vive il deploy. E' la
-#        stessa ragione per cui il team DB ha rifiutato di dichiarare la cadenza
-#        dei job pgAgent su quella tabella: pgAgent la sa gia', e una seconda
-#        scrittura e' una seconda verita'.
+#        ⭐ LA CADENZA STA QUI; LA TOLLERANZA NO (dal 2026-09-11). Sono due
+#        fatti diversi, e il JSON per cinque giorni li ha tenuti insieme:
+#          · la CADENZA e' COME il deploy onora il processo — dipende dall'host,
+#            dal fuso, dal carico — e vive dove vive il deploy, cioe' qui. E' la
+#            stessa ragione per cui il team DB ha rifiutato di dichiarare la
+#            cadenza dei job pgAgent su `dbops.processi`: pgAgent la sa gia';
+#          · la TOLLERANZA («se sto bene lascio un segno almeno ogni N minuti»)
+#            e' il CONTRATTO del processo, uguale su ogni installazione — e il
+#            lettore che ne ha piu' bisogno sta nel DATABASE: il panorama
+#            `dbops.vw_processi_programmazione` dice `MUTO` sui COMMAND col
+#            contratto, e il guardiano pgAgent del digest legge solo il catalogo.
+#            ⇒ vive in `dbops.processi.tolleranza_minuti` (brief
+#            `brief-db-quattro-processi-senza-presidio.md` §10.2, D5), la legge
+#            `ProcessiRepository.contratti_liveness`, e `carica_sveglie` la
+#            RIFIUTA se ricompare nel JSON: una sede sola resta una sede sola.
+#        ⚠️ Il deploy puo' VIOLARE il contratto (un timer piu' lento della
+#        tolleranza): quella verifica e' `test_contratto_liveness_vs_deploy`,
+#        che confronta l'`oncalendar` di qui con il seed del catalogo nel repo.
 #
 #        ⚠️ Il dichiarato e' il DEFAULT di progetto, non lo stato di un host.
 #        Un host puo' avere un `OnCalendar` diverso (l'installer sostituisce un
@@ -82,7 +93,6 @@ class Sveglia:
     forma: str
     oncalendar: str | None
     abilita: bool
-    tolleranza_minuti: int | None
     nota: str
 
     # Scopo: vero se questa sveglia e' un timer con una cadenza dichiarata.
@@ -142,11 +152,15 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
         if not processo:
             raise ValueError(f"{_PERCORSO_SVEGLIE}: {unit}: manca 'processo_codice'")
 
-        tolleranza = riga.get("tolleranza_minuti")
-        if tolleranza is not None and (not isinstance(tolleranza, int) or tolleranza <= 0):
+        # ⛔ LA TOLLERANZA NON STA PIU' QUI (vedi header). Non si ignora la
+        #    chiave: chi la riscrive crede di aver dichiarato qualcosa, e un
+        #    numero letto da nessuno e' peggio di un errore.
+        if "tolleranza_minuti" in riga:
             raise ValueError(
-                f"{_PERCORSO_SVEGLIE}: {unit}: 'tolleranza_minuti' dev'essere un "
-                f"intero positivo oppure null"
+                f"{_PERCORSO_SVEGLIE}: {unit}: 'tolleranza_minuti' non e' piu' "
+                f"un campo del dichiarato di deploy — il contratto di liveness "
+                f"vive in dbops.processi.tolleranza_minuti (seed "
+                f"80_data/sql/dbops/processi.csv)"
             )
 
         # ⛔ `abilita` SI DICHIARA, non si omette. Con un default il silenzio
@@ -167,7 +181,6 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
             # Già validato bool qui sopra: un `bool(...)` in più direbbe che il
             # valore può non esserlo, cioè il contrario di quanto appena imposto.
             abilita=riga["abilita"],
-            tolleranza_minuti=tolleranza,
             nota=str(riga.get("nota") or ""),
         ))
 
@@ -177,19 +190,3 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
 # Scopo: le sveglie dichiarate per un processo (zero, una o piu').
 def sveglie_di_processo(processo_codice: str) -> tuple[Sveglia, ...]:
     return tuple(s for s in carica_sveglie() if s.processo_codice == processo_codice)
-
-
-# Scopo: entro quanti minuti l'ultimo run di un processo vale ancora «vivo».
-#        `None` = la liveness di questo processo NON si presidia dal dichiarato.
-# ⚠️ Su un processo con PIU' sveglie si prende la tolleranza piu' LARGA, e non e'
-#    una comodita': basta che una delle corsie abbia girato perche' il processo
-#    sia vivo. La piu' stretta direbbe «fermo» su un processo che sta lavorando
-#    con l'altra corsia — un falso allarme, che e' il modo piu' rapido di far
-#    smettere di guardare un presidio.
-def tolleranza_minuti(processo_codice: str) -> int | None:
-    valori = [
-        s.tolleranza_minuti
-        for s in sveglie_di_processo(processo_codice)
-        if s.tolleranza_minuti is not None
-    ]
-    return max(valori) if valori else None

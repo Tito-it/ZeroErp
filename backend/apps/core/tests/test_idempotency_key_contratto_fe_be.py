@@ -41,24 +41,14 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from unittest import TestCase
+from apps.core.tests._repo import repo_root
 
 _METODI = ("get", "post", "put", "patch", "delete")
 
 
-# Scopo: root del repo cercata risalendo fino a `db/changelog`, invece di
-#        contare i livelli a mano (`parents[N]` si rompe in silenzio se il file
-#        di test viene spostato). Stesso helper del gemello sulle liste.
-def _repo_root() -> Path:
-    for cartella in Path(__file__).resolve().parents:
-        if (cartella / "db" / "changelog").is_dir():
-            return cartella
-    raise AssertionError("root del repo non trovata (nessun db/changelog risalendo)")
-
-
-_BACKEND = _repo_root() / "backend/apps"
-_FRONTEND = _repo_root() / "frontend/src"
+_BACKEND = repo_root() / "backend/apps"
+_FRONTEND = repo_root() / "frontend/src"
 
 
 # Scopo: il testo della chiamata `api.<metodo>(...)` che comincia a `inizio`,

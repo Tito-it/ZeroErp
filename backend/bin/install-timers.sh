@@ -12,6 +12,10 @@
 # — «ogni quanto ci si aspetta questo processo» — scritto in due posti che non
 # si conoscevano. Due scritture dissentono, e quella divergenza sarebbe stata
 # muta: un pallino verde su un worker fermo.
+# ⭐ E dal 2026-09-11 la TOLLERANZA non sta nemmeno nel JSON: e' il contratto
+# del processo e vive in `dbops.processi.tolleranza_minuti` (brief
+# `brief-db-quattro-processi-senza-presidio.md` D5). Qui resta la CADENZA, che e'
+# come il deploy onora quel contratto — e questo script non la legge nemmeno.
 #
 # ⚠️ CHI ACCENDE E CHI NO lo dice il campo `abilita` del file, con la ragione
 # scritta nella `nota` accanto. Le due corsie della fatturazione restano spente
