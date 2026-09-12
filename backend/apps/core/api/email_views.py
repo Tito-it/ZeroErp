@@ -4,6 +4,17 @@
 # Doc: Python
 # Scopo: API email per operatori: outbox (bozze), allegati, log.
 #        Visibilita' basata su ambito e reparto dell'operatore.
+# Note: ⛔ Tutte le view stanno sotto l'area `config` — LETTURA per leggere,
+#       TUTTO per preparare, modificare e SPEDIRE — per decisione di Tid
+#       (2026-09-12). Fino a quel giorno dichiaravano anche
+#       `skip_area_check = True`, che era MUTO (la catena legge lo skip solo se
+#       l'area non si risolve): il comportamento e' lo stesso, il codice adesso
+#       lo dice. ⚠️ Non e' un'API «per tutti gli operatori»: sei di queste
+#       scrivono senza `post_permission`, e con lo skip attivo qualunque
+#       identita' autenticata potrebbe spedire dall'account aziendale. Se un
+#       giorno dovra' aprirsi oltre `config`, prima un'azione di processo a
+#       catalogo (`invia_email`) e la schermata (D7), poi lo skip — mai il
+#       contrario. Presidiato da `core/tests/test_skip_area_check_registro.py`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -72,7 +83,6 @@ class EmailPrepareView(DomainAPIView):
     """POST: prepara bozza email da template + variabili."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Prepara una bozza email renderizzando un template con variabili.
@@ -165,7 +175,6 @@ class EmailOutboxListView(DomainAPIView):
     """GET: lista bozze email visibili all'operatore."""
 
     area_funzionale = "config"
-    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(
@@ -199,7 +208,6 @@ class EmailOutboxDetailView(DomainAPIView):
     """GET: dettaglio bozza. PATCH: modifica bozza."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Dettaglio bozza email con allegati. Verifica proprieta'.
@@ -233,7 +241,6 @@ class EmailOutboxSendView(DomainAPIView):
     """POST: conferma e invia una bozza DRAFT."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Conferma e invia una bozza email (DRAFT -> SENT). Verifica proprieta'.
@@ -253,7 +260,6 @@ class EmailOutboxCancelView(DomainAPIView):
     """POST: annulla una bozza DRAFT."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Annulla una bozza email (DRAFT -> CANCELLED). Verifica proprieta'.
@@ -278,7 +284,6 @@ class EmailAllegatoUploadView(DomainAPIView):
     """POST: upload allegato per una bozza outbox (multipart)."""
 
     area_funzionale = "config"
-    skip_area_check = True
     parser_classes = [MultiPartParser]
 
     @extend_schema(responses={200: dict})
@@ -308,7 +313,6 @@ class EmailAllegatoListView(DomainAPIView):
     """GET: lista allegati di una bozza outbox."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: dict})
     # Scopo: Lista allegati di una bozza outbox. Verifica proprieta'.
@@ -325,7 +329,6 @@ class EmailAllegatoDeleteView(DomainAPIView):
     """DELETE: rimuove un allegato (file + record DB)."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={204: None})
     # Scopo: Elimina un allegato da una bozza. Verifica proprieta' outbox.
@@ -345,7 +348,6 @@ class EmailAllegatoDownloadView(DomainAPIView):
     """GET: download file allegato."""
 
     area_funzionale = "config"
-    skip_area_check = True
 
     @extend_schema(responses={200: bytes})
     # Scopo: Download file allegato per ID. Verifica proprieta' outbox.
@@ -397,7 +399,6 @@ class EmailLogOperatoreListView(DomainAPIView):
     """GET: log email inviate, nel perimetro dell'operatore."""
 
     area_funzionale = "config"
-    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(
