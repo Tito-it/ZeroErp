@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CLASSE DI UNA RIGA, VISTA DAL GIRO CHE LA CHIEDE — la sede unica
+# dell'auto-esclusione del proprio lotto.
+#   Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md (D1)
+#   Eredita: brief-db-il-trattenuto-passa-lo-stesso.md §5.4
+#
+# ── Il difetto che chiude ────────────────────────────────────────────────
+#   Il pull ha DUE cancelli in serie: fn_list_commesse_emittibili (quali
+#   COMMESSE visitare) e fn_emit_attivita_fatturabili_da_commessa (quali RIGHE
+#   emettere). La decisione §5.4 — «il filtro esclude sempre il lotto
+#   corrente» — era scritta nel secondo e non nel primo, che non riceveva
+#   nessuna identita'. Al RILANCIO di un pull fallito i propri documenti sono
+#   TRATTENUTA (l'esito ERRORE e' scritto fuori dal savepoint), la discovery li
+#   scartava, il pull visitava zero commesse e il lotto usciva COMPLETATO senza
+#   aver emesso niente. Provato il 2026-09-12 su LTF-0010972/3.
+#
+# ── Perche' un helper e non una seconda copia ────────────────────────────
+#   Le due copie del predicato si sono gia' sfilate UNA volta (questo brief).
+#   La CLASSE e' una proprieta' della RIGA e sta nella vista
+#   vw_commesse_attivita_emittibilita, che giustamente non sa chi chiede;
+#   «in gioco PER QUESTO GIRO» e' una proprieta' della coppia (riga, chiamante)
+#   e NON puo' stare in una vista: e' per forza una funzione col chiamante come
+#   parametro. Questa. I due cancelli tengono ciascuno la PROPRIA whitelist —
+#   non sono uguali: l'emit prende NON_APPROVATA/RIFIUTATA solo con
+#   p_only_approved = false, la discovery sempre — ma la leggono sulla classe
+#   che questa funzione restituisce.
+#
+# ── La regola, in una riga ───────────────────────────────────────────────
+#   Una riga TRATTENUTA soltanto dal MIO lotto, per il mio lotto e' PRONTA.
+#   ⚠️ `<@` e non `= ANY`: si libera solo se TUTTI i lotti che la tengono sono
+#   il mio; se la tiene anche un altro giro vivo resta TRATTENUTA.
+#   ⚠️ Lotto NULL = chiamante fuori pipeline = nessuna auto-esclusione: la
+#   classe torna com'e' (la risposta prudente, identica a prima).
+#   ⭐ «Per il mio giro e' PRONTA» poggia sull'ORDINE del CASE della vista:
+#   RIFIUTATA e NON_APPROVATA vengono PRIMA di TRATTENUTA, quindi una riga
+#   TRATTENUTA e' per costruzione approvata e non emessa. Il pgTAP P-5 (test
+#   «precedenza») lo asserisce: se la vista cambiasse ordine, questo helper
+#   promuoverebbe a PRONTA una riga non approvata, e il test lo direbbe.
+#
+# ── Forma ────────────────────────────────────────────────────────────────
+#   LANGUAGE sql, IMMUTABLE, corpo standard (`RETURN`): il planner la INLINA
+#   dentro la query che la chiama — costo per riga zero, ed e' cio' che rende
+#   la sede unica gratis. ⛔ Niente STRICT: bloccherebbe l'inlining e un NULL
+#   in ingresso ha gia' la sua risposta nel CASE.
+#   I parametri: `p_classe text` (la vista espone varchar, cast implicito),
+#   `p_trattenuta_da_lotti bigint[]` (un `%TYPE[]` non e' sintassi valida),
+#   `p_lotto_corrente` ancorato a fatturazione_lotti.id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260912-12-create-fn-classe-emittibilita-per-giro-mctit.yaml
+
+  - changeSet:
+      id: 20260912-12-create-fn-classe-emittibilita-per-giro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_classe_emittibilita_per_giro(classe, trattenuta_da_lotti,
+        lotto_corrente): la classe di emittibilita' di una riga vista dal giro
+        che la chiede — una riga TRATTENUTA soltanto dal lotto corrente e', per
+        quel lotto, PRONTA. Sede unica dell'auto-esclusione del proprio lotto,
+        letta da fn_list_commesse_emittibili e
+        fn_emit_attivita_fatturabili_da_commessa. SQL IMMUTABLE inlinabile.
+        Brief brief-db-rilancio-step-non-rivede-le-proprie-commesse (D1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_classe_emittibilita_per_giro(
+                  p_classe               text,
+                  p_trattenuta_da_lotti  bigint[],
+                  p_lotto_corrente       vendite.fatturazione_lotti.id%TYPE)
+              RETURNS text
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              RETURN CASE
+                         -- Trattenuta SOLTANTO dal mio lotto: per il mio giro e' pronta.
+                         WHEN p_classe = 'TRATTENUTA'
+                              AND p_lotto_corrente IS NOT NULL
+                              AND p_trattenuta_da_lotti <@ ARRAY[p_lotto_corrente]
+                         THEN 'PRONTA'
+                         ELSE p_classe
+                     END;
+
+              COMMENT ON FUNCTION vendite.fn_classe_emittibilita_per_giro(text, bigint[], bigint) IS
+              'La classe di emittibilita'' di una riga (vendite.vw_commesse_attivita_emittibilita.classe_emittibilita) VISTA DAL GIRO che la chiede: una riga TRATTENUTA soltanto dal lotto corrente e'', per quel lotto, PRONTA — e'' il proprio documento di un tentativo precedente, da riprendere al rilancio. Ogni altra classe torna com''e''. `<@` e non `= ANY`: si libera solo se TUTTI i lotti che la tengono sono il mio. Lotto NULL = chiamante fuori pipeline = nessuna auto-esclusione. SEDE UNICA dell''auto-esclusione: la leggono fn_list_commesse_emittibili (quali commesse visitare) e fn_emit_attivita_fatturabili_da_commessa (quali righe emettere), ognuna con la propria whitelist sopra. Poggia sull''ordine del CASE della vista (RIFIUTATA/NON_APPROVATA prima di TRATTENUTA): asserito dal pgTAP test-pull-non-prende-trattenuti-v1. SQL IMMUTABLE, inlinata dal planner. Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse (D1), 2026-09-12.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo insieme al rollback dei changeSet -14 e -15, che la chiamano.
+              DROP FUNCTION IF EXISTS vendite.fn_classe_emittibilita_per_giro(text, bigint[], bigint);

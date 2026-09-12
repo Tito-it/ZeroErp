@@ -76,6 +76,36 @@ sono per la **frase**, non per la decisione.
 
 ---
 
+### ⭐⭐ Il decimo numero: gli esiti `ERRORE` entrano nel verdetto (rev 2026-09-12)
+
+`esiti_stato_esecuzione_errore_count` — quanti documenti presi in carico dal
+lotto hanno come **ultimo fatto registrato** (`fatturazione_lotti_esiti`) un
+`ERRORE`. In coda, decimo, e **questo sì che decide**: il backend lo somma in
+`is_error`, quindi in `blocks_next_step`.
+
+**Perché.** Il verdetto contava le bandiere — i log critici, che il runner stesso
+abbassa all'avvio di ogni rerun («chi alza la bandiera la abbassa») — e il
+gemello a valle (`lotti_fatture.stato_esecuzione`). Gli esiti li usava come
+denominatore e per l'`ESCLUSO`, **mai come segnale**. Quindi: pull fallito →
+esito `ERRORE`; rerun che **non rivede** quella commessa → bandiere abbassate,
+niente le rialza → lotto `COMPLETATO` con un documento preso in carico e ancora
+in `ERRORE`, e nessuno lo vede. Provato il 12-09-2026 su LTF-0010972: lotto
+`COMPLETATO`, due esiti `ERRORE`, zero fatture.
+
+Un esito è un **fatto** su un documento che il lotto ha preso in carico. Un lotto
+che si dichiara a posto con un documento il cui ultimo fatto è `ERRORE` lo fa
+**per sottrazione** — la forma fail-open. La via d'uscita c'è già ed è quella
+giusta: **«Togli dal giro»** porta l'esito a `ESCLUSO`, cioè l'operatore
+**dichiara** che quel documento non fa più parte del lavoro. `ESCLUSO` non conta
+in questo numero: è l'altro stato della stessa riga.
+
+⚠️ Finché il backend non legge il decimo numero, il conteggio c'è e non decide
+niente: il cambio di verdetto arriva con quella riga
+(`LottoSegnalazioniService.evaluate_lotto_status`). Decisione di Tid, 12-09-2026,
+brief `brief-db-rilancio-step-non-rivede-le-proprie-commesse` (D2).
+
+---
+
 ### ⭐ Le criticità di un documento **uscito dal giro** non contano più
 (dal 2026-09-08)
 
@@ -137,6 +167,8 @@ La funzione ritorna una sola riga con:
 * `lotto_warning_count`
 * `lotto_info_count`
 * `fatture_stato_esecuzione_errore_count`
+* `documenti_bloccanti_count`, `documenti_presi_in_carico_count`, `critiche_giro_count` (banner, 2026-09-08)
+* `esiti_stato_esecuzione_errore_count` (verdetto, 2026-09-12) — decimo e ultimo
 
 ---
 
