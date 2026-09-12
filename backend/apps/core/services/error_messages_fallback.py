@@ -741,6 +741,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RIGA_LISTINO_PROPAGATA": "Riga listino gia' propagata a valle: operazione non ammessa.",
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "Modifica righe listino non consentita: la versione non e' in stato BOZZA.",
     "E_RIGA_PREZZO_PENDENTE": "La riga e' in attesa di approvazione: solo lo stato di approvazione e i campi audit sono modificabili.",
+    "E_RISORSA_UMANA_IDENTITA_ATTIVA": "Non si puo' disattivare la risorsa umana: l'utente ha ancora un'identita' operatore attiva.",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "Il soggetto collegato alla risorsa umana non e' un gestore.",
     "E_RITIRO_SORGENTE_PARAMETRO_MANCANTE": "Ritiro delle righe di commessa non eseguibile: la richiesta e' arrivata senza uno dei dati obbligatori (tipo del documento di origine, sua chiave, motivo).",
     "E_RUOLO_APPLICATIVO_NON_GESTITO": "Ruolo applicativo non gestito dal guard di coerenza: regola mancante.",
