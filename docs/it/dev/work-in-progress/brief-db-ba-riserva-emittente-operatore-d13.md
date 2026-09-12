@@ -225,7 +225,7 @@ del livello 2, il prezzo, la marcatura, i test), `fn_check_ba_visible_for_emitte
 (la «logica a 3 livelli»), guida `soggetti-e-ruoli-anagrafici.md` (tabella delle
 cardinalità). Doc auto-gen rigenerate da Tid.
 
-### 6.2 ⚠️ Tre copie Python della regola VECCHIA — per il team BE
+### 6.2 ✅ Tre copie Python della regola VECCHIA — chiuso dal team BE il 2026-09-13
 
 Il backend tiene **inline** la regola «mapping specifico, altrimenti default se
 il BA non ha mapping» in tre query, *«per lasciare al planner il semi-join»*:
@@ -241,6 +241,27 @@ sfilano in silenzio, e la casa ha già il precedente giusto:
 `script.fn_check_ba_visible_for_emittenti` (fix 2026-07-13: *«il vecchio JOIN
 inline `… OR is_default = true` era più lasco»*). Da allineare nello stesso
 modo; fuori dal perimetro DB di questo brief.
+
+✅ **Fatto il 2026-09-13 (BE).** Le tre copie erano lo stesso frammento
+(`_RUOLO_CL_SCOPE_SQL` di `soggetti_repository`, ricopiato con i commenti
+dentro la `jsonb_agg` di `list_soggetti`, più `list_clienti`): ora è **un
+frammento in tre punti** e `list_clienti` delega direttamente, entrambi con
+`fn_check_ba_visible_for_emittenti(<ba>, %s::bigint[])`; i parametri passano
+da tre a due per query. Provato sul DB vero, in transazione ritirata: **5
+perimetri × 4 query, risultati identici** prima e dopo (sui 42 BA tutti
+collegati le due regole coincidono — è la ragione per cui nessuna lista
+mentiva). Presidio sulla forma, a registro zero:
+`apps/anagrafiche/tests/test_scope_ba_delega_alla_fn.py` — vieta di confrontare
+l'emittente **del mapping** con la whitelist `ANY(…)` in una query Python (la
+lettura del gestore globale in `parameter_repository` e i registri di
+numerazione non sono quella forma, e il test lo dice) e pretende che i quattro
+repository nominino ancora la fn. Provato per mutazione nei due versi.
+⚠️ Riletto la sera stessa: il frammento condiviso aveva perso il `JOIN
+billing_account` — la fn riceve l'id, ma quel JOIN è un cancello RLS che si
+somma a quello di `clienti`, e la prova prima/dopo (super admin, perimetro
+largo) non poteva vederlo. Rimesso, con il perché in commento. Misurato: la
+forma con la fn non è più lenta del semi-join inline (3,6 vs 4,6 ms su
+`list_soggetti`, 175 soggetti).
 
 ### 6.3 Cose che ora sono storia, e non si toccano
 
@@ -262,8 +283,8 @@ modo; fuori dal perimetro DB di questo brief.
    nel registro (`test-ba-emittente-risoluzione-v1`,
    `test-fn-get-emittente-fiscale-pk`) dovrebbero rientrare — le righe si
    tolgono a mano da `baseline-rossi-ci.tsv` quando lo dice la CI.
-3. **Team BE** — le tre copie inline della regola vecchia (§6.2): delegare a
-   `fn_check_ba_visible_for_emittenti`, come già fanno due repository.
+3. ✅ **Team BE** — fatto il 13-09: le tre copie inline delegano a
+   `fn_check_ba_visible_for_emittenti`, con presidio sulla forma (§6.2).
 4. **Decisioni di Tid, non lavoro**: l'opzione 3 (emittente come colonna del
    BA) resta in coda; il presidio «BA senza legame» (§3.4) è proposto.
 5. La valutazione (§D13, checklist) e la memoria sono aggiornate con lo stato.

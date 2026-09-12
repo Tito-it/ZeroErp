@@ -666,9 +666,13 @@ spezzati in «in sessione / senza sessione».
 ⚠️ **Il prezzo, dichiarato**: un BA che *resta* senza legame (seed, migrazione)
 è ora, in sessione, di chiunque lo guardi — dato anomalo che il modello ammette.
 Restano in coda, come decisioni e non come lavoro: la forma «emittente come
-colonna del BA» (opzione 3) e un presidio `ZERO` sui BA senza legame. E per il
-team BE: tre copie inline della regola vecchia in `clienti_repository` e
-`soggetti_repository` da far delegare al check (brief §6.2).
+colonna del BA» (opzione 3) e un presidio `ZERO` sui BA senza legame.
+✅ **Team BE, chiuso il 2026-09-13**: le tre copie inline della regola vecchia
+(`clienti_repository.list_clienti`, `soggetti_repository` ×2) delegano ora a
+`fn_check_ba_visible_for_emittenti` — un frammento solo, usato in tre punti —
+con un presidio a registro zero sulla forma (`test_scope_ba_delega_alla_fn.py`).
+Risultati identici prima/dopo su 5 perimetri × 4 query (oggi tutti i BA sono
+collegati, ed è il motivo per cui nessuna lista mentiva).
 
 ---
 
@@ -796,9 +800,9 @@ D6 e il registro dei rossi in CI.
       apply e della corsa CI.
 * [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
       applicati, baseline di sviluppo senza regressioni, brief
-      `brief-db-ba-riserva-emittente-operatore-d13.md`. Restano fuori
-      perimetro: le tre copie Python della regola vecchia (team BE, brief
-      §6.2) e due decisioni di modello in coda (§3.4).
+      `brief-db-ba-riserva-emittente-operatore-d13.md`. ✅ Le tre copie
+      Python della regola vecchia sono delegate al check dal 13-09 (team BE,
+      brief §6.2). Restano due decisioni di modello in coda (§3.4).
 * [ ] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno

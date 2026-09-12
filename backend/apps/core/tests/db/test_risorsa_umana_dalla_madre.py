@@ -65,7 +65,7 @@ from apps.core.api.endpoint_helpers import get_risorsa_umana_id
 from apps.core.services import permissions_cache
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
-from apps.core.tests.test_naming_codice_interno_python import _sorgente_senza_commenti
+from apps.core.tests._repo import sorgente_senza_commenti
 
 # La radice dei sorgenti del backend, dal package e non da un conteggio di
 # `parents[...]`, che si rompe in silenzio se questo file cambia cartella.
@@ -181,7 +181,7 @@ class RisorsaUmanaDallaMadreTests(TestCase):
         for percorso in sorted(_APPS_DIR.rglob("*.py")):
             if "/tests/" in percorso.as_posix():
                 continue
-            testo = _sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
+            testo = sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
             n = sum(len(regola.findall(testo)) for regola in _NOMI_VIETATI)
             if n:
                 trovati[percorso.relative_to(_APPS_DIR).as_posix()] = n
