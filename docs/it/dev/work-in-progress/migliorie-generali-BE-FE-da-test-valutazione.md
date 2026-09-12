@@ -52,6 +52,7 @@ Tutte chiuse il 2026-09-09:
 | `api.md`: `ui_action` «non letto», §Test «due livelli» | `ui_action` con il conto per valore; §Test a **tre** livelli, con quali girano in CI |
 | `AGENTS.md`: `unittest.TestCase` e `SimpleTestCase` come alternative | Riscritta l'11-09 con D9-b |
 | `api.md`: `hint` «il frontend non lo legge» | Chiusa **rendendo vero il codice** (D4), non riscrivendo la frase |
+| `api.md`: «la testata ha la RLS, il figlio no» in **cinque** voci dell'inventario (segnalato da Tid il 12-09) | Stantie dal D2 del gemello (`20260909-27` ÷ `20260910-33`; una da **luglio**). Corrette il 2026-09-13: il fatto sta ora in **una** sede (§Enforcement RLS) e le cinque voci ci rimandano |
 
 ⭐ Le due regole che restano da qui: *un numero scritto in due posti ne ha sempre
 uno stantio, e si toglie invece di aggiornarlo*; *un documento che dice il vero
@@ -336,6 +337,13 @@ scattano entrambi.
 4.560 test in 33 secondi è una descrizione, non un vanto: 261 file di test su
 309 usano `unittest.mock` (6.578 fra `patch(` e `MagicMock`). È il livello
 giusto per validazione, dedup e not-found, non una copertura d'integrazione.
+
+⭐ **E `smoke-baseline.sh` ha fatto il suo mestiere il 2026-09-12**: ha
+segnalato come regressione `smoke-pratica-doc-sorgente-cross-emittente.py`,
+scritto il 09-07 e superato dal D2 del gemello tre giorni dopo (la RLS su
+`pratiche_sorgenti` rende non osservabile lo «specchio» del §6). Era lo smoke
+a essere indietro, non il DB: riscritto il §6 sulla proprietà più forte (dal
+perimetro estraneo la vista **non risponde**), provato per mutazione.
 
 ⭐ Il livello che attraversa la giuntura esiste e cresce da solo: **22 file** con
 `richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09), accesi in CI da

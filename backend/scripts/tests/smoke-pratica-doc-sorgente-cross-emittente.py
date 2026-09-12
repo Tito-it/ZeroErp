@@ -50,7 +50,7 @@
 #   3. Costruzione: due pratiche speculari, il ROOT invertito fra le due
 #   4. Perimetro LARGO: su entrambe vince il ROOT (nessuno scope in mezzo)
 #   5. Perimetro DI CASA: sulla pratica A vince il COLLEGATO di casa
-#   6. ⭐ LO SPECCHIO: sulla pratica col ROOT invertito vince il COLLEGATO estraneo
+#   6. ⭐ LO SPECCHIO: dal perimetro estraneo la vista NON risponde (dal 2026-09-10 il link e' nel perimetro)
 #   7. Il consumatore vero: `get_pratica()` dice la stessa cosa della vista
 #
 # ⭐ LE DUE PRATICHE SONO SPECULARI, E NON E' SIMMETRIA DECORATIVA. Con una sola
@@ -58,9 +58,19 @@
 # lo direbbe anche una vista che sceglie sempre il COLLEGATO, o che preferisce
 # sempre l'emittente di chi legge per un'altra ragione. La pratica B ha il ROOT
 # sul documento DI CASA e il COLLEGATO su quello estraneo: letta dal perimetro
-# ESTRANEO deve vincere il COLLEGATO — cioe' l'esatto contrario, sugli stessi
-# due documenti. ⇒ Insieme, i test 5 e 6 escludono ogni regola che non guardi
+# ESTRANEO doveva vincere il COLLEGATO — cioe' l'esatto contrario, sugli stessi
+# due documenti. ⇒ Insieme, i test 5 e 6 escludevano ogni regola che non guardi
 # chi legge.
+# ⛔ DAL 2026-09-10 LO SPECCHIO NON E' PIU' OSSERVABILE, ed e' un fatto del
+# modello, non dello smoke: il changeSet `20260910-02` (gemello DB §D2, «il
+# dominio documento e' protetto fino ai satelliti») ha messo la RLS su
+# `pratiche.pratiche_sorgenti` (`rls_pratiche_sorgenti_ef_whitelist`, via
+# `fn_scope_ef_whitelist_via_pratica`). Chi legge dall'emittente estraneo non
+# vede i LINK della pratica, quindi la vista non ha piu' niente su cui
+# scegliere: risponde NULL. Il test 6 pretende ora quel NULL — la proprieta'
+# piu' forte: il perimetro si chiude sul link, non solo nel consumatore.
+# ⚠️ La pratica B resta nel fixture, e serve: il test 4 la legge dal perimetro
+# largo (vince il ROOT di casa) e il 6 dal perimetro estraneo (niente).
 #
 # ⭐ PROVATO ANCHE AL CONTRARIO (2026-09-07), perche' un verde non dice niente
 # finche' non si sa che cosa lo farebbe diventare rosso. La regressione da
@@ -71,6 +81,10 @@
 # ⇒ Riprodotto sostituendo con `None` il `seleziona_emittente(...)` dei test 5
 # e 6: diventano rossi «vince il COLLEGATO di casa» e «vince il COLLEGATO
 # estraneo», nominandoli.
+# ⭐ Dopo il 2026-09-10 il test 6 resta un discriminante, nel verso opposto:
+# con `security_invoker` spento la vista vedrebbe i link di TUTTI gli
+# emittenti e dal perimetro estraneo RISPONDEREBBE — e «la vista NON risponde»
+# diventa rosso.
 #
 # ⚠️ E il test 2 sarebbe rimasto VERDE: la RLS sulla tabella base non c'entra
 # con la reloption della vista. I discriminanti sono il 5 e il 6, non il 2.
@@ -393,32 +407,23 @@ with transaction.atomic():
 
         # ── 6. Lo specchio ────────────────────────────────────────────────
         print("\n=== 6. ⭐ LO SPECCHIO: perimetro ESTRANEO sulla pratica a ruoli invertiti ===")
-        # ⛔ E' IL TEST CHE ESCLUDE LE SPIEGAZIONI COMODE. Il 5 da solo e'
-        #    compatibile con una vista che sceglie sempre il COLLEGATO, o che
-        #    preferisce sempre l'emittente di chi legge per un'altra ragione.
-        #    Qui il ROOT e' il documento DI CASA e chi legge sta sull'emittente
-        #    ESTRANEO: deve vincere di nuovo il COLLEGATO, che stavolta e'
-        #    l'estraneo. Stessi due documenti, verdetto opposto — e l'unica cosa
-        #    cambiata e' chi guarda.
-        # ⚠️ La vista risponde anche qui benche' la pratica sia di un altro
-        #    emittente, e non e' un difetto: `vw_pratica_doc_sorgente` NON legge
-        #    `pratiche.pratiche`. Il cancello sulla pratica e' del consumatore,
-        #    ed e' il test 7.
+        # ⛔ FINO AL 2026-09-10 QUI SI PRETENDEVA UNA RISPOSTA — «la vista risponde
+        #    anche qui, benche' la pratica sia di un altro emittente: non legge
+        #    `pratiche.pratiche`» — e sulla pratica speculare doveva vincere il
+        #    COLLEGATO estraneo. Dal changeSet `20260910-02` `pratiche_sorgenti`
+        #    porta il perimetro da se': chi legge dall'emittente estraneo NON VEDE
+        #    i link della pratica, e la vista non ha piu' niente su cui scegliere.
+        #    Lo specchio, come verdetto della vista, non e' piu' osservabile — ed
+        #    e' la proprieta' piu' forte: il perimetro si chiude sul LINK, non
+        #    solo nel consumatore (test 7).
+        # ⚠️ Trovato il 2026-09-12 da `smoke-baseline.sh` come regressione: era
+        #    lo smoke a essere rimasto indietro rispetto al modello, non il DB.
         seleziona_emittente(cur, emittente_estraneo)
         a_estraneo = ancora(cur, pratica_b)
-        check("la vista risponde sulla pratica speculare", a_estraneo is not None)
-        if a_estraneo:
-            check("vince il COLLEGATO estraneo",
-                  a_estraneo["sorgente_uid"] == uid_estraneo,
-                  f"scelto {a_estraneo['sorgente_uid'][:8]}… ({a_estraneo['ruolo_link']})")
-            check("con il descrittore popolato",
-                  a_estraneo["risolto"] is True
-                  and a_estraneo["stato_codice_interno"] is not None,
-                  f"stato {a_estraneo['stato_codice_interno']}")
-            check("⭐ e il verdetto e' l'OPPOSTO del perimetro largo su B",
-                  bool(a_largo_b)
-                  and a_estraneo["sorgente_uid"] != a_largo_b["sorgente_uid"],
-                  "stessi documenti, chi legge decide")
+        check("dal perimetro estraneo la vista NON risponde — il link stesso e' nel perimetro",
+              a_estraneo is None,
+              "" if a_estraneo is None
+              else f"risponde con {a_estraneo['sorgente_uid'][:8]}… ({a_estraneo['ruolo_link']})")
 
         # ── 7. Il consumatore vero ────────────────────────────────────────
         print("\n=== 7. Il consumatore vero: get_pratica() ===")
