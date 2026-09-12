@@ -8,18 +8,15 @@
 > `application_name` dal riavvio del servizio (20:06); `fn_conta_presidio` = 0
 > sulle due viste nuove. Documento spostato in `work-done`.
 >
-> ⚠️ **Un residuo dichiarato, del team DB (`dev/db-tid`), una riga di CSV.** Il
-> tipo `NOTIFICA_DIGEST_MUTO` risulta `attivo = true` **sul dbdev** (acceso a
-> mano da `titodb` il 2026-09-11 alle 20:11, dopo la release dell'handler), ma
-> il seed `80_data/sql/dbops/coda_lavori_tipi.csv` dice ancora `false` — nel
-> tree, su `origin/Tito-dev` e su `origin/dev/db-tid`. Il mirror è
-> `runOnChange`: **al prossimo `liquibase update` la riga torna spenta in
-> silenzio** e il guardiano ricomincia a sollevare `E_JOB_TYPE_NON_ATTIVO`
-> invece di accodare. ⇒ Va portato a `true` **nel CSV** (e la descrizione, che
-> dice ancora «attivo=false FINCHE il backend non ha l handler», va riscritta
-> nello stesso gesto): è la regola di AGENTS.md — *i dati di `80_data` si
-> cambiano dal CSV, non con `UPDATE` diretti*. Segnalato qui perché non si
-> scopra a un `MUTO` non notificato.
+> ✅ **Anche l'ultimo anello è chiuso — 2026-09-12 00:14.** Il tipo
+> `NOTIFICA_DIGEST_MUTO` era stato acceso **sul dbdev** a mano (`titodb`, l'11-09
+> alle 20:11, dopo la release dell'handler) mentre il seed
+> `80_data/sql/dbops/coda_lavori_tipi.csv` diceva ancora `false` — e il mirror è
+> `runOnChange`: al primo migrate la riga sarebbe tornata spenta in silenzio.
+> Segnalato alla chiusura, sistemato dal team DB in `c0025c4ef` (PR #1565): il
+> CSV dice `true` e la descrizione non promette più «attivo=false FINCHE…».
+> *I dati di `80_data` si cambiano dal CSV, non con `UPDATE` diretti* — è la
+> regola di AGENTS.md, e qui ha fatto il suo mestiere una volta di più.
 >
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-11. **A chi:** team DB.
 > **Origine:** una domanda di Tid a valle del cantiere dei presidi —
@@ -630,10 +627,10 @@ l'handler), header di `install-timers.sh`, `_contratto` in `sveglie.json`.
 * ~~Riavviare `zeroerp-listen-cambio-reparto`~~ — **fatto da Tid** il
   2026-09-11 alle 20:06: la sessione porta `application_name`, il panorama dà
   `OK`, `da_guardare = false`. gunicorn ricaricato (`kill -HUP`).
-* ~~`NOTIFICA_DIGEST_MUTO` `attivo = true`~~ — acceso **sul dbdev** alle 20:11
-  (`titodb`), ⚠️ **ma non nel seed**: vedi il residuo dichiarato in testa al
-  documento. Finché il CSV dice `false`, ogni migrate lo rispegne.
-* Il brief va in `work-done` con quel residuo scritto in testa.
+* ~~`NOTIFICA_DIGEST_MUTO` `attivo = true`~~ — acceso sul dbdev alle 20:11
+  (`titodb`) e **nel seed** con `c0025c4ef` (2026-09-12 00:14, PR #1565): il
+  divario DB/CSV segnalato alla chiusura è durato quattro ore.
+* Il brief è in `work-done`.
 * **Derivata** (domanda di Tid, stessa sera): il riavvio dei processi da
   interfaccia — [analisi-riavvio-processi-da-interfaccia.md](../work-in-progress/analisi-riavvio-processi-da-interfaccia.md).
   Non è di questo brief: lo cita perché nasce dal suo ultimo anello umano.

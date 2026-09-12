@@ -43,12 +43,38 @@
 #        ESEMPI (`/emittenti-fiscali/1/utilities`) invece di template. Un
 #        segmento tutto cifre o fatto come un uuid vale come segnaposto:
 #        senza questa regola `anagrafiche` risultava con 19 fantasmi inesistenti.
+#
+#        ⚠️ DUE ALTRE, trovate rimisurando il 2026-09-12 — e sono di verso
+#        OPPOSTO, il che e' la ragione per cui vanno tenute insieme:
+#
+#         7. **la QUARTA forma di citazione: il path in un blocco di codice
+#            SENZA slash iniziale** — `soggetti/{id}/titoli-iva/`, `GET
+#            processi/` — tipica delle tabelle che dichiarano la base
+#            nell'intestazione. `RELATIVA` pretende lo slash, quindi catturava
+#            `/{id}/titoli-iva/` perdendo il primo segmento: **sei rotte** di
+#            anagrafiche risultavano scoperte con la loro pagina gia' scritta.
+#            La misura puniva la doc scritta bene, per la seconda volta;
+#         8. **una citazione che dopo `/api/v1/<area>` NON NOMINA NIENTE non
+#            documenta niente.** `/api/v1/vendite/<dominio>/{id}/` e' una frase
+#            che dice DOVE si e' — e col jolly della trappola 2 copriva OGNI
+#            rotta a due segmenti di vendite: `famiglie/{id}/` risultava
+#            documentata senza che nessuna pagina la nominasse. **Nove rotte**
+#            contate coperte da nessuno. ⛔ E' il verso PERMISSIVO, l'unico in
+#            cui una misura marcisce senza che nessuno se ne accorga: una rotta
+#            nuova nasceva gia' «documentata». L'eccezione legittima e' il
+#            dettaglio della risorsa radice di un'area
+#            (`/api/v1/pratiche/<pratica_id>/`): si riconosce perche' e' citato
+#            per intero e il suo segnaposto e' un IDENTIFICATIVO, non un
+#            dominio — da qui i due segnaposto `{}` e `{*}`.
+#
+#        Presidio: `apps/core/tests/test_copertura_doc_api.py`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -61,22 +87,69 @@ DOCS = Path(settings.BASE_DIR).parent / "docs" / "it" / "backend"
 
 # `<int:pk>`, `<uuid:id>`, `{id}`, `:id` -> segnaposto.
 PARAM = re.compile(r"<[^>/]+>|\{[^}/]+\}|(?<=/):[A-Za-z_][A-Za-z0-9_]*")
-ASSOLUTA = re.compile(r"/api/[A-Za-z0-9_\-/{}<>:.]+")
+# Dentro le graffe vale anche l'alternanza `{approva,rifiuta}-prezzo`: e' un
+# segnaposto come gli altri (PARAM la collassa), e troncarla alla virgola
+# faceva di tre coppie di rotte sei fantasmi e sei scoperte.
+ASSOLUTA = re.compile(r"/api/(?:\{[^}\s]*\}|[A-Za-z0-9_\-/<>:.])+")
 RELATIVA = re.compile(r"[…]?/[A-Za-z0-9_\-/{}<>:]{2,}")
+# Trappola 7: il path dentro un blocco di codice, senza slash iniziale e con
+# un eventuale verbo HTTP davanti (`GET processi/`, `soggetti/{id}/titoli-iva/`).
+CODICE = re.compile(r"`([^`\n]+)`")
+NUDA = re.compile(
+    r"^(?:(?:GET|POST|PUT|PATCH|DELETE)[ /]+)*"
+    r"([A-Za-z0-9_\-{}<>:]+(?:/[A-Za-z0-9_\-{}<>:]*)+)$"
+)
 FILE_SORGENTE = re.compile(r"\.(py|js|vue|md|ts|json|yaml|sql)$")
 # Trappola 4: valori di esempio al posto dei segnaposto.
 VALORE_ESEMPIO = re.compile(r"^(\d+|[0-9a-f]{4,}(-[0-9a-f.]+)+|[0-9a-f-]{8,}\.\.\.)$", re.I)
-# Trappola 3: le righe che dichiarano una rimozione.
-LAPIDE = re.compile(r"⛔|RIMOSS|non esiste piu|non esistono piu", re.I)
+# Trappola 3: le righe che dichiarano una rimozione — anche quando lo dicono
+# in prosa («il vecchio path …», «il path legacy …»).
+LAPIDE = re.compile(
+    r"⛔|RIMOSS|non esiste piu|non esistono piu|vecchio path|path legacy", re.I
+)
+# Trappola 8: i segnaposto che stanno per una RISORSA, non per un
+# identificativo. E' una lista CHIUSA e corta di proposito: un nome fuori da
+# qui resta `{}`, cioe' il caso conservativo.
+RISORSA_JOLLY = frozenset({"dominio", "sorgente", "risorsa", "area", "modulo", "entita"})
+# `{}` un identificativo · `{*}` una risorsa · `{**}` «un prefisso qualunque»,
+# cioe' i puntini di una citazione TRONCATA (`.../{titolo_id}/ambiti/`),
+# ancorati all'area del file: la coda vale per una rotta di QUELL'area.
+JOLLY = ("{}", "{*}", "{**}")
+
+
+# Scopo: il segnaposto canonico di un parametro di path: `{*}` se il nome dice
+#        una risorsa (`<dominio>`), `{}` in ogni altro caso (`<int:id>`, `{pk}`).
+def _segnaposto(m: re.Match[str]) -> str:
+    nome = m.group(0).strip("<>{}:").split(":")[-1].strip().lower()
+    return "{*}" if nome in RISORSA_JOLLY else "{}"
 
 
 # Scopo: forma canonica di un path, uguale per rotte e citazioni.
 def norma(p: str) -> str:
     p = p.split("?")[0].split("#")[0].replace("…", "")
-    p = PARAM.sub("{}", p)
+    # `/api/v1/core/...` e' un prefisso, `…/utility/.` e' un punto di prosa:
+    # ne' l'uno ne' l'altro sono un segmento.
+    p = re.sub(r"(/\.\.\.|\.)+$", "", p)
+    p = PARAM.sub(_segnaposto, p)
     p = "/".join("{}" if VALORE_ESEMPIO.match(seg) else seg for seg in p.split("/"))
     p = re.sub(r"/+", "/", p).rstrip("/").lower()
     return p.replace("$", "").replace("^", "")
+
+
+# Scopo: trappola 8 — vero se la citazione, dopo `/api/v1/<area>`, non nomina
+#        nessun segmento. Una cosi' copre tutto e documenta niente. L'unica
+#        forma che si salva e' il dettaglio radice dell'area citato per intero
+#        con un identificativo (`/api/v1/pratiche/{}`): una `{*}` la condanna,
+#        e una sintetizzata da base + coda relativa (`/{id}/`) pure — non e'
+#        la doc che l'ha scritta, e' la misura che l'ha composta.
+def generica(citazione: str, *, assoluta: bool) -> bool:
+    seg = citazione.strip("/").split("/")
+    if len(seg) < 4 or seg[0] != "api":
+        return False
+    coda = seg[3:]
+    if any(s not in JOLLY for s in coda):
+        return False
+    return "{*}" in coda or not assoluta
 
 
 # Scopo: tutte le rotte servite, dal resolver, con i metodi HTTP della view.
@@ -130,21 +203,83 @@ def leggi_citazioni() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
             for n in (3, 4)
             if len(p.strip("/").split("/")) >= n
         }
-        for x in RELATIVA.findall(testo):
-            if x.startswith("/api") or FILE_SORGENTE.search(x):
-                continue
-            coda = x.lstrip("…").lstrip("/")
-            # La citazione grezza serve alla regola della CODA (trappola 5):
-            # attaccata alla base darebbe `/definizioni/definizioni/...`.
-            tutte[norma("/" + coda)].add(f.name)
-            for base in basi:
-                tutte[norma(base + "/" + coda)].add(f.name)
+        # Le relative si leggono RIGA PER RIGA: la forma troncata
+        # ``(+ `/export/`)`` vale sul path assoluto scritto accanto, e una base
+        # corta del file non lo raggiunge (`lotti/{id}/gruppi/` e' a cinque
+        # segmenti, le basi si fermano a quattro).
+        aree = {b for b in basi if len(b.strip("/").split("/")) == 3}
+        for riga in testo.splitlines():
+            sulla_riga = {
+                norma(x) for x in ASSOLUTA.findall(riga) if not FILE_SORGENTE.search(x)
+            }
+            # (coda, troncata): `…/export/` e' troncata, `/export/` no.
+            relative = [
+                (x.lstrip("…"), x.startswith("…")) for x in RELATIVA.findall(riga)
+                if not x.startswith("/api") and not FILE_SORGENTE.search(x)
+            ]
+            # Trappola 7: la stessa cosa, ma scritta senza lo slash iniziale
+            # dentro un blocco di codice (`soggetti/{id}/titoli-iva/`,
+            # `GET processi/`) — e la variante troncata coi puntini ASCII
+            # (`.../{titolo_id}/ambiti/`), che RELATIVA prende senza sapere che
+            # e' troncata. Quelle con lo slash e senza puntini le ha gia' prese.
+            for blocco in CODICE.findall(riga):
+                s = blocco.strip()
+                troncata = s.startswith(("…", "..."))
+                s = s.lstrip("…").lstrip(".")
+                if FILE_SORGENTE.search(s):
+                    continue
+                if s.startswith("/"):
+                    if troncata:
+                        relative.append((s, True))
+                    continue
+                m = NUDA.match(s)
+                if m:
+                    relative.append((m.group(1), troncata))
+            for x, troncata in relative:
+                coda = norma("/" + x.lstrip("/"))
+                seg = coda.strip("/").split("/")
+                # ⛔ Una coda di SOLI segnaposto non nomina niente, e attaccata
+                # a una base coprirebbe tutto cio' che le sta sotto:
+                # `400/409/404` (tre codici HTTP in un blocco di codice)
+                # diventa `/{}/{}/{}` e rendeva «documentata» ogni rotta a tre
+                # segmenti sotto `lotti/`. L'unica che vale e' il singolo
+                # `/{id}/`: e' il dettaglio della base, cioe' la forma relativa
+                # di `api_resi.md` (`GET /<id>/`).
+                if all(s in JOLLY for s in seg) and len(seg) != 1:
+                    continue
+                # La citazione grezza serve alla regola della CODA (trappola
+                # 5): attaccata alla base darebbe `/definizioni/definizioni/…`.
+                tutte[coda].add(f.name)
+                for base in basi | sulla_riga:
+                    tutte[norma(base + coda)].add(f.name)
+                # I puntini dicono «il prefisso e' quello sopra»: la coda vale
+                # per una rotta dell'AREA del file, qualunque sia il prefisso.
+                # ⛔ Ma con ALMENO DUE segmenti: `…/export/` da solo e' la frase
+                # «il path e' …/export/ in coda alla lista» di
+                # `api_export_liste.md`, e ancorata all'area copriva ogni export
+                # di ogni area — tre del lotto che nessuna pagina nomina. Un
+                # segmento solo vive sulla base di RIGA (`GET /x/ (+ …/export/)`).
+                # ⚠️ Non si passa da `norma`, che leggerebbe `{**}` come un id.
+                if troncata and len(seg) >= 2:
+                    for area in aree:
+                        tutte[f"{area}/{{**}}{coda}"].add(f.name)
     return tutte, assolute
 
 
-# Scopo: `{}` vale come UN segmento qualunque, nei due versi (trappola 2).
+# Scopo: `{}` e `{*}` valgono come UN segmento qualunque, nei due versi
+#        (trappola 2); `{**}` come uno o piu'. La differenza fra `{}` e `{*}`
+#        la fa `generica`, non il match.
+def _pattern(path: str) -> str:
+    return (
+        re.escape(path)
+        .replace(r"\{\*\*\}", ".+")
+        .replace(r"\{\*\}", "[^/]+")
+        .replace(r"\{\}", "[^/]+")
+    )
+
+
 def _regex(path: str) -> re.Pattern[str]:
-    return re.compile("^" + re.escape(path).replace(r"\{\}", "[^/]+") + "$")
+    return re.compile("^" + _pattern(path) + "$")
 
 
 # Trappola 5: una citazione relativa puo' RIPETERE un pezzo del path
@@ -158,9 +293,27 @@ def _regex_coda(path: str) -> re.Pattern[str] | None:
     # «tre segmenti» una citazione spazzatura come `/{}/{}/{}` — che nella doc
     # esiste — copriva TUTTE le 538 rotte e il conto usciva 100%: una coda
     # identifica qualcosa solo se nomina qualcosa.
-    if len(segmenti) < 3 or sum(1 for s in segmenti if s != "{}") < 2:
+    if len(segmenti) < 3 or sum(1 for s in segmenti if s not in JOLLY) < 2:
         return None
-    return re.compile(re.escape(path).replace(r"\{\}", "[^/]+") + "$")
+    return re.compile(_pattern(path) + "$")
+
+
+# Scopo: il predicato «questa rotta e' coperta» costruito dalle citazioni.
+#        Sta fuori da `handle` perche' e' la parte che ha sbagliato due volte
+#        (trappole 2 e 8), e va provata su casi costruiti, non sulla doc di oggi.
+def matcher_copertura(
+    tutte: dict[str, set[str]], assolute: dict[str, set[str]],
+) -> Callable[[str], bool]:
+    utili = [c for c in tutte if not generica(c, assoluta=c in assolute)]
+    citazioni = [_regex(c) for c in utili]
+    code = [rx for rx in (_regex_coda(c) for c in utili) if rx is not None]
+
+    def coperta(path: str) -> bool:
+        if any(rx.match(path) for rx in citazioni):
+            return True
+        return any(rx.search(path) for rx in code)
+
+    return coperta
 
 
 class Command(BaseCommand):
@@ -179,13 +332,7 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **opts: Any) -> None:
         rotte = leggi_rotte()
         doc_tutte, doc_assolute = leggi_citazioni()
-        citazioni = [(_regex(c), c) for c in doc_tutte]
-        code = [rx for rx in (_regex_coda(c) for c in doc_tutte) if rx is not None]
-
-        def coperta(path: str) -> bool:
-            if any(rx.match(path) for rx, _ in citazioni):
-                return True
-            return any(rx.search(path) for rx in code)
+        coperta = matcher_copertura(doc_tutte, doc_assolute)
 
         def servita(citazione: str) -> bool:
             rx = _regex(citazione)
@@ -194,9 +341,7 @@ class Command(BaseCommand):
             # Trappola 6: una citazione di PREFISSO non e' un fantasma.
             # «Tutti gli endpoint sono sotto `/api/v1/core/tracciamento/`» non e'
             # una rotta mancante: e' una pagina che dice dove si e'.
-            prefisso = re.compile(
-                "^" + re.escape(citazione).replace(r"\{\}", "[^/]+") + "/",
-            )
+            prefisso = re.compile("^" + _pattern(citazione) + "/")
             return any(prefisso.match(r) for r in rotte)
 
         aree_richieste = [a.strip() for a in opts["aree"].split(",") if a.strip()]

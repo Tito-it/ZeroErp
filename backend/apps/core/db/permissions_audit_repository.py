@@ -39,13 +39,25 @@ class PermissionsAuditRepository:
         3: "ELIMINAZIONE",
     }
 
-    # Tabelle storico filtrate per auth_user_id nello snapshot
+    # Tabelle storico filtrate per auth_user_id nello snapshot.
+    # Tupla: (tabella fisica, label). Il label e' il contratto verso l'esterno
+    # (filtro `?tabella=` e whitelist), la tabella fisica no: possono divergere.
+    # ⭐ L'identita' dell'utente (ruolo applicativo, attivo, validita', blocco)
+    #    vive in `anagrafiche.identita_digitali` dal multi-face auth: la sua
+    #    shadow e' la storia che questa timeline deve raccontare. Lo snapshot
+    #    e' `to_jsonb(OLD)`, quindi `auth_user_id` c'e'.
+    # ⛔ Il bridge legacy `risorse_umane_auth_user` NON si legge piu' (decisione
+    #    Tid, 2026-09-12): e' dismesso — `dbops.audit_sources` riga 5 lo dice
+    #    con `attivo = f` — e la sua shadow vecchia e' stata droppata
+    #    (brief-db-rls-storico-scope-congelato §4d). Restava qui come copia
+    #    Python di un catalogo che gia' sapeva la risposta: e' cosi' che il
+    #    12-09 questa lista ha risposto 500 mentre il catalogo era in pari.
     _USER_TABLES: list[tuple[str, str]] = [
         ("storico.user_override_aree", "user_override_aree"),
         ("storico.user_override_oggetti", "user_override_oggetti"),
         ("storico.user_override_azioni", "user_override_azioni"),
         ("storico.user_emittenti_fiscali", "user_emittenti_fiscali"),
-        ("storico.risorse_umane_auth_user", "risorse_umane_auth_user"),
+        ("storico.identita_digitali", "identita_digitali"),
     ]
 
     # Tabelle storico filtrate per unita_organizzativa_id (REPARTO).

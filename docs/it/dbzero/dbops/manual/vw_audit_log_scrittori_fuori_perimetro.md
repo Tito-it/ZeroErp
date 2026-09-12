@@ -82,7 +82,7 @@ Presidio: `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` (in CI),
 che oltre a pretendere la vista vuota costruisce una funzione temporanea che
 chiama la porta e verifica che venga vista e classificata. A catalogo in
 `dbops.presidi` con natura `CANCELLO`.
-Origine: `docs/it/dev/work-in-progress/brief-db-rls-storico-scope-congelato.md` §8.3, §8.6.
+Origine: `docs/it/dev/work-done/brief-db-rls-storico-scope-congelato.md` §8.3, §8.6.
 
 ---
 

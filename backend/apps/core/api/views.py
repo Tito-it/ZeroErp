@@ -294,7 +294,8 @@ class ApiPermessiAudit(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET la timeline audit delle modifiche ai permessi di un utente.
-    # Interroga le 7 tabelle storico permessi con filtri opzionali e paginazione.
+    # Interroga le 8 tabelle storico permessi (5 per utente + 3 per reparto) con
+    # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
     # Solo ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
         from apps.core.api.payload_validators import optional_int, optional_iso_date

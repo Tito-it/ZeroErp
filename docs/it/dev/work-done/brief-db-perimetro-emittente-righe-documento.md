@@ -2003,7 +2003,7 @@ entra nel registro perché il criterio non lo vede — quelle tabelle sono
 **gemelle** delle madri, non figlie, e nessuna FK le lega.
 ✅ Ma non si perde chiudendo qui: è dichiarato come **D3** in
 `migliorie-generali-da-test-valutazione.md`, e dal 2026-09-11 ha un **cantiere
-suo** — `work-in-progress/brief-db-rls-storico-scope-congelato.md` — con disegno,
+suo** — `work-done/brief-db-rls-storico-scope-congelato.md` — con disegno,
 ragioni e stima (≈ 3 giornate). ⚠️ La forma è una policy **generata dal
 framework** che genera la tabella di storico, con lo scope **catturato alla
 scrittura**: ⛔ *non* derivato dalla madre, come questo brief scriveva al §9 —

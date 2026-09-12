@@ -816,6 +816,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_STATO_WORKFLOW_NON_TROVATO": "Stato di destinazione non trovato o non attivo.",
     "E_STORICO_PARENT_PK_NOT_FOUND": "Impossibile determinare la chiave primaria della tabella padre.",
     "E_STORICO_PROVISION": "Generazione della tabella di storico fallita.",
+    "E_STORICO_SCOPE_CATENA_CICLICA": (
+        "La mappa del perimetro dello storico gira in cerchio: la catena dei "
+        "padri non termina."
+    ),
     "E_STORICO_UD": "Automazione di storicizzazione fallita.",
     "E_TABELLA_OP_NON_CONSENTITA": "Operazione non consentita su questa tabella.",
     "E_TASK": "Errore esecuzione task.",

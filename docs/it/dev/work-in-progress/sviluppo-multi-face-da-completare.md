@@ -163,7 +163,7 @@ cantiere:
 
 E due lavori adiacenti, **non** di questo cantiere ma che lo toccano:
 
-- [x] [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md)
+- [x] [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md)
       — lo storico porta il proprio perimetro e non lo ricalcola: **APPLICATO
       il 2026-09-11** (passi 1-7, 37 shadow armate con `scope_emittente_fiscale_id`
       congelato alla scrittura e policy `FOR SELECT` generate da

@@ -435,7 +435,7 @@ l'automazione sa quale madre sta specchiando.
 > si fa **prima** che `acquisti` e `magazzino` crescano.
 >
 > ⇒ **Disegno, ragioni e passi hanno un documento loro**:
-> [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md).
+> [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md).
 > Stima **≈ 3 giornate** — il lavoro è **uno**, non 120, perché la forma delle
 > tabelle di storico è uniforme e generata.
 >
@@ -475,7 +475,7 @@ esecuzioni di funzione, con `params` e `result` in JSONB. È senza RLS e
 > riga di `REVOKE`.
 >
 > Analisi e stima: §8 di
-> [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md).
+> [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md).
 
 ⚠️ Corollario: finché `storico` è aperto, chiudere D2 non chiude il buco —
 sposta solo il punto da cui si legge.

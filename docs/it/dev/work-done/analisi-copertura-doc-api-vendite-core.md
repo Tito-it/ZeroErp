@@ -284,3 +284,104 @@ scrivere», nel codice o nel markdown.
    payload — e allora la doc markdown resta la parte narrativa — oppure se lo
    schema OpenAPI resta uno scheletro e la verita' sta nel markdown. Oggi non e'
    deciso, e i 66 errori sono la conseguenza di non averlo deciso.
+
+---
+
+## 10. ✅ Rimisurato il 2026-09-12 — e chiuso
+
+> ⚠️ **I numeri di §2 sono del 2026-08-19 e vanno letti con quella data.** A
+> 24 giorni di distanza il repo aveva **613 rotte** (+75) e un'area intera —
+> `pagamenti`, 25 rotte nate il 24/08 col cantiere incassi — che questo
+> documento non poteva nominare. Rilanciare `copertura_doc_api` ha detto
+> due cose: che la doc era rimasta indietro, **e che la misura era
+> sbagliata nei due versi insieme**.
+
+### 10.1 La misura sbagliava, e il verso peggiore era quello che non si vede
+
+| Difetto | Effetto sul conto | Verso |
+| --- | --- | --- |
+| **Trappola 7 — la quarta forma di citazione**: il path in un blocco di codice **senza slash iniziale** (`soggetti/{id}/titoli-iva/`, `GET processi/`), tipico delle tabelle con la base nell'intestazione. `RELATIVA` pretende lo slash e catturava `/{id}/titoli-iva/` perdendo il primo segmento | **6 rotte** di anagrafiche scoperte con la pagina già scritta (`api_titoli_iva_soggetto.md`), e `processi/` di amm-software | restrittivo: puniva la doc scritta bene, per la seconda volta |
+| **Trappola 8 — una citazione che dopo `/api/v1/<area>` non nomina niente**: `/api/v1/vendite/<dominio>/{id}/` è una frase che dice *dove si è*, e col jolly della trappola 2 copriva **ogni** rotta a due segmenti di vendite | **9 rotte** contate documentate da nessuno: `famiglie/` ×4, `lookup/listini-selezionabili-contratto/` (che al 19/08 era *scoperta*), 4 di amm-software | ⛔ **permissivo**: una rotta nuova nasceva già «documentata» |
+| Una coda di **soli segnaposto** attaccata a una base: `` `400/409/404` `` in un blocco di codice diventa `/{}/{}/{}` | copriva ogni rotta a tre segmenti sotto `lotti/`, fra cui `eccezioni-offerta/{id}/approva-prezzo/` e `riporta-a-draft/`, che risultavano «chiuse» dal 19/08 senza che nessuno le avesse scritte | permissivo |
+| `…/export/` in `api_export_liste.md` è la frase «il path è `…/export/` in coda alla lista», non una citazione | ancorata all'area avrebbe coperto **ogni** export, tre del lotto compresi | permissivo (evitato) |
+| La **quinta forma**, i puntini ASCII: `` `.../{titolo_id}/ambiti/` `` | 3 rotte dei titoli IVA scoperte con la pagina scritta | restrittivo |
+| L'alternanza `{approva,rifiuta}-prezzo` troncata alla virgola · il `/...` di prefisso · il punto di prosa in coda · «il vecchio path» in prosa | 7 dei 10 «fantasmi» erano artefatti della misura | rumore |
+
+⭐ **Il criterio che ha deciso tutte le regole nuove è uno**: *una citazione
+documenta una rotta solo se la NOMINA*. Un segnaposto di risorsa (`<dominio>`)
+non nomina; un segnaposto di identificativo (`<pratica_id>`) sì, se è citato
+per intero; una coda di soli jolly non nomina; i puntini valgono un prefisso
+**della stessa area**, e solo con almeno due segmenti. Da qui i tre segnaposto
+`{}` · `{*}` · `{**}` del command.
+
+⚠️ **Presidio**: `apps/core/tests/test_copertura_doc_api.py` — 10 test su
+casi **costruiti**, non sulla doc di oggi, provati per mutazione (spegnendo
+ciascuna regola il test suo diventa rosso). Il 19/08 la misura non ne aveva
+nessuno, ed è la ragione per cui ha potuto marcire nel verso permissivo senza
+che nessuno se ne accorgesse.
+
+### 10.2 I numeri, oggi — prima e dopo
+
+| | 2026-08-19 (§2) | 2026-09-12 misura **vecchia** | 2026-09-12 misura **corretta** | + pagina `pagamenti` |
+| --- | --- | --- | --- | --- |
+| rotte | 538 | 613 | 613 | 613 |
+| documentate | 524 (97%) | 562 (91%) | 560 (91%) | **584 (95%)** |
+| scoperte | 14 | 51 | 53 | **29** |
+| fantasmi | 0 veri | 10 (tutti artefatti) | 3 | **3** (tutti artefatti) |
+
+⚠️ La terza colonna è **più bassa** della seconda nonostante abbia recuperato
+10 rotte: ha smesso di contare le 12 coperte da spazzatura. *Una misura
+corretta può dare un numero peggiore, ed è il segno che prima mentiva.*
+
+### 10.3 ✅ `pagamenti`: da 1/25 a 25/25
+
+Nuova pagina [api_pagamenti.md](../../backend/pagamenti/manual/api_pagamenti.md),
+**una sola** per il dominio — come per la generazione documenti (§7): cinque
+famiglie (distinta · registrazione e correzione · abbinamento, code e rate ·
+base dei saldi · sistemazioni · canali), le sei whitelist di ordinamento coi
+nomi **fisici**, la tabella dei codici con chi li solleva. ⚠️ Scritta **dal
+codice** (view, service, repository, funzioni madri nella doc auto-gen), non
+dal brief BE/FE: il brief è il perché, il contratto è nel codice.
+
+**Trovato scrivendola, e corretto**: le descrizioni `@extend_schema` di
+**cinque** liste dichiaravano le whitelist di ordinamento con i nomi
+**vecchi** (`stato`, `centro`, `distinta`, `fattura`, `cliente`) mentre il
+codice accetta quelli fisici (`stato_descrizione`, `centro_descrizione`,
+`contabile_codice`, `fattura_numero`, `cliente_ragione_sociale`): lo schema
+OpenAPI prometteva un `?order_by=stato` che è un **400**. È esattamente lo
+strato 2 (§5) che questa misura non vede — e la conferma che «documentata»
+non vuol dire «giusta».
+
+### 10.4 Che cosa resta scoperto — 29 rotte, tutte vere
+
+| # | area | rotte | natura |
+| --- | --- | --- | --- |
+| 19 | vendite | `famiglie/` ×5 (nate 02/09) · `commesse/{id}/registro/` (28/08, descritta solo in `api.md`) · 4 export/rows del lotto (22/08) · `lotti/{id}/documenti/escludi/` (08/09) · `lotti/{id}/riporta-a-draft/` · `lookup/listini-selezionabili-contratto/` · i **6 residui del 19/08** (§9: componenti eccezioni ×2, riconsegna ×2, `da-pratica/{id}/stato/`, `riepilogo-iva` preventivi) | 12 nate dopo il 19/08, 7 già note |
+| 5 | amm-software | `audit-log/` · `override-oggetti/` · `permessi-riepilogo/` · `setup-status/` · `processi/{codice}/identita/riattiva/` (05/09) | 4 erano coperte solo dal jolly |
+| 4 | anagrafiche | `billing-account/{id}/utilities/` · `istanze-utility/{id}/lookup/` · `soggetti/{id}/conti-bancari/` ×2 (dal 03/2026) | le stesse del 19/08 |
+| 1 | pratiche | `flussi/{id}/pratica/` (24/08) | — |
+
+I 3 fantasmi residui sono la stessa specie dichiarata a §3: due esempi con
+valore letterale (`ruoli/CL/config-resolver`, `tipi-ruolo/EF/utilities`) e una
+menzione storica (`/api/v1/auth/token/` in «esistevano solo…»). Non sono doc
+da correggere.
+
+### 10.5 Il resto del documento, riletto
+
+* **§4** — spectacular: **66** `W002` identici a oggi. Il tema è passato in
+  `migliorie-generali-BE-FE-da-test-valutazione.md` (09/09: `W001` chiusi con
+  l'estensione di autenticazione; la CI non lancia `check --deploy`).
+* **§6.5** — *dove vive il payload*: **ancora non deciso**. E §10.3 dice che
+  cosa costa non deciderlo: le descrizioni OpenAPI sono già una seconda sede
+  che diverge.
+* ⚠️ Incoerenza interna del 19/08, lasciata com'è: la tabella §2 dice
+  `vendite` **6** scoperte, §8 ne conta 14 e §9 ne lascia **10**. Il totale
+  14 della tabella (6+5+3) non torna con la prosa. Oggi il numero vero è 19.
+* ⛔ **Il command non gira in CI**, e questa è la ragione per cui i numeri di
+  §2 sono invecchiati in silenzio. Non è deciso qui: una misura che nessuno
+  rilancia è una fotografia, e vale la regola zero — *un numero misurato
+  invecchia in silenzio*.
+
+**Chiuso e spostato in `work-done` il 2026-09-12.** Le 29 scoperte non sono
+un lavoro di questo documento: si chiudono per dominio, quando quel dominio si
+tocca (§6.4), con la verifica di sostanza che questa misura non fa.
