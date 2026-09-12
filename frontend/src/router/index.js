@@ -648,7 +648,7 @@ router.beforeEach(async (to) => {
 
   // Guard dominio admin: controlla permesso (solo namespace operatore)
   const domain = to.meta.domain
-  if (domain === 'amm-software' && !auth.isAdmin) {
+  if (domain === 'amm-software' && !auth.isSuperAdmin) {
     return { name: 'forbidden' }
   }
 

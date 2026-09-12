@@ -44,7 +44,7 @@ class EmittenteFiscaleScopeMixin:
         if PermissionResolver.is_super_admin(user, cache=cache):
             return qs
 
-        emittenti_ids = PermissionResolver.get_emittenti_ids(user, cache=cache)
+        emittenti_ids = PermissionResolver.get_emittenti_pk_ids(user, cache=cache)
         if emittenti_ids is None:
             # Nessuna restrizione
             return qs

@@ -128,7 +128,7 @@ def _patch_render(return_value: bytes = _PDF):
 
 def _patch_scope(value: list[int] | None = None):
     return patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=value,
     )
 

@@ -65,8 +65,8 @@ Body vuoto. L'endpoint verifica automaticamente se l'operatore e' invitabile.
 **Condizioni per essere invitabile** (verificate da `script.fn_check_operatore_invitabile`):
 
 1. `auth_user` esiste e `is_active = true`
-2. `risorse_umane_auth_user` esiste e `attivo = true`
-3. `ruolo_sistema <> 'DISABILITATO'`
+2. `identita_digitali` con veste OPERATORE esiste e `attivo = true`
+3. `ruolo_applicativo <> 'DISABILITATO'`
 4. L'utente ha un indirizzo email configurato
 5. `last_login IS NULL` (non ha mai effettuato login)
 
@@ -192,8 +192,8 @@ POST /api/v1/auth/attivazione/
 | --- | --- |
 | `script.fn_check_operatore_invitabile(auth_user_id)` | Verifica 5 condizioni invitabilita' |
 | `config.token_monouso` | Token invito con scadenza 72h |
-| `anagrafiche.risorse_umane_auth_user.invito_inviato_at` | Timestamp ultimo invito |
-| `anagrafiche.risorse_umane_auth_user.deve_cambiare_password` | Flag cambio password |
+| `anagrafiche.identita_digitali.invito_inviato_at` | Timestamp ultimo invito |
+| `anagrafiche.identita_digitali.deve_cambiare_password` | Flag cambio password (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |
 
 ## File Python
 

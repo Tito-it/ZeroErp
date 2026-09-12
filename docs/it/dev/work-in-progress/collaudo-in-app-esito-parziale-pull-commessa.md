@@ -6,9 +6,24 @@
 > §13.1 (voce **V1**); qui c'è solo **cosa fare, cosa deve succedere, e cosa
 > fare se non succede**.
 >
-> **Stato**: 🟡 **RIAPERTO — la prova 2 è di nuovo eseguibile, ma la materia va
-> RICOSTRUITA** (revisione del 2026-09-05). · **Ambiente**: sviluppo
-> (`dbdev`). · **Pagine**: `Vendite → Fatturazione` (cockpit) e `vendite/lotti`.
+> **Stato**: 🔴 **SOSPESO sulla prova 5 — il rilancio non rivede le proprie
+> commesse** (2026-09-12). · **Ambiente**: sviluppo (`dbdev`). · **Pagine**:
+> `Vendite → Fatturazione` (cockpit) e `vendite/lotti`.
+>
+> 🔴 **Esecuzione del 2026-09-12 — prova 5 spuntata fino al lotto in ERRORE,
+> ROSSA al rilancio.** Ripristinate le ROOT, «Riprova step» ha chiuso il pull
+> `COMPLETATO` con **`totale 0`**, ritirato le proprie critiche e portato il
+> lotto a `COMPLETATO` **senza emettere niente** (LTF-0010972, poi annullato;
+> LTF-0010973 ricostruito e lasciato fermo per la diagnosi). Non è il dato:
+> la discovery `fn_list_commesse_emittibili` (changeSet `20260909-61`) scarta le
+> commesse `TRATTENUTA` **anche quando a trattenerle è il lotto stesso** —
+> l'auto-esclusione del §5.4 del brief del trattenuto è stata scritta solo
+> nell'emit (`-62`), un cancello che non viene mai raggiunto. Brief al team DB:
+> [brief-db-il-rilancio-non-rivede-le-proprie-commesse.md](brief-db-il-rilancio-non-rivede-le-proprie-commesse.md).
+> ⛔ **Le prove 3 e 4 vanno RIFATTE dopo D1**: la 3 era passata il 09-09 alle
+> 01:44 (LTF-0010330, il rilancio ritentò 34137); L3 è stato applicato alle
+> 17:12 dello stesso giorno, e da allora nessun rilancio ha più rivisto una
+> commessa fallita.
 >
 > 🔴 **Esecuzione del 2026-09-04 — prova 1 VERDE, prova 2 ROSSA, collaudo
 > SOSPESO.** Il pull ha rifiutato la commessa guastata e lo ha scritto per
@@ -326,6 +341,12 @@ UPDATE vendite.commesse_sorgenti
  WHERE commessa_id = 34137
    AND ruolo_link = 'ROOT'
 RETURNING id, commessa_id, sorgente_tipo_id, sorgente_uid;
+
+UPDATE vendite.commesse_sorgenti
+   SET ruolo_link = 'COLLEGATO'
+ WHERE commessa_id = 36984
+   AND ruolo_link = 'ROOT'
+RETURNING id, commessa_id, sorgente_tipo_id, sorgente_uid;
 ```
 
 ```sql
@@ -334,6 +355,11 @@ RETURNING id, commessa_id, sorgente_tipo_id, sorgente_uid;
 UPDATE vendite.commesse_sorgenti
    SET ruolo_link = 'ROOT'
  WHERE id = 17005
+RETURNING id, commessa_id, ruolo_link;
+
+UPDATE vendite.commesse_sorgenti
+   SET ruolo_link = 'ROOT'
+ WHERE id = 18375
 RETURNING id, commessa_id, ruolo_link;
 ```
 
@@ -510,16 +536,22 @@ Applica il guasto a **tutte** le commesse del perimetro (se sono poche; se sono
 molte, restringi il perimetro con l'emissione mirata a un gruppo solo, poi
 guasta quella commessa). Lancia il giro.
 
-- [ ] lo step **non solleva**: il giro finisce, e finisce male;
-- [ ] il `task_run` si chiude in **ERRORE** con **`E_PULL_COMMESSA`** — lo stesso
+- [X] lo step **non solleva**: il giro finisce, e finisce male;
+- [X] il `task_run` si chiude in **ERRORE** con **`E_PULL_COMMESSA`** — lo stesso
       codice del parziale, perché i due rami adesso sono lo stesso codice;
-- [ ] ⭐ nella scheda **«Presi in carico»** del lotto ci sono **tutti** i
+- [X] ⭐ nella scheda **«Presi in carico»** del lotto ci sono **tutti** i
       documenti, ognuno in `ERRORE` col suo motivo. È la prova che i segni sono
       sopravvissuti: prima di oggi qui non c'era niente;
-- [ ] il lotto va in **ERRORE** e la catena **non avanza**: il giro si ferma con
+- [X] il lotto va in **ERRORE** e la catena **non avanza**: il giro si ferma con
       `BLOCCATO_CRITICITA` / `E_PIPELINE_LOTTO_CRITICAL`;
-- [ ] il rilancio dello **stesso** step resta ammesso — è la via d'uscita:
+- [ ] 🔴 il rilancio dello **stesso** step resta ammesso — è la via d'uscita:
       correggi la commessa, rilancia, il task ritira le sue segnalazioni.
+      **ROSSO il 2026-09-12**: il pulsante c'è e si preme, ma il pull
+      **non rivede le commesse** (`totale 0 · ok 0`), ritira le segnalazioni
+      lo stesso e il lotto esce `COMPLETATO` a vuoto. Le righe risultano
+      `TRATTENUTA` **dal lotto stesso** e la discovery le scarta prima che
+      l'emit — che l'eccezione ce l'ha — venga chiamato. Da rifare dopo D1
+      del brief.
 
 ⛔ **Il segnale d'allarme si è spostato, e va letto al contrario di prima.** Non
 è più «lo step prosegue»: adesso il giro finisce senza eccezione *per progetto*.
@@ -560,19 +592,32 @@ SELECT c.id
 
 **Chiuso il**: — · **Da**: — · **Ambiente**: sviluppo (`dbdev`)
 
-| #   | Prova                                                        | Scrive | Esito | Note |
-| --- | ------------------------------------------------------------ | ------ | ----- | ---- |
-| 0   | La policy del task è `RESUME_TASK`                           | no     |       |      |
-| 1   | Il giro non si ferma, il task_run va in **ERRORE**           | **sì** |       |      |
-| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint)    | no     |       |      |
-| 3   | 🔴 Il rilancio **RITENTA**, non salta                         | **sì** |       |      |
-| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni     | **sì** |       |      |
-| 5   | Tutto-rosso → nessuna eccezione, segni scritti, catena ferma | **sì** |       |      |
+| #   | Prova                                                        | Scrive | Esito | Note                                    |
+| --- | ------------------------------------------------------------ | ------ | ----- | --------------------------------------- |
+| 0   | La policy del task è `RESUME_TASK`                           | no     |       |                                         |
+| 1   | Il giro non si ferma, il task_run va in **ERRORE**           | **sì** |       |                                         |
+| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint)    | no     |       |                                         |
+| 3   | 🔴 Il rilancio **RITENTA**, non salta                         | **sì** |       | da rifare dopo D1 (passata pre-L3)      |
+| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni     | **sì** |       | da rifare dopo D1, insieme alla 3       |
+| 5   | Tutto-rosso → nessuna eccezione, segni scritti, catena ferma | **sì** | 🟡/🔴 | 2026-09-12 · il rilancio non ritenta 🔴 |
 
 ### Che cosa ha trovato il collaudo
 
-> Da compilare. Se non trova niente, si scrive che non ha trovato niente — è
-> un'informazione, non un vuoto.
+**2026-09-12 (prova 5, Tid).** Il caso tutto-rosso si comporta come promesso
+fino al lotto in `ERRORE`. Al **rilancio**, dopo il ripristino delle ROOT, il
+pull chiude `COMPLETATO` con `totale 0`: non ha visitato nessuna commessa. La
+causa è di **modello** e sta nella discovery (`fn_list_commesse_emittibili`,
+`20260909-61`): esclude le commesse `TRATTENUTA` senza ricevere l'identità del
+giro, quindi al rerun scarta le **proprie** — e ogni commessa fallita è
+trattenuta dal proprio lotto per costruzione (esiti `ERRORE` scritti fuori dal
+savepoint). L'auto-esclusione decisa nel §5.4 del brief del trattenuto esiste
+solo nell'emit (`-62`), che non viene raggiunto; P-5 (test 3) prova l'emit da
+solo e non poteva vederlo. Secondo effetto: ritirate le bandiere all'avvio e
+non rialzate da un giro vuoto, il lotto esce pulito con due esiti `ERRORE` che
+il verdetto non conta. Dettaglio, prova a cerchio e richieste in
+[brief-db-il-rilancio-non-rivede-le-proprie-commesse.md](brief-db-il-rilancio-non-rivede-le-proprie-commesse.md).
+⚠️ La prova 3 era passata il 09-09 alle 01:44 (LTF-0010330), **prima** che L3
+venisse applicato alle 17:12: le prove 3 e 4 vanno rifatte.
 
 ---
 

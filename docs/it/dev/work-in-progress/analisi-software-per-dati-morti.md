@@ -11,6 +11,11 @@
 > ⛔ I conteggi che compaiono sono **fatti datati**, mai motivi: la ragione di
 > ogni voce è scritta sul modello.
 >
+> **12-09-2026, pomeriggio — lato BE/FE chiuso** (passi 1, 2, 3-BE, 5, 6 del
+> §5): il backend non nomina più la vista né il suo model, i due ripieghi e i
+> due alias sono via, i documenti del §4 corretti. Restano al **DB** i passi
+> 2 e 4: la consegna è il **§6** di questo documento, con le due domande a Tid.
+>
 > **Origine:** domanda di Tid del 12-09, dopo la coda del brief
 > [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md)
 > §10 — dove si stava per scrivere software che mostrasse la storia di una
@@ -165,9 +170,9 @@ vecchio**, non il concetto.
 
 | Passo | Di chi | Cosa |
 | --- | --- | --- |
-| 1 | **BE** — prima, perché è il lettore vivo fuori dal DB (lezione del 12-09: il DROP è passato prima della consegna e l'endpoint è andato a 500) | i tre punti su `identita_digitali` (+ `risorse_umane` dove serve `risorsa_umana_id`); ritiro del model `RisorseUmaneAuthUser`; `list_expired_auth_user_ids` **non** ricopiata sul nuovo modello ma **sostituita** da una chiamata alla stessa `WHERE` del DB (una regola, una sede); la chiave del profilo rinominata o tolta |
-| 2 | **DB** | le cinque funzioni riscritte sulla madre (`%TYPE` su `identita_digitali`), i nove pgTAP, `DROP VIEW`, manuale **cancellato**; il presidio `vw_riferimenti_morti_da_sanare` fa da rete su ogni `%TYPE` o corpo dimenticato |
-| 3 | DB | ~~il ramo legacy di `fn_sync_auth_user_expired`: decisione scritta~~ ✅ deciso (assorbito da `identita_digitali.valido_al`): cade con la copia Python, dentro il passo 2. ⚠️ Prima dello `DROP VIEW`: dove va il guard RU ↔ identità attiva (oggi vive solo attraverso la vista) |
+| 1 | **BE** ✅ **chiuso il 12-09 pomeriggio** — `get_risorsa_umana_id` legge `identita_digitali` (OPERATORE) → `risorse_umane` per `soggetto_ruolo_id`, lo **stesso JOIN** di `fn_get_user_profile` (provato sul DB vero: i due rispondono lo stesso id); `invalidate_department` via `RisorseUmane` → `IdentitaDigitale`; model ritirato; la chiave `risorse_umane_auth_user_id` del profilo **non ha più lettori** (era la sola fixture di `test_me_view`), il DB può toglierla. Presidio: `core/tests/db/test_risorsa_umana_dalla_madre.py` — 3 test su DB provvisto + il **grep a zero** sul sorgente (`anagrafiche.risorse_umane_auth_user` e il nome del model, fuori dai commenti), con registro del debito **in pari** | i tre punti su `identita_digitali` (+ `risorse_umane` dove serve `risorsa_umana_id`); ritiro del model `RisorseUmaneAuthUser`; `list_expired_auth_user_ids` **non** ricopiata sul nuovo modello ma **sostituita** da una chiamata alla stessa `WHERE` del DB (una regola, una sede); la chiave del profilo rinominata o tolta. ✅ **Il terzo punto è chiuso il 12-09 pomeriggio, e nella forma più stretta**: il DB non espone l'elenco dei candidati (la funzione torna un conteggio), quindi invece di aspettare un oggetto nuovo il BE **non conosce più la regola** — `AnagraficheRepository.sync_auth_user_expired` esegue la funzione e ricava gli utenti toccati dall'**effetto** (`auth_user` attivi prima/dopo nella stessa transazione; dry-run = stessa corsa ritirata). ⭐ Gli id sono quelli **davvero** modificati e non i candidati; e il giorno che il ramo legacy cade dal DB (passo 3) il BE non ha niente da cambiare. Presidio: `test_sync_auth_user_expired_repository.py` (3 unit + 1 su DB provvisto) |
+| 2 | **DB** 🔵 | le **quattro** funzioni riscritte sulla madre (`%TYPE` su `identita_digitali`), i nove pgTAP, `DROP VIEW`, manuale **cancellato**; il presidio `vw_riferimenti_morti_da_sanare` fa da rete su ogni `%TYPE` o corpo dimenticato. **Consegna nel §6** (censimento dal catalogo, ordine, presidi) |
+| 3 | DB | ~~il ramo legacy di `fn_sync_auth_user_expired`: decisione scritta~~ ✅ deciso (assorbito da `identita_digitali.valido_al`): cade con la copia Python, dentro il passo 2. ⚠️ Prima dello `DROP VIEW`: dove va il guard RU ↔ identità attiva (oggi vive solo attraverso la vista) — **§6.2, domanda a Tid** |
 | 0 | DB | ✅ `20260912-11`: via il guard stantio sulla madre `risorse_umane` (§2.1). Applicato il 12-09 alle 11:54, baseline verde |
 
 ### 2.2 🟠 B — Ripiego su una forma di `meta` che nessuno scrive più
@@ -183,6 +188,7 @@ forma vecchia **0 su 3**.
 ⇒ Il ramo serve una forma che il modello **non produce più**. Se un giorno
 servisse, è un backfill di una chiave; oggi è un `if` che tiene «valida» per
 sempre una forma abbandonata. **Via il ripiego** (BE, un commit).
+✅ **Tolto il 12-09 pomeriggio**; nessun test dipendeva dal ramo.
 
 ### 2.3 🟠 C — Difesa da una chiave che non arriva più
 
@@ -190,6 +196,15 @@ sempre una forma abbandonata. **Via il ripiego** (BE, un commit).
 `profile.pop("ruolo_sistema", None)`. `script.fn_get_user_profile` **non
 emette** `ruolo_sistema` dalla Fase 7 (29-04-2026; lo dice il suo `COMMENT`).
 Codice morto per una chiave morta. **Via** (BE, stesso commit di B).
+✅ **Tolto il 12-09 pomeriggio — e non era solo.** Nella stessa `get()`, sopra
+il `pop`, c'erano **altri due** ripieghi della stessa specie: `if
+"is_super_admin" not in profile` e `if "ruolo_applicativo" not in profile`,
+dichiarati «difensivi per funzioni DB pre-cutover» — e `fn_get_user_profile`
+li emette **sempre** al top-level dal `20260421-03/-05`. Con loro viveva un
+**test** (`test_profile_fallback_resolver_se_campi_assenti`) che presidiava
+il ramo morto: sostituito dal suo contrario, «la view **trasporta** ciò che il
+DB dice, anche quando è no, e non conosce più il resolver». `me_view` non
+importa più `PermissionResolver`.
 
 ℹ️ Diverso il caso di `amm_software_service` (righe 190 e 274), che **rifiuta**
 `ruolo_sistema` nel payload con `E_AMM_VALIDAZIONE`: quello è un cancello verso
@@ -206,6 +221,11 @@ che il BE non ha — il dato vecchio vive nel **browser dell'utente**, dove
 nessun backfill arriva. Decisione FE: tenerlo con una **data di scadenza**
 scritta nel commento, o toglierlo dichiarando che chi ha un browser pre-fix
 perde i preferiti globali (che erano il difetto).
+✅ **Tolto il 12-09 pomeriggio** — la seconda strada. `loadFavorites` legge
+**solo** le chiavi user-scoped, quindi un residuo globale non può essere
+letto da nessuno: cancellarlo a ogni login era un gesto senza lettore. Il
+progetto non è in produzione e «non tenere per sicurezza» è la regola di
+questo documento.
 
 ### 2.5 ℹ️ E — Una tabella di backup che nessuno legge
 
@@ -233,12 +253,22 @@ vivi sono **nove** (`ai_assistant` ×2, `vendite/api/views` ×2, `core/mixins`,
 dell'originale. Stessa famiglia di A: un nome deprecato che non cala è un nome
 in servizio. ⇒ BE: rinomina meccanica dei nove, poi l'alias **sparisce**; il
 presidio è il grep a zero.
+✅ **Fatto il 12-09 pomeriggio**: nove chiamanti e ~50 `patch(...)` nei test
+rinominati, alias tolto; i quattro test dell'alias sono diventati i test di
+`get_emittenti_pk_ids`, che prima **non ne aveva di suoi**. Doc: `api.md`
+§Scope emittente, catalogo BB (riga nuova per `_pk_ids`), i manuali
+`permissions_resolver`, `emittente_fiscale_scope_mixin`,
+`api_documenti_templates` (che nominava anche una `fn_get_emittenti_for_user`
+inesistente).
 
 ### 2.8 🟡 H — `isAdmin`, alias «legacy» di `isSuperAdmin` (frontend)
 
 [auth.js:436](../../../../frontend/src/stores/auth.js#L436). Il modello
 ADMIN/OPERATIVO è morto in Fase 7 e il badge non lo rende più; l'alias tiene
 vivo il **vocabolario** vecchio. ⇒ FE: rinomina dei consumatori, via l'alias.
+✅ **Fatto il 12-09 pomeriggio**: dieci consumer (route guard, `bersagli`,
+preferiti, tre view, due drawer, uno spec) su `isSuperAdmin`, alias tolto,
+vitest e build verdi.
 
 ---
 
@@ -282,18 +312,40 @@ riscrivere codice a chi lo legge:
 ⚠️ Il manuale della legacy e i due delle trigger function sono già stati
 **cancellati** il 12-09, com'è giusto: un oggetto ritirato non ha un manuale da aggiornare.
 
+✅ **Le prime sei righe sono corrette il 12-09 pomeriggio** (la settima, il
+manuale della vista, cade con la vista: DB). E cercando i lettori-documento
+della vista ne sono usciti **altri**, che questa prima passata non aveva
+visto — tutti manuali del backend che davano il nome vecchio come
+**dipendenza viva**:
+
+| Dove | Diceva | Fatto |
+| --- | --- | --- |
+| [permissions_resolver.md](../../backend/core/manual/permissions_resolver.md) | l'intera pagina: catena **in Python** «`ruolo_sistema → override utente → profilo reparto → BLOCCATO`», `get_ruolo_sistema()`, `ProfiloRepartoArea`, `_resolve_*` interni, tabella dipendenze con `profili_reparto_*` | **riscritto** dal codice: ogni metodo delega a una `script.fn_*`, nessuna catena in Python. Era il manuale del BB centrale dei permessi, e raccontava un modello morto da cinque mesi |
+| [jwt_audit_middleware.md](../../backend/core/manual/jwt_audit_middleware.md) | «legge `ruolo_sistema` via `get_ruolo_sistema()`» (×3) | `ruolo_applicativo` via `get_ruolo_applicativo()`, GUC-first |
+| `api_coda_lavoro.md` · `api_prendi_in_carico.md` · `permissions_cache.md` · `api_user_profile.md` (×3) · `api_invito_operatore.md` (×3, con `ruolo_sistema <> 'DISABILITATO'`) · `api_token_cambio_password.md` · `api_permessi_effettivi.md` · `api_amm_software.md` (×2) | la vista come dipendenza del backend | `identita_digitali` (+ `risorse_umane`), con la nota datata |
+| `api_parameters.md` · `api_parameter_settings.md` | «`risorse_umane_auth_user` — bridge utente → emittente fiscale» e «`risorse_umane` contiene `emittente_fiscale_id`» | il repository legge `config.user_emittenti_fiscali`, e `risorse_umane` **non ha** quella colonna: due dipendenze inventate |
+| `catalogo-building-block-backend.md` | riga `RisorseUmaneAuthUser` «DEPRECATO … read-only», riga `IdentitaDigitale` «sostituisce … (ora vista in transizione)», riga `get_emittenti_ids` | riga del model **tolta**, le altre due riscritte, riga nuova per `get_emittenti_pk_ids` |
+| `catalogo-building-block-frontend.md` (riga `bersagli`) | «`amm-software` si controlla su `isAdmin`» | `isSuperAdmin` |
+
+⚠️ Restano da toccare **con il `DROP VIEW`** (team DB, brief strato 2) le
+guide che descrivono la vista come oggetto **esistente** — non sono lettori
+del backend, sono la descrizione del database: `architettura-multi-face-auth`
+§3.3 e tabella §761, `architettura-permessi-e-autorizzazioni` righe 22/800,
+`soggetti-e-ruoli-anagrafici` riga 32, più il manuale
+`anagrafiche/manual/risorse_umane_auth_user.md` (da **cancellare**).
+
 ---
 
 ## 5. Ordine, e di chi
 
 | # | Cosa | Di chi | Dipende da |
 | --- | --- | --- | --- |
-| 1 | §2.2 + §2.3 — i due ripieghi morti, un commit | BE | — |
-| 2 | §2.7 — rinomina dei nove chiamanti, via l'alias | BE | — |
-| 3 | §2.1 **strato 2** — cantiere suo: BE prima (tre punti, model, copia Python sostituita dalla chiamata DB, chiave del profilo), poi DB (cinque funzioni, nove pgTAP, `DROP VIEW`, manuale via) | BE → DB | decisione sul ramo legacy di `fn_sync_auth_user_expired` |
-| 4 | §2.5 + §2.6 — due `DROP` in `00_schema` | DB, decisione Tid | — |
-| 5 | §2.4 + §2.8 — frontend | FE | — |
-| 6 | §4 — sette righe di documentazione | chi tocca il file per primo | — |
+| 1 | §2.2 + §2.3 — i due ripieghi morti (più i due gemelli trovati accanto), un commit | BE | ✅ 12-09 |
+| 2 | §2.7 — rinomina dei nove chiamanti, via l'alias | BE | ✅ 12-09 |
+| 3 | §2.1 **strato 2** — cantiere suo: BE prima (tre punti, model, copia Python sostituita dalla chiamata DB, chiave del profilo), poi DB (cinque funzioni, nove pgTAP, `DROP VIEW`, manuale via) | BE → DB | **BE ✅ 12-09** · DB 🔵 consegna nel §6 |
+| 4 | §2.5 + §2.6 — due `DROP` in `00_schema` | DB, decisione Tid | ⚪ §6.5, la parola è di Tid |
+| 5 | §2.4 + §2.8 — frontend | FE | ✅ 12-09 |
+| 6 | §4 — sette righe di documentazione (diventate ~20: vedi la tabella aggiunta) | chi tocca il file per primo | ✅ 12-09 (tranne le guide DB, col `DROP`) |
 
 ⛔ **Cosa NON fare**: non «tenere per sicurezza». Ogni voce di questo elenco è
 nata così, e il precedente del §1 mostra dove porta: a un endpoint a 500 e a
@@ -301,6 +353,141 @@ una policy di perimetro scritta per sei righe di test.
 
 ---
 
+## 6. Lato DB — la consegna dello strato 2, e le due domande a Tid
+
+> Scritto il 12-09 pomeriggio, a BE chiuso. È il **passo 2** del §2.1 e il
+> **passo 4** del §5, per il team DB (`dev/db-tid`). Il precedente è il §10 di
+> [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md):
+> stessa materia, un piano più sotto.
+
+### 6.1 Perché il `DROP VIEW` ora è sicuro dal lato BE, e cosa può ancora rompere
+
+Il backend non nomina più la vista né il suo model (§2.1, passo 1 ✅) e lo
+presidia in CI con il grep a zero di `test_risorsa_umana_dalla_madre`. ⇒ Un
+`DROP VIEW` non può più far cadere un endpoint. **Può ancora far cadere oggetti
+del database**, e sono questi — letti dal catalogo il 12-09 (`pg_proc`,
+`pg_trigger` dei padri, `db/pgtap`):
+
+| Strato | Oggetto | Come |
+| --- | --- | --- |
+| funzione | `anagrafiche.fn_notify_cambio_reparto` | `FROM`/`JOIN` + `%TYPE` di `v_auth_user_id` ancorato alla vista |
+| funzione | `anagrafiche.fn_sync_auth_user_expired` | il **ramo legacy** dell'`UNION` (`risorse_umane` via la vista) + `%TYPE` |
+| trigger fn | `anagrafiche.trgfn_risorse_umane_sync_auth_user_active` | `FROM`/`JOIN` + `%TYPE` |
+| trigger fn | `script.trgfn_guard_emittente_scope` | `%TYPE` |
+| funzione | `script.fn_get_user_profile` | **non la legge** (JOIN già sulla madre) ma **emette** `risorse_umane_auth_user_id` con dentro `v_identita_id`: un nome che mente sul contenuto |
+| trigger su `risorse_umane` | `trg_risorse_umane_a10_risorse_umane_auth_user_block_deact_upd` — `dbops.trgfn_prevent_deactivate_if_children('anagrafiche','risorse_umane_auth_user','risorsa_umana_id','id','attivo')` | **l'unico guard** RU ↔ identità OPERATORE attiva. ⚠️ Lettore montato sulla **madre**: la stessa forma della mina del `-11`, invisibile a un censimento su `pg_proc`. Al `DROP` cerca in `pg_attribute` una relazione che non c'è e solleva `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` a ogni disattivazione di una risorsa umana |
+| solo `COMMENT` | `trgfn_identita_digitali_sync_auth_user_active`, `fn_guard_soggetto_pf_pura`, `vw_audit_sources` | prosa da aggiornare, non lettori |
+| pgTAP · 9 | `anagrafiche/test-risorse-umane-auth-user-view` (⚠️ in baseline `ERRORE_FIXTURE`), `test-fn-crea-operatore`, `test-fn-crea-risorsa-umana`, `test-legacy-risorse-umane-auth-user-ritirata-v1` (asserisce che la vista **esista**: va girato al contrario), `config/test-fn-cleanup-token-scaduti`, `config/test-user-emittenti-fiscali-immutable`, `script/test-fn-get-soggetto-dati-and-user-profile`, `script/test-fn-check-user-can-create-ba` — ⚠️ `dbops/test-audit-sources-seed` nomina il `code` della sorgente audit ritirata, **non** la vista: resta | fixture e asserzioni per nome |
+
+⛔ Non è un elenco da prendere per completo: dopo l'apply,
+`dbops.vw_riferimenti_morti_da_sanare` a zero è la prova.
+
+### 6.2 D1 · Le quattro funzioni sulla madre — e ⚪ il guard (domanda a Tid)
+
+`%TYPE` di `v_auth_user_id` su `anagrafiche.identita_digitali.auth_user_id`;
+`FROM`/`JOIN` su `identita_digitali (ruolo_applicativo = 'OPERATORE') JOIN
+risorse_umane ON soggetto_ruolo_id` — la forma che `fn_get_user_profile` usa
+già. In `fn_sync_auth_user_expired` **cade il ramo legacy** dell'`UNION`
+(deciso, §2.1 ✅): non è una perdita di regola, `fn_sync_auth_user_is_active`
+(v4) decide **solo** su `identita_digitali`; il `COMMENT` «copre risorse_umane
+legacy + identita_digitali nuove» va riscritto.
+
+⚪ **Il guard `..._block_deact_upd` sparisce con la vista, e la regola che
+portava** — *«una risorsa umana con un'identità OPERATORE attiva non si
+disattiva»* — è «figli prima del padre» di tutto il progetto
+([api.md §Disattivazione record](../api.md)). `identita_digitali` non ha un
+guard suo verso `risorse_umane` perché il legame non è una FK: passa da
+`soggetti_ruoli`, e l'automazione ATTIVO non lo vede.
+
+⭐ **Raccomandazione: la regola migra sulla madre, scritta a mano.** Guard
+`BEFORE UPDATE OF attivo` su `risorse_umane` (forma `_a10_`, §11.5) che
+rifiuta `true → false` se esiste un'`identita_digitali` attiva con veste
+`OPERATORE` sullo stesso `soggetto_ruolo_id`, con un codice **suo** (non
+`E_ATTIVO_BLOCK_CHILDREN_EXIST`, che è dell'automazione e nomina la FK) e la
+via d'uscita nella `soluzione` a catalogo: *«disattivare prima l'identità»*.
+L'alternativa — nessun guard, la RU si disattiva e
+`trgfn_risorse_umane_sync_auth_user_active` spegne l'utente — cambia il modello
+(il padre trascina il figlio invece di rifiutare) e non è coerente con le
+altre coppie padre/figlio. **È una decisione, e la parola è di Tid.**
+
+### 6.3 D2 · `DROP VIEW`, manuale, guide
+
+- `DROP VIEW anagrafiche.risorse_umane_auth_user` in un changeSet **dopo** D1
+  e il guard di 6.2 nella timeline — e dopo ogni changeSet mergiato che la
+  pretende esistente (il `-10` ha insegnato a cercarli nelle fasi successive,
+  §10.2 del brief precedente).
+- **Cancellare** `docs/it/dbzero/anagrafiche/manual/risorse_umane_auth_user.md`
+  (la pagina auto-gen `views/` cade al prossimo giro): un oggetto ritirato non
+  ha un manuale da aggiornare.
+- Le guide che descrivono la vista come **esistente** — non lettori del
+  backend, descrizione del database, vanno col `DROP`:
+  `guide/architettura-multi-face-auth.md` §3.3 e la riga «Vista compat» della
+  tabella finale, `guide/architettura-permessi-e-autorizzazioni.md` (righe 22
+  e 800), `guide/soggetti-e-ruoli-anagrafici.md` (riga 32),
+  `guide/risorse-umane-e-accessi.md` (righe 21-31). I tre `COMMENT` di 6.1.
+- ⛔ **Non nasce una vista sostitutiva** per simmetria: regola del 2 — se in
+  riscrittura due lettori chiedono la **stessa** proiezione, una `vw_` con un
+  **nome vero** (che dica filtro e proiezione) è legittima; escluso è il nome
+  vecchio, non il concetto.
+
+### 6.3-bis ⭐ La catena «utente → risorsa umana» vive in TRE sedi: una sola
+
+Riscrivendo il BE sulla madre è uscito un fatto di struttura: la catena
+`identita_digitali (OPERATORE, attiva) → risorse_umane (attiva) per
+soggetto_ruolo_id` è scritta in `script.fn_get_uo_id_for_user`, in
+`script.fn_get_user_profile` (senza i filtri `attivo`) e ora — allineata alla
+prima — in `endpoint_helpers.get_risorsa_umana_id`. Tre copie della stessa
+regola su due livelli, che è ciò che il §0 chiama forma (a) *in fieri*.
+
+⇒ **Raccomandazione (regola del 2, attraverso i livelli):** una
+`script.fn_get_risorsa_umana_id_for_user(p_auth_user_id)` gemella di
+`fn_get_uo_id_for_user` — stessa forma, `STABLE`, stessi filtri — e le due
+funzioni che si appoggiano a **un** helper interno; il BE diventa un wrapper
+di una riga, come `get_unita_organizzativa_id`. Non è un prerequisito del
+`DROP VIEW`: il BE oggi lega e la copia è dichiarata nel commento dell'helper.
+
+### 6.4 D3 · `fn_get_user_profile`: la chiave che mente
+
+`risorse_umane_auth_user_id` nel blocco `risorse_umane` porta `v_identita_id`.
+**Nessun lettore** BE/FE (era la sola fixture di `test_me_view`, corretta).
+⇒ **Togliere la chiave**, non rinominarla: l'id dell'identità del JWT il
+profilo lo espone già nel blocco `identita` (§8.3.6), e `identita_id` lì
+sarebbe la stessa informazione in due posti.
+
+### 6.5 D4 · ⚪ I due `DROP` del §2.5 e §2.6 — decisione di Tid
+
+| | Oggetto | Raccomandazione |
+| --- | --- | --- |
+| §2.5 | `dbops._defaults_backup_usercols` | `DROP TABLE` in `00_schema/dbops`, con la riga di `rollback` che dice che non c'è ritorno. Non è software: è un dato «per sicurezza» che nessuno può usare |
+| §2.6 | `public.version_info` | o un mestiere (un lettore + un manuale) o `DROP`. Oggi è la seconda |
+
+⛔ Entrambi «tenuti per sicurezza», la forma da cui ogni voce di questo
+documento è nata. Ma sono `DROP` di tabelle: **la parola è di Tid.**
+
+### 6.6 Presidi
+
+| | Dove | Prova | Il suo contrario |
+| --- | --- | --- | --- |
+| **P-1** | `test-legacy-risorse-umane-auth-user-ritirata-v1` (girato) o gemello | la vista **non** esiste; le quattro funzioni compilano sulla madre; `vw_riferimenti_morti_da_sanare` a **zero** | — |
+| **P-2** | pgTAP del guard di 6.2 | RU con identità OPERATORE attiva ⇒ `attivo = false` **rifiutato** col codice nuovo | identità disattivata prima ⇒ passa; RU senza identità ⇒ passa |
+| **P-3** | `test-fn-get-soggetto-dati-and-user-profile` | il blocco `risorse_umane` **non** contiene `risorse_umane_auth_user_id` | `identita.id` c'è |
+| BE | `core/tests/db/test_risorsa_umana_dalla_madre` (in CI) | resta verde: il backend non torna a nominarla | — |
+
+⛔ **Cosa non si fa**: tenere la vista «come alias, tanto non costa» (l'unico
+argomento è il costo, §2.1); riscrivere il ramo legacy sulla madre (cade);
+il `DROP VIEW` **prima** del guard di 6.2 (ogni disattivazione di una RU
+fallirebbe, come il `-10` la mattina del 12-09); i due `DROP` di 6.5 senza
+l'ok di Tid.
+
+| | |
+| --- | --- |
+| BE | ✅ chiuso il 12-09 pomeriggio: nessun lettore, presidio in CI |
+| DB | 🔵 in attesa: 6.2 · 6.3 · 6.4 · presidi P-1/P-2/P-3 · ⭐ 6.3-bis (raccomandazione, non prerequisito) |
+| Tid | ⚪ 6.2 (forma del guard) · 6.5 (i due `DROP`) |
+
+---
+
 *Analisi 12-09-2026 — letture di struttura sul database `zeroerp` (catalogo,
 doc auto-gen) e sul repo (grep BE/FE/pgTAP/seed). I numeri sono fatti datati.
-Il precedente del §1 è chiuso; il resto è aperto.*
+Il precedente del §1 è chiuso; BE e FE sono chiusi il 12-09 pomeriggio; il
+lato DB (§6) è aperto.*

@@ -70,15 +70,20 @@ class Command(BaseCommand):
         self._esegui(options)
 
     # Scopo: Esegue la sync batch degli utenti scaduti e ritorna il riepilogo.
-    # Flusso: raccoglie gli auth_user_id coinvolti, chiama la funzione SQL
-    # di sync, poi invalida la cache permessi per ciascun utente modificato.
+    # Flusso: UNA chiamata al repository, che esegue la funzione SQL e ritorna
+    #         gli auth_user_id che ha DAVVERO modificato; poi invalida la cache
+    #         permessi per ciascuno. In dry-run la corsa e' la stessa, ritirata.
+    # ⛔ Fino al 2026-09-12 c'era una «fase 1» che elencava i candidati con una
+    #    `WHERE` ricopiata in Python (e a meta': solo il ramo legacy, via la
+    #    vista `risorse_umane_auth_user` che il DB ritira). La regola «chi e'
+    #    scaduto» ora vive in una sede sola, la funzione DB, e il command legge
+    #    l'effetto (analisi-software-per-dati-morti §2.1, passo 1).
     def _esegui(self, options: Any) -> dict:
         dry_run: bool = options["dry_run"]
         repository = AnagraficheRepository()
 
         try:
-            # Fase 1: individuazione utenti con finestra scaduta
-            affected_ids = repository.list_expired_auth_user_ids()
+            count, affected_ids = repository.sync_auth_user_expired(dry_run=dry_run)
 
             if not affected_ids:
                 self.stdout.write(
@@ -97,10 +102,7 @@ class Command(BaseCommand):
                 )
                 return {"dry_run": True, "candidati": len(affected_ids)}
 
-            # Fase 2: esecuzione sync SQL
-            count = repository.call_sync_auth_user_expired()
-
-            # Fase 3: invalidazione cache permessi
+            # Invalidazione cache permessi: solo chi ha cambiato stato.
             invalidated = 0
             for user_id in affected_ids:
                 invalidate_user(user_id)

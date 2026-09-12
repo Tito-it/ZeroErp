@@ -203,7 +203,7 @@ class ApiPermessiEffettivi(DomainAPIView):
         uo_id = PermissionResolver.get_unita_organizzativa_id(
             target_user, cache=target_cache
         )
-        emittenti_ids = PermissionResolver.get_emittenti_ids(
+        emittenti_ids = PermissionResolver.get_emittenti_pk_ids(
             target_user, cache=target_cache
         )
 

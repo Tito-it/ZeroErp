@@ -104,7 +104,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_operativo_senza_righe_nessun_filtro(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = None
+        mock_resolver.get_emittenti_pk_ids.return_value = None
 
         qs = MagicMock()
         request = _mock_request()
@@ -120,7 +120,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_operativo_con_righe_filtra_queryset(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = [1, 3, 5]
+        mock_resolver.get_emittenti_pk_ids.return_value = [1, 3, 5]
 
         qs = MagicMock()
         filtered_qs = MagicMock()
@@ -139,7 +139,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_filtro_usa_campo_personalizzato(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = [2, 4]
+        mock_resolver.get_emittenti_pk_ids.return_value = [2, 4]
 
         qs = MagicMock()
         filtered_qs = MagicMock()
@@ -159,7 +159,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     @patch(_RESOLVER)
     def test_cache_request_riutilizzata(self, mock_resolver):
         mock_resolver.is_super_admin.return_value = False
-        mock_resolver.get_emittenti_ids.return_value = [10]
+        mock_resolver.get_emittenti_pk_ids.return_value = [10]
 
         qs = MagicMock()
         qs.filter.return_value = MagicMock()

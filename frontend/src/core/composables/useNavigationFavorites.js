@@ -19,7 +19,7 @@ export function useNavigationFavorites() {
     if (!item) return false
     if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
     if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
-      if (!auth.isAdmin && !item.requireAnyAction.some(action => auth.isActionAllowed(action))) {
+      if (!auth.isSuperAdmin && !item.requireAnyAction.some(action => auth.isActionAllowed(action))) {
         return false
       }
     }

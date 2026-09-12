@@ -19,6 +19,7 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
     call_jsonb_fn,
+    conta_con_perimetro,
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
@@ -359,6 +360,48 @@ _ACCESSORI_COLONNE_AGGREGATI = (
     "g.emissione_blocco_reason",
 )
 
+# I lotti ANNULLATI nel perimetro della lista (2026-09-12): fuori di default
+# (`esclusi`), dentro a richiesta (`inclusi`), e SOLO loro per contare quanti
+# ne restano fuori (`solo`). Il predicato e' il flag di catalogo
+# `config.stati_doc_fiscale.is_abortito`, letto dalla JOIN `sdf` che la lista
+# ha gia': ⛔ mai il `codice_interno`, che e' vocabolario del database.
+LOTTI_ANNULLATI_ESCLUSI = "esclusi"
+LOTTI_ANNULLATI_INCLUSI = "inclusi"
+LOTTI_ANNULLATI_SOLO = "solo"
+# `COALESCE`: un lotto senza stato fiscale (`stato_doc_fiscale_id` e' nullable)
+# non e' abortito — la `LEFT JOIN` lo lascerebbe a NULL, e `NULL IS FALSE` e'
+# falso: sparirebbe dalla lista senza che nessuno l'abbia annullato.
+_LOTTI_COND_NON_ABORTITO = "COALESCE(sdf.is_abortito, FALSE) IS FALSE"
+_LOTTI_COND_ABORTITO = "sdf.is_abortito IS TRUE"
+# La JOIN che porta `sdf` — una sola, composta dentro `_LOTTO_JOINS` e riusata
+# dal calendario, che ha un perimetro suo (l'anno) e non passa dalla lista.
+_LOTTI_JOIN_SDF = """
+            LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = fl.stato_doc_fiscale_id"""
+# ⭐ LA SEDE UNICA di «quale condizione per quale valore»: chi compone un
+#    perimetro (la lista con `_lotti_conditions`, il calendario con l'anno)
+#    chiede qui e non nomina i frammenti. `None` = nessuna condizione.
+_LOTTI_COND_PER_ANNULLATI: dict[str, str | None] = {
+    LOTTI_ANNULLATI_ESCLUSI: _LOTTI_COND_NON_ABORTITO,
+    LOTTI_ANNULLATI_INCLUSI: None,
+    LOTTI_ANNULLATI_SOLO: _LOTTI_COND_ABORTITO,
+}
+
+
+# Scopo: la forma a due valori che vedono service e view (`includi_annullati`)
+#        tradotta nei tre del repository. Il terzo (`solo`) non e' un'opzione
+#        del chiamante: lo usa solo `count_lotti_annullati`.
+def _annullati_da_flag(includi_annullati: bool) -> str:
+    return LOTTI_ANNULLATI_INCLUSI if includi_annullati else LOTTI_ANNULLATI_ESCLUSI
+
+
+# Scopo: la condizione SQL sull'abortito per un valore dell'enum, o `None`.
+#        Un valore inventato e' un errore, non un elenco vuoto.
+def _condizione_annullati(annullati: str) -> str | None:
+    if annullati not in _LOTTI_COND_PER_ANNULLATI:
+        raise ValueError(f"annullati: valore non ammesso {annullati!r}")
+    return _LOTTI_COND_PER_ANNULLATI[annullati]
+
 
 class VenditeRepository:
 
@@ -514,11 +557,9 @@ class VenditeRepository:
                 sdf.congela_fiscale AS stato_congela_fiscale
     """
 
-    _LOTTO_JOINS = """
+    _LOTTO_JOINS = f"""
             LEFT JOIN config.utilities u
-                ON u.id = fl.utility_id
-            LEFT JOIN config.stati_doc_fiscale sdf
-                ON sdf.id = fl.stato_doc_fiscale_id
+                ON u.id = fl.utility_id{_LOTTI_JOIN_SDF}
             LEFT JOIN config.tipi_doc_fiscale tdf
                 ON tdf.id = fl.tipo_doc_fiscale_id
             LEFT JOIN vendite.area_geografica_fatturazione agf
@@ -667,6 +708,20 @@ class VenditeRepository:
     #    tornare indietro con un click — lo stesso interruttore tolto dalle card
     #    della Lente Competenza. Gli altri filtri (mese, recuperi, utility…)
     #    restano: sono il contesto, non l'asse dei chip.
+    #
+    # ⭐ `annullati` (2026-09-12, decisione di Tid): un lotto il cui stato
+    #    fiscale e' ABORTITO (`config.stati_doc_fiscale.is_abortito`, oggi
+    #    `ANNULLATA`) e' un guscio — l'annullo e' un rollback che cancella le
+    #    fatture, rimette le attivita' «da emettere» e chiude i task run — e
+    #    NON e' lavoro: di default sta FUORI dal perimetro, come le archiviate
+    #    delle code. ⚠️ Ed e' peggio che rumore: i chip sono per `stato_lotto`
+    #    (operativo), che l'annullo di proposito non tocca (rev 2026-09-07), quindi
+    #    un lotto annullato restava sotto «Errore» o «Completato» — un chip «3
+    #    Errore» in cui uno e' un errore gia' disfatto. ⛔ Il criterio e' il FLAG
+    #    di catalogo, mai `codice_interno = 'ANNULLATA'`: il vocabolario e' del
+    #    database. Tre valori, perche' il conteggio di cio' che resta fuori
+    #    (`count_lotti_annullati`) vuole il perimetro ROVESCIATO sulla sola
+    #    condizione dell'abortito e identico su tutto il resto.
     def _lotti_where(
         self,
         *,
@@ -679,9 +734,45 @@ class VenditeRepository:
         auth_user_id: int | None,
         solo_recuperi_mese: bool,
         includi_stato: bool = True,
+        annullati: str = LOTTI_ANNULLATI_ESCLUSI,
     ) -> tuple[str, list[Any]]:
+        conditions, params = self._lotti_conditions(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            includi_stato=includi_stato,
+            annullati=annullati,
+        )
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        return where_clause, params
+
+    # Scopo: le condizioni del perimetro lotti, ancora SEPARATE: servono cosi'
+    #        a `conta_con_perimetro`, che le vuole a pezzi. `_lotti_where` e' il
+    #        suo involucro, e non esiste una terza sede.
+    def _lotti_conditions(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None,
+        stato_lotto: str | None,
+        area_geografica_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+        emittente_soggetto_ruolo_id: int | None,
+        auth_user_id: int | None,
+        solo_recuperi_mese: bool,
+        includi_stato: bool = True,
+        annullati: str = LOTTI_ANNULLATI_ESCLUSI,
+    ) -> tuple[list[str], list[Any]]:
         conditions: list[str] = []
         params: list[Any] = []
+        cond_annullati = _condizione_annullati(annullati)
+        if cond_annullati is not None:
+            conditions.append(cond_annullati)
 
         # Costruzione WHERE dinamica; ogni filtro è parametrizzato.
         # ⭐ LA SCHEDA «RECUPERI DEL MESE» E' QUESTA STESSA LISTA con UNA
@@ -734,9 +825,47 @@ class VenditeRepository:
         self._add_scope_emittente(
             auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
         )
+        return conditions, params
 
-        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        return where_clause, params
+    # Scopo: QUANTI lotti annullati il perimetro della lista sta NASCONDENDO.
+    # Obiettivo: che «mese pulito» e «tre lotti annullati» non si leggano
+    #            uguali: il numero va accanto all'interruttore che li mostra.
+    # Perimetro: STESSO della lista — mese, recuperi, stato, utility, scope —
+    #            con la sola condizione dell'abortito rovesciata. Sola lettura.
+    # Risultato: int.
+    #
+    # ⛔ Non e' derivabile dalla lista: quelle righe il suo `WHERE` le ha gia'
+    #    escluse. E' il caso per cui esiste il BB `conta_con_perimetro`
+    #    (archiviate delle code, ritirate del giornale): una valutazione sua,
+    #    sul frammento `FROM` + condizioni che la lista possiede.
+    def count_lotti_annullati(
+        self,
+        *,
+        competenza_mese: date | None,
+        utility_id: int | None = None,
+        stato_lotto: str | None = None,
+        area_geografica_id: int | None = None,
+        tipo_doc_fiscale_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        auth_user_id: int | None = None,
+        solo_recuperi_mese: bool = False,
+    ) -> int:
+        conditions, params = self._lotti_conditions(
+            competenza_mese=competenza_mese,
+            utility_id=utility_id,
+            stato_lotto=stato_lotto,
+            area_geografica_id=area_geografica_id,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            auth_user_id=auth_user_id,
+            solo_recuperi_mese=solo_recuperi_mese,
+            annullati=LOTTI_ANNULLATI_SOLO,
+        )
+        return conta_con_perimetro(
+            f"FROM vendite.fatturazione_lotti fl {self._LOTTO_JOINS}",
+            conditions,
+            params,
+        )
 
     # Scopo: Conteggio lotti RAGGRUPPATI PER STATO sul perimetro della lista —
     #        alimenta i pulsanti-filtro «5 Bozza · 4 In esecuzione …» del
@@ -769,6 +898,7 @@ class VenditeRepository:
         emittente_soggetto_ruolo_id: int | None = None,
         auth_user_id: int | None = None,
         solo_recuperi_mese: bool = False,
+        includi_annullati: bool = False,
     ) -> dict[str, int]:
         where_clause, params = self._lotti_where(
             competenza_mese=competenza_mese,
@@ -780,6 +910,7 @@ class VenditeRepository:
             auth_user_id=auth_user_id,
             solo_recuperi_mese=solo_recuperi_mese,
             includi_stato=False,
+            annullati=_annullati_da_flag(includi_annullati),
         )
         sql = f"""
             SELECT fl.stato_lotto, COUNT(*)
@@ -813,6 +944,7 @@ class VenditeRepository:
         offset: int,
         max_limit: int = LIST_MAX_LIMIT,
         solo_recuperi_mese: bool = False,
+        includi_annullati: bool = False,
     ) -> tuple[list[LottoListRow], int]:
         # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
         # protegge la lista a video; l'export lo alza esplicitamente (fino a
@@ -831,6 +963,7 @@ class VenditeRepository:
             emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
             auth_user_id=auth_user_id,
             solo_recuperi_mese=solo_recuperi_mese,
+            annullati=_annullati_da_flag(includi_annullati),
         )
 
         joins = self._LOTTO_JOINS
@@ -885,18 +1018,30 @@ class VenditeRepository:
     #            alla lista (RLS + whitelist applicativa via _add_scope_emittente).
     # Perimetro: sola lettura, nessun side-effect. Righe con competenza_mese NULL
     #            escluse dal confronto sull'anno (non sono di alcun mese).
+    # ⭐ Gli ANNULLATI restano fuori come dalla lista (2026-09-12): un guscio
+    #    non e' un lotto «generato» che chieda lavoro nel mese. ⚠️ Non passa da
+    #    `_lotti_where` — il perimetro qui e' l'ANNO, non un mese — ma la
+    #    condizione la chiede alla STESSA sede della lista
+    #    (`_condizione_annullati`) e la `JOIN` su `sdf` e' la stessa costante:
+    #    questo metodo non nomina nessun frammento, quindi non puo' divergere
+    #    dalla lista al primo stato abortito nuovo (revisione 2026-09-12: prima
+    #    ricopiava frammento e JOIN, «dichiarati» ma pur sempre due copie).
     def count_lotti_per_mese(
         self, *, anno: int, auth_user_id: int | None = None,
+        includi_annullati: bool = False,
     ) -> dict[int, int]:
         conditions: list[str] = ["EXTRACT(YEAR FROM fl.competenza_mese) = %s"]
         params: list[Any] = [anno]
+        cond_annullati = _condizione_annullati(_annullati_da_flag(includi_annullati))
+        if cond_annullati is not None:
+            conditions.append(cond_annullati)
         self._add_scope_emittente(
             auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
         )
         where_clause = "WHERE " + " AND ".join(conditions)
         sql = f"""
             SELECT EXTRACT(MONTH FROM fl.competenza_mese)::int AS mese, COUNT(*)
-            FROM vendite.fatturazione_lotti fl
+            FROM vendite.fatturazione_lotti fl{_LOTTI_JOIN_SDF}
             {where_clause}
             GROUP BY 1
         """  # noqa: S608 — where da frammenti interni, valori parametrizzati

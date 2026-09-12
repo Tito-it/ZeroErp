@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Facade lettura template documentali. Gestisce lo scope
 #        emittente derivandolo dal Django user (whitelist via
-#        PermissionResolver.get_emittenti_ids), valida gli input
+#        PermissionResolver.get_emittenti_pk_ids), valida gli input
 #        (id positivi, codici stato) e mappa i 404 in
 #        ServiceError(E_DOCUMENTI_NOT_FOUND).
 #        Contratto write (CRUD admin) atterra in PR successive.
@@ -232,4 +232,4 @@ class TemplateService:
             # gia' applica JWT); difensivamente ritorniamo lista vuota
             # = nessun risultato, mai panel-leak.
             return []
-        return PermissionResolver.get_emittenti_ids(user)
+        return PermissionResolver.get_emittenti_pk_ids(user)

@@ -180,30 +180,6 @@ class PermissionResolver:
         return _cached(cache, f"azione:{permission_codename}", _query)
 
     @classmethod
-    def get_emittenti_ids(
-        cls, user: Any, *, cache: dict[str, Any] | None = None
-    ) -> list[int] | None:
-        """Scopo: PK reali (emittenti_fiscali.id) autorizzate per l'utente.
-
-        DEPRECATO — alias di `get_emittenti_pk_ids` (stessa convenzione PK).
-        Storicamente avvolgeva la legacy `script.fn_get_emittenti_scope`, che
-        ha la STESSA convenzione PK ma SENZA i guard (nessun bypass
-        SUPER_ADMIN; nessun fail-closed su identita OPERATORE non attiva) →
-        buco B5 (analisi-attivazione-rls-operatori §2.3). Inoltre il vecchio
-        unwrap `if row[0]:` trattava `[]` come falsy → None (=vede tutto),
-        invertendo il "nessun accesso". Ora delega alla versione guarded, che
-        risolve entrambi. I nuovi call-site usino direttamente
-        `get_emittenti_pk_ids`. *(La legacy `script.fn_get_emittenti_scope` e'
-        stata DROPPATA dal DB il 2026-08-18, changeSet `20260818-66`: questo
-        metodo non la chiamava piu' da tempo, ed e' il motivo per cui il drop
-        e' passato senza rompere niente. Resta come alias per i call-site
-        storici.)*
-
-        Semantica: None = nessuna restrizione, [] = nessun accesso.
-        """
-        return cls.get_emittenti_pk_ids(user, cache=cache)
-
-    @classmethod
     def get_emittenti_sr_ids(
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> list[int] | None:
@@ -248,10 +224,15 @@ class PermissionResolver:
         user_emittenti_fiscali.emittente_fiscale_id, ecc.). Per filtri su SR id
         (<ruolo>_soggetto_ruolo_id) usare `get_emittenti_sr_ids`.
 
-        Differenze con `get_emittenti_ids` (legacy): la fn nuova ha i guard
-        completi (no identita OPERATORE attiva → '{}'; super admin → NULL)
-        come `_sr_ids`. La legacy `fn_get_emittenti_scope` non li aveva, ed e'
-        stata droppata dal DB il 2026-08-18 (`20260818-66`).
+        Guard completi, come `_sr_ids`: nessuna identita OPERATORE attiva →
+        `'{}'` (nessun accesso); super admin → NULL (nessuna restrizione).
+        ⛔ Fino al 2026-09-12 esisteva l'alias `get_emittenti_ids`, dichiarato
+        DEPRECATO dal 2026-05-02 e con NOVE chiamanti vivi — piu' dell'
+        originale: un nome deprecato che non cala e' un nome in servizio
+        (analisi-software-per-dati-morti §2.7). Rinominati i chiamanti, alias
+        tolto: il presidio e' il grep a zero. *(La legacy
+        `script.fn_get_emittenti_scope`, senza guard, e' stata droppata dal DB
+        il 2026-08-18, `20260818-66`.)*
 
         Vedi guida `soggetti-e-ruoli-anagrafici §5b` per il pattern duale SR vs PK
         e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.

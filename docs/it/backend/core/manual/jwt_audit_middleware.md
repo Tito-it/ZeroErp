@@ -35,7 +35,7 @@ Per le richieste su path `/api/`, se `request._zeroerp_perms_cache` non esiste:
 
 Per le richieste su path `/api/`:
 
-- Legge `ruolo_sistema` via `PermissionResolver.get_ruolo_sistema()` con la cache per-request
+- Legge `ruolo_applicativo` via `PermissionResolver.get_ruolo_applicativo()` con la cache per-request (GUC-first; ⚠️ fino al 2026-09-12 questa riga diceva `ruolo_sistema`/`get_ruolo_sistema()`, caduti in Fase 7)
 - Se `DISABILITATO` → logga warning di sicurezza e restituisce 403 JSON con codice `E_USER_DISABILITATO`
 
 ### 3. Reset GUC simmetrico
@@ -93,7 +93,7 @@ process_view(request, ...)
   ├── path non /api/* o user anonimo → None (prosegui)
   │
   ├── Pre-load cache L2 da Redis (load_user_cache)
-  ├── ruolo = PermissionResolver.get_ruolo_sistema(user, cache)
+  ├── ruolo = PermissionResolver.get_ruolo_applicativo(user, cache)
   └── ruolo == DISABILITATO? → log warning + JsonResponse 403
 
 process_response(request, response)
@@ -106,9 +106,9 @@ process_response(request, response)
 
 ## Dipendenze
 
-- `anagrafiche.risorse_umane_auth_user` — lettura `ruolo_sistema` (via `PermissionResolver`)
+- `anagrafiche.identita_digitali` — `ruolo_applicativo` dell'identita' attiva (via `PermissionResolver`, GUC-first)
 - `apps.core.services.permissions_cache` — `load_user_cache()` per pre-caricamento L2
-- `apps.core.services.permissions_resolver` — `PermissionResolver.get_ruolo_sistema()`
+- `apps.core.services.permissions_resolver` — `PermissionResolver.get_ruolo_applicativo()`
 - `apps.core.services.request_context` — `get_request_id()`, `get_idempotency_key()` per meta 403
 - `apps.core.api.jwt_audit_authentication.JwtAuditAuthentication` — setta il marker letto
   da `process_response`

@@ -205,6 +205,7 @@ def fn_list_lotti(
     page: int = 1,
     page_size: int = 50,
     solo_recuperi_mese: bool = False,
+    includi_annullati: bool = False,
 ) -> dict[str, object]:
     offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
     # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
@@ -234,6 +235,7 @@ def fn_list_lotti(
         limit=page_size,
         offset=offset,
         solo_recuperi_mese=solo_recuperi_mese,
+        includi_annullati=includi_annullati,
     )
     risposta = _build_list_response(results, total_count, page, page_size)
     # ⭐ La ripartizione per stato viaggia NELLA STESSA risposta della lista, e
@@ -256,9 +258,25 @@ def fn_list_lotti(
                 emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
                 auth_user_id=auth_user_id,
                 solo_recuperi_mese=solo_recuperi_mese,
+                includi_annullati=includi_annullati,
             ).items()
         )
     ]
+    # ⭐ Quanti lotti annullati il perimetro sta NASCONDENDO (2026-09-12): senza
+    #    questo numero «mese pulito» e «tre lotti annullati» si leggono uguali.
+    #    A interruttore acceso non c'e' niente di nascosto, e il conteggio non si
+    #    paga. Stesso perimetro della lista, stato compreso: e' «quante righe
+    #    QUESTO filtro lascia fuori» (pattern `archiviate_count` delle code).
+    risposta["annullati_count"] = 0 if includi_annullati else repository.count_lotti_annullati(
+        competenza_mese=competenza_mese,
+        utility_id=utility_id,
+        stato_lotto=stato_lotto,
+        area_geografica_id=area_geografica_id,
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        auth_user_id=auth_user_id,
+        solo_recuperi_mese=solo_recuperi_mese,
+    )
     return risposta
 
 
@@ -287,6 +305,7 @@ def fn_export_lotti(
     order_dir: str | None = None,
     max_rows: int,
     solo_recuperi_mese: bool = False,
+    includi_annullati: bool = False,
 ) -> tuple[list[LottoListRow], int]:
     # ⛔ Stesso guard della lista, e per la stessa ragione: «competenza
     #    precedente» senza un mese non ha un termine di paragone. Senza, il
@@ -316,6 +335,7 @@ def fn_export_lotti(
         offset=0,
         max_limit=max_rows,
         solo_recuperi_mese=solo_recuperi_mese,
+        includi_annullati=includi_annullati,
     )
 
 
@@ -331,7 +351,9 @@ _DASH_ANNO_MAX = 2100
 #        Ritorna sempre i 12 mesi (0-riempiti) in ordine, ognuno con la sua
 #        competenza (YYYY-MM-01, chiave stabile per il componente FE) e n_lotti.
 #        Scope emittente applicato in repo (RLS + whitelist), come la lista.
-def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str, object]:
+def fn_lotti_mensile(
+    *, anno: int, auth_user_id: int | None = None, includi_annullati: bool = False,
+) -> dict[str, object]:
     ErrorManager.require(
         isinstance(anno, int) and _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
         code="E_VENDITE_VALIDATION",
@@ -341,7 +363,9 @@ def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str,
         function_name="vendite.vendite_service.fn_lotti_mensile",
     )
     repository = VenditeRepository()
-    per_mese = repository.count_lotti_per_mese(anno=anno, auth_user_id=auth_user_id)
+    per_mese = repository.count_lotti_per_mese(
+        anno=anno, auth_user_id=auth_user_id, includi_annullati=includi_annullati,
+    )
     mesi = [
         {
             "competenza_mese": f"{anno:04d}-{mese:02d}-01",

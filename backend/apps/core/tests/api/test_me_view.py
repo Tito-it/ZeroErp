@@ -14,7 +14,7 @@ Indice test eseguiti:
  4) UserProfileViewTests.test_is_admin_globale_admin_senza_emittente
  5) UserProfileViewTests.test_is_admin_globale_admin_con_emittente
  6) UserProfileViewTests.test_is_admin_globale_operativo
- 7) UserProfileViewTests.test_profile_include_is_super_admin_e_ruolo_applicativo
+ 7) UserProfileViewTests.test_profile_trasporta_is_super_admin_e_ruolo_applicativo_dal_db
  8) CoreRepositoryTests.test_get_user_profile_returns_jsonb
  9) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
 10) CoreRepositoryTests.test_get_user_profile_no_row_raises_error
@@ -45,7 +45,6 @@ _PROFILE_FULL = {
     "ruolo_applicativo": "OPERATORE",
     "risorse_umane": {
         "risorsa_umana_id": 5,
-        "risorse_umane_auth_user_id": 3,
         "soggetto_ruolo_id": 12,
         "qualifica_id": 2,
         "qualifica_codice": "DEV",
@@ -204,41 +203,51 @@ class UserProfileViewTests(TestCase):
             view.get(request)
         self.assertFalse(mock_resp.call_args[0][0]["is_admin_globale"])
 
-    # Scopo: Fallback resolver — quando il profilo dal repo NON contiene
-    # is_super_admin/ruolo_applicativo (scenari pre-migration o fn DB
-    # vecchie), la view usa PermissionResolver. Single source of truth
-    # multi-face nel BE (no ricostruzione legacy ruolo_sistema).
-    @patch("apps.core.api.me_view.PermissionResolver")
+    # Scopo: La view TRASPORTA `is_super_admin` e `ruolo_applicativo` come li
+    # emette `script.fn_get_user_profile`, senza ricalcolarli. Fino al
+    # 2026-09-12 qui c'era il test del ripiego opposto («se mancano, chiedi al
+    # resolver»): un ramo che serviva funzioni DB pre-cutover che non esistono
+    # piu' (analisi-software-per-dati-morti §2.3). Il verso da presidiare e'
+    # questo: cio' che dice il DB arriva intatto — anche quando e' «no».
     @patch(_REPO_PATH)
-    def test_profile_fallback_resolver_se_campi_assenti(
-        self, MockRepo, MockResolver
+    def test_profile_trasporta_is_super_admin_e_ruolo_applicativo_dal_db(
+        self, MockRepo
     ):
         from apps.core.api.me_view import UserProfileView
-
-        # Profilo SENZA i campi multi-face (caso fallback).
-        profile = dict(_PROFILE_FULL)
-        profile.pop("is_super_admin", None)
-        profile.pop("ruolo_applicativo", None)
-        mock_repo = MagicMock()
-        mock_repo.get_user_profile.return_value = profile
-        MockRepo.return_value = mock_repo
-        MockResolver.is_super_admin.return_value = True
-        MockResolver.get_ruolo_applicativo.return_value = "OPERATORE"
 
         request = MagicMock()
         request.user = MagicMock()
         request.user.id = 1
         request.auth = None
 
-        view = UserProfileView()
+        # 1) Cio' che il DB dice arriva intatto, anche quando e' «no».
+        profile = dict(_PROFILE_FULL)
+        profile["is_super_admin"] = False
+        profile["ruolo_applicativo"] = "CLIENTE_PORTALE"
+        mock_repo = MagicMock()
+        mock_repo.get_user_profile.return_value = profile
+        MockRepo.return_value = mock_repo
         with patch("apps.core.api.me_view.success_response") as mock_resp:
-            view.get(request)
-
+            UserProfileView().get(request)
         profile_arg = mock_resp.call_args[0][0]
-        self.assertTrue(profile_arg["is_super_admin"])
-        self.assertEqual(profile_arg["ruolo_applicativo"], "OPERATORE")
-        MockResolver.is_super_admin.assert_called_once_with(request.user)
-        MockResolver.get_ruolo_applicativo.assert_called_once_with(request.user)
+        self.assertFalse(profile_arg["is_super_admin"])
+        self.assertEqual(profile_arg["ruolo_applicativo"], "CLIENTE_PORTALE")
+        self.assertNotIn("ruolo_sistema", profile_arg)
+
+        # 2) Il contrario del ripiego tolto: se il DB NON emette i due campi,
+        #    la view non li INVENTA (nessun resolver interpellato) e
+        #    `is_admin_globale` cade in chiuso. Un ripiego che rientrasse
+        #    farebbe comparire qui una chiave che il DB non ha mandato.
+        profile_nudo = dict(_PROFILE_FULL)
+        profile_nudo.pop("is_super_admin")
+        profile_nudo.pop("ruolo_applicativo")
+        mock_repo.get_user_profile.return_value = profile_nudo
+        with patch("apps.core.api.me_view.success_response") as mock_resp:
+            UserProfileView().get(request)
+        profile_arg = mock_resp.call_args[0][0]
+        self.assertNotIn("is_super_admin", profile_arg)
+        self.assertNotIn("ruolo_applicativo", profile_arg)
+        self.assertFalse(profile_arg["is_admin_globale"])
 
     # Scopo: Verifica che un errore dal repository si propaga correttamente.
     @patch(_REPO_PATH)

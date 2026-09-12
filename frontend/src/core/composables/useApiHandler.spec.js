@@ -33,7 +33,7 @@ const notifiche = {
 }
 let azioniFinte = []
 
-vi.mock('../../stores/auth', () => ({ useAuthStore: () => ({ isAdmin: false }) }))
+vi.mock('../../stores/auth', () => ({ useAuthStore: () => ({ isSuperAdmin: false }) }))
 vi.mock('./useNotify', () => ({ useNotify: () => notifiche }))
 vi.mock('../bersagli', () => ({
   // Passa-attraverso minimo: qui interessa che il campo `targets` dell'envelope

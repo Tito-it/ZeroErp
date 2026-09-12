@@ -23,7 +23,12 @@ from apps.core.services import permissions_cache
 
 
 _CACHE = "apps.core.services.permissions_cache.cache"
-_BRIDGE = "apps.anagrafiche.models.RisorseUmaneAuthUser"
+# Il legame reparto → utente passa dalla MADRE `identita_digitali` (per
+# `soggetto_ruolo_id` verso `risorse_umane`). Fino al 2026-09-12 qui si
+# mockava `RisorseUmaneAuthUser`, il model della vista col nome vecchio —
+# ritirato (analisi-software-per-dati-morti §2.1).
+_IDENTITA = "apps.anagrafiche.models.IdentitaDigitale"
+_RISORSE_UMANE = "apps.anagrafiche.models.RisorseUmane"
 
 
 class PermissionsCacheTests(TestCase):
@@ -56,12 +61,18 @@ class PermissionsCacheTests(TestCase):
 
     # Scopo: Invalidazione reparto cancella le chiavi di tutti gli utenti del reparto.
     @patch(_CACHE)
-    @patch(_BRIDGE)
-    def test_invalidate_department(self, mock_bridge, mock_cache):
-        mock_bridge.objects.filter.return_value.values_list.return_value = [1, 2, 3]
+    @patch(_RISORSE_UMANE)
+    @patch(_IDENTITA)
+    def test_invalidate_department(self, mock_identita, mock_ru, mock_cache):
+        mock_identita.objects.filter.return_value.values_list.return_value = [1, 2, 3]
 
         permissions_cache.invalidate_department(10)
 
+        # Il reparto si cerca su `risorse_umane`, l'utente su `identita_digitali`.
+        mock_ru.objects.filter.assert_called_once_with(unita_organizzativa_id=10)
+        mock_identita.objects.filter.assert_called_once_with(
+            soggetto_ruolo_id__in=mock_ru.objects.filter.return_value.values.return_value
+        )
         mock_cache.delete_many.assert_called_once_with([
             "perms:user:1",
             "perms:user:2",

@@ -22,7 +22,6 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
 )
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
-from apps.core.services.permissions_resolver import PermissionResolver
 
 
 class UserProfileView(DomainAPIView):
@@ -57,8 +56,8 @@ class UserProfileView(DomainAPIView):
                             "is_super_admin": serializers.BooleanField(
                                 help_text=(
                                     "True se l'utente ha binding attivo al "
-                                    "profilo SUPER_ADMIN (id 9100). Letto via "
-                                    "PermissionResolver.is_super_admin."
+                                    "profilo SUPER_ADMIN (id 9100). Emesso da "
+                                    "script.fn_get_user_profile (GUC-aware)."
                                 ),
                             ),
                             "ruolo_applicativo": serializers.CharField(
@@ -68,7 +67,8 @@ class UserProfileView(DomainAPIView):
                                     "OPERATORE | CLIENTE_PORTALE | "
                                     "FORNITORE_PORTALE | SHOP_CUSTOMER | "
                                     "API_CLIENT | DISABILITATO | null. "
-                                    "Letto via PermissionResolver.get_ruolo_applicativo."
+                                    "Emesso da script.fn_get_user_profile "
+                                    "(GUC-first: la veste del JWT corrente)."
                                 ),
                             ),
                             "risorse_umane": serializers.DictField(
@@ -124,23 +124,15 @@ class UserProfileView(DomainAPIView):
     def get(self, request: Request):
         repo = CoreRepository()
         profile = repo.get_user_profile(request.user.id)
-        # Garantisce i campi nativi multi-face (is_super_admin +
-        # ruolo_applicativo): `fn_get_user_profile` gia' li popola; il
-        # fallback via resolver e' difensivo per scenari pre-migration o
-        # funzioni DB pre-cutover. `is_admin_globale` (refactor operatore-
-        # emittenti Q1) dipende da `is_super_admin`, va calcolato dopo.
-        if "is_super_admin" not in profile:
-            profile["is_super_admin"] = PermissionResolver.is_super_admin(
-                request.user
-            )
-        if "ruolo_applicativo" not in profile:
-            profile["ruolo_applicativo"] = PermissionResolver.get_ruolo_applicativo(
-                request.user
-            )
-        # Rimuove eventuale `ruolo_sistema` proveniente dalla fn DB (post-
-        # cutover §4.6.H.2 ma legacy a livello API): l'output e' multi-face
-        # puro (Fase 7 amm-software).
-        profile.pop("ruolo_sistema", None)
+        # `is_super_admin` e `ruolo_applicativo` arrivano SEMPRE dal top-level
+        # di `script.fn_get_user_profile` (GUC-aware dal 20260421-03/-05), e
+        # `ruolo_sistema` non viene emesso dalla Fase 7 (29-04-2026).
+        # ⛔ Fino al 2026-09-12 qui vivevano tre ripieghi «per funzioni DB
+        # pre-cutover» — due `if not in profile` sul resolver e un `pop` della
+        # chiave morta: software vivo che serviva dati che il modello non
+        # produce piu' (analisi-software-per-dati-morti §2.3). Tolti.
+        # `is_admin_globale` (refactor operatore-emittenti Q1) dipende da
+        # `is_super_admin`, va calcolato dopo la lettura.
         profile["is_admin_globale"] = self._compute_is_admin_globale(profile)
         # §8.3.6: arricchisce con il blocco identita del JWT corrente.
         # Non tutti gli auth_user hanno una singola identita (modello 1:N):

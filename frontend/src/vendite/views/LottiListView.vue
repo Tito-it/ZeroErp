@@ -12,6 +12,7 @@ import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusu
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ToggleNascoste from '../../core/components/ToggleNascoste.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -26,6 +27,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -47,7 +49,7 @@ import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
 import { menuItemClass } from '../../core/utils/rowActions'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
-import { useLottiStore } from '../stores/lotti'
+import { paramsPerimetro, useLottiStore } from '../stores/lotti'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -113,9 +115,9 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportLotti,
   getExportParams: (fmt) => {
-    const p = { formato: fmt }
-    if (store.filters.competenza_mese) p.competenza_mese = store.filters.competenza_mese
-    if (store.filters.stato_lotto) p.stato_lotto = store.filters.stato_lotto
+    // Il file E' la lista: stesso perimetro (mese, stato, annullati — e
+    // l'intestazione del file lo dichiara), stesso ordine.
+    const p = { formato: fmt, ...paramsPerimetro(store.filters) }
     if (store.filters.order_by) {
       p.order_by = store.filters.order_by
       p.order_dir = store.filters.order_dir || 'desc'
@@ -174,6 +176,9 @@ function registraListaRecuperi(istanza) {
 // diverso (competenza precedente + documenti emessi nel mese), quindi hanno il
 // loro breakdown: i pulsanti devono contare la lista che sta sotto, non l'altra.
 const statiRecuperi = ref([])
+// Quanti annullati la scheda «Recuperi» sta nascondendo (stesso campo della
+// lista principale, dalla propria risposta).
+const annullatiRecuperi = ref(0)
 
 // ⚠️ Qui la cattura sta NELLA promise, al contrario dello store — e non e' una
 //    disattenzione: `useListaDrawerPaginata` non ha il guard di versione, e
@@ -184,19 +189,19 @@ const statiRecuperi = ref([])
 //    l'ha, deve invece passare da `onPayload`.
 const listaRecuperi = useListaDrawerPaginata(async ({ page, pageSize, sortBy, sortDir }) => {
   const res = await listLotti({
-    competenza_mese: store.filters.competenza_mese,
-    // ⚠️ ANCHE `stato_lotto`: la scheda si ricarica al cambio filtro, ma senza
-    // questo si ricaricherebbe IDENTICA — e un filtro che si muove sopra una
-    // lista che non cambia si legge come un filtro rotto (rilievo di Tid,
-    // 2026-08-24). I filtri della pagina sono due: mese e stato, e valgono per
-    // entrambe le schede.
-    ...(store.filters.stato_lotto ? { stato_lotto: store.filters.stato_lotto } : {}),
+    // ⚠️ TUTTO il perimetro della pagina, non solo il mese: la scheda si
+    // ricarica al cambio filtro, e senza `stato_lotto` si ricaricherebbe
+    // IDENTICA — un filtro che si muove sopra una lista che non cambia si
+    // legge come un filtro rotto (rilievo di Tid, 2026-08-24). I filtri di
+    // pagina valgono per entrambe le schede, e stanno in una sede sola.
+    ...paramsPerimetro(store.filters),
     recuperi_mese: true,
     page,
     page_size: pageSize,
     ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
   })
   statiRecuperi.value = res.data?.data?.stati ?? []
+  annullatiRecuperi.value = res.data?.data?.annullati_count ?? 0
   return res
 })
 
@@ -253,11 +258,10 @@ const azioniRecuperi = useListaAzioni(() => listaRecuperiRef.value, {
   exportFn: exportLotti,
   getExportParams: (fmt) => ({
     formato: fmt,
-    competenza_mese: store.filters.competenza_mese,
-    // Il file È la lista, quindi porta ENTRAMBI i filtri della pagina: senza
-    // `recuperi_mese` esporterebbe i lotti del mese, senza `stato_lotto`
-    // esporterebbe tutti gli stati mentre a video se ne vede uno.
-    ...(store.filters.stato_lotto ? { stato_lotto: store.filters.stato_lotto } : {}),
+    // Il file È la lista, quindi porta TUTTO il perimetro della pagina piu'
+    // la scheda: senza `recuperi_mese` esporterebbe i lotti del mese, senza
+    // `stato_lotto` tutti gli stati mentre a video se ne vede uno.
+    ...paramsPerimetro(store.filters),
     recuperi_mese: true,
     ...(listaRecuperi.sortField.value
       ? {
@@ -293,14 +297,27 @@ async function load() {
 }
 
 // Scopo: conteggi lotti/mese dell'anno per il badge della sidebar. Fotografia
-//        completa (nessun filtro stato): indipendente dai filtri di lista.
+//        completa (nessun filtro stato): indipendente dai filtri di lista —
+//        ⭐ tranne l'interruttore degli annullati, che vale per tutta la pagina:
+//        un calendario che contasse i gusci sopra una lista che non li mostra
+//        direbbe «35» su un mese con due lotti (misurato il 2026-09-12).
+// ⚠️ Guard di versione (`useFetchVersion`, BB), come la lista e i chip: i
+//    grilletti sono DUE — l'anno e l'interruttore degli annullati — e senza
+//    guard acceso→spento in fretta lascia vincere la risposta lenta, cioe' un
+//    calendario che conta i gusci sopra una lista che non li mostra. Nessun
+//    errore: solo un numero che non torna con la lista sotto.
+const versioneMensile = useFetchVersion()
 async function loadMensile() {
+  const tag = versioneMensile.tag()
   try {
-    const res = await listLottiMensile(anno.value)
+    const res = await listLottiMensile(anno.value, { annullati: store.filters.annullati })
+    if (!versioneMensile.isCurrent(tag)) return
     const map = {}
     for (const m of res.data?.data?.mesi ?? []) map[m.competenza_mese] = m.n_lotti
     conteggiMese.value = map
   } catch (err) {
+    // Il fallimento di una richiesta gia' superata non e' una notizia.
+    if (!versioneMensile.isCurrent(tag)) return
     notify.error(extractApiError(err, t('common.error')))
   }
 }
@@ -327,6 +344,22 @@ function onFilterChange() {
   syncFiltri()
   load()
 }
+
+// Scopo: l'interruttore «mostra annullati» cambia il PERIMETRO, non un filtro
+//        dentro il perimetro: si ricaricano lista, chip (viaggiano con la
+//        lista), scheda recuperi E calendario. Da pagina 1: la pagina 3 di un
+//        insieme piu' piccolo puo' non esistere in quello piu' grande e viceversa.
+function onAnnullatiChange() {
+  store.filters.offset = 0
+  load()
+  loadMensile()
+}
+
+// Il conteggio dei nascosti da mostrare accanto all'interruttore: quello della
+// scheda attiva, come i chip — le due schede sono due perimetri.
+const annullatiNascosti = computed(() => (
+  schedaAttiva.value === 'recuperi' ? annullatiRecuperi.value : store.annullatiCount
+))
 
 // KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
 // rientro nel tab (feedback_keepalive_onactivated).
@@ -790,6 +823,22 @@ const azioniPagina = computed(() =>
                 <strong>{{ c.n }}</strong>
               </span>
             </div>
+
+            <!-- ⭐ «Mostra annullati (N)» (2026-09-12). I lotti annullati sono
+                 gusci: fuori dal perimetro di default, ma non spariscono in
+                 silenzio — il numero dice che ci sono, e l'interruttore li
+                 rimette dentro OVUNQUE (lista, chip, calendario, export).
+                 BB `ToggleNascoste`, lo stesso del «Mostra archiviate» delle
+                 code; `app-dash-filter-toggle` gli da' il look dei filtri di
+                 cruscotto che ha accanto. -->
+            <ToggleNascoste
+              v-model="store.filters.annullati"
+              class="app-dash-filter-toggle"
+              :label="t('vendite.lotti.filtro_annullati')"
+              :hint="t('vendite.lotti.filtro_annullati_hint')"
+              :count="annullatiNascosti"
+              @change="onAnnullatiChange"
+            />
           </div>
 
           <!-- I DUE VERBI DELL'ATTO FISCALE. ⚠️ `severity="warn"` su entrambi:

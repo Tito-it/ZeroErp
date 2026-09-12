@@ -25,6 +25,29 @@ import { PAGINATION } from '../../core/constants'
 import { paramsPagina } from '../../core/utils/listParams'
 import { listLotti } from '../api/lotti'
 
+// Scopo: IL PERIMETRO DELLA PAGINA come query param, in una sede sola — mese,
+//        stato e interruttore degli annullati, cioe' i tre filtri che valgono
+//        per TUTTO cio' che la pagina chiede al backend: la lista, la scheda
+//        «Recuperi» e i due export.
+// ⛔ Estratta il 2026-09-12 (revisione) da QUATTRO copie che traducevano gli
+//    stessi filtri negli stessi parametri: coincidevano, e il prossimo filtro
+//    di perimetro ne avrebbe dimenticata una senza che niente fallisse — un
+//    export con dentro cio' che la lista non mostra, o il contrario. E' la
+//    specie di `feedback_bb_legge_non_trasporta`: i punti che trasportano si
+//    contano, e qui ora e' uno.
+// ⚠️ Pura: riceve l'oggetto dei filtri (lo store passa il suo, la view passa
+//    `store.filters`) e non tocca niente. `annullati` viaggia come `1` — la
+//    forma che `_parse_lotti_query` legge — e SOLO quando e' acceso: spento e'
+//    il default del backend, e un parametro assente e uno falso devono
+//    produrre la stessa lista.
+export function paramsPerimetro(f) {
+  return {
+    ...(f.competenza_mese ? { competenza_mese: f.competenza_mese } : {}),
+    ...(f.stato_lotto ? { stato_lotto: f.stato_lotto } : {}),
+    ...(f.annullati ? { annullati: 1 } : {}),
+  }
+}
+
 export const useLottiStore = defineStore('vendite-lotti', () => {
   const filters = ref({
     // La competenza e' SEMPRE valorizzata dalla view (sidebar anno/mese: non
@@ -43,6 +66,12 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     // lista si apre come si e' sempre aperta, il giro piu' recente in cima.
     order_by: 'data_insert',
     order_dir: 'desc',
+    // ⭐ I lotti ANNULLATI (fiscale abortito) restano FUORI dal perimetro di
+    //    default (decisione Tid, 2026-09-12): un lotto annullato e' un guscio —
+    //    fatture cancellate, attivita' rimesse «da emettere» — non lavoro.
+    //    L'interruttore li rimette dentro OVUNQUE: lista, chip, calendario ed
+    //    export leggono lo stesso filtro.
+    annullati: false,
   })
 
   // Ripartizione per stato del perimetro corrente — `[{stato_lotto, n_lotti}]`
@@ -57,6 +86,12 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
   //    rendono solo sopra zero — e non ci sarebbe piu' modo di tornare indietro.
   const stati = ref([])
 
+  // Quanti lotti annullati il perimetro corrente sta NASCONDENDO: senza questo
+  // numero «mese pulito» e «tre lotti annullati» si leggono uguali. Lo produce
+  // il BE sullo stesso `WHERE` della lista (stato compreso); a interruttore
+  // acceso vale 0 — non c'e' niente di nascosto.
+  const annullatiCount = ref(0)
+
   // `alwaysFetch: true`: il registro lotti non e' una lista che parte vuota in
   // attesa di una ricerca — e' la fotografia di un mese, e il mese c'e' sempre.
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
@@ -67,7 +102,10 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     //    alle risposte scartate. Con la sidebar dei mesi si cambia periodo in
     //    fretta, quindi le fetch concorrenti sono la norma, non il caso limite:
     //    i pulsanti finirebbero a contare un mese diverso da quello a video.
-    onPayload: (payload) => { stati.value = payload.stati ?? [] },
+    onPayload: (payload) => {
+      stati.value = payload.stati ?? []
+      annullatiCount.value = payload.annullati_count ?? 0
+    },
     buildParams: (f) => {
       // limit/offset (lingua del BB) -> page/page_size (lingua dell'endpoint),
       // via `paramsPagina` (`core/utils/listParams`, estratto il 2026-08-28
@@ -77,17 +115,14 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
       //    consumatori (`desc`). Oggi non scatta — `order_dir` e' sempre
       //    valorizzato nei filtri — ma appianarlo avrebbe cambiato il verso di
       //    questa lista in silenzio il giorno in cui quel ramo si accendesse.
-      const params = paramsPagina(f, { orderDirDefault: 'asc' })
-      if (f.competenza_mese) params.competenza_mese = f.competenza_mese
-      if (f.stato_lotto) params.stato_lotto = f.stato_lotto
-      return params
+      return { ...paramsPagina(f, { orderDirDefault: 'asc' }), ...paramsPerimetro(f) }
     },
     fetchPage: listLotti,
   })
 
   return {
     items, totalRecords, loading, hasSearched, filters,
-    stati,
+    stati, annullatiCount,
     fetchList,
   }
 }, {

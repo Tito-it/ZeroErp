@@ -5,7 +5,7 @@
 # Scopo: Helper di dominio `documenti` per autenticazione utente +
 #        risoluzione/verifica scope `emittente_fiscale`. Estratti dai
 #        service Tranche E/G/I che duplicavano la stessa logica
-#        (auth check + `PermissionResolver.get_emittenti_ids` + verifica
+#        (auth check + `PermissionResolver.get_emittenti_pk_ids` + verifica
 #        appartenenza id alla whitelist). Tutti gli errori sollevano
 #        `E_DOCUMENTI_VALIDATION` per coerenza con il resto del dominio
 #        (no 403/404 leak: l'utente non sa se l'id non esiste o e' fuori
@@ -45,7 +45,7 @@ def guard_user_authenticated(
 def resolve_emittente_scope(
     user: AbstractBaseUser | AnonymousUser,
 ) -> list[int] | None:
-    return PermissionResolver.get_emittenti_ids(user)
+    return PermissionResolver.get_emittenti_pk_ids(user)
 
 
 # Scopo: Verifica `emittente_fiscale_id` rispetto allo scope precaricato.

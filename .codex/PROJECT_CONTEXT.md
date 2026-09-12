@@ -102,7 +102,7 @@ ZeroErp/
 | `dbops` | Strumenti DBA, registry task, FK policy |
 | `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
-| `public` | Oggetti pubblici. ⚠️ `version_info` è citata storicamente ma **non risulta in `migrations_v2`**: per la versione applicata usare `DATABASECHANGELOG` (ultimo changeset Liquibase) finché non si verifica se l'oggetto esiste ancora |
+| `public` | Oggetti pubblici. ⚠️ `version_info` **esiste** (verificato 2026-09-12): una riga, **zero lettori** in BE/FE/pgTAP — la nomina solo il resync delle sequence per escluderla. Per la versione applicata usare `DATABASECHANGELOG`. La decisione se ha un mestiere (allora un lettore e un manuale) o no (allora `DROP`) è di Tid: analisi-software-per-dati-morti §2.6 |
 
 ## Struttura App Django (pattern per ogni dominio)
 
@@ -217,7 +217,7 @@ letti insieme ai due sopra.
 ### Note operative
 - `config.stati_doc_fiscale.chiude_lotto = true` → unico meccanismo di chiusura lotto (nessun hardcode)
 - Reset lotto MASSIVO: ammesso in DRAFT; la DEFINITIVA fa resume per fattura (non reset globale)
-- La procedura SQL `pr_run_lotto_pipeline` è deprecata e in fase di rimozione lato DB; l'orchestrazione è in Django (`run_lotto_pipeline`)
+- La procedura SQL `pr_run_lotto_pipeline` è stata **rimossa** (non in `pg_proc`, verificato 2026-09-12); l'orchestrazione è in Django (`run_lotto_pipeline`). Fino a quel giorno questa riga la dava «deprecata e in fase di rimozione»
 
 ## File Django Chiave (vendite)
 

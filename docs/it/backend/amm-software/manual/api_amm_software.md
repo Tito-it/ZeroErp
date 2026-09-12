@@ -1288,10 +1288,9 @@ curl -H "Authorization: Bearer <token>" \
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 | `auth_user` | Django | Tabella autenticazione utenti |
-| `identita_digitali` | `anagrafiche` | **Fase 1 multi-face**. Bridge `soggetti_ruoli ↔ auth_user` con `ruolo_applicativo`, `attivo`, `invito_inviato_at`, `deve_cambiare_password`. Sostituisce il legacy `risorse_umane_auth_user` (kept per retrocompat lettura) |
+| `identita_digitali` | `anagrafiche` | **Fase 1 multi-face**. Bridge `soggetti_ruoli ↔ auth_user` con `ruolo_applicativo`, `attivo`, `invito_inviato_at`, `deve_cambiare_password`. Sostituisce il ponte 1:1 `risorse_umane_auth_user`, che oggi e' una vista in ritiro non letta dal backend (analisi-software-per-dati-morti §2.1) |
 | `profili_accesso_bindings` | `config` | Binding profili accesso (incluso SUPER_ADMIN id 9100) sull'identita digitale |
 | `risorse_umane` | `anagrafiche` | Dati operatore (qualifica, UO, validita') |
-| `risorse_umane_auth_user` | `anagrafiche` | DEPRECATO post-cutover §4.6.H.2: vista read-only su `identita_digitali`. Retrocompat lettura `ruolo_sistema` |
 | `unita_organizzative` | `config` | Reparti / unita' organizzative |
 | `user_override_aree` | `config` | Override livello accesso aree per utente |
 | `user_override_azioni` | `config` | Override azioni processo per utente |

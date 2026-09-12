@@ -186,8 +186,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 | `config.parameter_overrides` | Tabella | Override per scope (user, group, emittente, session, function) |
 | `script.fn_get_parameter_full()` | Funzione | Risoluzione singolo parametro con catena di priorita' |
 | `script.fn_list_parameters_for_user()` | Funzione | Lista completa parametri con valori a ogni livello per l'utente |
-| `anagrafiche.risorse_umane_auth_user` | Tabella (bridge) | Risoluzione `emittente_fiscale_id` dell'utente |
-| `anagrafiche.risorse_umane` | Tabella | Contiene `emittente_fiscale_id` della risorsa umana |
+| `config.user_emittenti_fiscali` | Tabella | Risoluzione `emittente_fiscale_id` dell'utente (`get_emittente_fiscale_id_for_user`; ⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1), e `risorse_umane` non ha una colonna `emittente_fiscale_id`) |
 
 ## Codici errore
 

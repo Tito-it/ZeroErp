@@ -873,8 +873,11 @@ Endpoint schema:
 
 ### Versioning
 
-Tutte le API canoniche sotto `/api/v1/*`. Le route legacy sono disabilitate di default
-(`DJANGO_API_LEGACY_ROUTES_ENABLED=0`).
+Tutte le API canoniche sotto `/api/v1/*`. ⚠️ Le route legacy non esistono
+più — sono state **rimosse**, non spente: fino al 2026-09-12 questa riga
+diceva «disabilitate di default (`DJANGO_API_LEGACY_ROUTES_ENABLED=0`)», e quel
+flag **non compare in nessun file del backend** (analisi-software-per-dati-morti
+§4). Un documento che descrive un interruttore inesistente manda a cercarlo.
 
 ### Namespace per tipo di utente (multi-face auth)
 
@@ -990,9 +993,11 @@ stato sostituito dal refactor multi-face auth con:
   identita' via `config.profili_accesso_bindings` (profilo id 9100).
   Letto via `PermissionResolver.is_super_admin(user)`.
 
-La mapping legacy ricostruito da `/permessi-effettivi/`:
-`SUPER_ADMIN -> "ADMIN"`; `ruolo_applicativo=DISABILITATO -> "DISABILITATO"`;
-altrimenti `-> "OPERATIVO"`.
+⛔ **Nessun punto del backend emette più `ADMIN`/`OPERATIVO`.** Fino al
+2026-09-12 questa sezione descriveva una «mapping legacy ricostruita da
+`/permessi-effettivi/`» (`SUPER_ADMIN -> "ADMIN"`, altrimenti `"OPERATIVO"`):
+non viene ricostruita da nessuno — il vocabolario vecchio è morto in Fase 7 e
+il frontend legge `is_super_admin` (analisi-software-per-dati-morti §4).
 
 ### Propagazione identita' al DB (GUC)
 
@@ -1032,9 +1037,10 @@ Due pattern disponibili in base al dominio:
 
 Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
 o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.
-`get_emittenti_ids` è ora un **alias guarded di `get_emittenti_pk_ids`** (stessa
-convenzione PK + bypass SUPER_ADMIN + fail-closed su identita non attiva): usare
-i nomi espliciti `_sr_ids`/`_pk_ids` per chiarezza di convenzione.
+⛔ Sono i **soli due nomi**: l'alias `get_emittenti_ids` — dichiarato deprecato
+dal 2026-05-02 e arrivato a **nove** chiamanti, più dell'originale — è stato
+tolto il 2026-09-12 (analisi-software-per-dati-morti §2.7). *Un nome deprecato
+che non cala è un nome in servizio*; il presidio è il grep a zero.
 
 **Enforcement RLS (operatori) — dal 2026-06.** Lo scope emittente degli OPERATORI
 è applicato **anche a livello DB** via Row Level Security sulle tabelle sensibili
@@ -1853,7 +1859,15 @@ Il database usa trigger `trgfn_prevent_deactivate_if_children` sulle tabelle con
 campo `attivo`. Il trigger **impedisce di disattivare un padre se ha figli attivi**.
 
 Questo vale per tutte le relazioni padre-figlio dove entrambi hanno `attivo`:
-`risorse_umane` → `risorse_umane_auth_user`, e future relazioni analoghe.
+`risorse_umane` → l'identita' OPERATORE della stessa persona in
+`anagrafiche.identita_digitali`, e future relazioni analoghe.
+
+⚠️ Fino al 2026-09-12 l'esempio qui sotto scriveva su
+`risorse_umane_auth_user`: e' il **nome vecchio** del ponte, oggi una vista di
+sola lettura che il DB ritira (analisi-software-per-dati-morti §2.1) — chi
+scrive passa da `identita_digitali`. Il guard sulla madre, per ora, legge
+ancora quella vista: e' un fatto del DB e cambia con lo `DROP VIEW`, non con
+il chiamante.
 
 ### Regola: disattivare dal basso verso l'alto, riattivare dall'alto verso il basso
 
@@ -1861,18 +1875,18 @@ Questo vale per tutte le relazioni padre-figlio dove entrambi hanno `attivo`:
 
 ```python
 # 1. Disattiva figlio
-UPDATE risorse_umane_auth_user SET attivo = false WHERE ...
+UPDATE anagrafiche.identita_digitali SET attivo = false WHERE ...
 # 2. Disattiva padre (trigger OK: figlio gia' inattivo)
-UPDATE risorse_umane SET attivo = false WHERE ...
+UPDATE anagrafiche.risorse_umane SET attivo = false WHERE ...
 ```
 
 **Riattivazione** — prima il padre, poi i figli:
 
 ```python
 # 1. Riattiva padre
-UPDATE risorse_umane SET attivo = true WHERE ...
+UPDATE anagrafiche.risorse_umane SET attivo = true WHERE ...
 # 2. Riattiva figlio (padre gia' attivo)
-UPDATE risorse_umane_auth_user SET attivo = true WHERE ...
+UPDATE anagrafiche.identita_digitali SET attivo = true WHERE ...
 ```
 
 ### Perche'

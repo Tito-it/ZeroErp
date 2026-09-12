@@ -36,14 +36,14 @@ Tutte le funzioni accettano `user_id: int` come identificativo utente.
 - Chiave Redis: `perms:user:{user_id}` (con prefisso globale `zeroerp:` da settings)
 - TTL: `settings.PERMISSIONS_CACHE_TTL` (default 300 secondi)
 - Resilienza: tutte le operazioni sono wrappate in `try/except` — errori Redis non propagano eccezioni, il sistema degrada a DB-only
-- `invalidate_department(uo_id)` cerca gli utenti del reparto via `RisorseUmaneAuthUser` e invalida ciascuno
+- `invalidate_department(uo_id)` cerca gli utenti del reparto sulla madre — `RisorseUmane` (l'UO) → `IdentitaDigitale` per `soggetto_ruolo_id` → `auth_user_id` — e invalida ciascuno. ⚠️ Fino al 2026-09-12 passava dal model della vista col nome vecchio del ponte RU↔utente, ritirato (analisi-software-per-dati-morti §2.1)
 - `invalidate_all()` usa `cache.delete_pattern()` (supportato da `django-redis`)
 
 ## Dipendenze DB
 
 | Tabella                                | Uso                                      |
 |----------------------------------------|------------------------------------------|
-| `anagrafiche.risorse_umane_auth_user`  | Lookup utenti per invalidazione reparto  |
+| `anagrafiche.risorse_umane` + `anagrafiche.identita_digitali` | Lookup utenti per invalidazione reparto (UO → `soggetto_ruolo_id` → `auth_user_id`) |
 
 ## Integrazione con ZeroERPPermission
 

@@ -80,7 +80,7 @@ def _service_with_mocks(
 class TemplateAdminServiceCreateTests(SimpleTestCase):
     # 0. admin globale (scope=None) -> create OK, no scope check.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_create_admin_globale_happy_path(self, _mock_scope) -> None:
@@ -102,7 +102,7 @@ class TemplateAdminServiceCreateTests(SimpleTestCase):
 
     # 1. operatore con emittente nello scope -> create OK.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11, 22],
     )
     def test_create_operator_emittente_in_scope_ok(self, _mock_scope) -> None:
@@ -116,7 +116,7 @@ class TemplateAdminServiceCreateTests(SimpleTestCase):
     # 2. operatore con emittente fuori scope -> E_DOCUMENTI_VALIDATION,
     #    no DB call.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[1, 2],
     )
     def test_create_operator_emittente_fuori_scope_raises_validation(
@@ -142,7 +142,7 @@ class TemplateAdminServiceCreateTests(SimpleTestCase):
 
     # 4. payload con chiave extra -> validate_allowed_keys solleva.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_create_payload_extra_keys_raises(self, _mock_scope) -> None:
@@ -155,7 +155,7 @@ class TemplateAdminServiceCreateTests(SimpleTestCase):
 
     # 5. campo richiesto mancante -> require_string solleva.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_create_payload_missing_required_field_raises(self, _mock_scope) -> None:
@@ -169,7 +169,7 @@ class TemplateAdminServiceCreateTests(SimpleTestCase):
     # 6. UNIQUE codice violato -> mappato a E_DOCUMENTI_VALIDATION con
     #    messaggio specifico (frammento nome vincolo).
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_create_unique_violation_codice_mapped(self, _mock_scope) -> None:
@@ -185,7 +185,7 @@ class TemplateAdminServiceCreateTests(SimpleTestCase):
 
     # 7. partial-unique is_default violato -> mappato.
     @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_create_unique_violation_default_mapped(self, _mock_scope) -> None:
