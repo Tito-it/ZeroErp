@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La madre LEGACY del ponte utente↔risorsa umana: si elimina, con le due trigger
+# function che esistevano solo per lei.
+#   Brief: brief-db-rls-storico-scope-congelato.md §10 (coda del 12-09,
+#   decisione Tid: «senza produzione è sporcizia»; il drop fisico era già in
+#   piano in sviluppo-multi-face-da-completare §2.9, parcheggiato «finché non in
+#   produzione» — ragione che quella decisione toglie)
+#
+# `anagrafiche._legacy_risorse_umane_auth_user` è la tabella ponte di prima del
+# cutover a `identita_digitali` (2026-04-19, 20260419-91): rinominata, tenuta
+# «come backup forensico», mai più scritta. Letto sul catalogo il 12-09:
+#   · nessuna FK entrante, nessuna vista dipendente, nessuna funzione viva che
+#     la nomina; nessun pgTAP e nessun codice backend la scrive (il backend
+#     lavora su IdentitaDigitale; la vista `anagrafiche.risorse_umane_auth_user`
+#     legge identita_digitali);
+#   · ⛔ ma NON è inerte: le sue due FK `ON DELETE RESTRICT` (verso
+#     anagrafiche.risorse_umane e django.auth_user) fanno sì che sei righe di
+#     test blocchino la cancellazione di sei persone e sei utenti vivi; il
+#     trigger `sync_active` riscrive `auth_user.is_active`; e con la colonna
+#     `storicizza` a bordo ogni `ci_apply` le ri-arma audit, tx_id e storico e
+#     le ricrea la shadow. Un archivio che può bloccare e scrivere tabelle vive
+#     non è un archivio.
+#
+# ── Cosa cade con la tabella ─────────────────────────────────────────────
+#   Gli otto trigger (audit, tx_id, storico, guard persona fisica, due
+#   sync_active, child_requires_active_parent) e le due FK uscenti: nessun
+#   CASCADE, perché nessun altro oggetto dipende da lei — se uno comparisse,
+#   meglio un errore che un DROP che trascina. Le due trigger function
+#   `anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica` e
+#   `anagrafiche.trgfn_risorse_umane_auth_user_sync_active` erano montate SOLO
+#   qui: senza la tabella sono codice morto, e il presidio dei riferimenti morti
+#   (classe ORFANA) le vedrebbe. Si eliminano qui, DOPO la tabella, perché i
+#   trigger dipendono da loro. `anagrafiche.fn_sync_auth_user_is_active` resta:
+#   la chiamano identita_digitali e risorse_umane.
+#
+# ── 🔴 Perché sta in 90_end e non in 00_schema ───────────────────────────
+#   `90_end/20260429-19a` fa `ALTER TABLE … DROP COLUMN ruolo_sistema` su questa
+#   tabella con una preCondition `onFail: HALT` che la pretende ESISTENTE. Su un
+#   database ricostruito da zero tutto `90_end` gira dopo tutto `00_schema`: un
+#   DROP in `00_schema` sarebbe passato su dev (dove la -19a ha già girato) e
+#   avrebbe fermato la CI su quel cancello — «Expected '1' got '0'». La -19a è
+#   mergiata e senza `validCheckSums`: non si tocca. Quindi il DROP sta qui, con
+#   un nome che in `includeAll` viene DOPO la -19a e dopo i due `runAlways` dello
+#   scope (`20260911-29`, `-31`, che su una shadow assente rispondono NO_SHADOW).
+#   È la stessa ragione per cui la -19a stessa stava in 90_end.
+#
+# ── Registrazioni e shadow ───────────────────────────────────────────────
+#   Shadow: `00_schema/storico/20260912-08`. Registrazioni (mappa dello scope,
+#   audit_sources, storico_set_storicizza): `80_data/changelog/20260912-09`.
+#   Presidio del ritiro — e che a `ci_apply` non rinasca niente —:
+#   db/pgtap/anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1.sql.
+#
+# IF EXISTS su tutto: idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260912-10-drop-tabella-legacy-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260912-10-drop-tabella-legacy-risorse-umane-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Elimina anagrafiche._legacy_risorse_umane_auth_user (tabella ponte
+        utente-risorsa umana di prima del cutover a identita_digitali, 2026-04-19)
+        con i suoi otto trigger e le due FK, e le due trigger function montate
+        solo su di lei (guard_persona_fisica, sync_active). Nessun lettore ne'
+        scrittore (catalogo DB e backend censiti il 12-09); non era inerte: due
+        FK ON DELETE RESTRICT su risorse_umane e auth_user, e la colonna
+        storicizza la faceva ri-armare a ogni ci_apply. In 90_end perche'
+        90_end/20260429-19a la pretende esistente (HALT) e su un DB da zero gira
+        dopo 00_schema. Decisione Tid 12-09-2026,
+        brief-db-rls-storico-scope-congelato §10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Prima la tabella: i trigger cadono con lei, e solo dopo le
+              -- funzioni che quei trigger usavano si possono eliminare.
+              DROP TABLE IF EXISTS anagrafiche._legacy_risorse_umane_auth_user;
+
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica();
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_risorse_umane_auth_user_sync_active();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Sei righe di test di una tabella dismessa: la decisione era di
+              -- non tenerle, e la verità vive in identita_digitali. Forward-only.
+              SELECT 1;

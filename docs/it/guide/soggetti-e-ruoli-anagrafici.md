@@ -32,8 +32,8 @@
 > * La ex tabella bridge `risorse_umane_auth_user` e' ora una **vista
 >   read-only** di compatibilita' che legge da `identita_digitali`
 >   filtrando `ruolo_applicativo = 'OPERATORE'` (cutover §13.3.2).
->   La tabella originale e' stata archiviata come
->   `_legacy_risorse_umane_auth_user`.
+>   La tabella originale, archiviata come `_legacy_risorse_umane_auth_user`,
+>   e' stata **eliminata il 12-09-2026** (`90_end/20260912-10`).
 > * Nessuna modifica a `soggetti`, `soggetti_ruoli`, `tipi_ruoli` o
 >   alle tabelle specializzate (clienti, fornitori, ecc.).
 >

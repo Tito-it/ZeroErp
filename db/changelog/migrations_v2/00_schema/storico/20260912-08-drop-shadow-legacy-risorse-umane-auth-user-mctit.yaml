@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La shadow della madre LEGACY del ponte utente↔risorsa umana: si elimina.
+#   Brief: brief-db-rls-storico-scope-congelato.md §10 (coda del 12-09,
+#   decisione Tid: «senza produzione è sporcizia»)
+#
+# `anagrafiche._legacy_risorse_umane_auth_user` è la tabella ponte di PRIMA del
+# cutover a `identita_digitali` (2026-04-19): archiviata, non scritta e non letta
+# da nessuno — la verità vive in `identita_digitali`, e il nome vecchio
+# `anagrafiche.risorse_umane_auth_user` è una vista che ci legge sopra. La sua
+# shadow `storico._legacy_risorse_umane_auth_user` ha ZERO versioni: le 12 di
+# prima della rinomina stavano in `storico.risorse_umane_auth_user`, eliminata
+# dal `20260912-03`. Una shadow vuota di una madre che nessuno scrive non
+# rappresenta niente: si elimina, e con lei la madre (`90_end/20260912-10`).
+#
+# ── Perché IF EXISTS, e perché qui in 00_schema ──────────────────────────
+#   Su un database ricostruito da zero le shadow le crea il framework delle
+#   automazioni a `ci_apply`, cioè DOPO il migrate: a questo punto della
+#   timeline la tabella non esiste. E a `ci_apply` non rinasce, perché la madre
+#   — che le automazioni scoprono per la colonna `storicizza` — viene eliminata
+#   in `90_end` nella stessa corsa. Presidio di entrambe le cose:
+#   db/pgtap/anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1.sql.
+#
+# ── Lettori censiti: nessuno ─────────────────────────────────────────────
+#   · nessuna funzione o vista del DB la nomina (catalogo, 12-09);
+#   · backend: `permissions_audit_repository._USER_TABLES` legge
+#     `storico.identita_digitali` dal 12-09 (PR #1567), il test
+#     `test_audit_log_from_storico_table.py` usa il nome solo come stringa di
+#     prova e NON tocca il database;
+#   · i due `runAlways` di 90_end (`20260911-29` convergenza, `-31` backfill)
+#     rispondono `NO_SHADOW` su una shadow assente: non si fermano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20260912-08-drop-shadow-legacy-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260912-08-drop-shadow-legacy-risorse-umane-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Elimina storico._legacy_risorse_umane_auth_user, la shadow (vuota) della
+        tabella ponte legacy utente-risorsa umana, dismessa dal cutover a
+        identita_digitali del 2026-04-19. La madre viene eliminata in
+        90_end/20260912-10 (deve girare dopo 90_end/20260429-19a, che la
+        pretende esistente). Nessun lettore: catalogo DB e backend censiti il
+        12-09. Decisione Tid 12-09-2026, brief-db-rls-storico-scope-congelato §10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TABLE IF EXISTS storico._legacy_risorse_umane_auth_user;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La shadow era vuota e la madre viene eliminata nella stessa corsa:
+              -- non c'è niente da ricostruire. Forward-only.
+              SELECT 1;

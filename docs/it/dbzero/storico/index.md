@@ -1,7 +1,6 @@
 # Schema `storico`
 
 ## 📚 Tabelle
-- [_legacy_risorse_umane_auth_user](tabelle/_legacy_risorse_umane_auth_user.md)
 - [ambito_causale](tabelle/ambito_causale.md)
 - [articoli](tabelle/articoli.md)
 - [articoli_componenti](tabelle/articoli_componenti.md)

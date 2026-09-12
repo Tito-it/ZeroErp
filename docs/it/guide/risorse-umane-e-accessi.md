@@ -20,8 +20,9 @@
 > §13.3.2 del 19-04-2026). I riferimenti nel corpo di questa guida a
 > `risorse_umane_auth_user` come **tabella** vanno riletti come **vista
 > read-only di compatibilita'** che legge da `identita_digitali`
-> filtrando `ruolo_applicativo = 'OPERATORE'`. La ex tabella e'
-> archiviata come `_legacy_risorse_umane_auth_user`.
+> filtrando `ruolo_applicativo = 'OPERATORE'`. La ex tabella, archiviata
+> come `_legacy_risorse_umane_auth_user`, **e' stata eliminata il 12-09-2026**
+> (decisione Tid: senza produzione era sporcizia; `90_end/20260912-10`).
 >
 > **Mappature chiave** (legacy → nuovo modello):
 >

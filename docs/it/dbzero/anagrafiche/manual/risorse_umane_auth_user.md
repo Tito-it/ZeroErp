@@ -19,11 +19,12 @@ Architettura di riferimento:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 29-04-2026, post-Fase 7 cleanup)
+(latest review 12-09-2026)
 
 **Attenzione:** dal 19-04-2026 `risorse_umane_auth_user` è una **vista**,
-non più una tabella. La tabella originale è stata rinominata in
-`anagrafiche._legacy_risorse_umane_auth_user` e archiviata.
+non più una tabella. La tabella originale era stata rinominata in
+`anagrafiche._legacy_risorse_umane_auth_user` e archiviata; **dal 12-09-2026
+non esiste più** (vedi in fondo).
 
 **Update Fase 7 (29-04-2026):** la colonna `ruolo_sistema` è stata
 **rimossa** dalla vista insieme alla relativa subquery `sa` su
@@ -91,20 +92,34 @@ semantica del bridge legacy. Le identità portale/shop/fornitore
 
 ---
 
-### Tabella `_legacy_risorse_umane_auth_user`
+### La tabella `_legacy_risorse_umane_auth_user` — ritirata il 12-09-2026
 
-Contiene i dati pre-cutover (righe scritte dal backend legacy + dal
-trigger-ponte durante PR1 DB). Archivio: **non scrivere**. Tutti gli
-altri trigger framework (audit, storico, tx_id, guard persona fisica)
-sono rimasti agganciati alla tabella legacy ma sono inerti perché non
-ci sono più writer.
+Era la tabella ponte di prima del cutover, rinominata e tenuta «come backup
+forensico» finché il progetto non fosse andato in produzione. **Decisione di
+Tid (12-09-2026): senza produzione quelle sei righe erano dati di test di una
+tabella dismessa, cioè sporcizia** — e il drop fisico era già in piano
+(`sviluppo-multi-face-da-completare` §2.9).
 
-**Update Fase 7 (2026-04-29):** anche su questa tabella la colonna
-`ruolo_sistema` è stata droppata (`ALTER TABLE ... DROP COLUMN`,
-migration `90_end/20260429-19a`) per liberare la dipendenza dal type
-`config.ruolo_sistema` prima del `DROP TYPE` finale. Le altre colonne
-storiche (`id`, `risorsa_umana_id`, `auth_user_id`, `attivo`, audit)
-restano intatte come backup forensico.
+⛔ **Non era inerte, ed è la ragione per cui «archiviata» era la parola
+sbagliata.** Le sue due FK `ON DELETE RESTRICT` facevano sì che sei righe di
+test bloccassero la cancellazione di sei `risorse_umane` e sei `auth_user`
+vivi; il trigger `sync_active` avrebbe riscritto `auth_user.is_active` alla
+prima scrittura; e con la colonna `storicizza` a bordo ogni passata `ci_apply`
+le ri-armava audit, tx_id e storico e le ricreava la shadow. La versione
+precedente di questa scheda diceva che i trigger erano «inerti perché non ci
+sono più writer»: vero per i trigger, falso per le FK, che agiscono quando si
+cancella il **padre**.
+
+Eliminata con `90_end/20260912-10` (la tabella, i suoi otto trigger, le due FK
+e le due trigger function che esistevano solo per lei), la shadow con
+`00_schema/storico/20260912-08`, le registrazioni (mappa dello scope,
+`dbops.audit_sources`, `config.storico_set_storicizza`) con
+`80_data/20260912-09`. Presidio del ritiro:
+`db/pgtap/anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1.sql`.
+⚠️ Il `DROP` sta in `90_end` e non in `00_schema` perché `90_end/20260429-19a`
+pretende la tabella esistente (`onFail: HALT`) e su un database ricostruito da
+zero gira dopo tutto `00_schema`. Brief: `brief-db-rls-storico-scope-congelato`
+§10.
 
 ---
 

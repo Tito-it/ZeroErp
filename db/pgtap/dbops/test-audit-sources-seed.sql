@@ -6,7 +6,7 @@
 -- aggiornato 2026-05-04 dismissione modello profili_reparto_*).
 --
 -- Verifica:
---   - 9 righe seedate (5 user_override/emittenti/RUA + identita +
+--   - 8 righe seedate (4 user_override/emittenti + identita +
 --     3 profili_accesso_*).
 --   - Coerenza area_funzionale con il vocabolario controllato:
 --     PERMESSI | AUTH | ANAGRAFICHE | EMITTENTI | FATTURAZIONE.
@@ -15,8 +15,8 @@
 --   - Nessun residuo del modello legacy profili_reparto_*.
 --   - La vista pubblica vw_audit_sources espone solo 3 colonne.
 --
--- Indice test (1..7):
---    1. dbops.audit_sources contiene almeno 9 righe attive
+-- Indice test (1..8):
+--    1. dbops.audit_sources contiene almeno 8 righe attive
 --    2. Codici attesi presenti (set match) — incluso il nuovo
 --       modello profili_accesso_aree/_azioni/_bindings
 --    3. Tutte le righe attive usano un valore di area_funzionale
@@ -25,8 +25,10 @@
 --    5. Tutte le storico_pk_col referenziate esistono come colonne
 --       della rispettiva storico
 --    6. Nessun codice legacy profili_reparto_* presente
---    7. Vista vw_audit_sources espone esattamente 3 colonne
---       (code, label_key, area_funzionale)
+--    7. Vista vw_audit_sources espone esattamente 4 colonne
+--       (code, label_key, area_funzionale, storico_table)
+--    8. La riga di risorse_umane_auth_user NON esiste piu' (ritirata
+--       il 12-09-2026 con la tabella ponte legacy, 80_data/20260912-09)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(8);
 
 -- =========================================================
 -- 1) Almeno 9 righe attive
@@ -95,6 +97,13 @@ SELECT bag_eq(
 --   snapshot pre-cutover stanno nella vecchia. Ripuntarla avrebbe mostrato un
 --   audit VUOTO invece di un errore — la stessa perdita, ma muta.
 --   L'audit AUTH del presente e' coperto da `identita_digitali` (riga 8).
+--
+-- ✅ CHIUSO il 2026-09-12: la riga 5 e' stata CANCELLATA (80_data/20260912-09,
+--   e tolta dal CSV) insieme alla tabella ponte legacy e alle sue due shadow
+--   (20260912-03, -08, -10; brief-db-rls-storico-scope-congelato §10). Il
+--   `risorse_umane_auth_user` nell'`IN (...)` del test 2 RESTA: ora presidia
+--   che nessuno la REINSERISCA attiva. Il test 8 presidia che non esista
+--   affatto, attiva o no.
 
 -- =========================================================
 -- 3) Vocabolario controllato area_funzionale
@@ -177,6 +186,23 @@ SELECT bag_eq(
 -- ⚠️ Un presidio sulla FORMA va cambiato insieme alla forma, o smette di
 --   essere un presidio e diventa un ostacolo: e' `bag_eq`, quindi una colonna
 --   in piu' lo fa rosso anche quando l'aggiunta e' voluta.
+
+-- =========================================================
+-- 8) La riga di risorse_umane_auth_user non esiste piu'
+-- =========================================================
+-- Fino al 2026-09-12 era `attivo = f` (la dichiarazione della dismissione);
+-- quel giorno la tabella ponte legacy e' stata eliminata con le sue shadow, e
+-- una riga che punta a `storico.risorse_umane_auth_user` — che non esiste piu'
+-- dal 20260912-03 — non dichiara piu' niente. Forma del test 6.
+SELECT is(
+    (SELECT count(*)::int
+       FROM dbops.audit_sources
+      WHERE code = 'risorse_umane_auth_user'
+         OR storico_table IN ('storico.risorse_umane_auth_user',
+                              'storico._legacy_risorse_umane_auth_user')),
+    0,
+    '8) Nessuna riga risorse_umane_auth_user in dbops.audit_sources (ritirata il 2026-09-12)'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
