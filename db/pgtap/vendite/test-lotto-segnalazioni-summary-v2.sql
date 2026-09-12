@@ -10,6 +10,8 @@
 -- 4) Lotto inesistente: lotto_info_count = 0
 -- 5) Lotto inesistente: fatture_stato_esecuzione_errore_count = 0
 -- 6) Nuova colonna fatture_stato_esecuzione_errore_count presente in output
+-- 7) Colonna esiti_stato_esecuzione_errore_count (D2, 2026-09-12) presente,
+--    DECIMA e ultima: il backend legge la riga per posizione
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -28,7 +30,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+SELECT plan(7);
 
 SELECT ok(
   EXISTS (
@@ -83,6 +85,20 @@ SELECT ok(
     FROM vendite.fn_get_lotto_segnalazioni_summary(999999999) AS x
   ),
   'Nuova colonna fatture_stato_esecuzione_errore_count presente in output'
+);
+
+-- 7) D2 (brief-db-rilancio-step-non-rivede-le-proprie-commesse, changeSet
+--    20260912-16): il decimo conteggio esiste ed e' in CODA. La posizione non
+--    e' estetica: il backend mappa la riga per posizione, e una colonna in
+--    mezzo farebbe scivolare le altre senza che niente protesti.
+SELECT is(
+  (
+    SELECT a.proargnames[array_upper(a.proargnames, 1)]
+      FROM pg_proc a JOIN pg_namespace n ON n.oid = a.pronamespace
+     WHERE n.nspname = 'vendite' AND a.proname = 'fn_get_lotto_segnalazioni_summary'
+  ),
+  'esiti_stato_esecuzione_errore_count',
+  'Colonna esiti_stato_esecuzione_errore_count presente in output, decima e ULTIMA'
 );
 
 SELECT * FROM finish();

@@ -640,6 +640,17 @@ nomina **LTF-0010331** — il lotto del collaudo di Tid.
 una commessa (34137) che ha **una sola riga, trattenuta**. Non ha niente da
 dare, e visitarla produceva un pull a vuoto registrato come lavorato.
 
+> 🔴 **Letto dal caso sbagliato (corretto il 2026-09-12).** Quando questa riga è
+> stata scritta, 34137 era trattenuta da un **altro** lotto (LTF-0010331). La
+> stessa identica sparizione, al **rilancio** dello stesso lotto, è il difetto:
+> la decisione §5.4 («il giro non esclude sé stesso») era nel solo `-62`, e il
+> `-61` scartava le proprie commesse prima che l'emit potesse riprenderle — lotto
+> `COMPLETATO` senza aver emesso niente (LTF-0010972, prova 5 del collaudo). E
+> **P-5 non poteva vederlo**: il test 3 chiamava direttamente l'emit, la
+> discovery non era nel percorso. Corretto da `20260912-12…16` con la regola in
+> una sede sola (`fn_classe_emittibilita_per_giro`) e il percorso intero nel
+> test: `brief-db-rilancio-step-non-rivede-le-proprie-commesse.md`.
+
 #### ✅ L4 — La dashboard: il conteggio e il tentativo — **APPLICATO il 2026-09-09 (17:52)**
 
 > 🔴 **Un secondo lettore della vista ritirata non era stato censito** — vedi

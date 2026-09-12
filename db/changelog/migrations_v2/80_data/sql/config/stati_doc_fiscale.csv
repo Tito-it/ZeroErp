@@ -4,4 +4,4 @@ id,codice,descrizione,attivo,ordine,meta,codice_interno,applica_lotto,applica_fa
 6,REGISTRATA,Registrata,t,60,{},REGISTRATA,t,t,f,CHIUSO,f,t
 8,DEFINITIVA,DEFINITIVA,t,30,{},DEFINITIVA,t,t,t,IN_CORSO,f,t
 3,INVIATA,Inviata,t,40,{},INVIATA,t,t,f,IN_ATTESA,f,t
-7,ANNULLATA,Annullata,t,70,{},ANNULLATA,f,t,f,CHIUSO,t,t
+7,ANNULLATA,Annullata,t,70,{},ANNULLATA,t,t,f,CHIUSO,t,t

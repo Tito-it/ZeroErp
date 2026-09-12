@@ -22,6 +22,18 @@ ai **lotti**, tramite flag di applicabilita`.
 * **Applicabilita`**:
   * `applica_fattura` → stato valido per `vendite.fatture`.
   * `applica_lotto` → stato valido per `vendite.fatturazione_lotti`.
+    ⚠️ **Ha una seconda sede che deve dire la stessa cosa**: la matrice
+    `config.stati_doc_fiscale_transizioni` (`ammesso`, `solo_fattura`,
+    `meta->>'tipo_lotto'`). Il guard `vendite.trgfn_fatturazione_lotti_guard_stato`
+    legge il flag **solo alla prima assegnazione** dello stato; ogni transizione
+    successiva passa dalla matrice e il flag non viene riletto. ⇒ Uno stato in cui
+    la matrice porta un lotto **deve** avere il flag a `true`, altrimenti il
+    catalogo dice il falso senza che niente si fermi. È successo: fino al
+    12-09-2026 `ANNULLATA` aveva `applica_lotto = false` mentre `DRAFT → ANNULLATA`
+    è ammessa ai lotti (segnalazione del BE; corretto nel CSV, riga 7). Presidio:
+    `db/pgtap/config/test-stati-doc-fiscale-applica-lotto-vs-matrice-v1.sql`
+    (regola a un verso solo: raggiungibile ⇒ flag; non il contrario — `REGISTRATA`
+    ha il flag e nessuna transizione la raggiunge ancora).
   * `chiude_lotto` → se `true`, al termine dello step pipeline il lotto viene chiuso operativamente (`stato_operativo=CHIUSO`) tramite processo dedicato.
 * **Congelamento fiscale** (dal 2026-08-29):
   * `congela_fiscale` → se `true`, da questo stato in poi il documento e` uno **snapshot

@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DAL MARCHIO DEL GIRO AL LOTTO — la risoluzione `lock_batch_id → lotto`, in
+# una sede sola.
+#   Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md (D1)
+#
+# Il pull riceve l'identita' del giro come `p_emit_batch_id` (il marchio che
+# scrive sulle righe che consegna). Il lotto che sta girando si risolve da
+# `vendite.fatturazione_lotti.lock_batch_id`, che ha un UNIQUE: al piu' una
+# riga. Fino a oggi la risoluzione stava inline in
+# fn_emit_attivita_fatturabili_da_commessa e mancava in
+# fn_list_commesse_emittibili: con due chiamanti la stessa SELECT in due corpi
+# e' la forma in cui le copie si sfilano. Qui ce n'e' una.
+#
+# ⚠️ NULL in ingresso → NULL in uscita (chiamante fuori pipeline: backfill,
+#   riconciliazione). Un marchio che non corrisponde a nessun lotto → NULL:
+#   e' il caso «lotto sparito» e la risposta prudente e' la stessa — nessuna
+#   auto-esclusione.
+# ⚠️ STABLE e SECURITY INVOKER, come le due funzioni che la chiamano: legge
+#   fatturazione_lotti sotto la RLS di chi esegue. Il pull gira come OPERATORE
+#   nel perimetro del lotto, quindi lo vede; un chiamante fuori perimetro non
+#   lo vede e ottiene NULL — cioe' niente auto-esclusione, che e' il verso
+#   giusto (fail-closed).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260912-13-create-fn-lotto-da-emit-batch-mctit.yaml
+
+  - changeSet:
+      id: 20260912-13-create-fn-lotto-da-emit-batch
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_lotto_da_emit_batch(p_emit_batch_id): il lotto che sta
+        girando, risolto da fatturazione_lotti.lock_batch_id (UNIQUE). NULL o
+        marchio sconosciuto → NULL = nessuna auto-esclusione. Sede unica della
+        risoluzione, chiamata da fn_list_commesse_emittibili e
+        fn_emit_attivita_fatturabili_da_commessa. SQL STABLE.
+        Brief brief-db-rilancio-step-non-rivede-le-proprie-commesse (D1).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+            columnName: lock_batch_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_lotto_da_emit_batch(
+                  p_emit_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE)
+              RETURNS vendite.fatturazione_lotti.id%TYPE
+              LANGUAGE sql
+              STABLE
+              RETURN (SELECT l.id
+                        FROM vendite.fatturazione_lotti l
+                       WHERE l.lock_batch_id = p_emit_batch_id);
+
+              COMMENT ON FUNCTION vendite.fn_lotto_da_emit_batch(uuid) IS
+              'Il lotto che sta girando, risolto dal marchio del giro (p_emit_batch_id = fatturazione_lotti.lock_batch_id, UNIQUE: al piu'' una riga). NULL in ingresso, marchio sconosciuto o lotto fuori dal perimetro RLS di chi esegue → NULL, cioe'' NESSUNA auto-esclusione del proprio lotto (la risposta prudente). Sede unica della risoluzione: prima stava inline nell''emit e mancava nella discovery — due copie, una gia'' sfilata. La leggono fn_list_commesse_emittibili e fn_emit_attivita_fatturabili_da_commessa, che passano il risultato a fn_classe_emittibilita_per_giro. SECURITY INVOKER, STABLE. Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse (D1), 2026-09-12.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo insieme al rollback dei changeSet -14 e -15, che la chiamano.
+              DROP FUNCTION IF EXISTS vendite.fn_lotto_da_emit_batch(uuid);

@@ -116,6 +116,7 @@
 - [fn_check_fondo_fattura_capiente](funzioni/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_chiudi_contratto_per_successione](funzioni/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](funzioni/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
+- [fn_classe_emittibilita_per_giro](funzioni/fn_classe_emittibilita_per_giro.md) — (latest review 12-09-2026)
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
@@ -183,7 +184,7 @@
 - [fn_libera_attivita_fatturabili](funzioni/fn_libera_attivita_fatturabili.md) — (latest review 26-08-2026)
 - [fn_link_commessa_sorgente](funzioni/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
 - [fn_list_commessa_attivita](funzioni/fn_list_commessa_attivita.md) — (latest review 26-02-2026)   Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
-- [fn_list_commesse_emittibili](funzioni/fn_list_commesse_emittibili.md) — (latest review 26-02-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
+- [fn_list_commesse_emittibili](funzioni/fn_list_commesse_emittibili.md) — (latest review 12-09-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 - [fn_list_consumi_da_pushare](funzioni/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
 - [fn_list_contratti_da_pushare](funzioni/fn_list_contratti_da_pushare.md) — `vendite.fn_list_contratti_da_pushare(...)` seleziona le righe contratto pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
 - [fn_list_ddt_da_pushare](funzioni/fn_list_ddt_da_pushare.md) — `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
@@ -198,6 +199,7 @@
 - [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 2026-09-08)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
 - [fn_lookup_registro_documento](funzioni/fn_lookup_registro_documento.md) — (latest review 31-08-2026)
 - [fn_lookup_registro_id](funzioni/fn_lookup_registro_id.md) — **Cercare il sezionale di numerazione, e basta.**
+- [fn_lotto_da_emit_batch](funzioni/fn_lotto_da_emit_batch.md) — (latest review 12-09-2026)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_numero_documento_fattura](funzioni/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**
 - [fn_offerta_eccezione_componenti_init](funzioni/fn_offerta_eccezione_componenti_init.md)

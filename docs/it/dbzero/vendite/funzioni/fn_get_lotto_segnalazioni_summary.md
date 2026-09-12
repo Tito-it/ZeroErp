@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
- RETURNS TABLE(fatture_critical_count bigint, fatture_warning_count bigint, lotto_critical_count bigint, lotto_warning_count bigint, lotto_info_count bigint, fatture_stato_esecuzione_errore_count bigint, documenti_bloccanti_count bigint, documenti_presi_in_carico_count bigint, critiche_giro_count bigint)
+ RETURNS TABLE(fatture_critical_count bigint, fatture_warning_count bigint, lotto_critical_count bigint, lotto_warning_count bigint, lotto_info_count bigint, fatture_stato_esecuzione_errore_count bigint, documenti_bloccanti_count bigint, documenti_presi_in_carico_count bigint, critiche_giro_count bigint, esiti_stato_esecuzione_errore_count bigint)
  LANGUAGE plpgsql
 AS $function$
 
@@ -75,7 +75,23 @@ BEGIN
         --   massa — e' esattamente la ragione per cui fatturazione_lotti_esiti
         --   e' nata il 2026-09-07. Col perimetro il banner direbbe «su 0» su
         --   meta' dei giri, e nessuno collegherebbe il difetto a questa riga.
-        SELECT COUNT(*) AS dt
+        -- ⭐ E GLI ERRORE (rev 2026-09-12, D2 del brief
+        --   brief-db-rilancio-step-non-rivede-le-proprie-commesse): un esito
+        --   e' un FATTO registrato su un documento che il lotto ha preso in
+        --   carico. Un lotto COMPLETATO con un documento il cui ultimo fatto
+        --   e' ERRORE e' una contraddizione, e fino a oggi il verdetto non la
+        --   vedeva: contava le bandiere (i log critici, che il runner stesso
+        --   abbassa all'avvio di ogni rerun) e il gemello a valle
+        --   (lotti_fatture.stato_esecuzione). Se il pull non rivede una
+        --   commessa — righe passate a RIFIUTATA, o trattenute nel frattempo
+        --   da un secondo lotto — nessuno rialza la bandiera, e il lotto si
+        --   dichiarava a posto PER SOTTRAZIONE.
+        -- ⭐ La via d'uscita c'e' gia' ed e' quella giusta: «Togli dal giro»
+        --   porta l'esito a ESCLUSO, cioe' l'operatore DICHIARA che quel
+        --   documento non fa piu' parte del lavoro. ESCLUSO non conta qui:
+        --   e' l'altro stato della stessa riga.
+        SELECT COUNT(*) AS dt,
+               COUNT(*) FILTER (WHERE e.stato_esecuzione = 'ERRORE') AS de
           FROM vendite.fatturazione_lotti_esiti e
          WHERE e.lotto_id = p_lotto_id
     ),
@@ -85,23 +101,25 @@ BEGIN
           FROM vendite.fatturazione_lotti_fatture lf
          WHERE lf.lotto_id = p_lotto_id
     )
-    -- ⚠️ I TRE NUMERI NUOVI VANNO IN CODA, e non e' estetica: il backend
-    --   legge questa riga per POSIZIONE (row[0]..row[5]). Infilarli in mezzo
-    --   farebbe scivolare i sei esistenti, e una lettura posizionale sbagliata
+    -- ⚠️ I NUMERI NUOVI VANNO IN CODA, e non e' estetica: il backend legge
+    --   questa riga per POSIZIONE (row[0]..row[8], e dal 2026-09-12 per nome
+    --   nella SELECT ma ancora per posizione nel mapping). Infilarli in mezzo
+    --   farebbe scivolare gli esistenti, e una lettura posizionale sbagliata
     --   non protesta: mostrerebbe numeri plausibili e falsi.
     SELECT COALESCE(fa.fc, 0), COALESCE(fa.fw, 0),
            COALESCE(la.lc, 0), COALESCE(la.lw, 0), COALESCE(la.li, 0),
            COALESCE(pa.pe, 0),
            COALESCE(la.docs_bloccanti, 0),
            COALESCE(ea.dt, 0),
-           COALESCE(la.critiche_giro, 0)
+           COALESCE(la.critiche_giro, 0),
+           COALESCE(ea.de, 0)
       FROM fatture_agg fa CROSS JOIN lotto_agg la CROSS JOIN ponte_agg pa
                           CROSS JOIN esiti_agg ea;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
-IS 'Il riepilogo delle segnalazioni di un lotto: sei conteggi storici piu'' tre per il BANNER, aggiunti il 2026-09-08. ⭐ I sei contano SEGNALAZIONI; i tre nuovi contano GESTI, perche'' l''operatore ne ha uno per DOCUMENTO (togli questo dal giro) e un documento con tre critiche resta un documento solo. documenti_bloccanti_count = quanti documenti hanno almeno una critica viva (DISTINCT sulla chiave); documenti_presi_in_carico_count = il denominatore; critiche_giro_count = le critiche che un documento NON ce l''hanno. ⛔ Il terzo numero non e'' un di piu'': senza, N documenti su M direbbe 0 documenti su 4 su un lotto fermo per un emittente non risolto, cioe'' che non c''e'' niente da fare mentre il giro e'' bloccato. Le critiche sono di DUE specie (brief §4.1) e una non e'' un documento. ⛔ Il denominatore si conta sugli ESITI e non sul perimetro: fatturazione_lotti_gruppi e'' vuota sui giri di massa, ed e'' la ragione per cui la tabella degli esiti e'' nata. ⚠️ I tre descrivono il canale LOTTO, dove la gruppo_key vive: gli altri due canali parlano per FATTURA, e una bozza puo'' coprire piu'' documenti, quindi non sono sommabili senza scommettere. ⭐ Il filtro sui documenti USCITI dal giro non si ripete: i due conteggi nascono dentro lotto_agg, che ce l''ha gia''. ⚠️ Le colonne nuove sono IN CODA perche'' il backend legge questa riga per POSIZIONE: infilarle in mezzo mostrerebbe numeri plausibili e falsi, senza fallire. ⛔ blocks_next_step resta in Python e non deve sapere niente di questi tre: sono per la FRASE, non per la decisione. Brief: brief-db-uscita-documento-dal-giro §7.';
+IS 'Il riepilogo delle segnalazioni di un lotto: sei conteggi storici piu'' tre per il BANNER, aggiunti il 2026-09-08. ⭐ I sei contano SEGNALAZIONI; i tre nuovi contano GESTI, perche'' l''operatore ne ha uno per DOCUMENTO (togli questo dal giro) e un documento con tre critiche resta un documento solo. documenti_bloccanti_count = quanti documenti hanno almeno una critica viva (DISTINCT sulla chiave); documenti_presi_in_carico_count = il denominatore; critiche_giro_count = le critiche che un documento NON ce l''hanno. ⛔ Il terzo numero non e'' un di piu'': senza, N documenti su M direbbe 0 documenti su 4 su un lotto fermo per un emittente non risolto, cioe'' che non c''e'' niente da fare mentre il giro e'' bloccato. Le critiche sono di DUE specie (brief §4.1) e una non e'' un documento. ⛔ Il denominatore si conta sugli ESITI e non sul perimetro: fatturazione_lotti_gruppi e'' vuota sui giri di massa, ed e'' la ragione per cui la tabella degli esiti e'' nata. ⚠️ I tre descrivono il canale LOTTO, dove la gruppo_key vive: gli altri due canali parlano per FATTURA, e una bozza puo'' coprire piu'' documenti, quindi non sono sommabili senza scommettere. ⭐ Il filtro sui documenti USCITI dal giro non si ripete: i due conteggi nascono dentro lotto_agg, che ce l''ha gia''. ⚠️ Le colonne nuove sono IN CODA perche'' il backend legge questa riga per POSIZIONE: infilarle in mezzo mostrerebbe numeri plausibili e falsi, senza fallire. ⛔ blocks_next_step resta in Python e non deve sapere niente di questi tre: sono per la FRASE, non per la decisione. Brief: brief-db-uscita-documento-dal-giro §7. ⭐⭐ rev 2026-09-12 (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D2): DECIMO conteggio in coda, esiti_stato_esecuzione_errore_count = i documenti presi in carico il cui ultimo fatto registrato (fatturazione_lotti_esiti) e'' ERRORE. Entra nel verdetto (is_error / blocks_next_step, lato backend): un lotto con un documento in ERRORE non e'' a posto per sottrazione. ESCLUSO non conta: e'' la dichiarazione dell''operatore che quel documento non fa piu'' parte del giro — la via d''uscita.';
 ```
 
 ---

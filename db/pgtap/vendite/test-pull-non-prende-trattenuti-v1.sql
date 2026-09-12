@@ -12,14 +12,41 @@
 --
 -- Test: P-5 — vendite.fn_emit_attivita_fatturabili_da_commessa non prende una
 --       riga trattenuta da un ALTRO lotto in gioco, e riprende le PROPRIE.
+--       Dal 2026-09-12 anche P-5-bis (la DISCOVERY fa lo stesso) e P-5-ter
+--       (il PERCORSO INTERO discovery → emit), piu' la premessa dell'helper e
+--       il decimo numero del riepilogo (D2).
 --
--- Elenco test (plan 5) — numerati come li stampa il TAP:
+-- Elenco test (plan 13) — numerati come li stampa il TAP:
 --  0) riferimenti minimi risolti
 --  1) 🔴 il pull NON emette una riga trattenuta da un ALTRO lotto in gioco
 --  2) ⭐ e il verso opposto: la riga LIBERA della stessa commessa passa
 --  3) ⭐⭐ RERUN: la riga trattenuta dal PROPRIO lotto viene ripresa
 --  4) ⚠️ senza identita' del giro (p_emit_batch_id NULL) la trattenuta resta
 --        fuori — la risposta prudente
+--  5) P-5-bis 🔴 la DISCOVERY non visita la commessa trattenuta da un ALTRO lotto
+--  6) P-5-bis ⚠️ ne' la visita senza identita' del giro
+--  7) P-5-bis ⭐⭐ RERUN: la DISCOVERY visita la commessa trattenuta dal PROPRIO
+--        lotto — e' il test che il 12-09 mancava, ed e' ROSSO sul -61
+--  8) P-5-ter ⭐⭐ PERCORSO INTERO: la commessa data dalla discovery, passata
+--        all'emit con la stessa identita', ha la riga presa (total_candidate 1)
+--  9) P-5-ter ... e la riga esce EMESSA
+-- 10) la PREMESSA dell'helper: una riga NON approvata trattenuta da un lotto e'
+--        NON_APPROVATA, non TRATTENUTA (ordine del CASE della vista)
+-- 11) D2: il riepilogo del lotto «mio» conta 1 esito ERRORE, «altrui» 0
+-- 12) D2: un esito portato a ESCLUSO non conta piu'
+--
+-- ────────────────────────────────────────────────────────────────
+-- 🔴 PERCHE' I TEST 5-9 ESISTONO — il collaudo del 2026-09-12 (prova 5).
+--   Il test 3 era verde e il rilancio NON riprendeva niente: il pull ha DUE
+--   cancelli in serie, fn_list_commesse_emittibili (quali COMMESSE visitare)
+--   e l'emit (quali RIGHE emettere), e il test 3 chiamava DIRETTAMENTE l'emit.
+--   La discovery aveva la whitelist secca, senza identita': al rerun scartava
+--   la commessa coi PROPRI documenti trattenuti, e l'emit — che li avrebbe
+--   ripresi — non veniva mai chiamato. «La whitelist si verifica dal percorso
+--   che la attraversa, non dal nome»: il test 8 e' quel percorso.
+--   ChangeSet: 20260912-12 (helper classe per giro), -13 (lotto da batch),
+--   -14 (emit dall'helper), -15 (discovery con p_emit_batch_id), -16 (D2).
+--   Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md
 --
 -- ────────────────────────────────────────────────────────────────
 -- 🔴 PERCHE' QUESTO TEST ESISTE — il collaudo del 2026-09-09.
@@ -76,7 +103,7 @@ BEGIN
         (SELECT auth_user_id FROM tmp_pt_mondo));
 END $ctx$;
 
-SELECT plan(5);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture
@@ -265,6 +292,156 @@ SELECT is(
        FROM tmp_pt t WHERE t.caso = 'bloccata'),
     0,
     '4. senza identita'' del giro la riga trattenuta resta fuori (risposta prudente)'
+);
+
+-- ============================================================
+-- P-5-bis — la DISCOVERY (rev 2026-09-12)
+-- ============================================================
+-- Stato qui: `bloccata` trattenuta dal lotto ALTRUI, riga NON_EMESSA.
+-- ⭐ La chiamata e' quella del pull: competenza, emittente, i gruppi richiesti
+--   e l'identita' del giro — gli stessi argomenti che il backend binda.
+
+-- 5) 🔴 Trattenuta da un ALTRO lotto: la commessa NON si visita (niente pull
+--    a vuoto registrato come lavorato — e' l'effetto che il -61 voleva).
+SELECT is(
+    (SELECT count(*)::int
+       FROM tmp_pt_rif r,
+            LATERAL vendite.fn_list_commesse_emittibili(
+                p_competenza_mese             => r.mese,
+                p_emittente_soggetto_ruolo_id => r.emittente_sr,
+                p_gruppi                      => ARRAY[(SELECT gruppo_key FROM tmp_pt WHERE caso = 'bloccata')],
+                p_emit_batch_id               => (SELECT lock_batch_id FROM tmp_pt_lotti WHERE caso = 'mio')) d),
+    0,
+    '5. P-5-bis: la discovery NON visita la commessa trattenuta da un ALTRO lotto in gioco'
+);
+
+-- 6) ⚠️ Senza identita' del giro: nemmeno (la risposta prudente, come l'emit).
+SELECT is(
+    (SELECT count(*)::int
+       FROM tmp_pt_rif r,
+            LATERAL vendite.fn_list_commesse_emittibili(
+                p_competenza_mese             => r.mese,
+                p_emittente_soggetto_ruolo_id => r.emittente_sr,
+                p_gruppi                      => ARRAY[(SELECT gruppo_key FROM tmp_pt WHERE caso = 'bloccata')],
+                p_emit_batch_id               => NULL) d),
+    0,
+    '6. P-5-bis: senza identita'' del giro la discovery non visita la commessa trattenuta'
+);
+
+-- 7) ⭐⭐ RERUN: l'esito passa al lotto MIO — e' lo stato in cui un rilancio
+--    trova le cose. La commessa DEVE essere visitata, con la sua riga contata.
+-- ⛔ Sul changeSet -61 (whitelist secca, nessuna identita') questo test e'
+--    ROSSO: e' il difetto di LTF-0010972, «totale 0» su un lotto COMPLETATO.
+UPDATE vendite.fatturazione_lotti_esiti
+   SET lotto_id = (SELECT lotto_id FROM tmp_pt_lotti WHERE caso = 'mio')
+ WHERE gruppo_key = (SELECT gruppo_key FROM tmp_pt WHERE caso = 'bloccata');
+
+SELECT is(
+    (SELECT coalesce(sum(d.total_non_emesse), 0)::int
+       FROM tmp_pt_rif r,
+            LATERAL vendite.fn_list_commesse_emittibili(
+                p_competenza_mese             => r.mese,
+                p_emittente_soggetto_ruolo_id => r.emittente_sr,
+                p_gruppi                      => ARRAY[(SELECT gruppo_key FROM tmp_pt WHERE caso = 'bloccata')],
+                p_emit_batch_id               => (SELECT lock_batch_id FROM tmp_pt_lotti WHERE caso = 'mio')) d
+      WHERE d.commessa_id = (SELECT commessa_id FROM tmp_pt WHERE caso = 'bloccata')),
+    1,
+    '7. P-5-bis RERUN: la discovery VISITA la commessa trattenuta dal PROPRIO lotto, con la riga contata'
+);
+
+-- ============================================================
+-- P-5-ter — il PERCORSO INTERO: discovery → emit, stessa identita'
+-- ============================================================
+-- ⭐ E' il test che mancava: i due cancelli provati INSIEME, come li
+--   attraversa il pull. La commessa la da' la discovery, l'emit la riceve.
+-- ⚠️ `total_candidate` e non `inserted_rows`: il test 3 ha gia' creato la riga
+--   di attivita_fatturabili (il test 4 ha rimesso la commessa a NON_EMESSA, non
+--   ha tolto quella riga), quindi qui l'emit passa dal ramo UPDATE.
+SELECT is(
+    (SELECT (vendite.fn_emit_attivita_fatturabili_da_commessa(
+                 p_commessa_id   => d.commessa_id,
+                 p_emit_batch_id => (SELECT lock_batch_id FROM tmp_pt_lotti WHERE caso = 'mio')
+             )).total_candidate
+       FROM tmp_pt_rif r,
+            LATERAL vendite.fn_list_commesse_emittibili(
+                p_competenza_mese             => r.mese,
+                p_emittente_soggetto_ruolo_id => r.emittente_sr,
+                p_gruppi                      => ARRAY[(SELECT gruppo_key FROM tmp_pt WHERE caso = 'bloccata')],
+                p_emit_batch_id               => (SELECT lock_batch_id FROM tmp_pt_lotti WHERE caso = 'mio')) d
+      WHERE d.commessa_id = (SELECT commessa_id FROM tmp_pt WHERE caso = 'bloccata')),
+    1,
+    '8. P-5-ter PERCORSO INTERO: la commessa data dalla discovery, passata all''emit con la stessa identita'', ha la riga presa'
+);
+
+-- 9) ... e la riga e' uscita EMESSA: il rilancio ha prodotto qualcosa.
+SELECT is(
+    (SELECT ca.stato_emissione::text FROM vendite.commesse_attivita ca
+      WHERE ca.id = (SELECT ca_id FROM tmp_pt WHERE caso = 'bloccata')),
+    'EMESSA',
+    '9. P-5-ter: e la riga esce EMESSA'
+);
+
+-- ============================================================
+-- 10) La PREMESSA dell'helper: TRATTENUTA implica approvata
+-- ============================================================
+-- ⭐ fn_classe_emittibilita_per_giro promuove «TRATTENUTA solo da me» a PRONTA.
+--   Regge perche' nel CASE della vista RIFIUTATA e NON_APPROVATA vengono PRIMA
+--   di TRATTENUTA: una riga non approvata non e' MAI trattenuta, anche se un
+--   lotto tiene il suo documento. Se la vista cambiasse ordine, l'helper
+--   promuoverebbe una riga non approvata — e questo test lo direbbe.
+-- ⛔ Il caso si COSTRUISCE: una seconda riga della commessa bloccata, in
+--   BOZZA, mentre il lotto «mio» ne tiene il documento (stesso gruppo_key).
+INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT t.commessa_id,
+       'PGTAP-PT-bozza-' || substr(md5(clock_timestamp()::text), 1, 12),
+       r.articolo_id, r.istanza_utility_id, r.mese,
+       r.uom_id, 1, r.mese, r.mese, (r.mese + INTERVAL '1 month - 1 day')::date,
+       r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
+       'BOZZA', 'NON_EMESSA', NULL, NULL
+  FROM tmp_pt_rif r, tmp_pt t WHERE t.caso = 'bloccata';
+
+SELECT is(
+    (SELECT e.classe_emittibilita::text || ' / tenuta=' || (e.trattenuta_da_lotti IS NOT NULL)::text
+       FROM vendite.vw_commesse_attivita_emittibilita e
+       JOIN vendite.commesse_attivita ca ON ca.id = e.commessa_attivita_id
+      WHERE ca.segment_key LIKE 'PGTAP-PT-bozza-%'),
+    'NON_APPROVATA / tenuta=true',
+    '10. una riga NON approvata tenuta da un lotto e'' NON_APPROVATA, non TRATTENUTA (la premessa dell''helper)'
+);
+
+-- ============================================================
+-- D2 — il decimo numero del riepilogo (rev 2026-09-12)
+-- ============================================================
+-- Stato qui: l'esito ERRORE della commessa bloccata e' sul lotto MIO.
+SELECT is(
+    (SELECT (SELECT s.esiti_stato_esecuzione_errore_count
+               FROM vendite.fn_get_lotto_segnalazioni_summary((SELECT lotto_id FROM tmp_pt_lotti WHERE caso = 'mio')) s)::text
+         || '/' ||
+            (SELECT s.esiti_stato_esecuzione_errore_count
+               FROM vendite.fn_get_lotto_segnalazioni_summary((SELECT lotto_id FROM tmp_pt_lotti WHERE caso = 'altrui')) s)::text),
+    '1/0',
+    '11. D2: il riepilogo conta l''esito ERRORE sul lotto che lo porta (mio=1, altrui=0)'
+);
+
+-- 12) ESCLUSO non conta: e' la dichiarazione dell'operatore che il documento
+--     non fa piu' parte del giro — la via d'uscita, non un errore.
+UPDATE vendite.fatturazione_lotti_esiti
+   SET stato_esecuzione = 'ESCLUSO',
+       uscita_motivo    = 'pgTAP: il documento esce dal giro',
+       uscita_quando    = now(),
+       uscita_da        = 'pgtap'
+ WHERE gruppo_key = (SELECT gruppo_key FROM tmp_pt WHERE caso = 'bloccata')
+   AND lotto_id   = (SELECT lotto_id FROM tmp_pt_lotti WHERE caso = 'mio');
+
+SELECT is(
+    (SELECT s.esiti_stato_esecuzione_errore_count
+       FROM vendite.fn_get_lotto_segnalazioni_summary((SELECT lotto_id FROM tmp_pt_lotti WHERE caso = 'mio')) s),
+    0::bigint,
+    '12. D2: un esito portato a ESCLUSO non conta piu'' come ERRORE'
 );
 
 SELECT * FROM finish();

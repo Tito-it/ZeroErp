@@ -17,6 +17,14 @@ AS $function$
 --        Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e il
 --        registro tipo_movimento (colonna dal 2026-07-17).
 -- Sottosistema lotto rimosso (deprecato 20260227-16).
+-- rev 2026-09-12 (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1):
+--        l'auto-esclusione del proprio lotto NON e' piu' scritta qui: la
+--        classe si legge da vendite.fn_classe_emittibilita_per_giro e il
+--        lotto da vendite.fn_lotto_da_emit_batch — le stesse due righe che
+--        legge fn_list_commesse_emittibili. Fino a oggi il predicato viveva
+--        in DUE copie, e la discovery ne aveva una senza identita': al
+--        rilancio di un pull fallito scartava i PROPRI documenti e questa
+--        funzione, che li avrebbe ripresi, non veniva mai chiamata.
 -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente COMMESSA
 --        risolta per codice_interno (immutabile), non per codice.
 -- rev 2026-07-17: propaga tipo_movimento (brief immutabilita §4c.2);
@@ -64,8 +72,8 @@ DECLARE
     v_existing_fatturato    vendite.attivita_fatturabili.fatturato%TYPE;
     v_sorgente_uid_uuid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
     -- ⭐ IL LOTTO DI QUESTO GIRO, risolto dal marchio che il chiamante passa
-    --   gia'. Serve a non escludere le righe che il giro sta trattenendo DA
-    --   SE' — vedi il blocco piu' sotto.
+    --   gia' (vendite.fn_lotto_da_emit_batch). Serve a non escludere le righe
+    --   che il giro sta trattenendo DA SE' — vedi il JOIN piu' sotto.
     v_lotto_corrente        vendite.fatturazione_lotti.id%TYPE;
     v_row                   RECORD;
 BEGIN
@@ -123,17 +131,13 @@ BEGIN
         );
     END IF;
 
-    -- ⭐ IL LOTTO DI QUESTO GIRO (rev 2026-09-09).
-    --   `lock_batch_id` ha un UNIQUE, quindi al piu' una riga.
+    -- ⭐ IL LOTTO DI QUESTO GIRO (rev 2026-09-09; dal 2026-09-12 in una sede
+    --   sola, vendite.fn_lotto_da_emit_batch: `lock_batch_id` ha un UNIQUE).
     -- ⚠️ Puo' restare NULL, ed e' legittimo: un chiamante fuori pipeline
     --   (backfill, riconciliazione) non ha un lotto. In quel caso NON c'e'
     --   nessuna auto-esclusione da fare, e le righe trattenute restano tutte
     --   fuori — che e' la risposta prudente.
-    IF p_emit_batch_id IS NOT NULL THEN
-        SELECT l.id INTO v_lotto_corrente
-          FROM vendite.fatturazione_lotti l
-         WHERE l.lock_batch_id = p_emit_batch_id;
-    END IF;
+    v_lotto_corrente := vendite.fn_lotto_da_emit_batch(p_emit_batch_id);
 
     -- Loop emissione righe
     FOR v_row IN
@@ -161,27 +165,29 @@ BEGIN
             ON e.commessa_attivita_id = ca.id
          WHERE ca.commessa_id = p_commessa_id
            AND (
-                -- La riga e' libera e approvata.
-                e.classe_emittibilita = 'PRONTA'
+                -- ⭐⭐ LA CLASSE VISTA DAL GIRO, e non la classe nuda (rev
+                --   2026-09-12). Una riga TRATTENUTA soltanto dal MIO lotto e',
+                --   per il mio lotto, PRONTA: e' il proprio documento di un
+                --   tentativo precedente — il giro ha fallito la commessa, il
+                --   savepoint ha rimesso le righe a NON_EMESSA, l'esito e'
+                --   rimasto FUORI dal savepoint — e al rilancio va ripreso.
+                --   Senza, il rilancio salterebbe esattamente le righe che
+                --   deve riprovare: in silenzio, con un lotto che riparte e
+                --   non produce niente.
+                -- ⛔ L'auto-esclusione NON e' piu' scritta qui: vive in
+                --   vendite.fn_classe_emittibilita_per_giro, la stessa riga che
+                --   legge fn_list_commesse_emittibili. Due copie si erano gia'
+                --   sfilate una volta — la discovery non la aveva, e questa
+                --   funzione non veniva mai raggiunta.
+                vendite.fn_classe_emittibilita_per_giro(
+                    e.classe_emittibilita, e.trattenuta_da_lotti, v_lotto_corrente) = 'PRONTA'
                 -- Il chiamante ha chiesto di prendere anche il non approvato:
                 -- e' la vecchia `p_only_approved IS FALSE`, scritta per classi.
+                -- ⚠️ Qui la classe NUDA basta: una riga non approvata non e'
+                --   mai TRATTENUTA (ordine del CASE della vista), quindi non ha
+                --   niente da vedere «dal giro».
                 OR (p_only_approved IS FALSE
                     AND e.classe_emittibilita IN ('NON_APPROVATA', 'RIFIUTATA'))
-                -- ⭐⭐ L'AUTO-ESCLUSIONE, ed e' la riga senza la quale questo
-                --   changeSet romperebbe piu' di quanto ripara.
-                --   Un RERUN dello stesso lotto trova i PROPRI documenti gia'
-                --   marcati in `fatturazione_lotti_esiti`: il giro precedente
-                --   ha fallito la commessa, il savepoint ha rimesso le righe a
-                --   NON_EMESSA, ma l'esito e' stato scritto FUORI dal
-                --   savepoint. Senza questa riga il rilancio salterebbe
-                --   esattamente le righe che deve riprovare — in silenzio, con
-                --   un lotto che riparte e non produce niente.
-                -- ⚠️ `<@` e non `= ANY`: la riga e' libera solo se TUTTI i
-                --   lotti che la tengono sono il mio. Se la tiene anche un
-                --   altro giro vivo, resta fuori.
-                OR (e.classe_emittibilita = 'TRATTENUTA'
-                    AND v_lotto_corrente IS NOT NULL
-                    AND e.trattenuta_da_lotti <@ ARRAY[v_lotto_corrente])
                )
            -- EMISSIONE MIRATA (rev 2026-07-27): NULL = nessuna
            -- restrizione; array vuoto = richiesta vuota -> zero righe;
@@ -325,6 +331,9 @@ BEGIN
     RETURN NEXT;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[], p_emit_batch_id uuid)
+IS 'Il PULL: emette le righe di una commessa in vendite.attivita_fatturabili, in modo idempotente (sorgente COMMESSA + segment_key), propagando snapshot pricing e tipo_movimento. Quali righe: si legge la CLASSE da vendite.vw_commesse_attivita_emittibilita, vista DAL GIRO con vendite.fn_classe_emittibilita_per_giro — una riga TRATTENUTA soltanto dal lotto corrente (vendite.fn_lotto_da_emit_batch(p_emit_batch_id)) e'' PRONTA, cosi'' il RILANCIO riprende i propri documenti; una riga trattenuta da un altro lotto in gioco resta fuori; con p_only_approved = false entrano anche NON_APPROVATA e RIFIUTATA. p_gruppi restringe alle chiavi richieste (emissione mirata). p_emit_batch_id e'' anche il marchio scritto su ogni riga consegnata. Rev 2026-09-12: auto-esclusione dalla sede unica, la stessa di fn_list_commesse_emittibili (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1).';
 ```
 
 ---
