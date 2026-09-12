@@ -166,7 +166,7 @@ crescevano su tre strati, un filtro che il nome non diceva e quattro `%TYPE`
 fotografati su una proiezione di compatibilita': il 12-09-2026 la vista e'
 stata **ritirata** (`90_end/20260912-26`, decisione Tid «via il nome»), i
 lettori riscritti sulla madre e il guard RU↔identita' scritto a mano.
-Storia e censimento: `docs/it/dev/work-in-progress/analisi-software-per-dati-morti.md` §2.1 e §6.
+Storia e censimento: `docs/it/dev/work-done/analisi-software-per-dati-morti.md` §2.1 e §6.
 
 ---
 

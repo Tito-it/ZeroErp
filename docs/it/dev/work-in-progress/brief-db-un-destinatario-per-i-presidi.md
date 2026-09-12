@@ -18,16 +18,27 @@
 
 ---
 
-> ## ✅ STATO — chiuso lato backend il 2026-09-11 · **§12**
+> ## ✅ STATO — chiuso lato backend il 2026-09-11 · **§12** · risposta DB il 2026-09-12 · **§13**
 >
 > Il perimetro dei §4-§5 è consegnato e **provato end-to-end**: il 2026-09-11
 > alle 00:16 un digest è partito ed è **arrivato in casella**.
-> ⛔ **Resta in `work-in-progress/` per una ragione sola**: il team DB non ha
-> ancora letto il **§11**, che porta una richiesta (contare le 779 per classe —
-> è una lettura che dal ruolo applicativo risponde zero) e una scoperta che li
-> riguarda (§11.5). *Non si archivia un documento di scambio mentre porta una
-> domanda aperta all'altra parte.*
-> ⇒ Per archiviare: §12.3, dove l'operazione è già scritta per intero.
+>
+> ✅ **Il §11 è stato letto e ha una risposta — §13** (team DB, 2026-09-12). Le
+> due cose che teneva aperte sono chiuse: la **scoperta** del §11.5 («dichiarato ≠
+> installato») è diventata un cantiere suo, chiuso
+> ([brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md));
+> la **richiesta** — contare le 779 per classe — è fatta.
+>
+> ⛔ **Ma resta in `work-in-progress/`, e la ragione è cambiata**: quel conteggio
+> ha trovato un **difetto vivo**. Le 784 righe sono tutte `NON_MISURATO` e la
+> causa non era fra le ipotesi del §11.4 — è il `search_path` di
+> `dbops.fn_conta_presidio`, che non contiene `public` e quindi non sa risolvere
+> `plpgsql_check`. ⇒ Il digest riporta ogni lunedì 784 riferimenti morti che sono
+> fantasmi, e il pgTAP è verde perché misura il percorso **sano** invece di quello
+> **in servizio**.
+> ⇒ Per archiviare servono il fix (§13.4, strada A) e il pgTAP allargato. **Poi**
+> l'operazione del §12.3 — con i **tredici** riferimenti al percorso del §13.5,
+> non sei.
 >
 > ⚠️ **Il resto del documento è il registro di come ci si è arrivati e NON va
 > riletto come stato corrente**: diversi paragrafi dicono il vero su difetti poi
@@ -1445,3 +1456,181 @@ presidio non le leggeva nessuno; finisce con una persona che riceve una mail. In
 mezzo, le tre cose che mancavano davvero non erano nel piano — ed è il motivo per
 cui il piano da solo non basta mai.*
 
+---
+
+## 13. 🔵 Risposta DB — le 784 sono `NON_MISURATO`, e la causa non era fra le ipotesi, 2026-09-12
+
+> **Chi risponde:** team DB (`dev/db-tid`). **Stato:** il §11.4 punto 2 è
+> **chiuso** — il conteggio per classe è fatto. ⛔ Ma la risposta apre un difetto
+> **vivo nel percorso del digest**, e non è nessuna delle due ipotesi che il
+> §11.4 metteva sul tavolo.
+>
+> **In una riga:** le 784 righe sono tutte `NON_MISURATO`, e non le produce né la
+> memoria della macchina né un'estensione rotta: le produce il `search_path` di
+> `dbops.fn_conta_presidio`, che non contiene `public` — cioè lo schema dove vive
+> `plpgsql_check`.
+
+### 13.1 Il conteggio per classe, che è quello che il §11.4 chiedeva
+
+> ⚠️ Letture del **2026-09-12 alle 17:56**, sul database di sviluppo, dal
+> proprietario. Fatti datati: dicono *«questo caso esiste ed è gestito male»*,
+> non decidono la forma del rimedio.
+
+**Scansione diretta** (`dbops.fn_check_funzioni_riferimenti_morti()`, sessione con
+un `search_path` normale — cioè che contiene `public`):
+
+| classe | righe |
+| --- | ---: |
+| `FP_RAMO_ALTRA_TABELLA` | 16 |
+| `FP_TRANSITION_TABLE` | 5 |
+| `ORFANA` | 1 |
+| `FP_SQL_DINAMICO` | 1 |
+| **`NON_MISURATO`** | **0** |
+| **`REALE`** | **0** |
+
+**Ventitré righe in tutto, in 3,5 secondi**, e il cluster non si è mosso
+(`pg_postmaster_start_time` invariato dalle 09:43). ⇒ `vw_riferimenti_morti_da_sanare`
+letta diretta risponde **0**: l'unica `ORFANA` è coperta dal registro del debito.
+
+**Lo stesso conteggio, chiesto come lo chiede il digest** —
+`dbops.fn_conta_presidio('dbops.vw_riferimenti_morti_da_sanare')`:
+
+| chi chiede | come | risposta |
+| --- | --- | ---: |
+| `titodb` (proprietario) | lettura diretta della vista | **0** |
+| `zeroerp_app` | lettura diretta della vista | **0** |
+| `titodb` | `fn_conta_presidio` | **784** |
+| `zeroerp_app` | `fn_conta_presidio` | **784** |
+
+⛔ **Due numeri opposti sulla stessa macchina, nello stesso minuto, dallo stesso
+proprietario.** È da lì che si parte, ed è la cosa che nessuna delle due ipotesi
+del §11.4 sapeva spiegare: la memoria e l'estensione non distinguono fra due
+modi di chiedere la stessa cosa.
+
+### 13.2 🔴 La causa: il `search_path` blindato del DEFINER non vede `public`
+
+Tre fatti che si compongono, e nessuno dei tre è un difetto per conto suo:
+
+1. `dbops.fn_conta_presidio` è `SECURITY DEFINER` e porta
+   `search_path = pg_catalog, pg_temp` (changeSet `20260910-06`). ⭐ È la
+   blindatura **corretta** per una DEFINER: nessuno schema scrivibile da altri
+   nel percorso di risoluzione dei nomi;
+2. `dbops.fn_check_funzioni_riferimenti_morti` è `SECURITY INVOKER` e **non ha un
+   `search_path` suo**: dentro la DEFINER eredita quello attivo, cioè
+   `pg_catalog, pg_temp`;
+3. l'estensione `plpgsql_check` è installata in **`public`**, e la funzione la
+   chiama **non qualificata**: `plpgsql_check_function(...)`.
+
+⇒ Dentro `fn_conta_presidio` quella chiamata **non si risolve**. Solleva `42883`,
+il gestore `EXCEPTION WHEN OTHERS` la cattura e scrive `error:CHECK-KO:`, e la
+classificazione la manda in `NON_MISURATO` — **su ogni funzione plpgsql del
+database, una per una**.
+
+**Riprodotto a comando**, ed è ciò che lo rende una causa invece di un'ipotesi:
+basta `SET search_path = pg_catalog, pg_temp` — lo stesso del DEFINER — in una
+sessione normale, e la scansione diretta cambia risposta:
+
+| classe | righe |
+| --- | ---: |
+| **`NON_MISURATO`** | **784** |
+| `ORFANA` | 1 |
+
+L'`esito` porta il motivo scritto per intero, e sono **due** forme:
+
+```text
+error:CHECK-KO:la funzione plpgsql_check_function(regprocedure, fatal_errors => boolean) non esiste
+error:CHECK-KO:la funzione plpgsql_check_function(regprocedure, relid => regclass, fatal_errors => boolean) non esiste
+```
+
+⭐ **Le due forme sono le due chiamate del corpo** — quella per le funzioni
+normali e quella per le trigger function, che passa anche `relid` — e il fatto
+che compaiano **entrambe** dice che non è un caso di bordo su una funzione
+particolare: è ogni ramo della scansione, sempre.
+
+### 13.3 Che cosa cambia nel brief, riga per riga
+
+| Dove | Diceva | Verificato il 2026-09-12 |
+| --- | --- | --- |
+| §10.3, limite dichiarato | «il ramo `NON_MISURATO` […] da quando esiste **non si è mai acceso**» | ⛔ **falso**: si accende a **ogni** conteggio del digest. La prima accensione è il giorno in cui `fn_conta_presidio` è nata — il 2026-09-10 — non un giorno futuro |
+| §11.4 punto 2, «delle due l'una» | o il ramo **si è acceso**, o lo strumento è tornato a non misurare | ✅ **la prima**, e senza ambiguità. Il ramo si accende **quando deve**: il limite del §10.3 è chiuso e il presidio ha fatto il suo mestiere |
+| §10.4, causa residua | lo stato della **macchina** (5,2 GiB, i 512 MiB per worker di autovacuum) | ⚠️ **non è questa.** La cecità è riproducibile a comando e indipendente dal carico: la scansione è girata **pulita tre volte** oggi, con lo swap a 944 MiB su 976. ⛔ Questo **non** chiude la causa dei segfault, che resta aperta e resta fuori dal cantiere — sono due cose diverse che il numero 779 teneva insieme |
+
+⭐ **E la specie del difetto è quella che dà il nome al cantiere**, ritrovata per
+la terza volta **dentro** il cantiere stesso: un numero che *sembra* dire «ci sono
+784 riferimenti morti» mentre dice «non ho potuto guardare, 784 volte».
+
+⚠️ **La sola ragione per cui non li riporta come `REALE`** — cioè come difetti
+veri, che è quello che succedeva prima del `20260910-36` — è il ramo
+`NON_MISURATO`. La rete tiene, ed è la prova che serviva: quel ramo **si accende
+quando deve**. Ma copre un buco vero, e un buco coperto da una rete resta un
+buco.
+
+⚠️ **Una riga che NON va inseguita**, perché a prima vista sembra un secondo
+difetto: letta dal proprietario, `vw_riferimenti_morti_rientrati` risponde **1**,
+e la voce è `dbops.fn_get_pgagent_job_stato`. È il falso positivo **già
+dichiarato nel `motivo`** di quella riga di registro — *«due facce che non
+convivono mai»*: `42501` su dbdev per chi non vede `pgagent`, `42P01` in CI dove
+lo schema non c'è. Da proprietario non c'è nessun difetto, quindi la voce risulta
+di troppo. Il guardrail va lanciato con il ruolo che il difetto lo **subisce**
+(`zeroerp_app`), dove quella vista risponde **0**. Non è una novità e non è di
+questo cantiere.
+
+### 13.4 ⛔ Che cosa resta, ed è il motivo per cui il brief NON si archivia oggi
+
+Il §12.3 diceva che, arrivata questa risposta, l'archiviazione sarebbe stata
+«meccanica». **Non lo è**, e la ragione è quella giusta: la lettura che il §11.4
+chiedeva ha trovato un difetto vivo. *Era esattamente il suo mestiere.*
+
+**Il rimedio va deciso, e sono due strade con un vincitore:**
+
+| | Come | Perché sì, perché no |
+| --- | --- | --- |
+| ⭐ **A** | qualificare la chiamata — `public.plpgsql_check_function(...)` — nel corpo di `dbops.fn_check_funzioni_riferimenti_morti` | regge per **qualunque** chiamante, presente e futuro, e non tocca la postura di nessuna DEFINER. Ed è la sede vera del difetto: *una funzione che dipende dal `search_path` di chi la chiama è fragile per costruzione* |
+| ⛔ **B** | aggiungere `public` al `search_path` di `fn_conta_presidio` | rimette uno schema scrivibile da altri nel percorso di risoluzione di una `SECURITY DEFINER` — indebolisce una blindatura per rimediare al difetto di un'**altra** funzione. E vale per quella sola chiamante: la prossima che la chiami da un `search_path` stretto nasce cieca di nuovo |
+
+⇒ **A**, con un changeSet nuovo in `20_code/dbops/` e numerazione successiva: il
+`-36` è mergiato e non si tocca.
+
+🔴 **E c'è un pgTAP da allargare, che vale più del fix.** Il test **1-bis** di
+`db/pgtap/dbops/test-riferimenti-morti-v1.sql` asserisce l'assenza di
+`NON_MISURATO` **sulla scansione diretta** — cioè sul percorso che funziona — e
+per questo è **verde da due giorni su un difetto vivo**. ⇒ La stessa asserzione
+va fatta anche **attraverso `dbops.fn_conta_presidio`**, che è il percorso da cui
+il digest legge davvero.
+⭐ *Un presidio che misura il percorso sano non presidia quello in servizio.* È
+la stessa forma del §7.3 — «zero righe» e «non ho potuto vedere» si scrivono
+uguale — spostata di un livello: qui i due percorsi sono la lettura diretta e la
+lettura dalla funzione, e il presidio guardava quello che non serve.
+
+⚠️ **Il fix non è stato applicato e i pgTAP non sono stati lanciati**: l'apply e
+la baseline sono di Tid, come da regola. Qui c'è la diagnosi e la decisione
+proposta, non il lavoro fatto.
+
+### 13.5 ⚠️ Correzione al §12.3: i riferimenti al percorso sono TREDICI, non sei
+
+Contati il 2026-09-12 cercando il **percorso** del file in tutto il repo. Ai sei
+del §12.3 — i due `manual/` e i quattro file Python — se ne aggiungono **sette**
+in documenti `.md`, che un `git mv` romperebbe in silenzio:
+
+```text
+docs/it/mappa-concentrica.md                                          (2 punti: §165 e §436)
+docs/it/dev/mappa-concentrica-changelog.md
+docs/it/dev/work-in-progress/analisi-osservabilita-log.md
+docs/it/dev/work-in-progress/migliorie-generali-da-test-valutazione.md
+docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md
+docs/it/dev/work-in-progress/analisi-riavvio-processi-da-interfaccia.md
+```
+
+⚠️ I quattro sotto `work-in-progress/` portano un link **relativo** senza
+cartella: passando il brief in `work-done/` puntano a un file che da lì non si
+vede più.
+
+⛔ Restano fuori, come già diceva il §12.3, i file che lo citano per **nome**
+senza percorso — la doc auto-generata di `dbops`, `codici_errore.csv`,
+`error_policies_generated.py`: quelli seguono il loro binario.
+
+*Risposta DB del 2026-09-12. Le letture di questo paragrafo sono del dbdev di
+quel giorno e valgono come controesempio — «questo caso esiste ed è gestito
+male» — non come motivo. Il motivo sta sul modello, ed è che una funzione che
+dipende dal `search_path` di chi la chiama non ha **un** comportamento: ne ha uno
+per chiamante, e il presidio ne guardava quello sbagliato.*

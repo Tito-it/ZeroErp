@@ -6,6 +6,13 @@
 > configurazione o documentazione che esiste solo per tenere in vita dati —
 > o nomi — che il modello ha già lasciato?*
 >
+> **CHIUSO e spostato in `work-done/` il 12-09-2026, sera (decisione Tid: «il DB ha fatto»).**
+> ✅ **E la consegna BE è chiusa la sera stessa**: `E_RISORSA_UMANA_IDENTITA_ATTIVA`
+> è in `error_policies_generated.py` e in `error_messages_fallback.py` (merge di
+> #1573 «Aggiornato messaggi errore», 12-09 sera — Tid). Il cancello dei codici
+> in CI ha di nuovo tutto. **Niente resta aperto**, salvo 6.3-bis, cantiere futuro.
+>
+> *Com'era l'intestazione a fine giornata:*
 > **Stato al 12-09-2026, sera — CHIUSO su tutti i fronti, in attesa di due code.**
 > Censimento scritto la mattina; BE e FE chiusi nel pomeriggio (PR #1570); il
 > lato DB **applicato su dev** fra le 13:37 e le 14:06 (quattordici changeSet
@@ -22,19 +29,15 @@
 > di GitHub è rossa su quattro di quei file a ogni push DB **da #1563 (11-09
 > sera)**. Rimedio scritto e provato: `90_end/ci_apply/20260912-31`.
 > ✅ Replica ricostruita e baseline su `zeroerp_ci` pulita (Tid, 12-09 sera).
-> **Resta**: (1) la consegna **BE** per il codice nuovo
-> `E_RISORSA_UMANA_IDENTITA_ATTIVA` (rigenerare le policy + il ripiego, frase
-> pronta in §6.7: il cancello dei codici è rosso in CI finché manca); (2) il
-> **commit** dei file del pomeriggio/sera, `-31` compreso (Tid); (3) la
-> raccomandazione 6.3-bis, cantiere futuro. Chiuse (1) e (2), il documento
-> passa in `work-done/`.
+> ✅ Consegna **BE** chiusa (#1573) · ✅ commit del tree (#1572 e seguenti).
+> **Resta** solo la raccomandazione 6.3-bis, cantiere futuro.
 >
 > Letture di **struttura** (catalogo `pg_class`/`pg_proc`/`pg_trigger`, doc
 > auto-gen, grep su BE/FE/pgTAP/seed). ⛔ I conteggi che compaiono sono **fatti
 > datati**, mai motivi: la ragione di ogni voce è scritta sul modello.
 >
 > **Origine:** domanda di Tid del 12-09, dopo la coda del brief
-> [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md)
+> [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md)
 > §10 — dove si stava per scrivere software che mostrasse la storia di una
 > tabella ormai morta. Quel caso è **chiuso** (§1) e resta qui come
 > precedente: è il calco con cui ho cercato gli altri.
@@ -388,7 +391,7 @@ una policy di perimetro scritta per sei righe di test.
 > (§6.7). Le due domande ⚪ a Tid sono decise: 6.2 → guard sulla madre a mano,
 > 6.5 → DROP di entrambi. Da 6.1 a 6.6 resta il **disegno** com'era stato
 > consegnato; il §6.7 dice com'è andata. Il precedente è il §10 di
-> [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md):
+> [brief-db-rls-storico-scope-congelato.md](brief-db-rls-storico-scope-congelato.md):
 > stessa materia, un piano più sotto.
 
 ### 6.1 Perché il `DROP VIEW` ora è sicuro dal lato BE, e cosa può ancora rompere
@@ -525,7 +528,7 @@ l'ok di Tid.
 | BE | ✅ chiuso il 12-09 pomeriggio: nessun lettore, presidio in CI |
 | DB | ✅ **applicato su dev il 12-09** (13:37 → 14:06): 6.2 · 6.3 · 6.4 · 6.5 · P-1/P-2/P-3. ⭐ 6.3-bis resta raccomandazione |
 | Tid | ✅ decisioni 6.2 e 6.5 · ✅ apply, migrate rilanciato dopo i due giri di CI · ⏳ **commit** dei file |
-| BE | ⏳ **una consegna nuova**: `./manage-env.sh genera_error_policies` (il codice `E_RISORSA_UMANA_IDENTITA_ATTIVA` entra in `error_policies_generated.py`) + la frase senza segnaposto in `error_messages_fallback.py` — presidi `test_nessun_codice_nuovo_senza_policy` e `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`, **rossi in CI finché manca** |
+| BE | ✅ **consegna chiusa (#1573, 12-09 sera)**: `genera_error_policies` (il codice `E_RISORSA_UMANA_IDENTITA_ATTIVA` in `error_policies_generated.py`) + la frase senza segnaposto in `error_messages_fallback.py` — i due presidi di nuovo verdi |
 
 ### 6.7 Com'è andata — quattordici changeSet, applicati il 12-09 fra le 13:37 e le 14:06
 
@@ -597,8 +600,8 @@ in testa, `architettura-multi-face-auth` §3 e §3.3, `architettura-permessi-e-a
 | | Cosa | Di chi |
 | --- | --- | --- |
 | ✅ | apply dei changeSet (il mirror dei codici errore ha riletto i CSV: il codice è a catalogo) — `vw_riferimenti_morti_da_sanare` a **zero** dopo il `-30`; baseline pgTAP verde salvo la regressione del presidio riferimenti morti, sanata dal `-30` | fatto (Tid, 12-09) |
-| ⏳ | **commit** dei file del pomeriggio/sera: 14 changeSet, 2 CSV, 2 righe in `changelog-provision-post.yaml`, 9 pgTAP (+1 cancellato, 2 baseline), manuali, guide, questo documento | **Tid** |
-| ⏳ | **BE**: `./manage-env.sh genera_error_policies` (il codice nuovo entra in `error_policies_generated.py`, classe `CONFLITTO_STATO` → 409) + la frase senza segnaposto in `error_messages_fallback.py` — presidi `test_nessun_codice_nuovo_senza_policy` e `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`, rossi finché manca. ⭐ **La frase, così non c'è niente da decidere** (il catalogo dice *«Non si puo' disattivare la risorsa umana: l'utente %s ha ancora un'identita' operatore attiva.»*): `"E_RISORSA_UMANA_IDENTITA_ATTIVA": "Non si puo' disattivare la risorsa umana: l'utente ha ancora un'identita' operatore attiva."` — apostrofi **non** raddoppiati (è Python), in ordine alfabetico fra `E_RISORSA_UMANA_*`. Nessun override di `ui_action`: il default della classe è il banner, e qui non c'è un campo del form da accendere — la cosa da cambiare è un'**altra** riga (l'identità) | **BE** |
+| ✅ | **commit** dei file del pomeriggio/sera (#1572, 12-09 sera) | Tid |
+| ✅ | **BE — fatto (#1573, 12-09 sera)**: `./manage-env.sh genera_error_policies` (il codice nuovo entra in `error_policies_generated.py`, classe `CONFLITTO_STATO` → 409) + la frase senza segnaposto in `error_messages_fallback.py` — presidi `test_nessun_codice_nuovo_senza_policy` e `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`, di nuovo verdi. ⭐ **La frase, così non c'è niente da decidere** (il catalogo dice *«Non si puo' disattivare la risorsa umana: l'utente %s ha ancora un'identita' operatore attiva.»*): `"E_RISORSA_UMANA_IDENTITA_ATTIVA": "Non si puo' disattivare la risorsa umana: l'utente ha ancora un'identita' operatore attiva."` — apostrofi **non** raddoppiati (è Python), in ordine alfabetico fra `E_RISORSA_UMANA_*`. Nessun override di `ui_action`: il default della classe è il banner, e qui non c'è un campo del form da accendere — la cosa da cambiare è un'**altra** riga (l'identità) | **BE** |
 | ✅ | i due test v1 morti: **riscritti sulla v2** (decisione Tid, 12-09 sera) — `test-fn-crea-operatore` (12) e `test-fn-crea-risorsa-umana` (9) su `fn_crea_operatore_v2` / `fn_crea_risorsa_umana_v2`, catene su `identita_digitali`, codici letti dal canale `CONSTRAINT` dove il testo non li porta più; fixture e frasi provate in ROLLBACK; tolti dalle due baseline. ⚠️ Entrambi (e il test del guard) portano l'esenzione `pgtap-differiti: escluso`: la madre passa da `fn_crea_soggetto_pf`, che per contratto crea un soggetto senza indirizzo — con `IMMEDIATE` fallirebbe all'INSERT. È il debito §22.4 già dichiarato dal test RU, non uno nuovo | fatto |
 | ⭐ | 6.3-bis (`fn_get_risorsa_umana_id_for_user`, tre copie della catena utente → RU) | raccomandazione, cantiere futuro |
 
@@ -675,5 +678,5 @@ statici verdi.
 *Analisi 12-09-2026 — letture di struttura sul database `zeroerp` (catalogo,
 doc auto-gen) e sul repo (grep BE/FE/pgTAP/seed). I numeri sono fatti datati.
 Il precedente del §1 è chiuso; BE e FE chiusi il 12-09 pomeriggio; il lato DB
-(§6) applicato su dev la sera del 12-09. Restano la consegna BE per il codice
-nuovo e il commit: poi in `work-done/`.*
+(§6) applicato su dev la sera del 12-09. Chiuso e spostato in `work-done/` la
+sera stessa; resta al BE la consegna del codice nuovo (📮 in testa).*

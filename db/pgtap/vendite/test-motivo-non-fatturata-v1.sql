@@ -41,19 +41,36 @@
 --   caso la attraversa. Confrontare due stringhe uguali non avrebbe provato
 --   niente — sono due linguaggi diversi apposta.
 --
--- Indice test (1..17, con un 13-bis)
+-- 🔴 REV 2026-09-12 — QUESTO PRESIDIO HA FATTO IL SUO MESTIERE
+--   Il 20260912-35 ha cambiato il motivo 3 del check: un'attivita' LIBERA con
+--   la riga di commessa EMESSA non e' «gia' disponibile» (nessun giro la
+--   riprende) — e' in transito se il suo marchio e' di un lotto IN GIOCO
+--   (motivo 5, E_ATTIVITA_IN_LAVORAZIONE), riportabile se il lotto e' morto o
+--   il marchio non c'e'. La vista diceva ancora IN_ATTESA_LOTTO: i test 5 e 11
+--   sono diventati rossi la sera stessa, e il 20260912-36 ha allineato la
+--   vista. IN_ATTESA_LOTTO e' RITIRATO: dentro EMESSA_NON_FATTURATA la riga
+--   e' EMESSA per costruzione, quindi nessun caso lo produce piu'. La mappa
+--   qui sotto non lo nomina, e il test 11-bis prova che la vista non lo
+--   emette — senza quel test il JOIN sulla mappa lascerebbe uscire in
+--   SILENZIO qualunque valore fuori vocabolario (contare i cattivi e' muto se
+--   il rotto esce dal join).
+--
+-- Indice test (1..20, con un 5-bis, un 5-ter, un 11-bis e un 13-bis)
 --  1) Riferimenti minimi presenti
 --  2) La vista espone le OTTO colonne nuove
---  3) Fixture: sei righe di commessa EMESSA, cinque attivita, un lotto
+--  3) Fixture: otto righe di commessa EMESSA, sette attivita, due lotti (uno vivo, uno morto)
 --  4) ⭐ LA CHIAVE: attivita_fatturabile_id e' l id vero, riga per riga
---  5) IN_ATTESA_LOTTO  <-> E_ATTIVITA_GIA_DA_EMETTERE
---  6) GIRO_IN_CORSO    <-> E_ATTIVITA_IN_LAVORAZIONE   (stato PENDING)
---  7) ⛔ GIRO_IN_CORSO <-> E_ATTIVITA_IN_LAVORAZIONE   (stato NULL)
+--  5) ⭐ RESIDUO          <-> nessun motivo: libera, riga EMESSA, SENZA marchio (divergenza)
+--  5-bis) ⭐ GIRO_IN_CORSO <-> E_ATTIVITA_IN_LAVORAZIONE: libera col marchio di un lotto IN GIOCO
+--  5-ter) ⭐ RESIDUO       <-> nessun motivo: libera col marchio di un lotto MORTO
+--  6) GIRO_IN_CORSO    <-> E_ATTIVITA_IN_LAVORAZIONE   (lucchettata, stato PENDING)
+--  7) ⛔ GIRO_IN_CORSO <-> E_ATTIVITA_IN_LAVORAZIONE   (lucchettata, stato NULL)
 --  8) ⛔ SENZA_ATTIVITA_FATTURABILE: nominata, e senza chiave
---  9) RESIDUO          <-> nessun motivo: il verbo accetta
+--  9) RESIDUO          <-> nessun motivo: lucchettata e COMPLETED
 -- 10) ⛔ NULL fuori da EMESSA_NON_FATTURATA, e li la fn rifiuta comunque
 -- 11) ⭐ IL GIRO GENERALE: nessuna riga visibile contraddice la fn_check
--- 12) ⭐ Il lotto di PROVENIENZA c e, e non e lotto_id
+-- 11-bis) ⛔ Nessuna riga porta un motivo fuori vocabolario (IN_ATTESA_LOTTO compreso)
+-- 12) ⭐ Il lotto di PROVENIENZA c e, e non e lotto_id — anche per il divergente, dal marchio
 -- 13) ⛔ I join di provenienza e decode non moltiplicano le righe
 -- 13-bis) ⭐ L articolo esce decodificato, non come UUID
 -- 14) La mensile ha una riga per (mese, stadio, stato, movimento, motivo)
@@ -74,7 +91,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- vendite.commesse_attivita.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(20);
 
 -- ============================================================
 -- 0) Riferimenti e costanti
@@ -82,6 +99,9 @@ SELECT plan(17);
 CREATE TEMP TABLE tmp_cost_mnf AS
 SELECT 'pgtap_motivo_non_fatturata'::text        AS test_scope,
        uuidv7()                                  AS lock_batch_id,
+       -- ⭐ Il marchio di un SECONDO lotto, morto: serve al caso «libera col
+       --   marchio di un lotto che non e' piu' in gioco» (5-ter).
+       uuidv7()                                  AS lock_batch_morto,
        script.fn_pgtap_emittente_sr_operatore()  AS emittente_sr_id,
        -- ⚠️ Un mese di competenza LONTANO da quelli veri: le asserzioni di
        --   grana (test 14) e di perimetro restano leggibili anche su un
@@ -101,6 +121,9 @@ WITH ba AS (
 SELECT
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
+  -- Lo stato che spegne un lotto: congela_fiscale, quindi vw_lotti_fase.in_gioco = false.
+  (SELECT id FROM config.stati_doc_fiscale
+    WHERE upper(btrim(codice_interno)) = 'ANNULLATA' ORDER BY id LIMIT 1) AS stato_annullata_id,
   (SELECT id FROM ba)                 AS billing_account_id,
   (SELECT utility_id FROM ba)         AS utility_id,
   (SELECT istanza_utility_id FROM ba) AS istanza_utility_id,
@@ -119,6 +142,7 @@ SELECT
 
 SELECT ok(
   (SELECT r.stato_draft_id IS NOT NULL
+      AND r.stato_annullata_id IS NOT NULL
       AND r.billing_account_id IS NOT NULL
       AND r.articolo_id IS NOT NULL
       AND r.uom_id IS NOT NULL
@@ -157,12 +181,14 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_mappa_mnf (motivo text PRIMARY KEY, codice_atteso text);
 INSERT INTO tmp_mappa_mnf (motivo, codice_atteso) VALUES
-  ('IN_ATTESA_LOTTO', 'E_ATTIVITA_GIA_DA_EMETTERE'),
   ('GIRO_IN_CORSO',   'E_ATTIVITA_IN_LAVORAZIONE'),
   ('RESIDUO',         NULL);
 -- ⛔ SENZA_ATTIVITA_FATTURABILE non entra nella mappa, e non e' una svista:
 --   li' non c'e' nessun `attivita_fatturabili.id` da passare alla funzione.
 --   E' proprio cio' che il test 8 asserisce.
+-- ⛔ IN_ATTESA_LOTTO non c'e' piu' (rev 2026-09-12): la vista non lo produce, e
+--   il test 11-bis lo pretende. Rimetterlo qui senza un caso che lo produca
+--   sarebbe un ramo morto nella mappa.
 
 -- ============================================================
 -- Fixture: una commessa, SEI righe di commessa gia' EMESSA
@@ -188,8 +214,8 @@ DO $fx$
 DECLARE
   s text;
 BEGIN
-  FOREACH s IN ARRAY ARRAY['ORFANA', 'IN_FATTURA', 'LIBERA', 'VIVA',
-                           'VIVA_NULL', 'SENZA_AF'] LOOP
+  FOREACH s IN ARRAY ARRAY['ORFANA', 'IN_FATTURA', 'LIBERA', 'LIBERA_VIVA',
+                           'LIBERA_MORTA', 'VIVA', 'VIVA_NULL', 'SENZA_AF'] LOOP
     -- ⚠️ Un INSERT che restituisce righe sta in una CTE, non in un FROM.
     WITH ins AS (
       INSERT INTO vendite.commesse_attivita (
@@ -235,6 +261,26 @@ WITH ins AS (
   RETURNING id, codice)
 SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
 
+-- ⭐ Il lotto MORTO (rev 2026-09-12): nasce direttamente ANNULLATA — l'INSERT
+--   non passa dalla matrice delle transizioni, per progetto (§7c.6) — e il suo
+--   lock_batch_id e' il marchio che la LIBERA_MORTA porta in emit_batch_id.
+--   Su vw_lotti_fase.in_gioco vale false: e' cio' che separa 5-bis da 5-ter.
+CREATE TEMP TABLE tmp_lotto_morto_mnf AS
+WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti (
+    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
+    lock_batch_id, stato_doc_fiscale_id, meta)
+  SELECT 'PGTAP-MNF-LM-' || substr(md5(clock_timestamp()::text), 1, 8),
+         (SELECT competenza_mese FROM tmp_cost_mnf),
+         r.tipo_doc_fiscale_id,
+         (SELECT emittente_sr_id FROM tmp_cost_mnf),
+         (SELECT lock_batch_morto FROM tmp_cost_mnf),
+         r.stato_annullata_id,
+         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_mnf))
+    FROM tmp_refs_mnf r
+  RETURNING id, codice)
+SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
+
 -- Una fattura DRAFT con una riga, per il caso IN_FATTURA
 CREATE TEMP TABLE tmp_fattura_mnf AS
 WITH ins AS (
@@ -259,14 +305,19 @@ WITH ins AS (
 SELECT id AS riga_id FROM ins;
 
 -- ============================================================
--- Le CINQUE attivita' fatturabili — e la sesta riga che non ne ha nessuna
+-- Le SETTE attivita' fatturabili — e l'ottava riga che non ne ha nessuna
 -- ============================================================
---   ORFANA     -> lucchettata, COMPLETED, senza fattura   => RESIDUO
---   IN_FATTURA -> agganciata a una riga viva              => stadio FATTURATA
---   LIBERA     -> nessun lucchetto                        => IN_ATTESA_LOTTO
---   VIVA       -> lucchettata, PENDING                    => GIRO_IN_CORSO
---   VIVA_NULL  -> lucchettata, stato NULL                 => GIRO_IN_CORSO
---   SENZA_AF   -> nessuna attivita' fatturabile      => SENZA_ATTIVITA_FATTURABILE
+--   ORFANA       -> lucchettata, COMPLETED, senza fattura         => RESIDUO
+--   IN_FATTURA   -> agganciata a una riga viva                    => stadio FATTURATA
+--   LIBERA       -> nessun lucchetto, nessun marchio (divergenza) => RESIDUO
+--   LIBERA_VIVA  -> nessun lucchetto, marchio del lotto IN GIOCO  => GIRO_IN_CORSO
+--   LIBERA_MORTA -> nessun lucchetto, marchio del lotto MORTO     => RESIDUO
+--   VIVA         -> lucchettata, PENDING                          => GIRO_IN_CORSO
+--   VIVA_NULL    -> lucchettata, stato NULL                       => GIRO_IN_CORSO
+--   SENZA_AF     -> nessuna attivita' fatturabile      => SENZA_ATTIVITA_FATTURABILE
+-- ⭐ Le tre LIBERA hanno tutte la riga di commessa EMESSA (e' la fixture, e
+--   dentro EMESSA_NON_FATTURATA e' cosi' per costruzione): cio' che le
+--   distingue e' SOLO il marchio, cioe' i due livelli del 20260912-35.
 CREATE TEMP TABLE tmp_af_mnf (slot text PRIMARY KEY, attivita_id bigint);
 
 DO $fx$
@@ -275,17 +326,26 @@ DECLARE
   v_riga  bigint;
   v_lock  boolean;
   v_batch uuid;
+  v_emit  uuid;
   v_stato text;
 BEGIN
-  FOREACH s IN ARRAY ARRAY['ORFANA', 'IN_FATTURA', 'LIBERA', 'VIVA', 'VIVA_NULL'] LOOP
+  FOREACH s IN ARRAY ARRAY['ORFANA', 'IN_FATTURA', 'LIBERA', 'LIBERA_VIVA',
+                           'LIBERA_MORTA', 'VIVA', 'VIVA_NULL'] LOOP
     v_riga  := CASE WHEN s = 'IN_FATTURA' THEN (SELECT riga_id FROM tmp_riga_mnf) END;
-    v_lock  := (s <> 'LIBERA');
-    v_batch := CASE WHEN s <> 'LIBERA' THEN (SELECT lock_batch_id FROM tmp_cost_mnf) END;
+    v_lock  := (s NOT LIKE 'LIBERA%');
+    v_batch := CASE WHEN s NOT LIKE 'LIBERA%' THEN (SELECT lock_batch_id FROM tmp_cost_mnf) END;
+    -- ⭐ Il MARCHIO del giro (emit_batch_id): per le lucchettate e' lo stesso
+    --   del lucchetto (il pull marchia, la select lucchetta, stesso giro); per
+    --   le libere e' la variabile del test.
+    v_emit  := CASE WHEN s = 'LIBERA'       THEN NULL
+                    WHEN s = 'LIBERA_VIVA'  THEN (SELECT lock_batch_id    FROM tmp_cost_mnf)
+                    WHEN s = 'LIBERA_MORTA' THEN (SELECT lock_batch_morto FROM tmp_cost_mnf)
+                    ELSE (SELECT lock_batch_id FROM tmp_cost_mnf) END;
     -- ⛔ VIVA_NULL resta a NULL DI PROPOSITO: e' il caso che distingue
     --   `IS DISTINCT FROM` da `<>`, e nessun dato vivo lo produce oggi.
     v_stato := CASE WHEN s = 'VIVA'      THEN 'PENDING'
                     WHEN s = 'VIVA_NULL' THEN NULL
-                    WHEN s = 'LIBERA'    THEN NULL
+                    WHEN s LIKE 'LIBERA%' THEN NULL
                     ELSE 'COMPLETED' END;
 
     WITH ins AS (
@@ -294,7 +354,7 @@ BEGIN
             competenza_mese, competenza_dal, competenza_al, quantita, approvato,
             sospesa, tipo_doc_fiscale_id, valuta_id, commessa_id,
             commessa_attivita_id, uom_id, prezzo_unitario, lock_in_fatturazione,
-            lock_batch_id, fattura_riga_id, stato_esecuzione, meta)
+            lock_batch_id, emit_batch_id, fattura_riga_id, stato_esecuzione, meta)
         SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id,
                (SELECT competenza_mese FROM tmp_cost_mnf),
                (SELECT competenza_mese FROM tmp_cost_mnf),
@@ -308,7 +368,7 @@ BEGIN
                (SELECT id FROM tmp_commessa_mnf),
                (SELECT attivita_id FROM tmp_ca_mnf WHERE slot = s),
                r.uom_id, 10,
-               v_lock, v_batch, v_riga, v_stato,
+               v_lock, v_batch, v_emit, v_riga, v_stato,
                jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_mnf))
           FROM tmp_refs_mnf r
       RETURNING id)
@@ -318,8 +378,8 @@ END
 $fx$;
 
 SELECT ok(
-  (SELECT count(*) = 5 FROM tmp_af_mnf)
-  AND (SELECT count(*) = 6 FROM vendite.commesse_attivita ca
+  (SELECT count(*) = 7 FROM tmp_af_mnf)
+  AND (SELECT count(*) = 8 FROM vendite.commesse_attivita ca
         JOIN tmp_ca_mnf t ON t.attivita_id = ca.id
        WHERE ca.stato_emissione = 'EMESSA')
   -- ⛔ La sesta riga NON deve avere un'attivita' fatturabile: e' il soggetto
@@ -331,8 +391,14 @@ SELECT ok(
   AND (SELECT a.stato_esecuzione IS NULL AND a.lock_in_fatturazione IS TRUE
          FROM vendite.attivita_fatturabili a
         WHERE a.id = (SELECT attivita_id FROM tmp_af_mnf WHERE slot = 'VIVA_NULL'))
-  AND (SELECT l.lotto_id IS NOT NULL FROM tmp_lotto_mnf l),
-  '3) fixture: sei righe di commessa EMESSA, cinque attivita, un lotto; la sesta senza attivita fatturabile'
+  AND (SELECT l.lotto_id IS NOT NULL FROM tmp_lotto_mnf l)
+  -- ⭐ I due lotti stanno ai due lati di `in_gioco`: senza questo, 5-bis e
+  --   5-ter proverebbero la stessa cosa due volte.
+  AND (SELECT f.in_gioco FROM vendite.vw_lotti_fase f
+        WHERE f.lotto_id = (SELECT lotto_id FROM tmp_lotto_mnf))
+  AND NOT (SELECT f.in_gioco FROM vendite.vw_lotti_fase f
+            WHERE f.lotto_id = (SELECT lotto_id FROM tmp_lotto_morto_mnf)),
+  '3) fixture: otto righe di commessa EMESSA, sette attivita, un lotto in gioco e uno morto; l ottava senza attivita fatturabile'
 );
 
 -- ============================================================
@@ -348,8 +414,8 @@ SELECT is(
      JOIN tmp_ca_mnf c ON c.attivita_id = v.commessa_attivita_id
      JOIN tmp_af_mnf a ON a.slot = c.slot
     WHERE v.attivita_fatturabile_id = a.attivita_id),
-  5,
-  '4) la vista espone la CHIAVE del verbo: attivita_fatturabile_id e l id vero, su tutte e cinque'
+  7,
+  '4) la vista espone la CHIAVE del verbo: attivita_fatturabile_id e l id vero, su tutte e sette'
 );
 
 -- ============================================================
@@ -369,12 +435,35 @@ SELECT c.slot,
   JOIN vendite.vw_dash_competenza_attivita v
     ON v.commessa_attivita_id = c.attivita_id;
 
+-- ⭐ rev 2026-09-12: la DIVERGENZA. Libera, riga EMESSA, nessun marchio —
+--   nessun giro la riprende, e il verbo e' l'unica via. Fino al 20260912-35
+--   entrambe le superfici la chiamavano «in attesa del lotto», ed era falso.
 SELECT ok(
-  (SELECT e.motivo_vista = 'IN_ATTESA_LOTTO'
-      AND e.codice_fn    = (SELECT codice_atteso FROM tmp_mappa_mnf
-                             WHERE motivo = 'IN_ATTESA_LOTTO')
+  (SELECT e.motivo_vista = 'RESIDUO'
+      AND e.codice_fn IS NOT DISTINCT FROM (SELECT codice_atteso FROM tmp_mappa_mnf
+                                             WHERE motivo = 'RESIDUO')
      FROM tmp_esito_mnf e WHERE e.slot = 'LIBERA'),
-  '5) non lucchettata: la vista dice IN_ATTESA_LOTTO e la fn rifiuta con E_ATTIVITA_GIA_DA_EMETTERE'
+  '5) libera con la riga EMESSA e senza marchio (divergenza): la vista dice RESIDUO e la fn NON ha motivi'
+);
+
+-- ⭐ Il transito fra pull e select: libera, ma il marchio e' di un lotto IN
+--   GIOCO. Liberarla da qui la farebbe prendere da due giri: motivo 5.
+SELECT ok(
+  (SELECT e.motivo_vista = 'GIRO_IN_CORSO'
+      AND e.codice_fn    = (SELECT codice_atteso FROM tmp_mappa_mnf
+                             WHERE motivo = 'GIRO_IN_CORSO')
+     FROM tmp_esito_mnf e WHERE e.slot = 'LIBERA_VIVA'),
+  '5-bis) libera col marchio di un lotto IN GIOCO: la vista dice GIRO_IN_CORSO e la fn rifiuta con E_ATTIVITA_IN_LAVORAZIONE'
+);
+
+-- ⭐ Lo stesso marchio, ma di un lotto MORTO: e' il 13338 del brief — orfana,
+--   e il verbo la riallinea.
+SELECT ok(
+  (SELECT e.motivo_vista = 'RESIDUO'
+      AND e.codice_fn IS NOT DISTINCT FROM (SELECT codice_atteso FROM tmp_mappa_mnf
+                                             WHERE motivo = 'RESIDUO')
+     FROM tmp_esito_mnf e WHERE e.slot = 'LIBERA_MORTA'),
+  '5-ter) libera col marchio di un lotto MORTO: la vista dice RESIDUO e la fn NON ha motivi'
 );
 
 SELECT ok(
@@ -399,8 +488,11 @@ SELECT ok(
 
 -- ⛔ La riga di commessa EMESSA senza attivita' fatturabile. Il modello la
 --   ammette (JOIN LEFT), nessun percorso scritto la produce, e senza un ramo
---   suo il COALESCE la farebbe cadere su IN_ATTESA_LOTTO — «il prossimo giro
---   la prende», che e' falso: la pull filtra su stato_emissione.
+--   suo il COALESCE la farebbe cadere sul ramo delle LIBERE — cioe' RESIDUO,
+--   «riportabile», con una chiave che non esiste: il verbo non avrebbe niente
+--   da riallineare (fino al 2026-09-12 cadeva su IN_ATTESA_LOTTO, «il prossimo
+--   giro la prende», falso per la stessa ragione: la pull filtra su
+--   stato_emissione).
 --   ⚠️ Qui non c'e' nessun id da passare alla fn_check, ed e' esattamente il
 --   motivo per cui questo valore NON sta nella mappa: la chiave dev'essere
 --   NULL, cosi' il frontend non puo' proporre un verbo che non ha bersaglio.
@@ -456,6 +548,19 @@ SELECT is(
   '11) nessuna riga visibile della vista contraddice fn_check_attivita_riportabile_da_emettere'
 );
 
+-- ⛔ Il test 11 e' MUTO su un valore fuori mappa: il JOIN lo lascia fuori, e
+--   un IN_ATTESA_LOTTO risorto (o un quinto valore inventato) passerebbe in
+--   silenzio. Il vocabolario si asserisce per intero, qui.
+SELECT is(
+  (SELECT count(*)::integer
+     FROM vendite.vw_dash_competenza_attivita v
+    WHERE v.motivo_non_fatturata IS NOT NULL
+      AND v.motivo_non_fatturata::text NOT IN (SELECT motivo FROM tmp_mappa_mnf)
+      AND v.motivo_non_fatturata::text <> 'SENZA_ATTIVITA_FATTURABILE'),
+  0,
+  '11-bis) nessuna riga visibile porta un motivo fuori vocabolario: IN_ATTESA_LOTTO e ritirato, e la mappa e completa'
+);
+
 -- ============================================================
 -- 12) ⭐ Il lotto di PROVENIENZA, e perche non e lotto_id
 -- ============================================================
@@ -469,11 +574,19 @@ SELECT ok(
       AND v.lotto_id IS NULL
      FROM vendite.vw_dash_competenza_attivita v
     WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_ca_mnf WHERE slot = 'ORFANA'))
-  -- E su una riga mai lucchettata non c'e' nessuna provenienza da inventare.
+  -- E su una riga mai marchiata non c'e' nessuna provenienza da inventare.
   AND (SELECT v.lotto_provenienza_id IS NULL
          FROM vendite.vw_dash_competenza_attivita v
-        WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_ca_mnf WHERE slot = 'LIBERA')),
-  '12) il residuo nomina il lotto di PROVENIENZA (lotto_id resta NULL: nasce dalla fattura); la riga libera non ne ha'
+        WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_ca_mnf WHERE slot = 'LIBERA'))
+  -- ⭐ rev 2026-09-12: il residuo DIVERGENTE il lucchetto non ce l'ha, e la
+  --   sua provenienza e' il MARCHIO — il lotto morto che l'aveva presa in
+  --   carico. Senza, la lista dei residui direbbe «da nessuna parte» proprio
+  --   sulla riga in cui serve sapere da dove viene.
+  AND (SELECT v.lotto_provenienza_id     = (SELECT lotto_id     FROM tmp_lotto_morto_mnf)
+          AND v.lotto_provenienza_codice = (SELECT lotto_codice FROM tmp_lotto_morto_mnf)
+         FROM vendite.vw_dash_competenza_attivita v
+        WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_ca_mnf WHERE slot = 'LIBERA_MORTA')),
+  '12) il residuo nomina il lotto di PROVENIENZA (lotto_id resta NULL: nasce dalla fattura); la riga senza marchio non ne ha; il divergente la prende dal marchio'
 );
 
 -- ============================================================
@@ -486,7 +599,7 @@ SELECT is(
   (SELECT count(*)::integer
      FROM vendite.vw_dash_competenza_attivita v
      JOIN tmp_ca_mnf c ON c.attivita_id = v.commessa_attivita_id),
-  6,
+  8,
   '13) una riga di vista per riga di commessa: i join di provenienza e decode non moltiplicano'
 );
 

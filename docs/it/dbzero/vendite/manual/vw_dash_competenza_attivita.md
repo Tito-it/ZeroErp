@@ -205,7 +205,7 @@ Changeset `20260826-54`, brief `brief-db-residui-competenza-dimensione-e-chiave`
 | `lock_in_fatturazione` | `COALESCE(…, false)` | metà del discriminante |
 | `stato_esecuzione` | l'altra metà | separa **l'orfana dal giro vivo** |
 | `motivo_non_fatturata` | vocabolario chiuso, `NULL` fuori dallo stadio | **la dimensione** |
-| `lotto_provenienza_id` · `_codice` | da `fatturazione_lotti` via `lock_batch_id` | «da dove viene questo residuo» |
+| `lotto_provenienza_id` · `_codice` | da `fatturazione_lotti` via `COALESCE(lock_batch_id, emit_batch_id)` (dal 12-09-2026) | «da dove viene questo residuo» — anche quello **divergente**, dal marchio |
 | `articolo_codice` · `articolo_descrizione` | decode di `catalogo.articoli` | **che lavoro è** |
 
 #### ⛔ Perché la chiave sta qui e non si traduce a valle
@@ -227,10 +227,27 @@ dentro quel valore finiscono situazioni con **rimedi opposti**:
 
 | `motivo_non_fatturata` | Come si riconosce | Rimedio | Il verbo la tocca? |
 | --- | --- | --- | --- |
-| `IN_ATTESA_LOTTO` | non lucchettata | ⏳ nessuno: il prossimo giro la prende da sé | ⛔ no (`E_ATTIVITA_GIA_DA_EMETTERE`) |
-| `GIRO_IN_CORSO` | lucchettata, `stato_esecuzione` ≠ `COMPLETED` | ⏳ si aspetta che il lotto finisca | ⛔ no (`E_ATTIVITA_IN_LAVORAZIONE`) |
-| ⭐ `RESIDUO` | lucchettata **e** `COMPLETED`, senza riga di fattura | ✅ «Riporta da emettere» | ✅ sì |
+| `GIRO_IN_CORSO` | lucchettata, `stato_esecuzione` ≠ `COMPLETED` — **oppure** (dal 12-09-2026) libera col **marchio** (`emit_batch_id`) di un lotto **in gioco** (`vw_lotti_fase`): il transito fra pull e select | ⏳ si aspetta che il lotto finisca | ⛔ no (`E_ATTIVITA_IN_LAVORAZIONE`, motivi 4 e 5) |
+| ⭐ `RESIDUO` | lucchettata **e** `COMPLETED`, senza riga di fattura — **oppure** (dal 12-09-2026) libera col marchio di un lotto **morto**, o senza marchio: la **divergenza** fra i due livelli, che nessun giro riprende | ✅ «Riporta da emettere» | ✅ sì |
 | `SENZA_ATTIVITA_FATTURABILE` | nessuna riga in `attivita_fatturabili` | ⚠️ nessuno: non c'è niente da riportare | ⛔ no: **la chiave è `NULL`** |
+| ~~`IN_ATTESA_LOTTO`~~ | **ritirato il 12-09-2026** (`20260912-36`) | — | — |
+
+🔴 **Perché `IN_ATTESA_LOTTO` è morto, e perché la vista lo diceva ancora.**
+Diceva «non lucchettata: il prossimo giro la prende da sé». Dentro
+`EMESSA_NON_FATTURATA` la riga di commessa è `EMESSA` **per costruzione**, e il
+`20260912-35` ha stabilito sul modello che un'attività libera con la riga
+`EMESSA` non la riprende nessun giro (il pull la vede `EMESSA`, la select di un
+altro lotto non trova il suo marchio): è una **divergenza** fra i due livelli —
+in transito se il marchio è di un lotto in gioco, orfana altrimenti. La funzione
+ha cambiato ramo la sera dell'11-09 e la vista no: la lista dei residui
+(perimetro `= 'RESIDUO'`) **nascondeva** il verbo proprio sulle righe che nessun
+giro avrebbe ripreso — il caso del lotto 13338. L'ha detto il presidio
+`test-motivo-non-fatturata-v1` (test 5 e 11), e il `-36` ha riallineato la vista
+nella stessa giornata. Il motivo 3 del check («libera, riga `NON_EMESSA`») vive
+nello stadio `DA_EMETTERE`, dove la dimensione è `NULL`: un valore che la vista
+non può produrre non resta nel vocabolario. «In gioco» non è riscritto: è un
+`EXISTS` su `vendite.vw_lotti_fase` dentro il ramo del `CASE`, valutato solo
+sulle righe libere dello stadio.
 
 ⛔ **Non si spezza lo stadio in due valori.** Lo *stadio* dice **a che punto del
 ciclo** è il lavoro, e queste situazioni sono allo **stesso punto**: cambia la
@@ -277,7 +294,11 @@ Valore, nome e tipo della colonna `stadio` non cambiano.
 fatturazione_lotti_fatture`): su un residuo la fattura **non c'è**, quindi è
 `NULL` proprio sulle righe per cui la domanda si pone. `lotto_provenienza_*`
 arriva invece da `attivita_fatturabili.lock_batch_id`, il timbro del giro che
-l'ha lucchettata.
+l'ha lucchettata — e, dal 12-09-2026, da `emit_batch_id` quando il lucchetto non
+c'è: un residuo **divergente** è stato marchiato da un giro (il pull) e mai
+lucchettato (la select non è arrivata), e la sua provenienza è quel marchio, che
+è il `lock_batch_id` del lotto che l'ha preso in carico. Per un'attività
+lucchettata i due coincidono. La chiave sul lato lotti resta `lock_batch_id`.
 
 * il `LEFT JOIN` è lecito perché `fatturazione_lotti.lock_batch_id` ha un
   **`UNIQUE`**: non può moltiplicare le righe di una vista che ne alimenta altre

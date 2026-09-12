@@ -14,11 +14,21 @@
 --   popolazioni strutturalmente diverse: l'attivita' emessa che sta aspettando
 --   il suo lotto (transito legittimo) e quella rimasta orfana dopo che la sua
 --   fattura e' stata eliminata (il residuo). Un verbo fondato sulla card
---   disferebbe emissioni corrette. Le tre condizioni che discriminano sono
---   `fattura_riga_id IS NULL`, il lucchetto, e `stato_esecuzione = COMPLETED`
---   — ed e' la terza a separare l'orfana dal giro VIVO.
+--   disferebbe emissioni corrette. Le condizioni che discriminano sono
+--   `fattura_riga_id IS NULL`, il lucchetto, `stato_esecuzione = COMPLETED`
+--   — ed e' la terza a separare l'orfana dal giro VIVO — e, dal 20260912-35,
+--   lo stato della RIGA DI COMMESSA con il marchio del giro: libera con la
+--   riga NON_EMESSA e' «gia' disponibile» (motivo 3); libera con la riga
+--   EMESSA e' DIVERGENTE — in transito se il marchio e' di un lotto in gioco
+--   (motivo 5), riportabile altrimenti. Quest'ultima e' provata in
+--   test-af-emessa-non-lockata-reset-e-riporto-v1, che la costruisce col pull.
 --   I test 3-7 provano il primo caso, i test 8-11 provano che gli altri sono
 --   rifiutati, ciascuno con il proprio codice.
+--   🔴 rev 2026-09-12: fino a quel giorno la LIBERA aveva la riga EMESSA, e il
+--   test 9 la chiamava «gia' disponibile». Sul modello nuovo quella coppia e'
+--   la divergenza — e il verbo la ACCETTAVA, riallineandola: il test 9 era
+--   rosso, e il 13 passava solo perche' il 9 aveva gia' mosso la riga. La
+--   fixture ora costruisce cio' che il test dichiara: la riga NON_EMESSA.
 --
 -- ⛔ E IL PERIMETRO NON USA `fatturato`
 --   Con la colonna generata prevista dal lotto L3b, «fatturato IS TRUE AND
@@ -44,14 +54,14 @@
 --
 -- Indice test
 -- 1) Riferimenti minimi presenti
--- 2) Fixture: quattro attivita nei quattro stati, quattro CA EMESSA
+-- 2) Fixture: quattro attivita nei quattro stati, tre CA EMESSA e la LIBERA NON_EMESSA
 -- 3) La check non trova motivi sull attivita ORFANA
 -- 4) 🔴 Il verbo gira: riportate = 1 e riemesse_attivita = 1
 -- 5) 🔴 L attivita e tornata libera
 -- 6) 🔴 La commessa_attivita e tornata NON_EMESSA
 -- 7) 🔴 L evento di log e stato scritto, con lock_batch_id e stato precedenti
 -- 8) ⛔ Rifiuto: attivita ancora dentro una fattura
--- 9) Rifiuto: attivita gia da emettere (niente da riportare)
+-- 9) Rifiuto: attivita gia da emettere (libera, riga NON_EMESSA: niente da riportare)
 -- 10) Rifiuto: attivita dentro un giro VIVO
 -- 11) Rifiuto: identificativo che non si risolve
 -- 12) Rifiuto: elenco vuoto (errore di chiamante, non zero righe silenziose)
@@ -164,7 +174,11 @@ BEGIN
              date_trunc('month', current_date)::date,
              (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
              r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-             'BOZZA', 'EMESSA', NULL, NULL
+             -- ⭐ rev 2026-09-12: la LIBERA ha la riga NON_EMESSA. E' l'unica
+             --   forma in cui «gia' disponibile» esiste ancora (motivo 3): con
+             --   la riga EMESSA sarebbe la divergenza, che il verbo accetta.
+             'BOZZA', CASE WHEN s = 'LIBERA' THEN 'NON_EMESSA' ELSE 'EMESSA' END,
+             NULL, NULL
         FROM tmp_refs_rde r
       RETURNING id)
     INSERT INTO tmp_ca_rde(slot, attivita_id) SELECT s, ins.id FROM ins;
@@ -199,7 +213,7 @@ SELECT id AS riga_id FROM ins;
 -- ============================================================
 --   ORFANA      → residuo vero: nessuna fattura, lucchettata, COMPLETED
 --   IN_FATTURA  → agganciata a una riga viva
---   LIBERA      → nessun lucchetto: gia' disponibile
+--   LIBERA      → nessun lucchetto, riga NON_EMESSA: gia' disponibile
 --   VIVA        → lucchettata ma il giro non ha finito (PENDING)
 CREATE TEMP TABLE tmp_af_rde (slot text PRIMARY KEY, attivita_id bigint);
 
@@ -250,9 +264,11 @@ $fx$;
 
 SELECT ok(
   (SELECT count(*) = 4 FROM tmp_af_rde)
-  AND (SELECT count(*) = 4 FROM vendite.commesse_attivita ca
+  AND (SELECT count(*) = 3 FROM vendite.commesse_attivita ca
         JOIN tmp_ca_rde t ON t.attivita_id = ca.id
        WHERE ca.stato_emissione = 'EMESSA')
+  AND (SELECT ca.stato_emissione = 'NON_EMESSA' FROM vendite.commesse_attivita ca
+        WHERE ca.id = (SELECT attivita_id FROM tmp_ca_rde WHERE slot = 'LIBERA'))
   AND (SELECT a.fattura_riga_id IS NULL AND a.lock_in_fatturazione IS TRUE
           AND a.stato_esecuzione = 'COMPLETED'
          FROM vendite.attivita_fatturabili a
@@ -266,7 +282,7 @@ SELECT ok(
   AND (SELECT a.stato_esecuzione = 'PENDING'
          FROM vendite.attivita_fatturabili a
         WHERE a.id = (SELECT attivita_id FROM tmp_af_rde WHERE slot = 'VIVA')),
-  '2) fixture: quattro attivita nei quattro stati, quattro commesse_attivita EMESSA'
+  '2) fixture: quattro attivita nei quattro stati; tre commesse_attivita EMESSA e la LIBERA NON_EMESSA'
 );
 
 -- ============================================================
@@ -376,7 +392,7 @@ SELECT is(
 SELECT is(
   pg_temp.rde_codice(ARRAY[(SELECT attivita_id FROM tmp_af_rde WHERE slot = 'LIBERA')]),
   'E_ATTIVITA_GIA_DA_EMETTERE',
-  '9) un attivita gia disponibile e rifiutata: non c e niente da riportare'
+  '9) un attivita gia disponibile (libera, riga NON_EMESSA) e rifiutata: non c e niente da riportare'
 );
 
 SELECT is(
