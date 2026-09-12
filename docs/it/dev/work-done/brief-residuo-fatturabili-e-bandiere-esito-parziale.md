@@ -26,9 +26,9 @@
 > per scontata — è stata verificata e regge **anche sulle righe sourceless**.
 >
 > **Da dove viene.** Eseguendo
-> [collaudo-in-app-esito-parziale-pull-commessa.md](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md)
+> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
 > — la voce **V1** del cantiere fan-out
-> ([brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md)
+> ([brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md)
 > §13.1) — la **prova 1 è passata** e la **prova 2 è uscita rossa**, ma per una
 > ragione che il copione non prevedeva: il lavoro della commessa **respinta** è
 > finito in fattura lo stesso.

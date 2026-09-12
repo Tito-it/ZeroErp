@@ -205,7 +205,7 @@ Building block per i processi **headless** (management command / cron / systemd)
 
 ## Fan-out isolato (`apps/core/services/fan_out.py`)
 
-Il telaio del giro *scopri → lavora ogni item isolando l'errore → aggrega l'esito*. Estratto il 2026-08-09 con la regola del 2 (ok Tid, [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md)): il pattern era scritto a mano in due siti di `vendite` **con policy di aggregazione diverse**, e la divergenza era un difetto vero — il pull da commessa dichiarava COMPLETATO un giro con rifiuti parziali, quindi al rilancio dello step le commesse rimaste indietro venivano saltate in silenzio.
+Il telaio del giro *scopri → lavora ogni item isolando l'errore → aggrega l'esito*. Estratto il 2026-08-09 con la regola del 2 (ok Tid, [brief-be-fan-out-isolato-e-esito-parziale.md](../work-done/brief-be-fan-out-isolato-e-esito-parziale.md)): il pattern era scritto a mano in due siti di `vendite` **con policy di aggregazione diverse**, e la divergenza era un difetto vero — il pull da commessa dichiarava COMPLETATO un giro con rifiuti parziali, quindi al rilancio dello step le commesse rimaste indietro venivano saltate in silenzio.
 
 | Building Block | File | Descrizione |
 |---|---|---|

@@ -8,7 +8,7 @@
 > aree» quando ne mancavano tre.
 >
 > 👉 **Resta solo la validazione in-app di 3-ter**, che è stata trasferita in
-> [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) **§13.2**
+> [brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md) **§13.2**
 > — l'unico documento della linea rimasto aperto, che raccoglie le validazioni di tutti i
 > cantieri invece di tenere tre doc aperti al 95%.
 >

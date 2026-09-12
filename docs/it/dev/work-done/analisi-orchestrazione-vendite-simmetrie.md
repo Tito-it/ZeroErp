@@ -6,7 +6,7 @@
 > difetto dell'esito parziale corretto, (C) `fn_available_actions_lotto` realizzata.
 >
 > 👉 **Resta solo la validazione in-app del §B**, che vive in
-> [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) **§13.1**
+> [brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md) **§13.1**
 > — l'unico documento della linea rimasto aperto.
 >
 > Questo doc resta come **fonte del disegno**: è qui che è stata posta la domanda giusta
@@ -42,7 +42,7 @@
 > 👉 **Il §B è stato eseguito**: piano dei residui in
 > [piano-residui-orchestrazione-e-cruscotti-vendite.md](piano-residui-orchestrazione-e-cruscotti-vendite.md) §1
 > (R-1), brief esecutivo e consuntivo in
-> [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md).
+> [brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md).
 > Questo doc resta la fonte del **disegno**; quelli sono l'**esecuzione**.
 
 ---
@@ -171,7 +171,7 @@ già seedato): nessuna azione DB.
    run è roba della coda, se basta riscoprirlo è `run_fan_out`.
 
 Resta la **validazione in-app** (Tid) e il commit. Consuntivo completo, scostamenti e residui
-noti: §11 del [brief](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md).
+noti: §11 del [brief](brief-be-fan-out-isolato-e-esito-parziale.md).
 
 ---
 

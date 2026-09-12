@@ -1,7 +1,7 @@
 # Collaudo in-app · le due voci residue di V2 — DL-23 `CONFERMATO` e l'area RESI
 
 > **Cos'è.** Il copione a video delle **ultime due** voci di **V2** del
-> [brief fan-out](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) §13.2. Il *perché*
+> [brief fan-out](brief-be-fan-out-isolato-e-esito-parziale.md) §13.2. Il *perché*
 > sta lì; qui c'è cosa fare, cosa deve succedere, cosa fare se non succede.
 >
 > **Stato**: ✅ **CHIUSO** (2026-09-01) — tutte le prove passate. · **Ambiente**:
@@ -228,6 +228,6 @@ store, che sa se ha senso.*
 ## Che cosa resta, adesso che questo verbale è chiuso
 
 Restano solo le **23 caselle** di
-[collaudo-in-app-esito-parziale-pull-commessa.md](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md)
-(V1). Chiuse quelle, il [brief fan-out](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md)
+[collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md)
+(V1). Chiuse quelle, il [brief fan-out](brief-be-fan-out-isolato-e-esito-parziale.md)
 va in `work-done` e la linea chiude per intero.

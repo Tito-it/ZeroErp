@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection, transaction
 
@@ -24,6 +24,7 @@ from apps.core.db._helpers import (
     fetchone_scalar,
     iso_or_none,
     jsonb_out,
+    row_to_dict,
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import (
@@ -486,7 +487,17 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         return bool(row[0])
 
     # Scopo: Restituisce il riepilogo segnalazioni attive del lotto per severita` e sorgente (fatture/lotto).
-    # Include fatture_stato_esecuzione_errore_count dalla funzione DB (6° colonna).
+    # Include fatture_stato_esecuzione_errore_count dalla funzione DB (6° colonna)
+    # e, dal 2026-09-12, il decimo numero `esiti_stato_esecuzione_errore_count`
+    # (`20260912-16`, D2): i documenti presi in carico il cui ultimo esito e'
+    # `ERRORE`, che entra nel verdetto del lotto.
+    # ⭐ LE CHIAVI VIVONO IN UNA SEDE SOLA: la SELECT. Fino al 2026-09-12 erano
+    #    scritte TRE volte — SELECT, ripiego a riga assente, mapping `row[N]` —
+    #    e la decima colonna e' entrata in tutte e tre a mano, cioe' nella forma
+    #    che il commento della funzione DB dichiara pericolosa («un lettore
+    #    posizionale sbagliato non protesta»). Ora i nomi arrivano dal cursore
+    #    (`row_to_dict`) e la SELECT e' il contratto: una colonna in piu' o
+    #    rinominata si vede nel test del repository, non a video.
     def get_lotto_segnalazioni_summary(self, lotto_id: int) -> LottoSegnalazioniSummary:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -516,35 +527,24 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     --    sbagliato non protesta — qui il rischio non si corre.
                     documenti_bloccanti_count,
                     documenti_presi_in_carico_count,
-                    critiche_giro_count
+                    critiche_giro_count,
+                    -- ⭐ IL DECIMO NUMERO (`20260912-16`, D2): i documenti presi
+                    --    in carico il cui ULTIMO esito e' `ERRORE`. A differenza
+                    --    dei tre qui sopra, questo ENTRA nel verdetto
+                    --    (`LottoSegnalazioniService.is_error`): un lotto con un
+                    --    documento in ERRORE non e' a posto per sottrazione.
+                    --    `ESCLUSO` non conta — e' la via d'uscita.
+                    esiti_stato_esecuzione_errore_count
                 FROM vendite.fn_get_lotto_segnalazioni_summary(%s)
                 """,
                 [lotto_id],
             )
-            row = cursor.fetchone()
-        if not row:
-            return {
-                "fatture_critical_count": 0,
-                "fatture_warning_count": 0,
-                "lotto_critical_count": 0,
-                "lotto_warning_count": 0,
-                "lotto_info_count": 0,
-                "fatture_stato_esecuzione_errore_count": 0,
-                "documenti_bloccanti_count": 0,
-                "documenti_presi_in_carico_count": 0,
-                "critiche_giro_count": 0,
-            }
-        return {
-            "fatture_critical_count": int(row[0]),
-            "fatture_warning_count": int(row[1]),
-            "lotto_critical_count": int(row[2]),
-            "lotto_warning_count": int(row[3]),
-            "lotto_info_count": int(row[4]),
-            "fatture_stato_esecuzione_errore_count": int(row[5]),
-            "documenti_bloccanti_count": int(row[6]),
-            "documenti_presi_in_carico_count": int(row[7]),
-            "critiche_giro_count": int(row[8]),
-        }
+            riga = row_to_dict(cursor)
+            # Riga assente (difensivo: la funzione risponde sempre una riga):
+            # tutti i conteggi a zero, con gli STESSI nomi della SELECT.
+            if riga is None:
+                return cast(LottoSegnalazioniSummary, {c.name: 0 for c in cursor.description})
+        return cast(LottoSegnalazioniSummary, {chiave: int(valore) for chiave, valore in riga.items()})
 
     # Scopo: L'ELENCO delle segnalazioni del lotto — quello che il riepilogo
     #        conta soltanto.

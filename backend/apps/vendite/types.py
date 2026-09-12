@@ -138,6 +138,22 @@ class LottoSegnalazioniSummary(TypedDict):
     # ⚠️ I tre descrivono il canale LOTTO. Gli altri due parlano per FATTURA, e
     # una bozza puo' coprire piu' documenti: non si sommano a questi.
     critiche_giro_count: int
+    # ═══ IL DECIMO NUMERO (2026-09-12, D2 del brief «il rilancio dello step non
+    # rivede le proprie commesse») — e questo ENTRA NEL VERDETTO ═══
+    # I documenti presi in carico il cui ULTIMO fatto registrato
+    # (`fatturazione_lotti_esiti`) e' `ERRORE`. Un esito e' un fatto su un
+    # documento preso in carico: un lotto `COMPLETATO` con un documento il cui
+    # ultimo fatto e' `ERRORE` si dichiara a posto per SOTTRAZIONE — il runner
+    # ritira le proprie bandiere all'avvio di ogni rerun, e se il giro non
+    # rivede quel documento nessuno le rialza. Sette lotti usciti cosi' prima
+    # del 12-09 (fatto datato, §4 D2 del brief).
+    # ⭐ `ESCLUSO` non conta: e' la via d'uscita, la dichiarazione dell'operatore
+    # che quel documento non fa piu' parte del giro.
+    # ⚠️ Si SOVRAPPONE ai tre qui sopra: un documento con una critica viva ha
+    # anche l'esito `ERRORE`. Non si somma a `documenti_bloccanti_count`: il caso
+    # che aggiunge e' quello con ZERO critiche vive, ed e' l'unico che prima
+    # non vedeva nessuno.
+    esiti_stato_esecuzione_errore_count: int
 
 
 class LottoSegnalazioneRow(TypedDict):
@@ -389,6 +405,15 @@ class LottoListRow(TypedDict):
     # mobile. Zero e' un totale valido (lotto senza documenti), non un vuoto.
     n_fatture: int
     totale_documenti: str
+    # ⭐ Quanti documenti il lotto ha PRESO IN CARICO e quanti sono ANDATI A
+    # BUON FINE (2026-09-12) — contati sugli ESITI (`fatturazione_lotti_esiti`),
+    # non sulle fatture: le fatture spariscono con l'annullo e possono essere
+    # meno dei presi anche a giro riuscito (fusioni). `ESCLUSO` non conta fra i
+    # presi: e' la dichiarazione dell'operatore che il documento e' uscito dal
+    # giro. Il client mostra `completati/presi` SOLO quando differiscono: su un
+    # lotto senza esiti (giri precedenti al 07-09) sono zero e zero.
+    n_presi_in_carico: int
+    n_esiti_completati: int
     ha_errori_gravi: bool
     # ⭐ Lotto riportato in lavorazione e step non ancora rifatto. Non e' uno
     # stato: e' un SEGNALE di un giro solo (`vendite.fatturazione_lotti.riaperto_il`,

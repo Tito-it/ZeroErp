@@ -450,7 +450,7 @@ class VenditeRepository:
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.
     # Proiezione + JOIN + mapping condivisi da list_lotti e get_lotto (la testata
     # del dettaglio è la stessa riga della lista: nessuna vista/colonna nuova).
-    _LOTTO_SELECT_COLS = """
+    _LOTTO_SELECT_COLS = f"""
                 fl.id,
                 fl.codice,
                 fl.competenza_mese,
@@ -554,7 +554,37 @@ class VenditeRepository:
                 -- colonna accanto (difetto reale del 2026-08-25 su `riaperto`).
                 -- Inserirla in mezzo rinumererebbe 24 posizioni per ottenere una
                 -- lettura piu' bella.
-                sdf.congela_fiscale AS stato_congela_fiscale
+                sdf.congela_fiscale AS stato_congela_fiscale,
+                -- ⭐ QUANTI DOCUMENTI IL LOTTO HA PRESO IN CARICO E QUANTI SONO
+                -- ANDATI A BUON FINE (richiesta di Tid, 2026-09-12). Fino a
+                -- quel giorno la riga di lista diceva solo `n_fatture`, e i
+                -- presi in carico si vedevano SOLO nel drawer: un lotto in
+                -- `ERRORE` con zero fatture non diceva «zero su due».
+                -- ⛔ NON e' `n_fatture` diviso per i presi in carico, ed e' la
+                -- scelta che sembra ovvia: le fatture SPARISCONO con l'annullo
+                -- (il ponte viene cancellato, gli esiti restano) e possono
+                -- essere MENO dei presi in carico anche a giro riuscito —
+                -- `fn_build_fattura_key` fonde piu' gruppi in un documento.
+                -- Misurato sui lotti dal 07-09: 10 lotti con «fatture < presi»
+                -- e tutti gli esiti COMPLETED. Quel rapporto direbbe anomalia
+                -- su ogni lotto annullato e su ogni fusione.
+                -- ⇒ Si contano gli ESITI, che sono il fatto: `presi` = righe di
+                -- `fatturazione_lotti_esiti` non `ESCLUSO` (l'operatore ha
+                -- dichiarato che quel documento e' uscito dal giro — stesso
+                -- criterio di `documenti_presi_in_carico_count` nel riepilogo),
+                -- `completati` = esiti `COMPLETED`. Il client mostra il
+                -- rapporto SOLO quando differiscono.
+                -- ⚠️ Sotto-query come le due sorelle qui sopra, per la stessa
+                -- ragione: un JOIN sugli esiti moltiplicherebbe la riga.
+                -- ⚠️ In coda alla proiezione, come impone il mapper posizionale.
+                (SELECT count(*)
+                   FROM vendite.fatturazione_lotti_esiti e_p
+                  WHERE e_p.lotto_id = fl.id
+                    AND e_p.stato_esecuzione <> '{STATO_ESECUZIONE_ESCLUSO}') AS n_presi_in_carico,
+                (SELECT count(*)
+                   FROM vendite.fatturazione_lotti_esiti e_c
+                  WHERE e_c.lotto_id = fl.id
+                    AND e_c.stato_esecuzione = '{STATO_ESECUZIONE_COMPLETED}') AS n_esiti_completati
     """
 
     _LOTTO_JOINS = f"""
@@ -626,6 +656,11 @@ class VenditeRepository:
             # stato e' LEFT (un lotto senza stato resta una riga), e «non lo so»
             # non e' «non congela». Il gate FE e' fail-closed su questo campo.
             "stato_congela_fiscale": None if row[24] is None else bool(row[24]),
+            # I due conteggi degli ESITI (2026-09-12): quanti presi in carico e
+            # quanti andati a buon fine. Zero e zero su un lotto senza esiti
+            # (giri precedenti al 07-09): il client non mostra niente.
+            "n_presi_in_carico": int(row[25]),
+            "n_esiti_completati": int(row[26]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione

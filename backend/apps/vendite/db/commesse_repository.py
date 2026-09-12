@@ -1166,13 +1166,31 @@ class CommesseRepository(EventLogRepositoryMixin):
         fatturazione_immediata: bool | None = None,
         limit: int = 1000,
         gruppi: tuple[str, ...] | list[str] | None = None,
+        emit_batch_id: str | None = None,
     ) -> list[int]:
         """Chiama vendite.fn_list_commesse_emittibili e restituisce i commessa_id.
         `fatturazione_immediata`: True=solo immediate, False=solo differite,
         None=tutte (storico). Filtro usato per separare le corsie del driver.
 
         `gruppi` (emissione mirata, A6): visita solo le commesse che contengono
-        almeno uno dei gruppi richiesti. None = nessuna restrizione."""
+        almeno uno dei gruppi richiesti. None = nessuna restrizione.
+
+        ⭐ `emit_batch_id` è L'IDENTITÀ DEL GIRO, lo STESSO parametro che si
+        consegna all'emit (changeSet `20260912-15`, brief
+        `brief-db-rilancio-step-non-rivede-le-proprie-commesse` D1). Al
+        rilancio di un pull fallito i PROPRI documenti risultano `TRATTENUTA`
+        dal lotto che sta riprovando: con l'identità la discovery li vede come
+        `PRONTA` e visita la commessa, così l'emit — che ha la stessa eccezione
+        — può riprenderli. È il cancello a MONTE dell'emit: senza identità la
+        commessa non viene nemmeno visitata, e l'eccezione dell'emit resta
+        corretta e irraggiungibile.
+
+        🔴 `None` non è un default innocuo per il pull: la discovery scarta i
+        propri documenti IN SILENZIO, il giro visita zero commesse e chiude
+        `COMPLETATO` senza aver emesso niente (LTF-0010972, 2026-09-12). Il
+        chiamante di pipeline fa il guard su `lock_batch_id` PRIMA di
+        chiamare questo metodo. Resta `None` solo fuori pipeline, dove non
+        c'è un lotto proprio da cui auto-escludersi."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1184,12 +1202,14 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_emittente_soggetto_ruolo_id => %s,
                     p_fatturazione_immediata => %s,
                     p_limit => %s,
-                    p_gruppi => %s::text[]
+                    p_gruppi => %s::text[],
+                    p_emit_batch_id => %s::uuid
                 )
                 """,
                 [competenza_mese, billing_account_id, utility_id,
                  emittente_soggetto_ruolo_id, fatturazione_immediata, limit,
-                 list(gruppi) if gruppi else None],
+                 list(gruppi) if gruppi else None,
+                 emit_batch_id],
             )
             return [row[0] for row in cursor.fetchall()]
 

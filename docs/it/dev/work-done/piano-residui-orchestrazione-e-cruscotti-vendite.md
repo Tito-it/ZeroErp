@@ -8,7 +8,7 @@
 > (la voce `scrollable` **ritirata**: non era un residuo — §4.1).
 >
 > 👉 **L'unica cosa ancora aperta è la validazione in-app**, e vive in
-> [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) **§13**,
+> [brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md) **§13**,
 > che dal 2026-08-09 è il **raccoglitore vivo** dell'intera linea (R-1 + R-3 insieme).
 > Questo piano resta come **registro di cosa era aperto e perché**, non come cosa da fare.
 >
@@ -53,7 +53,7 @@ Fuori perimetro ma **collegati**: §5.
 > ✅ **Ok Tid 2026-08-09**: si fa il BB, **e** si sistema il pull perché si comporti
 > correttamente sul rifiuto parziale (§1.2 D-2, ora **decisa**).
 > 👉 Il **brief esecutivo** con il piano di sviluppo è
-> [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md).
+> [brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md).
 > Quel doc è la fonte operativa; questo resta il quadro dei residui.
 
 ### 1.1 Il fatto
@@ -206,7 +206,7 @@ esito = run_fan_out(
 
 > Consuntivo completo, con i **quattro scostamenti dichiarati** (incluso un residuo noto su
 > `commessa_cache` che ho scelto di NON chiudere qui, e una correzione in più sulla coda del
-> batch): §11 del [brief](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md).
+> batch): §11 del [brief](brief-be-fan-out-isolato-e-esito-parziale.md).
 
 ---
 
@@ -419,5 +419,5 @@ gunicorn. Più il **commit**, e il **build docs** alla prima occasione.
 Quando R-1 e R-3 saranno validati e R-2 scritto, **tre doc si chiudono insieme**:
 [analisi-orchestrazione-vendite-simmetrie](analisi-orchestrazione-vendite-simmetrie.md),
 [brief-design-fatturazione-due-lenti](brief-design-fatturazione-due-lenti.md) e
-[brief-be-fan-out-isolato-e-esito-parziale](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md)
+[brief-be-fan-out-isolato-e-esito-parziale](brief-be-fan-out-isolato-e-esito-parziale.md)
 vanno in `work-done`, e questo piano con loro.

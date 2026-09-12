@@ -22,6 +22,8 @@ Indice test eseguiti:
 12) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_missing_handler
 13) PipelineStepExecutorUnitTests.test_execute_step_skips_close_lotto_task_when_flag_is_false
 14) PipelineStepExecutorUnitTests.test_execute_step_skips_task_when_execution_mode_is_skip
+14a) PipelineStepExecutorUnitTests.test_rilancio_riesegue_i_task_a_valle_di_uno_rieseguito (catena, lotto 13338)
+14b) PipelineStepExecutorUnitTests.test_skip_resta_valido_se_a_monte_niente_e_stato_eseguito (controprova del 14a)
 15) PipelineStepExecutorUnitTests.test_execute_step_raises_when_execution_mode_is_reset_required
 16) PipelineStepExecutorUnitTests.test_execute_step_traces_task_run_on_success
 17) PipelineStepExecutorUnitTests.test_execute_step_traces_fail_on_handler_error
@@ -35,6 +37,9 @@ Indice test eseguiti:
 23b) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_tutte_ok_completa_task_run
 23c) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_tutte_fallite_solleva
 23d) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_dry_run_non_produce_parziale
+23e) PipelineStepExecutorUnitTests.test_pull_consegna_al_db_l_identita_del_giro (D1: discovery E emit)
+23f) PipelineStepExecutorUnitTests.test_pull_si_ferma_se_il_giro_non_ha_identita (il guard precede la discovery)
+23g) PipelineStepExecutorUnitTests.test_pull_dry_run_senza_identita_si_ferma_lo_stesso
 24) PipelineStepExecutorUnitTests.test_execute_step_runs_stampa_documenti_lotto_task (C-2c)
 25) PipelineStepExecutorUnitTests.test_execute_step_stampa_documenti_lotto_dry_run_skips (C-2c)
 26) PipelineStepExecutorUnitTests.test_execute_step_runs_snapshot_indirizzi_lotto_task (Fase 2 satelliti)
@@ -609,6 +614,94 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.start_lotto_task_run.assert_not_called()
         fatture_righe_service.generate_fatture_righe.assert_not_called()
 
+    # Scopo: 🔴 I TASK DI UNO STEP SONO UNA CATENA (2026-09-12, LTF-0010973): il
+    #        resolver dice SKIP a un task perche' la sua ultima corsa e'
+    #        COMPLETATO, ma se un task A MONTE e' stato rieseguito in QUESTO
+    #        giro quel COMPLETATO e' stantio — era girato a vuoto su un input
+    #        che ora e' cambiato. Nel caso vero il pull ha ripreso due commesse
+    #        e `select_attivita`/`generate_fatture_righe`/`snapshot` sono stati
+    #        saltati: le attivita' emesse non sono diventate fatture e il lotto
+    #        e' uscito COMPLETATO con zero documenti.
+    # ⭐ Si asserisce che il task a valle sia ESEGUITO (handler chiamato) e che
+    #        abbia un task_run suo (nuovo tentativo), non che il resolver sia
+    #        stato ignorato: la regola vive nell'orchestratore, il resolver
+    #        continua a rispondere per task.
+    @patch("apps.core.services.fan_out.transaction")
+    def test_rilancio_riesegue_i_task_a_valle_di_uno_rieseguito(self, _mock_txn):
+        processi = [
+            {"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}},
+            {"task": "select_attivita", "fase": "Seleziona attivita", "params": {}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = lambda task_code, implementation_key: f"{task_code}_default"
+        repo.ALLOWED_TASK_FUNCTIONS["pull_attivita_da_commessa"] = (
+            "vendite.fn_emit_attivita_fatturabili_da_commessa"
+        )
+        repo.task_policy_exists.return_value = True
+        repo.get_lotto_context.return_value.lock_batch_id = _LOCK_BATCH_GIRO
+        repo.gruppi_di_commessa_nel_lotto.side_effect = (
+            lambda lotto_id, commessa_id: [f"COMMESSA:{commessa_id}"]
+        )
+        commesse_repo = MagicMock()
+        commesse_repo.list_commesse_emittibili.return_value = [10]
+        executor.commesse_repository = commesse_repo
+        task_run = MagicMock()
+        task_run.task_run_id = 900
+        repo.start_lotto_task_run.return_value = task_run
+
+        # Il resolver: il pull RIPARTE (ultima corsa in ERRORE), il select
+        # sarebbe da SALTARE (ultima corsa COMPLETATO — a vuoto).
+        def _modo(lotto_id, pipeline_id, stato_doc_fiscale_id, task_code):
+            m = MagicMock()
+            m.execution_mode = "RESUME" if task_code == "pull_attivita_da_commessa" else "SKIP"
+            return m
+        repo.resolve_lotto_task_execution_mode.side_effect = _modo
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        commesse_repo.emit_attivita_fatturabili.assert_called_once()
+        # ⭐ Il task a valle e' stato eseguito nonostante lo SKIP del resolver...
+        repo.run_select_attivita_task.assert_called_once()
+        # ...con un task_run suo: DUE aperture, una per task.
+        self.assertEqual(repo.start_lotto_task_run.call_count, 2)
+        task_codes = [c.kwargs["task_code"] for c in repo.start_lotto_task_run.call_args_list]
+        self.assertEqual(task_codes, ["pull_attivita_da_commessa", "select_attivita"])
+
+    # Scopo: la controprova — se a monte NIENTE e' stato eseguito, lo SKIP del
+    #        resolver resta valido: nessun task_run, nessun handler. Senza
+    #        questo test la regola potrebbe degenerare in «non saltare mai».
+    def test_skip_resta_valido_se_a_monte_niente_e_stato_eseguito(self):
+        processi = [
+            {"task": "pull_attivita_da_commessa", "fase": "Pull commesse", "params": {}},
+            {"task": "select_attivita", "fase": "Seleziona attivita", "params": {}},
+        ]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.side_effect = lambda task_code, implementation_key: f"{task_code}_default"
+        repo.task_policy_exists.return_value = True
+        commesse_repo = MagicMock()
+        executor.commesse_repository = commesse_repo
+        skip_mode = MagicMock()
+        skip_mode.execution_mode = "SKIP"
+        repo.resolve_lotto_task_execution_mode.return_value = skip_mode
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.start_lotto_task_run.assert_not_called()
+        commesse_repo.list_commesse_emittibili.assert_not_called()
+        repo.run_select_attivita_task.assert_not_called()
+
     # Scopo: Verifica che venga sollevato ServiceError quando la modalità è RESET_REQUIRED.
     def test_execute_step_raises_when_execution_mode_is_reset_required(self):
         processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
@@ -1128,7 +1221,8 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.fail_lotto_task_run.assert_not_called()
 
     # Scopo: 🔴 IL PERIMETRO SI CONSEGNA — il pull riceve l'identita' DEL GIRO
-    #        (`context.lock_batch_id`) e la porta alle righe che accetta.
+    #        (`context.lock_batch_id`) e la porta a TUTTI E DUE i cancelli: la
+    #        discovery (quali commesse visitare) e l'emit (quali righe emettere).
     # ⛔ Questo test non presidia una comodita': senza quel valore il pull firma
     #        NULL, `fn_select_attivita_fatturabili` (changeSet 20260904-50)
     #        filtra sul marchio e non trova NIENTE, e il giro emette ZERO
@@ -1136,6 +1230,14 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
     #        non un errore, ma un lotto vuoto che sembra un mese senza lavoro.
     #        Una regressione qui e' invisibile a ogni altro test del file, che
     #        guardano gli esiti e non gli argomenti.
+    # ⭐ E dal 2026-09-12 la stessa identita' la vuole ANCHE LA DISCOVERY (D1,
+    #        changeSet `20260912-15`): al rilancio di un pull fallito i propri
+    #        documenti sono `TRATTENUTA` dal lotto che sta riprovando, e senza
+    #        identita' la discovery scarta la commessa — il giro visita zero
+    #        commesse e chiude COMPLETATO senza aver emesso niente
+    #        (LTF-0010972). Fino a quel giorno l'eccezione dell'emit era
+    #        corretta e IRRAGGIUNGIBILE: chi l'avrebbe chiamata non arrivava
+    #        mai a farlo. Consegnare l'identita' al solo emit e' il difetto.
     @patch("apps.core.services.fan_out.transaction")
     def test_pull_consegna_al_db_l_identita_del_giro(self, _mock_txn):
         executor, _repo, commesse_repo, _ = self._build_executor_pull([10, 20])
@@ -1148,6 +1250,13 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             dry_run=False,
         )
 
+        # Primo cancello: la discovery riceve l'identita'.
+        commesse_repo.list_commesse_emittibili.assert_called_once()
+        self.assertEqual(
+            commesse_repo.list_commesse_emittibili.call_args.kwargs["emit_batch_id"],
+            _LOCK_BATCH_GIRO,
+        )
+        # Secondo cancello: l'emit riceve LA STESSA identita', per ogni commessa.
         self.assertEqual(commesse_repo.emit_attivita_fatturabili.call_count, 2)
         for chiamata in commesse_repo.emit_attivita_fatturabili.call_args_list:
             self.assertEqual(chiamata.kwargs["emit_batch_id"], _LOCK_BATCH_GIRO)
@@ -1173,6 +1282,47 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         # ⭐ E soprattutto: NESSUNA commessa e' stata toccata. Un pull partito a
         #    meta' avrebbe firmato righe con marchio nullo, cioe' seminato il
         #    difetto invece di fermarlo.
+        commesse_repo.emit_attivita_fatturabili.assert_not_called()
+        # ⛔ E NEMMENO LA DISCOVERY E' PARTITA — e' l'asserzione che distingue
+        #    l'ordine nuovo (guard PRIMA della discovery, 2026-09-12) da quello
+        #    vecchio (guard dopo). Con la discovery che legge l'identita' un
+        #    guard a valle non ferma niente: chiamata con NULL non fallisce,
+        #    risponde a un'altra domanda e scarta i propri documenti in
+        #    silenzio. Senza questa riga il test restava verde su entrambi gli
+        #    ordini, cioe' non decideva.
+        commesse_repo.list_commesse_emittibili.assert_not_called()
+
+    # Scopo: ⛔ DENTRO L'HANDLER, il guard sull'identita' precede ANCHE il ramo
+    #        dry-run. Prima del 2026-09-12 il `return None` del dry-run stava
+    #        fra la discovery e il guard: un dry-run senza identita' avrebbe
+    #        interrogato la discovery con NULL e contato MENO commesse del giro
+    #        vero — un'anteprima che risponde a un'altra domanda.
+    #        `lock_batch_id` e' NOT NULL a tabella: se manca, il contesto non e'
+    #        stato caricato, e un'anteprima su un contesto rotto non e'
+    #        un'anteprima.
+    # ⚠️ Si chiama l'HANDLER DIRETTAMENTE, e non `execute_step`: da li' il
+    #        dry-run esce in `_run_task` prima ancora di invocarlo (test 23d), e
+    #        il ramo dentro l'handler e' la «seconda cintura» dichiarata in quel
+    #        test — quella che resta corretta se un domani l'handler venisse
+    #        invocato fuori da `_run_task`. E' quella cintura che qui si prova.
+    def test_pull_dry_run_senza_identita_si_ferma_lo_stesso(self):
+        executor, repo, commesse_repo, _ = self._build_executor_pull([10, 20])
+        context = repo.get_lotto_context.return_value
+        context.lock_batch_id = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            executor._handle_pull_attivita_da_commessa_task(
+                task="pull_attivita_da_commessa",
+                fn_name="vendite.fn_emit_attivita_fatturabili_da_commessa",
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                context=context,
+                params={},
+                dry_run=True,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PIPELINE_SCOPE_INCOMPLETE")
+        commesse_repo.list_commesse_emittibili.assert_not_called()
         commesse_repo.emit_attivita_fatturabili.assert_not_called()
 
     # Scopo: ⭐ IL MOTIVO DI DOMINIO, non il dump. `vw_dash_commesse_respinte`

@@ -616,6 +616,16 @@ function elencoTroncato(items, fmt, sep = ', ') {
 
 const selezioneGruppi = ref([])
 const {
+  // ⭐ IL PREDICATO DELLA CASELLA VIENE DAL BB, non da una copia. Fino al
+  //    2026-09-12 il `:disabled` leggeva `isGruppoPrendibile` — che non sa
+  //    niente dei giri in corso — mentre il guard del BB e il prune leggevano
+  //    `gruppiSelezionabili`, che li esclude. Risultato in-app (rilievo di
+  //    Tid): riga con la rotella «in lavorazione» e casella ACCESA; il click
+  //    non selezionava (il guard tiene) ma non lo diceva — un gesto offerto
+  //    e rifiutato in silenzio. Il contratto del BB e' scritto in testa al
+  //    file: «`:disabled` viene da `isSelectable`». Una seconda sede della
+  //    stessa regola era gia' divergente.
+  isSelectable: isGruppoSelezionabile,
   isSelected: isGruppoSelezionato,
   toggleRow: toggleGruppo,
   // ⚠️ La terna «in pagina», non `toggleAll`/`anySelected`: questa lista e'
@@ -709,6 +719,11 @@ function azzeraStatoGruppi() {
 const selezioneResidui = ref([])
 const residuiSelezionabili = computed(() => residui.value ?? [])
 const {
+  // Stesso contratto della lista sorella: la casella legge `isSelectable`.
+  // Oggi ogni residuo e' selezionabile per costruzione, quindi non cambia
+  // niente a video — ma il giorno che un motivo di esclusione entra in
+  // `residuiSelezionabili`, la casella lo segue senza una seconda modifica.
+  isSelectable: isResiduoSelezionabile,
   isSelected: isResiduoSelezionato,
   toggleRow: toggleResiduo,
   // ⛔ La terna «in pagina», e la prima stesura aveva preso quella sbagliata:
@@ -2585,12 +2600,15 @@ onActivated(() => {
                     />
                   </template>
                   <template v-if="canFatturare" #selection="{ data }">
-                    <!-- Riga a testata bloccata: non spuntabile (il guard del BB
-                         la tiene comunque fuori dalla selezione). -->
+                    <!-- Non spuntabile se la riga non e' selezionabile PER IL BB:
+                         testata bloccata, trattenuta da un lotto, o gia' dentro
+                         un giro vivo (la rotella accanto al nome). Il guard del
+                         BB la tiene comunque fuori dalla selezione; la casella
+                         spenta e' cio' che lo DICE. -->
                     <Checkbox
                       binary
                       :model-value="isGruppoSelezionato(data)"
-                      :disabled="!isGruppoPrendibile(data)"
+                      :disabled="!isGruppoSelezionabile(data)"
                       @update:model-value="toggleGruppo(data)"
                     />
                   </template>
@@ -2819,6 +2837,7 @@ onActivated(() => {
                     <Checkbox
                       binary
                       :model-value="isResiduoSelezionato(data)"
+                      :disabled="!isResiduoSelezionabile(data)"
                       @update:model-value="toggleResiduo(data)"
                     />
                   </template>
