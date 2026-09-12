@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.4.0
+anthropic==1.5.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
@@ -41,7 +41,7 @@ django==6.1.1
     #   drf-spectacular
 django-redis==7.0.0
     # via -r ../requirements.in
-djangorestframework==3.18.0
+djangorestframework==3.18.1
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
@@ -54,7 +54,7 @@ drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fonttools[woff]==4.64.0
+fonttools[woff]==4.65.0
     # via weasyprint
 gunicorn==26.2.0
     # via -r ../requirements.in
@@ -72,7 +72,7 @@ inflection==0.5.1
     # via drf-spectacular
 jinja2==3.1.6
     # via -r ../requirements.in
-jiter==0.16.0
+jiter==0.17.0
     # via anthropic
 jsonschema==4.26.0
     # via drf-spectacular
@@ -100,7 +100,7 @@ pydantic-core==2.46.5
     # via pydantic
 pydyf==0.12.1
     # via weasyprint
-pyjwt==2.13.0
+pyjwt==2.14.0
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt

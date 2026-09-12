@@ -655,7 +655,6 @@ class ApiRataSaldo(DomainAPIView):
 class ApiFatturaSaldo(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/saldo/ — il saldo di un documento."""
 
-    area_funzionale = AREA
     # ⭐ Lo consuma il drawer FATTURA, che vive in `vendite`: senza questo, per
     #    vedere se una fattura e' pagata servirebbe la LETTURA su `pagamenti` —
     #    cioe' allargare un permesso per comodita'. E' lo stesso pattern del
@@ -663,6 +662,13 @@ class ApiFatturaSaldo(DomainAPIView):
     # ⚠️ E sta qui e non in `vendite` per un vincolo, non per gusto: le chiamate
     #    laterali fra moduli di pari livello non sono ammesse (api.md), quindi
     #    `vendite` non puo' chiedere un saldo a `pagamenti`.
+    # ⛔ E NON dichiara `area_funzionale`, ed e' la riga che conta: la catena
+    #    legge lo skip SOLO se l'area non si risolve. Fino al 2026-09-12 queste
+    #    quattro view dichiaravano anche `area_funzionale = AREA`, e lo skip era
+    #    MUTO — la LETTURA su `pagamenti` serviva davvero, e il commento qui
+    #    sopra prometteva un comportamento che il codice non aveva. Decisione
+    #    di Tid (2026-09-12): vale lo skip. Presidiato da
+    #    `core/tests/test_skip_area_check_registro.py`.
     skip_area_check = True
 
     @extend_schema(
@@ -680,7 +686,6 @@ class ApiFatturaSaldo(DomainAPIView):
 class ApiFatturaRateSaldo(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/rate/ — le rate con il loro saldo."""
 
-    area_funzionale = AREA
     # Stessa ragione del saldo documento: lo consuma il form dell'abbinamento,
     # e risponde il minimo su una fattura gia' scelta.
     skip_area_check = True
@@ -821,7 +826,6 @@ class ApiSistemazioneDetail(DomainAPIView):
 class ApiFatturaSistemazioni(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/ — gli atti su un documento."""
 
-    area_funzionale = AREA
     # ⭐ Cancello di perimetro emittente (2026-09-02, con la conversione della
     #    lista su `<ListaConfigurabile>`): `perimetro_emittente = t` a catalogo
     #    (decisione D-3 del lotto 2), quindi vale l'emittente dell'operatore e
@@ -865,7 +869,6 @@ class ApiFatturaSistemazioni(DomainAPIView):
 class ApiFatturaSistemazioniExport(DomainAPIView):
     """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/export/ — CSV/XLSX."""
 
-    area_funzionale = AREA
     # ⭐ Stesso `lista_codice` della lista a video, ed e' il punto dell'export
     #    configurabile: le colonne del file sono quelle che l'operatore VEDE
     #    (preferenza + preset + permessi), non un elenco cablato qui che
