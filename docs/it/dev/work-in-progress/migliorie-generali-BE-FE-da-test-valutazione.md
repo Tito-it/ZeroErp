@@ -207,6 +207,16 @@ verde dica su quanti file.
   vulnerabilità, è che nessuno lancia `npm audit` — oggi il registro è a zero,
   cioè l'unico momento in cui un cancello nasce senza arretrato
   (`npm audit --audit-level=high` nel job `ci-frontend`).
+  ⭐ **E il quarto avviso Dependabot era del backend**: `weasyprint 69.0`
+  (`< 70.0`, SSRF su `url_fetcher`, CVE-2026-55073). L'11-09 non si poteva
+  sanare — la 70.0 era uscita l'8-09 e il pin `<70` la escludeva. Chiuso il
+  2026-09-13: tetto a `<71`, `pip-compile --upgrade-package weasyprint` (una
+  riga nel lock), nessun altro pin mosso, fattura vera stampata con la 70
+  **identica** check per check alla 69, `apps.documenti` 252 e suite 4.652
+  verdi. ⚠️ **Residuo dichiarato**: la 70 avvisa che il ripiego su fontTools
+  per il subsetting dei font *«will be unsupported in future versions»* —
+  `libharfbuzz-subset0` manca nel `Dockerfile` e sulle macchine di sviluppo,
+  e va aggiunto **prima** della 71 (INFRA-2).
 
 ### D2 — 258.000 righe di Python senza analisi statica
 
@@ -577,9 +587,15 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D1-e** — ✅ 2026-09-09: `check_license.py` in modalità range per la CI.
 * [ ] **D1-d-bis** — il primo test di **componente** su `ListaConfigurabile`
       (`@vue/test-utils` + `jsdom`, da aggiungere quel giorno).
-* [~] **D1-f** — ✅ 2026-09-13: le due vulnerabilità sanate nel lock, `npm audit`
-      a zero. Aperta la decisione se `npm audit --audit-level=high` entra nel
-      job — ora nascerebbe a zero.
+* [~] **D1-f** — ✅ 2026-09-13: le due vulnerabilità FE sanate nel lock
+      (`npm audit` a zero) e `weasyprint` a 70.0 nel backend. Aperta la
+      decisione se `npm audit --audit-level=high` entra nel job — ora
+      nascerebbe a zero.
+* [x] **INFRA-2** — ✅ 2026-09-13: `libharfbuzz-subset0` nel `Dockerfile` (una
+      riga, con il perché) e installato da Tid sulla macchina di sviluppo.
+      Verificato: gli avvisi di WeasyPrint nel log dello smoke render-stampa
+      da **3 a 0**, PDF identico check per check. ⚠️ Su una macchina di
+      sviluppo nuova va rifatto a mano: la riga è nel `requirements.in`.
 
 ### 🔴 Il backend
 

@@ -53,16 +53,13 @@
 
 import re
 from unittest import TestCase
-from apps.core.tests._repo import repo_root
+from apps.core.tests._repo import repo_root, sorgente_senza_commenti
 
 
-# Scopo: sorgente Python ripulito dai COMMENTI.
-# ⛔ Serve, e non e' prudenza: un presidio che cerca una stringa nel sorgente si
-#    accende sulla PROSA che spiega il difetto — ed e' successo in questo repo il
-#    2026-08-26 su `test_liste_configurabili_seed`. Qui il rischio e' certo: il
-#    commento del job notturno CITA per esteso la forma che vietiamo.
-def _sorgente_senza_commenti(testo: str) -> str:
-    return re.sub(r"^[ \t]*#.*$", "", testo, flags=re.M)
+# ⛔ I sorgenti si leggono SENZA commenti (`sorgente_senza_commenti`, in
+#    `_repo.py`): un presidio che cerca una stringa si accende sulla PROSA che
+#    spiega il difetto, e qui il rischio e' certo — il commento del job notturno
+#    CITA per esteso la forma che vietiamo.
 
 
 # Le tre forme vietate. ⚠️ STRETTE di proposito: un cancello che capisce un caso
@@ -107,7 +104,7 @@ class CoercizioneJsonbDalBuildingBlockTests(TestCase):
         trovate: dict[tuple[str, str], int] = {}
         dettaglio: list[str] = []
         for rel, percorso in self._sorgenti():
-            testo = _sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
+            testo = sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
             for numero, riga in enumerate(testo.splitlines(), 1):
                 for nome, rx in _FORME_VIETATE:
                     if rx.search(riga):

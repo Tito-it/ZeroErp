@@ -22,12 +22,17 @@ WORKDIR /app
 # rendering PDF (motore documentale parametrico, Decisione 73): sono caricate
 # via cffi a runtime e senza di esse l'import di weasyprint fallisce in
 # container.
+# ⚠️ `libharfbuzz-subset0` dal 2026-09-13 (WeasyPrint 70): senza, il subsetting
+#    dei font ripiega su fontTools con l'avviso «will be unsupported in future
+#    versions» a ogni stampa — cioe' con la 71 una stampa che non esce. Va
+#    installato anche sulle macchine di sviluppo (`apt install`).
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
        libpango-1.0-0 \
        libpangoft2-1.0-0 \
        libharfbuzz0b \
+       libharfbuzz-subset0 \
        libfontconfig1 \
        libcairo2 \
        libgdk-pixbuf-2.0-0 \
