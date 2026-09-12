@@ -75,7 +75,7 @@ function valueForCurrentScope() {
 
 watch(() => props.visible, (v) => {
   if (!v || !props.parameter) return
-  scope.value = auth.isAdmin ? PARAMETER_SCOPE.EMITTENTE : PARAMETER_SCOPE.USER
+  scope.value = auth.isSuperAdmin ? PARAMETER_SCOPE.EMITTENTE : PARAMETER_SCOPE.USER
   categoriaClienteId.value = null
   overrideValue.value = valueForCurrentScope()
 })
@@ -152,7 +152,7 @@ function close() {
           <ParameterFallback :parameter="parameter" />
         </div>
 
-        <div v-if="auth.isAdmin" class="form-field">
+        <div v-if="auth.isSuperAdmin" class="form-field">
           <label>{{ t('config.impostazioni.scope_label') }}</label>
           <Select v-model="scope" :options="scopeOptions"
             option-label="label" option-value="value"

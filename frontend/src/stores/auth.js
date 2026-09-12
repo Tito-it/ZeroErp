@@ -191,8 +191,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Multi-face auth Stage B: i nuovi campi nativi di /me/.
   // - isSuperAdmin: true se l'utente ha binding al profilo SUPER_ADMIN
-  //   (profilo id 9100). Sostituisce il legacy `isAdmin` mantenuto come
-  //   alias per retrocompat.
+  //   (profilo id 9100). ⛔ Fino al 2026-09-12 esisteva anche l'alias
+  //   `isAdmin`, «legacy» dal cutover multi-face e con DIECI consumer vivi:
+  //   il modello ADMIN/OPERATIVO e' morto in Fase 7 e l'alias teneva vivo
+  //   il vocabolario vecchio (analisi-software-per-dati-morti §2.8).
+  //   Rinominati i consumer, alias tolto: il presidio e' il grep a zero.
   // - ruoloApplicativo: categoria dell'identita' attiva
   //   (OPERATORE | CLIENTE_PORTALE | FORNITORE_PORTALE | SHOP_CUSTOMER |
   //    API_CLIENT | DISABILITATO | null).
@@ -204,9 +207,6 @@ export const useAuthStore = defineStore('auth', () => {
   // FE che devono passare `identita_id` a endpoint che ne hanno bisogno
   // (es. flussi cross-veste in PR-C), o mostrare la veste corrente in UI.
   const identitaId = computed(() => user.value?.identita?.id || null)
-
-  // Alias legacy. Nuovi consumer usino isSuperAdmin direttamente.
-  const isAdmin = isSuperAdmin
 
   // Helpers ortogonali per namespace multi-face. Utili per router guard,
   // navigazione condizionale e feature flag lato UI.
@@ -433,7 +433,6 @@ export const useAuthStore = defineStore('auth', () => {
     accessTokenValid,
     refreshTokenValid,
     isSuperAdmin,
-    isAdmin,  // alias legacy di isSuperAdmin
     ruoloApplicativo,
     identitaId,
     isOperatoreInterno,

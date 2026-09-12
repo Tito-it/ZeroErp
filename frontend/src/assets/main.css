@@ -70,6 +70,28 @@ a {
   width: 200px;
 }
 
+/* «Mostra i nascosti» (BB ToggleNascoste): interruttore + etichetta + «(N)»
+ * in linea. `min-height` = altezza dei controlli di form della stessa riga
+ * (`.app-form-select.p-select`): un interruttore e' piu' basso di una Select e
+ * senza pavimento si disallineerebbe dai vicini. Il numero e' muted perche' e'
+ * un'informazione di contorno: cio' che conta e' la parola accanto. */
+.app-toggle-nascoste {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  cursor: pointer;
+}
+
+/* `font-weight` esplicito: il root del BB e' un `<label>`, e dentro un
+ * `.form-field` erediterebbe il grassetto delle etichette — il numero deve
+ * restare di contorno anche li'. */
+.app-toggle-nascoste-count {
+  color: var(--p-text-muted-color);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 /* Gruppo azioni toolbar (azioni pagina/lista) */
 .app-page-actions {
   display: flex;

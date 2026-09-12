@@ -97,7 +97,7 @@ Campi risposta:
 ## Dipendenze DB
 
 - `config.aree_funzionali` — iterazione aree attive
-- `anagrafiche.risorse_umane_auth_user` — ruolo_sistema e ponte utente-risorsa
+- `anagrafiche.identita_digitali` — identita' e `ruolo_applicativo` (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1); `ruolo_sistema` e' caduto in Fase 7)
 - `anagrafiche.risorse_umane` — unita_organizzativa_id
 - `config.user_override_aree` — override individuali area
 - `config.profili_reparto_aree` — profili reparto ereditati

@@ -37,7 +37,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const uiAdmin = useUiAdminStore()
 
-const canAccess = computed(() => auth.isAdmin)
+const canAccess = computed(() => auth.isSuperAdmin)
 
 // Scopo: Quando una definizione viene creata/aggiornata/eliminata,
 //        ricarico l'elenco del Select header per non lasciare voci

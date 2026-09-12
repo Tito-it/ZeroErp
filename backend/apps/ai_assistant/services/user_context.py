@@ -37,7 +37,7 @@ def get_emittente_fiscale_id(request: Any) -> int:
         return int(emittente["emittente_fiscale_id"])
 
     # Fallback 2: PermissionResolver (componente generico core)
-    emittenti_ids = PermissionResolver.get_emittenti_ids(user)
+    emittenti_ids = PermissionResolver.get_emittenti_pk_ids(user)
     if emittenti_ids:
         return emittenti_ids[0]
 

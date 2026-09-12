@@ -21,7 +21,7 @@ chiusura atomica della versione pubblicata precedente tramite
 Gli endpoint template/versioni hanno `area_funzionale = "documenti"`
 (id area=11, schema_db=`documenti`). Il livello area si applica con la
 catena standard TUTTO/LETTURA/BLOCCATO; lo scope dati e' applicato in
-repository tramite `PermissionResolver.get_emittenti_ids` (whitelist
+repository tramite `PermissionResolver.get_emittenti_pk_ids` (whitelist
 `emittenti_fiscali.id`): admin globale e superuser vedono tutto,
 operatori vedono solo i template dei propri emittenti. Le mutazioni admin
 usano `post_permission = "documenti_template_manage"` (Decisione 75).
@@ -425,7 +425,7 @@ gestibili automaticamente.
 ## Regole
 
 - **Scope operatore**: tutti gli endpoint applicano lo scope emittente
-  via `PermissionResolver.get_emittenti_ids(user)`. Operatore con
+  via `PermissionResolver.get_emittenti_pk_ids(user)`. Operatore con
   emittenti assegnati vede solo i template dei propri emittenti; admin
   globale/superuser vedono tutto. Utente non autenticato (corner case:
   bypass auth) riceve lista vuota: `is_authenticated=False` -> scope = `[]`.
@@ -495,7 +495,7 @@ gestibili automaticamente.
   logica del template e' la tripla (output, sorgente, emittente):
   cambiarla equivale a creare un template diverso.
 - **Scope emittente in create**: l'`emittente_fiscale_id` del payload
-  deve appartenere alla whitelist `PermissionResolver.get_emittenti_ids`
+  deve appartenere alla whitelist `PermissionResolver.get_emittenti_pk_ids`
   dell'utente. Admin globale + superuser bypassano (la FK DB blocca id
   inesistenti). Operatore fuori scope -> `400 E_DOCUMENTI_VALIDATION`
   (no `403`/`404`: l'utente conosce gia' il proprio scope dal `/me/`).
@@ -511,7 +511,7 @@ gestibili automaticamente.
 - `documenti.render_engine_documento` (INNER JOIN decodifica)
 - `config.sorgenti` (INNER JOIN decodifica)
 - `anagrafiche.emittenti_fiscali` (INNER JOIN decodifica + scope)
-- `script.fn_get_emittenti_for_user` (via `PermissionResolver.get_emittenti_ids`)
+- `script.fn_get_emittenti_scope_pk_ids` (via `PermissionResolver.get_emittenti_pk_ids`; fino al 2026-09-12 questa riga nominava una `fn_get_emittenti_for_user` che non esiste)
 
 Nessuna funzione DB applicativa intermedia: query raw SQL parametriche
 nel repository.

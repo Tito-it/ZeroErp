@@ -11,7 +11,7 @@
 #        unique `is_default` per output+sorgente+emittente).
 #        Scope emittente: l'`emittente_fiscale_id` del payload deve
 #        appartenere alla whitelist dell'utente
-#        (`PermissionResolver.get_emittenti_ids`); update riusa il check
+#        (`PermissionResolver.get_emittenti_pk_ids`); update riusa il check
 #        di visibilita' di TemplateService.get_template (404 unificato).
 #        Validazione `context_builder_code`: solo formato (stringa non
 #        vuota) — il check whitelist registry e' a carico del render

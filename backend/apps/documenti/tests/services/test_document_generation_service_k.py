@@ -112,7 +112,7 @@ def _patch_get_builder(context: dict[str, Any] | None = None):
 
 def _patch_scope(value: list[int] | None):
     return patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=value,
     )
 

@@ -8,7 +8,7 @@
 #        con comandi versione (Tranche F) e endpoint di generazione documento
 #        (sorgente -> template applicabile, Tranche H/J).
 #        Scope emittente passato dal service tramite lista whitelist
-#        (`PermissionResolver.get_emittenti_ids`); admin globale
+#        (`PermissionResolver.get_emittenti_pk_ids`); admin globale
 #        riceve `None` e non filtra.
 # ------------------------------------------------------------
 

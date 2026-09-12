@@ -53,7 +53,7 @@ function buildRowActions(data) {
       label: t('config.impostazioni.remove_emittente_override'),
       icon: MANAGE_ICONS.BUILDING,
       severity: 'danger',
-      visible: auth.isAdmin && !!data.emittente_override_id,
+      visible: auth.isSuperAdmin && !!data.emittente_override_id,
       command: () => emit('remove-emittente-override', data),
     },
     {

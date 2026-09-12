@@ -28,9 +28,21 @@ class RisorseUmane(models.Model):
 class IdentitaDigitale(models.Model):
     """Bridge generico soggetto_ruolo <-> auth_user.
 
-    Rimpiazza il vecchio `RisorseUmaneAuthUser` per supportare, oltre
-    all'operatore interno (ruolo_applicativo=OPERATORE), le identita
+    Rimpiazza il vecchio ponte 1:1 `risorse_umane_auth_user` per supportare,
+    oltre all'operatore interno (ruolo_applicativo=OPERATORE), le identita
     portale cliente/fornitore, shop customer e API client.
+
+    ⛔ E' l'UNICO model del ponte. Fino al 2026-09-12 qui sotto viveva anche
+    un model `managed=False` sulla vista di compatibilita' col nome vecchio
+    (`risorse_umane_auth_user`, «tenuto per i reader»): un secondo nome per
+    la stessa cosa, che nascondeva nel corpo della vista il filtro OPERATORE
+    e la proiezione RU. Ritirato con i suoi lettori
+    (analisi-software-per-dati-morti §2.1, «strato 2»); il DB ritira la vista.
+    ⚠️ Il nome del model ritirato non si scrive nemmeno qui: e' il canale con
+    cui un oggetto morto rientra (analisi §0), e lo presidia
+    `core/tests/db/test_risorsa_umana_dalla_madre`.
+    Il legame con la risorsa umana si fa per `soggetto_ruolo_id` verso
+    `RisorseUmane`, che e' come lo fa `script.fn_get_user_profile`.
 
     Vedi guida `architettura-multi-face-auth.md` sezione 3 e WIP
     `sviluppo-multi-face-auth.md` sezione 4.2 per il modello dati.
@@ -76,39 +88,3 @@ class IdentitaDigitale(models.Model):
             f"IdentitaDigitale(auth_user_id={self.auth_user_id}, "
             f"ruolo_applicativo={self.ruolo_applicativo})"
         )
-
-
-class RisorseUmaneAuthUser(models.Model):
-    """Ponte 1:1 tra risorsa umana e auth_user.
-
-    Post-cutover §4.6.H.2 questa "tabella" e' in realta' una vista su
-    `identita_digitali` (leggibile, non scrivibile). I writer usano
-    `IdentitaDigitale` direttamente. Mantenuto come `managed=False` per
-    i reader (es. `permissions_cache.invalidate_department` che mappa
-    UO -> auth_user_id).
-    Fase 7: il campo `ruolo_sistema` non e' piu' esposto sul modello
-    (multi-face puro). Per lo stato amministrativo si legge
-    `IdentitaDigitale.ruolo_applicativo` o `script.fn_is_super_admin`.
-    """
-
-    id = models.BigAutoField(primary_key=True)
-    risorsa_umana = models.OneToOneField(
-        RisorseUmane,
-        on_delete=models.DO_NOTHING,
-        db_column="risorsa_umana_id",
-        related_name="auth_bridge",
-    )
-    auth_user_id = models.IntegerField(unique=True)
-    attivo = models.BooleanField(default=True)
-    meta = models.JSONField(default=dict)
-    data_insert = models.DateTimeField(auto_now_add=True)
-    user_insert = models.TextField(default="")
-    data_update = models.DateTimeField(auto_now=True)
-    user_update = models.TextField(default="")
-
-    class Meta:
-        managed = False
-        db_table = 'anagrafiche"."risorse_umane_auth_user'
-
-    def __str__(self) -> str:
-        return f"RisorseUmaneAuthUser(auth_user_id={self.auth_user_id})"

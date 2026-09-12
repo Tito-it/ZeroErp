@@ -77,7 +77,7 @@ quel template; altrimenti decide l'appartenenza al reparto (o la presa libera).
 - `anagrafiche.risorse_umane` — reparto anagrafico dell'operatore (eligibilità caso B)
 - `pratiche.flussi` — `unita_organizzativa_id` (instradamento) + UPDATE `risorsa_umana_id`
 - `config.stati_flussi_pratiche` — risoluzione stato DA_ESEGUIRE
-- `anagrafiche.risorse_umane_auth_user` — bridge utente → risorsa umana
+- `anagrafiche.identita_digitali` + `anagrafiche.risorse_umane` — utente → risorsa umana (`get_risorsa_umana_id`) (⚠️ fino al 2026-09-12 qui c'era la vista `anagrafiche.risorse_umane_auth_user`, il nome vecchio del ponte, in ritiro — analisi-software-per-dati-morti §2.1)
 
 ## Note di migrazione
 

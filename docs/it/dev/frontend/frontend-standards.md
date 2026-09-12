@@ -644,6 +644,25 @@ cambiare i 60 giorni e' una riga in `core/utils/date`
 
 Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
 
+### Interruttore «mostra i nascosti» — `ToggleNascoste`
+
+Quando una lista lascia fuori di default degli elementi che **esistono** (righe
+archiviate, lotti annullati) e li rimette dentro a richiesta, l'interruttore è
+il BB `ToggleNascoste`: `[switch] Mostra annullati (3)`, con il **numero** di
+ciò che resta fuori finché è spento. ⛔ Non un `ToggleSwitch` scritto in
+pagina: il 2026-09-12 erano già due copie con due CSS e due chiavi plurali.
+
+- il numero lo **dichiara il backend** (`archiviate_count`, `annullati_count`):
+  spento e senza numero, «elenco pulito» e «tre righe messe via» si leggono
+  uguali — è la stessa regola di `ritirate_count` sul giornale;
+- la forma dell'etichetta è `Etichetta (N)` (decisione di Tid, 2026-09-12), non
+  una frase plurale: la chiave i18n è una, quella dell'interruttore;
+- il cambio ricarica **da pagina 1**: la pagina 3 dell'insieme piccolo può non
+  esistere in quello grande, e viceversa.
+
+Consumer: `LottiListView`, `CodaFiltriToolbar`. Dettaglio nel
+[catalogo](catalogo-building-block-frontend.md).
+
 ### Scorciatoie da tastiera (Keyboard Shortcuts)
 
 Scorciatoie globali per operatori ERP power user. Due meccanismi:

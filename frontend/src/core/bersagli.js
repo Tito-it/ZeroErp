@@ -70,7 +70,7 @@ import { NAV_ICONS } from './navigation'
 //              resterebbe indietro **senza fallire**.
 //   `area`     schema DB per il guard dei permessi (`isAreaBlocked`).
 //   `richiedeAdmin`  per le rotte del dominio `amm-software`, dove il route
-//              guard non guarda l'area ma `isAdmin`: se il pulsante non
+//              guard non guarda l'area ma `isSuperAdmin`: se il pulsante non
 //              rispettasse la stessa regola porterebbe su «accesso negato».
 const DESTINAZIONI = Object.freeze({
   FATTURA: {
@@ -151,7 +151,7 @@ const DESTINAZIONI = Object.freeze({
     // non un drawer: il dettaglio strutturale di un'edizione e' troppo ricco
     // per un pannello (lo dice il commento della rotta stessa).
     rotta: { name: 'amm-software-definizione-editor', param: 'id' },
-    // ⚠️ Il route guard di `amm-software` NON guarda l'area: guarda `isAdmin`.
+    // ⚠️ Il route guard di `amm-software` NON guarda l'area: guarda `isSuperAdmin`.
     // Un pulsante che non rispettasse la stessa regola porterebbe l'operatore
     // su «accesso negato», che e' il vicolo cieco che il §4.3 vieta.
     richiedeAdmin: true,
@@ -250,8 +250,8 @@ function raggiungibile(destinazione, authStore) {
   if (!destinazione.drawer && !destinazione.rotta) return false
   if (destinazione.drawer && !DOCUMENTO_DRAWERS[destinazione.drawer]) return false
   // ⚠️ Le due regole di accesso sono DIVERSE e vanno guardate come le guarda il
-  // route guard: `amm-software` su `isAdmin`, tutto il resto sull'area.
-  if (destinazione.richiedeAdmin && !authStore?.isAdmin) return false
+  // route guard: `amm-software` su `isSuperAdmin`, tutto il resto sull'area.
+  if (destinazione.richiedeAdmin && !authStore?.isSuperAdmin) return false
   if (!destinazione.area) return true
   // `isAreaBlocked` e' la stessa lettura che fa il route guard: una regola sola.
   return !authStore?.isAreaBlocked?.(destinazione.area)

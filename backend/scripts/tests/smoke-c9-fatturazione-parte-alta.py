@@ -278,7 +278,7 @@ rows = q(
 )
 assert rows, "nessuna identita' OPERATORE attiva per tid"
 identita_id = rows[0][0]
-emittente_ids = PermissionResolver.get_emittenti_ids(tid)
+emittente_ids = PermissionResolver.get_emittenti_pk_ids(tid)
 scope_key = scope_key_da_emittenti(emittente_ids)
 print(f"identita': auth_user={tid.id} identita={identita_id} emittenti={emittente_ids} scope_key={scope_key}")
 

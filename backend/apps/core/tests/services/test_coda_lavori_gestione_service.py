@@ -74,7 +74,7 @@ def _patch_all(
         svc.JOBNAME_WORKER_CODA_LAVORI: {"tolleranza_minuti": 10, "segno_di_vita": "GIORNALE"},
         svc.JOBNAME_WORKER_CODA_STAMPA: {"tolleranza_minuti": 10, "segno_di_vita": "GIORNALE"},
     }
-    resolver.get_emittenti_ids.return_value = emittenti
+    resolver.get_emittenti_pk_ids.return_value = emittenti
     resolver.is_super_admin.return_value = super_admin
     resolver.check_azione.return_value = code_manage
     return (p_resolver, p_repo, p_maint, p_proc), resolver, repo_cls, maint_cls

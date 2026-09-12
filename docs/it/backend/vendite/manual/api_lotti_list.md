@@ -20,6 +20,12 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   - `area_geografica_id` (int) — filtro per area geografica fatturazione
   - `tipo_doc_fiscale_id` (int) — filtro per tipo documento fiscale
   - `emittente_soggetto_ruolo_id` (int) — filtro per emittente fiscale
+  - `annullati` (`1`) — ⭐ **dal 2026-09-12** mostra anche i lotti col fiscale
+    **abortito** (`config.stati_doc_fiscale.is_abortito`, oggi `ANNULLATA`).
+    Di default restano **fuori** — da lista, chip per stato ed export insieme,
+    perché il parser dei filtri è uno — e la risposta dichiara quanti sono
+    (`annullati_count`, sotto). Stesso parametro su `lotti/export/` e
+    `lotti/mensile/`
   - `page` (int) — numero pagina, default `1`
   - `page_size` (int) — righe per pagina, default `50`, max `200`
   - `order_by` (string) — colonna di ordinamento, da **whitelist**
@@ -37,6 +43,8 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
     "page": 1,
     "page_size": 50,
     "total_pages": 1,
+    "stati": [{"stato_lotto": "COMPLETATO", "n_lotti": 1}],
+    "annullati_count": 3,
     "results": [
       {
         "id": 42,
@@ -74,6 +82,27 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 
 ## Regole
 
+- ⭐ **I lotti ANNULLATI stanno fuori dal perimetro** (decisione di Tid,
+  2026-09-12). L'annullo è un *rollback*: cancella le fatture pre-fiscali,
+  rimette le attività «da emettere», chiude i task run e lascia un **guscio**
+  col fiscale `ANNULLATA` — non è lavoro, e i conteggi del registro rispondono
+  a «quanto lavoro c'è qui». ⚠️ Ed era peggio che rumore: i chip sono per
+  `stato_lotto` (operativo), che l'annullo di proposito **non tocca** (rev
+  2026-09-07), quindi un lotto annullato restava sotto «Errore» o «Completato».
+  Misurato il 12-09 sul DB di sviluppo: settembre diceva 35 lotti e ne aveva
+  **2** vivi, il chip «Errore» diceva 29 ed erano 16, e un annullato risultava
+  «In esecuzione». ⛔ Il criterio è il **flag di catalogo** `is_abortito` (con
+  `COALESCE`: un lotto senza stato fiscale non è abortito), mai
+  `codice_interno = 'ANNULLATA'`; vive nel costruttore condiviso `_lotti_where`
+  (tre valori: `esclusi` · `inclusi` · `solo`) e, per il calendario — che ha un
+  perimetro suo, l'anno — nello **stesso frammento** `_LOTTI_COND_NON_ABORTITO`
+  con la stessa `JOIN` su `sdf`. Non spariscono in silenzio: `annullati_count`
+  è «quante righe **questo** filtro lascia fuori» (BB `conta_con_perimetro`,
+  stato compreso — pattern `archiviate_count` delle code), e `?annullati=1` li
+  rimette dentro ovunque. Presidio:
+  `apps/vendite/tests/services/test_lotti_annullati_fuori_perimetro.py`
+  (i tre valori sotto `EXPLAIN` sul DB provvisto, e la quadratura mostrati +
+  nascosti = tutti).
 - Tutti i filtri sono opzionali; assenza o valore vuoto equivale a nessun filtro.
 - `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
 - Ordinamento: **`data_insert DESC, id DESC` è il DEFAULT**, non un vincolo — la

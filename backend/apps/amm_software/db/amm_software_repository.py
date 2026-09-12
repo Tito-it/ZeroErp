@@ -1178,8 +1178,10 @@ class AmmSoftwareRepository:
     # ⚠️ `storico_table` e' QUALIFICATA (`schema.tabella`), quindi vuole una sua
     #    regex: `_AUDIT_CODE_RE` non ammette il punto e scarterebbe OGNI riga —
     #    cioe' un audit log vuoto invece di un errore. ⭐ E il primo segmento
-    #    ammette `_` iniziale apposta: la tabella che ha fatto emergere tutto
-    #    questo si chiama `_legacy_risorse_umane_auth_user`.
+    #    ammette `_` iniziale apposta: un identificatore PostgreSQL puo'
+    #    cominciare con `_`, e la tabella che ha fatto emergere tutto questo
+    #    (una shadow «legacy» rinominata col prefisso, droppata il 2026-09-12)
+    #    lo faceva. La regex resta giusta anche senza quella tabella.
     _AUDIT_STORICO_TABLE_RE: ClassVar = re.compile(
         r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$"
     )

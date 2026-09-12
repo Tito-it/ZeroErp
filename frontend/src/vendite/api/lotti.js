@@ -24,8 +24,10 @@ export function exportLotti(params = {}) {
 
 // GET conteggi lotti/mese di un anno (badge sidebar anno/mese). Fotografia
 // completa (nessun filtro stato): { anno, mesi: [{competenza_mese, n_lotti}] }.
-export function listLottiMensile(anno) {
-  return api.get(`${BASE}/mensile/`, { params: { anno } })
+// ⭐ `annullati`: come la lista, i lotti annullati restano fuori dal conteggio
+//    a meno che l'operatore non li chieda (2026-09-12).
+export function listLottiMensile(anno, { annullati = false } = {}) {
+  return api.get(`${BASE}/mensile/`, { params: { anno, ...(annullati ? { annullati: 1 } : {}) } })
 }
 
 // GET dettaglio testata lotto (B-1). 404 su lotto fuori scope/inesistente.

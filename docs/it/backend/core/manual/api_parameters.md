@@ -252,7 +252,7 @@ parameter_repository.py (Repository)
 | `script.fn_list_parameters_for_user` | script | Lista parametri con valori per livello |
 | `config.parameters` | config | Catalogo parametri |
 | `config.parameter_overrides` | config | Override contestuali |
-| `anagrafiche.risorse_umane_auth_user` | anagrafiche | Bridge utente → emittente fiscale |
+| `config.user_emittenti_fiscali` | config | Utente → emittente fiscale (`get_emittente_fiscale_id_for_user`; ⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, che il repository non legge) |
 
 ## Codici errore
 

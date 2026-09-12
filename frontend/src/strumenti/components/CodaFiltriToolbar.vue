@@ -10,8 +10,8 @@ import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import SelectButton from 'primevue/selectbutton'
-import ToggleSwitch from 'primevue/toggleswitch'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import ToggleNascoste from '../../core/components/ToggleNascoste.vue'
 
 // Stato filtri del padre via defineModel: il figlio muta `filtri.xxx`
 // (oggetto reactive condiviso per riferimento, pattern ContattoForm), senza
@@ -85,25 +85,19 @@ const { t } = useI18n()
           @update:model-value="$emit('change')"
         />
       </div>
-      <!-- Interruttore «mostra archiviate» + il conteggio di cio' che resta
-           fuori. Uno solo, qui: le due schede lo ereditano dal telaio. -->
-      <div class="form-field">
-        <label>{{ t('strumenti.code.filtro_archiviate') }}</label>
-        <div class="app-coda-archiviate">
-          <ToggleSwitch
-            v-model="filtri.archiviate"
-            :aria-label="t('strumenti.code.filtro_archiviate')"
-            v-tooltip.bottom="t('strumenti.code.filtro_archiviate_hint')"
-            @update:model-value="$emit('change')"
-          />
-          <span
-            v-if="!filtri.archiviate && archiviateCount > 0"
-            class="app-coda-archiviate-count"
-          >
-            {{ t('strumenti.code.archiviate_nascoste', archiviateCount,
-                  { n: archiviateCount }) }}
-          </span>
-        </div>
+      <!-- «Mostra archiviate (N)»: BB ToggleNascoste, lo stesso del «Mostra
+           annullati» della lista Lotti. Uno solo, qui: le due schede lo
+           ereditano dal telaio. Nessuna etichetta sopra — il testo sta
+           nell'interruttore — e il campo si allinea in basso, alla riga dei
+           controlli dei vicini. -->
+      <div class="form-field app-coda-filtri-toggle">
+        <ToggleNascoste
+          v-model="filtri.archiviate"
+          :label="t('strumenti.code.filtro_archiviate')"
+          :hint="t('strumenti.code.filtro_archiviate_hint')"
+          :count="archiviateCount"
+          @change="$emit('change')"
+        />
       </div>
     </div>
     <PageActionsBar :actions="pageActions">
@@ -116,19 +110,11 @@ const { t } = useI18n()
 </template>
 
 <style scoped>
-/* L'altezza e' quella dei controlli di form della stessa riga
-   (`.app-form-select.p-select` in main.css): un interruttore e' piu' basso di
-   una Select, e senza questo il campo si disallineerebbe dai vicini. */
-.app-coda-archiviate {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2.5rem;
-}
-
-.app-coda-archiviate-count {
-  color: var(--p-text-muted-color);
-  font-size: 0.85em;
-  white-space: nowrap;
+/* I vicini sono «etichetta sopra + controllo sotto»; questo campo ha il solo
+   interruttore (l'etichetta e' dentro). Si stira all'altezza della riga e
+   spinge il controllo in basso, cosi' resta allineato agli altri. */
+.app-coda-filtri-toggle {
+  align-self: stretch;
+  justify-content: flex-end;
 }
 </style>

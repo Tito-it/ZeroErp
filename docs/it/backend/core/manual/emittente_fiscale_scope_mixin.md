@@ -52,13 +52,13 @@ class AttivitaViewSet(EmittenteFiscaleScopeMixin, ModelViewSet):
 - **Non applicabile alle APIView con SQL diretto**: le view vendite attuali usano funzioni DB
   e non hanno queryset ORM. Per queste, usare `PermissionResolver.get_emittenti_sr_ids()` (ritorna
   `soggetto_ruolo_id`) nei service/repository quando il SQL filtra su `emittente_soggetto_ruolo_id`.
-  Usare `get_emittenti_ids()` solo per lookup diretti su `emittenti_fiscali.id` (PK).
+  Usare `get_emittenti_pk_ids()` per i filtri su `emittenti_fiscali.id` (PK).
 - Il mixin utilizza la cache per-request da `request._zeroerp_perms_cache` quando disponibile.
 
 ## Dipendenze
 
-- `PermissionResolver.get_ruolo_sistema()` — per bypass ADMIN
-- `PermissionResolver.get_emittenti_ids()` — per lista PK `emittenti_fiscali.id`
+- `PermissionResolver.is_super_admin()` — bypass SUPER_ADMIN (⚠️ fino al 2026-09-12 qui c'era `get_ruolo_sistema()`, caduta con `ruolo_sistema` in Fase 7)
+- `PermissionResolver.get_emittenti_pk_ids()` — per lista PK `emittenti_fiscali.id` (l'alias `get_emittenti_ids` e' stato tolto il 2026-09-12)
 - `PermissionResolver.get_emittenti_sr_ids()` — per lista `soggetto_ruolo_id` (filtri su efba)
 
 ## Test

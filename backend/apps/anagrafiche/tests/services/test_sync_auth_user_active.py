@@ -12,7 +12,7 @@
 Indice test eseguiti:
 1) SyncAuthUserActiveTests.test_command_calls_fn_sync_and_reports_count
 2) SyncAuthUserActiveTests.test_command_invalidates_cache_for_affected_users
-3) SyncAuthUserActiveTests.test_command_dry_run_does_not_call_sync
+3) SyncAuthUserActiveTests.test_command_dry_run_chiede_la_corsa_ritirata
 4) SyncAuthUserActiveTests.test_command_dry_run_reports_affected_count
 5) SyncAuthUserActiveTests.test_command_zero_affected_no_invalidation
 6) SyncAuthUserActiveTests.test_command_handles_db_error_gracefully
@@ -51,14 +51,13 @@ class SyncAuthUserActiveTests(TestCase):
         self, mock_repo_cls, mock_invalidate
     ):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.return_value = [10, 20, 30]
-        repo.call_sync_auth_user_expired.return_value = 3
+        repo.sync_auth_user_expired.return_value = (3, [10, 20, 30])
         mock_repo_cls.return_value = repo
 
         out = StringIO()
         call_command("sync_auth_user_active", stdout=out)
 
-        repo.call_sync_auth_user_expired.assert_called_once()
+        repo.sync_auth_user_expired.assert_called_once_with(dry_run=False)
         output = out.getvalue()
         self.assertIn("3", output)
         self.assertIn("disattivati", output)
@@ -71,8 +70,7 @@ class SyncAuthUserActiveTests(TestCase):
         self, mock_repo_cls, mock_invalidate
     ):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.return_value = [10, 20]
-        repo.call_sync_auth_user_expired.return_value = 2
+        repo.sync_auth_user_expired.return_value = (2, [10, 20])
         mock_repo_cls.return_value = repo
 
         out = StringIO()
@@ -82,21 +80,22 @@ class SyncAuthUserActiveTests(TestCase):
         mock_invalidate.assert_any_call(10)
         mock_invalidate.assert_any_call(20)
 
-    # Scopo: In modalita' dry-run, la funzione SQL di sync NON deve
-    # essere chiamata (nessuna modifica al DB).
+    # Scopo: In dry-run il command chiede al repository la corsa RITIRATA
+    # (`dry_run=True`: stessa funzione, transazione annullata) e non invalida
+    # nessuna cache — non e' cambiato niente.
     @patch(_INVALIDATE)
     @patch(_REPO)
-    def test_command_dry_run_does_not_call_sync(
+    def test_command_dry_run_chiede_la_corsa_ritirata(
         self, mock_repo_cls, mock_invalidate
     ):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.return_value = [10, 20]
+        repo.sync_auth_user_expired.return_value = (2, [10, 20])
         mock_repo_cls.return_value = repo
 
         out = StringIO()
         call_command("sync_auth_user_active", "--dry-run", stdout=out)
 
-        repo.call_sync_auth_user_expired.assert_not_called()
+        repo.sync_auth_user_expired.assert_called_once_with(dry_run=True)
         mock_invalidate.assert_not_called()
 
     # Scopo: In dry-run, il command deve stampare il numero di utenti
@@ -107,7 +106,7 @@ class SyncAuthUserActiveTests(TestCase):
         self, mock_repo_cls, mock_invalidate
     ):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.return_value = [10, 20, 30]
+        repo.sync_auth_user_expired.return_value = (3, [10, 20, 30])
         mock_repo_cls.return_value = repo
 
         out = StringIO()
@@ -117,21 +116,20 @@ class SyncAuthUserActiveTests(TestCase):
         self.assertIn("3", output)
         self.assertIn("DRY-RUN", output)
 
-    # Scopo: Se non ci sono utenti scaduti, nessuna chiamata a
-    # fn_sync_auth_user_expired ne' a invalidate_user.
+    # Scopo: Se la funzione non ha toccato nessuno, nessuna cache da
+    # invalidare e il messaggio lo dice.
     @patch(_INVALIDATE)
     @patch(_REPO)
     def test_command_zero_affected_no_invalidation(
         self, mock_repo_cls, mock_invalidate
     ):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.return_value = []
+        repo.sync_auth_user_expired.return_value = (0, [])
         mock_repo_cls.return_value = repo
 
         out = StringIO()
         call_command("sync_auth_user_active", stdout=out)
 
-        repo.call_sync_auth_user_expired.assert_not_called()
         mock_invalidate.assert_not_called()
         self.assertIn("Nessun utente", out.getvalue())
 
@@ -143,7 +141,7 @@ class SyncAuthUserActiveTests(TestCase):
         self, mock_repo_cls, mock_invalidate
     ):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.side_effect = RuntimeError("DB non raggiungibile")
+        repo.sync_auth_user_expired.side_effect = RuntimeError("DB non raggiungibile")
         mock_repo_cls.return_value = repo
 
         with self.assertRaises(CommandError) as ctx:
@@ -172,8 +170,7 @@ class SyncAuthUserActiveTests(TestCase):
     @patch(_REPO)
     def test_il_command_non_registra_un_run(self, mock_repo_cls, mock_invalidate):
         repo = MagicMock()
-        repo.list_expired_auth_user_ids.return_value = [10]
-        repo.call_sync_auth_user_expired.return_value = 1
+        repo.sync_auth_user_expired.return_value = (1, [10])
         mock_repo_cls.return_value = repo
 
         with patch.object(connection, "cursor") as mock_cursor:

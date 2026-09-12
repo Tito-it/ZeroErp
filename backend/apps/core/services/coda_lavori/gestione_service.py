@@ -84,7 +84,7 @@ _STATI_VIVI = ("PENDING", "IN_CORSO")
 #        polling `run/<job_id>/` di vendite (stessa semantica, stessa fonte
 #        `scope_key_da_emittenti`).
 def _resolve_scope_keys(user: Any) -> tuple[str, str | None]:
-    emittente_ids = PermissionResolver.get_emittenti_ids(user)
+    emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
     caller_key = scope_key_da_emittenti(emittente_ids)
     owner_filter = None if emittente_ids is None else caller_key
     return caller_key, owner_filter

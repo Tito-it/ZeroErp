@@ -105,7 +105,7 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 ## Regole
 
 - L'endpoint restituisce sempre i dati dell'utente **autenticato** — non e' possibile consultare il profilo di altri utenti (per quello usare `/users/<id>/permessi-effettivi/`)
-- Se l'utente non ha una `risorse_umane_auth_user` associata, la funzione DB solleva eccezione e l'API restituisce 404
+- Se l'utente non ha un'identita' digitale OPERATORE (`identita_digitali`) associata, la funzione DB solleva eccezione e l'API restituisce 404
 - Se l'utente non ha emittenti associati, la sezione `emittente` e' `null`
 - Se l'utente ha piu' emittenti nella whitelist, viene restituito il primo attivo
 - Se la whitelist emittenti e' vuota e c'e' un solo emittente attivo, viene restituito quello
@@ -117,7 +117,7 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 | `fn_get_user_profile(INTEGER)` | `script` | Funzione principale — compone il JSONB profilo |
 | `fn_get_soggetto_dati_by_ruolo(BIGINT)` | `script` | Sub-funzione — dati soggetto + dati_societari |
 | `auth_user` | Django | Dati autenticazione |
-| `risorse_umane_auth_user` | `anagrafiche` | Ponte utente → risorsa umana |
+| `identita_digitali` | `anagrafiche` | Identita' OPERATORE dell'utente → `risorse_umane` per `soggetto_ruolo_id` (⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1)) |
 | `risorse_umane` | `anagrafiche` | Qualifica, UO, validita' |
 | `soggetti_ruoli` | `anagrafiche` | Ruolo soggetto |
 | `soggetti` | `anagrafiche` | Dati anagrafici |
@@ -162,7 +162,7 @@ fallisce.
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_CORE_PROFILE_NOT_FOUND` | 404 | Utente senza `risorse_umane_auth_user` o funzione DB restituisce NULL |
+| `E_CORE_PROFILE_NOT_FOUND` | 404 | Utente senza identita' digitale OPERATORE o funzione DB restituisce NULL |
 | `E_JWT_SENZA_IDENTITA` | 401 | JWT senza claim `identita_id` (token pre-§8.3.2) — intercettato da `JwtAuditAuthentication` a monte della view |
 | `E_IDENTITA_NON_ATTIVA` | 401 | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione JWT) — intercettato a monte |
 | `E_AUTHENTICATION_FAILED` | 401 | JWT scaduto, invalido o non fornito |
