@@ -239,7 +239,7 @@ class ShopCatalogoView(ShopAPIView):
 | `area_funzionale` | Schema DB dell'area (es. `"vendite"`, `"anagrafiche"`) | Si' su DomainAPIView |
 | `is_search_endpoint` | Abilita `SearchBurstRateThrottle` | No |
 | `post_permission` | Codename azione di processo (per comandi specifici) | No |
-| `skip_area_check` | Salta il check area — ammesso solo per endpoint cross-dominio (profilo, sessioni, lookup) | No |
+| `skip_area_check` | Salta il check area — ammesso solo per endpoint cross-dominio (profilo, sessioni, lookup). ⛔ **Non convive con `area_funzionale`**: la catena lo legge **solo** se l'area non si risolve, quindi una view che dichiara entrambi ha lo skip **muto** e vince l'area in silenzio (trovato il 2026-09-12 su 15 view). ⚠️ E una view con lo skip che **scrive** (`post`/`patch`/`put`/`delete`) senza il `<metodo>_permission` è aperta a chiunque sia autenticato: lecito solo se agisce **su sé stessa**. Presidio: `core/tests/test_skip_area_check_registro.py` | No |
 
 `PortaleAPIView` e `ShopAPIView` dichiarano `skip_area_check = True`
 implicitamente: il set di endpoint portale/shop e' ristretto e non passa

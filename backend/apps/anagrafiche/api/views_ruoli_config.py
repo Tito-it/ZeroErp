@@ -23,7 +23,16 @@ from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 class RuoliConfigResolverView(DomainAPIView):
     """GET configurazione resolver per tipo ruolo."""
 
-    area_funzionale = "anagrafiche"
+    # Lookup cross-dominio: lo consuma `core/components/SoggettoResolver.vue`,
+    # cioe' i drawer di TUTTI i domini che scelgono o creano un soggetto. Stessa
+    # famiglia di `SoggettiRuoliLookupView` (skip + JWT, niente area): e' sola
+    # lettura di configurazione, senza dati di soggetti.
+    # ⛔ E NON dichiara `area_funzionale`: la catena legge lo skip solo se
+    #    l'area non si risolve. Fino al 2026-09-12 dichiarava anche
+    #    `area_funzionale = "anagrafiche"` e lo skip era MUTO — serviva la
+    #    LETTURA su anagrafiche per aprire un drawer di vendite. Decisione di
+    #    Tid (2026-09-12): vale lo skip. Presidiato da
+    #    `core/tests/test_skip_area_check_registro.py`.
     skip_area_check = True
 
     @extend_schema(
