@@ -188,7 +188,7 @@ il 2026-09-11**.
 - [x] `identita_digitali` è la tabella; `risorse_umane_auth_user` è una **vista**
       che ci legge sopra e la tabella vecchia è archiviata come
       `anagrafiche._legacy_risorse_umane_auth_user` (cutover 2026-04-19,
-      §13.3.2). Il **drop fisico** resta in §2.9.
+      §13.3.2). ✅ Il **drop fisico** è stato fatto il 12-09-2026 (§2.9).
 - [x] Tabelle profili: `config.profili_accesso`, `profili_accesso_aree`,
       `profili_accesso_azioni`, `profili_accesso_bindings`, `scope_policy`,
       `identita_scope_bindings` (doc auto-gen in `docs/it/dbzero/config/tabelle/`).
@@ -308,9 +308,14 @@ il 2026-09-11**.
 > ZeroErp non è in produzione (`project_no_produzione_solo_sviluppo`): niente
 > staging/feature-flag/pilota, niente gradient di rilascio.
 
-- [ ] Drop fisico di `anagrafiche._legacy_risorse_umane_auth_user` (esiste
-      ancora, archiviata dal 2026-04-19). *(Il «benchmark post-RLS > 10%» che
-      stava qui è ritirato — §1.2.)*
+- [x] Drop fisico di `anagrafiche._legacy_risorse_umane_auth_user` — ✅
+      **fatto il 12-09-2026** (`90_end/20260912-10`, con shadow `-08` e
+      registrazioni `-09`; decisione Tid: «senza produzione è sporcizia», quindi
+      non aspetta il rollout). ⚠️ Stava qui «fuori scope finché non in
+      produzione»: era la ragione sbagliata, perché la tabella non era inerte
+      (due FK `ON DELETE RESTRICT`, `storicizza` che la riarmava a ogni
+      `ci_apply`). Storia in `work-done/brief-db-rls-storico-scope-congelato.md`
+      §10. *(Il «benchmark post-RLS > 10%» che stava qui è ritirato — §1.2.)*
 
 ---
 

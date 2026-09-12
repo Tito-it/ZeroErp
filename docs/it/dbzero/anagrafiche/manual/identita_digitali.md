@@ -163,7 +163,10 @@ e' stata rinominata `_legacy_risorse_umane_auth_user` e sostituita da una
 vista read-only con `security_invoker = true` costruita su
 `identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`. La sorgente dati
 unica e' `identita_digitali`; la vista serve solo per retrocompatibilita'
-con codice legacy non ancora migrato.
+con codice legacy non ancora migrato. **Dal 12-09-2026 la tabella legacy non
+esiste piu'** (`90_end/20260912-10`, decisione Tid): la vista resta, la
+tabella che sostituiva e' stata eliminata con la sua shadow e le sue
+registrazioni.
 
 ---
 

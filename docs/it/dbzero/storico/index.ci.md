@@ -1,7 +1,6 @@
 # Schema `storico`
 
 ## 📚 Tabelle (manuale)
-- [_legacy_risorse_umane_auth_user](manual/_legacy_risorse_umane_auth_user.md)
 - [ambito_causale](manual/ambito_causale.md)
 - [articoli](manual/articoli.md)
 - [articoli_componenti](manual/articoli_componenti.md)
@@ -113,4 +112,3 @@
 
 ## 📘 Altri contenuti manuali
 - [fatturazione_lotti_attivita](manual/fatturazione_lotti_attivita.md)
-- [risorse_umane_auth_user](manual/risorse_umane_auth_user.md)

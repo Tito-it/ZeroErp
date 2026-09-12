@@ -3,7 +3,7 @@
 > Stato: ✅ **storico: APPLICATO l'11-09-2026 alle 19:54 (passi 1-7, §4b-§4d), pgTAP senza regressioni** — 37 shadow armate, 65.751 versioni attribuite. ✅ **§8 (`audit_log`): consegnato
 > e applicato il 2026-09-11** (`-09`, `-20` in `databasechangelog` alle 12:42; postura
 > viva verificata a catalogo). Il §8.4 originale sbagliava due volte: vedi §8.4.
-> ✅ **§8.3 deciso: «No», registro tecnico** — cancello costruito (§8.6) e **applicato**. ✅ Tutte le domande aperte di §4d sono decise, costruite e **applicate**: `20260911-32/-33/-34`, `20260912-01…07` sono `EXECUTED` nel `databasechangelog` (ultimo giro **2026-09-12 00:30**, letto il 12-09). Doc scritta (§9). ✅ **pgTAP post-apply tutti verdi** (Tid, 12-09). ✅ **Consegna BE chiusa il 12-09** — e non come dicevano §4d e §9.3 (ripuntare alla shadow legacy): la timeline legge `storico.identita_digitali`, dove l'identità vive, e il label del bridge morto è ritirato. ⭐ **Decisione di Tid (12-09): la storia vecchia del bridge è sporcizia di test** — senza produzione non rappresenta niente — quindi la shadow `_legacy_` non si legge e si **droppa** (📮 team DB, §9.3). **Chiuso e spostato in `work-done/` il 2026-09-12.**
+> ✅ **§8.3 deciso: «No», registro tecnico** — cancello costruito (§8.6) e **applicato**. ✅ Tutte le domande aperte di §4d sono decise, costruite e **applicate**: `20260911-32/-33/-34`, `20260912-01…07` sono `EXECUTED` nel `databasechangelog` (ultimo giro **2026-09-12 00:30**, letto il 12-09). Doc scritta (§9). ✅ **pgTAP post-apply tutti verdi** (Tid, 12-09). ✅ **Consegna BE chiusa il 12-09** — e non come dicevano §4d e §9.3 (ripuntare alla shadow legacy): la timeline legge `storico.identita_digitali`, dove l'identità vive, e il label del bridge morto è ritirato. ⭐ **Decisione di Tid (12-09): la storia vecchia del bridge è sporcizia di test** — senza produzione non rappresenta niente — quindi la shadow `_legacy_` non si legge e si **droppa** (📮 team DB, §9.3). **Chiuso e spostato in `work-done/` il 2026-09-12.** ⏳ **Coda §10** (12-09 pomeriggio, decisione Tid: via anche la **madre** legacy): `20260912-08/-09/-10` **applicati alle 11:30, pgTAP senza regressioni** (Tid, 12-09). Finito.
 > Origine: **D3** di
 > [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).
 > Eredita il §9 di
@@ -691,7 +691,105 @@ cui perimetro era la RLS sullo storico.
 
 ---
 
+## 10. Coda del 12-09 — la madre legacy del ponte utente↔risorsa umana
+
+> Richiesta del team BE dopo la chiusura del §4d (PR #1567:
+> `permissions_audit_repository._USER_TABLES` legge `storico.identita_digitali`,
+> label `risorse_umane_auth_user` ritirato, 14/14). **Decisione Tid
+> 12-09-2026**: *la storia del vecchio ponte è solo dati di test di una tabella
+> dismessa — senza produzione è sporcizia, va tolta.* Stato: ✅ **APPLICATO il
+> 12-09-2026 alle 11:30** (`-08`, `-09`, `-10` `EXECUTED`), **pgTAP senza
+> regressioni** (Tid). Verificato sul catalogo: madre, shadow e le due trigger
+> function non esistono; mappa, `audit_sources` e `storico_set_storicizza` senza
+> le righe; `vw_storico_scope_da_dichiarare` e
+> `vw_audit_log_scrittori_fuori_perimetro` a **zero**.
+
+### 10.1 La domanda che il BE ha lasciato aperta: la madre
+
+Il BE chiedeva il DROP della shadow `storico._legacy_risorse_umane_auth_user`
+(**vuota**: le 12 versioni stavano nella vecchia, già via col `-03`) e il ritiro
+della riga 5 di `dbops.audit_sources`, e segnalava che la **madre**
+`anagrafiche._legacy_risorse_umane_auth_user` aveva ancora il trigger di
+storico: a shadow droppata un UPDATE fallirebbe, e a `ci_apply` la shadow
+potrebbe rinascere. Due strade: (a) via anche la madre; (b) madre disarmata.
+
+**Letto sul catalogo (12-09)** — struttura, non conteggi: nessuna FK entrante,
+nessuna vista dipendente, nessuna funzione viva che la nomina, nessun pgTAP né
+codice backend la scrive; la verità vive in `identita_digitali` e il nome vecchio
+è una vista. ⛔ **Ma non era inerte**: due FK `ON DELETE RESTRICT` verso
+`risorse_umane` e `django.auth_user` (sei righe di test che bloccano la
+cancellazione di sei persone e sei utenti vivi); `trgfn_…_sync_active` che
+riscrive `auth_user.is_active`; e la colonna `storicizza`, che è il marcatore
+con cui `fn_run_automations_storico_provision` sceglie le madri — ogni
+`ci_apply` l'avrebbe ri-armata e le avrebbe ricreato la shadow. La strada (b)
+avrebbe dovuto togliere trigger **e** colonna, lasciando sei righe, due RESTRICT
+e sette trigger su una tabella che nessuno legge. Il drop fisico era già in
+piano (`sviluppo-multi-face-da-completare` §2.9), parcheggiato «finché non in
+produzione»: la decisione di Tid toglie quella ragione.
+✅ **Deciso (Tid, 12-09): (a).**
+
+### 10.2 Consegnato
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/storico/20260912-08` | `DROP TABLE IF EXISTS storico._legacy_risorse_umane_auth_user` — in CI non nasce mai (le shadow le crea `ci_apply`, e la madre se ne va nella stessa corsa) |
+| `80_data/changelog/20260912-09` | ritiro delle **quattro registrazioni**: riga 6 di `dbops.storico_scope_policy` (altrimenti `RIGA_SENZA_MADRE` nel digest — provato), riga 5 di `dbops.audit_sources` (già `attivo = f`, puntava a una tabella eliminata dal `-03`), le due righe di `config.storico_set_storicizza` (la legacy **e** il nome vecchio, stantio dal cutover: il job non lo toglie perché `to_regclass` risolve la **vista**). CSV `storico_scope_policy.csv` e `audit_sources.csv` allineati (i mirror non cancellano) |
+| `90_end/20260912-10` | `DROP TABLE IF EXISTS anagrafiche._legacy_risorse_umane_auth_user` (cadono otto trigger e due FK; nessun `CASCADE`, perché niente dipende da lei) + `DROP FUNCTION` delle due trigger function montate solo lì (`guard_persona_fisica`, `sync_active`) — altrimenti orfane per il presidio dei riferimenti morti. `fn_sync_auth_user_is_active` resta: la usano `identita_digitali` e `risorse_umane` |
+| pgTAP nuovo `anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1` (9) | il ritiro regge, **anche dopo `ci_apply`**: madre, shadow nuova e vecchia, le due funzioni non esistono; la funzione condivisa e la vista sì; mappa e `storico_set_storicizza` senza righe. ⚠️ Non sta in `test-risorse-umane-auth-user-view`, che è in baseline `ERRORE_FIXTURE` su dev e CI: un'asserzione lì sarebbe muta |
+| pgTAP `dbops/test-audit-sources-seed` 7 → **8** | test 8: nessuna riga `risorse_umane_auth_user`; il codice resta nell'`IN` del test 2 contro una reinserzione attiva |
+
+🔴 **Perché il DROP della madre sta in `90_end` e non in `00_schema`.**
+`90_end/20260429-19a` fa `ALTER TABLE … DROP COLUMN ruolo_sistema` su questa
+tabella con `onFail: HALT` e la pretende **esistente**; è mergiato e senza
+`validCheckSums`, quindi non si tocca. Su un database ricostruito da zero tutto
+`90_end` gira **dopo** tutto `00_schema`: un DROP in `00_schema` sarebbe passato
+su dev (la `-19a` ha già girato) e avrebbe fermato la CI su quel cancello. Quindi
+il DROP ha un nome che in `includeAll` viene dopo la `-19a` e dopo i due
+`runAlways` dello scope (`20260911-29`, `-31`: su una shadow assente rispondono
+`NO_SHADOW`). È la stessa ragione per cui la `-19a` stessa stava in `90_end`.
+⭐ Regola generale: **prima di ritirare un oggetto, cercare i changeSet di fase
+successiva che lo pretendono esistente** — su dev hanno già girato e non si
+vedono; su un database da zero girano dopo il DROP.
+
+### 10.3 Prove (12-09, SQL **estratto** con `updateSQL` offline, `BEGIN … ROLLBACK`)
+
+Quattro transazioni ritirate, ognuna con i tre changeSet e il corpo di un pgTAP:
+`test-legacy-…-ritirata-v1` **9/9**, `test-audit-sources-seed` **8/8**,
+`test-storico-scope-policy-v1` **32/32**, `test-storico-scope-congelato-v1`
+**23/23**. Controprova: il test nuovo **senza** i changeSet è rosso esattamente
+su 1, 2, 4, 5, 8, 9 (verde su 3, 6, 7, già veri); e con la sola madre droppata,
+senza il `DELETE`, `vw_storico_scope_da_dichiarare` mostra
+`RIGA_SENZA_MADRE | anagrafiche._legacy_risorse_umane_auth_user`. Sei guardrail
+statici verdi. ⚠️ Prova da owner: la RLS non è esercitata — il giro vero è di Tid.
+
+### 10.4 Documentazione
+
+Cancellati i tre manuali degli oggetti ritirati
+(`anagrafiche/manual/_legacy_risorse_umane_auth_user.md`,
+`storico/manual/_legacy_risorse_umane_auth_user.md`,
+`storico/manual/risorse_umane_auth_user.md` — quest'ultimo orfano dal `-03`).
+Aggiornati: `anagrafiche/manual/risorse_umane_auth_user.md` (la sezione che
+diceva *«trigger inerti perché non ci sono più writer»* — vero per i trigger,
+falso per le FK, che agiscono quando si cancella il **padre**),
+`identita_digitali.md`, guide `risorse-umane-e-accessi`,
+`soggetti-e-ruoli-anagrafici`, `storicizzazione-tabelle`, e il piano
+`sviluppo-multi-face-da-completare` §2.1/§2.9 (casella barrata). ⚠️ Le pagine
+auto-gen `tabelle/_legacy_…` spariscono al prossimo giro di generazione.
+
+### 10.5 Che cosa resta
+
+| | Cosa | Di chi |
+| --- | --- | --- |
+| ✅ | Apply dei tre changeSet (12-09 11:30) e pgTAP senza regressioni — `anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1` (9), `dbops/test-audit-sources-seed` (8), `dbops/test-storico-scope-policy-v1` (32), `storico/test-storico-scope-congelato-v1` (23); `vw_storico_scope_da_dichiarare` a zero | fatto (Tid) |
+| ⏳ | Commit: tre YAML, due CSV, due pgTAP, manuali e guide di §10.4, questo brief | **Tid** |
+| 🟠 | Resta il debito di **nome** del §9.3: `storico.comune_trasformazioni` e `storico.stradario_trasformazioni` sono registri, non shadow | decisione Tid |
+| ✅ | **Il `-10` aveva lasciato un guard stantio sulla MADRE** — chiuso: `-11` `EXECUTED` il 12-09 alle 11:54, baseline pgTAP verde (Tid). (trovato il 12-09 pomeriggio): `trg_risorse_umane_a10_legacy_risorse_umane_auth_user_blo_feea48` su `anagrafiche.risorse_umane` nomina la figlia droppata e solleva `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` a ogni disattivazione di una risorsa umana (provato in ROLLBACK). Rimedio: `00_schema/anagrafiche/20260912-11` (`DROP TRIGGER IF EXISTS`, §11.5) + test 10 di `test-legacy-risorse-umane-auth-user-ritirata-v1`. ⚠️ Il censimento del §10.1 guardava `pg_proc`, viste, pgTAP e BE — non `pg_trigger` dei **padri**: un trigger sulla madre è un lettore della figlia. Dettaglio in [analisi-software-per-dati-morti.md](../work-in-progress/analisi-software-per-dati-morti.md) §2.1 | fatto |
+| 🟡 | Lo **strato 2** della segnalazione BE — la vista `anagrafiche.risorse_umane_auth_user`, il nome vecchio con lettori vivi (4 funzioni, 3 punti BE + model, 9 pgTAP) — **non è di questo brief**: decisione e censimento in [analisi-software-per-dati-morti.md](../work-in-progress/analisi-software-per-dati-morti.md) §2.1 («via il nome», cantiere suo, BE prima). Tid ha delegato la decisione il 12-09 | cantiere futuro, BE → DB |
+
+---
+
 *Analisi 2026-09-11 — letture di **struttura** sul database `zeroerp`
 (`pg_proc`, `pg_trigger`, `pg_class.relrowsecurity`, colonne delle tabelle di
 storico). ⛔ Nessun conteggio di righe è usato come argomento. Stato finale
-letto il 2026-09-12 dal `databasechangelog` e dal catalogo.*
+letto il 2026-09-12 dal `databasechangelog` e dal catalogo; coda §10 scritta il
+12-09 pomeriggio.*

@@ -199,9 +199,20 @@ operatore, privilegi, proprietario delle shadow).
   (scritti da `fn_admin_merge_*`, letti da `fn_get_vie_discendenti`): non hanno
   una madre, non hanno il trigger, non entrano nella mappa. Le due shadow
   davvero orfane — `fatturazione_lotti_attivita` (dominio ritirato) e
-  `risorse_umane_auth_user` (la madre si chiama `_legacy_risorse_umane_auth_user`
-  e ha la sua shadow viva) — sono state **cancellate**, insieme al trigger stantio
-  che, rimasto sul nome vecchio, bloccava ogni scrittura sulla madre legacy.
+  `risorse_umane_auth_user` (di prima della rinomina della madre) — sono state
+  **cancellate**, insieme al trigger stantio che, rimasto sul nome vecchio,
+  bloccava ogni scrittura sulla madre legacy.
+* **E poi la madre legacy stessa** (decisione Tid, 12-09, pomeriggio):
+  `anagrafiche._legacy_risorse_umane_auth_user` — la tabella ponte di prima
+  del cutover a `identita_digitali` — è stata **eliminata** con la sua shadow
+  (vuota) e le sue registrazioni (mappa dello scope, `audit_sources`,
+  `storico_set_storicizza`). Senza produzione, sei righe di test di una tabella
+  dismessa non rappresentano niente; e non era inerte: due FK `ON DELETE
+  RESTRICT` e la colonna `storicizza` che la faceva ri-armare a ogni
+  `ci_apply`. ⚠️ Il `DROP` sta in `90_end` (`20260912-10`), non in `00_schema`:
+  un changeSet di `90_end` del 29-04 la pretende esistente, e su un database
+  ricostruito da zero `90_end` gira dopo tutto `00_schema`. Presidio:
+  `db/pgtap/anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1.sql`.
 
 ---
 

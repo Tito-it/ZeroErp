@@ -17,7 +17,7 @@
 - [api_parameter_settings](manual/api_parameter_settings.md) — Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
 - [api_parameters](manual/api_parameters.md) — Espone la gestione dei parametri di sistema (config.parameters) con risoluzione override multi-livello per l'utente autenticato. Supporta:
 - [api_password_reset](manual/api_password_reset.md) — Permette all'operatore di reimpostare la propria password via email, senza intervento admin. Tre endpoint pubblici (non autenticati) con rate limiting.
-- [api_permessi_audit](manual/api_permessi_audit.md) — Endpoint che restituisce la timeline audit delle modifiche ai permessi di un utente. Interroga le 7 tabelle storico del sistema permessi con filtri opzionali e paginazione.
+- [api_permessi_audit](manual/api_permessi_audit.md) — Endpoint che restituisce la timeline audit delle modifiche ai permessi di un utente. Interroga le 8 tabelle storico del sistema permessi (5 per utente + 3 per reparto) con filtri opzionali e paginazione.
 - [api_permessi_effettivi](manual/api_permessi_effettivi.md) — Esporre un endpoint diagnostico che restituisce i permessi effettivi risolti per un utente, iterando tutte le aree funzionali attive e mostrando il livello di accesso, le azioni consentite e lo stato del profilo reparto.
 - [api_response_envelope](manual/api_response_envelope.md) — Definire il formato uniforme delle risposte successo/errore per tutte le API.
 - [api_retry_policies](manual/api_retry_policies.md) — Uniformare gestione idempotency key e semantica retry lato API.

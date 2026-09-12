@@ -28,6 +28,18 @@
 > col Passo A) e le **9 consegne BE** del suo §5 — senza le quali il registro
 > resta a zero righe.
 >
+> ⏱️ **Riletto il 2026-09-12 contro repo e doc auto-gen** (terza passata, dopo
+> quelle del 24-08 e del 05-09). Il piano è a **cinque passi su sette chiusi**
+> (0, 1, 2, A, e di D la parte che non si può rifare). ⚠️ Le due righe qui
+> sopra — «restano L3 e le 9 consegne BE» — sono **superate**: la vista è
+> scritta dal 23-08 e le consegne BE sono fatte (§3-quater). ⭐ **B e C non
+> sono più «invariati»**: sono avanzati **altrove** senza che questo documento
+> lo registrasse — la schermata «Processi automatici» consuma `job-runs`, e il
+> digest dei presidi è un canale di notifica in servizio. Le voci #10 e #13
+> delle Aperte erano chiuse dal brief e non marcate; la tabella dei buchi (§3)
+> era ferma a B1. Tutto aggiornato in questa passata, col marcatore ⏱️.
+> L'unica decisione ancora di Tid è la **#8** (§5).
+>
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
 > `emittente_soggetto_ruolo_id` (non la PK) ~~e il vocabolario è un `CHECK` (non
@@ -173,6 +185,9 @@ asserisce `severity == "WARNING"` su un mock, quindi blinda il valore rotto.
 essere scritto. Correzione BE di una parola più il test (`WARN`), da fare nella
 stessa passata del Passo 0.
 
+✅ ⏱️ *2026-09-12*: **corretto** — `severity="WARNING"` non compare più né in
+`commesse_service.py` né nei test di `apps/vendite`.
+
 ---
 
 ## 1. Stato misurato (2026-08-03)
@@ -229,7 +244,15 @@ dire cosa rappresentano.
 fuori da questo ambiente (§0-bis); la **lista dei 207 codici** sì. E questo non è
 più il prerequisito di *tutto*: lo è del solo Passo B — vedi §4, Passo 1.
 
-### 1.3 🔴 `event_log` è write-only
+### 1.3 ~~🔴 `event_log` è write-only~~ — SUPERATA
+
+> ⛔ **Superata dal Passo A (2026-08-24)**: `event_log` si legge attraverso
+> `script.vw_giornale_entita`, da `GET /vendite/fatture/<id>/giornale/` e
+> `GET /vendite/lotti/<id>/giornale/`, e i consumatori sono le due schede
+> «Storia». Le misure sotto — `correlation_id` a zero sul ramo push, `actor`
+> costante, `entity_id = 0` — sono i difetti del lato scrittura che il Passo 0
+> ha chiuso; la colonna `actor` non esiste più (decisione 9). Il testo resta
+> come storia.
 
 `vendite.event_log` è scritto da due repository e **non è mai riletto**: zero
 endpoint di lettura, zero consumatori nel frontend. È il registro pensato come
@@ -289,6 +312,11 @@ Esistono inoltre **endpoint già scritti e senza interfaccia**:
 API dichiara testualmente che servono «per la futura UI». Il backend, per
 quella parte, è già pagato.
 
+⏱️ *2026-09-12*: **tre dei sette hanno oggi una schermata** — `job-runs` in
+«Processi automatici» (`amm-software`, dal 05-09), `audit-log` ed `email/log`
+nelle liste di amministrazione. Restano senza interfaccia **quattro**:
+`job-summary`, `task-registry`, `domini-task`, `task-implementations`.
+
 ---
 
 ## 3. I buchi, in ordine di quanto pesano
@@ -296,16 +324,16 @@ quella parte, è già pagato.
 | # | Buco | Effetto |
 | --- | --- | --- |
 | ~~B1~~ | ~~Il 67% di `error_log` non è attribuibile~~ ✅ **chiuso** (V3) | resta il **rubinetto**: 327 righe residue e il check CI ancora da fare |
-| B2 | `event_log` non è leggibile da nessuna parte | manca la timeline per entità; l'alerting non ha sorgente; il `correlation_id` non ha consumatori che ne dimostrino il valore |
-| B3 | Identità non tracciata sugli eventi | l'audit non dice **chi**: requisito di compliance non soddisfatto |
-| B4 | `correlation_id` assente sul ramo push | «una query ricostruisce la timeline» vale solo per la pipeline |
-| B5 | Log Python non correlabili | un traceback non si lega alla richiesta che l'ha generato (Fase 0 della diagnostica) |
-| B6 | Endpoint senza UI | lavoro già fatto e inutilizzato |
-| B7 | Nessuna notifica | un lotto fermo in errore resta invisibile finché qualcuno non guarda |
-| B8 | Retention assente sui log di dominio | crescita non governata |
-| **B9** | **`event_log` non ha scope emittente né RLS** *(aggiunto 22/08)* | qualunque endpoint di lettura mostrerebbe gli eventi di **tutti** gli emittenti: è il buco che manda il Passo 0 in testa al piano |
-| **B10** | **`event_log` è l'unico registro senza `tx_id`** *(aggiunto 22/08, V6)* | la timeline di un caso è cross-registro e `event_log` non si aggancia a `error_log`. Costa una colonna (il trigger generico `dbops.trgfn_tx_id_managed` lo attacca l'automazione) e **non è recuperabile dopo**: append-only, nessun backfill (V7) |
-| **B11** | **`request_log.emittente_attivo_id` e `tx_id` sono colonne morte** *(aggiunto 22/08)* | 0 valorizzate su 353.758: le colonne ci sono, l'`INSERT` del middleware non le elenca. Il «per chi» a livello di richiesta è già progettato e non collegato |
+| ~~B2~~ | ~~`event_log` non è leggibile da nessuna parte~~ ✅ **chiuso** (Passo A, 24-08) | `script.vw_giornale_entita` + i due endpoint `/giornale/` e le schede «Storia» |
+| ~~B3~~ | ~~Identità non tracciata sugli eventi~~ ✅ **chiuso** (Passo 0 + decisione 9) | il «chi» sta in `user_insert` (trigger di audit generico) e in `auth_user_id`; `actor` non esiste più |
+| ~~B4~~ | ~~`correlation_id` assente sul ramo push~~ ✅ **chiuso** (D-7 del brief) | è **l'id del giro**: un `uuid` nuovo generato dal runner, su entrambi i rami (§5, #10) |
+| ~~B5~~ | ~~Log Python non correlabili~~ ✅ **chiuso** (Passo 2, BE-8) | `request_id` nel formatter di logging |
+| B6 | Endpoint senza UI — 🟡 **parziale** ⏱️ *12-09* | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); restano `job-summary`, `task-registry`, `domini-task`, `task-implementations` — vedi §2 |
+| B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; manca la **sorgente** «lotto fermo in errore» — vedi Passo C |
+| B8 | Retention assente sui log di dominio — 🟡 **parziale** | `event_log` ✅ (decisione 11); `fatturazione_lotti_log`, `fatture_log` e `commesse_push_log` ancora senza `cleanup_at` (⏱️ *12-09*, doc auto-gen) |
+| ~~**B9**~~ | ~~**`event_log` non ha scope emittente né RLS**~~ ✅ **chiuso** (Passo 0) | `emittente_soggetto_ruolo_id NOT NULL`, derivata all'`INSERT` da `trgfn_event_log_deriva_scope`, più la policy `rls_event_log_ef_whitelist` (`20260822-46`) |
+| ~~**B10**~~ | ~~**`event_log` è l'unico registro senza `tx_id`**~~ ✅ **chiuso** (Passo 0) | colonna `tx_id` + `trg_event_log_gen_tx_id_ins_upd` montato dall'automazione |
+| ~~**B11**~~ | ~~**`request_log.emittente_attivo_id` e `tx_id` sono colonne morte**~~ ✅ **chiuso** (Passo 2, BE-8) | `emittente_attivo_id` ora si **scrive**; `tx_id` **tolto** dalla tabella (doc auto-gen, ⏱️ *12-09*) |
 
 ---
 
@@ -319,6 +347,11 @@ quella parte, è già pagato.
 > erano **già chiuse nel codice** e non lo diceva nessuno — vedi le note ⏱️ lì.
 > Qui cambia una riga sola, il Passo D. Il resto del quadro regge.
 >
+> ⏱️ **Rimisurato il 2026-09-12** (una settimana dopo), su doc auto-gen e
+> codice. Il Passo 0 regge riga per riga. **B e C non erano «invariati»**: il
+> lavoro sui processi automatici e sui presidi (05-09 → 11-09) li ha mossi da
+> fuori, e questa tabella li descriveva fermi. R-6 è ancora vero.
+>
 > ⚠️ **E si legge con il contesto operatore addosso**: `vendite.event_log` ha la
 > RLS attiva, quindi un `count(*)` da una sessione senza GUC torna **0**. Non è
 > «il registro è vuoto», è **fail-closed**. Con il contesto: **236 righe**
@@ -330,9 +363,9 @@ quella parte, è già pagato.
 | **1** — rendere nominabili gli errori | ✅ seed applicato (2026-08-07) | resta il **check CI**, come già scritto |
 | **2** — `request_id` nei log Python | ✅ **FATTO** *(consegna BE-8)* | `settings.py`: filtro `request_id` + `req=%(request_id)s` nel formatter. ⭐ **B11 chiuso nello stesso giro, e in due direzioni opposte**: `emittente_attivo_id` ora si **scrive** (si collega in SQL, non passa dal Python), `tx_id` su `request_log` si è **tolto** — quella riga nasce quando l'unità di lavoro ha già chiuso, quindi il suo `tx_id` non esiste più. ⭐ *Una colonna che nessuno scrive si valorizza o si toglie: qui è successo l'uno e l'altro, sulla stessa tabella* |
 | **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
-| **B** — superfici aggregate | 🔵 aperto | invariato |
-| **C** — notifiche | 🔵 aperto | invariato |
-| **D** — retention sui log di dominio | 🟡 **parziale** — ma la parte difficile è fatta | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⛔ Resta il pezzo meccanico: `fatturazione_lotti_log` e `fatture_log` non hanno `cleanup_at` |
+| **B** — superfici aggregate | 🔵 aperto — 🟡 **mosso da fuori** ⏱️ *12-09* | `GET /tracciamento/job-runs/` ha il suo primo consumatore: la schermata **«Processi automatici»** (`amm-software`, 05-09), che affianca ai run lo stato dei presidi `ZERO`. ⛔ Non è la vista errori né la consultazione di `error_log`: quelle restano da fare, dietro il permesso del vincolo del Passo A |
+| **C** — notifiche | 🔵 aperto — 🟡 **il canale c'è** ⏱️ *12-09* | dal 10-09 il **digest dei presidi** manda un'email di SISTEMA a `PRESIDI_DIGEST_DESTINATARIO` (allarmi `ZERO` con righe, registri, battito), e il guardiano pgAgent avvisa se il digest stesso tace. Le **code ferme** sono già presidi a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`, `vw_fatture_stampa_coda_da_guardare`). Manca la sorgente «**lotto fermo in errore**» — vedi Passo C |
+| **D** — retention sui log di dominio | 🟡 **parziale** — ma la parte difficile è fatta | ⏱️ *2026-09-05*: su `event_log` il `cleanup_at` è **valorizzato su tutte le 236 righe** (scadenza 2028-09-10) e `trgfn_event_log_append_only` distingue **alterare la storia** da **ritirare ciò che è scaduto** ⇒ la decisione #11 è chiusa e implementata. ⛔ Resta il pezzo meccanico: `fatturazione_lotti_log` e `fatture_log` non hanno `cleanup_at` — ⏱️ *12-09*: confermato sulla doc auto-gen, e nemmeno `commesse_push_log` ce l'ha |
 
 ### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
 
@@ -398,7 +431,7 @@ incontra tutti:
 | **R-2** | `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** | Filtrare per «filo» tiene `event_log` + `task_run` e butta via le righe scritte **per una persona**. ⛔ Un filtro per giro nasconderebbe metà del contenuto |
 | **R-4** | Il **perimetro non è mai stato esercitato** su nessuno dei quattro rami | Un solo emittente ha righe. Il fail-closed funziona (senza GUC la vista torna 0), la **discriminazione** no: va collaudata **apposta**, i dati non lo faranno |
 | **R-5** | Due **generazioni di righe** convivono | Le vecchie hanno `tx_id` NULL e per «filo» il lotto; le nuove il giro. A video sono **indistinguibili** — e da R-1 in poi si aggiunge l'orario |
-| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05*: `script.vw_giornale_entita` usa tuttora `COALESCE(ended_at, started_at)` | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
+| **R-6** ⏱️ | La riga `TASK_RUN` è **incoerente con sé stessa** — ⛔ *ancora vero il 2026-09-05 e il 2026-09-12*: `script.vw_giornale_entita` usa tuttora `COALESCE(tr.ended_at, tr.started_at) AS quando` | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
 | **R-7** | **Rumore**: sul 6260, 213 righe, 82 non-INFO — e **81 sono la stessa storia ripetuta otto volte**. L'errore vero è **una riga** | Il filtro non-INFO da solo non basta: nascondere le ritirate ne toglie una parte, il resto è **de-duplicazione**, da guardare col pannello davanti |
 
 ---
@@ -465,6 +498,8 @@ la ripartizione DB/BE, la linea che decide cosa va per primo.**
 `commesse_repository.log_event` sono identici carattere per carattere: la regola
 del 2 dice che è un BB da estrarre, e comunque **qualunque cosa si aggiunga qui
 va scritta due volte** finché resta così.
+✅ ⏱️ *2026-09-12*: **estratto** — esiste un solo `log_event`, nel mixin
+`apps/vendite/db/_event_log_repo_mixin.py`, condiviso dai due repository.
 
 **Cosa chiedere al team DB** — brief dedicato, questo documento non è il brief:
 
@@ -540,6 +575,9 @@ Il paragrafo nasce da un commento sbagliato in
 `20260720-05-enable-rls-commesse-ef-whitelist` («l'owner (zeroerp_app)»);
 `20260730-05-enable-rls-fatture-indirizzi` dice la cosa giusta. **Va corretto
 anche il commento**, o rifarà lo stesso danno al prossimo che lo legge.
+⚠️ ⏱️ *2026-09-12*: il commento è **ancora lì** — e non si tocca: è un changeSet
+mergiato (AGENTS §Liquibase, *mai modificare changelog già pushati*). La
+rettifica vive qui e nella doc **manuale** della tabella, non nello YAML.
 
 ➡️ Quindi la decisione 5 non è un bivio: **parità con la famiglia (`ENABLE`, no
 `FORCE`) e filtro applicativo lo stesso**, che è già la regola scritta in
@@ -643,6 +681,16 @@ Dopo il Passo 1, e **dopo che esistano dati veri da aggregare**:
 — e chi la guardasse ne trarrebbe conclusioni sbagliate, esattamente come è già
 successo leggendo il §1.
 
+⏱️ *2026-09-12* — **cosa è arrivato da fuori.** Il secondo punto è in parte
+pagato: `GET /tracciamento/job-runs/` è consumato dalla schermata «Processi
+automatici» (`amm-software`, 05-09 —
+[piano-be-fe-processi-automatici-identita-e-perimetro.md](../work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md)),
+che affianca ai run lo **stato dei presidi `ZERO`** letto dal catalogo
+`dbops.presidi`. ⛔ Sta dietro `AdminAPIView` perché quelle viste nominano
+tutte le aziende e non hanno RLS: è il vincolo del Passo A applicato a un
+aggregato. Restano interi il primo punto (vista errori trasversale) e il terzo
+(`error_log` con filtri), più i quattro endpoint ancora orfani (§2).
+
 ### Passo C — Notifiche
 
 Il precedente da imitare esiste: `MaintenanceRepository.job_liveness()` più le
@@ -652,6 +700,22 @@ da troppo tempo) e dargli un canale d'uscita — `EmailOutboxService` è già dr
 da un cron.
 
 Non è «costruire il monitoring»: è riusare un meccanismo esistente.
+
+⏱️ *2026-09-12* — **il meccanismo da riusare ora esiste davvero, ed è più di un
+badge.** Dal 10-09 il **digest dei presidi** (`presidi_digest`, command
+`digest_presidi`, corsia giornaliera e settimanale) legge il catalogo
+`dbops.presidi`, conta con `dbops.fn_conta_presidio` — che attraversa la RLS,
+dove un `count(*)` nudo direbbe zero — e **manda un'email di SISTEMA** a
+`PRESIDI_DIGEST_DESTINATARIO`; il guardiano pgAgent (`dbops.fn_guardiano_digest`)
+accoda un avviso se il digest stesso tace. Le **code ferme** sono già presidi
+`ZERO` a catalogo (`vw_coda_lavori_da_guardare`, `vw_job_run_da_guardare`,
+`vw_fatture_stampa_coda_da_guardare`). ⇒ Il Passo C si riduce a **una
+sorgente**: un presidio «lotto fermo in errore da troppo tempo» iscritto al
+catalogo — canale, cadenza e destinatario sono decisi altrove
+([brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md),
+[brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md)).
+⚠️ Resta di Tid la #8: se al canale email va affiancato un **badge in-app** per
+l'operatore, o se per lui basta il binario parallelo (fallimenti nelle liste).
 
 ### Passo D — Retention sui log di dominio
 
@@ -663,6 +727,11 @@ DB: brief dedicato. ⚠️ I termini **non** si dimensionano sui volumi del §1 
 stesso `ALTER TABLE` del Passo 0 — è lo stesso lucchetto aperto una volta sola, e
 costa zero. Restano di qui i **termini**, che sono un dato e non un codice: si
 decidono con calma senza riaprire niente.
+
+⏱️ *2026-09-12*: la parte «stesso lucchetto» è fatta (colonna, trigger,
+decisione 11). Il residuo è un brief piccolo del team DB: `cleanup_at` su
+`fatturazione_lotti_log`, `fatture_log` e `commesse_push_log` — verificato
+sulla doc auto-gen, nessuna delle tre ce l'ha.
 
 ---
 
@@ -738,6 +807,10 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    solo badge in-app in prima battuta? (Passo C). ⭐ È l'unica delle voci
    originali che non si è chiusa da sola: le altre le ha chiuse il lavoro, questa
    aspetta una scelta.
+   ⏱️ *2026-09-12*: **i fatti hanno orientato la risposta** — il canale email
+   esiste ed è in servizio per i presidi (Passo C). La domanda che resta è più
+   stretta: serve **anche** un badge in-app per l'operatore, o il binario
+   parallelo (fallimenti nelle liste) copre quel bisogno? Resta di Tid.
 > ✅ **Le voci 9, 10, 11, 12 e 13 sono state decise il 2026-08-22 e sono
 > confluite nel [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
 > come D-6 (`actor`/`source` via), D-7 (il giro), D-8 (retention),
@@ -758,7 +831,13 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    (`django` su tutte le righe). *Proposta: si eliminano `actor` e `source`* —
    siamo in `TRUNCATE`, togliere una colonna costa zero — *e «chi» resta dove il
    progetto lo mette già su 806 colonne.* Decisione di Tid.
-10. 🔴 **`correlation_id` non identifica un giro: identifica il lotto.** Sul ramo
+10. ✅ **CHIUSA — D-7 del brief, verificata nel codice il 2026-09-12.** Il giro
+    è un `uuid` **nuovo** che il runner genera a ogni corsa (`pipeline_runner`
+    e `commesse_push_orchestrator`) e che viene scritto anche su
+    `fatturazione_lotti_task_runs` e `commesse_push_log`. Il riquadro qui sopra
+    lo diceva già («confluita come D-7»), la voce era rimasta 🔴. Il testo
+    resta come storia.
+    🔴 **`correlation_id` non identifica un giro: identifica il lotto.** Sul ramo
     pipeline vale `fatturazione_lotti.lock_batch_id`, che nasce col lotto
     (`COALESCE(p_lock_batch_id, uuidv7())`) e **non cambia mai** — mentre lo
     stesso lotto ha fino a **27 `task_runs`**. Quindi oggi duplica `entity_id` e
@@ -806,7 +885,12 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     ammette `uid` (preventivi, offerte) mentre `event_log.entity_id` è `bigint`:
     la regola resta **`entity_id` = la PK `id` della tabella, sempre** — il
     `key_selector` serve al grafo di lineage, non al giornale.
-13. **Serve il guard di scrittura `trgfn_guard_emittente_scope`?** Se l'emittente
+13. ✅ **CHIUSA — D-10 del brief: nessun guard, verificato il 2026-09-12.** La
+    doc auto-gen di `event_log` non ha nessun `trgfn_guard_emittente_scope`; il
+    perimetro lo deriva `trgfn_event_log_deriva_scope` all'`INSERT`, e il
+    `WITH CHECK` della policy fa il resto. La proposta sotto è stata accolta;
+    il testo resta come storia.
+    **Serve il guard di scrittura `trgfn_guard_emittente_scope`?** Se l'emittente
     lo **deriva il DB** dall'entità, il guard verificherebbe un valore che il DB
     ha appena calcolato, e direbbe la stessa cosa del `WITH CHECK` della policy.
     *Proposta: non attaccarlo*, e scrivere nel brief **perché** — così il
@@ -822,6 +906,9 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     `attivo=false`), esiste `dbops.vw_codici_errore_da_dichiarare` e il suo test
     di guardia lato Django. ⚠️ **Il rubinetto va prima della rincorsa**, non
     dopo — §9.1 del brief classi.
+    ⏱️ *2026-09-12*: **il brief non esiste ancora** (nessun file né in
+    `work-in-progress/` né in `work-done/`). Resta un debito dichiarato, non
+    un'urgenza: la D11 del brief classi lo tiene come «split rimandato».
 
 ---
 
@@ -839,4 +926,5 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 ---
 
 *Analisi WIP — Osservabilità e consultazione dei log (3 agosto 2026;
-piano rivisto il 22 agosto 2026: §0-bis, Passo 0, divisione A/B).*
+piano rivisto il 22 agosto 2026: §0-bis, Passo 0, divisione A/B; riletture
+del 24 agosto, 5 settembre e 12 settembre 2026 — §3-quater).*
