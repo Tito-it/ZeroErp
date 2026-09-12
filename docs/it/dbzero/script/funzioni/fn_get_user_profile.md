@@ -253,7 +253,6 @@ BEGIN
 
     v_risorse_umane := jsonb_build_object(
         'risorsa_umana_id',                v_risorsa_umana_id,
-        'risorse_umane_auth_user_id',      v_identita_id,
         'soggetto_ruolo_id',               v_soggetto_ruolo_id,
         'qualifica_id',                    v_qualifica_id,
         'qualifica_codice',                v_qualifica_codice,

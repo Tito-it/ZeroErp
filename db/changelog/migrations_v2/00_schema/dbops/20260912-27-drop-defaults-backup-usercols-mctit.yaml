@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA TABELLA DI BACKUP CHE NESSUNO LEGGE (analisi-software-per-dati-morti §2.5 / §6.5).
+#   Decisione Tid 12-09-2026: DROP.
+#
+# dbops._defaults_backup_usercols e' nata dal one-shot 20_code/dbops/20251008-01/02
+# per fotografare i DEFAULT di user_insert/user_update PRIMA di correggerli.
+# La correzione e' consolidata da undici mesi; la tabella non ha COMMENT, nessun
+# lettore nel repo (funzioni, viste, backend, pgTAP, seed), nessun changeSet
+# successivo la nomina. Non e' software e non e' storia: e' un dato tenuto «per
+# sicurezza» senza nessuno che possa usarlo.
+# IF EXISTS: su un database ricostruito da zero il one-shot la crea e questo la
+# toglie; su un database dove non ci fosse mai stata, passa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260912-27-drop-defaults-backup-usercols-mctit.yaml
+
+  - changeSet:
+      id: 20260912-27-drop-defaults-backup-usercols
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP TABLE dbops._defaults_backup_usercols: backup one-shot del 2025-10-08
+        (default di user_insert/user_update prima della correzione), senza lettori.
+        Decisione Tid 12-09-2026.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TABLE IF EXISTS dbops._defaults_backup_usercols;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non c'e' ritorno: le 73 righe erano una fotografia di default gia'
+              -- corretti da undici mesi. Forward-only.
+              SELECT 1;

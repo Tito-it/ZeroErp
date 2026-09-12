@@ -45,7 +45,16 @@ BEGIN
   --     vendite.fn_libera_attivita_fatturabili, che serve anche
   --     il verbo di recupero «Riporta da emettere»
   -- =========================================================
-  IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
+  -- ⭐ rev 2026-09-12 — L'USCITA ANTICIPATA VALE SOLO SE NON C'E' NIENTE DA
+  --    FARE: ne' fatture, ne' un giro da liberare. Prima usciva su «zero
+  --    fatture» e basta: un lotto fermo PRIMA di generate_fatture_righe (un
+  --    pull fallito, il 13338 del 12-09) non ha fatture, e il reset non
+  --    liberava NESSUNA attivita' — nemmeno quelle lockate dalla select, non
+  --    solo quelle emesse-non-lockate del ramo nuovo qui sotto. E' la causa
+  --    sotto quella che il brief §10.4 vedeva. Con fatture assenti e un giro
+  --    da liberare i passi sulle fatture girano su un insieme vuoto: innocui.
+  p_fatture_ids := COALESCE(p_fatture_ids, ARRAY[]::bigint[]);
+  IF array_length(p_fatture_ids, 1) IS NULL AND p_lock_batch_id IS NULL THEN
     RETURN QUERY SELECT 0, 0, 0, 0;
     RETURN;
   END IF;
@@ -184,11 +193,32 @@ BEGIN
   --    divergessero si sbloccherebbe un insieme e se ne
   --    rimetterebbe in coda un altro»: quel rischio ora sparisce
   --    per costruzione, l'insieme e' uno ed e' un array di id.
+  -- ⭐ rev 2026-09-12 — IL TERZO RAMO: le attivita' EMESSE dal giro e NON
+  --    ANCORA LOCKATE. Fra il pull (che scrive `emit_batch_id`) e la select
+  --    (che scrive `lock_batch_id`) c'e' una finestra: un giro che cade li',
+  --    o un select saltato, lascia attivita' col marchio del lotto e nessun
+  --    lucchetto. Il ramo del lucchetto non le vedeva, e la riga di commessa
+  --    restava EMESSA con un'attivita' libera: i due livelli divergenti che
+  --    fn_libera_attivita_fatturabili descrive, e che nessun giro riprendeva
+  --    (il pull la vede EMESSA, la select di un lotto nuovo non trova il suo
+  --    marchio). Verificato il 12-09 sul lotto 13338.
+  --    «Agganciate al lotto» — la frase del commento qui sopra — vuol dire
+  --    anche questo: l'aggancio nasce col marchio, prima del lucchetto.
+  -- ⚠️ `lock_batch_id IS NULL`: un lucchetto ALTRUI non si tocca (se e' il
+  --    mio, e' gia' nel primo ramo). `fattura_riga_id IS NULL`: una riga gia'
+  --    in fattura passa dal secondo ramo, se la fattura e' nel perimetro, e
+  --    altrimenti non si libera da qui (`fatturato` e' generata da questo).
+  -- ⚠️ Vale solo col marchio del giro (p_lock_batch_id NOT NULL): il reset
+  --    PER-FATTURA passa NULL (C-22) e non tocca questo ramo.
   SELECT array_agg(af.id)
     INTO v_af_ids
     FROM vendite.attivita_fatturabili af
    WHERE (p_lock_batch_id IS NOT NULL AND af.lock_batch_id = p_lock_batch_id)
-      OR af.fattura_riga_id = ANY(v_righe_ids);
+      OR af.fattura_riga_id = ANY(v_righe_ids)
+      OR (p_lock_batch_id IS NOT NULL
+          AND af.emit_batch_id = p_lock_batch_id
+          AND af.lock_batch_id IS NULL
+          AND af.fattura_riga_id IS NULL);
 
   IF v_af_ids IS NULL THEN
     v_af_ids := ARRAY[]::bigint[];

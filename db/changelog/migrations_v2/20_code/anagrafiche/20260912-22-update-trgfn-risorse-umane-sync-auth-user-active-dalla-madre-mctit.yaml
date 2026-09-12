@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# trgfn_risorse_umane_sync_auth_user_active LEGGE DALLA MADRE (strato 2, D1).
+#   Analisi: analisi-software-per-dati-morti.md §6.2
+# Corpo dalla doc auto-gen (= vivo). Due modifiche: il %TYPE su
+# identita_digitali.auth_user_id e il lookup via
+# script.fn_get_auth_user_id_for_risorsa_umana (20_code/-17) — con
+# `IS NOT NULL` al posto di FOUND, che un'assegnazione non imposta.
+# Il trigger che la monta (trg_risorse_umane_z90_sync_auth_user_active_upd)
+# resta com'e'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260912-22-update-trgfn-risorse-umane-sync-auth-user-active-dalla-madre-mctit.yaml
+
+  - changeSet:
+      id: 20260912-22-update-trgfn-risorse-umane-sync-auth-user-active-dalla-madre
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_risorse_umane_sync_auth_user_active: %TYPE su
+        identita_digitali e lookup via script.fn_get_auth_user_id_for_risorsa_umana
+        al posto della vista risorse_umane_auth_user in ritiro. Comportamento invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_risorse_umane_sync_auth_user_active';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE sulle colonne sorgente (policy ZeroErp).
+                  v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
+              BEGIN
+                  -- Risolve l'auth_user_id dalla madre identita_digitali via
+                  -- l'helper condiviso (12-09-2026: la vista risorse_umane_auth_user
+                  -- e' stata ritirata). NULL = risorsa senza collegamento: nessun
+                  -- auth_user da aggiornare, il sync si salta.
+                  v_auth_user_id := script.fn_get_auth_user_id_for_risorsa_umana(NEW.id);
+
+                  IF v_auth_user_id IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id);
+                  END IF;
+
+                  RETURN NULL; -- AFTER trigger: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active() IS
+              'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra di risorse_umane. Risolve l''auth_user da identita_digitali con script.fn_get_auth_user_id_for_risorsa_umana (dal 12-09-2026: la vista risorse_umane_auth_user e'' stata ritirata) e delega a fn_sync_auth_user_is_active.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen alla revisione prima di
+              -- questa. Non si riscrive un corpo stantio.
+              SELECT 1;

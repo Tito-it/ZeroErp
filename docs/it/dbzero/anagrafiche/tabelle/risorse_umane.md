@@ -47,14 +47,14 @@
 | trg_risorse_umane_a10_competenze_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'competenze_flussi', 'risorsa_umana_id', 'id', 'attivo')` |
 | trg_risorse_umane_a10_delete_block_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
 | trg_risorse_umane_a10_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'risorsa_umana_id', 'id', 'attivo')` |
-| trg_risorse_umane_a10_guard_ruolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()` |
+| trg_risorse_umane_a10_guard_identita_attiva_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva()` |
 | trg_risorse_umane_a10_guard_ruolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()` |
+| trg_risorse_umane_a10_guard_ruolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()` |
 | trg_risorse_umane_a10_pratiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'risorsa_umana_id', 'id', 'attivo')` |
 | trg_risorse_umane_a10_qualifiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'qualifiche', 'attivo', 'qualifica_id', 'id')` |
 | trg_risorse_umane_a10_qualifiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'qualifiche', 'attivo', 'qualifica_id', 'id')` |
-| trg_risorse_umane_a10_risorse_umane_auth_user_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'risorse_umane_auth_user', 'risorsa_umana_id', 'id', 'attivo')` |
-| trg_risorse_umane_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_risorse_umane_a10_soggetti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
+| trg_risorse_umane_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_risorse_umane_a10_unita_organizzative_require_attivo_c6ba90 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_risorse_umane_a10_unita_organizzative_require_attivo_c6ba90 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_risorse_umane_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

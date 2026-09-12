@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# public.version_info: UNA RIGA CHE NESSUNO LEGGE — si ritira DOVE E' NATA.
+#   Analisi: analisi-software-per-dati-morti.md §2.6 / §6.5 · decisione Tid 12-09-2026: DROP.
+#
+# Creata dal vecchio bootstrap (migrations/00_bootstrap/20250311_01, changeSet
+# 20250513-04) come «tracking della versione in uso», con una INSERT e mai piu'
+# toccata: nessun lettore in backend, frontend, pgTAP o funzioni. La versione
+# applicata si legge dal databasechangelog.
+#
+# ⛔ PERCHE' STA QUI, CON `context: provision`, E NON IN 00_schema.
+#   Il bootstrap che la crea e' incluso in changelog-provision-pre.yaml e gira
+#   come `postgres` (contesto provision, prima delle migrazioni): su un database
+#   ricostruito da zero il proprietario e' `postgres`, e il migratore `zeroerp`
+#   NON puo' droppare cio' che non possiede. Provato il 12-09-2026: il primo
+#   tentativo (00_schema/boostrap/20260912-28) e' morto in CI con «bisogna essere
+#   proprietari della tabella version_info». Su dev era passato perche' li'
+#   bootstrap e migrazioni le lancia lo stesso utente (titodb).
+#   ⭐ La regola e' quella dei ruoli batch: cio' che nasce nel provisioning si
+#   ritira nel provisioning. Questo file e' incluso da changelog-provision-post
+#   (postgres, dopo le migrazioni); nella passata principale
+#   (`--contexts="!provision and !dati_macchina"`) e' invisibile, come il
+#   gemello 20251123-12 (hardening dei proprietari). Su dev, senza filtro di
+#   contesto, gira lo stesso: IF EXISTS, e la tabella e' gia' via dal -28.
+#   ⚠️ Il -28 era solo locale (mai committato): cancellato. Su dev resta la sua
+#   riga in databasechangelog, innocua — Liquibase non pretende il file di un
+#   changeSet gia' eseguito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/90_end/20260912-29-drop-version-info-provision-mctit.yaml
+
+  - changeSet:
+      id: 20260912-29-drop-version-info-provision
+      author: mctit
+      context: provision
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP TABLE public.version_info (bootstrap 2025, una riga, nessun
+        lettore) eseguito dal provisioning post come postgres: in CI la tabella
+        e' di postgres e il migratore zeroerp non puo' droppare cio' che non
+        possiede. Decisione Tid 12-09-2026. IF EXISTS: su dev e' gia' via.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TABLE IF EXISTS public.version_info;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non c'e' ritorno e non serve: la versione applicata e' nel databasechangelog.
+              SELECT 1;

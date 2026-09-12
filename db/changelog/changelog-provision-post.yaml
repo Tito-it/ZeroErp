@@ -10,3 +10,13 @@ databaseChangeLog:
   - include:
       file: migrations_v2/90_end/20251123-12-sec-functions-owner-hardening-mctit.yaml
       relativeToChangelogFile: true
+  # 12-09-2026: ritiro di public.version_info, nata nel provisioning pre
+  # (bootstrap) come postgres: la ritira postgres. Analisi software-per-dati-morti §6.5.
+  - include:
+      file: migrations_v2/90_end/20260912-29-drop-version-info-provision-mctit.yaml
+      relativeToChangelogFile: true
+  # 12-09-2026: la trigger function di version_info, orfana dopo il -29
+  # (presidio riferimenti morti, test 3).
+  - include:
+      file: migrations_v2/90_end/20260912-30-drop-trgfn-audit-version-info-provision-mctit.yaml
+      relativeToChangelogFile: true

@@ -5,7 +5,7 @@
 **Approfondimento tabelle:**
 >
 [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
+> [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 >
 **Approfondimento funzioni:**
 >
@@ -31,9 +31,11 @@ La sincronizzazione dipende da:
 
 * Trigger **AFTER UPDATE OF attivo, valido_dal, valido_al** su
   `anagrafiche.risorse_umane`.
-* Risolve l'`auth_user_id` dal bridge `risorse_umane_auth_user` tramite
-  `SELECT rau.auth_user_id ... WHERE rau.risorsa_umana_id = NEW.id LIMIT 1`.
-* Se `FOUND`, chiama
+* Risolve l'`auth_user_id` dalla madre `identita_digitali` tramite
+  [`script.fn_get_auth_user_id_for_risorsa_umana(NEW.id)`](/dbzero/script/funzioni/fn_get_auth_user_id_for_risorsa_umana)
+  (dal 12-09-2026: la vista `risorse_umane_auth_user` è stata ritirata,
+  `20_code/20260912-22`).
+* Se il risultato non è `NULL`, chiama
   `anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id)`.
 * Se la risorsa non ha un collegamento auth_user, salta silenziosamente
   (niente da sincronizzare).

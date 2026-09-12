@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# TRE COMMENT CHE DAVANO LA VISTA PER ESISTENTE (strato 2, D2 — prosa, non lettori).
+#   Analisi: analisi-software-per-dati-morti.md §6.1 (riga «solo COMMENT»)
+# Non sono lettori: sono la descrizione del database, e chi la legge dopo il
+# ritiro troverebbe un oggetto che non c'e'. Testo attuale letto da
+# obj_description il 12-09; cambia la sola frase che nomina il ponte.
+# ⚠️ Solo COMMENT ON: nessun CREATE OR REPLACE (i corpi restano quelli vivi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260912-25-comment-tre-oggetti-senza-nome-vecchio-mctit.yaml
+
+  - changeSet:
+      id: 20260912-25-comment-tre-oggetti-senza-nome-vecchio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Aggiorna i COMMENT di anagrafiche.trgfn_identita_digitali_sync_auth_user_active,
+        script.fn_guard_soggetto_pf_pura e script.vw_audit_sources, che nominavano
+        la vista risorse_umane_auth_user come esistente. Solo prosa.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active() IS
+              'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra/ruolo su anagrafiche.identita_digitali. Delega a fn_sync_auth_user_is_active(auth_user_id). Copre tutti i ruoli applicativi (§4.5.3 WIP multi-face-auth); il gemello su risorse_umane (trgfn_risorse_umane_sync_auth_user_active) risolve l''utente dalla stessa madre.';
+
+              COMMENT ON FUNCTION script.fn_guard_soggetto_pf_pura(anagrafiche.soggetti.id%TYPE) IS
+              'Guard fail-fast: verifica che il soggetto sia persona fisica pura (CF valorizzato, P.IVA NULL). Usato dal trigger sul ponte utente identita_digitali (ruolo_applicativo=OPERATORE). Solleva errore via fn_log_and_raise_error.';
+
+              COMMENT ON VIEW script.vw_audit_sources IS
+              'Vista pubblica delle storico audit-abili dal drawer admin. Espone (code, label_key, area_funzionale, storico_table). ⭐ `storico_table` e'' entrata il 2026-09-02 e prima non c''era: il backend il nome fisico se lo costruiva concatenando `code`, che e'' l''identita'' LOGICA della sorgente (ci ordina e ci filtra l''API). Finche'' i due coincidono la scorciatoia sembra funzionare; alla prima storico rinominata si separano, e la separazione non da'' un avviso — da'' un errore a valle su un database ricostruito, che e'' esattamente cio'' che e'' successo con la vecchia storico.risorse_umane_auth_user quando la sua madre fu rinominata (ponte poi ritirato del tutto il 12-09-2026). ⚠️ Chi costruisce un `FROM` dinamico deve leggere QUESTA colonna, mai `code`. ⛔ E chi modifica questa vista usi `CREATE OR REPLACE`: un DROP porterebbe via i GRANT di zeroerp_app e zeroerp_batch_fatturazione, e nessun changeSet li ri-concede.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I testi precedenti sono nella doc auto-gen alla revisione prima di questa.
+              SELECT 1;

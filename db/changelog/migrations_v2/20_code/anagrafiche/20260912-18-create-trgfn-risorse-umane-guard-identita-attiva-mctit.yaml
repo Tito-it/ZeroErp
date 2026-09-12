@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 LA REGOLA CHE VIVEVA PER CASO, SCRITTA A MANO (strato 2, D1 — decisione Tid 12-09).
+#   Analisi: analisi-software-per-dati-morti.md §6.2
+#
+# Su anagrafiche.risorse_umane il guard di automazione
+# `trg_risorse_umane_a10_risorse_umane_auth_user_block_deact_upd` impediva di
+# disattivare una risorsa umana con un'identita' OPERATORE attiva — leggendo la
+# VISTA col nome vecchio, cioe' per caso. Con il ritiro della vista (90_end/-26)
+# quel guard cade (00_schema/-19), e la regola resterebbe senza casa:
+# `identita_digitali` non ha una FK verso `risorse_umane` (il legame passa da
+# soggetti_ruoli), quindi l'automazione ATTIVO non la genera.
+#
+# ⭐ Scelta di Tid: la regola migra sulla madre, a mano — «figli prima, padre
+#   poi» come in tutto il progetto. L'alternativa (nessun guard, il sync spegne
+#   l'utente) avrebbe fatto trascinare il figlio dal padre.
+# ⚠️ Codice SUO (E_RISORSA_UMANA_IDENTITA_ATTIVA, CONFLITTO_STATO, seed nel CSV
+#   di questo giro): non E_ATTIVO_BLOCK_CHILDREN_ACTIVE, che e' dell'automazione e
+#   nomina una FK. Nel VARIADIC va l'utente (username), che una persona riconosce.
+#   `campo` = attivo: e' l'interruttore che il frontend deve accendere.
+# ⚠️ Solo la transizione true -> false, come l'automazione: INSERT e UPDATE di
+#   altre colonne non sono affar suo. Fase _a10_, evento UPDATE OF attivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260912-18-create-trgfn-risorse-umane-guard-identita-attiva-mctit.yaml
+
+  - changeSet:
+      id: 20260912-18-create-trgfn-risorse-umane-guard-identita-attiva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard scritto a mano su anagrafiche.risorse_umane (BEFORE UPDATE OF attivo):
+        rifiuta attivo true->false se esiste un'identita_digitali OPERATORE attiva
+        sullo stesso soggetto_ruolo_id (E_RISORSA_UMANA_IDENTITA_ATTIVA). Sostituisce
+        il guard di automazione che leggeva la vista risorse_umane_auth_user.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⛔ Tipo ESPLICITO e non %TYPE: la colonna e' di django.auth_user, e in CI
+                  --    Liquibase gira PRIMA delle migrazioni Django — al CREATE lo schema
+                  --    django non esiste, e un %TYPE si risolve proprio al CREATE. Il DB puo'
+                  --    CHIAMARE dentro django.* (il SELECT sotto e' late-bound, plpgsql), non
+                  --    DIPENDERNE. Provato in CI il 12-09: «lo schema "django" non esiste».
+                  v_username text;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Guard: una risorsa umana con un'identita' OPERATORE ancora
+                  -- attiva non si disattiva («figli prima, padre poi»). Il legame
+                  -- risorsa umana -> identita' passa da soggetto_ruolo_id, non da
+                  -- una FK: per questo il guard e' scritto a mano e non generato.
+                  -- Solo la transizione attivo true -> false.
+                  -- ------------------------------------------------------------
+                  IF TG_OP = 'UPDATE'
+                     AND COALESCE(OLD.attivo, false) IS TRUE
+                     AND COALESCE(NEW.attivo, false) IS FALSE
+                  THEN
+                      SELECT au.username
+                        INTO v_username
+                        FROM anagrafiche.identita_digitali id
+                        JOIN django.auth_user au
+                          ON au.id = id.auth_user_id
+                       WHERE id.soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                         AND id.ruolo_applicativo = 'OPERATORE'
+                         AND id.attivo            = true
+                       ORDER BY id.id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          -- campo -> il frontend (quale interruttore accendere);
+                          -- VARIADIC -> l'operatore (chi e' l'utente ancora attivo).
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche',
+                              'trgfn_risorse_umane_guard_identita_attiva',
+                              'E_RISORSA_UMANA_IDENTITA_ATTIVA',
+                              jsonb_build_object(
+                                  'campo',             'attivo',
+                                  'risorsa_umana_id',  NEW.id,
+                                  'soggetto_ruolo_id', NEW.soggetto_ruolo_id),
+                              NULL::uuid,
+                              v_username);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva() IS
+              'Guard (BEFORE UPDATE OF attivo su risorse_umane): rifiuta attivo true->false se esiste un''identita_digitali OPERATORE attiva sullo stesso soggetto_ruolo_id — E_RISORSA_UMANA_IDENTITA_ATTIVA (CONFLITTO_STATO), nel VARIADIC lo username. Scritto a mano perche'' il legame non e'' una FK e l''automazione ATTIVO non lo vede; sostituisce il guard che leggeva la vista risorse_umane_auth_user (ritirata il 12-09-2026).';
+
+              DROP TRIGGER IF EXISTS trg_risorse_umane_a10_guard_identita_attiva_upd ON anagrafiche.risorse_umane;
+              CREATE TRIGGER trg_risorse_umane_a10_guard_identita_attiva_upd
+                  BEFORE UPDATE OF attivo
+                  ON anagrafiche.risorse_umane
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_risorse_umane_a10_guard_identita_attiva_upd ON anagrafiche.risorse_umane;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_risorse_umane_guard_identita_attiva();

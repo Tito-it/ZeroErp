@@ -66,6 +66,22 @@ BEGIN
                af.fattura_riga_id,
                COALESCE(af.lock_in_fatturazione, false) AS lucchettata,
                af.stato_esecuzione,
+               -- ⭐ rev 2026-09-12 — I DUE LIVELLI. La riga di commessa dice
+               --    se il lavoro e' ancora «consegnato» (EMESSA); il marchio
+               --    del giro dice A CHI, e vw_lotti_fase se quel giro e' vivo.
+               --    Un'attivita' libera con la riga EMESSA e' DIVERGENTE:
+               --    nessun giro la riprende (il pull la vede EMESSA, la
+               --    select di un altro lotto non trova il suo marchio).
+               --    Divergente e marchio di un lotto in gioco = in transito
+               --    (fra pull e select); divergente e lotto morto o senza
+               --    marchio = orfana, riportabile. Lotto fuori dal perimetro
+               --    RLS di chi chiede → NULL → «morto»: chi vede la commessa
+               --    vede il suo lotto, e' lo stesso emittente.
+               ca.stato_emissione::text AS stato_emissione_riga,
+               EXISTS (SELECT 1
+                         FROM vendite.vw_lotti_fase f
+                        WHERE f.lotto_id = vendite.fn_lotto_da_emit_batch(af.emit_batch_id)
+                          AND f.in_gioco)                  AS marchio_in_gioco,
                fr.fattura_id,
                -- L'etichetta che l'operatore riconosce sulla
                -- card: commessa e competenza, mai un id tecnico.
@@ -122,9 +138,16 @@ BEGIN
          WHERE v.fattura_riga_id IS NOT NULL
     ),
     -- ── MOTIVO 3 — non c'e' niente da riportare ──────────────
-    -- Senza lucchetto l'attivita' e' gia' disponibile: il giro
-    -- successivo la prende da se'. Dirlo e' diverso dal motivo 2,
-    -- e il rimedio e' «non fare niente».
+    -- Senza lucchetto E con la riga di commessa gia' NON_EMESSA
+    -- l'attivita' e' davvero disponibile: il giro successivo la
+    -- prende da se'. Dirlo e' diverso dal motivo 2, e il rimedio e'
+    -- «non fare niente».
+    -- ⛔ rev 2026-09-12: «senza lucchetto» da solo NON bastava. Con
+    --    la riga ancora EMESSA il pull non la vede e nessun giro la
+    --    riprende: quello stato era irraggiungibile da ogni verbo,
+    --    e questo motivo lo chiamava «gia' disponibile». Verificato
+    --    il 12-09 sul lotto 13338 (E_ATTIVITA_GIA_DA_EMETTERE su due
+    --    attivita' che nessuno avrebbe mai ripreso).
     m3 AS (
         SELECT COALESCE(jsonb_agg(jsonb_build_object(
                    'codice',                  'E_ATTIVITA_GIA_DA_EMETTERE',
@@ -138,6 +161,35 @@ BEGIN
           FROM vis v
          WHERE v.fattura_riga_id IS NULL
            AND NOT v.lucchettata
+           AND v.stato_emissione_riga <> 'EMESSA'
+    ),
+    -- ── MOTIVO 5 — EMESSA e non ancora lockata, dentro un giro VIVO ──
+    -- ⭐ rev 2026-09-12. E' la finestra fra il pull e la select di un
+    --    lotto che sta girando: la riga e' EMESSA, l'attivita' porta il
+    --    marchio di un lotto in gioco, nessun lucchetto ancora. Non e'
+    --    orfana: e' in transito. Liberarla da qui la farebbe prendere
+    --    da due giri — stessa ragione del motivo 4, letta dal marchio
+    --    invece che dal lucchetto. Stesso codice e stessa classe
+    --    (CONFLITTO_STATO, rimedio «aspetta»); `reason` suo, perche'
+    --    la diagnosi distingua i due transiti.
+    -- ⭐ Quando il marchio e' di un lotto MORTO (o non c'e'), la stessa
+    --    coppia «libera + EMESSA» non e' un motivo: e' la divergenza, e
+    --    il verbo la riallinea con fn_libera_attivita_fatturabili.
+    m5 AS (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                   'codice',                  'E_ATTIVITA_IN_LAVORAZIONE',
+                   'reason',                  'ATTIVITA_EMESSA_IN_GIRO_VIVO',
+                   'reason_key',              'vendite.attivita.azione_reason.in_lavorazione',
+                   'dettaglio',               v.etichetta,
+                   'attivita_fatturabile_id', v.attivita_fatturabile_id,
+                   'commessa_id',             v.commessa_id,
+                   'fattura_id',              NULL::bigint)
+                   ORDER BY v.attivita_fatturabile_id), '[]'::jsonb) AS j
+          FROM vis v
+         WHERE v.fattura_riga_id IS NULL
+           AND NOT v.lucchettata
+           AND v.stato_emissione_riga = 'EMESSA'
+           AND v.marchio_in_gioco
     ),
     -- ── MOTIVO 4 — e' dentro un giro VIVO ────────────────────
     -- ⛔ Lucchettata e non COMPLETED vuol dire che un lotto la sta
@@ -164,9 +216,9 @@ BEGIN
     -- L'ordine di concatenazione E' la priorita': la mutazione
     -- solleva il primo motivo, e il primo dev'essere quello che
     -- spiega di piu'.
-    SELECT m1.j || m2.j || m3.j || m4.j
+    SELECT m1.j || m2.j || m3.j || m5.j || m4.j
       INTO v_motivi
-      FROM m1, m2, m3, m4;
+      FROM m1, m2, m3, m5, m4;
 
     RETURN v_motivi;
 END;

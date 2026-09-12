@@ -47,7 +47,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()
-IS 'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra/ruolo su anagrafiche.identita_digitali. Delega a fn_sync_auth_user_is_active(auth_user_id). Simmetrico al trigger esistente su risorse_umane_auth_user, ma copre tutti i ruoli applicativi (§4.5.3 WIP multi-face-auth).';
+IS 'Trigger function: sincronizza auth_user.is_active al cambio stato/finestra/ruolo su anagrafiche.identita_digitali. Delega a fn_sync_auth_user_is_active(auth_user_id). Copre tutti i ruoli applicativi (§4.5.3 WIP multi-face-auth); il gemello su risorse_umane (trgfn_risorse_umane_sync_auth_user_active) risolve l''utente dalla stessa madre.';
 ```
 
 ---

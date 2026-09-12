@@ -118,6 +118,7 @@
 - [trgfn_resellers_guard_attivo](funzioni/trgfn_resellers_guard_attivo.md) — (latest review 26-01-2026) La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la **disattivazione** di un reseller quando esistono mapping verso `resellers_billing_account`.
 - [trgfn_resellers_guard_ruolo_reseller](funzioni/trgfn_resellers_guard_ruolo_reseller.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_resellers_guard_ruolo_reseller()`** garantisce che il record in `anagrafiche.resellers` sia sempre collegato a un `soggetto_ruolo_id` coerente con il ruolo **RESELLER** (`codice_interno = 'RE'`).
 - [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una **no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto ricevuto dal trigger.
+- [trgfn_risorse_umane_guard_identita_attiva](funzioni/trgfn_risorse_umane_guard_identita_attiva.md) — (nata il 12-09-2026, `20_code/anagrafiche/20260912-18`; decisione Tid, analisi `analisi-software-per-dati-morti` §6.2)
 - [trgfn_risorse_umane_guard_ruolo](funzioni/trgfn_risorse_umane_guard_ruolo.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`** garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un `soggetto_ruolo_id` di tipo **RIS_UMANA** e che tale ruolo punti allo stesso `soggetto_id` presente nel record della risorsa umana.
 - [trgfn_risorse_umane_notify_cambio_reparto](funzioni/trgfn_risorse_umane_notify_cambio_reparto.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()`** emette una notifica PostgreSQL quando una risorsa umana cambia `unita_organizzativa_id`.
 - [trgfn_risorse_umane_sync_auth_user_active](funzioni/trgfn_risorse_umane_sync_auth_user_active.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_sync_auth_user_active()`** sincronizza `django.auth_user.is_active` quando cambiano gli attributi di stato della tabella `anagrafiche.risorse_umane`.
@@ -144,7 +145,6 @@
 - [trgfn_vettori_normalize](funzioni/trgfn_vettori_normalize.md) — (rev 2026-08-21)
 
 ## 🔍 Views
-- [risorse_umane_auth_user](views/risorse_umane_auth_user.md) — (latest review 12-09-2026)
 - [vw_clienti_codice_ba](views/vw_clienti_codice_ba.md) — (rev 2026-08-21)
 - [vw_clienti_lista](views/vw_clienti_lista.md) — (rev 2026-08-21)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)

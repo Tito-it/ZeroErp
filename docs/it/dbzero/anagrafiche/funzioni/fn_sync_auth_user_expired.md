@@ -14,18 +14,21 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_sync_auth_user_expired()
 AS $function$
 DECLARE
     -- Variabili locali tipizzate %TYPE (policy ZeroErp).
-    v_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+    v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
     v_modified     boolean;
     v_count        integer := 0;
 BEGIN
     -- ------------------------------------------------------------
-    -- Funzione: anagrafiche.fn_sync_auth_user_expired (v2)
+    -- Funzione: anagrafiche.fn_sync_auth_user_expired (v3, 12-09-2026)
     -- Scopo:
     --   Batch di disattivazione overnight per utenti con finestra
-    --   temporale scaduta. Copre:
-    --     - risorse_umane.valido_al < CURRENT_DATE (legacy)
-    --     - identita_digitali.valido_al < CURRENT_DATE (nuovo)
-    --   Evita double-count grazie a SELECT DISTINCT sull'UNION.
+    --   temporale scaduta: identita_digitali.valido_al < CURRENT_DATE,
+    --   per tutte le vesti.
+    --   ⛔ Il «ramo legacy» (risorse_umane.valido_al via la vista
+    --   risorse_umane_auth_user) e' caduto: la regola vive in
+    --   identita_digitali.valido_al (decisione Tid 12-09-2026), e
+    --   fn_sync_auth_user_is_active decide comunque SOLO sull'identita'
+    --   — quel ramo poteva proporre candidati, mai cambiare l'esito.
     --
     --   Uso: pgAgent daily job + management command Django.
     --
@@ -37,35 +40,19 @@ BEGIN
         RETURN 0;
     END IF;
 
-    -- Loop sui candidati (auth_user ancora is_active=true ma con
-    -- finestra scaduta in almeno uno dei due modelli).
+    -- Loop sui candidati: auth_user ancora is_active=true con almeno
+    -- un'identita' digitale attiva a finestra scaduta (operatori,
+    -- portale, fornitore, shop, api client).
     FOR v_auth_user_id IN
         EXECUTE '
-            SELECT DISTINCT t.auth_user_id
-              FROM (
-                  -- Ramo legacy: risorse_umane con valido_al scaduto
-                  -- collegate ad auth_user via bridge RUA.
-                  SELECT rau.auth_user_id
-                    FROM anagrafiche.risorse_umane ru
-                    JOIN anagrafiche.risorse_umane_auth_user rau
-                      ON rau.risorsa_umana_id = ru.id
-                   WHERE ru.valido_al IS NOT NULL
-                     AND ru.valido_al < CURRENT_DATE
-
-                  UNION
-
-                  -- Ramo nuovo: qualsiasi identita_digitale attiva
-                  -- con valido_al scaduto (operatori, portale,
-                  -- fornitore, shop, api client).
-                  SELECT id.auth_user_id
-                    FROM anagrafiche.identita_digitali id
-                   WHERE id.attivo = true
-                     AND id.valido_al IS NOT NULL
-                     AND id.valido_al < CURRENT_DATE
-              ) t
+            SELECT DISTINCT id.auth_user_id
+              FROM anagrafiche.identita_digitali id
               JOIN django.auth_user au
-                ON au.id = t.auth_user_id
-             WHERE au.is_active = true
+                ON au.id = id.auth_user_id
+             WHERE id.attivo = true
+               AND id.valido_al IS NOT NULL
+               AND id.valido_al < CURRENT_DATE
+               AND au.is_active = true
         '
     LOOP
         -- Invoca la nuova firma sync per ciascun candidato.
@@ -85,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_expired()
-IS 'Batch: disattiva auth_user per finestra temporale scaduta. Copre risorse_umane legacy + identita_digitali nuove (§4.5.5 WIP multi-face-auth). Invocata da pgAgent daily e management command Django. Ritorna il numero di utenti disattivati.';
+IS 'Batch: disattiva auth_user per finestra temporale scaduta su identita_digitali.valido_al (tutte le vesti). Dal 12-09-2026 senza il ramo legacy via risorse_umane_auth_user: la regola vive in identita_digitali e fn_sync_auth_user_is_active decide solo li''. Invocata da pgAgent daily e management command Django. Ritorna il numero di utenti disattivati.';
 ```
 
 ---

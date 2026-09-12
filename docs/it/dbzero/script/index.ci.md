@@ -54,6 +54,7 @@
 - [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
+- [fn_get_auth_user_id_for_risorsa_umana](manual/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
 - [fn_get_auth_user_stato](manual/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
 - [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
 - [fn_get_billing_account_by_istanza](manual/fn_get_billing_account_by_istanza.md)
@@ -96,7 +97,7 @@
 - [fn_get_user_emittenti_scope](manual/fn_get_user_emittenti_scope.md)
 - [fn_get_user_object_permissions_map](manual/fn_get_user_object_permissions_map.md)
 - [fn_get_user_permissions_map](manual/fn_get_user_permissions_map.md)
-- [fn_get_user_profile](manual/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + risorse_umane_auth_user + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
+- [fn_get_user_profile](manual/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
 - [fn_get_vie_discendenti](manual/fn_get_vie_discendenti.md) — (rev 2026-08-21)
 - [fn_gruppi_di_commessa_nel_lotto](manual/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](manual/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)

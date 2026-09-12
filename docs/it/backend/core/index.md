@@ -45,7 +45,7 @@
 - [jwt_audit_authentication](manual/jwt_audit_authentication.md) — Subclass DRF di rest_framework_simplejwt.authentication.JWTAuthentication che propaga l'identita' utente JWT come GUC PostgreSQL (app.jwt_user, app.current_user_id) subito dopo authenticate() di successo, prima che il v…
 - [jwt_audit_middleware](manual/jwt_audit_middleware.md) — Middleware Django per le request /api/*. Tre responsabilita':
 - [permissions_cache](manual/permissions_cache.md) — Cache Redis L2 per i permessi utente. Integra la cache per-request (L1 dict) con Redis (L2) per evitare query DB su ogni richiesta HTTP.
-- [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp: delega ogni decisione alle funzioni SQL `script.fn_*` (super admin, livello area/oggetto, azioni di processo, scope emittente) con cache per-request.
+- [permissions_resolver](manual/permissions_resolver.md) — Risolutore centrale dei permessi ZeroErp: una classe statica che **delega ogni decisione alle funzioni SQL script.fn_*** e tiene una cache per-request per non ripetere lo stesso round-trip due volte nella stessa richies…
 - [request_log_middleware](manual/request_log_middleware.md) — Registrare ogni request API autenticata nella tabella dbops.request_log con metodo, path, status, durata e utente.
 - [session_audit_service](manual/session_audit_service.md) — Registrare eventi di sessione JWT (login, refresh, logout, revoca) nella tabella dbops.sessioni_utente.
 - [sveglie_processi](manual/sveglie_processi.md) — Dire **chi sveglia ogni processo automatico del backend**, con quale cadenza, e entro quanto il suo ultimo run vale ancora come segno di vita — da una sede sola, leggibile da due programmi.
