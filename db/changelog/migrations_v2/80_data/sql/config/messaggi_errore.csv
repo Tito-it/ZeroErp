@@ -486,7 +486,7 @@ E_PERMISSION_DENIED,it,Permesso negato.,692,,
 E_PIPELINE,it,Errore nella pipeline di fatturazione.,693,,
 E_PIPELINE_DOMINIO,it,Errore dominio pipeline.,694,,
 E_PIPELINE_DOMINIO_NOT_FOUND,it,Dominio pipeline non trovato.,695,,
-E_PIPELINE_LOTTO_CRITICAL,it,Lotto con segnalazioni critiche.,696,,
+E_PIPELINE_LOTTO_CRITICAL,it,Lotto bloccato per segnalazioni critiche o documenti in errore.,696,"Il lotto ha almeno una segnalazione critica attiva o un documento preso in carico il cui ultimo esito e' ERRORE: lo step successivo non puo' partire.","Correggere le segnalazioni critiche e i documenti in errore (o toglierli dal giro), poi rilanciare lo step."
 E_PIPELINE_LOTTO_IN_ESECUZIONE,it,Lotto gia' in esecuzione.,697,,
 E_PIPELINE_LOTTO_NOT_FOUND,it,Lotto non trovato.,698,,
 E_PIPELINE_MARK_ERROR,it,Errore marcatura pipeline.,699,,

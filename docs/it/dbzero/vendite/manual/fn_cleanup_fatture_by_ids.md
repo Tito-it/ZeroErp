@@ -115,6 +115,38 @@ corretto nel reset globale (libera anche quelle agganciate al lotto che non sono
 mai diventate riga) ed è il motivo per cui il reset **per-fattura** deve passare
 `NULL`.
 
+### 🔴 rev 12-09-2026 — «agganciate al lotto» vuol dire anche EMESSE E NON LOCKATE
+
+Il giro marca le attività **prima** di lockarle: il pull scrive `emit_batch_id`,
+la `select` — un task dopo — scrive `lock_batch_id`. Fra i due c'è una finestra,
+e un giro che cade lì (o un `select` saltato) lascia attività col **marchio** del
+lotto e **nessun lucchetto**, con la riga di commessa `EMESSA`. Il ramo qui sopra
+non le vedeva, e nessun giro le avrebbe riprese: il pull le vede `EMESSE`, la
+`select` di un lotto nuovo lockа **solo** attività col proprio marchio. Verificato
+il 12-09 sul lotto 13338 annullato da Tid: due attività libere col marchio del
+lotto morto, righe `EMESSE`, e «Riporta da emettere» che le rifiutava.
+
+Due correzioni, nello stesso changeSet (`20260912-34`):
+
+1. **un terzo ramo nel perimetro**: `emit_batch_id = p_lock_batch_id AND
+   lock_batch_id IS NULL AND fattura_riga_id IS NULL` — la stessa identità del
+   giro letta dal marchio. `lock_batch_id IS NULL` perché un lucchetto **altrui**
+   non si tocca (se è il mio è già nel primo ramo); `fattura_riga_id IS NULL`
+   perché una riga già in fattura passa dal secondo ramo o non si libera da qui.
+   Vale solo col marchio del giro: il reset **per-fattura** (`NULL`) non cambia;
+2. 🔴 **l'uscita anticipata** su «elenco fatture vuoto» vale solo se manca
+   **anche** il giro. Prima usciva e basta — e un lotto fermo **prima** di
+   `generate_fatture_righe` (un pull fallito) non ha fatture: il reset non
+   liberava **nessuna** attività, nemmeno quelle lockate dalla `select`. L'ha
+   preso il pgTAP alla prima corsa (`updated_attivita = 0` da
+   `fn_annulla_lotto_da_draft` col terzo ramo già dentro): la causa stava sotto
+   quella che il brief vedeva. Con fatture assenti e un giro da liberare, i passi
+   sulle fatture girano su un insieme vuoto e sono innocui.
+
+Presidio: `db/pgtap/vendite/test-af-emessa-non-lockata-reset-e-riporto-v1.sql`
+(3, 4, 8), che costruisce la finestra col **pull vero**. Brief:
+`brief-db-rilancio-step-non-rivede-le-proprie-commesse` §10.4.
+
 ---
 
 ### 🔴 Se aggiungi una tabella figlia di `vendite.fatture`
