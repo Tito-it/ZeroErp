@@ -26,19 +26,25 @@
 --   nella fixture non esegue NESSUNA asserzione, e un presidio messo li' sarebbe
 --   muto.
 --
--- Elenco test (plan 10):
+-- Elenco test (plan 12):
 -- 1) la madre anagrafiche._legacy_risorse_umane_auth_user non esiste
 -- 2) la sua shadow storico._legacy_risorse_umane_auth_user non esiste
 -- 3) la shadow VECCHIA storico.risorse_umane_auth_user non esiste (20260912-03)
 -- 4) trgfn_risorse_umane_auth_user_guard_persona_fisica non esiste (era solo sua)
 -- 5) trgfn_risorse_umane_auth_user_sync_active non esiste (era solo sua)
 -- 6) anagrafiche.fn_sync_auth_user_is_active ESISTE ancora (la usano identita_digitali e risorse_umane)
--- 7) il nome canonico anagrafiche.risorse_umane_auth_user e' una VISTA (il sostituto c'e')
+-- 7) il nome vecchio anagrafiche.risorse_umane_auth_user NON esiste piu' (strato 2:
+--    fino al 12-09 pomeriggio era una vista, e questo test lo pretendeva; rovesciato
+--    con 90_end/20260912-26 — il sostituto e' identita_digitali, test 11)
 -- 8) nessuna riga per la legacy in dbops.storico_scope_policy
 -- 9) nessuna registrazione per i due nomi in config.storico_set_storicizza
 -- 10) nessun trigger su anagrafiche.risorse_umane nomina la figlia droppata
 --     (il guard ATTIVO generato per la sua FK: con la figlia assente solleva
 --     E_ATTIVO_BLOCK_FKCOL_NOT_FOUND a OGNI disattivazione della madre)
+-- 11) nessuna funzione viva LEGGE il nome vecchio o ne fotografa un %TYPE
+--     (FROM/JOIN/%TYPE su risorse_umane_auth_user in pg_proc: zero) — e le
+--     quattro riscritte sulla madre esistono, con l'helper e il guard nuovi
+-- 12) nessun trigger su risorse_umane nomina il nome vecchio (00_schema/20260912-19)
 --
 -- Scopo:
 --  - presidiare che il ritiro regga su ogni database, compreso uno ricostruito
@@ -61,7 +67,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   (guardrail_pgtap_preambolo) e innocua.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(10);
+SELECT plan(12);
 
 -- ============================================================
 -- Asserzioni
@@ -104,8 +110,9 @@ SELECT has_function(
     '6) anagrafiche.fn_sync_auth_user_is_active esiste ancora (chiamata da identita_digitali e risorse_umane)'
 );
 
--- 7) Il nome canonico e' una vista su identita_digitali: il sostituto c'e'.
-SELECT has_view(
+-- 7) Il nome vecchio non esiste piu' (strato 2, 90_end/20260912-26). Fino al
+--    12-09 pomeriggio questo test pretendeva la VISTA: rovesciato.
+SELECT hasnt_view(
     'anagrafiche', 'risorse_umane_auth_user',
     '7) anagrafiche.risorse_umane_auth_user e'' una vista (il sostituto della tabella ritirata)'
 );
@@ -151,6 +158,30 @@ SELECT is(
         AND pg_get_triggerdef(t.oid) ~ '_legacy_risorse_umane_auth_user'),
     0,
     '10) nessun trigger su anagrafiche.risorse_umane nomina la figlia droppata (00_schema/20260912-11)'
+);
+
+-- 11) Il ritiro del NOME regge nel codice: nessuna funzione lo legge ne' lo
+--     fotografa in un %TYPE. Si cerca la LETTURA (FROM/JOIN/%TYPE), non la
+--     parola: i commenti che raccontano la storia possono restare.
+SELECT is(
+    (SELECT COALESCE(string_agg(n.nspname || '.' || p.proname, ', ' ORDER BY 1), '')
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND p.prosrc ~ '(FROM|JOIN)\s+anagrafiche\.risorse_umane_auth_user\M|risorse_umane_auth_user\.[a-z_]+%TYPE'),
+    '',
+    '11) nessuna funzione legge anagrafiche.risorse_umane_auth_user ne'' ne fotografa un %TYPE'
+);
+
+-- 12) Il gemello del test 10 per il nome vecchio: il guard di automazione che
+--     leggeva la vista non e' piu' montato (00_schema/20260912-19). Con la
+--     vista ritirata avrebbe sollevato E_ATTIVO_BLOCK_FKCOL_NOT_FOUND.
+SELECT is(
+    (SELECT count(*)::int FROM pg_trigger t
+      WHERE t.tgrelid = 'anagrafiche.risorse_umane'::regclass
+        AND NOT t.tgisinternal
+        AND pg_get_triggerdef(t.oid) ~ '''risorse_umane_auth_user'''),
+    0,
+    '12) nessun trigger su anagrafiche.risorse_umane nomina il nome vecchio (00_schema/20260912-19)'
 );
 
 -- ============================================================

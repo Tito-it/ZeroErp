@@ -10,6 +10,9 @@
 > ✅ **BE + FE CONSEGNATI (12-09 pomeriggio, §9.6)**: discovery con l'identità
 > dal repository (verificato sul 13338: `[]` senza, `[34137, 36984]` con),
 > verdetto a tre addendi, drawer sul verdetto.
+> ⏳ **§11 (12-09 sera): i tre rilievi al DB di §9.7/§10** — `20260912-32…35` +
+> 2 CSV scritti e provati, **in attesa di apply**. ⭐ Trovata una causa sotto quella
+> vista: `fn_cleanup_fatture_by_ids` usciva su «zero fatture» e non liberava niente.
 > 🔴 **13:46 — «Riprova step» su 13338: D1 ha funzionato (`totale 2 · ok 2`) e
 > il lotto è uscito lo stesso senza documenti.** Secondo difetto di modello,
 > nell'orchestratore: i task a valle del pull erano `COMPLETATO` (a vuoto) e
@@ -542,3 +545,90 @@ anche le attività agganciate al lotto che non sono mai diventate riga», che è
 esattamente il loro caso; (2) il check «riportabile» riconosca la divergenza
 AF libera / riga `EMESSA` come **riportabile**, non come «già disponibile»:
 oggi lo stato rotto è irraggiungibile da ogni verbo.
+
+---
+
+## 11. Lavoro DB sui rilievi di §9.7 e §10 (12-09-2026, sera)
+
+> Richiesti dal team BE, decisi con Tid il 12-09: **A** allineamento del
+> catalogo, **B** ritiro di `RESUME_STEP` (non implementazione), **C** le porte
+> di reset e il check «riportabile». Stato: ✅ **scritti e provati, in attesa di
+> apply**.
+
+### 11.1 A — `E_PIPELINE_LOTTO_CRITICAL` (§9.7)
+
+Una riga di CSV (`messaggi_errore.csv`, id 696; il mirror è `runOnChange`):
+messaggio = la frase del BE («Lotto bloccato per segnalazioni critiche o
+documenti in errore.»), più `causa` e `soluzione` compilate — la soluzione è la
+via d'uscita D-Q p.1 («…o toglierli dal giro, poi rilanciare lo step»). 📮 BE:
+il ripiego `error_messages_fallback.py` segue.
+
+### 11.2 B — `RESUME_STEP` ritirato (§10.3)
+
+Letto sulla struttura: il resolver trattava `RESUME_STEP` e `RESUME_TASK` in modo
+identico, il BE leggeva il valore e non lo usava; 12 righe su 27. Una distinzione
+senza differenza — e **non** da implementare: la ripresa a livello di step vive
+nell'orchestratore, darla al resolver (che decide per task) duplicherebbe o
+contraddirebbe la regola di catena.
+
+| ChangeSet / file | Cosa |
+| --- | --- |
+| CSV `fatturazione_pipeline_task_policy.csv` | 12 righe → `RESUME_TASK` |
+| `00_schema/vendite/20260912-32` | bonifica `UPDATE` + CHECK `{RESET_STEP, RESUME_TASK}` **nello stesso changeSet** (`00_schema` gira prima del mirror: senza la bonifica l'ADD CONSTRAINT fallirebbe su dev); `COMMENT` della colonna |
+| `20_code/vendite/20260912-33` | resolver senza `RESUME_STEP` nella lista; `COMMENT` nuovo che dice dove vive la regola di catena |
+| pgTAP `test-fatturazione-pipeline-task-runtime` 18 → **19** | il CHECK respinge `RESUME_STEP` (`23514`) — sul vincolo, non sull'assenza di righe |
+
+### 11.3 C — le porte di reset e «Riporta da emettere» (§10.4)
+
+**C.1 `fn_cleanup_fatture_by_ids` (`20260912-34`)** — due correzioni, e la
+seconda non era nel rilievo:
+
+1. il perimetro del reset globale include le attività **emesse e non lockate**:
+   `emit_batch_id = p_lock_batch_id AND lock_batch_id IS NULL AND fattura_riga_id
+   IS NULL` — la stessa identità del giro letta dal marchio (la `select` lockа
+   solo attività col proprio marchio, quindi nessun giro le riprendeva);
+2. 🔴 **l'uscita anticipata su «zero fatture»**: la funzione usciva subito se
+   l'elenco fatture era vuoto — e un lotto fermo prima di `generate_fatture_righe`
+   (il 13338, ogni pull fallito) non ha fatture. Il reset non liberava **nessuna**
+   attività, nemmeno quelle lockate dalla `select`. L'ha preso il pgTAP nuovo
+   alla prima corsa (`updated_attivita = 0` da `fn_annulla_lotto_da_draft` col
+   ramo nuovo già dentro). Ora esce solo senza fatture **e** senza giro.
+
+**C.2 `fn_check_attivita_riportabile_da_emettere` (`20260912-35`)** — la `vis`
+legge i due livelli (`stato_emissione` della riga; lotto del marchio in gioco via
+`fn_lotto_da_emit_batch` + `vw_lotti_fase`): libera + `NON_EMESSA` → motivo 3
+com'era; libera + `EMESSA` + lotto **in gioco** → **motivo 5** nuovo
+(`E_ATTIVITA_IN_LAVORAZIONE`, `reason` `ATTIVITA_EMESSA_IN_GIRO_VIVO`, stessa
+`reason_key`: il transito fra pull e `select` non si libera da sotto un giro
+vivo); libera + `EMESSA` + lotto morto/senza marchio → **nessun motivo**,
+riportabile. Firma e uscita invariate; il verbo non cambia.
+
+**Presidio** `db/pgtap/vendite/test-af-emessa-non-lockata-reset-e-riporto-v1` (9):
+la finestra si costruisce col **pull vero**; in giro vivo → in lavorazione;
+«Annulla» riporta la riga a `NON_EMESSA` e l'attività a `PRONTA`; la divergenza
+costruita (lotto morto) è riportabile e il verbo la riallinea; controprove: libera
++ `NON_EMESSA` → «già da emettere», e il reset per-fattura (`NULL`) non tocca il
+ramo nuovo.
+
+### 11.4 Prove (SQL **estratto** con `updateSQL` offline, `BEGIN…ROLLBACK`)
+
+`test-af-emessa-non-lockata…` **9/9**; `test-fatturazione-pipeline-task-runtime`
+**19/19**; P-5 **13/13** (invariato). Mutazione — DDL di B ma **senza** `-34`/`-35`:
+rossi 2, 3, 4, 5 e il verbo esplode con `E_ATTIVITA_GIA_DA_EMETTERE`, cioè il
+comportamento di oggi. Sei guardrail verdi. ⚠️ Prove da owner.
+
+### 11.5 Documentazione
+
+Manuali: `fatturazione_pipeline_task_policy` (vocabolario), `fn_resolve_lotto_task_execution_mode`
+(«non cercare qui la regola di catena»), `fn_cleanup_fatture_by_ids` (le due
+correzioni), `script/fn_check_attivita_riportabile_da_emettere` (cinque motivi);
+guida `analisi-tracciamento-processi-e-job`.
+
+### 11.6 Che cosa resta
+
+| | Cosa | Di chi |
+| --- | --- | --- |
+| ⏳ | Apply `20260912-32…35` + CSV; pgTAP `vendite/test-af-emessa-non-lockata-reset-e-riporto-v1` (9), `vendite/test-fatturazione-pipeline-task-runtime` (19), `vendite/test-pull-non-prende-trattenuti-v1` (13) | **Tid** |
+| 📮 | `error_messages_fallback.py`: frase di `E_PIPELINE_LOTTO_CRITICAL` allineata al catalogo; `TaskPolicy.resume_mode` non ha più `RESUME_STEP` fra i valori possibili (nessun codice lo nomina, verificato) | **BE** |
+| ⏳ | Collaudo: prova 5 su un lotto nuovo (§10.4); e ora anche «Annulla» su un lotto fermo al pull deve riportare le righe a `NON_EMESSA` da solo | **Tid** |
+| ⏳ | Commit | **Tid** |

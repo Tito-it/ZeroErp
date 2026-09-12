@@ -32,6 +32,9 @@
 -- 24) fn_get_user_profile: chiave permessi_oggetto presente nel JSONB
 -- 25) fn_get_user_profile: auth_user_id inesistente → errore
 -- 26) fn_get_user_profile: NULL → errore
+-- 27) fn_get_user_profile: il blocco risorse_umane NON porta piu'
+--     `risorse_umane_auth_user_id` (nome vecchio del ponte, portava l'id
+--     dell'identita': tolta il 12-09-2026, 20_code/20260912-24)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -51,30 +54,32 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(25);
+SELECT plan(26);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti da dati esistenti
 -- ============================================================
 
--- Contesto: primo utente con risorse_umane_auth_user attivo
+-- Contesto: primo operatore con identita' attiva e risorsa umana attiva,
+-- dalla madre identita_digitali (12-09-2026: la vista risorse_umane_auth_user
+-- e' stata ritirata; `rau.id` era l'id dell'identita', `rau.attivo` il suo).
+-- 🔴 `ruolo_sistema` RIMOSSA il 2026-08-18: la colonna non esiste piu'
+--   (cutover multi-face-auth, 90_end/20260429-19a e -20). Test 16 tolto sotto.
 CREATE TEMP TABLE tmp_profile_ctx AS
 SELECT
-    rau.auth_user_id  AS user_id,
-    rau.id            AS rau_id,
-    -- 🔴 `rau.ruolo_sistema` RIMOSSA il 2026-08-18: la colonna non esiste piu'
-    --   (cutover multi-face-auth, 90_end/20260429-19a e -20). Non era nemmeno
-    --   usata da nessuna asserzione: stava qui per il solo test 16, tolto sotto.
-    rau.risorsa_umana_id,
+    i.auth_user_id    AS user_id,
+    i.id              AS identita_id,
+    ru.id             AS risorsa_umana_id,
     ru.soggetto_ruolo_id,
     ru.soggetto_id,
     ru.qualifica_id,
     ru.unita_organizzativa_id
-FROM anagrafiche.risorse_umane_auth_user rau
-JOIN anagrafiche.risorse_umane ru ON ru.id = rau.risorsa_umana_id
-WHERE rau.attivo = true
+FROM anagrafiche.identita_digitali i
+JOIN anagrafiche.risorse_umane ru ON ru.soggetto_ruolo_id = i.soggetto_ruolo_id
+WHERE i.ruolo_applicativo = 'OPERATORE'
+  AND i.attivo = true
   AND ru.attivo = true
-ORDER BY rau.id
+ORDER BY i.id
 LIMIT 1;
 
 -- Contesto emittente: primo emittente fiscale attivo (per test dati societari)
@@ -344,5 +349,15 @@ SELECT throws_ok(
 );
 
 -- ============================================================
+-- 27) La chiave col nome vecchio non c'e' piu' (P-3 di analisi-software-per-dati-morti §6.6)
+SELECT ok(
+    NOT (
+        script.fn_get_user_profile(
+            (SELECT user_id FROM tmp_profile_ctx)
+        ) -> 'risorse_umane' ? 'risorse_umane_auth_user_id'
+    ),
+    'fn_get_user_profile: il blocco risorse_umane non porta risorse_umane_auth_user_id (20_code/20260912-24)'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

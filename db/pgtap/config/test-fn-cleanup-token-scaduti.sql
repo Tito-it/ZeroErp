@@ -55,10 +55,13 @@ SELECT plan(8);
 --   sarebbe un disastro.
 DELETE FROM config.token_monouso;
 
+-- Dalla madre identita_digitali (12-09-2026: la vista risorse_umane_auth_user
+-- e' stata ritirata; il filtro OPERATORE e' quello che la vista applicava).
 CREATE TEMP TABLE tmp_token_ctx AS
-SELECT rau.auth_user_id AS user_id
-FROM anagrafiche.risorse_umane_auth_user rau
-ORDER BY rau.id
+SELECT i.auth_user_id AS user_id
+FROM anagrafiche.identita_digitali i
+WHERE i.ruolo_applicativo = 'OPERATORE'
+ORDER BY i.id
 LIMIT 1;
 
 -- Token 1: valido, non scaduto, non utilizzato (NON deve essere eliminato)

@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convergenza dello scope di storico DOPO le automazioni — la stessa
+# chiamata del 20260911-29, nel punto in cui su un database da zero i
+# trigger di storico ESISTONO.
+#   Brief: analisi-software-per-dati-morti.md §6.8
+#
+# ── IL DIFETTO, visto in CI dal merge di #1563 (11-09-2026 sera) ─────
+#   `dbops.fn_storico_arma_scope_tutte` arma le shadow delle madri che
+#   HANNO il trigger `trgfn_storico_generic`. Su un database ricostruito dai
+#   changelog quel trigger lo genera `fn_run_automations_storico`, cioè la
+#   passata `ci_apply` — e dentro quella passata il 20260911-29 (`runAlways`,
+#   senza contesto) gira comunque PRIMA di questa cartella: l'`includeAll`
+#   ordina per percorso e `90_end/2026…` viene prima di `90_end/ci_apply/`.
+#   Le shadow che `fn_ensure_storico_table` CREA durante le automazioni
+#   nascono armate (20260911-34); quelle che ESISTONO GIÀ — le quindici
+#   create a mano in `00_schema` (le `20260418-*` del multi-face, `pdp`,
+#   `catasto_unita_immobiliari`, `comuni`, `indirizzi`, `parameters`…) —
+#   `ensure` le salta, e nessun passo le raggiunge più. Risultato: il
+#   trigger scrive `origine_schema` su una shadow che non ce l'ha, e in CI
+#   ogni UPDATE/DELETE su `identita_digitali`, `parameter_overrides`, `pdp`
+#   … muore con E_SNAPSHOT_CLOSE_ERROR (42703). Quattro pgTAP rossi a ogni
+#   push DB su Tito-dev, e il presidio `storico/test-storico-scope-congelato`
+#   (test 2) che lo contava: «have: 15, want: 0».
+#
+#   Su dev non si vede: i trigger ci sono da mesi e il -29 arma al primo
+#   migrate. È la forma esatta del «verde su dev non dice niente sulla CI».
+#
+# ── PERCHÉ QUI, E NON altrove ────────────────────────────────────────
+#   L'invariante «shadow di una madre col trigger ⇒ armata» ha due garanti:
+#   la NASCITA (ensure, arma chi crea) e la CONVERGENZA (_tutte). Il difetto
+#   non è in nessuno dei due: è che la convergenza gira prima del passo che
+#   crea la sua precondizione. ⇒ Si ripete la convergenza in coda alla
+#   passata che crea i trigger. Il -29 resta: serve a dev, dove le shadow
+#   nascono dal job pgAgent fra due migrate.
+#   ⛔ Non si tocca `20250627-31` (già mergiato, e col `validCheckSum` al
+#   singolare che Liquibase ignora: un byte cambiato lo ferma su dev).
+#   ⛔ Non si rinomina il -29 per farlo scivolare dopo `ci_apply/`: un
+#   changeSet mergiato non si rinomina, e comunque nella passata principale
+#   deve girare dov'è.
+#
+# ── `runAlways` e `context: ci_apply` ────────────────────────────────
+#   Gira ad ogni passata `ci_apply` — in CI una volta per build, su dev a
+#   ogni `make db-ci-apply` — e converge: zero DDL dove è già tutto a posto
+#   (è la stessa primitiva del -29). Il nome del file lo colloca dopo
+#   `20250627-31` (automazioni) e `20260205-41` (grant): l'ordine è quello
+#   dell'`includeAll`, cioè del percorso.
+#
+# ── COSA NON FA ──────────────────────────────────────────────────────
+#   Non backfilla: su un database da zero le shadow sono vuote e
+#   `fn_storico_arma_scope` mette `origine_schema NOT NULL` da subito. Il
+#   backfill del pregresso resta il 20260911-31 (una volta, sul pregresso).
+#
+# Provato su `zeroerp_ci` (replica locale, 12-09-2026) in transazione
+# annullata: dry-run `{"madri": 120, "allineate": 17, "armate": 37,
+# "saltate_owner": 0}`; a corsa vera nessuna shadow di una madre col trigger
+# resta senza `origine_schema`, e i cinque pgTAP rossi tornano verdi.
+# ------------------------------------------------------------
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/ci_apply/20260912-31-run-storico-arma-scope-dopo-automazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260912-31-run-storico-arma-scope-dopo-automazioni
+      author: mctit
+      context: ci_apply
+      runAlways: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Chiama dbops.fn_storico_arma_scope_tutte() in coda alla passata
+        ci_apply, cioè dopo che fn_run_automations_storico ha agganciato i
+        trigger di storico: le shadow già esistenti alla nascita del trigger
+        (create a mano in 00_schema, che fn_ensure_storico_table salta)
+        ricevono qui origine_schema, scope_emittente_fiscale_id e — dove la
+        mappa protegge la madre — la RLS con le sue policy. Su un database
+        da zero è l'unico passo che le raggiunge; su dev converge a zero DDL.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_storico_arma_scope_tutte';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $run$
+              DECLARE
+                  v_esito jsonb;
+              BEGIN
+                  v_esito := dbops.fn_storico_arma_scope_tutte(false);
+                  RAISE NOTICE 'storico scope (dopo le automazioni): %', v_esito::text;
+                  IF (v_esito ->> 'saltate_owner')::int > 0 THEN
+                      RAISE NOTICE '⚠️ % shadow di un altro proprietario non allineate: eseguire scripts/sql/provision_storico_scope.sql come superuser',
+                          v_esito ->> 'saltate_owner';
+                  END IF;
+              END
+              $run$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: le colonne e le policy aggiunte restano.
+              SELECT 1;

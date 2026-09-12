@@ -1,12 +1,9 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
 db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE

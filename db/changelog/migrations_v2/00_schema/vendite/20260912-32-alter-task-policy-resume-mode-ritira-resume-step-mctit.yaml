@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `resume_mode = RESUME_STEP` si RITIRA: era una distinzione senza differenza.
+#   Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse.md (§10.3,
+#   richiesta del team BE; decisione Tid 12-09-2026: ritirare, non implementare)
+#
+# ── Il fatto, letto sulla struttura ─────────────────────────────────────
+#   Il vocabolario era {RESET_STEP, RESUME_STEP, RESUME_TASK}. L'unico lettore
+#   che decide, vendite.fn_resolve_lotto_task_execution_mode, trattava i due
+#   RESUME in modo IDENTICO (`IN ('RESUME_TASK','RESUME_STEP') → 'RESUME'`);
+#   il backend legge il valore in TaskPolicy.resume_mode e non lo usa. Dodici
+#   righe su ventisette portavano RESUME_STEP: un valore dichiarato e morto.
+#   ⭐ E non va implementato: la «ripresa a livello di step» — a valle di un
+#   task eseguito in questo giro nessun task si salta — vive nell'ORCHESTRATORE
+#   (PipelineStepExecutor, 12-09), perché la domanda «qualcosa a monte e' stato
+#   eseguito?» la sa solo lui; darla al resolver, che decide per task,
+#   duplicherebbe o contraddirebbe quella regola.
+#
+# ── Che cosa cambia ─────────────────────────────────────────────────────
+#   · le 12 righe del CSV `fatturazione_pipeline_task_policy.csv` passano a
+#     RESUME_TASK (stesso commit; il mirror e' runOnChange);
+#   · il CHECK si restringe a {RESET_STEP, RESUME_TASK};
+#   · il resolver perde RESUME_STEP dalla sua lista (20_code/20260912-33).
+#
+# ── ⛔ Bonifica e vincolo nello STESSO changeSet, e in questo ordine ───────
+#   `00_schema` gira PRIMA di `80_data`: su dev le righe hanno ancora
+#   RESUME_STEP quando questo changeSet passa, e il mirror che le riallinea
+#   viene dopo. Senza l'UPDATE qui, l'ADD CONSTRAINT fallirebbe. Su un database
+#   da zero l'UPDATE tocca zero righe e il CSV carica gia' RESUME_TASK.
+#   ⚠️ E' un UPDATE su una tabella di configurazione — la forma che AGENTS.md
+#   §80_data vieta come SEDE di un valore. Qui non e' la sede: e' il passo che
+#   rende applicabile il vincolo, e il CSV dice la stessa cosa nello stesso
+#   commit. Stesso precedente del cantiere numerazione (sigla dell'emittente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260912-32-alter-task-policy-resume-mode-ritira-resume-step-mctit.yaml
+
+  - changeSet:
+      id: 20260912-32-alter-task-policy-resume-mode-ritira-resume-step
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatturazione_pipeline_task_policy: ritira resume_mode =
+        RESUME_STEP (trattato come RESUME_TASK dal resolver, ignorato dal
+        backend: distinzione senza differenza). Bonifica delle righe e CHECK
+        ristretto a {RESET_STEP, RESUME_TASK} nello stesso passo: 00_schema
+        gira prima del mirror CSV. Brief
+        brief-db-rilancio-step-non-rivede-le-proprie-commesse (§10.3).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: fatturazione_pipeline_task_policy
+            columnName: resume_mode
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Bonifica: il valore ritirato diventa il suo gemello. Su un
+              --    database da zero: zero righe (il CSV e' gia' allineato).
+              UPDATE vendite.fatturazione_pipeline_task_policy
+                 SET resume_mode = 'RESUME_TASK',
+                     data_update = now(),
+                     user_update = current_user
+               WHERE resume_mode = 'RESUME_STEP';
+
+              -- 2) Il vincolo: due valori, non tre.
+              ALTER TABLE vendite.fatturazione_pipeline_task_policy
+                DROP CONSTRAINT IF EXISTS chk_fatt_pipeline_task_policy_resume_mode;
+              ALTER TABLE vendite.fatturazione_pipeline_task_policy
+                ADD CONSTRAINT chk_fatt_pipeline_task_policy_resume_mode
+                CHECK (resume_mode IN ('RESET_STEP', 'RESUME_TASK'));
+
+              COMMENT ON COLUMN vendite.fatturazione_pipeline_task_policy.resume_mode IS
+              'Strategia di ripresa del task al rilancio dello step: RESUME_TASK (la corsa IN_ESECUZIONE/ERRORE riprende: fn_resolve_lotto_task_execution_mode risponde RESUME) oppure RESET_STEP (serve un reset: RESET_REQUIRED). ⛔ RESUME_STEP e'' stato RITIRATO il 2026-09-12: era trattato come RESUME_TASK e nessuno lo implementava. La «ripresa a livello di step» — a valle di un task eseguito in questo giro nessun task si salta — e'' una regola dell''ORCHESTRATORE (PipelineStepExecutor), non una policy per task. Brief: brief-db-rilancio-step-non-rivede-le-proprie-commesse §10.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre il vocabolario; le righe restano RESUME_TASK (il CSV del
+              -- commit precedente le riporterebbe a RESUME_STEP al prossimo
+              -- migrate, se si tornasse indietro anche su quello).
+              ALTER TABLE vendite.fatturazione_pipeline_task_policy
+                DROP CONSTRAINT IF EXISTS chk_fatt_pipeline_task_policy_resume_mode;
+              ALTER TABLE vendite.fatturazione_pipeline_task_policy
+                ADD CONSTRAINT chk_fatt_pipeline_task_policy_resume_mode
+                CHECK (resume_mode IN ('RESET_STEP', 'RESUME_STEP', 'RESUME_TASK'));
+              COMMENT ON COLUMN vendite.fatturazione_pipeline_task_policy.resume_mode IS
+              'Strategia resume/reset (RESET_STEP|RESUME_STEP|RESUME_TASK)';

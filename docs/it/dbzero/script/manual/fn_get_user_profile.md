@@ -47,7 +47,7 @@ La funzione aggrega in una sola chiamata:
 - **Payload JSONB stabile ed estendibile**
 - **Riuso delle funzioni di dominio** per soggetto e mappe permessi
 - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di
-  `auth_user + risorse_umane_auth_user + risorse_umane + lookup qualifica/UO`
+  `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`
   viene eseguita in una sola `SELECT`
 
 ---
@@ -55,7 +55,7 @@ La funzione aggrega in una sola chiamata:
 
 | Nome | Tipo | Obbligatorio | Descrizione |
 |------|------|:------------:|-------------|
-| `p_auth_user_id` | `anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE` | Si | ID utente Django (`auth_user.id`), deve essere `> 0` |
+| `p_auth_user_id` | `django.auth_user.id%TYPE` | Si | ID utente Django (`auth_user.id`), deve essere `> 0` |
 
 ### Guard di validazione
 
@@ -111,7 +111,6 @@ La funzione restituisce un JSONB con 10 chiavi principali (post Fase 7
   "ruolo_applicativo": "OPERATORE",
   "risorse_umane": {
     "risorsa_umana_id": 5,
-    "risorse_umane_auth_user_id": 3,
     "soggetto_ruolo_id": 12,
     "qualifica_id": 2,
     "qualifica_codice": "DEV",
@@ -195,7 +194,9 @@ JSONB costruito da `anagrafiche.risorse_umane` con lookup su:
 Include:
 
 - `risorsa_umana_id`
-- `risorse_umane_auth_user_id`
+- ~~`risorse_umane_auth_user_id`~~ — **tolta il 12-09-2026** (`20_code/20260912-24`):
+  portava l'id dell'*identità* sotto il nome vecchio del ponte, e nessuno la
+  leggeva. Non rinominata: un dato senza lettori non si tiene
 - `soggetto_ruolo_id`
 - `qualifica_id`
 - `qualifica_codice`
@@ -257,7 +258,7 @@ Contiene solo gli override oggetto attivi espliciti.
 #### `deve_cambiare_password`
 
 Boolean derivato da
-`anagrafiche.risorse_umane_auth_user.deve_cambiare_password`,
+`anagrafiche.identita_digitali.deve_cambiare_password`,
 normalizzato con `COALESCE(..., false)`.
 
 ---
@@ -302,7 +303,7 @@ JSONB non cambia, solo la derivazione dei valori.
 La revisione `20260410-16` ha ridotto il costo della funzione in due punti:
 
 - **query iniziale accorpata**
-  prima i blocchi `auth_user`, `risorse_umane_auth_user` e `risorse_umane`
+  prima i blocchi `auth_user`, il ponte utente (oggi `identita_digitali`) e `risorse_umane`
   venivano letti in query separate
 - **risoluzione emittente in un solo blocco SQL**
   con priorita' `whitelist -> fallback`, evitando due rami separati di lookup

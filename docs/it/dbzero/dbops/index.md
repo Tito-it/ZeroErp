@@ -1,7 +1,6 @@
 # Schema `dbops`
 
 ## 📚 Tabelle
-- [_defaults_backup_usercols](tabelle/_defaults_backup_usercols.md)
 - [ai_query_log](tabelle/ai_query_log.md) — (rev 2026-08-21)
 - [audit_log](tabelle/audit_log.md) — (latest review 10-01-26) * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
 - [audit_sources](tabelle/audit_sources.md)

@@ -17,18 +17,26 @@
 > **Multi-Face Auth — modello post-cutover (aprile 2026)**
 >
 > Il bridge verso `auth_user` e' stato generalizzato (cutover
-> §13.3.2 del 19-04-2026). I riferimenti nel corpo di questa guida a
-> `risorse_umane_auth_user` come **tabella** vanno riletti come **vista
-> read-only di compatibilita'** che legge da `identita_digitali`
-> filtrando `ruolo_applicativo = 'OPERATORE'`. La ex tabella, archiviata
-> come `_legacy_risorse_umane_auth_user`, **e' stata eliminata il 12-09-2026**
-> (decisione Tid: senza produzione era sporcizia; `90_end/20260912-10`).
+> §13.3.2 del 19-04-2026). ⛔ **Dal 12-09-2026 pomeriggio il nome
+> `risorse_umane_auth_user` non esiste piu' in nessuna forma**: la ex tabella
+> (archiviata come `_legacy_…`) e' stata eliminata la mattina
+> (`90_end/20260912-10`), la **vista** che ne aveva preso il nome la sera
+> (`90_end/20260912-26`; decisione Tid: «via il nome», analisi
+> `analisi-software-per-dati-morti` §2.1). I riferimenti nel corpo di questa
+> guida a `risorse_umane_auth_user` vanno riletti come **`identita_digitali`
+> filtrata su `ruolo_applicativo = 'OPERATORE'`**, collegata a
+> `risorse_umane` per `soggetto_ruolo_id`.
+> ⚠️ Il guard «una risorsa umana con un'identita' operatore attiva non si
+> disattiva» vive ora scritto a mano sulla madre:
+> [`trgfn_risorse_umane_guard_identita_attiva`](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_identita_attiva)
+> (`E_RISORSA_UMANA_IDENTITA_ATTIVA`) — prima viveva per caso, attraverso il
+> nome vecchio.
 >
 > **Mappature chiave** (legacy → nuovo modello):
 >
 > | Concetto legacy | Post-cutover |
 > | --- | --- |
-> | `risorse_umane_auth_user` (tabella writable) | Vista read-only; writer passano da `identita_digitali` |
+> | `risorse_umane_auth_user` (tabella, poi vista) | **Non esiste piu'**: `identita_digitali` (`ruolo_applicativo = 'OPERATORE'`) ⋈ `risorse_umane` su `soggetto_ruolo_id`. Verso RU → utente: `script.fn_get_auth_user_id_for_risorsa_umana`; verso utente → UO: `script.fn_get_uo_id_for_user` |
 > | `ruolo_sistema = 'ADMIN'` | Binding `SUPER_ADMIN` (profilo id=9100) su `profili_accesso_bindings` AD_HOC |
 > | `ruolo_sistema = 'DISABILITATO'` | `identita_digitali.ruolo_applicativo = 'DISABILITATO'` oppure `attivo = false` |
 > | `ruolo_sistema = 'OPERATIVO'` | `ruolo_applicativo = 'OPERATORE'` + `attivo = true` + nessun binding SUPER_ADMIN |
@@ -85,7 +93,7 @@ Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non av
 ## Tabelle coinvolte
 
 * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — la persona con ruolo, qualifica e reparto
-* [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user) — il ponte 1:1 verso l'utente Django
+* [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il ponte verso l'utente Django (per gli operatori: `ruolo_applicativo = 'OPERATORE'`; il nome vecchio `risorse_umane_auth_user` e' stato ritirato il 12-09-2026)
 * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona fisica o giuridica
 * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli del soggetto (es. RIS_UMANA)
 * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori) — il soggetto gestore (l'azienda)

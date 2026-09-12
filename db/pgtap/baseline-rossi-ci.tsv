@@ -19,8 +19,6 @@ db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-emittente-denominazione-da-soggetto-v1.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-emittenti-fiscali-codice-forma.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-fn-crea-auth-user.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test_fn_get_conto_bancario_predefinito.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-get-evento-stato-corrente-cliente-v1.sql	ERRORE_FIXTURE
@@ -35,7 +33,6 @@ db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-istanza-cliente-chain.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-notify-cambio-reparto.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-simula-subentro.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-soggetti-titoli-iva-due-emittenti.sql	ERRORE_FIXTURE

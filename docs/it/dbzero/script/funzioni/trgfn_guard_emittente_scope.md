@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_auth_user_id         anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+  v_auth_user_id         anagrafiche.identita_digitali.auth_user_id%TYPE;
   v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
   v_col_value            bigint;
   v_mode                 text := TG_ARGV[0];

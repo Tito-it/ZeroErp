@@ -64,16 +64,47 @@ di vista è la verità.
 
 ---
 
-### I quattro motivi, nell'ordine
+### I cinque motivi, nell'ordine
 
 | # | `reason` | Codice | Quando |
 | --- | --- | --- | --- |
 | 1 | `ATTIVITA_NON_TROVATA` | `E_ATTIVITA_FATTURABILE_NON_TROVATA` | non si risolve, o è fuori perimetro |
 | 2 | `ATTIVITA_IN_FATTURA` | `E_ATTIVITA_ANCORA_IN_FATTURA` | è ancora agganciata a una riga di fattura |
-| 3 | `ATTIVITA_GIA_DISPONIBILE` | `E_ATTIVITA_GIA_DA_EMETTERE` | non è lucchettata: è già in coda |
+| 3 | `ATTIVITA_GIA_DISPONIBILE` | `E_ATTIVITA_GIA_DA_EMETTERE` | non è lucchettata **e la riga di commessa è già `NON_EMESSA`**: è davvero in coda |
+| 5 | `ATTIVITA_EMESSA_IN_GIRO_VIVO` | `E_ATTIVITA_IN_LAVORAZIONE` | non è lucchettata, la riga è `EMESSA` e il **marchio** (`emit_batch_id`) è di un lotto **in gioco**: è in transito fra il pull e la `select` |
 | 4 | `ATTIVITA_IN_GIRO_VIVO` | `E_ATTIVITA_IN_LAVORAZIONE` | lucchettata, ma il giro non ha finito |
 
-⚠️ **L'ordine è il contratto**, perché la mutazione solleva il primo.
+⚠️ **L'ordine è il contratto**, perché la mutazione solleva il primo (il 5 sta
+fra il 3 e il 4: viene dal livello della riga, come il 3).
+
+### 🔴 rev 12-09-2026 — la DIVERGENZA è riportabile, il transito no
+
+Il motivo 3 diceva: *«senza lucchetto l'attività è già disponibile, il giro
+successivo la prende da sé»*. **Falso** quando la riga di commessa è ancora
+`EMESSA`: il pull la vede `EMESSA`, la `select` di un lotto nuovo non trova il suo
+marchio — nessun giro la riprende. Quello stato (attività libera, riga `EMESSA`,
+marchio di un lotto **morto**) era **irraggiungibile da ogni verbo**: il reset non
+la prendeva (`fn_cleanup_fatture_by_ids`, corretto dal `20260912-34`) e questo
+check la rifiutava come «già disponibile». Verificato il 12-09 sul lotto 13338,
+riparato a mano con `fn_libera_attivita_fatturabili`.
+
+La `vis` legge ora **i due livelli**: `stato_emissione` della riga e, dal marchio,
+se il lotto è in gioco (`vendite.fn_lotto_da_emit_batch` + `vw_lotti_fase.in_gioco`
+— le due sedi già esistenti):
+
+* libera + riga `NON_EMESSA` → motivo 3, com'era (davvero disponibile);
+* libera + riga `EMESSA` + lotto **in gioco** → motivo 5: è la finestra fra pull e
+  `select` di un giro vivo, liberarla da qui la farebbe prendere da due giri
+  (stessa ragione del 4, letta dal marchio). Stesso codice e classe del 4;
+* libera + riga `EMESSA` + lotto **morto** o senza marchio → **nessun motivo**: il
+  verbo chiama `fn_libera_attivita_fatturabili`, che riallinea i due livelli.
+
+⚠️ Un lotto fuori dal perimetro RLS di chi chiede risolve a `NULL` → «morto»:
+chi vede la commessa vede il suo lotto, è lo stesso emittente.
+
+Presidio: `db/pgtap/vendite/test-af-emessa-non-lockata-reset-e-riporto-v1.sql`
+(2, 5, 6, 7), con la finestra costruita dal **pull vero**. Brief:
+`brief-db-rilancio-step-non-rivede-le-proprie-commesse` §10.4.
 
 ⛔ **Il motivo 2 è il guard che impedisce al verbo di diventare un modo per
 scollegare una fattura viva.** Il trigger di riga

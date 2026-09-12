@@ -62,12 +62,15 @@ LIMIT 2;
 --   `au.is_active` + `rau.attivo` dicono gia' «utente utilizzabile» nel modello
 --   nuovo, e inventare un terzo filtro sarebbe una regola in piu' che nessuno
 --   ha chiesto.
+-- Dalla madre identita_digitali (12-09-2026: la vista risorse_umane_auth_user
+-- e' stata ritirata; `rau.attivo` era `identita_digitali.attivo`).
 CREATE TEMP TABLE tmp_imm_user AS
 SELECT au.id AS user_id
 FROM django.auth_user au
-JOIN anagrafiche.risorse_umane_auth_user rau ON rau.auth_user_id = au.id
+JOIN anagrafiche.identita_digitali i ON i.auth_user_id = au.id
 WHERE au.is_active = true
-  AND rau.attivo = true
+  AND i.ruolo_applicativo = 'OPERATORE'
+  AND i.attivo = true
 ORDER BY au.id
 LIMIT 1;
 

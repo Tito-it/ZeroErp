@@ -186,7 +186,7 @@ Da un punto di vista tecnico:
 | `pipeline_id` | BIGINT, FK | Riferimento a `fatturazione_pipeline` |
 | `task_code` | VARCHAR | Codice task |
 | `annullabile` | BOOLEAN | Se il task e cancellabile (default: true) |
-| `resume_mode` | VARCHAR | Strategia recovery: `RESET_STEP`, `RESUME_STEP`, `RESUME_TASK` |
+| `resume_mode` | VARCHAR | Strategia recovery: `RESET_STEP`, `RESUME_TASK` (`RESUME_STEP` ritirato il 2026-09-12: era trattato come `RESUME_TASK`; la ripresa a livello di step è dell'orchestratore) |
 | `attivo` | BOOLEAN | Policy attiva/inattiva |
 | `meta` | JSONB | Estensione |
 

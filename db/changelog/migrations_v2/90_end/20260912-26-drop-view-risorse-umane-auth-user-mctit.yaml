@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 VIA IL NOME VECCHIO: la vista anagrafiche.risorse_umane_auth_user (strato 2, D2).
+#   Analisi: analisi-software-per-dati-morti.md §2.1 (decisione) e §6.3
+#   Decisione delegata da Tid il 12-09-2026: «via il nome».
+#
+# Dal cutover multi-face (2026-04-19) il nome vecchio del ponte utente<->risorsa
+# umana era una VISTA su identita_digitali filtrata su OPERATORE: due nomi per
+# una cosa, un filtro che il nome non dice, quattro %TYPE fotografati su una
+# proiezione di compatibilita', una copia Python che conosceva meta' del modello.
+# «Deprecata» da cinque mesi con lettori che crescevano: non una transizione.
+#
+# ── ORDINE, ed e' il motivo per cui sta in 90_end e non in 00_schema ──
+#   · il backend non la nomina piu' (PR #1567, presidio in CI
+#     test_risorsa_umana_dalla_madre): un DROP non fa cadere endpoint;
+#   · le quattro funzioni che la leggevano o ne fotografavano un %TYPE sono
+#     riscritte sulla madre in 20_code (-20…-24), il guard che la leggeva e'
+#     sostituito (-18) e ritirato (-19): 20_code e 00_schema girano PRIMA;
+#   · ⛔ 80_data/20260309-01 (seed di macchina, mergiato) ha una sqlCheck SULLA
+#     VISTA: su un database ricostruito da zero, con la vista droppata in
+#     00_schema, la preCondition andrebbe in errore (onError = HALT) e la CI
+#     morirebbe li'. Stessa lezione del -10 sulla madre legacy: il DROP di un
+#     oggetto che un changeSet mergiato pretende esistente sta DOPO, in 90_end.
+#   · nessun oggetto dipende dalla vista (pg_depend, 12-09); i GRANT cadono con
+#     lei e nessun loop li rifa'.
+# IF EXISTS: idempotente; la prova che il ritiro tenga e' il pgTAP
+# anagrafiche/test-legacy-risorse-umane-auth-user-ritirata-v1 (test 7 e 11).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260912-26-drop-view-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260912-26-drop-view-risorse-umane-auth-user
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP VIEW anagrafiche.risorse_umane_auth_user: il nome vecchio del ponte
+        utente<->risorsa umana (vista su identita_digitali dal cutover 2026-04-19).
+        In 90_end perche' 80_data/20260309-01 la interroga in una preCondition.
+        Lettori DB riscritti sulla madre in 20_code (-17…-25), BE gia' senza (PR #1567).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.risorse_umane_auth_user;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il nome vecchio non si ricrea: la definizione e' nella doc auto-gen alla
+              -- revisione prima di questa (20_code/anagrafiche/20260429-19). Forward-only.
+              SELECT 1;

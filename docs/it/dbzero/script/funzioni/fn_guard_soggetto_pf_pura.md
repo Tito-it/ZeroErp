@@ -113,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_guard_soggetto_pf_pura(p_soggetto_id uuid)
-IS 'Guard fail-fast: verifica che il soggetto sia persona fisica pura (CF valorizzato, P.IVA NULL). Usato dai trigger sui bridge auth_user (risorse_umane_auth_user, identita_digitali con ruolo_applicativo=OPERATORE). Solleva errore via fn_log_and_raise_error.';
+IS 'Guard fail-fast: verifica che il soggetto sia persona fisica pura (CF valorizzato, P.IVA NULL). Usato dal trigger sul ponte utente identita_digitali (ruolo_applicativo=OPERATORE). Solleva errore via fn_log_and_raise_error.';
 ```
 
 ---
