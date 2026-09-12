@@ -80,8 +80,20 @@ In entrambi i casi: *«l'emittente risolto del BA sta fra gli autorizzati»*.
 
 ⚠️ L'equivalenza poggia sui **due indici univoci**. È una dimostrazione, non un
 presidio: se domani uno dei due sparisse, la dimostrazione cadrebbe senza che
-nessuno se ne accorga. Per questo l'equivalenza è anche **esercitata sui dati**,
-nei test `5` e `6` di `db/pgtap/script/test-ba-emittente-risoluzione-v1.sql`.
+nessuno se ne accorga. Per questo l'equivalenza è anche **esercitata su dati
+costruiti**, nei test `6` e `7` di
+`db/pgtap/script/test-ba-emittente-risoluzione-v1.sql`.
+
+⭐ **Dal 2026-09-13 la regola delegata ha un livello in più, e questo check lo
+ha ereditato senza una riga di modifica** (D13, changeSet `20260913-01`): per un
+BA senza legame, *in sessione*, l'emittente risolto è quello dell'operatore che
+sta agendo — la stessa risposta che il trigger `z90_link_ef` sta per scrivere;
+il default resta per chi una sessione non ce l'ha. È ciò che fa passare
+l'`INSERT … RETURNING` di un billing account a un operatore di un emittente
+non di default: la policy `via_efba` chiama questo check *prima* che il
+trigger AFTER abbia legato la riga. È esattamente il motivo per cui la regola
+sta in un posto solo: se fosse rimasta qui in forma booleana, il RETURNING
+sarebbe rimasto rotto o la si sarebbe corretta due volte.
 
 ---
 
@@ -90,8 +102,12 @@ nei test `5` e `6` di `db/pgtap/script/test-ba-emittente-risoluzione-v1.sql`.
 * usata dal ramo `CL` di `fn_search_soggetti_universale` e di
   `fn_get_search_detail`: è il punto dove il perimetro emittente entra nella
   ricerca;
-* `STABLE PARALLEL SAFE`: gira dentro una query dinamica che deve restare
-  parallelizzabile;
+* `STABLE`, e **non più `PARALLEL SAFE`** dal `20260913-02`: la delegata
+  `fn_get_ba_emittente_sr_id` legge la GUC di sessione e chiama
+  `fn_resolve_emittente_for_user`, che non è `SAFE` — tenere la marcatura qui
+  sarebbe stata una dichiarazione falsa al planner, la stessa già tolta il
+  18-08 su `fn_search_soggetti_universale`. Costo ~zero: la query dinamica
+  della ricerca è paginata e un piano parallelo non lo ha mai scelto;
 * il ramo «nessun autorizzato → false» resta **prima** di qualunque
   risoluzione. Senza, si finirebbe su `x = ANY(NULL)`, che vale `NULL`: e un
   `NULL` in un `WHERE` non nega — sparisce.

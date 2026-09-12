@@ -277,7 +277,7 @@ audit modificabile da chi è auditato non è un registro.*
 
 ---
 
-### 🟠 D4 — Tre tabelle hanno una policy e la RLS spenta
+### ✅ D4 — Tre tabelle avevano una policy e la RLS spenta — CHIUSO il 2026-09-12 (per la parte che era D4)
 
 `acquisti.ddt`, `acquisti.ordini`, `shop.ricevute`: `pg_policy` ha la riga,
 `relrowsecurity` è `false`. **La policy non filtra niente.**
@@ -298,9 +298,11 @@ accendono:
   modello, non l'accensione* — è D8, non D4;
 * `shop.ricevute` è un caso da un minuto: `zeroerp_app` non ha **nessun** GRANT
   su quella tabella, quindi accendere la RLS non toglie niente a nessuno.
-  ✅ **Pagata il 2026-09-12** (decisione di Tid): changeSet `20260912-42`
-  (`ENABLE`) + `-43` (le due righe fuori dal registro, 10 → 8), in attesa di
-  apply — brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §5.
+  ✅ **Pagata e applicata il 2026-09-12** (decisione di Tid): changeSet
+  `20260912-42` (`ENABLE`) + `-43` (le due righe fuori dal registro, 10 → 8),
+  pgTAP senza regressioni — brief `brief-db-fixture-che-costruiscono-d7-d6-d4.md` §5.
+  ⇒ Di D4 resta solo ciò che **è D8**: le due di `acquisti`, a registro con la
+  ragione.
 
 ---
 
@@ -312,8 +314,8 @@ violata, non produce nessun errore visibile»:
 | Invariante | Presidiato? |
 | --- | --- |
 | Una vista che tocca dati in RLS ha `security_invoker` | ⭐ **sì, e benissimo**: criterio transitivo, casi costruiti, ha sostituito quattro elenchi a mano (2026-09-07). Zero violazioni |
-| Una tabella con policy ha la RLS **accesa** | ✅ **sì dall'11-09-2026**: criterio `POLICY_INERTE` di `dbops.vw_rls_perimetro_scoperto`, caso costruito nel test 7. Le 3 violazioni (D4) sono dichiarate a registro con la loro ragione |
-| Una funzione `SECURITY DEFINER` ha un `search_path` fisso | ✅ **scritto il 2026-09-12**, in attesa di apply: `db/pgtap/dbops/test-security-definer-search-path-v1.sql` — invariante generale sul catalogo (estensioni escluse per `pg_depend`), più due rubinetti per D6-bis. Rosso sulle 3 violazioni finché i pin di D6 non sono applicati |
+| Una tabella con policy ha la RLS **accesa** | ✅ **sì dall'11-09-2026**: criterio `POLICY_INERTE` di `dbops.vw_rls_perimetro_scoperto`, caso costruito nel test 7. Le 2 violazioni rimaste (`acquisti`, → D8) sono dichiarate a registro con la loro ragione |
+| Una funzione `SECURITY DEFINER` ha un `search_path` fisso | ✅ **sì dal 2026-09-12**: `db/pgtap/dbops/test-security-definer-search-path-v1.sql` — invariante generale sul catalogo (estensioni escluse per `pg_depend`), verde con i pin di D6 applicati, più due rubinetti per D6-bis (18 senza `pg_temp`, 5 con `public` prima) che possono solo calare |
 
 ⭐ **La differenza fra le righe non è tecnica: è che le prime due hanno morso.**
 Il progetto costruisce un presidio quando un difetto si è già manifestato, o
@@ -328,7 +330,7 @@ elenco di nomi, e i debiti a soglia che può solo calare.
 
 ---
 
-### 🟠 D6 — Tre `SECURITY DEFINER` di `postgres`, eseguibili da chiunque, senza `search_path`
+### 🟠 D6 — Tre `SECURITY DEFINER` di `postgres`, eseguibili da chiunque, senza `search_path` — pin CHIUSI il 2026-09-12, resta il registro
 
 | Funzione | Owner | `EXECUTE` | `search_path` |
 | --- | --- | --- | --- |
@@ -350,8 +352,8 @@ cui a un ruolo servisse `CREATE` da qualche parte, o si installasse un'estension
 in uno schema scrivibile, tre funzioni con i privilegi del superutente
 diventerebbero una scala.
 
-✅ **Pin scritti il 2026-09-12** (39 e 40 già applicati, 41 in attesa): tutti
-nella timeline normale, senza superuser — `-39/-40` con il **prestito di
+✅ **Pin applicati il 2026-09-12** (`20260912-39/40/41`, pgTAP senza
+regressioni): tutti nella timeline normale, senza superuser — `-39/-40` con il **prestito di
 proprietà** via `fn_sync_functions_owner` (precedente `20260722-10`), `-41`
 con una **copia di servizio** della sync che fa da secondo DEFINER di
 postgres, perché la sync non può prestarsi a sé stessa. 🔴 Quel giro mostra
@@ -496,7 +498,8 @@ quanti sono altro.
 stavano **21 file del perimetro** (12 `script/test-fn-scope-*` + 9 `rls/`) —
 cioè i test delle funzioni che decidono *chi vede cosa* e della proprietà
 fail-closed — tutti con la stessa causa (fixture che cerca soggetti in un DB
-vuoto). Riscritti: **20 verdi su dbdev e su `zeroerp_ci`**; il ventunesimo
+vuoto). Riscritti: **20 verdi su dbdev e su `zeroerp_ci`**, committati il 12-09 con la
+baseline di sviluppo senza regressioni; il ventunesimo
 (`test-role-batch-fatturazione-postura`) era un'altra classe — in CI il ruolo
 batch non veniva provisionato — e ha avuto il passo in `ci-validate.yaml`.
 Brief: `brief-db-fixture-che-costruiscono-d7-d6-d4.md`. Il registro scenderà
@@ -633,26 +636,39 @@ il gap di febbraio è chiuso. Restano due cose:
 
 ---
 
-### 🔴 D13 — Come `zeroerp_app`, l'operatore di un emittente non di default non crea un billing account (trovato il 2026-09-12)
+### ✅ D13 — Come `zeroerp_app`, l'operatore di un emittente non di default non creava un billing account — CHIUSO il 2026-09-13
 
-`INSERT INTO anagrafiche.billing_account … RETURNING id` muore con «la nuova
-riga viola la regola di sicurezza per riga» ogni volta che l'emittente di chi
-agisce non è quello di default: la policy di lettura risolve il BA dal legame in
-`emittenti_fiscali_billing_account`, il legame lo scrive il trigger **AFTER**
-`z90_link_ef` — *dopo* che il `RETURNING` ha chiesto di vedere la riga — e nel
-frattempo `fn_get_ba_emittente_sr_id` ricade sul **default**, un'altra azienda.
+Trovato il 2026-09-12: `INSERT INTO anagrafiche.billing_account … RETURNING id`
+moriva con «la nuova riga viola la regola di sicurezza per riga» (42501) ogni
+volta che l'emittente di chi agiva non era quello di default — la policy di
+lettura risolve il BA dal legame, il legame lo scrive il trigger **AFTER**
+`z90_link_ef` *dopo* il `RETURNING`, e nel frattempo
+`script.fn_get_ba_emittente_sr_id` ricadeva sul **default**, un'altra azienda.
+Il backend fa lo stesso `RETURNING` (`clienti_repository.create_billing_account`)
+⇒ con due emittenti in esercizio gli operatori del secondo non aprivano clienti.
 
-**Riprodotto su dbdev** con un operatore vero dell'emittente 44 (`EMITEST`):
-42501. Il backend fa la stessa cosa
-(`anagrafiche/db/clienti_repository.py`, `create_billing_account`). ⇒ Con due
-emittenti in esercizio, gli operatori del secondo **non possono aprire
-clienti**. Sull'emittente di default passa, ed è il motivo per cui nessuno l'ha
-visto: su dbdev gli 8 operatori del 32 lavorano, i 5 del 44 no.
+✅ **Deciso da Tid il 2026-09-12 (opzione 1 di tre) e chiuso il 2026-09-13** —
+brief `brief-db-ba-riserva-emittente-operatore-d13.md`: *un BA non ancora
+collegato appartiene a chi lo sta creando*. La riserva del resolver ha ora
+**tre livelli** (mapping specifico; in sessione, l'emittente dell'operatore —
+la stessa funzione con cui il trigger scrive il legame; senza sessione, il
+default). Tre changeSet `20260913-01/02/03` applicati, baseline di sviluppo
+senza regressioni: la decisione (01), l'onestà del `PARALLEL SAFE` che cade
+sul resolver e sulla chiamante (02, la mossa già fatta il 18-08 sulla ricerca),
+e la **seconda copia** della regola trovata leggendo i chiamanti —
+`anagrafiche.fn_get_emittente_fiscale_pk`, usata dai guard dei documenti — che
+ora delega (03). Nessuna bonifica dei dati. Presidio: il pgTAP che costruisce
+l'operatore del secondo emittente e prova l'`INSERT … RETURNING` come
+`zeroerp_app` (rosso sullo scratch senza i changeSet, verde con), più i tre
+file che pinnavano «BA senza mapping → default» con il contesto aperto,
+spezzati in «in sessione / senza sessione».
 
-⭐ Il modello lo ammette per costruzione (un BA nasce nel perimetro di chi lo
-apre) e la fixture pgTAP ora sa costruire l'operatore del secondo emittente:
-il caso si prova, non si aspetta. Rimedio da decidere sul modello (brief
-`brief-db-fixture-che-costruiscono-d7-d6-d4.md` §4).
+⚠️ **Il prezzo, dichiarato**: un BA che *resta* senza legame (seed, migrazione)
+è ora, in sessione, di chiunque lo guardi — dato anomalo che il modello ammette.
+Restano in coda, come decisioni e non come lavoro: la forma «emittente come
+colonna del BA» (opzione 3) e un presidio `ZERO` sui BA senza legame. E per il
+team BE: tre copie inline della regola vecchia in `clienti_repository` e
+`soggetti_repository` da far delegare al check (brief §6.2).
 
 ---
 
@@ -683,9 +699,9 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | Area | Peso | Voto | Perché |
 | --- | --- | --- | --- |
 | **Catena di verifica (CI)** | 🔴 alto | **7,5/10** | Dal 2026-09-09 la suite pgTAP è un cancello vero: baseline misurata dalla CI, niente `continue-on-error`, bootstrap che fallisce invece di passare. Resta il registro a 403, che deve calare (D7) |
-| **Perimetro dei dati (RLS)** | 🔴 alto | **8/10** | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le tre policy inerti (D4), a registro con la ragione |
+| **Perimetro dei dati (RLS)** | 🔴 alto | **8/10** | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
 | **Copertura test** | 🔴 alto | **4/10** | 634 file, ma su un DB ricostruito da zero la suite è rossa per due terzi (403 rossi noti al 2026-09-12). Il 38% delle funzioni non è mai nominato (D7) |
-| **Postura di sicurezza degli oggetti** | 🟠 medio | **7/10** | `security_invoker` e `relrowsecurity` presidiati per criterio; resta il `search_path` sui `SECURITY DEFINER` (D5, D6) |
+| **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis e per il pezzo nuovo: registro `sec_functions_owner` e sync scrivibili/eseguibili da `zeroerp_app` |
 | **Simmetria del dominio** | 🟠 medio | **4/10** | `acquisti` e `magazzino` modellati e non scritti (D8). La decisione dell'11-09 («prossimo cantiere») dà al debito un verso, ma il voto misura il comportamento, che ancora non c'è: *una decisione non scrive il codice* |
 | **Osservabilità dei presidi** | 🟠 medio | **7/10** | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`) |
 | **Gestione del debito** | 🟠 medio | **6/10** | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 403 (D11) |
@@ -712,9 +728,11 @@ tutta lì dentro (D7).
 ⚠️ **«Production-ready»**: all'8 settembre non era la parola giusta, e non per
 la qualità del design — per D1, D2 e D3: righe di cinque famiglie di documento
 su sei e tutto lo storico leggibili da chiunque. Chiusi tutti e tre fra il 9 e
-l'11 settembre, la frase torna difendibile sul perimetro dei dati. Quello che
-resta sono D4 (tre policy inerti, a registro con la ragione), D6 (`search_path`)
-e il registro dei rossi in CI.
+l'11 settembre, la frase torna difendibile sul perimetro dei dati — e il 13
+settembre è caduto anche D13, che su un'installazione a due emittenti avrebbe
+impedito al secondo di aprire clienti. Quello che resta sono le due policy
+inerti di `acquisti` (D4 → D8, a registro con la ragione), il pezzo nuovo di
+D6 e il registro dei rossi in CI.
 
 ---
 
@@ -735,18 +753,17 @@ e il registro dei rossi in CI.
 * [x] **D3** — ✅ chiuso l'11-09-2026, brief
       `work-done/brief-db-rls-storico-scope-congelato.md` — compreso
       `dbops.audit_log` (cancello sugli scrittori + append-only).
-* [~] **D4** — ✅ `shop.ricevute`: changeSet `20260912-42/43` scritti e provati,
-      in attesa di apply. Per `acquisti.ddt`/`ordini` prima il modello —
-      colonna emittente e veste operatore — cioè D8: restano a registro con la
-      ragione.
-* [~] **D5** — tre invarianti su tre **scritti** (`security_invoker` dal 09-07,
-      `relrowsecurity` dall'11-09, `search_path` il 12-09 in
-      `test-security-definer-search-path-v1.sql`); il terzo è verde solo dopo
-      l'apply di D6.
-* [~] **D6** — ✅ pin: `-39/-40` applicati, `-41` scritto (copia di servizio),
-      forma `pg_catalog, public, pg_temp`. ⛔ Resta il pezzo nuovo: registro
-      `sec_functions_owner` e `fn_sync_functions_owner` riservati al migratore
-      (oggi scrivibile/eseguibile da `zeroerp_app`) — brief §3. `EXECUTE` a PUBLIC su
+* [x] **D4** — ✅ `shop.ricevute` armata il 2026-09-12 (`20260912-42/43`,
+      registro 10 → 8). Per `acquisti.ddt`/`ordini` prima il modello — colonna
+      emittente e veste operatore — cioè **D8**: restano a registro con la
+      ragione, non sono D4.
+* [x] **D5** — ✅ tre invarianti su tre presidiati per criterio
+      (`security_invoker` dal 09-07, `relrowsecurity` dall'11-09, `search_path`
+      dal 12-09 in `test-security-definer-search-path-v1.sql`).
+* [~] **D6** — ✅ pin applicati il 12-09 (`-39/-40/-41`, forma `pg_catalog,
+      public, pg_temp`). ⛔ Resta il pezzo nuovo: registro `sec_functions_owner`
+      e `fn_sync_functions_owner` riservati al migratore (oggi
+      scrivibili/eseguibili da `zeroerp_app`) — brief §3, stima ≈ mezza giornata. `EXECUTE` a PUBLIC su
       `fn_sync_functions_owner`: valutato, resta — il migratore in CI lo ha
       solo via PUBLIC (brief §3).
       🔴 **PRIMA, una riga obbligatoria**: qualificare `public.dblink(...)` in
@@ -777,9 +794,11 @@ e il registro dei rossi in CI.
       *fixture*. ✅ 12-09: i **21 del perimetro** riscritti (20 verdi sui due
       database, uno in CI con il passo di provisioning nuovo), in attesa di
       apply e della corsa CI.
-* [ ] **D13** — il BA come operatore non di default (`RETURNING` sotto RLS):
-      decidere il rimedio sul modello e scriverne il pgTAP. È la cosa più grave
-      emersa il 12-09.
+* [x] **D13** — ✅ chiuso il 2026-09-13: changeSet `20260913-01/02/03`
+      applicati, baseline di sviluppo senza regressioni, brief
+      `brief-db-ba-riserva-emittente-operatore-d13.md`. Restano fuori
+      perimetro: le tre copie Python della regola vecchia (team BE, brief
+      §6.2) e due decisioni di modello in coda (§3.4).
 * [ ] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
 * [ ] **D11-bis** — scrivere il messaggio dei sei `W_` che non ce l'hanno

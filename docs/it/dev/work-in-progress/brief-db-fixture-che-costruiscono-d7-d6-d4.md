@@ -1,14 +1,16 @@
 # Brief DB — Le fixture costruiscono il mondo (D7), il pin delle DEFINER (D6), shop.ricevute (D4)
 
-> **Da leggere per primo: §5 — cosa resta a Tid** (apply, pgTAP, baseline).
+> **Da leggere per primo: §6 — cosa resta** (CI, D13, il pezzo nuovo di D6).
 > Origine: [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md),
 > decisione di Tid del 2026-09-12: *«fai 1 e 2, poi D4»*.
 >
-> Stato 2026-09-12 sera: **tutto scritto e provato con l'SQL estratto in
-> `BEGIN … ROLLBACK` su dbdev e sullo scratch `zeroerp_ci`**; applicato solo il
-> `-38`; niente committato. 🔴 §3: la prima sede dei pin era sbagliata,
-> corretta dopo il primo apply fallito. Un difetto di PRODOTTO trovato strada
-> facendo: §4.
+> ✅ **Stato 2026-09-12, tardi: APPLICATO e COMMITTATO da Tid** (`35cadf9bb`):
+> changeSet 38-43 sul database di sviluppo, i 21 pgTAP riscritti, la baseline
+> di sviluppo **senza regressioni**, doc auto-gen rigenerate. Restano: la prima
+> corsa della CI (§1.3 e le righe da togliere dalla baseline CI) e il pezzo
+> nuovo di D6 (§3, in coda). ✅ D13 (§4) è **chiuso il 13-09** nel suo brief
+> (`brief-db-ba-riserva-emittente-operatore-d13.md`). 🔴 §3: due stesure dei
+> pin erano sbagliate di sede, corrette dopo due apply falliti.
 
 ---
 
@@ -218,12 +220,25 @@ frattempo `fn_get_ba_emittente_sr_id` ricade sul **default** — un'altra aziend
   → `RETURNING id`. ⇒ Con due emittenti in esercizio, gli operatori del secondo
   non possono aprire clienti.
 - Non è un difetto della fixture e **non l'ho toccato**: il §2 toglie l'ostacolo
-  dall'helper, non dal prodotto. Rimedi possibili, da decidere sul modello: il
-  resolver che, per un BA non ancora mappato, ricada sull'emittente di **chi
-  agisce** invece che sul default (è ciò che il trigger sta per scrivere); o il
-  legame scritto nella stessa istruzione (impossibile per FK) / dal BE in due
-  passi senza `RETURNING`. Casa naturale: un brief suo, con il pgTAP che
-  costruisce l'operatore del secondo emittente — i mattoni ora ci sono.
+  dall'helper, non dal prodotto. Le tre risposte alla domanda «un BA appena
+  scritto, ancora senza collegamento, di chi è?»:
+  1. **di chi lo sta creando** — `script.fn_get_ba_emittente_sr_id` ricade
+     sull'emittente dell'operatore in sessione invece che sul default (è ciò
+     che il trigger z90 sta per scrivere); default solo senza sessione;
+  2. il BE scrive e rilegge dopo, senza `RETURNING` — non cambia il DB, ma la
+     trappola resta per ogni altro scrittore (import, shop, cantieri futuri);
+  3. l'emittente diventa **colonna** del BA, scritta all'INSERT — la forma più
+     solida (e coerente con «un BA ha esattamente un emittente»), ma un cambio
+     di modello: la tabella dei legami diventa derivata; giorni, non ore.
+
+  ✅ **Decisione di Tid, 2026-09-12: la 1**, subito; la 3 resta in coda come
+  decisione di modello, non come lavoro. **Nessuna bonifica dei dati**: sono
+  dati di test — e comunque sulla macchina i 42 BA sono tutti collegati, la
+  riserva serve solo a quell'istante. Il cantiere: un changeSet sul resolver
+  (corpo dalla doc auto-gen), il pgTAP che costruisce l'operatore del secondo
+  emittente e inserisce un BA **con** `RETURNING` come `zeroerp_app`
+  (`throws_ok` oggi, `lives_ok` domani), e il gemello che prova che senza
+  sessione la riserva è ancora il default. Brief suo quando si apre.
 
 ---
 
@@ -247,28 +262,43 @@ registro a 8, `vw_rls_perimetro_scoperto` con soli `DEBITO_DICHIARATO=8`
 
 ---
 
-## 6. Cosa resta a Tid
+## 6. Cosa resta
 
-1. **Apply**: tutto con il solito `../scripts/liquibase5.sh update` da `db/`
-   (come `titodb`, nessun contesto): `20260912-41` (pin sulla sync, con la
-   copia di servizio), `-42` (RLS shop.ricevute), `-43` (registro) + il mirror
-   CSV. Risultano **già applicati** `-38`, `-39`, `-40` (letti dal
-   `databasechangelog` e dal catalogo: pin e owner `postgres` a posto).
-   ⚠️ Il numero 37 di oggi era già tuo (`fn-check-riferimenti-morti-search-path`):
-   ho usato 38-43.
-2. **pgTAP**: i 21 file della tabella §1.1 + `dbops/test-security-definer-search-path-v1`
-   (verde solo dopo il pin) + `rls/test-rls-perimetro-scoperto` (8/8 con D4) +
-   `rls/test-rls-pagamenti-perimetro` su dbdev (18/18 solo dopo il -38).
-   Le baseline non le ho toccate.
-3. **CI**: la prima corsa di `ci-validate` con il passo nuovo dirà lo stato di
+1. ✅ **Apply e pgTAP — fatti da Tid il 12-09**: changeSet 38-43 applicati con
+   `../scripts/liquibase5.sh update`, baseline di sviluppo senza regressioni,
+   doc auto-gen rigenerate, commit `35cadf9bb`.
+2. **CI**: la prima corsa di `ci-validate` con il passo nuovo dirà lo stato di
    `test-role-batch-fatturazione-postura` e degli altri file che guardano il
-   ruolo batch. I file rientrati vanno tolti a mano da `baseline-rossi-ci.tsv`
-   (regola: lo dice la CI, non lo scratch).
-4. **Decisione**: il difetto del §4 (BA come operatore non di default) merita un
-   cantiere suo — è la cosa più grave emersa oggi.
-5. Doc: `docs/it/guide/pgtap-come-si-scrive-un-test.md` ha la sezione nuova
-   «Il mondo si costruisce, non si cerca»; le pagine auto-gen delle quattro
-   funzioni le produce il giro di generazione dopo l'apply.
+   ruolo batch. I file rientrati (i 21 di §1.1) vanno tolti a mano da
+   `baseline-rossi-ci.tsv` — regola: lo dice la CI, non lo scratch.
+3. **D13** (§4): ✅ deciso — opzione 1, nessuna bonifica dati — e ✅ **chiuso
+   il 13-09** nel brief suo, `brief-db-ba-riserva-emittente-operatore-d13.md`:
+   tre changeSet (`20260913-01/02/03`) applicati, baseline senza regressioni.
+   ⚠️ Il §4 qui sotto diceva «un changeSet sul resolver»: sono diventati tre,
+   perché leggendo i chiamanti è emersa una seconda copia della regola
+   (`fn_get_emittente_fiscale_pk`) e il `PARALLEL SAFE` andava tolto anche
+   alla chiamante — il perché sta nel brief, §4.
+4. **Il pezzo nuovo di D6** (§3, in coda): registro `dbops.sec_functions_owner`
+   e `fn_sync_functions_owner` riservati al migratore. Stima ≈ **mezza
+   giornata**, con la forma già decisa dal vincolo tecnico:
+   - ⛔ **non** con GRANT/REVOKE sulla sync: la funzione è di `postgres`, e un
+     privilegio dato al migratore mentre la possiede in prestito **non
+     sopravvive** alla restituzione (`ALTER … OWNER` rimappa le voci ACL del
+     vecchio proprietario sul nuovo). ⇒ la sync si difende **da sola**: in
+     testa, `IF NOT (pg_has_role(current_user, nspowner di dbops, 'MEMBER')
+     OR superuser) THEN RAISE insufficient_privilege` — sostituita con la
+     copia di servizio, come il 41. Il migratore possiede `dbops` in ogni
+     ambiente (`titodb` / `zeroerp`), `postgres` passa, `zeroerp_app` no;
+   - il registro: REVOKE INSERT/UPDATE/DELETE all'app nelle **tre sedi** del
+     pattern già usato per `audit_log` l'11-09 — l'elenco nel loop dei grant
+     (`20260205-41`, una lista nuova «sola lettura», accanto a
+     `v_registri_append_only`), il `REVOKE` in `provision_db_roles.sql`, e
+     `test-registri-append-only-postura-v1.sql` che tiene le sedi allineate —
+     più un `90_end` forward per applicare subito su dev;
+   - pgTAP nuovo, come `zeroerp_app`: `throws_ok(SELECT dbops.fn_sync_functions_owner(), '42501')`
+     e `throws_ok` sull'INSERT/UPDATE del registro; e il gemello «il migratore
+     e la provision-post passano ancora» (il runAlways `20251123-04` la chiama
+     a ogni update).
 
 *Scritto il 2026-09-12. Nessun test eseguito col runner ufficiale; ogni prova è
 un `psql -f` in transazione ritirata, un file alla volta.*
