@@ -39,6 +39,7 @@ Indice test eseguiti:
 28) VenditePipelineRepositoryUnitTests.test_log_pipeline_fase_passa_la_gruppo_key_per_nome
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 from unittest import TestCase
@@ -227,10 +228,21 @@ class VenditePipelineRepositoryUnitTests(TestCase):
     def test_get_lotto_segnalazioni_summary_maps_counts(self, mocked_cursor_factory):
         cursor = MagicMock()
         cursor.__enter__.return_value = cursor
-        # ⚠️ I tre del banner sono IN CODA: la funzione li ha aggiunti li'
-        #    apposta, e una tupla piu' corta qui direbbe che il repository
-        #    legge sei colonne quando ne legge nove.
-        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7, 2, 4, 1)
+        # ⭐ I NOMI vengono dal cursore (`row_to_dict`), e qui il cursore finto
+        #    li dichiara nell'ORDINE della SELECT: e' il contratto che il test
+        #    presidia. Una colonna aggiunta alla SELECT e non al `TypedDict` —
+        #    o rinominata — fa divergere il dict atteso, invece di uscire a
+        #    video con un numero plausibile sotto il nome sbagliato.
+        cursor.description = [
+            SimpleNamespace(name=nome) for nome in (
+                "fatture_critical_count", "fatture_warning_count",
+                "lotto_critical_count", "lotto_warning_count", "lotto_info_count",
+                "fatture_stato_esecuzione_errore_count",
+                "documenti_bloccanti_count", "documenti_presi_in_carico_count",
+                "critiche_giro_count", "esiti_stato_esecuzione_errore_count",
+            )
+        ]
+        cursor.fetchone.return_value = (1, 2, 3, 4, 5, 7, 2, 4, 1, 3)
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
@@ -251,10 +263,16 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 "documenti_bloccanti_count": 2,
                 "documenti_presi_in_carico_count": 4,
                 "critiche_giro_count": 1,
+                # ⭐ Il DECIMO (D2, `20260912-16`): tre documenti presi in carico
+                #    il cui ultimo esito e' ERRORE. Questo entra nel verdetto.
+                "esiti_stato_esecuzione_errore_count": 3,
             },
         )
         execute_sql, execute_params = cursor.execute.call_args.args
         self.assertIn("fn_get_lotto_segnalazioni_summary", execute_sql)
+        # ⛔ La colonna si chiede PER NOME: un lettore posizionale sbagliato non
+        #    protesta, mostra numeri plausibili e falsi.
+        self.assertIn("esiti_stato_esecuzione_errore_count", execute_sql)
         self.assertEqual(execute_params, [10])
 
     # Scopo: Verifica il caso `test_get_pipeline_id_for_step_returns_id_when_found`.

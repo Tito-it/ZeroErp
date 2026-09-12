@@ -17,7 +17,7 @@
 #        run e servono claim, ownership, backoff e ritentativi.
 #        Se stai per aggiungere qui un retry o un lock, l'astrazione giusta e'
 #        l'altra.
-#        Brief: docs/it/dev/work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md
+#        Brief: docs/it/dev/work-done/brief-be-fan-out-isolato-e-esito-parziale.md
 # ------------------------------------------------------------
 
 from __future__ import annotations

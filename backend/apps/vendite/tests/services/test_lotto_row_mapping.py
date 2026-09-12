@@ -67,6 +67,10 @@ def _riga(override: dict[int, object] | None = None):
         False,                          # 22 riaperto
         date(2026, 7, 31),              # 23 data_documento
         False,                          # 24 stato_congela_fiscale
+        # ⚠️ Due numeri DIVERSI fra loro e da `n_fatture` (5): uno scambio fra
+        #    i tre conteggi non si vedrebbe con valori uguali.
+        4,                              # 25 n_presi_in_carico
+        3,                              # 26 n_esiti_completati
     ]
     for i, v in (override or {}).items():
         riga[i] = v
@@ -101,6 +105,9 @@ class MapLottoRowTests(SimpleTestCase):
         self.assertIs(r["riaperto"], False)
         self.assertEqual(r["data_documento"], "2026-07-31")
         self.assertIs(r["stato_congela_fiscale"], False)
+        # I due conteggi degli esiti (2026-09-12): presi in carico e completati.
+        self.assertEqual(r["n_presi_in_carico"], 4)
+        self.assertEqual(r["n_esiti_completati"], 3)
 
     # 1. ⛔ IL DIFETTO STORICO, scritto in negativo: `riaperto` deve dipendere
     #    SOLO dalla sua colonna. Le due righe qui sotto sono i due casi veri

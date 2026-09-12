@@ -7,9 +7,18 @@
 > Consuntivo e scostamenti dal piano in **§11**; il residuo `commessa_cache`, che il
 > consuntivo lasciava aperto, è stato **chiuso in giornata** su richiesta di Tid — **§12**.
 >
-> 🟡 **Questo doc resta APERTO come raccoglitore dell'intera linea**: gli altri tre
+> ✅ **CHIUSO il 2026-09-12 — la linea del fan-out chiude per intero.** Le due
+> validazioni in-app di §13 sono entrambe fatte: **V2** il 2026-09-01
+> ([collaudo-in-app-v2-dl23-e-area-resi](collaudo-in-app-v2-dl23-e-area-resi.md)),
+> **V1** il 2026-09-12 con la prova 5 verde
+> ([collaudo-in-app-esito-parziale-pull-commessa](collaudo-in-app-esito-parziale-pull-commessa.md))
+> — dopo aver trovato e chiuso due difetti di modello sul rilancio
+> ([brief-db-rilancio-step-non-rivede-le-proprie-commesse](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md)).
+> Da qui in giù il documento è storia: gli stati datati restano com'erano.
+>
+> ~~🟡 **Questo doc resta APERTO come raccoglitore dell'intera linea**: gli altri tre
 > documenti del cantiere sono chiusi e archiviati, e **cio' che manca vive in §13**.
-> Nessun altro documento aperto: se cerchi «cosa resta», è lì.
+> Nessun altro documento aperto: se cerchi «cosa resta», è lì.~~
 >
 > **Stato al 2026-08-10**: ✅ commit fatto e pushato · 🔴 restano le **due validazioni
 > in-app** (V1 esito parziale del pull, V2 slice 3-ter) e il **build docs**.
@@ -34,7 +43,7 @@
 > era **vuota da sempre**, ha la sua prima riga: accredito dovuto 5, etichetta
 > DOVUTA, verificata a video. ⏸️ **DL-28 sospeso**: la metà «blocco parlante»
 > non è costruibile finché le righe a prezzo zero non sono ammesse
-> ([brief dedicato](../work-done/brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
+> ([brief dedicato](brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
 > Restano provabili: **DL-23** (da costruire), le **card DDT/RESI con i
 > drill-down**, la seconda metà di DL-28 e il ramo «reso in DRAFT» di DL-27.
 >
@@ -42,7 +51,7 @@
 > giornata (testata DDT non salvata in creazione, per due finestre distinte —
 > dettaglio in §13.2). E un cantiere nuovo: la coda accrediti è un **ramo
 > morto** senza il verbo che emette la nota di credito
-> ([brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md),
+> ([brief-design-note-credito-resi.md](brief-design-note-credito-resi.md),
 > decisioni di dominio già prese).
 >
 > **Stato al 2026-08-17, fine giornata — V2 quasi chiusa.** Fatti anche:
@@ -102,7 +111,7 @@
 > ## ✅ STATO AL 2026-09-01 — **V2 È CHIUSA PER INTERO**
 >
 > Il verbale è
-> [collaudo-in-app-v2-dl23-e-area-resi.md](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md),
+> [collaudo-in-app-v2-dl23-e-area-resi.md](collaudo-in-app-v2-dl23-e-area-resi.md),
 > archiviato in `work-done`: **sei prove su sei ✅**, nessun difetto di modello.
 >
 > * **DL-23 ramo `CONFERMATO`** — soggetto costruito (`ORD0036000`, `ARC005474`
@@ -146,7 +155,7 @@
 > | Voce | Copione | Stato |
 > | --- | --- | --- |
 > | **V1** · esito parziale del pull (metà pipeline) | [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md) | 🔴 23 caselle su 24 — il prerequisito `RESUME_TASK` è già spuntato |
-> | **V2** · DL-23 ramo `CONFERMATO` | [collaudo-in-app-v2-dl23-e-area-resi.md](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md) · prova **A** | ✅ **chiusa il 2026-09-01** — soggetto costruito, invariante retta |
+> | **V2** · DL-23 ramo `CONFERMATO` | [collaudo-in-app-v2-dl23-e-area-resi.md](collaudo-in-app-v2-dl23-e-area-resi.md) · prova **A** | ✅ **chiusa il 2026-09-01** — soggetto costruito, invariante retta |
 > | **V2** · area RESI delle card | stesso documento · prove **B1/B2** | ✅ **chiusa il 2026-09-01** — area, azione, `valore_fermo` vuoto, drill-down e secondo motivo |
 >
 > ⭐ **Il lavoro di sviluppo di questa giornata**, tutto nato dal push DB e
@@ -491,8 +500,8 @@
 > nulla a «cosa resta», che è e rimane il §13. Quel che il §14 lascia sono due
 > voci di *registro*, non di sviluppo (§14.4).
 >
-> **Origine**: [piano-residui-orchestrazione-e-cruscotti-vendite.md](../work-done/piano-residui-orchestrazione-e-cruscotti-vendite.md) §1 (R-1)
-> ← [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §B/§B.1.
+> **Origine**: [piano-residui-orchestrazione-e-cruscotti-vendite.md](piano-residui-orchestrazione-e-cruscotti-vendite.md) §1 (R-1)
+> ← [analisi-orchestrazione-vendite-simmetrie.md](analisi-orchestrazione-vendite-simmetrie.md) §B/§B.1.
 >
 > **Perimetro**: solo backend Python. **Nessuna azione DB** (verificato §5.2), **nessuna
 > dipendenza nuova**, nessun frontend.
@@ -906,9 +915,9 @@ versione a fine giro.
 > ⚠️ **Questo documento è, dal 2026-08-09, il raccoglitore dei residui di TRE cantieri**,
 > non solo del proprio. Gli altri due sono chiusi e archiviati in `work-done`:
 >
-> * [brief-design-fatturazione-due-lenti.md](../work-done/brief-design-fatturazione-due-lenti.md) — i tre cruscotti + DDT/resi (§6-quater) + la guida
-> * [piano-residui-orchestrazione-e-cruscotti-vendite.md](../work-done/piano-residui-orchestrazione-e-cruscotti-vendite.md) — il quadro R-1..R-4, con l'analisi che ha generato questo brief
-> * [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) — il disegno originale (temi A/B/C)
+> * [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) — i tre cruscotti + DDT/resi (§6-quater) + la guida
+> * [piano-residui-orchestrazione-e-cruscotti-vendite.md](piano-residui-orchestrazione-e-cruscotti-vendite.md) — il quadro R-1..R-4, con l'analisi che ha generato questo brief
+> * [analisi-orchestrazione-vendite-simmetrie.md](analisi-orchestrazione-vendite-simmetrie.md) — il disegno originale (temi A/B/C)
 >
 > Lo scarto fra il titolo («fan-out») e il contenuto di questa sezione è **voluto e
 > dichiarato**: serviva un unico posto vivo dove leggere cosa manca, invece di tre documenti
@@ -916,7 +925,7 @@ versione a fine giro.
 >
 > **Quando entrambe le validazioni saranno passate, anche questo brief va in `work-done`** e
 > la linea è chiusa per intero. ⭐ **Al 2026-09-01 ne è passata una: V2 è chiusa**
-> ([verbale](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md)). Manca **solo V1**.
+> ([verbale](collaudo-in-app-v2-dl23-e-area-resi.md)). Manca **solo V1**.
 
 ### 13.1 V1 — Esito parziale del pull da commessa (da questo brief)
 
@@ -929,7 +938,7 @@ versione a fine giro.
 > proprietà per cui questo cantiere esiste — il savepoint per item — **non è
 > stata misurata**: le fatture nascevano da righe `attivita_fatturabili` residue
 > di un giro precedente, non dal pull. Cinque difetti (due di modello) in
-> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](../work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md);
+> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](brief-residuo-fatturabili-e-bandiere-esito-parziale.md);
 > il copione è in
 > [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md),
 > ora **SOSPESO**. V1 resta aperta.
@@ -994,7 +1003,7 @@ senza il segnale in-app gira ancora il codice vecchio.
 > rifiutata di portarsi via le rettifiche di quelle passate prima»*.
 >
 > E la **prova 5** di
-> [collaudo-in-app-nota-credito-resi.md](../work-done/collaudo-in-app-nota-credito-resi.md)
+> [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md)
 > (*«L'esito parziale si legge»*, voce F2 del brief NC) lo ha percorso a video,
 > con un rifiuto vero costruito apposta:
 >
@@ -1170,7 +1179,7 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   `valore_fermo` è **vuoto** e non `0,00` come prescrive DL-11, e il ramo
   `MERCE_RESA_GIA_FATTURATA` ha di nuovo un soggetto — **ricostruito e non accreditato**,
   così resta per la prossima volta. Verbale in
-  [work-done](../work-done/collaudo-in-app-v2-dl23-e-area-resi.md).
+  [work-done](collaudo-in-app-v2-dl23-e-area-resi.md).
 - ✅ **DL-24 — accredito dovuto vs facoltativo**: l'etichetta distingue l'obbligo dall'opzione
   (`riapre_residuo` + residuo di riconsegna ancora aperto → FACOLTATIVA). **Provato il
   2026-08-17**, e non era in programma: confermando un `RESO_PER_RICONSEGNA` sulla stessa
@@ -1296,7 +1305,7 @@ verifica con un secondo reso lasciato in bozza — la coda non deve mostrarlo.
 > ammettono il prezzo assente, e il gate all'emissione chiede il prezzo — a
 > righe **e** componenti — solo quando la causale dichiara che il documento
 > vende. La premessa di DL-28 è stata corretta nel design-of-record
-> ([brief-design-fatturazione-due-lenti](../work-done/brief-design-fatturazione-due-lenti.md),
+> ([brief-design-fatturazione-due-lenti](brief-design-fatturazione-due-lenti.md),
 > errata corrige in fondo al §10).
 >
 > ⚠️ **Ma il caso in-app non è ancora costruibile, e il motivo è cambiato.**
@@ -1326,7 +1335,7 @@ caricare, la metà «blocco parlante» del gate **non è mai scattata e non può
 scattare**: non è un gate sbagliato, è un gate che presidia una porta murata.
 
 **Decisione di Tid (2026-08-17): le righe a prezzo zero devono essere ammesse.**
-Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md);
+Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md);
 va corretta anche la **premessa nel design-of-record**, che oggi descrive come
 esistente un caso che il prodotto non consente.
 
@@ -1346,7 +1355,7 @@ e il **collaudo in-app** le ha portate a video il 27: caricata la riga senza
 prezzo su causale **fatturabile**, il pulsante *Emetti* è **disabilitato** e il
 tooltip **nomina la riga**; forzando, il DDT non passa a EMESSO.
 Copione e verbale in
-[collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)
+[collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md)
 (prova **3**, casella **2**), che lo registra così:
 
 > ⭐ *«il gate esiste dal 2026-07-18 e in un anno non è mai scattato su un
@@ -1464,7 +1473,7 @@ già — *«è 🟢 perché nessuna azione esiste oggi»*.
 verificabile ora (resta da confermare che il drill-down si apra: era il difetto
 della whitelist fail-closed); l'area RESI lo diventerà **con la slice NC**, e
 allora basteranno due celle di seed — vedi §6.1 di
-[brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
+[brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
 
 ⭐ **Aggiornamento 2026-08-31 — la condizione si è avverata, la voce non è più
 bloccata.** ~~La slice NC è chiusa il 2026-08-26 (collaudo in-app compreso) e~~
@@ -1533,7 +1542,7 @@ chiunque** — `script.fn_get_emittenti_scope_sr_ids(NULL)` torna `{}` (array
 vuoto, non NULL) e il `= ANY` è falso ovunque. È **fail-closed**, non una
 misura. Le misure di questa sezione sono state prese con `SET app.current_user_id = '1'`.
 
-### 13.3 Le due cose non-validazione — una chiusa, una aperta
+### 13.3 Le due cose non-validazione — entrambe chiuse (commit 2026-08-10, build docs 2026-08-16)
 
 - ✅ **Commit**: fatto e **pushato** il 2026-08-10. Il BB fan-out e il fix dell'esito
   parziale sono in `388b7dfee`; il resto della linea (guida cruscotti, archiviazione dei

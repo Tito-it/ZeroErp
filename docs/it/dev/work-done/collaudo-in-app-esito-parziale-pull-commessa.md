@@ -6,7 +6,15 @@
 > §13.1 (voce **V1**); qui c'è solo **cosa fare, cosa deve succedere, e cosa
 > fare se non succede**.
 >
-> **Stato**: 🔴 **SOSPESO sulla prova 5 — il rilancio non rivede le proprie
+> **Stato**: ✅ **CHIUSO il 2026-09-12** — prova 5 **verde** dopo D1 e la
+> correzione della catena al rilancio (brief
+> [brief-db-rilancio-step-non-rivede-le-proprie-commesse](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
+> §10): rilancio → `totale 2 · ok 2` e due fatture in «Documenti»; annullo e
+> rigenerazione dopo correzione verificati in-app da Tid. La V1 del brief
+> fan-out si chiude con questo verbale; la V2 era chiusa dal 2026-09-01, quindi
+> la linea del fan-out chiude per intero. Storia sotto, com'era.
+>
+> **Stato precedente**: 🔴 **SOSPESO sulla prova 5 — il rilancio non rivede le proprie
 > commesse** (2026-09-12). · **Ambiente**: sviluppo (`dbdev`). · **Pagine**:
 > `Vendite → Fatturazione` (cockpit) e `vendite/lotti`.
 >
@@ -19,7 +27,7 @@
 > commesse `TRATTENUTA` **anche quando a trattenerle è il lotto stesso** —
 > l'auto-esclusione del §5.4 del brief del trattenuto è stata scritta solo
 > nell'emit (`-62`), un cancello che non viene mai raggiunto. Brief al team DB:
-> [brief-db-il-rilancio-non-rivede-le-proprie-commesse.md](brief-db-il-rilancio-non-rivede-le-proprie-commesse.md).
+> [brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md).
 > ⛔ **Le prove 3 e 4 vanno RIFATTE dopo D1**: la 3 era passata il 09-09 alle
 > 01:44 (LTF-0010330, il rilancio ritentò 34137); L3 è stato applicato alle
 > 17:12 dello stesso giorno, e da allora nessun rilancio ha più rivisto una
@@ -32,7 +40,7 @@
 > è finito in fattura lo stesso, e la prova 2 non ha misurato il savepoint —
 > ha misurato un **residuo** di `attivita_fatturabili` sopravvissuto alla
 > riapertura del giro precedente. Cinque difetti, due di modello, in
-> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](../work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
+> [brief-residuo-fatturabili-e-bandiere-esito-parziale.md](brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
 > ⛔ **La prova 2 va rifatta dopo D1 e D2**: finché il perimetro di un giro è
 > «tutto ciò che è libero in competenza» e non «ciò che il pull consegna», la
 > prova misura il residuo e non il savepoint.
@@ -92,7 +100,7 @@
 > 2026-08-09, i test sono verdi, e il **telaio** del BB `run_fan_out` è stato
 > esercitato in applicazione il 2026-08-26 — ma su un **altro** consumatore
 > (l'accredito massivo, prova 5 di
-> [collaudo-in-app-nota-credito-resi.md](../work-done/collaudo-in-app-nota-credito-resi.md)).
+> [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md)).
 > Sul **pull da commessa** il ramo parziale non è **mai** stato percorso.
 >
 > ⚠️ **La misura del 2026-08-16 che lo diceva è ormai scaduta, e la sostanza
@@ -544,7 +552,7 @@ guasta quella commessa). Lancia il giro.
       sopravvissuti: prima di oggi qui non c'era niente;
 - [X] il lotto va in **ERRORE** e la catena **non avanza**: il giro si ferma con
       `BLOCCATO_CRITICITA` / `E_PIPELINE_LOTTO_CRITICAL`;
-- [ ] 🔴 il rilancio dello **stesso** step resta ammesso — è la via d'uscita:
+- [X] 🔴 il rilancio dello **stesso** step resta ammesso — è la via d'uscita:
       correggi la commessa, rilancia, il task ritira le sue segnalazioni.
       **ROSSO il 2026-09-12**: il pulsante c'è e si preme, ma il pull
       **non rivede le commesse** (`totale 0 · ok 0`), ritira le segnalazioni
@@ -564,8 +572,8 @@ marcatura non è arrivata a nessun documento. Nei log cerca
 
 **Poi ripristina tutto** e verifica di essere tornato al punto di partenza:
 
-- [ ] tutte le commesse toccate hanno di nuovo `ruolo_link = 'ROOT'`;
-- [ ] il mese di competenza torna a mostrare le commesse da emettere.
+- [X] tutte le commesse toccate hanno di nuovo `ruolo_link = 'ROOT'`;
+- [X] il mese di competenza torna a mostrare le commesse da emettere.
 
 ⛔ **Il controllo finale è quello che il fail-closed tradisce peggio**: legge
 `vendite.commesse`, che ha la RLS, e **senza i due `SET` torna zero righe** —
@@ -584,7 +592,7 @@ SELECT c.id
  WHERE cs.id IS NULL;
 ```
 
-- [ ] la query non restituisce **nessuna** delle commesse che hai toccato.
+- [X] la query non restituisce **nessuna** delle commesse che hai toccato.
 
 ---
 
@@ -592,14 +600,14 @@ SELECT c.id
 
 **Chiuso il**: — · **Da**: — · **Ambiente**: sviluppo (`dbdev`)
 
-| #   | Prova                                                        | Scrive | Esito | Note                                    |
-| --- | ------------------------------------------------------------ | ------ | ----- | --------------------------------------- |
-| 0   | La policy del task è `RESUME_TASK`                           | no     |       |                                         |
-| 1   | Il giro non si ferma, il task_run va in **ERRORE**           | **sì** |       |                                         |
-| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint)    | no     |       |                                         |
-| 3   | 🔴 Il rilancio **RITENTA**, non salta                         | **sì** |       | da rifare dopo D1 (passata pre-L3)      |
-| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni     | **sì** |       | da rifare dopo D1, insieme alla 3       |
-| 5   | Tutto-rosso → nessuna eccezione, segni scritti, catena ferma | **sì** | 🟡/🔴 | 2026-09-12 · il rilancio non ritenta 🔴 |
+| #   | Prova                                                        | Scrive | Esito | Note                                   |
+| --- | ------------------------------------------------------------ | ------ | ----- | -------------------------------------- |
+| 0   | La policy del task è `RESUME_TASK`                           | no     |       |                                        |
+| 1   | Il giro non si ferma, il task_run va in **ERRORE**           | **sì** |       |                                        |
+| 2   | ⭐ Le commesse sane sono passate **e rimaste** (savepoint)    | no     |       |                                        |
+| 3   | 🔴 Il rilancio **RITENTA**, non salta                         | **sì** |       | da rifare dopo D1 (passata pre-L3)     |
+| 4   | Rimosso il guasto, il lavoro torna a casa senza doppioni     | **sì** |       | da rifare dopo D1, insieme alla 3      |
+| 5   | Tutto-rosso → nessuna eccezione, segni scritti, catena ferma | **sì** | 🟡/🔴   | 2026-09-12 · il rilancio non ritenta 🔴 |
 
 ### Che cosa ha trovato il collaudo
 
@@ -615,9 +623,13 @@ solo nell'emit (`-62`), che non viene raggiunto; P-5 (test 3) prova l'emit da
 solo e non poteva vederlo. Secondo effetto: ritirate le bandiere all'avvio e
 non rialzate da un giro vuoto, il lotto esce pulito con due esiti `ERRORE` che
 il verdetto non conta. Dettaglio, prova a cerchio e richieste in
-[brief-db-il-rilancio-non-rivede-le-proprie-commesse.md](brief-db-il-rilancio-non-rivede-le-proprie-commesse.md).
+[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md).
 ⚠️ La prova 3 era passata il 09-09 alle 01:44 (LTF-0010330), **prima** che L3
 venisse applicato alle 17:12: le prove 3 e 4 vanno rifatte.
+✅ **12-09 pomeriggio: DB (`20260912-12…16`), BE e FE consegnati** — brief §8
+e §9.6. Sul 13338 la discovery chiamata dal repository con l'identità del lotto
+restituisce le due commesse. Da rifare qui: «Riprova step» su 13338 (atteso
+`totale 2 · ok 2`), poi le prove 3, 4 e 5.
 
 ---
 
@@ -648,7 +660,7 @@ sessione, comunque sia andata.
 > meccanismo — e un collaudo per consumatore renderebbe tre copie della stessa
 > trafila.
 > Il *perché* di ogni scelta sta in
-> [brief-db-uscita-documento-dal-giro.md](../work-done/brief-db-uscita-documento-dal-giro.md).
+> [brief-db-uscita-documento-dal-giro.md](brief-db-uscita-documento-dal-giro.md).
 >
 > **Stato**: 🔵 **da eseguire**. Aggiunte il 2026-09-08, quando la parte con il
 > dato già pronto è stata spuntata a video (colonna «Documento» leggibile,

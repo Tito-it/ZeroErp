@@ -48,6 +48,7 @@ Indice test eseguiti:
 46) test_runner_rifiuta_il_giro_su_lotto_fuori_catena
 47) test_giro_senza_step_non_cancella_lo_stato_errore
 48) test_giro_senza_step_spegne_l_errore_se_le_segnalazioni_sono_rientrate (controprova del 47)
+49) test_runner_blocks_when_documenti_hanno_esito_errore_senza_critiche (D2, 2026-09-12)
 
 Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
 DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
@@ -165,6 +166,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 "lotto_warning_count": 0,
                 "lotto_info_count": 0,
                 "fatture_stato_esecuzione_errore_count": 0,
+                "esiti_stato_esecuzione_errore_count": 0,
             }
 
         # Scopo: Aggiorna `lotto_job_stato` con i valori richiesti dal flusso corrente.
@@ -386,6 +388,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 return LottoSignalStatus(
                     critical_count=0, warning_count=0, attention_count=0,
                     fatture_stato_esecuzione_errore_count=0,
+                    esiti_stato_esecuzione_errore_count=0,
                     is_error=False, blocks_next_step=False, summary={},
                 )
 
@@ -741,6 +744,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         # D-Q p.1: il blocco vale per l'AVANZAMENTO. Lotto ESISTENTE (non in
@@ -756,6 +760,45 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
         self.assertFalse(step_executor.called)
 
+    # Scopo: ⭐ D2 (2026-09-12) — il runner blocca l'AVANZAMENTO quando un
+    #        documento preso in carico ha l'ultimo esito ERRORE, con ZERO
+    #        critiche vive e zero fatture in errore: e' il terzo addendo del
+    #        verdetto, e il caso che prima usciva COMPLETATO per sottrazione.
+    # ⚠️ E il rifiuto NOMINA il motivo: `context` e `detail` portano
+    #        `esiti_errore_count`. Un lotto bloccato con `critical_count=0` e
+    #        `stato_esecuzione_errore_count=0` e basta sarebbe un rifiuto senza
+    #        ragione — un bug, agli occhi di chi legge il log.
+    def test_runner_blocks_when_documenti_hanno_esito_errore_senza_critiche(self):
+        class _EsitiErroreRepo(self._RepoMock):
+            # Scopo: riepilogo con il SOLO terzo addendo valorizzato.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
+                    "documenti_bloccanti_count": 0,
+                    "documenti_presi_in_carico_count": 2,
+                    "critiche_giro_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 2,
+                }
+
+        # Lotto ESISTENTE che tenterebbe l'avanzamento allo step 2 (come i due
+        # gemelli sopra): il gate deve scattare per il solo terzo addendo.
+        repo = _EsitiErroreRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
+        self.assertFalse(step_executor.called)
+        self.assertEqual(exc.exception.context["esiti_errore_count"], 2)
+        self.assertEqual(exc.exception.context["critical_count"], 0)
+        self.assertIn("esiti_errore_count=2", exc.exception.detail or "")
+
     # Scopo: Verifica che il runner blocchi quando la tabella ponte ha fatture con stato_esecuzione=ERRORE,
     # anche in assenza di segnalazioni critical nei log (guard unificata PRE-1).
     def test_runner_blocks_when_fatture_hanno_stato_esecuzione_errore(self):
@@ -769,6 +812,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 2,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         # Come sopra: lotto ESISTENTE che tenterebbe l'avanzamento allo step 2.
@@ -802,6 +846,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _ErroreRerunRepo()
@@ -834,6 +879,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _ErroreDuranteStepRepo()
@@ -875,6 +921,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 1,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _OnlyWarningsRepo()
@@ -1286,6 +1333,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _CriticalRepo()
@@ -1330,6 +1378,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _ErroreDuranteStepStatefulRepo()
@@ -1373,6 +1422,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "lotto_warning_count": 0,
                     "lotto_info_count": 0,
                     "fatture_stato_esecuzione_errore_count": 0,
+                    "esiti_stato_esecuzione_errore_count": 0,
                 }
 
         repo = _RilancioRiuscitoRepo()
@@ -1731,6 +1781,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 return LottoSignalStatus(
                     critical_count=1, warning_count=0, attention_count=0,
                     fatture_stato_esecuzione_errore_count=1,
+                    esiti_stato_esecuzione_errore_count=0,
                     is_error=True, blocks_next_step=False, summary={},
                 )
 
@@ -1769,6 +1820,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 return LottoSignalStatus(
                     critical_count=0, warning_count=0, attention_count=0,
                     fatture_stato_esecuzione_errore_count=0,
+                    esiti_stato_esecuzione_errore_count=0,
                     is_error=False, blocks_next_step=False, summary={},
                 )
 

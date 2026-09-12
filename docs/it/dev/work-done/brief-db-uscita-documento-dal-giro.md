@@ -75,7 +75,7 @@
 > misurato lo stesso giorno, **nessun lotto ha più di UN documento in `ERRORE`**,
 > quindi il gesto di massa non ha su cosa esercitarsi. Le tre prove — massa,
 > esito **PARZIALE**, avviso «trascina» — vivono adesso in
-> [collaudo-in-app-esito-parziale-pull-commessa](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md),
+> [collaudo-in-app-esito-parziale-pull-commessa](collaudo-in-app-esito-parziale-pull-commessa.md),
 > in coda, accanto alle prove dello **stesso telaio** (`run_fan_out`).
 > ⛔ Restano una prova a video, non una deduzione: una suite verde non è un
 > comportamento guardato, ed è la distinzione da cui questo cantiere è nato.
@@ -901,7 +901,7 @@ rotta. Adesso passa un id positivo e inesistente, che percorre la strada vera.
 ## 9. Come si vede che è chiuso
 
 > 🔵 **TRASLOCATO il 2026-09-08.** Il copione di questa prova vive in
-> [collaudo-in-app-esito-parziale-pull-commessa](../work-in-progress/collaudo-in-app-esito-parziale-pull-commessa.md)
+> [collaudo-in-app-esito-parziale-pull-commessa](collaudo-in-app-esito-parziale-pull-commessa.md)
 > (prove **6-8**), perché richiede una materia che oggi non esiste — nessun
 > lotto ha due documenti in errore — e un collaudo si tiene aperto accanto
 > all'applicazione, mentre un brief chiuso non lo si riapre. ⚠️ Quello che segue

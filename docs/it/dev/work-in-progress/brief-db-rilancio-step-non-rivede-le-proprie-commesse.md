@@ -6,8 +6,18 @@
 >
 > **Stato (12-09-2026):** ✅ **DB APPLICATO alle 12:44** (`20260912-12…16`
 > `EXECUTED`), **pgTAP verdi** (Tid). Sul 13338 vivo: discovery con l'identità
-> del lotto → **2** commesse, decimo numero del riepilogo → **2**. 📮 Ora il
-> **BE** (§5 + D2, §8.6); poi collaudo prove 3, 4, 5 e «Riprova step» su 13338.
+> del lotto → **2** commesse, decimo numero del riepilogo → **2**.
+> ✅ **BE + FE CONSEGNATI (12-09 pomeriggio, §9.6)**: discovery con l'identità
+> dal repository (verificato sul 13338: `[]` senza, `[34137, 36984]` con),
+> verdetto a tre addendi, drawer sul verdetto.
+> 🔴 **13:46 — «Riprova step» su 13338: D1 ha funzionato (`totale 2 · ok 2`) e
+> il lotto è uscito lo stesso senza documenti.** Secondo difetto di modello,
+> nell'orchestratore: i task a valle del pull erano `COMPLETATO` (a vuoto) e
+> il resolver li ha **saltati**. Corretto alle 13:54 (§10). ⚠️ Il 13338 è
+> compromesso come banco di prova: §10.4 dice come uscirne.
+> ℹ️ Documento **unico** dal 12-09 pomeriggio: il brief BE originale
+> (`brief-db-il-rilancio-non-rivede-le-proprie-commesse.md`, §1-§7 identici)
+> è stato cancellato e i suoi link riallineati qui.
 >
 > **In una riga:** al **rilancio** di un pull fallito, la discovery
 > `vendite.fn_list_commesse_emittibili` scarta le commesse le cui righe sono
@@ -18,7 +28,7 @@
 > cancello più a valle che non viene mai raggiunto.
 >
 > **Origine.** Collaudo in-app, prova 5 (tutto-rosso) di
-> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md),
+> [collaudo-in-app-esito-parziale-pull-commessa.md](../work-done/collaudo-in-app-esito-parziale-pull-commessa.md),
 > eseguita da Tid il 2026-09-12: ripristinate le ROOT, «Riprova step» porta il
 > lotto a `COMPLETATO` e non genera nessun documento.
 >
@@ -304,6 +314,231 @@ su L3 («letto dal caso sbagliato»).
 | --- | --- | --- |
 | ✅ | Apply `20260912-12…16` (12-09 12:44) e pgTAP verdi — `test-pull-non-prende-trattenuti-v1` (13), `test-lotto-segnalazioni-summary-v2` (7) | fatto (Tid) |
 | ⏳ | «Riprova step» su **13338** dopo la consegna BE: deve rispondere `totale 2` (la discovery, chiamata con l'identità del lotto, oggi le restituisce) | **Tid** |
-| 📮 | §5 BE: `list_commesse_emittibili(emit_batch_id)` → `p_emit_batch_id`; il guard su `lock_batch_id` **prima** della discovery; D2: leggere `esiti_stato_esecuzione_errore_count` (per nome, come gli altri) e sommarlo in `is_error` in `LottoSegnalazioniService.evaluate_lotto_status` (riga 61) — finché non lo legge, il decimo numero c'è e non decide | **BE** |
+| ✅ | §5 BE: `list_commesse_emittibili(emit_batch_id)` → `p_emit_batch_id`; il guard su `lock_batch_id` **prima** della discovery; D2: `esiti_stato_esecuzione_errore_count` letto per nome e sommato in `is_error` — fatto il 12-09 pomeriggio, §9.6 | fatto (BE) |
 | ⏳ | Collaudo: prove 3, 4, 5 da rifare dopo D1 | **Tid** |
 | ⏳ | Commit dei file DB e doc | **Tid** |
+
+---
+
+## 9. Piano di sviluppo BE / FE (12-09-2026, dopo la consegna DB)
+
+> Scritto sul codice **vivo** al 12-09 pomeriggio, DB già applicato (§8.6).
+> Ordine vincolante: **B → test BE → F → doc → collaudo**. Il FE non parte
+> prima del BE perché legge un verdetto (`blocks_next_step`) che cambia con D2.
+
+### 9.1 Il fatto che il piano deve portare a casa
+
+Con D2 il verdetto del lotto cambia forma: **`is_error` può essere vero con
+`critical_count = 0`** (documento preso in carico il cui ultimo esito è
+`ERRORE`, nessuna critica viva). Oggi tre punti del frontend **ricalcolano**
+il verdetto da `critical_count > 0` invece di leggerlo
+(`LottoDrawer.haSegnalazioniCritiche`: banner, `numera`, `avanza_step`).
+Fino a ieri le due copie coincidevano per costruzione; D2 è il giorno in cui
+si sfilano, e a mentire sarebbe quella del client: **pulsante «Avanza» acceso
+su un lotto che il runner rifiuta, nessun banner su un lotto in `ERRORE`**.
+⇒ Il piano FE non è «mostrare un numero in più»: è **smettere di ricalcolare
+il verdetto** e leggerlo dal backend, come già fa la scheda Segnalazioni
+(`v-if="segnalazioni.blocks_next_step"`).
+
+### 9.2 Backend
+
+| # | Cosa | Dove | Nota |
+| --- | --- | --- | --- |
+| **B1** | `list_commesse_emittibili(…, emit_batch_id: UUID \| None = None)` → `p_emit_batch_id => %s` come **ottavo** argomento nominato | `apps/vendite/db/commesse_repository.py:1159` | Docstring: «senza identità la discovery scarta i propri documenti — il pull DEVE passarla». ⛔ `list_emittibili_lane` **non si tocca** (§6) |
+| **B2** | Il guard `E_PIPELINE_SCOPE_INCOMPLETE` su `lock_batch_id` si sposta **prima** della discovery; la discovery riceve `emit_batch_id=context.lock_batch_id` | `pipeline_step_executor.py:1184-1250` | ⚠️ Il guard precede **anche il dry-run**: oggi il `return None` del dry-run sta fra discovery e guard, e una discovery senza identità in dry-run conterebbe **meno** commesse del giro vero — un dry-run che risponde a un'altra domanda. Il commento del guard va riscritto: i consumatori dell'identità sono **due** (discovery + emit), e il difetto che descrive («il lotto nascerebbe VUOTO senza un errore») vale identico per il primo |
+| **B3** | D2 nel lettore: decima colonna `esiti_stato_esecuzione_errore_count` letta **per nome** (come i tre del banner), nel ripiego a riga assente e nel `TypedDict` | `pipeline_repository.get_lotto_segnalazioni_summary`, `types.LottoSegnalazioniSummary` | Commento nel `TypedDict`: *un esito è un fatto su un documento preso in carico; `ESCLUSO` non conta perché è la via d'uscita* (§8.2) |
+| **B4** | D2 nel verdetto: `LottoSignalStatus` guadagna `esiti_stato_esecuzione_errore_count`; `is_error = critical > 0 OR fatture_stato_esecuzione_errore > 0 OR esiti_errore > 0`; `blocks_next_step = is_error` invariato | `lotto_segnalazioni_service.py:61` | ⭐ Il rilancio dello **stesso** step resta ammesso: `is_rilancio_stesso_step` nel runner non cambia — è proprio la via d'uscita per il caso D2 |
+| **B5** | Il verdetto **spiega** il terzo motivo: `detail`/`context` di `E_PIPELINE_LOTTO_CRITICAL` e il payload `PIPELINE_COMPLETED` portano anche `esiti_errore_count` | `pipeline_runner.py:831-850`, `~1004-1030` | ⛔ Senza, un lotto bloccato per soli esiti direbbe `critical_count=0, stato_esecuzione_errore_count=0` — un rifiuto senza motivo, cioè un bug agli occhi di chi legge il log. Il `message` («segnalazioni critiche attive») diventa «segnalazioni critiche o documenti in errore»: il **codice** resta, la reazione del client è la stessa |
+| **B6** | L'envelope di `GET lotti/<id>/segnalazioni/summary/` non cambia forma: il decimo numero viaggia dentro `summary` (dict passato intero) | `pipeline_service.fn_get_lotto_segnalazioni_summary` | Nessuna riga da scrivere, ma va **verificato** con un test: è un campo che il FE legge e che nessuno dichiara |
+
+**Test BE**
+
+| Livello | Test | Cosa prova (e il suo contrario) |
+| --- | --- | --- |
+| unit `test_pipeline_step_executor` | `test_pull_consegna_al_db_l_identita_del_giro` **esteso** | `list_commesse_emittibili` riceve `emit_batch_id == _LOCK_BATCH_GIRO`, non solo l'emit |
+| unit | `test_pull_si_ferma_se_il_giro_non_ha_identita` **esteso** | `list_commesse_emittibili.assert_not_called()` — è la **mutazione** che distingue l'ordine nuovo dal vecchio: col guard dopo la discovery il test attuale resta verde |
+| unit | dry-run senza identità **solleva** (test nuovo) | il contrario del comportamento di oggi, dichiarato in B2 |
+| unit `test_lotto_segnalazioni_service` | `..._blocks_when_esiti_stato_esecuzione_errore` (nuovo); i tre esistenti aggiornati col decimo campo nel mock | `is_error`/`blocks_next_step` veri con `critical = 0`; falsi con tutto a zero |
+| unit `test_pipeline_runner` | il `context` di `E_PIPELINE_LOTTO_CRITICAL` porta `esiti_errore_count`; il lotto esce `ERRORE` a fine giro con soli esiti in errore | B5 e B4 dal lato del runner |
+| unit `test_pipeline_api` (o gemello) | l'envelope del summary contiene `summary.esiti_stato_esecuzione_errore_count` | B6 — *un campo emesso e non dichiarato non si nota, perché niente fallisce* |
+| **DB provvisto** `apps/vendite/tests/db/test_discovery_riceve_l_identita_del_giro.py` (nuovo, `richiedi_db_provvisto` + `apri_contesto_operatore`, in transazione annullata) | (1) `list_commesse_emittibili(emit_batch_id=uuid4())` **lega** sulla funzione vera (nessun «function is not unique»: il `DROP` della firma a 7 è ciò che rende univoca la chiamata per nome); (2) `get_lotto_segnalazioni_summary` di un lotto qualunque torna la decima chiave. | Il binding non lo vede nessun mock: è la regola già pagata sulle rinomine SQL. ⛔ Non ripete P-5-bis/ter (13 pgTAP): il percorso discovery→emit è provato lì, qui si prova che il **Python arrivi** a quel percorso |
+
+### 9.3 Frontend — `LottoDrawer.vue`
+
+| # | Cosa | Dove | Nota |
+| --- | --- | --- | --- |
+| **F1** | Il gate di `numera` e `avanza_step` legge **`segnalazioni.blocks_next_step`**, non `critical_count > 0` | `LottoDrawer.vue:797`, `:815` | ⛔ È la sede unica del verdetto: il DB non conosce le segnalazioni, il BE le somma agli esiti, il FE **rende**. `haSegnalazioniCritiche` resta solo dove parla davvero di critiche (etichetta della scheda, riga 539); il tooltip `blocca_step` già dice «le segnalazioni bloccano» e va allargato («…o documenti in errore») |
+| **F2** | Il banner compare su `blocks_next_step` (`v-if`, riga 1301) e la frase guadagna il **ramo D2**: `documenti = 0 ∧ giro = 0 ∧ esiti_errore > 0` → chiave nuova `vendite.lotti.segnalazioni_bloccanti_esiti` (plurale, `it` + `en`): *«Il giro è fermo per {n} documento/i preso/i in carico il cui ultimo tentativo è fallito e che nessun rilancio ha ripreso: si corregge la causa e si rilancia lo step, oppure si toglie dal giro»* | `fraseBanner`, riga 440 | ⛔ I conteggi **non si sommano**: un documento con critica viva ha anche l'esito `ERRORE` (sovrapposizione sconosciuta al client). Regola: se ci sono critiche vive parlano **quelle** (segnale più fresco, frasi esistenti invariate); il ramo nuovo scatta **solo** quando le critiche sono zero — che è esattamente il caso che D2 esiste per rendere visibile |
+| **F2-bis** | La **scelta del ramo** di `fraseBanner` esce dal componente in una funzione **pura**: entrano i numeri (`critiche`, `documenti`, `giro`, `esitiErrore`, `rimediabile`), esce `{chiave, argomenti}`; il componente chiama `t()` su ciò che riceve | nuovo `src/vendite/_shared/lotti/ramoBannerLotto.js` (+ `.spec.js`) | ⭐ Deciso con Tid il 12-09: **cinque** rami su **due** assi (rimediabile × specie del blocco) sono il posto in cui un `if` sbagliato non fallisce — mostra la frase sbagliata, e si vede solo quando capita quel caso a video. Una spec Vitest **un caso per ramo** più i limiti (tutto a zero; congelato con soli esiti). Stesso modello delle `fn_check_*`: la regola in una sede, senza effetti collaterali. ⛔ La funzione non conosce `t`, né il lotto, né lo store: numeri dentro, decisione fuori |
+| **F3** | Il link del banner atterra sulla scheda **giusta per il ramo**: critiche → «Segnalazioni» filtrata sulle critiche (oggi); ramo D2 → **«Presi in carico»** (`gruppi`, la lista degli esiti), dove la riga in `ERRORE` porta `ErroreRigaInfo` e il verbo «Togli dal giro»; fatture in errore → «Documenti» | `apriSegnalazioni`, riga 570 | ⛔ Nel ramo D2 la scheda Segnalazioni sarebbe **vuota**, e anche «Documenti»: se il pull è fallito una fattura non è mai nata. Un link che porta su un elenco senza quella riga è il vicolo cieco che le linee guida vietano — ⚠️ corretto in corso d'opera: la prima stesura diceva «Documenti» |
+| **F4** | Giro **congelato** (`giroRimediabile = false`): la frase al passato usa `nCritiche`; con zero critiche e soli esiti direbbe «0 segnalazioni critiche». Chiave gemella `segnalazioni_giro_chiuso_esiti` sul numero degli esiti | riga 456 | Stessa regola di F2: critiche se ci sono, esiti altrimenti |
+| **F5** | Lista Lotti (`useLottoAzioni`, kebab): **nessuna modifica** — verificato il 12-09: né il composable né `LottiListView` leggono `critical_count`/`blocks_next_step` (la riga di lista non ha il summary), il runner rifiuta da sé | `useLottoAzioni.js` | Il gate nel drawer (F1) resta l'**unica** copia lato client, ed è una lettura, non un calcolo |
+
+**Presidio FE.** Due livelli: la spec di **F2-bis** prova i cinque rami della
+frase (un caso ciascuno, senza montare il drawer); il collaudo in-app su
+**13338** (§8.6) prova che il ramo D2 arrivi a video con i numeri veri.
+
+### 9.4 Documentazione
+
+| Doc | Cosa |
+| --- | --- |
+| `docs/it/backend/vendite/manual/api_lotto_segnalazioni_summary.md` | decimo campo di `summary`, la regola di `is_error` con i **tre** addendi, la nota «`ESCLUSO` non conta» |
+| `docs/it/dev/api.md` | niente: l'envelope non cambia forma |
+| `collaudo-in-app-esito-parziale-pull-commessa.md` | prove 3, 4, 5 da rifare; esito di «Riprova step» su 13338 (deve dire `totale 2`) |
+| questo brief | §8.6 aggiornato; a collaudo chiuso → `work-done/` |
+
+### 9.5 Ordine e chiusura
+
+1. B1 → B2 → test unit del pull → **`kill -HUP` sul master gunicorn** (nessun autoreload in dev);
+2. «Riprova step» su **13338** (Tid): atteso `totale 2 · ok 2` — se `totale 0`, D1 non è arrivato al percorso e si torna a B2 prima di toccare altro;
+3. B3 → B4 → B5 → test service/runner/api → test DB provvisto;
+4. F1 → F2 + F2-bis (spec verde) → F3 → F4 → `check_i18n_keys.py` verde;
+5. doc §9.4; prove 3, 4, 5 del collaudo; brief in `work-done/`.
+
+⛔ **Cosa non si fa** (in aggiunta al §6): non si tiene `haSegnalazioniCritiche`
+come gate «per compatibilità» accanto a `blocks_next_step` — due gate sono la
+copia che questo piano toglie.
+
+### 9.6 Consegnato (12-09-2026, pomeriggio)
+
+| # | Dove | Nota |
+| --- | --- | --- |
+| B1 | `commesse_repository.list_commesse_emittibili(emit_batch_id=…)` → `p_emit_batch_id => %s::uuid` | docstring col perché e il divieto di `None` in pipeline |
+| B2 | `pipeline_step_executor._handle_pull_attivita_da_commessa_task`: guard **prima** della discovery (e del `return` dry-run), `emit_batch_id=context.lock_batch_id` alla discovery | commento riscritto sui **due** consumatori dell'identità |
+| B3 | `pipeline_repository.get_lotto_segnalazioni_summary` + `types.LottoSegnalazioniSummary`: decima colonna per nome, nel ripiego, nel `TypedDict` | — |
+| B4 | `LottoSegnalazioniService`: `is_error` a tre addendi, `LottoSignalStatus.esiti_stato_esecuzione_errore_count` | `blocks_next_step = is_error` invariato; il rilancio dello stesso step resta ammesso |
+| B5 | `pipeline_runner`: `E_PIPELINE_LOTTO_CRITICAL` porta `esiti_errore_count` in `detail` e `context`, messaggio «segnalazioni critiche **o documenti in errore**»; `PIPELINE_COMPLETED` porta il terzo conteggio | codice invariato |
+| Test BE | `test_pipeline_step_executor` (23e/23f estesi, 23g nuovo: il guard precede la discovery **e** il dry-run dell'handler), `test_lotto_segnalazioni_service` (5, fixture a dieci chiavi), `test_pipeline_runner` (49: blocco per soli esiti, col motivo nel context), `test_pipeline_repository` (tupla a dieci, colonna chiesta per nome), `test_pipeline_service` (5: l'envelope porta il decimo numero) | `apps.vendite.tests`: **1994 verdi** |
+| Test DB provvisto | `apps/vendite/tests/db/test_discovery_riceve_l_identita_del_giro.py` (3): la firma a 8 lega, è **una sola** in `pg_proc`, il riepilogo legge la decima chiave dalla funzione vera | 3/3 con `ZEROERP_TEST_DB_E2E=1` |
+| Verifica D1 | discovery dal repository sul **13338** in transazione annullata: senza identità `[]`, con identità **`[34137, 36984]`** | è il punto 2 del §9.5, fatto senza aspettare il click |
+| F1 | `LottoDrawer`: `lottoFermo = blocks_next_step === true` (fail-closed) governa banner, `numera`, `avanza_step`; `haSegnalazioniCritiche`/`nCritiche` **tolti** (zero residui) | — |
+| F2 + F2-bis | `src/vendite/_shared/lotti/ramoBannerLotto.js` (`scegliRamoBanner`, `conteggiDaSegnalazioni`) + `.spec.js` **15 casi** | ⭐ totale sul verdetto: rami per critiche di documento / del giro / del canale fattura / esiti in errore / fatture in errore, su entrambi gli assi; `null` → frase generica `blocca_step` (fail-visible su un quarto addendo) |
+| F3 | il link del banner atterra su `ramo.scheda`: Segnalazioni (filtrata) per le critiche, **Presi in carico** (`gruppi`) per gli esiti in errore, Documenti (`fatture`) per le fatture in errore | verificato sui `TabPanel`: gli esiti stanno nella lista `vendite.lotto_gruppi`, non fra le fatture |
+| F4 | giro congelato: chiavi gemelle `segnalazioni_giro_chiuso_esiti` / `_fatture` | mai «0 segnalazioni critiche» |
+| i18n | 4 chiavi nuove `it`+`en` (`segnalazioni_bloccanti_esiti`, `_fatture`, `segnalazioni_giro_chiuso_esiti`, `_fatture`); `blocca_step` allargato («…o i documenti in errore») | `check_i18n_keys.py` verde |
+| Doc | `api_lotto_segnalazioni_summary.md` (decimo campo, verdetto a tre addendi, regola «il client legge, non ricalcola»); catalogo BB FE (`scegliRamoBanner`) | — |
+| Runtime | `kill -HUP` sul master gunicorn alle 13:24:57, worker nuovi; `vite build` verde | in-app pronto |
+
+### 9.7 Revisione critica del consegnato (12-09, richiesta da Tid)
+
+Cercati bug, codice fragile o duplicato, valori cablati. Trovati e corretti:
+
+| # | Cosa | Correzione |
+| --- | --- | --- |
+| 1 | `get_lotto_segnalazioni_summary`: le dieci chiavi scritte **tre** volte (SELECT, ripiego, mapping `row[9]`) — la forma posizionale che il commento della funzione DB dichiara pericolosa | i nomi vengono dal cursore (BB `row_to_dict`); la SELECT è la sola sede; il test del repository dichiara i nomi nell'ordine della SELECT |
+| 2 | `pipeline_runner`: la nota «Step completato con **fatture** in errore» scritta **due** volte (`stato_operativo` + `errore` del giro) e **falsa** dopo D2 — un lotto fermato da un pull fallito non ha fatture | `_NOTA_STEP_CON_ERRORI`, una sede, «segnalazioni o documenti in errore» |
+| 3 | FE: gli id delle schede (`'gruppi'`, `'fatture'`, `'segnalazioni'`) scritti a mano nel template del drawer **e** nella funzione pura — una rinomina lascia la pagina senza pannello, senza errore | `LOTTO_SCHEDE` in `vendite/constants.js`, usato da `<Tab>`/`<TabPanel>`, dal reset alla chiusura, dal link del banner e da `scegliRamoBanner`; tolte le tre costanti `SCHEDA_*` (erano alias: un nome solo) |
+| 4 | test su DB provvisto: data cablata (`date(2026, 9, 1)`) e `skipTest` se non c'è nessun lotto — in CI, dove il DB nasce vuoto, **verde per sottrazione** | primo del mese corrente; il lotto si **costruisce** (`max(id)+1`, la funzione non solleva su un id inesistente) e si asserisce lo zero **e** l'insieme intero delle dieci chiavi contro il `TypedDict` |
+| 5 | `test_pipeline_service.py` su `unittest.TestCase`: un mock dimenticato avrebbe parlato col DB di sviluppo restando verde | `SimpleTestCase` — i cinque test passano, quindi non toccano il DB |
+
+⚠️ **Non corretto, da segnalare al DB**: a catalogo (`messaggi_errore.csv`)
+`E_PIPELINE_LOTTO_CRITICAL` dice ancora «Lotto con segnalazioni critiche.», e
+il ripiego BE (`error_messages_fallback.py`) lo ricopia. Nell'envelope vince il
+messaggio Python (codice non tecnico), quindi a video esce la frase nuova; ma
+catalogo e ripiego vanno allineati a «…o documenti in errore» — la riga CSV è
+del team DB, il ripiego segue.
+
+**Resta a Tid**: «Riprova step» su 13338 (atteso `totale 2 · ok 2`, lotto
+`COMPLETATO`, esiti `COMPLETED`); prove 3, 4, 5 del collaudo; commit; brief in
+`work-done/`.
+
+---
+
+## 10. Secondo difetto — il rilancio non ripercorre la catena (12-09, 13:46)
+
+### 10.1 Il fatto
+
+«Riprova step» su **13338** alle 13:46:01, col codice nuovo (gunicorn riavviato
+alle 13:45:33): task run **4055** `pull_attivita_da_commessa` tentativo 2 →
+`COMPLETATO · totale 2 · ok 2 · falliti 0`, esiti 1923/1924 → `COMPLETED`.
+**D1 ha funzionato.** Ma dopo 4055 non c'è nessun altro task run: il lotto è
+`COMPLETATO` con **zero fatture**.
+
+### 10.2 Dov'è il difetto — sul modello
+
+Lo step DRAFT è una **catena** di quattro task: `pull` → `select_attivita` →
+`generate_fatture_righe` → `snapshot_indirizzi`. Al primo giro (11:23) il pull
+ha fallito e i tre a valle sono girati **a vuoto** e chiusi `COMPLETATO`
+(4038, 4039, 4040). `fn_resolve_lotto_task_execution_mode` decide **per
+task**, guardando la sola ultima corsa di quel task: `COMPLETATO → SKIP`. Al
+rilancio il pull è stato rieseguito (`RESUME`) e i tre a valle **saltati** come
+«già fatti» — su un input che il pull aveva appena cambiato. Le due attività
+emesse (AF 26829, 29693, marchio del lotto) non sono mai state lockate né
+fatturate.
+
+⭐ Il resolver non è sbagliato: risponde alla domanda che gli si fa. La domanda
+che manca — *«qualcosa a monte è stato eseguito in questo giro?»* — la sa solo
+l'orchestratore, ed è lì che vive la regola.
+
+### 10.3 La correzione (BE, 13:54)
+
+`PipelineStepExecutor.execute_step`: **a valle di un task eseguito in questo
+giro nessun task si salta**. `_run_task` ritorna se ha eseguito l'handler;
+il ciclo porta il flag `a_valle_di_task_eseguito` e uno `SKIP` del resolver
+si onora solo se nulla a monte è stato eseguito. Un task a valle rieseguito
+apre un **nuovo tentativo** (`fn_start_lotto_task_run` conta `max+1`, nessun
+guard su `COMPLETATO`).
+
+⚠️ È sicuro perché i task a valle sono **idempotenti per costruzione**:
+`fn_select_attivita_fatturabili` prende solo le AF non ancora lockate,
+`generate_fatture_righe` legge solo le AF non fatturate con testate
+get-or-create, lo snapshot salta le fatture già servite. Un task a valle non
+idempotente sarebbe un difetto suo, non una ragione per saltarlo.
+
+Presidio: `test_pipeline_step_executor` 14a (pull `RESUME` + select `SKIP` ⇒
+il select **esegue** e apre il suo task run) e 14b, la controprova (tutto
+`SKIP` ⇒ niente esegue — la regola non degenera in «non saltare mai»).
+`apps.vendite.tests`: **2013 verdi**. Gunicorn ricaricato alle 13:54:31.
+
+📮 **Per il DB, da valutare**: la policy `resume_mode = RESUME_STEP` esiste a
+catalogo (`generate_fatture_righe`) e **nessuno la implementa** — il resolver
+la usa solo per distinguere `RESUME` da `RESET_REQUIRED`. Con la regola di
+catena nell'orchestratore è un valore dichiarato e morto: o gli si dà il
+mestiere che il nome promette, o si ritira.
+
+### 10.4 Il 13338 com'è adesso, e come uscirne
+
+| | |
+| --- | --- |
+| lotto | `COMPLETATO`, stato_doc `DRAFT`, tutti e quattro i task `COMPLETATO` |
+| AF 26829 (comm. 34137), 29693 (comm. 36984) | `emit_batch_id` = marchio del lotto, **`lock_batch_id` NULL**, non fatturate |
+| righe di commessa 64556, 70299 | `stato_emissione = EMESSA` — classe `EMESSA`, `trattenuta_da_lotti = {13338}` |
+| azioni | DB: solo **Annulla**; FE: «Avanza» (porterebbe a EMESSA con zero fatture) |
+
+Un nuovo «Riprova step» sul 13338 **non farebbe niente**: con tutti i task
+`COMPLETATO` nulla a monte viene eseguito e la regola nuova non scatta — è il
+comportamento corretto su un lotto davvero finito, e il 13338 *sembra* finito.
+
+⇒ **Strada**: «Annulla» il 13338, poi **rifare la prova 5 su un lotto nuovo**
+(guasta le ROOT, giro → `ERRORE`, ripristina, «Riprova step»: atteso pull
+`totale 2 · ok 2` **e** due fatture in «Documenti»).
+⚠️ Le due righe di commessa **non tornano `NON_EMESSA` con l'annullo**, e va
+saputo prima di stupirsi: `fn_annulla_lotto_da_draft` libera le AF via
+`fn_cleanup_fatture_by_ids` **per `lock_batch_id`** (il lock del `select`), e
+queste due un lock non l'hanno mai avuto — sono emesse, non prese in carico.
+Compariranno fra i **residui** della Lente 1: «**Riporta da emettere**» le
+rimette `NON_EMESSA`, e da lì la prova 5 riparte.
+
+📮 **Per il DB — terzo rilievo, sul modello, e non è teorico**: fra il pull e
+il `select` esiste una finestra in cui un'AF è **emessa** (`emit_batch_id`) ma
+**non lockata** (`lock_batch_id`). Un giro che cade lì — o, come qui, un
+`select` saltato — lascia AF che nessuna delle tre porte di reset (`annulla`,
+`riporta_a_draft`, `elimina_fattura`) ripristina, perché tutte liberano per
+`lock_batch_id`. **Verificato il 12-09 alle 15:31 sul 13338 annullato da Tid**:
+righe di commessa rimaste `EMESSA`, AF libere col marchio del lotto morto, e
+**«Riporta da emettere» le rifiuta** (`E_ATTIVITA_GIA_DA_EMETTERE`,
+`ATTIVITA_GIA_DISPONIBILE`: `fn_check_attivita_riportabile_da_emettere` guarda
+il solo livello AF, che risultava già libero). I due livelli erano divergenti —
+esattamente il caso che il commento di `fn_libera_attivita_fatturabili`
+descrive («un livello torna in coda e l'altro no, in silenzio») — e nessun giro
+le avrebbe mai riprese: il pull le vede `EMESSA`, il `select` di un lotto nuovo
+non trova il suo marchio. Riparate a mano con la primitiva
+`fn_libera_attivita_fatturabili(ARRAY[26829, 29693])` → `(2, 2)`, righe
+`NON_EMESSA`, classe `PRONTA`.
+Due cose da valutare: (1) `fn_cleanup_fatture_by_ids` prenda anche
+`af.emit_batch_id = p_lock_batch_id AND af.fatturato IS FALSE AND
+af.lock_batch_id IS NULL` — è la stessa identità, e il reset globale «libera
+anche le attività agganciate al lotto che non sono mai diventate riga», che è
+esattamente il loro caso; (2) il check «riportabile» riconosca la divergenza
+AF libera / riga `EMESSA` come **riportabile**, non come «già disponibile»:
+oggi lo stato rotto è irraggiungibile da ogni verbo.

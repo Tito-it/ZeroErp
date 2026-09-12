@@ -27,6 +27,18 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
 # Orchestratore applicativo della pipeline lotto vendite.
 
+# ⭐ LA NOTA DEL LOTTO FERMO A FINE STEP, in una sede sola. Fino al 2026-09-12
+#    era scritta DUE volte («…con fatture in errore»: nello `stato_operativo`
+#    del lotto e nell'`errore` del giro) ed era diventata FALSA con D2: un lotto
+#    fermato da un pull fallito non ha nessuna fattura — ha documenti presi in
+#    carico il cui ultimo esito e' ERRORE. La frase nomina le tre specie del
+#    verdetto senza sceglierne una: quale sia lo dice il riepilogo.
+_NOTA_STEP_CON_ERRORI = (
+    "Step completato con segnalazioni o documenti in errore: "
+    "correggere e rilanciare lo step"
+)
+
+
 @dataclass(frozen=True)
 class LottoPipelineParams:
     lotto_id: int | None = None
@@ -830,14 +842,23 @@ class LottoPipelineRunner:
                 )
                 lotto_signal_status = self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
                 if lotto_signal_status.blocks_next_step and not is_rilancio_stesso_step:
+                    # ⚠️ Il verdetto ha TRE addendi (dal 2026-09-12 anche i
+                    # documenti il cui ultimo esito e' ERRORE, D2), e il rifiuto
+                    # li nomina tutti e tre: un lotto bloccato per soli esiti
+                    # che dicesse `critical_count=0, stato_esecuzione=0` sarebbe
+                    # un rifiuto senza motivo — cioe' un bug, agli occhi di chi
+                    # legge il log. Il CODICE resta: la reazione e' la stessa
+                    # (il rilancio dello stesso step e' la via d'uscita).
                     ErrorManager.raise_error(
                         code="E_PIPELINE_LOTTO_CRITICAL",
-                        message="Lotto bloccato per segnalazioni critiche attive.",
+                        message="Lotto bloccato per segnalazioni critiche o documenti in errore.",
                         detail=(
-                            "Correggere le segnalazioni critical prima di proseguire: "
+                            "Correggere le segnalazioni critical e i documenti in "
+                            "errore prima di proseguire: "
                             f"lotto_id={lotto_id}"
                             f", critical_count={lotto_signal_status.critical_count}"
                             f", stato_esecuzione_errore_count={lotto_signal_status.fatture_stato_esecuzione_errore_count}"
+                            f", esiti_errore_count={lotto_signal_status.esiti_stato_esecuzione_errore_count}"
                         ),
                         context={
                             "lotto_id": lotto_id,
@@ -845,6 +866,7 @@ class LottoPipelineRunner:
                             "warning_count": lotto_signal_status.warning_count,
                             "attention_count": lotto_signal_status.attention_count,
                             "stato_esecuzione_errore_count": lotto_signal_status.fatture_stato_esecuzione_errore_count,
+                            "esiti_errore_count": lotto_signal_status.esiti_stato_esecuzione_errore_count,
                             "summary": lotto_signal_status.summary,
                         },
                         function_name="vendite.run_lotto_pipeline",
@@ -1004,11 +1026,7 @@ class LottoPipelineRunner:
                 stato_finale = self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
                 step_con_errori = stato_finale.is_error
                 if step_con_errori:
-                    self.repository.set_lotto_job_stato(
-                        lotto_id,
-                        "ERRORE",
-                        "Step completato con fatture in errore: correggere e rilanciare lo step",
-                    )
+                    self.repository.set_lotto_job_stato(lotto_id, "ERRORE", _NOTA_STEP_CON_ERRORI)
                 else:
                     self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
                 # ⚠️ Nel telaio (BE-7): dentro l'`atomic` del giro.
@@ -1026,6 +1044,12 @@ class LottoPipelineRunner:
                                     "critical_count": stato_finale.critical_count,
                                     "stato_esecuzione_errore_count": (
                                         stato_finale.fatture_stato_esecuzione_errore_count
+                                    ),
+                                    # Il terzo addendo (D2): senza, un giro
+                                    # chiuso ERRORE per soli esiti direbbe
+                                    # «con_errori: true» e due zeri.
+                                    "esiti_errore_count": (
+                                        stato_finale.esiti_stato_esecuzione_errore_count
                                     ),
                                 }
                                 if step_con_errori
@@ -1246,10 +1270,7 @@ class LottoPipelineRunner:
                 motivo_stop = "BLOCCATO_CRITICITA"
                 errore = {
                     "code": "E_PIPELINE_LOTTO_CRITICAL",
-                    "message": (
-                        "Step completato con fatture in errore: correggere e "
-                        "rilanciare lo step."
-                    ),
+                    "message": f"{_NOTA_STEP_CON_ERRORI}.",
                     "detail": None,
                 }
                 break

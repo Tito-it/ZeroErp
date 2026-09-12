@@ -348,8 +348,33 @@ class PipelineStepExecutor:
         )
 
         # Esegue in ordine i task definiti nel JSON processi/rollback.
+        #
+        # ⭐ I TASK DI UNO STEP SONO UNA CATENA, e il rilancio la deve percorrere
+        #    da dove riparte (2026-09-12, LTF-0010973 / lotto 13338). Il resolver
+        #    DB (`fn_resolve_lotto_task_execution_mode`) decide PER TASK guardando
+        #    la sola ultima corsa di quel task: `COMPLETATO → SKIP`. Ma un task
+        #    che oggi viene RIESEGUITO cambia l'input di quelli che lo seguono:
+        #    al primo giro il pull era fallito, `select_attivita`,
+        #    `generate_fatture_righe` e `snapshot_indirizzi` erano girati A
+        #    VUOTO e chiusi COMPLETATO; al rilancio il pull ha ripreso le due
+        #    commesse (`totale 2 · ok 2`) e i tre a valle sono stati SALTATI
+        #    come «gia' fatti» — le attivita' emesse non sono mai diventate
+        #    fatture, e il lotto e' uscito COMPLETATO con zero documenti.
+        # ⇒ REGOLA: a valle di un task eseguito in QUESTO giro nessun task si
+        #    salta. Il `COMPLETATO` di un task a valle vale finche' tutto cio'
+        #    che lo precede e' stato saltato; il primo task eseguito lo rende
+        #    stantio. E' un fatto del giro in corso, che solo l'orchestratore
+        #    conosce: per questo la regola sta qui e non nel resolver, che
+        #    risponde su un task alla volta senza sapere dell'ordine.
+        # ⚠️ Rieseguire i task a valle e' SICURO perche' sono idempotenti per
+        #    costruzione: `fn_select_attivita_fatturabili` prende solo le AF non
+        #    ancora lockate, `generate_fatture_righe` solo le AF non ancora
+        #    fatturate con testate get-or-create, lo snapshot indirizzi salta le
+        #    fatture gia' servite. Un task a valle NON idempotente sarebbe un
+        #    difetto suo, non una ragione per saltarlo.
+        a_valle_di_task_eseguito = False
         for process in processi:
-            self._run_task(
+            eseguito = self._run_task(
                 lotto_id=lotto_id,
                 stato_doc_fiscale_id=stato_doc_fiscale_id,
                 process=process,
@@ -358,7 +383,9 @@ class PipelineStepExecutor:
                 dry_run=dry_run,
                 pipeline_id=pipeline_id,
                 correlation_id=correlation_id,
+                a_valle_di_task_eseguito=a_valle_di_task_eseguito,
             )
+            a_valle_di_task_eseguito = a_valle_di_task_eseguito or eseguito
 
     # Scopo: Verifica le dipendenze d'ordine di `_TASK_ORDER_DEPENDENCIES` sulla
     #        sequenza di task dello step, PRIMA che il primo task scriva.
@@ -408,7 +435,13 @@ class PipelineStepExecutor:
                         log_to_db=True,
                     )
 
-    # Scopo: Gestisce il task di step con logging fase, risoluzione handler via registry e gestione errori applicativi
+    # Scopo: Gestisce il task di step con logging fase, risoluzione handler via registry e gestione errori applicativi.
+    #        Ritorna `True` se il task e' stato ESEGUITO (handler invocato), `False`
+    #        se e' stato saltato o non ha un handler: e' il segnale con cui
+    #        `execute_step` sa che i task a valle non possono piu' essere saltati.
+    # ⚠️ `a_valle_di_task_eseguito`: se vero, uno `SKIP` del resolver NON si onora
+    #        — il `COMPLETATO` che lo motiva e' precedente a un task a monte
+    #        rieseguito in questo giro, quindi e' stantio (vedi `execute_step`).
     def _run_task(
         self,
         lotto_id: int,
@@ -419,7 +452,8 @@ class PipelineStepExecutor:
         dry_run: bool,
         pipeline_id: int | None = None,
         correlation_id: str | None = None,
-    ) -> None:
+        a_valle_di_task_eseguito: bool = False,
+    ) -> bool:
         task = str(process.get("task", "")).strip()
         fase = process.get("fase") or "Esecuzione step"
         params = process.get("params") or {}
@@ -441,7 +475,7 @@ class PipelineStepExecutor:
         )
 
         if task in TASK_SENZA_HANDLER:
-            return
+            return False
 
         handler_code = self.repository.get_task_handler_code(
             task_code=task,
@@ -449,7 +483,7 @@ class PipelineStepExecutor:
         )
 
         if dry_run:
-            return
+            return False
 
         task_handler = self.handler_registry.get(handler_code)
         if task_handler is None:
@@ -490,8 +524,12 @@ class PipelineStepExecutor:
             exec_mode = self.repository.resolve_lotto_task_execution_mode(
                 lotto_id, pipeline_id, stato_doc_fiscale_id, task
             )
-            if exec_mode.execution_mode == "SKIP":
-                return
+            # ⛔ Lo SKIP vale solo se NIENTE a monte e' stato eseguito in questo
+            #    giro: altrimenti il COMPLETATO che lo motiva e' stantio e il
+            #    task si rifa' (nuovo tentativo), come se il resolver avesse
+            #    detto RUN. Regola e motivo in `execute_step`.
+            if exec_mode.execution_mode == "SKIP" and not a_valle_di_task_eseguito:
+                return False
             if exec_mode.execution_mode == "RESET_REQUIRED":
                 self.error_logger.log_error(
                     scope="LOTTO",
@@ -609,6 +647,8 @@ class PipelineStepExecutor:
                 )
             else:
                 self.repository.complete_lotto_task_run(task_run_id)
+        # Eseguito: da qui in poi, nello step, nessuno SKIP e' piu' onorabile.
+        return True
 
     # Scopo: Tenta di marcare il task run in errore senza mascherare l'eccezione originale.
     # ⚠️ Il codice si legge da DUE sorgenti, e la seconda non e' un di piu':
@@ -1198,6 +1238,51 @@ class PipelineStepExecutor:
             lotto_id=lotto_id,
             stato_doc_fiscale_id=stato_doc_fiscale_id,
         )
+
+        # ⛔ SENZA L'IDENTITA' DEL GIRO SI FERMA QUI, e non e' difensivo.
+        # L'identita' la consumano DUE cancelli, e per tutti e due il difetto
+        # e' lo stesso: silenzioso.
+        #   - la DISCOVERY (`fn_list_commesse_emittibili`, `20260912-15`): senza
+        #     identita' scarta i PROPRI documenti — al rilancio di un pull
+        #     fallito risultano `TRATTENUTA` dal lotto che sta riprovando — e
+        #     il giro visita zero commesse, chiude `COMPLETATO` e ritira le
+        #     proprie segnalazioni senza aver emesso niente (LTF-0010972,
+        #     2026-09-12, brief `brief-db-rilancio-step-non-rivede-le-proprie-
+        #     commesse`);
+        #   - l'EMIT: firmerebbe NULL, `fn_select_attivita_fatturabili`
+        #     filtrerebbe su un marchio che nessuna riga porta, e il lotto
+        #     nascerebbe VUOTO senza un errore.
+        # In entrambi i casi il risultato e' indistinguibile, a video, da un
+        # mese senza lavoro. Fra un giro che non parte e un giro che non emette
+        # niente in silenzio, il primo e' l'unico recuperabile.
+        # ⚠️ Il guard sta PRIMA della discovery e PRIMA del dry-run — fino al
+        # 2026-09-12 stava dopo entrambi. Con la discovery che legge l'identita'
+        # un guard a valle non fermerebbe niente: la discovery chiamata con NULL
+        # non fallisce, risponde a un'ALTRA domanda («cosa vedrebbe un chiamante
+        # fuori pipeline»), e un dry-run senza identita' conterebbe MENO
+        # commesse del giro vero.
+        # ℹ️ `lock_batch_id` e' NOT NULL sulla tabella: se qui e' None il
+        # contesto non e' stato caricato, che e' un difetto di programma e non
+        # un dato mancante. Codice riusato (`E_PIPELINE_SCOPE_INCOMPLETE`, gia'
+        # a policy DATO_ERRATO) invece di uno nuovo: dice esattamente questo.
+        if not context.lock_batch_id:
+            ErrorManager.raise_error(
+                code="E_PIPELINE_SCOPE_INCOMPLETE",
+                message="Contesto lotto senza identita' del giro.",
+                detail=(
+                    "lock_batch_id assente sul lotto "
+                    f"{lotto_id}: la discovery scarterebbe i propri documenti, "
+                    "il pull non potrebbe firmare le righe e il giro "
+                    "emetterebbe zero fatture senza errore."
+                ),
+                context={"lotto_id": lotto_id, "task": task},
+                function_name=(
+                    "vendite.pipeline_step_executor."
+                    "_handle_pull_attivita_da_commessa_task"
+                ),
+                log_to_db=True,
+            )
+
         commessa_ids = self.commesse_repository.list_commesse_emittibili(
             competenza_mese=context.competenza_mese,
             utility_id=context.utility_id,
@@ -1210,6 +1295,12 @@ class PipelineStepExecutor:
             # uno dei gruppi richiesti (persistito sul lotto, non passato qui
             # dal chiamante — vedi LottoContext.gruppi).
             gruppi=context.gruppi,
+            # ⭐ LA STESSA IDENTITA' CHE RICEVE L'EMIT, qui sotto: UN dato a DUE
+            # funzioni (D1). Con l'identita' la discovery vede i PROPRI
+            # documenti trattenuti come `PRONTA` e visita la commessa; senza,
+            # l'auto-esclusione dell'emit restava corretta e irraggiungibile,
+            # perche' chi l'avrebbe chiamata non arrivava mai a farlo.
+            emit_batch_id=context.lock_batch_id,
         )
         if dry_run:
             # ⚠️ Il ritorno anticipato precede il giro: in dry-run non esiste
@@ -1217,33 +1308,6 @@ class PipelineStepExecutor:
             # (Seconda cintura: `_run_task` esce gia' prima di invocare questo
             # handler — vedi il test dedicato.)
             return None
-
-        # ⛔ SENZA L'IDENTITA' DEL GIRO SI FERMA QUI, e non e' difensivo.
-        # Il pull firmerebbe NULL, `fn_select_attivita_fatturabili` filtrerebbe
-        # su un marchio che nessuna riga porta, e il lotto nascerebbe VUOTO
-        # senza un errore: indistinguibile, a video, da un mese senza lavoro.
-        # Fra un giro che non parte e un giro che non emette niente in
-        # silenzio, il primo e' l'unico recuperabile.
-        # ℹ️ `lock_batch_id` e' NOT NULL sulla tabella: se qui e' None il
-        # contesto non e' stato caricato, che e' un difetto di programma e non
-        # un dato mancante. Codice riusato (`E_PIPELINE_SCOPE_INCOMPLETE`, gia'
-        # a policy DATO_ERRATO) invece di uno nuovo: dice esattamente questo.
-        if not context.lock_batch_id:
-            ErrorManager.raise_error(
-                code="E_PIPELINE_SCOPE_INCOMPLETE",
-                message="Contesto lotto senza identita' del giro.",
-                detail=(
-                    "lock_batch_id assente sul lotto "
-                    f"{lotto_id}: il pull non potrebbe firmare le righe e il "
-                    "giro emetterebbe zero fatture senza errore."
-                ),
-                context={"lotto_id": lotto_id, "task": task},
-                function_name=(
-                    "vendite.pipeline_step_executor."
-                    "_handle_pull_attivita_da_commessa_task"
-                ),
-                log_to_db=True,
-            )
 
         # Isolamento per commessa: il BB apre un savepoint per ogni emit, cattura
         # l'errore e prosegue. Il diario per-commessa (log di lotto) e' l'unica

@@ -56,6 +56,20 @@ export const STATO_ESECUZIONE_LOTTO = Object.freeze({
   ESCLUSO: 'ESCLUSO',
 })
 
+// Le schede del drawer del lotto (`LottoDrawer`), per `value` dei `Tabs`.
+// ⭐ Vivono qui e non nel template perché sono un CONTRATTO fra due sedi: il
+// template le dichiara, e `scegliRamoBanner` (la funzione pura del banner)
+// decide su QUALE atterra il link del lotto fermo. Scritte a mano in entrambe,
+// una rinomina lascerebbe la pagina SENZA PANNELLO e senza errore — il caso
+// dei tab condizionali di frontend-standards §Pattern Tab-View.
+export const LOTTO_SCHEDE = Object.freeze({
+  DOCUMENTI: 'fatture',
+  PRESI_IN_CARICO: 'gruppi',
+  TASK: 'task',
+  SEGNALAZIONI: 'segnalazioni',
+  STORIA: 'storia',
+})
+
 // Natura della riga di commessa (`commesse_attivita.tipo_movimento`): filtro
 // della lista attivita' e colonna «Movimento».
 // ⚠️ Specchio, non autorita': a enforcare e' il CHECK

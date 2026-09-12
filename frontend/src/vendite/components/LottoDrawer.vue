@@ -101,8 +101,9 @@ import {
 import { BERSAGLIO_TIPI, normalizzaBersagli } from '../../core/bersagli'
 import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useAuthStore } from '../../stores/auth'
-import { STATO_ESECUZIONE_LOTTO } from '../constants'
+import { STATO_ESECUZIONE_LOTTO, LOTTO_SCHEDE } from '../constants'
 import { useSelezioneDocumentiLotto } from '../composables/useSelezioneDocumentiLotto'
+import { scegliRamoBanner, conteggiDaSegnalazioni } from '../_shared/lotti/ramoBannerLotto'
 import { motivoUscitaBloccata } from '../uscitaDalGiro'
 
 const props = defineProps({
@@ -402,13 +403,19 @@ const fatturaDrawerId = ref(null)
 // condiviso col kebab della lista.
 const availableActions = computed(() => lotto.value?.available_actions ?? [])
 
-// Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
-// ⚠️ Il conteggio delle critiche in UNA sede: lo leggevano tre punti — il
-//    guard del banner e due rami della sua frase — con lo stesso `?? 0`
-//    ricopiato. Tre copie dello stesso ripiego sono tre posti dove il giorno
-//    che l'envelope cambia nome due si aggiornano e una no, in silenzio.
-const nCritiche = computed(() => segnalazioni.value?.critical_count ?? 0)
-const haSegnalazioniCritiche = computed(() => nCritiche.value > 0)
+// ⭐ IL LOTTO E' FERMO? LO DICE IL BACKEND, e qui si LEGGE — non si ricalcola.
+//    `blocks_next_step` e' il verdetto di `LottoSegnalazioniService`: critiche
+//    vive + fatture in errore + (dal 2026-09-12, D2) documenti il cui ultimo
+//    esito e' ERRORE. Il DB non conosce le segnalazioni, il BE le somma agli
+//    esiti, il FE rende.
+// 🔴 Fino al 12-09 questo gate era `critical_count > 0`, cioe' una COPIA del
+//    verdetto di allora. Coincidevano per costruzione, e D2 e' il giorno in cui
+//    si sfilano: con soli esiti in errore la copia avrebbe acceso «Avanza» su
+//    un lotto che il runner rifiuta, e nessun banner su un lotto in ERRORE —
+//    il vicolo cieco, con il client che mente. Un gate in due sedi e' la copia
+//    che il piano §9.3 toglie: non se ne tiene una «per compatibilita'».
+// ⚠️ Fail-closed sul payload non ancora arrivato: `undefined` non e' «libero».
+const lottoFermo = computed(() => segnalazioni.value?.blocks_next_step === true)
 
 // Scopo: ⭐ LA FRASE DEL BANNER, che dal 2026-09-08 conta GESTI e non allarmi.
 //
@@ -437,51 +444,36 @@ const haSegnalazioniCritiche = computed(() => nCritiche.value > 0)
 //    «si puo' rimediare».
 const giroRimediabile = computed(() => lotto.value?.stato_congela_fiscale === false)
 
+// ⭐ LA SCELTA DEL RAMO VIVE IN UNA FUNZIONE PURA (`scegliRamoBanner`, F2-bis
+//    del 2026-09-12): cinque rami su due assi — rimediabile × specie del blocco
+//    (critiche di documento, critiche del giro, critiche del canale fattura,
+//    esiti in errore, fatture in errore) — e ognuno ha il suo caso nella spec.
+//    Qui resta solo `t()`: le regole di precedenza (le critiche vive vincono
+//    sugli esiti, i conteggi non si sommano, il giro congelato parla al
+//    passato senza proporre gesti) stanno la', con il loro perche'.
+// ⚠️ I ramo `null` non e' un vuoto: e' «il backend blocca per una ragione che
+//    questo client non conosce» — un quarto addendo futuro. Si rende con la
+//    frase generica, cosi' si VEDE invece di sparire.
+const ramoBanner = computed(() => {
+  if (!lottoFermo.value) return null
+  return scegliRamoBanner(conteggiDaSegnalazioni(segnalazioni.value, giroRimediabile.value))
+})
+
 const fraseBanner = computed(() => {
-  const riepilogo = segnalazioni.value?.summary ?? {}
-  const documenti = riepilogo.documenti_bloccanti_count ?? 0
-  const presi = riepilogo.documenti_presi_in_carico_count ?? 0
-  const giro = riepilogo.critiche_giro_count ?? 0
-
-  // 🔴 SU UN LOTTO CONGELATO IL RIMEDIO NON SI PROPONE — difetto misurato il
-  //    2026-09-08 su LTF-0010227 / 0010225 / 0010162 (annullati ma in ERRORE:
-  //    due cose diverse ed entrambe vere, §24.5 di `brief-db-esito-gruppo-lotto`).
-  //    Il banner diceva «si toglie dal giro e il lotto riparte» mentre due righe
-  //    sotto la stessa schermata rifiutava il gesto.
-  // ⛔ Un rimedio promesso dall'intestazione e negato dalla riga è il vicolo
-  //    cieco che le linee guida vietano: peggio di nessun suggerimento.
-  // ⭐ Lì le critiche sono STORIA: la frase lo dice al passato e non nomina
-  //    nessun gesto.
-  if (!giroRimediabile.value) {
-    return t('vendite.lotti.segnalazioni_giro_chiuso', { n: nCritiche.value }, nCritiche.value)
-  }
-
-  // ⛔ LE DUE SPECIE STANNO IN DUE FRASI, non in una. Un messaggio ha UNA forma
-  //    plurale sola, scelta da UN numero: insieme, il ramo lo decideva il primo
-  //    e il secondo usciva sgrammaticato — «più 1 critiche del giro che non
-  //    appartengono». ⚠️ Sono due frasi INTERE giustapposte, non pezzi cuciti:
-  //    un frammento senza soggetto non si traduce.
-  if (documenti > 0) {
-    const frase = t('vendite.lotti.segnalazioni_bloccanti_documenti',
-      { n: documenti, m: presi }, documenti)
-    if (giro === 0) return frase
-    return `${frase} ${t('vendite.lotti.segnalazioni_bloccanti_piu_giro', { k: giro }, giro)}`
-  }
-  if (giro > 0) {
-    return t('vendite.lotti.segnalazioni_bloccanti_giro', { k: giro }, giro)
-  }
-
-  // ⚠️ E QUESTO RAMO NON È UN RIPIEGO PIGRO: i tre conteggi descrivono il solo
-  //    canale LOTTO, dove vive la `gruppo_key`. Gli altri due che bloccano
-  //    parlano per FATTURA — e una bozza può coprire più documenti, quindi i
-  //    loro numeri non si sommano a questi senza scommettere. Là la frase
-  //    vecchia è l'unica vera, e resta.
-  return t('vendite.lotti.segnalazioni_bloccanti', { n: nCritiche.value })
+  const ramo = ramoBanner.value
+  if (!ramo) return t('vendite.lotti.blocca_step')
+  // ⚠️ `(chiave, {nomi}, plurale)` e non il contrario: con l'ordine inverso
+  //    vue-i18n legge il terzo posto come OPZIONI e ogni segnaposto diverso da
+  //    `n` sparisce — difetto gia' pagato qui. Le parti sono frasi INTERE
+  //    giustapposte, mai frammenti: un pezzo senza soggetto non si traduce.
+  return ramo.parti
+    .map((p) => (p.plurale === undefined ? t(p.chiave, p.argomenti) : t(p.chiave, p.argomenti, p.plurale)))
+    .join(' ')
 })
 
 // Tab attiva CONTROLLATA (era fissa a "fatture"): serve al link del banner, che
 // porta l'operatore sulla scheda invece di dirgli dove guardare.
-const tabAttiva = ref('fatture')
+const tabAttiva = ref(LOTTO_SCHEDE.DOCUMENTI)
 
 // ------------------------------------------------------ la STORIA del lotto
 // ⭐ La quarta scheda (Passo A, seconda meta'). Non e' un altro elenco di
@@ -563,13 +555,19 @@ function severitaLivelloSegnalazione(livello) {
 // conteggio a parte che la funzione DB ripete su ogni riga.
 const segnalazioniFuoriJob = ref(0)
 
-// Scopo: il link del banner — porta sulla scheda già filtrata sulle critiche.
-//        Rimette il livello anche se l'operatore l'aveva cambiato prima: il
-//        banner parla di quelle, e atterrare sugli avvisi sarebbe una risposta
-//        a un'altra domanda.
+// Scopo: il link del banner — porta sulla scheda DEL RAMO. Le critiche stanno
+//        su «Segnalazioni», gia' filtrata su di loro (rimette il livello anche
+//        se l'operatore l'aveva cambiato: il banner parla di quelle, atterrare
+//        sugli avvisi sarebbe una risposta a un'altra domanda). Un documento il
+//        cui ultimo esito e' ERRORE senza critica viva (D2) NON ha una riga la',
+//        e nemmeno fra le fatture (se il pull e' fallito la fattura non e' mai
+//        nata): la sua riga sta su «Presi in carico», con `ErroreRigaInfo` e
+//        «Togli dal giro». ⛔ Mandarlo altrove aprirebbe un elenco che quella
+//        riga non la contiene — il vicolo cieco che le linee guida vietano.
 async function apriSegnalazioni() {
-  tabAttiva.value = 'segnalazioni'
-  if (livelloSegnalazioni.value !== LIVELLI_SEGNALAZIONE.CRITICHE) {
+  const scheda = ramoBanner.value?.scheda ?? LOTTO_SCHEDE.SEGNALAZIONI
+  tabAttiva.value = scheda
+  if (scheda === LOTTO_SCHEDE.SEGNALAZIONI && livelloSegnalazioni.value !== LIVELLI_SEGNALAZIONE.CRITICHE) {
     livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
   }
 }
@@ -731,7 +729,7 @@ watch(
     // (tipicamente «Segnalazioni», dove l'aveva portato il link del banner):
     // un drawer che si apre in un punto diverso a ogni giro fa perdere il
     // riferimento. Stessa ragione per il livello del filtro.
-    tabAttiva.value = 'fatture'
+    tabAttiva.value = LOTTO_SCHEDE.DOCUMENTI
     livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
     livelloCaricato.value = null
     // Stessa ragione del livello: il drawer riapre sempre dallo stesso punto.
@@ -789,12 +787,12 @@ const drawerActions = computed(() => {
   }).map((a) => ({
     ...a,
     ...(LOTTO_AZIONE_PERMESSO[a.key] ? { action: LOTTO_AZIONE_PERMESSO[a.key] } : {}),
-    // La numerazione è uno STEP di pipeline: con criticità attive il runner la
+    // La numerazione è uno STEP di pipeline: su un lotto fermo il runner la
     // rifiuta (`blocks_next_step`). Il DB non conosce le segnalazioni, quindi
-    // questo disabilitato lo aggiunge chi le ha: noi. Non sovrascrive un
-    // `disabled` già vero arrivato dalle `fn_check_*` (né il suo tooltip,
-    // che spiega il motivo del DB).
-    ...(a.key === 'numera' && haSegnalazioniCritiche.value && !a.disabled
+    // questo disabilitato lo aggiunge chi ha il verdetto: noi, LEGGENDOLO. Non
+    // sovrascrive un `disabled` già vero arrivato dalle `fn_check_*` (né il
+    // suo tooltip, che spiega il motivo del DB).
+    ...(a.key === 'numera' && lottoFermo.value && !a.disabled
       ? { disabled: true, tooltip: t('vendite.lotti.blocca_step') }
       : {}),
   }))
@@ -809,10 +807,11 @@ const drawerActions = computed(() => {
     const ui = LOTTO_AZIONE_PIPELINE_UI[key]
     // ⚠️ SOLO `avanza_step`, ed è una condizione scritta apposta e non un
     // effetto di come è scritta: `rigenera_bozza` è un rilancio dello STESSO
-    // step, che con criticità attive il runner ammette (è la via d'uscita).
-    // Bloccarlo qui toglierebbe l'unica strada per uscire dalle criticità
-    // proprio ai lotti riaperti.
-    const bloccato = key === 'avanza_step' && haSegnalazioniCritiche.value
+    // step, che su un lotto fermo il runner ammette (è la via d'uscita — e
+    // per gli esiti in errore di D2 è l'UNICA: il pull rivede il documento e
+    // scrive l'esito nuovo). Bloccarlo qui toglierebbe l'unica strada per
+    // uscire proprio ai lotti riaperti.
+    const bloccato = key === 'avanza_step' && lottoFermo.value
     azioni.unshift({
       key,
       kind: 'state',
@@ -1293,12 +1292,14 @@ function fatturaNumero(row) {
           <span v-if="lotto.stato_operativo" class="text-color-secondary">· {{ lotto.stato_operativo }}</span>
         </div>
 
-        <!-- Banner segnalazioni critiche (blocca l'avanzamento). -->
+        <!-- Banner del lotto FERMO (blocca l'avanzamento). Compare sul VERDETTO
+             del backend, non su un conteggio: dal 2026-09-12 un lotto puo' essere
+             fermo con zero critiche vive (esiti in errore, D2). -->
         <!-- ⚠️ Il ROSSO solo dove c'e' qualcosa da fare: su un lotto congelato
              le critiche sono storia, e un allarme rosso su un giro chiuso
              insegna a ignorare gli allarmi rossi. -->
         <Message
-          v-if="haSegnalazioniCritiche"
+          v-if="lottoFermo"
           :severity="giroRimediabile ? 'error' : 'secondary'"
           :closable="false"
           class="app-mt-1"
@@ -1335,18 +1336,18 @@ function fatturaNumero(row) {
             <!-- ⚠️ Il conteggio e' il TOTALE del server, non le righe caricate:
                  con la paginazione «(25)» su 137 documenti sarebbe la
                  dimensione della pagina spacciata per quantita'. -->
-            <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
+            <Tab :value="LOTTO_SCHEDE.DOCUMENTI">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
             <!-- ⭐ I documenti PRESI IN CARICO — quelli che una fattura non sono
                  mai diventati compresi. Il conteggio è quello del server, come
                  sulle altre schede: dal 2026-09-07 vale su entrambi i tipi di
                  giro, quindi non ha più bisogno di essere condizionato. -->
-            <Tab value="gruppi">{{ t('vendite.lotti.tab_gruppi') }} ({{ listaGruppi.totale.value }})</Tab>
-            <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
-            <Tab value="segnalazioni">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
+            <Tab :value="LOTTO_SCHEDE.PRESI_IN_CARICO">{{ t('vendite.lotti.tab_gruppi') }} ({{ listaGruppi.totale.value }})</Tab>
+            <Tab :value="LOTTO_SCHEDE.TASK">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
+            <Tab :value="LOTTO_SCHEDE.SEGNALAZIONI">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
             <!-- ⭐ La quarta scheda risponde a una domanda che le altre tre non
                  fanno: le prime dicono COSA C'E' ORA, questa COSA E' SUCCESSO.
                  Il conteggio nell'etichetta dice se vale la pena entrare. -->
-            <Tab value="storia">
+            <Tab :value="LOTTO_SCHEDE.STORIA">
               {{ t('vendite.lotti.tab_storia') }}
               <template v-if="giornaleTotale"> ({{ giornaleTotale }})</template>
             </Tab>
@@ -1357,7 +1358,7 @@ function fatturaNumero(row) {
                  catalogo: qui restano solo gli slot delle celle che hanno una
                  resa propria (Tag, icona errore, kebab). Aggiungere una
                  colonna e' ora un seed, non una riga di `.vue`. -->
-            <TabPanel value="fatture">
+            <TabPanel :value="LOTTO_SCHEDE.DOCUMENTI">
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
                    stesso di ogni pagina lista.
@@ -1443,7 +1444,7 @@ function fatturaNumero(row) {
               </ListaConfigurabile>
             </TabPanel>
 
-            <TabPanel value="gruppi">
+            <TabPanel :value="LOTTO_SCHEDE.PRESI_IN_CARICO">
               <div class="app-page-toolbar">
                 <span class="app-page-filters" />
                 <PageActionsBar :actions="barraGruppi">
@@ -1550,7 +1551,7 @@ function fatturaNumero(row) {
               </ListaConfigurabile>
             </TabPanel>
 
-            <TabPanel value="task">
+            <TabPanel :value="LOTTO_SCHEDE.TASK">
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
                    stesso di ogni pagina lista, quindi queste tre si comportano come le
@@ -1618,7 +1619,7 @@ function fatturaNumero(row) {
               </ListaConfigurabile>
             </TabPanel>
 
-            <TabPanel value="segnalazioni">
+            <TabPanel :value="LOTTO_SCHEDE.SEGNALAZIONI">
               <div v-if="segnalazioni">
                 <Message
                   v-if="segnalazioni.blocks_next_step"
@@ -1757,7 +1758,7 @@ function fatturaNumero(row) {
               </div>
               <div v-else class="app-empty-state"><i class="pi pi-check-circle" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
             </TabPanel>
-            <TabPanel value="storia">
+            <TabPanel :value="LOTTO_SCHEDE.STORIA">
 
               <!-- ⭐ LA STORIA DEL LOTTO — «cosa è successo, in che ordine».
                    Sorgente `script.vw_giornale_entita`: sul lotto rispondono
