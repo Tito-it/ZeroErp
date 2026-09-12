@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 854, di cui 89 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 855, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -978,6 +978,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
+    # anagrafiche.trgfn_risorse_umane_guard_identita_attiva: si prova a disattivare una risorsa umana mentre la sua identita digitale OPERATORE (stesso soggetto_ruolo_id) e ancora attiva. Figli prima, padre poi: il legame non e una FK (passa da soggetti_ruoli), quindi l automazione ATTIVO non lo genera e il guard e scritto a mano (12-09-2026, analisi-software-per-dati-morti 6.2). CONFLITTO_STATO: lo stato del figlio puo cambiare, l azione resta proposta e disabilitata col motivo.
+    "E_RISORSA_UMANA_IDENTITA_ATTIVA": "CONFLITTO_STATO",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "DATO_ERRATO",
     # script.fn_check_sorgente_chiudibile e vendite.fn_ritira_commessa_attivita_da_sorgente: il ritiro e' stato invocato senza il tipo sorgente, senza la chiave del documento o senza il motivo. Nasce il 2026-08-26 col ritiro (Q-5' strada A). · TECNICO e non DATO_ERRATO: il chiamante e' un trigger o un servizio, non una persona in un form, e chi ha fatto la richiesta non puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⭐ IL VALORE nella frase e' il nome del parametro, ed e' deliberato: qui il lettore e' uno sviluppatore, e sapere QUALE dei tre manca e' l'informazione utile. · ⚠️ Il motivo e' fra i tre obbligatori perche' ANNULLATA e' irreversibile: senza motivo resta il fatto senza la ragione, e a mesi di distanza un importo sparito senza spiegazione e' indistinguibile da un difetto.
     "E_RITIRO_SORGENTE_PARAMETRO_MANCANTE": "TECNICO",
