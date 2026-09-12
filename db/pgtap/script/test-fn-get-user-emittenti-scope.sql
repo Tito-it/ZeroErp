@@ -35,34 +35,52 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
+-- ⛔ LE TRE IDENTITA' SI COSTRUISCONO, non si cercano (2026-09-12). Fino a quel
+--   giorno il file pescava fra le identita' ESISTENTI l'operatore di contesto,
+--   quello da portare in GLOBAL e quello da promuovere super admin: su un
+--   database ricostruito dai changelog non ce n'e' nessuna, e il file moriva
+--   nella fixture (auth_user_id NULL al test 2). Tre aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto.
+CREATE TEMP TABLE _mondi AS
+SELECT 'CTX'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'GLOBAL' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- ⚠️ Il SECONDO super admin si costruisce anche lui: il test 5 dice «il target
+--   non e' l'ultimo SA», e su un database ricostruito dai changelog di super
+--   admin non ce n'e' nessuno — senza questa riga il caso «multi» non esiste e
+--   il test 5 misurerebbe il caso «single» con l'etichetta sbagliata.
+INSERT INTO config.profili_accesso_bindings
+    (profilo_accesso_id, identita_digitale_id, attivo)
+VALUES ((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
+        (SELECT identita_id FROM _mondi WHERE lato = 'SA2'), true);
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
+END $ctx$;
 
 SELECT plan(6);
 
 -- =========================================================
--- Helper: identita OPERATORE vergine (no binding) + binding SA
+-- Helper: l'identita' OPERATORE costruita per il ruolo SA + binding SA
 -- =========================================================
 CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT au_id integer, OUT bind_id bigint)
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    SELECT id.id, id.auth_user_id INTO id_id, au_id
-      FROM anagrafiche.identita_digitali id
-     WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-       AND id.attivo = true
-       AND NOT EXISTS (
-           SELECT 1 FROM config.profili_accesso_bindings pab
-            WHERE pab.identita_digitale_id = id.id
-       )
-     ORDER BY id.id LIMIT 1;
-
-    IF id_id IS NULL THEN
-        RAISE EXCEPTION 'Setup impossibile: nessuna identita OPERATORE vergine disponibile';
-    END IF;
+    SELECT m.identita_id, m.auth_user_id INTO id_id, au_id
+      FROM _mondi m
+     WHERE m.lato = 'SA';
 
     INSERT INTO config.profili_accesso_bindings
         (profilo_accesso_id, identita_digitale_id, attivo)
@@ -92,8 +110,8 @@ END
 $$;
 
 -- =========================================================
--- Setup: OPERATORE non-SA con riga GLOBAL (pesco un auth_user
--- OPERATORE attivo senza binding e senza riga in user_emittenti_fiscali)
+-- Setup: OPERATORE non-SA in stato GLOBAL — l'azienda GLOBAL, a cui si
+-- toglie la riga in user_emittenti_fiscali
 -- =========================================================
 -- 🔴 FIXTURE RICOSTRUITA il 2026-08-18 — gemella di quella in
 --   test-fn-change-user-emittenti-scope, e rotta dalla stessa causa.
@@ -108,27 +126,17 @@ $$;
 --   Il DELETE passa dall'override GUC (la tabella ha un guard sul delete) e il
 --   file e' transazionale: lo scope vero torna al ROLLBACK.
 CREATE TEMP TABLE _t_user_global AS
-SELECT id.auth_user_id AS au_id
-  FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND id.attivo = true
-   AND NOT EXISTS (
-       SELECT 1 FROM config.profili_accesso_bindings pab
-        WHERE pab.identita_digitale_id = id.id AND pab.attivo = true
-   )
- ORDER BY id.auth_user_id LIMIT 1;
+SELECT m.auth_user_id AS au_id FROM _mondi m WHERE m.lato = 'GLOBAL';
 
 SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT au_id FROM _t_user_global);
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
--- Setup: emittente fiscale attivo per il ramo SINGLE
+-- Setup: l'emittente per il ramo SINGLE e' quello dell'azienda GLOBAL,
+-- che il test 2 gli riassegna.
 CREATE TEMP TABLE _t_ef AS
-SELECT ef.id AS ef_id
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo = true
- ORDER BY ef.id LIMIT 1;
+SELECT m.emittente_fiscale_id AS ef_id FROM _mondi m WHERE m.lato = 'GLOBAL';
 
 -- =========================================================
 -- 1) Auth user senza righe -> scope_mode=GLOBAL, emittente_id=NULL
@@ -180,7 +188,7 @@ SELECT ok(
 );
 
 -- =========================================================
--- 5) Multi super-admin: aggiungo 1 SA ad-hoc -> >=2 SA totali.
+-- 5) Multi super-admin: SA2 c'e' gia' dalla fixture, aggiungo SA -> >=2 SA.
 --    Sul nuovo SA: can_change_scope=true.
 -- =========================================================
 CREATE TEMP TABLE _t_sa AS SELECT * FROM pg_temp.mk_admin();

@@ -78,34 +78,42 @@ SELECT plan(11);
 -- ============================================================
 -- Fixture — un atto COSTRUITO, e due emittenti distinti
 -- ============================================================
+-- ⛔ LE DUE AZIENDE E IL CLIENTE SI COSTRUISCONO, non si cercano (2026-09-12).
+--   Fino a quel giorno la fixture pescava l'ULTIMO billing account inserito e
+--   «un altro emittente» fra quelli esistenti: su un database ricostruito dai
+--   changelog non c'e' nessuno dei due, `prereq` era falso e i casi 2-11
+--   tornavano tutti senza misurare. Due aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()` e un cliente della prima con
+--   `dbops.fn_pgtap_crea_cliente_ba(..., A)`: cosi' l'emittente dell'atto e
+--   l'ALTRO emittente sono distinti per costruzione, non per fortuna.
+CREATE TEMP TABLE _mondi AS
+SELECT 'A' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+CREATE TEMP TABLE _cliente AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba(
+    'RLS fondi source', NULL, (SELECT soggetto_ruolo_id FROM _mondi WHERE lato = 'A')) c;
+
+-- ⚠️ Gli helper escono con i vincoli IMMEDIATE; questo file li vuole DIFFERITI
+--   fino a «fattura + atto» completi (vedi la nota in testa): si riaprono.
+SET CONSTRAINTS ALL DEFERRED;
+
 CREATE TEMP TABLE _refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id, b.soggetto_ruolo_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-), emit AS (
-  SELECT m.emittente_soggetto_ruolo_id AS emit_sr
-    FROM anagrafiche.emittenti_fiscali_billing_account m, ba
-   WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-   ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-   LIMIT 1
-)
-SELECT ba.id                AS billing_account_id,
-       ba.utility_id        AS utility_id,
-       emit.emit_sr         AS emit_sr,
-       (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.soggetto_ruolo_id = emit.emit_sr ORDER BY ef.id LIMIT 1)  AS emit_pk,
-       (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-         WHERE ef.soggetto_ruolo_id IS DISTINCT FROM emit.emit_sr
-         ORDER BY ef.id LIMIT 1)                                            AS other_pk,
+SELECT c.billing_account_id AS billing_account_id,
+       c.utility_id         AS utility_id,
+       a.soggetto_ruolo_id  AS emit_sr,
+       a.emittente_fiscale_id AS emit_pk,
+       b.emittente_fiscale_id AS other_pk,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1)                   AS valuta_id,
        (SELECT t.id FROM vendite.tipi_fondi_fattura t
          WHERE t.attivo IS TRUE AND t.codice_interno = 'F_F_ADD_ACC'
          ORDER BY t.id LIMIT 1)                                             AS tipo_fondo_id,
-       script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id
-  FROM ba, emit;
+       script.fn_pgtap_registro_fattura(a.soggetto_ruolo_id)              AS registro_id
+  FROM _cliente c,
+       (SELECT * FROM _mondi WHERE lato = 'A') a,
+       (SELECT * FROM _mondi WHERE lato = 'B') b;
 
 -- La fattura sorgente e l'atto si creano PRIMA di armare la RLS: da owner senza
 -- FORCE nessuna policy filtra, quindi la fixture non deve indovinare la

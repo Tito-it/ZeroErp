@@ -18,7 +18,7 @@
 
 ---
 
-> ## ✅ STATO — chiuso lato backend il 2026-09-11 · **§12** · risposta DB il 2026-09-12 · **§13**
+> ## ✅ CHIUSO — 2026-09-12 · backend §12 · DB §13
 >
 > Il perimetro dei §4-§5 è consegnato e **provato end-to-end**: il 2026-09-11
 > alle 00:16 un digest è partito ed è **arrivato in casella**.
@@ -26,19 +26,28 @@
 > ✅ **Il §11 è stato letto e ha una risposta — §13** (team DB, 2026-09-12). Le
 > due cose che teneva aperte sono chiuse: la **scoperta** del §11.5 («dichiarato ≠
 > installato») è diventata un cantiere suo, chiuso
-> ([brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md));
+> ([brief-db-quattro-processi-senza-presidio.md](brief-db-quattro-processi-senza-presidio.md));
 > la **richiesta** — contare le 779 per classe — è fatta.
 >
-> ⛔ **Ma resta in `work-in-progress/`, e la ragione è cambiata**: quel conteggio
-> ha trovato un **difetto vivo**. Le 784 righe sono tutte `NON_MISURATO` e la
-> causa non era fra le ipotesi del §11.4 — è il `search_path` di
-> `dbops.fn_conta_presidio`, che non contiene `public` e quindi non sa risolvere
-> `plpgsql_check`. ⇒ Il digest riporta ogni lunedì 784 riferimenti morti che sono
-> fantasmi, e il pgTAP è verde perché misura il percorso **sano** invece di quello
-> **in servizio**.
-> ⇒ Per archiviare servono il fix (§13.4, strada A) e il pgTAP allargato. **Poi**
-> l'operazione del §12.3 — con i **tredici** riferimenti al percorso del §13.5,
-> non sei.
+> 🔴 **E quel conteggio ha trovato un difetto vivo**: le 784 righe erano tutte
+> `NON_MISURATO`, per una causa che non era fra le ipotesi del §11.4 — il
+> `search_path` con cui la scansione girava dentro `dbops.fn_conta_presidio`, che
+> non contiene `public`. Il digest riferiva ogni settimana 784 riferimenti morti
+> che erano fantasmi, e il pgTAP era verde perché misurava il percorso **sano**
+> invece di quello **in servizio**.
+>
+> ✅ **Riparato e presidiato** (§13.4, §13.6): changeSet
+> `20260912-37-update-fn-check-riferimenti-morti-search-path` **`EXECUTED`** —
+> la funzione pinna il proprio `search_path` **e** qualifica la chiamata, perché
+> la sola qualificazione lasciava **4** falsi `REALE` (`unaccent`, `dblink`,
+> `geometry`) — più il **test 6** del pgTAP, che conta attraverso
+> `fn_conta_presidio`. `fn_conta_presidio` sulla vista risponde **0**, era 784;
+> pgTAP e baseline verdi, nessuna regressione.
+>
+> 🔵 **Resta una consegna al team BACKEND** (§13.6): quattro file in `backend/`
+> citano questo brief come `work-in-progress/` e ora va letto `work-done/`. Non
+> rompe nulla in esecuzione e non ha fretta — ma su `dev/db-tid` quei file non si
+> toccano.
 >
 > ⚠️ **Il resto del documento è il registro di come ci si è arrivati e NON va
 > riletto come stato corrente**: diversi paragrafi dicono il vero su difetti poi
@@ -1410,8 +1419,8 @@ stesso.
 | Residuo | Sede | Chi |
 | --- | --- | --- |
 | 🟠 contare le **779** per classe | **§11.4 punto 2 di questo brief** | team DB |
-| il presidio «**dichiarato ≠ installato**» | ✅ **aperto il 2026-09-11**: [brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md) — e la forma che ha preso non guarda systemd: presidia l'**effetto** (la coda che si accumula, le email ferme), che manca comunque se il timer non è installato | team DB |
-| lo stato onesto per una mail **stampata a video** | [brief-db-stato-email-console-non-e-inviata.md](../work-done/brief-db-stato-email-console-non-e-inviata.md) | team DB |
+| il presidio «**dichiarato ≠ installato**» | ✅ **aperto il 2026-09-11**: [brief-db-quattro-processi-senza-presidio.md](brief-db-quattro-processi-senza-presidio.md) — e la forma che ha preso non guarda systemd: presidia l'**effetto** (la coda che si accumula, le email ferme), che manca comunque se il timer non è installato | team DB |
+| lo stato onesto per una mail **stampata a video** | [brief-db-stato-email-console-non-e-inviata.md](brief-db-stato-email-console-non-e-inviata.md) | team DB |
 | `OnFailure=` sugli unit | §9.6 — **assenza dichiarata** con la sua ragione | — |
 | le tre righe 🔶 del §7.4 | note del catalogo — rimandate ai loro cantieri | team DB |
 | la causa dei **segfault** | §10.4 — dichiarata **fuori** da questo cantiere | da guardare |
@@ -1581,30 +1590,85 @@ Il §12.3 diceva che, arrivata questa risposta, l'archiviazione sarebbe stata
 «meccanica». **Non lo è**, e la ragione è quella giusta: la lettura che il §11.4
 chiedeva ha trovato un difetto vivo. *Era esattamente il suo mestiere.*
 
-**Il rimedio va deciso, e sono due strade con un vincitore:**
+#### 🔴 Il rimedio: la prima versione era INCOMPLETA, e l'ha detto la prova
 
-| | Come | Perché sì, perché no |
+> ⚠️ **Questo paragrafo è stato riscritto il 2026-09-12**, dopo aver eseguito
+> l'SQL. La stesura precedente proponeva **A** — «qualificare la chiamata
+> `public.plpgsql_check_function`» — e la dava per sufficiente. **Non lo era**,
+> e resta scritto qui perché la correzione è più istruttiva della proposta.
+
+Provata, la sola qualificazione della chiamata porta i 784 a **4**, non a zero.
+E quei quattro sono funzioni **sane**:
+
+| funzione compilata | riferimento che non si risolve | estensione |
 | --- | --- | --- |
-| ⭐ **A** | qualificare la chiamata — `public.plpgsql_check_function(...)` — nel corpo di `dbops.fn_check_funzioni_riferimenti_morti` | regge per **qualunque** chiamante, presente e futuro, e non tocca la postura di nessuna DEFINER. Ed è la sede vera del difetto: *una funzione che dipende dal `search_path` di chi la chiama è fragile per costruzione* |
-| ⛔ **B** | aggiungere `public` al `search_path` di `fn_conta_presidio` | rimette uno schema scrivibile da altri nel percorso di risoluzione di una `SECURITY DEFINER` — indebolisce una blindatura per rimediare al difetto di un'**altra** funzione. E vale per quella sola chiamante: la prossima che la chiami da un `search_path` stretto nasce cieca di nuovo |
+| `config.trgfn_stradario_generale_normalize` | `unaccent(text)` | unaccent |
+| `dbops.fn_audit_end` | `dblink_exec` | dblink |
+| `dbops.fn_get_or_create_session_tx_id` | `dblink` | dblink |
+| `script.fn_get_stradario` | il tipo `geometry` | PostGIS |
 
-⇒ **A**, con un changeSet nuovo in `20_code/dbops/` e numerazione successiva: il
-`-36` è mergiato e non si tocca.
+⭐ **Il punto che la prima stesura non aveva visto**: il `search_path` non governa
+solo *la mia* chiamata, governa la risoluzione dei riferimenti **dentro le
+funzioni che si compilano** — e quelle nominano `unaccent`, `dblink`, `geometry`
+senza schema, come è normale e come funziona in esercizio. Senza `public` nel
+path, quattro funzioni sane escono `REALE`: **quattro fantasmi al posto di 784**,
+cioè lo stesso difetto in scala ridotta.
 
-🔴 **E c'è un pgTAP da allargare, che vale più del fix.** Il test **1-bis** di
-`db/pgtap/dbops/test-riferimenti-morti-v1.sql` asserisce l'assenza di
-`NON_MISURATO` **sulla scansione diretta** — cioè sul percorso che funziona — e
-per questo è **verde da due giorni su un difetto vivo**. ⇒ La stessa asserzione
-va fatta anche **attraverso `dbops.fn_conta_presidio`**, che è il percorso da cui
-il digest legge davvero.
-⭐ *Un presidio che misura il percorso sano non presidia quello in servizio.* È
-la stessa forma del §7.3 — «zero righe» e «non ho potuto vedere» si scrivono
-uguale — spostata di un livello: qui i due percorsi sono la lettura diretta e la
-lettura dalla funzione, e il presidio guardava quello che non serve.
+⇒ **Servono due strati**, e il changeSet li fa entrambi:
 
-⚠️ **Il fix non è stato applicato e i pgTAP non sono stati lanciati**: l'apply e
-la baseline sono di Tid, come da regola. Qui c'è la diagnosi e la decisione
-proposta, non il lavoro fatto.
+| | Cosa | Perché |
+| --- | --- | --- |
+| **1** | la funzione **pinna il proprio `search_path`**: `pg_catalog, public, pg_temp`, nella clausola `SET` del `CREATE OR REPLACE` | rende la misura **indipendente dal chiamante** e la fa compilare nel contesto in cui quelle funzioni girano davvero. ⭐ `public` non è arbitrario: è nel path reale dell'applicazione (`zeroerp_app`: `django, public, config, dbops, script, anagrafiche`) |
+| **2** | la chiamata resta **qualificata** `public.plpgsql_check_function` | secondo strato, e soprattutto *dice a chi legge perché il pin c'è* |
+
+⛔ **Scartate due strade**, e nessuna delle due per gusto:
+
+* **aggiungere `public` al `search_path` di `fn_conta_presidio`** — rimetterebbe
+  uno schema scrivibile da altri nel percorso di una `SECURITY DEFINER`, cioè
+  indebolirebbe una blindatura per rimediare al difetto di un'**altra** funzione;
+  e varrebbe per quella sola chiamante;
+* **un `ALTER FUNCTION … SET search_path`** — una riga, e **funziona** (provato:
+  784 → 0). ⛔ Ma un `CREATE OR REPLACE` successivo che si dimentica la clausola
+  `SET` **azzera il pin in silenzio** (provato su una funzione usa-e-getta in
+  `pg_temp`): è la stessa trappola di `security_invoker` che si azzera su
+  `CREATE OR REPLACE VIEW`, una forma che il progetto ha già pagato. E nei
+  changeSet non esiste **nessun precedente** di quella forma.
+
+#### ✅ Scritto e provato — 2026-09-12
+
+| Cosa | Dove | Stato |
+| --- | --- | --- |
+| il **fix** | `20_code/dbops/20260912-37-update-fn-check-riferimenti-morti-search-path-mctit.yaml` | ✅ scritto, corpo dalla doc auto-gen, firma invariata (`CREATE OR REPLACE`, nessun `DROP`) |
+| il **presidio** | test **6** di `db/pgtap/dbops/test-riferimenti-morti-v1.sql`, `plan(6)` → `plan(7)` | ✅ scritto |
+| i sei **cancelli statici** della CI | `guardrail_sql_letterali`, `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo` | ✅ tutti verdi |
+
+**La prova, eseguita come la chiede il §7.8**: l'SQL **estratto** dal changeSet
+(non riscritto) eseguito intero con `ON_ERROR_STOP=1` in una transazione
+**annullata**. Dopo l'apply-di-prova `fn_conta_presidio` sulla vista risponde
+**0**, e la classificazione è `16 FP_RAMO_ALTRA_TABELLA · 5 FP_TRANSITION_TABLE ·
+1 ORFANA (coperta dal registro) · 1 FP_SQL_DINAMICO` — **zero `NON_MISURATO`,
+zero `REALE`, identica dai due percorsi**, e identica anche forzando un
+`search_path` ostile: il pin vince. Il `ROLLBACK` ha rimesso il conteggio a 784.
+
+🔵 **Il test 6 misura i DUE percorsi e li confronta**: il conteggio da
+`fn_conta_presidio` contro la misura diretta già materializzata dal test 1-bis.
+Non pinna un numero — se comparirà un riferimento morto vero, i due lati saliranno
+insieme e a dirlo sarà il test 2. ⭐ Ed è **discriminante**: provato come
+`zeroerp_app`, oggi i due lati valgono **0 contro 784**, quindi il test è rosso
+sul difetto e verde sulla riparazione.
+⚠️ **Con una trappola che è costata una riscrittura**: la scansione lavora su una
+temp table, e quella del test appartiene al ruolo del test mentre
+`fn_conta_presidio` gira come **proprietario** — il suo `DELETE FROM tmp_raw`
+prenderebbe `42501`, cioè un **ERRORE**, che ferma il file e lascia *tutti* i test
+senza girare. Da qui il `DROP TABLE IF EXISTS tmp_raw` come istruzione sua.
+
+⚠️ **Restano a Tid**: l'apply e i pgTAP (`scripts/pgtap-baseline.sh dbops`), come
+da regola — qui la verifica si è fermata all'SQL estratto in transazione
+annullata.
+
+⭐ **Il test 1-bis resta** e non è un doppione: guarda il percorso diretto, il 6
+quello in servizio. *Era verde da due giorni su un difetto vivo, e la lezione non
+è che fosse scritto male — è che misurava la cosa che non serviva.*
 
 ### 13.5 ⚠️ Correzione al §12.3: i riferimenti al percorso sono TREDICI, non sei
 
@@ -1634,3 +1698,53 @@ quel giorno e valgono come controesempio — «questo caso esiste ed è gestito
 male» — non come motivo. Il motivo sta sul modello, ed è che una funzione che
 dipende dal `search_path` di chi la chiama non ha **un** comportamento: ne ha uno
 per chiamante, e il presidio ne guardava quello sbagliato.*
+
+### 13.6 ✅ CHIUSO — applicato e verde, 2026-09-12
+
+| Verifica | Esito |
+| --- | --- |
+| `20260912-37-update-fn-check-riferimenti-morti-search-path` | ✅ **`EXECUTED`** alle 22:22:36 (letto da `databasechangelog`, non dalla parola) |
+| il pin sull'oggetto **vivo** | ✅ `{"search_path=pg_catalog, public, pg_temp"}` |
+| le due chiamate qualificate nel corpo vivo | ✅ 2 su 2 |
+| `fn_conta_presidio('dbops.vw_riferimenti_morti_da_sanare')` | ✅ **0** — era 784 |
+| pgTAP + baseline `dbops` | ✅ verdi, **nessuna regressione** (Tid) |
+| doc auto-gen | ✅ rigenerata: porta il pin e le due chiamate |
+
+⇒ **Il perimetro di questo brief è finito.** Il cantiere era nato perché trenta
+viste di presidio non le leggeva nessuno; finisce con una persona che riceve una
+mail — e con il presidio dei presidi che, interrogato sul proprio conto, ha
+smesso di mentire.
+
+⚠️ **Quello che resta NON è di questo brief**, ed è dichiarato: `OnFailure=` sugli
+unit (§9.6, assenza con la sua ragione), le tre righe 🔶 del §7.4 (rimandate ai
+loro cantieri, e scritte nelle note del catalogo), la bonifica dei registri di
+debito (fuori perimetro dal §6), la causa dei **segfault** (§10.4, dichiarata
+fuori). ⭐ Nessuno dei quattro è un residuo nascosto: hanno una sede, e la sede
+non è questa.
+
+#### 🔵 Una consegna al team BACKEND, ed è l'unica cosa che il DB non può fare
+
+L'archiviazione riscrive i riferimenti al percorso di questo file. Nove sono
+documenti e li ha già riscritti il DB; **quattro sono in `backend/`**, e su
+`dev/db-tid` quei file non si toccano — nemmeno per una riga di commento, perché
+entrerebbero nella PR sbagliata:
+
+```text
+backend/apps/core/db/presidi_repository.py
+backend/apps/core/services/processi.py
+backend/apps/core/services/presidi_digest.py
+backend/apps/core/management/commands/digest_presidi.py
+```
+
+In tutti e quattro c'è un commento `Brief: work-in-progress/brief-db-un-destinatario-per-i-presidi.md`:
+va letto `work-done/`. ⚠️ Non rompe niente in esecuzione — è un puntatore in un
+commento — ma è esattamente il genere di link che marcisce in silenzio, cioè il
+difetto contro cui questo cantiere è nato.
+⭐ **Niente fretta e nessun ordine da rispettare**: si può fare al primo commit
+utile del backend, anche fra una settimana.
+
+*Chiusura DB del 2026-09-12. L'ultima cosa che questo brief ha trovato è un
+difetto nel proprio strumento di misura, e l'ha trovato perché qualcuno è andato
+a chiedere il conto a un numero che non tornava. Il motivo sta sul modello: una
+funzione che dipende dal `search_path` di chi la chiama non ha un comportamento,
+ne ha uno per chiamante — e il presidio guardava quello sbagliato.*

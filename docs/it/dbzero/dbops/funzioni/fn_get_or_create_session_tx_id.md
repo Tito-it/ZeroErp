@@ -12,9 +12,10 @@ CREATE OR REPLACE FUNCTION dbops.fn_get_or_create_session_tx_id()
  RETURNS uuid
  LANGUAGE plpgsql
  SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
-    v_tx_id        uuid;
+    v_tx_id        dbops.transaction_ids.id%TYPE;
     v_dblink_conn  text;
 BEGIN
     ----------------------------------------------------------------------
@@ -106,7 +107,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id()
-IS 'Restituisce il tx_id di sessione, creandolo se assente. REGOLA: non pubblica mai nella GUC dbops.tx_id un id che non sia registrato in dbops.transaction_ids -- e'' l''invariante su cui si regge dbops.trgfn_tx_id_managed. Percorso nominale: script.fn_ensure_logconn + dblink verso il canale di log, che registra su connessione separata (la registrazione sopravvive al rollback della transazione di business). Ripieghi (canale non configurato / dblink NULL / dblink in errore): ritorna la sentinella script.uuid_nil() SENZA impostare la GUC, cosi'' la sessione non resta avvelenata. La GUC e'' impostata con scope LOCALE alla transazione (set_config ..., TRUE). Ripristina la disciplina della v1 20250707-15; vedi brief-db-coerenza-tx-id-non-registrato.md.';
+IS 'Restituisce il tx_id della sessione (GUC dbops.tx_id) o ne genera uno nuovo via dblink verso il canale di log (dbops.fn_generate_tx_id), registrandolo in dbops.transaction_ids fuori dalla transazione di business. Senza canale: sentinella uuid_nil, nessuna GUC pubblicata. SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — public e'' necessario perche'' dblink vive li''; il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
 ```
 
 ---

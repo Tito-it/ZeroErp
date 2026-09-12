@@ -20,7 +20,7 @@
 > **Documenti correlati**: [brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md)
 > (§9 «niente interfaccia verso systemd», §10.2 il guardiano e il limite su
 > `abilita`, §11.2 il limite processo/corsia) ·
-> [brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md) ·
+> [brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md) ·
 > [brief-db-sveglia-dei-processi.md](../work-done/brief-db-sveglia-dei-processi.md) ·
 > [piano-be-fe-processi-automatici-identita-e-perimetro.md](../work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md).
 

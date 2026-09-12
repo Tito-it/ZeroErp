@@ -480,6 +480,28 @@ jobs:
             -v app_role=zeroerp_app -v app_password=secret-app -v migrator_role=zeroerp \
             -f scripts/sql/provision_db_roles.sql
 
+      # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
+      # -> provisioning come 'postgres' (non Liquibase), DOPO le migrazioni, con lo
+      # stesso script admin di dbdev/prod e di ci.yaml (DRY).
+      #
+      # ⭐ Aggiunto il 2026-09-12 perche' QUI gira la suite pgTAP, e
+      # db/pgtap/rls/test-role-batch-fatturazione-postura.sql collauda proprio la
+      # postura che questo script produce: senza il passo, in questo workflow il
+      # ruolo non esisteva e il file era rosso «noto» nella baseline della CI —
+      # cioe' la postura del batch non era misurata da nessuna parte fuori da
+      # dbdev. ⚠️ Lo scratch di scripts/ci-local.sh NON e' un metro per quel
+      # file: la' il ruolo riceve apposta il DML su tutto (vedi il commento nello
+      # script). Qui invece riceve il perimetro vero.
+      - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v batch_role=zeroerp_batch_fatturazione \
+            -v batch_password=secret \
+            -v migrator_role=zeroerp \
+            -f scripts/sql/provision_db_role_batch_fatturazione.sql
+
       - name: Guardrail naming codice_interno/codice (definizioni live)
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}

@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D4 — Il debito PAGATO esce dal registro (shop.ricevute).
+#   Con 20260912-42 la tabella ha policy E row level security accesa: per
+#   dbops.vw_rls_perimetro_scoperto non e' piu' scoperta con NESSUNO dei due
+#   criteri, e le sue DUE righe (75 FIGLIA_DI_TABELLA_PROTETTA, 92 POLICY_INERTE)
+#   uscirebbero come DEBITO_ESTINTO — il test 2 di
+#   db/pgtap/rls/test-rls-perimetro-scoperto.sql diventerebbe rosso.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LE RIGHE TOLTE DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, **non cancella**. Le due cose vanno
+#   insieme — il CSV perche' un database ricostruito da zero non le crei, questa
+#   `DELETE` perche' dove ci sono gia' se ne vadano. E' l'unica eccezione al
+#   «i dati di 80_data si cambiano dal CSV».
+# ⚠️ La guardia sull'`id` E sulle coordinate della tabella: cancellare per solo
+#   `id` sarebbe scommettere che nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260912-43-delete-debito-rls-shop-ricevute-mctit.yaml
+
+  - changeSet:
+      id: 20260912-43-delete-debito-rls-shop-ricevute
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito le due righe di shop.ricevute (75
+        FIGLIA_DI_TABELLA_PROTETTA, 92 POLICY_INERTE), armata da 20260912-42.
+        loadUpdateData non cancella, quindi togliere le righe dal CSV non basta.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si cancella per id E per coordinate: sul solo id si
+              --   scommetterebbe che nessuno abbia riusato quel numero.
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE (d.id, d.criterio, d.schema_tabella, d.nome_tabella) IN (
+                         (75, 'FIGLIA_DI_TABELLA_PROTETTA', 'shop', 'ricevute'),
+                         (92, 'POLICY_INERTE',              'shop', 'ricevute'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette in piedi un debito che NON esiste piu'. Ha senso solo
+              --   insieme al rollback di 20260912-42, che disarma la tabella.
+              INSERT INTO dbops.rls_perimetro_debito
+                  (id, criterio, schema_tabella, nome_tabella, ragione, data_registrazione)
+              VALUES
+                (75, 'FIGLIA_DI_TABELLA_PROTETTA', 'shop', 'ricevute',
+                 'Ripristino di rollback: FK billing_account_id NOT NULL e ordine_shop_id verso tabelle protette; la policy SHOP_CUSTOMER c''e'', la row level security e'' spenta (vedi la riga gemella POLICY_INERTE).', DATE '2026-09-09'),
+                (92, 'POLICY_INERTE', 'shop', 'ricevute',
+                 'Ripristino di rollback: la policy c''e'' (SHOP_CUSTOMER, FOR SELECT) e la row level security e'' spenta. Accenderla non toglie niente a nessuno: zeroerp_app non ha nessun GRANT sulla tabella.', DATE '2026-09-09');

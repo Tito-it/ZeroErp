@@ -1,5 +1,14 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce DUE aziende con una fattura
+--   ciascuna, e una fattura pretende un billing account. Come `zeroerp_app`
+--   l'INSERT del BA muore al RETURNING quando l'emittente di chi agisce non e'
+--   quello di default (la policy di lettura risolve il BA non ancora mappato
+--   sul default; il legame lo scrive un trigger AFTER). Da owner la RLS si
+--   accende con `FORCE ROW LEVEL SECURITY` locale alla transazione: il test 1
+--   continua a pretendere che la sessione la SUBISCA, e con il FORCE la
+--   subisce — e il guard, che esce per chi la bypasserebbe, resta in servizio.
 -- pgTAP test per Zero ERP
 --
 -- Test: il guard di scrittura sulla coda di stampa (DB-6 / R-10)
@@ -24,19 +33,66 @@
 --    il guard punterebbe alla tabella sbagliata e la policy pure — e nessuno
 --    dei due lo direbbe da solo.
 --
--- ⚠️ Runner: APPLICATIVO. Dalla fase 6 il guard esce subito per chi bypasserebbe
---   comunque la RLS, cioe' per l'owner: girando da owner i test 4 e 5 sarebbero
---   verdi *perche' non succede niente*. Il test 1 rende il presupposto
---   un'asserzione.
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file cercava una fattura ESISTENTE nel proprio perimetro, un secondo
+--   emittente e un super admin, e senza di loro SALTAVA i test 4 e 5 — su un
+--   database ricostruito dai changelog moriva nella fixture. Ora: due aziende
+--   con `dbops.fn_pgtap_crea_emittente_operatore()`, un cliente ciascuna con
+--   `dbops.fn_pgtap_crea_cliente_ba(..., azienda)`, il registro
+--   (`script.fn_pgtap_registro_fattura`) e una fattura ciascuna — tutto PRIMA
+--   di aprire il contesto, come nei gemelli `*-satelliti.sql`. Niente `skip`.
+--   ⚠️ Fino a quel giorno il file girava come `zeroerp_app`: il costo del
+--   cambio e' scritto nel marcatore.
 -- ------------------------------------------------------------
 
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ============================================================
+-- Fixture: il mondo, POI il contesto
+-- ============================================================
+CREATE TEMP TABLE _mondi AS
+SELECT 'MIA'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'ALTRUI' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- ⛔ Il BA va LEGATO al proprio emittente (terzo parametro): senza, la fattura
+--   ricadrebbe sull'emittente di DEFAULT dell'installazione.
+CREATE TEMP TABLE _clienti AS
+SELECT m.lato, m.soggetto_ruolo_id AS emittente_sr_id, c.*
+  FROM _mondi m
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba(
+      'RLS guard stampa ' || m.lato, NULL, m.soggetto_ruolo_id) c;
+
+-- ⭐ Il registro lo da' l'helper, che ne CREA uno coerente se quell'emittente
+--   non ne ha: senza, il guard registro-emittente rifiuterebbe la fattura per
+--   un motivo che non c'entra col test.
+CREATE TEMP TABLE _fatture AS
+WITH f AS (
+    INSERT INTO vendite.fatture
+        (registro_id, emittente_soggetto_ruolo_id, billing_account_id, meta)
+    SELECT script.fn_pgtap_registro_fattura(c.emittente_sr_id),
+           c.emittente_sr_id, c.billing_account_id,
+           jsonb_build_object('test_scope', 'pgtap_guard_stampa_coda')
+      FROM _clienti c
+    RETURNING id, emittente_soggetto_ruolo_id
+)
+SELECT c.lato, f.id AS fattura_id
+  FROM f JOIN _clienti c ON c.emittente_sr_id = f.emittente_soggetto_ruolo_id;
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'MIA'));
+    PERFORM set_config('pgtap.fattura_mia',
+        (SELECT fattura_id FROM _fatture WHERE lato = 'MIA')::text, true);
+    PERFORM set_config('pgtap.fattura_altrui',
+        (SELECT fattura_id FROM _fatture WHERE lato = 'ALTRUI')::text, true);
+END $ctx$;
+
+-- Da owner la policy non morde: si accende per la durata della transazione.
+ALTER TABLE vendite.fatture_stampa_coda FORCE ROW LEVEL SECURITY;
 
 SELECT plan(6);
 
@@ -73,102 +129,21 @@ SELECT isnt_empty(
     '3. la FK che fissa sorgente_id alle fatture esiste ancora'
 );
 
--- ============================================================
--- Fixture: una fattura mia, e una di un altro emittente
--- ============================================================
--- ⭐ La fattura altrui si crea dal SUPER ADMIN, l'unico attore che puo'
---   scrivere fuori dal proprio perimetro — ed e' proprio cio' che il test 5
---   prova essere vietato all'operatore.
--- ⚠️ Se esiste un solo emittente attivo il caso non e' costruibile: si dichiara
---   e si salta, invece di fingere.
-DO $fixture$
-DECLARE
-    v_mio_ef     anagrafiche.emittenti_fiscali.id%TYPE;
-    v_altro_sr   anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
-    v_super      integer;   -- ⚠️ niente %TYPE su django.*
-    v_mia        vendite.fatture.id%TYPE;
-    v_altrui     vendite.fatture.id%TYPE;
-BEGIN
-    v_mio_ef := script.fn_pgtap_emittente_operatore();
-
-    -- Ordine stabile: una fixture che pesca a caso non verifica, scommette.
-    SELECT f.id INTO v_mia
-      FROM vendite.fatture f
-      JOIN anagrafiche.emittenti_fiscali ef
-        ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
-     WHERE ef.id = v_mio_ef
-     ORDER BY f.id
-     LIMIT 1;
-
-    -- ⛔ LA FATTURA ALTRUI SI COSTRUISCE, non si cerca.
-    --   Misurato il 2026-09-05: su questo database il secondo emittente ha
-    --   ZERO fatture. Cercandola, il test 5 si sarebbe SALTATO — dichiarando
-    --   onestamente di non aver provato niente, ma lasciando non esercitata
-    --   proprio l'asserzione per cui il file esiste.
-    --   ⇒ La si crea, e la si crea dal SUPER ADMIN: e' l'unico attore che puo'
-    --     scrivere fuori dal proprio perimetro, cioe' esattamente cio' che il
-    --     test 5 prova essere vietato all'operatore.
-    SELECT ef.soggetto_ruolo_id INTO v_altro_sr
-      FROM anagrafiche.emittenti_fiscali ef
-     WHERE ef.attivo AND ef.id <> v_mio_ef
-     ORDER BY ef.id
-     LIMIT 1;
-
-    SELECT u.id INTO v_super
-      FROM django.auth_user u
-     WHERE script.fn_is_super_admin(u.id)
-     ORDER BY u.id
-     LIMIT 1;
-
-    IF v_altro_sr IS NOT NULL AND v_super IS NOT NULL THEN
-        PERFORM script.fn_pgtap_set_contesto_operatore(v_super);
-
-        -- ⭐ Il registro lo da' l'helper, che ne CREA uno coerente se
-        --   quell'emittente non ne ha: senza, il guard registro-emittente
-        --   rifiuterebbe la fattura per un motivo che non c'entra col test.
-        INSERT INTO vendite.fatture
-            (registro_id, emittente_soggetto_ruolo_id, billing_account_id, meta)
-        SELECT script.fn_pgtap_registro_fattura(v_altro_sr),
-               v_altro_sr,
-               (SELECT ba.id FROM anagrafiche.billing_account ba
-                 ORDER BY ba.id LIMIT 1),
-               jsonb_build_object('test_scope', 'pgtap_guard_stampa_coda')
-        RETURNING id INTO v_altrui;
-
-        -- Si torna all'operatore normale: da qui si collauda cio' che puo'
-        -- fare LUI.
-        -- ⚠️ I vincoli sono gia' IMMEDIATE dal preambolo, quindi si sono
-        --   chiusi qui sopra, nei panni di chi ha scritto. Fossero rimasti
-        --   differiti si sarebbero verificati DOPO questo cambio di attore, e
-        --   avrebbero letto sotto la RLS dell'operatore.
-        PERFORM script.fn_pgtap_set_contesto_operatore();
-    END IF;
-
-    PERFORM set_config('pgtap.fattura_mia',
-                       COALESCE(v_mia::text, ''), true);
-    PERFORM set_config('pgtap.fattura_altrui',
-                       COALESCE(v_altrui::text, ''), true);
-END
-$fixture$;
 
 -- ============================================================
 -- 4. ✅ Cio' che deve passare
 -- ============================================================
 -- Prima del rifiuto va provato il consenso: un guard che nega tutto passerebbe
 -- il test 5 senza essere corretto.
-SELECT CASE
-    WHEN NULLIF(current_setting('pgtap.fattura_mia', true), '') IS NULL
-        THEN skip('4. nessuna fattura nel proprio perimetro su cui costruire il caso', 1)
-    ELSE lives_ok(
-        format($$INSERT INTO vendite.fatture_stampa_coda
-                     (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
-                 SELECT (SELECT id FROM config.sorgenti
-                          WHERE codice_interno = 'FATTURA'),
-                        %s, 'pgtap-guard-mia', 'PENDING'$$,
-               current_setting('pgtap.fattura_mia')),
-        '4. accodare la stampa di una PROPRIA fattura passa'
-    )
-END;
+SELECT lives_ok(
+    format($$INSERT INTO vendite.fatture_stampa_coda
+                 (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
+             SELECT (SELECT id FROM config.sorgenti
+                      WHERE codice_interno = 'FATTURA'),
+                    %s, 'pgtap-guard-mia', 'PENDING'$$,
+           current_setting('pgtap.fattura_mia')),
+    '4. accodare la stampa di una PROPRIA fattura passa'
+);
 
 -- ============================================================
 -- 5. ⛔ Cio' che deve fermarsi, e come lo dice
@@ -184,11 +159,6 @@ DO $prova$
 DECLARE
     v_esito text := 'non-sollevato';
 BEGIN
-    IF NULLIF(current_setting('pgtap.fattura_altrui', true), '') IS NULL THEN
-        PERFORM set_config('pgtap.esito5', 'skip', true);
-        RETURN;
-    END IF;
-
     BEGIN
         INSERT INTO vendite.fatture_stampa_coda
             (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
@@ -205,15 +175,11 @@ BEGIN
 END
 $prova$;
 
-SELECT CASE
-    WHEN current_setting('pgtap.esito5', true) = 'skip'
-        THEN skip('5. nessuna fattura di un altro emittente su questo database', 1)
-    ELSE is(
-        current_setting('pgtap.esito5', true),
-        'P0001|scope',
-        '5. accodare la stampa di una fattura ALTRUI si ferma, e SPIEGA'
-    )
-END;
+SELECT is(
+    current_setting('pgtap.esito5', true),
+    'P0001|scope',
+    '5. accodare la stampa di una fattura ALTRUI si ferma, e SPIEGA'
+);
 
 -- ============================================================
 -- 6. ⭐ Il presidio livello 2 non ha ALLARMI
@@ -243,6 +209,8 @@ SELECT is_empty(
        WHERE stato = 'NON_DICHIARATO'$$,
     '6. nessun bersaglio di dominio scoperto che non sia DICHIARATO'
 );
+
+ALTER TABLE vendite.fatture_stampa_coda NO FORCE ROW LEVEL SECURITY;
 
 SELECT * FROM finish();
 

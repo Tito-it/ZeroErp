@@ -1,16 +1,29 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce DUE aziende e una fattura, e una
+--   fattura pretende un billing account. Come `zeroerp_app` l'INSERT del BA
+--   muore al RETURNING quando l'emittente di chi agisce non e' quello di
+--   default (la policy di lettura risolve il BA non ancora mappato sul default;
+--   il legame lo scrive un trigger AFTER). Da owner la policy si esercita con
+--   `FORCE ROW LEVEL SECURITY` locale alla transazione, acceso DOPO i test di
+--   struttura — cosi' il test 2 continua a misurare la postura di esercizio.
 -- pgTAP test per Zero ERP
 -- Test: RLS FUNZIONALE su vendite.fatture_stampa_coda
 --       policy rls_fatture_stampa_coda_ef_whitelist (changeset 20260904-05/06)
 --       Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 8
 --
--- ⭐ PERCHE' FUNZIONALE, e perche' gira come L'APPLICAZIONE.
---   Questa policy non e' pre-armata come quelle dei satelliti fattura: nasce
---   perche' il verbo «Archivia» e' la PRIMA SCRITTURA DELL'OPERATORE su questa
---   tabella. C'e' quindi un percorso applicativo vero da esercitare, e il test
---   lo esercita da li' — niente `pgtap-runner: owner`, niente FORCE locale:
---   zeroerp_app non e' owner ed e' NOBYPASSRLS, quindi la policy morde da sola.
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file cercava una fattura ESISTENTE nel perimetro dell'operatore e un secondo
+--   operatore su un altro emittente, e senza di loro SALTAVA i test 5-10: su un
+--   database ricostruito dai changelog moriva nella fixture, e il verbo
+--   «Archivia» — la prima scrittura dell'operatore su questa tabella — restava
+--   collaudato solo su dbdev. Ora: due aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`, un cliente della prima con
+--   `dbops.fn_pgtap_crea_cliente_ba(..., A)`, il suo registro
+--   (`script.fn_pgtap_registro_fattura`) e la sua fattura. Niente piu' `skip`.
+--   ⚠️ Fino a quel giorno il file girava come `zeroerp_app` senza DDL: il costo
+--   del cambio e' scritto nel marcatore.
 --
 -- ⚠️ IL TEST 7 E' L'UNICO MODO ONESTO DI PROVARE IL FAIL-CLOSED, e la forma
 --   conta. Si svuota `app.ruolo_applicativo`, NON `app.current_user_id`:
@@ -22,9 +35,8 @@
 --
 -- ⚠️ IL TEST 5 VUOLE UN OPERATORE VERO DI UN ALTRO PERIMETRO, per la stessa
 --   ragione: un auth_user_id inventato non e' «un altro operatore», e' un
---   utente senza whitelist, cioe' — di nuovo — uno che vede tutto. Se il
---   database non ha un secondo operatore con un emittente diverso, il test si
---   dichiara saltato invece di passare a vuoto.
+--   utente senza whitelist, cioe' — di nuovo — uno che vede tutto. E' l'operatore
+--   dell'azienda B, costruita apposta.
 -- ------------------------------------------------------------
 -- Indice test (1..10):
 --   STRUTTURA
@@ -43,64 +55,64 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(10);
 
 -- ============================================================
--- Fixture
+-- Fixture: il mondo, POI il contesto
 -- ============================================================
--- ⚠️ La fattura si sceglie NEL PERIMETRO (la WITH CHECK della policy la
---   pretende) e SENZA work-item vivo (l'indice unico parziale rifiuterebbe
---   l'INSERT). ORDER BY esplicito: senza, la riga scelta dipende dal piano.
+CREATE TEMP TABLE _mondi AS
+SELECT 'IO'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'ALTRO' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- ⛔ Il BA va LEGATO al proprio emittente (terzo parametro): senza, la fattura
+--   ricadrebbe sull'emittente di DEFAULT dell'installazione.
+CREATE TEMP TABLE _cliente AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba(
+    'RLS stampa coda', NULL, (SELECT soggetto_ruolo_id FROM _mondi WHERE lato = 'IO')) c;
+
+-- ⚠️ La fattura si costruisce NEL PERIMETRO (la WITH CHECK della policy la
+--   pretende) e nasce SENZA work-item vivo.
 CREATE TEMP TABLE _fat AS
+WITH f AS (
+    INSERT INTO vendite.fatture
+        (registro_id, emittente_soggetto_ruolo_id, billing_account_id)
+    SELECT script.fn_pgtap_registro_fattura(m.soggetto_ruolo_id),
+           m.soggetto_ruolo_id, c.billing_account_id
+      FROM _mondi m, _cliente c
+     WHERE m.lato = 'IO'
+    RETURNING id
+)
 SELECT f.id AS fattura_id,
        (SELECT s.id FROM config.sorgenti s
          WHERE s.codice_interno = 'FATTURA') AS tipo_id
-  FROM vendite.fatture f
- WHERE f.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore()
-   AND NOT EXISTS (SELECT 1 FROM vendite.fatture_stampa_coda c
-                    WHERE c.sorgente_id = f.id
-                      AND c.stato IN ('PENDING', 'IN_CORSO'))
- ORDER BY f.id
- LIMIT 1;
+  FROM f;
 
--- L'operatore corrente e un operatore di un ALTRO emittente. Il secondo puo'
--- non esistere: i test che lo usano lo dichiarano saltato.
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'IO'));
+END $ctx$;
+
+-- L'operatore corrente e l'operatore dell'ALTRA azienda.
 CREATE TEMP TABLE _op AS
-SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer AS io,
-       (SELECT u.auth_user_id
-          FROM config.user_emittenti_fiscali u
-          JOIN anagrafiche.emittenti_fiscali e ON e.id = u.emittente_fiscale_id
-         WHERE e.soggetto_ruolo_id IS DISTINCT FROM script.fn_pgtap_emittente_sr_operatore()
-         ORDER BY u.auth_user_id
-         LIMIT 1) AS altro;
+SELECT (SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'IO')    AS io,
+       (SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'ALTRO') AS altro;
 
 -- La riga di coda su cui si misura tutto: nasce ERRORE, cioe' gia'
 -- archiviabile, perche' qui il soggetto e' la RLS e non il guard di stato
 -- (quello ha il suo test in dbops/test-coda-archiviazione.sql).
-DO $fix$
-DECLARE
-    v_fattura_id bigint;
-    v_tipo_id    bigint;
-BEGIN
-    SELECT fattura_id, tipo_id INTO v_fattura_id, v_tipo_id FROM _fat;
-    IF v_fattura_id IS NULL OR v_tipo_id IS NULL THEN
-        RETURN;
-    END IF;
+CREATE TEMP TABLE _coda AS
+WITH c AS (
     INSERT INTO vendite.fatture_stampa_coda
         (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
-    VALUES (v_tipo_id, v_fattura_id, v_fattura_id::text, 'ERRORE');
-END
-$fix$;
-
-CREATE TEMP TABLE _coda AS
-SELECT c.id
-  FROM vendite.fatture_stampa_coda c
-  JOIN _fat f ON f.fattura_id = c.sorgente_id
- WHERE c.stato = 'ERRORE';
+    SELECT f.tipo_id, f.fattura_id, f.fattura_id::text, 'ERRORE'
+      FROM _fat f
+    RETURNING id
+)
+SELECT id FROM c;
 
 -- ============================================================
 -- 1-4) Struttura
@@ -145,59 +157,48 @@ SELECT is(
 -- ============================================================
 -- 5-8) Chi vede cosa
 -- ============================================================
-SELECT CASE
-    WHEN (SELECT count(*) FROM _coda) = 0
-      THEN skip('5) nessuna fattura nel perimetro dell''operatore: fixture non costruibile', 1)
-    WHEN (SELECT altro FROM _op) IS NULL
-      THEN skip('5) nessun secondo operatore con un emittente diverso su questo database', 1)
-    ELSE is(
-        (SELECT count(*) FROM (
-            SELECT set_config('app.current_user_id',
-                              (SELECT altro::text FROM _op), true)) s,
-            LATERAL (SELECT 1 FROM vendite.fatture_stampa_coda c
-                      WHERE c.id = (SELECT id FROM _coda)) x),
-        0::bigint,
-        '5) un operatore di un altro perimetro non vede il work-item')
-    END;
+-- Da owner la policy non morde: si accende ORA, dopo che il test 2 ha misurato
+-- la postura di esercizio, e per la sola durata della transazione.
+ALTER TABLE vendite.fatture_stampa_coda FORCE ROW LEVEL SECURITY;
+
+SELECT is(
+    (SELECT count(*) FROM (
+        SELECT set_config('app.current_user_id',
+                          (SELECT altro::text FROM _op), true)) s,
+        LATERAL (SELECT 1 FROM vendite.fatture_stampa_coda c
+                  WHERE c.id = (SELECT id FROM _coda)) x),
+    0::bigint,
+    '5) un operatore di un altro perimetro non vede il work-item');
 
 -- Si torna all'operatore di casa prima di proseguire.
 SELECT set_config('app.current_user_id', (SELECT io::text FROM _op), true);
 
-SELECT CASE WHEN (SELECT count(*) FROM _coda) = 0
-    THEN skip('6) fixture non costruibile (vedi 5)', 1)
-    ELSE is(
-        (SELECT count(*) FROM (
-            SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true)) s,
-            LATERAL (SELECT 1 FROM vendite.fatture_stampa_coda c
-                      WHERE c.id = (SELECT id FROM _coda)) x),
-        0::bigint,
-        '6) una veste diversa da OPERATORE non vede nulla: il gate della policy')
-    END;
+SELECT is(
+    (SELECT count(*) FROM (
+        SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true)) s,
+        LATERAL (SELECT 1 FROM vendite.fatture_stampa_coda c
+                  WHERE c.id = (SELECT id FROM _coda)) x),
+    0::bigint,
+    '6) una veste diversa da OPERATORE non vede nulla: il gate della policy');
 
 -- ⚠️ Fail-closed sul RUOLO, non sull'utente: svuotare app.current_user_id
 --   NON e' fail-closed (whitelist vuota = nessuna restrizione), e un test
 --   scritto cosi' passerebbe vedendo tutto.
-SELECT CASE WHEN (SELECT count(*) FROM _coda) = 0
-    THEN skip('7) fixture non costruibile (vedi 5)', 1)
-    ELSE is(
-        (SELECT count(*) FROM (
-            SELECT set_config('app.ruolo_applicativo', '', true)) s,
-            LATERAL (SELECT 1 FROM vendite.fatture_stampa_coda c
-                      WHERE c.id = (SELECT id FROM _coda)) x),
-        0::bigint,
-        '7) senza veste dichiarata la policy e'' fail-closed')
-    END;
+SELECT is(
+    (SELECT count(*) FROM (
+        SELECT set_config('app.ruolo_applicativo', '', true)) s,
+        LATERAL (SELECT 1 FROM vendite.fatture_stampa_coda c
+                  WHERE c.id = (SELECT id FROM _coda)) x),
+    0::bigint,
+    '7) senza veste dichiarata la policy e'' fail-closed');
 
 SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
 
-SELECT CASE WHEN (SELECT count(*) FROM _coda) = 0
-    THEN skip('8) fixture non costruibile (vedi 5)', 1)
-    ELSE is(
-        (SELECT count(*) FROM vendite.fatture_stampa_coda c
-          WHERE c.id = (SELECT id FROM _coda)),
-        1::bigint,
-        '8) l''operatore vede il work-item della propria fattura')
-    END;
+SELECT is(
+    (SELECT count(*) FROM vendite.fatture_stampa_coda c
+      WHERE c.id = (SELECT id FROM _coda)),
+    1::bigint,
+    '8) l''operatore vede il work-item della propria fattura');
 
 -- ============================================================
 -- 9-10) ⭐ La scrittura — cioe' proprio il verbo che apre questo cantiere
@@ -213,10 +214,6 @@ DECLARE
     v_n     integer;
     v_altro integer;
 BEGIN
-    IF (SELECT count(*) FROM _coda) = 0 THEN
-        RETURN;
-    END IF;
-
     -- In perimetro: se la policy fosse FOR SELECT questa tornerebbe 0 e
     -- l'archiviazione sarebbe impossibile anche a chi ne ha diritto — e' la
     -- lezione dell'Ondata 2, pagata una volta.
@@ -226,9 +223,6 @@ BEGIN
     INSERT INTO _scritture VALUES ('in_perimetro', v_n);
 
     SELECT altro INTO v_altro FROM _op;
-    IF v_altro IS NULL THEN
-        RETURN;
-    END IF;
 
     -- Fuori perimetro: la USING non fa vedere la riga, quindi l'UPDATE non ne
     -- tocca nessuna. Nessun errore: zero righe, che e' il modo in cui la RLS
@@ -243,24 +237,17 @@ BEGIN
 END
 $scritture$;
 
-SELECT CASE WHEN (SELECT count(*) FROM _coda) = 0
-    THEN skip('9) fixture non costruibile (vedi 5)', 1)
-    ELSE is(
-        (SELECT righe FROM _scritture WHERE chiave = 'in_perimetro'),
-        1,
-        '9) l''operatore ARCHIVIA il work-item della propria fattura')
-    END;
+SELECT is(
+    (SELECT righe FROM _scritture WHERE chiave = 'in_perimetro'),
+    1,
+    '9) l''operatore ARCHIVIA il work-item della propria fattura');
 
-SELECT CASE
-    WHEN (SELECT count(*) FROM _coda) = 0
-      THEN skip('10) fixture non costruibile (vedi 5)', 1)
-    WHEN (SELECT altro FROM _op) IS NULL
-      THEN skip('10) nessun secondo operatore con un emittente diverso', 1)
-    ELSE is(
-        (SELECT righe FROM _scritture WHERE chiave = 'fuori_perimetro'),
-        0,
-        '10) un operatore di un altro perimetro non puo'' archiviare: la USING nega')
-    END;
+SELECT is(
+    (SELECT righe FROM _scritture WHERE chiave = 'fuori_perimetro'),
+    0,
+    '10) un operatore di un altro perimetro non puo'' archiviare: la USING nega');
+
+ALTER TABLE vendite.fatture_stampa_coda NO FORCE ROW LEVEL SECURITY;
 
 SELECT * FROM finish();
 ROLLBACK;

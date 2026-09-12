@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce TRE aziende e un billing account
+--   legato a un emittente che NON e' quello di default: come `zeroerp_app`
+--   l'INSERT del BA muore al RETURNING (la policy di lettura risolve il BA non
+--   ancora mappato sull'emittente di default, che e' un'altra azienda — il
+--   legame lo scrive un trigger AFTER). Il soggetto del test sono le funzioni
+--   dello scope, che prendono l'utente come parametro: il ruolo di connessione
+--   non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Passo 2 (P-2a) del cantiere «perimetro emittente»: fail-closed nella catena
@@ -8,7 +16,7 @@
 -- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §2.5
 --
 -- Elenco test (plan 8):
---   0) PRECONDIZIONI: un operatore con riga, diverso da quello di contesto
+--   0) PRECONDIZIONI: le tre aziende e il BA sono stati costruiti
 --   1) operatore CON riga            -> array di 1 (invariato)
 --   2) * operatore SENZA riga        -> '{}' e NON NULL     ⬅ LA correzione
 --   3) * stesso, fn_check_user_emittente_scope -> false
@@ -26,12 +34,25 @@
 --    adapter si sistemano «per costruzione» perche' trattano gia' cardinality=0
 --    come nessun accesso. Sostenerlo non basta, si misura.
 --
--- ⚠️ FIXTURE. DL-A e' stato sanato il 2026-08-18 (era 2, ora e' 0), quindi un
---   operatore senza riga NON ESISTE PIU' e va costruito: si toglie lo scope a
---   un operatore vero con la funzione di dominio
---   script.fn_change_user_emittenti_scope(x, '{}'), e il file chiude in
---   ROLLBACK. Si evita di proposito l'operatore del CONTESTO pgTAP: e' quello
---   da cui dipendono le policy RLS durante la corsa.
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file pescava un operatore, un super admin e un BA fra quelli ESISTENTI: su
+--   un database ricostruito dai changelog non ce n'e' nessuno, il file moriva
+--   nella fixture e la proprieta' fail-closed — la piu' importante del
+--   perimetro — restava collaudata solo su dbdev. Ora:
+--     - tre aziende con `dbops.fn_pgtap_crea_emittente_operatore()`: quella del
+--       CONTESTO, quella dell'operatore a cui si toglie lo scope (diverso da
+--       quello di contesto: e' da lui che dipendono le policy durante la corsa)
+--       e quella del super admin, che lo diventa con un binding al profilo
+--       SUPER_ADMIN;
+--     - un BA con `dbops.fn_pgtap_crea_cliente_ba()` legato all'emittente
+--       dell'operatore da spogliare, PRIMA di aprire il contesto: con un
+--       operatore in sessione il trigger z90 del BA scriverebbe un secondo
+--       legame e i due si scontrerebbero su uq_emittenti_fiscali_ba. Cosi' il
+--       test 7 e' onesto: prima dello spoglio l'adapter dice SI' (test 0), dopo
+--       dice NO — e il NO viene dallo scope, non da un BA che non c'entra.
+--   Un operatore senza riga NON ESISTE (DL-A sanato il 2026-08-18): si toglie
+--   lo scope con la funzione di dominio script.fn_change_user_emittenti_scope,
+--   che e' la sede unica del modello 1-a-1, e il file chiude in ROLLBACK.
 --
 -- ⚠️ Le funzioni dello scope prendono l'auth_user_id come PARAMETRO, quindi non
 --   serve cambiare contesto per interrogarle su un altro utente. Cambiarlo
@@ -40,46 +61,56 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(8);
 
 -- ============================================================
--- Fixture
+-- Fixture: si costruisce il mondo, POI si apre il contesto
 -- ============================================================
--- Un operatore con riga, NON super admin e DIVERSO da quello di contesto.
--- ⚠️ ORDER BY obbligatorio: la scelta deve essere stabile fra le corse.
+CREATE TEMP TABLE _mondi ON COMMIT DROP AS
+SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- Il super admin: un'identita' OPERATORE attiva con binding SUPER_ADMIN attivo
+-- (e' la definizione di script.fn_is_super_admin).
+INSERT INTO config.profili_accesso_bindings
+    (profilo_accesso_id, identita_digitale_id, attivo)
+VALUES ((SELECT pa.id FROM config.profili_accesso pa WHERE pa.codice = 'SUPER_ADMIN'),
+        (SELECT m.identita_id FROM _mondi m WHERE m.lato = 'SA'),
+        true);
+
+-- L'operatore a cui si togliera' lo scope, e il super admin.
 CREATE TEMP TABLE _t_op ON COMMIT DROP AS
-SELECT uef.auth_user_id,
-       uef.emittente_fiscale_id
-  FROM config.user_emittenti_fiscali uef
- WHERE script.fn_has_identita_attiva(
-           uef.auth_user_id, 'OPERATORE'::config.ruolo_applicativo)
-   AND NOT script.fn_is_super_admin(uef.auth_user_id)
-   AND uef.auth_user_id <> NULLIF(current_setting('app.current_user_id', true), '')::integer
- ORDER BY uef.auth_user_id
- LIMIT 1;
+SELECT m.auth_user_id, m.emittente_fiscale_id, m.soggetto_ruolo_id
+  FROM _mondi m WHERE m.lato = 'OP';
 
 CREATE TEMP TABLE _t_sa ON COMMIT DROP AS
-SELECT (SELECT idg.auth_user_id
-          FROM anagrafiche.identita_digitali idg
-         WHERE idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-           AND idg.attivo
-           AND script.fn_is_super_admin(idg.auth_user_id)
-         ORDER BY idg.auth_user_id
-         LIMIT 1) AS auth_user_id;
+SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'SA';
 
--- Un billing account qualunque, per l'adapter del test 7.
+-- Un billing account dell'azienda dell'operatore da spogliare, per l'adapter
+-- del test 7. Prima del contesto (vedi intestazione).
 CREATE TEMP TABLE _t_ba ON COMMIT DROP AS
-SELECT ba.id AS ba_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1;
+SELECT c.billing_account_id AS ba_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+           'scope fail-closed', NULL, (SELECT soggetto_ruolo_id FROM _t_op)) c;
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'CTX'));
+END $ctx$;
 
 SELECT ok(
-    (SELECT auth_user_id FROM _t_op) IS NOT NULL
-    AND (SELECT auth_user_id FROM _t_sa) IS NOT NULL
-    AND (SELECT ba_id FROM _t_ba) IS NOT NULL,
-    '0. PRECONDIZIONI: un operatore configurato (non di contesto), un super admin, un BA'
+    (SELECT count(*) FROM _mondi) = 3
+    AND script.fn_is_super_admin((SELECT auth_user_id FROM _t_sa))
+    AND NOT script.fn_is_super_admin((SELECT auth_user_id FROM _t_op))
+    AND script.fn_scope_ef_whitelist_via_efba(
+            (SELECT auth_user_id FROM _t_op), (SELECT ba_id FROM _t_ba)),
+    '0. PRECONDIZIONI: tre aziende costruite, il super admin lo e'' davvero, l''operatore no, e VEDE il suo BA'
 );
 
 -- ============================================================

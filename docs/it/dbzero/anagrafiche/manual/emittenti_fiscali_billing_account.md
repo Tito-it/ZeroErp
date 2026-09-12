@@ -27,9 +27,17 @@ prevede che ogni BA venga **auto‑collegato** all'emittente dell'operatore che 
 * **Default globale**:
   * `is_default = true` ammesso **una sola volta**.
   * la riga di default ha `billing_account_id` **NULL**.
-* **Coerenza**:
-  * se esiste una riga specifica per BA, essa prevale sul default.
-  * in assenza di mapping, si usa il default.
+* **Coerenza** (la regola vive in
+  [`script.fn_get_ba_emittente_sr_id`](/dbzero/script/manual/fn_get_ba_emittente_sr_id),
+  e da nessun'altra parte):
+  * se esiste una riga specifica per BA, essa prevale su tutto.
+  * in assenza di mapping, **in sessione**, il BA è dell'**operatore che sta
+    agendo** (dal 2026-09-13, D13): è l'istante fra l'`INSERT` del BA e il
+    trigger `z90` che scrive il legame, e la riserva dice in anticipo ciò che il
+    trigger sta per scrivere — senza, l'`INSERT … RETURNING` di un operatore di
+    un emittente non di default moriva sotto la RLS.
+  * in assenza di mapping e **senza sessione** (batch, manutenzione), si usa il
+    default.
 
 ---
 
@@ -77,7 +85,7 @@ Presidio:
 ### Collocazione nel processo di fatturazione
 
 1. Durante la generazione delle fatture, l’emittente fiscale viene risolto tramite questa tabella.
-2. Se non esiste un mapping specifico per il BA, viene applicato il default globale.
+2. Se non esiste un mapping specifico per il BA, vale la riserva: l'emittente di chi agisce se c'è una sessione, altrimenti il default globale.
 3. Questo garantisce coerenza e riduce la configurazione manuale quando l’emittente e` unico.
 
 ---

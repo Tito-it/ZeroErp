@@ -36,7 +36,29 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file pescava fra i dati ESISTENTI l'operatore con whitelist, il super
+--   admin e l'utente senza identita', e quando non li trovava rispondeva
+--   `true` con l'etichetta «skip se no fixture»: su un database ricostruito dai
+--   changelog era VERDE PER SOTTRAZIONE — sei asserzioni, nessuna eseguita.
+--   Ora i tre soggetti si costruiscono (due aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`, un binding SUPER_ADMIN, un
+--   auth_user nudo) e i rami «skip» non esistono piu'.
+CREATE TEMP TABLE _mondi AS
+SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+INSERT INTO config.profili_accesso_bindings
+    (profilo_accesso_id, identita_digitale_id, attivo)
+VALUES ((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
+        (SELECT identita_id FROM _mondi WHERE lato = 'SA'), true);
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
+END $ctx$;
 
 SELECT plan(6);
 
@@ -59,64 +81,46 @@ SELECT ok(
 );
 
 -- ============================================================
--- Setup: pesco un utente OPERATORE con almeno 1 EF in whitelist
--- (per i test 2/3/6) e valori NULL/empty per i test 4/5
+-- Setup: i tre soggetti, letti dalle aziende costruite
+-- (operatore con whitelist per i test 2/3/6, super admin per il 4,
+-- utente senza identita' OPERATORE per il 5)
 -- ============================================================
 CREATE TEMP TABLE _t_user_with_ef AS
-SELECT au.id AS user_id
-  FROM django.auth_user au
-  JOIN anagrafiche.identita_digitali idg
-    ON idg.auth_user_id = au.id
-   AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND idg.attivo = true
-  JOIN config.user_emittenti_fiscali uef
-    ON uef.auth_user_id = au.id
- WHERE au.is_active = true
-   -- escludo super admin (per testare ramo "OPERATIVO whitelist")
-   AND NOT script.fn_is_super_admin(au.id)
- ORDER BY au.id LIMIT 1;
+SELECT m.auth_user_id AS user_id FROM _mondi m WHERE m.lato = 'CTX';
 
 CREATE TEMP TABLE _t_super_admin AS
-SELECT au.id AS user_id
-  FROM django.auth_user au
- WHERE au.is_active = true
-   AND script.fn_is_super_admin(au.id)
- ORDER BY au.id LIMIT 1;
+SELECT m.auth_user_id AS user_id FROM _mondi m WHERE m.lato = 'SA';
 
+-- Un auth_user nudo: attivo, ma senza nessuna identita' digitale.
 CREATE TEMP TABLE _t_no_operatore AS
-SELECT au.id AS user_id
-  FROM django.auth_user au
-  LEFT JOIN anagrafiche.identita_digitali idg
-    ON idg.auth_user_id = au.id
-   AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND idg.attivo = true
- WHERE au.is_active = true
-   AND idg.id IS NULL
- ORDER BY au.id LIMIT 1;
+WITH ins AS (
+    INSERT INTO django.auth_user
+        (username, password, is_active, is_staff, is_superuser,
+         first_name, last_name, email, date_joined)
+    VALUES ('_pgtap_parity_nudo_' || substring(md5(clock_timestamp()::text) from 1 for 8),
+            '!', true, false, false, '', '', '', now())
+    RETURNING id
+)
+SELECT id AS user_id FROM ins;
 
 -- ============================================================
 -- 2) Operatore con whitelist -> _pk_ids ritorna array di PK reali
 -- ============================================================
 SELECT ok(
-    CASE
-      WHEN (SELECT user_id FROM _t_user_with_ef) IS NULL THEN
-        true  -- skip soft: nessuna fixture
-      ELSE
-        cardinality(
-          script.fn_get_emittenti_scope_pk_ids(
-            (SELECT user_id FROM _t_user_with_ef)
-          )
-        ) > 0
-        AND
-        -- Verifica che ogni PK ritornato sia effettivamente un EF esistente
-        (SELECT count(*) FROM unnest(
-            script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_user_with_ef))
-         ) AS pk
-         WHERE NOT EXISTS (
-            SELECT 1 FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = pk
-         )) = 0
-    END,
-    '2. Operatore con whitelist -> _pk_ids ritorna array di PK reali validi (skip se no fixture)'
+    cardinality(
+      script.fn_get_emittenti_scope_pk_ids(
+        (SELECT user_id FROM _t_user_with_ef)
+      )
+    ) > 0
+    AND
+    -- Verifica che ogni PK ritornato sia effettivamente un EF esistente
+    (SELECT count(*) FROM unnest(
+        script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_user_with_ef))
+     ) AS pk
+     WHERE NOT EXISTS (
+        SELECT 1 FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = pk
+     )) = 0,
+    '2. Operatore con whitelist -> _pk_ids ritorna array di PK reali validi'
 );
 
 -- ============================================================
@@ -125,12 +129,12 @@ SELECT ok(
 SELECT is(
     cardinality(
       script.fn_get_emittenti_scope_pk_ids(
-        COALESCE((SELECT user_id FROM _t_user_with_ef), 0)
+        (SELECT user_id FROM _t_user_with_ef)
       )
     ),
     cardinality(
       script.fn_get_emittenti_scope_sr_ids(
-        COALESCE((SELECT user_id FROM _t_user_with_ef), 0)
+        (SELECT user_id FROM _t_user_with_ef)
       )
     ),
     '3. Parity cardinalita: _pk_ids e _sr_ids hanno stesso numero di elementi per stesso utente'
@@ -140,32 +144,22 @@ SELECT is(
 -- 4) Parity NULL: super admin -> entrambe NULL
 -- ============================================================
 SELECT ok(
-    CASE
-      WHEN (SELECT user_id FROM _t_super_admin) IS NULL THEN
-        true  -- skip
-      ELSE
-        script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_super_admin)) IS NULL
-        AND
-        script.fn_get_emittenti_scope_sr_ids((SELECT user_id FROM _t_super_admin)) IS NULL
-    END,
-    '4. Parity NULL: super admin -> entrambe ritornano NULL (skip se no super admin in fixture)'
+    script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_super_admin)) IS NULL
+    AND
+    script.fn_get_emittenti_scope_sr_ids((SELECT user_id FROM _t_super_admin)) IS NULL,
+    '4. Parity NULL: super admin -> entrambe ritornano NULL'
 );
 
 -- ============================================================
 -- 5) Parity '{}': utente senza identita OPERATORE -> entrambe '{}'
 -- ============================================================
 SELECT ok(
-    CASE
-      WHEN (SELECT user_id FROM _t_no_operatore) IS NULL THEN
-        true  -- skip
-      ELSE
-        script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_no_operatore))
-            = '{}'::bigint[]
-        AND
-        script.fn_get_emittenti_scope_sr_ids((SELECT user_id FROM _t_no_operatore))
-            = '{}'::bigint[]
-    END,
-    '5. Parity []: utente senza identita OPERATORE -> entrambe ritornano ''{}'' (skip se no fixture)'
+    script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_no_operatore))
+        = '{}'::bigint[]
+    AND
+    script.fn_get_emittenti_scope_sr_ids((SELECT user_id FROM _t_no_operatore))
+        = '{}'::bigint[],
+    '5. Parity []: utente senza identita OPERATORE -> entrambe ritornano ''{}'''
 );
 
 -- ============================================================
@@ -175,19 +169,14 @@ SELECT ok(
 --    (via emittenti_fiscali.soggetto_ruolo_id) deve essere in _sr_ids.
 -- ============================================================
 SELECT ok(
-    CASE
-      WHEN (SELECT user_id FROM _t_user_with_ef) IS NULL THEN
-        true  -- skip
-      ELSE
-        (SELECT count(*) FROM unnest(
-            script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_user_with_ef))
-         ) AS pk
-         WHERE NOT (
-           (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = pk)
-           = ANY(script.fn_get_emittenti_scope_sr_ids((SELECT user_id FROM _t_user_with_ef)))
-         )) = 0
-    END,
-    '6. Mapping correttezza: ogni PK in _pk_ids ha la sua SR id in _sr_ids (skip se no fixture)'
+    (SELECT count(*) FROM unnest(
+        script.fn_get_emittenti_scope_pk_ids((SELECT user_id FROM _t_user_with_ef))
+     ) AS pk
+     WHERE NOT (
+       (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = pk)
+       = ANY(script.fn_get_emittenti_scope_sr_ids((SELECT user_id FROM _t_user_with_ef)))
+     )) = 0,
+    '6. Mapping correttezza: ogni PK in _pk_ids ha la sua SR id in _sr_ids'
 );
 
 SELECT * FROM finish();

@@ -25,7 +25,7 @@
 --   percorso da collaudare. Le righe di prova nella mappa le scrive l'app,
 --   che sulle tabelle di dbops ha i DML del loop dei grant.
 --
--- Elenco test (plan 32):
+-- Elenco test (plan 33):
 --   MAPPA — completezza
 --    1  : gemello «esiste»: ci sono madri col trigger di storico
 --    2  : ogni madre col trigger di storico ha la sua riga
@@ -57,7 +57,8 @@
 --   25  : madre non mappata → NULL
 --   26  : ciclo nella mappa → P0001 (l'unico caso in cui solleva)
 --   27  : ciclo nella mappa → la frase del catalogo
---   28  : BA non mappato → l'emittente di default (skip dichiarato se manca)
+--   28  : BA non mappato, IN SESSIONE → l'emittente dell'operatore (D13, dal 20260913-01)
+--   28-bis: BA non mappato, SENZA sessione → l'emittente di default (skip dichiarato se manca)
 --   LA VISTA DI PRESIDIO — dbops.vw_storico_scope_da_dichiarare (digest)
 --   29  : oggi è VUOTA: dice la stessa cosa dei test 2, 4, 5
 --   30  : ⭐ una madre costruita col trigger e senza riga → SENZA_RIGA
@@ -73,7 +74,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   puntano a un padre devono trovarlo GIÀ inserito, o la prova sbaglia bersaglio.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(32);
+SELECT plan(33);
 
 -- ============================================================
 -- MAPPA — completezza
@@ -330,18 +331,49 @@ SELECT throws_like(
     '%gira ancora in cerchio%',
     '27. ciclo nella mappa → la frase di E_STORICO_SCOPE_CATENA_CICLICA');
 
--- BA: un billing account non mappato ricade sull'emittente di DEFAULT (regola
--- di fn_get_ba_emittente_sr_id). Dipende dall'esistenza del default: dichiarato.
+-- BA: un billing account non mappato segue la RISERVA di fn_get_ba_emittente_sr_id,
+-- che dal 20260913-01 (D13) ha due facce: IN SESSIONE è l'emittente di chi agisce,
+-- SENZA sessione è il default dell'installazione. Fino a quel giorno questo test
+-- pinnava il default CON il contesto aperto, e passava per coincidenza —
+-- l'operatore di contesto era quello del default.
+-- ⚠️ Le aziende costruite sono DUE e il contesto passa alla seconda: sullo
+--   scratch della CI la prima creata diventa il default per bootstrap, e con
+--   una sola le due facce risponderebbero lo stesso emittente. Il contesto del
+--   preambolo si salva e si rimette dopo, perché i test 29-32 non c'entrano.
+CREATE TEMP TABLE _ctx_preambolo ON COMMIT DROP AS
+SELECT current_setting('app.current_user_id', true) AS user_id;
+
+CREATE TEMP TABLE _mondi_ba ON COMMIT DROP AS
+SELECT 'A'::text AS lato, m.*
+  FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+INSERT INTO _mondi_ba
+SELECT 'B'::text, m.*
+  FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+SELECT set_config('app.current_user_id',
+                  (SELECT auth_user_id::text FROM _mondi_ba WHERE lato = 'B'),
+                  true);
+
+SELECT is(dbops.fn_storico_risolvi_scope('anagrafiche', 'billing_account', '{"id": -1}'::jsonb),
+          (SELECT emittente_fiscale_id FROM _mondi_ba WHERE lato = 'B'),
+          '28. BA non mappato, IN SESSIONE → l''emittente dell''operatore, convertito in EF (D13)');
+
+SELECT set_config('app.current_user_id', '', true);
+
 SELECT CASE
     WHEN EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account d WHERE d.is_default) THEN
         is(dbops.fn_storico_risolvi_scope('anagrafiche', 'billing_account', '{"id": -1}'::jsonb),
            (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
               JOIN anagrafiche.emittenti_fiscali_billing_account d ON d.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
              WHERE d.is_default),
-           '28. BA non mappato → l''emittente di default, convertito in EF')
+           '28-bis. BA non mappato, SENZA sessione → l''emittente di default, convertito in EF')
     ELSE
-        skip('28. nessun emittente di default su questo database: il ramo BA non si può esercitare qui', 1)
+        skip('28-bis. nessun emittente di default su questo database: il ramo BA senza sessione non si può esercitare qui', 1)
 END;
+
+-- Il contesto del preambolo torna com'era (transazionale, come le due righe sopra).
+SELECT set_config('app.current_user_id', (SELECT user_id FROM _ctx_preambolo), true);
 
 -- ============================================================
 -- LA VISTA DI PRESIDIO — porta nel digest ciò che i test 2, 4, 5 dicono in CI

@@ -37,9 +37,29 @@
 
 BEGIN;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SET CONSTRAINTS ALL IMMEDIATE;
+
+-- ⛔ LE DUE IDENTITA' TECNICHE SI COSTRUISCONO, non si cercano (2026-09-12).
+--   Fino a quel giorno il file leggeva dal roster l'identita' viva di
+--   `send_pending_emails` e quella di `chiusura_scadenze_daily`: sono dati di
+--   MACCHINA, e su un database ricostruito dai changelog il roster e' vuoto —
+--   i test 2, 5 e 6 (cioe' la ragione del file) restavano collaudati solo su
+--   dbdev. `dbops.fn_pgtap_crea_roster_processo(processo)` crea l'azienda e le
+--   aggancia l'utente tecnico del processo, cosi' la coppia compare davvero in
+--   dbops.vw_processi_roster: una per ciascuno dei due processi, PRIMA di
+--   aprire il contesto.
+CREATE TEMP TABLE _roster AS
+SELECT 'send_pending_emails'::text AS processo, *
+  FROM dbops.fn_pgtap_crea_roster_processo('send_pending_emails')
+UNION ALL
+SELECT 'chiusura_scadenze_daily'::text AS processo, *
+  FROM dbops.fn_pgtap_crea_roster_processo('chiusura_scadenze_daily');
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _roster WHERE processo = 'chiusura_scadenze_daily'));
+END $ctx$;
 
 SELECT plan(6);
 
@@ -62,6 +82,8 @@ SELECT is(
 -- ============================================================
 -- L'identita' su cui si lavora
 -- ============================================================
+-- ⚠️ Si rilegge dal ROSTER, non dalla temp table: e' il roster che la policy
+--   guarda, e se la fixture non ci comparisse il test 2 deve dirlo.
 DO $scelta$
 DECLARE
     v_r record;
@@ -69,8 +91,8 @@ BEGIN
     SELECT r.auth_user_id, r.identita_id INTO v_r
       FROM dbops.vw_processi_roster r
      WHERE r.processo_codice = 'send_pending_emails'
-     ORDER BY r.emittente_codice
-     LIMIT 1;
+       AND r.auth_user_id = (SELECT x.auth_user_id FROM _roster x
+                              WHERE x.processo = 'send_pending_emails');
 
     PERFORM set_config('pgtap.user', COALESCE(v_r.auth_user_id::text, ''), true);
     PERFORM set_config('pgtap.identita', COALESCE(v_r.identita_id::text, ''), true);
@@ -92,9 +114,8 @@ SELECT is(
 
 SELECT is(
     script.fn_scope_identita_processo(
-        (SELECT r.auth_user_id FROM dbops.vw_processi_roster r
-          WHERE r.processo_codice = 'chiusura_scadenze_daily'
-          ORDER BY r.emittente_codice LIMIT 1),
+        (SELECT x.auth_user_id FROM _roster x
+          WHERE x.processo = 'chiusura_scadenze_daily'),
         'send_pending_emails'),
     false,
     '3. l''identita'' di un ALTRO processo non viene riconosciuta'

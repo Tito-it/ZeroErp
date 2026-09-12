@@ -68,7 +68,7 @@ per sapere *quanti sono e cosa coprono* bisognava cercarli. Nasce `dbops.presidi
 conta come copertura. Il 10 settembre arriva il corollario in CI: *un cancello non
 deve poter zittire un altro cancello*, perché un guardrail che fallisce e ne
 maschera un secondo lascia passare due difetti al prezzo di uno. Vedi
-[brief-db-un-destinatario-per-i-presidi.md](work-in-progress/brief-db-un-destinatario-per-i-presidi.md).
+[brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md).
 
 **Anello 0 + 3 — Il perimetro dei dati smette di fermarsi alla testata.** Delle
 sei famiglie di documento di `vendite`, **una sola** era protetta fino in fondo:

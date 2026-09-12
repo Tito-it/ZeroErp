@@ -249,7 +249,7 @@ dedotto.
 
 | Entita' | Legame con l'emittente |
 | --- | --- |
-| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, piu' il ripiego sul gestore globale (che e' comunque uno) |
+| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, piu' la riserva per il BA non ancora collegato — in sessione l'emittente di chi agisce (dal 2026-09-13, D13), altrimenti il gestore globale (che e' comunque uno) |
 | **soggetto** | ❌ **nessuno.** Il legame esiste solo *transitivamente*, attraverso i billing account del soggetto |
 
 #### Cosa ne segue, in pratica

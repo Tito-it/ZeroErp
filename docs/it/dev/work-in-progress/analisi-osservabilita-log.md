@@ -713,7 +713,7 @@ accoda un avviso se il digest stesso tace. Le **code ferme** sono già presidi
 sorgente**: un presidio «lotto fermo in errore da troppo tempo» iscritto al
 catalogo — canale, cadenza e destinatario sono decisi altrove
 ([brief-db-quattro-processi-senza-presidio.md](../work-done/brief-db-quattro-processi-senza-presidio.md),
-[brief-db-un-destinatario-per-i-presidi.md](brief-db-un-destinatario-per-i-presidi.md)).
+[brief-db-un-destinatario-per-i-presidi.md](../work-done/brief-db-un-destinatario-per-i-presidi.md)).
 ⚠️ Resta di Tid la #8: se al canale email va affiancato un **badge in-app** per
 l'operatore, o se per lui basta il binario parallelo (fallimenti nelle liste).
 

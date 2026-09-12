@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D13, seconda faccia — `script.fn_check_ba_visible_for_emittenti` perde
+#   PARALLEL SAFE, perche' la delegata lo ha perso (20260913-01).
+#   Brief: brief-db-ba-riserva-emittente-operatore-d13.md
+#
+# ── ⚠️ PERCHE' UNA MARCATURA E' UN CHANGESET ────────────────────────────
+#   Il 20260818-59 ha fatto delegare questo check a fn_get_ba_emittente_sr_id
+#   e ha scritto, nel changeSet e nel manuale, che il SAFE sulla delegata «non
+#   e' decorativo: la chiamante e' PARALLEL SAFE e gira dentro la query
+#   dinamica della ricerca universale; una delegata UNSAFE renderebbe la
+#   marcatura della chiamante una dichiarazione falsa al planner».
+#   Dal 20260913-01 la delegata legge una GUC e chiama
+#   fn_resolve_emittente_for_user (plpgsql, UNSAFE, log via dblink sul ramo
+#   d'errore): la frase vale al contrario, e la marcatura qui va tolta —
+#   e' la stessa mossa gia' fatta il 18-08 su fn_search_soggetti_universale e
+#   fn_get_search_detail («la catena dello scope e' STABLE e basta»).
+#
+# ── ⚠️ COSTO, letto dalla struttura ─────────────────────────────────────
+#   ~zero. I due consumatori (fn_search_soggetti_universale, ramo CL, e
+#   fn_get_search_detail) sono gia' UNSAFE dal 18-08; resta la sola query
+#   dinamica interna della ricerca, che e' paginata (LIMIT/OFFSET, cap 10.000)
+#   e che un piano parallelo non lo ha mai scelto. Chi la misurasse un giorno
+#   troverebbe il predicato del check identico, in un worker o nel leader.
+#
+# ⭐ ALTER e non CREATE OR REPLACE: cambia una marcatura, non il corpo, e
+#   ricopiare il corpo dalla doc per non cambiarlo e' il modo in cui un corpo
+#   stantio disfa la revisione precedente. Il COMMENT si riscrive perche' e'
+#   la parte che DEVE cambiare: diceva la cosa che questo changeSet smentisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260913-02-alter-fn-check-ba-visible-for-emittenti-senza-parallel-safe-mctit.yaml
+
+  - changeSet:
+      id: 20260913-02-alter-fn-check-ba-visible-for-emittenti-senza-parallel-safe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D13: script.fn_check_ba_visible_for_emittenti passa a PARALLEL UNSAFE
+        perche' la delegata fn_get_ba_emittente_sr_id non e' piu' SAFE
+        (20260913-01). Corpo invariato (ALTER, non CREATE OR REPLACE).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_ba_visible_for_emittenti'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid)
+                     = 'p_billing_account_id bigint, p_emittente_ids bigint[]';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION script.fn_check_ba_visible_for_emittenti(bigint, bigint[])
+                  PARALLEL UNSAFE;
+
+              COMMENT ON FUNCTION script.fn_check_ba_visible_for_emittenti(bigint, bigint[]) IS
+                  'Pure check (fn_check_*, boolean, no raise): un billing_account e'' visibile '
+                  'per un set di emittenti autorizzati? Rev 2026-08-18 (R-5, brief '
+                  'perimetro-emittente Fase E): la regola «quale emittente fattura questo BA» '
+                  'NON e'' scritta qui. Vive in script.fn_get_ba_emittente_sr_id, e questa '
+                  'funzione si limita a chiedere «l''emittente risolto sta fra quelli '
+                  'autorizzati?». ⭐ Dal 20260913-01 (D13) quella regola ha TRE livelli — '
+                  'mapping specifico; altrimenti, in sessione, l''emittente dell''operatore '
+                  'che sta agendo; altrimenti il default — e questo check li eredita senza '
+                  'una riga di modifica: e'' il motivo per cui la regola sta in un posto solo. '
+                  '⚠️ p_emittente_ids NULL o vuoto = «nessun emittente autorizzato» = false, e '
+                  'la risposta arriva prima di risolvere: e'' il ramo fail-closed. '
+                  '⚠️ STABLE e NON PARALLEL SAFE dal 20260913-02: la delegata legge la GUC '
+                  'di sessione e chiama fn_resolve_emittente_for_user, che non e'' SAFE — la '
+                  'marcatura si dichiara onestamente, come gia'' il 18-08 sulla ricerca '
+                  'universale. Usata da fn_search_soggetti_universale e fn_get_search_detail '
+                  '(ramo CL) e dalla policy RLS via_efba del billing account. '
+                  'Brief: brief-db-ba-riserva-emittente-operatore-d13.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback ripristinerebbe una marcatura falsa: la delegata resta
+              -- UNSAFE. Il COMMENT precedente e' nella doc auto-gen alla revisione
+              -- 20260818-59.
+              SELECT 1;

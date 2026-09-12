@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_generate_tx_id: e' la scrittura in dbops.transaction_ids, chiamata via dblink
+#   da fn_get_or_create_session_tx_id — cioe' sul percorso di 305 trigger tx_id.
+# ── D6 di migliorie-generali-da-test-valutazione.md ───────────────────
+#   Tre `SECURITY DEFINER` di proprieta' di `postgres`, eseguibili da PUBLIC,
+#   SENZA `search_path`. Non sfruttabili oggi (i corpi qualificano quasi tutto e
+#   `zeroerp_app` non ha CREATE su nessuno schema nel path), ma la difesa era
+#   tutta in un GRANT che nessun presidio verificava: il giorno in cui a un
+#   ruolo servisse CREATE da qualche parte, tre funzioni con i privilegi del
+#   superutente diventerebbero una scala.
+#
+# ── ⭐ IL PIN E LA SUA FORMA ───────────────────────────────────────────
+#   `SET search_path TO 'pg_catalog', 'public', 'pg_temp'` — NELLA DEFINIZIONE,
+#   non con `ALTER FUNCTION`: un `CREATE OR REPLACE` successivo che dimentica la
+#   clausola azzererebbe il pin in silenzio (provato il 2026-09-12, memoria
+#   «una DEFINER col search_path blindato accieca la INVOKER»). E con `public`
+#   dentro, perche' il path della DEFINER vale per TUTTO cio' che chiama, e la
+#   catena tocca estensioni che vivono in `public` (`dblink`): la forma
+#   «prudente» `pg_catalog, pg_temp` la accecherebbe. `pg_temp` ULTIMO ed
+#   esplicito: se non e' elencato PostgreSQL lo cerca per PRIMO per le
+#   relazioni.
+#
+# ── ⛔ PRESTITO DI PROPRIETA', non provision-post ─────────────────────
+#   La funzione e' di `postgres` (dbops.sec_functions_owner): dal migratore un
+#   `CREATE OR REPLACE` muore su «bisogna essere proprietari della funzione»
+#   — successo il 2026-09-12 alla prima stesura di questo file, che stava in
+#   changelog-provision-post.yaml. ⚠️ Quel changelog NON gira come postgres in
+#   sviluppo (precedente 20260722-10, in testa): la sede giusta e' la timeline
+#   normale con il PRESTITO — nel registro si dichiara owner il ruolo corrente,
+#   fn_sync_functions_owner() (DEFINER di postgres) gliela passa, si fa il
+#   CREATE OR REPLACE, si rimette postgres e si risincronizza. Un changeSet =
+#   una transazione: un errore in mezzo annulla anche l'UPDATE sul registro.
+#   Su un DB non ancora indurito (CI da zero) prestito e restituzione sono
+#   no-op innocui: la funzione e' gia' del migratore e la sync, non essendo
+#   ancora di postgres, si limita a un WARNING.
+#
+# Corpo dalla doc auto-gen (= vivo); firma/RETURNS/DECLARE con %TYPE dove il
+# tipo e' quello di una colonna (la doc auto-gen li scioglie).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260912-39-update-fn-generate-tx-id-search-path-mctit.yaml
+
+  - changeSet:
+      id: 20260912-39-update-fn-generate-tx-id-search-path
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_generate_tx_id: pin search_path = pg_catalog, public, pg_temp nella definizione (D6). Corpo invariato; %TYPE in firma, RETURNS e DECLARE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_generate_tx_id'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'p_generating_function text, p_session_info jsonb';
+        # Serve il meccanismo di gestione owner: senza, su un DB gia' indurito
+        # questo changeSet non potrebbe sostituire la funzione (owner postgres).
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_sync_functions_owner';
+        # ⛔ Nessuna preCondition sulla riga di dbops.sec_functions_owner: e' un
+        #   seed di 80_data e un cancello di 20_code non lo interroga
+        #   (guardrail_precondition_seed, linee-guida-sql §11.4). Se la riga
+        #   mancasse, il prestito sarebbe un no-op e il CREATE OR REPLACE
+        #   fallirebbe da solo, a voce alta, su «bisogna essere proprietari».
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ========================================================
+              -- PRESTITO DI PROPRIETA' (vedi testata) — precedente 20260722-10
+              -- ========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name   = 'dbops'
+                 AND function_name = 'fn_generate_tx_id';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              CREATE OR REPLACE FUNCTION dbops.fn_generate_tx_id(
+                  p_generating_function dbops.transaction_ids.generating_function%TYPE,
+                  p_session_info        dbops.transaction_ids.session_info%TYPE DEFAULT '{}'::jsonb
+              )
+               RETURNS dbops.transaction_ids.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                DECLARE
+
+                    v_tx dbops.transaction_ids.id%TYPE := uuidv7();
+                BEGIN
+
+                    INSERT INTO dbops.transaction_ids (
+                        id,
+                        generating_function,
+                        session_info
+                    ) VALUES (
+                        v_tx,
+                        p_generating_function,
+                        p_session_info
+                    );
+
+                    RETURN v_tx;
+                END;
+                $function$;
+
+              COMMENT ON FUNCTION dbops.fn_generate_tx_id(p_generating_function text, p_session_info jsonb)
+              IS 'Genera un nuovo tx_id UUID, lo inserisce in dbops.transaction_ids con generating_function e session_info, e lo restituisce. SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
+
+              -- ========================================================
+              -- RESTITUZIONE DELLA PROPRIETA': il registro torna a dichiarare
+              -- postgres e si risincronizza. Rete di sicurezza: 90_end/20251123-04
+              -- (runAlways) riallinea comunque gli owner al registro.
+              -- ========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name   = 'dbops'
+                 AND function_name = 'fn_generate_tx_id';
+
+              SELECT dbops.fn_sync_functions_owner();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (senza pin) e' nella doc auto-gen alla revisione
+              -- prima di questa. Non si riscrive un corpo stantio.
+              SELECT 1;

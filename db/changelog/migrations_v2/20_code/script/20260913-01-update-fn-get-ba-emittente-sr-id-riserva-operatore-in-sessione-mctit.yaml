@@ -1,0 +1,229 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D13 — un billing account NON ANCORA COLLEGATO appartiene a chi lo sta
+#   creando. Decisione di Tid, 2026-09-12 (opzione 1 di tre):
+#   migliorie-generali-da-test-valutazione.md §D13,
+#   brief-db-fixture-che-costruiscono-d7-d6-d4.md §4.
+#   Brief del cantiere: brief-db-ba-riserva-emittente-operatore-d13.md
+#
+# ── ⛔ IL DIFETTO DI PRODOTTO ──────────────────────────────────────────
+#   Come `zeroerp_app`, `INSERT INTO anagrafiche.billing_account … RETURNING id`
+#   muore con «la nuova riga viola la regola di sicurezza per riga» ogni volta
+#   che l'emittente di chi agisce NON e' quello di default dell'installazione.
+#   La catena: la policy di lettura `rls_billing_account_ef_whitelist` →
+#   `fn_scope_ef_whitelist_via_efba` → `fn_check_ba_visible_for_emittenti` →
+#   QUESTA funzione, che per un BA senza legame rispondeva l'emittente di
+#   DEFAULT — un'altra azienda. Il legame specifico lo scrive il trigger
+#   AFTER `trg_billing_account_z90_link_ef_ins`, cioe' DOPO che il RETURNING
+#   ha gia' chiesto di vedere la riga. L'INSERT in se' passa (la policy
+#   `_ins` chiede solo la veste OPERATORE): e' la RILETTURA a negare.
+#   Riprodotto il 2026-09-12 su dbdev con un operatore vero dell'emittente 44
+#   (EMITEST): 42501. Il backend fa lo stesso RETURNING
+#   (anagrafiche/db/clienti_repository.py, create_billing_account) ⇒ con due
+#   emittenti in esercizio gli operatori del secondo NON APRONO CLIENTI.
+#
+# ── ⭐ LA REGOLA, DA DUE LIVELLI A TRE ──────────────────────────────────
+#   1) mapping specifico del BA (al massimo uno: uq_emittenti_fiscali_ba) —
+#      INVARIATO, e vince sempre;
+#   2) NUOVO — riserva IN SESSIONE: l'emittente dell'operatore che sta agendo,
+#      risolto con `script.fn_resolve_emittente_for_user(app.current_user_id)`.
+#      ⛔ E' la STESSA funzione che usa il trigger z90 per scrivere il legame,
+#      e non e' una scelta di comodo: la riserva deve dire cio' che il trigger
+#      sta per scrivere. Con una derivazione «piu' leggera» (la sola riga
+#      1-a-1 di config.user_emittenti_fiscali) un super admin con emittente
+#      attivo (GUC app.current_emittente_id) avrebbe visto la riserva rispondere
+#      NULL e il trigger legare all'emittente attivo — lo stesso difetto,
+#      spostato di un caso;
+#   3) riserva SENZA sessione: il default dell'installazione — INVARIATO.
+#      Vale per batch e manutenzione (nessuna GUC), per un utente che il
+#      resolver non sa collocare (admin globale senza emittente attivo,
+#      istanza «0 emittenti») e per un identificativo non valido (<= 0).
+#
+#   ⚠️ CHE COSA CAMBIA E CHE COSA NO, sul modello:
+#   - per un BA CON legame non cambia niente: il livello 1 risponde prima, e
+#     il COALESCE non valuta gli altri;
+#   - per un BA senza legame, in sessione, ora risponde l'azienda di chi lo
+#     sta lavorando — e' l'istante fra l'INSERT e il trigger z90, cioe'
+#     esattamente il RETURNING. I lettori (RLS via_efba, ricerca universale,
+#     fn_get_emittente_fiscale_id/pk, scope congelato dello storico) lo
+#     seguono tutti, perche' la regola vive qui e in nessun altro posto;
+#   - ⚠️ un BA che RESTA senza legame (creato senza sessione: seed, migrazione,
+#     istanza «0 emittenti») era «del default» e ora e', in sessione, di
+#     chiunque lo guardi — ciascuno sotto il proprio emittente. Il modello lo
+#     ammette e la decisione lo accetta: e' un dato anomalo (il trigger lega
+#     sempre quando c'e' una sessione), non un caso d'uso. La forma che lo
+#     chiuderebbe del tutto — l'emittente come COLONNA del BA — resta in coda
+#     come decisione di modello (opzione 3), non come lavoro.
+#   - NESSUNA BONIFICA dei dati: sono dati di test, e comunque la riserva
+#     serve solo a quell'istante.
+#
+# ── ⚠️ PARALLEL SAFE: TOLTO, e non e' un dettaglio ──────────────────────
+#   Il 20260818-58 dichiarava «STABLE PARALLEL SAFE, e la seconda meta' non
+#   e' decorativa: legge solo tabelle, nessuna GUC». Ora legge una GUC e
+#   chiama `fn_resolve_emittente_for_user`, che e' plpgsql senza marcatura
+#   (UNSAFE) e sul ramo d'errore scrive nel log via dblink: tenere SAFE
+#   sarebbe la stessa «dichiarazione falsa al planner» che il progetto ha
+#   gia' rifiutato il 18-08 su fn_search_soggetti_universale e
+#   fn_get_search_detail. Il SAFE cade anche sulla chiamante
+#   fn_check_ba_visible_for_emittenti (20260913-02): costo reale ~zero, la
+#   ricerca universale e' paginata e non ha mai avuto un piano parallelo.
+#
+# ── ⚠️ IL GUARD SUL RESOLVER DELL'OPERATORE ────────────────────────────
+#   `fn_resolve_emittente_for_user` SOLLEVA E_PARAMETRO_INVALIDO (e scrive
+#   nel log) su NULL o <= 0: senza sessione non va nemmeno chiamata. Il CASE
+#   dentro la sottoquery e' cio' che lo garantisce — un WHERE sulla stessa
+#   riga lascerebbe al planner la scelta di quando valutare la funzione.
+#
+# Corpo dalla doc auto-gen (= vivo, rev 20260818-58) piu' il livello 2;
+# firma e RETURNS con %TYPE, che l'auto-gen scioglie.
+# Presidi: db/pgtap/rls/test-rls-billing-account-returning-secondo-emittente.sql
+#   (il caso di prodotto: INSERT … RETURNING come operatore del secondo
+#   emittente, rosso prima di questo changeSet) e
+#   db/pgtap/script/test-ba-emittente-risoluzione-v1.sql (la regola a tre
+#   livelli, in sessione e senza).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260913-01-update-fn-get-ba-emittente-sr-id-riserva-operatore-in-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20260913-01-update-fn-get-ba-emittente-sr-id-riserva-operatore-in-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D13: la riserva di script.fn_get_ba_emittente_sr_id per un billing
+        account senza legame passa dal default dell'installazione all'emittente
+        dell'operatore in sessione (fn_resolve_emittente_for_user, la stessa del
+        trigger z90); il default resta solo senza sessione. Chiude il RETURNING
+        che moriva sotto RLS per gli operatori di un emittente non di default.
+        PARALLEL SAFE tolto: la delegata non lo e'.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_ba_emittente_sr_id'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid)
+                     = 'p_billing_account_id bigint';
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_resolve_emittente_for_user'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid)
+                     = 'p_auth_user_id integer';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE in firma e RETURNS (regola del progetto): la doc auto-gen
+              --   li scioglie nei tipi risolti, e ricopiarla li perde.
+              CREATE OR REPLACE FUNCTION script.fn_get_ba_emittente_sr_id(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: «quale emittente fattura questo billing account?» —
+                  --   il soggetto_ruolo dell'emittente, o NULL se non risolvibile.
+                  --   Regola a TRE livelli dal 20260913-01 (D13): mapping
+                  --   specifico; altrimenti, IN SESSIONE, l'emittente di chi
+                  --   sta agendo; altrimenti il default dell'installazione.
+                  -- ⚠️ Il CASE esterno non e' ridondante. Senza, un BA NULL
+                  --   cadrebbe nei rami 2 e 3 e si vedrebbe rispondere un
+                  --   emittente — cioe' «nessun billing account» verrebbe
+                  --   letto come «billing account non ancora collegato», che e'
+                  --   una cosa diversa e apre invece di chiudere.
+                  SELECT CASE
+                           WHEN p_billing_account_id IS NULL THEN NULL
+                           ELSE COALESCE(
+                                  -- 1) Mapping specifico del BA. Al massimo una
+                                  --    riga: uq_emittenti_fiscali_ba. Vince sempre:
+                                  --    il COALESCE non valuta i rami dopo.
+                                  (SELECT efba.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                    WHERE efba.billing_account_id = p_billing_account_id),
+                                  -- 2) Riserva IN SESSIONE: un BA non ancora
+                                  --    collegato appartiene a chi lo sta creando.
+                                  --    E' l'istante fra l'INSERT e il trigger AFTER
+                                  --    z90_link_ef, cioe' il RETURNING: la riserva
+                                  --    dice cio' che il trigger sta per scrivere,
+                                  --    con la STESSA funzione che usa lui.
+                                  -- ⛔ Il CASE e' il guard: fn_resolve_emittente_for_user
+                                  --    SOLLEVA (e logga) su NULL o <= 0, e senza
+                                  --    sessione non va chiamata. Un WHERE sulla
+                                  --    stessa riga non garantirebbe l'ordine.
+                                  (SELECT ef.soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali ef
+                                    WHERE ef.id = (SELECT CASE
+                                                            WHEN s.auth_user_id > 0
+                                                            THEN script.fn_resolve_emittente_for_user(s.auth_user_id)
+                                                          END
+                                                     FROM (SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer
+                                                                  AS auth_user_id) s)),
+                                  -- 3) Riserva SENZA sessione: l'emittente di
+                                  --    default dell'installazione (batch,
+                                  --    manutenzione, admin globale senza
+                                  --    emittente attivo). Al massimo uno:
+                                  --    uq_emittenti_fiscali_ba_default.
+                                  (SELECT efba_d.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba_d
+                                    WHERE efba_d.is_default)
+                                )
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id(bigint) IS
+                  'Risolve «quale emittente fattura questo billing account» e restituisce il '
+                  'soggetto_ruolo_id dell''emittente, oppure NULL se non e'' risolvibile. '
+                  'Regola a TRE livelli dal 20260913-01 (D13, decisione di Tid del 2026-09-12): '
+                  '1) mapping specifico in anagrafiche.emittenti_fiscali_billing_account sul BA '
+                  '(al massimo uno, uq_emittenti_fiscali_ba), che vince sempre; '
+                  '2) se il BA non ha legame, IN SESSIONE, l''emittente dell''operatore che sta '
+                  'agendo — script.fn_resolve_emittente_for_user(app.current_user_id), la STESSA '
+                  'funzione con cui il trigger z90_link_ef scrive il legame: un BA non ancora '
+                  'collegato appartiene a chi lo sta creando, ed e'' cio'' che rende visibile la '
+                  'riga al RETURNING dell''INSERT, che arriva PRIMA del trigger AFTER; '
+                  '3) senza sessione (batch, manutenzione, admin globale senza emittente attivo), '
+                  'l''emittente is_default = true (al massimo uno, uq_emittenti_fiscali_ba_default). '
+                  'Fino a quel changeSet il livello 2 non esisteva e un operatore di un emittente '
+                  'non di default non riusciva a creare un cliente: l''INSERT passava, la '
+                  'rilettura negava (42501). '
+                  '⚠️ Un BA che RESTA senza legame (creato senza sessione) e'', in sessione, di '
+                  'chiunque lo guardi: e'' un dato anomalo che il modello ammette, non un caso '
+                  'd''uso — la forma «emittente come colonna del BA» resta una decisione di '
+                  'modello in coda. '
+                  '⚠️ NON risale l''albero dei billing account: un figlio senza legame NON '
+                  'eredita quello del padre. L''omogeneita'' dell''albero e'' presidiata altrove '
+                  '(anagrafiche.fn_guard_albero_ba_emittente, P-1). '
+                  '⚠️ NON applica lo scope dell''utente: dice chi fattura, non chi puo'' vedere. '
+                  'Il filtro di perimetro e'' del chiamante. '
+                  '⚠️ STABLE e NON PARALLEL SAFE dal 20260913-01: la delegata '
+                  'fn_resolve_emittente_for_user non lo e'' (plpgsql, log via dblink sul ramo '
+                  'd''errore), e la marcatura si dichiara onestamente — come gia'' il 18-08 sulla '
+                  'ricerca universale. Estratta il 2026-08-18 (R-5, brief perimetro-emittente '
+                  'Fase E) perche'' la regola esisteva solo in forma booleana dentro '
+                  'fn_check_ba_visible_for_emittenti, che ora delega a questa: la definizione '
+                  'e'' una sola. Brief: brief-db-ba-riserva-emittente-operatore-d13.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (due livelli, PARALLEL SAFE) e' nella doc
+              -- auto-gen alla revisione 20260818-58. Non si riscrive un corpo
+              -- stantio.
+              SELECT 1;

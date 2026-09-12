@@ -58,9 +58,32 @@
 -- ⚠️ 1. TRANSAZIONE.
 BEGIN;
 
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file pescava fra i dati ESISTENTI due emittenti con un operatore ciascuno,
+--   una fattura del primo e una filiale bancaria: su un database ricostruito
+--   dai changelog non c'e' niente di tutto questo, e le 18 asserzioni sul
+--   perimetro degli incassi restavano collaudate solo su dbdev. Ora:
+--     - due aziende con `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di
+--       aprire il contesto;
+--     - un cliente di A con `dbops.fn_pgtap_crea_cliente_ba()` chiamata NEL
+--       CONTESTO di A e senza terzo parametro: il legame BA -> emittente lo
+--       scrive il trigger z90 verso l'emittente di chi agisce (rev 20260912-38
+--       dell'helper: l'INSERT del BA non fa RETURNING, che sotto la RLS non
+--       vedrebbe la riga non ancora mappata);
+--     - la fattura di A, scritta da A come la scriverebbe l'applicazione;
+--     - una banca vera (ruolo BANK_B: il guard delle filiali rifiuta il resto)
+--       con la sua filiale, per i conti di incasso.
+--   Il file resta sul runner APPLICATIVO: e' l'unico modo in cui queste policy
+--   si possono esercitare (vedi sopra, il FORCE farebbe ricorsione).
+CREATE TEMP TABLE _mondi AS
+SELECT 'A' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
 -- ⚠️ 2. CONTESTO APPLICATIVO: si gira come gira l'applicazione, e qui non e'
 --    una formalita' — senza, la RLS di questo lotto non viene esercitata.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM _mondi WHERE lato = 'A')); END $ctx$;
 
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -68,56 +91,58 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(18);
 
 -- ============================================================
--- Fixture — due lati: A (l'emittente che ha delle fatture) e B (l'altro)
+-- Fixture — due lati: A (l'emittente che ha una fattura) e B (l'altro)
 -- ============================================================
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_rls_pagamenti_perimetro'::text AS test_scope;
 
--- ⚠️ ORDER BY ovunque: una fixture che «scommette» su quale riga esce non
---    verifica, e il giorno che ne esce un'altra il rosso accusa il codice.
-CREATE TEMP TABLE tmp_lati AS
-SELECT ef.id                AS ef_id,
-       ef.soggetto_ruolo_id AS sr_id,
-       (SELECT min(uef.auth_user_id)
-          FROM config.user_emittenti_fiscali uef
-         WHERE uef.emittente_fiscale_id = ef.id
-           AND script.fn_has_identita_attiva(
-                   uef.auth_user_id, 'OPERATORE'::config.ruolo_applicativo)
-           AND NOT script.fn_is_super_admin(uef.auth_user_id)) AS auth_user_id,
-       (SELECT count(*) FROM vendite.fatture f
-         WHERE f.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id) AS n_fatture
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo IS TRUE;
+-- La banca e la sua filiale: il soggetto-ruolo di una filiale DEVE essere una
+-- banca (`trgfn_bank_guard_ruolo_bank_branches` pretende BANK_B).
+CREATE TEMP TABLE tmp_banca AS
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(
+           dbops.fn_pgtap_crea_soggetto_pg('Banca pgTAP perimetro incassi'),
+           'BANK_B'::character varying) AS banca_sr_id;
 
--- Il lato A e' quello che ha delle fatture: senza, il test 8 non avrebbe
--- niente da distinguere.
+CREATE TEMP TABLE tmp_filiale AS
+WITH b AS (
+    INSERT INTO anagrafiche.bank_branches
+        (soggetto_ruolo_id, bank_code, branch_code, name)
+    SELECT banca_sr_id, 'PGTAP', 'PI' || banca_sr_id, 'Filiale pgTAP perimetro incassi'
+      FROM tmp_banca
+    RETURNING id
+)
+SELECT id AS bank_branch FROM b;
+
 CREATE TEMP TABLE tmp_ab AS
-SELECT (SELECT ef_id        FROM tmp_lati ORDER BY n_fatture DESC, ef_id LIMIT 1)          AS a_ef,
-       (SELECT sr_id        FROM tmp_lati ORDER BY n_fatture DESC, ef_id LIMIT 1)          AS a_sr,
-       (SELECT auth_user_id FROM tmp_lati ORDER BY n_fatture DESC, ef_id LIMIT 1)          AS a_user,
-       (SELECT ef_id        FROM tmp_lati ORDER BY n_fatture ASC,  ef_id DESC LIMIT 1)     AS b_ef,
-       (SELECT sr_id        FROM tmp_lati ORDER BY n_fatture ASC,  ef_id DESC LIMIT 1)     AS b_sr,
-       (SELECT auth_user_id FROM tmp_lati ORDER BY n_fatture ASC,  ef_id DESC LIMIT 1)     AS b_user,
+SELECT (SELECT emittente_fiscale_id FROM _mondi WHERE lato = 'A')                          AS a_ef,
+       (SELECT soggetto_ruolo_id    FROM _mondi WHERE lato = 'A')                          AS a_sr,
+       (SELECT auth_user_id         FROM _mondi WHERE lato = 'A')                          AS a_user,
+       (SELECT emittente_fiscale_id FROM _mondi WHERE lato = 'B')                          AS b_ef,
+       (SELECT soggetto_ruolo_id    FROM _mondi WHERE lato = 'B')                          AS b_sr,
+       (SELECT auth_user_id         FROM _mondi WHERE lato = 'B')                          AS b_user,
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.codice = 'BANCA' ORDER BY c.id LIMIT 1)              AS centro_banca,
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.is_fondo_fattura IS TRUE ORDER BY c.id LIMIT 1)      AS centro_fondo,
        (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
          WHERE s.codice_interno = 'DA_ABBINARE' ORDER BY s.id LIMIT 1)                     AS stato_da_abbinare,
-       (SELECT b.id FROM anagrafiche.bank_branches b
-         WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1)                                     AS bank_branch;
+       (SELECT bank_branch FROM tmp_filiale)                                               AS bank_branch;
 
--- Ci si mette nei panni di A per leggere una sua fattura: sotto la RLS di
+-- Il cliente di A e la sua fattura, scritti nei panni di A: sotto la RLS di
 -- vendite.fatture, «visibile» e «sua» sono la stessa cosa.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
-    (SELECT a_user FROM tmp_ab)); END $ctx$;
+CREATE TEMP TABLE tmp_cliente AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('RLS perimetro incassi') c;
 
 CREATE TEMP TABLE tmp_fattura AS
-SELECT f.id, f.billing_account_id
-  FROM vendite.fatture f
- WHERE f.emittente_soggetto_ruolo_id = (SELECT a_sr FROM tmp_ab)
- ORDER BY f.id DESC
- LIMIT 1;
+WITH f AS (
+    INSERT INTO vendite.fatture
+        (registro_id, emittente_soggetto_ruolo_id, billing_account_id, meta)
+    SELECT script.fn_pgtap_registro_fattura(ab.a_sr), ab.a_sr, c.billing_account_id,
+           jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+      FROM tmp_ab ab, tmp_cliente c
+    RETURNING id, billing_account_id
+)
+SELECT id, billing_account_id FROM f;
 
 SELECT ok(
   (SELECT a_ef IS NOT NULL AND b_ef IS NOT NULL AND a_ef <> b_ef
@@ -126,7 +151,7 @@ SELECT ok(
           AND stato_da_abbinare IS NOT NULL AND bank_branch IS NOT NULL
      FROM tmp_ab)
   AND (SELECT count(*) = 1 FROM tmp_fattura),
-  '1) Riferimenti minimi presenti: due emittenti distinti, due operatori, una fattura di A'
+  '1) Riferimenti costruiti: due emittenti distinti, due operatori, una fattura di A'
 );
 
 -- I due conti di incasso, uno per emittente. anagrafiche non ha row security:
