@@ -112,8 +112,9 @@ class ApiDistinteList(DomainAPIView):
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Whitelist: data_contabile (default) | codice | stato | "
-                    "origine | centro | totale_righe."
+                    "Whitelist (nome FISICO della colonna, come la lista lo espone): "
+                    "data_contabile (default) | codice | stato_descrizione | "
+                    "origine | centro_descrizione | totale_righe."
                 ),
             ),
             OpenApiParameter(
@@ -516,7 +517,10 @@ class ApiRigheCoda(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description="Whitelist: data_pagamento (default) | importo | stato | distinta.",
+                description=(
+                    "Whitelist (nome FISICO): data_pagamento (default) | importo | "
+                    "stato_descrizione | contabile_codice."
+                ),
             ),
             OpenApiParameter(
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
@@ -581,8 +585,8 @@ class ApiRateFuoriCapienza(DomainAPIView):
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Whitelist: data_scadenza (default) | motivo | residuo | "
-                    "importo_rata | fattura."
+                    "Whitelist (nome FISICO): data_scadenza (default) | motivo | residuo | "
+                    "importo_rata | fattura_numero."
                 ),
             ),
             OpenApiParameter(
@@ -665,10 +669,10 @@ class ApiFatturaSaldo(DomainAPIView):
         operation_id="pagamenti_fattura_saldo",
         responses={200: _RISPOSTA_GENERICA},
     )
-    # Scopo: Restituisce via GET residuo e in lavorazione di una fattura.
-    # ⚠️ `incassato` risponde `null`: a questo livello il database non lo sa
-    #    ancora dire, e ⛔ non si somma dalle rate (una riga puo' avere fattura
-    #    senza rata: il fondo fattura e' cosi').
+    # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una fattura.
+    # ⭐ Tutti e tre dal 2026-08-29 (DB-10 atterrata il 25/08): fino ad allora
+    #    `incassato` era `null`. ⛔ Resta il divieto: NON si somma dalle rate (una
+    #    riga puo' avere fattura senza rata: il fondo fattura e' cosi').
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
         return success_response(saldi_service.saldo_documento(fattura_id))
 
@@ -725,8 +729,9 @@ class ApiEccedenze(DomainAPIView):
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Whitelist: eccedenza_cliente (default) | cliente | "
-                    "eccedenza | fattura_data | fattura. ⭐ Il default è per "
+                    "Whitelist (nome FISICO): eccedenza_cliente (default) | "
+                    "cliente_ragione_sociale | eccedenza | fattura_data | "
+                    "fattura_numero. ⭐ Il default è per "
                     "CLIENTE, non per documento: la decisione si prende "
                     "guardando il cliente."
                 ),
@@ -995,7 +1000,10 @@ class ApiEntiIncasso(DomainAPIView):
             OpenApiParameter(
                 name="order_by", type=str, location=OpenApiParameter.QUERY,
                 required=False,
-                description="Whitelist: codice (default) | descrizione | tipo | centro.",
+                description=(
+                    "Whitelist (nome FISICO): codice (default) | descrizione | tipo | "
+                    "centro_descrizione."
+                ),
             ),
             OpenApiParameter(
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,

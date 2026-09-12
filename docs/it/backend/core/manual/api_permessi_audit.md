@@ -3,7 +3,7 @@
 ## Scopo
 
 Endpoint che restituisce la timeline audit delle modifiche ai permessi di un utente.
-Interroga le 7 tabelle storico del sistema permessi con filtri opzionali e paginazione.
+Interroga le 8 tabelle storico del sistema permessi (5 per utente + 3 per reparto) con filtri opzionali e paginazione.
 
 ## Contesto
 
@@ -72,29 +72,45 @@ URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 - Ordinamento: `valid_from DESC` (eventi piu' recenti prima).
 - Paginazione con `COUNT(*) OVER()` + `LIMIT/OFFSET`.
 
-## Tabelle storico interrogate (7)
+## Tabelle storico interrogate (8)
+
+L'elenco vive in `PermissionsAuditRepository._USER_TABLES` / `_DEPT_TABLES`
+(`backend/apps/core/db/permissions_audit_repository.py`). Il valore del filtro
+`tabella` e' il **label** (seconda colonna), non il nome fisico.
 
 ### Filtro per `auth_user_id` (snapshot)
 
-| Tabella storico                   | Contenuto                |
-| --------------------------------- | ------------------------ |
-| `storico.user_override_aree`      | Override livello area    |
-| `storico.user_override_oggetti`   | Override livello oggetto |
-| `storico.user_override_azioni`    | Override azione processo |
-| `storico.user_emittenti_fiscali`  | Whitelist emittenti      |
-| `storico.risorse_umane_auth_user` | Cambio ruolo_sistema     |
+| Tabella storico                  | Label                    | Contenuto                                                    |
+| -------------------------------- | ------------------------ | ------------------------------------------------------------ |
+| `storico.user_override_aree`     | `user_override_aree`     | Override livello area                                        |
+| `storico.user_override_oggetti`  | `user_override_oggetti`  | Override livello oggetto                                     |
+| `storico.user_override_azioni`   | `user_override_azioni`   | Override azione processo                                     |
+| `storico.user_emittenti_fiscali` | `user_emittenti_fiscali` | Whitelist emittenti                                          |
+| `storico.identita_digitali`      | `identita_digitali`      | Identita' dell'utente: `ruolo_applicativo`, attivo, validita', blocco |
 
-### Filtro per `unita_organizzativa_id` (snapshot)
+⛔ **Dal 2026-09-12 il bridge legacy `risorse_umane_auth_user` non e' piu' una
+sorgente** (decisione Tid): dismesso dal multi-face auth, `attivo = f` in
+`dbops.audit_sources`, shadow vecchia droppata. La storia dell'identita' e' in
+`identita_digitali`. Chi filtrava con `?tabella=risorse_umane_auth_user`
+riceve ora `400 E_CORE_VALIDATION` (contratto rotto di proposito: non in
+produzione, e il label morto non deve sembrare vivo).
 
-| Tabella storico                    | Contenuto              |
-| ---------------------------------- | ---------------------- |
-| `storico.profili_reparto_aree`     | Profilo area reparto   |
-| `storico.profili_reparto_azioni`   | Profilo azione reparto |
+### Filtro per `unita_organizzativa_id` (reparto)
+
+| Tabella storico                      | Label                      | Filtro nello snapshot                                        |
+| ------------------------------------ | -------------------------- | ------------------------------------------------------------ |
+| `storico.profili_accesso_aree`       | `profili_accesso_aree`     | indiretto: `profilo_accesso_id` risolto via binding REPARTO corrente |
+| `storico.profili_accesso_azioni`     | `profili_accesso_azioni`   | idem                                                         |
+| `storico.profili_accesso_bindings`   | `profili_accesso_bindings` | diretto: `unita_organizzativa_id`                            |
 
 ## Dipendenze DB
 
-- `storico.*` (7 tabelle) -- generate da `script.trgfn_storico_generic()`
-- `anagrafiche.risorse_umane_auth_user` -- per risoluzione `unita_organizzativa_id`
+- `storico.*` (8 tabelle) -- generate da `script.trgfn_storico_generic()`
+- `script.fn_get_uo_id_for_user` -- risoluzione `unita_organizzativa_id`
+  (catena `identita_digitali -> soggetti_ruoli -> risorse_umane`, via
+  `PermissionResolver.get_unita_organizzativa_id`)
+- `config.profili_accesso` + `config.profili_accesso_bindings` -- per il filtro
+  indiretto delle tabelle profilo
 
 ## Test
 

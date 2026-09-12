@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 853, di cui 89 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 854, di cui 89 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1081,6 +1081,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ⚠️ Finisce per NOT_FOUND e non e' un 404: non manca un record · richiesto, il provisioning dello storico non riesce a determinare · la PK della tabella padre. Stesso inganno di · `E_SNAPSHOT_ID_NOT_FOUND` (§15.1).
     "E_STORICO_PARENT_PK_NOT_FOUND": "TECNICO",
     "E_STORICO_PROVISION": "TECNICO",
+    # dbops.fn_storico_risolvi_scope: la catena PADRE della mappa dbops.storico_scope_policy non termina entro il tetto di profondita, cioe gira in cerchio. TECNICO e non DATO_ERRATO: nessuna persona fornisce quel dato in un form, e la mappa e un seed di catalogo. E l unico caso in cui il resolver solleva: negli altri (madre non mappata, colonna vuota, padre sparito) risponde NULL, fail-closed sulla shadow, perche la storicizzazione non deve fermare la scrittura della madre per un difetto della mappa. Il presidio che lo previene e db/pgtap/dbops/test-storico-scope-policy-v1.sql. Brief: brief-db-rls-storico-scope-congelato §4b.
+    "E_STORICO_SCOPE_CATENA_CICLICA": "TECNICO",
     "E_STORICO_UD": "TECNICO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_STORICO_UPD": "TECNICO",

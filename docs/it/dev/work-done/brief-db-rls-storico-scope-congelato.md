@@ -3,7 +3,7 @@
 > Stato: ✅ **storico: APPLICATO l'11-09-2026 alle 19:54 (passi 1-7, §4b-§4d), pgTAP senza regressioni** — 37 shadow armate, 65.751 versioni attribuite. ✅ **§8 (`audit_log`): consegnato
 > e applicato il 2026-09-11** (`-09`, `-20` in `databasechangelog` alle 12:42; postura
 > viva verificata a catalogo). Il §8.4 originale sbagliava due volte: vedi §8.4.
-> ✅ **§8.3 deciso: «No», registro tecnico** — cancello costruito (§8.6) e **applicato**. ✅ Tutte le domande aperte di §4d sono decise, costruite e **applicate**: `20260911-32/-33/-34`, `20260912-01…07` sono `EXECUTED` nel `databasechangelog` (ultimo giro **2026-09-12 00:30**, letto il 12-09). Doc scritta (§9). ✅ **pgTAP post-apply tutti verdi** (Tid, 12-09). ⏳ **Resta** 🔴 la **consegna BE** `permissions_audit_repository` (§4d) — il changeSet `-03` è passato **prima** della modifica al backend, quindi su dev l'endpoint della storia permessi risponde 500 finché non viene fatta. Stato finale e chiusura: **§9**.
+> ✅ **§8.3 deciso: «No», registro tecnico** — cancello costruito (§8.6) e **applicato**. ✅ Tutte le domande aperte di §4d sono decise, costruite e **applicate**: `20260911-32/-33/-34`, `20260912-01…07` sono `EXECUTED` nel `databasechangelog` (ultimo giro **2026-09-12 00:30**, letto il 12-09). Doc scritta (§9). ✅ **pgTAP post-apply tutti verdi** (Tid, 12-09). ✅ **Consegna BE chiusa il 12-09** — e non come dicevano §4d e §9.3 (ripuntare alla shadow legacy): la timeline legge `storico.identita_digitali`, dove l'identità vive, e il label del bridge morto è ritirato. ⭐ **Decisione di Tid (12-09): la storia vecchia del bridge è sporcizia di test** — senza produzione non rappresenta niente — quindi la shadow `_legacy_` non si legge e si **droppa** (📮 team DB, §9.3). **Chiuso e spostato in `work-done/` il 2026-09-12.**
 > Origine: **D3** di
 > [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).
 > Eredita il §9 di
@@ -323,19 +323,30 @@ dry-run da `titodb` era proprietario e sostituiva la variabile a mano. Memoria:
   · `storico.fatturazione_lotti_attivita` (dominio ritirato, 0 righe, zero
     lettori) → **DROP**, `00_schema/storico/20260912-02`;
   · `storico.risorse_umane_auth_user` (12 versioni di prima della rinomina della
-    madre) → **DROP**, `00_schema/storico/20260912-03`. 🔴 **Consegna al backend,
-    ANCORA APERTA il 12-09**: `backend/apps/core/db/permissions_audit_repository.py`,
-    `_USER_TABLES` riga 48, legge questa tabella nella timeline della storia dei
-    permessi. ⚠️ **Il changeSet è stato applicato alle 00:30 PRIMA della modifica
-    al backend** (doveva essere il contrario): su dev l'endpoint della storia
-    permessi risponde **500** (`42P01`) finché il BE non cambia quella riga.
-    La correzione è una tupla: `("storico._legacy_risorse_umane_auth_user",
-    "risorse_umane_auth_user")` — il **label** resta (è nella whitelist del filtro
-    `tabella` e nel test `test_permissions_audit.py`), cambia solo la tabella
-    letta; il filtro è sullo snapshot (`auth_user_id`), presente anche nella
-    shadow viva. `amm_software_repository.py` la rinomina l'aveva già assorbita.
-    La riga 5 di `dbops.audit_sources` era già `attivo = f` e resta: è la
-    dichiarazione della dismissione.
+    madre) → **DROP**, `00_schema/storico/20260912-03`. ✅ **Consegna al backend
+    CHIUSA il 12-09**, e in modo diverso da come era scritta qui.
+    `backend/apps/core/db/permissions_audit_repository.py`, `_USER_TABLES`,
+    leggeva questa tabella nella timeline della storia dei permessi; ⚠️ il
+    changeSet è passato alle 00:30 **prima** della modifica al backend (doveva
+    essere il contrario), e per qualche ora l'endpoint su dev ha risposto
+    **500** (`42P01`). La riga proponeva di ripuntare alla shadow legacy
+    (`storico._legacy_risorse_umane_auth_user`, 12 versioni di prima della
+    rinomina) tenendo il label. ⭐ **Non si è fatto così, per decisione di Tid**:
+    quella storia sono **dati di test** di una tabella dismessa — senza
+    produzione non rappresentano niente, e leggerli dalla timeline farebbe
+    sembrare vivo un bridge morto. La tupla nuova è
+    `("storico.identita_digitali", "identita_digitali")`: la shadow della
+    tabella dove l'identità **vive** dal multi-face auth (ruolo applicativo,
+    attivo, validità, blocco), con `auth_user_id` nello snapshot. Il label
+    `risorse_umane_auth_user` è **ritirato** (chi lo filtra prende `400`:
+    contratto rotto di proposito, non in produzione). Verificato il 12-09 con la
+    chiamata **vera** sotto contesto operatore: niente `42P01`, 18 eventi per
+    l'utente 1; `test_permissions_audit` 14/14; doc `api_permessi_audit.md`
+    riscritta con le 8 tabelle e i label. `amm_software_repository.py` non la
+    legge: passa dal catalogo `dbops.audit_sources`, dove la riga 5 è `attivo =
+    f`. ⇒ **Nessun lettore resta**, e la shadow `_legacy_` è sporcizia:
+    📮 **DROP al team DB** (§9.3), insieme alla riga 5 del catalogo che la
+    nomina.
 * ✅ **Il «doppio trigger» sulla legacy era un BLOCCO, non un doppione.**
   `trg_risorse_umane_auth_user_z90_storico_upd_dlt`, rimasto dal nome vecchio,
   scriveva nella shadow viva con la colonna `risorse_umane_auth_user_id`, che lì
@@ -639,7 +650,7 @@ Provato in `ROLLBACK`: vista vuota oggi (19 scrittori, tutti in `dbops`), 6/6.
 | `20260911-34` | il generatore cede la shadow al proprietario della madre | 12-09 00:04 |
 | `20260912-01` | via il trigger stantio sulla madre legacy (bloccava ogni scrittura con `storicizza = true`) | 12-09 00:30 |
 | `20260912-02` | via `storico.fatturazione_lotti_attivita` (dominio ritirato) | 12-09 00:30 |
-| `20260912-03` | via `storico.risorse_umane_auth_user` — 🔴 con la consegna BE ancora aperta (§4d) | 12-09 00:30 |
+| `20260912-03` | via `storico.risorse_umane_auth_user` — ✅ consegna BE chiusa il 12-09 su `storico.identita_digitali` (§4d) | 12-09 00:30 |
 | `20260912-04`, `-05` | le due merge scrivono l'audit dalla porta | 12-09 00:30 |
 | `20260912-06`, `-07` + `presidi.csv` | `vw_storico_scope_da_dichiarare` (ZERO, settimanale) + grant | 12-09 00:30 |
 
@@ -664,16 +675,19 @@ verrà scritta.
 
 | | Cosa | Di chi |
 | --- | --- | --- |
-| 🔴 | `permissions_audit_repository._USER_TABLES` riga 48 → `storico._legacy_risorse_umane_auth_user` (§4d). Finché manca, l'endpoint della storia permessi risponde 500 su dev | **BE** |
+| ✅ | `permissions_audit_repository._USER_TABLES` → `storico.identita_digitali` (non la `_legacy_`: §4d, decisione Tid 12-09). Endpoint verificato con chiamata vera, test 14/14, doc riscritta | fatto (BE, 12-09) |
+| 📮 | **DROP `storico._legacy_risorse_umane_auth_user`** (12 versioni di test di un bridge dismesso: sporcizia, decisione Tid 12-09) e **cancellazione della riga 5 di `dbops.audit_sources`** che la nomina (`attivo = f` è la dichiarazione della dismissione; a shadow droppata la riga non dichiara più niente). Nessun lettore nel backend: `permissions_audit_repository` legge `identita_digitali`, `amm_software_repository` legge il catalogo | **DB** — changeSet forward `00_schema/storico` + `80_data` (DELETE, l'unica eccezione al «si cambia dal CSV») |
 | ✅ | pgTAP post-apply **tutti verdi** (Tid, 12-09): `dbops/test-audit-log-perimetro-scrittori-v1` (6), `dbops/test-storico-scope-policy-v1` (32), `storico/test-storico-scope-congelato-v1` (23), `dbops/test-catalogo-presidi-v1` | fatto |
 | ⏳ | Commit dei file del 12-09 ancora non tracciati: `20260912-04…07`, `presidi.csv`, `test-storico-scope-policy-v1.sql`, questo brief, i manuali e le guide di §9.2 | **Tid** |
 | 🟠 | Debito dichiarato: i tre codici errore delle validazioni delle merge (`E_MERGE_ORIGINE_UGUALE_DESTINAZIONE`, `E_COMUNE_NON_TROVATO`, `E_STRADARIO_NON_TROVATO`), da coniare quando le funzioni avranno un chiamante applicativo | DB, cantiere futuro |
 | 🟠 | Debito di **nome**: `storico.comune_trasformazioni` e `storico.stradario_trasformazioni` sono registri, non shadow, e abitano nello schema che dice il contrario. Da valutare a parte | DB, decisione di Tid |
 | 🟠 | Le versioni legacy senza padre né archivio (4 su `fatture_scadenze`, e simili altrove) restano a scope NULL: invisibili agli operatori, visibili all'amministrazione. Non ricostruibili: si lascia in chiaro | nessuno |
 
-⇒ **Il brief passa in `work-done/` quando la riga 🔴 è chiusa** (i pgTAP sono
-confermati): il perimetro DB è completo, e i tre 🟠 sono debiti dichiarati con
-la loro sede, non lavoro rimandato.
+⇒ ✅ **Chiuso e spostato in `work-done/` il 2026-09-12**: la riga 🔴 è
+chiusa, i pgTAP sono confermati, il perimetro DB è completo. Il 📮 e i tre 🟠
+sono debiti **dichiarati con la loro sede**, non lavoro rimandato: il DROP
+della shadow legacy è un changeSet del team DB, e non tiene aperto un brief il
+cui perimetro era la RLS sullo storico.
 
 ---
 

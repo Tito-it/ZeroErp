@@ -78,7 +78,7 @@ casi costruiti (una madre temporanea col trigger, prima senza riga e poi in RLS
 con riga `NESSUNO`; righe di prova come stantie) e che sia a catalogo. In
 `dbops.presidi` con natura `ZERO`, cadenza `SETTIMANALE`, registro
 `dbops.storico_scope_policy`.
-Origine: `docs/it/dev/work-in-progress/brief-db-rls-storico-scope-congelato.md` §4.2, §4c.
+Origine: `docs/it/dev/work-done/brief-db-rls-storico-scope-congelato.md` §4.2, §4c.
 
 ---
 
