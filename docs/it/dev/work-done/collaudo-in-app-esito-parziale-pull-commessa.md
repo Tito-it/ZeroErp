@@ -8,7 +8,7 @@
 >
 > **Stato**: ✅ **CHIUSO il 2026-09-12** — prova 5 **verde** dopo D1 e la
 > correzione della catena al rilancio (brief
-> [brief-db-rilancio-step-non-rivede-le-proprie-commesse](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
+> [brief-db-rilancio-step-non-rivede-le-proprie-commesse](brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
 > §10): rilancio → `totale 2 · ok 2` e due fatture in «Documenti»; annullo e
 > rigenerazione dopo correzione verificati in-app da Tid. La V1 del brief
 > fan-out si chiude con questo verbale; la V2 era chiusa dal 2026-09-01, quindi
@@ -27,7 +27,7 @@
 > commesse `TRATTENUTA` **anche quando a trattenerle è il lotto stesso** —
 > l'auto-esclusione del §5.4 del brief del trattenuto è stata scritta solo
 > nell'emit (`-62`), un cancello che non viene mai raggiunto. Brief al team DB:
-> [brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md).
+> [brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](brief-db-rilancio-step-non-rivede-le-proprie-commesse.md).
 > ⛔ **Le prove 3 e 4 vanno RIFATTE dopo D1**: la 3 era passata il 09-09 alle
 > 01:44 (LTF-0010330, il rilancio ritentò 34137); L3 è stato applicato alle
 > 17:12 dello stesso giorno, e da allora nessun rilancio ha più rivisto una
@@ -623,7 +623,7 @@ solo nell'emit (`-62`), che non viene raggiunto; P-5 (test 3) prova l'emit da
 solo e non poteva vederlo. Secondo effetto: ritirate le bandiere all'avvio e
 non rialzate da un giro vuoto, il lotto esce pulito con due esiti `ERRORE` che
 il verdetto non conta. Dettaglio, prova a cerchio e richieste in
-[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md).
+[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](brief-db-rilancio-step-non-rivede-le-proprie-commesse.md).
 ⚠️ La prova 3 era passata il 09-09 alle 01:44 (LTF-0010330), **prima** che L3
 venisse applicato alle 17:12: le prove 3 e 4 vanno rifatte.
 ✅ **12-09 pomeriggio: DB (`20260912-12…16`), BE e FE consegnati** — brief §8

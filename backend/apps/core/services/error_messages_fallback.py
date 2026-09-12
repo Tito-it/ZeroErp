@@ -603,7 +603,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PIPELINE_DOMINIO": "Errore dominio pipeline.",
     "E_PIPELINE_DOMINIO_NOT_FOUND": "Dominio pipeline non trovato.",
     "E_PIPELINE_DRIVER_MAX_ITER": "Pipeline interrotta: superato il numero massimo di iterazioni.",
-    "E_PIPELINE_LOTTO_CRITICAL": "Lotto con segnalazioni critiche.",
+    "E_PIPELINE_LOTTO_CRITICAL": "Lotto bloccato per segnalazioni critiche o documenti in errore.",
     "E_PIPELINE_LOTTO_IN_ESECUZIONE": "Lotto gia' in esecuzione.",
     "E_PIPELINE_LOTTO_NOT_FOUND": "Lotto non trovato.",
     "E_PIPELINE_MARK_ERROR": "Errore marcatura pipeline.",

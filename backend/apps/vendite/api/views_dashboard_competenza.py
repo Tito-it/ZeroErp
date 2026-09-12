@@ -387,8 +387,8 @@ class ApiDashboardCompetenzaResidui(DomainAPIView):
     """GET /api/v1/vendite/dashboard-competenza/residui/ — l'elenco dei residui.
 
     ⛔ Non e' un filtro della lista attivita': e' una lista sua, e la ragione e'
-    di dominio. Lo stadio `EMESSA_NON_FATTURATA` contiene QUATTRO situazioni con
-    rimedi opposti, e solo `RESIDUO` chiede un'azione — le altre tre sono
+    di dominio. Lo stadio `EMESSA_NON_FATTURATA` contiene TRE situazioni con
+    rimedi opposti, e solo `RESIDUO` chiede un'azione — le altre due sono
     «niente da fare». Esporre un parametro per scegliere il motivo darebbe a chi
     chiama l'illusione di poter allargare il perimetro del verbo, che invece e'
     deciso dal modello.

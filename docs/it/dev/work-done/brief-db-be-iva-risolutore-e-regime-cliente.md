@@ -22,7 +22,7 @@
 >
 > 📌 **Resta UNA coda**: `I5` per la metà **payload SDI**, che aspetta un builder
 > XML FatturaPA che non esiste. Raccolta nell'**item 9** di
-> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md) — ⚠️ messa lì **prima** di
+> [fatturazione-roadmap.md](fatturazione-roadmap.md) — ⚠️ messa lì **prima** di
 > chiudere qui, perché un residuo che resta in un documento chiuso è un residuo
 > perso.
 

@@ -1626,7 +1626,8 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
     # Scopo: ⚠️ D-Q p.3 sul gemello scadenze — `failed_rows > 0` chiude il
     #        task_run in ERRORE SENZA sollevare, cosi' il rilancio dello step
-    #        (policy RESUME_STEP) ripete davvero il task invece di saltarlo.
+    #        (policy RESUME_TASK — `RESUME_STEP` e' ritirato dal CHECK col
+    #        `20260912-32`) ripete davvero il task invece di saltarlo.
     #        Verifica anche che i due contatori di salto restino SEPARATI nel
     #        meta: «chiusa» e «rotta» non vanno sommate.
     def test_execute_step_genera_scadenze_failed_rows_chiude_task_run_errore(self):

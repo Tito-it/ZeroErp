@@ -32,7 +32,7 @@
 >
 > | Cosa | Dove prosegue |
 > | --- | --- |
-> | §6 item 2 — il passo SDI gira per la prima volta e nessuno legge a valle (sospeso per decisione di Tid) | [fatturazione-roadmap §9](../work-in-progress/fatturazione-roadmap.md) — è materia di fatturazione, non di bonifica |
+> | §6 item 2 — il passo SDI gira per la prima volta e nessuno legge a valle (sospeso per decisione di Tid) | [fatturazione-roadmap §9](fatturazione-roadmap.md) — è materia di fatturazione, non di bonifica |
 > | §5 → i 133 codici `E_*` sollevati dal DB e non dichiarati in `error_policies.py` | [brief-db-codice-errore-strutturato §12.5](../work-done/brief-db-codice-errore-strutturato.md) — il figlio, che prosegue |
 >
 > ---

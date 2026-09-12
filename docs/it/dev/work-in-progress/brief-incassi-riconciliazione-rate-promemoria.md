@@ -7,7 +7,7 @@
 >
 > ℹ️ **Il nome del file resta quello**, benché ora sia stretto: ci puntano la
 > guida [gestione-dei-pagamenti.md](/guide/gestione-dei-pagamenti) e
-> [fatturazione-roadmap.md](fatturazione-roadmap.md), e un rename romperebbe
+> [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md), e un rename romperebbe
 > due link per guadagnare un titolo più bello.
 >
 > **Cos'è.** Il cantiere che porta l'area `pagamenti` da modello disegnato a

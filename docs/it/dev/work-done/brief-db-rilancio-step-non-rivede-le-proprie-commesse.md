@@ -1,6 +1,6 @@
 # Brief DB — il rilancio dello step non rivede le proprie commesse
 
-> **Destinatario:** team DB (`dev/db-tid`). Aperto il 2026-09-12 dal team BE.
+> **Destinatario:** team DB (`dev/db-tid`). Aperto il 2026-09-12 dal team BE — ✅ **chiuso il 2026-09-12 sera** (§7).
 > ⚠️ Il testo dei §1-§7 è quello ricevuto dal team BE il 12-09, salvato qui dal
 > team DB perché non era ancora sul ramo; il lavoro DB è registrato in **§8**.
 >
@@ -10,8 +10,8 @@
 > ✅ **BE + FE CONSEGNATI (12-09 pomeriggio, §9.6)**: discovery con l'identità
 > dal repository (verificato sul 13338: `[]` senza, `[34137, 36984]` con),
 > verdetto a tre addendi, drawer sul verdetto.
-> ⏳ **§11 (12-09 sera): i tre rilievi al DB di §9.7/§10** — `20260912-32…35` +
-> 2 CSV scritti e provati, **in attesa di apply**. ⭐ Trovata una causa sotto quella
+> ✅ **§11 (12-09 sera): i tre rilievi al DB di §9.7/§10** — `20260912-32…35` +
+> 2 CSV scritti, provati e **applicati** (in git). ⭐ Trovata una causa sotto quella
 > vista: `fn_cleanup_fatture_by_ids` usciva su «zero fatture» e non liberava niente.
 > 🔴 **13:46 — «Riprova step» su 13338: D1 ha funzionato (`totale 2 · ok 2`) e
 > il lotto è uscito lo stesso senza documenti.** Secondo difetto di modello,
@@ -31,11 +31,11 @@
 > cancello più a valle che non viene mai raggiunto.
 >
 > **Origine.** Collaudo in-app, prova 5 (tutto-rosso) di
-> [collaudo-in-app-esito-parziale-pull-commessa.md](../work-done/collaudo-in-app-esito-parziale-pull-commessa.md),
+> [collaudo-in-app-esito-parziale-pull-commessa.md](collaudo-in-app-esito-parziale-pull-commessa.md),
 > eseguita da Tid il 2026-09-12: ripristinate le ROOT, «Riprova step» porta il
 > lotto a `COMPLETATO` e non genera nessun documento.
 >
-> **Correlati:** [brief-db-il-trattenuto-passa-lo-stesso](../work-done/brief-db-il-trattenuto-passa-lo-stesso.md)
+> **Correlati:** [brief-db-il-trattenuto-passa-lo-stesso](brief-db-il-trattenuto-passa-lo-stesso.md)
 > (§5.3, §5.4, L3, P-5) · changeSet `20260909-61` e `20260909-62` ·
 > `db/pgtap/vendite/test-pull-non-prende-trattenuti-v1.sql`
 
@@ -229,13 +229,17 @@ con il parametro nuovo — il binding non lo vede nessun mock.
   gioco). Dopo l'apply, «Riprova step» su quel lotto **deve** tirare dentro le
   due commesse; se ancora risponde `totale 0`, D1 non è arrivato al percorso.
 
-## 7. Stato (come ricevuto dal BE, 12-09 mattina)
+## 7. Stato — ✅ chiuso il 12-09-2026, sera
 
 | | |
 | --- | --- |
-| DB | 🔵 in attesa: D1 · presidi P-5-bis/ter · risposta a D2 |
-| BE | ⏸️ attende il DB (§5) |
-| Collaudo | 🔴 prova 5 **sospesa** al rilancio; prove 3 e 4 da **rifare** dopo D1 (la 3 era passata il 09-09 alle 01:44, L3 è arrivato alle 17:12) |
+| DB | ✅ D1 (`20260912-12…16`), D2, i rilievi di §9.7 e §10 (`20260912-32…35`), pgTAP verdi — applicati su dev e in git |
+| BE / FE | ✅ §5, §9.6, §10.3, e il ripiego di §11.6 |
+| Collaudo | ✅ prove 3, 4 e 5 rifatte da Tid il 12-09 dopo la consegna: il rilancio **rivede** le proprie commesse; «Annulla» su un lotto fermo al pull riporta da solo le righe a `NON_EMESSA` |
+
+*Com'era il 12-09 mattina, quando il BE lo ha consegnato: DB in attesa di D1 e
+della risposta a D2, BE fermo al §5, prova 5 sospesa al rilancio (la 3 era
+passata il 09-09 alle 01:44, L3 è arrivato alle 17:12).*
 
 ---
 
@@ -316,10 +320,10 @@ su L3 («letto dal caso sbagliato»).
 | | Cosa | Di chi |
 | --- | --- | --- |
 | ✅ | Apply `20260912-12…16` (12-09 12:44) e pgTAP verdi — `test-pull-non-prende-trattenuti-v1` (13), `test-lotto-segnalazioni-summary-v2` (7) | fatto (Tid) |
-| ⏳ | «Riprova step» su **13338** dopo la consegna BE: deve rispondere `totale 2` (la discovery, chiamata con l'identità del lotto, oggi le restituisce) | **Tid** |
+| ✅ | «Riprova step» su **13338** dopo la consegna BE: deve rispondere `totale 2` (la discovery, chiamata con l'identità del lotto, oggi le restituisce) — verificato in-app (Tid, 12-09) |
 | ✅ | §5 BE: `list_commesse_emittibili(emit_batch_id)` → `p_emit_batch_id`; il guard su `lock_batch_id` **prima** della discovery; D2: `esiti_stato_esecuzione_errore_count` letto per nome e sommato in `is_error` — fatto il 12-09 pomeriggio, §9.6 | fatto (BE) |
-| ⏳ | Collaudo: prove 3, 4, 5 da rifare dopo D1 | **Tid** |
-| ⏳ | Commit dei file DB e doc | **Tid** |
+| ✅ | Collaudo: prove 3, 4, 5 rifatte dopo D1 (Tid, 12-09) |
+| ✅ | Commit dei file DB e doc (PR #1572) |
 
 ---
 
@@ -628,7 +632,7 @@ guida `analisi-tracciamento-processi-e-job`.
 
 | | Cosa | Di chi |
 | --- | --- | --- |
-| ⏳ | Apply `20260912-32…35` + CSV; pgTAP `vendite/test-af-emessa-non-lockata-reset-e-riporto-v1` (9), `vendite/test-fatturazione-pipeline-task-runtime` (19), `vendite/test-pull-non-prende-trattenuti-v1` (13) | **Tid** |
-| 📮 | `error_messages_fallback.py`: frase di `E_PIPELINE_LOTTO_CRITICAL` allineata al catalogo; `TaskPolicy.resume_mode` non ha più `RESUME_STEP` fra i valori possibili (nessun codice lo nomina, verificato) | **BE** |
-| ⏳ | Collaudo: prova 5 su un lotto nuovo (§10.4); e ora anche «Annulla» su un lotto fermo al pull deve riportare le righe a `NON_EMESSA` da solo | **Tid** |
-| ⏳ | Commit | **Tid** |
+| ✅ | Apply `20260912-32…35` + CSV (su dev il 12-09, in git); pgTAP `vendite/test-af-emessa-non-lockata-reset-e-riporto-v1` (9), `vendite/test-fatturazione-pipeline-task-runtime` (19), `vendite/test-pull-non-prende-trattenuti-v1` (13) | fatto |
+| ✅ | `error_messages_fallback.py`: frase di `E_PIPELINE_LOTTO_CRITICAL` allineata al catalogo (12-09 sera); `RESUME_STEP` non e' nominato da nessun codice BE — restava in un solo commento di test, riscritto su `RESUME_TASK` | BE |
+| ✅ | Collaudo: prova 5 su un lotto nuovo (§10.4) e «Annulla» su un lotto fermo al pull che riporta le righe a `NON_EMESSA` da solo — fatti da Tid il 12-09 |
+| ⏳ | Commit degli ultimi tre file BE (ripiego, commento di test, questo brief) e dello spostamento in `work-done/` | **Tid** |

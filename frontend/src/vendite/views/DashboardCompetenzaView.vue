@@ -756,10 +756,12 @@ function onResiduiSort(event) {
   loadResidui()
 }
 
-// Scopo: l'etichetta del motivo. ⚠️ `labelOrCode`: il vocabolario e'
-//        estensibile lato DB (e' gia' passato da tre a quattro valori), quindi
-//        un valore nuovo deve mostrarsi COM'E' invece di sparire — mai il path
-//        della chiave a video, mai una cella vuota.
+// Scopo: l'etichetta del motivo. ⚠️ `labelOrCode`: il vocabolario lo decide
+//        il DB ed e' gia' cambiato due volte (quattro valori col `20260826-54`,
+//        tre dal `20260912-36`), quindi un valore nuovo deve mostrarsi COM'E'
+//        invece di sparire — mai il path della chiave a video, mai una cella
+//        vuota. ⚠️ La chiave e' costruita dinamicamente: il cancello i18n non
+//        la vede (punto cieco dichiarato), e' il ripiego a renderla visibile.
 // Scopo: l'etichetta di un motivo OSTATIVO (quelli di `riportabili/`).
 // ⭐ Il patto dei tre livelli: il DB emette l'indirizzo (`reason_key`), il BE lo
 //    trasporta intatto, il FE lo risolve. Qui non si traduce un codice in una
@@ -2256,10 +2258,10 @@ onActivated(() => {
                  giro interrotto). Dirlo evita che l'operatore aspetti un
                  avanzamento che non arrivera' da solo. -->
             <!-- ⭐ LA CARD DICE DUE COSE, e sono due perche' hanno rimedi
-                 OPPOSTI. Dentro «Emesse non fatturate» ci sono quattro
-                 situazioni: il RESIDUO chiede un'azione, le altre tre — in
-                 attesa del lotto, giro in corso, senza attivita' fatturabile —
-                 chiedono di aspettare. Un numero solo per due rimedi opposti
+                 OPPOSTI. Dentro «Emesse non fatturate» ci sono tre
+                 situazioni: il RESIDUO chiede un'azione, le altre due — giro
+                 in corso, senza attivita' fatturabile — chiedono di
+                 aspettare. Un numero solo per due rimedi opposti
                  era il difetto: la guida diceva «se c'e' un numero, qualcosa si
                  e' rotto», e non era vero per la parte in transito.
                  ⛔ Il conteggio arriva dal BE (`n_residui`), non si deduce
@@ -2777,7 +2779,7 @@ onActivated(() => {
                    emettere» e agisce su un'ATTIVITA' — la commessa aggregata
                    non direbbe su cosa si sta per agire.
                    ⚠️ La lista mostra MENO della card, ed e' voluto: lo stadio
-                   contiene quattro situazioni e solo `RESIDUO` chiede
+                   contiene tre situazioni e solo `RESIDUO` chiede
                    un'azione. Il numero grande e' «quanto lavoro e' fermo qui»,
                    la lista e' «su cosa si puo' agire» — e la card lo dichiara
                    con la riga «di cui N da recuperare». -->

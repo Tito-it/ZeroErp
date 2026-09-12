@@ -740,7 +740,7 @@ sulla doc auto-gen, nessuna delle tre ce l'ha.
 Non è un passo di questo piano e **non va messo in coda a nessuno di questi**:
 non dipende da `event_log`. È lo stesso bisogno visto dal lato dell'operatore —
 *«questa riga è ferma, ed ecco perché»* — e vive nella
-[roadmap di fatturazione](fatturazione-roadmap.md).
+[roadmap di fatturazione](../work-done/fatturazione-roadmap.md).
 
 Stato misurato il 2026-08-22, **dal seed, non dai dati**: su **47 liste**
 registrate, due hanno una colonna che parli di errore — `config.email_log` (che
@@ -918,8 +918,8 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
 | --- | --- |
 | [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) | La guida **stabile**: modello di scrittura + mappa di consultazione. Quando un passo di qui atterra, la guida si aggiorna e qui resta la storia |
 | [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) | Altro mestiere (§0). Ne condividiamo la **Fase 0** (Passo 2) e ne siamo il fornitore per la Fase 1 |
-| [fatturazione-roadmap.md](fatturazione-roadmap.md) | I suoi item **#5 vista errori**, **#6 alerting**, **#7 correlation_id** sono qui dentro. La roadmap resta il documento di dominio, questo quello trasversale |
-| [fatturazione-roadmap.md](fatturazione-roadmap.md) — *binario parallelo* | I **fallimenti visibili nelle liste** restano di là: stesso bisogno, altra persona (operatore, non chi ripara) e **nessuna dipendenza** da questo piano — vedi §4 |
+| [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md) | I suoi item **#5 vista errori**, **#6 alerting**, **#7 correlation_id** sono qui dentro. La roadmap resta il documento di dominio, questo quello trasversale |
+| [fatturazione-roadmap.md](../work-done/fatturazione-roadmap.md) — *binario parallelo* | I **fallimenti visibili nelle liste** restano di là: stesso bisogno, altra persona (operatore, non chi ripara) e **nessuna dipendenza** da questo piano — vedi §4 |
 | [brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md) | Il Passo 1, già scritto |
 | [audit-e-tracciabilita.md](../../guide/audit-e-tracciabilita.md) | Il suo §8 «Pianificato» chiede già `GET /core/request-log/` e una «dashboard anomalie»: stesso bisogno, arrivato prima |
 

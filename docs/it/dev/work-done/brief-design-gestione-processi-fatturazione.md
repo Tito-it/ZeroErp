@@ -23,7 +23,7 @@
 > **write-side**) · [Guida fatturazione](../../guide/fatturazione.md) (pipeline end-to-end)
 > · [Guida gestione commesse](../../guide/gestione-commesse.md) ·
 > [Guida cruscotti fatturazione](../../guide/cruscotti-fatturazione.md) ·
-> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md) (§5 «la dashboard non è un report,
+> [fatturazione-roadmap.md](fatturazione-roadmap.md) (§5 «la dashboard non è un report,
 > è uno strumento di governo» — questo brief realizza quel punto).
 
 ---
