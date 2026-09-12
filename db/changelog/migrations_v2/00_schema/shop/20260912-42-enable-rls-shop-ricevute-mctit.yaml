@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D4 di migliorie-generali-da-test-valutazione.md — ARMAMENTO di shop.ricevute.
+#   Decisione di Tid, 2026-09-12: «fai D4». La riga del registro lo diceva da
+#   tre giorni: «accenderla non toglierebbe niente a nessuno — zeroerp_app non
+#   ha nessun GRANT sulla tabella — e costerebbe una riga».
+#
+# ── ⛔ UNA POLICY SENZA `ENABLE` NON E' UNA DIFESA ────────────────────
+#   `rls_shop_ricevute_self_ownership` (20260420-07) e' scritta da cinque mesi
+#   e non ha mai filtrato niente: `relrowsecurity = false`. E' il criterio
+#   POLICY_INERTE di dbops.vw_rls_perimetro_scoperto, che la pescava insieme
+#   ad acquisti.ddt e acquisti.ordini.
+#
+# ── ⭐ PERCHE' QUI NON COSTA NIENTE, letto dalla struttura ──────────────
+#   Verificato il 2026-09-12 con has_table_privilege: zeroerp_app,
+#   zeroerp_batch_fatturazione e zeroerp NON hanno nessun privilegio su
+#   shop.ricevute; l'unico scrittore e' l'owner (e un trigger BEFORE suo).
+#   L'owner non e' soggetto alla RLS (NO FORCE, come tutta la famiglia):
+#   nessun percorso applicativo cambia. Il giorno in cui il dominio shop avra'
+#   una porta, quella nascera' gia' dietro la policy — che e' il verso giusto.
+#
+# ── ⚠️ ACQUISTI NO, e la ragione sta nel registro ──────────────────────
+#   acquisti.ddt e acquisti.ordini hanno una policy di sola veste
+#   FORNITORE_PORTALE e NESSUNA colonna emittente: accenderle chiuderebbe le
+#   tabelle all'operatore, che ci scrive. Manca il modello, non l'accensione
+#   (D8). Restano a registro.
+#
+# ── NO FORCE, a parita' con le sorelle ────────────────────────────────
+#   `relrowsecurity = t`, `relforcerowsecurity = f`: l'owner deve poter fare
+#   manutenzione. Il pgTAP che vuole esercitare la policy accende FORCE da se'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/shop/20260912-42-enable-rls-shop-ricevute-mctit.yaml
+
+  - changeSet:
+      id: 20260912-42-enable-rls-shop-ricevute
+      author: mctit
+      runOnChange: false
+      comment: >
+        ARMAMENTO: ENABLE ROW LEVEL SECURITY su shop.ricevute. Da qui la policy
+        rls_shop_ricevute_self_ownership (20260420-07) filtra davvero. Nessun
+        ruolo applicativo ha privilegi sulla tabella: nessun percorso cambia.
+        Isolato apposta: si disarma con il rollback di questo solo changeSet.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'shop'
+                 AND tablename  = 'ricevute'
+                 AND policyname = 'rls_shop_ricevute_self_ownership'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE shop.ricevute ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE shop.ricevute DISABLE ROW LEVEL SECURITY;

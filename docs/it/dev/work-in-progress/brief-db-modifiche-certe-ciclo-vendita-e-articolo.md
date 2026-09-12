@@ -20,6 +20,14 @@
 > **Stato:** 🔵 **APERTO — piano scritto, nulla applicato.** Nessun changeSet
 > ancora creato. ⛔ Niente si applica senza autorizzazione esplicita di Tid.
 >
+> 🔴 **Verificato il 2026-09-12 contro il DB vivo (doc auto-gen) e contro ciò che
+> è entrato in esercizio fra il 01-09 e il 12-09.** I tre blocchi reggono —
+> nessuna colonna, nullabilità o vista cambia — ma **le premesse operative sono
+> cambiate in dodici punti**, tre dei quali avrebbero fatto fallire il migrate o
+> lasciato una colonna vuota a video senza nessun rosso. ⭐ **Da leggere per
+> primo: §10**, che li elenca; le sezioni toccate portano ciascuna la propria
+> correzione datata. Restano **tre decisioni** per Tid (§10.3), tutte piccole.
+>
 > ⚠️ **Perimetro:** solo ciò che **nessuna decisione aperta può cambiare**. Il
 > criterio è dichiarato in §1 ed è l'unica ragione per cui una voce sta qui.
 
@@ -33,8 +41,11 @@ le voci è **una sola**:
 > **Se le decisioni aperte venissero prese in un modo o nell'altro, questa voce
 > cambierebbe?** Se sì, non è in questo brief.
 
-Le decisioni aperte sono le **D-1 → D-8** dell'[analisi
-magazzino](analisi-db-magazzino-aggancio-documento-e-produzione.md) §8 e la **§7**
+Le decisioni aperte sono le **D-1 → D-9** dell'[analisi
+magazzino](analisi-db-magazzino-aggancio-documento-e-produzione.md) §8 (*fino al
+2026-09-12 qui c'era scritto «D-8»: è lo stesso off-by-one che la revisione
+incrociata del 02-09 aveva corretto negli altri tre documenti e non in questo*)
+e la **§7**
 dell'[analisi commessa](analisi-db-commessa-e-produzione-predisposizione.md) —
 cioè: se l'ODL è una sorgente o un anello proprio, se il ledger di magazzino usa
 il catalogo delle sorgenti o il riferimento testuale, e se la commessa di
@@ -53,6 +64,21 @@ stanno su `magazzino` e sulla forma dell'ODL.**
 Le due analisi sembravano contigue e in realtà **non si bloccano a vicenda**: il
 lavoro di questo brief si può fare adesso, sulle tabelle in esercizio, mentre
 `magazzino` aspetta le sue decisioni. Non c'è un ordine da rispettare fra i due.
+
+> ⚠️ **Aggiornamento del 2026-09-12: un ordine adesso C'È, ed è questo brief per
+> primo.** Due fatti nuovi: (1) `acquisti` e `magazzino` sono **il prossimo
+> cantiere** (decisione di Tid dell'11-09, in `.codex/PROJECT_CONTEXT.md`);
+> (2) l'[analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md) ha
+> **chiuso** M-1, M-2, M-3, M-4, M-5, M-6, M-8 e M-9 fra il 02-09 e il 04-09, e
+> tre di quelle decisioni **leggono colonne che nascono qui**: la primitiva di
+> scrittura (M-2) è guidata da `catalogo.articoli.gestito_a_magazzino`; la vista
+> «effettiva / impegnata / in arrivo» (§7-bis) legge
+> `acquisti.ordini_righe.data_consegna_confermata_fornitore` e
+> `vendite.ordini_righe.data_consegna_confermata`; e M-5 aggiunge
+> `catalogo.articoli.requires_lotto` accanto alle tre colonne del Blocco B (§8).
+> ⇒ Il filtro della §1 non cambia — nessuna di quelle decisioni **modifica** una
+> voce di qui — ma il brief smette di essere «parallelo e indipendente»: è il
+> **prerequisito** del cantiere che viene dopo, e la sua priorità sale.
 
 ### ⭐ E il Blocco B serve a due cantieri, non a uno (2026-09-01)
 

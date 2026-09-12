@@ -76,6 +76,43 @@ l'applicazione scriverebbe. Una fixture che ha bisogno di un emittente *diverso*
 sta collaudando la separazione fra emittenti — quella non si aggira, si
 costruisce cambiando contesto.
 
+### Il mondo si costruisce, non si cerca — e prima del contesto
+
+Su un database ricostruito dai changelog (la CI, un'installazione nuova) il
+**catalogo** c'è tutto e le **anagrafiche** sono a zero: nessun emittente,
+nessun operatore, nessun cliente. Una fixture che li *cerca* (`SELECT … FROM
+anagrafiche.emittenti_fiscali ORDER BY id LIMIT 1`, «un operatore con
+whitelist», «un cliente libero») lì non trova niente e il file muore nel
+fixture — copertura **zero**, non parziale. Il 2026-09-12 erano così **21 test
+del perimetro** (`script/test-fn-scope-*`, `rls/*`): la proprietà fail-closed
+delle funzioni di scope era collaudata solo sulla macchina di sviluppo.
+
+Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
+
+| Serve | Helper |
+| --- | --- |
+| un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
+| l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
+| un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
+| un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
+| un super admin | un'azienda come sopra + un binding al profilo `SUPER_ADMIN` sulla sua identità |
+
+⛔ **Ordine obbligato: prima il mondo, poi `fn_pgtap_set_contesto_operatore(<auth_user_id>)`.**
+Con un operatore già in sessione il legame BA → emittente lo scrive **anche**
+il trigger `z90` del billing account, e i due si scontrano su
+`uq_emittenti_fiscali_ba`. Da owner si costruisce tutto prima e si lega il BA
+con il terzo parametro; come `zeroerp_app` si apre il contesto e si chiama
+`fn_pgtap_crea_cliente_ba` **senza** terzo parametro (dalla rev `20260912-38` il
+legame lo lascia al trigger, verso l'emittente di chi agisce).
+
+⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
+differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre
+con `SET CONSTRAINTS ALL DEFERRED` subito dopo.
+
+⚠️ E i **rami `skip` spariscono**: con il mondo costruito la precondizione c'è
+sempre, e un `CASE WHEN EXISTS(...) THEN ok(...) ELSE skip(...)` diventa un
+`ok(...)`. Un test che *può* saltare, su un database vuoto salta.
+
 ### `LIMIT 1` senza `ORDER BY` non verifica, scommette
 
 Quale riga esca dipende dal piano del planner, che cambia coi dati: il test

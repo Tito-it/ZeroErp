@@ -60,60 +60,67 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file pescava fra i dati ESISTENTI un super admin, un operatore con
+--   whitelist e due emittenti: su un database ricostruito dai changelog non
+--   c'e' niente di tutto questo, e il file moriva nella fixture — l'invariante
+--   «la selezione e' solo restringente» (test 5) restava collaudato solo su
+--   dbdev. Tre aziende con `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA
+--   di aprire il contesto: CTX (il contesto), OP (l'operatore con whitelist),
+--   SA (che diventa super admin con un binding al profilo SUPER_ADMIN).
+--   Niente skip condizionali: se la fixture manca il test 1 fallisce, perche'
+--   un file verde per assenza di dati e' peggio di un file rosso.
+CREATE TEMP TABLE _mondi AS
+SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+INSERT INTO config.profili_accesso_bindings
+    (profilo_accesso_id, identita_digitale_id, attivo)
+VALUES ((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
+        (SELECT identita_id FROM _mondi WHERE lato = 'SA'), true);
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
+END $ctx$;
 
 SELECT plan(10);
 
 -- ============================================================
--- Fixture: utenti ed emittenti reali del database.
--- Niente skip condizionali: se la fixture manca il test 1 fallisce,
--- perche' un file verde per assenza di dati e' peggio di un file rosso.
+-- Fixture: i ruoli del test, letti dalle aziende costruite
 -- ============================================================
 CREATE TEMP TABLE _fx_sa AS
-SELECT au.id AS user_id
-  FROM django.auth_user au
- WHERE au.is_active = true
-   AND script.fn_is_super_admin(au.id)
- ORDER BY au.id
- LIMIT 1;
+SELECT m.auth_user_id AS user_id FROM _mondi m WHERE m.lato = 'SA';
 
 CREATE TEMP TABLE _fx_op AS
-SELECT au.id AS user_id,
-       uef.emittente_fiscale_id AS ef_suo
-  FROM django.auth_user au
-  JOIN anagrafiche.identita_digitali idg
-    ON idg.auth_user_id      = au.id
-   AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND idg.attivo            = true
-  JOIN config.user_emittenti_fiscali uef
-    ON uef.auth_user_id = au.id
- WHERE au.is_active = true
-   AND NOT script.fn_is_super_admin(au.id)
- ORDER BY au.id
- LIMIT 1;
+SELECT m.auth_user_id AS user_id,
+       m.emittente_fiscale_id AS ef_suo
+  FROM _mondi m WHERE m.lato = 'OP';
 
--- X = emittente su cui si impersona, Y = un altro emittente qualsiasi.
+-- X = emittente su cui si impersona, Y = un altro emittente: due aziende
+-- diverse da quella dell'operatore.
 CREATE TEMP TABLE _fx_ef AS
-SELECT (SELECT min(ef.id) FROM anagrafiche.emittenti_fiscali ef) AS ef_x,
-       (SELECT max(ef.id) FROM anagrafiche.emittenti_fiscali ef) AS ef_y;
+SELECT (SELECT m.emittente_fiscale_id FROM _mondi m WHERE m.lato = 'CTX') AS ef_x,
+       (SELECT m.emittente_fiscale_id FROM _mondi m WHERE m.lato = 'SA')  AS ef_y;
 
 -- ef_altro = un emittente diverso da quello in whitelist all'operatore.
 CREATE TEMP TABLE _fx_op_altro AS
-SELECT ef.id AS ef_altro
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.id <> (SELECT ef_suo FROM _fx_op)
- ORDER BY ef.id
- LIMIT 1;
+SELECT m.emittente_fiscale_id AS ef_altro FROM _mondi m WHERE m.lato = 'CTX';
 
 -- ============================================================
 -- 1) Preflight fixture
 -- ============================================================
 SELECT ok(
-    (SELECT count(*) FROM _fx_sa) = 1
-    AND (SELECT count(*) FROM _fx_op) = 1
-    AND (SELECT count(*) FROM _fx_op_altro) = 1
+    script.fn_is_super_admin((SELECT user_id FROM _fx_sa))
+    AND NOT script.fn_is_super_admin((SELECT user_id FROM _fx_op))
+    AND (SELECT ef_suo FROM _fx_op) IS NOT NULL
+    AND (SELECT ef_altro FROM _fx_op_altro) IS DISTINCT FROM (SELECT ef_suo FROM _fx_op)
     AND (SELECT ef_x FROM _fx_ef) IS DISTINCT FROM (SELECT ef_y FROM _fx_ef),
-    '1. Fixture presenti: un super admin, un operatore con whitelist, due emittenti distinti'
+    '1. Fixture costruita: un super admin, un operatore con whitelist, due emittenti distinti'
 );
 
 -- ============================================================

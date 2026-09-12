@@ -34,9 +34,39 @@
 
 BEGIN;
 
+-- ⛔ LE TRE AZIENDE SI COSTRUISCONO, non si cercano (2026-09-12): fino a quel
+--   giorno il file pescava il proprio emittente, «un altro emittente attivo»
+--   e un super admin fra i dati ESISTENTI, e senza di loro SALTAVA i test 4,
+--   5, 6 e 7 — su un database ricostruito dai changelog moriva nella fixture
+--   («Nessun emittente fiscale attivo»). Tre aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`: MIA (il contesto), ALTRUI (il
+--   listino fuori perimetro) e SA, il cui operatore diventa super admin con un
+--   binding — e' lui che puo' costruire il listino altrui. Niente piu' `skip`.
+--   ⚠️ Niente BA: la famiglia listino porta l'emittente in testata, quindi il
+--   file resta sul runner APPLICATIVO.
+CREATE TEMP TABLE _mondi AS
+SELECT 'MIA'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'ALTRUI' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+INSERT INTO config.profili_accesso_bindings
+    (profilo_accesso_id, identita_digitale_id, attivo)
+VALUES ((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
+        (SELECT identita_id FROM _mondi WHERE lato = 'SA'), true);
+
+-- ⚠️ L'helper esce con i vincoli IMMEDIATE; questo file li vuole DIFFERITI
+--   fino a dopo la fixture (vedi sotto), quindi li riapre.
+SET CONSTRAINTS ALL DEFERRED;
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'MIA'));
+END $ctx$;
 
 -- ⚠️ `SET CONSTRAINTS ALL IMMEDIATE` sta DOPO la fixture: quella crea un
 --   listino e la sua versione in due istruzioni, e i guard figli-padre della
@@ -99,39 +129,14 @@ SELECT is(
 --   fare (lo prova il test 7), e il super admin e' l'unico attore che puo'.
 --   La fixture si mette nei panni di chi potrebbe davvero costruire questo
 --   mondo, poi torna operatore.
--- ⚠️ Se esiste un solo emittente attivo il caso non e' costruibile: la fixture
---   lo dichiara e i test 4, 5 e 7 si saltano invece di fingere.
 DO $fixture$
 DECLARE
     v_super       integer;   -- ⚠️ niente %TYPE su django.*
-    v_mio_ef      anagrafiche.emittenti_fiscali.id%TYPE;
     v_altro_sr    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_listino_id  vendite.listini.id%TYPE;
 BEGIN
-    v_mio_ef := script.fn_pgtap_emittente_operatore();
-
-    SELECT ef.soggetto_ruolo_id INTO v_altro_sr
-      FROM anagrafiche.emittenti_fiscali ef
-     WHERE ef.attivo AND ef.id <> v_mio_ef
-     -- Ordine stabile: una fixture che pesca a caso non verifica, scommette.
-     ORDER BY ef.id
-     LIMIT 1;
-
-    IF v_altro_sr IS NULL THEN
-        PERFORM set_config('pgtap.listino_altrui', '', true);
-        RETURN;
-    END IF;
-
-    SELECT u.id INTO v_super
-      FROM django.auth_user u
-     WHERE script.fn_is_super_admin(u.id)
-     ORDER BY u.id
-     LIMIT 1;
-
-    IF v_super IS NULL THEN
-        PERFORM set_config('pgtap.listino_altrui', '', true);
-        RETURN;
-    END IF;
+    SELECT m.soggetto_ruolo_id INTO v_altro_sr FROM _mondi m WHERE m.lato = 'ALTRUI';
+    SELECT m.auth_user_id      INTO v_super    FROM _mondi m WHERE m.lato = 'SA';
 
     PERFORM script.fn_pgtap_set_contesto_operatore(v_super);
 
@@ -166,50 +171,56 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Si torna all'operatore normale: da qui in poi si collauda cio' che vede e
 -- cio' che puo' fare LUI.
-DO $torna$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $torna$;
+DO $torna$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'MIA'));
+END $torna$;
+
+-- Un listino NEL PROPRIO perimetro, per il test 6: lo scrive l'operatore
+-- stesso, che e' esattamente cio' che il test vuole vedere passare.
+CREATE TEMP TABLE _mio_listino AS
+WITH l AS (
+    INSERT INTO vendite.listini
+        (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+    SELECT 'PGTAP-LIST-MIO-' || substring(md5(clock_timestamp()::text) from 1 for 6),
+           'listino del proprio emittente, per il test di scrittura',
+           (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1),
+           (SELECT t.id FROM config.listini_tipologie t ORDER BY t.id LIMIT 1),
+           (SELECT m.soggetto_ruolo_id FROM _mondi m WHERE m.lato = 'MIA')
+    RETURNING id
+)
+SELECT id AS listino_id FROM l;
 
 -- ============================================================
 -- 4..5. La policy NASCONDE
 -- ============================================================
-SELECT CASE
-    WHEN NULLIF(current_setting('pgtap.listino_altrui', true), '') IS NULL
-        THEN skip('4. un solo emittente attivo: il caso «listino altrui» non e'' '
-                  'costruibile su questo database', 1)
-    ELSE is_empty(
-        format($$SELECT 1 FROM vendite.listini WHERE id = %s$$,
-               current_setting('pgtap.listino_altrui')),
-        '4. l''operatore non vede il listino di un altro emittente'
-    )
-END;
+SELECT is_empty(
+    format($$SELECT 1 FROM vendite.listini WHERE id = %s$$,
+           current_setting('pgtap.listino_altrui')),
+    '4. l''operatore non vede il listino di un altro emittente'
+);
 
 -- ⭐ Il percorso nuovo: la versione non ha una colonna emittente, quindi se il
 --   padre e' fuori perimetro deve sparire anche lei. E' il fail-closed che
 --   `fn_scope_ef_whitelist_via_listino` produce per costruzione, non per caso.
-SELECT CASE
-    WHEN NULLIF(current_setting('pgtap.listino_altrui', true), '') IS NULL
-        THEN skip('5. idem: nessun listino altrui su cui costruire il caso', 1)
-    ELSE is_empty(
-        format($$SELECT 1 FROM vendite.listini_versioni WHERE listino_id = %s$$,
-               current_setting('pgtap.listino_altrui')),
-        '5. e non vede le VERSIONI di quel listino: il perimetro passa dal padre'
-    )
-END;
+SELECT is_empty(
+    format($$SELECT 1 FROM vendite.listini_versioni WHERE listino_id = %s$$,
+           current_setting('pgtap.listino_altrui')),
+    '5. e non vede le VERSIONI di quel listino: il perimetro passa dal padre'
+);
 
 -- ============================================================
 -- 6. Cio' che deve continuare a passare
 -- ============================================================
 -- Prima del rifiuto va provato il consenso: una difesa che nega tutto
 -- passerebbe i test 4, 5 e 7 senza essere corretta.
-SELECT CASE
-    WHEN NOT EXISTS (SELECT 1 FROM vendite.listini)
-        THEN skip('6. nessun listino nel proprio perimetro su cui scrivere', 1)
-    ELSE lives_ok(
-        $$UPDATE vendite.listini
-             SET descrizione = descrizione
-           WHERE id = (SELECT id FROM vendite.listini ORDER BY id LIMIT 1)$$,
-        '6. una scrittura nel proprio perimetro passa'
-    )
-END;
+SELECT lives_ok(
+    $$UPDATE vendite.listini
+         SET descrizione = descrizione
+       WHERE id = (SELECT listino_id FROM _mio_listino)$$,
+    '6. una scrittura nel proprio perimetro passa'
+);
 
 -- ============================================================
 -- 7. ⛔ Il guard RIFIUTA E SPIEGA
@@ -227,11 +238,6 @@ DO $prova$
 DECLARE
     v_esito text := 'non-sollevato';
 BEGIN
-    IF NULLIF(current_setting('pgtap.listino_altrui', true), '') IS NULL THEN
-        PERFORM set_config('pgtap.esito7', 'skip', true);
-        RETURN;
-    END IF;
-
     BEGIN
         INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
         VALUES (current_setting('pgtap.listino_altrui')::bigint,
@@ -246,15 +252,11 @@ BEGIN
 END
 $prova$;
 
-SELECT CASE
-    WHEN current_setting('pgtap.esito7', true) = 'skip'
-        THEN skip('7. idem: nessun listino altrui a cui appendere una versione', 1)
-    ELSE is(
-        current_setting('pgtap.esito7', true),
-        'P0001|scope',
-        '7. appendere una versione al listino di un altro si ferma, e SPIEGA'
-    )
-END;
+SELECT is(
+    current_setting('pgtap.esito7', true),
+    'P0001|scope',
+    '7. appendere una versione al listino di un altro si ferma, e SPIEGA'
+);
 
 -- ============================================================
 -- 8. Il presidio

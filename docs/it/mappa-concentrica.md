@@ -151,10 +151,13 @@ e le sette partizioni di `vendite.note`.
 | L'invariante | ⛔ **non** «la vista è vuota»: è «nessuna riga fuori da `DEBITO_DICHIARATO`». Un cancello rosso dal primo giorno viene disattivato |
 | Stato | **10 righe** di debito dichiarato (erano 33 il 9 settembre). Le tabelle nuove entrano nel criterio **da sole** |
 
-⛔ **Ciò che il criterio NON vede**: lo schema `storico` — 120 tabelle, zero RLS.
-Quelle tabelle sono **gemelle** delle madri, non figlie, e nessuna FK le lega.
-Debito dichiarato come **D3** in
-[migliorie-generali-da-test-valutazione.md](dev/work-in-progress/migliorie-generali-da-test-valutazione.md).
+⚠️ **Ciò che il criterio NON vede**: lo schema `storico` — le shadow sono
+**gemelle** delle madri, non figlie, e nessuna FK le lega. Hanno un perimetro
+**loro**: lo scope si cattura alla scrittura e si congela nella riga
+(`origine_schema` + `scope_emittente_fiscale_id`), la policy la genera lo stesso
+framework che genera la shadow, e `dbops.vw_storico_scope_da_dichiarare`
+presidia le shadow che non lo portano —
+[brief-db-rls-storico-scope-congelato.md](dev/work-done/brief-db-rls-storico-scope-congelato.md).
 
 ### 🧪 I presidi hanno un catalogo (dal 10 settembre 2026)
 
@@ -162,7 +165,7 @@ Debito dichiarato come **D3** in
 presidio che non ha mai girato non conta come copertura. ⭐ E in CI vale il
 corollario — *un cancello non deve poter zittire un altro cancello*: un guardrail
 che fallisce e ne maschera un secondo lascia passare due difetti al prezzo di uno.
-Cantiere: [brief-db-un-destinatario-per-i-presidi.md](dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md).
+Cantiere: [brief-db-un-destinatario-per-i-presidi.md](dev/work-done/brief-db-un-destinatario-per-i-presidi.md).
 
 ### Stabilita'
 
@@ -433,7 +436,7 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 | Cosa | Dove sta | Stato |
 | --- | --- | --- |
-| **La catena di verifica: presidi e copertura reale** | [migliorie-generali…](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) · [presidi](dev/work-in-progress/brief-db-un-destinatario-per-i-presidi.md) | Valutazione dello strato DB in 8 difetti (D1…D8). ✅ **D2 chiuso** (perimetro emittente) e metà D5; il catalogo `dbops.presidi` è in servizio. ⛔ Resta **D3 — lo `storico`**: 120 tabelle, zero RLS, il debito peggiore rimasto — ora con [cantiere suo](dev/work-done/brief-db-rls-storico-scope-congelato.md) |
+| **La catena di verifica: presidi e copertura reale** | [migliorie-generali…](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) · [presidi](dev/work-done/brief-db-un-destinatario-per-i-presidi.md) | Valutazione dello strato DB in 12 difetti (D1…D12); le voci chiuse sono ridotte a data e rimando. ✅ Chiusi D1 (cancello pgTAP in CI), D2 (perimetro emittente), D3 (RLS sullo `storico`), D10 (destinatario dei presidi); D8 deciso (prossimo cantiere). ⛔ Aperti: D4 e D6 con i changeSet scritti il 12-09 (in attesa di apply, [brief](dev/work-in-progress/brief-db-fixture-che-costruiscono-d7-d6-d4.md)), D7 (403 rossi noti in CI; i 21 del perimetro riscritti), D9, D11, e il nuovo **D13** — l'operatore di un emittente non di default non crea un billing account |
 | **Migliorie BE/FE da valutazione** | [migliorie-generali-BE-FE…](dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) | La gemella lato applicazione: si lavora per punti numerati, i primi sono chiusi |
 | **Incassi e contabili di pagamento** | [brief-incassi…](dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) · [DB](dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md) · [BE/FE](dev/work-in-progress/brief-be-fe-posting-e-abbinamento-rata.md) | **Posting, abbinamento e sistemazioni scritti** (agosto). ⛔ Resta il [collaudo in-app](dev/work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md): dello schema è provato il *percorso*, mai l'*esito* — zero righe |
 | **Fan-out isolato / esito parziale** | [brief-be-fan-out…](dev/work-done/brief-be-fan-out-isolato-e-esito-parziale.md) | Codice eseguito; ciò che resta sono **collaudi a video**, raccolti in §13 |
@@ -444,14 +447,6 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ### 🎯 Previsti — decisi ma non aperti
 
-- 🔴 **RLS sullo `storico`** — [brief-db-rls-storico-scope-congelato.md](dev/work-done/brief-db-rls-storico-scope-congelato.md):
-  120 tabelle senza perimetro, ed è il **D3**, il debito più grosso rimasto.
-  Disegno e stima pronti (≈ 3 giornate); il lavoro è **uno**, non 120, perché la
-  forma delle tabelle di storico è generata. ⛔ **Si fa prima che `acquisti` e
-  `magazzino` crescano**, così quelle nascono protette.
-  ⚠️ Il brief copre anche `dbops.audit_log`, ma come **domanda a sé**: stessa
-  famiglia di difetto, rimedio diverso — lì la domanda non è «quale policy» ma
-  *«questo registro deve poter contenere dati di dominio?»*
 - **Secondo consumatore di `pratiche`** (Fase F, candidata assistenza/CRM): è ciò
   che promuove le sue astrazioni da *proposte* a *contratti* (manifesto §7)
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico

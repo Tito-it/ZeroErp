@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_sync_functions_owner()
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     r              dbops.sec_functions_owner%ROWTYPE;
@@ -115,8 +116,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_sync_functions_owner()
-IS 'Sincronizza l''owner delle funzioni "sensibili" 
-      in base alla tabella dbops.sec_functions_owner.';
+IS 'Allinea il proprietario delle funzioni elencate in dbops.sec_functions_owner al ruolo richiesto (ALTER FUNCTION ... OWNER TO). Eseguita dalla passata provision-post come postgres (90_end/20251123-12). SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
 ```
 
 ---

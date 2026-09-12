@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture costruisce un cliente fatturabile con il suo
+--   billing account. Come `zeroerp_app` l'INSERT del BA muore al RETURNING
+--   quando l'emittente di chi agisce non e' quello di default (la policy di
+--   lettura risolve il BA non ancora mappato sul default; il legame lo scrive
+--   un trigger AFTER). Il soggetto del test e' script.fn_scope_ba_ownership,
+--   che prende identita' e BA come parametri: il ruolo di connessione non
+--   cambia cio' che misura.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_scope_ba_ownership ruolo-aware
@@ -19,7 +27,7 @@
 --   - identita inattiva -> indipendente dal ruolo, testa attivo=false
 --
 -- Indice test (1..5):
---    1. Precondizione: cliente con SR + BA
+--    1. Precondizione: cliente con SR + BA (costruito)
 --    2. fn(identita CLIENTE_PORTALE attiva, BA) -> true
 --    3. fn(identita SHOP_CUSTOMER attiva, BA) -> true
 --       (test chiave: multi-canale sullo stesso SR)
@@ -45,40 +53,34 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- ⚠️ Contesto applicativo, e qui serve piu' che altrove. Questo file era stato
---   escluso con tutta la famiglia `rls/`, «perche' il contesto se lo costruisce
---   da se'» — ma non e' vero per questo: le GUC che imposta sono SUE
---   (`zeroerp.test_id_*`) e la funzione la chiama con argomenti espliciti, quindi
---   non tocca mai `app.ruolo_applicativo`. Senza contesto, sotto l'utente
---   applicativo la RLS e' fail-closed e la fixture non vede NIENTE: _t_ctx resta
---   vuota, l'asserzione 1 fallisce e — molto peggio — le 2-5 finiscono nel ramo
---   `skip`. Verde per sottrazione, che e' la trappola del §17.1.
---   Brief: brief-db-pgtap-runner-rls-baseline §29.7.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ IL CLIENTE SI COSTRUISCE, non si cerca (2026-09-12): fino a quel giorno il
+--   file pescava un cliente «libero» con BA fra quelli ESISTENTI e, se non lo
+--   trovava, SALTAVA i test 2-5 — su un database ricostruito dai changelog era
+--   rosso al test 1 e saltato in tutto il resto (verde per sottrazione). Ora:
+--   un'azienda con `dbops.fn_pgtap_crea_emittente_operatore()` per il contesto
+--   e un cliente con `dbops.fn_pgtap_crea_cliente_ba()` legato a lei, PRIMA
+--   del contesto (con un operatore in sessione il trigger z90 del BA
+--   scriverebbe un secondo legame). Niente piu' rami `skip`.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+CREATE TEMP TABLE _t_ctx AS
+SELECT c.soggetto_ruolo_id  AS sr_cl_id,
+       c.billing_account_id AS ba_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+           'scope BA ruolo-aware', NULL, (SELECT soggetto_ruolo_id FROM _t_mondo)) c;
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _t_mondo));
+END $ctx$;
 
 SELECT plan(5);
 
 -- =========================================================
--- 1) Precondizione: 1 SR CL libero (no identita attive, soggetto
---    attivo) con BA associato
+-- 1) Precondizione: il SR CL costruito, con BA e senza identita'
 -- =========================================================
-CREATE TEMP TABLE _t_ctx AS
-SELECT sr.id AS sr_cl_id,
-       ba.id AS ba_id
-  FROM anagrafiche.clienti         c
-  JOIN anagrafiche.soggetti_ruoli  sr ON sr.id = c.soggetto_ruolo_id
-  JOIN anagrafiche.soggetti        s  ON s.id  = sr.soggetto_id
-  JOIN anagrafiche.billing_account ba ON ba.soggetto_ruolo_id = sr.id
- WHERE s.attivo = true
-   AND NOT EXISTS (
-       SELECT 1
-         FROM anagrafiche.identita_digitali id
-        WHERE id.soggetto_ruolo_id = sr.id
-          AND id.attivo = true
-   )
- ORDER BY c.soggetto_ruolo_id, ba.id
- LIMIT 1;
-
 CREATE TEMP TABLE _t_au_pool (idx int, auth_user_id int);
 DO $$
 DECLARE
@@ -90,7 +92,7 @@ BEGIN
             username, password, is_active, is_staff, is_superuser,
             first_name, last_name, email, date_joined
         )
-        VALUES (
+    VALUES (
             '_pgtap_scope_ba_' || v_i || '_' || substring(md5(clock_timestamp()::text) from 1 for 6),
             '!', false, false, false, '', '', '', now()
         )
@@ -101,16 +103,12 @@ END
 $$;
 
 SELECT ok(
-    (SELECT count(*) FROM _t_ctx)     = 1
+    (SELECT count(*) FROM _t_ctx) = 1
+    AND NOT EXISTS (SELECT 1 FROM anagrafiche.identita_digitali id
+                     WHERE id.soggetto_ruolo_id = (SELECT sr_cl_id FROM _t_ctx))
     AND (SELECT count(*) FROM _t_au_pool) = 4,
-    '1. Precondizioni: SR CL + BA + 4 auth_user pool'
+    '1. Precondizioni: SR CL costruito, con BA, senza identita'', + 4 auth_user pool'
 );
-
--- =========================================================
--- Tutti i test 2-5 skippano uniformemente se fixture insufficiente
--- (count(_t_ctx) = 0). Gli INSERT in DO block sono gate'd con
--- IF EXISTS (_t_ctx) per evitare NULL propagato a zeroerp.test_id_*.
--- =========================================================
 
 -- =========================================================
 -- 2) CLIENTE_PORTALE attiva + BA stesso SR -> true
@@ -119,32 +117,26 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    IF EXISTS (SELECT 1 FROM _t_ctx) THEN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (
-            (SELECT sr_cl_id FROM _t_ctx),
-            (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1),
-            'CLIENTE_PORTALE', true
-        ) RETURNING id INTO v_id;
+    INSERT INTO anagrafiche.identita_digitali
+        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
+    VALUES (
+        (SELECT sr_cl_id FROM _t_ctx),
+        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1),
+        'CLIENTE_PORTALE', true
+    ) RETURNING id INTO v_id;
 
-        PERFORM set_config('zeroerp.test_id_1', v_id::text, true);
-    END IF;
+    PERFORM set_config('zeroerp.test_id_1', v_id::text, true);
 END
 $$;
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_ctx) THEN
-        is(
-            script.fn_scope_ba_ownership(
-                current_setting('zeroerp.test_id_1')::bigint,
-                (SELECT ba_id FROM _t_ctx)
-            ),
-            true,
-            '2. CLIENTE_PORTALE attiva + BA stesso SR -> true'
-        )
-    ELSE skip('fixture insufficiente (no SR CL libero con BA): test 2 skippato', 1)
-END;
+SELECT is(
+    script.fn_scope_ba_ownership(
+        current_setting('zeroerp.test_id_1')::bigint,
+        (SELECT ba_id FROM _t_ctx)
+    ),
+    true,
+    '2. CLIENTE_PORTALE attiva + BA stesso SR -> true'
+);
 
 -- =========================================================
 -- 3) SHOP_CUSTOMER attiva su stesso SR (user diverso) + BA -> true
@@ -154,32 +146,26 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    IF EXISTS (SELECT 1 FROM _t_ctx) THEN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (
-            (SELECT sr_cl_id FROM _t_ctx),
-            (SELECT auth_user_id FROM _t_au_pool WHERE idx = 2),
-            'SHOP_CUSTOMER', true
-        ) RETURNING id INTO v_id;
+    INSERT INTO anagrafiche.identita_digitali
+        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
+    VALUES (
+        (SELECT sr_cl_id FROM _t_ctx),
+        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 2),
+        'SHOP_CUSTOMER', true
+    ) RETURNING id INTO v_id;
 
-        PERFORM set_config('zeroerp.test_id_2', v_id::text, true);
-    END IF;
+    PERFORM set_config('zeroerp.test_id_2', v_id::text, true);
 END
 $$;
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_ctx) THEN
-        is(
-            script.fn_scope_ba_ownership(
-                current_setting('zeroerp.test_id_2')::bigint,
-                (SELECT ba_id FROM _t_ctx)
-            ),
-            true,
-            '3. SHOP_CUSTOMER attiva + BA stesso SR -> true (multi-canale)'
-        )
-    ELSE skip('fixture insufficiente: test 3 skippato', 1)
-END;
+SELECT is(
+    script.fn_scope_ba_ownership(
+        current_setting('zeroerp.test_id_2')::bigint,
+        (SELECT ba_id FROM _t_ctx)
+    ),
+    true,
+    '3. SHOP_CUSTOMER attiva + BA stesso SR -> true (multi-canale)'
+);
 
 -- =========================================================
 -- 4) DISABILITATO attiva + BA stesso SR -> false
@@ -191,32 +177,26 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    IF EXISTS (SELECT 1 FROM _t_ctx) THEN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (
-            (SELECT sr_cl_id FROM _t_ctx),
-            (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3),
-            'DISABILITATO', true
-        ) RETURNING id INTO v_id;
+    INSERT INTO anagrafiche.identita_digitali
+        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
+    VALUES (
+        (SELECT sr_cl_id FROM _t_ctx),
+        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3),
+        'DISABILITATO', true
+    ) RETURNING id INTO v_id;
 
-        PERFORM set_config('zeroerp.test_id_3', v_id::text, true);
-    END IF;
+    PERFORM set_config('zeroerp.test_id_3', v_id::text, true);
 END
 $$;
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_ctx) THEN
-        is(
-            script.fn_scope_ba_ownership(
-                current_setting('zeroerp.test_id_3')::bigint,
-                (SELECT ba_id FROM _t_ctx)
-            ),
-            false,
-            '4. DISABILITATO attiva + BA stesso SR -> false (filtro ruolo-aware)'
-        )
-    ELSE skip('fixture insufficiente: test 4 skippato', 1)
-END;
+SELECT is(
+    script.fn_scope_ba_ownership(
+        current_setting('zeroerp.test_id_3')::bigint,
+        (SELECT ba_id FROM _t_ctx)
+    ),
+    false,
+    '4. DISABILITATO attiva + BA stesso SR -> false (filtro ruolo-aware)'
+);
 
 -- =========================================================
 -- 5) CLIENTE_PORTALE con attivo=false -> false (fail-closed)
@@ -225,32 +205,26 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    IF EXISTS (SELECT 1 FROM _t_ctx) THEN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (
-            (SELECT sr_cl_id FROM _t_ctx),
-            (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4),
-            'CLIENTE_PORTALE', false
-        ) RETURNING id INTO v_id;
+    INSERT INTO anagrafiche.identita_digitali
+        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
+    VALUES (
+        (SELECT sr_cl_id FROM _t_ctx),
+        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4),
+        'CLIENTE_PORTALE', false
+    ) RETURNING id INTO v_id;
 
-        PERFORM set_config('zeroerp.test_id_4', v_id::text, true);
-    END IF;
+    PERFORM set_config('zeroerp.test_id_4', v_id::text, true);
 END
 $$;
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM _t_ctx) THEN
-        is(
-            script.fn_scope_ba_ownership(
-                current_setting('zeroerp.test_id_4')::bigint,
-                (SELECT ba_id FROM _t_ctx)
-            ),
-            false,
-            '5. CLIENTE_PORTALE con attivo=false + BA -> false (fail-closed su attivo)'
-        )
-    ELSE skip('fixture insufficiente: test 5 skippato', 1)
-END;
+SELECT is(
+    script.fn_scope_ba_ownership(
+        current_setting('zeroerp.test_id_4')::bigint,
+        (SELECT ba_id FROM _t_ctx)
+    ),
+    false,
+    '5. CLIENTE_PORTALE con attivo=false + BA -> false (fail-closed su attivo)'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

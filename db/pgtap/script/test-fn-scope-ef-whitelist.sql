@@ -20,7 +20,7 @@
 --   - super_admin -> true (non coperto qui: nessun binding SUPER_ADMIN nei fixture)
 --
 -- Indice test (1..10):
---    1. Precondizione: fixture emittente_fiscale disponibile
+--    1. Precondizione: emittente_fiscale costruito dalla fixture
 --    2. Setup: soggetto PF + SR RIS_UMANA + 2 auth_user + 2 identita (attiva/inattiva)
 --    3. PK: auth_user inesistente -> false (fail-closed)
 --    4. PK: identita OPERATORE non attiva -> false
@@ -53,28 +53,44 @@ BEGIN;
 --   fixture (indirizzo + contatti) e allora la riga si puo' rimettere.
 --   Brief: brief-db-pgtap-runner-rls-baseline §20.
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'EMITTENTE SI COSTRUISCE, non si cerca (2026-09-12): fino a quel giorno il
+--   file pescava il primo emittente attivo, e su un database ricostruito dai
+--   changelog non ce n'e' nessuno — moriva nella fixture al test 6 (NULL in
+--   user_emittenti_fiscali), e le dieci asserzioni sul perimetro restavano
+--   collaudate solo su dbdev. `dbops.fn_pgtap_crea_emittente_operatore()` da'
+--   l'azienda E l'operatore su cui aprire il contesto applicativo: il test
+--   gira come gira l'applicazione (ruolo OPERATORE + RLS attiva), non come
+--   owner. Brief: brief-db-pgtap-runner-rls-baseline §8.
+CREATE TEMP TABLE _t_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+-- ⚠️ L'helper esce con i vincoli IMMEDIATE (li richiude sul proprio mondo
+--   finito). Questo file li vuole DIFFERITI — vedi la nota qui sopra — quindi
+--   li riapre: senza, fn_crea_soggetto_pf muore su «Indirizzo obbligatorio
+--   mancante» al primo INSERT.
+SET CONSTRAINTS ALL DEFERRED;
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _t_mondo));
+END $ctx$;
 
 SELECT plan(10);
 
 -- =========================================================
--- 1) Precondizione: un emittente_fiscale disponibile
+-- 1) Precondizione: l'emittente_fiscale costruito
 -- =========================================================
 CREATE TEMP TABLE _t_ef AS
-SELECT ef.id                 AS ef_id,
-       ef.soggetto_ruolo_id  AS ef_sr_id
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo = true
- ORDER BY ef.id
- LIMIT 1;
+SELECT m.emittente_fiscale_id AS ef_id,
+       m.soggetto_ruolo_id    AS ef_sr_id
+  FROM _t_mondo m;
 
 SELECT ok(
-    (SELECT count(*) FROM _t_ef) = 1,
-    '1. Precondizione: un emittente_fiscale attivo disponibile'
+    (SELECT count(*) FROM _t_ef) = 1
+    AND EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali ef
+                 WHERE ef.id = (SELECT ef_id FROM _t_ef) AND ef.attivo),
+    '1. Precondizione: un emittente_fiscale attivo, costruito dalla fixture'
 );
 
 -- =========================================================

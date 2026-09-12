@@ -34,9 +34,24 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
+-- ⛔ LE DUE AZIENDE SI COSTRUISCONO, non si cercano (2026-09-12): fino a quel
+--   giorno il file pescava l'emittente dell'operatore di contesto e «un altro
+--   emittente attivo» fra quelli ESISTENTI — su un database ricostruito dai
+--   changelog non ce n'e' nessuno, e il file moriva al test 3 («Nessun
+--   emittente fiscale attivo»). Due aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto.
+CREATE TEMP TABLE _mondi AS
+SELECT 'MIA'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'ALTRUI' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'MIA'));
+END $ctx$;
 
 SELECT plan(6);
 
@@ -97,16 +112,8 @@ DECLARE
     v_esito   text := 'non-sollevato';
     v_altro   anagrafiche.emittenti_fiscali.id%TYPE;
 BEGIN
-    SELECT ef.id INTO v_altro
-      FROM anagrafiche.emittenti_fiscali ef
-     WHERE ef.attivo AND ef.id <> script.fn_pgtap_emittente_operatore()
-     ORDER BY ef.id
-     LIMIT 1;
-
-    IF v_altro IS NULL THEN
-        PERFORM set_config('pgtap.esito4', 'skip', true);
-        RETURN;
-    END IF;
+    SELECT m.emittente_fiscale_id INTO v_altro
+      FROM _mondi m WHERE m.lato = 'ALTRUI';
 
     BEGIN
         INSERT INTO config.email_log
@@ -123,15 +130,11 @@ BEGIN
 END
 $altrui$;
 
-SELECT CASE
-    WHEN current_setting('pgtap.esito4', true) = 'skip'
-        THEN skip('4. un solo emittente attivo: il caso non e'' costruibile', 1)
-    ELSE is(
-        current_setting('pgtap.esito4', true),
-        'P0001|scope',
-        '4. una email di un''ALTRA azienda si ferma, e SPIEGA'
-    )
-END;
+SELECT is(
+    current_setting('pgtap.esito4', true),
+    'P0001|scope',
+    '4. una email di un''ALTRA azienda si ferma, e SPIEGA'
+);
 
 -- ============================================================
 -- 5..6. ⭐ Il ramo della macchina

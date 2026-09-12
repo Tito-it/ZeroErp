@@ -55,32 +55,42 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (2026-09-12). Fino a quel giorno il
+--   file pescava un'identita' OPERATORE e un emittente fra quelli ESISTENTI, e
+--   contava su «altri SA preesistenti (seed tid)» perche' il DELETE del binding
+--   al test 7 non facesse scattare l'anti-lockout: su un database ricostruito
+--   dai changelog non c'e' nessuna delle tre cose. Tre aziende con
+--   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto:
+--   CTX (il contesto), OP (l'identita' sotto test) e SA2, che diventa super
+--   admin con un binding — cosi' quando il test 7 toglie il proprio binding
+--   non e' l'ultimo, e il guard anti-lockout ha ragione a tacere.
+CREATE TEMP TABLE _mondi AS
+SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+UNION ALL
+SELECT 'SA2' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+INSERT INTO config.profili_accesso_bindings
+    (profilo_accesso_id, identita_digitale_id, attivo)
+VALUES (9100, (SELECT identita_id FROM _mondi WHERE lato = 'SA2'), true);
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore(
+        (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
+END $ctx$;
 
 SELECT plan(13);
 
 -- ============================================================
--- 0. Setup: identita OPERATORE attiva senza binding SUPER_ADMIN
---    (filtro vergine non-SA, pattern §4.bis pgTAP).
+-- 0. Setup: l'identita' OPERATORE costruita, senza binding SUPER_ADMIN
 -- ============================================================
 
 CREATE TEMP TABLE tmp_refs_scope AS
-SELECT
-    id.auth_user_id  AS user_id,
-    id.id            AS identita_id
-FROM anagrafiche.identita_digitali id
-WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-  AND id.attivo = true
-  AND NOT EXISTS (
-      SELECT 1
-        FROM config.profili_accesso_bindings pab
-        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-  )
-ORDER BY id.id
-LIMIT 1;
+SELECT m.auth_user_id AS user_id,
+       m.identita_id  AS identita_id
+  FROM _mondi m WHERE m.lato = 'OP';
 
 -- Pulisce eventuali whitelist pre-esistenti per l'utente di test.
 -- Override del guard_delete (trgfn_user_emittenti_fiscali_guard_delete)
@@ -93,18 +103,14 @@ DELETE FROM config.user_emittenti_fiscali
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 CREATE TEMP TABLE tmp_emittenti AS
-SELECT
-    ef.id       AS emittente_id_1,
-    -1::bigint  AS emittente_id_2   -- fittizio: fn_check verifica solo whitelist
-FROM anagrafiche.emittenti_fiscali ef
-WHERE ef.attivo = true
-ORDER BY ef.id
-LIMIT 1;
+SELECT m.emittente_fiscale_id AS emittente_id_1,   -- l'azienda di OP, riassegnata al test 10
+       -1::bigint             AS emittente_id_2    -- fittizio: fn_check verifica solo whitelist
+  FROM _mondi m WHERE m.lato = 'OP';
 
 -- 1) Setup: utente OPERATORE non-SA trovato
 SELECT ok(
     (SELECT user_id FROM tmp_refs_scope) IS NOT NULL,
-    '1) Setup: identita OPERATORE attiva non-SA presente'
+    '1) Setup: identita OPERATORE attiva non-SA costruita'
 );
 
 SELECT ok(
@@ -173,8 +179,8 @@ SELECT is(
 );
 
 -- Ripristina stato non-SA: DELETE del binding appena creato.
--- Il guard 384 anti-lockout non scatta perche' esistono altri SA
--- preesistenti (seed tid + eventuali altri).
+-- Il guard 384 anti-lockout non scatta perche' esiste l'altro SA costruito
+-- dalla fixture (SA2).
 DELETE FROM config.profili_accesso_bindings
  WHERE identita_digitale_id = (SELECT identita_id FROM tmp_refs_scope)
    AND profilo_accesso_id = 9100;

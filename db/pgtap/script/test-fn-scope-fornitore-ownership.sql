@@ -12,7 +12,7 @@
 --   - identita non-FORNITORE_PORTALE, target coincide -> false (defense-in-depth)
 --
 -- Indice test (1..7):
---    1. Precondizione: 2 fornitori + 1 cliente in fixture
+--    1. Precondizione: 2 fornitori + 1 cliente costruiti dalla fixture
 --    2. Setup: identita FORNITORE_PORTALE attiva su fornitore 1
 --              + identita CLIENTE_PORTALE attiva su cliente (per test ruolo)
 --    3. Identita inesistente -> false
@@ -46,25 +46,27 @@ SELECT plan(7);
 -- =========================================================
 -- 1) Precondizione: 2 fornitori + 1 cliente
 -- =========================================================
+-- ⛔ I SOGGETTI SI COSTRUISCONO, non si cercano (2026-09-12): fino a quel
+--   giorno il file pescava due fornitori e un cliente fra quelli ESISTENTI, e
+--   su un database ricostruito dai changelog non ce n'e' nessuno — moriva nella
+--   fixture, e il leak test fra fornitori restava collaudato solo su dbdev.
+--   Alla funzione sotto test basta il soggetto_ruolo: tre soggetti persona
+--   giuridica, due con ruolo FO e uno con ruolo CL
+--   (`dbops.fn_pgtap_crea_soggetto_pg` + `fn_pgtap_crea_soggetto_ruolo`).
 CREATE TEMP TABLE _t_sr_fo AS
-SELECT sr.id AS sr_id,
-       ROW_NUMBER() OVER (ORDER BY f.id) AS rn
-  FROM anagrafiche.fornitori f
-  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.soggetto_ruolo_id
- ORDER BY f.id
- LIMIT 2;
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(
+           dbops.fn_pgtap_crea_soggetto_pg('Fornitore ownership pgTAP ' || g), 'FO'::character varying) AS sr_id,
+       g AS rn
+  FROM generate_series(1, 2) AS g;
 
 CREATE TEMP TABLE _t_sr_cl AS
-SELECT sr.id AS sr_id
-  FROM anagrafiche.clienti c
-  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
- ORDER BY c.id
- LIMIT 1;
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(
+           dbops.fn_pgtap_crea_soggetto_pg('Cliente ownership pgTAP'), 'CL'::character varying) AS sr_id;
 
 SELECT ok(
-    (SELECT count(*) FROM _t_sr_fo) = 2
+    (SELECT count(DISTINCT sr_id) FROM _t_sr_fo) = 2
     AND (SELECT count(*) FROM _t_sr_cl) = 1,
-    '1. Precondizione: 2 fornitori + 1 cliente disponibili in fixture'
+    '1. Precondizione: 2 fornitori + 1 cliente, costruiti dalla fixture'
 );
 
 -- =========================================================
@@ -182,3 +184,4 @@ SELECT ok(
 );
 
 SELECT * FROM finish();
+ROLLBACK;
