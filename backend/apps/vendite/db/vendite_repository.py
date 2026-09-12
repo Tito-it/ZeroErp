@@ -281,9 +281,11 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "FATTURATA",
 )
 
-# ⭐ L'unico dei quattro valori di `motivo_non_fatturata` (vocabolario chiuso
-# della vista `vw_dash_competenza_attivita`, changeSet 20260826-54) che CHIEDE
-# un'azione: le altre tre situazioni — IN_ATTESA_LOTTO, GIRO_IN_CORSO,
+# ⭐ L'unico dei tre valori di `motivo_non_fatturata` (vocabolario chiuso
+# della vista `vw_dash_competenza_attivita`, changeSet 20260826-54; a TRE
+# valori dal 20260912-36: dentro EMESSA_NON_FATTURATA la riga e' EMESSA per
+# costruzione, quindi «in attesa del lotto» non esiste) che CHIEDE
+# un'azione: le altre due situazioni — GIRO_IN_CORSO,
 # SENZA_ATTIVITA_FATTURABILE — sono «niente da fare».
 # ⛔ Vive QUI, in una sede sola, e si passa come PARAMETRO SQL: il letterale
 # embedded e' la lezione gia' pagata sullo stadio (vedi
@@ -291,6 +293,9 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
 # riscriverla — due copie dello stesso valore, una in SQL e una in Python,
 # divergono senza che niente fallisca: la lista mostrerebbe un perimetro e la
 # card ne conterebbe un altro.
+# Presidio (DB provvisto): `tests/db/test_motivo_non_fatturata_locale` — il
+# valore e' fra quelli che la vista emette, e ogni valore emesso ha la sua
+# etichetta nei locales.
 MOTIVO_NON_FATTURATA_RESIDUO = "RESIDUO"
 
 # Codice stabile (codice_interno di config.tipi_indirizzi) dello slot letto
@@ -1765,9 +1770,9 @@ class VenditeRepository:
         offset: int,
     ) -> tuple[list[DashCompetenzaResiduoRow], int]:
         # ⛔ IL PERIMETRO E' `motivo_non_fatturata = 'RESIDUO'`, e non e' un
-        #    filtro di comodo: lo stadio `EMESSA_NON_FATTURATA` contiene QUATTRO
+        #    filtro di comodo: lo stadio `EMESSA_NON_FATTURATA` contiene TRE
         #    situazioni con rimedi diversi, e solo questa chiede un'azione. Le
-        #    altre tre — `IN_ATTESA_LOTTO`, `GIRO_IN_CORSO`,
+        #    altre due — `GIRO_IN_CORSO`,
         #    `SENZA_ATTIVITA_FATTURABILE` — sono «niente da fare», e proporre il
         #    verbo su di loro significherebbe disfare emissioni corrette oppure
         #    (l'ultima) offrirlo su una riga la cui chiave e' NULL.

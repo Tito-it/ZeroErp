@@ -13,8 +13,33 @@
 > testa a ogni sezione. Il testo originale è conservato: è ancora la
 > descrizione migliore del *perché* di ognuno.
 
-> 🔄 **Riverificato il 2026-09-09**, e la notizia è che **le affermazioni
-> portanti reggono ancora**: la scoperta trasversale (`event_log` write-only),
+> ✅ **CHIUSO E ARCHIVIATO il 2026-09-12**, dopo una terza riverifica — e
+> questa volta la notizia è l'opposto di quella del 09-09: **le affermazioni
+> portanti NON reggevano più**, e due riverifiche in fila non l'avevano visto.
+>
+> | Cosa diceva (09-09) | Cosa c'era il 12-09 |
+> | --- | --- |
+> | item 1, ritorno a DRAFT: «🔴 P0, l'unico item che *peggiora da solo*, sta lì da febbraio» | ✅ **chiuso il 2026-08-04** — `fn_riporta_lotto_a_draft`, [brief-be-ritorno-lotto-a-draft](brief-be-ritorno-lotto-a-draft.md). La riconciliazione del 03-08 è arrivata **un giorno prima** della chiusura, e la riverifica del 09-09 ha riletto la riga invece del repo |
+> | «`event_log` è **write-only**» — la scoperta trasversale, «regge» | **falso dal 24-08**: `script.vw_giornale_entita` (la scheda «Storia» della fattura) lo legge, e con lei `fn_list_lotto_segnalazioni`, `fn_list_lotto_task_runs`, `fn_riporta_lotto_a_draft`, il trigger di scope. Il perno degli item 5-6-7 era già caduto |
+> | item 4: «`actor` sempre `service:django`», retention ❌ | le colonne `actor`/`source` **non esistono più** (D-6 del Passo 0 osservabilità: «chi» lo dice `user_insert`, che funziona anche sul canale batch); `event_log.cleanup_at` + `fn_event_log_ttl_days` = retention a regola (D-8) |
+> | item 7: «push 0 su 196, `task_runs` senza colonna» | `commesse_push_orchestrator` genera e passa il `correlation_id`; `task_runs.correlation_id` c'è, con indice |
+> | item 11: «resta il frontend» | `DashboardCompetenzaView` legge `emissione_blocco_reason/_key/_lotto_id`: riga non selezionabile, motivo, gesto «vai al lotto» |
+> | item 2: «riconciliazione incassi ❌, `pagamenti` a 0 righe» | il dominio `pagamenti` è **in esercizio dal 24-08** (25 rotte: distinte, registrazione, abbinamento rata↔incasso, saldi); il collaudo in-app è aperto |
+>
+> ⭐ **La lezione, ed è il motivo dell'archiviazione**: un promemoria di stato
+> a più strati marcisce nella riga che dice «verificato». Tre riverifiche hanno
+> aggiunto ciascuna un blocco senza togliere il precedente, e il documento si
+> leggeva a quattro date sovrapposte. Il *perché* di ogni item — la review di
+> febbraio — non invecchia e resta qui; lo **stato** delle voci ancora aperte
+> vive in **una riga ciascuna** in `.codex/PROJECT_CONTEXT.md` §«Aperto», che è
+> il posto letto a ogni sessione. Le voci sono: **#3** esercizio fiscale,
+> **#5** vista push, **#6** alerting sui dati (casa:
+> [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md)), **#8** diagrammi di
+> stato, **#9** builder SDI (già lì), **#10** preview di fatturazione del
+> contratto.
+
+> 🔄 **Riverificato il 2026-09-09**, e la notizia era che **le affermazioni
+> portanti reggono ancora** *(⚠️ smentito il 12-09: vedi sopra)*: la scoperta trasversale (`event_log` write-only),
 > l'item 2, l'8 e il 9 sono stati ricontrollati sul codice vivo e sono **giusti**
 > — vedi §«Cosa è stato ricontrollato». ⭐ È metà del valore di questa passata, e
 > senza scriverlo si ripaga daccapo: chi rilegge non deve ri-verificare quattro
@@ -26,23 +51,33 @@
 
 ---
 
-## 📊 Stato in una pagina (2026-08-03, item 1 al 2026-08-21, item 10 al 2026-08-22, item 11 al 2026-09-09)
+## 📊 Stato in una pagina — finale, 2026-09-12
 
-| # | Item | Priorità dichiarata (feb) | Stato verificato |
-| --- | --- | --- | --- |
-| 1 | Ciclo di vita post-emissione | P1 | 🟡 **la metà «nota di credito» è VIVA sui dati veri** (2026-08-21); resta il ritorno a DRAFT |
-| 2 | Integrazione contabile | P1/P3 | 🟡 scadenzario ✅ **chiuso**; contabilità 🔴 schema vuoto |
-| 3 | Multi-company / multi-esercizio | P2 | 🟡 numerazione e isolamento ✅; esercizio fiscale 🔴 |
-| 4 | Audit trail formale | P0 «una riga» | 🟡 **infrastruttura pronta, cablaggio mancante** |
-| 5 | Dashboard operative | P3 | 🟢 in gran parte **fatto** (era P3 e si è fatto da sé) |
-| 6 | Alerting e monitoring | P3 | 🔴 l'**alerting sui dati** non è fatto (riverificato 09-09) — ⚠️ ma la metà «vitalità dei **processi**» ha avuto il suo cantiere, chiuso il 07-09 |
-| 7 | `correlation_id` | P0 | 🟡 metà: pipeline sì, push no |
-| 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` nel repo |
-| 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione** — la pipeline ora scrive in `fatture_sdi`, manca il builder XML a valle. ⚠️ Dal 31/08 raccoglie anche il residuo del cantiere IVA: `EsigibilitaIVA`, `DatiContratto` e le righe **spezzate** dal plafond |
-| 10 | Preview di fatturazione del contratto | — (assorbito, 22/08) | 🔴 non esiste — il dato c'è nel motore, manca chi lo presenta |
-| 11 | Integrità del giro: di chi è questo documento, adesso? | — (nuovo, 09/09) | 🟢 **DB completo**, resta il frontend |
+| # | Item | Priorità dichiarata (feb) | Stato al 12-09 | Dove vive ora |
+| --- | --- | --- | --- | --- |
+| 1 | Ciclo di vita post-emissione | P1 | ✅ **chiuso**: nota di credito (21-08) **e** ritorno a DRAFT (04-08) | — |
+| 2 | Integrazione contabile | P1/P3 | 🟡 scadenzario ✅; **incassi in esercizio dal 24-08**, collaudo in-app aperto; contabilità ⛔ fuori perimetro per decisione | `collaudo-in-app-incassi-distinte-e-sistemazioni.md` · PROJECT_CONTEXT (contabilità) |
+| 3 | Multi-company / multi-esercizio | P2 | 🟡 numerazione e isolamento ✅; **esercizio fiscale 🔴** (zero occorrenze) | PROJECT_CONTEXT §Aperto |
+| 4 | Audit trail formale | P0 «una riga» | ✅ **chiuso** dal Passo 0 dell'osservabilità: identità = `user_insert` (D-6), retention `cleanup_at` (D-8), append-only ✅ | — |
+| 5 | Dashboard operative | P3 | 🟢 fatto, salvo la **vista push** (`commesse_push_log` senza UI) 🔴; «reset a step» superato dal modello (ritorno a DRAFT + «Riprova step» + «Togli dal giro») | PROJECT_CONTEXT §Aperto (vista push) |
+| 6 | Alerting e monitoring | P3 | 🟡 vitalità dei **processi** ✅ (07-09); **alerting sui dati** 🔴 | [analisi-osservabilita-log](../work-in-progress/analisi-osservabilita-log.md) |
+| 7 | `correlation_id` | P0 | ✅ **chiuso**: pipeline, push e `task_runs` | — |
+| 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` (riverificato 12-09) | PROJECT_CONTEXT §Aperto |
+| 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione**; raccoglie `EsigibilitaIVA`, `DatiContratto`, righe spezzate dal plafond | PROJECT_CONTEXT §Aperto (già lì) |
+| 10 | Preview di fatturazione del contratto | — (assorbito, 22/08) | 🔴 non esiste | PROJECT_CONTEXT §Aperto |
+| 11 | Integrità del giro: di chi è questo documento, adesso? | — (nuovo, 09/09) | ✅ **chiuso**, frontend compreso | — |
 
-### 🔑 La scoperta trasversale: `event_log` è **write-only**
+### 🔑 La scoperta trasversale: `event_log` è **write-only** — ⛔ non più, dal 24-08
+
+> ⚠️ **12-09**: la frase qui sotto era vera il 03-08 ed è **falsa dal 24-08**
+> (`script.vw_giornale_entita`, primo consumatore: la scheda «Storia» della
+> fattura — `GET /vendite/fatture/<id>/giornale/`). Leggono `event_log` anche
+> `fn_list_lotto_segnalazioni`, `fn_list_lotto_task_runs`,
+> `fn_riporta_lotto_a_draft` e il trigger di scope. La riverifica del 09-09 ha
+> dichiarato «regge» **due settimane dopo** che aveva smesso di reggere: aveva
+> cercato lettori in Python, non nel database. Resta vero che manca un
+> **endpoint di lettura per severity/finestra** (l'alerting sui dati, item 6),
+> e quello vive nell'analisi dell'osservabilità.
 
 `vendite.event_log` viene scritto da due repository (`pipeline_repository`,
 `commesse_repository`) e **non è mai riletto**: zero endpoint di lettura, zero
@@ -58,11 +93,11 @@ ciò che serve alla richiesta di uno **strumento di consultazione dei log**
 (Tid, 2026-08-03).
 
 ➡️ **Il tema è trattato per intero in
-[analisi-osservabilita-log.md](analisi-osservabilita-log.md)**, che è il
+[analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md)**, che è il
 documento principale dell'osservabilità: gli item **#5 (vista errori)**,
 **#6 (alerting)** e **#7 (correlation_id)** di questa roadmap vivono lì come
 passi di un piano unico, insieme al prerequisito
-[brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md).
+[brief-db-seed-messaggi-errore-mancanti.md](brief-db-seed-messaggi-errore-mancanti.md).
 Questa roadmap resta il documento **di dominio** (fatturazione); quello è il
 documento **trasversale**.
 
@@ -85,7 +120,7 @@ documento **trasversale**.
 > è già costato due volte in una settimana. Le fatture **2263** e **2457** sono
 > uscite con il piano rate sbagliato, sono in stato EMESSA, e **non si possono
 > né correggere né disfare** — la matrice ammette `EMESSA → DRAFT` ma
-> [la funzione che lo esegue non esiste](../work-done/piano-db-ritorno-lotto-a-draft.md),
+> [la funzione che lo esegue non esiste](piano-db-ritorno-lotto-a-draft.md),
 > e oltre DEFINITIVA l'unica strada sarebbe una nota di variazione che non
 > abbiamo. Sull'ambiente ci sono già **6 fatture DEFINITIVE numerate**: da
 > quelle non si torna indietro in alcun modo.
@@ -98,7 +133,7 @@ documento **trasversale**.
 > ⭐ **AGGIORNAMENTO 2026-08-18 — la nota di credito ha un design completo.**
 > Non è più «da progettare»: dieci decisioni chiuse con Tid e un piano DB a nove
 > slice in
-> [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
 > **Quello è il documento unico dell'item, questa roadmap resta il perché.**
 >
 > Cosa risponde, delle caselle ❌ qui sopra:
@@ -150,6 +185,14 @@ documento **trasversale**.
 > 🔴 **Il vero residuo dell'item 1 è ora uno solo**: il **ritorno a DRAFT**
 > (Fase 6 DB). Le fatture **2263** e **2457** citate sopra restano il caso
 > d'uso — ⚠️ e la **2263 non va numerata**.
+>
+> ✅ **12-09 — e non era un residuo: era chiuso dal 2026-08-04.**
+> `vendite.fn_riporta_lotto_a_draft` (`riaperto_il` sul lotto, `20260803-07`),
+> BE/FE lo stesso giorno: [brief-be-ritorno-lotto-a-draft](brief-be-ritorno-lotto-a-draft.md),
+> [piano-db-ritorno-lotto-a-draft](piano-db-ritorno-lotto-a-draft.md)
+> §«CANTIERE CHIUSO». Il lotto riaperto riparte dallo step DRAFT e rigenera le
+> righe. ⚠️ La riga sopra è stata scritta il 03-08 e riletta come vera il 21-08
+> e il 09-09: **l'item 1 è chiuso per intero.**
 
 **Problema:** il flusso copre solo il forward (sorgente → fattura → SDI). Il 5-15% delle fatture ha un ciclo post-emissione che oggi non è documentato né strutturato.
 
@@ -178,12 +221,23 @@ documento **trasversale**.
 > | Scadenzario collegato alla pipeline | ✅ **CHIUSO 01-02/08/2026** — `fn_genera_scadenze_fattura`/`_lotto`, task `genera_scadenze_lotto` in **entrambe** le pipeline nello step EMESSA, con policy `RESUME_STEP` e ordine presidiato in `pipeline_step_executor`. Collaudato: `smoke-fattura-scadenze.py` 10/10 |
 > | Mapping conti | 🟡 esistono le FK `articoli.conto_contabile_vendita_id` e `iva.conto_iva_vendita_id`. Manca **cliente→partitario** e manca ogni tabella di *regole*. ⚠️ il seed `conti_contabili` ha **3 righe, 2 delle quali con descrizione «eliminare»** |
 > | Generazione scritture contabili | ❌ lo schema `contabilita` è **letteralmente vuoto**: zero tabelle, zero funzioni, zero viste |
-> | Riconciliazione incassi | ❌ non fatto — ma **misurato**: [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md) (02/08) accerta che «nell'intero database non esiste alcuna colonna `scadenza_id`». Il saldo è **per fattura, non per rata**; le 10 tabelle di `pagamenti` sono a 0 righe |
+> | Riconciliazione incassi | ❌ non fatto — ma **misurato**: [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) (02/08) accerta che «nell'intero database non esiste alcuna colonna `scadenza_id`». Il saldo è **per fattura, non per rata**; le 10 tabelle di `pagamenti` sono a 0 righe |
+>
+> ✅ **12-09 — la riga «riconciliazione incassi ❌» è superata.** Il dominio
+> `pagamenti` è **in esercizio dal 2026-08-24** — distinte, registrazione,
+> abbinamento rata↔incasso con forzatura a due tempi, saldi a tre livelli
+> (`api_pagamenti.md`, registrato in `api.md` il 12-09) — nato dal brief che
+> questa sezione cita come «misura» e che è diventato il cantiere
+> ([brief-incassi-riconciliazione-rate-promemoria](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
+> §2-bis). Quel che resta è il **collaudo in-app**
+> (`collaudo-in-app-incassi-distinte-e-sistemazioni.md`, P-0: l'azione
+> `registra_distinta` senza profili). La **contabilità** resta ⛔ fuori
+> perimetro per decisione (PROJECT_CONTEXT, schema vuoto verificato 01-09).
 >
 > ⚠️ **La riga «`fatture_scadenze` esiste ma non è nel flusso operativo» qui
 > sotto non è più vera** ed è conservata solo come storia. Ora il piano rate
 > nasce dentro la pipeline, e le sue condizioni arrivano dal documento sorgente
-> ([brief-db-termine-dal-documento-alla-commessa.md](../work-done/brief-db-termine-dal-documento-alla-commessa.md), 03/08).
+> ([brief-db-termine-dal-documento-alla-commessa.md](brief-db-termine-dal-documento-alla-commessa.md), 03/08).
 
 **Problema:** il flusso si ferma a INVIATA/SDI. La fattura deve generare scritture contabili, aggiornare il partitario e alimentare lo scadenzario.
 
@@ -213,9 +267,9 @@ documento **trasversale**.
 >
 > ⚠️ **Aggiornamento 2026-09-09: «numerazione ✅» non è più la stessa
 > numerazione.** Dal 31-08 il tema ha avuto tre cantieri —
-> [i due motori](../work-done/analisi-db-numerazione-documenti-e-due-motori.md),
-> [il prefisso sul registro e l'allineamento dei contatori](../work-done/brief-db-prefisso-sul-registro-e-allineamento-contatori.md)
-> e il [CRUD dei registri lato BE/FE](../work-done/brief-be-fe-crud-registri-di-numerazione.md).
+> [i due motori](analisi-db-numerazione-documenti-e-due-motori.md),
+> [il prefisso sul registro e l'allineamento dei contatori](brief-db-prefisso-sul-registro-e-allineamento-contatori.md)
+> e il [CRUD dei registri lato BE/FE](brief-be-fe-crud-registri-di-numerazione.md).
 > ⭐ E hanno cambiato una cosa che questa riga dava per assodata: **la serie è un
 > asse di sequenza, non un'etichetta**, quindi il pavimento del contatore è per
 > `(registro, serie)`. Chi legge il «✅» del 03-08 e progetta sopra la vecchia
@@ -267,6 +321,16 @@ documento **trasversale**.
 > Il quick win resta **piccolo e vero**: passare l'identità già presente nei
 > GUC (`app.current_user_id`, `app.ruolo_applicativo`) ai chiamanti di
 > `log_event`. Ma va fatto, non dato per fatto.
+>
+> ✅ **12-09 — chiuso, ma non nella forma del quick win.** Il Passo 0
+> dell'osservabilità ha deciso l'opposto: `actor` e `source` **sono state
+> tolte** (D-6 — costanti su 386 righe su 386, mentre «chi» lo dice già
+> `user_insert`, che funziona anche sul canale batch); la retention è
+> `event_log.cleanup_at` valorizzato dal trigger + `fn_event_log_ttl_days`
+> (D-8, termine in **una** sede); `entity_id = 0` sui `PUSH_STARTED` è il
+> `correlation_id` dell'item 7, ora popolato. Il `ruolo` sull'evento non serve:
+> si ricava dall'identità. Vedi
+> [brief-db-event-log-scope-e-riga-parlante](brief-db-event-log-scope-e-riga-parlante.md).
 
 **Problema:** l'event_log è ottimo per l'operatività ma non è sufficiente per compliance formale (revisori, SOX-like, certificazione bilancio).
 
@@ -305,14 +369,22 @@ documento **trasversale**.
 > ⚠️ **Aggiornamento 2026-09-09.** La fotografia del 03-08 è cresciuta, e le
 > due lacune dichiarate («vista push», «reset a step») **non** sono quelle che
 > si sono mosse. Cantieri chiusi da allora che vivono in questa sezione:
-> [esito-gruppo-lotto](../work-done/brief-db-esito-gruppo-lotto.md) (DB, BE e FE
+> [esito-gruppo-lotto](brief-db-esito-gruppo-lotto.md) (DB, BE e FE
 > completi: il giro sa dire com'è andato **documento per documento**),
-> [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md)
+> [uscita-documento-dal-giro](brief-db-uscita-documento-dal-giro.md)
 > (il verbo che toglie un documento dal giro, end-to-end),
 > `gruppo_key` sulle segnalazioni e la ricerca sulla dash competenza.
 > ⇒ La «vista errori» non è più solo un pannello di lettura: da questi cantieri
 > l'operatore **agisce** sul singolo documento — che è esattamente la frase
 > finale di questa sezione, arrivata dove non ce l'aspettavamo.
+
+> 📌 **12-09, le due lacune.** «**Reset a step precedente**» è **superato dal
+> modello**, non fatto: la risposta è diventata *ritorno a DRAFT* (tutto il
+> lotto, 04-08) + *«Riprova step»* (il rilancio che RITENTA, 12-09) + *«Togli
+> dal giro»* (per documento) — un rollback a uno step intermedio non esiste e
+> nessuno lo chiede più. La «**vista push**» (`commesse_push_log`: lista,
+> ultimo run per sorgente, contatori) **resta 🔴** e va in PROJECT_CONTEXT
+> §Aperto.
 
 **Problema:** il modello dati è pronto per un'operatività sofisticata ma senza interfaccia il vantaggio si perde.
 
@@ -355,7 +427,7 @@ documento **trasversale**.
 > sotto-punti qui sopra sono stati **riverificati e reggono**: `event_log` non
 > ha ancora nessun lettore. Ma «alerting e monitoring» erano **due cose in una
 > riga**, e la seconda ha avuto il suo cantiere:
-> [brief-db-sveglia-dei-processi](../work-done/brief-db-sveglia-dei-processi.md),
+> [brief-db-sveglia-dei-processi](brief-db-sveglia-dei-processi.md),
 > ✅ **chiuso il 2026-09-07** su entrambi i lati — tre processi senza sveglia
 > trovati e coperti, il registro dei processi, un ramo di installer che la prova
 > non copriva. Resta la coda del suo §24.6.
@@ -401,6 +473,12 @@ documento **trasversale**.
 > è vera solo per la pipeline, cioè per il ramo che già si diagnostica bene
 > col `LottoDrawer`. È **proprio sul push**, dove gli strumenti mancano, che
 > la correlazione non c'è.
+>
+> ✅ **12-09 — chiuso.** `CommessaPushOrchestrator` genera un `correlation_id`
+> per giro e lo passa a ogni evento; `fatturazione_lotti_task_runs.correlation_id`
+> esiste con indice parziale (`ix_task_runs_correlation`). Le due righe rosse
+> della tabella sopra descrivevano lo stato del 03-08 e sono rimaste scritte
+> per cinque settimane dopo la chiusura.
 
 **Problema:** documentato onestamente nella guida, ma è un gap tecnico concreto che limita il debug e l'audit.
 
@@ -446,7 +524,7 @@ documento **trasversale**.
 
 > 🟡 **SOSPESO per decisione di Tid**, non dimenticato. Arriva qui dal cantiere
 > *bonifica dei riferimenti morti*
-> ([brief-be-bonifica-riferimenti-morti](../work-done/brief-be-bonifica-riferimenti-morti.md) §1.2 e §6 item 2),
+> ([brief-be-bonifica-riferimenti-morti](brief-be-bonifica-riferimenti-morti.md) §1.2 e §6 item 2),
 > che si chiude: la voce vive da qui in avanti in questa roadmap, perché è
 > materia di fatturazione e non di bonifica.
 
@@ -500,8 +578,8 @@ quella e non deve rifare il ragionamento.
 ragione per cui la riga si è spezzata.
 
 📌 Storia completa nei piani chiusi:
-[Fase 3](../work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md) (`F4`) e
-[brief madre](../work-done/brief-db-be-iva-risolutore-e-regime-cliente.md) (`I5`).
+[Fase 3](brief-be-fe-iva-fase-3-consumatori-risolutore.md) (`F4`) e
+[brief madre](brief-db-be-iva-risolutore-e-regime-cliente.md) (`I5`).
 
 **Due cose già decise**, da non ridiscutere quando si riprenderà:
 
@@ -548,8 +626,8 @@ decisione UX aperta su `vendite.contratti_righe` (mostrare o nascondere
 `quantita`, esporre `fonte_quantita_attesa`). Con una preview di fatturazione il
 drawer riga potrebbe limitarsi alle **regole**, senza dover comunicare il
 **totale periodico**. Riferimenti:
-[refactor-contratti-fonte-quantita.md](../work-done/refactor-contratti-fonte-quantita.md),
-[gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md).
+[refactor-contratti-fonte-quantita.md](refactor-contratti-fonte-quantita.md),
+[gestione-commesse-v2.md](gestione-commesse-v2.md).
 
 ---
 
@@ -564,9 +642,9 @@ cosa, ed è per questo che stanno in un item solo:
 
 | Cantiere | Il pezzo di risposta |
 | --- | --- |
-| [uscita-documento-dal-giro](../work-done/brief-db-uscita-documento-dal-giro.md) | si può **togliere** un documento da un giro fermo, con la motivazione — invece di annullare tutto il lotto |
+| [uscita-documento-dal-giro](brief-db-uscita-documento-dal-giro.md) | si può **togliere** un documento da un giro fermo, con la motivazione — invece di annullare tutto il lotto |
 | [il marcatore scrive su un documento uscito](brief-db-il-marcatore-scrive-su-un-documento-uscito.md) | e una volta uscito **non si marca, non si conta, non blocca, non si racconta** — il tentativo uccideva il rilancio |
-| [documento trattenuto da un lotto vivo](../work-done/brief-db-documento-trattenuto-da-un-lotto-vivo.md) | e finché un giro **vivo** lo tiene, non lo si offre a un secondo giro |
+| [documento trattenuto da un lotto vivo](brief-db-documento-trattenuto-da-un-lotto-vivo.md) | e finché un giro **vivo** lo tiene, non lo si offre a un secondo giro |
 
 ⭐ **La cosa che vale oltre questi tre**, e che è costata due riscritture di
 perimetro: *il meccanismo che c'era misurava l'**esito** del lavoro, non il fatto
@@ -586,12 +664,16 @@ ANNULLATO è libero. Si legge dallo **stato del lotto**, dal flag `is_abortito`
 **dichiarati e non letti** — peggio della loro assenza, perché sembrano
 presidiati.
 
+✅ **12-09 — arrivato.** `DashboardCompetenzaView` legge i quattro campi:
+riga non selezionabile, motivo via `labelOrCode`, gesto sul lotto con il
+resolver dei bersagli. L'item è chiuso su tutti e tre i lati.
+
 ### Voci vicine, che hanno casa altrove
 
 Per non farne item e poi non trovarli più:
 
 * **archiviazione delle righe di coda** — DB applicato il 04-09, chiuso su
-  entrambi i lati ([brief](../work-done/brief-db-archiviazione-righe-code.md));
+  entrambi i lati ([brief](brief-db-archiviazione-righe-code.md));
 * **fan-out isolato ed esito parziale** — vive nel suo brief e nel collaudo in
   app; tocca l'item 5 (come il giro racconta com'è andato) più che questo.
 
@@ -612,6 +694,15 @@ Se non si scrive, si ripaga daccapo — quindi si scrive, **col fatto datato**:
 ⚠️ **La riga dell'item 8 è la lezione della passata**: una misura che *conferma*
 ciò che speravi va guardata due volte come una che lo smentisce. Lì per lì
 sembrava una voce da aggiornare, ed era il grep a essere sbagliato.
+
+🔴 **12-09 — e la prima riga di questa tabella era sbagliata nel verso
+opposto.** «`event_log` write-only: regge» è stato misurato con un grep sui
+file **Python** — e i lettori stavano nel **database** (`vw_giornale_entita`,
+dal 24-08). La misura confermava ciò che il documento sperava, ed è passata.
+Delle quattro righe ne reggono ancora due (item 2 contabilità, item 8) e mezza
+(item 9). ⭐ La regola che ne esce vale più della tabella: *«chi legge X?» si
+chiede al catalogo del DB e al repo insieme* — un lettore SQL non lascia
+traccia in `apps/`.
 
 ---
 
@@ -646,7 +737,7 @@ funzionale ma perché ha già fatto danno.
 | **P0** | **`correlation_id` sul push (#7)** | Il gap è isolato e misurato: `COMMESSE/TASK_RUN` a **0 su 196**. Poche righe, e senza di esso l'item 6 non ha da dove partire |
 | **P0** | **Identità reale su `log_event` (#4)** | Resta un quick win, ma **va fatto davvero**: oggi `actor` dice sempre `service:django`. I GUC hanno già l'identità, basta passarla |
 | **P1** | **Endpoint di lettura su `event_log`** *(nuovo)* | Non era nel documento di febbraio. Sblocca insieme «ultimo evento» (5a), «vista errori» vera (5b) e alerting (6), ed è ciò che serve allo strumento di consultazione log chiesto il 03/08 |
-| **P1** | Riconciliazione incassi (#2) | Già misurata in [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md): manca l'aggancio **rata↔incasso**. Ora che le rate esistono davvero, il buco è visibile |
+| **P1** | Riconciliazione incassi (#2) | Già misurata in [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md): manca l'aggancio **rata↔incasso**. Ora che le rate esistono davvero, il buco è visibile |
 | **P2** | Vista push + reset a step (#5, le due lacune) | Il resto della dashboard c'è; queste due restano e ora si chiedono in modo preciso |
 | **P2** | Alerting (#6) | Dopo l'endpoint di lettura diventa piccolo: `job_liveness()` è il precedente, l'outbox email il canale |
 | **P2** | Diagrammi di stato (#8) | Trasposizione, non analisi. Da fare **dopo** #1, così mostra anche la via d'uscita |
@@ -670,6 +761,15 @@ funzionale ma perché ha già fatto danno.
 > ⛔ E una che NON è cambiata: la **#1 (ritorno a DRAFT)** è ancora l'unico item
 > che *peggiora da solo*. Le voci nuove di settembre hanno tutte una causa
 > esterna che le ha fatte emergere; questa no, e sta lì da febbraio.
+>
+> 🔴 **12-09: era chiusa dal 04-08** — cioè da prima che questo elenco fosse
+> «rivisto». I tre **P0** di questa tabella (#1 ritorno a DRAFT, #7
+> `correlation_id`, #4 identità) sono **tutti chiusi**; il **P1** «endpoint di
+> lettura su `event_log`» è a metà (la vista esiste e ha un consumatore, manca
+> il filtro per severity/finestra → analisi osservabilità); il **P1** incassi
+> è in esercizio e in collaudo. ⇒ **Questo elenco è ritirato**: le voci ancora
+> aperte stanno in PROJECT_CONTEXT §Aperto, una riga ciascuna, e non si
+> ripianificano qui.
 
 ### Voci uscite dall'elenco
 
@@ -695,3 +795,12 @@ decidere — e per cui questo documento porta ora, in ogni sezione, la **data
 della verifica** accanto allo stato. Un promemoria senza data di verifica
 invecchia in silenzio, e la parte che invecchia peggio è proprio quella che
 dichiara «fatto».
+
+⚠️ **12-09 — e la data non basta.** Questo documento aveva la data in ogni
+sezione e ha dichiarato «verificato» per cinque settimane un P0 chiuso il
+giorno dopo la verifica. La data dice *quando* si è guardato, non *dove*: la
+riverifica del 09-09 ha riletto le righe del 03-08 e ha cercato lettori nel
+posto sbagliato. Un promemoria di stato con più di una decina di voci va
+tenuto **corto e in un posto letto a ogni sessione**, o non va tenuto: da qui
+in avanti le voci aperte stanno in PROJECT_CONTEXT, e questo file è la review
+di febbraio con la sua storia — archiviata.

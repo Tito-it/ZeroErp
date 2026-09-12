@@ -2140,7 +2140,6 @@
       "riporta_nulla": "Nessuna attività riportata.",
       "riporta_ostacoli": "{n} attività non si possono riportare adesso ({motivo}). L'elenco a schermo era invecchiato: è stato ricaricato.",
       "motivo_residuo": "Residuo",
-      "motivo_in_attesa_lotto": "In attesa del lotto",
       "motivo_giro_in_corso": "Giro in corso",
       "motivo_senza_attivita_fatturabile": "Senza attività fatturabile",
       "col_articolo_descrizione": "Descrizione",

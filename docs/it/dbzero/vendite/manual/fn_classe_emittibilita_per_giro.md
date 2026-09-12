@@ -90,7 +90,7 @@ SELECT e.commessa_attivita_id, e.classe_emittibilita,
  WHERE e.commessa_id = 34137;
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md` (D1);
+Origine: `docs/it/dev/work-done/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md` (D1);
 changeSet `20260912-12`.
 
 ---

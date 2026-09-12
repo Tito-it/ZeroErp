@@ -2140,7 +2140,6 @@
       "riporta_nulla": "No activity sent back.",
       "riporta_ostacoli": "{n} activities cannot be sent back right now ({motivo}). The list on screen was stale: it has been reloaded.",
       "motivo_residuo": "Leftover",
-      "motivo_in_attesa_lotto": "Waiting for its batch",
       "motivo_giro_in_corso": "Run in progress",
       "motivo_senza_attivita_fatturabile": "No billable activity",
       "col_articolo_descrizione": "Description",

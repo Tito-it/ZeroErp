@@ -45,7 +45,7 @@ in due posti vive meglio in uno.
 SELECT vendite.fn_lotto_da_emit_batch('01a094ed-9aff-74f1-9cca-69a7a9a9f556');  -- → 13338
 ```
 
-Origine: `docs/it/dev/work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md` (D1);
+Origine: `docs/it/dev/work-done/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md` (D1);
 changeSet `20260912-13`.
 
 ---

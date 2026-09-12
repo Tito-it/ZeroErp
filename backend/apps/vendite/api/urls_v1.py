@@ -226,7 +226,7 @@ urlpatterns = [
     # I RESIDUI: le attivita' che una fattura non ce l'hanno piu' e che nessun
     # giro riprendera' da solo. E' l'elenco su cui agisce «Riporta da emettere»,
     # ed e' una lista sua e non un filtro di `attivita/`: lo stadio
-    # EMESSA_NON_FATTURATA contiene quattro situazioni e solo questa chiede
+    # EMESSA_NON_FATTURATA contiene tre situazioni e solo questa chiede
     # un'azione.
     path(
         "dashboard-competenza/residui/",

@@ -216,11 +216,16 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
 #### `n_residui` / `valore_residui` — la quota che chiede un'azione (2026-08-27)
 
 ⭐ **La card dice DUE cose, e sono due perché hanno rimedi opposti.** Dentro
-`EMESSA_NON_FATTURATA` convivono **quattro** situazioni (dimensione
-`motivo_non_fatturata`, changeSet `20260826-54`): il **RESIDUO** — rimasto senza
-fattura, e nessun giro lo riprende da solo — chiede un'azione («Riporta da
-emettere»); le altre tre (`IN_ATTESA_LOTTO`, `GIRO_IN_CORSO`,
+`EMESSA_NON_FATTURATA` convivono **tre** situazioni (dimensione
+`motivo_non_fatturata`, changeSet `20260826-54`; tre valori dal `20260912-36`
+— il perché sta nel manuale della vista,
+[vw_dash_competenza_attivita](../../../dbzero/vendite/manual/vw_dash_competenza_attivita.md)):
+il **RESIDUO** — rimasto senza fattura, e nessun giro lo riprende da solo —
+chiede un'azione («Riporta da emettere»); le altre due (`GIRO_IN_CORSO`,
 `SENZA_ATTIVITA_FATTURABILE`) sono transito o anomalia, e non chiedono niente.
+⭐ Il patto con le etichette del frontend (`motivo_<codice>`, chiave costruita
+e quindi invisibile a `check_i18n_keys`) è presidiato nei due versi da
+`apps/vendite/tests/db/test_motivo_non_fatturata_locale.py`, su DB provvisto.
 Un numero solo per rimedi opposti **era il difetto**.
 
 - `n_residui` — le attività della cella con `motivo_non_fatturata = 'RESIDUO'`.

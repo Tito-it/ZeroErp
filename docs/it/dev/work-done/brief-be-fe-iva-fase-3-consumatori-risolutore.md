@@ -20,7 +20,7 @@
 > `EsigibilitaIVA` nel payload SDI — non ha dove atterrare finché il **builder
 > XML FatturaPA non esiste**. Non è lavoro rimandato: è un sottosistema che non
 > c'è. La coda vive nell'**item 9** di
-> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), insieme agli altri due
+> [fatturazione-roadmap.md](fatturazione-roadmap.md), insieme agli altri due
 > blocchi che aspettano lo stesso builder (`DatiContratto` e le righe **spezzate**
 > dal plafond). ⚠️ Ci è stata messa apposta **prima** di chiudere qui: un residuo
 > che resta in un documento chiuso è un residuo perso.

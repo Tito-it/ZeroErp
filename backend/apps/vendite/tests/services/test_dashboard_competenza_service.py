@@ -85,10 +85,12 @@ from apps.vendite.services.vendite_service import (
 # forma misurata dal team DB su luglio 2026 — 25 attivita' NORMALE + 1 ONERE da
 # 5.000 €. Il breakdown 3a deve restare UNA voce per stato.
 # ⭐ Le DUE popolazioni dentro `EMESSA_NON_FATTURATA`, che la card deve saper
-# distinguere: il RESIDUO chiede un'azione («Riporta da emettere»), le altre tre
-# situazioni no. ⚠️ Il caso si COSTRUISCE qui: nei dati di sviluppo del
-# 2026-08-27 il transito non c'era (5 righe su 5 residue), quindi un test che
-# guardasse la popolazione reale sarebbe verde senza aver verificato niente.
+# distinguere: il RESIDUO chiede un'azione («Riporta da emettere»), le altre due
+# situazioni no. ⚠️ Una riga per valore VIVO del vocabolario (tre: vedi il
+# commento su `MOTIVO_NON_FATTURATA_RESIDUO` nel repository, che e' la sede).
+# ⚠️ Il caso si COSTRUISCE qui: nei dati di sviluppo del 2026-08-27 il transito
+# non c'era (5 righe su 5 residue), quindi un test che guardasse la popolazione
+# reale sarebbe verde senza aver verificato niente.
 _ROWS_DUE_POPOLAZIONI = [
     {
         "competenza_mese": "2026-07-01",
@@ -104,21 +106,6 @@ _ROWS_DUE_POPOLAZIONI = [
         "n_in_ritardo": 0,
         "valore_in_ritardo": "0",
         "motivo_non_fatturata": "RESIDUO",
-    },
-    {
-        "competenza_mese": "2026-07-01",
-        "stadio": "EMESSA_NON_FATTURATA",
-        "stato_fattura_codice_interno": None,
-        "stato_fattura_codice": None,
-        "tipo_movimento": "NORMALE",
-        "n_attivita": 12,
-        "n_attivita_trattenute": 0,
-        "valore_trattenuto": "0",
-        "valore": "8400.00",
-        "valore_fatturato": "0",
-        "n_in_ritardo": 0,
-        "valore_in_ritardo": "0",
-        "motivo_non_fatturata": "IN_ATTESA_LOTTO",
     },
     {
         "competenza_mese": "2026-07-01",
@@ -1997,14 +1984,14 @@ class CardResiduiTests(TestCase):
         luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
         card = next(s for s in luglio["stadi"] if s["stadio"] == "EMESSA_NON_FATTURATA")
 
-        # Il totale li contiene tutti: 5 + 12 + 3 + 1.
-        self.assertEqual(card["n_attivita"], 21)
+        # Il totale li contiene tutti: 5 + 3 + 1.
+        self.assertEqual(card["n_attivita"], 9)
         # La quota che chiede un'azione e' SOLO il residuo.
         self.assertEqual(card["n_residui"], 5)
         self.assertEqual(card["valore_residui"], "5019.00")
-        # ⚠️ E le altre tre NON entrano: sommarle direbbe «21 da recuperare»,
-        #    cioe' proporrebbe il verbo su 16 righe che lo rifiuterebbero.
-        self.assertEqual(card["n_attivita"] - card["n_residui"], 16)
+        # ⚠️ E le altre due NON entrano: sommarle direbbe «9 da recuperare»,
+        #    cioe' proporrebbe il verbo su 4 righe che lo rifiuterebbero.
+        self.assertEqual(card["n_attivita"] - card["n_residui"], 4)
 
     # Scopo: Su uno stadio dove il motivo non si applica il campo c'e' e vale 0
     #        (contratto simmetrico DL-8: il frontend rende, non deduce).

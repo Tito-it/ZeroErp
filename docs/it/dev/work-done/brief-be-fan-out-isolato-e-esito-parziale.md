@@ -13,7 +13,7 @@
 > **V1** il 2026-09-12 con la prova 5 verde
 > ([collaudo-in-app-esito-parziale-pull-commessa](collaudo-in-app-esito-parziale-pull-commessa.md))
 > — dopo aver trovato e chiuso due difetti di modello sul rilancio
-> ([brief-db-rilancio-step-non-rivede-le-proprie-commesse](../work-in-progress/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md)).
+> ([brief-db-rilancio-step-non-rivede-le-proprie-commesse](brief-db-rilancio-step-non-rivede-le-proprie-commesse.md)).
 > Da qui in giù il documento è storia: gli stati datati restano com'erano.
 >
 > ~~🟡 **Questo doc resta APERTO come raccoglitore dell'intera linea**: gli altri tre

@@ -937,12 +937,19 @@ tipo: senza, etichetterebbero «Fattura» un accredito.
 
 📌 Dettagli d'API: [api_lineage_passaggi.md](../backend/vendite/manual/api_lineage_passaggi.md).
 
-### Cosa resta aperto
+### Le due strade, complementari
 
 La metà **pre**-numerazione — il ritorno di un lotto a DRAFT — è un'altra
 strada, complementare a questa: la nota di credito copre ciò che è già uscito,
-il ritorno in bozza ciò che non è ancora numerato. Vedi la
-[roadmap](../dev/work-in-progress/fatturazione-roadmap.md), item 1.
+il ritorno in bozza ciò che non è ancora numerato. ✅ **Anche quella esiste**:
+`fn_riporta_lotto_a_draft`, il verbo «Riporta in lavorazione» descritto in
+§«Rollback di step» di questa guida, chiuso il 2026-08-04
+([brief-be-ritorno-lotto-a-draft](../dev/work-done/brief-be-ritorno-lotto-a-draft.md)).
+⚠️ Fino al 2026-09-12 questa sezione si chiamava «Cosa resta aperto» e
+rimandava alla roadmap, item 1 — che a sua volta lo dava aperto: la guida
+descriveva il verbo trecento righe più su e lo dichiarava mancante qui. La
+storia dell'item sta nella
+[roadmap archiviata](../dev/work-done/fatturazione-roadmap.md), §1.
 
 ---
 

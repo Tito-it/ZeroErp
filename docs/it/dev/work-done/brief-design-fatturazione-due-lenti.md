@@ -61,7 +61,7 @@
 > pre-fatturazione attuale, che questo brief decompone) ·
 > [analisi-dash-pre-fatturazione.md](analisi-dash-pre-fatturazione.md) (Domande A-E) ·
 > [Guida fatturazione](../../guide/fatturazione.md) ·
-> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md).
+> [fatturazione-roadmap.md](fatturazione-roadmap.md).
 
 ---
 

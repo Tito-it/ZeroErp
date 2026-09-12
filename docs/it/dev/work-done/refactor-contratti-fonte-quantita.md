@@ -438,7 +438,7 @@ Stessa serie in [en.json](../../../../frontend/src/locales/en.json) tradotta.
 
 - [`contratti_righe.md`](../../../../docs/it/dbzero/vendite/manual/contratti_righe.md): nuova sezione "Matrice tipo_erogazione × fonte_quantita_attesa" con la tabella del §3.
 - [`gestione-commesse-v2.md`](gestione-commesse-v2.md) §29: gia' aggiornato 2026-05-19 col promemoria `HandlerContratti`. Link incrociato da qui (futuro lavoro motore commesse).
-- [`fatturazione-roadmap.md` §10](../work-in-progress/fatturazione-roadmap.md): il promemoria UI preview fatturazione, nato il 2026-05-19 in `sviluppo-fatturazione.md`, vive li' dal 2026-08-22 (quel documento conteneva solo questo ed e' stato tolto). Link incrociato da qui.
+- [`fatturazione-roadmap.md` §10](fatturazione-roadmap.md): il promemoria UI preview fatturazione, nato il 2026-05-19 in `sviluppo-fatturazione.md`, vive li' dal 2026-08-22 (quel documento conteneva solo questo ed e' stato tolto). Link incrociato da qui.
 
 ### Step 6 — Smoke + checklist browser
 
@@ -454,7 +454,7 @@ Aggiornare [`test-contratto-composito.md`](test-contratto-composito.md):
 
 1. **Modulo timesheet**: nessuna implementazione in questo refactor. `TIMESHEET` resta come opzione valida nell'enum DB e nella matrice; il default per `ORARIO` resta `MANUALE` finche' il modulo non esiste. Aggiornare il default quando il modulo arrivera'.
 2. **`HandlerContratti` push contratto → commessa**: scheletro vuoto oggi, vedi [gestione-commesse-v2.md §29](gestione-commesse-v2.md). Lavoro coordinato con questo refactor ma in altra sessione.
-3. **UI preview fatturazione contratto**: non esiste, vedi [fatturazione-roadmap.md §10](../work-in-progress/fatturazione-roadmap.md) (era PROMO-1 di `sviluppo-fatturazione.md`). La sua assenza pesa sulla decisione UX di questo refactor (il drawer riga resta l'unico punto in cui l'utente vede `quantita`), ma non blocca.
+3. **UI preview fatturazione contratto**: non esiste, vedi [fatturazione-roadmap.md §10](fatturazione-roadmap.md) (era PROMO-1 di `sviluppo-fatturazione.md`). La sua assenza pesa sulla decisione UX di questo refactor (il drawer riga resta l'unico punto in cui l'utente vede `quantita`), ma non blocca.
 4. **Backfill dati esistenti**: in dev tutti i contratti hanno `fonte_quantita_attesa = NULL`. Decisione: lasciare NULL (compatibile con il modello) e applicare il default solo a INSERT/UPDATE futuri, oppure backfillare via UPDATE batch al deploy della migration. Da decidere col brief DB.
 
 ---

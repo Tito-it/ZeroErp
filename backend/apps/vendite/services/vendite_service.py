@@ -765,8 +765,8 @@ class _CellaCompetenza:
     # ⭐ La quota RESIDUA dentro `EMESSA_NON_FATTURATA`. Sta a parte e non
     # sostituisce il totale, perche' la card deve dire DUE cose: quanto lavoro
     # e' fermo in quello stadio, e quanta parte di quel lavoro **chiede
-    # un'azione**. Le altre tre situazioni dello stadio — in attesa del lotto,
-    # giro in corso, senza attivita' fatturabile — non chiedono niente, e
+    # un'azione**. Le altre due situazioni dello stadio — giro in corso,
+    # senza attivita' fatturabile — non chiedono niente, e
     # sommarle al residuo darebbe un numero solo per rimedi opposti.
     n_residui: int = 0
     valore_residui: Decimal = Decimal(0)
@@ -1290,7 +1290,7 @@ def fn_dash_competenza_residui(
     max_rows: int | None = None,
 ) -> dict[str, object]:
     # ⚠️ Nessun parametro `stadio`: la lista E' uno stadio, anzi una delle
-    #    quattro situazioni dentro `EMESSA_NON_FATTURATA`. Accettarlo darebbe
+    #    tre situazioni dentro `EMESSA_NON_FATTURATA`. Accettarlo darebbe
     #    all'invocante l'illusione di poter allargare il perimetro del verbo.
     _valida_ordinamento(
         order_by, order_dir,
