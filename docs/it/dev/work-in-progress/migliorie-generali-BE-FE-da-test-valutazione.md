@@ -197,11 +197,16 @@ verde dica su quanti file.
 * **D1-d-bis** — il primo test di **componente** (`ListaConfigurabile`, 63 file
   la usano). Vuole `@vue/test-utils` + `jsdom`, da aggiungere **quel giorno**;
   e vuole che qualcuno decida *cosa* deve asserire.
-* **D1-f** — `npm audit` riporta 2 vulnerabilità (1 alta) su
-  `browserslist`/`baseline-browser-mapping`, di sola **build** (da
-  `vite-plugin-vue-devtools` → babel). Il difetto non è la vulnerabilità: è che
-  nessuno lancia mai `npm audit`. Decidere se metterlo nel job e con quale
-  soglia.
+* **D1-f** — ✅ le due vulnerabilità (`browserslist` alta,
+  `baseline-browser-mapping` moderata, entrambe di sola **build**) sanate il
+  2026-09-13 su segnalazione di Tid dagli avvisi Dependabot: **nessun
+  override e nessuna dipendenza nuova** — i range già dichiarati (`^4.24.0`,
+  `^2.10.38`) ammettevano le versioni corrette, è bastato aggiornare i due
+  pacchetti nel lock (4.28.9 e 2.11.23). `npm audit` a **zero**; lint, guard,
+  44 test e build verdi. ⚠️ **Resta la decisione**: il difetto non era la
+  vulnerabilità, è che nessuno lancia `npm audit` — oggi il registro è a zero,
+  cioè l'unico momento in cui un cancello nasce senza arretrato
+  (`npm audit --audit-level=high` nel job `ci-frontend`).
 
 ### D2 — 258.000 righe di Python senza analisi statica
 
@@ -572,7 +577,9 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 * [x] **D1-e** — ✅ 2026-09-09: `check_license.py` in modalità range per la CI.
 * [ ] **D1-d-bis** — il primo test di **componente** su `ListaConfigurabile`
       (`@vue/test-utils` + `jsdom`, da aggiungere quel giorno).
-* [ ] **D1-f** — decidere se `npm audit` entra nel job e con quale soglia.
+* [~] **D1-f** — ✅ 2026-09-13: le due vulnerabilità sanate nel lock, `npm audit`
+      a zero. Aperta la decisione se `npm audit --audit-level=high` entra nel
+      job — ora nascerebbe a zero.
 
 ### 🔴 Il backend
 
@@ -666,7 +673,7 @@ rumore del digest). E il perimetro dei dati — D2 e D3 del gemello — è roba 
 | 3 | **D7 (schermata)** — il registro mail dell'operatore | Cantiere piccolo (client, store, view, menu): la lista è già a catalogo |
 | 4 | **D3-c** — HSTS / SSL_REDIRECT / CSP | Dieci minuti di `settings.py` più una **decisione** sulla CSP; l'effetto lo decide il reverse proxy |
 | 5 | **D2-b** — type checker | Una decisione: sì (e come) o no (e si toglie la riga da `AGENTS.md`) |
-| 6 | **D1-f** — `npm audit` nel job | Una decisione sulla soglia |
+| 6 | **D1-f** — `npm audit` nel job | Registro a **zero** dal 13-09: è il momento in cui un cancello nasce senza arretrato |
 | 7 | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
